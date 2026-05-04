@@ -3226,6 +3226,43 @@ async def get_toolsets():
     return result
 
 
+@app.get("/api/mcp-servers")
+async def list_mcp_servers():
+    """List configured MCP servers from config.yaml.
+
+    P-005: this endpoint is downstream-only — never made it to upstream.
+    v2 Web UI's panel health-check grid depends on it for the MCP cell.
+    After every ``hermes update`` re-apply via:
+        v2/scripts/reapply-runtime-patches.sh
+    See v2/UPSTREAM_PATCHES.md.
+
+    Only name + enabled are exposed.  command / args / env are intentionally
+    kept server-side because they routinely embed secrets (API keys, tokens).
+    """
+    from hermes_cli.tools_config import _parse_enabled_flag
+
+    config = load_config()
+    raw = config.get("mcp_servers") or {}
+    if not isinstance(raw, dict):
+        raw = {}
+
+    servers = []
+    enabled_count = 0
+    for name, cfg in raw.items():
+        if not isinstance(cfg, dict):
+            continue
+        is_enabled = _parse_enabled_flag(cfg.get("enabled", True), default=True)
+        if is_enabled:
+            enabled_count += 1
+        servers.append({"name": str(name), "enabled": bool(is_enabled)})
+    servers.sort(key=lambda s: s["name"].lower())
+
+    return {
+        "summary": {"total": len(servers), "enabled": enabled_count},
+        "servers": servers,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Raw YAML config endpoint
 # ---------------------------------------------------------------------------

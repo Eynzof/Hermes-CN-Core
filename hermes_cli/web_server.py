@@ -14,7 +14,9 @@ import hmac
 import importlib.util
 import json
 import logging
+import mimetypes
 import os
+import re
 import secrets
 import subprocess
 import sys
@@ -95,6 +97,10 @@ _reveal_timestamps: List[float] = []
 _REVEAL_MAX_PER_WINDOW = 5
 _REVEAL_WINDOW_SECONDS = 30
 
+_UPLOAD_MAX_BYTES = 50 * 1024 * 1024
+_UPLOAD_SESSION_RE = re.compile(r"^[A-Za-z0-9_-]{1,160}$")
+_UPLOAD_UNSAFE_FILENAME_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f]+')
+
 # CORS: restrict to localhost origins only.  The web UI is intended to run
 # locally; binding to 0.0.0.0 with allow_origins=["*"] would let any website
 # read/modify config and secrets.
@@ -146,6 +152,105 @@ def _require_token(request: Request) -> None:
     """Validate the ephemeral session token.  Raises 401 on mismatch."""
     if not _has_valid_session_token(request):
         raise HTTPException(status_code=401, detail="Unauthorized")
+
+
+def _safe_upload_filename(filename: str) -> str:
+    """Return a local-only filename safe to place in Hermes's upload cache."""
+    name = Path((filename or "attachment").replace("\\", "/")).name.strip().replace("\x00", "")
+    name = _UPLOAD_UNSAFE_FILENAME_RE.sub("_", name).strip(" .")
+    if not name:
+        name = "attachment"
+    return name[:180]
+
+
+def _parse_content_disposition(value: str) -> Dict[str, str]:
+    result: Dict[str, str] = {}
+    for index, part in enumerate(value.split(";")):
+        part = part.strip()
+        if not part:
+            continue
+        if index == 0 and "=" not in part:
+            result["type"] = part.lower()
+            continue
+        key, _, raw = part.partition("=")
+        key = key.strip().lower()
+        raw = raw.strip()
+        if raw.startswith('"') and raw.endswith('"'):
+            raw = raw[1:-1].replace('\\"', '"')
+        if key:
+            result[key] = raw
+    return result
+
+
+def _parse_multipart_form(content_type: str, body: bytes) -> tuple[Dict[str, str], Dict[str, dict]]:
+    """Small multipart/form-data parser for dashboard uploads.
+
+    FastAPI's UploadFile route requires python-multipart at import time. Hermes's
+    dashboard keeps that dependency optional, so this parser handles the single
+    upload form used by the UI without adding a new runtime requirement.
+    """
+    match = re.search(r'boundary=(?:"([^"]+)"|([^;]+))', content_type, re.I)
+    if not match:
+        raise ValueError("multipart boundary missing")
+    boundary = (match.group(1) or match.group(2) or "").encode("utf-8")
+    if not boundary:
+        raise ValueError("multipart boundary missing")
+
+    fields: Dict[str, str] = {}
+    files: Dict[str, dict] = {}
+    delimiter = b"--" + boundary
+
+    for raw_part in body.split(delimiter):
+        if not raw_part or raw_part == b"--" or raw_part == b"--\r\n":
+            continue
+        part = raw_part
+        if part.startswith(b"\r\n"):
+            part = part[2:]
+        if part.endswith(b"--"):
+            part = part[:-2].rstrip(b"\r\n")
+        elif part.endswith(b"\r\n"):
+            part = part[:-2]
+        try:
+            header_blob, payload = part.split(b"\r\n\r\n", 1)
+        except ValueError:
+            continue
+
+        headers: Dict[str, str] = {}
+        for line in header_blob.decode("utf-8", "replace").split("\r\n"):
+            key, sep, value = line.partition(":")
+            if sep:
+                headers[key.strip().lower()] = value.strip()
+
+        disposition = _parse_content_disposition(headers.get("content-disposition", ""))
+        name = disposition.get("name", "")
+        if not name:
+            continue
+
+        filename = disposition.get("filename")
+        if filename is None:
+            fields[name] = payload.decode("utf-8", "replace")
+            continue
+
+        files[name] = {
+            "filename": filename,
+            "content_type": headers.get("content-type") or "application/octet-stream",
+            "content": payload,
+        }
+
+    return fields, files
+
+
+def _unique_upload_path(directory: Path, filename: str) -> Path:
+    candidate = directory / filename
+    if not candidate.exists():
+        return candidate
+    stem = candidate.stem or "attachment"
+    suffix = candidate.suffix
+    for index in range(2, 1000):
+        next_candidate = directory / f"{stem}-{index}{suffix}"
+        if not next_candidate.exists():
+            return next_candidate
+    raise ValueError("too many files with the same name")
 
 
 # Accepted Host header values for loopback binds. DNS rebinding attacks
@@ -2472,6 +2577,68 @@ async def get_session_messages(session_id: str):
         return {"session_id": sid, "messages": messages}
     finally:
         db.close()
+
+
+@app.post("/api/upload")
+async def upload_attachment(request: Request):
+    """Store a browser-selected attachment for the local dashboard UI.
+
+    Files are written under ``~/.hermes/uploads/<session_id>/`` and the
+    absolute path is returned so the TUI gateway can attach images or reference
+    files in a follow-up prompt.
+
+    P-002: this endpoint is downstream-only — never made it to upstream.
+    v2 Web UI's ``apps/web/src/lib/transport.ts`` depends on it for the
+    composer file-drop flow.  After every ``hermes update`` re-apply via:
+        v2/scripts/reapply-runtime-patches.sh
+    See v2/UPSTREAM_PATCHES.md.
+    """
+    length_raw = request.headers.get("content-length")
+    try:
+        if length_raw and int(length_raw) > _UPLOAD_MAX_BYTES:
+            raise HTTPException(status_code=413, detail="File too large")
+    except ValueError:
+        pass
+
+    body = await request.body()
+    if len(body) > _UPLOAD_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="File too large")
+
+    try:
+        fields, files = _parse_multipart_form(request.headers.get("content-type", ""), body)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    session_id = (fields.get("session_id") or "default").strip()
+    if not _UPLOAD_SESSION_RE.match(session_id):
+        raise HTTPException(status_code=400, detail="Invalid session id")
+
+    upload = files.get("file")
+    if not upload:
+        raise HTTPException(status_code=400, detail="Missing file")
+
+    content = upload["content"]
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty file")
+
+    upload_dir = get_hermes_home() / "uploads" / session_id
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    filename = _safe_upload_filename(str(upload.get("filename") or "attachment"))
+    target = _unique_upload_path(upload_dir, filename)
+    target.write_bytes(content)
+
+    content_type = str(upload.get("content_type") or "")
+    if not content_type or content_type == "application/octet-stream":
+        content_type = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
+
+    return {
+        "ok": True,
+        "filename": target.name,
+        "path": str(target),
+        "size": len(content),
+        "mime_type": content_type,
+    }
 
 
 @app.delete("/api/sessions/{session_id}")

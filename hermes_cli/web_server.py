@@ -54,7 +54,7 @@ from gateway.status import get_running_pid, read_runtime_status
 try:
     from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
     from fastapi.middleware.cors import CORSMiddleware
-    from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+    from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, Response, StreamingResponse
     from fastapi.staticfiles import StaticFiles
     from pydantic import BaseModel
 except ImportError:
@@ -113,6 +113,10 @@ _PUBLIC_API_PATHS: frozenset = frozenset({
     "/api/dashboard/themes",
     "/api/dashboard/plugins",
     "/api/dashboard/plugins/rescan",
+    # P-009: EventSource can't set Authorization, so /api/v2/events
+    # authenticates the token from the query string inside the route
+    # handler itself. The handler still rejects 401 on mismatch.
+    "/api/v2/events",
 })
 
 
@@ -3586,6 +3590,179 @@ async def gateway_ws(ws: WebSocket) -> None:
     from tui_gateway.ws import handle_ws
 
     await handle_ws(ws)
+
+
+# ---------------------------------------------------------------------------
+# P-009: SSE+POST transport for clients that can't open a WebSocket to the
+# dashboard (Tauri webview can't cross from tauri:// to http://127.0.0.1
+# without a CORS-friendly upgrade path). Same dispatcher surface as
+# /api/ws — just split across a one-way SSE stream and one-shot POSTs.
+#
+# Wire protocol matches what `web/src/lib/gateway-sse-client.ts` in the
+# desktop project expects:
+#   GET /api/v2/events            — SSE stream
+#     query: token=<session token>   (no Authorization header on EventSource)
+#            client_id=<id> (optional — reuse an id across reconnects)
+#     emits: event: client_id\ndata: {"client_id": "<uuid>"}\n\n
+#            then JSON-RPC frames as `data: <json>\n\n` (the same
+#            frames /api/ws emits over the WebSocket — gateway.ready first,
+#            then per-method events).
+#     keepalive: `: ping\n\n` every 15s.
+#   POST /api/v2/rpc              — JSON-RPC request
+#     auth: Authorization: Bearer <token> (regular header path; this
+#           route is NOT public, the auth middleware handles it).
+#     header: X-Hermes-Client-Id: <id from /api/v2/events>
+#     body: {"jsonrpc": "2.0", "id": "...", "method": "...", "params": {...}}
+#     reply: inline JSON-RPC response, OR
+#            {"jsonrpc": "2.0", "id": "...", "result": {"accepted": true, "async": true}}
+#            when the handler ran on the worker pool — the real response
+#            arrives via the SSE stream.
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/v2/events")
+async def gateway_events(request: Request) -> Any:
+    # Token auth: EventSource can't set Authorization, so the token is on
+    # the query string. /api/v2/events is on _PUBLIC_API_PATHS exactly so
+    # the auth middleware doesn't 401 before we get a chance to check.
+    token = request.query_params.get("token", "")
+    if not hmac.compare_digest(token.encode(), _SESSION_TOKEN.encode()):
+        return PlainTextResponse("Unauthorized", status_code=401)
+
+    from tui_gateway import server as _gw_server
+    from tui_gateway.sse import SSE_CLIENTS, SSETransport, new_client_id
+
+    # Allow the client to propose an id (for resumption across reconnects).
+    # Reject if it collides with a live connection; otherwise generate fresh.
+    requested = (request.query_params.get("client_id") or "").strip()
+    if requested and requested not in SSE_CLIENTS and len(requested) <= 64:
+        client_id = requested
+    else:
+        client_id = new_client_id()
+
+    transport = SSETransport(client_id, asyncio.get_running_loop())
+    SSE_CLIENTS[client_id] = transport
+
+    # Mirror handle_ws: emit gateway.ready as the second frame (after the
+    # client_id handshake frame the stream prepends).
+    transport.write(
+        {
+            "jsonrpc": "2.0",
+            "method": "event",
+            "params": {
+                "type": "gateway.ready",
+                "payload": {"skin": _gw_server.resolve_skin()},
+            },
+        }
+    )
+
+    async def streamer():
+        try:
+            async for chunk in transport.stream():
+                yield chunk
+        finally:
+            transport.close()
+            SSE_CLIENTS.pop(client_id, None)
+            # Detach the transport from any sessions it owned so later
+            # emits fall back to stdio instead of crashing into a closed
+            # queue — same cleanup as ws.py:212-214.
+            for _sid, sess in list(_gw_server._sessions.items()):
+                if sess.get("transport") is transport:
+                    sess["transport"] = _gw_server._stdio_transport
+
+    return StreamingResponse(
+        streamer(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            # nginx and friends like to buffer text/event-stream into 4KB
+            # chunks; this header opts out so frames arrive as written.
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@app.post("/api/v2/rpc")
+async def gateway_rpc(request: Request) -> JSONResponse:
+    # Auth: regular header path, middleware already 401'd anyone without
+    # a valid token. This route is NOT on _PUBLIC_API_PATHS.
+
+    from tui_gateway import server as _gw_server
+    from tui_gateway.sse import SSE_CLIENTS
+
+    client_id = request.headers.get("x-hermes-client-id", "").strip()
+    if not client_id:
+        return JSONResponse(
+            {
+                "jsonrpc": "2.0",
+                "id": None,
+                "error": {
+                    "code": -32004,
+                    "message": "missing X-Hermes-Client-Id header; open /api/v2/events first",
+                },
+            },
+            status_code=400,
+        )
+
+    transport = SSE_CLIENTS.get(client_id)
+    if transport is None:
+        return JSONResponse(
+            {
+                "jsonrpc": "2.0",
+                "id": None,
+                "error": {
+                    "code": -32004,
+                    "message": "unknown client_id; reconnect /api/v2/events",
+                },
+            },
+            status_code=410,  # Gone — explicit "this id no longer exists"
+        )
+
+    try:
+        body = await request.json()
+    except json.JSONDecodeError:
+        return JSONResponse(
+            {
+                "jsonrpc": "2.0",
+                "id": None,
+                "error": {"code": -32700, "message": "parse error"},
+            },
+            status_code=400,
+        )
+
+    # Run dispatch in a worker thread so long handlers block the pool
+    # instead of the event loop — same pattern as ws.py:173. Any
+    # exception is caught and surfaced as a JSON-RPC error (mirroring
+    # the P-007 fix in ws.py:172-204) so the client sees a structured
+    # failure instead of a dropped connection.
+    try:
+        resp = await asyncio.to_thread(_gw_server.dispatch, body, transport)
+    except Exception as exc:
+        _log.exception("dispatch crashed for client %s", client_id)
+        return JSONResponse(
+            {
+                "jsonrpc": "2.0",
+                "id": body.get("id") if isinstance(body, dict) else None,
+                "error": {
+                    "code": -32000,
+                    "message": f"dispatch crashed: {type(exc).__name__}: {exc}",
+                },
+            },
+            status_code=500,
+        )
+
+    if resp is None:
+        # Long handler — the pool worker will write the real response via
+        # the SSE transport. Acknowledge with the contract the SSE client
+        # checks for (gateway-sse-client.ts:67-74).
+        return JSONResponse(
+            {
+                "jsonrpc": "2.0",
+                "id": body.get("id") if isinstance(body, dict) else None,
+                "result": {"accepted": True, "async": True},
+            }
+        )
+    return JSONResponse(resp)
 
 
 # ---------------------------------------------------------------------------

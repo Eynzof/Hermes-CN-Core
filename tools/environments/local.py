@@ -175,6 +175,30 @@ def _sanitize_subprocess_env(base_env: dict | None, extra_env: dict | None = Non
     return sanitized
 
 
+def _is_windows_wsl_launcher(path: str) -> bool:
+    """Return True if *path* is the Windows-bundled WSL launcher (``bash.exe``).
+
+    Windows 10/11 ship ``C:\\Windows\\System32\\bash.exe`` as a launcher for
+    WSL (the ``lxss``/``wsl.exe`` interop entry point). The file is present
+    even when no WSL distro is installed, and ``shutil.which("bash")`` will
+    happily return it because ``System32`` is high-priority on the default
+    ``PATH``. Invoking it either hangs (waiting on a WSL VM that never comes
+    up) or exits with ``wsl: ...`` style errors. It is *not* Git Bash and
+    must not be used as one — doing so wedges every terminal call on the
+    ``local`` backend until ``gateway_timeout`` fires.
+    """
+    try:
+        resolved = os.path.normcase(os.path.realpath(path))
+    except OSError:
+        resolved = os.path.normcase(path)
+    system_root = os.environ.get("SystemRoot", r"C:\Windows")
+    bad_locations = {
+        os.path.normcase(os.path.join(system_root, sub, "bash.exe"))
+        for sub in ("System32", "Sysnative", "SysWOW64")
+    }
+    return resolved in bad_locations
+
+
 def _find_bash() -> str:
     """Find bash for command execution."""
     if not _IS_WINDOWS:
@@ -209,8 +233,13 @@ def _find_bash() -> str:
             if os.path.isfile(candidate):
                 return candidate
 
+    # ``shutil.which("bash")`` on Windows resolves to ``C:\Windows\System32\
+    # bash.exe`` first when the WSL launcher is present (true on every stock
+    # Win10/11). That binary is *not* Git Bash — invoking it hangs the
+    # terminal tool. Skip it and fall through to the known Git for Windows
+    # install paths below.
     found = shutil.which("bash")
-    if found:
+    if found and not _is_windows_wsl_launcher(found):
         return found
 
     for candidate in (
@@ -224,7 +253,9 @@ def _find_bash() -> str:
     raise RuntimeError(
         "Git Bash not found. Hermes Agent requires Git for Windows on Windows.\n"
         "Install it from: https://git-scm.com/download/win\n"
-        "Or set HERMES_GIT_BASH_PATH to your bash.exe location."
+        "Or set HERMES_GIT_BASH_PATH to your bash.exe location.\n"
+        "Note: C:\\Windows\\System32\\bash.exe is intentionally ignored — "
+        "it is the WSL launcher, not Git Bash."
     )
 
 

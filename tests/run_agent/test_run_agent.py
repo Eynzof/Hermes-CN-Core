@@ -517,6 +517,42 @@ class TestExtractReasoning:
         msg = _mock_assistant_msg(content=content)
         assert agent._extract_reasoning(msg) == expected
 
+    def test_content_list_thinking_blocks_extracted(self, agent):
+        """DeepSeek V4 Pro returns content as a typed-block list (issue #21944).
+
+        Without this branch thinking text is silently dropped → HTTP 400 on
+        the next turn ("thinking must be passed back to the API").
+        """
+        msg = _mock_assistant_msg(
+            content=[
+                {"type": "thinking", "thinking": "deep analysis here"},
+                {"type": "output", "text": "final answer"},
+            ]
+        )
+        result = agent._extract_reasoning(msg)
+        assert result == "deep analysis here"
+
+    def test_content_list_non_thinking_blocks_ignored(self, agent):
+        """Non-thinking blocks in a content list must not be treated as reasoning."""
+        msg = _mock_assistant_msg(
+            content=[
+                {"type": "text", "text": "just a regular response"},
+            ]
+        )
+        assert agent._extract_reasoning(msg) is None
+
+    def test_content_list_thinking_prefers_structured_field(self, agent):
+        """Structured ``reasoning`` field wins over content-list thinking blocks."""
+        msg = _mock_assistant_msg(
+            reasoning="from structured field",
+            content=[
+                {"type": "thinking", "thinking": "from content list"},
+            ],
+        )
+        result = agent._extract_reasoning(msg)
+        # structured field was found first → content-list branch skipped
+        assert result == "from structured field"
+
 
 class TestCleanSessionContent:
     def test_none_passthrough(self):
@@ -2233,6 +2269,60 @@ class TestParallelScopePathNormalization:
         assert not _should_parallelize_tool_batch([tc1, tc2])
 
 
+class TestMcpParallelToolBatch:
+    """Integration test: _should_parallelize_tool_batch respects MCP parallel flag."""
+
+    def test_mcp_tools_default_sequential(self):
+        """MCP tools without supports_parallel_tool_calls are sequential."""
+        from run_agent import _should_parallelize_tool_batch
+        tc1 = _mock_tool_call(name="mcp_github_list_repos", arguments='{"org":"openai"}', call_id="c1")
+        tc2 = _mock_tool_call(name="mcp_github_search_code", arguments='{"q":"test"}', call_id="c2")
+        assert not _should_parallelize_tool_batch([tc1, tc2])
+
+    def test_mcp_tools_parallel_when_server_opted_in(self):
+        """MCP tools from a parallel-safe server can run concurrently."""
+        from run_agent import _should_parallelize_tool_batch
+        from tools.mcp_tool import _parallel_safe_servers, _lock
+        with _lock:
+            _parallel_safe_servers.add("github")
+        try:
+            tc1 = _mock_tool_call(name="mcp_github_list_repos", arguments='{"org":"openai"}', call_id="c1")
+            tc2 = _mock_tool_call(name="mcp_github_search_code", arguments='{"q":"test"}', call_id="c2")
+            assert _should_parallelize_tool_batch([tc1, tc2])
+        finally:
+            with _lock:
+                _parallel_safe_servers.discard("github")
+
+    def test_mixed_mcp_and_builtin_parallel(self):
+        """MCP parallel tools mixed with built-in parallel-safe tools."""
+        from run_agent import _should_parallelize_tool_batch
+        from tools.mcp_tool import _parallel_safe_servers, _lock
+        with _lock:
+            _parallel_safe_servers.add("docs")
+        try:
+            tc1 = _mock_tool_call(name="mcp_docs_search", arguments='{"query":"api"}', call_id="c1")
+            tc2 = _mock_tool_call(name="web_search", arguments='{"query":"test"}', call_id="c2")
+            assert _should_parallelize_tool_batch([tc1, tc2])
+        finally:
+            with _lock:
+                _parallel_safe_servers.discard("docs")
+
+    def test_mixed_parallel_and_serial_mcp_servers(self):
+        """One parallel MCP server + one non-parallel MCP server = sequential."""
+        from run_agent import _should_parallelize_tool_batch
+        from tools.mcp_tool import _parallel_safe_servers, _lock
+        with _lock:
+            _parallel_safe_servers.add("docs")
+            # "github" is NOT in _parallel_safe_servers
+        try:
+            tc1 = _mock_tool_call(name="mcp_docs_search", arguments='{"query":"api"}', call_id="c1")
+            tc2 = _mock_tool_call(name="mcp_github_list_repos", arguments='{"org":"openai"}', call_id="c2")
+            assert not _should_parallelize_tool_batch([tc1, tc2])
+        finally:
+            with _lock:
+                _parallel_safe_servers.discard("docs")
+
+
 class TestHandleMaxIterations:
     def test_returns_summary(self, agent):
         resp = _mock_response(content="Here is a summary of what I did.")
@@ -2488,8 +2578,9 @@ class TestRunConversation:
         assert [call["api_call_count"] for call in pre_request_calls] == [1, 2]
         assert [call["api_call_count"] for call in post_request_calls] == [1, 2]
         assert all(call["session_id"] == agent.session_id for call in pre_request_calls)
-        assert all("message_count" in c and "messages" not in c for c in pre_request_calls)
-        assert all("usage" in c and "response" not in c for c in post_request_calls)
+        assert all("message_count" in c and isinstance(c.get("request_messages"), list) for c in pre_request_calls)
+        assert any(msg.get("role") == "user" and msg.get("content") == "search something" for msg in pre_request_calls[0]["request_messages"])
+        assert all("usage" in c and "response" in c and "assistant_message" in c for c in post_request_calls)
 
     def test_content_with_tool_calls_stays_silent_for_non_cli_quiet_mode(self, agent):
         self._setup_agent(agent)
@@ -3307,6 +3398,88 @@ class TestRunConversation:
         assert result["partial"] is True
         assert "truncated due to output length limit" in result["error"]
         mock_handle_function_call.assert_not_called()
+
+    def test_kanban_block_called_on_iteration_exhaustion(self, agent, monkeypatch):
+        """Regression: kanban worker must call kanban_block when iteration
+        budget is exhausted, otherwise the dispatcher sees a protocol
+        violation and gives up after 1 failure (issue #23216)."""
+        self._setup_agent(agent)
+        agent.max_iterations = 2
+
+        monkeypatch.setenv("HERMES_KANBAN_TASK", "t_test_task_123")
+
+        # Return a tool call for every iteration to exhaust the budget.
+        tc = _mock_tool_call(name="web_search", arguments="{}", call_id="c1")
+        tool_resp = _mock_response(
+            content="", finish_reason="tool_calls", tool_calls=[tc],
+        )
+        # Final summary response from _handle_max_iterations.
+        summary_resp = _mock_response(
+            content="Could not finish — budget exhausted.", finish_reason="stop",
+        )
+        agent.client.chat.completions.create.side_effect = [
+            tool_resp, tool_resp, summary_resp,
+        ]
+
+        with (
+            patch("run_agent.handle_function_call", return_value="ok") as mock_hfc,
+            patch.object(agent, "_persist_session"),
+            patch.object(agent, "_save_trajectory"),
+            patch.object(agent, "_cleanup_task_resources"),
+        ):
+            result = agent.run_conversation("do the kanban work")
+
+        # The agent should have reported the task as not completed.
+        assert result["completed"] is False
+
+        # Among all handle_function_call invocations, one must be
+        # kanban_block with the correct task_id and a reason mentioning
+        # iteration exhaustion.
+        kanban_block_calls = [
+            c for c in mock_hfc.call_args_list
+            if c[0][0] == "kanban_block"
+        ]
+        assert len(kanban_block_calls) == 1, (
+            f"Expected exactly 1 kanban_block call, got {len(kanban_block_calls)}. "
+            f"All calls: {mock_hfc.call_args_list}"
+        )
+        call = kanban_block_calls[0]
+        assert call[0][1]["task_id"] == "t_test_task_123"
+        assert "Iteration budget exhausted" in call[0][1]["reason"]
+
+    def test_no_kanban_block_when_not_in_kanban_mode(self, agent, monkeypatch):
+        """kanban_block must NOT be called when HERMES_KANBAN_TASK is unset."""
+        self._setup_agent(agent)
+        agent.max_iterations = 2
+
+        monkeypatch.delenv("HERMES_KANBAN_TASK", raising=False)
+
+        tc = _mock_tool_call(name="web_search", arguments="{}", call_id="c1")
+        tool_resp = _mock_response(
+            content="", finish_reason="tool_calls", tool_calls=[tc],
+        )
+        summary_resp = _mock_response(
+            content="Summary.", finish_reason="stop",
+        )
+        agent.client.chat.completions.create.side_effect = [
+            tool_resp, tool_resp, summary_resp,
+        ]
+
+        with (
+            patch("run_agent.handle_function_call", return_value="ok") as mock_hfc,
+            patch.object(agent, "_persist_session"),
+            patch.object(agent, "_save_trajectory"),
+            patch.object(agent, "_cleanup_task_resources"),
+        ):
+            agent.run_conversation("do stuff")
+
+        kanban_block_calls = [
+            c for c in mock_hfc.call_args_list
+            if c[0][0] == "kanban_block"
+        ]
+        assert len(kanban_block_calls) == 0, (
+            "kanban_block should not be called outside kanban mode"
+        )
 
 
 class TestRetryExhaustion:

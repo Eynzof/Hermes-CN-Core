@@ -5163,6 +5163,18 @@ def _(rid, params: dict) -> dict:
         current_provider = getattr(agent, "provider", "") or ""
         current_model = getattr(agent, "model", "") or _resolve_model()
         current_base_url = getattr(agent, "base_url", "") or ""
+        # slug_filter (optional list[str]) restricts which CANONICAL_PROVIDERS
+        # entries are emitted, so a region-specific client (e.g. the CN
+        # desktop app) can avoid surfacing 20+ providers its users will never
+        # configure. User-defined / custom providers are always returned —
+        # filtering only applies to the canonical list. Omit the param to
+        # preserve historical behavior.
+        slug_filter_raw = params.get("slug_filter")
+        slug_filter: set[str] | None = (
+            {str(s) for s in slug_filter_raw if isinstance(s, str)}
+            if isinstance(slug_filter_raw, list)
+            else None
+        )
         # list_authenticated_providers already populates each provider's
         # "models" with the curated list (same source as `hermes model` and
         # classic CLI's /model picker). Do NOT overwrite with live
@@ -5201,6 +5213,8 @@ def _(rid, params: dict) -> dict:
 
         ordered: list = []
         for entry in CANONICAL_PROVIDERS:
+            if slug_filter is not None and entry.slug not in slug_filter:
+                continue
             if entry.slug in authed_map:
                 ordered.append(authed_map[entry.slug])
             else:
@@ -5244,6 +5258,183 @@ def _(rid, params: dict) -> dict:
         )
     except Exception as e:
         return _err(rid, 5033, str(e))
+
+
+def _build_probe_url_candidates(base_url: str) -> list[str]:
+    """List candidate /models URLs to try for a provider's base_url.
+
+    Provider base URLs are inconsistent: deepseek is bare-host, alibaba
+    embeds /compatible-mode/v1, minimax-cn uses /anthropic for inference but
+    /v1/models on the host root. Try several patterns and return the first
+    that responds, so a single probe handler covers OpenAI-compat,
+    Anthropic-compat, and the awkward middle ground.
+    """
+    from urllib.parse import urlparse
+
+    s = base_url.rstrip("/")
+    candidates: list[str] = []
+
+    # Already /v1-style — append /models directly.
+    if s.endswith("/v1") or s.endswith("/compatible-mode/v1"):
+        candidates.append(f"{s}/models")
+
+    # Anthropic-protocol — strip suffix, probe the OpenAI-style /v1/models
+    # at the same host (most providers expose both — minimaxi.com is a
+    # prime example: /anthropic for inference, /v1/models for discovery).
+    if s.endswith("/anthropic"):
+        candidates.append(f"{s[: -len('/anthropic')]}/v1/models")
+
+    # Generic /v1/models fallback when the base_url has no recognizable suffix.
+    if not s.endswith("/v1") and not s.endswith("/compatible-mode/v1"):
+        candidates.append(f"{s}/v1/models")
+
+    # Host-root /v1/models as last resort (handles odd nested paths).
+    parsed = urlparse(s)
+    host_root = f"{parsed.scheme}://{parsed.netloc}/v1/models"
+    if host_root not in candidates:
+        candidates.append(host_root)
+
+    return candidates
+
+
+@method("provider.probe")
+def _(rid, params: dict) -> dict:
+    """Lightweight connectivity check against a provider's /models endpoint.
+
+    Lets the settings UI offer a "测试连接" button so users can verify their
+    API key + network + endpoint resolves to something live, without firing
+    a real chat request. Cheap and safe — GET, no body, short timeout.
+
+    Params:
+        provider: provider slug (e.g. "deepseek")
+        api_key: optional override; falls back to PROVIDER_REGISTRY env var
+        base_url: optional override; falls back to PROVIDER_REGISTRY default
+        timeout_ms: optional, default 5000, clamped 1000-30000
+
+    Returns ProbeResult dict (always _ok envelope — auth/network failures
+    are *data*, not RPC errors, so the UI can branch on error_kind without
+    JSON-RPC plumbing).
+    """
+    import time
+    import httpx
+
+    try:
+        from hermes_cli.auth import PROVIDER_REGISTRY
+
+        provider = str(params.get("provider", "")).strip()
+        if not provider:
+            return _err(rid, 5040, "provider parameter is required")
+
+        # Resolve api_key: caller override → first non-empty env var from
+        # the registry. The dashboard UI will usually pass the key explicitly
+        # (it's testing *this specific input*, not the saved one), but
+        # fallback lets a power user probe a saved provider via plain RPC.
+        api_key = str(params.get("api_key", "")).strip()
+        pconfig = PROVIDER_REGISTRY.get(provider)
+        if not api_key and pconfig and pconfig.api_key_env_vars:
+            for env_var in pconfig.api_key_env_vars:
+                api_key = os.getenv(env_var, "").strip()
+                if api_key:
+                    break
+        if not api_key:
+            return _ok(rid, {
+                "ok": False,
+                "latency_ms": 0,
+                "model_count": 0,
+                "sample_models": [],
+                "status_code": None,
+                "error": "no API key (param empty, env vars unset)",
+                "error_kind": "auth",
+            })
+
+        # Resolve base_url: caller override → registry default.
+        base_url = str(params.get("base_url", "")).strip().rstrip("/")
+        if not base_url and pconfig:
+            base_url = (pconfig.inference_base_url or "").rstrip("/")
+        if not base_url:
+            return _err(rid, 5041, f"unknown provider: {provider}")
+
+        try:
+            timeout_ms = int(params.get("timeout_ms", 5000))
+        except (TypeError, ValueError):
+            timeout_ms = 5000
+        timeout_ms = max(1000, min(timeout_ms, 30000))
+        timeout_s = timeout_ms / 1000.0
+
+        candidates = _build_probe_url_candidates(base_url)
+        last_status: int | None = None
+        last_error: str | None = None
+
+        for url in candidates:
+            try:
+                start = time.monotonic()
+                resp = httpx.get(
+                    url,
+                    headers={"Authorization": f"Bearer {api_key}"},
+                    timeout=timeout_s,
+                )
+                latency_ms = int((time.monotonic() - start) * 1000)
+
+                if resp.status_code == 200:
+                    try:
+                        data = resp.json()
+                    except Exception:
+                        data = {}
+                    raw_models = data.get("data", []) if isinstance(data, dict) else []
+                    model_ids = [
+                        str(m.get("id", "")).strip()
+                        for m in raw_models
+                        if isinstance(m, dict) and m.get("id")
+                    ]
+                    return _ok(rid, {
+                        "ok": True,
+                        "latency_ms": latency_ms,
+                        "model_count": len(model_ids),
+                        "sample_models": model_ids[:5],
+                        "status_code": 200,
+                        "error": None,
+                        "error_kind": None,
+                    })
+
+                last_status = resp.status_code
+                # Auth failures are terminal — no point trying other URL
+                # patterns since they'd return the same 401/403.
+                if resp.status_code in (401, 403):
+                    return _ok(rid, {
+                        "ok": False,
+                        "latency_ms": latency_ms,
+                        "model_count": 0,
+                        "sample_models": [],
+                        "status_code": resp.status_code,
+                        "error": f"API key rejected (HTTP {resp.status_code})",
+                        "error_kind": "auth",
+                    })
+                # 404 / 405 → try next candidate URL
+                last_error = f"HTTP {resp.status_code}"
+            except httpx.TimeoutException:
+                return _ok(rid, {
+                    "ok": False,
+                    "latency_ms": timeout_ms,
+                    "model_count": 0,
+                    "sample_models": [],
+                    "status_code": None,
+                    "error": f"timed out after {timeout_ms}ms",
+                    "error_kind": "timeout",
+                })
+            except httpx.HTTPError as e:
+                last_error = str(e) or "network error"
+
+        return _ok(rid, {
+            "ok": False,
+            "latency_ms": 0,
+            "model_count": 0,
+            "sample_models": [],
+            "status_code": last_status,
+            "error": last_error or "no /models endpoint responded",
+            "error_kind": "http" if last_status else "network",
+        })
+    except Exception as e:
+        return _err(rid, 5042, str(e))
 
 
 @method("model.save_key")

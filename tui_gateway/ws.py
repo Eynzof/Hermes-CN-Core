@@ -184,7 +184,11 @@ async def handle_ws(ws: Any) -> None:
                 _p007_log_dir = _p007_os.path.expanduser("~/.hermes/logs")
                 try:
                     _p007_os.makedirs(_p007_log_dir, exist_ok=True)
-                    with open(_p007_os.path.join(_p007_log_dir, "dispatch_exceptions.log"), "a") as _p007_f:
+                    with open(
+                        _p007_os.path.join(_p007_log_dir, "dispatch_exceptions.log"),
+                        "a",
+                        encoding="utf-8",
+                    ) as _p007_f:
                         _p007_f.write(
                             f"=== {_p007_time.strftime('%Y-%m-%d %H:%M:%S')} "
                             f"method={req.get('method')!r} id={req.get('id')!r} ===\n"

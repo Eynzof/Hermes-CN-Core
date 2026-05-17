@@ -1635,6 +1635,41 @@ def test_config_set_model_uses_live_switch_path(monkeypatch):
     assert seen["args"] == ("sid", "session-key", "new/model")
 
 
+def test_config_set_model_waits_for_lazy_agent_before_switch(monkeypatch):
+    ready = threading.Event()
+    session = _session(agent=None, agent_ready=ready, agent_error=None)
+    session["agent"] = None
+    server._sessions["sid"] = session
+    seen = {}
+
+    def _fake_start_agent_build(sid, target_session):
+        seen["started"] = sid
+        target_session["agent"] = types.SimpleNamespace(model="old/model")
+        ready.set()
+
+    def _fake_apply(sid, target_session, raw):
+        seen["args"] = (sid, target_session["agent"].model, raw)
+        return {"value": "new/model", "warning": ""}
+
+    monkeypatch.setattr(server, "_start_agent_build", _fake_start_agent_build)
+    monkeypatch.setattr(server, "_apply_model_switch", _fake_apply)
+
+    try:
+        resp = server.handle_request(
+            {
+                "id": "1",
+                "method": "config.set",
+                "params": {"session_id": "sid", "key": "model", "value": "new/model"},
+            }
+        )
+
+        assert resp["result"]["value"] == "new/model"
+        assert seen["started"] == "sid"
+        assert seen["args"] == ("sid", "old/model", "new/model")
+    finally:
+        server._sessions.pop("sid", None)
+
+
 def test_config_set_model_global_persists(monkeypatch):
     class _Agent:
         provider = "openrouter"

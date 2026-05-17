@@ -3796,6 +3796,16 @@ def _(rid, params: dict) -> dict:
                         4009,
                         "session busy — /interrupt the current turn before switching models",
                     )
+                _start_agent_build(params.get("session_id", ""), session)
+                wait_err = _wait_agent(session, rid)
+                if wait_err:
+                    return wait_err
+                if session.get("running"):
+                    return _err(
+                        rid,
+                        4009,
+                        "session busy - /interrupt the current turn before switching models",
+                    )
                 result = _apply_model_switch(
                     params.get("session_id", ""), session, value
                 )

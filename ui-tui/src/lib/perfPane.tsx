@@ -21,7 +21,8 @@ import { Profiler, type ProfilerOnRenderCallback, type ReactNode } from 'react'
 
 const ENABLED = /^(?:1|true|yes|on)$/i.test((process.env.HERMES_DEV_PERF ?? '').trim())
 const THRESHOLD_MS = Number(process.env.HERMES_DEV_PERF_MS ?? '2') || 0
-const LOG_PATH = process.env.HERMES_DEV_PERF_LOG?.trim() || join(homedir(), '.hermes', 'perf.log')
+const HERMES_HOME = process.env.HERMES_HOME?.trim() || join(homedir(), '.hermes')
+const LOG_PATH = process.env.HERMES_DEV_PERF_LOG?.trim() || join(HERMES_HOME, 'perf.log')
 
 let logReady = false
 

@@ -1285,7 +1285,7 @@ class LineAdapter(BasePlatformAdapter):
             from hermes_constants import get_hermes_home
             hermes_home = Path(get_hermes_home()).resolve()
         except Exception:
-            hermes_home = Path.home().joinpath(".hermes").resolve()
+            hermes_home = Path(os.getenv("HERMES_HOME", str(Path.home() / ".hermes"))).resolve()
 
         allowed_roots = {
             Path(tempfile.gettempdir()).resolve(),

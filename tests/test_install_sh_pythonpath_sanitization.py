@@ -27,4 +27,6 @@ def test_hermes_launcher_wrapper_clears_python_env_before_exec() -> None:
     assert 'cat > "$command_link_dir/hermes" <<EOF' in text
     assert 'unset PYTHONPATH' in text
     assert 'unset PYTHONHOME' in text
+    assert 'export HERMES_HOME=' in text
+    assert 'export PLAYWRIGHT_BROWSERS_PATH=' in text
     assert 'exec "$HERMES_BIN" "\\$@"' in text

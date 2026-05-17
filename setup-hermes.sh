@@ -7,6 +7,7 @@
 #
 # Usage:
 #   ./setup-hermes.sh
+#   ./setup-hermes.sh --isolated
 #
 # This script:
 # 1. Detects desktop/server vs Android/Termux setup path
@@ -34,6 +35,55 @@ cd "$SCRIPT_DIR"
 export UV_NO_CONFIG=1
 
 PYTHON_VERSION="3.11"
+HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
+HERMES_HOME_ARG_EXPLICIT=false
+ISOLATED_LAYOUT=false
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --isolated)
+            ISOLATED_LAYOUT=true
+            if [ "$HERMES_HOME_ARG_EXPLICIT" = false ]; then
+                HERMES_HOME="$SCRIPT_DIR/data"
+            fi
+            shift
+            ;;
+        --hermes-home)
+            HERMES_HOME="$2"
+            HERMES_HOME_ARG_EXPLICIT=true
+            shift 2
+            ;;
+        -h|--help)
+            cat <<EOF
+Hermes Agent developer setup
+
+Usage: ./setup-hermes.sh [OPTIONS]
+
+Options:
+  --isolated          Keep Hermes runtime data/config/logs/caches in ./data
+  --hermes-home PATH  Use PATH as Hermes runtime data directory
+  -h, --help          Show this help
+EOF
+            exit 0
+            ;;
+        *)
+            echo -e "${RED}✗${NC} Unknown option: $1" >&2
+            exit 1
+            ;;
+    esac
+done
+
+export HERMES_HOME
+if [ -z "${PLAYWRIGHT_BROWSERS_PATH:-}" ]; then
+    export PLAYWRIGHT_BROWSERS_PATH="$HERMES_HOME/cache/ms-playwright"
+else
+    export PLAYWRIGHT_BROWSERS_PATH
+fi
+if [ "$ISOLATED_LAYOUT" = true ]; then
+    export UV_CACHE_DIR="${UV_CACHE_DIR:-$HERMES_HOME/cache/uv}"
+    export PIP_CACHE_DIR="${PIP_CACHE_DIR:-$HERMES_HOME/cache/pip}"
+    export npm_config_cache="${npm_config_cache:-$HERMES_HOME/cache/npm}"
+fi
 
 is_termux() {
     [ -n "${TERMUX_VERSION:-}" ] || [[ "${PREFIX:-}" == *"com.termux/files/usr"* ]]
@@ -57,6 +107,7 @@ get_command_link_display_dir() {
 
 echo ""
 echo -e "${CYAN}⚕ Hermes Agent Setup${NC}"
+echo -e "${CYAN}→${NC} Hermes data directory: $HERMES_HOME"
 echo ""
 
 # ============================================================================
@@ -323,16 +374,41 @@ else
 fi
 
 # ============================================================================
-# Environment file
+# Hermes runtime data/config files
 # ============================================================================
 
-if [ ! -f ".env" ]; then
+mkdir -p "$HERMES_HOME"/{cron,sessions,logs,pairing,hooks,memories,skills,skins,plans,workspace}
+mkdir -p "$HERMES_HOME"/cache/{ms-playwright,uv,pip,npm,images,audio,documents}
+mkdir -p "$HERMES_HOME"/{image_cache,audio_cache,document_cache}
+if [ "$ISOLATED_LAYOUT" = true ]; then
+    mkdir -p "$HERMES_HOME/home"
+fi
+
+if [ ! -f "$HERMES_HOME/.env" ]; then
     if [ -f ".env.example" ]; then
-        cp .env.example .env
-        echo -e "${GREEN}✓${NC} Created .env from template"
+        cp .env.example "$HERMES_HOME/.env"
+        echo -e "${GREEN}✓${NC} Created $HERMES_HOME/.env from template"
+    else
+        touch "$HERMES_HOME/.env"
+        echo -e "${GREEN}✓${NC} Created $HERMES_HOME/.env"
     fi
 else
-    echo -e "${GREEN}✓${NC} .env exists"
+    echo -e "${GREEN}✓${NC} $HERMES_HOME/.env exists"
+fi
+chmod 600 "$HERMES_HOME/.env" 2>/dev/null || true
+
+if [ ! -f "$HERMES_HOME/config.yaml" ] && [ -f "cli-config.yaml.example" ]; then
+    cp cli-config.yaml.example "$HERMES_HOME/config.yaml"
+    echo -e "${GREEN}✓${NC} Created $HERMES_HOME/config.yaml from template"
+fi
+
+if [ ! -f "$HERMES_HOME/SOUL.md" ]; then
+    cat > "$HERMES_HOME/SOUL.md" <<'SOUL_EOF'
+# Hermes Agent Persona
+
+Edit this file to customize how Hermes communicates with you.
+SOUL_EOF
+    echo -e "${GREEN}✓${NC} Created $HERMES_HOME/SOUL.md"
 fi
 
 # ============================================================================
@@ -344,9 +420,21 @@ echo -e "${CYAN}→${NC} Setting up hermes command..."
 HERMES_BIN="$SCRIPT_DIR/venv/bin/hermes"
 COMMAND_LINK_DIR="$(get_command_link_dir)"
 COMMAND_LINK_DISPLAY_DIR="$(get_command_link_display_dir)"
+HERMES_HOME_ESCAPED="$(printf '%q' "$HERMES_HOME")"
+PLAYWRIGHT_BROWSERS_PATH_ESCAPED="$(printf '%q' "$PLAYWRIGHT_BROWSERS_PATH")"
 mkdir -p "$COMMAND_LINK_DIR"
-ln -sf "$HERMES_BIN" "$COMMAND_LINK_DIR/hermes"
-echo -e "${GREEN}✓${NC} Symlinked hermes → $COMMAND_LINK_DISPLAY_DIR/hermes"
+rm -f "$COMMAND_LINK_DIR/hermes"
+cat > "$COMMAND_LINK_DIR/hermes" <<EOF
+#!/usr/bin/env bash
+unset PYTHONPATH
+unset PYTHONHOME
+export HERMES_HOME=$HERMES_HOME_ESCAPED
+export PLAYWRIGHT_BROWSERS_PATH=$PLAYWRIGHT_BROWSERS_PATH_ESCAPED
+export PATH="\$HERMES_HOME/node/bin:\$HERMES_HOME/node_modules/.bin:\$PATH"
+exec "$HERMES_BIN" "\$@"
+EOF
+chmod +x "$COMMAND_LINK_DIR/hermes"
+echo -e "${GREEN}✓${NC} Installed hermes launcher → $COMMAND_LINK_DISPLAY_DIR/hermes"
 
 if is_termux; then
     export PATH="$COMMAND_LINK_DIR:$PATH"
@@ -390,14 +478,14 @@ else
 fi
 
 # ============================================================================
-# Seed bundled skills into ~/.hermes/skills/
+# Seed bundled skills into HERMES_HOME/skills/
 # ============================================================================
 
-HERMES_SKILLS_DIR="${HERMES_HOME:-$HOME/.hermes}/skills"
+HERMES_SKILLS_DIR="$HERMES_HOME/skills"
 mkdir -p "$HERMES_SKILLS_DIR"
 
 echo ""
-echo "Syncing bundled skills to ~/.hermes/skills/ ..."
+echo "Syncing bundled skills to $HERMES_SKILLS_DIR ..."
 if "$SCRIPT_DIR/venv/bin/python" "$SCRIPT_DIR/tools/skills_sync.py" 2>/dev/null; then
     echo -e "${GREEN}✓${NC} Skills synced"
 else

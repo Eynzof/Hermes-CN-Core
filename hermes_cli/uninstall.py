@@ -29,6 +29,20 @@ def get_project_root() -> Path:
     return Path(__file__).parent.parent.resolve()
 
 
+def _path_contains(parent: Path, child: Path) -> bool:
+    """Return True when ``child`` is inside ``parent`` after resolution."""
+    try:
+        child.resolve().relative_to(parent.resolve())
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def _data_dir_inside_install(project_root: Path, hermes_home: Path) -> bool:
+    """Return True for self-contained layouts like <install>/data."""
+    return _path_contains(project_root, hermes_home)
+
+
 def find_shell_configs() -> list:
     """Find shell configuration files that might have PATH entries."""
     home = Path.home()
@@ -602,8 +616,18 @@ def run_uninstall(args):
     # We need to be careful here
     try:
         if project_root.exists():
+            if not full_uninstall and _data_dir_inside_install(project_root, hermes_home):
+                log_warn(
+                    "Self-contained install detected: Hermes data lives inside "
+                    f"{project_root}."
+                )
+                log_info(
+                    "Keeping the installation directory to preserve data. "
+                    "Choose full uninstall to remove code and data together, "
+                    "or delete code files manually after moving the data directory."
+                )
             # If the install is inside ~/.hermes/, just remove the hermes-agent subdir
-            if hermes_home in project_root.parents or project_root.parent == hermes_home:
+            elif hermes_home in project_root.parents or project_root.parent == hermes_home:
                 shutil.rmtree(project_root)
                 log_success(f"Removed {project_root}")
             else:

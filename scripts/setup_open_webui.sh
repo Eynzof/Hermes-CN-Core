@@ -4,7 +4,7 @@ set -euo pipefail
 # Bootstrap Open WebUI against Hermes Agent's OpenAI-compatible API server.
 #
 # Idempotent by design:
-# - ensures ~/.hermes/.env has API server settings
+# - ensures ${HERMES_HOME:-~/.hermes}/.env has API server settings
 # - installs Open WebUI into ~/.local/open-webui-venv
 # - writes a reusable launcher at ~/.local/bin/start-open-webui-hermes.sh
 # - optionally installs a user service (launchd on macOS, systemd --user on Linux)
@@ -31,14 +31,15 @@ OPEN_WEBUI_ENABLE_SIGNUP="${OPEN_WEBUI_ENABLE_SIGNUP:-true}"
 OPEN_WEBUI_ENABLE_SERVICE="${OPEN_WEBUI_ENABLE_SERVICE:-auto}"
 OPEN_WEBUI_VENV="${OPEN_WEBUI_VENV:-$HOME/.local/open-webui-venv}"
 OPEN_WEBUI_DATA_DIR="${OPEN_WEBUI_DATA_DIR:-$HOME/.local/share/open-webui/data}"
-HERMES_ENV_FILE="${HERMES_ENV_FILE:-$HOME/.hermes/.env}"
+HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
+HERMES_ENV_FILE="${HERMES_ENV_FILE:-$HERMES_HOME/.env}"
 HERMES_API_PORT="${HERMES_API_PORT:-8642}"
 HERMES_API_HOST="${HERMES_API_HOST:-127.0.0.1}"
 HERMES_API_CONNECT_HOST="${HERMES_API_CONNECT_HOST:-127.0.0.1}"
 HERMES_API_MODEL_NAME="${HERMES_API_MODEL_NAME:-Hermes Agent}"
 HERMES_API_BASE_URL="http://${HERMES_API_CONNECT_HOST}:${HERMES_API_PORT}/v1"
 LAUNCHER_PATH="$HOME/.local/bin/start-open-webui-hermes.sh"
-LOG_DIR="$HOME/.hermes/logs"
+LOG_DIR="$HERMES_HOME/logs"
 
 log() {
   printf '[open-webui-bootstrap] %s\n' "$*"
@@ -170,21 +171,24 @@ install_open_webui() {
 write_launcher() {
   mkdir -p "$(dirname "$LAUNCHER_PATH")" "$OPEN_WEBUI_DATA_DIR" "$LOG_DIR"
 
-  local quoted_data_dir quoted_name quoted_base_url quoted_host quoted_port quoted_venv
+  local quoted_data_dir quoted_name quoted_base_url quoted_host quoted_port quoted_venv quoted_env_file
   quoted_data_dir="$(shell_quote "$OPEN_WEBUI_DATA_DIR")"
   quoted_name="$(shell_quote "$OPEN_WEBUI_NAME")"
   quoted_base_url="$(shell_quote "$HERMES_API_BASE_URL")"
   quoted_host="$(shell_quote "$OPEN_WEBUI_HOST")"
   quoted_port="$(shell_quote "$OPEN_WEBUI_PORT")"
   quoted_venv="$(shell_quote "$OPEN_WEBUI_VENV")"
+  quoted_env_file="$(shell_quote "$HERMES_ENV_FILE")"
 
   cat > "$LAUNCHER_PATH" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+export HERMES_ENV_FILE=${quoted_env_file}
 API_KEY=\$(python3 - <<'PY'
+import os
 from pathlib import Path
-p = Path.home()/'.hermes'/'.env'
+p = Path(os.environ["HERMES_ENV_FILE"])
 for raw in p.read_text().splitlines():
     line = raw.strip()
     if line.startswith('API_SERVER_KEY='):
@@ -260,6 +264,7 @@ install_systemd_user_service() {
   local unit_dir="$HOME/.config/systemd/user"
   local unit="$unit_dir/openwebui-hermes.service"
   mkdir -p "$unit_dir"
+  mkdir -p "$LOG_DIR"
   cat > "$unit" <<EOF
 [Unit]
 Description=Open WebUI connected to Hermes Agent
@@ -271,8 +276,8 @@ ExecStart=/bin/bash %h/.local/bin/start-open-webui-hermes.sh
 Restart=always
 RestartSec=3
 WorkingDirectory=%h
-StandardOutput=append:%h/.hermes/logs/openwebui.log
-StandardError=append:%h/.hermes/logs/openwebui.error.log
+StandardOutput=append:${LOG_DIR}/openwebui.log
+StandardError=append:${LOG_DIR}/openwebui.error.log
 
 [Install]
 WantedBy=default.target

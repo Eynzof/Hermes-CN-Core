@@ -29,7 +29,7 @@ _IS_WINDOWS = platform.system() == "Windows"
 from pathlib import Path
 from typing import Dict, Optional, Any
 
-from hermes_constants import get_hermes_dir
+from hermes_constants import get_hermes_dir, get_hermes_home, get_subprocess_home
 
 logger = logging.getLogger(__name__)
 
@@ -614,6 +614,10 @@ class WhatsAppAdapter(BasePlatformAdapter):
             # Pass WHATSAPP_REPLY_PREFIX from config.yaml so the Node bridge
             # can use it without the user needing to set a separate env var.
             bridge_env = os.environ.copy()
+            bridge_env["HERMES_HOME"] = str(get_hermes_home())
+            profile_home = get_subprocess_home()
+            if profile_home:
+                bridge_env["HOME"] = profile_home
             if self._reply_prefix is not None:
                 bridge_env["WHATSAPP_REPLY_PREFIX"] = self._reply_prefix
 

@@ -181,7 +181,17 @@ async def handle_ws(ws: Any) -> None:
                 import traceback as _p007_tb
                 import time as _p007_time
                 import os as _p007_os
-                _p007_log_dir = _p007_os.path.expanduser("~/.hermes/logs")
+                try:
+                    from hermes_constants import get_hermes_home as _p007_get_hermes_home
+                    _p007_log_dir = str(_p007_get_hermes_home() / "logs")
+                except Exception:
+                    _p007_log_dir = _p007_os.path.join(
+                        _p007_os.environ.get(
+                            "HERMES_HOME",
+                            _p007_os.path.expanduser("~/.hermes"),
+                        ),
+                        "logs",
+                    )
                 try:
                     _p007_os.makedirs(_p007_log_dir, exist_ok=True)
                     with open(

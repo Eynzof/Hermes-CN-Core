@@ -10,6 +10,7 @@
 #
 # Or with options:
 #   curl -fsSL ... | bash -s -- --no-venv --skip-setup
+#   curl -fsSL ... | bash -s -- --isolated-dir "$PWD/hermes-agent"
 #
 # ============================================================================
 
@@ -46,6 +47,7 @@ BOLD='\033[1m'
 REPO_URL_SSH="git@github.com:NousResearch/hermes-agent.git"
 REPO_URL_HTTPS="https://github.com/NousResearch/hermes-agent.git"
 HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
+HERMES_HOME_ARG_EXPLICIT=false
 # INSTALL_DIR is resolved AFTER arg parsing and OS detection so we can pick an
 # FHS-style layout for root installs.  Track whether the user gave us an
 # explicit directory — if so we never override it.
@@ -65,6 +67,7 @@ NODE_VERSION="22"
 #   and keeps Docker bind-mounted /root/ volumes lean.
 ROOT_FHS_LAYOUT=false
 DETECTED_BROWSER_EXECUTABLE=""
+ISOLATED_LAYOUT=false
 
 # Options
 USE_VENV=true
@@ -107,8 +110,18 @@ while [[ $# -gt 0 ]]; do
             INSTALL_DIR_EXPLICIT=true
             shift 2
             ;;
+        --isolated-dir)
+            INSTALL_DIR="$2"
+            INSTALL_DIR_EXPLICIT=true
+            ISOLATED_LAYOUT=true
+            if [ "$HERMES_HOME_ARG_EXPLICIT" = false ]; then
+                HERMES_HOME="$INSTALL_DIR/data"
+            fi
+            shift 2
+            ;;
         --hermes-home)
             HERMES_HOME="$2"
+            HERMES_HOME_ARG_EXPLICIT=true
             shift 2
             ;;
         --ensure)
@@ -132,6 +145,9 @@ while [[ $# -gt 0 ]]; do
             echo "  --dir PATH     Installation directory"
             echo "                   default (non-root):  ~/.hermes/hermes-agent"
             echo "                   default (root, Linux): /usr/local/lib/hermes-agent"
+            echo "  --isolated-dir PATH"
+            echo "                 Self-contained install directory. Code/venv live at PATH,"
+            echo "                 and Hermes data/config/logs/caches live at PATH/data"
             echo "  --hermes-home PATH  Data directory (default: ~/.hermes, or \$HERMES_HOME)"
             echo "  -h, --help     Show this help"
             echo ""
@@ -157,6 +173,42 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+if [ "$ISOLATED_LAYOUT" = true ]; then
+    # The installer later cd's into INSTALL_DIR.  Keep self-contained data paths
+    # absolute so `--isolated-dir hermes-agent` always means
+    # <original-cwd>/hermes-agent/data, not hermes-agent/hermes-agent/data.
+    case "$INSTALL_DIR" in
+        /*) ;;
+        *) INSTALL_DIR="$PWD/$INSTALL_DIR" ;;
+    esac
+    if [ "$HERMES_HOME_ARG_EXPLICIT" = false ]; then
+        HERMES_HOME="$INSTALL_DIR/data"
+    else
+        case "$HERMES_HOME" in
+            /*) ;;
+            *) HERMES_HOME="$PWD/$HERMES_HOME" ;;
+        esac
+    fi
+fi
+
+export HERMES_HOME
+
+# Keep Playwright browser binaries under Hermes data by default so local browser
+# tooling follows the same profile/custom-root isolation as the rest of Hermes.
+if [ -z "${PLAYWRIGHT_BROWSERS_PATH:-}" ]; then
+    export PLAYWRIGHT_BROWSERS_PATH="$HERMES_HOME/cache/ms-playwright"
+else
+    export PLAYWRIGHT_BROWSERS_PATH
+fi
+
+# In self-contained installs, keep installer/package-manager caches inside the
+# same data directory too.  Normal installs keep their historical cache defaults.
+if [ "$ISOLATED_LAYOUT" = true ]; then
+    export UV_CACHE_DIR="${UV_CACHE_DIR:-$HERMES_HOME/cache/uv}"
+    export PIP_CACHE_DIR="${PIP_CACHE_DIR:-$HERMES_HOME/cache/pip}"
+    export npm_config_cache="${npm_config_cache:-$HERMES_HOME/cache/npm}"
+fi
 
 # ============================================================================
 # Helper functions
@@ -633,7 +685,7 @@ install_node() {
         return 0
     fi
 
-    log_info "Extracting to ~/.hermes/node/..."
+    log_info "Extracting to $HERMES_HOME/node/..."
     if [[ "$tarball_name" == *.tar.xz ]]; then
         tar xf "$tmp_dir/$tarball_name" -C "$tmp_dir"
     else
@@ -650,22 +702,26 @@ install_node() {
         return 0
     fi
 
-    # Place into ~/.hermes/node/ and symlink binaries to ~/.local/bin/
+    # Place into HERMES_HOME/node/.  Legacy installs also expose node/npm/npx
+    # in ~/.local/bin; isolated installs keep them private and rely on the
+    # hermes launcher PATH instead.
     rm -rf "$HERMES_HOME/node"
     mkdir -p "$HERMES_HOME"
     mv "$extracted_dir" "$HERMES_HOME/node"
     rm -rf "$tmp_dir"
 
-    mkdir -p "$HOME/.local/bin"
-    ln -sf "$HERMES_HOME/node/bin/node" "$HOME/.local/bin/node"
-    ln -sf "$HERMES_HOME/node/bin/npm"  "$HOME/.local/bin/npm"
-    ln -sf "$HERMES_HOME/node/bin/npx"  "$HOME/.local/bin/npx"
+    if [ "$ISOLATED_LAYOUT" != true ]; then
+        mkdir -p "$HOME/.local/bin"
+        ln -sf "$HERMES_HOME/node/bin/node" "$HOME/.local/bin/node"
+        ln -sf "$HERMES_HOME/node/bin/npm"  "$HOME/.local/bin/npm"
+        ln -sf "$HERMES_HOME/node/bin/npx"  "$HOME/.local/bin/npx"
+    fi
 
     export PATH="$HERMES_HOME/node/bin:$PATH"
 
     local installed_ver
     installed_ver=$("$HERMES_HOME/node/bin/node" --version 2>/dev/null)
-    log_success "Node.js $installed_ver installed to ~/.hermes/node/"
+    log_success "Node.js $installed_ver installed to $HERMES_HOME/node/"
     HAS_NODE=true
 }
 
@@ -1290,6 +1346,8 @@ setup_path() {
     # Create a user-facing shim for the hermes command.
     # We intentionally clear PYTHONPATH/PYTHONHOME here so inherited env vars
     # can't make this launcher import modules from another checkout.
+    HERMES_HOME_ESCAPED="$(printf '%q' "$HERMES_HOME")"
+    PLAYWRIGHT_BROWSERS_PATH_ESCAPED="$(printf '%q' "$PLAYWRIGHT_BROWSERS_PATH")"
     mkdir -p "$command_link_dir"
     # Older installs created this path as a symlink to $HERMES_BIN. Without
     # the rm, `cat >` follows the symlink and overwrites the venv pip entry
@@ -1299,6 +1357,9 @@ setup_path() {
 #!/usr/bin/env bash
 unset PYTHONPATH
 unset PYTHONHOME
+export HERMES_HOME=$HERMES_HOME_ESCAPED
+export PLAYWRIGHT_BROWSERS_PATH=$PLAYWRIGHT_BROWSERS_PATH_ESCAPED
+export PATH="\$HERMES_HOME/node/bin:\$HERMES_HOME/node_modules/.bin:\$PATH"
 exec "$HERMES_BIN" "\$@"
 EOF
     chmod +x "$command_link_dir/hermes"
@@ -1421,20 +1482,26 @@ EOF
 copy_config_templates() {
     log_info "Setting up configuration files..."
 
-    # Create ~/.hermes directory structure (config at top level, code in subdir)
-    mkdir -p "$HERMES_HOME"/{cron,sessions,logs,pairing,hooks,image_cache,audio_cache,memories,skills}
+    # Create Hermes data directory structure (config at top level, code elsewhere).
+    mkdir -p "$HERMES_HOME"/{cron,sessions,logs,pairing,hooks,memories,skills,skins,plans,workspace}
+    mkdir -p "$HERMES_HOME"/cache/{ms-playwright,uv,pip,npm,images,audio,documents}
+    # Legacy cache names remain for existing integrations that still probe them.
+    mkdir -p "$HERMES_HOME"/{image_cache,audio_cache,document_cache}
+    if [ "$ISOLATED_LAYOUT" = true ]; then
+        mkdir -p "$HERMES_HOME/home"
+    fi
 
-    # Create .env at ~/.hermes/.env (top level, easy to find)
+    # Create .env at HERMES_HOME/.env (top level, easy to find)
     if [ ! -f "$HERMES_HOME/.env" ]; then
         if [ -f "$INSTALL_DIR/.env.example" ]; then
             cp "$INSTALL_DIR/.env.example" "$HERMES_HOME/.env"
-            log_success "Created ~/.hermes/.env from template"
+            log_success "Created $HERMES_HOME/.env from template"
         else
             touch "$HERMES_HOME/.env"
-            log_success "Created ~/.hermes/.env"
+            log_success "Created $HERMES_HOME/.env"
         fi
     else
-        log_info "~/.hermes/.env already exists, keeping it"
+        log_info "$HERMES_HOME/.env already exists, keeping it"
     fi
     # Restrict .env permissions — this file holds API keys and tokens.
     # 0600 ensures only the file owner can read/write, matching standard
@@ -1442,14 +1509,14 @@ copy_config_templates() {
     chmod 600 "$HERMES_HOME/.env"
     configure_browser_env_from_system_browser
 
-    # Create config.yaml at ~/.hermes/config.yaml (top level, easy to find)
+    # Create config.yaml at HERMES_HOME/config.yaml (top level, easy to find)
     if [ ! -f "$HERMES_HOME/config.yaml" ]; then
         if [ -f "$INSTALL_DIR/cli-config.yaml.example" ]; then
             cp "$INSTALL_DIR/cli-config.yaml.example" "$HERMES_HOME/config.yaml"
-            log_success "Created ~/.hermes/config.yaml from template"
+            log_success "Created $HERMES_HOME/config.yaml from template"
         fi
     else
-        log_info "~/.hermes/config.yaml already exists, keeping it"
+        log_info "$HERMES_HOME/config.yaml already exists, keeping it"
     fi
 
     # Create SOUL.md if it doesn't exist (global persona file)
@@ -1471,20 +1538,20 @@ This file is loaded fresh each message -- no restart needed.
 Delete the contents (or this file) to use the default personality.
 -->
 SOUL_EOF
-        log_success "Created ~/.hermes/SOUL.md (edit to customize personality)"
+        log_success "Created $HERMES_HOME/SOUL.md (edit to customize personality)"
     fi
 
-    log_success "Configuration directory ready: ~/.hermes/"
+    log_success "Configuration directory ready: $HERMES_HOME/"
 
-    # Seed bundled skills into ~/.hermes/skills/ (manifest-based, one-time per skill)
-    log_info "Syncing bundled skills to ~/.hermes/skills/ ..."
+    # Seed bundled skills into HERMES_HOME/skills/ (manifest-based, one-time per skill)
+    log_info "Syncing bundled skills to $HERMES_HOME/skills/ ..."
     if "$INSTALL_DIR/venv/bin/python" "$INSTALL_DIR/tools/skills_sync.py" 2>/dev/null; then
-        log_success "Skills synced to ~/.hermes/skills/"
+        log_success "Skills synced to $HERMES_HOME/skills/"
     else
         # Fallback: simple directory copy if Python sync fails
         if [ -d "$INSTALL_DIR/skills" ] && [ ! "$(ls -A "$HERMES_HOME/skills/" 2>/dev/null | grep -v '.bundled_manifest')" ]; then
             cp -r "$INSTALL_DIR/skills/"* "$HERMES_HOME/skills/" 2>/dev/null || true
-            log_success "Skills copied to ~/.hermes/skills/"
+            log_success "Skills copied to $HERMES_HOME/skills/"
         fi
     fi
 }
@@ -1811,7 +1878,7 @@ maybe_start_gateway() {
             fi
             nohup $HERMES_CMD gateway > "$HERMES_HOME/logs/gateway.log" 2>&1 &
             GATEWAY_PID=$!
-            log_success "Gateway started (PID $GATEWAY_PID). Logs: ~/.hermes/logs/gateway.log"
+            log_success "Gateway started (PID $GATEWAY_PID). Logs: $HERMES_HOME/logs/gateway.log"
             log_info "To stop: kill $GATEWAY_PID"
             log_info "To restart later: hermes gateway"
             if [ "$DISTRO" = "termux" ]; then

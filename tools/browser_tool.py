@@ -131,6 +131,24 @@ _SANE_PATH_DIRS = (
 _SANE_PATH = os.pathsep.join(_SANE_PATH_DIRS)
 
 
+def _default_playwright_browsers_path() -> str:
+    """Return Hermes-owned Playwright browser cache path."""
+    return str(get_hermes_home() / "cache" / "ms-playwright")
+
+
+def _prepare_browser_subprocess_env(env: Dict[str, str]) -> Dict[str, str]:
+    """Inject Hermes runtime paths required by local browser subprocesses."""
+    env["HERMES_HOME"] = str(get_hermes_home())
+    if not env.get("PLAYWRIGHT_BROWSERS_PATH"):
+        browsers_path = _default_playwright_browsers_path()
+        try:
+            os.makedirs(browsers_path, mode=0o700, exist_ok=True)
+        except OSError:
+            pass
+        env["PLAYWRIGHT_BROWSERS_PATH"] = browsers_path
+    return env
+
+
 @functools.lru_cache(maxsize=1)
 def _discover_homebrew_node_dirs() -> tuple[str, ...]:
     """Find Homebrew versioned Node.js bin directories (e.g. node@20, node@24).
@@ -860,6 +878,7 @@ def _run_chrome_fallback_command(
     task_socket_dir = os.path.join(_socket_safe_tmpdir(), f"agent-browser-{tmp_session}")
     os.makedirs(task_socket_dir, mode=0o700, exist_ok=True)
     browser_env = {**os.environ, "AGENT_BROWSER_SOCKET_DIR": task_socket_dir}
+    browser_env = _prepare_browser_subprocess_env(browser_env)
     browser_env["PATH"] = _merge_browser_path(browser_env.get("PATH", ""))
 
     if "AGENT_BROWSER_IDLE_TIMEOUT_MS" not in browser_env:
@@ -1991,6 +2010,7 @@ def _run_browser_command(
                      command, task_id, task_socket_dir, len(task_socket_dir))
 
         browser_env = {**os.environ}
+        browser_env = _prepare_browser_subprocess_env(browser_env)
 
         # Ensure subprocesses inherit the same browser-specific PATH fallbacks
         # used during CLI discovery.
@@ -3506,6 +3526,8 @@ def _chromium_search_roots() -> List[str]:
     env_path = os.environ.get("PLAYWRIGHT_BROWSERS_PATH", "").strip()
     if env_path and env_path != "0":
         roots.append(env_path)
+    elif not env_path:
+        roots.append(_default_playwright_browsers_path())
     home = os.path.expanduser("~")
     roots.append(os.path.join(home, ".cache", "ms-playwright"))
     if sys.platform == "darwin":

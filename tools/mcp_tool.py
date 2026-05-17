@@ -266,6 +266,7 @@ _MAX_BACKOFF_SECONDS = 60
 # Environment variables that are safe to pass to stdio subprocesses
 _SAFE_ENV_KEYS = frozenset({
     "PATH", "HOME", "USER", "LANG", "LC_ALL", "TERM", "SHELL", "TMPDIR",
+    "HERMES_HOME",
 })
 
 # Regex for credential patterns to strip from error messages
@@ -307,6 +308,18 @@ def _build_safe_env(user_env: Optional[dict]) -> dict:
     for key, value in os.environ.items():
         if key in _SAFE_ENV_KEYS or key.startswith("XDG_"):
             env[key] = value
+    try:
+        from hermes_constants import get_hermes_home, get_subprocess_home
+
+        env["HERMES_HOME"] = str(get_hermes_home())
+        subprocess_home = get_subprocess_home()
+        if subprocess_home:
+            env["HOME"] = subprocess_home
+    except Exception:
+        env.setdefault(
+            "HERMES_HOME",
+            os.path.join(os.path.expanduser("~"), ".hermes"),
+        )
     if user_env:
         env.update(user_env)
     return env
@@ -415,8 +428,9 @@ def _resolve_stdio_command(command: str, env: dict) -> tuple[str, dict]:
             resolved_command = which_hit
         elif resolved_command in {"npx", "npm", "node"}:
             hermes_home = os.path.expanduser(
-                os.getenv(
-                    "HERMES_HOME", os.path.join(os.path.expanduser("~"), ".hermes")
+                resolved_env.get(
+                    "HERMES_HOME",
+                    os.getenv("HERMES_HOME", os.path.join(os.path.expanduser("~"), ".hermes")),
                 )
             )
             candidates = [

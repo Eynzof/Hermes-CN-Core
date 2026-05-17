@@ -42,6 +42,10 @@ from typing import Dict, List, Optional
 
 logger = logging.getLogger("hermes.mcp_serve")
 
+
+def _hermes_home_fallback() -> Path:
+    return Path(os.environ.get("HERMES_HOME", Path.home() / ".hermes"))
+
 # ---------------------------------------------------------------------------
 # Lazy MCP SDK import
 # ---------------------------------------------------------------------------
@@ -65,7 +69,7 @@ def _get_sessions_dir() -> Path:
         from hermes_constants import get_hermes_home
         return get_hermes_home() / "sessions"
     except ImportError:
-        return Path(os.environ.get("HERMES_HOME", Path.home() / ".hermes")) / "sessions"
+        return _hermes_home_fallback() / "sessions"
 
 
 def _get_session_db():
@@ -101,9 +105,7 @@ def _load_channel_directory() -> dict:
         from hermes_constants import get_hermes_home
         directory_file = get_hermes_home() / "channel_directory.json"
     except ImportError:
-        directory_file = Path(
-            os.environ.get("HERMES_HOME", Path.home() / ".hermes")
-        ) / "channel_directory.json"
+        directory_file = _hermes_home_fallback() / "channel_directory.json"
 
     if not directory_file.exists():
         return {}
@@ -365,7 +367,7 @@ class EventBridge:
             from hermes_constants import get_hermes_home
             db_file = get_hermes_home() / "state.db"
         except ImportError:
-            db_file = Path(os.environ.get("HERMES_HOME", Path.home() / ".hermes")) / "state.db"
+            db_file = _hermes_home_fallback() / "state.db"
 
         try:
             db_mtime = db_file.stat().st_mtime if db_file.exists() else 0.0

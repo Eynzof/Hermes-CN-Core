@@ -32,6 +32,19 @@ class _BrokenStdout:
         return None
 
 
+class _RecordingTransport:
+    def __init__(self):
+        self.frames: list[dict] = []
+        self.closed = False
+
+    def write(self, obj: dict) -> bool:
+        self.frames.append(obj)
+        return True
+
+    def close(self) -> None:
+        self.closed = True
+
+
 def test_write_json_serializes_concurrent_writes(monkeypatch):
     out = _ChunkyStdout()
     monkeypatch.setattr(server, "_real_stdout", out)
@@ -2046,6 +2059,55 @@ def test_prompt_submit_sets_approval_session_key(monkeypatch):
 
     assert resp["result"]["status"] == "streaming"
     assert captured["session_key"] == "session-key"
+
+
+def test_prompt_submit_rebinds_session_transport_for_reconnected_client(monkeypatch):
+    class _Agent:
+        def run_conversation(
+            self, prompt, conversation_history=None, stream_callback=None
+        ):
+            if stream_callback:
+                stream_callback("partial")
+            return {
+                "final_response": "final",
+                "messages": [{"role": "assistant", "content": "final"}],
+            }
+
+    class _ImmediateThread:
+        def __init__(self, target=None, daemon=None):
+            self._target = target
+
+        def start(self):
+            self._target()
+
+    old_transport = _RecordingTransport()
+    new_transport = _RecordingTransport()
+    session = _session(agent=_Agent(), transport=old_transport)
+    server._sessions["sid"] = session
+    monkeypatch.setattr(server.threading, "Thread", _ImmediateThread)
+    monkeypatch.setattr(server, "make_stream_renderer", lambda cols: None)
+    monkeypatch.setattr(server, "render_message", lambda raw, cols: None)
+
+    try:
+        resp = server.dispatch(
+            {
+                "id": "1",
+                "method": "prompt.submit",
+                "params": {"session_id": "sid", "text": "ping"},
+            },
+            new_transport,
+        )
+    finally:
+        server._sessions.pop("sid", None)
+
+    assert resp["result"]["status"] == "streaming"
+    assert session["transport"] is new_transport
+    assert old_transport.frames == []
+    assert [
+        frame["params"]["type"]
+        for frame in new_transport.frames
+        if frame.get("method") == "event"
+    ] == ["message.start", "message.delta", "message.complete"]
 
 
 def test_prompt_submit_expands_context_refs(monkeypatch):

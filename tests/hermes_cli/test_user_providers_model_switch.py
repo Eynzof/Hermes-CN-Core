@@ -946,6 +946,51 @@ def test_user_provider_override_accepts_listed_private_models(
     assert result.error_message == ""
 
 
+def test_switch_model_skips_live_validation_for_declared_user_provider_model():
+    """A model chosen from providers: config should not wait on live /models.
+
+    The dashboard's model picker already sends an explicit provider plus a
+    model id that came from config.yaml.  Previously switch_model still called
+    validate_requested_model(), which probes the provider's /models endpoint and
+    can block for several seconds before accepting the same configured model.
+    """
+    from unittest.mock import patch
+
+    base_url = "https://api.moonshot.cn/v1"
+    user_providers = {
+        "kimi-for-coding": {
+            "name": "Kimi / Moonshot",
+            "base_url": base_url,
+            "transport": "openai_chat",
+            "models": {
+                "kimi-k2.6": {"supports_tools": True},
+                "moonshot-v1-128k": {},
+            },
+        }
+    }
+
+    with patch("hermes_cli.model_switch.resolve_alias", return_value=None), \
+         patch("hermes_cli.model_switch.normalize_model_for_provider", side_effect=lambda model, provider: model), \
+         patch("hermes_cli.models.validate_requested_model", side_effect=AssertionError("live validation should be skipped")), \
+         patch("hermes_cli.model_switch.get_model_info", return_value=None), \
+         patch("hermes_cli.model_switch.get_model_capabilities", return_value=None), \
+         patch("hermes_cli.runtime_provider.resolve_runtime_provider", return_value={"api_key": "***", "base_url": base_url, "api_mode": "chat_completions"}):
+        result = switch_model(
+            raw_input="kimi-k2.6",
+            current_provider="deepseek",
+            current_model="deepseek-v4-flash",
+            current_base_url="https://api.deepseek.com/v1",
+            explicit_provider="kimi-for-coding",
+            user_providers=user_providers,
+            custom_providers=[],
+        )
+
+    assert result.success is True
+    assert result.new_model == "kimi-k2.6"
+    assert result.target_provider == "kimi-for-coding"
+    assert result.error_message == ""
+
+
 @pytest.mark.parametrize(
     ("slug", "name", "base_url", "models", "raw_input"),
     [

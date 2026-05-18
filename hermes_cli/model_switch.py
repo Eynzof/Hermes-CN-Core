@@ -23,13 +23,14 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
-from typing import List, NamedTuple, Optional
+from typing import Any, List, NamedTuple, Optional
 
 from hermes_cli.providers import (
     custom_provider_slug,
     determine_api_mode,
     get_label,
     is_aggregator,
+    normalize_provider as normalize_provider_id,
     resolve_provider_full,
 )
 from hermes_cli.model_normalize import (
@@ -608,6 +609,182 @@ def resolve_display_context_length(
     return None
 
 
+def _append_declared_model(names: list[str], seen: set[str], value: Any) -> None:
+    """Append a model id from config if it is a non-empty string."""
+    if not isinstance(value, str):
+        return
+    model = value.strip()
+    if not model or model in seen:
+        return
+    seen.add(model)
+    names.append(model)
+
+
+def _declared_model_names_from_config(cfg: dict[str, Any]) -> tuple[str, ...]:
+    """Return model ids declared by a provider/custom-provider config entry.
+
+    Hermes has supported several config shapes over time:
+    ``model`` / ``default_model`` for the primary model, ``models`` as a dict
+    keyed by model id, and older hand-written lists containing either strings
+    or dicts with ``name`` / ``id`` / ``model``.
+    """
+    names: list[str] = []
+    seen: set[str] = set()
+
+    _append_declared_model(names, seen, cfg.get("model"))
+    _append_declared_model(names, seen, cfg.get("default_model"))
+
+    models = cfg.get("models")
+    if isinstance(models, dict):
+        for model_id, metadata in models.items():
+            _append_declared_model(names, seen, model_id)
+            if isinstance(metadata, dict):
+                _append_declared_model(names, seen, metadata.get("name"))
+                _append_declared_model(names, seen, metadata.get("id"))
+                _append_declared_model(names, seen, metadata.get("model"))
+    elif isinstance(models, list):
+        for entry in models:
+            if isinstance(entry, str):
+                _append_declared_model(names, seen, entry)
+            elif isinstance(entry, dict):
+                _append_declared_model(names, seen, entry.get("name"))
+                _append_declared_model(names, seen, entry.get("id"))
+                _append_declared_model(names, seen, entry.get("model"))
+
+    return tuple(names)
+
+
+def _provider_candidate_ids(*values: str) -> set[str]:
+    """Build lowercase provider identifiers including Hermes aliases."""
+    candidates: set[str] = set()
+    for value in values:
+        raw = (value or "").strip().lower()
+        if not raw:
+            continue
+        candidates.add(raw)
+        try:
+            candidates.add(normalize_provider_id(raw).lower())
+        except Exception:
+            pass
+    return candidates
+
+
+def _config_provider_matches(
+    slug: str,
+    cfg: dict[str, Any],
+    *,
+    target_provider: str,
+    explicit_provider: str,
+    base_url: str,
+) -> bool:
+    """Return True when a ``providers:`` config entry describes target_provider."""
+    candidates = _provider_candidate_ids(target_provider, explicit_provider)
+    slug_raw = (slug or "").strip().lower()
+    if slug_raw in candidates:
+        return True
+    try:
+        if normalize_provider_id(slug_raw).lower() in candidates:
+            return True
+    except Exception:
+        pass
+
+    display_name = str(cfg.get("name", "") or "").strip().lower()
+    if display_name and display_name in candidates:
+        return True
+
+    cfg_url = str(
+        cfg.get("base_url", "")
+        or cfg.get("api", "")
+        or cfg.get("url", "")
+        or ""
+    ).strip().rstrip("/")
+    runtime_url = (base_url or "").strip().rstrip("/")
+    return bool(cfg_url and runtime_url and cfg_url.lower() == runtime_url.lower())
+
+
+def _custom_provider_matches(
+    entry: dict[str, Any],
+    *,
+    target_provider: str,
+    explicit_provider: str,
+    base_url: str,
+) -> bool:
+    """Return True when a ``custom_providers`` entry describes target_provider."""
+    candidates = _provider_candidate_ids(target_provider, explicit_provider)
+
+    display_name = str(entry.get("name", "") or "").strip()
+    if display_name:
+        if display_name.lower() in candidates:
+            return True
+        try:
+            if custom_provider_slug(display_name).lower() in candidates:
+                return True
+        except Exception:
+            pass
+
+    entry_url = str(
+        entry.get("base_url", "")
+        or entry.get("api", "")
+        or entry.get("url", "")
+        or ""
+    ).strip().rstrip("/")
+    runtime_url = (base_url or "").strip().rstrip("/")
+    return bool(entry_url and runtime_url and entry_url.lower() == runtime_url.lower())
+
+
+def _declared_model_for_provider(
+    model: str,
+    *,
+    target_provider: str,
+    explicit_provider: str = "",
+    base_url: str = "",
+    user_providers: dict | None = None,
+    custom_providers: list | None = None,
+) -> bool:
+    """Return True if model is explicitly declared for the resolved provider.
+
+    This is the same trust boundary as the legacy post-validation override,
+    but it runs before any live ``/models`` request.  The dashboard and TUI
+    model picker already source their options from this config, and many
+    provider endpoints either hide account-specific models or make
+    ``GET /models`` slow enough to dominate a model switch.
+    """
+    requested = (model or "").strip()
+    if not requested:
+        return False
+
+    if user_providers and isinstance(user_providers, dict):
+        for slug, cfg in user_providers.items():
+            if not isinstance(cfg, dict):
+                continue
+            if not _config_provider_matches(
+                str(slug),
+                cfg,
+                target_provider=target_provider,
+                explicit_provider=explicit_provider,
+                base_url=base_url,
+            ):
+                continue
+            if requested in _declared_model_names_from_config(cfg):
+                return True
+
+    if custom_providers and isinstance(custom_providers, list):
+        for entry in custom_providers:
+            if not isinstance(entry, dict):
+                continue
+            if not _custom_provider_matches(
+                entry,
+                target_provider=target_provider,
+                explicit_provider=explicit_provider,
+                base_url=base_url,
+            ):
+                continue
+            if requested in _declared_model_names_from_config(entry):
+                return True
+
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Core model-switching pipeline
 # ---------------------------------------------------------------------------
@@ -909,60 +1086,57 @@ def switch_model(
     new_model = normalize_model_for_provider(new_model, target_provider)
 
     # --- Validate ---
-    try:
-        validation = validate_requested_model(
-            new_model,
-            target_provider,
-            api_key=api_key,
-            base_url=base_url,
-            api_mode=api_mode or None,
-        )
-    except Exception as e:
+    declared_model_match = _declared_model_for_provider(
+        new_model,
+        target_provider=target_provider,
+        explicit_provider=explicit_provider,
+        base_url=base_url,
+        user_providers=user_providers,
+        custom_providers=custom_providers,
+    )
+    if declared_model_match:
+        validation = {
+            "accepted": True,
+            "persist": True,
+            "recognized": True,
+            "message": None,
+        }
+    else:
+        try:
+            validation = validate_requested_model(
+                new_model,
+                target_provider,
+                api_key=api_key,
+                base_url=base_url,
+                api_mode=api_mode or None,
+            )
+        except Exception as e:
+            validation = {
+                "accepted": False,
+                "persist": False,
+                "recognized": False,
+                "message": f"Could not validate `{new_model}`: {e}",
+            }
+
+    if not isinstance(validation, dict):
         validation = {
             "accepted": False,
             "persist": False,
             "recognized": False,
-            "message": f"Could not validate `{new_model}`: {e}",
+            "message": f"Could not validate `{new_model}`.",
         }
 
     # Override rejection if model is in the user's saved provider config.
     # API /v1/models may not list cloud/aliased models even though the server supports them.
     if not validation.get("accepted"):
-        override = False
-        if user_providers:
-            # user_providers is a dict: {provider_slug: config_dict}
-            for slug, cfg in user_providers.items():
-                if slug == target_provider:
-                    cfg_models = cfg.get("models", {})
-                    # Direct membership works for dict (keys) and list (strings)
-                    if new_model in cfg_models:
-                        override = True
-                        break
-                    # Also accept if models is a list of dicts with 'name' field
-                    if isinstance(cfg_models, list):
-                        if any(m.get("name") == new_model for m in cfg_models if isinstance(m, dict)):
-                            override = True
-                            break
-        # Also check custom_providers list — models declared there should be accepted
-        # even if the remote /v1/models endpoint doesn't list them.
-        if not override and custom_providers and isinstance(custom_providers, list):
-            for entry in custom_providers:
-                if not isinstance(entry, dict):
-                    continue
-                # Match by provider slug (custom:<name>) or by base_url
-                entry_name = entry.get("name", "")
-                entry_slug = f"custom:{entry_name}" if entry_name else ""
-                entry_url = entry.get("base_url", "")
-                if entry_slug == target_provider or entry_url == base_url:
-                    # Check if the requested model matches the entry's model
-                    entry_model = entry.get("model", "")
-                    entry_models = entry.get("models", {})
-                    if new_model == entry_model:
-                        override = True
-                        break
-                    if isinstance(entry_models, dict) and new_model in entry_models:
-                        override = True
-                        break
+        override = declared_model_match or _declared_model_for_provider(
+            new_model,
+            target_provider=target_provider,
+            explicit_provider=explicit_provider,
+            base_url=base_url,
+            user_providers=user_providers,
+            custom_providers=custom_providers,
+        )
         if override:
             validation = {"accepted": True, "persist": True, "recognized": False, "message": validation.get("message", "")}
         else:

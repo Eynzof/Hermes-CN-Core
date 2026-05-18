@@ -389,6 +389,21 @@ def _emit(event: str, sid: str, payload: dict | None = None):
     write_json({"jsonrpc": "2.0", "method": "event", "params": params})
 
 
+def _bind_session_to_request_transport(session: dict) -> None:
+    """Route subsequent async session events to the transport of this RPC.
+
+    Browser clients can reconnect their SSE stream while keeping the same
+    gateway session id.  ``write_json`` deliberately prefers the
+    session-pinned transport for async message events, so starting a new turn
+    must refresh that pin from the current request; otherwise
+    message.start/delta/complete can be written to a closed SSE queue or the
+    stdio fallback and the UI remains stuck in streaming state.
+    """
+    transport = current_transport()
+    if transport is not None:
+        session["transport"] = transport
+
+
 def _status_update(sid: str, kind: str, text: str | None = None):
     body = (text if text is not None else kind).strip()
     if not body:
@@ -3146,6 +3161,7 @@ def _(rid, params: dict) -> dict:
     with session["history_lock"]:
         if session.get("running"):
             return _err(rid, 4009, "session busy")
+        _bind_session_to_request_transport(session)
         session["running"] = True
 
     _start_agent_build(sid, session)

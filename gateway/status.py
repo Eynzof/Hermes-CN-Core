@@ -4,11 +4,10 @@ Gateway runtime status helpers.
 Provides PID-file based detection of whether the gateway daemon is running,
 used by send_message's check_fn to gate availability in the CLI.
 
-The PID file lives at ``{HERMES_HOME}/gateway.pid``.  HERMES_HOME defaults to
-``~/.hermes`` but can be overridden via the environment variable.  This means
-separate HERMES_HOME directories naturally get separate PID files — a property
-that will be useful when we add named profiles (multiple agents running
-concurrently under distinct configurations).
+The PID file normally lives at ``{HERMES_HOME}/gateway.pid``.  Desktop
+managed-runtime launches may instead set ``HERMES_GATEWAY_RUNTIME_DIR`` so a
+runtime-scoped dashboard never attaches to a gateway process started by a
+different, user-installed Hermes executable.
 """
 
 import hashlib
@@ -41,18 +40,30 @@ _gateway_lock_handle = None
 _WINDOWS_LOCK_OFFSET = 1024 * 1024
 
 
+def _get_gateway_runtime_dir() -> Path:
+    """Return where gateway runtime pid/lock/status files live.
+
+    Normal CLI installs keep these files in HERMES_HOME for backwards
+    compatibility. Desktop managed-runtime launches set
+    HERMES_GATEWAY_RUNTIME_DIR so the dashboard does not attach to a gateway
+    process started by a different, user-installed hermes executable.
+    """
+    override = os.getenv("HERMES_GATEWAY_RUNTIME_DIR")
+    if override:
+        return Path(override)
+    return get_hermes_home()
+
+
 def _get_pid_path() -> Path:
-    """Return the path to the gateway PID file, respecting HERMES_HOME."""
-    home = get_hermes_home()
-    return home / "gateway.pid"
+    """Return the path to the gateway PID file."""
+    return _get_gateway_runtime_dir() / "gateway.pid"
 
 
 def _get_gateway_lock_path(pid_path: Optional[Path] = None) -> Path:
     """Return the path to the runtime gateway lock file."""
     if pid_path is not None:
         return pid_path.with_name(_GATEWAY_LOCK_FILENAME)
-    home = get_hermes_home()
-    return home / _GATEWAY_LOCK_FILENAME
+    return _get_gateway_runtime_dir() / _GATEWAY_LOCK_FILENAME
 
 
 def _get_runtime_status_path() -> Path:

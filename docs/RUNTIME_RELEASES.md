@@ -106,11 +106,14 @@ launch (or via the in-app "check for updates" flow).
 ## Manual dry run
 
 ```
-$ pip install -e .
+$ pip install -e ".[web]"
 $ pip install pyinstaller cryptography
 $ pyinstaller --noconfirm --name hermes-agent-cn-runtime-win32-x64 \
     --onedir --console \
     --collect-submodules hermes_cli --collect-submodules tui_gateway \
+    --collect-submodules fastapi --collect-submodules starlette \
+    --collect-submodules uvicorn --collect-submodules pydantic \
+    --collect-data hermes_cli --collect-data gateway --collect-data plugins \
     --paths . hermes_cli/main.py
 $ ./dist/hermes-agent-cn-runtime-win32-x64/hermes-agent-cn-runtime-win32-x64.exe dashboard --help
 $ # zip + sign manually using scripts/sign_runtime_manifest.py
@@ -118,6 +121,9 @@ $ # zip + sign manually using scripts/sign_runtime_manifest.py
 
 ## Known gaps
 
+* **Dashboard deps are bundled**: runtime artifacts must install `.[web]` and
+  collect FastAPI/Uvicorn submodules so the frozen binary never lazy-installs
+  `fastapi` or `uvicorn` on the user's machine.
 * **Lazy provider deps** (`anthropic`, `firecrawl-py`, `exa-py`, ...) are
   not bundled. `tools/lazy_deps.py` can't install at runtime inside a
   PyInstaller-frozen binary, so only providers we explicitly pre-bake

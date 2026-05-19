@@ -308,9 +308,19 @@ _PROVIDER_VISION_MODELS: Dict[str, str] = {
 # api.kimi.com/coding (Anthropic Messages wire) which Kimi's own docs
 # describe as having no image_in capability. Vision lives on the separate
 # Kimi Platform (api.moonshot.ai, OpenAI-wire, pay-as-you-go).  See #17076.
+#
+# minimax / minimax-cn / minimax-oauth: MiniMax M2.x Anthropic-compatible
+# endpoints expose text/reasoning/tool-use models.  The current models.dev
+# entry for MiniMax-M2.7 reports modalities.input=["text"], and sending
+# image blocks to the endpoint produces a normal text refusal ("I don't see
+# an image") rather than useful vision output.  In auto mode, skip the main
+# MiniMax endpoint and use a dedicated vision backend instead.
 _PROVIDERS_WITHOUT_VISION: frozenset = frozenset({
     "kimi-coding",
     "kimi-coding-cn",
+    "minimax",
+    "minimax-cn",
+    "minimax-oauth",
 })
 
 # OpenRouter app attribution headers (base — always sent).
@@ -3741,6 +3751,7 @@ def get_async_text_auxiliary_client(task: str = "", *, main_runtime: Optional[Di
 _VISION_AUTO_PROVIDER_ORDER = (
     "openrouter",
     "nous",
+    "anthropic",
 )
 
 
@@ -3771,6 +3782,33 @@ def _resolve_strict_vision_backend(
     return None, None
 
 
+def _model_capability_explicitly_lacks_vision(provider: str, model: Optional[str]) -> bool:
+    """Return True only when models.dev explicitly marks this model text-only.
+
+    Unknown metadata must not block auto-routing: custom endpoints and newly
+    released models often lag models.dev.  But when capabilities are known and
+    `supports_vision` is false, do not send image-analysis traffic to that
+    main provider; fall through to the dedicated vision backend chain instead.
+    """
+    provider = _normalize_vision_provider(provider)
+    model = (model or "").strip()
+    if not provider or not model:
+        return False
+    try:
+        from agent.models_dev import get_model_capabilities
+
+        caps = get_model_capabilities(provider, model)
+    except Exception as exc:  # pragma: no cover - defensive only
+        logger.debug(
+            "Vision auto-detect: capability lookup failed for %s (%s): %s",
+            provider,
+            model,
+            exc,
+        )
+        return False
+    return caps is not None and not bool(caps.supports_vision)
+
+
 def _strict_vision_backend_available(provider: str) -> bool:
     return _resolve_strict_vision_backend(provider)[0] is not None
 
@@ -3778,19 +3816,26 @@ def _strict_vision_backend_available(provider: str) -> bool:
 def get_available_vision_backends() -> List[str]:
     """Return the currently available vision backends in auto-selection order.
 
-    Order: active provider → OpenRouter → Nous → stop.  This is the single
+    Order: active provider → OpenRouter → Nous → Anthropic → stop.  This is the single
     source of truth for setup, tool gating, and runtime auto-routing of
     vision tasks.
     """
     available: List[str] = []
     # 1. Active provider — if the user configured a provider, try it first.
     main_provider = _read_main_provider()
-    if main_provider and main_provider not in {"auto", ""}:
-        if main_provider in _VISION_AUTO_PROVIDER_ORDER:
+    if (
+        main_provider
+        and main_provider not in {"auto", ""}
+        and main_provider not in _PROVIDERS_WITHOUT_VISION
+    ):
+        vision_model = _PROVIDER_VISION_MODELS.get(main_provider, _read_main_model())
+        if _model_capability_explicitly_lacks_vision(main_provider, vision_model):
+            main_provider = ""
+        elif main_provider in _VISION_AUTO_PROVIDER_ORDER:
             if _strict_vision_backend_available(main_provider):
                 available.append(main_provider)
         else:
-            client, _ = resolve_provider_client(main_provider, _read_main_model())
+            client, _ = resolve_provider_client(main_provider, vision_model)
             if client is not None:
                 available.append(main_provider)
     # 2. OpenRouter, 3. Nous — skip if already covered by main provider.
@@ -3856,9 +3901,11 @@ def resolve_vision_provider_client(
         #      fall through to the user's text chat model here.
         #   2. OpenRouter  (vision-capable aggregator fallback)
         #   3. Nous Portal (vision-capable aggregator fallback)
-        #   4. Stop
+        #   4. Anthropic   (native vision fallback when configured)
+        #   5. Stop
         main_provider = _read_main_provider()
         main_model = _read_main_model()
+        main_provider_skipped_for_vision = False
         if main_provider and main_provider not in {"auto", ""}:
             vision_model = _PROVIDER_VISION_MODELS.get(main_provider, main_model)
             if main_provider == "nous":
@@ -3881,9 +3928,18 @@ def resolve_vision_provider_client(
                 # client that will 404 on every vision request (#17076).
                 logger.debug(
                     "Vision auto-detect: skipping main provider %s (no "
-                    "vision support) — falling through to aggregator chain",
+                    "vision support) — falling through to vision backend chain",
                     main_provider,
                 )
+                main_provider_skipped_for_vision = True
+            elif _model_capability_explicitly_lacks_vision(main_provider, vision_model):
+                logger.debug(
+                    "Vision auto-detect: skipping main provider %s (%s) "
+                    "because model capabilities report text-only input",
+                    main_provider,
+                    vision_model,
+                )
+                main_provider_skipped_for_vision = True
             else:
                 rpc_client, rpc_model = resolve_provider_client(
                     main_provider, vision_model,
@@ -3897,10 +3953,10 @@ def resolve_vision_provider_client(
                     return _finalize(
                         main_provider, rpc_client, rpc_model or vision_model)
 
-        # Fall back through aggregators (uses their dedicated vision model,
+        # Fall back through dedicated vision backends (uses their vision model,
         # not the user's main model) when main provider has no client.
         for candidate in _VISION_AUTO_PROVIDER_ORDER:
-            if candidate == main_provider:
+            if candidate == main_provider and not main_provider_skipped_for_vision:
                 continue  # already tried above
             sync_client, default_model = _resolve_strict_vision_backend(candidate)
             if sync_client is not None:

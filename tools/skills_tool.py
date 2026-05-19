@@ -470,6 +470,17 @@ def _get_category_from_path(skill_path: Path) -> Optional[str]:
     return None
 
 
+def _skill_origin(name: str, skill_dir: Path, scan_dir: Path, bundled_names: Set[str]) -> str:
+    """Best-effort source classification for dashboard/UI consumers."""
+    try:
+        skill_dir.relative_to(SKILLS_DIR)
+        if name in bundled_names:
+            return "builtin"
+        return "user"
+    except ValueError:
+        return "external"
+
+
 def _parse_tags(tags_value) -> List[str]:
     """
     Parse tags from frontmatter value.
@@ -565,6 +576,11 @@ def _find_all_skills(*, skip_disabled: bool = False) -> List[Dict[str, Any]]:
 
     # Load disabled set once (not per-skill)
     disabled = set() if skip_disabled else _get_disabled_skill_names()
+    try:
+        from tools.skills_sync import _read_manifest
+        bundled_names = set(_read_manifest())
+    except Exception:
+        bundled_names = set()
 
     # Scan local dir first, then external dirs (local takes precedence)
     dirs_to_scan = []
@@ -610,6 +626,9 @@ def _find_all_skills(*, skip_disabled: bool = False) -> List[Dict[str, Any]]:
                     "name": name,
                     "description": description,
                     "category": category,
+                    "origin": _skill_origin(name, skill_dir, scan_dir, bundled_names),
+                    "source_path": str(skill_dir),
+                    "skill_file": str(skill_md),
                 })
 
             except (UnicodeDecodeError, PermissionError) as e:

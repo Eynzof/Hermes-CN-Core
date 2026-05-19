@@ -2295,6 +2295,152 @@ class TestVisionAutoSkipsKimiCoding:
         assert provider == "openrouter"
         assert client is fake_or_client
 
+    def test_minimax_cn_skipped_too(self, monkeypatch):
+        """MiniMax M2.x is text-only on the current Anthropic-compatible endpoint."""
+        fake_or_client = MagicMock(name="openrouter_client")
+
+        monkeypatch.setattr(
+            "agent.auxiliary_client._read_main_provider", lambda: "minimax-cn",
+        )
+        monkeypatch.setattr(
+            "agent.auxiliary_client._read_main_model", lambda: "MiniMax-M2.7",
+        )
+        rpc_mock = MagicMock(side_effect=AssertionError(
+            "resolve_provider_client should NOT be called for minimax-cn"))
+        monkeypatch.setattr(
+            "agent.auxiliary_client.resolve_provider_client",
+            rpc_mock,
+        )
+        monkeypatch.setattr(
+            "agent.auxiliary_client._resolve_strict_vision_backend",
+            lambda p, m=None: (fake_or_client, "gemini")
+            if p == "openrouter"
+            else (None, None),
+        )
+
+        provider, client, _ = resolve_vision_provider_client()
+        assert provider == "openrouter"
+        assert client is fake_or_client
+
+    def test_minimax_cn_can_fall_through_to_anthropic(self, monkeypatch):
+        """If aggregator vision is unavailable, MiniMax auto mode can use Anthropic."""
+        fake_anthropic_client = MagicMock(name="anthropic_client")
+
+        monkeypatch.setattr(
+            "agent.auxiliary_client._read_main_provider", lambda: "minimax-cn",
+        )
+        monkeypatch.setattr(
+            "agent.auxiliary_client._read_main_model", lambda: "MiniMax-M2.7",
+        )
+        monkeypatch.setattr(
+            "agent.auxiliary_client.resolve_provider_client",
+            MagicMock(side_effect=AssertionError(
+                "resolve_provider_client should NOT be called for minimax-cn")),
+        )
+
+        def fake_strict(provider, model=None):
+            if provider in {"openrouter", "nous"}:
+                return None, None
+            if provider == "anthropic":
+                return fake_anthropic_client, "claude-haiku-4-5-20251001"
+            raise AssertionError(f"unexpected vision backend {provider!r}")
+
+        monkeypatch.setattr(
+            "agent.auxiliary_client._resolve_strict_vision_backend",
+            fake_strict,
+        )
+
+        provider, client, model = resolve_vision_provider_client()
+        assert provider == "anthropic"
+        assert client is fake_anthropic_client
+        assert model == "claude-haiku-4-5-20251001"
+
+    def test_available_backends_do_not_report_minimax(self, monkeypatch):
+        """Setup/status should not advertise MiniMax as an available vision backend."""
+        monkeypatch.setattr(
+            "agent.auxiliary_client._read_main_provider", lambda: "minimax-cn",
+        )
+        monkeypatch.setattr(
+            "agent.auxiliary_client._read_main_model", lambda: "MiniMax-M2.7",
+        )
+        monkeypatch.setattr(
+            "agent.auxiliary_client.resolve_provider_client",
+            MagicMock(side_effect=AssertionError(
+                "resolve_provider_client should NOT be called for minimax-cn")),
+        )
+        monkeypatch.setattr(
+            "agent.auxiliary_client._resolve_strict_vision_backend",
+            lambda p, m=None: (None, None),
+        )
+
+        assert get_available_vision_backends() == []
+
+    def test_text_only_main_model_capability_skips_generic_provider(self, monkeypatch):
+        """Known text-only models must not be used as auto vision backends."""
+        fake_or_client = MagicMock(name="openrouter_client")
+
+        monkeypatch.setattr(
+            "agent.auxiliary_client._read_main_provider", lambda: "deepseek",
+        )
+        monkeypatch.setattr(
+            "agent.auxiliary_client._read_main_model", lambda: "deepseek-chat",
+        )
+        monkeypatch.setattr(
+            "agent.models_dev.get_model_capabilities",
+            lambda provider, model: SimpleNamespace(supports_vision=False),
+        )
+        monkeypatch.setattr(
+            "agent.auxiliary_client.resolve_provider_client",
+            MagicMock(side_effect=AssertionError(
+                "resolve_provider_client should NOT be called for a known text-only model")),
+        )
+        monkeypatch.setattr(
+            "agent.auxiliary_client._resolve_strict_vision_backend",
+            lambda p, m=None: (fake_or_client, "google/gemini-3-flash-preview")
+            if p == "openrouter"
+            else (None, None),
+        )
+
+        provider, client, model = resolve_vision_provider_client()
+        assert provider == "openrouter"
+        assert client is fake_or_client
+        assert model == "google/gemini-3-flash-preview"
+
+    def test_text_only_openrouter_main_model_uses_openrouter_vision_default(self, monkeypatch):
+        """OpenRouter as main provider should fall back to its vision default model."""
+        fake_or_client = MagicMock(name="openrouter_client")
+
+        monkeypatch.setattr(
+            "agent.auxiliary_client._read_main_provider", lambda: "openrouter",
+        )
+        monkeypatch.setattr(
+            "agent.auxiliary_client._read_main_model", lambda: "deepseek/deepseek-chat",
+        )
+        monkeypatch.setattr(
+            "agent.models_dev.get_model_capabilities",
+            lambda provider, model: SimpleNamespace(supports_vision=False),
+        )
+        monkeypatch.setattr(
+            "agent.auxiliary_client.resolve_provider_client",
+            MagicMock(side_effect=AssertionError(
+                "resolve_provider_client should NOT be called for OpenRouter's text-only main model")),
+        )
+
+        def fake_strict(provider, model=None):
+            assert provider == "openrouter"
+            assert model is None
+            return fake_or_client, "google/gemini-3-flash-preview"
+
+        monkeypatch.setattr(
+            "agent.auxiliary_client._resolve_strict_vision_backend",
+            fake_strict,
+        )
+
+        provider, client, model = resolve_vision_provider_client()
+        assert provider == "openrouter"
+        assert client is fake_or_client
+        assert model == "google/gemini-3-flash-preview"
+
     def test_explicit_override_to_kimi_coding_still_honored(self, monkeypatch):
         """When a user *explicitly* requests kimi-coding for vision (e.g.
         they know what they're doing, or are running a future build that
@@ -2323,6 +2469,9 @@ class TestVisionAutoSkipsKimiCoding:
         assert _PROVIDERS_WITHOUT_VISION == frozenset({
             "kimi-coding",
             "kimi-coding-cn",
+            "minimax",
+            "minimax-cn",
+            "minimax-oauth",
         })
 
 

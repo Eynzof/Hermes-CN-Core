@@ -26,6 +26,24 @@
 
 `hermes-agent-cn` 是 [Hermes Agent CN Desktop](https://github.com/Eynzof/hermes-cn-desktop-v2) 使用的 runtime 和 Dashboard 后端。桌面端会从本仓库的 GitHub Releases 下载签名 runtime，并在本机运行 Dashboard。
 
+## 桌面端预览
+
+下面这些截图展示了由本 runtime 支撑的中文社区桌面端，包括工作台、浅色和深色主题、内置 Skills、模型配置、记忆管理，以及普通聊天和项目 review 流程。
+
+| 工作台浅色模式 | 工作台深色模式 |
+| --- | --- |
+| ![Hermes Agent 中文社区桌面版工作台浅色模式](./assets/screenshots/cn-desktop-workbench-light.png) | ![Hermes Agent 中文社区桌面版工作台深色模式](./assets/screenshots/cn-desktop-workbench-dark.png) |
+
+| 内置 Skills | 模型配置 |
+| --- | --- |
+| ![Hermes Agent 中文社区桌面版内置 Skills](./assets/screenshots/cn-desktop-skills.png) | ![Hermes Agent 中文社区桌面版模型配置](./assets/screenshots/cn-desktop-models.png) |
+
+| 记忆管理 | 聊天回复 |
+| --- | --- |
+| ![Hermes Agent 中文社区桌面版记忆管理](./assets/screenshots/cn-desktop-memory.png) | ![Hermes Agent 中文社区桌面版聊天回复](./assets/screenshots/cn-desktop-chat.png) |
+
+![Hermes Agent 中文社区桌面版项目 review 对话](./assets/screenshots/cn-desktop-review.png)
+
 当前 runtime release：
 
 - [`runtime-v0.14.0-cn.1`](https://github.com/Eynzof/hermes-agent-cn/releases/tag/runtime-v0.14.0-cn.1)

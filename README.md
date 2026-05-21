@@ -26,6 +26,24 @@ If you want the official upstream project, use [NousResearch/hermes-agent](https
 
 `hermes-agent-cn` is the runtime and Dashboard backend used by [Hermes Agent CN Desktop](https://github.com/Eynzof/hermes-cn-desktop-v2). The desktop app downloads signed runtime artifacts from this repository's GitHub Releases and runs the Dashboard locally.
 
+## Desktop app preview
+
+These screenshots show the CN desktop shell backed by this runtime, including the workspace, light and dark themes, built-in skills, model configuration, memory, and chat/review flows.
+
+| Workspace light theme | Workspace dark theme |
+| --- | --- |
+| ![Hermes Agent CN Desktop workspace light theme](./assets/screenshots/cn-desktop-workbench-light.png) | ![Hermes Agent CN Desktop workspace dark theme](./assets/screenshots/cn-desktop-workbench-dark.png) |
+
+| Built-in skills | Model configuration |
+| --- | --- |
+| ![Hermes Agent CN Desktop built-in skills](./assets/screenshots/cn-desktop-skills.png) | ![Hermes Agent CN Desktop model configuration](./assets/screenshots/cn-desktop-models.png) |
+
+| Memory management | Chat response |
+| --- | --- |
+| ![Hermes Agent CN Desktop memory management](./assets/screenshots/cn-desktop-memory.png) | ![Hermes Agent CN Desktop chat response](./assets/screenshots/cn-desktop-chat.png) |
+
+![Hermes Agent CN Desktop code review conversation](./assets/screenshots/cn-desktop-review.png)
+
 Current runtime release:
 
 - [`runtime-v0.14.0-cn.1`](https://github.com/Eynzof/hermes-agent-cn/releases/tag/runtime-v0.14.0-cn.1)

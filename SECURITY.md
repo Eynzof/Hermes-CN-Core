@@ -6,10 +6,12 @@ scope for vulnerability reports.
 
 ## 1. Reporting a Vulnerability
 
-Report privately via [GitHub Security Advisories](https://github.com/NousResearch/hermes-agent/security/advisories/new)
-or **security@nousresearch.com**. Do not open public issues for
-security vulnerabilities. **Hermes Agent does not operate a bug
-bounty program.**
+Report privately via [GitHub Security Advisories](https://github.com/Eynzof/hermes-agent-cn/security/advisories/new)
+for this fork. If the issue also affects upstream Hermes Agent, please
+state that clearly so maintainers can coordinate with
+[NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent).
+Do not open public issues for security vulnerabilities. This fork does
+not operate a bug bounty program.
 
 A useful report includes:
 

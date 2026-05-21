@@ -2,6 +2,9 @@
 
 Thank you for contributing to Hermes Agent! This guide covers everything you need: setting up your dev environment, understanding the architecture, deciding what to build, and getting your PR merged.
 
+> **Fork note:** this repository is the `Eynzof/hermes-agent-cn` downstream fork of `NousResearch/hermes-agent`. For fork-specific behavior, runtime releases, and upstream sync rules, read [`FORK_NOTES.md`](./FORK_NOTES.md) and [`MAINTAINING.md`](./MAINTAINING.md) before opening larger PRs. Broadly useful fixes should be prepared so they can be upstreamed cleanly when possible.
+
+
 ---
 
 ## Contribution Priorities

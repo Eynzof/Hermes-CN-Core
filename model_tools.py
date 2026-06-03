@@ -27,12 +27,233 @@ import asyncio
 import logging
 import threading
 import time
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional, Tuple, Callable
 
 from tools.registry import discover_builtin_tools, registry
 from toolsets import resolve_toolset, validate_toolset
 
+_TOOL_FIELD_ALIASES_GENERAL = {
+    "operation": "action",
+    "op": "action",
+    "instruction": "prompt",
+    "task": "prompt",
+    "request": "prompt",
+    "objective": "goal",
+    "options": "choices",
+    "answers": "choices",
+    "n": "limit",
+    "max": "limit",
+    "max_results": "limit",
+    "top_n": "limit",
+    "num": "limit",
+    "skip": "offset",
+    "lines": "limit",
+    "title": "name",
+}
+
+_TOOL_FIELD_ALIASES_FILE = {
+    "file": "path",
+    "filepath": "path",
+    "file_path": "path",
+    "filename": "path",
+    "file_name": "path",
+    "dir": "path",
+    "directory": "path",
+    "folder": "path",
+    "location": "path",
+    "body": "content",
+    "source": "content",
+    "value": "content",
+    "write_mode": "mode",
+    "out": "output_path",
+    "output": "output_path",
+    "destination": "output_path",
+    "dest": "output_path",
+    "paths": "file_path",
+    "file_list": "file_path",
+    "filter": "file_glob",
+    "file_pattern": "file_glob",
+    "glob": "file_glob",
+    "regex": "pattern",
+    "expr": "pattern",
+    "expression": "pattern",
+    "match": "pattern",
+    "original": "old_string",
+    "old_str": "old_string",
+    "old_content": "old_string",
+    "replace_with": "new_string",
+    "new_str": "new_string",
+    "new_content": "new_string",
+    "replacement": "new_string",
+    "all": "replace_all",
+    "cross_profile_guard": "cross_profile",
+}
+
+_TOOL_FIELD_ALIASES_SHELL = {
+    "cmd": "command",
+    "script": "command",
+    "shell_command": "command",
+    "program": "code",
+    "snippet": "code",
+    "python": "code",
+    "wait": "timeout",
+    "delay": "timeout",
+    "time_limit": "timeout",
+    "duration": "timeout",
+    "bg": "background",
+    "async": "background",
+    "detach": "background",
+    "arguments": "acp_args",
+    "params": "acp_args",
+    "arg": "acp_args",
+    "parameters": "acp_args",
+    "working_dir": "workdir",
+    "work_dir": "workdir",
+    "cwd": "workdir",
+    "interactive": "pty",
+    "terminal_mode": "pty",
+    "notify": "notify_on_complete",
+    "patterns": "watch_patterns",
+    "watch": "watch_patterns",
+    "stdin": "data",
+    "process_id": "session_id",
+    "pid": "session_id",
+}
+
+_TOOL_FIELD_ALIASES_WEB = {
+    "link": "image_url",
+    "href": "image_url",
+    "address": "image_url",
+    "uri": "image_url",
+    "site": "image_url",
+    "image": "image_url",
+    "img": "image_url",
+    "src": "image_url",
+    "photo": "image_url",
+    "picture": "image_url",
+    "q": "query",
+    "keyword": "query",
+    "keywords": "query",
+    "term": "query",
+    "search": "query",
+    "query": "question",
+}
+
+_TOOL_FIELD_ALIASES_TASK = {
+    "tools": "toolsets",
+    "jobs": "tasks",
+    "batch": "tasks",
+    "background": "context",
+    "instructions": "goal",
+    "role_type": "role",
+    "command": "acp_command",
+    "args": "acp_args",
+}
+
+_TOOL_FIELD_ALIASES_TODO = {
+    "items": "todos",
+    "list": "todos",
+    "tasks": "todos",
+    "entries": "todos",
+    "update": "merge",
+}
+
+_TOOL_FIELD_ALIASES_INPUT = {
+    "input": "text",
+}
+
+_TOOL_FIELD_ALIASES_SEARCH = {
+    "search_type": "target",
+    "format": "output_mode",
+    "order": "sort",
+    "message_id": "around_message_id",
+    "around": "around_message_id",
+    "msg_id": "around_message_id",
+    "window_size": "window",
+    "roles": "role_filter",
+    "context_lines": "context",
+    "queries": "question",
+}
+
+_TOOL_FIELD_ALIASES_MEMORY = {
+    "old": "old_text",
+    "previous": "old_text",
+}
+
+_TOOL_FIELD_ALIASES_CRONJOB = {
+    "cron": "schedule",
+    "repeat_count": "repeat",
+    "delivery": "deliver",
+    "disable_agent": "no_agent",
+    "without_agent": "no_agent",
+    "toolsets": "enabled_toolsets",
+    "profile_name": "profile",
+}
+
+_TOOL_FIELD_ALIASES_SKILL = {
+    "type": "category",
+    "group": "category",
+    "tag": "category",
+    "umbrella": "absorbed_into",
+    "merge_into": "absorbed_into",
+}
+TOOL_FIELD_ALIASES = {
+    **_TOOL_FIELD_ALIASES_GENERAL,
+    **_TOOL_FIELD_ALIASES_FILE,
+    **_TOOL_FIELD_ALIASES_SHELL,
+    **_TOOL_FIELD_ALIASES_WEB,
+    **_TOOL_FIELD_ALIASES_TASK,
+    **_TOOL_FIELD_ALIASES_TODO,
+    **_TOOL_FIELD_ALIASES_INPUT,
+    **_TOOL_FIELD_ALIASES_SEARCH,
+    **_TOOL_FIELD_ALIASES_MEMORY,
+    **_TOOL_FIELD_ALIASES_CRONJOB,
+    **_TOOL_FIELD_ALIASES_SKILL,
+}
+
+# Per-tool alias overrides that take precedence over the global
+# TOOL_FIELD_ALIASES.  Use this when a tool has argument names that
+# conflict with global aliases (e.g. ``delegate_task`` uses ``goal``
+# instead of ``prompt``, or ``cronjob`` uses ``action`` instead of
+# ``acp_command``).
+TOOL_SPECIFIC_ALIASES: Dict[str, Dict[str, str]] = {
+    # delegate_task uses 'goal' rather than 'prompt'; redirect LLM
+    # synonyms that would otherwise map to the wrong field globally.
+    "delegate_task": {
+        "task": "goal",
+        "prompt": "goal",
+        "description": "goal",
+    },
+    # cronjob has unique arg names that shouldn't be globally aliased.
+    "cronjob": {
+        "command": "action",
+        "background": "no_agent",
+        "message": "prompt",
+    },
+}
+
 logger = logging.getLogger(__name__)
+# Optional callback for notifying external systems (TUI, ACP) about argument repairs.
+# Signature: (tool_name: str, original_keys: list, repaired_keys: list) -> None
+_arg_repair_callback: Callable[[str, list, list], None] | None = None
+
+
+def set_arg_repair_callback(callback: Callable[[str, list, list], None] | None) -> None:
+    """Register a callback to be notified when tool argument keys are repaired.
+
+    The callback receives (tool_name, original_keys, repaired_keys).
+    Set to None to unregister.
+
+    Note: The callback receives top-level key changes only. Nested key repairs
+    inside objects/arrays are not reported through this callback.
+    """
+    global _arg_repair_callback
+    _arg_repair_callback = callback
+
+
+def get_arg_repair_callback() -> Callable | None:
+    """Return the currently registered argument repair callback."""
+    return _arg_repair_callback
 
 
 # =============================================================================
@@ -600,6 +821,175 @@ def _sanitize_tool_error(error_msg: str) -> str:
 
 
 # =========================================================================
+# Tool argument key repair
+# =========================================================================
+
+def repair_tool_arg_keys(
+    tool_name: str,
+    args: Dict[str, Any],
+    _recursive: bool = False,
+    _properties: dict[str, Any] | None = None,
+) -> Dict[str, Any]:
+    """Repair tool call argument keys to match the tool's JSON Schema.
+
+    LLMs frequently use alternative field names (e.g. "file" instead of
+    "path", "text" instead of "title").  This function maps common aliases,
+    applies per-tool overrides (see ``TOOL_SPECIFIC_ALIASES``), and falls
+    back to fuzzy matching so the call succeeds instead of failing with
+    "unknown parameter".
+
+    Per-tool aliases are checked first and take precedence over global
+    aliases when they disagree.
+
+    Runs *before* ``coerce_tool_args()`` so repaired keys then have their
+    values coerced as usual.
+    """
+    if not args or not isinstance(args, dict):
+        return args
+
+    if _recursive:
+        properties = _properties
+    else:
+        schema = registry.get_schema(tool_name)
+        if not schema:
+            return args
+        properties = (schema.get("parameters") or {}).get("properties")
+
+    if not properties:
+        return args
+
+    expected = set(properties.keys())
+    if not expected:
+        return args
+
+    # Build a set of keys that are already correct (exact match).
+    already_ok = set(args.keys()) & expected
+    missing = expected - already_ok
+
+    # For top-level calls, check whether the schema contains nested
+    # objects or arrays of objects that might need recursive repair.
+    has_nested_schema = False
+    if not _recursive:
+        has_nested_schema = any(
+            (
+                p.get("type") == "object" and "properties" in p
+            )
+            or (
+                p.get("type") == "array"
+                and isinstance(p.get("items"), dict)
+                and p["items"].get("type") == "object"
+                and "properties" in p["items"]
+            )
+            for p in properties.values()
+        )
+
+    if not missing and not has_nested_schema:
+        return args
+
+    # Try alias mapping for missing fields.
+    # Per-tool aliases take precedence over global aliases.
+    repaired = dict(args)
+    used_aliases: set[str] = set()
+    tool_aliases = TOOL_SPECIFIC_ALIASES.get(tool_name, {})
+
+    for bad_key in list(repaired.keys()):
+        if bad_key in expected:
+            continue
+        canonical = tool_aliases.get(bad_key) or TOOL_FIELD_ALIASES.get(bad_key)
+        if canonical and canonical in missing:
+            repaired[canonical] = repaired.pop(bad_key)
+            missing.discard(canonical)
+            used_aliases.add(bad_key)
+
+    # Fuzzy match remaining missing fields against still-unmapped keys.
+    remaining_bad = [k for k in repaired if k not in expected]
+    if remaining_bad and missing:
+        import difflib
+        candidates: list[tuple[float, str, str]] = []
+        for miss in missing:
+            if len(miss) < 4:
+                continue
+            cutoff = 0.75 if len(miss) >= 8 else 0.80
+            close = difflib.get_close_matches(
+                miss, remaining_bad, n=1, cutoff=cutoff
+            )
+            if close:
+                matched = close[0]
+                if len(matched) < 4:
+                    continue
+                ratio = difflib.SequenceMatcher(None, miss, matched).ratio()
+                candidates.append((ratio, miss, matched))
+
+        candidates.sort(key=lambda x: x[0], reverse=True)
+        used_fuzzy: set[str] = set()
+        for _ratio, miss, matched in candidates:
+            if matched in used_fuzzy:
+                continue
+            used_fuzzy.add(matched)
+            repaired[miss] = repaired.pop(matched)
+
+    if not _recursive:
+        _repair_nested_args(tool_name, repaired, properties)
+
+    return repaired
+
+
+def _repair_nested_args(
+    tool_name: str,
+    args: Dict[str, Any],
+    schema_properties: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Recursively repair field names inside nested dicts and lists of dicts.
+
+    Walks through *args* using *schema_properties* to decide when a value
+    should be treated as a nested object or an array of objects, then
+    calls :func:`repair_tool_arg_keys` on each nested dict.
+    """
+    if not isinstance(args, dict) or not schema_properties:
+        return args
+
+    for key, value in list(args.items()):
+        prop_schema = schema_properties.get(key)
+        if not prop_schema:
+            continue
+
+        # Nested object with its own properties.
+        if (
+            isinstance(value, dict)
+            and prop_schema.get("type") == "object"
+            and "properties" in prop_schema
+        ):
+            inner_props = prop_schema["properties"]
+            args[key] = repair_tool_arg_keys(
+                tool_name, value, _recursive=True, _properties=inner_props
+            )
+            _repair_nested_args(tool_name, args[key], inner_props)
+
+        # Array of objects with properties.
+        elif isinstance(value, list) and prop_schema.get("type") == "array":
+            items_schema = prop_schema.get("items", {})
+            if (
+                isinstance(items_schema, dict)
+                and items_schema.get("type") == "object"
+                and "properties" in items_schema
+            ):
+                inner_props = items_schema["properties"]
+                new_list: list[Any] = []
+                for item in value:
+                    if isinstance(item, dict):
+                        repaired_item = repair_tool_arg_keys(
+                            tool_name, item, _recursive=True, _properties=inner_props
+                        )
+                        _repair_nested_args(tool_name, repaired_item, inner_props)
+                        new_list.append(repaired_item)
+                    else:
+                        new_list.append(item)
+                args[key] = new_list
+
+    return args
+
+
+# =========================================================================
 # Tool argument type coercion
 # =========================================================================
 
@@ -835,6 +1225,26 @@ def handle_function_call(
     Returns:
         Function result as a JSON string.
     """
+    # Repair common LLM field-name drift (e.g. "file"→"path") before coercion
+    repaired_args = repair_tool_arg_keys(function_name, function_args)
+    if repaired_args != function_args:
+        logger.info(
+            "Repaired tool argument keys for %s: %s -> %s",
+            function_name, list(function_args.keys()), list(repaired_args.keys()),
+        )
+        # Note: the callback reports top-level key changes only. Nested key
+        # repairs inside objects/arrays are not reported through this hook.
+        if _arg_repair_callback is not None:
+            try:
+                _arg_repair_callback(
+                    function_name,
+                    list(function_args.keys()),
+                    list(repaired_args.keys()),
+                )
+            except Exception:
+                pass  # Never let callback failure break tool dispatch
+    function_args = repaired_args
+
     # Coerce string arguments to their schema-declared types (e.g. "42"→42)
     function_args = coerce_tool_args(function_name, function_args)
 

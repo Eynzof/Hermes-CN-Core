@@ -17,6 +17,7 @@ This document explains the fork-specific changes on `main` that diverge from ups
 | **P-010** | `hermes_cli/config.py` | Registers `LONGCAT_API_KEY` in `OPTIONAL_ENV_VARS` | CN model settings need first-class LongCat credentials in the env panel | Won't be upstreamed unless upstream adopts LongCat |
 | **P-011** | `tui_gateway/server.py` | Adds `slug_filter` to `model.options` and `provider.probe` RPC | desktop-v2 needs filtered model picker options and a lightweight provider health probe | Maybe upstream |
 | **P-012** | `hermes_cli/main.py` | `_model_flow_anthropic()` prompts for optional custom `base_url` instead of unconditionally removing it | Users running Anthropic-compatible proxies or alternative endpoints need to preserve a custom `base_url` during model setup | Should be upstreamed |
+| **P-013** | `model_tools.py`, `tests/run_agent/test_repair_tool_arg_keys.py` | Adds automatic tool argument key repair (`repair_tool_arg_keys`) with alias tables, per-tool overrides, fuzzy fallback, nested object/array recursion, and an optional callback hook; integrated into `handle_function_call` before type coercion | LLMs often misname arguments (e.g. "file"→"path", "cmd"→"command"); this makes tool dispatch resilient to common drift without weakening JSON Schemas | Should be upstreamed |
 
 > **P-001** (provider dict-vs-list mismatch in `tui_gateway/server.py`) — **dropped from this fork**. Upstream has since fixed it; the line `user_provs = cfg.get("providers")` in `_apply_model_switch` already does the right thing.
 
@@ -223,6 +224,28 @@ opening an upstream PR.
 **Side effects**: None. The runtime (`runtime_provider.py`) already reads `model_cfg.get("base_url")` for the `anthropic` provider, so no runtime changes are required.
 
 **Should we upstream?** Yes. The change is backward-compatible and enables legitimate use cases for alternative Anthropic-compatible endpoints.
+
+---
+
+### P-013: Automatic tool argument key repair in `handle_function_call`
+
+**Symptom**: LLM tool calls frequently fail with "unknown parameter" because the model uses synonyms or typos for argument names (e.g. `file` instead of `path`, `cmd` instead of `command`, `backgroud` instead of `background`).
+
+**Root cause**: Hermes' JSON Schemas are strict. When an LLM drifts from the canonical field name, `handle_function_call` passes the bad key straight through to the tool handler, which often rejects it.
+
+**What the patch does**:
+- Introduces `repair_tool_arg_keys()` and `_repair_nested_args()` in `model_tools.py`.
+- Defines `TOOL_FIELD_ALIASES` — a large global alias table covering general, file, shell, web, task, todo, input, search, memory, cronjob, and skill argument names.
+- Defines `TOOL_SPECIFIC_ALIASES` for per-tool overrides (e.g. `delegate_task` maps `task`→`goal` instead of `task`→`prompt`; `cronjob` maps `command`→`action`).
+- Uses `difflib.get_close_matches` as a fuzzy fallback for typos when no alias matches.
+- Recursively repairs keys inside nested objects and arrays of objects, guided by the schema's `properties` and `items` definitions.
+- Adds an optional callback hook (`set_arg_repair_callback`) so external systems (TUI, ACP) can be notified of top-level key repairs.
+- Hooks the repair into `handle_function_call()` so it runs *before* `coerce_tool_args()`, meaning repaired keys are still type-coerced as usual.
+- Ships comprehensive tests in `tests/run_agent/test_repair_tool_arg_keys.py`.
+
+**Side effects**: Minimal. The function is a pure key-mapping transform; unknown keys are left untouched. The fuzzy matcher only kicks in for keys ≥4 chars with a similarity ratio ≥0.75–0.80, so random fields are unlikely to be falsely renamed.
+
+**Should we upstream?** Yes. This is a generic robustness improvement that benefits every Hermes deployment regardless of platform or provider.
 
 ---
 

@@ -119,12 +119,62 @@ jobs:
           # Install the package plus dashboard extras into the build env so the
           # frozen runtime never tries to lazy-install fastapi/uvicorn on a
           # user's machine.
-          # MiniMax-CN is wired through the Anthropic Messages transport.
-          # The SDK is intentionally lazy-imported in normal pip installs, so
-          # the frozen runtime must install and collect it explicitly.
-          pip install -e ".[web,anthropic]"
+          # The `cn-desktop` aggregate extra pre-bakes every backend the frozen
+          # runtime exposes: dashboard (web), the Anthropic transport (MiniMax-CN
+          # rides on Anthropic Messages), the native MCP client (issue #16), and
+          # the 飞书 / 钉钉 / 企业微信 / 微信 IM adapters. The frozen binary CANNOT
+          # lazy-install via tools/lazy_deps.py (no working pip inside a
+          # PyInstaller binary), so anything not bundled here is simply
+          # unavailable at runtime — and `pip install <pkg>` on the host does NOT
+          # help, since the frozen runtime ships its own interpreter + packages.
+          # Keep this in sync with the cn-desktop extra in pyproject.toml.
+          pip install -e ".[cn-desktop]"
           # Build tooling
           pip install pyinstaller==6.* cryptography
+
+      - name: Verify platform backends importable (build env)
+        shell: bash
+        run: |
+          # Fail the build BEFORE PyInstaller if the cn-desktop extra is missing
+          # a dependency — this is the exact failure mode behind issue #16 (MCP)
+          # and the Feishu/DingTalk/WeCom/WeChat desktop reports, where an
+          # adapter silently degraded because its SDK was never installed.
+          python - <<'PY'
+          import importlib, sys
+          missing = []
+          for m in ("mcp", "lark_oapi", "dingtalk_stream", "alibabacloud_dingtalk",
+                    "alibabacloud_tea_openapi", "alibabacloud_tea_util",
+                    "aiohttp", "qrcode", "defusedxml", "certifi"):
+              try:
+                  importlib.import_module(m)
+              except Exception as e:
+                  missing.append(f"{m}: {type(e).__name__}: {e}")
+          try:
+              from cryptography.hazmat.primitives.ciphers import Cipher  # weixin/wecom AES
+          except Exception as e:
+              missing.append(f"cryptography: {e}")
+          import gateway.platforms.feishu as fs
+          import gateway.platforms.dingtalk as dt
+          import gateway.platforms.wecom_callback as wc
+          import gateway.platforms.weixin as wx
+          flags = {
+              "feishu.FEISHU_AVAILABLE": fs.FEISHU_AVAILABLE,
+              "dingtalk.DINGTALK_STREAM_AVAILABLE": dt.DINGTALK_STREAM_AVAILABLE,
+              "dingtalk.CARD_SDK_AVAILABLE": dt.CARD_SDK_AVAILABLE,
+              "wecom.DEFUSEDXML_AVAILABLE": wc.DEFUSEDXML_AVAILABLE,
+              "wecom.AIOHTTP_AVAILABLE": wc.AIOHTTP_AVAILABLE,
+              "weixin.AIOHTTP_AVAILABLE": wx.AIOHTTP_AVAILABLE,
+              "weixin.CRYPTO_AVAILABLE": wx.CRYPTO_AVAILABLE,
+          }
+          for k, v in flags.items():
+              print(("OK   " if v else "FAIL ") + k)
+              if not v:
+                  missing.append(f"adapter flag {k} is False")
+          if missing:
+              print("\n=== build env is missing CN desktop backends ===", *missing, sep="\n")
+              sys.exit(1)
+          print("\nAll CN desktop platform backends importable in the build env")
+          PY
 
       - name: Build self-contained executable
         shell: bash
@@ -145,6 +195,14 @@ jobs:
             --collect-submodules uvicorn \
             --collect-submodules pydantic \
             --collect-submodules anthropic \
+            --collect-submodules mcp \
+            --collect-submodules lark_oapi \
+            --collect-submodules dingtalk_stream \
+            --collect-submodules alibabacloud_dingtalk \
+            --collect-submodules alibabacloud_tea_openapi \
+            --collect-submodules alibabacloud_tea_util \
+            --collect-submodules aiohttp \
+            --collect-submodules qrcode \
             --collect-data hermes_cli \
             --collect-data gateway \
             --collect-data plugins \
@@ -158,6 +216,10 @@ jobs:
             --copy-metadata uvicorn \
             --copy-metadata pydantic \
             --copy-metadata anthropic \
+            --copy-metadata mcp \
+            --copy-metadata lark_oapi \
+            --copy-metadata dingtalk_stream \
+            --copy-metadata alibabacloud_dingtalk \
             --paths . \
             -p . \
             hermes_cli/main.py
@@ -214,16 +276,29 @@ jobs:
           NAME="hermes-agent-cn-runtime-${{ matrix.platform }}-${{ matrix.arch }}"
           scripts/sign_macos_runtime_payload.sh "dist/$NAME"
 
-      - name: Verify frozen provider SDKs
+      - name: Verify frozen runtime backends
         shell: bash
         run: |
           NAME="hermes-agent-cn-runtime-${{ matrix.platform }}-${{ matrix.arch }}"
-          metadata_dir="$(find "dist/$NAME/_internal" -maxdepth 1 -type d -name 'anthropic-*.dist-info' -print -quit)"
-          if [[ -z "$metadata_dir" ]]; then
-            echo "Frozen runtime is missing anthropic package metadata" >&2
-            find "dist/$NAME" -maxdepth 3 -type d -name 'anthropic*' -print >&2
-            exit 1
-          fi
+          internal="dist/$NAME/_internal"
+          # Every backend bundled via the cn-desktop extra must leave its
+          # dist-info in the frozen output. A missing one means PyInstaller did
+          # not collect the package — the silent-degradation failure mode from
+          # issue #16 (MCP) and the 飞书/钉钉/企微/微信 desktop reports, where an
+          # adapter quietly fell back to "unavailable" because its SDK never
+          # shipped. dist-info names are the normalized (underscored) project
+          # names: anthropic, mcp, lark-oapi -> lark_oapi, etc.
+          fail=0
+          for pkg in anthropic mcp lark_oapi dingtalk_stream alibabacloud_dingtalk \
+                     aiohttp qrcode defusedxml cryptography; do
+            if [[ -z "$(find "$internal" -maxdepth 1 -type d -name "${pkg}-*.dist-info" -print -quit)" ]]; then
+              echo "::error::Frozen runtime is missing ${pkg} package metadata" >&2
+              find "dist/$NAME" -maxdepth 3 -type d -iname "${pkg}*" -print >&2
+              fail=1
+            fi
+          done
+          [[ "$fail" == 0 ]] || exit 1
+          echo "All cn-desktop backends present in the frozen runtime"
 
       - name: Smoke-test the binary
         shell: bash

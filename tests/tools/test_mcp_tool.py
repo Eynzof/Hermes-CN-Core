@@ -1159,6 +1159,64 @@ class TestGracefulFallback:
             result = discover_mcp_tools()
             assert result == []
 
+    def test_mcp_unavailable_with_servers_warns(self, caplog):
+        """SDK missing but mcp_servers configured -> loud WARNING (issue #16).
+
+        This is the silent-failure mode that hid the missing-SDK bug in the
+        frozen desktop runtime: discovery returned [] and logged nothing at
+        INFO, so users saw no MCP tools and no explanation.
+        """
+        import logging
+
+        with patch("tools.mcp_tool._MCP_AVAILABLE", False), \
+             patch("tools.mcp_tool._warned_mcp_sdk_unavailable", False), \
+             patch(
+                 "tools.mcp_tool._load_mcp_config",
+                 return_value={"vision": {"command": "python", "args": ["s.py"]}},
+             ):
+            from tools.mcp_tool import discover_mcp_tools
+            with caplog.at_level(logging.WARNING, logger="tools.mcp_tool"):
+                result = discover_mcp_tools()
+            assert result == []
+            assert any(
+                r.levelno == logging.WARNING and "MCP SDK is not available" in r.message
+                for r in caplog.records
+            )
+
+    def test_mcp_unavailable_without_servers_stays_quiet(self, caplog):
+        """SDK missing and no servers configured -> no WARNING (normal path)."""
+        import logging
+
+        with patch("tools.mcp_tool._MCP_AVAILABLE", False), \
+             patch("tools.mcp_tool._warned_mcp_sdk_unavailable", False), \
+             patch("tools.mcp_tool._load_mcp_config", return_value={}):
+            from tools.mcp_tool import discover_mcp_tools
+            with caplog.at_level(logging.WARNING, logger="tools.mcp_tool"):
+                result = discover_mcp_tools()
+            assert result == []
+            assert not [r for r in caplog.records if r.levelno == logging.WARNING]
+
+    def test_mcp_unavailable_warns_only_once(self, caplog):
+        """Repeated discovery (reloads, cron ticks) warns at most once."""
+        import logging
+
+        with patch("tools.mcp_tool._MCP_AVAILABLE", False), \
+             patch("tools.mcp_tool._warned_mcp_sdk_unavailable", False), \
+             patch(
+                 "tools.mcp_tool._load_mcp_config",
+                 return_value={"vision": {"command": "python", "args": ["s.py"]}},
+             ):
+            from tools.mcp_tool import discover_mcp_tools
+            with caplog.at_level(logging.WARNING, logger="tools.mcp_tool"):
+                discover_mcp_tools()
+                discover_mcp_tools()
+                discover_mcp_tools()
+            warnings = [
+                r for r in caplog.records
+                if r.levelno == logging.WARNING and "MCP SDK is not available" in r.message
+            ]
+            assert len(warnings) == 1
+
     def test_no_servers_returns_empty(self):
         """No MCP servers configured -> empty list."""
         with patch("tools.mcp_tool._MCP_AVAILABLE", True), \

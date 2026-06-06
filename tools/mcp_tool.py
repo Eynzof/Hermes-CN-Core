@@ -1996,6 +1996,11 @@ class MCPServerTask:
 
 _servers: Dict[str, MCPServerTask] = {}
 
+# Emit the "MCP configured but SDK missing" warning at most once per process.
+# discover_mcp_tools() is called repeatedly (startup, /reload-mcp, cron ticks),
+# so without this guard a frozen build lacking the SDK would spam the log.
+_warned_mcp_sdk_unavailable = False
+
 # Circuit breaker: consecutive error counts per server.  After
 # _CIRCUIT_BREAKER_THRESHOLD consecutive failures, the handler returns
 # a "server unreachable" message that tells the model to stop retrying,
@@ -3608,7 +3613,28 @@ def discover_mcp_tools() -> List[str]:
         List of all registered MCP tool names.
     """
     if not _MCP_AVAILABLE:
-        logger.debug("MCP SDK not available -- skipping MCP tool discovery")
+        # When the user has actually configured mcp_servers but the SDK is
+        # missing, stay loud: this is the silent-failure mode behind issue #16,
+        # where a frozen desktop runtime shipped without the `mcp` package
+        # registered no tools and logged nothing at INFO. Warn once (not on
+        # every idempotent re-discovery) and only when servers are configured —
+        # the no-MCP user must stay on the quiet debug path.
+        global _warned_mcp_sdk_unavailable
+        if not _warned_mcp_sdk_unavailable:
+            configured = False
+            try:
+                configured = bool(_load_mcp_config())
+            except Exception:
+                configured = False
+            if configured:
+                logger.warning(
+                    "mcp_servers are configured but the MCP SDK is not available "
+                    "in this runtime -- no MCP tools will be registered. Install "
+                    "the 'mcp' package (frozen/desktop builds must bundle it)."
+                )
+                _warned_mcp_sdk_unavailable = True
+        if not _warned_mcp_sdk_unavailable:
+            logger.debug("MCP SDK not available -- skipping MCP tool discovery")
         return []
 
     servers = _load_mcp_config()

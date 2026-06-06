@@ -250,6 +250,31 @@ all = [
   "hermes-agent[youtube]",
 ]
 
+# Aggregate extra for the frozen CN Desktop runtime (the PyInstaller artifacts
+# built by release-runtime.yml). The frozen build CANNOT lazy-install — the
+# tools/lazy_deps.py path needs a working pip that a PyInstaller binary doesn't
+# have — so every backend the desktop exposes to users MUST be pre-baked here.
+# This intentionally diverges from [all]: [all]'s policy *excludes* lazy-
+# installable backends, which is right for source/Nix/Homebrew installs but
+# wrong for the frozen runtime where lazy install is impossible. Keep this in
+# sync with the --collect-submodules / Verify steps in release-runtime.yml.
+# See issue #16 (MCP) and the Feishu/DingTalk/WeCom/WeChat desktop reports.
+cn-desktop = [
+  "hermes-agent[web]",        # dashboard: fastapi / uvicorn / starlette
+  "hermes-agent[anthropic]",  # native Anthropic transport (MiniMax-CN etc.)
+  "hermes-agent[mcp]",        # native MCP client SDK (issue #16)
+  "hermes-agent[feishu]",     # 飞书 / Lark — lark-oapi
+  "hermes-agent[dingtalk]",   # 钉钉 — dingtalk-stream + alibabacloud SDK
+  "hermes-agent[wecom]",      # 企业微信 callback — defusedxml
+  # 微信 (gateway/platforms/weixin.py) has no dedicated extra. Its adapter —
+  # plus the Feishu webhook and WeCom send paths — need aiohttp + qrcode +
+  # cryptography (certifi arrives transitively via httpx). Pinned to match the
+  # messaging / feishu extras so the resolver can't drift to another version.
+  "aiohttp==3.13.3",
+  "qrcode==7.4.2",
+  "cryptography==46.0.7",
+]
+
 [project.scripts]
 hermes = "hermes_cli.main:main"
 hermes-agent = "run_agent:main"

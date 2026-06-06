@@ -21,6 +21,8 @@
 | **P-011** | `tui_gateway/server.py` | 给 `model.options` 增加 `slug_filter`，并增加 `provider.probe` RPC | desktop 需要过滤模型选择器，并轻量探测 provider 状态 | 可考虑上游 |
 | **P-012** | `hermes_cli/main.py` | `_model_flow_anthropic()` 支持保留或自定义 `base_url`，不再无条件删除 | 使用 Anthropic 兼容代理或私有端点的用户需要在模型设置流程中保留自定义 `base_url` | 建议上游 |
 | **P-013** | `model_tools.py`, `tests/run_agent/test_repair_tool_arg_keys.py` | 在 `handle_function_call` 中增加自动参数键修复：全局别名表、工具级覆盖、模糊匹配、嵌套对象/数组递归修复，以及可选回调通知 | LLM 经常把参数名写错（如 `file`→`path`、`cmd`→`command`），此前会直接报 "unknown parameter"；该补丁在不放宽 JSON Schema 的前提下提高工具调用的容错率 | 建议上游 |
+| **P-014** | `.github/workflows/release-runtime.yml`, `tools/mcp_tool.py`, `hermes_cli/config.py`, `docs/RUNTIME_RELEASES.md`, `tests/tools/test_mcp_tool.py` | 把原生 MCP 客户端 SDK 打进冻结 runtime（安装入口后并入 `cn-desktop` extra，见 P-015；外加 `--collect-submodules/--copy-metadata mcp` + CI 断言 `mcp-*.dist-info` 存在）；并让 `discover_mcp_tools()` 在已配置 `mcp_servers` 但 SDK 缺失时输出一次 WARNING，而不是在 debug 级别静默跳过 | issue #16：desktop runtime 打包时缺少 `mcp` extra，导致 `_MCP_AVAILABLE=False`，已配置的 `mcp_servers` 不注册任何工具且 INFO 日志无任何提示。打包改动是 CN 特有，诊断日志与已知根键则是通用改进 | 打包改动 CN 特有；`mcp_tool.py` 告警与 `mcp_servers` 根键建议上游 |
+| **P-015** | `pyproject.toml`, `.github/workflows/release-runtime.yml`, `docs/RUNTIME_RELEASES.md`, `uv.lock` | 新增 `cn-desktop` 聚合 extra，把冻结 runtime 暴露的所有后端预打包（`web`、`anthropic`、`mcp`、`feishu`、`dingtalk`、`wecom`，以及微信用的 `aiohttp`/`qrcode`/`cryptography`）。发布流程改为安装 `.[cn-desktop]`，收集各 IM SDK 子模块与元数据，新增"构建环境 import 冒烟"，并断言每个后端的 `dist-info` 出现在冻结产物中 | 桌面反馈：飞书/钉钉/企微/微信适配器因 SDK（`lark-oapi`、`dingtalk-stream` 等）从未被打包、且冻结环境无法懒安装而静默降级为"不可用"。根因同 P-014，推广到所有桌面后端 | 打包 CN 特有；不上游（上游不构建这些产物） |
 
 ## 发布和维护支撑
 
@@ -240,6 +242,43 @@
 **风险和约束**：极低。该函数是纯键名映射变换，无法识别的键保持原样；模糊匹配仅对长度 ≥4 且相似度 ≥0.75–0.80 的键生效，随机字段不会被误改名。
 
 **是否上游**：建议上游。这是与平台、provider 无关的通用健壮性提升，对所有 Hermes 部署都有价值。
+
+---
+
+### P-014：冻结 desktop runtime 缺失原生 MCP 客户端
+
+**现象**（issue #16）：用户在 `~/.hermes/config.yaml` 正确配置了 `mcp_servers`，MCP server 脚本独立运行正常，但 CN Desktop agent 启动后从不连接它——`agent.log` 中没有任何 MCP 发现/连接日志，工具列表里也没有 `mcp_*` 工具。在宿主机执行 `pip install mcp` 也无济于事。
+
+**根因**：原生 MCP 客户端其实已完整实现（`tools/mcp_tool.py`、`discover_mcp_tools()`），但其 SDK 是只存在于 `[mcp]` extra 的可选依赖。runtime 发布流程当时只安装 `.[web,anthropic]`，因此冻结后的 PyInstaller 产物**没有**打进 `mcp` 包。于是冻结 runtime 内 `_MCP_AVAILABLE` 为 `False`，`discover_mcp_tools()` 仅以 `debug` 级别记录后返回 `[]`——在默认 INFO 日志级别下完全不可见。宿主机的 `pip install mcp` 无关紧要，因为冻结 runtime 自带独立解释器和依赖。
+
+**改动内容**：
+- `release-runtime.yml`：把 `mcp` SDK 打进产物（安装入口后并入 `cn-desktop` extra，见 P-015），PyInstaller 增加 `--collect-submodules mcp` 与 `--copy-metadata mcp`，并扩展校验步骤——若缺少 `mcp-*.dist-info` 则直接让构建失败（防止再次悄悄回归）。
+- `tools/mcp_tool.py`：当已配置 `mcp_servers` 但 SDK 不可用时，`discover_mcp_tools()` 改为输出一次 `WARNING`（“mcp_servers are configured but the MCP SDK is not available …”），而非静默的 debug。未配置 MCP 的用户仍走安静的 debug 分支。
+- `hermes_cli/config.py`：把 `mcp_servers` 加入 `_KNOWN_ROOT_KEYS`，让根级 schema 文档保持准确。
+- `docs/RUNTIME_RELEASES.md`：将 MCP 列为 runtime 必备依赖，并更新手动 dry-run 命令。
+- `tests/tools/test_mcp_tool.py`：覆盖“已配置则告警 / 未配置则安静 / 仅告警一次”三种行为。
+
+**风险和约束**：冻结 runtime 体积增加 `mcp` SDK 及其传递依赖（`anyio`/`httpx-sse`/`sse-starlette`，均已随 `web`/`anthropic` 存在）。对已包含 `[mcp]` extra 的源码安装无行为变化。
+
+**是否上游**：打包改动是 CN runtime 特有（上游不构建这些 PyInstaller 产物）；`mcp_tool.py` 的诊断日志与 `mcp_servers` 根键属于通用改进，值得上游。
+
+---
+
+### P-015：冻结 desktop runtime 缺失 IM 平台后端
+
+**现象**：桌面用户正确填了飞书 App ID/Secret 到 `.env`，在 `config.yaml` 加了飞书平台，网关进程也在跑——但就是连不上飞书；打包应用内 `lark-oapi`"无法安装"。钉钉、企业微信、微信同理。
+
+**根因**：和 P-014 完全同源，只是范围更广。IM 适配器（`gateway/platforms/feishu.py`、`dingtalk.py`、`wecom*.py`、`weixin.py`）都在 `try/except` 里导入 SDK，包缺失时降级为 `*_AVAILABLE = False`。这些 SDK 只存在于可选 extra（`[feishu]`→`lark-oapi`、`[dingtalk]`→`dingtalk-stream`+`alibabacloud-*`、`[wecom]`→`defusedxml`；微信**没有** extra，需要 `aiohttp`/`qrcode`/`cryptography`）。`[all]` 的策略故意排除它们，因为它们能通过 `tools/lazy_deps.py` 懒安装——但**冻结的 PyInstaller 二进制里懒安装根本跑不了**（没有可用 pip），而 desktop runtime 当时只装了 `.[web,anthropic,mcp]`，于是一个都没带。用户在宿主机执行的 `pip install lark-oapi` 写进的是系统 Python，冻结 runtime 从不使用。
+
+**改动内容**：
+- `pyproject.toml`：新增 `cn-desktop` 聚合 extra，列出冻结 runtime 必须预打包的所有后端——`web`、`anthropic`、`mcp`、`feishu`、`dingtalk`、`wecom`，外加微信用的 `aiohttp`/`qrcode`/`cryptography`（pin 与现有 extra 对齐）。这是"桌面端打包什么"的单一事实来源，刻意区别于 `[all]` 的懒安装策略。
+- `release-runtime.yml`：安装 `.[cn-desktop]`；为 `lark_oapi`、`dingtalk_stream`、`alibabacloud_dingtalk`（+`alibabacloud_tea_openapi`/`alibabacloud_tea_util`）、`aiohttp`、`qrcode` 增加 `--collect-submodules`/`--copy-metadata`；新增**构建环境 import 冒烟**——逐个 import 适配器并断言其 `*_AVAILABLE` 为 True（缺依赖立即失败）；并把校验步骤推广为断言每个打包后端的 `dist-info` 都在冻结产物里。
+- `docs/RUNTIME_RELEASES.md`：把 `cn-desktop` extra 记录为"以后新增桌面后端"的入口，并标注 `alibabacloud_*` 收集较脆（首次发版需对真实钉钉机器人做连通冒烟）。
+- `uv.lock`：为新 extra 重新生成（`uv lock --check` 通过）。
+
+**风险和约束**：冻结 runtime 体积增加 IM SDK 及其传递依赖（尤其是纯 Python 的 `alibabacloud_*` 链）。它们都是纯 Python、有跨平台 wheel/sdist——不像 `matrix` 的 `python-olm` 需要 C 工具链，那个仍刻意排除。对源码安装无影响。
+
+**是否上游**：否。上游不构建这些 PyInstaller 产物，`cn-desktop` extra 与打包均为 CN runtime 特有。
 
 ---
 

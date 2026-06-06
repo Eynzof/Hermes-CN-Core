@@ -123,7 +123,7 @@ launch (or via the in-app "check for updates" flow).
 ## Manual dry run
 
 ```
-$ pip install -e ".[web,anthropic,mcp]"
+$ pip install -e ".[cn-desktop]"
 $ pip install pyinstaller cryptography
 $ pyinstaller --noconfirm --name hermes-agent-cn-runtime-win32-x64 \
     --onedir --console \
@@ -131,7 +131,14 @@ $ pyinstaller --noconfirm --name hermes-agent-cn-runtime-win32-x64 \
     --collect-submodules fastapi --collect-submodules starlette \
     --collect-submodules uvicorn --collect-submodules pydantic \
     --collect-submodules anthropic --collect-submodules mcp \
+    --collect-submodules lark_oapi --collect-submodules dingtalk_stream \
+    --collect-submodules alibabacloud_dingtalk \
+    --collect-submodules alibabacloud_tea_openapi \
+    --collect-submodules alibabacloud_tea_util \
+    --collect-submodules aiohttp --collect-submodules qrcode \
     --copy-metadata anthropic --copy-metadata mcp \
+    --copy-metadata lark_oapi --copy-metadata dingtalk_stream \
+    --copy-metadata alibabacloud_dingtalk \
     --collect-data hermes_cli --collect-data gateway --collect-data plugins \
     --paths . hermes_cli/main.py
 $ ./dist/hermes-agent-cn-runtime-win32-x64/hermes-agent-cn-runtime-win32-x64.exe dashboard --help
@@ -152,15 +159,27 @@ $ (cd dist && zip -r -y ../out/hermes-agent-cn-runtime-darwin-arm64.zip hermes-a
 * **Dashboard deps are bundled**: runtime artifacts must install `.[web]` and
   collect FastAPI/Uvicorn submodules so the frozen binary never lazy-installs
   `fastapi` or `uvicorn` on the user's machine.
-* **Native MCP client is bundled**: runtime artifacts must install `.[mcp]` and
-  collect the `mcp` submodules + metadata. The SDK lives only in the `[mcp]`
-  extra, so a build that installs just `.[web,anthropic]` ships without it —
-  `tools/mcp_tool.py` then sets `_MCP_AVAILABLE=False` and `discover_mcp_tools()`
-  silently registers nothing, so a desktop user's `mcp_servers` config never
-  connects (issue #16). A `pip install mcp` on the host does not help — the
-  frozen runtime uses its own bundled interpreter and packages. The release
-  workflow's "Verify frozen provider SDKs" step asserts `mcp-*.dist-info` is
-  present so this can't regress unnoticed.
+* **Backends are bundled via the `cn-desktop` extra**: the runtime installs
+  `.[cn-desktop]`, an aggregate extra that pre-bakes every backend the desktop
+  exposes — dashboard (`web`), Anthropic transport, the native MCP client
+  (`mcp`), and the 飞书 / 钉钉 / 企业微信 / 微信 IM adapters. The frozen
+  PyInstaller binary cannot lazy-install via `tools/lazy_deps.py` (no working
+  pip), so anything not in `cn-desktop` is unavailable at runtime, and a
+  `pip install <pkg>` on the host does not help (the frozen runtime uses its own
+  bundled interpreter + packages). This is why a build that installed only
+  `.[web,anthropic]` shipped without the MCP SDK (`_MCP_AVAILABLE=False`,
+  `discover_mcp_tools()` silently registered nothing — issue #16) and without
+  `lark-oapi` (Feishu adapter degraded to "unavailable"). When adding a new
+  desktop backend, add it to the `cn-desktop` extra **and** to the
+  `--collect-submodules` list + the "Verify frozen runtime backends" assert in
+  `release-runtime.yml`; the verify step fails the build if any bundled
+  package's `dist-info` is missing from the frozen output.
+* **`alibabacloud_*` collection is fragile**: the DingTalk SDK pulls a chain of
+  small namespace packages (`alibabacloud_dingtalk`, `alibabacloud_tea_openapi`,
+  `alibabacloud_tea_util`, `alibabacloud_credentials`, `alibabacloud_tea`, …),
+  all pure-Python sdists. They are explicitly collected, but the first release
+  that bundles DingTalk should be smoke-tested against a live bot to confirm no
+  submodule was missed.
 * **Lazy provider deps** (`anthropic`, `firecrawl-py`, `exa-py`, ...) are
   not bundled. `tools/lazy_deps.py` can't install at runtime inside a
   PyInstaller-frozen binary, so only providers we explicitly pre-bake

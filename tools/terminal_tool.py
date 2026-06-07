@@ -825,6 +825,7 @@ from tools.environments.ssh import SSHEnvironment as _SSHEnvironment
 from tools.environments.docker import DockerEnvironment as _DockerEnvironment
 from tools.environments.modal import ModalEnvironment as _ModalEnvironment
 from tools.environments.managed_modal import ManagedModalEnvironment as _ManagedModalEnvironment
+from tools.environments._find_pwsh import find_pwsh
 from tools.managed_tool_gateway import is_managed_tool_gateway_ready
 import sys
 
@@ -855,11 +856,17 @@ Do NOT use vim/nano/interactive tools without pty=true — they hang without a p
 
 @functools.lru_cache(maxsize=1)
 def _detect_shell_for_description() -> str:
-    """Detect shell type for description purposes (no side effects).
+    """Detect shell type for description purposes.
 
-    Returns ``"pwsh"``, ``"bash"``, or ``"bash"`` (default).
-    Does NOT auto-install pwsh — just probes what is available.
+    Returns ``"pwsh"`` or ``"bash"``.
+
+    On Windows with ``HERMES_SHELL_TYPE`` set to ``"auto"`` (default) or
+    ``"pwsh"``, calls ``find_pwsh()`` which probes PATH and falls back to
+    silent auto-install of PowerShell 7.  Falls back to ``"bash"`` only
+    when ``HERMES_SHELL_TYPE=auto`` and all pwsh strategies fail.
+
     Cached via ``@lru_cache`` so repeated calls are essentially free.
+    The cache returns the post-install result after the first call.
     """
     if platform.system() != "Windows":
         return "bash"
@@ -867,16 +874,24 @@ def _detect_shell_for_description() -> str:
     # Check HERMES_SHELL_TYPE override
     shell_type = os.environ.get("HERMES_SHELL_TYPE", "auto").strip().lower() or "auto"
 
-    if shell_type in ("pwsh", "powershell"):
-        return "pwsh"
     if shell_type == "bash":
         return "bash"
 
-    # Auto: probe pwsh existence (cheap — just PATH lookup, no auto-install)
-    pwsh = shutil.which("pwsh") or shutil.which("pwsh.exe")
-    if pwsh:
-        return "pwsh"
+    # pwsh / powershell / auto: probe via find_pwsh (includes auto-install)
+    if shell_type in ("pwsh", "powershell", "auto"):
+        pwsh_path = find_pwsh()
+        if pwsh_path:
+            return "pwsh"
 
+        # Explicit pwsh requested but unavailable — still report pwsh;
+        # _resolve_shell() in local.py will raise a clear RuntimeError.
+        if shell_type == "pwsh":
+            return "pwsh"
+
+        # Auto mode — fall back to bash, consistent with _resolve_shell()
+        return "bash"
+
+    # Unknown shell_type (safety net — should not happen with valid config)
     return "bash"
 
 

@@ -191,6 +191,11 @@ export function useTerminalSession({ cwd, onAddSelectionToChat }: UseTerminalSes
   const selectionLabelRef = useRef('')
   const selectionRef = useRef('')
   const onAddSelectionToChatRef = useRef(onAddSelectionToChat)
+  // Shared between the "create terminal once" effect and the "(re)start PTY on
+  // cwd change" effect below: the latter triggers a fit after a new session
+  // opens, and resets the last-sent size so the first resize is delivered.
+  const fitAndResizeRef = useRef<() => void>(() => {})
+  const lastSentSizeRef = useRef<{ cols: number; rows: number } | null>(null)
   const [status, setStatus] = useState<TerminalStatus>('starting')
   const [selection, setSelection] = useState('')
   const [selectionStyle, setSelectionStyle] = useState<CSSProperties | null>(null)
@@ -242,6 +247,16 @@ export function useTerminalSession({ cwd, onAddSelectionToChat }: UseTerminalSes
     return () => window.removeEventListener('keydown', onKeyDown, { capture: true })
   }, [addSelectionToChat, selection])
 
+  // Create the xterm instance + WebGL renderer exactly ONCE for the lifetime of
+  // the panel. The previous single effect listed `cwd` in its deps, so every
+  // working-directory change (which happens on essentially every session
+  // switch/resume/new-draft, and on session.info stream events) tore down and
+  // rebuilt the Terminal — and with it a fresh WebglAddon context. Windows/ANGLE
+  // caps live WebGL contexts (~16) and reclaims disposed ones lazily, so
+  // navigating through a handful of sessions exhausted the pool and triggered
+  // context-loss storms + GPU-process thrash that froze the window ("点几个页面
+  // 就卡死"). The PTY session, which legitimately follows cwd, is (re)started in
+  // the separate effect below without touching this Terminal/WebGL instance.
   useEffect(() => {
     const host = hostRef.current
     const terminalApi = window.hermesDesktop?.terminal
@@ -254,7 +269,6 @@ export function useTerminalSession({ cwd, onAddSelectionToChat }: UseTerminalSes
 
     let disposed = false
     const cleanup: Array<() => void> = []
-    let lastSentSize: { cols: number; rows: number } | null = null
 
     const term = new Terminal({
       allowProposedApi: true,
@@ -340,12 +354,15 @@ export function useTerminalSession({ cwd, onAddSelectionToChat }: UseTerminalSes
       }
 
       const id = sessionIdRef.current
+      const lastSentSize = lastSentSizeRef.current
 
       if (id && (lastSentSize?.cols !== term.cols || lastSentSize?.rows !== term.rows)) {
-        lastSentSize = { cols: term.cols, rows: term.rows }
+        lastSentSizeRef.current = { cols: term.cols, rows: term.rows }
         void terminalApi.resize(id, { cols: term.cols, rows: term.rows })
       }
     }
+
+    fitAndResizeRef.current = fitAndResize
 
     // Coalesce ResizeObserver bursts through rAF — running fit.fit()
     // synchronously while sibling panes are mid-transition (e.g. file browser
@@ -413,6 +430,41 @@ export function useTerminalSession({ cwd, onAddSelectionToChat }: UseTerminalSes
 
     fitAndResize()
 
+    return () => {
+      disposed = true
+      cleanup.forEach(run => run())
+
+      term.dispose()
+      termRef.current = null
+      fitAndResizeRef.current = () => {}
+      shellNameRef.current = 'shell'
+      selectionRef.current = ''
+      selectionLabelRef.current = ''
+    }
+  }, [addSelectionToChat])
+
+  // (Re)start the backend PTY whenever the active working directory changes.
+  // This reuses the single Terminal/WebGL instance created above — only the
+  // node-pty shell process is recreated, which is cheap relative to a GPU
+  // context and does not accumulate WebGL contexts.
+  useEffect(() => {
+    const terminalApi = window.hermesDesktop?.terminal
+    const term = termRef.current
+
+    if (!terminalApi || !term) {
+      return
+    }
+
+    let disposed = false
+    const cleanup: Array<() => void> = []
+
+    // Clear the previous session's output so the new cwd's shell starts on a
+    // clean screen (matches the prior "fresh terminal per cwd" behavior), and
+    // force the next fit to push a resize to the freshly-spawned PTY.
+    term.reset()
+    lastSentSizeRef.current = null
+    setStatus('starting')
+
     void terminalApi
       .start({ cols: term.cols, cwd, rows: term.rows })
       .then(session => {
@@ -423,7 +475,7 @@ export function useTerminalSession({ cwd, onAddSelectionToChat }: UseTerminalSes
         }
 
         sessionIdRef.current = session.id
-        lastSentSize = { cols: term.cols, rows: term.rows }
+        lastSentSizeRef.current = { cols: term.cols, rows: term.rows }
         shellNameRef.current = session.shell || 'shell'
         setShellName(session.shell || 'shell')
 
@@ -465,11 +517,15 @@ export function useTerminalSession({ cwd, onAddSelectionToChat }: UseTerminalSes
           })
         )
         window.requestAnimationFrame(() => {
-          fitAndResize()
+          fitAndResizeRef.current()
           term.focus()
         })
       })
       .catch(error => {
+        if (disposed) {
+          return
+        }
+
         setStatus('closed')
         term.write(`Terminal failed to start: ${error instanceof Error ? error.message : String(error)}\r\n`)
       })
@@ -484,14 +540,8 @@ export function useTerminalSession({ cwd, onAddSelectionToChat }: UseTerminalSes
       if (id) {
         void terminalApi.dispose(id)
       }
-
-      term.dispose()
-      termRef.current = null
-      shellNameRef.current = 'shell'
-      selectionRef.current = ''
-      selectionLabelRef.current = ''
     }
-  }, [addSelectionToChat, cwd])
+  }, [cwd])
 
   return {
     addSelectionToChat,

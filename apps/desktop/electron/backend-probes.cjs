@@ -32,7 +32,10 @@
  * as bootstrap-platform.cjs and hardening.cjs).
  */
 
-const { execFileSync } = require('node:child_process')
+const { execFile } = require('node:child_process')
+const { promisify } = require('node:util')
+
+const execFileAsync = promisify(execFile)
 
 const PROBE_TIMEOUT_MS = 5000
 
@@ -46,14 +49,17 @@ const PROBE_TIMEOUT_MS = 5000
  * site-packages -- and the resolver returns a backend that immediately
  * dies on spawn.
  *
+ * Async so the resolver never blocks the Electron main (HWND-owning) thread on
+ * a Python interpreter cold-start — on Windows that import walks site-packages
+ * and can burn the full 5s timeout, freezing the window message pump.
+ *
  * @param {string} pythonPath - Absolute path to a python.exe / python.
- * @returns {boolean}
+ * @returns {Promise<boolean>}
  */
-function canImportHermesCli(pythonPath) {
+async function canImportHermesCli(pythonPath) {
   if (!pythonPath) return false
   try {
-    execFileSync(pythonPath, ['-c', 'import hermes_cli'], {
-      stdio: 'ignore',
+    await execFileAsync(pythonPath, ['-c', 'import hermes_cli'], {
       timeout: PROBE_TIMEOUT_MS,
       windowsHide: true
     })
@@ -82,13 +88,12 @@ function canImportHermesCli(pythonPath) {
  *   .cmd/.bat shims on Windows execFileSync needs shell:true to find
  *   the cmd interpreter; mirrors the same flag isCommandScript() drives
  *   in resolveHermesBackend.
- * @returns {boolean}
+ * @returns {Promise<boolean>}
  */
-function verifyHermesCli(hermesCommand, opts = {}) {
+async function verifyHermesCli(hermesCommand, opts = {}) {
   if (!hermesCommand) return false
   try {
-    execFileSync(hermesCommand, ['--version'], {
-      stdio: 'ignore',
+    await execFileAsync(hermesCommand, ['--version'], {
       timeout: PROBE_TIMEOUT_MS,
       shell: Boolean(opts.shell),
       windowsHide: true

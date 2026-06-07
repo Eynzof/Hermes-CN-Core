@@ -3046,9 +3046,9 @@ def _aux_config_menu() -> None:
         print()
         print("  Side tasks (vision, compression, web extraction, etc.) default")
         print('  to your main chat model.  "auto" means "use my main model" —')
-        print("  Hermes only falls back to a lightweight backend (OpenRouter,")
-        print("  Nous Portal) if the main model is unavailable.  Override a")
-        print("  task below if you want it pinned to a specific provider/model.")
+        print("  then local/custom endpoints and directly configured API-key")
+        print("  providers if the main model is unavailable.  Override a task")
+        print("  below if you want it pinned to a specific provider/model.")
         print()
 
         # Build the task menu with current settings inline

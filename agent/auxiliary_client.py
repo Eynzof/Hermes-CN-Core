@@ -7,20 +7,19 @@ the best available backend without duplicating fallback logic.
 Resolution order for text tasks (auto mode):
   1. User's main provider + main model (used regardless of provider type —
      aggregators, direct API-key providers, native Anthropic, Codex, etc.)
-  2. OpenRouter  (OPENROUTER_API_KEY)
-  3. Nous Portal (~/.hermes/auth.json active provider)
-  4. Custom endpoint (config.yaml model.base_url + OPENAI_API_KEY)
-  5. Native Anthropic
-  6. Direct API-key providers (z.ai/GLM, Kimi/Moonshot, MiniMax, MiniMax-CN)
-  7. None
+  2. Custom endpoint (config.yaml model.base_url + OPENAI_API_KEY)
+  3. Direct API-key providers (z.ai/GLM, Kimi/Moonshot, MiniMax, MiniMax-CN)
+  4. None
+
+OpenRouter and Nous Portal are never probed as implicit text fallbacks. They
+are still used when the user's main provider is OpenRouter/Nous or when a
+caller explicitly requests them via ``auxiliary.<task>.provider``.
 
 Resolution order for vision/multimodal tasks (auto mode):
   1. Selected main provider, if it is one of the supported vision backends below
-  2. OpenRouter
-  3. Nous Portal
-  4. Native Anthropic
-  5. Custom endpoint (for local vision models: Qwen-VL, LLaVA, Pixtral, etc.)
-  6. None
+  2. Native Anthropic
+  3. Custom endpoint (for local vision models: Qwen-VL, LLaVA, Pixtral, etc.)
+  4. None
 
 Codex OAuth (ChatGPT-account auth) is intentionally NOT in either
 fallback chain: OpenAI gates this endpoint behind an undocumented,
@@ -36,8 +35,8 @@ Default "auto" follows the chains above.
 Payment / credit exhaustion fallback:
   When a resolved provider returns HTTP 402 or a credit-related error,
   call_llm() automatically retries with the next available provider in the
-  auto-detection chain.  This handles the common case where a user depletes
-  their OpenRouter balance but has Codex OAuth or another provider available.
+  auto-detection chain.  Implicit OpenRouter/Nous probing is intentionally
+  excluded; users can still opt into those providers explicitly.
 """
 
 import json
@@ -297,8 +296,8 @@ _PROVIDER_VISION_MODELS: Dict[str, str] = {
 # Providers whose endpoint does not accept image input, even though the
 # provider's broader ecosystem has vision models available elsewhere.  When
 # `auxiliary.vision.provider: auto` sees one of these as the main provider,
-# it must skip straight to the aggregator chain instead of returning a client
-# that will 404 on every vision request.
+# it must skip straight to the dedicated vision fallback chain instead of
+# returning a client that will 404 on every vision request.
 #
 # kimi-coding / kimi-coding-cn: the Kimi Coding Plan routes through
 # api.kimi.com/coding (Anthropic Messages wire) which Kimi's own docs
@@ -1523,7 +1522,6 @@ def _try_openrouter(explicit_api_key: str = None, model: str = None) -> Tuple[Op
     if pool_present:
         or_key = explicit_api_key or _pool_runtime_api_key(entry)
         if not or_key:
-            _mark_provider_unhealthy("openrouter", ttl=60)
             return None, None
         base_url = _pool_runtime_base_url(entry, OPENROUTER_BASE_URL) or OPENROUTER_BASE_URL
         logger.debug("Auxiliary client: OpenRouter via pool")
@@ -1532,7 +1530,6 @@ def _try_openrouter(explicit_api_key: str = None, model: str = None) -> Tuple[Op
 
     or_key = explicit_api_key or os.getenv("OPENROUTER_API_KEY")
     if not or_key:
-        _mark_provider_unhealthy("openrouter", ttl=60)
         return None, None
     logger.debug("Auxiliary client: OpenRouter")
     return OpenAI(api_key=or_key, base_url=OPENROUTER_BASE_URL,
@@ -1564,7 +1561,7 @@ def _try_nous(vision: bool = False) -> Tuple[Optional[OpenAI], Optional[str]]:
                 "Auxiliary: skipping Nous Portal (rate-limited, resets in %.0fs)",
                 _remaining,
             )
-            _mark_provider_unhealthy("nous", ttl=_remaining)
+            _mark_provider_unhealthy("nous", ttl=_remaining, reason="rate limit")
             return None, None
     except Exception:
         pass
@@ -1576,7 +1573,6 @@ def _try_nous(vision: bool = False) -> Tuple[Optional[OpenAI], Optional[str]]:
             "Auxiliary Nous client unavailable: no Nous authentication found "
             "(run: hermes auth)."
         )
-        _mark_provider_unhealthy("nous", ttl=60)
         return None, None
     if runtime is None and nous:
         logger.debug(
@@ -1624,7 +1620,6 @@ def _try_nous(vision: bool = False) -> Tuple[Optional[OpenAI], Optional[str]]:
                 "Auxiliary Nous client unavailable: no usable inference JWT found "
                 "(run: hermes auth add nous)."
             )
-            _mark_provider_unhealthy("nous", ttl=60)
             return None, None
         base_url = str((nous or {}).get("inference_base_url") or _nous_base_url()).rstrip("/")
     return (
@@ -1758,7 +1753,7 @@ def set_runtime_main(
 
     For ``custom:`` providers, ``base_url`` and ``api_key`` must also be
     recorded so that ``_resolve_auto`` can construct a valid client in
-    Step 1 instead of falling through to the aggregator chain.
+    Step 1 instead of falling through to the fallback chain.
     """
     global _RUNTIME_MAIN_PROVIDER, _RUNTIME_MAIN_MODEL
     global _RUNTIME_MAIN_BASE_URL, _RUNTIME_MAIN_API_KEY, _RUNTIME_MAIN_API_MODE
@@ -2200,13 +2195,13 @@ def _get_provider_chain() -> List[tuple]:
     NOTE: ``openai-codex`` is deliberately NOT in this chain.  The
     ChatGPT-account Codex endpoint only accepts a shifting, undocumented
     allow-list of model IDs, so falling back to it with a guessed model
-    fails more often than not.  Codex is used only when the user's main
-    provider *is* openai-codex (see Step 1 of ``_resolve_auto``) or when
-    a caller explicitly requests it with a model.
+    fails more often than not.  OpenRouter and Nous Portal are also
+    excluded from this implicit chain to avoid surprise remote probes.
+    These providers are still used when the user's main provider is one
+    of them (see Step 1 of ``_resolve_auto``) or when a caller explicitly
+    requests them.
     """
     return [
-        ("openrouter", _try_openrouter),
-        ("nous", _try_nous),
         ("local/custom", _try_custom_endpoint),
         ("api-key", _resolve_api_key_provider),
     ]
@@ -2216,10 +2211,10 @@ def _get_provider_chain() -> List[tuple]:
 #
 # When an auxiliary provider returns HTTP 402 (Payment Required / credit
 # exhaustion), retrying it on every subsequent aux call is wasteful — the
-# provider stays depleted for hours or days, but the chain re-tries it as
-# the FIRST entry on every compression/title-gen/session-search call,
-# burns ~1 RTT, gets 402 again, then falls back. On a long Discord/LCM
-# session that adds up to dozens of doomed 402s.
+# provider stays depleted for hours or days. If the provider is the user's
+# main model or an explicit per-task provider, every compression/title-gen
+# call would otherwise burn ~1 RTT, get 402 again, then fall back. On a long
+# Discord/LCM session that adds up to dozens of doomed 402s.
 #
 # Solution: when ANY caller observes a payment error against a provider,
 # mark it unhealthy for ``_AUX_UNHEALTHY_TTL_SECONDS``. ``_resolve_auto``
@@ -2238,7 +2233,9 @@ _aux_unhealthy_logged_at: Dict[str, float] = {}
 
 # Map provider names that show up in resolved_provider / explicit-config
 # back to the chain labels used by _get_provider_chain(). Keep in sync
-# with the alias map in _try_payment_fallback below.
+# with the alias map in _try_payment_fallback below. OpenRouter/Nous labels
+# remain here because they can still be explicit or main providers even though
+# they are no longer implicit auto-fallback rungs.
 _AUX_UNHEALTHY_LABEL_ALIASES = {
     "openrouter": "openrouter",
     "nous": "nous",
@@ -2261,10 +2258,15 @@ def _normalize_chain_label(provider: str) -> str:
     return _AUX_UNHEALTHY_LABEL_ALIASES.get(p, p)
 
 
-def _mark_provider_unhealthy(provider: str, ttl: Optional[float] = None) -> None:
-    """Mark ``provider`` as recently-402'd, hidden from chain iteration
+def _mark_provider_unhealthy(
+    provider: str,
+    ttl: Optional[float] = None,
+    *,
+    reason: str = "payment / credit error",
+) -> None:
+    """Mark ``provider`` as temporarily unhealthy, hidden from chain iteration
     until the TTL expires. Called from the payment-fallback branches in
-    ``call_llm`` and ``acall_llm`` after a confirmed payment error.
+    ``call_llm`` and ``acall_llm`` after a confirmed capacity error.
     """
     label = _normalize_chain_label(provider)
     if not label:
@@ -2272,10 +2274,11 @@ def _mark_provider_unhealthy(provider: str, ttl: Optional[float] = None) -> None
     expires_at = time.time() + (ttl if ttl is not None else _AUX_UNHEALTHY_TTL_SECONDS)
     _aux_unhealthy_until[label] = expires_at
     logger.warning(
-        "Auxiliary: marking %s unhealthy for %ds (payment / credit error). "
+        "Auxiliary: marking %s unhealthy for %ds (%s). "
         "Subsequent auxiliary calls will skip it until %s.",
         label,
         int(ttl if ttl is not None else _AUX_UNHEALTHY_TTL_SECONDS),
+        reason,
         time.strftime("%H:%M:%S", time.localtime(expires_at)),
     )
 
@@ -3086,8 +3089,10 @@ def _resolve_auto(main_runtime: Optional[Dict[str, Any]] = None) -> Tuple[Option
          on DeepSeek/ZAI/Alibaba get theirs; etc.  Running aux tasks on the
          user's picked model keeps behavior predictable — no surprise
          switches to a cheap fallback model for side tasks.
-      2. OpenRouter → Nous → custom → Codex → API-key providers (fallback
-         chain, only used when the main provider has no working client).
+      2. Local/custom endpoint → direct API-key providers (fallback chain,
+         only used when the main provider has no working client). OpenRouter
+         and Nous Portal are not implicitly probed here; explicit main or
+         per-task selections still use them.
     """
     global auxiliary_is_nous, _stale_base_url_warned
     auxiliary_is_nous = False  # Reset — _try_nous() will set True if it wins
@@ -3173,7 +3178,7 @@ def _resolve_auto(main_runtime: Optional[Dict[str, Any]] = None) -> Tuple[Option
                             main_provider, resolved or main_model)
                 return client, resolved or main_model
 
-    # ── Step 2: aggregator / fallback chain ──────────────────────────────
+    # ── Step 2: local/direct fallback chain ──────────────────────────────
     tried = []
     for label, try_fn in _get_provider_chain():
         if _is_provider_unhealthy(label):
@@ -3191,7 +3196,7 @@ def _resolve_auto(main_runtime: Optional[Dict[str, Any]] = None) -> Tuple[Option
         tried.append(label)
     logger.warning("Auxiliary auto-detect: no provider available (tried: %s). "
                    "Compression, summarization, and memory flush will not work. "
-                   "Set OPENROUTER_API_KEY or configure a local model in config.yaml.",
+                   "Configure a local model or an explicit auxiliary provider in config.yaml.",
                    ", ".join(tried))
     return None, None
 
@@ -3973,9 +3978,13 @@ def get_async_text_auxiliary_client(task: str = "", *, main_runtime: Optional[Di
     )
 
 
-_VISION_AUTO_PROVIDER_ORDER = (
+_VISION_EXPLICIT_PROVIDER_ORDER = (
     "openrouter",
     "nous",
+    "anthropic",
+)
+
+_VISION_AUTO_PROVIDER_ORDER = (
     "anthropic",
 )
 
@@ -4072,9 +4081,10 @@ def _strict_vision_backend_available(provider: str) -> bool:
 def get_available_vision_backends() -> List[str]:
     """Return the currently available vision backends in auto-selection order.
 
-    Order: active provider → OpenRouter → Nous → Anthropic → stop.  This is the single
-    source of truth for setup, tool gating, and runtime auto-routing of
-    vision tasks.
+    Order: active provider → Anthropic → stop. OpenRouter and Nous are
+    included only when they are the active provider or an explicit vision
+    override. This is the single source of truth for setup, tool gating, and
+    runtime auto-routing of vision tasks.
     """
     available: List[str] = []
     # 1. Active provider — if the user configured a provider, try it first.
@@ -4087,14 +4097,14 @@ def get_available_vision_backends() -> List[str]:
         vision_model = _PROVIDER_VISION_MODELS.get(main_provider, _read_main_model())
         if not _main_model_supports_vision(main_provider, vision_model):
             main_provider = ""
-        elif main_provider in _VISION_AUTO_PROVIDER_ORDER:
+        elif main_provider in _VISION_EXPLICIT_PROVIDER_ORDER:
             if _strict_vision_backend_available(main_provider):
                 available.append(main_provider)
         else:
             client, _ = resolve_provider_client(main_provider, vision_model)
             if client is not None:
                 available.append(main_provider)
-    # 2. OpenRouter, 3. Nous — skip if already covered by main provider.
+    # Auto fallbacks — skip if already covered by main provider.
     for p in _VISION_AUTO_PROVIDER_ORDER:
         if p not in available and _strict_vision_backend_available(p):
             available.append(p)
@@ -4155,10 +4165,12 @@ def resolve_vision_provider_client(
         #      zai → glm-5v-turbo). Nous is the exception: it has a dedicated
         #      strict vision backend with tier-aware defaults, so it must not
         #      fall through to the user's text chat model here.
-        #   2. OpenRouter  (vision-capable aggregator fallback)
-        #   3. Nous Portal (vision-capable aggregator fallback)
-        #   4. Anthropic   (native vision fallback when configured)
-        #   5. Stop
+        #   2. Anthropic   (native vision fallback when configured)
+        #   3. Stop
+        #
+        # OpenRouter and Nous Portal are intentionally not probed as implicit
+        # fallbacks. They are still used when they are the main provider or an
+        # explicit auxiliary.vision.provider override.
         main_provider = _read_main_provider()
         main_model = _read_main_model()
         main_provider_skipped_for_vision = False
@@ -4180,7 +4192,7 @@ def resolve_vision_provider_client(
                 # model does not support image input, switch to a model with
                 # image_in capability" and vision lives on the separate Kimi
                 # Platform (api.moonshot.ai). Skip the main provider and fall
-                # through to the aggregator chain instead of returning a
+                # through to the vision fallback chain instead of returning a
                 # client that will 404 on every vision request (#17076).
                 logger.debug(
                     "Vision auto-detect: skipping main provider %s (no "
@@ -4194,11 +4206,26 @@ def resolve_vision_provider_client(
                 # an image would produce a cryptic provider-side error like
                 # ``unknown variant `image_url`, expected `text``` (#31179).
                 # Fall through to the dedicated vision backend chain instead.
+                # If the user explicitly selected a provider that has its own
+                # strict vision backend (OpenRouter/Nous/Anthropic), use that
+                # provider's vision default rather than probing unrelated
+                # remote aggregators.
                 #
                 # Only log the provider name (not the model) — mirrors the
                 # sibling _PROVIDERS_WITHOUT_VISION branch above, and avoids
                 # CodeQL py/clear-text-logging-sensitive-data heuristic false
                 # positives on multi-value interpolations.
+                if main_provider in _VISION_EXPLICIT_PROVIDER_ORDER:
+                    sync_client, default_model = _resolve_strict_vision_backend(
+                        main_provider
+                    )
+                    if sync_client is not None:
+                        logger.info(
+                            "Vision auto-detect: using main provider %s vision backend (%s)",
+                            main_provider,
+                            default_model or resolved_model or vision_model,
+                        )
+                        return _finalize(main_provider, sync_client, default_model)
                 logger.debug(
                     "Vision auto-detect: skipping main provider %s "
                     "(reports no vision capability) — falling through to "
@@ -4231,7 +4258,7 @@ def resolve_vision_provider_client(
         logger.debug("Auxiliary vision client: none available")
         return None, None, None
 
-    if requested in _VISION_AUTO_PROVIDER_ORDER:
+    if requested in _VISION_EXPLICIT_PROVIDER_ORDER:
         sync_client, default_model = _resolve_strict_vision_backend(
             requested, resolved_model
         )
@@ -5373,8 +5400,8 @@ def call_llm(
         # ── Payment / credit exhaustion fallback ──────────────────────
         # When the resolved provider returns 402 or a credit-related error,
         # try alternative providers instead of giving up.  This handles the
-        # common case where a user runs out of OpenRouter credits but has
-        # Codex OAuth or another provider available.
+        # common case where a user runs out of credits on their explicit/main
+        # auxiliary provider but has another configured backend available.
         #
         # ── Connection error fallback ────────────────────────────────
         # When a provider endpoint is unreachable (DNS failure, connection

@@ -1192,8 +1192,10 @@ DEFAULT_CONFIG = {
     # Format: provider is the provider name, model is the model slug.
     # "auto" for provider = auto-detect best available provider.
     # Empty model = use provider's default auxiliary model.
-    # All tasks fall back to openrouter:google/gemini-3-flash-preview if
-    # the configured provider is unavailable.
+    # "auto" uses the main chat model first, then local/custom endpoints and
+    # directly configured API-key providers. OpenRouter and Nous Portal are
+    # used only when selected as the main model provider or explicitly assigned
+    # to an auxiliary task.
     #
     # extra_body: forwarded verbatim as request body fields on every aux call
     # for that task. Use this to set provider-specific knobs (independent of

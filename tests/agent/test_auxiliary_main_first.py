@@ -7,8 +7,9 @@ and surprising — users picked Claude but got Gemini Flash summaries.
 
 The current policy: ``auto`` means "use my main chat model" for every user,
 regardless of provider type.  Explicit per-task overrides in ``config.yaml``
-(``auxiliary.<task>.provider``) still win.  The cheap fallback chain only
-runs when the main provider has no working client.
+(``auxiliary.<task>.provider``) still win.  The fallback chain only uses
+local/custom endpoints and directly configured API-key providers when the
+main provider has no working client.
 """
 
 from __future__ import annotations
@@ -53,7 +54,6 @@ class TestResolveAutoMainFirst:
 
     def test_nous_main_uses_main_model_for_aux(self, monkeypatch):
         """Nous Portal main user → aux uses their picked Nous model, not free-tier MiMo."""
-        # No OPENROUTER_API_KEY → ensures if main failed we'd fall to chain
         with patch(
             "agent.auxiliary_client._read_main_provider", return_value="nous",
         ), patch(
@@ -97,8 +97,6 @@ class TestResolveAutoMainFirst:
 
     def test_main_unavailable_falls_through_to_chain(self, monkeypatch):
         """Main provider with no working client → fall back to aux chain."""
-        monkeypatch.setenv("OPENROUTER_API_KEY", "or-key")
-
         chain_client = MagicMock()
         with patch(
             "agent.auxiliary_client._read_main_provider", return_value="anthropic",
@@ -108,15 +106,21 @@ class TestResolveAutoMainFirst:
             "agent.auxiliary_client.resolve_provider_client",
             return_value=(None, None),  # main provider has no client
         ), patch(
+            "agent.auxiliary_client._try_custom_endpoint",
+            return_value=(chain_client, "local-model"),
+        ), patch(
             "agent.auxiliary_client._try_openrouter",
-            return_value=(chain_client, "google/gemini-3-flash-preview"),
-        ):
+        ) as or_try, patch(
+            "agent.auxiliary_client._try_nous",
+        ) as nous_try:
             from agent.auxiliary_client import _resolve_auto
 
             client, model = _resolve_auto()
 
         assert client is chain_client
-        assert model == "google/gemini-3-flash-preview"
+        assert model == "local-model"
+        or_try.assert_not_called()
+        nous_try.assert_not_called()
 
     def test_no_main_config_uses_chain_directly(self):
         """No main provider configured → skip step 1, use chain (no regression)."""
@@ -126,14 +130,21 @@ class TestResolveAutoMainFirst:
         ), patch(
             "agent.auxiliary_client._read_main_model", return_value="",
         ), patch(
+            "agent.auxiliary_client._try_custom_endpoint",
+            return_value=(chain_client, "local-model"),
+        ), patch(
             "agent.auxiliary_client._try_openrouter",
-            return_value=(chain_client, "google/gemini-3-flash-preview"),
-        ):
+        ) as or_try, patch(
+            "agent.auxiliary_client._try_nous",
+        ) as nous_try:
             from agent.auxiliary_client import _resolve_auto
 
             client, model = _resolve_auto()
 
         assert client is chain_client
+        assert model == "local-model"
+        or_try.assert_not_called()
+        nous_try.assert_not_called()
 
     def test_runtime_override_wins_over_config(self, monkeypatch):
         """main_runtime kwarg overrides config-read main provider/model."""
@@ -348,9 +359,14 @@ class TestResolveVisionMainFirst:
         assert captured == {"is_agent_turn": True, "is_vision": False}
         assert "default_headers" not in mock_openai.call_args.kwargs
 
-    def test_main_unavailable_vision_falls_through_to_aggregators(self):
-        """Main provider fails → fall back to OpenRouter/Nous strict backends."""
+    def test_main_unavailable_vision_falls_through_to_anthropic(self):
+        """Main provider fails → fall back to the remaining strict vision backend."""
         fallback_client = MagicMock()
+
+        def fake_strict(provider, model=None):
+            assert provider == "anthropic"
+            return fallback_client, "claude-haiku-4-5-20251001"
+
         with patch(
             "agent.auxiliary_client._read_main_provider", return_value="deepseek",
         ), patch(
@@ -360,7 +376,7 @@ class TestResolveVisionMainFirst:
             return_value=(None, None),
         ), patch(
             "agent.auxiliary_client._resolve_strict_vision_backend",
-            return_value=(fallback_client, "google/gemini-3-flash-preview"),
+            side_effect=fake_strict,
         ), patch(
             "agent.auxiliary_client._resolve_task_provider_model",
             return_value=("auto", None, None, None, None),
@@ -370,7 +386,8 @@ class TestResolveVisionMainFirst:
             provider, client, model = resolve_vision_provider_client()
 
         assert client is fallback_client
-        assert provider in {"openrouter", "nous"}
+        assert provider == "anthropic"
+        assert model == "claude-haiku-4-5-20251001"
 
     def test_explicit_provider_override_still_wins(self):
         """Explicit config override bypasses main-first policy."""

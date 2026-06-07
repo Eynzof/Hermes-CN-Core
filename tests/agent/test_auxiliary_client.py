@@ -511,8 +511,7 @@ class TestResolveProviderClientUniversalModelFallback:
     ``(None, None)`` on an empty model — both lack a catalog default
     because their accepted-model lists drift on the backend.  That
     silent failure caused ``_resolve_auto`` to drop to its Step-2
-    fallback chain (OpenRouter / Nous / etc.), so aux tasks billed
-    against the wrong subscription.
+    fallback chain, so aux tasks billed against the wrong subscription.
     """
 
     def test_empty_model_for_oauth_provider_falls_back_to_main_model(self):
@@ -608,7 +607,7 @@ class TestResolveProviderClientUniversalModelFallback:
             client, model = resolve_provider_client("anthropic", "")
 
         # Catalog default takes precedence — main_model was a no-op
-        # because step 2 of the fallback chain already produced a model.
+        # because the provider's own catalog default already produced a model.
         assert client is not None
         assert model == "claude-haiku-4-5-20251001"
         mock_read_main.assert_not_called()
@@ -678,21 +677,10 @@ class TestExpiredCodexFallback:
             assert not isinstance(client, type(None)), "Should find a provider after expired Codex"
 
 
-    def test_expired_codex_openrouter_wins(self, tmp_path, monkeypatch):
-        """With expired Codex + OpenRouter key, OpenRouter should win (1st in chain)."""
+    def test_expired_codex_openrouter_key_is_not_implicit_fallback(self, tmp_path, monkeypatch):
+        """OpenRouter key alone should not make auto probe OpenRouter implicitly."""
         import base64
         import time as _time
-
-        # Belt-and-suspenders: _try_openrouter marks openrouter unhealthy
-        # when OPENROUTER_API_KEY is absent (which the preceding test in
-        # this class exercises).  The file-level _clean_env autouse fixture
-        # clears the cache, but fixture ordering with the conftest
-        # _hermetic_environment autouse can leave a narrow window where
-        # the mark reappears.  Explicitly clear here so this test is
-        # independent of run order.
-        import agent.auxiliary_client as _aux_mod
-        _aux_mod._aux_unhealthy_until.clear()
-        _aux_mod._aux_unhealthy_logged_at.clear()
 
         header = base64.urlsafe_b64encode(b'{"alg":"RS256","typ":"JWT"}').rstrip(b"=").decode()
         payload_data = json.dumps({"exp": int(_time.time()) - 3600}).encode()
@@ -712,13 +700,16 @@ class TestExpiredCodexFallback:
         monkeypatch.setenv("HERMES_HOME", str(hermes_home))
         monkeypatch.setenv("OPENROUTER_API_KEY", "or-test-key")
 
-        with patch("agent.auxiliary_client.OpenAI") as mock_openai:
-            mock_openai.return_value = MagicMock()
+        with patch("agent.auxiliary_client.OpenAI") as mock_openai, \
+             patch("agent.auxiliary_client._try_openrouter") as or_try, \
+             patch("agent.auxiliary_client._try_nous") as nous_try:
             from agent.auxiliary_client import _resolve_auto
             client, model = _resolve_auto()
-            assert client is not None
-            # OpenRouter is 1st in chain, should win
-            mock_openai.assert_called()
+        assert client is None
+        assert model is None
+        mock_openai.assert_not_called()
+        or_try.assert_not_called()
+        nous_try.assert_not_called()
 
     def test_expired_codex_custom_endpoint_wins(self, tmp_path, monkeypatch):
         """With expired Codex + custom endpoint (Ollama), custom should win (3rd in chain)."""
@@ -836,6 +827,8 @@ class TestExplicitProviderRouting:
             assert adapter._is_oauth is False
 
     def test_explicit_openrouter_pool_exhausted_logs_precise_warning(self, monkeypatch, caplog):
+        from agent.auxiliary_client import _is_provider_unhealthy
+
         monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
         with patch("agent.auxiliary_client._select_pool_entry", return_value=(True, None)):
             with caplog.at_level(logging.WARNING, logger="agent.auxiliary_client"):
@@ -850,8 +843,11 @@ class TestExplicitProviderRouting:
             "OPENROUTER_API_KEY not set" in record.message
             for record in caplog.records
         )
+        assert _is_provider_unhealthy("openrouter") is False
 
     def test_explicit_openrouter_missing_env_keeps_not_set_warning(self, monkeypatch, caplog):
+        from agent.auxiliary_client import _is_provider_unhealthy
+
         monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
         with patch("agent.auxiliary_client._select_pool_entry", return_value=(False, None)):
             with caplog.at_level(logging.WARNING, logger="agent.auxiliary_client"):
@@ -862,6 +858,8 @@ class TestExplicitProviderRouting:
             "OPENROUTER_API_KEY not set" in record.message
             for record in caplog.records
         )
+        assert not any("marking openrouter unhealthy" in record.message for record in caplog.records)
+        assert _is_provider_unhealthy("openrouter") is False
 
 class TestGetTextAuxiliaryClient:
     """Test the full resolution chain for get_text_auxiliary_client."""
@@ -896,12 +894,15 @@ class TestGetTextAuxiliaryClient:
         monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-        with patch("agent.auxiliary_client._read_nous_auth", return_value=None), \
-             patch("agent.auxiliary_client._read_codex_access_token", return_value=None), \
+        with patch("agent.auxiliary_client._try_openrouter") as or_try, \
+             patch("agent.auxiliary_client._try_nous") as nous_try, \
+             patch("agent.auxiliary_client._try_custom_endpoint", return_value=(None, None)), \
              patch("agent.auxiliary_client._resolve_api_key_provider", return_value=(None, None)):
             client, model = get_text_auxiliary_client()
         assert client is None
         assert model is None
+        or_try.assert_not_called()
+        nous_try.assert_not_called()
 
     def test_custom_endpoint_uses_codex_wrapper_when_runtime_requests_responses_api(self):
         with patch("agent.auxiliary_client._resolve_custom_runtime",
@@ -951,6 +952,21 @@ class TestVisionClientFallback:
 
 
 class TestAuxiliaryPoolAwareness:
+    def test_try_nous_missing_auth_does_not_mark_unhealthy(self, caplog):
+        from agent.auxiliary_client import _is_provider_unhealthy, _try_nous
+
+        with patch("agent.auxiliary_client._read_nous_auth", return_value=None), \
+             patch("agent.auxiliary_client._resolve_nous_runtime_api", return_value=None), \
+             patch("agent.auxiliary_client._select_pool_entry", return_value=(False, None)):
+            with caplog.at_level(logging.WARNING, logger="agent.auxiliary_client"):
+                client, model = _try_nous()
+
+        assert client is None
+        assert model is None
+        assert any("no Nous authentication found" in record.message for record in caplog.records)
+        assert not any("marking nous unhealthy" in record.message for record in caplog.records)
+        assert _is_provider_unhealthy("nous") is False
+
     def test_try_nous_uses_pool_entry(self):
         pooled_token = _jwt_with_claims({
             "scope": "inference:invoke",
@@ -1464,11 +1480,15 @@ class TestIsRateLimitError:
 class TestGetProviderChain:
     """_get_provider_chain() resolves functions at call time (testable)."""
 
-    def test_returns_four_entries(self):
+    def test_returns_local_and_direct_api_entries_only(self):
         chain = _get_provider_chain()
-        assert len(chain) == 4
+        assert len(chain) == 2
         labels = [label for label, _ in chain]
-        assert labels == ["openrouter", "nous", "local/custom", "api-key"]
+        assert labels == ["local/custom", "api-key"]
+        # OpenRouter/Nous are deliberately not implicit fallback rungs. They
+        # still work when selected as the main provider or an explicit aux task.
+        assert "openrouter" not in labels
+        assert "nous" not in labels
         # Codex is deliberately NOT in this chain — see _get_provider_chain
         # docstring. ChatGPT-account Codex has a shifting model allow-list;
         # guessing a model to fall back on breaks more often than it helps.
@@ -1477,9 +1497,9 @@ class TestGetProviderChain:
     def test_picks_up_patched_functions(self):
         """Patches on _try_* functions must be visible in the chain."""
         sentinel = lambda: ("patched", "model")
-        with patch("agent.auxiliary_client._try_openrouter", sentinel):
+        with patch("agent.auxiliary_client._try_custom_endpoint", sentinel):
             chain = _get_provider_chain()
-        assert chain[0] == ("openrouter", sentinel)
+        assert chain[0] == ("local/custom", sentinel)
 
 
 class TestTryPaymentFallback:
@@ -1501,42 +1521,39 @@ class TestTryPaymentFallback:
 
     def test_skips_failed_provider(self):
         mock_client = MagicMock()
-        with patch("agent.auxiliary_client._try_openrouter", return_value=(None, None)), \
-             patch("agent.auxiliary_client._try_nous", return_value=(mock_client, "nous-model")), \
-             patch("agent.auxiliary_client._read_main_provider", return_value="openrouter"):
-            client, model, label = _try_payment_fallback("openrouter", task="compression")
+        with patch("agent.auxiliary_client._try_custom_endpoint") as custom_try, \
+             patch("agent.auxiliary_client._resolve_api_key_provider", return_value=(mock_client, "api-model")), \
+             patch("agent.auxiliary_client._read_main_provider", return_value="custom"):
+            client, model, label = _try_payment_fallback("local/custom", task="compression")
         assert client is mock_client
-        assert model == "nous-model"
-        assert label == "nous"
+        assert model == "api-model"
+        assert label == "api-key"
+        custom_try.assert_not_called()
 
     def test_returns_none_when_no_fallback(self):
-        with patch("agent.auxiliary_client._try_openrouter", return_value=(None, None)), \
-             patch("agent.auxiliary_client._try_nous", return_value=(None, None)), \
-             patch("agent.auxiliary_client._try_custom_endpoint", return_value=(None, None)), \
+        with patch("agent.auxiliary_client._try_custom_endpoint", return_value=(None, None)), \
              patch("agent.auxiliary_client._resolve_api_key_provider", return_value=(None, None)), \
              patch("agent.auxiliary_client._read_main_provider", return_value="openrouter"):
             client, model, label = _try_payment_fallback("openrouter")
         assert client is None
         assert label == ""
 
-    def test_codex_alias_maps_to_chain_label(self):
-        """'codex' should map to 'openai-codex' in the skip set."""
+    def test_codex_alias_does_not_add_codex_fallback(self):
+        """'codex' normalizes for skip logic but is never added as a fallback rung."""
         mock_client = MagicMock()
-        with patch("agent.auxiliary_client._try_openrouter", return_value=(mock_client, "or-model")), \
+        with patch("agent.auxiliary_client._try_custom_endpoint", return_value=(mock_client, "local-model")), \
              patch("agent.auxiliary_client._read_main_provider", return_value="openai-codex"):
             client, model, label = _try_payment_fallback("openai-codex", task="vision")
         assert client is mock_client
-        assert label == "openrouter"
+        assert label == "local/custom"
 
     def test_codex_not_in_fallback_chain(self):
         """Codex is deliberately NOT a fallback rung (shifting model allow-list).
 
-        When OR/Nous/custom/api-key all fail, payment-fallback returns None —
+        When custom/api-key fail, payment-fallback returns None —
         Codex is never tried with a guessed model.
         """
-        with patch("agent.auxiliary_client._try_openrouter", return_value=(None, None)), \
-             patch("agent.auxiliary_client._try_nous", return_value=(None, None)), \
-             patch("agent.auxiliary_client._try_custom_endpoint", return_value=(None, None)), \
+        with patch("agent.auxiliary_client._try_custom_endpoint", return_value=(None, None)), \
              patch("agent.auxiliary_client._resolve_api_key_provider", return_value=(None, None)), \
              patch("agent.auxiliary_client._read_main_provider", return_value="openrouter"):
             client, model, label = _try_payment_fallback("openrouter")
@@ -2709,13 +2726,13 @@ class TestCodexAdapterReasoningTranslation:
 class TestVisionAutoSkipsKimiCoding:
     """_resolve_auto vision branch skips providers that have no vision on
     their main endpoint (e.g. Kimi Coding Plan /coding) and falls through
-    to the aggregator chain instead of handing back a client that will 404
-    on every request (#17076).
+    to the configured vision fallback chain instead of handing back a client
+    that will 404 on every request (#17076).
     """
 
-    def test_kimi_coding_skipped_falls_through_to_openrouter(self, monkeypatch):
-        """kimi-coding as main + vision auto → OpenRouter (not kimi)."""
-        fake_or_client = MagicMock(name="openrouter_client")
+    def test_kimi_coding_skipped_falls_through_to_anthropic(self, monkeypatch):
+        """kimi-coding as main + vision auto → Anthropic (not Kimi or aggregators)."""
+        fake_vision_client = MagicMock(name="anthropic_client")
 
         monkeypatch.setattr(
             "agent.auxiliary_client._read_main_provider", lambda: "kimi-coding",
@@ -2734,10 +2751,8 @@ class TestVisionAutoSkipsKimiCoding:
         )
 
         def fake_strict(provider, model=None):
-            if provider == "openrouter":
-                return fake_or_client, "google/gemini-3-flash-preview"
-            if provider == "nous":
-                return None, None
+            if provider == "anthropic":
+                return fake_vision_client, "claude-haiku-4-5-20251001"
             raise AssertionError(
                 f"strict vision backend should not be called for {provider!r} "
                 "when main provider is kimi-coding"
@@ -2748,13 +2763,13 @@ class TestVisionAutoSkipsKimiCoding:
         )
 
         provider, client, model = resolve_vision_provider_client()
-        assert provider == "openrouter"
-        assert client is fake_or_client
-        assert model == "google/gemini-3-flash-preview"
+        assert provider == "anthropic"
+        assert client is fake_vision_client
+        assert model == "claude-haiku-4-5-20251001"
 
     def test_kimi_coding_cn_skipped_too(self, monkeypatch):
         """Same skip applies to the CN variant."""
-        fake_or_client = MagicMock(name="openrouter_client")
+        fake_vision_client = MagicMock(name="anthropic_client")
 
         monkeypatch.setattr(
             "agent.auxiliary_client._read_main_provider", lambda: "kimi-coding-cn",
@@ -2769,18 +2784,18 @@ class TestVisionAutoSkipsKimiCoding:
         )
         monkeypatch.setattr(
             "agent.auxiliary_client._resolve_strict_vision_backend",
-            lambda p, m=None: (fake_or_client, "gemini")
-            if p == "openrouter"
+            lambda p, m=None: (fake_vision_client, "claude-haiku")
+            if p == "anthropic"
             else (None, None),
         )
 
         provider, client, _ = resolve_vision_provider_client()
-        assert provider == "openrouter"
-        assert client is fake_or_client
+        assert provider == "anthropic"
+        assert client is fake_vision_client
 
     def test_minimax_cn_skipped_too(self, monkeypatch):
         """MiniMax M2.x is text-only on the current Anthropic-compatible endpoint."""
-        fake_or_client = MagicMock(name="openrouter_client")
+        fake_vision_client = MagicMock(name="anthropic_client")
 
         monkeypatch.setattr(
             "agent.auxiliary_client._read_main_provider", lambda: "minimax-cn",
@@ -2796,17 +2811,17 @@ class TestVisionAutoSkipsKimiCoding:
         )
         monkeypatch.setattr(
             "agent.auxiliary_client._resolve_strict_vision_backend",
-            lambda p, m=None: (fake_or_client, "gemini")
-            if p == "openrouter"
+            lambda p, m=None: (fake_vision_client, "claude-haiku")
+            if p == "anthropic"
             else (None, None),
         )
 
         provider, client, _ = resolve_vision_provider_client()
-        assert provider == "openrouter"
-        assert client is fake_or_client
+        assert provider == "anthropic"
+        assert client is fake_vision_client
 
     def test_minimax_cn_can_fall_through_to_anthropic(self, monkeypatch):
-        """If aggregator vision is unavailable, MiniMax auto mode can use Anthropic."""
+        """MiniMax auto mode can use the remaining dedicated Anthropic fallback."""
         fake_anthropic_client = MagicMock(name="anthropic_client")
 
         monkeypatch.setattr(
@@ -2822,8 +2837,6 @@ class TestVisionAutoSkipsKimiCoding:
         )
 
         def fake_strict(provider, model=None):
-            if provider in {"openrouter", "nous"}:
-                return None, None
             if provider == "anthropic":
                 return fake_anthropic_client, "claude-haiku-4-5-20251001"
             raise AssertionError(f"unexpected vision backend {provider!r}")
@@ -2860,7 +2873,7 @@ class TestVisionAutoSkipsKimiCoding:
 
     def test_text_only_main_model_capability_skips_generic_provider(self, monkeypatch):
         """Known text-only models must not be used as auto vision backends."""
-        fake_or_client = MagicMock(name="openrouter_client")
+        fake_vision_client = MagicMock(name="anthropic_client")
 
         monkeypatch.setattr(
             "agent.auxiliary_client._read_main_provider", lambda: "deepseek",
@@ -2879,15 +2892,15 @@ class TestVisionAutoSkipsKimiCoding:
         )
         monkeypatch.setattr(
             "agent.auxiliary_client._resolve_strict_vision_backend",
-            lambda p, m=None: (fake_or_client, "google/gemini-3-flash-preview")
-            if p == "openrouter"
+            lambda p, m=None: (fake_vision_client, "claude-haiku")
+            if p == "anthropic"
             else (None, None),
         )
 
         provider, client, model = resolve_vision_provider_client()
-        assert provider == "openrouter"
-        assert client is fake_or_client
-        assert model == "google/gemini-3-flash-preview"
+        assert provider == "anthropic"
+        assert client is fake_vision_client
+        assert model == "claude-haiku"
 
     def test_text_only_openrouter_main_model_uses_openrouter_vision_default(self, monkeypatch):
         """OpenRouter as main provider should fall back to its vision default model."""
@@ -3634,20 +3647,18 @@ class TestAuxUnhealthyCache:
             _resolve_auto,
             _mark_provider_unhealthy,
         )
-        nous_client = MagicMock()
-        # Mark OpenRouter unhealthy → chain should skip it and pick nous.
-        _mark_provider_unhealthy("openrouter")
+        api_client = MagicMock()
+        # Mark local/custom unhealthy → chain should skip it and pick api-key.
+        _mark_provider_unhealthy("local/custom")
         with patch("agent.auxiliary_client._read_main_provider", return_value=""), \
              patch("agent.auxiliary_client._read_main_model", return_value=""), \
-             patch("agent.auxiliary_client._try_openrouter") as or_try, \
-             patch("agent.auxiliary_client._try_nous", return_value=(nous_client, "nous-model")), \
-             patch("agent.auxiliary_client._try_custom_endpoint", return_value=(None, None)), \
-             patch("agent.auxiliary_client._resolve_api_key_provider", return_value=(None, None)):
+             patch("agent.auxiliary_client._try_custom_endpoint") as custom_try, \
+             patch("agent.auxiliary_client._resolve_api_key_provider", return_value=(api_client, "api-model")):
             client, model = _resolve_auto()
-        assert client is nous_client
-        assert model == "nous-model"
+        assert client is api_client
+        assert model == "api-model"
         # The skipped provider's _try_* should NOT have been called at all.
-        or_try.assert_not_called()
+        custom_try.assert_not_called()
 
     def test_resolve_auto_skips_unhealthy_main_in_step1(self):
         """Step-1 also consults the unhealthy cache so a depleted main
@@ -3657,21 +3668,23 @@ class TestAuxUnhealthyCache:
             _resolve_auto,
             _mark_provider_unhealthy,
         )
-        nous_client = MagicMock()
+        local_client = MagicMock()
         _mark_provider_unhealthy("openrouter")
         with patch("agent.auxiliary_client._read_main_provider", return_value="openrouter"), \
              patch("agent.auxiliary_client._read_main_model", return_value="anthropic/claude-sonnet-4.6"), \
              patch("agent.auxiliary_client.resolve_provider_client") as step1, \
              patch("agent.auxiliary_client._try_openrouter") as or_try, \
-             patch("agent.auxiliary_client._try_nous", return_value=(nous_client, "n-model")), \
-             patch("agent.auxiliary_client._try_custom_endpoint", return_value=(None, None)), \
+             patch("agent.auxiliary_client._try_nous") as nous_try, \
+             patch("agent.auxiliary_client._try_custom_endpoint", return_value=(local_client, "local-model")), \
              patch("agent.auxiliary_client._resolve_api_key_provider", return_value=(None, None)):
             client, model = _resolve_auto()
         # Step-1 was bypassed — resolve_provider_client never invoked
         step1.assert_not_called()
-        # Step-2 also skipped openrouter and landed on nous
+        # Step-2 no longer probes OpenRouter/Nous implicitly and lands on local/custom.
         or_try.assert_not_called()
-        assert client is nous_client
+        nous_try.assert_not_called()
+        assert client is local_client
+        assert model == "local-model"
 
     def test_payment_fallback_skips_unhealthy(self):
         """_try_payment_fallback also consults the unhealthy cache so a 402
@@ -3681,20 +3694,20 @@ class TestAuxUnhealthyCache:
             _try_payment_fallback,
             _mark_provider_unhealthy,
         )
-        nous_client = MagicMock()
-        # Mark BOTH the failed provider (openrouter) and a sibling (custom)
-        # unhealthy. The chain should still find nous.
+        api_client = MagicMock()
+        # Mark a sibling (custom) unhealthy. The chain should still find api-key.
         _mark_provider_unhealthy("local/custom")
         with patch("agent.auxiliary_client._read_main_provider", return_value="openrouter"), \
              patch("agent.auxiliary_client._try_openrouter") as or_try, \
-             patch("agent.auxiliary_client._try_nous", return_value=(nous_client, "n-model")), \
+             patch("agent.auxiliary_client._try_nous") as nous_try, \
              patch("agent.auxiliary_client._try_custom_endpoint") as custom_try, \
-             patch("agent.auxiliary_client._resolve_api_key_provider", return_value=(None, None)):
+             patch("agent.auxiliary_client._resolve_api_key_provider", return_value=(api_client, "api-model")):
             client, model, label = _try_payment_fallback("openrouter", task="compression")
-        assert client is nous_client
-        assert label == "nous"
-        # OR is skipped via skip_chain_labels (failed provider), custom via unhealthy cache.
+        assert client is api_client
+        assert label == "api-key"
+        # OR/Nous are no longer implicit rungs; custom is skipped via unhealthy cache.
         or_try.assert_not_called()
+        nous_try.assert_not_called()
         custom_try.assert_not_called()
 
     def test_call_llm_marks_provider_unhealthy_on_402(self, monkeypatch):

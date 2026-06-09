@@ -424,6 +424,10 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                     messages=messages,
                     pre_tool_block_checked=True,
                 )
+                # Dedup check: detect consecutive identical tool calls
+                dedup = agent._tool_dedup_tracker.check_and_register(function_name, function_args)
+                if dedup.reminder_text and isinstance(result, str):
+                    result += dedup.reminder_text
             except KeyboardInterrupt:
                 try:
                     agent.interrupt("keyboard interrupt")
@@ -1134,6 +1138,11 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                 function_result,
                 failed=_is_error_result,
             )
+            # Dedup check: detect consecutive identical tool calls across API iterations.
+            # Appends reminder text if this call repeats a previous step's call.
+            dedup = agent._tool_dedup_tracker.check_and_register(function_name, function_args)
+            if dedup.reminder_text and isinstance(function_result, str):
+                function_result += dedup.reminder_text
             result_preview = function_result if agent.verbose_logging else (
                 function_result[:200] if len(function_result) > 200 else function_result
             )

@@ -20,7 +20,8 @@ This document explains the fork-specific changes on `main` that diverge from ups
 | **P-013** | `model_tools.py`, `tests/run_agent/test_repair_tool_arg_keys.py` | Adds automatic tool argument key repair (`repair_tool_arg_keys`) with alias tables, per-tool overrides, fuzzy fallback, nested object/array recursion, and an optional callback hook; integrated into `handle_function_call` before type coercion | LLMs often misname arguments (e.g. "file"→"path", "cmd"→"command"); this makes tool dispatch resilient to common drift without weakening JSON Schemas | Should be upstreamed |
 | **P-014** | `.github/workflows/release-runtime.yml`, `tools/mcp_tool.py`, `hermes_cli/config.py`, `docs/RUNTIME_RELEASES.md`, `tests/tools/test_mcp_tool.py` | Bundles the native MCP client SDK into the frozen runtime (install entry later folded into the `cn-desktop` extra — see P-015 — plus `--collect-submodules/--copy-metadata mcp` and a CI assert on `mcp-*.dist-info`), and makes `discover_mcp_tools()` warn once when `mcp_servers` is configured but the SDK is absent instead of silently no-op'ing at debug | Issue #16: the desktop runtime shipped without the `mcp` extra, so `_MCP_AVAILABLE=False` and configured `mcp_servers` registered no tools with no INFO-level log. The packaging fix is fork-specific; the diagnostic + known-root-key are generic | Packaging change is CN-specific; the `mcp_tool.py` warning and `mcp_servers` known-root-key should be upstreamed |
 | **P-015** | `pyproject.toml`, `.github/workflows/release-runtime.yml`, `docs/RUNTIME_RELEASES.md`, `uv.lock` | Adds a `cn-desktop` aggregate extra that pre-bakes every backend the frozen runtime exposes (`web`, `anthropic`, `mcp`, `feishu`, `dingtalk`, `wecom`, plus 微信's `aiohttp`/`qrcode`/`cryptography`). The release workflow installs `.[cn-desktop]`, collects the IM SDK submodules + metadata, runs a build-env import smoke test, and asserts each backend's `dist-info` in the frozen output | Desktop report: the 飞书/钉钉/企微/微信 adapters silently degraded to "unavailable" because their SDKs (`lark-oapi`, `dingtalk-stream`, …) were never bundled and the frozen build can't lazy-install. Same root cause as P-014, generalized to all desktop backends | Packaging is CN-specific; not upstreamed (upstream doesn't build these artifacts) |
-| **P-016** | `tools/terminal_tool.py`, `tools/environments/local.py`, `model_tools.py`, `tests/tools/test_terminal_dynamic_description.py` | PowerShell (pwsh / Windows PowerShell) native execution: on Windows, uses pwsh as the primary local shell with full lifecycle support (spawn, wrap, init_session, cwd tracking); removes Git Bash auto-install and fallback. Adds runtime-adaptive terminal tool description that replaces Linux/bash command references with pwsh cmdlets when the active shell is pwsh; adds shell-fingerprint to tool-definitions cache key | Agent on Windows was hardcoded to Git Bash; pwsh is faster (-NoProfile), has better Windows-native path handling, and avoids the POSIX-translation overhead. Git for Windows auto-install and Git Bash fallback have been deleted — the agent now requires pwsh or system PowerShell on Windows. The static `TERMINAL_TOOL_DESCRIPTION` contained Linux-only command references that are misleading under pwsh | Should be upstreamed |
+| **P-016** | `tools/terminal_tool.py`, `tools/environments/local.py`, `tools/environments/proccess_pwsh.py`, `tools/environments/base.py`, `model_tools.py`, `tests/tools/test_terminal_dynamic_description.py` | PowerShell (pwsh / Windows PowerShell) native execution: on Windows, uses pwsh as the primary local shell with full lifecycle support (spawn, wrap, init_session, cwd tracking); removes Git Bash auto-install and fallback. Adds runtime-adaptive terminal tool description that replaces Linux/bash command references with pwsh cmdlets when the active shell is pwsh; adds shell-fingerprint to tool-definitions cache key. Adds pwsh_transform warning propagation so the LLM is notified when its PowerShell 7.x syntax was down-leveled to 5.1 | Agent on Windows was hardcoded to Git Bash; pwsh is faster (-NoProfile), has better Windows-native path handling, and avoids the POSIX-translation overhead. Git for Windows auto-install and Git Bash fallback have been deleted — the agent now requires pwsh or system PowerShell on Windows. The static `TERMINAL_TOOL_DESCRIPTION` contained Linux-only command references that are misleading under pwsh | Should be upstreamed |
+| **P-017** | `agent/tool_dedup.py`, `agent/agent_init.py`, `agent/conversation_loop.py`, `agent/tool_executor.py` | Adds `ToolDedupTracker` that detects consecutive identical tool calls across API iterations and injects escalating reminders (`<system-reminder>`) at repeat counts 3, 5, and 8 to break infinite loops | Agent on complex tasks can enter infinite loops calling the same tool with the same arguments repeatedly — the existing same-turn dedup (`_deduplicate_tool_calls`) doesn't catch this cross-iteration pattern | Internal — addresses a behavioral robustness gap; the mechanism is generic but integration points are fork-specific |
 
 > **P-001** (provider dict-vs-list mismatch in `tui_gateway/server.py`) — **dropped from this fork**. Upstream has since fixed it; the line `user_provs = cfg.get("providers")` in `_apply_model_switch` already does the right thing.
 
@@ -324,12 +325,55 @@ opening an upstream PR.
    - Registry integration.
    - LRU cache behavior.
 
+5. **`tools/environments/proccess_pwsh.py` + `tools/environments/base.py`** — pwsh_transform warning propagation:
+   - Changes `pwsh_transform()` return type from `str` to `tuple[str, list[str]]` — the second element is a list of human-readable warnings describing each transformation applied (e.g. `"Line 3: ternary operator rewritten to if/else"`).
+   - Each internal `_transform_*_line` function collects warnings for transformations it performs.
+   - `_run_pwsh()` in `local.py` captures warnings from the single `pwsh_transform()` call and stores them on `self._pwsh_warnings`.
+   - `execute()` in `base.py` attaches `_pwsh_warnings` to the result dict under the key `"pwsh_warnings"`.
+   - `terminal_tool()` surfaces `pwsh_warnings` in the final JSON response returned to the LLM, so the agent can see when its PowerShell 7.x syntax was rewritten to 5.1-compatible code.
+   - Tests in `tests/tools/test_pwsh_transform.py` (18 tests) and `tests/tools/test_local_pwsh_warnings.py` (8 tests) cover all layers.
+
 **Side effects**:
 - On Windows with pwsh: all local terminal commands now execute in pwsh instead of bash. This means shell syntax (`;` not `&&`, `$env:VAR` not `$VAR`, `Get-ChildItem` not `ls` for scripts) must be pwsh-compatible. The agent's prompt already instructs it to use the active shell. Git Bash is no longer supported or auto-installed.
 - The `_detect_shell_for_description` LRU cache means a mid-session shell change won't update the description until cache is cleared. Mitigation: callers can invoke `_detect_shell_for_description.cache_clear()`.
 - Docker/SSH/Modal backends are unaffected — they always use bash inside containers and don't go through `_resolve_shell()`.
 
 **Should we upstream?** Yes. This makes Hermes a first-class Windows citizen. The changes are modular: shell detection and dispatch follow the existing `_run_bash` / `_wrap_command` pattern, and the dynamic description reuses the existing `dynamic_schema_overrides` mechanism.
+
+---
+
+### P-017: Consecutive identical tool call dedup (infinite loop breaker)
+
+**Symptom**: On complex tasks (long-running builds, multi-step refactors), the agent sometimes enters an infinite loop, calling the same tool with the same arguments across consecutive API iterations — e.g. repeatedly reading the same file, or calling `run` with the same command. The existing `_deduplicate_tool_calls()` in `run_agent.py` only removes exact duplicates within a **single** turn's tool batch, missing cross-iteration repeats entirely.
+
+**Root cause**: No cross-step dedup mechanism existed. Each API iteration's tool results feed into the next LLM call without any history awareness of what was already tried.
+
+**What the patch does**:
+
+1. **`agent/tool_dedup.py`** — New module with `ToolDedupTracker` class:
+   - Normalizes tool call keys via `_canonical_tool_arguments()` (recursive key-sorting for dicts, fallback to `str()`).
+   - Tracks `_seen_call_keys` (all calls seen across steps) and `_consecutive_key`/`_consecutive_count` (streak tracking).
+   - `begin_step(previous_calls, step_no, turn_id)`: seeds state from previous step's tool calls.
+   - `end_step()`: returns the list of calls made this step for the next iteration, and advances the consecutive streak.
+   - `check_and_register(tool_name, arguments)`: called during tool execution; if the call key was seen in a previous step, returns escalating reminder text at repeat counts 3, 5, and 8.
+   - Escalating reminders: at count 3, a gentle nudge (`<system-reminder>`: "You are repeating the exact same tool call…"). At counts 5 and 8, a stronger message naming the tool, repeat count, and arguments.
+
+2. **`agent/agent_init.py`** — Initializes `_tool_dedup_tracker` on the `AIAgent` instance.
+
+3. **`agent/conversation_loop.py`** — Step lifecycle:
+   - Before each API call: `begin_step()` seeds cross-step state from the previous iteration's calls.
+   - After all tool results are collected: `end_step()` captures the current step's calls for the next iteration.
+
+4. **`agent/tool_executor.py`** — Dedup check injection:
+   - In `execute_tool_calls_concurrent()`: after each tool execution, calls `check_and_register()` and appends any reminder text to the result.
+   - In `execute_tool_calls_sequential()`: same pattern.
+
+**Side effects**:
+- Tool results may grow by a few hundred characters (the `<system-reminder>` text) when dedup is triggered.
+- The reminder text is visible to the LLM, which may influence its next action — this is the intended behavior.
+- Thread safety: `check_and_register()` uses a `threading.Lock()` to protect shared state in the concurrent execution path.
+
+**Should we upstream?** The mechanism is generic, but the integration points (`agent_init.py`, `conversation_loop.py`, `tool_executor.py`) are specific to this fork's agent architecture. Could be proposed as a generalized observability hook.
 
 ---
 

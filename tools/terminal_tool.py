@@ -2455,6 +2455,8 @@ def terminal_tool(
                 result_dict["approval"] = approval_note
             if exit_note:
                 result_dict["exit_code_meaning"] = exit_note
+            if result.get("pwsh_warnings"):
+                result_dict["pwsh_warnings"] = result["pwsh_warnings"]
 
             return json.dumps(result_dict, ensure_ascii=False)
 

@@ -408,6 +408,11 @@ def init_agent(
     agent._tool_guardrails = ToolCallGuardrailController()
     agent._tool_guardrail_halt_decision: ToolGuardrailDecision | None = None
 
+    # Tool deduplication tracker — detects consecutive identical tool calls
+    # across API iterations to prevent infinite loops.
+    from agent.tool_dedup import ToolDedupTracker
+    agent._tool_dedup_tracker = ToolDedupTracker()
+
     # Interrupt mechanism for breaking out of tool loops
     agent._interrupt_requested = False
     agent._interrupt_message = None  # Optional message that triggered interrupt

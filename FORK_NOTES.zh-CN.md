@@ -23,7 +23,8 @@
 | **P-013** | `model_tools.py`, `tests/run_agent/test_repair_tool_arg_keys.py` | 在 `handle_function_call` 中增加自动参数键修复：全局别名表、工具级覆盖、模糊匹配、嵌套对象/数组递归修复，以及可选回调通知 | LLM 经常把参数名写错（如 `file`→`path`、`cmd`→`command`），此前会直接报 "unknown parameter"；该补丁在不放宽 JSON Schema 的前提下提高工具调用的容错率 | 建议上游 |
 | **P-014** | `.github/workflows/release-runtime.yml`, `tools/mcp_tool.py`, `hermes_cli/config.py`, `docs/RUNTIME_RELEASES.md`, `tests/tools/test_mcp_tool.py` | 把原生 MCP 客户端 SDK 打进冻结 runtime（安装入口后并入 `cn-desktop` extra，见 P-015；外加 `--collect-submodules/--copy-metadata mcp` + CI 断言 `mcp-*.dist-info` 存在）；并让 `discover_mcp_tools()` 在已配置 `mcp_servers` 但 SDK 缺失时输出一次 WARNING，而不是在 debug 级别静默跳过 | issue #16：desktop runtime 打包时缺少 `mcp` extra，导致 `_MCP_AVAILABLE=False`，已配置的 `mcp_servers` 不注册任何工具且 INFO 日志无任何提示。打包改动是 CN 特有，诊断日志与已知根键则是通用改进 | 打包改动 CN 特有；`mcp_tool.py` 告警与 `mcp_servers` 根键建议上游 |
 | **P-015** | `pyproject.toml`, `.github/workflows/release-runtime.yml`, `docs/RUNTIME_RELEASES.md`, `uv.lock` | 新增 `cn-desktop` 聚合 extra，把冻结 runtime 暴露的所有后端预打包（`web`、`anthropic`、`mcp`、`feishu`、`dingtalk`、`wecom`，以及微信用的 `aiohttp`/`qrcode`/`cryptography`）。发布流程改为安装 `.[cn-desktop]`，收集各 IM SDK 子模块与元数据，新增"构建环境 import 冒烟"，并断言每个后端的 `dist-info` 出现在冻结产物中 | 桌面反馈：飞书/钉钉/企微/微信适配器因 SDK（`lark-oapi`、`dingtalk-stream` 等）从未被打包、且冻结环境无法懒安装而静默降级为"不可用"。根因同 P-014，推广到所有桌面后端 | 打包 CN 特有；不上游（上游不构建这些产物） |
-| **P-016** | `tools/terminal_tool.py`, `tools/environments/local.py`, `model_tools.py`, `tests/tools/test_terminal_dynamic_description.py` | PowerShell (pwsh / Windows PowerShell) 原生执行：Windows 上使用 pwsh 作为主 shell，支持完整生命周期管理（spawn、wrap、init_session、cwd 跟踪）；删除 Git Bash 自动安装与回退逻辑。增加运行时自适应的 terminal 工具描述，当激活 shell 为 pwsh 时自动将 Linux/bash 命令引用替换为 pwsh cmdlet；将 shell 指纹加入工具定义缓存键 | Windows 上 agent 原本硬编码为 Git Bash；pwsh 启动更快（-NoProfile）、Windows 路径处理更原生、无需 POSIX 翻译。Git for Windows 自动安装与 Git Bash 回退已被删除——Windows 平台现在要求使用 pwsh 或系统 PowerShell。静态 `TERMINAL_TOOL_DESCRIPTION` 中包含的 Linux 命令引用（`cat/head/tail`、`grep/rg/find`、`echo/cat heredoc`）在 pwsh 下会产生误导 | 建议上游 |
+| **P-016** | `tools/terminal_tool.py`, `tools/environments/local.py`, `tools/environments/proccess_pwsh.py`, `tools/environments/base.py`, `model_tools.py`, `tests/tools/test_terminal_dynamic_description.py` | PowerShell (pwsh / Windows PowerShell) 原生执行：Windows 上使用 pwsh 作为主 shell，支持完整生命周期管理（spawn、wrap、init_session、cwd 跟踪）；删除 Git Bash 自动安装与回退逻辑。增加运行时自适应的 terminal 工具描述，当激活 shell 为 pwsh 时自动将 Linux/bash 命令引用替换为 pwsh cmdlet；将 shell 指纹加入工具定义缓存键。增加 pwsh_transform 警告传递，使 LLM 能感知其 PS7 语法被降级为 5.1 | Windows 上 agent 原本硬编码为 Git Bash；pwsh 启动更快（-NoProfile）、Windows 路径处理更原生、无需 POSIX 翻译。Git for Windows 自动安装与 Git Bash 回退已被删除——Windows 平台现在要求使用 pwsh 或系统 PowerShell。静态 `TERMINAL_TOOL_DESCRIPTION` 中包含的 Linux 命令引用（`cat/head/tail`、`grep/rg/find`、`echo/cat heredoc`）在 pwsh 下会产生误导 | 建议上游 |
+| **P-017** | `agent/tool_dedup.py`, `agent/agent_init.py`, `agent/conversation_loop.py`, `agent/tool_executor.py` | 增加 `ToolDedupTracker`，在跨 API 迭代间检测重复的相同工具调用，并在重复次数达到 3、5、8 次时注入逐级升级的 `<system-reminder>` 提示以打破无限循环 | Agent 在处理复杂任务时可能陷入无限循环，反复调用相同工具和参数——现有同轮去重 `_deduplicate_tool_calls` 无法检测跨迭代模式 | 内部机制——解决行为健壮性缺口；机制通用，但集成点与 fork 架构耦合 |
 
 ## 发布和维护支撑
 
@@ -280,7 +281,10 @@
 **风险和约束**：冻结 runtime 体积增加 IM SDK 及其传递依赖（尤其是纯 Python 的 `alibabacloud_*` 链）。它们都是纯 Python、有跨平台 wheel/sdist——不像 `matrix` 的 `python-olm` 需要 C 工具链，那个仍刻意排除。对源码安装无影响。
 
 **是否上游**：否。上游不构建这些 PyInstaller 产物，`cn-desktop` extra 与打包均为 CN runtime 特有。
-### P-014：PowerShell (pwsh) 原生执行 + 运行时自适应终端工具描述
+
+---
+
+### P-016：PowerShell (pwsh) 原生执行 + 运行时自适应终端工具描述
 
 **现象**：Windows 上 agent 硬编码使用 Git Bash。PowerShell 7 (pwsh) 启动更快（`-NoProfile` 跳过 profile 加载），原生处理 Windows 路径（无需 `/c/foo` 翻译），是现代 Windows 的默认 shell。此外，terminal 工具的静态 `TERMINAL_TOOL_DESCRIPTION` 包含 Linux/bash 命令引用（`cat/head/tail`、`grep/rg/find`、`echo/cat heredoc`、`Pipe git output to cat`），这些命令在原生 pwsh 中不存在——LLM 要么尝试执行失败，要么不知道应避开哪些 pwsh 等价命令。
 
@@ -316,12 +320,55 @@
    - Registry 集成。
    - LRU 缓存行为。
 
+5. **`tools/environments/proccess_pwsh.py` + `tools/environments/base.py`** — pwsh_transform 警告传递：
+   - 将 `pwsh_transform()` 的返回类型从 `str` 改为 `tuple[str, list[str]]`——第二个元素是一个人类可读的警告列表，描述每次转换的内容（例如 `"第 3 行：三元运算符被重写为 if/else"`）。
+   - 每个内部 `_transform_*_line` 函数收集其所执行转换的警告。
+   - `local.py` 中的 `_run_pwsh()` 从唯一的 `pwsh_transform()` 调用中捕获警告，并保存在 `self._pwsh_warnings` 中。
+   - `base.py` 中的 `execute()` 将 `_pwsh_warnings` 附加到结果字典的 `"pwsh_warnings"` 键下。
+   - `terminal_tool()` 将 `pwsh_warnings` 暴露在返回给 LLM 的最终 JSON 响应中，使 agent 能看到其 PowerShell 7.x 语法何时被重写为 5.1 兼容代码。
+   - 测试位于 `tests/tools/test_pwsh_transform.py`（18 个）和 `tests/tools/test_local_pwsh_warnings.py`（8 个），覆盖所有层次。
+
 **风险和约束**：
 - Windows 上有 pwsh 时：所有本地 terminal 命令现在在 pwsh 中执行而非 bash。这意味着 shell 语法（`;` 而非 `&&`、`$env:VAR` 而非 `$VAR`、脚本应使用 `Get-ChildItem` 而非 `ls`）必须是 pwsh 兼容的。Agent 的 prompt 已指示使用当前活动的 shell。Git Bash 不再被支持，也不再自动安装。
 - `_detect_shell_for_description` LRU 缓存意味着会话中期 shell 变更不会更新描述，直到缓存被清除。缓解方案：调用方可手动执行 `_detect_shell_for_description.cache_clear()`。
 - Docker/SSH/Modal 后端不受影响——它们始终在容器内使用 bash，不经过 `_resolve_shell()`。
 
 **是否上游**：建议上游。这使 Hermes 成为 Windows 一等公民。改动是模块化的：shell 检测和分发遵循已有的 `_run_bash` / `_wrap_command` 模式，动态描述复用已有的 `dynamic_schema_overrides` 机制。
+
+---
+
+### P-017：跨迭代重复工具调用检测（无限循环断路器）
+
+**现象**：在复杂任务（长时间构建、多步骤重构）中，agent 有时会陷入无限循环，跨连续 API 迭代反复调用相同的工具和相同参数——例如反复读取同一文件，或使用相同命令反复调用 `run`。现有的 `_deduplicate_tool_calls()` 仅移除**同一次**工具批次中的精确重复，完全无法检测跨迭代重复。
+
+**根因**：此前没有跨步骤去重机制。每个 API 迭代的工具结果进入下一次 LLM 调用时，对之前尝试过什么完全没有历史感知。
+
+**改动内容**：
+
+1. **`agent/tool_dedup.py`** — 新增 `ToolDedupTracker` 类模块：
+   - 通过 `_canonical_tool_arguments()` 对工具调用键规范化（字典递归排序、回退到 `str()`）。
+   - 跟踪 `_seen_call_keys`（所有跨步骤见过的调用）和 `_consecutive_key`/`_consecutive_count`（连续调用计数）。
+   - `begin_step(previous_calls, step_no, turn_id)`：从上一步的工具调用结果中植入状态。
+   - `end_step()`：返回本步的调用列表供下一次迭代使用，并更新连续计数。
+   - `check_and_register(tool_name, arguments)`：在工具执行期间调用；若调用键在前序步骤中已出现过，则在重复计数达到 3、5、8 时返回逐步升级的提示文本。
+   - 逐级提示：计数 3 时温和提醒（`<system-reminder>`：“你在重复完全相同工具调用…”）。计数 5 和 8 时更强提示，明确给出工具名、重复次数和参数。
+
+2. **`agent/agent_init.py`** — 在 `AIAgent` 实例上初始化 `_tool_dedup_tracker`。
+
+3. **`agent/conversation_loop.py`** — 步骤生命周期：
+   - 每次 API 调用前：`begin_step()` 从上一次迭代的调用结果植入跨步骤状态。
+   - 所有工具结果收集完成后：`end_step()` 捕获本次迭代的调用供下一次使用。
+
+4. **`agent/tool_executor.py`** — 去重检查注入：
+   - 在 `execute_tool_calls_concurrent()` 中：每次工具执行后调用 `check_and_register()`，将提示文本追加到结果中。
+   - 在 `execute_tool_calls_sequential()` 中：相同模式。
+
+**风险和约束**：
+- 触发去重时，工具结果可能增加数百字符（`<system-reminder>` 文本）。
+- LLM 可见提示文本，可能影响其下一步决策——这正是预期行为。
+- 线程安全：`check_and_register()` 使用 `threading.Lock()` 保护并发执行路径中的共享状态。
+
+**是否上游**：机制是通用的，但集成点（`agent_init.py`、`conversation_loop.py`、`tool_executor.py`）与 fork 的 agent 架构高度耦合。可作为通用可观测性钩子提出。
 
 ---
 

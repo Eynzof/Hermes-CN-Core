@@ -673,7 +673,8 @@ class LocalEnvironment(BaseEnvironment):
         # Windows PowerShell 5.1 doesn't understand PowerShell 7.x syntax
         # (ternary, ??, ??=, &&, ||, ?., ?[).  Down-level when necessary.
         if os.path.basename(self._shell_path).lower().startswith("powershell"):
-            cmd_string = pwsh_transform(cmd_string)
+            cmd_string, pwsh_warnings = pwsh_transform(cmd_string)
+            self._pwsh_warnings = pwsh_warnings
         args = [self._shell_path, "-NoP", "-Exec", "Bypass", "-NoL", "-C", cmd_string]
         run_env = _make_run_env(self.env)
         safe_cwd = _resolve_safe_cwd(self.cwd)
@@ -722,9 +723,6 @@ class LocalEnvironment(BaseEnvironment):
           ``$?``      → ``$LASTEXITCODE``
           ``pwd -P``  → ``Get-Location``
         """
-        # Down-level PowerShell 7.x syntax (ternary, ??, ??=, &&, ||, ?., ?[)
-        # to PowerShell 5.1 compatible syntax before wrapping.
-        command = pwsh_transform(command)
 
         # Escape single quotes for PowerShell: double them
         escaped = command.replace("'", "''")

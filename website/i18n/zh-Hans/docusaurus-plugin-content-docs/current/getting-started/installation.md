@@ -37,7 +37,7 @@ iex (irm https://hermes-agent.nousresearch.com/install.ps1)
 
 **为什么不使用 winget？** 早期设计通过 `winget install Git.Git` 自动安装 Git，但当系统 Git 安装处于部分损坏状态时，winget 会严重失败（而这恰恰是用户最需要安装程序正常工作的时候）。便携式 Git 方案绕过了 winget、Windows 安装程序注册表以及任何现有系统 Git。如果 Hermes 的 Git 安装本身出现问题，执行 `Remove-Item %LOCALAPPDATA%\hermes\git` 并重新运行安装程序即可——对系统无影响，无需卸载操作。
 
-安装程序还会将 `HERMES_GIT_BASH_PATH` 设置为找到的 `bash.exe` 路径，以便 Hermes 在新 shell 中确定性地解析它。
+Hermes 使用 Windows 自带的 **Windows PowerShell 5.1**（`powershell.exe`）执行 shell 命令，无需额外安装任何 shell。
 
 如果你偏好 WSL2，上方的 Linux 安装程序可在其中运行；原生安装和 WSL 安装可以共存而不冲突（原生数据位于 `%LOCALAPPDATA%\hermes`，WSL 数据位于 `~/.hermes`）。
 

@@ -1,6 +1,6 @@
 P---
 title: "Windows（原生）指南"
-description: "在 Windows 10 / 11 上原生运行 Hermes Agent — 安装、功能矩阵、UTF-8 控制台、Git Bash、将 gateway 作为计划任务、编辑器处理、PATH、卸载及常见问题"
+description: "在 Windows 10 / 11 上原生运行 Hermes Agent — 安装、功能矩阵、UTF-8 控制台、Windows PowerShell、将 gateway 作为计划任务、编辑器处理、PATH、卸载及常见问题"
 sidebar_label: "Windows（原生）"
 sidebar_position: 3
 ---
@@ -74,8 +74,7 @@ iex (irm https://hermes-agent.nousresearch.com/install.ps1)
 5. **将仓库克隆**到 `%LOCALAPPDATA%\hermes\hermes-agent` 并在其中创建 virtualenv。
 6. **分层 `uv pip install`** — 先尝试 `.[all]`，如果 `git+https` 依赖在 GitHub 限速时失败，则逐步回退到更小的集合（`[messaging,dashboard,ext]` → `[messaging]` → `.`）。防止"单次失败导致裸安装"的故障模式。
 7. **根据 `.env` 自动安装消息 SDK** — 如果存在 `TELEGRAM_BOT_TOKEN` / `DISCORD_BOT_TOKEN` / `SLACK_BOT_TOKEN` / `SLACK_APP_TOKEN` / `WHATSAPP_ENABLED`，则运行 `python -m ensurepip --upgrade` 并针对性地调用 `pip install`，确保各平台 SDK 可正常导入。
-8. **设置 `HERMES_GIT_BASH_PATH`** 为解析后的 `bash.exe` 路径，使 Hermes 在新 shell 中能确定性地找到它。
-9. **将 `%LOCALAPPDATA%\hermes\bin` 添加到用户 PATH** — 打开新终端后即可使用 `hermes` 命令。
+8. **将 `%LOCALAPPDATA%\hermes\bin` 添加到用户 PATH**——打开新终端后即可使用 `hermes` 命令。
 10. **运行 `hermes setup`** — 正常的首次运行向导（模型、提供商、工具集）。使用 `-SkipSetup` 跳过。
 
 :::tip 在 Windows 上跳过繁琐的提供商配置
@@ -101,21 +100,13 @@ iex (irm https://hermes-agent.nousresearch.com/install.ps1)
 
 Dashboard 的 `/chat` 标签页通过 POSIX PTY（`ptyprocess`）内嵌了真实终端。原生 Windows 没有等效的原语；Python 的 `pywinpty` / Windows ConPTY 可以实现，但需要单独的实现——视为未来工作。**dashboard 的其余部分均可原生运行**——只有该标签页会显示"请使用 WSL2"的提示横幅。
 
-## Hermes 在 Windows 上如何运行 shell 命令
+## Hermes 如何在 Windows 上运行 shell 命令
 
-Hermes 的终端工具通过 **Git Bash** 运行命令，与 Claude Code 采用相同策略。这在不重写每个工具的情况下绕过了 POSIX 与 Windows 的差异。
+Hermes 的终端工具通过 **Windows PowerShell 5.1**（`powershell.exe`）运行命令——每套 Windows 10 和 Windows 11 系统自带，无需额外安装、无需下载、无需 Git Bash。
 
-`bash.exe` 的解析顺序：
+PowerShell 5.1 启动比 Git Bash 更快，原生处理 Windows 路径（无需 `/c/foo` 翻译），避免了整个 POSIX 翻译开销。Agent 被指示使用 PowerShell 语法（`Get-ChildItem`、`$env:VAR`、`Select-String`、`Get-Content`）。如果它意外使用了 PowerShell 7+ 语法（`?:`、`??`、`&&`、`||`、`?.`、`?[`），`pwsh_transform` 兼容层会自动将其降级为 5.1 兼容的 `if/else` 块。
 
-1. 如果设置了 `HERMES_GIT_BASH_PATH` 环境变量，优先使用。
-2. `%LOCALAPPDATA%\hermes\git\usr\bin\bash.exe`（安装程序管理的 PortableGit）。
-3. `%LOCALAPPDATA%\hermes\git\bin\bash.exe`（旧版 Git-for-Windows 布局）。
-4. 系统 Git-for-Windows 安装（`%ProgramFiles%\Git\bin\bash.exe` 等）。
-5. MSYS2、Cygwin 或 PATH 上任意 `bash.exe` 作为最后手段。
-
-安装程序会显式设置 `HERMES_GIT_BASH_PATH`，使新 PowerShell 会话无需重新发现。如果你想让 Hermes 使用特定的 bash——例如系统 Git Bash 或通过符号链接的 WSL bash——可以覆盖此变量。
-
-**注意事项：** MinGit 的目录布局与完整 Git-for-Windows 安装程序不同——bash 位于 `usr\bin\bash.exe`，而非 `bin\bash.exe`。Hermes 会同时检查两个路径。如果你手动解压 MinGit zip，请确保选择**非 busybox** 变体（`MinGit-*-64-bit.zip`，而非 `MinGit-*-busybox*.zip`）——busybox 构建附带的是 `ash` 而非 `bash`，且大多数 coreutils 工具缺失。
+在 `.env` 中设置 `HERMES_SHELL_TYPE=powershell`（或保持默认 `auto`）以使用 PowerShell。Windows 不支持 `HERMES_SHELL_TYPE=bash`。
 
 ## Windows 上的 UTF-8 控制台
 
@@ -250,7 +241,7 @@ TELEGRAM_BOT_TOKEN=...
 
 | 变量                          | 效果                                                                                                                                |
 | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `HERMES_GIT_BASH_PATH`        | 覆盖 bash.exe 的发现逻辑。可指向任意 bash——完整 Git-for-Windows、通过符号链接的 WSL bash、MSYS2、Cygwin。安装程序会自动设置此变量。 |
+| `HERMES_SHELL_TYPE`           | `auto`（默认→Windows 上使用 PowerShell）、`powershell`（显式指定）。Windows 不支持 `bash`。 |
 | `HERMES_DISABLE_WINDOWS_UTF8` | 设为 `1` 可禁用 UTF-8 stdio 垫片，回退到区域设置代码页。用于排查编码 bug。                                                          |
 | `EDITOR` / `VISUAL`           | 用于 `/edit` 和 `Ctrl-X Ctrl-E` 的编辑器。如果两者均未设置，Hermes 默认使用 `notepad`。                                             |
 

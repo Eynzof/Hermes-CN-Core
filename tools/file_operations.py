@@ -2192,7 +2192,7 @@ class ShellFileOperations(FileOperations):
             return self._search_with_grep(pattern, path, file_glob, limit, offset,
                                           output_mode, context)
         else:
-            # Neither rg nor grep available (Windows without Git Bash, etc.)
+            # Neither rg nor grep available (Windows without ripgrep/grep, etc.)
             return SearchResult(
                 error="Content search requires ripgrep (rg) or grep. "
                       "Install ripgrep: https://github.com/BurntSushi/ripgrep#installation"

@@ -360,7 +360,7 @@ class BaseEnvironment(ABC):
         # change the working directory (e.g. bashrc `cd ~`).  Without this,
         # pwd -P captures the profile's directory, not terminal.cwd.
         _quoted_cwd = shlex.quote(self.cwd)
-        # Quote the snapshot / cwd-file paths so Git Bash on Windows handles
+        # Quote the snapshot / cwd-file paths so the shell on Windows handles
         # ``C:/Users/...``-shaped paths without glob-splitting the colon or
         # tripping on drive letters.  On POSIX this is a no-op (no colons /
         # special chars in a /tmp path).  Previously unquoted interpolation
@@ -419,7 +419,7 @@ class BaseEnvironment(ABC):
         re-dumps env vars, and emits CWD markers."""
         escaped = command.replace("'", "'\\''")
 
-        # Quote the snapshot / cwd-file paths so Git Bash on Windows handles
+        # Quote the snapshot / cwd-file paths so the shell on Windows handles
         # ``C:/Users/...``-shaped paths without glob-splitting the colon or
         # tripping on drive letters.  POSIX paths are unaffected.  See
         # :meth:`init_session` for the same fix on the bootstrap block.

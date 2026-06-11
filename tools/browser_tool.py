@@ -1814,7 +1814,7 @@ def _find_agent_browser() -> str:
 
     # Check local node_modules/.bin/ (npm install in repo root).
     # On Windows, npm drops three shims in .bin: an extensionless POSIX shell
-    # script (for Git Bash / WSL), `agent-browser.cmd` (for cmd/PowerShell),
+    # script (for PowerShell / WSL), `agent-browser.cmd` (for cmd/PowerShell),
     # and `agent-browser.ps1` (for PowerShell). CreateProcess (used by Python's
     # subprocess on Windows) cannot execute the extensionless shim — it raises
     # WinError 193 "%1 is not a valid Win32 application". We must resolve to the

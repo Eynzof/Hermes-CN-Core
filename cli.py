@@ -1101,16 +1101,16 @@ def _reset_terminal_input_modes_on_exit() -> None:
 _active_worktree: Optional[Dict[str, str]] = None
 
 
-def _normalize_git_bash_path(p: Optional[str]) -> Optional[str]:
-    """Translate a Git Bash-style path (``/c/Users/...``) to the native
-    Windows form (``C:\\Users\\...``) that Python's ``subprocess.Popen``
-    and ``pathlib.Path`` accept.
+def _normalize_msys_path(p: Optional[str]) -> Optional[str]:
+    """Translate an MSYS/WSL-mounted path (``/c/Users/...``, ``/mnt/c/...``)
+    to the native Windows form (``C:\\Users\\...``) that Python's
+    ``subprocess.Popen`` and ``pathlib.Path`` accept.
 
     No-op on non-Windows and for paths that already look native.  Git on
     native Windows normally emits forward-slash Windows paths
-    (``C:/Users/...``) which both bash and Python handle, but certain
-    configurations (Git Bash shells, MSYS2, WSL-mounted repos) surface
-    ``/c/...`` or ``/cygdrive/c/...`` variants.
+    (``C:/Users/...``) which both shells and Python handle, but certain
+    configurations (MSYS2, WSL-mounted repos) surface ``/c/...`` or
+    ``/cygdrive/c/...`` variants.
     """
     if not p:
         return p
@@ -1133,7 +1133,7 @@ def _normalize_git_bash_path(p: Optional[str]) -> Optional[str]:
 def _git_repo_root() -> Optional[str]:
     """Return the git repo root for CWD, or None if not in a repo.
 
-    Runs through :func:`_normalize_git_bash_path` so callers can pass
+    Runs through :func:`_normalize_msys_path` so callers can pass
     the result directly to ``Path``/``subprocess.Popen(cwd=...)`` on
     Windows without hitting ``C:\\c\\Users\\...`` style resolution
     mistakes.
@@ -1145,7 +1145,7 @@ def _git_repo_root() -> Optional[str]:
             capture_output=True, text=True, timeout=5,
         )
         if result.returncode == 0:
-            return _normalize_git_bash_path(result.stdout.strip())
+            return _normalize_msys_path(result.stdout.strip())
     except Exception:
         pass
     return None

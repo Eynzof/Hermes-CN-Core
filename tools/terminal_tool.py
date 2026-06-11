@@ -859,10 +859,9 @@ def _detect_shell_for_description() -> str:
 
     Returns ``"powershell"`` or ``"bash"``.
 
-    On Windows with ``HERMES_SHELL_TYPE`` set to ``"auto"`` (default) or
-    ``"pwsh"``/``"powershell"``, probes PATH for ``powershell``/``powershell.exe``.
-    Falls back to ``"bash"`` only when ``HERMES_SHELL_TYPE=auto`` and powershell
-    is not on PATH.
+    On Windows, always returns ``"powershell"`` (Windows PowerShell 5.1
+    ships with every Windows 10/11 system). On non-Windows, returns
+    ``"bash"``.
 
     Cached via ``@lru_cache`` so repeated calls are essentially free.
     """
@@ -872,21 +871,10 @@ def _detect_shell_for_description() -> str:
     shell_type = os.environ.get("HERMES_SHELL_TYPE", "auto").strip().lower() or "auto"
 
     if shell_type == "bash":
-        return "bash"
+        return "powershell"  # _resolve_shell() in local.py will raise RuntimeError
 
-    if shell_type in ("pwsh", "powershell", "auto"):
-        powershell_path = shutil.which("powershell") or shutil.which("powershell.exe")
-        if powershell_path:
-            return "powershell"
-
-        # Explicit pwsh/powershell requested but unavailable — still report
-        # powershell; _resolve_shell() in local.py will raise a clear RuntimeError.
-        if shell_type in ("pwsh", "powershell"):
-            return "powershell"
-
-        return "bash"
-
-    return "bash"
+    # Windows: always powershell
+    return "powershell"
 
 
 def _build_dynamic_terminal_description() -> dict:
@@ -900,8 +888,6 @@ def _build_dynamic_terminal_description() -> dict:
 
     if shell_type == "powershell":
         platform_env = "Execute powershell commands on a Windows PowerShell environment"
-    elif shell_type == "bash" and platform.system() == "Windows":
-        platform_env = "Execute shell commands on a Windows Git Bash environment"
     else:
         platform_env = "Execute shell commands on a Linux environment"
 

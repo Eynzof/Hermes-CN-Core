@@ -74,9 +74,11 @@ def test_detect_macos_is_bash():
         assert _detect_shell_for_description() == "bash"
 
 
-def test_detect_windows_explicit_bash_skips_powershell_probe():
+def test_detect_windows_explicit_bash_returns_powershell():
+    # bash on Windows is no longer supported; _detect_shell_for_description()
+    # returns "powershell" so _resolve_shell() can raise RuntimeError.
     with mock.patch(SYSTEM, return_value="Windows"), _shell_type_env("bash"), mock.patch(SHUTIL_WHICH) as fp:
-        assert _detect_shell_for_description() == "bash"
+        assert _detect_shell_for_description() == "powershell"
         fp.assert_not_called()
 
 
@@ -87,11 +89,13 @@ def test_detect_windows_auto_with_powershell_available():
         assert _detect_shell_for_description() == "powershell"
 
 
-def test_detect_windows_auto_without_powershell_falls_back_to_bash():
+def test_detect_windows_auto_always_returns_powershell():
+    # Windows always uses PowerShell; PATH probing is not needed since
+    # _resolve_shell() uses powershell.exe which ships with the OS.
     with mock.patch(SYSTEM, return_value="Windows"), _shell_type_env("auto"), mock.patch(
         SHUTIL_WHICH, return_value=None
     ):
-        assert _detect_shell_for_description() == "bash"
+        assert _detect_shell_for_description() == "powershell"
 
 
 def test_detect_windows_default_unset_behaves_as_auto():
@@ -125,9 +129,10 @@ def test_detect_windows_powershell_alias_available():
         assert _detect_shell_for_description() == "powershell"
 
 
-def test_detect_windows_unknown_shell_type_is_bash():
+def test_detect_windows_unknown_shell_type_is_powershell():
+    # Any non-bash shell type on Windows → powershell (bash raises downstream).
     with mock.patch(SYSTEM, return_value="Windows"), _shell_type_env("fish"), mock.patch(SHUTIL_WHICH) as fp:
-        assert _detect_shell_for_description() == "bash"
+        assert _detect_shell_for_description() == "powershell"
         fp.assert_not_called()
 
 
@@ -167,14 +172,6 @@ def test_build_powershell_uses_powershell_sentence_and_cmdlet_refs():
     # … and the Linux/bash-only phrasings are gone.
     assert "Do NOT use cat/head/tail to read files" not in desc
     assert "Execute shell commands on a Linux environment." not in desc
-
-
-def test_build_windows_bash_uses_git_bash_sentence():
-    with mock.patch(DETECT, return_value="bash"), mock.patch(SYSTEM, return_value="Windows"):
-        desc = _build_dynamic_terminal_description()["description"]
-    assert "Windows Git Bash environment" in desc
-    # bash path leaves the Linux command references untouched
-    assert "Do NOT use cat/head/tail to read files" in desc
 
 
 def test_build_non_windows_leaves_linux_references_intact():

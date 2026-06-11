@@ -20,7 +20,8 @@ This document explains the fork-specific changes on `main` that diverge from ups
 | **P-013** | `model_tools.py`, `tests/run_agent/test_repair_tool_arg_keys.py` | Adds automatic tool argument key repair (`repair_tool_arg_keys`) with alias tables, per-tool overrides, fuzzy fallback, nested object/array recursion, and an optional callback hook; integrated into `handle_function_call` before type coercion | LLMs often misname arguments (e.g. "file"→"path", "cmd"→"command"); this makes tool dispatch resilient to common drift without weakening JSON Schemas | Should be upstreamed |
 | **P-014** | `.github/workflows/release-runtime.yml`, `tools/mcp_tool.py`, `hermes_cli/config.py`, `docs/RUNTIME_RELEASES.md`, `tests/tools/test_mcp_tool.py` | Bundles the native MCP client SDK into the frozen runtime (install entry later folded into the `cn-desktop` extra — see P-015 — plus `--collect-submodules/--copy-metadata mcp` and a CI assert on `mcp-*.dist-info`), and makes `discover_mcp_tools()` warn once when `mcp_servers` is configured but the SDK is absent instead of silently no-op'ing at debug | Issue #16: the desktop runtime shipped without the `mcp` extra, so `_MCP_AVAILABLE=False` and configured `mcp_servers` registered no tools with no INFO-level log. The packaging fix is fork-specific; the diagnostic + known-root-key are generic | Packaging change is CN-specific; the `mcp_tool.py` warning and `mcp_servers` known-root-key should be upstreamed |
 | **P-015** | `pyproject.toml`, `.github/workflows/release-runtime.yml`, `docs/RUNTIME_RELEASES.md`, `uv.lock` | Adds a `cn-desktop` aggregate extra that pre-bakes every backend the frozen runtime exposes (`web`, `anthropic`, `mcp`, `feishu`, `dingtalk`, `wecom`, plus 微信's `aiohttp`/`qrcode`/`cryptography`). The release workflow installs `.[cn-desktop]`, collects the IM SDK submodules + metadata, runs a build-env import smoke test, and asserts each backend's `dist-info` in the frozen output | Desktop report: the 飞书/钉钉/企微/微信 adapters silently degraded to "unavailable" because their SDKs (`lark-oapi`, `dingtalk-stream`, …) were never bundled and the frozen build can't lazy-install. Same root cause as P-014, generalized to all desktop backends | Packaging is CN-specific; not upstreamed (upstream doesn't build these artifacts) |
-| **P-016** | `tools/terminal_tool.py`, `tools/environments/local.py`, `tools/environments/proccess_pwsh.py`, `tools/environments/base.py`, `model_tools.py`, `tests/tools/test_terminal_dynamic_description.py` | PowerShell (pwsh / Windows PowerShell) native execution: on Windows, uses pwsh as the primary local shell with full lifecycle support (spawn, wrap, init_session, cwd tracking); removes Git Bash auto-install and fallback. Adds runtime-adaptive terminal tool description that replaces Linux/bash command references with pwsh cmdlets when the active shell is pwsh; adds shell-fingerprint to tool-definitions cache key. Adds pwsh_transform warning propagation so the LLM is notified when its PowerShell 7.x syntax was down-leveled to 5.1 | Agent on Windows was hardcoded to Git Bash; pwsh is faster (-NoProfile), has better Windows-native path handling, and avoids the POSIX-translation overhead. Git for Windows auto-install and Git Bash fallback have been deleted — the agent now requires pwsh or system PowerShell on Windows. The static `TERMINAL_TOOL_DESCRIPTION` contained Linux-only command references that are misleading under pwsh | Should be upstreamed |
+| **P-016** | `tools/terminal_tool.py`, `tools/environments/local.py`, `tools/environments/proccess_pwsh.py`, `tools/environments/base.py`, `model_tools.py`, `tests/tools/test_terminal_dynamic_description.py` | PowerShell native execution: on Windows, uses `pwsh.exe` (PS7) as the primary local shell with `powershell.exe` (PS5.1) fallback, plus full lifecycle support (`_run_pwsh`, `_wrap_command_pwsh`, `init_session`, cwd tracking). Removes Git Bash auto-install. Adds runtime-adaptive terminal tool description that replaces Linux/bash command references with PowerShell cmdlets when the active shell is PowerShell; adds shell-fingerprint to tool-definitions cache key. Adds `pwsh_transform` warning propagation so the LLM is notified when its PS7 syntax was down-leveled to PS5.1 | Agent on Windows was hardcoded to Git Bash; PowerShell has better Windows-native path handling and avoids the POSIX-translation overhead. Git for Windows auto-install has been removed — the agent uses PowerShell on Windows. The static `TERMINAL_TOOL_DESCRIPTION` contained Linux-only command references that are misleading under PowerShell | Should be upstreamed |
+| **P-019** | `tools/environments/local.py`, `tools/terminal_tool.py`, `agent/prompt_builder.py`, `cli.py`, `apps/desktop/electron/main.cjs`, `scripts/install.ps1`, `hermes_cli/uninstall.py`, `cron/scheduler.py`, `tools/environments/base.py`, `tools/file_operations.py`, `tools/browser_tool.py`, `tests/tools/test_shell_resolution.py`, `tests/tools/test_terminal_dynamic_description.py`, `tests/tools/test_windows_native_support.py`, `tests/tools/test_local_env_windows_msys.py`, `website/docs/user-guide/windows-native.md`, `website/docs/reference/environment-variables.md`, `website/docs/developer-guide/contributing.md`, `FORK_NOTES.md`, `FORK_NOTES.zh-CN.md` | Complete Git-Bash-to-PowerShell migration: removes all Git Bash discovery (7-strategy `_find_bash`), WSL launcher filtering, and `HERMES_GIT_BASH_PATH` env var support. On Windows, **Windows PowerShell 5.1** (`powershell.exe`, ships with every Windows 10/11 system) is now the **only** supported shell — no `pwsh.exe` (PS7) probing, no download, no install. `HERMES_SHELL_TYPE=bash` raises RuntimeError on Windows. Renames: `_find_pwsh_simple` → `_find_powershell`, `_run_pwsh` → `_run_powershell`, `_wrap_command_pwsh` → `_wrap_command_powershell`, `_normalize_git_bash_path` → `_normalize_msys_path`. `pwsh_transform` is now **always-on** (not conditional on PS5.1). Replaces `findGitBash()` with `findPowerShell()` in desktop Electron. Removes `Install-Git`/`Set-GitBashEnvVar`/`Stage-Git` from `install.ps1`. Removes `HERMES_GIT_BASH_PATH` from uninstaller. Updates cron scheduler to refuse `.sh`/`.bash` on Windows. Updates prompt builder to instruct PowerShell 5.1 syntax. Cleans up Git Bash references in comments, docs, and tests. | `powershell.exe` (5.1) ships with every Windows 10/11 — zero install, zero download. Starts faster than Git Bash, handles Windows paths natively, avoids POSIX-translation overhead. Removes ~400 lines of dead code (7-strategy bash discovery, WSL launcher filter, PortableGit auto-install). The agent now has a single, predictable, always-available shell on Windows. P-016's `pwsh.exe` (PS7) probing was unnecessary complexity — 5.1 is universal. | Supersedes P-016; should be upstreamed |
 | **P-017** | `agent/tool_dedup.py`, `agent/agent_init.py`, `agent/conversation_loop.py`, `agent/tool_executor.py` | Adds `ToolDedupTracker` that detects consecutive identical tool calls across API iterations and injects escalating reminders (`<system-reminder>`) at repeat counts 3, 5, and 8 to break infinite loops | Agent on complex tasks can enter infinite loops calling the same tool with the same arguments repeatedly — the existing same-turn dedup (`_deduplicate_tool_calls`) doesn't catch this cross-iteration pattern | Internal — addresses a behavioral robustness gap; the mechanism is generic but integration points are fork-specific |
 | **P-018** | `agent/agent_init.py`, `tests/run_agent/test_init_fallback_on_exhausted_pool.py` | Adds `_api_key_required` helper and empty-key guards before OpenAI / Anthropic SDK client construction. Raises `RuntimeError: no API key (param empty, env vars unset)` instead of letting a low-level SDK auth exception bubble up | Empty key (param empty, env vars unset) previously triggered confusing low-level SDK exceptions that looked like panics, especially in TUI/gateway background threads where stack traces are not surfaced to the user | Should be upstreamed |
 
@@ -290,56 +291,27 @@ opening an upstream PR.
 **Side effects**: The frozen runtime grows by the IM SDKs and their transitive deps (notably the pure-Python `alibabacloud_*` chain). All are pure-Python with cross-platform wheels/sdists — unlike `matrix`'s `python-olm`, which needs a C toolchain and is intentionally still excluded. No change to source installs.
 
 **Should we upstream?** No — upstream doesn't build these PyInstaller artifacts. The `cn-desktop` extra and packaging are CN-runtime-specific.
-### P-016: PowerShell (pwsh) native execution + runtime-adaptive terminal description
+### P-016: PowerShell native execution + runtime-adaptive terminal description
 
-**Symptom**: On Windows, the agent was hardcoded to always use Git Bash. PowerShell 7 (pwsh) is faster to start (`-NoProfile`), handles Windows paths natively (no `/c/foo` translation), and is the default shell on modern Windows. Additionally, the terminal tool's static `TERMINAL_TOOL_DESCRIPTION` referenced Linux/bash commands (`cat/head/tail`, `grep/rg/find`, `echo/cat heredoc`, `Pipe git output to cat`) that don't exist on native pwsh — the LLM would either try them and fail, or not know the pwsh equivalents to avoid.
+> **Updated by P-019**: P-019 completes the migration by removing all remaining Git Bash discovery logic and targeting **only Windows PowerShell 5.1** (`powershell.exe`). See P-019 below for details.
+
+**Symptom**: On Windows, the agent was hardcoded to always use Git Bash. PowerShell is faster to start (`-NoProfile`), handles Windows paths natively (no `/c/foo` translation). Additionally, the terminal tool's static `TERMINAL_TOOL_DESCRIPTION` referenced Linux/bash commands that don't exist on native PowerShell.
 
 **Root cause**: Upstream's `LocalEnvironment` is bash-only. The terminal tool description is a hardcoded static string assuming a Linux environment.
 
 **What the patch does**:
 
-1. **`tools/environments/local.py`** — Shell resolution and pwsh execution:
-   - Adds `_resolve_shell()`: on Windows, detects pwsh (PowerShell 7) or falls back to Windows PowerShell (system PowerShell). Respects `HERMES_SHELL_TYPE` (auto/pwsh/powershell) and `HERMES_PWSH_PATH` env overrides. Git Bash support and auto-install have been removed. Uses `_find_pwsh` from `tools/environments/_find_pwsh.py` to locate the PowerShell executable.
-   - `LocalEnvironment.__init__` calls `_resolve_shell()` and stores `self._shell_type` / `self._shell_path`.
-   - Adds `_run_pwsh()`: spawns pwsh with `-NoProfile -Command <script>`, handles stdin piping, Windows creation flags.
-   - Adds `_wrap_command_pwsh()`: builds a PowerShell script that executes `Set-Location`, `Invoke-Expression`, captures `$LASTEXITCODE`, writes CWD via `Get-Location | Out-File`, and emits a CWD marker for the framework.
-   - Overrides `init_session()`: pwsh path skips the bash env-snapshot dance (Windows env vars propagate through `os.environ` naturally). Just writes the initial CWD file.
-   - Overrides `_run_bash()` and `_wrap_command()`: dispatch to pwsh variants when `self._shell_type == "pwsh"` or `"powershell"`, preserving the original bash code paths unchanged for non-Windows platforms.
+1. **`tools/environments/local.py`** — Adds `_resolve_shell()`: on Windows, detects `pwsh.exe` (PS7) first, falls back to `powershell.exe` (PS5.1) or Git Bash. Adds `_run_pwsh()`, `_wrap_command_pwsh()`, overrides `init_session()`, `_run_bash()`, `_wrap_command()`. Respects `HERMES_SHELL_TYPE` and `HERMES_PWSH_PATH`.
 
-2. **`tools/terminal_tool.py`** — Dynamic description:
-   - Adds `_detect_shell_for_description()`: fast, side-effect-free shell probe (no auto-install). Uses `@lru_cache(maxsize=1)`.
-   - Adds `_build_dynamic_terminal_description()`: returns `{"description": ...}` with platform-appropriate first sentence and pwsh-adapted forbidden-command references. On pwsh, replaces:
-     - `cat/head/tail` → `Get-Content/cat/type`
-     - `grep/rg/find` → `Select-String/findstr`
-     - `ls` → `Get-ChildItem/ls/dir`
-     - `echo/cat heredoc` → `echo/Set-Content/Out-File`
-     - `Pipe git output to cat` → `Pipe git output to Out-Host -Paging`
-   - Registers `dynamic_schema_overrides=_build_dynamic_terminal_description` in the terminal tool's `registry.register()` call so the description is rebuilt each time tool definitions are assembled.
+2. **`tools/terminal_tool.py`** — Dynamic description: `_detect_shell_for_description()` + `_build_dynamic_terminal_description()` replace Linux/bash command references with PowerShell cmdlets.
 
-3. **`model_tools.py`** — Cache invalidation:
-   - Adds `_shell_fp` (current shell type) to `get_tool_definitions()` cache key. This ensures that a mid-session shell change (which changes the terminal description) invalidates the cached tool definitions.
+3. **`model_tools.py`** — Adds `_shell_fp` to `get_tool_definitions()` cache key.
 
-4. **`tests/tools/test_terminal_dynamic_description.py`** — 16 tests covering:
-   - Shell detection (Windows pwsh found/not-found, non-Windows, macOS, env overrides).
-   - Description building (pwsh, Windows bash, non-Windows).
-   - pwsh-adapted command references present and Linux-only references absent.
-   - Registry integration.
-   - LRU cache behavior.
+4. **`tools/environments/proccess_pwsh.py`** — `pwsh_transform()` down-levels PS7+ syntax (`?:`, `??`, `&&`, `||`, `?.`, `?[`) to PS5.1-compatible `if/else`, with warning propagation.
 
-5. **`tools/environments/proccess_pwsh.py` + `tools/environments/base.py`** — pwsh_transform warning propagation:
-   - Changes `pwsh_transform()` return type from `str` to `tuple[str, list[str]]` — the second element is a list of human-readable warnings describing each transformation applied (e.g. `"Line 3: ternary operator rewritten to if/else"`).
-   - Each internal `_transform_*_line` function collects warnings for transformations it performs.
-   - `_run_pwsh()` in `local.py` captures warnings from the single `pwsh_transform()` call and stores them on `self._pwsh_warnings`.
-   - `execute()` in `base.py` attaches `_pwsh_warnings` to the result dict under the key `"pwsh_warnings"`.
-   - `terminal_tool()` surfaces `pwsh_warnings` in the final JSON response returned to the LLM, so the agent can see when its PowerShell 7.x syntax was rewritten to 5.1-compatible code.
-   - Tests in `tests/tools/test_pwsh_transform.py` (18 tests) and `tests/tools/test_local_pwsh_warnings.py` (8 tests) cover all layers.
+**Side effects**: On Windows, terminal commands now execute in PowerShell. Git Bash auto-install removed, but Python-level bash fallback (`_find_bash()`) remained as a 7-strategy discovery chain.
 
-**Side effects**:
-- On Windows with pwsh: all local terminal commands now execute in pwsh instead of bash. This means shell syntax (`;` not `&&`, `$env:VAR` not `$VAR`, `Get-ChildItem` not `ls` for scripts) must be pwsh-compatible. The agent's prompt already instructs it to use the active shell. Git Bash is no longer supported or auto-installed.
-- The `_detect_shell_for_description` LRU cache means a mid-session shell change won't update the description until cache is cleared. Mitigation: callers can invoke `_detect_shell_for_description.cache_clear()`.
-- Docker/SSH/Modal backends are unaffected — they always use bash inside containers and don't go through `_resolve_shell()`.
-
-**Should we upstream?** Yes. This makes Hermes a first-class Windows citizen. The changes are modular: shell detection and dispatch follow the existing `_run_bash` / `_wrap_command` pattern, and the dynamic description reuses the existing `dynamic_schema_overrides` mechanism.
+**Should we upstream?** Yes — superseded by P-019 which completes the migration.
 
 ---
 
@@ -394,6 +366,61 @@ opening an upstream PR.
 **Side effects**: None for providers that legitimately need no key (local endpoints with `"no-key-required"`, Bedrock, Azure Entra ID). The fallback loop (`fallback_model` / `fallback_providers`) still executes before the guard.
 
 **Should we upstream?** Yes. The change is purely additive, provider-agnostic, and prevents a poor user experience across CLI, TUI, gateway, and direct `AIAgent()` usage.
+
+---
+
+### P-019: Complete Git-Bash-to-PowerShell migration (Windows PowerShell 5.1 only)
+
+**Symptom**: P-016 added PowerShell support but left the codebase in a hybrid state: `pwsh.exe` (PS7) was probed first, with `powershell.exe` (PS5.1) as fallback, and the 7-strategy `_find_bash()` Git Bash discovery chain (env override → PortableGit → git.exe derivation → registry → PATH → common paths → auto-install) was still present. `HERMES_GIT_BASH_PATH` env var, `HERMES_PWSH_PATH` env var, and `_install_git` import (non-existent module) were all dead or dead-end code.
+
+**Root cause**: P-016 focused on adding PowerShell as the primary shell but didn't fully remove the Git Bash machinery. The `pwsh.exe` (PS7) requirement was unnecessary — Windows PowerShell 5.1 (`powershell.exe`) ships with every Windows 10/11 system and is always available.
+
+**What the patch does**:
+
+1. **`tools/environments/local.py`** — Core shell resolution (Phase 1):
+   - Removes `_find_bash()` (~130 lines, 7 strategies + WSL launcher filter + auto-install with dead `_install_git` import). Replaces with minimal `_find_bash_posix()` for non-Windows only.
+   - Removes `_is_windows_wsl_launcher()` helper (no longer needed).
+   - Renames `_find_pwsh_simple` → `_find_powershell()`: just `shutil.which("powershell.exe") or "powershell.exe"` — no `pwsh.exe` probing.
+   - Rewrites `_resolve_shell()`: on Windows always returns `("powershell", path)`. `HERMES_SHELL_TYPE=bash` raises `RuntimeError` on Windows. Removes `HERMES_PWSH_PATH` support.
+   - Renames `_run_pwsh` → `_run_powershell`, `_wrap_command_pwsh` → `_wrap_command_powershell`.
+   - **`pwsh_transform` is now always-on** — unconditionally applied to every command (removes the `if os.path.basename(...).startswith("powershell")` guard).
+   - Updates all `"pwsh"` → `"powershell"` references in `init_session`, `_run_bash`, `_wrap_command`.
+   - Gates MSYS normalization in `_update_cwd`/`_extract_cwd_from_output` behind `self._shell_type == "bash"`.
+   - Updates comments throughout: `_make_run_env`, `get_temp_dir`, `_msys_to_windows_path`, `_resolve_safe_cwd`.
+
+2. **`tools/terminal_tool.py`** — Removes "Windows Git Bash" description branch (dead code). Simplifies `_detect_shell_for_description()`: always returns `"powershell"` on Windows.
+
+3. **`agent/prompt_builder.py`** — Replaces `_WINDOWS_BASH_SHELL_HINT` with `_WINDOWS_POWERSHELL_SHELL_HINT` instructing the agent to use PS5.1 syntax (`;` not `&&`, `$env:VAR`, no `?:`/`??`/`?.`).
+
+4. **`cli.py`** — Renames `_normalize_git_bash_path` → `_normalize_msys_path`.
+
+5. **`apps/desktop/electron/main.cjs`** — Replaces `findGitBash()` (~40 lines) with `findPowerShell()` (~15 lines). Updates preflight check to verify `powershell.exe`.
+
+6. **`scripts/install.ps1`** — Removes `Install-Git` bash discovery + `Set-GitBashEnvVar` (~210 lines). Simplifies `Stage-Git`. Adds defensive `powershell.exe` check. Removes all `HERMES_GIT_BASH_PATH` references.
+
+7. **`hermes_cli/uninstall.py`** — Removes `HERMES_GIT_BASH_PATH` from env var cleanup.
+
+8. **`cron/scheduler.py`** — Updates `.sh`/`.bash` error message: no longer mentions Git for Windows.
+
+9. **Comments cleanup**: `tools/environments/base.py`, `tools/file_operations.py`, `tools/browser_tool.py` — "Git Bash" → "PowerShell" or generic "shell".
+
+10. **Tests**: `test_shell_resolution.py` (rewritten for new functions), `test_terminal_dynamic_description.py` (removed bash-on-Windows test, updated assertions), `test_windows_native_support.py` (renamed `_normalize_git_bash_path` references, updated cron message expectations), `test_local_env_windows_msys.py` (updated docstrings).
+
+11. **Docs**: `windows-native.md` (rewrote "How Hermes runs shell commands" section, removed `HERMES_GIT_BASH_PATH` from env var table and installer steps), `environment-variables.md` (replaced `HERMES_GIT_BASH_PATH` with `HERMES_SHELL_TYPE`), `contributing.md` ("Git Bash" → "Windows PowerShell 5.1").
+
+**Why we need it**:
+- `powershell.exe` (5.1) ships with every Windows 10/11 — zero install, zero download.
+- Starts faster than Git Bash, handles Windows paths natively, avoids POSIX-translation overhead.
+- Removes ~400 lines of dead code (7-strategy bash discovery, WSL launcher filter, PortableGit auto-install, `HERMES_GIT_BASH_PATH` env var, `HERMES_PWSH_PATH` env var).
+- Agent now has a single, predictable, always-available shell on Windows.
+- P-016's `pwsh.exe` (PS7) probing was unnecessary complexity — 5.1 is universal.
+
+**Side effects**:
+- `HERMES_SHELL_TYPE=bash` now raises a clear `RuntimeError` on Windows.
+- `HERMES_PWSH_PATH` and `HERMES_GIT_BASH_PATH` env vars are no longer honored.
+- All commands go through `pwsh_transform` unconditionally — PS7+ syntax is always down-leveled.
+
+**Should we upstream?** Yes. This completes the migration P-016 started and makes Hermes a zero-dependency Windows citizen.
 
 ---
 

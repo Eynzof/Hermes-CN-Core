@@ -678,14 +678,21 @@ _BACKEND_FALLBACK_DESCRIPTIONS: dict[str, str] = {
 _BACKEND_PROBE_CACHE: dict[tuple[str, str], str] = {}
 
 
-_WINDOWS_BASH_SHELL_HINT = (
+_WINDOWS_POWERSHELL_SHELL_HINT = (
     "Shell: on this Windows host your `terminal` tool runs commands through "
-    "bash (git-bash / MSYS), NOT PowerShell or cmd.exe. Use POSIX shell "
-    "syntax (`ls`, `$HOME`, `&&`, `|`, single-quoted strings) inside terminal "
-    "calls. MSYS-style paths like `/c/Users/<user>/...` work alongside "
-    "native `C:\\Users\\<user>\\...` paths. PowerShell builtins "
-    "(`Get-ChildItem`, `$env:FOO`, `Select-String`) will NOT work — use their "
-    "POSIX equivalents (`ls`, `$FOO`, `grep`)."
+    "Windows PowerShell 5.1 (powershell.exe), NOT bash or cmd.exe. Use "
+    "PowerShell 5.1 syntax. Key rules:\n"
+    "- Separate commands with `;` not `&&` or `||` (pipeline chain operators "
+    "are PowerShell 7+ only).\n"
+    "- Use `$env:VAR` for environment variables, not `$VAR`.\n"
+    "- Use `Get-ChildItem` (or its aliases `ls`/`dir`) for listing files.\n"
+    "- Use `Select-String` (or `findstr`) for searching, not `grep`.\n"
+    "- Use `Get-Content` (or `cat`/`type`) to read files.\n"
+    "- NO ternary (`? :`), NO null-coalescing (`??`, `??=`), NO null-conditional "
+    "(`?.`, `?[`) — these are PowerShell 7+ only. Use `if`/`else` instead.\n"
+    "- If you accidentally use PS7 syntax, the compatibility layer "
+    "(`pwsh_transform`) will down-level it automatically and show warnings; "
+    "correct the syntax on your next turn."
 )
 
 
@@ -822,10 +829,10 @@ def build_environment_hints() -> str:
             )
         hints.append("\n".join(host_lines))
 
-        # Windows-local terminal runs bash, not PowerShell — the model must
-        # know this or it will issue PowerShell syntax and fail.
+        # Windows-local terminal runs PowerShell, not bash — the model must
+        # know this or it will issue bash syntax and fail.
         if sys.platform == "win32" and not is_wsl():
-            hints.append(_WINDOWS_BASH_SHELL_HINT)
+            hints.append(_WINDOWS_POWERSHELL_SHELL_HINT)
     else:
         # --- Remote backend block (host info suppressed) ---
         probe = _probe_remote_backend(backend)

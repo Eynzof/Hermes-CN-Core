@@ -476,14 +476,20 @@ def _iter_visible_entries(path: Path, cwd: Path, limit: int) -> list[Path]:
 
 def _rg_files(path: Path, cwd: Path, limit: int) -> list[Path] | None:
     try:
+        from ripgrepy import Ripgrepy, RipGrepNotFound
+    except ImportError:
+        return None
+    try:
+        rg = Ripgrepy("", str(cwd))
+        rg = rg.files()
         result = subprocess.run(
-            ["rg", "--files", str(path.relative_to(cwd))],
+            rg.command + [str(path.relative_to(cwd))],
             cwd=cwd,
             capture_output=True,
             text=True,
             timeout=10,
         )
-    except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
+    except (RipGrepNotFound, FileNotFoundError, OSError, subprocess.TimeoutExpired):
         return None
     if result.returncode != 0:
         return None

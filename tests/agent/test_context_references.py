@@ -334,3 +334,103 @@ async def test_blocks_sensitive_home_and_hermes_paths(tmp_path: Path, monkeypatc
     assert "API_KEY=super-secret" not in result.message
     assert "PRIVATE-KEY" not in result.message
     assert any("sensitive credential" in warning for warning in result.warnings)
+
+
+# ── _rg_files ripgrepy integration ────────────────────────────────────
+
+
+class TestRgFilesRipgrepy:
+    """Tests for _rg_files() using the ripgrepy path."""
+
+    def test_ripgrepy_not_importable_returns_none(self, tmp_path, monkeypatch):
+        """When ripgrepy cannot be imported, _rg_files returns None."""
+        from agent.context_references import _rg_files
+        import builtins
+        orig_import = builtins.__import__
+
+        def blocking_import(name, *args, **kwargs):
+            if name == "ripgrepy" or name.startswith("ripgrepy."):
+                raise ImportError("No module named ripgrepy")
+            return orig_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", blocking_import)
+        result = _rg_files(tmp_path, tmp_path, 50)
+        assert result is None
+
+    def test_rg_returns_file_list(self, tmp_path, monkeypatch):
+        """_rg_files returns list of Paths from rg output."""
+        from agent.context_references import _rg_files
+        monkeypatch.setattr(
+            subprocess, "run",
+            lambda *a, **kw: subprocess.CompletedProcess(
+                [], 0, stdout="src/a.py\nsrc/b.py\nREADME.md\n"
+            )
+        )
+        result = _rg_files(tmp_path, tmp_path, 50)
+        assert result is not None
+        assert len(result) == 3
+        assert Path("src/a.py") in result
+        assert Path("src/b.py") in result
+        assert Path("README.md") in result
+
+    def test_rg_exit_nonzero_returns_none(self, tmp_path, monkeypatch):
+        """_rg_files returns None when rg exits non-zero."""
+        from agent.context_references import _rg_files
+        monkeypatch.setattr(
+            subprocess, "run",
+            lambda *a, **kw: subprocess.CompletedProcess([], 1, stdout="")
+        )
+        result = _rg_files(tmp_path, tmp_path, 50)
+        assert result is None
+
+    def test_rg_subprocess_error_returns_none(self, tmp_path, monkeypatch):
+        """_rg_files returns None on subprocess error."""
+        from agent.context_references import _rg_files
+        monkeypatch.setattr(
+            subprocess, "run",
+            lambda *a, **kw: (_ for _ in ()).throw(FileNotFoundError("rg not found"))
+        )
+        result = _rg_files(tmp_path, tmp_path, 50)
+        assert result is None
+
+    def test_respects_limit(self, tmp_path, monkeypatch):
+        """_rg_files respects the limit parameter."""
+        from agent.context_references import _rg_files
+        stdout = "\n".join([f"file_{i}.py" for i in range(20)])
+        monkeypatch.setattr(
+            subprocess, "run",
+            lambda *a, **kw: subprocess.CompletedProcess([], 0, stdout=stdout)
+        )
+        result = _rg_files(tmp_path, tmp_path, 5)
+        assert result is not None
+        assert len(result) == 5
+
+    def test_blank_lines_ignored(self, tmp_path, monkeypatch):
+        """_rg_files ignores blank lines in stdout."""
+        from agent.context_references import _rg_files
+        monkeypatch.setattr(
+            subprocess, "run",
+            lambda *a, **kw: subprocess.CompletedProcess(
+                [], 0, stdout="a.py\n\n\nb.py\n"
+            )
+        )
+        result = _rg_files(tmp_path, tmp_path, 50)
+        assert result is not None
+        assert len(result) == 2
+
+    def test_uses_relative_path_from_cwd(self, tmp_path, monkeypatch):
+        """_rg_files runs rg with path relative to cwd."""
+        from agent.context_references import _rg_files
+        captured_cmd = []
+        def capture_run(cmd, **kwargs):
+            captured_cmd.append(cmd)
+            return subprocess.CompletedProcess(cmd, 0, stdout="")
+        monkeypatch.setattr(subprocess, "run", capture_run)
+        cwd = tmp_path / "project"
+        cwd.mkdir()
+        search_path = cwd / "src"
+        search_path.mkdir()
+        _rg_files(search_path, cwd, 50)
+        assert len(captured_cmd) == 1
+        # The relative path should be in the command
+        assert any("src" in str(a) for a in captured_cmd[0])

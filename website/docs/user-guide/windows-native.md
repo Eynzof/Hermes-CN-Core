@@ -1,6 +1,6 @@
 ---
 title: "Windows (Native) Guide"
-description: "Run Hermes Agent natively on Windows 10 / 11 — install, feature matrix, UTF-8 console, Git Bash, gateway as a Scheduled Task, editor handling, PATH, uninstall, and common pitfalls"
+description: "Run Hermes Agent natively on Windows 10 / 11 — install, feature matrix, UTF-8 console, Windows PowerShell, gateway as a Scheduled Task, editor handling, PATH, uninstall, and common pitfalls"
 sidebar_label: "Windows (Native)"
 sidebar_position: 3
 ---
@@ -51,7 +51,8 @@ On first launch (and on demand when a missing tool is detected), Hermes runs a s
 
 | Dependency       | Why Hermes needs it                                                                                                          |
 | ---------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| **PortableGit**  | Provides `bash.exe` for the terminal tool and `git` for in-session clones. Provisioned at install time, not by `dep_ensure`. |
+| **Windows PowerShell**  | Ships with every Windows 10/11 system — used by the terminal tool for shell commands. No extra install needed. |
+| **PortableGit**  | Provides `git` for in-session clones. Provisioned at install time, not by `dep_ensure`. |
 | **Node.js 22**   | Required for the browser tool (`agent-browser`), the TUI's web bridge, and the WhatsApp bridge.                              |
 | **ffmpeg**       | Audio format conversion for TTS / voice messages.                                                                            |
 | **ripgrep**      | Fast file search — falls back to `grep` if unavailable.                                                                      |
@@ -70,8 +71,7 @@ Top-to-bottom, in order:
 5. **Clones the repo** to `%LOCALAPPDATA%\hermes\hermes-agent` and creates a virtualenv inside it.
 6. **Tiered `uv pip install`** — tries `.[all]` first, falls back to progressively smaller sets (`[messaging,dashboard,ext]` → `[messaging]` → `.`) if a `git+https` dep flakes on rate-limited GitHub. Prevents "single flake drops you to a bare install" failure mode.
 7. **Auto-installs messaging SDKs** keyed off `.env` — if `TELEGRAM_BOT_TOKEN` / `DISCORD_BOT_TOKEN` / `SLACK_BOT_TOKEN` / `SLACK_APP_TOKEN` / `WHATSAPP_ENABLED` are present, runs `python -m ensurepip --upgrade` and targeted `pip install` calls so each platform's SDK is actually importable.
-8. **Sets `HERMES_GIT_BASH_PATH`** to the resolved `bash.exe` so Hermes finds it deterministically in fresh shells.
-9. **Adds `%LOCALAPPDATA%\hermes\bin` to User PATH** — exposes the `hermes` command after you open a new terminal.
+8. **Adds `%LOCALAPPDATA%\hermes\bin` to User PATH** — exposes the `hermes` command after you open a new terminal.
 10. **Runs `hermes setup`** — the normal first-run wizard (model, provider, toolsets). Skip with `-SkipSetup`.
 
 :::tip Skip provider hunting on Windows
@@ -99,19 +99,11 @@ The dashboard's `/chat` tab embeds a real terminal via a POSIX PTY (`ptyprocess`
 
 ## How Hermes runs shell commands on Windows
 
-Hermes's terminal tool runs commands through **Git Bash**, same strategy Claude Code uses. This sidesteps the POSIX-vs-Windows gap without rewriting every tool.
+Hermes's terminal tool runs commands through **Windows PowerShell 5.1** (`powershell.exe`), which ships with every Windows 10 and Windows 11 system — no extra install, no download, no Git Bash needed.
 
-Resolution order for `bash.exe`:
+PowerShell 5.1 starts faster than Git Bash, handles Windows paths natively (no `/c/foo` translation), and avoids the entire POSIX-translation overhead. The agent is instructed to use PowerShell syntax (`Get-ChildItem`, `$env:VAR`, `Select-String`, `Get-Content`). If it accidentally uses PowerShell 7+ syntax (`?:`, `??`, `&&`, `||`, `?.`, `?[`), the `pwsh_transform` compatibility layer automatically down-levels it to 5.1-compatible `if/else` blocks.
 
-1. `HERMES_GIT_BASH_PATH` environment variable if set.
-2. `%LOCALAPPDATA%\hermes\git\usr\bin\bash.exe` (installer-managed PortableGit).
-3. `%LOCALAPPDATA%\hermes\git\bin\bash.exe` (older Git-for-Windows layout).
-4. System Git-for-Windows install (`%ProgramFiles%\Git\bin\bash.exe`, etc.).
-5. MSYS2, Cygwin, or any `bash.exe` on PATH as a last resort.
-
-The installer sets `HERMES_GIT_BASH_PATH` explicitly so fresh PowerShell sessions don't have to re-discover. Override it if you want Hermes to use a specific bash — for example, your system Git Bash or a WSL-hosted bash via a symlink.
-
-**Pitfall:** MinGit's layout is different from the full Git-for-Windows installer — bash lives under `usr\bin\bash.exe`, not `bin\bash.exe`. Hermes checks both. If you're manually unpacking a MinGit zip, make sure you pick the **non-busybox** variant (`MinGit-*-64-bit.zip`, not `MinGit-*-busybox*.zip`) — busybox builds ship `ash` instead of `bash` and most coreutils are missing.
+Set `HERMES_SHELL_TYPE=powershell` (or leave at the default `auto`) in your `.env` to use PowerShell. `HERMES_SHELL_TYPE=bash` is not supported on Windows.
 
 ## UTF-8 console on Windows
 
@@ -246,7 +238,7 @@ These only affect native Windows installs:
 
 | Variable                      | Effect                                                                                                                                             |
 | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `HERMES_GIT_BASH_PATH`        | Override bash.exe discovery. Point at any bash — full Git-for-Windows, WSL bash via symlink, MSYS2, Cygwin. The installer sets this automatically. |
+| `HERMES_SHELL_TYPE`           | `auto` (default → PowerShell on Windows), `powershell` (explicit). `bash` is not supported on Windows.                                            |
 | `HERMES_DISABLE_WINDOWS_UTF8` | Set to `1` to disable the UTF-8 stdio shim and fall back to the locale code page. Useful for bisecting an encoding bug.                            |
 | `EDITOR` / `VISUAL`           | Your editor for `/edit` and `Ctrl-X Ctrl-E`. Hermes defaults to `notepad` if both are unset.                                                       |
 

@@ -235,6 +235,57 @@ def _get_lock_paths() -> tuple[Path, Path]:
     return lock_dir, lock_dir / ".tick.lock"
 
 
+def _get_lock_stale_seconds() -> float:
+    """Return the configured stale-lock threshold in seconds (F-3).
+
+    If the lock file hasn't been modified in this many seconds, it is
+    considered a zombie lock from a crashed process and can be forcibly
+    released.  Default: 120s (2× cron interval).
+    """
+    try:
+        cfg = load_config() or {}
+        cron_cfg = cfg.get("cron", {}) if isinstance(cfg, dict) else {}
+        configured = cron_cfg.get("lock_stale_seconds")
+        if configured is not None:
+            val = int(float(configured))
+            if val > 0:
+                return float(val)
+    except Exception:
+        pass
+    return 120.0
+
+
+def _lock_holder_alive(lock_file) -> bool:
+    """Return True if the PID recorded in *lock_file* is still running.
+
+    Conservative by design: returns True (assume the holder is alive — do
+    **not** steal the lock) whenever the PID can't be read or liveness can't be
+    determined, and returns False only when the recorded process is positively
+    gone.  A long-running tick holds the lock for the whole job and never
+    refreshes the file's mtime, so mtime alone cannot distinguish a busy holder
+    from a crashed one; checking the recorded PID prevents stealing the lock
+    from a live process (which would double-execute one-shot jobs).
+    """
+    try:
+        content = lock_file.read_text(encoding="utf-8").strip()
+    except OSError:
+        return True
+    if not content:
+        return True
+    try:
+        pid = int(content.split()[0])
+    except (ValueError, IndexError):
+        return True
+    try:
+        import psutil
+        return psutil.pid_exists(pid)
+    except Exception:
+        # Can't determine liveness (psutil missing/errored) — assume the holder
+        # is alive so we never steal a lock we're unsure about.  psutil is a
+        # pinned core dependency, so this path is effectively unreachable.
+        return True
+
+
 @contextmanager
 def _job_profile_context(job_id: str, profile: Optional[str]):
     """Temporarily run a job under a specific Hermes profile.
@@ -973,19 +1024,16 @@ def _run_job_script(script_path: str) -> tuple[bool, str]:
     # choice explicit here keeps the allowed surface small and auditable.
     suffix = path.suffix.lower()
     if suffix in {".sh", ".bash"}:
-        # Resolve bash dynamically so Windows (Git Bash) and Linux/macOS
-        # all work.  On native Windows without Git for Windows installed
-        # shutil.which returns None — fall back to a clear error rather
-        # than a FileNotFoundError with a confusing "[WinError 2]"
-        # traceback.
+        # Resolve bash dynamically so Linux/macOS work.  On Windows
+        # there is no bash — return a clear error telling users to use
+        # .py scripts instead.
         _bash = shutil.which("bash") or (
             "/bin/bash" if os.path.isfile("/bin/bash") else None
         )
         if _bash is None:
             return False, (
                 f"Cannot run .sh/.bash script {path.name!r}: bash not found on PATH. "
-                "On Windows, install Git for Windows (which ships Git Bash) "
-                "or rewrite the script as Python (.py)."
+                "On Windows, rewrite the script as Python (.py)."
             )
         argv = [_bash, str(path)]
     else:
@@ -1978,6 +2026,41 @@ def tick(verbose: bool = True, adapters=None, loop=None, sync: bool = True) -> i
     lock_dir, lock_file = _get_lock_paths()
     lock_dir.mkdir(parents=True, exist_ok=True)
 
+    # Refresh timezone cache so config changes take effect without a
+    # gateway restart (F-7).
+    try:
+        from hermes_time import reset_cache as _reset_tz_cache
+        _reset_tz_cache()
+    except Exception:
+        pass
+
+    # --- Stale-lock detection (F-3, hardened): a lock file is treated as stale
+    # only when BOTH its mtime is older than the threshold AND the process that
+    # recorded its PID is no longer alive.  fcntl/msvcrt locks are auto-released
+    # by the OS when the holder dies, so removing the leftover *file* is only a
+    # best-effort tidy-up; the PID check ensures we never steal the lock from a
+    # live process that is legitimately running a long job — doing so would let
+    # a second tick double-execute one-shot jobs (which are not advanced until
+    # they finish). ---
+    lock_stale = _get_lock_stale_seconds()
+    if lock_file.exists():
+        try:
+            import time as _time
+            mtime = lock_file.stat().st_mtime
+            age = _time.time() - mtime
+            if age > lock_stale and not _lock_holder_alive(lock_file):
+                logger.warning(
+                    "Removing stale cron lock file (age=%.0fs, threshold=%.0fs); "
+                    "recorded holder PID is no longer running.",
+                    age, lock_stale,
+                )
+                try:
+                    lock_file.unlink()
+                except OSError:
+                    pass
+        except OSError:
+            pass
+
     # Cross-platform file locking: fcntl on Unix, msvcrt on Windows
     lock_fd = None
     try:
@@ -1986,6 +2069,16 @@ def tick(verbose: bool = True, adapters=None, loop=None, sync: bool = True) -> i
             fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         elif msvcrt:
             msvcrt.locking(lock_fd.fileno(), msvcrt.LK_NBLCK, 1)
+        # Record the holder PID so a later tick can tell a live holder running a
+        # long job from a crashed one before considering the lock stale.  Seek
+        # back to 0 so the msvcrt byte-range unlock in the finally block targets
+        # the same offset it locked.
+        try:
+            lock_fd.write(f"{os.getpid()}\n")
+            lock_fd.flush()
+            lock_fd.seek(0)
+        except OSError:
+            pass
     except (OSError, IOError):
         logger.debug("Tick skipped — another instance holds the lock")
         if lock_fd is not None:

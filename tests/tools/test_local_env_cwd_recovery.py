@@ -112,7 +112,7 @@ class TestRunBashCwdRecovery:
         captured = {}
         fds: list = []
         try:
-            with patch("tools.environments.local._find_bash", return_value="/bin/bash"), \
+            with patch("tools.environments.local._find_bash_posix", return_value="/bin/bash"), \
                  patch("subprocess.Popen", side_effect=_make_fake_popen(captured, fds)), \
                  patch("tools.terminal_tool._interrupt_event", _fake_interrupt()), \
                  caplog.at_level("WARNING", logger="tools.environments.local"):
@@ -137,7 +137,7 @@ class TestRunBashCwdRecovery:
         captured = {}
         fds: list = []
         try:
-            with patch("tools.environments.local._find_bash", return_value="/bin/bash"), \
+            with patch("tools.environments.local._find_bash_posix", return_value="/bin/bash"), \
                  patch("subprocess.Popen", side_effect=_make_fake_popen(captured, fds)), \
                  patch("tools.terminal_tool._interrupt_event", _fake_interrupt()), \
                  caplog.at_level("WARNING", logger="tools.environments.local"):

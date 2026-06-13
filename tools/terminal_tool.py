@@ -31,6 +31,7 @@ Usage:
     result = terminal_tool("python server.py", background=True)
 """
 
+import functools
 import importlib.util
 import json
 import logging
@@ -850,6 +851,82 @@ PTY mode: Set pty=true for interactive CLI tools (Codex, Claude Code, Python REP
 
 Do NOT use vim/nano/interactive tools without pty=true — they hang without a pseudo-terminal. Pipe git output to cat if it might page.
 """
+
+
+@functools.lru_cache(maxsize=1)
+def _detect_shell_for_description() -> str:
+    """Detect shell type for description purposes.
+
+    Returns ``"powershell"`` or ``"bash"``.
+
+    On Windows, always returns ``"powershell"`` (Windows PowerShell 5.1
+    ships with every Windows 10/11 system). On non-Windows, returns
+    ``"bash"``.
+
+    Cached via ``@lru_cache`` so repeated calls are essentially free.
+    """
+    if platform.system() != "Windows":
+        return "bash"
+
+    shell_type = os.environ.get("HERMES_SHELL_TYPE", "auto").strip().lower() or "auto"
+
+    if shell_type == "bash":
+        return "powershell"  # _resolve_shell() in local.py will raise RuntimeError
+
+    # Windows: always powershell
+    return "powershell"
+
+
+def _build_dynamic_terminal_description() -> dict:
+    """Return dynamic schema overrides reflecting the actual shell in use.
+
+    Called lazily each time ``registry.get_definitions()`` assembles the
+    terminal tool schema, so the description always matches the shell
+    the agent will actually execute against.
+    """
+    shell_type = _detect_shell_for_description()
+
+    if shell_type == "powershell":
+        platform_env = "Execute powershell commands on a Windows PowerShell environment"
+    else:
+        platform_env = "Execute shell commands on a Linux environment"
+
+    # Replace the hardcoded "Linux environment" with the real platform
+    new_description = TERMINAL_TOOL_DESCRIPTION.replace(
+        "Execute shell commands on a Linux environment.",
+        platform_env
+    )
+
+    # ------------------------------------------------------------------
+    # For PowerShell, also adapt Linux/bash-specific command references
+    # so the agent sees cmdlets it might actually be tempted to misuse.
+    # The core guidance ("use agent tools instead of shell commands")
+    # stays the same; only the example commands change.
+    # ------------------------------------------------------------------
+    if shell_type == "powershell":
+        new_description = new_description.replace(
+            "Do NOT use cat/head/tail to read files",
+            "Do NOT use Get-Content/cat/type to read files",
+        )
+        new_description = new_description.replace(
+            "Do NOT use grep/rg/find to search",
+            "Do NOT use Select-String/findstr to search",
+        )
+        new_description = new_description.replace(
+            "Do NOT use ls to list directories",
+            "Do NOT use Get-ChildItem/ls/dir to list directories",
+        )
+        new_description = new_description.replace(
+            "Do NOT use echo/cat heredoc to create files",
+            "Do NOT use echo/Set-Content/Out-File to create files",
+        )
+        new_description = new_description.replace(
+            "Pipe git output to cat if it might page.",
+            "Pipe git output to Out-Host -Paging if it might page.",
+        )
+
+    return {"description": new_description}
+
 
 # Global state for environment lifecycle management
 _active_environments: Dict[str, Any] = {}
@@ -2364,6 +2441,8 @@ def terminal_tool(
                 result_dict["approval"] = approval_note
             if exit_note:
                 result_dict["exit_code_meaning"] = exit_note
+            if result.get("pwsh_warnings"):
+                result_dict["pwsh_warnings"] = result["pwsh_warnings"]
 
             return json.dumps(result_dict, ensure_ascii=False)
 
@@ -2608,4 +2687,5 @@ registry.register(
     check_fn=check_terminal_requirements,
     emoji="💻",
     max_result_size_chars=100_000,
+    dynamic_schema_overrides=_build_dynamic_terminal_description,
 )

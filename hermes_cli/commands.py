@@ -1402,18 +1402,22 @@ class SlashCommandCompleter(Completer):
             return self._file_cache
 
         files: list[str] = []
-        # Try rg first (fast, respects .gitignore), then fd, then find.
-        for cmd in [
-            ["rg", "--files", "--sortr=modified", cwd],
-            ["rg", "--files", cwd],
-            ["fd", "--type", "f", "--base-directory", cwd],
-        ]:
-            tool = cmd[0]
-            if not shutil.which(tool):
-                continue
+        # Try ripgrepy first (fast, respects .gitignore), then fd, then find.
+        rg_methods = []
+        try:
+            from ripgrepy import Ripgrepy, RipGrepNotFound
+            rg_methods = [
+                lambda c: Ripgrepy("", c).files().sortr("modified"),
+                lambda c: Ripgrepy("", c).files(),
+            ]
+        except ImportError:
+            pass
+        for rg_builder in rg_methods:
             try:
+                rg = rg_builder(cwd)
                 proc = subprocess.run(
-                    cmd, capture_output=True, text=True, timeout=2,
+                    rg.command + [cwd],
+                    capture_output=True, text=True, timeout=2,
                     cwd=cwd, encoding="utf-8", errors="replace",
                 )
                 if proc.returncode == 0 and proc.stdout and proc.stdout.strip():
@@ -1423,8 +1427,29 @@ class SlashCommandCompleter(Completer):
                         rel = os.path.relpath(p, cwd) if os.path.isabs(p) else p
                         files.append(rel)
                     break
-            except (subprocess.TimeoutExpired, OSError):
+            except (RipGrepNotFound, subprocess.TimeoutExpired, OSError):
                 continue
+        if not files:
+            for cmd in [
+                ["fd", "--type", "f", "--base-directory", cwd],
+            ]:
+                tool = cmd[0]
+                if not shutil.which(tool):
+                    continue
+                try:
+                    proc = subprocess.run(
+                        cmd, capture_output=True, text=True, timeout=2,
+                        cwd=cwd, encoding="utf-8", errors="replace",
+                    )
+                    if proc.returncode == 0 and proc.stdout and proc.stdout.strip():
+                        raw = proc.stdout.strip().split("\n")
+                        # Store relative paths
+                        for p in raw[:5000]:
+                            rel = os.path.relpath(p, cwd) if os.path.isabs(p) else p
+                            files.append(rel)
+                        break
+                except (subprocess.TimeoutExpired, OSError):
+                    continue
 
         self._file_cache = files
         self._file_cache_time = now

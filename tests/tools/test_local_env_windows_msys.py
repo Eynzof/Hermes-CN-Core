@@ -1,10 +1,10 @@
-"""Tests for the Windows / Git Bash MSYS-path normalization in
-``LocalEnvironment``.
+"""Tests for the Windows MSYS-path normalization in ``LocalEnvironment``
+(for the legacy bash shell type).
 
 Background
 ----------
-On Windows, ``pwd -P`` inside Git Bash emits paths like
-``/c/Users/NVIDIA``. ``subprocess.Popen(..., cwd=...)`` only accepts
+On Windows with the bash shell type, ``pwd -P`` inside bash emits paths
+like ``/c/Users/NVIDIA``. ``subprocess.Popen(..., cwd=...)`` only accepts
 native Windows paths (``C:\\Users\\NVIDIA``), and the validation done
 by ``_resolve_safe_cwd`` was also checking the MSYS form against
 ``os.path.isdir``, which returns ``False`` on Windows. The combined
@@ -78,7 +78,7 @@ class TestResolveSafeCwdWindows:
     def test_msys_path_resolves_to_native_when_native_exists(
         self, monkeypatch, tmp_path,
     ):
-        """The whole point of this fix: a Git Bash ``/c/Users/x`` value
+        """The whole point of this fix: a bash ``/c/Users/x`` value
         should resolve to its native equivalent if that native dir exists,
         WITHOUT falling back to the temp dir."""
         monkeypatch.setattr(local_mod, "_IS_WINDOWS", True)
@@ -104,7 +104,7 @@ class TestUpdateCwdWindowsMsys:
     def test_marker_file_msys_path_stored_in_native_form(
         self, monkeypatch, tmp_path,
     ):
-        """When Git Bash writes ``/c/Users/x`` to the cwd marker file on
+        """When bash writes ``/c/Users/x`` to the cwd marker file on
         Windows, ``_update_cwd`` must translate to native form before
         validating and storing — otherwise ``os.path.isdir`` rejects a
         perfectly real directory."""
@@ -118,8 +118,12 @@ class TestUpdateCwdWindowsMsys:
             LocalEnvironment, "init_session", autospec=True, return_value=None
         ):
             env = LocalEnvironment(cwd=str(original), timeout=10)
+        # The MSYS-path translation only applies to the bash shell type
+        # (powershell emits native Windows paths); this scenario is "bash wrote
+        # an MSYS path", so force the bash shell type.
+        env._shell_type = "bash"
 
-        # Pretend Git Bash wrote an MSYS path that maps to tmp_path/"next"
+        # Pretend bash wrote an MSYS path that maps to tmp_path/"next"
         new_dir = tmp_path / "next"
         new_dir.mkdir()
 
@@ -185,6 +189,8 @@ class TestExtractCwdFromOutputWindowsMsys:
             LocalEnvironment, "init_session", autospec=True, return_value=None
         ):
             env = LocalEnvironment(cwd=str(original), timeout=10)
+        # MSYS-path normalization only applies to the bash shell type.
+        env._shell_type = "bash"
 
         marker = env._cwd_marker
         result = {

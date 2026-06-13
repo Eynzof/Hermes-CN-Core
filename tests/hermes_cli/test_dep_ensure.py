@@ -138,6 +138,71 @@ def test_has_hermes_agent_browser_legacy_node_modules_path(tmp_path):
         assert _has_hermes_agent_browser() is True
 
 
+# ── _has_ripgrepy ────────────────────────────────────────────────────
+
+
+def test_has_ripgrepy_returns_true_when_installed():
+    """_has_ripgrepy returns True when ripgrepy is importable."""
+    from hermes_cli.dep_ensure import _has_ripgrepy
+    # ripgrepy is installed in the dev venv, so this should be True
+    assert _has_ripgrepy() is True
+
+
+def test_has_ripgrepy_returns_false_when_not_installed():
+    """_has_ripgrepy returns False when import fails."""
+    import builtins
+    from hermes_cli.dep_ensure import _has_ripgrepy
+    orig_import = builtins.__import__
+
+    def blocking_import(name, *args, **kwargs):
+        if name == "ripgrepy" or name.startswith("ripgrepy."):
+            raise ImportError("No module named ripgrepy")
+        return orig_import(name, *args, **kwargs)
+
+    with patch("builtins.__import__", side_effect=blocking_import):
+        assert _has_ripgrepy() is False
+
+
+def test_ripgrep_dep_check_requires_ripgrepy():
+    """The ripgrep dep check requires both rg binary AND ripgrepy package."""
+    from hermes_cli.dep_ensure import _DEP_CHECKS
+    check_fn = _DEP_CHECKS["ripgrep"]
+    # When both are missing, should return False
+    with patch("hermes_cli.dep_ensure.shutil") as mock_shutil, \
+         patch("hermes_cli.dep_ensure._has_ripgrepy", return_value=False):
+        mock_shutil.which.return_value = None
+        assert check_fn() is False
+
+
+def test_ripgrep_dep_check_passes_with_both():
+    """The ripgrep dep check passes when both rg AND ripgrepy are present."""
+    from hermes_cli.dep_ensure import _DEP_CHECKS
+    check_fn = _DEP_CHECKS["ripgrep"]
+    with patch("hermes_cli.dep_ensure.shutil") as mock_shutil, \
+         patch("hermes_cli.dep_ensure._has_ripgrepy", return_value=True):
+        mock_shutil.which.return_value = "/usr/bin/rg"
+        assert check_fn() is True
+
+
+def test_ripgrep_dep_check_fails_with_rg_but_no_ripgrepy():
+    """The ripgrep dep check fails when rg is present but ripgrepy is missing."""
+    from hermes_cli.dep_ensure import _DEP_CHECKS
+    check_fn = _DEP_CHECKS["ripgrep"]
+    with patch("hermes_cli.dep_ensure.shutil") as mock_shutil, \
+         patch("hermes_cli.dep_ensure._has_ripgrepy", return_value=False):
+        mock_shutil.which.return_value = "/usr/bin/rg"
+        assert check_fn() is False
+
+
+def test_ripgrep_description_mentions_ripgrepy():
+    """The ripgrep dep description should mention ripgrepy."""
+    from hermes_cli.dep_ensure import _DEP_DESCRIPTIONS
+    assert "ripgrepy" in _DEP_DESCRIPTIONS["ripgrep"]
+
+
+# ── Original test_ensure_dependency_uses_powershell_on_windows ──────────
+
+
 def test_ensure_dependency_uses_powershell_on_windows(tmp_path):
     from hermes_cli.dep_ensure import ensure_dependency
     scripts_dir = tmp_path / "scripts"

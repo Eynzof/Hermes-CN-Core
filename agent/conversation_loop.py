@@ -798,6 +798,9 @@ def run_conversation(
             should_review_memory=_should_review_memory,
         )
 
+    # Initialize dedup tracker previous calls for the first iteration
+    agent._prev_dedup_calls = []
+
     while (api_call_count < agent.max_iterations and agent.iteration_budget.remaining > 0) or agent._budget_grace_call:
         # Reset per-turn checkpoint dedup so each iteration can take one snapshot
         agent._checkpoint_mgr.new_turn()
@@ -813,6 +816,14 @@ def run_conversation(
         api_call_count += 1
         agent._api_call_count = api_call_count
         agent._touch_activity(f"starting API call #{api_call_count}")
+
+        # Dedup tracker: begin step for this API call iteration.
+        # Seeds cross-step dedup state from the previous iteration's tool calls.
+        agent._tool_dedup_tracker.begin_step(
+            previous_calls=agent._prev_dedup_calls,
+            step_no=api_call_count,
+            turn_id=turn_id,
+        )
 
         # Grace call: the budget is exhausted but we gave the model one
         # more chance.  Consume the grace flag so the loop exits after
@@ -4018,6 +4029,10 @@ def run_conversation(
                         pass
 
                 agent._execute_tool_calls(assistant_message, messages, effective_task_id, api_call_count)
+
+                # Dedup tracker: end this API call step.
+                # Captures the tool calls made and advances the consecutive streak.
+                agent._prev_dedup_calls = agent._tool_dedup_tracker.end_step()
 
                 if agent._tool_guardrail_halt_decision is not None:
                     decision = agent._tool_guardrail_halt_decision

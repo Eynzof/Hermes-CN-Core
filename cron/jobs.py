@@ -264,12 +264,16 @@ def parse_schedule(schedule: str) -> Dict[str, Any]:
             dt = datetime.fromisoformat(schedule.replace('Z', '+00:00'))
             # Make naive timestamps timezone-aware at parse time so the stored
             # value doesn't depend on the system timezone matching at check time.
+            # Interpret a naive timestamp as system-local wall time (what the
+            # user typed on this machine), preserving its absolute instant
+            # rather than reinterpreting it in the Hermes timezone (issue #806).
             if dt.tzinfo is None:
-                dt = dt.astimezone()  # Interpret as local timezone
+                dt = dt.astimezone()
+            tz_display = dt.strftime('%Z')
             return {
                 "kind": "once",
                 "run_at": dt.isoformat(),
-                "display": f"once at {dt.strftime('%Y-%m-%d %H:%M')}"
+                "display": f"once at {dt.strftime('%Y-%m-%d %H:%M')} {tz_display}"
             }
         except ValueError as e:
             raise ValueError(f"Invalid timestamp '{schedule}': {e}")
@@ -301,11 +305,13 @@ def _ensure_aware(dt: datetime) -> datetime:
     Backward compatibility:
     - Older stored timestamps may be naive.
     - Naive values are interpreted as *system-local wall time* (the timezone
-      `datetime.now()` used when they were created), then converted to the
-      configured Hermes timezone.
-
-    This preserves relative ordering for legacy naive timestamps across
-    timezone changes and avoids false not-due results.
+      ``datetime.now()`` used when they were created), then converted to the
+      configured Hermes timezone.  This preserves the **absolute instant** the
+      legacy value referred to, so an overdue job is still detected as due even
+      when the server's local timezone differs from the configured Hermes
+      timezone (issue #806).  Interpreting naive values directly in the Hermes
+      timezone would shift that instant and silently skip due jobs, so we do
+      NOT do that.
     """
     target_tz = _hermes_now().tzinfo
     if dt.tzinfo is None:

@@ -1258,8 +1258,19 @@ def run_doctor(args):
         check_warn("git not found", "(optional)")
     
     # ripgrep (optional, for faster file search)
+    _has_ripgrepy = False
+    try:
+        import ripgrepy
+        _has_ripgrepy = True
+    except Exception:
+        pass
+
     if _safe_which("rg"):
-        check_ok("ripgrep (rg)", "(faster file search)")
+        if _has_ripgrepy:
+            check_ok("ripgrep (rg) + ripgrepy", "(faster file search)")
+        else:
+            check_warn("ripgrepy Python package not found", "(rg binary present but Python wrapper missing)")
+            check_info("Install ripgrepy: pip install ripgrepy")
     else:
         check_warn("ripgrep (rg) not found", "(file search uses grep fallback)")
         check_info(f"Install for faster search: {_system_package_install_cmd('ripgrep')}")

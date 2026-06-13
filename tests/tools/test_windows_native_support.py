@@ -679,7 +679,8 @@ class TestCodeExecutionTransportTcpFallback:
 
 class TestCronSchedulerBashResolution:
     """cron.scheduler must NOT hardcode /bin/bash — .sh scripts need a
-    dynamically-resolved bash so Windows (Git Bash) works."""
+    dynamically-resolved bash. On Windows, .sh/.bash scripts are not
+    supported (no bash); users must use .py scripts instead."""
 
     def test_source_uses_shutil_which_for_bash(self):
         root = Path(__file__).resolve().parents[2]
@@ -695,8 +696,8 @@ class TestCronSchedulerBashResolution:
         root = Path(__file__).resolve().parents[2]
         source = (root / "cron" / "scheduler.py").read_text(encoding="utf-8")
         # The graceful-failure message must mention "bash not found" so
-        # Windows users without Git Bash see an actionable error instead
-        # of a WinError 2 traceback.
+        # users without bash see an actionable error instead of a
+        # WinError 2 traceback.
         assert "bash not found" in source.lower()
 
 
@@ -804,37 +805,37 @@ class TestLocalEnvironmentPathInjectionGated:
 # ---------------------------------------------------------------------------
 
 
-class TestGitBashPathNormalization:
-    """_normalize_git_bash_path should turn /c/Users/... into C:\\Users\\...
+class TestMsysPathNormalization:
+    """_normalize_msys_path should turn /c/Users/... into C:\\Users\\...
     on Windows and leave paths unchanged on POSIX."""
 
     def test_posix_noop(self):
         """Must NOT mutate paths on Linux/macOS."""
-        from cli import _normalize_git_bash_path
+        from cli import _normalize_msys_path
         if sys.platform != "win32":
-            assert _normalize_git_bash_path("/home/teknium/foo") == "/home/teknium/foo"
-            assert _normalize_git_bash_path("/c/Users/foo") == "/c/Users/foo"
-            assert _normalize_git_bash_path("C:/Users/foo") == "C:/Users/foo"
-            assert _normalize_git_bash_path(None) is None
+            assert _normalize_msys_path("/home/teknium/foo") == "/home/teknium/foo"
+            assert _normalize_msys_path("/c/Users/foo") == "/c/Users/foo"
+            assert _normalize_msys_path("C:/Users/foo") == "C:/Users/foo"
+            assert _normalize_msys_path(None) is None
 
     def test_empty_string_preserved(self):
-        from cli import _normalize_git_bash_path
-        assert _normalize_git_bash_path("") == ""
+        from cli import _normalize_msys_path
+        assert _normalize_msys_path("") == ""
 
     def test_windows_translation(self, monkeypatch):
         """Simulate Windows and verify /c/Users/... becomes C:\\Users\\..."""
         import cli as cli_mod
         monkeypatch.setattr(cli_mod.sys, "platform", "win32")
-        assert cli_mod._normalize_git_bash_path("/c/Users/foo") == r"C:\Users\foo"
-        assert cli_mod._normalize_git_bash_path("/C/Users/foo") == r"C:\Users\foo"
-        assert cli_mod._normalize_git_bash_path("/cygdrive/d/data") == r"D:\data"
-        assert cli_mod._normalize_git_bash_path("/mnt/c/Users") == r"C:\Users"
+        assert cli_mod._normalize_msys_path("/c/Users/foo") == r"C:\Users\foo"
+        assert cli_mod._normalize_msys_path("/C/Users/foo") == r"C:\Users\foo"
+        assert cli_mod._normalize_msys_path("/cygdrive/d/data") == r"D:\data"
+        assert cli_mod._normalize_msys_path("/mnt/c/Users") == r"C:\Users"
         # Already-native path is preserved
-        assert cli_mod._normalize_git_bash_path(r"C:\Users\foo") == r"C:\Users\foo"
+        assert cli_mod._normalize_msys_path(r"C:\Users\foo") == r"C:\Users\foo"
         # Forward-slash Windows path is preserved (git on Windows often
-        # returns this form; it's valid for both bash and Python, so we
-        # don't need to translate).
-        assert cli_mod._normalize_git_bash_path("C:/Users/foo") == "C:/Users/foo"
+        # returns this form; it's valid for both PowerShell and Python, so
+        # we don't need to translate).
+        assert cli_mod._normalize_msys_path("C:/Users/foo") == "C:/Users/foo"
 
 
 class TestWorktreeSymlinkFallback:

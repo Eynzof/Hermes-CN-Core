@@ -1,5 +1,7 @@
 """Tests for the central command registry and autocomplete."""
 
+import subprocess
+
 from prompt_toolkit.completion import CompleteEvent
 from prompt_toolkit.document import Document
 
@@ -1804,3 +1806,169 @@ class TestPluginCommandEnumeration:
         slack_names = set(slack_subcommand_map())
         assert "status" in tg_names
         assert "status" in slack_names
+
+
+# =========================================================================
+# SlashCommandCompleter._get_project_files — ripgrepy file cache
+# =========================================================================
+
+
+class TestGetProjectFilesRipgrepy:
+    """Tests for _get_project_files() using ripgrepy for project file listing."""
+
+    @staticmethod
+    def _make_completer():
+        """Create a SlashCommandCompleter with no provider."""
+        from hermes_cli.commands import SlashCommandCompleter
+        return SlashCommandCompleter()
+
+    def test_ripgrepy_not_importable_falls_back_to_fd(self, tmp_path, monkeypatch):
+        """When ripgrepy is not importable, fall back to fd."""
+        import builtins
+        from unittest.mock import patch
+
+        completer = self._make_completer()
+
+        # Block ripgrepy import
+        orig_import = builtins.__import__
+        def blocking_import(name, *args, **kwargs):
+            if name == "ripgrepy" or name.startswith("ripgrepy."):
+                raise ImportError("No module named ripgrepy")
+            return orig_import(name, *args, **kwargs)
+        monkeypatch.setattr(builtins, "__import__", blocking_import)
+
+        # Mock fd to return some files
+        def fake_run(cmd, **kwargs):
+            if isinstance(cmd, list) and cmd[0] == "fd":
+                return subprocess.CompletedProcess(
+                    cmd, 0, stdout=f"{tmp_path / 'a.py'}\n{tmp_path / 'b.py'}\n"
+                )
+            return subprocess.CompletedProcess(cmd, 0, stdout="")
+
+        monkeypatch.setattr(completer, "_file_cache_cwd", "")
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+        with patch("hermes_cli.commands.shutil") as mock_shutil:
+            mock_shutil.which.return_value = "/usr/bin/fd"
+            with patch("hermes_cli.commands.os.getcwd", return_value=str(tmp_path)):
+                files = completer._get_project_files()
+
+        assert len(files) > 0
+        assert any("a.py" in f or f.endswith("a.py") for f in files)
+
+    def test_ripgrepy_successful_uses_rg(self, tmp_path, monkeypatch):
+        """When ripgrepy is available, _get_project_files uses rg via ripgrepy."""
+        from unittest.mock import patch
+        completer = self._make_completer()
+        completer._file_cache_cwd = ""
+
+        captured_cmds = []
+        def fake_run(cmd, **kwargs):
+            captured_cmds.append(cmd)
+            return subprocess.CompletedProcess(
+                cmd, 0, stdout=f"{tmp_path / 'src' / 'main.py'}\n"
+            )
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+        with patch("hermes_cli.commands.os.getcwd", return_value=str(tmp_path)):
+            files = completer._get_project_files()
+
+        assert len(files) > 0
+        assert any("main.py" in f or f.endswith("main.py") for f in files)
+        # First command should be ripgrepy-based (has --files flag)
+        assert len(captured_cmds) >= 1
+        assert "--files" in captured_cmds[0]
+
+    def test_ripgrepy_sortr_fails_falls_back_to_unsorted(self, tmp_path, monkeypatch):
+        """When --sortr fails, retry without it."""
+        from unittest.mock import patch
+        completer = self._make_completer()
+        completer._file_cache_cwd = ""
+
+        call_count = [0]
+        def fake_run(cmd, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                # First call (with --sortr) fails
+                return subprocess.CompletedProcess(cmd, 2, stdout="", stderr="unsupported flag")
+            # Second call (without --sortr) succeeds
+            return subprocess.CompletedProcess(cmd, 0, stdout=f"{tmp_path / 'a.py'}\n")
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+        with patch("hermes_cli.commands.os.getcwd", return_value=str(tmp_path)):
+            files = completer._get_project_files()
+
+        assert len(files) > 0
+
+    def test_cache_returns_cached_within_timeout(self, tmp_path, monkeypatch):
+        """_get_project_files returns cached results within 5-second window."""
+        from unittest.mock import patch
+        completer = self._make_completer()
+        # Pre-populate cache
+        completer._file_cache = ["cached_a.py", "cached_b.py"]
+        completer._file_cache_cwd = str(tmp_path)
+        completer._file_cache_time = 999999.0  # far in the future
+
+        call_count = [0]
+        orig_run = subprocess.run
+        def counting_run(cmd, **kwargs):
+            call_count[0] += 1
+            return orig_run(cmd, **kwargs)
+        monkeypatch.setattr(subprocess, "run", counting_run)
+
+        with patch("hermes_cli.commands.os.getcwd", return_value=str(tmp_path)):
+            # Manually trick time so cache seems fresh
+            monkeypatch.setattr("hermes_cli.commands.time.monotonic", lambda: 0.0)
+            # But our cache_time is in the future, so... actually we need to
+            # set cache_time to 0 and monotonic to 0
+            completer._file_cache_time = 0.0
+            monkeypatch.setattr("hermes_cli.commands.time.monotonic", lambda: 1.0)
+            files = completer._get_project_files()
+
+        # Should return cached results without calling subprocess
+        assert files == ["cached_a.py", "cached_b.py"]
+        assert call_count[0] == 0
+
+    def test_cache_expired_refreshes(self, tmp_path, monkeypatch):
+        """When cache is expired (>5s), subprocess is called again."""
+        from unittest.mock import patch
+        completer = self._make_completer()
+        completer._file_cache = ["stale.py"]
+        completer._file_cache_cwd = str(tmp_path)
+        completer._file_cache_time = 0.0
+
+        call_count = [0]
+        def fake_run(cmd, **kwargs):
+            call_count[0] += 1
+            return subprocess.CompletedProcess(cmd, 0, stdout=f"{tmp_path / 'fresh.py'}\n")
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+        with patch("hermes_cli.commands.os.getcwd", return_value=str(tmp_path)):
+            monkeypatch.setattr("hermes_cli.commands.time.monotonic", lambda: 10.0)
+            files = completer._get_project_files()
+
+        # Cache expired → subprocess was called
+        assert call_count[0] >= 1
+        assert "stale.py" not in files
+
+    def test_cwd_changed_invalidates_cache(self, tmp_path, monkeypatch):
+        """When cwd changes, cache is invalidated regardless of time."""
+        from unittest.mock import patch
+        completer = self._make_completer()
+        completer._file_cache = ["old_dir.py"]
+        completer._file_cache_cwd = "/some/other/dir"
+        completer._file_cache_time = 999999.0
+
+        call_count = [0]
+        def fake_run(cmd, **kwargs):
+            call_count[0] += 1
+            return subprocess.CompletedProcess(cmd, 0, stdout=f"{tmp_path / 'new_dir.py'}\n")
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+        with patch("hermes_cli.commands.os.getcwd", return_value=str(tmp_path)):
+            monkeypatch.setattr("hermes_cli.commands.time.monotonic", lambda: 0.0)
+            files = completer._get_project_files()
+
+        # Cache invalidated (cwd changed) → subprocess was called
+        assert call_count[0] >= 1
+        assert "new_dir.py" in files or any("new_dir.py" in f for f in files)

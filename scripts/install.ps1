@@ -505,47 +505,29 @@ function Test-Python {
 function Install-Git {
     <#
     .SYNOPSIS
-    Ensure Git (and Git Bash) are installed.  Git for Windows bundles bash.exe
-    which Hermes uses to run shell commands.
+    Ensure Git is available on PATH (for cloning, version control, etc.).
 
-    Priority order (deliberately simple -- no winget, no registry, no system
-    package manager):
-      1. Existing ``git`` on PATH -- use it as-is (the common fast path).
+    Hermes no longer requires Git Bash for shell commands — Windows PowerShell
+    5.1 (powershell.exe) ships with every Windows 10/11 system and is used
+    as the terminal shell.  Git is still useful for repository operations but
+    is not a hard dependency for the terminal tool.
+
+    Priority order:
+      1. Existing ``git`` on PATH — use it as-is (the common fast path).
       2. Download **PortableGit** from the official git-for-windows GitHub
          release (self-extracting 7z.exe) and unpack it to
-         ``%LOCALAPPDATA%\hermes\git`` -- never touches system Git, never
-         requires admin, works even on locked-down machines and machines
-         with a broken system Git install.
-
-    **Why PortableGit, not MinGit:**  MinGit is the minimal-automation
-    distribution and ships ONLY ``git.exe`` -- no bash, no POSIX utilities.
-    Hermes needs ``bash.exe`` to run shell commands.  PortableGit is the
-    full Git for Windows distribution without the installer UI; it ships
-    ``git.exe`` + ``bash.exe`` + ``sh``, ``awk``, ``sed``, ``grep``, ``curl``,
-    ``ssh``, etc. in ``usr\bin\``.
-
-    We deliberately skip winget because it fails badly when the system Git
-    install is in a half-installed state (partially registered, or uninstall-
-    blocked).  Owning the Hermes copy of Git ourselves is predictable and
-    recoverable: if it ever breaks, ``Remove-Item %LOCALAPPDATA%\hermes\git``
-    and re-running this installer fully recovers.
-
-    After install we locate ``bash.exe`` and persist the path in
-    ``HERMES_GIT_BASH_PATH`` (User scope) so Hermes can find it in a fresh
-    shell without a second PATH refresh.
+         ``%LOCALAPPDATA%\hermes\git`` — never touches system Git, never
+         requires admin.
     #>
     Write-Info "Checking Git..."
 
     if (Get-Command git -ErrorAction SilentlyContinue) {
         $version = git --version
         Write-Success "Git found ($version)"
-        Set-GitBashEnvVar
         return $true
     }
 
-    # Download PortableGit into $HermesHome\git.  Always works as long as
-    # we can reach github.com -- no admin, no winget, no reliance on the
-    # user's possibly-broken system Git install.
+    # Download PortableGit into $HermesHome\git.
     Write-Info "Git not found -- downloading PortableGit to $HermesHome\git\ ..."
     Write-Info "(no admin rights required; isolated from any system Git install)"
 
@@ -558,25 +540,16 @@ function Install-Git {
             $assetTag = '64-bit'
             $downloadIsZip = $false
         } else {
-            # PortableGit does not ship 32-bit / arm builds -- fall back to MinGit
-            # 32-bit with a warning that bash-based features will be unavailable.
             $assetTag = '32-bit-mingit'
             $downloadIsZip = $true
         }
 
-        # Pinned git-for-windows release. We deliberately do NOT hit
-        # api.github.com/repos/.../releases/latest here: that endpoint
-        # is rate-limited to 60 requests/hour/IP for unauthenticated
-        # callers, and users behind CGNAT / corporate NAT / dorm WiFi
-        # routinely hit the limit, breaking the installer.
-        # Static github.com/.../releases/download/<tag>/<asset> URLs
-        # are not subject to the API rate limit.
         $gitTag    = "v2.54.0.windows.1"
         $gitVer    = "2.54.0"
         $gitVerTag = "$gitVer.windows.1"
 
         if ($arch -eq "32-bit-mingit") {
-            Write-Warn "32-bit Windows detected -- PortableGit is 64-bit only.  Installing MinGit 32-bit as a last resort; bash-dependent Hermes features (terminal tool, agent-browser) will not work on this machine."
+            Write-Warn "32-bit Windows detected -- PortableGit is 64-bit only.  Installing MinGit 32-bit as a last resort."
             $assetName    = "MinGit-$gitVer-32-bit.zip"
             $downloadIsZip = $true
         } elseif ($arch -eq "arm64") {
@@ -604,9 +577,6 @@ function Install-Git {
         if ($downloadIsZip) {
             Expand-Archive -Path $tmpFile -DestinationPath $gitDir -Force
         } else {
-            # PortableGit is a self-extracting 7z archive.  Invoke it with
-            # `-o<target> -y` (silent) to extract to $gitDir.  No 7z install
-            # required; it's fully self-contained.
             Write-Info "Extracting PortableGit to $gitDir ..."
             $extractProc = Start-Process -FilePath $tmpFile `
                 -ArgumentList "-o`"$gitDir`"", "-y" `
@@ -617,8 +587,6 @@ function Install-Git {
         }
         Remove-Item -Force $tmpFile -ErrorAction SilentlyContinue
 
-        # PortableGit layout: cmd\git.exe + bin\bash.exe + usr\bin\ (coreutils)
-        # MinGit layout:      cmd\git.exe + usr\bin\bash.exe (if present)
         $gitExe = "$gitDir\cmd\git.exe"
         if (-not (Test-Path $gitExe)) {
             throw "Git extraction did not produce git.exe at $gitExe"
@@ -627,9 +595,7 @@ function Install-Git {
         # Add to session PATH so the rest of this install run can use git.
         $env:Path = "$gitDir\cmd;$env:Path"
 
-        # Persist to User PATH so fresh shells see it.  PortableGit needs
-        # cmd\ (for git.exe), bin\ (for bash.exe + core tools), and
-        # usr\bin\ (for perl, ssh, curl, and other POSIX coreutils).
+        # Persist to User PATH.
         $newPathEntries = @(
             "$gitDir\cmd",
             "$gitDir\bin",
@@ -650,68 +616,14 @@ function Install-Git {
 
         $version = & $gitExe --version
         Write-Success "Git $version installed to $gitDir (portable, user-scoped)"
-        Set-GitBashEnvVar
         return $true
     } catch {
         Write-Err "Could not install portable Git: $_"
         Write-Info ""
         Write-Info "Fallback: install Git manually from https://git-scm.com/download/win"
-        Write-Info "then re-run this installer.  Hermes needs Git Bash on Windows to run"
-        Write-Info "shell commands (same as Claude Code and other coding agents)."
+        Write-Info "then re-run this installer."
         return $false
     }
-}
-
-function Set-GitBashEnvVar {
-    <#
-    .SYNOPSIS
-    Locate ``bash.exe`` from an already-installed Git and persist the path in
-    ``HERMES_GIT_BASH_PATH`` (User env scope) so Hermes can find it even before
-    PATH propagation completes in a newly-spawned shell.
-    #>
-    $candidates = @()
-
-    # Our own portable Git install is ALWAYS checked first, so a broken
-    # system Git doesn't hijack us.  If the user had a working system Git
-    # we'd have returned early from Install-Git's fast path and never called
-    # this with a system-Git-only installation anyway.
-    #
-    # Layouts:
-    #   PortableGit (our default): $HermesHome\git\bin\bash.exe
-    #   MinGit (32-bit fallback):  $HermesHome\git\usr\bin\bash.exe
-    $candidates += "$HermesHome\git\bin\bash.exe"       # PortableGit layout (primary)
-    $candidates += "$HermesHome\git\usr\bin\bash.exe"   # MinGit / PortableGit usr\bin fallback
-
-    # git.exe on PATH can tell us where the install root is
-    $gitCmd = Get-Command git -ErrorAction SilentlyContinue
-    if ($gitCmd) {
-        $gitExe = $gitCmd.Source
-        # Git for Windows (full installer): <root>\cmd\git.exe + <root>\bin\bash.exe
-        # MinGit:                           <root>\cmd\git.exe + <root>\usr\bin\bash.exe
-        $gitRoot = Split-Path (Split-Path $gitExe -Parent) -Parent
-        $candidates += "$gitRoot\bin\bash.exe"
-        $candidates += "$gitRoot\usr\bin\bash.exe"
-    }
-
-    # Standard system install locations as a final fallback.  Note:
-    # ProgramFiles(x86) can't be referenced via ${env:...} string interpolation
-    # because of the parens -- use [Environment]::GetEnvironmentVariable().
-    $candidates += "${env:ProgramFiles}\Git\bin\bash.exe"
-    $pf86 = [Environment]::GetEnvironmentVariable("ProgramFiles(x86)")
-    if ($pf86) { $candidates += "$pf86\Git\bin\bash.exe" }
-    $candidates += "${env:LocalAppData}\Programs\Git\bin\bash.exe"
-
-    foreach ($candidate in $candidates) {
-        if ($candidate -and (Test-Path $candidate)) {
-            [Environment]::SetEnvironmentVariable("HERMES_GIT_BASH_PATH", $candidate, "User")
-            $env:HERMES_GIT_BASH_PATH = $candidate
-            Write-Info "Set HERMES_GIT_BASH_PATH=$candidate"
-            return
-        }
-    }
-
-    Write-Warn "Could not locate bash.exe -- Hermes may not find Git Bash."
-    Write-Info "If needed, set HERMES_GIT_BASH_PATH manually to your bash.exe path."
 }
 
 # The desktop build runs Vite ^8, which refuses to start on Node outside
@@ -2823,6 +2735,10 @@ function Invoke-Stage {
 # ============================================================================
 
 function Invoke-AllStages {
+    # Defensive check: powershell.exe ships with every Windows 10/11 system.
+    if (-not (Get-Command powershell.exe -ErrorAction SilentlyContinue)) {
+        throw "Windows PowerShell (powershell.exe) is required but was not found. PowerShell ships with every Windows 10/11 system — check your system PATH."
+    }
     Step-OutOfInstallDir
     foreach ($s in $InstallStages) {
         Invoke-Stage -StageDef $s

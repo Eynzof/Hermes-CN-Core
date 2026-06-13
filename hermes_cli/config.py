@@ -6001,7 +6001,7 @@ def edit_config():
 
     if not editor:
         # Try common editors — order is platform-aware so Windows users
-        # land on a working editor (notepad) even without Git Bash or nano
+        # land on a working editor (notepad) even without nano or other editors
         # installed.  On POSIX, prefer nano/vim over code/notepad because
         # it's more likely to be present on headless / server systems.
         import shutil

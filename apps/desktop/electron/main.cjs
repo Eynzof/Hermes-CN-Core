@@ -1090,44 +1090,23 @@ async function findSystemPython() {
   return null
 }
 
-// findGitBash — locate bash.exe on Windows. Hermes' terminal tool requires
-// bash (POSIX shell), and on Windows that's almost always Git for Windows'
-// bundled Git Bash. We check the same set of locations tools/environments/
-// local.py:_find_bash() checks at runtime, so a positive result here means
-// the agent will be able to start a terminal too.
+// findPowerShell — locate powershell.exe on Windows. Hermes' terminal tool
+// uses Windows PowerShell 5.1 (powershell.exe) which ships with every
+// Windows 10/11 system — no download or install needed.
 //
-// On non-Windows hosts bash is part of the OS and this just returns the
-// first bash on PATH.
-function findGitBash() {
+// On non-Windows hosts this returns null (PowerShell is Windows-only).
+function findPowerShell() {
   if (!IS_WINDOWS) {
-    return findOnPath('bash')
+    return null
   }
 
-  // install.ps1 drops PortableGit at %LOCALAPPDATA%\hermes\git\... — checked
-  // first so users who installed via install.ps1 are detected before we
-  // start probing system-wide locations.
-  const localAppData = process.env.LOCALAPPDATA || ''
-  const candidates = []
-  if (localAppData) {
-    candidates.push(path.join(localAppData, 'hermes', 'git', 'bin', 'bash.exe'))
-    candidates.push(path.join(localAppData, 'hermes', 'git', 'usr', 'bin', 'bash.exe'))
-  }
+  // Canonical location — PowerShell 5.1 ships here on every Windows 10/11.
+  const systemRoot = process.env.SystemRoot || 'C:\\Windows'
+  const canonical = path.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
+  if (fileExists(canonical)) return canonical
 
-  // Standard Git for Windows install locations.
-  candidates.push(path.join(process.env['ProgramFiles'] || 'C:\\Program Files', 'Git', 'bin', 'bash.exe'))
-  candidates.push(path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Git', 'bin', 'bash.exe'))
-  if (localAppData) {
-    candidates.push(path.join(localAppData, 'Programs', 'Git', 'bin', 'bash.exe'))
-  }
-
-  for (const candidate of candidates) {
-    if (fileExists(candidate)) return candidate
-  }
-
-  // Last resort — bash on PATH (covers WSL bash, MSYS2, custom installs).
-  // On WSL hosts findOnPath itself filters out Windows-binary paths via
-  // isWindowsBinaryPathInWsl, so we won't hand back a wsl.exe shim either.
-  return findOnPath('bash')
+  // Fallback — search PATH.
+  return findOnPath('powershell.exe')
 }
 
 function getVenvPython(venvRoot) {
@@ -1137,7 +1116,7 @@ function getVenvPython(venvRoot) {
 // resolveGitBinary — locate git.exe on Windows. A fresh installer-driven
 // install only has PortableGit under %LOCALAPPDATA%\hermes\git (never on
 // PATH), so a bare spawn('git') ENOENTs and self-update checks fail with
-// "Couldn't check for updates". Mirror findGitBash: PortableGit first, then
+// "Couldn't check for updates". Mirror findPowerShell: PortableGit first, then
 // standard Git-for-Windows locations, then PATH. Cached after first probe.
 let _gitBinaryCache = null
 function resolveGitBinary() {
@@ -2170,18 +2149,13 @@ async function ensureRuntime(backend) {
     )
   }
 
-  // On Windows, preflight Git Bash. Hermes' terminal tool calls bash.exe
-  // directly (tools/environments/local.py); without it the agent can't run
-  // terminal commands. install.ps1's Stage-Git puts PortableGit at
-  // %LOCALAPPDATA%\hermes\git\, which findGitBash() picks up, so for any
-  // user who completed the bootstrap this is a no-op. For users who got
-  // here via an external `hermes` on PATH, this check still helps.
-  if (IS_WINDOWS && !findGitBash()) {
+  // On Windows, preflight PowerShell. Hermes' terminal tool uses
+  // powershell.exe (Windows PowerShell 5.1) which ships with every
+  // Windows 10/11 system — this check should never fail on a healthy OS.
+  if (IS_WINDOWS && !findPowerShell()) {
     throw new Error(
-      'Git for Windows is required for Hermes on Windows (provides Git Bash, ' +
-        "which the agent's terminal tool uses). Install it from " +
-        'https://git-scm.com/download/win or run `winget install -e --id Git.Git`, ' +
-        'then relaunch Hermes.'
+      'Windows PowerShell is required but was not found. ' +
+        'PowerShell ships with Windows — check your system PATH.'
     )
   }
 

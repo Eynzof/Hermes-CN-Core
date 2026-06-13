@@ -1358,3 +1358,98 @@ class TestDoctorStaleMaxIterationsDrift:
             monkeypatch, tmp_path, fix=False, ghost=None, cfg_turns=400,
         )
         assert "shadows" not in out
+
+
+# ── ripgrep + ripgrepy check ────────────────────────────────────────────
+
+
+class TestDoctorRipgrepRipgrepy:
+    """Tests for the ripgrep+ripgrepy combined check in run_doctor()."""
+
+    @staticmethod
+    def _capture_checks(monkeypatch, tmp_path, *, rg_present, ripgrepy_present):
+        """Run doctor and capture check_ok / check_warn / check_info calls
+        that mention 'ripgrep' or 'ripgrepy'."""
+        import io
+        import contextlib
+        import types
+        from argparse import Namespace
+
+        hermes_home = tmp_path / ".hermes"
+        hermes_home.mkdir(parents=True)
+        (hermes_home / "config.yaml").write_text("memory: {}\n", encoding="utf-8")
+        project = tmp_path / "project"
+        project.mkdir(exist_ok=True)
+
+        monkeypatch.setattr(doctor_mod, "HERMES_HOME", hermes_home)
+        monkeypatch.setattr(doctor_mod, "PROJECT_ROOT", project)
+        monkeypatch.setattr(doctor_mod, "_DHH", str(hermes_home))
+
+        # Control which("rg")
+        orig_which = doctor_mod.shutil.which
+        monkeypatch.setattr(
+            doctor_mod.shutil, "which",
+            lambda cmd: "/usr/bin/rg" if (cmd == "rg" and rg_present) else orig_which(cmd)
+        )
+
+        # Control ripgrepy import
+        import builtins
+        orig_import = builtins.__import__
+
+        if not ripgrepy_present:
+            def blocking_import(name, *args, **kwargs):
+                if name == "ripgrepy" or name.startswith("ripgrepy."):
+                    raise ImportError("No module named ripgrepy")
+                return orig_import(name, *args, **kwargs)
+            monkeypatch.setattr(builtins, "__import__", blocking_import)
+
+        fake_model_tools = types.SimpleNamespace(
+            check_tool_availability=lambda *a, **kw: ([], []),
+            TOOLSET_REQUIREMENTS={},
+        )
+        monkeypatch.setitem(sys.modules, "model_tools", fake_model_tools)
+
+        from hermes_cli import auth as _auth_mod
+        monkeypatch.setattr(_auth_mod, "get_nous_auth_status", lambda: {"logged_in": False})
+        monkeypatch.setattr(_auth_mod, "get_codex_auth_status", lambda: {"logged_in": False})
+        monkeypatch.setattr(_auth_mod, "get_gemini_oauth_auth_status", lambda: {"logged_in": False})
+        monkeypatch.setattr(_auth_mod, "get_minimax_oauth_auth_status", lambda: {"logged_in": False})
+        monkeypatch.setattr(_auth_mod, "get_xai_oauth_auth_status", lambda: {"logged_in": False})
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            doctor_mod.run_doctor(Namespace(fix=False))
+        out = buf.getvalue()
+
+        # Collect lines mentioning ripgrep or ripgrepy
+        rg_lines = [l.strip() for l in out.splitlines()
+                    if "ripgrep" in l.lower() or "ripgrepy" in l.lower()]
+        return rg_lines, out
+
+    def test_rg_present_ripgrepy_present_shows_ok(self, monkeypatch, tmp_path):
+        """When both rg and ripgrepy are present, check_ok is emitted."""
+        rg_lines, out = self._capture_checks(
+            monkeypatch, tmp_path, rg_present=True, ripgrepy_present=True
+        )
+        assert any("ripgrep" in l.lower() and "ripgrepy" in l.lower() for l in rg_lines), \
+            f"Expected 'ripgrep + ripgrepy' in: {rg_lines}"
+        assert any("faster file search" in l for l in rg_lines)
+
+    def test_rg_present_ripgrepy_missing_shows_warn(self, monkeypatch, tmp_path):
+        """When rg is present but ripgrepy is missing, warn is emitted."""
+        rg_lines, out = self._capture_checks(
+            monkeypatch, tmp_path, rg_present=True, ripgrepy_present=False
+        )
+        assert any("ripgrepy" in l.lower() and "python wrapper missing" in l.lower()
+                   for l in rg_lines), \
+            f"Expected ripgrepy warning in: {rg_lines}"
+        assert any("pip install ripgrepy" in l.lower() for l in rg_lines)
+
+    def test_rg_missing_shows_warn_and_install_hint(self, monkeypatch, tmp_path):
+        """When rg is missing, warn is emitted with install hint."""
+        rg_lines, out = self._capture_checks(
+            monkeypatch, tmp_path, rg_present=False, ripgrepy_present=False
+        )
+        assert any("ripgrep" in l.lower() and "not found" in l.lower() for l in rg_lines), \
+            f"Expected 'ripgrep not found' in: {rg_lines}"
+        assert any("install" in l.lower() for l in rg_lines)

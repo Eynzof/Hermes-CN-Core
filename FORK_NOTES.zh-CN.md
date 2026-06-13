@@ -23,6 +23,12 @@
 | **P-013** | `model_tools.py`, `tests/run_agent/test_repair_tool_arg_keys.py` | 在 `handle_function_call` 中增加自动参数键修复：全局别名表、工具级覆盖、模糊匹配、嵌套对象/数组递归修复，以及可选回调通知 | LLM 经常把参数名写错（如 `file`→`path`、`cmd`→`command`），此前会直接报 "unknown parameter"；该补丁在不放宽 JSON Schema 的前提下提高工具调用的容错率 | 建议上游 |
 | **P-014** | `.github/workflows/release-runtime.yml`, `tools/mcp_tool.py`, `hermes_cli/config.py`, `docs/RUNTIME_RELEASES.md`, `tests/tools/test_mcp_tool.py` | 把原生 MCP 客户端 SDK 打进冻结 runtime（安装入口后并入 `cn-desktop` extra，见 P-015；外加 `--collect-submodules/--copy-metadata mcp` + CI 断言 `mcp-*.dist-info` 存在）；并让 `discover_mcp_tools()` 在已配置 `mcp_servers` 但 SDK 缺失时输出一次 WARNING，而不是在 debug 级别静默跳过 | issue #16：desktop runtime 打包时缺少 `mcp` extra，导致 `_MCP_AVAILABLE=False`，已配置的 `mcp_servers` 不注册任何工具且 INFO 日志无任何提示。打包改动是 CN 特有，诊断日志与已知根键则是通用改进 | 打包改动 CN 特有；`mcp_tool.py` 告警与 `mcp_servers` 根键建议上游 |
 | **P-015** | `pyproject.toml`, `.github/workflows/release-runtime.yml`, `docs/RUNTIME_RELEASES.md`, `uv.lock` | 新增 `cn-desktop` 聚合 extra，把冻结 runtime 暴露的所有后端预打包（`web`、`anthropic`、`mcp`、`feishu`、`dingtalk`、`wecom`，以及微信用的 `aiohttp`/`qrcode`/`cryptography`）。发布流程改为安装 `.[cn-desktop]`，收集各 IM SDK 子模块与元数据，新增"构建环境 import 冒烟"，并断言每个后端的 `dist-info` 出现在冻结产物中 | 桌面反馈：飞书/钉钉/企微/微信适配器因 SDK（`lark-oapi`、`dingtalk-stream` 等）从未被打包、且冻结环境无法懒安装而静默降级为"不可用"。根因同 P-014，推广到所有桌面后端 | 打包 CN 特有；不上游（上游不构建这些产物） |
+| **P-016** | `tools/terminal_tool.py`, `tools/environments/local.py`, `tools/environments/proccess_pwsh.py`, `tools/environments/base.py`, `model_tools.py`, `tests/tools/test_terminal_dynamic_description.py` | PowerShell 原生执行：Windows 上使用 `pwsh.exe`（PS7）作为主 shell，`powershell.exe`（PS5.1）作为回退，支持完整生命周期管理；删除 Git Bash 自动安装。增加运行时自适应的 terminal 工具描述和 shell 指纹缓存键。增加 pwsh_transform 警告传递 | Windows 上 agent 原本硬编码为 Git Bash；PowerShell 启动更快，路径处理更原生。Git for Windows 自动安装已删除。静态 terminal 描述中的 Linux 命令引用在 PS 下会产生误导 | 被 P-019 取代 |
+| **P-019** | `tools/environments/local.py`, `tools/terminal_tool.py`, `agent/prompt_builder.py`, `cli.py`, `apps/desktop/electron/main.cjs`, `scripts/install.ps1`, `hermes_cli/uninstall.py`, `cron/scheduler.py`, `tools/environments/base.py`, `tools/file_operations.py`, `tools/browser_tool.py`, `tests/*`, `website/docs/*`, `FORK_NOTES*.md` | 完成 Git-Bash→PowerShell 迁移：移除全部 Git Bash 发现逻辑（7策略 `_find_bash`）、WSL 启动器过滤和 `HERMES_GIT_BASH_PATH`。Windows 上仅使用 **Windows PowerShell 5.1**（`powershell.exe`，每套 Windows 10/11 自带）——无需 `pwsh.exe`、无需下载、无需安装。`HERMES_SHELL_TYPE=bash` 在 Windows 上抛 RuntimeError。重命名多个函数和变量。`pwsh_transform` 改为始终开启。替换桌面端 `findGitBash` 为 `findPowerShell`。移除安装脚本的 Git Bash 安装逻辑。清理所有 Git Bash 注释、文档和测试 | `powershell.exe` (5.1) 每套 Windows 10/11 自带——零安装零下载。比 Git Bash 启动更快，路径处理原生，无需 POSIX 翻译。删除约 400 行死代码（7 策略 bash 发现、WSL 启动器过滤、PortableGit 自动安装）。Agent 在 Windows 上拥有唯一、可预测、始终可用的 shell。P-016 的 `pwsh.exe` 探测是不必要的复杂度——5.1 全覆盖 | 取代 P-016；应上游化 |
+| **P-017** | `agent/tool_dedup.py`, `agent/agent_init.py`, `agent/conversation_loop.py`, `agent/tool_executor.py` | 增加 `ToolDedupTracker`，在跨 API 迭代间检测重复的相同工具调用，并在重复次数达到 3、5、8 次时注入逐级升级的 `<system-reminder>` 提示以打破无限循环 | Agent 在处理复杂任务时可能陷入无限循环，反复调用相同工具和参数——现有同轮去重 `_deduplicate_tool_calls` 无法检测跨迭代模式 | 内部机制——解决行为健壮性缺口；机制通用，但集成点与 fork 架构耦合 |
+| **P-018** | `agent/agent_init.py`, `tests/run_agent/test_init_fallback_on_exhausted_pool.py` | 增加 `_api_key_required` 辅助函数，并在 OpenAI / Anthropic SDK 客户端构造前加入空 key 保护；当 api_key 为空且 provider 需要密钥时，抛出 `RuntimeError: no API key (param empty, env vars unset)` | 此前空 key（参数为空且环境变量未设置）会触发底层 SDK 认证异常，在 TUI/gateway 后台线程中表现为 panic 且无堆栈信息 | 建议上游 |
+| **P-020** | `tools/environments/windows_env.py`（新建）, `tools/environments/local.py`, `hermes_cli/claw.py`, `hermes_cli/managed_uv.py`, `hermes_cli/gateway.py`, `hermes_cli/dep_ensure.py`, `hermes_cli/clipboard.py`, `skills/creative/comfyui/scripts/hardware_check.py` | 新增 `refresh_env_from_registry()` 函数，从 Windows 注册表（HKLM + HKCU）刷新 `os.environ["PATH"]` 和 `os.environ["PATHEXT"]`，在每次 PowerShell 子进程调用前执行，使进程启动后安装的工具（如 WinGet、MSI）可被发现。参考 `kimi-cli/src/kimi_cli/utils/environment.py` 的实现。非 Windows 平台无操作。 | 如果不刷新，agent 无法发现进程启动后安装的二进制文件（例如通过 WinGet 安装的工具）— `shutil.which` 和 `subprocess.Popen` 只能看到进程创建时捕获的 PATH。当 agent 在会话中安装自己的依赖（node、uv 等）时尤其痛苦。 | 建议上游 |
+| **P-021** | `gateway/run.py`、`cron/scheduler.py`、`cron/jobs.py`、`hermes_time.py` | 四项 cron "静默停摆" 根因修复：(1) `_start_cron_ticker` 初始化包在 try/except 中，防止 daemon 线程静默死亡；(2) 僵尸 `.tick.lock` 自动清理——锁文件 mtime 超过 `lock_stale_seconds`（默认 120s）则删除；(3) `_validate_cron_startup()` 启动前校验 `jobs.json` 可解析性；(4) `_ensure_aware` 按配置时区解释无时区时间戳；修复 `hermes_time.py` 缺失的 `def now()`；每次 tick 调用 `reset_cache()` 使时区配置热生效。 | `jobs.json` 损坏 → ticker 线程崩溃 → daemon 静默死亡。僵尸 `.tick.lock` → 所有后续 tick 永久阻塞。ticker 初始化 `ImportError` → 线程零日志死亡。服务器时区 ≠ 配置时区 → 调度时间静默偏移。 | 建议上游 |
 
 ## 发布和维护支撑
 
@@ -290,6 +296,141 @@
 
 ---
 
+### P-016：PowerShell 原生执行 + 运行时自适应终端工具描述
+
+> **由 P-019 更新**：P-019 完成了迁移，移除了所有剩余 Git Bash 发现逻辑，专注于仅使用 **Windows PowerShell 5.1**（`powershell.exe`）。详见下方 P-019。
+
+**现象**：Windows 上 agent 硬编码使用 Git Bash。PowerShell 启动更快（`-NoProfile`），原生处理 Windows 路径（无需 `/c/foo` 翻译）。此外，terminal 工具描述包含 Linux/bash 命令引用，在原生 PS 中不存在。
+
+**原因**：上游 `LocalEnvironment` 只支持 bash。
+
+**改动内容**：
+
+1. **`tools/environments/local.py`** — 新增 `_resolve_shell()`：Windows 上检测 `pwsh.exe`（PS7）优先，回退到 `powershell.exe`（PS5.1）或 Git Bash。新增 `_run_pwsh()`、`_wrap_command_pwsh()`，覆写 `init_session()`、`_run_bash()`、`_wrap_command()`。支持 `HERMES_SHELL_TYPE` 和 `HERMES_PWSH_PATH`。
+
+2. **`tools/terminal_tool.py`** — 动态描述：`_detect_shell_for_description()` + `_build_dynamic_terminal_description()`，将 Linux/bash 命令引用替换为 PS cmdlet。
+
+3. **`model_tools.py`** — 将 `_shell_fp` 加入 `get_tool_definitions()` 缓存键。
+
+4. **`tools/environments/proccess_pwsh.py`** — `pwsh_transform()` 将 PS7+ 语法（`?:`、`??`、`&&`、`||`、`?.`、`?[`）降级为 PS5.1 兼容的 `if/else`，带警告传递。
+
+**风险和约束**：Windows 上 terminal 命令在 PS 中执行。Git Bash 自动安装已移除，但 Python 层 bash 回退（`_find_bash()`）仍保留为 7 策略发现链。
+
+**是否上游**：建议上游——被 P-019 取代并完成迁移。
+
+---
+
+### P-019：完成 Git-Bash→PowerShell 迁移（仅 Windows PowerShell 5.1）
+
+**现象**：P-016 为代码库增加了 PowerShell 支持，但留下了混合状态：`pwsh.exe`（PS7）被优先探测，`powershell.exe`（PS5.1）作为回退，而 7 策略 `_find_bash()` Git Bash 发现链（环境覆盖 → PortableGit → git.exe 推导 → 注册表 → PATH → 常见路径 → 自动安装）仍然存在。`HERMES_GIT_BASH_PATH`、`HERMES_PWSH_PATH` 和 `_install_git` 导入（不存在的模块）都是死代码。
+
+**原因**：P-016 专注于将 PowerShell 添加为主 shell，但未完全移除 Git Bash 机制。`pwsh.exe`（PS7）的要求是不必要的——Windows PowerShell 5.1（`powershell.exe`）随每套 Windows 10/11 系统自带，始终可用。
+
+**改动内容**：
+
+1. **`tools/environments/local.py`** — 核心 shell 解析（约 ~400 行删除）：移除 `_find_bash()`，替换为最小化的 `_find_bash_posix()`。移除 `_is_windows_wsl_launcher()`。`_find_pwsh_simple` → `_find_powershell()`。重写 `_resolve_shell()`：Windows 上始终返回 `("powershell", path)`。`HERMES_SHELL_TYPE=bash` 在 Windows 上抛 `RuntimeError`。函数重命名：`_run_pwsh` → `_run_powershell`，`_wrap_command_pwsh` → `_wrap_command_powershell`。`pwsh_transform` 改为始终开启。所有 `"pwsh"` → `"powershell"`。
+
+2. **`tools/terminal_tool.py`** — 移除 "Windows Git Bash" 描述分支。简化 `_detect_shell_for_description()`。
+
+3. **`agent/prompt_builder.py`** — `_WINDOWS_BASH_SHELL_HINT` → `_WINDOWS_POWERSHELL_SHELL_HINT`。
+
+4. **`cli.py`** — `_normalize_git_bash_path` → `_normalize_msys_path`。
+
+5. **`apps/desktop/electron/main.cjs`** — `findGitBash()` → `findPowerShell()`。更新预检。
+
+6. **`scripts/install.ps1`** — 移除 `Install-Git` bash 发现 + `Set-GitBashEnvVar`（约 210 行）。简化 `Stage-Git`。增加 `powershell.exe` 防御性检查。
+
+7. **`hermes_cli/uninstall.py`** — 移除 `HERMES_GIT_BASH_PATH`。
+
+8. **`cron/scheduler.py`** — 更新 `.sh`/`.bash` 错误消息。
+
+9. **注释清理**：`base.py`、`file_operations.py`、`browser_tool.py`。
+
+10. **测试**：更新 4 个测试文件。
+
+11. **文档**：更新 3 个英文文档页面。
+
+**为什么需要**：`powershell.exe` (5.1) 随每套 Windows 10/11 系统自带——零安装、零下载。比 Git Bash 启动更快，路径处理原生，避免 POSIX 翻译开销。删除约 400 行死代码。Agent 在 Windows 上拥有唯一、可预测、始终可用的 shell。P-016 的 `pwsh.exe`（PS7）探测是不必要的复杂度——5.1 全覆盖。
+
+**风险和约束**：`HERMES_SHELL_TYPE=bash` 现在在 Windows 上抛清晰的 `RuntimeError`。`HERMES_PWSH_PATH` 和 `HERMES_GIT_BASH_PATH` 环境变量不再被识别。所有命令无条件经过 `pwsh_transform`。
+
+**是否上游**：建议上游。完成 P-016 开始的迁移，使 Hermes 成为零依赖的 Windows 程序。
+
+---
+
+### P-017：跨迭代重复工具调用检测（无限循环断路器）
+
+**现象**：在复杂任务（长时间构建、多步骤重构）中，agent 有时会陷入无限循环，跨连续 API 迭代反复调用相同的工具和相同参数——例如反复读取同一文件，或使用相同命令反复调用 `run`。现有的 `_deduplicate_tool_calls()` 仅移除**同一次**工具批次中的精确重复，完全无法检测跨迭代重复。
+
+**根因**：此前没有跨步骤去重机制。每个 API 迭代的工具结果进入下一次 LLM 调用时，对之前尝试过什么完全没有历史感知。
+
+**改动内容**：
+
+1. **`agent/tool_dedup.py`** — 新增 `ToolDedupTracker` 类模块：
+   - 通过 `_canonical_tool_arguments()` 对工具调用键规范化（字典递归排序、回退到 `str()`）。
+   - 跟踪 `_seen_call_keys`（所有跨步骤见过的调用）和 `_consecutive_key`/`_consecutive_count`（连续调用计数）。
+   - `begin_step(previous_calls, step_no, turn_id)`：从上一步的工具调用结果中植入状态。
+   - `end_step()`：返回本步的调用列表供下一次迭代使用，并更新连续计数。
+   - `check_and_register(tool_name, arguments)`：在工具执行期间调用；若调用键在前序步骤中已出现过，则在重复计数达到 3、5、8 时返回逐步升级的提示文本。
+   - 逐级提示：计数 3 时温和提醒（`<system-reminder>`：“你在重复完全相同工具调用…”）。计数 5 和 8 时更强提示，明确给出工具名、重复次数和参数。
+
+2. **`agent/agent_init.py`** — 在 `AIAgent` 实例上初始化 `_tool_dedup_tracker`。
+
+3. **`agent/conversation_loop.py`** — 步骤生命周期：
+   - 每次 API 调用前：`begin_step()` 从上一次迭代的调用结果植入跨步骤状态。
+   - 所有工具结果收集完成后：`end_step()` 捕获本次迭代的调用供下一次使用。
+
+4. **`agent/tool_executor.py`** — 去重检查注入：
+   - 在 `execute_tool_calls_concurrent()` 中：每次工具执行后调用 `check_and_register()`，将提示文本追加到结果中。
+   - 在 `execute_tool_calls_sequential()` 中：相同模式。
+
+**风险和约束**：
+- 触发去重时，工具结果可能增加数百字符（`<system-reminder>` 文本）。
+- LLM 可见提示文本，可能影响其下一步决策——这正是预期行为。
+- 线程安全：`check_and_register()` 使用 `threading.Lock()` 保护并发执行路径中的共享状态。
+
+**是否上游**：机制是通用的，但集成点（`agent_init.py`、`conversation_loop.py`、`tool_executor.py`）与 fork 的 agent 架构高度耦合。可作为通用可观测性钩子提出。
+
+---
+
+### P-018：`agent/agent_init.py` 空 API key 保护
+
+**现象**：当 API key 为空（参数显式传入 `""`，环境变量未设置）时，agent 会以底层 OpenAI 或 Anthropic SDK 认证异常的形式 panic，而不是给出清晰可操作的错误提示。在 TUI/gateway 后台线程中，堆栈信息不会暴露给用户，看起来像静默崩溃。
+
+**根因**：`init_agent()` 在将 `api_key` 交给 `_create_openai_client()` 或 `build_anthropic_client()` 之前，没有显式验证其非空。空字符串流入 SDK 构造函数后产生令人困惑的异常。
+
+**改动内容**：
+- 新增 `_api_key_required(provider, api_key, base_url)` 辅助函数，对真正不需要字面量密钥的 provider（Azure Entra ID callable token、`"aws-sdk"` / `"no-key-required"`、Bedrock）返回 `False`。
+- 在 `anthropic_messages` 分支的 `build_anthropic_client()` 调用前插入保护。
+- 在 `chat_completions` 分支的 `_create_openai_client()` 调用前插入保护。
+- 两个保护都在 key 为空且 provider 需要密钥时抛出 `RuntimeError("no API key (param empty, env vars unset)")`。
+- 新增两个 pytest 用例分别覆盖 `chat_completions` 和 `anthropic_messages` 的空 key 路径。
+
+**风险和约束**：对真正不需要密钥的 provider（本地端点 `"no-key-required"`、Bedrock、Azure Entra ID）无影响。fallback 循环（`fallback_model` / `fallback_providers`）仍在保护之前执行。
+
+**是否上游**：建议上游。改动纯增量、与 provider 无关，能同时改善 CLI、TUI、gateway 和直接 `AIAgent()` 调用的用户体验。
+
+---
+
+### P-021：Cron 调度器可靠性修复 — 防止静默停摆
+
+**现象**：定时任务在默认日志级别下无任何错误提示就停止执行。Gateway 仍在运行且健康，但 `hermes cron list` 显示任务的 `next_run_at` 已过期却一直不触发。
+
+**根因**：四个相互独立的故障模式：
+
+1. **Daemon 线程静默死亡** — ticker 线程顶部的导入语句在 try/except 之外，`ImportError` 会直接杀死 daemon 线程且零日志。
+2. **僵尸锁文件** — 进程被 `SIGKILL` 或内核 panic 后 `.tick.lock` 永不清理，后续进程永远获取不到锁。
+3. **损坏的 `jobs.json`** — 首次 tick 中 `load_jobs()` 抛 `RuntimeError`，线程在产生任何输出前死亡。
+4. **时区解释漂移** — 旧的无时区时间戳按系统本地时间解释，与配置时区不一致时所有调度时间静默偏移。
+
+同时修复了 `hermes_time.py` 中 `def now():` 缺失的既有 bug。
+
+**改动**：`gateway/run.py`（F-1/F-4）、`cron/scheduler.py`（F-3/F-7）、`cron/jobs.py`（F-5）、`hermes_time.py`（F-7）。详见英文版 Fork Notes。
+
+**是否上游**：建议上游。通用可靠性修复，与平台和 provider 无关。
+
+---
+
 ## Windows 兼容性补丁
 
 以下补丁由 Maxwell Geng 贡献，用于提升 Windows 平台的一等支持体验，均可向上游提交。
@@ -336,17 +477,10 @@
 
 **上游状态**：建议上游。扩展 CI 到 Windows 覆盖，不改变生产行为。
 
-### `1a75a7672` — Windows 下自动安装 Git-Bash，并将 Windows 风格命令转换为 POSIX 风格
+### `1a75a7672` — ~~Windows 下自动安装 Git-Bash，并将 Windows 风格命令转换为 POSIX 风格~~ **已删除**
 
-**做了什么**：
-1. **自动安装 Git for Windows**：当本地终端后端找不到可用的 `bash.exe` 时，按优先级尝试：Chocolatey、Scoop、PortableGit 自解压包、官方安装程序静默安装。安装成功后将目录写入用户 PATH 注册表项。
-2. **Windows 命令转 POSIX**：在将命令发送给 bash 前，把 Windows 风格命令转换为 POSIX 风格。包括盘符路径（`C:\foo` → `/c/foo`）、反斜杠目录分隔符、Windows 特有引号/转义规则以及常见 Windows 专用语法。
+**状态**：已移除。Git for Windows 自动安装与 Git Bash 回退支持已被删除，改为原生 PowerShell 执行（见 P-016）。以下文件已移除：
+- `tools/environments/_install_git.py`
+- `tools/environments/_process_bash_command.py`
 
-**新增文件**：
-- `tools/environments/_install_git.py` — Windows 下 Git 的下载与安装策略。
-- `tools/environments/_process_bash_command.py` — Windows 到 POSIX 的命令翻译。
-
-**涉及文件**：
-- `tools/environments/local.py` — 在本地环境后端中集成自动安装和命令转换逻辑。
-
-**上游状态**：建议上游。让 terminal 工具链在 Windows 上开箱即用，无需手动安装 Git。
+Windows 平台现在要求使用 PowerShell 7（`pwsh`）或 Windows PowerShell（系统 PowerShell）。Shell 通过 `_find_pwsh` 解析，不再自动安装——PowerShell 属于 Windows 标准组件，默认已可用。

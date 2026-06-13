@@ -27,6 +27,8 @@ Usage:
 
 import os
 import re
+import shutil
+import subprocess
 import difflib
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -365,6 +367,73 @@ def _parse_search_context_line(line: str) -> tuple[str, int, str] | None:
         return None
 
     return path, int(match.group(1)), line[match.end():]
+
+
+def _parse_search_content_output(stdout: str, output_mode: str, context: int,
+                                 limit: int, offset: int) -> SearchResult:
+    """Parse rg/grep content-search output into a SearchResult.
+
+    Handles ``content`` (default), ``files_only``, and ``count`` output modes.
+    Context lines (dash-separated) are parsed only when ``context > 0``.
+    """
+    if output_mode == "files_only":
+        all_files = [f for f in stdout.strip().split('\n') if f]
+        total = len(all_files)
+        page = all_files[offset:offset + limit]
+        return SearchResult(files=page, total_count=total)
+
+    if output_mode == "count":
+        counts = {}
+        for line in stdout.strip().split('\n'):
+            if ':' in line:
+                parts = line.rsplit(':', 1)
+                if len(parts) == 2:
+                    try:
+                        counts[parts[0]] = int(parts[1])
+                    except ValueError:
+                        pass
+        return SearchResult(counts=counts, total_count=sum(counts.values()))
+
+    # Content mode: parse match lines and optional context lines.
+    # rg match lines:   "file:lineno:content"  (colon separator)
+    # rg context lines: "file-lineno-content"   (dash separator)
+    # rg group seps:    "--"
+    # Note: on Windows, paths contain drive letters (e.g. C:\path),
+    # so naive split(":") breaks. Use regex to handle both platforms.
+    _match_re = re.compile(r'^([A-Za-z]:)?(.*?):(\d+):(.*)$')
+    matches = []
+    for line in stdout.strip().split('\n'):
+        if not line or line == "--":
+            continue
+
+        # Try match line first (colon-separated: file:line:content)
+        m = _match_re.match(line)
+        if m:
+            matches.append(SearchMatch(
+                path=(m.group(1) or '') + m.group(2),
+                line_number=int(m.group(3)),
+                content=m.group(4)[:500]
+            ))
+            continue
+
+        # Try context line (dash-separated: file-line-content)
+        # Only attempt if context was requested to avoid false positives
+        if context > 0:
+            parsed = _parse_search_context_line(line)
+            if parsed:
+                matches.append(SearchMatch(
+                    path=parsed[0],
+                    line_number=parsed[1],
+                    content=parsed[2][:500]
+                ))
+
+    total = len(matches)
+    page = matches[offset:offset + limit]
+    return SearchResult(
+        matches=page,
+        total_count=total,
+        truncated=total > offset + limit
+    )
 
 
 # =============================================================================
@@ -1690,6 +1759,17 @@ class ShellFileOperations(FileOperations):
             )
         )
 
+    def _is_local_env(self) -> bool:
+        """Return True iff this FileOperations is wired to a local backend."""
+        env = getattr(self, "env", None)
+        if env is None:
+            return False
+        try:
+            from tools.environments.local import LocalEnvironment
+        except Exception:  # noqa: BLE001
+            return False
+        return isinstance(env, LocalEnvironment)
+
     def _lsp_local_only(self) -> bool:
         """Return True iff this FileOperations is wired to a local backend.
 
@@ -1699,17 +1779,7 @@ class ShellFileOperations(FileOperations):
         host-side LSP server can't reach them, so we skip the LSP
         path for those entirely.
         """
-        env = getattr(self, "env", None)
-        if env is None:
-            # Defensive: some tests construct ShellFileOperations via
-            # ``__new__`` without going through ``__init__``, so
-            # ``self.env`` may be missing.  No env = no LSP path.
-            return False
-        try:
-            from tools.environments.local import LocalEnvironment
-        except Exception:  # noqa: BLE001
-            return False
-        return isinstance(env, LocalEnvironment)
+        return self._is_local_env()
 
     def _lsp_handles_extension(self, ext: str) -> bool:
         """Return True iff some registered LSP server claims this extension.
@@ -2009,11 +2079,73 @@ class ShellFileOperations(FileOperations):
     def _search_files_rg(self, pattern: str, path: str, limit: int, offset: int) -> SearchResult:
         """Search for files by name using ripgrep's --files mode.
 
-        rg --files respects .gitignore and excludes hidden directories by
-        default, and uses parallel directory traversal for ~200x speedup
-        over find on wide trees.  Results are sorted by modification time
-        (most recently edited first) when rg >= 13.0 supports --sortr.
+        Prefers ripgrepy on local backends; falls back to shell rg for remotes.
         """
+        if self._is_local_env() and shutil.which("rg"):
+            return self._search_files_rg_ripgrepy(pattern, path, limit, offset)
+        return self._search_files_rg_shell(pattern, path, limit, offset)
+
+    def _search_files_rg_ripgrepy(self, pattern: str, path: str, limit: int,
+                                   offset: int) -> SearchResult:
+        """Search for files using ripgrepy's command builder (local only).
+
+        ripgrepy always appends ``(pattern, path)`` in ``run()``, which is
+        incompatible with ``--files``. We build the command object but run it
+        manually via ``subprocess.run`` without calling ``rg.run()``.
+        """
+        from ripgrepy import Ripgrepy, RipGrepNotFound
+
+        # rg --files -g uses glob patterns; wrap bare names so they match
+        # at any depth (equivalent to find -name).
+        if '/' not in pattern and not pattern.startswith('*'):
+            glob_pattern = f"*{pattern}"
+        else:
+            glob_pattern = pattern
+
+        try:
+            # Dummy pattern for init; --files ignores the pattern anyway.
+            rg = Ripgrepy(".", path)
+        except RipGrepNotFound:
+            return self._search_files_rg_shell(pattern, path, limit, offset)
+
+        rg.files().glob(glob_pattern).sortr("modified")
+
+        # Run manually: ripgrepy's run() would append the dummy pattern and
+        # path, producing ``rg . <path> --files --glob …`` which is invalid.
+        cmd = rg.command + [path]
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        except Exception:  # noqa: BLE001
+            return self._search_files_rg_shell(pattern, path, limit, offset)
+
+        if proc.returncode != 0:
+            # --sortr may have failed on older rg; retry without it.
+            rg_unsorted = Ripgrepy(".", path)
+            rg_unsorted.files().glob(glob_pattern)
+            cmd_unsorted = rg_unsorted.command + [path]
+            try:
+                proc = subprocess.run(
+                    cmd_unsorted, capture_output=True, text=True, timeout=60
+                )
+            except Exception:  # noqa: BLE001
+                return self._search_files_rg_shell(pattern, path, limit, offset)
+
+            if proc.returncode != 0:
+                return self._search_files_rg_shell(pattern, path, limit, offset)
+
+        all_files = [f for f in proc.stdout.strip().split('\n') if f]
+        fetch_limit = limit + offset
+        page = all_files[offset:offset + limit]
+
+        return SearchResult(
+            files=page,
+            total_count=len(all_files),
+            truncated=len(all_files) >= fetch_limit,
+        )
+
+    def _search_files_rg_shell(self, pattern: str, path: str, limit: int,
+                                offset: int) -> SearchResult:
+        """Search for files by name using ripgrep via shell (remote fallback)."""
         # rg --files -g uses glob patterns; wrap bare names so they match
         # at any depth (equivalent to find -name).
         if '/' not in pattern and not pattern.startswith('*'):
@@ -2060,7 +2192,7 @@ class ShellFileOperations(FileOperations):
             return self._search_with_grep(pattern, path, file_glob, limit, offset,
                                           output_mode, context)
         else:
-            # Neither rg nor grep available (Windows without Git Bash, etc.)
+            # Neither rg nor grep available (Windows without ripgrep/grep, etc.)
             return SearchResult(
                 error="Content search requires ripgrep (rg) or grep. "
                       "Install ripgrep: https://github.com/BurntSushi/ripgrep#installation"
@@ -2068,7 +2200,90 @@ class ShellFileOperations(FileOperations):
     
     def _search_with_rg(self, pattern: str, path: str, file_glob: Optional[str],
                         limit: int, offset: int, output_mode: str, context: int) -> SearchResult:
-        """Search using ripgrep."""
+        """Search using ripgrep — prefers ripgrepy on local backends."""
+        if self._is_local_env() and shutil.which("rg"):
+            return self._search_with_rg_ripgrepy(
+                pattern, path, file_glob, limit, offset, output_mode, context
+            )
+        return self._search_with_rg_shell(
+            pattern, path, file_glob, limit, offset, output_mode, context
+        )
+
+    def _search_with_rg_ripgrepy(self, pattern: str, path: str, file_glob: Optional[str],
+                                  limit: int, offset: int, output_mode: str,
+                                  context: int) -> SearchResult:
+        """Search using ripgrepy (local backends only).
+
+        We build the command via ripgrepy's chainable API but execute via
+        ``subprocess.run`` ourselves so we can capture stdout and stderr
+        separately.  ripgrepy's own ``run()`` discards stdout when the exit
+        code is non-zero, which prevents us from recovering partial matches
+        on exit 2.
+        """
+        from ripgrepy import Ripgrepy, RipGrepNotFound
+
+        try:
+            rg = Ripgrepy(pattern, path)
+        except RipGrepNotFound:
+            return self._search_with_rg_shell(
+                pattern, path, file_glob, limit, offset, output_mode, context
+            )
+
+        rg.line_number().no_heading().with_filename()
+
+        if context > 0:
+            rg.context(context)
+
+        if file_glob:
+            rg.glob(file_glob)
+
+        if output_mode == "files_only":
+            rg.files_with_matches()
+        elif output_mode == "count":
+            rg.count_matches()
+
+        # Build the full command list without mutating rg's internal state.
+        full_cmd = list(rg.command) + [rg.regex_pattern, rg.path]
+        try:
+            proc = subprocess.run(
+                full_cmd, capture_output=True, text=True, timeout=60
+            )
+        except Exception:  # noqa: BLE001
+            return self._search_with_rg_shell(
+                pattern, path, file_glob, limit, offset, output_mode, context
+            )
+
+        stdout = proc.stdout
+        stderr = proc.stderr
+
+        # rg exit codes: 0=matches, 1=no matches, 2=error.
+        if proc.returncode == 2:
+            # Partial error: some files matched but one was unreadable.
+            # Keep stdout (the real matches) and discard stderr.
+            if not stdout.strip():
+                error_msg = stderr.strip() or stdout.strip() or "Search error"
+                return SearchResult(error=f"Search failed: {error_msg}", total_count=0)
+        elif proc.returncode not in (0, 1):
+            error_msg = stderr.strip() or stdout.strip() or "Search error"
+            return SearchResult(error=f"Search failed: {error_msg}", total_count=0)
+
+        output = stdout
+        # For content mode with context, rg emits separator lines ("--")
+        # between groups, so we grab generously and filter in Python.
+        if output_mode == "content" and context > 0:
+            lines = output.strip().split('\n')
+            # Keep only real output lines (match shape, context shape, or "--")
+            payload_lines = [
+                ln for ln in lines
+                if ln and (ln == "--" or _SEARCH_OUTPUT_RE.match(ln))
+            ]
+            output = '\n'.join(payload_lines)
+
+        return _parse_search_content_output(output, output_mode, context, limit, offset)
+
+    def _search_with_rg_shell(self, pattern: str, path: str, file_glob: Optional[str],
+                              limit: int, offset: int, output_mode: str, context: int) -> SearchResult:
+        """Search using ripgrep via shell (remote backends or ripgrepy fallback)."""
         cmd_parts = ["rg", "--line-number", "--no-heading", "--with-filename"]
         
         # Add context if requested
@@ -2117,68 +2332,7 @@ class ShellFileOperations(FileOperations):
             error_msg = diagnostics.strip() or result.stdout.strip() or "Search error"
             return SearchResult(error=f"Search failed: {error_msg}", total_count=0)
 
-        # Parse the diagnostic-free payload so error text never becomes a match.
-        stdout = payload
-        # Parse results based on output mode
-        if output_mode == "files_only":
-            all_files = [f for f in stdout.strip().split('\n') if f]
-            total = len(all_files)
-            page = all_files[offset:offset + limit]
-            return SearchResult(files=page, total_count=total)
-        
-        elif output_mode == "count":
-            counts = {}
-            for line in stdout.strip().split('\n'):
-                if ':' in line:
-                    parts = line.rsplit(':', 1)
-                    if len(parts) == 2:
-                        try:
-                            counts[parts[0]] = int(parts[1])
-                        except ValueError:
-                            pass
-            return SearchResult(counts=counts, total_count=sum(counts.values()))
-        
-        else:
-            # Parse content matches and context lines.
-            # rg match lines:   "file:lineno:content"  (colon separator)
-            # rg context lines: "file-lineno-content"   (dash separator)
-            # rg group seps:    "--"
-            # Note: on Windows, paths contain drive letters (e.g. C:\path),
-            # so naive split(":") breaks. Use regex to handle both platforms.
-            _match_re = re.compile(r'^([A-Za-z]:)?(.*?):(\d+):(.*)$')
-            matches = []
-            for line in stdout.strip().split('\n'):
-                if not line or line == "--":
-                    continue
-                
-                # Try match line first (colon-separated: file:line:content)
-                m = _match_re.match(line)
-                if m:
-                    matches.append(SearchMatch(
-                        path=(m.group(1) or '') + m.group(2),
-                        line_number=int(m.group(3)),
-                        content=m.group(4)[:500]
-                    ))
-                    continue
-                
-                # Try context line (dash-separated: file-line-content)
-                # Only attempt if context was requested to avoid false positives
-                if context > 0:
-                    parsed = _parse_search_context_line(line)
-                    if parsed:
-                        matches.append(SearchMatch(
-                            path=parsed[0],
-                            line_number=parsed[1],
-                            content=parsed[2][:500]
-                        ))
-            
-            total = len(matches)
-            page = matches[offset:offset + limit]
-            return SearchResult(
-                matches=page,
-                total_count=total,
-                truncated=total > offset + limit
-            )
+        return _parse_search_content_output(payload, output_mode, context, limit, offset)
     
     def _search_with_grep(self, pattern: str, path: str, file_glob: Optional[str],
                           limit: int, offset: int, output_mode: str, context: int) -> SearchResult:
@@ -2234,59 +2388,4 @@ class ShellFileOperations(FileOperations):
             return SearchResult(error=f"Search failed: {error_msg}", total_count=0)
 
         stdout = payload
-        if output_mode == "files_only":
-            all_files = [f for f in stdout.strip().split('\n') if f]
-            total = len(all_files)
-            page = all_files[offset:offset + limit]
-            return SearchResult(files=page, total_count=total)
-        
-        elif output_mode == "count":
-            counts = {}
-            for line in stdout.strip().split('\n'):
-                if ':' in line:
-                    parts = line.rsplit(':', 1)
-                    if len(parts) == 2:
-                        try:
-                            counts[parts[0]] = int(parts[1])
-                        except ValueError:
-                            pass
-            return SearchResult(counts=counts, total_count=sum(counts.values()))
-        
-        else:
-            # grep match lines:   "file:lineno:content" (colon)
-            # grep context lines: "file-lineno-content"  (dash)
-            # grep group seps:    "--"
-            # Note: on Windows, paths contain drive letters (e.g. C:\path),
-            # so naive split(":") breaks. Use regex to handle both platforms.
-            _match_re = re.compile(r'^([A-Za-z]:)?(.*?):(\d+):(.*)$')
-            matches = []
-            for line in stdout.strip().split('\n'):
-                if not line or line == "--":
-                    continue
-                
-                m = _match_re.match(line)
-                if m:
-                    matches.append(SearchMatch(
-                        path=(m.group(1) or '') + m.group(2),
-                        line_number=int(m.group(3)),
-                        content=m.group(4)[:500]
-                    ))
-                    continue
-                
-                if context > 0:
-                    parsed = _parse_search_context_line(line)
-                    if parsed:
-                        matches.append(SearchMatch(
-                            path=parsed[0],
-                            line_number=parsed[1],
-                            content=parsed[2][:500]
-                        ))
-
-            
-            total = len(matches)
-            page = matches[offset:offset + limit]
-            return SearchResult(
-                matches=page,
-                total_count=total,
-                truncated=total > offset + limit
-            )
+        return _parse_search_content_output(stdout, output_mode, context, limit, offset)

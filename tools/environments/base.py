@@ -360,7 +360,7 @@ class BaseEnvironment(ABC):
         # change the working directory (e.g. bashrc `cd ~`).  Without this,
         # pwd -P captures the profile's directory, not terminal.cwd.
         _quoted_cwd = shlex.quote(self.cwd)
-        # Quote the snapshot / cwd-file paths so Git Bash on Windows handles
+        # Quote the snapshot / cwd-file paths so the shell on Windows handles
         # ``C:/Users/...``-shaped paths without glob-splitting the colon or
         # tripping on drive letters.  On POSIX this is a no-op (no colons /
         # special chars in a /tmp path).  Previously unquoted interpolation
@@ -419,7 +419,7 @@ class BaseEnvironment(ABC):
         re-dumps env vars, and emits CWD markers."""
         escaped = command.replace("'", "'\\''")
 
-        # Quote the snapshot / cwd-file paths so Git Bash on Windows handles
+        # Quote the snapshot / cwd-file paths so the shell on Windows handles
         # ``C:/Users/...``-shaped paths without glob-splitting the colon or
         # tripping on drive letters.  POSIX paths are unaffected.  See
         # :meth:`init_session` for the same fix on the bootstrap block.
@@ -871,6 +871,13 @@ class BaseEnvironment(ABC):
         )
         result = self._wait_for_process(proc, timeout=effective_timeout)
         self._update_cwd(result)
+
+        # Attach pwsh transform warnings if present (only LocalEnvironment
+        # running Windows PowerShell sets these — other environments won't).
+        pwsh_warnings = getattr(self, '_pwsh_warnings', None)
+        if pwsh_warnings:
+            result["pwsh_warnings"] = pwsh_warnings
+            self._pwsh_warnings = None  # consume once, prevent stale leaks
 
         return result
 

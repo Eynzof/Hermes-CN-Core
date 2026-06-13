@@ -19382,6 +19382,44 @@ def _run_planned_stop_watcher(
         stop_event.wait(poll_interval)
 
 
+def _validate_cron_startup() -> bool:
+    """Validate cron subsystem readiness before starting the ticker thread (F-4).
+
+    Checks:
+      1. jobs.json exists and is parseable
+      2. croniter package is installed (non-fatal warning only)
+
+    Returns True if ready, False if cron ticker should not start.
+    """
+    try:
+        from cron.jobs import JOBS_FILE, load_jobs
+
+        if JOBS_FILE.exists():
+            try:
+                load_jobs()
+            except Exception as exc:
+                logger.error(
+                    "Cron startup: failed to parse jobs.json — %s. "
+                    "Cron ticker disabled until the file is repaired.",
+                    exc,
+                )
+                return False
+
+        try:
+            import croniter  # noqa: F401
+        except ImportError:
+            logger.warning(
+                "Cron startup: 'croniter' package is not installed. "
+                "Cron-expression jobs will not work, but interval/timestamp "
+                "jobs will still fire. Install with: pip install croniter"
+            )
+
+        return True
+    except Exception as exc:
+        logger.error("Cron startup validation failed: %s", exc)
+        return False
+
+
 def _start_cron_ticker(stop_event: threading.Event, adapters=None, loop=None, interval: int = 60):
     """
     Background thread that ticks the cron scheduler at a regular interval.
@@ -19396,9 +19434,15 @@ def _start_cron_ticker(stop_event: threading.Event, adapters=None, loop=None, in
     image/audio/document cache + expired ``hermes debug share`` pastes
     once per hour.
     """
-    from cron.scheduler import tick as cron_tick
-    from gateway.platforms.base import cleanup_image_cache, cleanup_document_cache
-    from hermes_cli.debug import _sweep_expired_pastes
+    # --- Initialization (F-1): wrap imports in try/except so any import
+    # failure does not silently kill the daemon thread. ---
+    try:
+        from cron.scheduler import tick as cron_tick
+        from gateway.platforms.base import cleanup_image_cache, cleanup_document_cache
+        from hermes_cli.debug import _sweep_expired_pastes
+    except Exception as e:
+        logger.error("Cron ticker failed to initialize: %s", e)
+        return
 
     IMAGE_CACHE_EVERY = 60   # ticks — once per hour at default 60s interval
     CHANNEL_DIR_EVERY = 5    # ticks — every 5 minutes
@@ -19411,7 +19455,9 @@ def _start_cron_ticker(stop_event: threading.Event, adapters=None, loop=None, in
         try:
             cron_tick(verbose=False, adapters=adapters, loop=loop, sync=False)
         except Exception as e:
-            logger.debug("Cron tick error: %s", e)
+            # Log at WARNING so operators can see failures in production
+            # where DEBUG logs are often silenced (F-1).
+            logger.warning("Cron tick error: %s", e)
 
         tick_count += 1
 
@@ -19836,15 +19882,26 @@ async def start_gateway(config: Optional[GatewayConfig] = None, replace: bool = 
     
     # Start background cron ticker so scheduled jobs fire automatically.
     # Pass the event loop so cron delivery can use live adapters (E2EE support).
+    # --- Pre-validation (F-4): verify jobs.json integrity before starting.
+    # Failures log at ERROR but do NOT prevent the gateway from starting. ---
+    _cron_ok = _validate_cron_startup()
+    if not _cron_ok:
+        logger.warning(
+            "Cron startup validation failed — jobs will NOT fire automatically. "
+            "Fix jobs.json and restart the gateway."
+        )
     cron_stop = threading.Event()
-    cron_thread = threading.Thread(
-        target=_start_cron_ticker,
-        args=(cron_stop,),
-        kwargs={"adapters": runner.adapters, "loop": asyncio.get_running_loop()},
-        daemon=True,
-        name="cron-ticker",
-    )
-    cron_thread.start()
+    if _cron_ok:
+        cron_thread = threading.Thread(
+            target=_start_cron_ticker,
+            args=(cron_stop,),
+            kwargs={"adapters": runner.adapters, "loop": asyncio.get_running_loop()},
+            daemon=True,
+            name="cron-ticker",
+        )
+        cron_thread.start()
+    else:
+        cron_thread = None
     
     # Wait for shutdown
     await runner.wait_for_shutdown()
@@ -19854,9 +19911,10 @@ async def start_gateway(config: Optional[GatewayConfig] = None, replace: bool = 
             logger.error("Gateway exiting with failure: %s", runner.exit_reason)
         return False
     
-    # Stop cron ticker cleanly
+    # Stop cron ticker cleanly (if started)
     cron_stop.set()
-    cron_thread.join(timeout=5)
+    if cron_thread is not None:
+        cron_thread.join(timeout=5)
 
     # Stop the planned-stop watcher (daemon=True so this is belt-and-suspenders).
     _planned_stop_watcher_stop.set()

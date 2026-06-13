@@ -13,6 +13,8 @@ from pathlib import Path
 
 from tools.environments.base import BaseEnvironment, _pipe_stdin
 from tools.environments._process_bash_command import _prepare_bash_cmd
+from tools.environments.proccess_pwsh import pwsh_transform
+from tools.environments.windows_env import refresh_env_from_registry
 from hermes_cli._subprocess_compat import windows_hide_flags
 
 _IS_WINDOWS = platform.system() == "Windows"
@@ -21,8 +23,8 @@ logger = logging.getLogger(__name__)
 
 
 def _msys_to_windows_path(cwd: str) -> str:
-    """Translate a Git Bash / MSYS-style POSIX path (``/c/Users/x``) to the
-    native Windows form (``C:\\Users\\x``) so ``os.path.isdir`` and
+    """Translate an MSYS/legacy POSIX path (``/c/Users/x``) to the native
+    Windows form (``C:\\Users\\x``) so ``os.path.isdir`` and
     ``subprocess.Popen(..., cwd=...)`` can find it.
 
     No-ops on non-Windows hosts or for paths that aren't in MSYS form.
@@ -46,16 +48,14 @@ def _resolve_safe_cwd(cwd: str) -> str:
     path can't find any existing directory (effectively never on a healthy
     filesystem, but cheap belt-and-braces).
 
-    On Windows, also normalizes Git Bash / MSYS-style POSIX paths
-    (``/c/Users/x``) to native Windows form before the isdir check so a
-    perfectly valid ``pwd -P`` result from bash doesn't get rejected as
-    "missing" (see ``_msys_to_windows_path``).
+    On Windows, also normalizes MSYS/legacy POSIX paths
+    (``/c/Users/x``) to native Windows form before the isdir check.
 
-    Used by ``_run_bash`` to recover when the configured cwd is gone — most
-    commonly because a previous tool call deleted its own working directory
+    Used to recover when the configured cwd is gone — most commonly
+    because a previous tool call deleted its own working directory
     (issue #17558).  Without this guard, ``subprocess.Popen(..., cwd=...)``
-    raises ``FileNotFoundError`` before bash starts, wedging every subsequent
-    terminal call until the gateway restarts.
+    raises ``FileNotFoundError`` before the shell starts, wedging every
+    subsequent terminal call until the gateway restarts.
     """
     cwd = _msys_to_windows_path(cwd) if _IS_WINDOWS else cwd
     if _IS_WINDOWS and cwd:
@@ -239,167 +239,74 @@ def _sanitize_subprocess_env(base_env: dict | None, extra_env: dict | None = Non
     return sanitized
 
 
-def _is_windows_wsl_launcher(path: str) -> bool:
-    """Return True if *path* is the Windows-bundled WSL launcher (``bash.exe``).
-
-    Windows 10/11 ship ``C:\\Windows\\System32\\bash.exe`` as a launcher for
-    WSL (the ``lxss``/``wsl.exe`` interop entry point). The file is present
-    even when no WSL distro is installed, and ``shutil.which("bash")`` will
-    happily return it because ``System32`` is high-priority on the default
-    ``PATH``. Invoking it either hangs (waiting on a WSL VM that never comes
-    up) or exits with ``wsl: ...`` style errors. It is *not* Git Bash and
-    must not be used as one — doing so wedges every terminal call on the
-    ``local`` backend until ``gateway_timeout`` fires.
-    """
-    try:
-        resolved = os.path.normcase(os.path.realpath(path))
-    except OSError:
-        resolved = os.path.normcase(path)
-    system_root = os.environ.get("SystemRoot", r"C:\Windows")
-    bad_locations = {
-        os.path.normcase(os.path.join(system_root, sub, "bash.exe"))
-        for sub in ("System32", "Sysnative", "SysWOW64")
-    }
-    return resolved in bad_locations
-
-
-def _find_bash() -> str:
-    """Find bash for command execution.
-
-    On Windows this merges multiple discovery strategies (env override,
-    portable Git, git.exe derivation, registry, PATH, common paths) and
-    falls back to a silent auto-install of PortableGit when nothing is
-    found.
-    """
-    if not _IS_WINDOWS:
-        return (
-            shutil.which("bash")
-            or ("/usr/bin/bash" if os.path.isfile("/usr/bin/bash") else None)
-            or ("/bin/bash" if os.path.isfile("/bin/bash") else None)
-            or os.environ.get("SHELL")
-            or "/bin/sh"
-        )
-
-    # --- Strategy 1: user override ---
-    custom = os.environ.get("HERMES_GIT_BASH_PATH")
-    if custom and os.path.isfile(custom):
-        return custom
-
-    # --- Strategy 2: portable Git in Hermes home ---
-    _local_appdata = os.environ.get("LOCALAPPDATA", "")
-    _hermes_portable_git = os.path.join(_local_appdata, "hermes", "git") if _local_appdata else ""
-    if _hermes_portable_git:
-        for candidate in (
-            os.path.join(_hermes_portable_git, "bin", "bash.exe"),        # PortableGit (primary)
-            os.path.join(_hermes_portable_git, "usr", "bin", "bash.exe"), # MinGit fallback
-        ):
-            if os.path.isfile(candidate):
-                return candidate
-
-    # --- Strategy 3: derive from git.exe in PATH ---
-    git_path = shutil.which("git")
-    if git_path:
-        git_exe = Path(git_path).resolve()
-        if git_exe.parent.name.lower() == "cmd":
-            git_root = git_exe.parent.parent
-        else:
-            git_root = git_exe.parent
-        for subpath in ("bin/bash.exe", "usr/bin/bash.exe"):
-            bash_candidate = git_root / subpath
-            if bash_candidate.exists():
-                return str(bash_candidate.resolve())
-
-    # --- Strategy 4: registry lookup for Git install location ---
-    try:
-        import winreg
-        reg_paths = [
-            (winreg.HKEY_LOCAL_MACHINE,
-             r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Git_is1"),
-            (winreg.HKEY_LOCAL_MACHINE,
-             r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Git_is1"),
-        ]
-        for hkey, subkey in reg_paths:
-            try:
-                with winreg.OpenKey(hkey, subkey) as key:
-                    install_path, _ = winreg.QueryValueEx(key, "InstallLocation")
-                    for subpath in ("bin/bash.exe", "usr/bin/bash.exe"):
-                        bash_candidate = Path(install_path) / subpath
-                        if bash_candidate.exists():
-                            return str(bash_candidate.resolve())
-            except FileNotFoundError:
-                pass
-    except Exception:
-        pass
-
-    # --- Strategy 5: PATH lookup (avoiding WSL launcher) ---
-    # shutil.which("bash") and shutil.which("bash.exe") resolve the same
-    # entries on Windows because PATH search is case-insensitive and PATHEXT
-    # covers .exe.  We try both names defensively, but always reject the WSL
-    # launcher (C:\Windows\System32\bash.exe) which hangs when no distro is
-    # installed.  where.exe is a last-resort PATH search for edge cases where
-    # shutil.which doesn't see a newly-added PATH entry in the current process.
-    for name in ("bash", "bash.exe"):
-        found = shutil.which(name)
-        if found and not _is_windows_wsl_launcher(found):
-            return found
-
-    try:
-        r = subprocess.run(
-            ["where.exe", "bash.exe"],
-            capture_output=True, text=True, check=True
-        )
-        for line in r.stdout.strip().splitlines():
-            line = line.strip()
-            if line and not _is_windows_wsl_launcher(line):
-                return line
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        pass
-
-    # --- Strategy 6: common paths fallback ---
-    candidates = [
-        os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"), "Git", "bin", "bash.exe"),
-        os.path.join(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"), "Git", "bin", "bash.exe"),
-        r"C:\Git\bin\bash.exe",
-    ]
-    for candidate in candidates:
-        if os.path.isfile(candidate):
-            return candidate
-
-    local_git = Path.home() / "AppData" / "Local" / "Programs" / "Git" / "bin" / "bash.exe"
-    if local_git.exists():
-        return str(local_git.resolve())
-
-    scoop_git = Path.home() / "scoop" / "apps" / "git" / "current" / "bin" / "bash.exe"
-    if scoop_git.exists():
-        return str(scoop_git.resolve())
-
-    # --- Strategy 7: auto-install PortableGit ---
-    try:
-        from tools.environments._install_git import install_git
-        try:
-            from hermes_constants import get_hermes_home
-            install_dir = str(get_hermes_home() / "git")
-        except Exception:
-            install_dir = os.path.join(_local_appdata, "hermes", "git") if _local_appdata else str(Path.home() / ".hermes" / "git")
-        if install_git(install_dir=install_dir):
-            for subpath in ("bin/bash.exe", "usr/bin/bash.exe"):
-                bash_candidate = Path(install_dir) / subpath
-                if bash_candidate.exists():
-                    return str(bash_candidate.resolve())
-    except Exception:
-        pass
-
-    raise RuntimeError(
-        "Git Bash not found. Hermes Agent requires Git for Windows on Windows.\n"
-        "Install it from: https://git-scm.com/download/win\n"
-        "Or set HERMES_GIT_BASH_PATH to your bash.exe location.\n"
-        "Note: C:\\Windows\\System32\\bash.exe is intentionally ignored — "
-        "it is the WSL launcher, not Git Bash."
+def _find_bash_posix() -> str:
+    """Find bash on non-Windows systems."""
+    return (
+        shutil.which("bash")
+        or ("/usr/bin/bash" if os.path.isfile("/usr/bin/bash") else None)
+        or ("/bin/bash" if os.path.isfile("/bin/bash") else None)
+        or os.environ.get("SHELL")
+        or "/bin/sh"
     )
+
+def _find_powershell() -> str:
+    """Return ``powershell.exe`` path on Windows.
+
+    Windows PowerShell 5.1 ships with every Windows 10/11 system at
+    ``C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe``
+    and is always on PATH.  No probing needed — just return the first
+    ``powershell.exe`` found via ``shutil.which``.
+    """
+    return shutil.which("powershell.exe") or "powershell.exe"
+
+def _resolve_shell() -> tuple[str, str]:
+    """Determine which shell to use for local command execution.
+
+    On Windows: always uses Windows PowerShell 5.1 (``powershell.exe``),
+    which ships with every Windows 10/11 system — no download or install
+    needed.
+
+    On non-Windows: always uses bash.
+
+    Env overrides:
+      ``HERMES_SHELL_TYPE`` — ``"powershell"``, ``"bash"``, or ``"auto"``
+      (default: ``"powershell"`` on Windows, ``"bash"`` otherwise).
+      ``HERMES_SHELL_TYPE=bash`` on Windows raises a RuntimeError.
+
+    Returns ``(shell_type, shell_path)`` where *shell_type* is
+    ``"powershell"`` or ``"bash"``.
+    """
+    shell_type = os.environ.get("HERMES_SHELL_TYPE", "auto").strip().lower() or "auto"
+
+    if _IS_WINDOWS:
+        # Map legacy pwsh value to powershell
+        if shell_type in ("auto", "powershell", "pwsh"):
+            ps_path = _find_powershell()
+            logger.info("Selected shell: powershell at %s", ps_path)
+            return ("powershell", ps_path)
+        if shell_type == "bash":
+            raise RuntimeError(
+                "Git Bash is no longer supported on Windows. "
+                "Set HERMES_SHELL_TYPE=powershell (or leave as auto) "
+                "to use Windows PowerShell 5.1, which ships with every "
+                "Windows 10/11 system."
+            )
+        raise RuntimeError(
+            f"Unknown HERMES_SHELL_TYPE={shell_type!r} on Windows. "
+            "Supported values: 'auto' (default → powershell), 'powershell'."
+        )
+
+    # Non-Windows: always bash
+    bash_path = _find_bash_posix()
+    if bash_path:
+        logger.info("Selected shell: bash at %s", bash_path)
+        return ("bash", bash_path)
+
+    raise RuntimeError("No usable shell found.")
 
 
 # Backward compat — process_registry.py imports this name
-_find_shell = _find_bash
+_find_shell = _find_bash_posix
 
 
 # Standard PATH entries for environments with minimal PATH.
@@ -430,9 +337,8 @@ def _make_run_env(env: dict) -> dict:
     # (the split(":") above turns a full Windows PATH into a single
     # unrecognisable chunk, which then triggers prepending POSIX paths
     # to a Windows PATH — completely wrong).  Skip the injection entirely
-    # on Windows; the native PATH already points at whatever shell
-    # Hermes is driving via _find_bash (Git Bash), and Git Bash itself
-    # prepends its MSYS2 /usr/bin equivalent via the shell-init files.
+    # on Windows; the native PATH already contains all the tools the
+    # PowerShell shell needs.
     if not _IS_WINDOWS and "/usr/bin" not in existing_path.split(":"):
         run_env["PATH"] = f"{existing_path}:{_SANE_PATH}" if existing_path else _SANE_PATH
 
@@ -546,8 +452,12 @@ def _prepend_shell_init(cmd_string: str, files: list[str]) -> str:
 class LocalEnvironment(BaseEnvironment):
     """Run commands directly on the host machine.
 
-    Spawn-per-call: every execute() spawns a fresh bash process.
-    Session snapshot preserves env vars across calls.
+    Spawn-per-call: every execute() spawns a fresh shell process.
+    On Windows, uses Windows PowerShell 5.1 (``powershell.exe``) which
+    ships with every Windows 10/11 system.  On other platforms, uses bash.
+
+    Session snapshot preserves env vars across calls (bash only;
+    Windows env vars propagate naturally through ``os.environ``).
     CWD persists via file-based read after each command.
     """
 
@@ -555,6 +465,7 @@ class LocalEnvironment(BaseEnvironment):
         if cwd:
             cwd = os.path.expanduser(cwd)
         super().__init__(cwd=cwd or os.getcwd(), timeout=timeout, env=env)
+        self._shell_type, self._shell_path = _resolve_shell()
         self.init_session()
 
     def get_temp_dir(self) -> str:
@@ -572,16 +483,16 @@ class LocalEnvironment(BaseEnvironment):
         **Windows:** hardcoded ``/tmp`` is wrong in two ways — native Python
         can't open the path, and the Windows default temp (``%TEMP%``) often
         contains spaces (``C:\\Users\\Some Name\\AppData\\Local\\Temp``) that
-        break unquoted bash interpolations.  Use a dedicated cache dir under
+        break unquoted shell interpolations.  Use a dedicated cache dir under
         ``HERMES_HOME`` instead — single-word path, guaranteed to exist, same
-        string resolves in both Git Bash and native Python.
+        string resolves in both PowerShell and native Python.
         """
         if _IS_WINDOWS:
             # Derive a Windows-safe temp dir under HERMES_HOME.  Using
-            # forward slashes makes the same string work unchanged in bash
-            # command interpolations AND in Python ``open()`` — Windows
-            # accepts forward slashes in filesystem paths, and we control
-            # the path so we can guarantee no spaces.
+            # forward slashes makes the same string work unchanged in
+            # PowerShell command interpolations AND in Python ``open()`` —
+            # Windows accepts forward slashes in filesystem paths, and we
+            # control the path so we can guarantee no spaces.
             try:
                 from hermes_constants import get_hermes_home
                 cache_dir = get_hermes_home() / "cache" / "terminal"
@@ -605,10 +516,167 @@ class LocalEnvironment(BaseEnvironment):
 
         return "/tmp"
 
+    # ------------------------------------------------------------------
+    # powershell-specific methods
+    # ------------------------------------------------------------------
+
+    def _run_powershell(self, cmd_string: str, *, login: bool = False,
+                  timeout: int = 120,
+                  stdin_data: str | None = None) -> subprocess.Popen:
+        """Spawn a PowerShell process to run *cmd_string*.
+
+        Uses ``-NoProfile`` for speed (profile loading can be slow).
+        Windows paths are handled natively — no backslash conversion needed.
+
+        **Always** applies ``pwsh_transform`` to down-level any PowerShell
+        7+ syntax (``?:``, ``??``, ``??=``, ``&&``, ``||``, ``?.``, ``?[``)
+        to PowerShell 5.1-compatible ``if/else`` blocks.  The LLM may emit
+        modern syntax that 5.1 cannot parse; this is the load-bearing
+        compatibility bridge.
+        """
+        # Refresh PATH/PATHEXT from registry so newly installed tools are
+        # discoverable (e.g. WinGet, MSI).  No-op on non-Windows.
+        refresh_env_from_registry()
+
+        # Unconditionally down-level PS7+ syntax → PS5.1.
+        cmd_string, pwsh_warnings = pwsh_transform(cmd_string)
+        self._pwsh_warnings = pwsh_warnings
+        args = [self._shell_path, "-NoP", "-Exec", "Bypass", "-NoL", "-C", cmd_string]
+        run_env = _make_run_env(self.env)
+        safe_cwd = _resolve_safe_cwd(self.cwd)
+        if safe_cwd != self.cwd:
+            # On Windows, _resolve_safe_cwd calls os.path.normpath which
+            # converts forward slashes to backslashes.  Compare normalized
+            # forms so a benign slash-normalization doesn't trigger a warning.
+            normalized_self = os.path.normpath(
+                _msys_to_windows_path(self.cwd) if _IS_WINDOWS else self.cwd
+            )
+            if safe_cwd != normalized_self:
+                logger.warning(
+                    "LocalEnvironment cwd %r is missing on disk; "
+                    "falling back to %r so terminal commands keep working.",
+                    self.cwd,
+                    safe_cwd,
+                )
+            self.cwd = safe_cwd
+
+        _popen_kwargs = {"creationflags": windows_hide_flags()} if _IS_WINDOWS else {}
+
+        proc = subprocess.Popen(
+            args,
+            text=True,
+            env=run_env,
+            encoding="utf-8",
+            errors="replace",
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            stdin=subprocess.PIPE if stdin_data is not None else subprocess.DEVNULL,
+            cwd=safe_cwd,
+            **_popen_kwargs,
+        )
+
+        if stdin_data is not None:
+            _pipe_stdin(proc, stdin_data)
+
+        return proc
+
+    def _wrap_command_powershell(self, command: str, cwd: str) -> str:
+        """Build a PowerShell script that cd's, runs the command, and emits
+        CWD marker + exit code.
+
+        PowerShell equivalents:
+          ``cd``      → ``Set-Location`` (``cd`` also works as alias)
+          ``$?``      → ``$LASTEXITCODE``
+          ``pwd -P``  → ``Get-Location``
+        """
+
+        # Escape single quotes for PowerShell: double them
+        escaped = command.replace("'", "''")
+        quoted_cwd = cwd.replace("'", "''")
+        quoted_cwd_file = self._cwd_file.replace("'", "''")
+
+        marker = self._cwd_marker
+
+        # Build a PowerShell script.  We use ``Invoke-Expression`` to run
+        # the user's command (similar to bash ``eval``).  ``$LASTEXITCODE``
+        # captures the exit code of the last external command.
+        parts = [
+            # Suppress errors, cd to target
+            f"$ErrorActionPreference = 'Continue'",
+            f"Set-Location -LiteralPath '{quoted_cwd}' -ErrorAction SilentlyContinue",
+            f"if ($?) {{ Set-Location -LiteralPath '{quoted_cwd}' }} else {{ exit 126 }}",
+            # Run the command
+            f"Invoke-Expression '{escaped}'",
+            f"$hermes_ec = $LASTEXITCODE",
+            # Write CWD to temp file
+            f"(Get-Location).Path | Out-File -Encoding utf8 -FilePath '{quoted_cwd_file}'",
+            # Emit CWD marker
+            f"$cwd = (Get-Location).Path",
+            f"Write-Output ''",
+            f"Write-Output '{marker}' + $cwd + '{marker}'",
+            # Exit with captured code
+            f"exit $hermes_ec",
+        ]
+
+        return "\n".join(parts)
+
+    # ------------------------------------------------------------------
+    # init_session override (handles both powershell and bash)
+    # ------------------------------------------------------------------
+
+    def init_session(self):
+        """Capture shell environment into a snapshot file.
+
+        For **powershell**: skip the snapshot dance — Windows env vars
+        persist through ``os.environ`` inheritance naturally.  Just write
+        the initial CWD and mark snapshot as not-ready (commands run fresh
+        with ``-NoProfile`` for speed).
+
+        For **bash**: unchanged — captures env vars, functions, aliases
+        into a snapshot file that subsequent commands source.
+        """
+        if self._shell_type == "powershell":
+            # Simple CWD marker write — no snapshot needed for powershell.
+            self._snapshot_ready = False
+            try:
+                cwd_path = self.cwd
+                if _IS_WINDOWS:
+                    cwd_path = os.path.normpath(cwd_path)
+                Path(self._cwd_file).parent.mkdir(parents=True, exist_ok=True)
+                Path(self._cwd_file).write_text(cwd_path, encoding="utf-8")
+            except Exception as exc:
+                logger.warning(
+                    "init_session (powershell) failed to write CWD file: %s", exc
+                )
+            logger.info(
+                "powershell session ready (session=%s, cwd=%s)",
+                self._session_id,
+                self.cwd,
+            )
+            return
+
+        # --- bash path (unchanged from BaseEnvironment) ---
+        return super().init_session()
+
+    # ------------------------------------------------------------------
+    # _run_bash override (dispatches to _run_powershell when active)
+    # ------------------------------------------------------------------
+
     def _run_bash(self, cmd_string: str, *, login: bool = False,
                   timeout: int = 120,
                   stdin_data: str | None = None) -> subprocess.Popen:
-        bash = _find_bash()
+        """Spawn a shell process to run *cmd_string*.
+
+        Dispatches to ``_run_powershell()`` when the active shell is
+        powershell, otherwise uses the existing bash path (non-Windows).
+        """
+        if self._shell_type == "powershell":
+            return self._run_powershell(
+                cmd_string, login=login, timeout=timeout, stdin_data=stdin_data
+            )
+
+        # --- bash path (non-Windows only) ---
+        bash = _find_bash_posix()
         # For login-shell invocations (used by init_session to build the
         # environment snapshot), prepend sources for the user's bashrc /
         # custom init files so tools registered outside bash_profile
@@ -626,13 +694,8 @@ class LocalEnvironment(BaseEnvironment):
         # Recover when the cwd has been deleted out from under us — usually by
         # a previous tool call that ran ``rm -rf`` on its own working dir
         # (issue #17558).  Popen would otherwise raise FileNotFoundError on
-        # the cwd before bash starts, wedging every subsequent call until the
-        # gateway restarts.
-        #
-        # On Windows, ``_resolve_safe_cwd`` also normalises Git Bash-style
-        # POSIX paths (``/c/Users/...``) to native form so a perfectly valid
-        # ``pwd -P`` result from bash isn't mistakenly treated as "missing"
-        # and spammed as a warning on every command.
+        # the cwd before the shell starts, wedging every subsequent call until
+        # the gateway restarts.
         safe_cwd = _resolve_safe_cwd(self.cwd)
         if safe_cwd != self.cwd:
             # MSYS → Windows translation alone shouldn't surface as a warning
@@ -675,6 +738,20 @@ class LocalEnvironment(BaseEnvironment):
             _pipe_stdin(proc, stdin_data)
 
         return proc
+
+    # ------------------------------------------------------------------
+    # _wrap_command override (dispatches to powershell wrapping when active)
+    # ------------------------------------------------------------------
+
+    def _wrap_command(self, command: str, cwd: str) -> str:
+        """Build the shell script wrapper for command execution.
+
+        Dispatches to ``_wrap_command_powershell()`` when the active shell
+        is powershell, otherwise uses the base bash wrapping.
+        """
+        if self._shell_type == "powershell":
+            return self._wrap_command_powershell(command, cwd)
+        return super()._wrap_command(command, cwd)
 
     def _kill_process(self, proc):
         """Kill the entire process group (all children)."""
@@ -750,21 +827,18 @@ class LocalEnvironment(BaseEnvironment):
         """Read CWD from temp file (local-only, no round-trip needed).
 
         Skip the assignment when the path no longer exists as a directory —
-        ``pwd -P`` on a deleted cwd can leave a stale value in the marker
-        file, and propagating it would re-wedge the next ``Popen``.  The
-        ``_run_bash`` recovery path will resolve a safe fallback if needed.
+        a stale cwd can leave a bad value in the marker file, and propagating
+        it would re-wedge the next ``Popen``.  The ``_run_bash`` recovery
+        path will resolve a safe fallback if needed.
 
-        On Windows, the value written by Git Bash's ``pwd -P`` is in
+        On Windows with the bash shell type, the CWD value may be in
         MSYS form (``/c/Users/x``). Translate it to native Windows form
-        before validating with ``os.path.isdir`` and before storing on
-        ``self.cwd``; otherwise the isdir check rejects every valid
-        result and ``_run_bash`` later prints a misleading "cwd is
-        missing" warning on every command.
+        before validating with ``os.path.isdir``.
         """
         try:
             with open(self._cwd_file, encoding="utf-8") as f:
                 cwd_path = f.read().strip()
-            if _IS_WINDOWS:
+            if _IS_WINDOWS and self._shell_type == "bash":
                 cwd_path = _msys_to_windows_path(cwd_path)
             if cwd_path and os.path.isdir(cwd_path):
                 self.cwd = cwd_path
@@ -775,12 +849,9 @@ class LocalEnvironment(BaseEnvironment):
         self._extract_cwd_from_output(result)
 
     def _extract_cwd_from_output(self, result: dict):
-        """Same semantics as the base class, but on Windows the value
-        emitted by ``pwd -P`` inside Git Bash is in MSYS form
-        (``/c/Users/x``). Normalize to native Windows form and validate
-        the directory exists before assigning to ``self.cwd`` — otherwise
-        ``_run_bash``'s safe-cwd recovery would warn on every subsequent
-        command.
+        """Same semantics as the base class, but gates MSYS-to-Windows
+        normalization to the bash shell type only.  For the powershell
+        shell the CWD path is already in native Windows form.
 
         Always defers to the base class for stripping the marker text from
         ``result["output"]`` so output formatting is identical.
@@ -790,7 +861,7 @@ class LocalEnvironment(BaseEnvironment):
         prev_cwd = self.cwd
         super()._extract_cwd_from_output(result)
         if self.cwd != prev_cwd:
-            normalized = _msys_to_windows_path(self.cwd) if _IS_WINDOWS else self.cwd
+            normalized = _msys_to_windows_path(self.cwd) if (_IS_WINDOWS and self._shell_type == "bash") else self.cwd
             if normalized and os.path.isdir(normalized):
                 self.cwd = normalized
             else:

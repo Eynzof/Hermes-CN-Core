@@ -255,6 +255,41 @@ def _get_lock_stale_seconds() -> float:
     return 120.0
 
 
+def _lock_holder_alive(lock_file) -> bool:
+    """Return True if the PID recorded in *lock_file* is still running.
+
+    Conservative by design: returns True (assume the holder is alive — do
+    **not** steal the lock) whenever the PID can't be read or liveness can't be
+    determined, and returns False only when the recorded process is positively
+    gone.  A long-running tick holds the lock for the whole job and never
+    refreshes the file's mtime, so mtime alone cannot distinguish a busy holder
+    from a crashed one; checking the recorded PID prevents stealing the lock
+    from a live process (which would double-execute one-shot jobs).
+    """
+    try:
+        content = lock_file.read_text(encoding="utf-8").strip()
+    except OSError:
+        return True
+    if not content:
+        return True
+    try:
+        pid = int(content.split()[0])
+    except (ValueError, IndexError):
+        return True
+    try:
+        import psutil
+        return psutil.pid_exists(pid)
+    except Exception:
+        # psutil unavailable/errored — fall back to a POSIX signal-0 probe.
+        try:
+            os.kill(pid, 0)
+            return True
+        except ProcessLookupError:
+            return False
+        except OSError:
+            return True
+
+
 @contextmanager
 def _job_profile_context(job_id: str, profile: Optional[str]):
     """Temporarily run a job under a specific Hermes profile.
@@ -2003,20 +2038,24 @@ def tick(verbose: bool = True, adapters=None, loop=None, sync: bool = True) -> i
     except Exception:
         pass
 
-    # --- Stale-lock detection (F-3): if the lock file exists and hasn't
-    # been modified in > lock_stale_seconds, the previous holder is assumed
-    # to have crashed.  Force-delete the lock so the new process can proceed
-    # without manual intervention. ---
+    # --- Stale-lock detection (F-3, hardened): a lock file is treated as stale
+    # only when BOTH its mtime is older than the threshold AND the process that
+    # recorded its PID is no longer alive.  fcntl/msvcrt locks are auto-released
+    # by the OS when the holder dies, so removing the leftover *file* is only a
+    # best-effort tidy-up; the PID check ensures we never steal the lock from a
+    # live process that is legitimately running a long job — doing so would let
+    # a second tick double-execute one-shot jobs (which are not advanced until
+    # they finish). ---
     lock_stale = _get_lock_stale_seconds()
     if lock_file.exists():
         try:
             import time as _time
             mtime = lock_file.stat().st_mtime
             age = _time.time() - mtime
-            if age > lock_stale:
+            if age > lock_stale and not _lock_holder_alive(lock_file):
                 logger.warning(
-                    "Removing stale cron lock file (age=%.0fs, threshold=%.0fs). "
-                    "Previous holder likely crashed.",
+                    "Removing stale cron lock file (age=%.0fs, threshold=%.0fs); "
+                    "recorded holder PID is no longer running.",
                     age, lock_stale,
                 )
                 try:
@@ -2034,6 +2073,16 @@ def tick(verbose: bool = True, adapters=None, loop=None, sync: bool = True) -> i
             fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         elif msvcrt:
             msvcrt.locking(lock_fd.fileno(), msvcrt.LK_NBLCK, 1)
+        # Record the holder PID so a later tick can tell a live holder running a
+        # long job from a crashed one before considering the lock stale.  Seek
+        # back to 0 so the msvcrt byte-range unlock in the finally block targets
+        # the same offset it locked.
+        try:
+            lock_fd.write(f"{os.getpid()}\n")
+            lock_fd.flush()
+            lock_fd.seek(0)
+        except OSError:
+            pass
     except (OSError, IOError):
         logger.debug("Tick skipped — another instance holds the lock")
         if lock_fd is not None:

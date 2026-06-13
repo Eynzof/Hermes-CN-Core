@@ -461,16 +461,20 @@ def _transform_operator(
     builder: Callable,
     *,
     skip_dollar_q: bool = True,
+    op_label: str | None = None,
 ) -> tuple[str, list[str]]:
     """Generic single-operator line transformer.
 
     *op*          — the operator string to search for (e.g. ``"??"``).
     *builder*     — callable(left_expr, right_expr, right_extra) → inner_str.
     *skip_dollar_q* — when True, skip positions immediately after ``$?``.
+    *op_label*    — human-readable name used in the warning (defaults to
+                    ``"<op> operator"``).
 
     Returns ``(transformed_line, warnings)``.
     """
     warnings: list[str] = []
+    label = op_label or f"{op} operator"
     op_len = len(op)
     search = 0
     while True:
@@ -492,7 +496,7 @@ def _transform_operator(
             continue
 
         inner = builder(left_expr, right_expr, right_extra)
-        warnings.append(f"{op} operator `{left_expr} {op} {right_expr}` rewritten to `{inner}`")
+        warnings.append(f"{label} `{left_expr} {op} {right_expr}` rewritten to `{inner}`")
         line = _build_replacement(line[:left_start], inner) + line[right_end:]
         search = left_start
     return line, warnings
@@ -540,12 +544,20 @@ def _transform_nca_line(line: str) -> tuple[str, list[str]]:
 # ===========================================================================
 
 def _transform_nc_line(line: str) -> tuple[str, list[str]]:
-    """Transform every ``??`` on *line* into PS 5.1 compatible ``if`` form."""
+    """Transform every ``??`` on *line* into PS 5.1 compatible ``if`` form.
+
+    The left operand is bound to a temporary (``$__hermes_nc``) so it is
+    evaluated exactly once — emitting it twice would re-run side-effecting or
+    non-deterministic operands (e.g. ``(Get-Random) ?? 0``).
+    """
 
     def _builder(left: str, right: str, _extra: None) -> str:
-        return f"if ($null -ne {left}) {{ {left} }} else {{ {right} }}"
+        return (
+            f"if ($null -ne ($__hermes_nc = {left})) "
+            f"{{ $__hermes_nc }} else {{ {right} }}"
+        )
 
-    return _transform_operator(line, "??", _builder)
+    return _transform_operator(line, "??", _builder, op_label="null-coalescing")
 
 
 # ===========================================================================
@@ -607,34 +619,52 @@ def _transform_ternary_line(line: str) -> tuple[str, list[str]]:
 def _transform_chain_line(line: str) -> tuple[str, list[str]]:
     """Rewrite pipeline chain operators ``&&`` and ``||``.
 
-    Uses rightmost-first to maintain correct right-associative semantics.
+    PowerShell chain operators are **left-associative**: ``a && b || c`` parses
+    as ``(a && b) || c`` — if ``a`` fails, ``c`` must still run.  We therefore
+    split the line left-to-right at top-level operators and emit a *flat*
+    sequence of guarded statements that threads ``$?`` between them, rather than
+    a right-nested tree (which gave the wrong short-circuit semantics, skipping
+    ``c`` whenever ``a`` failed).
     """
     warnings: list[str] = []
-    while True:
-        mask = _line_mask(line)
-        and_pos = _find_next_op(line, "&&", mask, reverse=True)
-        or_pos = _find_next_op(line, "||", mask, reverse=True)
-        if and_pos == -1 and or_pos == -1:
+    mask = _line_mask(line)
+
+    # Collect chain operator positions in left-to-right order.
+    ops: list[tuple[int, str]] = []
+    pos = 0
+    while pos < len(line) - 1:
+        and_pos = _find_next_op(line, "&&", mask, start=pos)
+        or_pos = _find_next_op(line, "||", mask, start=pos)
+        candidates = [(p, op) for p, op in ((and_pos, "&&"), (or_pos, "||")) if p != -1]
+        if not candidates:
             break
-        if and_pos > or_pos:
-            best_pos, best_op = and_pos, "&&"
-        else:
-            best_pos, best_op = or_pos, "||"
-        condition = "$?" if best_op == "&&" else "-not $?"
-        left = line[:best_pos].strip()
-        right_start = best_pos + 2
-        # Separate a trailing line comment from the right-hand expression
-        # so it stays outside the generated ``{ }`` block (a ``#`` inside
-        # braces would comment out the closing ``}``).
-        right_raw_end, comment = _separate_trailing_comment(line, right_start, mask)
-        right = line[right_start:right_raw_end].strip()
-        new_line = f"{left}; if ({condition}) {{ {right} }}{comment}"
-        warnings.append(
-            f"pipeline chain `{left} {best_op} {right}` "
-            f"rewritten to `{new_line}`"
-        )
-        line = new_line
-    return line, warnings
+        best_pos, best_op = min(candidates, key=lambda c: c[0])
+        ops.append((best_pos, best_op))
+        pos = best_pos + 2
+    if not ops:
+        return line, warnings
+
+    # Split into operands separated by those operators.  Only the final operand
+    # can carry a trailing line comment; keep it outside the generated braces
+    # (a ``#`` inside ``{ }`` would comment out the closing ``}``).
+    operands: list[str] = []
+    prev = 0
+    for op_pos, _op in ops:
+        operands.append(line[prev:op_pos].strip())
+        prev = op_pos + 2
+    last_end, comment = _separate_trailing_comment(line, prev, mask)
+    operands.append(line[prev:last_end].strip())
+
+    # Build the flat guarded sequence, threading $? left-to-right.
+    parts = [operands[0]]
+    orig_chain = operands[0]
+    for (_op_pos, op), operand in zip(ops, operands[1:]):
+        condition = "$?" if op == "&&" else "-not $?"
+        parts.append(f"if ({condition}) {{ {operand} }}")
+        orig_chain += f" {op} {operand}"
+    new_line = "; ".join(parts) + comment
+    warnings.append(f"pipeline chain `{orig_chain}` rewritten to `{new_line}`")
+    return new_line, warnings
 
 
 # ===========================================================================
@@ -751,11 +781,17 @@ def _transform_null_conditional_line(line: str, op: str) -> tuple[str, list[str]
             if not segments:
                 search = idx + op_len
                 continue
+            # Bind the base to a temp so a side-effecting base (e.g.
+            # ``(Get-Obj)?.Name``) is evaluated once, then rebuild the dotted
+            # prefixes on that temp.
+            prefixes = ["$__hermes_nc"]
+            for seg, _seg_end in segments:
+                prefixes.append(prefixes[-1] + seg)
             # Build nested if chain from innermost to outermost
             full_expr = prefixes[-1]  # full dotted expression
             for pfx in reversed(prefixes[:-1]):
                 full_expr = f"if ($null -ne {pfx}) {{ {full_expr} }}"
-            inner = f"$({full_expr})"
+            inner = f"$($__hermes_nc = {base}; {full_expr})"
             end_pos = segments[-1][1]
             orig_expr = base + "?." + "?.".join(seg[0][1:] for seg in segments)
         else:
@@ -770,7 +806,10 @@ def _transform_null_conditional_line(line: str, op: str) -> tuple[str, list[str]
                         bracket_depth -= 1
                 bracket_end += 1
             index_expr = line[idx + 2:bracket_end - 1]
-            inner = f"$(if ($null -ne {base}) {{ {base}[{index_expr}] }})"
+            inner = (
+                f"$($__hermes_nc = {base}; "
+                f"if ($null -ne $__hermes_nc) {{ $__hermes_nc[{index_expr}] }})"
+            )
             end_pos = bracket_end
             orig_expr = f"{base}?[{index_expr}]"
 

@@ -13,10 +13,15 @@ from __future__ import annotations
 
 import os
 import sys
-import winreg
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+# ``winreg`` is a Windows-only stdlib module, and these tests patch
+# ``tools.environments.windows_env.winreg.*`` (which only exists on win32).
+# Skip the whole module cleanly off-Windows (e.g. Linux/macOS CI) instead of
+# failing collection with ImportError.
+winreg = pytest.importorskip("winreg")
 
 
 # =========================================================================

@@ -137,15 +137,16 @@ def test_detect_windows_unknown_shell_type_is_powershell():
 
 
 def test_detect_is_cached_until_cleared():
-    with mock.patch(SYSTEM, return_value="Windows"), _shell_type_env("auto"), mock.patch(
-        SHUTIL_WHICH, side_effect=_which_matcher("powershell")
-    ) as fp:
+    # _detect_shell_for_description is @lru_cache-d and decides purely from
+    # platform.system() + HERMES_SHELL_TYPE (no PATH probe), so observe caching
+    # via the number of platform.system() calls.
+    with mock.patch(SYSTEM, return_value="Windows") as sysm, _shell_type_env("auto"):
         assert _detect_shell_for_description() == "powershell"
         assert _detect_shell_for_description() == "powershell"
-        assert fp.call_count == 1  # second call served from lru_cache
+        assert sysm.call_count == 1  # second call served from lru_cache
         _detect_shell_for_description.cache_clear()
         assert _detect_shell_for_description() == "powershell"
-        assert fp.call_count == 2  # re-probed after cache_clear
+        assert sysm.call_count == 2  # re-evaluated after cache_clear
 
 
 # --------------------------------------------------------------------------- #

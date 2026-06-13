@@ -119,6 +119,10 @@ class TestExecuteAttachesWarnings:
         ):
             env = LocalEnvironment(cwd=r"C:\tmp", timeout=30)
             env._shell_path = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
+            # Force the powershell shell type so execute() dispatches to
+            # _run_powershell (otherwise on a non-Windows test host it routes
+            # to the bash path and never captures pwsh warnings).
+            env._shell_type = "powershell"
             result = env.execute("$a ?? $b")
 
             assert "pwsh_warnings" in result
@@ -130,37 +134,43 @@ class TestExecuteAttachesWarnings:
 # ---------------------------------------------------------------------------
 
 class TestTerminalToolSurfacesWarnings:
-    """Test that terminal_tool() includes pwsh_warnings in JSON response."""
+    """terminal_tool() includes pwsh_warnings in its JSON when the underlying
+    execute() result carries them, and omits the key otherwise.
 
-    def test_terminal_tool_json_includes_pwsh_warnings(self):
-        from tools.terminal_tool import terminal_tool
+    terminal_tool runs a real command through the active environment, so we
+    inject a fake local environment whose execute() returns a controlled result
+    dict, then assert on the (flat) JSON terminal_tool emits.
+    """
 
-        mock_result = {
-            "output": "hello world",
-            "cwd": r"C:\tmp",
-            "exit_code": 0,
-            "pwsh_warnings": ["Line 1: ternary operator rewritten"],
-        }
+    def _run_with_fake_env_result(self, exec_result, tmp_path, task_id):
+        import tools.terminal_tool as tt
 
-        raw = terminal_tool(mock_result, task_id="test-task")
-        parsed = json.loads(raw)
+        fake_env = MagicMock()
+        fake_env.cwd = str(tmp_path)
+        fake_env.env = {}
+        fake_env.execute.return_value = exec_result
 
-        assert parsed["result"]["success"] is True
-        assert "pwsh_warnings" in parsed["result"]
-        assert parsed["result"]["pwsh_warnings"] == ["Line 1: ternary operator rewritten"]
+        with patch.object(tt, "_create_environment", return_value=fake_env), \
+             patch.dict(tt._active_environments, {}, clear=True):
+            raw = tt.terminal_tool("echo hi", task_id=task_id)
+        return json.loads(raw)
 
-    def test_no_warnings_key_when_empty(self):
-        from tools.terminal_tool import terminal_tool
+    def test_terminal_tool_json_includes_pwsh_warnings(self, tmp_path):
+        parsed = self._run_with_fake_env_result(
+            {
+                "output": "hello world",
+                "returncode": 0,
+                "pwsh_warnings": ["Line 1: ternary operator rewritten"],
+            },
+            tmp_path,
+            task_id="pwsh-warn-present",
+        )
+        assert parsed["pwsh_warnings"] == ["Line 1: ternary operator rewritten"]
 
-        mock_result = {
-            "output": "hello world",
-            "cwd": r"C:\tmp",
-            "exit_code": 0,
-            "pwsh_warnings": [],
-        }
-
-        raw = terminal_tool(mock_result, task_id="test-task")
-        parsed = json.loads(raw)
-
-        assert parsed["result"]["success"] is True
-        assert "pwsh_warnings" not in parsed["result"]
+    def test_no_warnings_key_when_empty(self, tmp_path):
+        parsed = self._run_with_fake_env_result(
+            {"output": "hello world", "returncode": 0, "pwsh_warnings": []},
+            tmp_path,
+            task_id="pwsh-warn-empty",
+        )
+        assert "pwsh_warnings" not in parsed

@@ -118,6 +118,10 @@ class TestUpdateCwdWindowsMsys:
             LocalEnvironment, "init_session", autospec=True, return_value=None
         ):
             env = LocalEnvironment(cwd=str(original), timeout=10)
+        # The MSYS-path translation only applies to the bash shell type
+        # (powershell emits native Windows paths); this scenario is "bash wrote
+        # an MSYS path", so force the bash shell type.
+        env._shell_type = "bash"
 
         # Pretend bash wrote an MSYS path that maps to tmp_path/"next"
         new_dir = tmp_path / "next"
@@ -185,6 +189,8 @@ class TestExtractCwdFromOutputWindowsMsys:
             LocalEnvironment, "init_session", autospec=True, return_value=None
         ):
             env = LocalEnvironment(cwd=str(original), timeout=10)
+        # MSYS-path normalization only applies to the bash shell type.
+        env._shell_type = "bash"
 
         marker = env._cwd_marker
         result = {

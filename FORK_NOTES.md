@@ -13,7 +13,7 @@ This document explains the fork-specific changes on `main` that diverge from ups
 | **P-006** | `hermes_cli/config.py` | Registers `OPTIONAL_ENV_VARS` for CN providers (ARK / QIANFAN / HUNYUAN / SILICONFLOW / MODELSCOPE / AI302 / COMPSHARE) | Dashboard env panel is metadata-driven; upstream only knows global providers (OpenAI / Anthropic / Google / DeepSeek) | Won't be upstreamed (CN-specific) |
 | ~~**P-007**~~ | `tui_gateway/ws.py` | ~~Wraps the dispatch handler in a try/except that logs traceback + returns a JSON-RPC error response instead of silently closing the WS~~ | Without this, any unhandled handler exception or json.dumps serialization failure shows up in the client as "WebSocket closed" with zero diagnostic context | **Superseded by upstream** — dropped in 2026-06-04 sync |
 | **P-008** | `hermes_cli/web_server.py` | ~~Adds `GET/PUT /api/profiles/active`~~ → upstream shipped its own `GET/POST /api/profiles/active`; fork now keeps only a **compat layer**: adds `name` to the GET response (desktop reads `.name`) + a `PUT` alias (desktop sets via PUT) | v2 web profile switcher reads `.name` and writes via `PUT`; upstream returns `{active,current}` and only has `POST` | **Upstreamed (GET/POST)** + fork compat (2026-06-04 sync) |
-| **P-009** | `hermes_cli/web_server.py`, `tui_gateway/sse.py` | Adds SSE+POST gateway transport at `/api/v2/events` and `/api/v2/rpc` | desktop uses EventSource for streaming and POST for JSON-RPC to avoid WebSocket edge cases in packaged desktop runtimes | Maybe upstream |
+| **P-009** | `hermes_cli/web_server.py`, `tui_gateway/sse.py` | Adds SSE+POST gateway transport at `/api/v2/events` and `/api/v2/rpc` | ~~desktop uses EventSource for streaming and POST for JSON-RPC~~ → desktop >= 0.4 uses the native `/api/ws` WebSocket (official desktop architecture); this transport only serves older shells | **DEPRECATED** — kept for desktop <= 0.3.x (no shell self-update; runtimes hot-update underneath them). Remove after old-shell EOL. Won't upstream. |
 | **P-010** | `hermes_cli/config.py` | Registers `LONGCAT_API_KEY` in `OPTIONAL_ENV_VARS` | CN model settings need first-class LongCat credentials in the env panel | Won't be upstreamed unless upstream adopts LongCat |
 | **P-011** | `tui_gateway/server.py` | Adds `slug_filter` to `model.options` and `provider.probe` RPC | desktop needs filtered model picker options and a lightweight provider health probe | Maybe upstream |
 | **P-012** | `hermes_cli/main.py` | `_model_flow_anthropic()` prompts for optional custom `base_url` instead of unconditionally removing it | Users running Anthropic-compatible proxies or alternative endpoints need to preserve a custom `base_url` during model setup | Should be upstreamed |
@@ -194,7 +194,17 @@ Plus a 5000-entry cap to bound responses on huge directories.
 
 ---
 
-### P-009: SSE+POST gateway transport
+### P-009: SSE+POST gateway transport — **DEPRECATED**
+
+> **Deprecation (2026-06-09)**: the desktop client moved to the runtime's
+> native `/api/ws` JSON-RPC WebSocket (the same transport the official
+> Electron desktop in `apps/desktop` uses) as of desktop 0.4 — the SSE+POST
+> path had no heartbeat, one HTTP round trip per RPC, and an async-ack split
+> that made in-flight turns fragile. These endpoints MUST stay until desktop
+> shells <= 0.3.x reach EOL: the Tauri shell has no self-update while the
+> runtime hot-updates underneath it, so a new runtime must keep serving old
+> shells. `/api/v2/events` now logs a deprecation line per connection so
+> residual usage can be measured from runtime logs before removal.
 
 **Symptom**: desktop's packaged runtime needs a stable browser-friendly
 streaming transport. Relying only on `/api/ws` makes failures harder to

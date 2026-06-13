@@ -16,7 +16,7 @@
 | **P-006** | `hermes_cli/config.py` | 为 CN provider 注册 `OPTIONAL_ENV_VARS` | 模型设置页需要展示 ARK、QIANFAN、HUNYUAN、SiliconFlow 等密钥项 | CN 专属，通常不向上游提交 |
 | **P-007** | `tui_gateway/ws.py` | 捕获并记录 gateway dispatch 异常，返回 JSON-RPC error | 否则前端只看到 WebSocket closed，缺少诊断信息 | 建议上游 |
 | **P-008** | `hermes_cli/web_server.py` | 增加 `GET/PUT /api/profiles/active` | desktop profile 切换器需要读写 sticky active profile | 建议上游 |
-| **P-009** | `hermes_cli/web_server.py`, `tui_gateway/sse.py` | 增加 `/api/v2/events` SSE 和 `/api/v2/rpc` POST transport | desktop 默认使用 EventSource + POST，减少 WebSocket 兼容问题 | 可考虑上游 |
+| **P-009** | `hermes_cli/web_server.py`, `tui_gateway/sse.py` | 增加 `/api/v2/events` SSE 和 `/api/v2/rpc` POST transport | ~~desktop 默认使用 EventSource + POST~~ → desktop ≥ 0.4 已改用原生 `/api/ws` WebSocket（与官方桌面端一致），此 transport 只服务旧版外壳 | **已弃用** —— 为 ≤ 0.3.x 旧外壳保留（外壳无自更新而 runtime 热更新），旧外壳 EOL 后移除。不上游。 |
 | **P-010** | `hermes_cli/config.py` | 注册 `LONGCAT_API_KEY` | CN 模型设置需要 LongCat 密钥入口 | CN 专属，除非上游支持 LongCat |
 | **P-011** | `tui_gateway/server.py` | 给 `model.options` 增加 `slug_filter`，并增加 `provider.probe` RPC | desktop 需要过滤模型选择器，并轻量探测 provider 状态 | 可考虑上游 |
 | **P-012** | `hermes_cli/main.py` | `_model_flow_anthropic()` 支持保留或自定义 `base_url`，不再无条件删除 | 使用 Anthropic 兼容代理或私有端点的用户需要在模型设置流程中保留自定义 `base_url` | 建议上游 |
@@ -164,7 +164,15 @@
 
 ---
 
-### P-009：SSE+POST gateway transport
+### P-009：SSE+POST gateway transport —— **已弃用**
+
+> **弃用说明（2026-06-09）**：桌面端自 0.4 起已切换到 runtime 原生的
+> `/api/ws` JSON-RPC WebSocket（与官方 Electron 桌面端 `apps/desktop` 同一
+> transport）——SSE+POST 路径无心跳、每个 RPC 一次 HTTP 往返、异步 ack 拆分
+> 导致在途回合脆弱。**这两个端点必须保留**到 ≤ 0.3.x 旧外壳 EOL：Tauri 外壳
+> 没有自更新，而 runtime 会在其下热更新，新 runtime 必须继续服务旧外壳。
+> `/api/v2/events` 每次连接会打一条弃用日志，便于在移除前从 runtime 日志
+> 量化残留用量。
 
 **现象**：desktop 需要稳定、浏览器友好的流式 transport。只依赖 `/api/ws` 时，桌面壳和网络环境下的故障更难诊断。
 

@@ -8574,6 +8574,12 @@ async def gateway_ws(ws: WebSocket) -> None:
 
 @app.get("/api/v2/events")
 async def gateway_events(request: Request) -> Any:
+    # DEPRECATED (P-009): desktop shells >= 0.4 connect to the native /api/ws
+    # WebSocket instead. This transport is kept ONLY for older shells (<= 0.3.x,
+    # which have no self-update and ride on hot-updated runtimes) and will be
+    # removed once they reach EOL. Logged so runtime logs can quantify residual
+    # usage before removal.
+    _log.info("P-009 SSE transport in use (deprecated; desktop >= 0.4 uses /api/ws)")
     # Token auth: EventSource can't set Authorization, so the token is on
     # the query string. /api/v2/events is on _PUBLIC_API_PATHS exactly so
     # the auth middleware doesn't 401 before we get a chance to check.

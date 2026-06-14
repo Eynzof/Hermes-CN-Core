@@ -4491,6 +4491,7 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
         session_tokens = []
         home_token = None  # per-turn HERMES_HOME override for a resumed remote profile
         goal_followup = None  # set by the post-turn goal hook below
+        steer_followup = None  # set when a /steer landed too late to inject (P-023)
         try:
             from tools.approval import (
                 reset_current_session_key,
@@ -4682,6 +4683,13 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
                 lr = result.get("last_reasoning")
                 if isinstance(lr, str) and lr.strip():
                     last_reasoning = lr.strip()
+                # P-023: a /steer that landed after the final tool batch (or in
+                # a text-only turn) has no tool result to inject into, so
+                # run_conversation hands it back here. Deliver it as the next
+                # user turn below — otherwise the gateway silently drops it.
+                _ps = result.get("pending_steer")
+                if isinstance(_ps, str) and _ps.strip():
+                    steer_followup = _ps.strip()
             else:
                 raw = str(result)
                 status = "complete"
@@ -4838,6 +4846,34 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
                 session["last_active"] = time.time()
                 _clear_inflight_turn(session)
             _emit("session.info", sid, _session_info(agent, session))
+
+        # P-023: deliver a late /steer as the next user turn. run_conversation
+        # only injects steer into a following tool result; one that lands after
+        # the last tool batch (or in a text-only turn) comes back as
+        # result["pending_steer"]. cli.py re-delivers it; the gateway used to
+        # drop it, so desktop steers silently vanished. Done AFTER the finally
+        # releases session["running"] (same rationale as the goal hook below);
+        # a racing real prompt wins via the running guard. Takes priority over
+        # goal continuation since it's explicit user input — its own turn
+        # completion will re-run the goal judge anyway.
+        if steer_followup:
+            with session["history_lock"]:
+                if session.get("running"):
+                    return
+                session["running"] = True
+            try:
+                # _run_prompt_submit emits message.start itself, so don't
+                # pre-emit here (that would double-fire it).
+                _run_prompt_submit(rid, sid, session, steer_followup)
+                return
+            except Exception as _steer_exc:
+                print(
+                    f"[tui_gateway] steer continuation dispatch failed: "
+                    f"{type(_steer_exc).__name__}: {_steer_exc}",
+                    file=sys.stderr,
+                )
+                with session["history_lock"]:
+                    session["running"] = False
 
         # Chain a goal-continuation turn if the judge said so. We do
         # this AFTER the finally releases session["running"], so the

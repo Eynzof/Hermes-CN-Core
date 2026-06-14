@@ -109,6 +109,135 @@ class TestSanitizeApiMessages:
         assert out[1]["tool_call_id"] == "c6"
 
 
+# --- Empty-content filtering (MiMo bugfix) ---
+
+def test_drops_assistant_with_empty_content_and_no_tool_calls():
+    """sanitize_api_messages drops assistant messages that have content=\"\" and no tool_calls."""
+    msgs = [
+        {"role": "user", "content": "hello"},
+        {"role": "assistant", "content": "", "tool_calls": None},
+        {"role": "user", "content": "follow-up"},
+    ]
+    out = AIAgent._sanitize_api_messages(msgs)
+    assert len(out) == 2
+    assert out[0]["role"] == "user"
+    assert out[0]["content"] == "hello"
+    assert out[1]["role"] == "user"
+    assert out[1]["content"] == "follow-up"
+
+
+def test_drops_user_with_empty_content():
+    """sanitize_api_messages drops user messages with content=\"\" and no tool_calls."""
+    msgs = [
+        {"role": "system", "content": "You are helpful."},
+        {"role": "user", "content": ""},
+        {"role": "assistant", "content": "hi"},
+    ]
+    out = AIAgent._sanitize_api_messages(msgs)
+    assert len(out) == 2
+    assert out[0]["role"] == "system"
+    assert out[1]["role"] == "assistant"
+
+
+def test_preserves_assistant_with_empty_content_but_with_tool_calls():
+    """Assistant with content=\"\" but valid tool_calls must be preserved (it has payload)."""
+    msgs = [
+        {"role": "user", "content": "search something"},
+        {"role": "assistant", "content": "",
+         "tool_calls": [{"id": "c1", "function": {"name": "web_search", "arguments": "{}"}}]},
+        {"role": "tool", "tool_call_id": "c1", "content": "results"},
+    ]
+    out = AIAgent._sanitize_api_messages(msgs)
+    assert len(out) == 3
+    roles = [m["role"] for m in out]
+    assert roles == ["user", "assistant", "tool"]
+
+
+def test_preserves_assistant_with_non_empty_content():
+    """Assistant with non-empty content and no tool_calls must be preserved."""
+    msgs = [
+        {"role": "user", "content": "hello"},
+        {"role": "assistant", "content": "hi there"},
+    ]
+    out = AIAgent._sanitize_api_messages(msgs)
+    assert out == msgs
+
+
+def test_preserves_system_with_empty_content():
+    """System messages with empty content should NOT be dropped (edge case, provider-dependent)."""
+    msgs = [
+        {"role": "system", "content": ""},
+        {"role": "user", "content": "hello"},
+    ]
+    out = AIAgent._sanitize_api_messages(msgs)
+    assert len(out) == 2  # system preserved
+
+
+def test_drops_function_with_empty_content():
+    """Function messages with empty content should be dropped (legacy role, same as assistant)."""
+    msgs = [
+        {"role": "function", "content": ""},
+        {"role": "user", "content": "hello"},
+    ]
+    out = AIAgent._sanitize_api_messages(msgs)
+    assert len(out) == 1
+    assert out[0]["role"] == "user"
+
+
+def test_multiple_empty_content_messages_dropped():
+    """Multiple consecutive empty-content messages all get dropped."""
+    msgs = [
+        {"role": "user", "content": "hello"},
+        {"role": "assistant", "content": ""},
+        {"role": "assistant", "content": ""},
+        {"role": "user", "content": ""},
+        {"role": "assistant", "content": "final answer"},
+    ]
+    out = AIAgent._sanitize_api_messages(msgs)
+    assert len(out) == 2
+    assert out[0]["role"] == "user"
+    assert out[0]["content"] == "hello"
+    assert out[1]["role"] == "assistant"
+    assert out[1]["content"] == "final answer"
+
+
+def test_empty_content_filtering_is_idempotent():
+    """Running sanitize twice produces the same result."""
+    msgs = [
+        {"role": "user", "content": "hello"},
+        {"role": "assistant", "content": ""},
+        {"role": "assistant", "content": "final"},
+    ]
+    out1 = AIAgent._sanitize_api_messages(msgs)
+    out2 = AIAgent._sanitize_api_messages(out1)
+    assert out1 == out2
+
+
+def test_preserves_assistant_with_empty_content_but_with_codex_reasoning():
+    """Assistant with content=\"\" but codex_reasoning_items must be preserved for replay."""
+    msgs = [
+        {"role": "user", "content": "continue"},
+        {"role": "assistant", "content": "", "finish_reason": "incomplete",
+         "codex_reasoning_items": [{"type": "reasoning", "id": "rs_001", "encrypted_content": "enc"}]},
+    ]
+    out = AIAgent._sanitize_api_messages(msgs)
+    assert len(out) == 2
+    assert out[1]["role"] == "assistant"
+    assert out[1]["codex_reasoning_items"]
+
+
+def test_preserves_assistant_with_empty_content_but_with_reasoning_content():
+    """Assistant with content=\"\" but reasoning_content must be preserved for replay."""
+    msgs = [
+        {"role": "user", "content": "continue"},
+        {"role": "assistant", "content": "", "reasoning_content": "thinking..."},
+    ]
+    out = AIAgent._sanitize_api_messages(msgs)
+    assert len(out) == 2
+    assert out[1]["role"] == "assistant"
+    assert out[1]["reasoning_content"] == "thinking..."
+
+
 # ---------------------------------------------------------------------------
 # Phase 2a — _cap_delegate_task_calls
 # ---------------------------------------------------------------------------

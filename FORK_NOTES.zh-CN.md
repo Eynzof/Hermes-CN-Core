@@ -29,6 +29,7 @@
 | **P-018** | `agent/agent_init.py`, `tests/run_agent/test_init_fallback_on_exhausted_pool.py` | 增加 `_api_key_required` 辅助函数，并在 OpenAI / Anthropic SDK 客户端构造前加入空 key 保护；当 api_key 为空且 provider 需要密钥时，抛出 `RuntimeError: no API key (param empty, env vars unset)` | 此前空 key（参数为空且环境变量未设置）会触发底层 SDK 认证异常，在 TUI/gateway 后台线程中表现为 panic 且无堆栈信息 | 建议上游 |
 | **P-020** | `tools/environments/windows_env.py`（新建）, `tools/environments/local.py`, `hermes_cli/claw.py`, `hermes_cli/managed_uv.py`, `hermes_cli/gateway.py`, `hermes_cli/dep_ensure.py`, `hermes_cli/clipboard.py`, `skills/creative/comfyui/scripts/hardware_check.py` | 新增 `refresh_env_from_registry()` 函数，从 Windows 注册表（HKLM + HKCU）刷新 `os.environ["PATH"]` 和 `os.environ["PATHEXT"]`，在每次 PowerShell 子进程调用前执行，使进程启动后安装的工具（如 WinGet、MSI）可被发现。参考 `kimi-cli/src/kimi_cli/utils/environment.py` 的实现。非 Windows 平台无操作。 | 如果不刷新，agent 无法发现进程启动后安装的二进制文件（例如通过 WinGet 安装的工具）— `shutil.which` 和 `subprocess.Popen` 只能看到进程创建时捕获的 PATH。当 agent 在会话中安装自己的依赖（node、uv 等）时尤其痛苦。 | 建议上游 |
 | **P-021** | `gateway/run.py`、`cron/scheduler.py`、`cron/jobs.py`、`hermes_time.py` | 四项 cron "静默停摆" 根因修复：(1) `_start_cron_ticker` 初始化包在 try/except 中，防止 daemon 线程静默死亡；(2) 僵尸 `.tick.lock` 自动清理——锁文件 mtime 超过 `lock_stale_seconds`（默认 120s）则删除；(3) `_validate_cron_startup()` 启动前校验 `jobs.json` 可解析性；(4) `_ensure_aware` 按配置时区解释无时区时间戳；修复 `hermes_time.py` 缺失的 `def now()`；每次 tick 调用 `reset_cache()` 使时区配置热生效。 | `jobs.json` 损坏 → ticker 线程崩溃 → daemon 静默死亡。僵尸 `.tick.lock` → 所有后续 tick 永久阻塞。ticker 初始化 `ImportError` → 线程零日志死亡。服务器时区 ≠ 配置时区 → 调度时间静默偏移。 | 建议上游 |
+| **P-022** | `agent/agent_runtime_helpers.py`、`tests/run_agent/test_agent_guardrails.py`、`tests/run_agent/test_session_meta_filtering.py` | 在 `sanitize_api_messages` 中增加空内容过滤：丢弃 `content` 为 `""` 且无有效载荷的 `assistant`/`user`/`function` 消息；保留仍携带 `tool_calls`、`codex_reasoning_items`、`codex_message_items` 或 `reasoning_content` 的 `assistant` 消息。 | MiMo v2.5 及严格的 OpenAI 兼容网关会拒收空 `content` 消息（HTTP 400 / "text is not set"）。长会话（如飞书 3-13h）在上下文压缩/截断后可能留下这类消息。 | 建议上游 |
 | **P-023** | `tui_gateway/server.py` | 网关回合执行器现在会把"漏接"的 `/steer` 作为下一轮用户输入投递。`run_conversation()` 只能把 steer 注入到*后续*的工具结果里；落在最后一个工具批次之后（或纯文本回合）的 steer 会以 `result["pending_steer"]` 返回。`cli.py` 会重新投递它，但网关此前直接丢弃——导致桌面端（运行时输入行为默认 "引导/steer"）发出的 steer 静默丢失。仿照已有的 `goal_followup` 链路：在 `finally` 释放 `session["running"]` 后，用 steer 文本发起一次嵌套 `_run_prompt_submit`（受 `running` 保护，真实用户输入优先；优先级高于 goal 续跑）。 | 桌面端反馈（#193）："引导功能不好用……等到任务执行完，我引导的东西也没插入进去"——晚到的 steer 被 `agent.steer()` 接受却从未生效，因为网关忽略了 `pending_steer`。 | 建议上游（通用可靠性修复） |
 
 ## 发布和维护支撑
@@ -429,6 +430,37 @@
 **改动**：`gateway/run.py`（F-1/F-4）、`cron/scheduler.py`（F-3/F-7）、`cron/jobs.py`（F-5）、`hermes_time.py`（F-7）。详见英文版 Fork Notes。
 
 **是否上游**：建议上游。通用可靠性修复，与平台和 provider 无关。
+
+---
+
+### P-022：`sanitize_api_messages` 空内容消息过滤
+
+**现象**：长会话（如飞书 3-13h）在调用模型 API 时偶发 HTTP 400，错误信息如 MiMo 的 `"text is not set"` 或某些严格 OpenAI 兼容网关的空内容拒绝。出错的请求里包含 `content` 被压缩/截断为空字符串的 `assistant` 或 `user` 消息。
+
+**根因**：部分 provider（MiMo v2.5、严格的 OpenAI 兼容网关）拒绝 `content` 为 `""` 且没有工具载荷的消息。Agent 的上下文压缩器会留下这类空消息；此前的预调用清理器只修复了孤儿 tool result 并去掉了 `session_meta` 角色消息，但没有清理空内容的 `assistant`/`user`/`function` 消息。
+
+**改动**：
+
+- 在 `sanitize_api_messages` 的孤儿修复之后新增一轮过滤：角色属于 `{assistant, user, function}`、`content` 严格等于 `""` 且没有有效载荷的消息会被丢弃。
+- 可保留 `assistant` 消息的有效载荷包括：
+  - `tool_calls`
+  - `codex_reasoning_items`
+  - `codex_message_items`
+  - `reasoning_content`
+- 这样 codex / DeepSeek reasoning 回放和工具调用链保持完整，同时剔除触发网关校验错误的空消息。
+- `system` 消息故意保留不处理（各 provider 行为不同，避免误删）。
+- 完全没有 `content` 键的消息也保留不动，以便需要时让 API 按自身规则报错，避免掩盖其他 bug。
+
+**涉及文件**：
+- `agent/agent_runtime_helpers.py` — 在 `sanitize_api_messages` 中加入空内容过滤。
+- `tests/run_agent/test_agent_guardrails.py` — 新增 11 个聚焦回归测试，覆盖 assistant/user/function 空内容丢弃、带 tool calls / codex reasoning / reasoning content 时的保留、system 保留、多连续空消息丢弃、幂等性等。
+- `tests/run_agent/test_session_meta_filtering.py` — 新增 `TestSanitizeApiMessagesEmptyContentFilter` 类，提供端到端回归测试，包括 MiMo "text is not set" 场景。
+
+**副作用**：
+- 重度压缩后到达 API 的消息数会略少，这是预期行为，因为这些消息本身没有可用内容。
+- 如果上游调用方出于某种协议目的故意传入空 `assistant` 消息，现在除非携带上述识别载荷，否则会被丢弃。
+
+**是否上游**：建议上游。过滤逻辑与 provider 无关，能防范一类真实的网关拒绝，且已有较全面的测试覆盖。
 
 ---
 

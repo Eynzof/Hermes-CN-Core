@@ -4084,6 +4084,28 @@ def _resolve_provider_status(provider_id: str, status_fn) -> Dict[str, Any]:
     return {"logged_in": False}
 
 
+def _list_oauth_providers_sync() -> Dict[str, Any]:
+    """Enumerate OAuth providers without running on the asyncio event loop.
+
+    Some provider status helpers shell out or touch external credential stores.
+    Running them inline inside an async FastAPI handler blocks uvicorn's event
+    loop and can make unrelated local endpoints, such as `/api/cron/jobs`, wait
+    for several seconds behind OAuth status probing.
+    """
+    providers = []
+    for p in _OAUTH_PROVIDER_CATALOG:
+        status = _resolve_provider_status(p["id"], p.get("status_fn"))
+        providers.append({
+            "id": p["id"],
+            "name": p["name"],
+            "flow": p["flow"],
+            "cli_command": p["cli_command"],
+            "docs_url": p["docs_url"],
+            "status": status,
+        })
+    return {"providers": providers}
+
+
 @app.get("/api/providers/oauth")
 async def list_oauth_providers():
     """Enumerate every OAuth-capable LLM provider with current status.
@@ -4102,18 +4124,8 @@ async def list_oauth_providers():
           expires_at       ISO timestamp string or null
           has_refresh_token bool
     """
-    providers = []
-    for p in _OAUTH_PROVIDER_CATALOG:
-        status = _resolve_provider_status(p["id"], p.get("status_fn"))
-        providers.append({
-            "id": p["id"],
-            "name": p["name"],
-            "flow": p["flow"],
-            "cli_command": p["cli_command"],
-            "docs_url": p["docs_url"],
-            "status": status,
-        })
-    return {"providers": providers}
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, _list_oauth_providers_sync)
 
 
 @app.delete("/api/providers/oauth/{provider_id}")

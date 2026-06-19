@@ -1906,6 +1906,44 @@ def sanitize_api_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]
             "Pre-call sanitizer: added %d stub tool result(s)",
             len(missing_results),
         )
+
+    # 3. Drop assistant/user/function messages with empty content and no payload.
+    # Some providers (MiMo v2.5, strict OpenAI-compatible gateways) reject
+    # messages where `content` is an empty string and no `tool_calls` are present.
+    # This can happen after context compression/truncation during long sessions
+    # (e.g. Feishu 3-13h).  Session-meta filtering already catches "session_meta"
+    # role; this catches empty assistant/user messages the compressor may leave.
+    # Assistant messages that still carry reasoning/tool payloads must survive
+    # so codex/DeepSeek reasoning replay and tool-call chains stay intact.
+    empty_content_roles = {"assistant", "user", "function"}
+
+    def _has_assistant_payload(msg: Dict[str, Any]) -> bool:
+        """True if an assistant message still carries API-relevant payload."""
+        if msg.get("tool_calls"):
+            return True
+        if msg.get("codex_reasoning_items"):
+            return True
+        if msg.get("codex_message_items"):
+            return True
+        if msg.get("reasoning_content"):
+            return True
+        return False
+
+    before = len(messages)
+    messages = [
+        m for m in messages
+        if not (
+            m.get("role") in empty_content_roles
+            and m.get("content") == ""
+            and not (m.get("role") == "assistant" and _has_assistant_payload(m))
+        )
+    ]
+    if before != len(messages):
+        _ra().logger.debug(
+            "Pre-call sanitizer: removed %d empty-content message(s)",
+            before - len(messages),
+        )
+
     return messages
 
 

@@ -1,6 +1,6 @@
 # Hermes-CN-Core
 
-简体中文 · [English](./README.en.md)
+简体中文（兼容入口：[README.zh-CN.md](./README.zh-CN.md)） · [English](./README.en.md)
 
 [![Tests](https://github.com/Eynzof/Hermes-CN-Core/actions/workflows/tests.yml/badge.svg)](https://github.com/Eynzof/Hermes-CN-Core/actions/workflows/tests.yml)
 [![Runtime Release](https://github.com/Eynzof/Hermes-CN-Core/actions/workflows/release-runtime.yml/badge.svg)](https://github.com/Eynzof/Hermes-CN-Core/actions/workflows/release-runtime.yml)
@@ -38,7 +38,7 @@ Hermes Agent 中文社区官网是 [hermesagent.org.cn](https://hermesagent.org.
 
 ## 和上游有什么不同？
 
-所有 fork 专属改动都记录在 [FORK_NOTES.zh-CN.md](./FORK_NOTES.zh-CN.md)。简单说，这个 fork 主要维护：
+所有 fork 专属改动都记录在 [FORK_NOTES.zh-CN.md](./FORK_NOTES.zh-CN.md)；英文版记录见 [FORK_NOTES.md](./FORK_NOTES.md)。简单说，这个 fork 主要维护：
 
 - **中文模型服务商元数据**：让 Dashboard 环境变量面板识别 ARK、千帆、混元、SiliconFlow、ModelScope、AI302、CompShare、LongCat 等配置项。
 - **桌面端依赖的 Dashboard API**：包括附件上传、workspace 目录浏览、MCP server 摘要、active profile 读写等接口。

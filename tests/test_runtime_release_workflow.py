@@ -114,6 +114,179 @@ def test_runtime_workflow_verifies_backends_in_build_env_and_frozen_output():
     assert ".dist-info" in workflow
 
 
+def test_runtime_workflow_bundles_openviking_provider_without_server_sdk():
+    """OpenViking ships as an HTTP provider, not as the heavy server SDK.
+
+    The provider implementation talks to an existing OpenViking service via
+    httpx. The CN desktop runtime already ships httpx as a core dependency, so
+    bundling the provider must not pull in the full openviking package or the
+    local openviking-server dependency tree.
+    """
+    workflow = _workflow_text()
+    extra = _cn_desktop_extra()
+    pyproject = (_repo_root() / "pyproject.toml").read_text(encoding="utf-8")
+    provider = (
+        _repo_root() / "plugins" / "memory" / "openviking" / "__init__.py"
+    ).read_text(encoding="utf-8")
+    manifest = (
+        _repo_root() / "plugins" / "memory" / "openviking" / "plugin.yaml"
+    ).read_text(encoding="utf-8")
+
+    assert "name: openviking" in manifest
+    assert "pip_dependencies:" in manifest
+    assert "  - httpx" in manifest
+    assert "uses httpx to avoid requiring the openviking SDK" in provider
+    assert "import httpx" in provider
+    assert "import openviking" not in provider
+    assert "from openviking" not in provider
+
+    # The runtime must include bundled provider files, but not the full
+    # OpenViking server/CLI wheel. Pulling that package into cn-desktop would
+    # add hundreds of MB of transitive dependencies to every runtime artifact.
+    assert "--collect-data plugins" in workflow
+    assert 'httpx[socks]==0.28.1' in pyproject
+    assert not any("openviking" in dep.lower() for dep in extra), (
+        "cn-desktop should not install the full openviking server SDK; "
+        "the bundled provider only needs the core httpx dependency."
+    )
+    assert "--collect-submodules openviking" not in workflow
+    assert "--copy-metadata openviking" not in workflow
+
+
+def test_runtime_workflow_freezes_hindsight_client_for_long_term_memory():
+    """The CN desktop frozen runtime pre-bakes the Hindsight memory client.
+
+    mirrors test_runtime_workflow_freezes_native_mcp_client: cn-desktop extra
+    pulls in [hindsight], the PyInstaller build collects hindsight_client and
+    copies its dist metadata, and the frozen-output verify step asserts the
+    hindsight_client-*.dist-info directory is present. A missing piece here
+    means hermes_recall/reflect/retain fail with ``ModuleNotFoundError`` inside
+    the frozen binary (issue: hindsight-client not in PyInstaller bundle).
+    """
+    workflow = _workflow_text()
+    extra = _cn_desktop_extra()
+
+    # 1. cn-desktop must transitively pull in the [hindsight] sub-extra.
+    assert any("[hindsight]" in e for e in extra), (
+        "cn-desktop extra is missing hermes-agent[hindsight] "
+        "(frozen runtime cannot lazy-install hindsight-client)"
+    )
+
+    # 2. Build-env import smoke test must include hindsight_client.
+    #    Re-parse the same for-tuple the existing helper does, so a future
+    #    re-shuffle of the import list still keeps this assertion honest.
+    text = workflow
+    start = text.index("for m in (") + len("for m in (")
+    body = text[start : text.index("):", start)]
+    import_list = body.replace("\n", " ").replace('"', " ").split()
+    assert "hindsight_client" in import_list, (
+        "release-runtime.yml build-env import smoke test does not "
+        "check hindsight_client; PyInstaller may bundle a missing SDK."
+    )
+
+    # 3. PyInstaller collect / metadata lines.
+    assert "--collect-submodules hindsight_client" in workflow, (
+        "PyInstaller invocation missing --collect-submodules hindsight_client"
+    )
+    assert "--copy-metadata hindsight-client" in workflow, (
+        "PyInstaller invocation missing --copy-metadata hindsight-client "
+        "(pip distribution name with hyphen, not the underscored module name)"
+    )
+
+    # 4. Frozen-output verify list must assert the dist-info directory.
+    verified = _frozen_verify_packages()
+    assert "hindsight_client" in verified, (
+        "frozen-output verify list does not assert hindsight_client dist-info"
+    )
+
+
+def test_runtime_workflow_freezes_hindsight_client_api_and_aiohttp_retry():
+    """hindsight-client==0.6.1 ships hindsight_client_api as a bundled top-level
+    package and depends on aiohttp-retry as an independent distribution. The
+    previous PR (#39 round 1) only collected hindsight_client itself, which
+    proved insufficient in a real frozen runtime smoke test: the recall tool
+    returned HTTP 500 with
+        No module named 'hindsight_client_api'
+    after the first round, and
+        No module named 'aiohttp_retry'
+    after the second round. Both transitive pieces must be explicitly
+    collected and the independent aiohttp-retry dist-info must be copied.
+    """
+    workflow = _workflow_text()
+    extra = _cn_desktop_extra()
+
+    # 1. cn-desktop extra still pulls in [hindsight] (round 1 contract).
+    assert any("[hindsight]" in e for e in extra)
+
+    # 2. Build-env import smoke test must cover all three modules.
+    text = workflow
+    start = text.index("for m in (") + len("for m in (")
+    body = text[start : text.index("):", start)]
+    import_list = body.replace("\n", " ").replace('"', " ").split()
+    for mod in ("hindsight_client", "hindsight_client_api", "aiohttp_retry"):
+        assert mod in import_list, (
+            f"release-runtime.yml build-env import smoke test does not "
+            f"check {mod}; PyInstaller may bundle a missing dependency."
+        )
+
+    # 3. PyInstaller must collect all three submodules.
+    #    hindsight_client_api is bundled inside the same wheel as
+    #    hindsight_client (verified by importlib.metadata.packages_distributions()
+    #    mapping both modules to the same "hindsight-client" distribution) but
+    #    PyInstaller static analysis does not automatically pick up sibling
+    #    top-level packages, so it must be named explicitly.
+    for mod in ("hindsight_client", "hindsight_client_api", "aiohttp_retry"):
+        assert f"--collect-submodules {mod}" in workflow, (
+            f"PyInstaller invocation missing --collect-submodules {mod}"
+        )
+
+    # 4. PyInstaller must copy the independent dist-info.
+    #    - hindsight-client: required (covers hindsight_client + hindsight_client_api)
+    #    - aiohttp-retry: required (independent distribution)
+    #    - hindsight-client-api: NOT a real distribution, must NOT be added
+    assert "--copy-metadata hindsight-client" in workflow, (
+        "PyInstaller invocation missing --copy-metadata hindsight-client"
+    )
+    assert "--copy-metadata aiohttp-retry" in workflow, (
+        "PyInstaller invocation missing --copy-metadata aiohttp-retry "
+        "(aiohttp-retry is an independent distribution, not bundled inside "
+        "hindsight-client)"
+    )
+    assert "--copy-metadata hindsight-client-api" not in workflow, (
+        "release-runtime.yml must NOT pass --copy-metadata hindsight-client-api: "
+        "hindsight_client_api has no independent distribution metadata; it "
+        "shares hindsight_client-*.dist-info with the main hindsight_client "
+        "package (verified via importlib.metadata.packages_distributions()). "
+        "Adding a non-existent --copy-metadata is a build-time typo."
+    )
+
+    # 5. Frozen-output verify list must assert the dist-info directory of
+    #    every independent distribution. aiohttp_retry is independent, so
+    #    its aiohttp_retry-*.dist-info must be asserted; hindsight_client_api
+    #    shares the hindsight_client-*.dist-info, so the single hindsight_client
+    #    entry already covers it.
+    # Frozen-output verify list asserts dist-info directories of INDEPENDENT
+    # distributions only. hindsight_client_api has no independent distribution;
+    # it shares hindsight_client-*.dist-info with the main hindsight_client
+    # package (verified by importlib.metadata.packages_distributions()), so
+    # putting "hindsight_client_api" in the verify list would either be a
+    # silent no-op (find would not match anything) or, worse, mask a real
+    # build break. Only hindsight_client and aiohttp_retry are asserted here.
+    verified = _frozen_verify_packages()
+    for pkg in ("hindsight_client", "aiohttp_retry"):
+        assert pkg in verified, (
+            f"frozen-output verify list does not assert {pkg} dist-info"
+        )
+    assert "hindsight_client_api" not in verified, (
+        "frozen-output verify list must NOT contain hindsight_client_api: "
+        "it has no independent distribution metadata. Listing it here is "
+        "either a silent no-op (the find pattern would never match) or a "
+        "future regression hiding the real dist-info directory. The "
+        "hindsight_client entry already covers it because both modules share "
+        "hindsight_client-*.dist-info."
+    )
+
+
 def test_runtime_workflow_signs_and_preserves_macos_frameworks():
     workflow = _workflow_text()
 

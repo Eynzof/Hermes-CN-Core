@@ -279,6 +279,7 @@ cn-desktop = [
   "aiohttp==3.13.3",
   "qrcode==7.4.2",
   "cryptography==46.0.7",
+  "hermes-agent[hindsight]",  # long-term memory: hindsight-client (frozen runtime cannot lazy-install)
 ]
 
 [project.scripts]

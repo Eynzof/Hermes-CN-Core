@@ -34,9 +34,12 @@ from agent.message_sanitization import (
     _repair_tool_call_arguments,
 )
 from tools.terminal_tool import is_persistent_env
-from utils import base_url_host_matches, base_url_hostname
+from utils import base_url_host_matches, base_url_hostname, env_int
 
 logger = logging.getLogger(__name__)
+
+
+_PROVIDER_STATUS_PLATFORMS = {"desktop", "tui"}
 
 
 def _ra():
@@ -122,6 +125,45 @@ def _env_float(name: str, default: float) -> float:
         return default
 
 
+def _should_emit_provider_status(agent) -> bool:
+    """Return True when provider wait/retry status should reach a live UI.
+
+    Desktop/TUI have a persistent status rail and a stall watchdog driven by
+    gateway events, so they need periodic model-wait activity while the agent is
+    blocked inside a provider HTTP request. Messaging gateways route
+    ``status_callback`` to chat messages, so suppress these high-frequency
+    heartbeats there to avoid spamming users.
+    """
+    if not callable(getattr(agent, "status_callback", None)):
+        return False
+    platform = str(getattr(agent, "platform", "") or "").lower()
+    return platform in _PROVIDER_STATUS_PLATFORMS
+
+
+def _emit_provider_status(agent, kind: str, message: str) -> None:
+    if not _should_emit_provider_status(agent):
+        return
+    try:
+        agent.status_callback(kind, message)
+    except Exception:
+        logger.debug("provider status callback failed", exc_info=True)
+
+
+def _format_elapsed_seconds(seconds: float) -> str:
+    whole = max(0, int(seconds))
+    if whole < 60:
+        return f"{whole} 秒"
+    minutes, sec = divmod(whole, 60)
+    if sec == 0:
+        return f"{minutes} 分钟"
+    return f"{minutes} 分 {sec} 秒"
+
+
+def _provider_wait_message(elapsed_s: float, model: Any) -> str:
+    model_text = str(model or "当前模型")
+    return f"仍在等待 {model_text} 响应（已 {_format_elapsed_seconds(elapsed_s)}）…"
+
+
 def interruptible_api_call(agent, api_kwargs: dict):
     """
     Run the API call in a background thread so the main conversation loop
@@ -139,6 +181,15 @@ def interruptible_api_call(agent, api_kwargs: dict):
     result = {"response": None, "error": None}
     request_client_holder = {"client": None, "owner_tid": None}
     request_client_lock = threading.Lock()
+    # Request-local cancellation flag. Distinct from agent._interrupt_requested
+    # because that flag is cleared at run_conversation() turn boundaries, but
+    # this daemon worker thread can outlive the turn (the gateway caches
+    # AIAgent instances per session). Tracks whether THIS specific request was
+    # cancelled by the main thread's interrupt handler, so the transport error
+    # that is the expected consequence of our own force-close isn't misread as
+    # a network bug and surfaced to the caller. (PR #6600 — cascading interrupt
+    # hang.)
+    _request_cancelled = {"value": False}
 
     def _set_request_client(client):
         with request_client_lock:
@@ -229,6 +280,17 @@ def interruptible_api_call(agent, api_kwargs: dict):
                 )
                 result["response"] = request_client.chat.completions.create(**api_kwargs)
         except Exception as e:
+            # If the request was cancelled by the main thread's interrupt
+            # handler, the transport error is the expected consequence of our
+            # own force-close, NOT a network bug. Swallow it instead of
+            # surfacing — the main thread raises InterruptedError. (#6600)
+            if _request_cancelled["value"]:
+                logger.debug(
+                    "Non-streaming worker caught %s after request cancellation — "
+                    "exiting without surfacing a network error.",
+                    type(e).__name__,
+                )
+                return
             result["error"] = e
         finally:
             _close_request_client_once("request_complete")
@@ -334,6 +396,13 @@ def interruptible_api_call(agent, api_kwargs: dict):
 
     _call_start = time.time()
     agent._touch_activity("waiting for non-streaming API response")
+    _wait_status_interval = _env_float(
+        "HERMES_PROVIDER_WAIT_STATUS_INTERVAL_SECONDS",
+        30.0,
+    )
+    _next_wait_status_at = (
+        _wait_status_interval if _wait_status_interval > 0 else float("inf")
+    )
 
     t = threading.Thread(target=_call, daemon=True)
     t.start()
@@ -351,6 +420,15 @@ def interruptible_api_call(agent, api_kwargs: dict):
             )
 
         _elapsed = time.time() - _call_start
+        if _elapsed >= _next_wait_status_at:
+            _emit_provider_status(
+                agent,
+                "provider_wait",
+                _provider_wait_message(_elapsed, api_kwargs.get("model")),
+            )
+            # If the event loop wakes late, advance in intervals instead of
+            # emitting a burst of catch-up heartbeats.
+            _next_wait_status_at = _elapsed + _wait_status_interval
 
         # TTFB detector: the Codex stream has produced no event at all and
         # we're past the first-byte cutoff → the backend opened the
@@ -388,6 +466,11 @@ def interruptible_api_call(agent, api_kwargs: dict):
                     f"(codex stream, model: {api_kwargs.get('model', 'unknown')}). "
                     f"Reconnecting."
                 )
+            _emit_provider_status(
+                agent,
+                "provider_retry",
+                f"模型连接 {_format_elapsed_seconds(_elapsed)} 未返回首字节，正在自动重连…",
+            )
             try:
                 _close_request_client_once("codex_ttfb_kill")
             except Exception:
@@ -434,6 +517,11 @@ def interruptible_api_call(agent, api_kwargs: dict):
                 f"after first byte (model: {api_kwargs.get('model', 'unknown')}). "
                 f"Reconnecting."
             )
+            _emit_provider_status(
+                agent,
+                "provider_retry",
+                f"模型流 {_format_elapsed_seconds(_event_stale_elapsed)} 没有新事件，正在自动重连…",
+            )
             try:
                 _close_request_client_once("codex_stream_idle_kill")
             except Exception:
@@ -478,6 +566,11 @@ def interruptible_api_call(agent, api_kwargs: dict):
                     f"(non-streaming, model: {api_kwargs.get('model', 'unknown')}). "
                     f"Aborting call."
                 )
+            _emit_provider_status(
+                agent,
+                "provider_retry",
+                f"模型服务 {_format_elapsed_seconds(_elapsed)} 无响应，正在中止本次请求并重试…",
+            )
             try:
                 if agent.api_mode == "anthropic_messages":
                     agent._anthropic_client.close()
@@ -506,6 +599,14 @@ def interruptible_api_call(agent, api_kwargs: dict):
             break
 
         if agent._interrupt_requested:
+            # Mark THIS request cancelled before force-closing so the worker's
+            # exception handler recognizes the forced transport error as a
+            # cancel and exits cleanly instead of surfacing a network error or
+            # (in the streaming path) burning full retry cycles. (#6600)
+            _request_cancelled["value"] = True
+            logger.debug(
+                "Force-closing httpx client due to interrupt (not a network error)."
+            )
             # Force-close the in-flight worker-local HTTP connection to stop
             # token generation without poisoning the shared client used to
             # seed future retries.
@@ -923,6 +1024,18 @@ def build_assistant_message(agent, assistant_message, finish_reason: str) -> dic
                 preserved.append(d.model_dump())
         if preserved:
             msg["reasoning_details"] = preserved
+
+    # Anthropic interleaved-thinking replay: when a turn interleaves signed
+    # thinking blocks with tool_use, the parallel reasoning_details +
+    # tool_calls fields lose the cross-type ordering, and reconstruction
+    # front-loads thinking — reordering signed blocks and triggering HTTP 400
+    # ("thinking ... blocks in the latest assistant message cannot be
+    # modified"). Carry the verbatim ordered block list so the adapter can
+    # replay the latest assistant message unchanged. See
+    # agent/transports/anthropic.py and agent/anthropic_adapter.py.
+    ordered_blocks = getattr(assistant_message, "anthropic_content_blocks", None)
+    if ordered_blocks:
+        msg["anthropic_content_blocks"] = ordered_blocks
 
     # Codex Responses API: preserve encrypted reasoning items for
     # multi-turn continuity. These get replayed as input on the next turn.
@@ -1575,6 +1688,8 @@ def interruptible_streaming_api_call(agent, api_kwargs: dict, *, on_first_delta=
                     _get_bedrock_runtime_client,
                     invalidate_runtime_client,
                     is_stale_connection_error,
+                    is_streaming_access_denied_error,
+                    normalize_converse_response,
                     stream_converse_with_callbacks,
                 )
                 region = api_kwargs.pop("__bedrock_region__", "us-east-1")
@@ -1583,6 +1698,29 @@ def interruptible_streaming_api_call(agent, api_kwargs: dict, *, on_first_delta=
                 try:
                     raw_response = client.converse_stream(**api_kwargs)
                 except Exception as _bedrock_exc:
+                    # IAM policies scoped to bedrock:InvokeModel only (no
+                    # InvokeModelWithResponseStream) reject converse_stream()
+                    # with AccessDeniedException. That denial is permanent for
+                    # the session — fall back to the non-streaming converse()
+                    # inline (it maps to bedrock:InvokeModel) and disable
+                    # streaming for subsequent calls so we don't re-fail every
+                    # turn.
+                    if is_streaming_access_denied_error(_bedrock_exc):
+                        agent._disable_streaming = True
+                        agent._safe_print(
+                            "\n⚠  AWS IAM denied bedrock:InvokeModelWithResponseStream — "
+                            "falling back to non-streaming InvokeModel.\n"
+                            "   Grant that action to restore streaming output.\n"
+                        )
+                        logger.info(
+                            "bedrock: converse_stream denied by IAM (%s) — "
+                            "using non-streaming converse() for this session.",
+                            type(_bedrock_exc).__name__,
+                        )
+                        result["response"] = normalize_converse_response(
+                            client.converse(**api_kwargs)
+                        )
+                        return
                     # Evict the cached client on stale-connection failures
                     # so the outer retry loop builds a fresh client/pool.
                     if is_stale_connection_error(_bedrock_exc):
@@ -1625,6 +1763,14 @@ def interruptible_streaming_api_call(agent, api_kwargs: dict, *, on_first_delta=
     result = {"response": None, "error": None, "partial_tool_names": []}
     request_client_holder = {"client": None, "diag": None, "owner_tid": None}
     request_client_lock = threading.Lock()
+    # Request-local cancellation flag — see interruptible_api_call for the full
+    # rationale. The streaming retry loop is where the 7-minute cascading-
+    # interrupt hang originated: a force-close raised RemoteProtocolError, the
+    # loop classified it as a transient network error, and burned full retry
+    # cycles (and emitted "reconnecting" noise) on a request the user already
+    # cancelled. The token lets the worker recognize its own forced close and
+    # exit immediately instead of retrying. (PR #6600.)
+    _request_cancelled = {"value": False}
 
     def _set_request_client(client):
         with request_client_lock:
@@ -1662,6 +1808,14 @@ def interruptible_streaming_api_call(agent, api_kwargs: dict, *, on_first_delta=
     # poll loop uses this to detect stale connections that keep receiving
     # SSE keep-alive pings but no actual data.
     last_chunk_time = {"t": time.time()}
+    # Stale-stream patience, shared between the httpx socket read timeout
+    # (built in ``_call_chat_completions`` below) and the stale-stream detector
+    # (computed further down, before the worker thread starts).  Initialized
+    # here so the read-timeout builder can floor itself at the stale value and
+    # never fire before the detector.  ``None`` until the detector value is
+    # resolved, so the builder degrades to its plain default if it ever runs
+    # first.
+    _stream_stale_timeout = None
 
     def _fire_first_delta():
         if not first_delta_fired["done"] and on_first_delta:
@@ -1698,6 +1852,26 @@ def interruptible_streaming_api_call(agent, api_kwargs: dict, *, on_first_delta=
                     "Local provider detected (%s) — stream read timeout raised to %.0fs",
                     agent.base_url, _stream_read_timeout,
                 )
+            elif (
+                _stream_read_timeout == 120.0
+                and _stream_stale_timeout is not None
+                and _stream_stale_timeout != float("inf")
+                and _stream_stale_timeout > _stream_read_timeout
+            ):
+                # Cloud reasoning models (e.g. Opus) routinely pause mid-stream
+                # for minutes during extended thinking.  The stale-stream
+                # detector is deliberately scaled up to tolerate this (180–300s,
+                # see the stale-timeout block below), but the raw httpx socket
+                # read timeout defaulted to a flat 120s and fired *first* —
+                # tearing down a healthy reasoning stream before the stale
+                # detector (which owns retry + diagnostics) could act.  Keep the
+                # socket read timeout in step with the detector so it no longer
+                # preempts it.
+                _stream_read_timeout = _stream_stale_timeout
+                logger.debug(
+                    "Cloud reasoning stream — read timeout raised to %.0fs to "
+                    "match stale-stream detector", _stream_read_timeout,
+                )
         # Cap connect/pool at 60s even when provider timeout is higher.
         # connect/pool cover TCP handshake, not model inference.
         _conn_cap = min(_base_timeout, 60.0) if _provider_timeout_cfg is not None else 30.0
@@ -1733,6 +1907,7 @@ def interruptible_streaming_api_call(agent, api_kwargs: dict, *, on_first_delta=
         # The OpenAI SDK Stream object exposes the underlying httpx
         # response via .response before any chunks are consumed.
         agent._capture_rate_limits(getattr(stream, "response", None))
+        agent._capture_credits(getattr(stream, "response", None))
         # Snapshot diagnostic headers (cf-ray, x-openrouter-provider, etc.)
         # so they survive even when the stream dies before any chunk
         # arrives.  Best-effort; never raises.
@@ -1935,6 +2110,72 @@ def interruptible_streaming_api_call(agent, api_kwargs: dict, *, on_first_delta=
                     ),
                 ))
 
+        # Zero-chunk guard: stream yielded nothing usable — a provider/upstream
+        # error or malformed SSE, not a legitimate empty completion. Raise so the
+        # retry machinery handles it instead of fabricating a successful turn.
+        if (
+            finish_reason is None
+            and not content_parts
+            and not reasoning_parts
+            and not tool_calls_acc
+        ):
+            raise RuntimeError(
+                "Provider returned an empty stream with no finish_reason "
+                "(possible upstream error or malformed SSE response)."
+            )
+
+        # A stream that delivered a tool call but only partial/unparseable
+        # JSON args splits into two very different cases:
+        #
+        #   1. Provider sent finish_reason="length" → a genuine output-cap
+        #      truncation.  Boosting max_tokens on retry is the right move.
+        #
+        #   2. Provider sent NO finish_reason (the SSE simply stopped after
+        #      the opening "{" with no terminator and no [DONE]) → the
+        #      upstream dropped/stalled the connection mid tool-call.  This
+        #      is NOT an output cap — the model never reported hitting one.
+        #      Some dedicated endpoints (e.g. NVIDIA Nemotron Ultra on the
+        #      Nous dedicated endpoint) stall for minutes during large
+        #      tool-arg generation, then close the stream cleanly without a
+        #      finish_reason.  Stamping "length" here sends it down the
+        #      max_tokens-boost truncation path, which retries 3× to no
+        #      effect and finally reports the misleading "Response truncated
+        #      due to output length limit" — the red herring this guards
+        #      against.  Route it through the partial-stream-stub path
+        #      instead so the loop reports an honest mid-tool-call stream
+        #      drop and fails fast rather than escalating output budget.
+        _tool_args_dropped_no_finish = has_truncated_tool_args and finish_reason is None
+        if _tool_args_dropped_no_finish:
+            _dropped_names = [
+                (tool_calls_acc[idx]["function"]["name"] or "?")
+                for idx in sorted(tool_calls_acc)
+            ]
+            logger.warning(
+                "Stream ended with no finish_reason while a tool call's "
+                "arguments were still incomplete (tools=%s); treating as a "
+                "mid-tool-call stream drop, not an output-length truncation.",
+                _dropped_names,
+            )
+            full_reasoning = "".join(reasoning_parts) or None
+            mock_message = SimpleNamespace(
+                role=role,
+                content=full_content,
+                tool_calls=None,
+                reasoning_content=full_reasoning,
+            )
+            mock_choice = SimpleNamespace(
+                index=0,
+                message=mock_message,
+                finish_reason=FINISH_REASON_LENGTH,
+            )
+            return SimpleNamespace(
+                id=PARTIAL_STREAM_STUB_ID,
+                model=model_name,
+                choices=[mock_choice],
+                usage=usage_obj,
+                _dropped_tool_names=_dropped_names or None,
+            )
+
         effective_finish_reason = finish_reason or "stop"
         if has_truncated_tool_args:
             effective_finish_reason = "length"
@@ -1973,6 +2214,14 @@ def interruptible_streaming_api_call(agent, api_kwargs: dict, *, on_first_delta=
         # Per-attempt diagnostic dict for the retry block to consume.
         _diag = agent._stream_diag_init()
         request_client_holder["diag"] = _diag
+        # Defensive: strip Responses-only kwargs (instructions, input, ...)
+        # that can leak in under an api_mode-flip race. The Anthropic SDK
+        # raises a non-retryable TypeError on them, killing the turn. See
+        # #31673 / sanitize_anthropic_kwargs().
+        from agent.anthropic_adapter import sanitize_anthropic_kwargs
+        sanitize_anthropic_kwargs(
+            api_kwargs, log_prefix=getattr(agent, "log_prefix", "")
+        )
         # Use the Anthropic SDK's streaming context manager
         with agent._anthropic_client.messages.stream(**api_kwargs) as stream:
             # The Anthropic SDK exposes the raw httpx response on
@@ -2043,7 +2292,7 @@ def interruptible_streaming_api_call(agent, api_kwargs: dict, *, on_first_delta=
     def _call():
         import httpx as _httpx
 
-        _max_stream_retries = int(os.getenv("HERMES_STREAM_RETRIES", 2))
+        _max_stream_retries = env_int("HERMES_STREAM_RETRIES", 2)
 
         try:
             for _stream_attempt in range(_max_stream_retries + 1):
@@ -2063,6 +2312,21 @@ def interruptible_streaming_api_call(agent, api_kwargs: dict, *, on_first_delta=
                         result["response"] = _call_chat_completions()
                     return  # success
                 except Exception as e:
+                    # If the main poll loop force-closed this request because
+                    # of an interrupt, the resulting transport error is the
+                    # expected consequence of our own close — NOT a transient
+                    # network error. Exit immediately: no retry, no fallback,
+                    # no "reconnecting" status. The outer poll loop raises
+                    # InterruptedError. This is the fix for the cascading-
+                    # interrupt hang where doomed retries burned full
+                    # stream-stale-timeout cycles. (#6600)
+                    if _request_cancelled["value"]:
+                        logger.debug(
+                            "Streaming worker caught %s after request "
+                            "cancellation — exiting without retry.",
+                            type(e).__name__,
+                        )
+                        return
                     _is_timeout = isinstance(
                         e, (_httpx.ReadTimeout, _httpx.ConnectTimeout, _httpx.PoolTimeout)
                     )
@@ -2258,9 +2522,34 @@ def interruptible_streaming_api_call(agent, api_kwargs: dict, *, on_first_delta=
                             "stream" in _err_lower
                             and "not supported" in _err_lower
                         )
-                        if _is_stream_unsupported:
+                        # AWS Bedrock (AnthropicBedrock SDK path): IAM policies
+                        # with bedrock:InvokeModel but not
+                        # InvokeModelWithResponseStream reject messages.stream()
+                        # with a permission error naming the streaming action.
+                        # Permanent for the session — flip to non-streaming
+                        # (messages.create() maps to bedrock:InvokeModel).
+                        _is_bedrock_stream_denied = False
+                        if (
+                            not _is_stream_unsupported
+                            and "invokemodelwithresponsestream" in _err_lower
+                        ):
+                            # Cheap message pre-check before importing the
+                            # adapter — bedrock_adapter triggers a lazy boto3
+                            # install at import time, which must not run for
+                            # unrelated providers' stream errors.
+                            from agent.bedrock_adapter import (
+                                is_streaming_access_denied_error,
+                            )
+                            _is_bedrock_stream_denied = (
+                                is_streaming_access_denied_error(e)
+                            )
+                        if _is_stream_unsupported or _is_bedrock_stream_denied:
                             agent._disable_streaming = True
                             agent._safe_print(
+                                "\n⚠  AWS IAM denied bedrock:InvokeModelWithResponseStream. "
+                                "Switching to non-streaming.\n"
+                                "   Grant that action to restore streaming output.\n"
+                                if _is_bedrock_stream_denied else
                                 "\n⚠  Streaming is not supported for this "
                                 "model/provider. Switching to non-streaming.\n"
                                 "   To avoid this delay, set display.streaming: false "
@@ -2450,6 +2739,15 @@ def interruptible_streaming_api_call(agent, api_kwargs: dict, *, on_first_delta=
                 break
 
         if agent._interrupt_requested:
+            # Mark THIS request cancelled before force-closing so the worker's
+            # exception handler recognizes the forced transport error as a
+            # cancel and exits without retrying or surfacing a network error.
+            # (#6600)
+            _request_cancelled["value"] = True
+            logger.debug(
+                "Force-closing streaming httpx client due to interrupt "
+                "(not a network error)."
+            )
             try:
                 if agent.api_mode == "anthropic_messages":
                     agent._anthropic_client.close()

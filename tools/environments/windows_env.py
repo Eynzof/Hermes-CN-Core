@@ -27,7 +27,7 @@ def ps_with_utf8(command: str) -> str:
     Usage::
 
         cmd = ps_with_utf8("Get-ChildItem")
-        subprocess.run(["powershell", "-NoProfile", "-Command", cmd], ...)
+        subprocess.run(["powershell", "-NoProfile", "-Command", cmd], stdin=subprocess.DEVNULL, ...)
 
     The helper is **idempotent** — if a preamble is already present it won't
     double-prepend.  This is safe to call even on strings that may have been

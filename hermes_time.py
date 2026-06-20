@@ -52,6 +52,13 @@ def _resolve_timezone_name() -> str:
         if config_path.exists():
             with open(config_path, encoding="utf-8") as f:
                 cfg = yaml.safe_load(f) or {}
+            # Managed scope: an administrator can pin ``timezone`` too. Overlay
+            # via the shared helper (fail-open) since this reads config.yaml directly.
+            try:
+                from hermes_cli import managed_scope
+                cfg = managed_scope.apply_managed_overlay(cfg)
+            except Exception:
+                pass
             tz_cfg = cfg.get("timezone", "")
             if isinstance(tz_cfg, str) and tz_cfg.strip():
                 return tz_cfg.strip()
@@ -89,11 +96,12 @@ def get_timezone() -> Optional[ZoneInfo]:
 
 
 def reset_cache() -> None:
-    """Clear the cached timezone so the next ``now()`` call re-resolves.
+    """Clear the cached timezone so the next call re-resolves it.
 
-    Call after config changes (e.g. user edits config.yaml at runtime) or
-    at the start of each cron tick so timezone changes take effect without
-    a gateway restart (F-7).
+    Call this after the configured timezone may have changed (e.g. after a
+    config edit, ``HERMES_TIMEZONE`` update, or cron tick) to force
+    ``get_timezone()`` / ``now()`` to read the new value instead of the value
+    cached at first use.
     """
     global _cached_tz, _cached_tz_name, _cache_resolved
     _cached_tz = None

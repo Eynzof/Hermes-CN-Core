@@ -13,7 +13,6 @@
 `Hermes-CN-Core` 是 [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) 的中文社区核心 runtime fork。这个仓库持续跟踪上游，同时维护一组小而明确的补丁，用于中文模型服务商元数据、Hermes 桌面端 runtime，以及 [hermes-agent-cn-desktop](https://github.com/Eynzof/hermes-agent-cn-desktop) 依赖的 Dashboard API。
 
 这个项目不是对 Hermes Agent 的重新实现，而是一个长期维护的下游 fork。我们保留上游归属、上游许可证和清晰的上游同步流程。Python 包仍然保持上游兼容的 `hermes` CLI 入口。
-
 <table>
 <tr><td><b>Hermes Agent 中文社区</b></td><td>通过 <a href="https://hermesagent.org.cn">hermesagent.org.cn</a> 提供中文官网、社区入口、桌面端下载与本地化说明。</td></tr>
 <tr><td><b>中文优先的核心 runtime</b></td><td>仓库首页文档现在以中文为主，英文版通过顶部语言切换访问。</td></tr>
@@ -85,7 +84,6 @@ iex (irm https://raw.githubusercontent.com/Eynzof/Hermes-CN-Core/main/scripts/in
 > **Android / Termux：** 已验证的手动安装路径见 [Termux guide](https://hermes-agent.nousresearch.com/docs/getting-started/termux)。在 Termux 上，Hermes 会安装裁剪后的 `.[termux]` extra，因为完整的 `.[all]` extra 目前会拉取 Android 不兼容的语音依赖。
 >
 > **Windows：** 原生 Windows 可以直接使用上面的 PowerShell 一行命令。如果你更偏好 WSL2，也可以在 WSL2 中使用 Linux 流程。原生 Windows 安装目录是 `%LOCALAPPDATA%\hermes`，WSL2 与 Linux 一样使用 `~/.hermes`。
-
 安装完成后启动：
 
 ```bash
@@ -160,8 +158,7 @@ pip install -e ".[all,dev]"
 如果你使用 `uv`，也可以这样安装：
 
 ```bash
-uv venv --python 3.11
-source .venv/bin/activate
+uv venv --python 3.11source .venv/bin/activate
 uv pip install -e ".[all,dev]"
 ```
 

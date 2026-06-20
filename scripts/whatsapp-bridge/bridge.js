@@ -24,7 +24,8 @@ import { Boom } from '@hapi/boom';
 import pino from 'pino';
 import path from 'path';
 import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync, unlinkSync } from 'fs';
-import { randomBytes } from 'crypto';
+import { fileURLToPath } from 'url';
+import { randomBytes, createHash } from 'crypto';
 import { execSync } from 'child_process';
 import { tmpdir } from 'os';
 import qrcode from 'qrcode-terminal';
@@ -46,9 +47,26 @@ const WHATSAPP_DEBUG =
 const PORT = parseInt(getArg('port', '3000'), 10);
 const HERMES_HOME = process.env.HERMES_HOME || path.join(process.env.HOME || '~', '.hermes');
 const SESSION_DIR = getArg('session', path.join(HERMES_HOME, 'whatsapp', 'session'));
-const IMAGE_CACHE_DIR = path.join(HERMES_HOME, 'cache', 'images');
-const DOCUMENT_CACHE_DIR = path.join(HERMES_HOME, 'cache', 'documents');
-const AUDIO_CACHE_DIR = path.join(HERMES_HOME, 'cache', 'audio');
+// Cache directories: the Python gateway passes the profile-aware paths via
+// env.  Fall back to the active HERMES_HOME cache layout for bridges launched
+// outside the gateway.
+const IMAGE_CACHE_DIR = process.env.HERMES_IMAGE_CACHE_DIR
+  || path.join(HERMES_HOME, 'cache', 'images');
+const DOCUMENT_CACHE_DIR = process.env.HERMES_DOCUMENT_CACHE_DIR
+  || path.join(HERMES_HOME, 'cache', 'documents');
+const AUDIO_CACHE_DIR = process.env.HERMES_AUDIO_CACHE_DIR
+  || path.join(HERMES_HOME, 'cache', 'audio');
+
+// Self-hash of this script file.  Reported in /health so the Python gateway
+// can detect a running bridge that predates the current bridge.js and
+// restart it instead of silently reusing stale code.
+let SCRIPT_HASH = '';
+try {
+  SCRIPT_HASH = createHash('sha256')
+    .update(readFileSync(fileURLToPath(import.meta.url)))
+    .digest('hex')
+    .slice(0, 16);
+} catch {}
 const PAIR_ONLY = args.includes('--pair-only');
 const WHATSAPP_MODE = getArg('mode', process.env.WHATSAPP_MODE || 'self-chat'); // "bot" or "self-chat"
 const ALLOWED_USERS = parseAllowedUsers(process.env.WHATSAPP_ALLOWED_USERS || '');
@@ -701,6 +719,7 @@ app.get('/health', (req, res) => {
     status: connectionState,
     queueLength: messageQueue.length,
     uptime: process.uptime(),
+    scriptHash: SCRIPT_HASH,
   });
 });
 

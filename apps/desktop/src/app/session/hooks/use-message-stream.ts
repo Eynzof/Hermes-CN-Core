@@ -289,9 +289,12 @@ export function useMessageStream({
       }
     },
     []
+  )
+
   const sessionInterrupted = useCallback(
     (sessionId: string) => sessionStateByRuntimeIdRef.current.get(sessionId)?.interrupted ?? false,
-    [sessionStateByRuntimeIdRef]  )
+    [sessionStateByRuntimeIdRef]
+  )
 
   // Patch the in-flight assistant message (or seed it). Centralises the
   // streamId/groupId bookkeeping every event callback would otherwise repeat.

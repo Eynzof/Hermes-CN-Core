@@ -868,7 +868,7 @@ export const en: Translations = {
     howToStopOthers: 'How to stop the other instance',
     takeoverStarted: 'Taking over the gateway',
     takeoverFailed: 'Could not take over the gateway',
-    fieldCopy: {},    fieldCopy: {
+    fieldCopy: {
       TELEGRAM_BOT_TOKEN: {
         label: 'Bot token',
         help: 'Create a bot with @BotFather, then paste the token it gives you.',

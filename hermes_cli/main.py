@@ -11059,6 +11059,34 @@ def cmd_dashboard(args):
             exc_info=True,
         )
 
+    # Desktop-spawned backends (HERMES_DESKTOP=1) must run the cron scheduler
+    # tick loop in-process because there is no separate gateway process.
+    # Starting HERE (cmd_dashboard) rather than relying solely on the FastAPI
+    # lifespan handler ensures the scheduler starts even if the lifespan fails
+    # silently. The lifespan handler still runs as a belt-and-suspenders
+    # fallback (the tick lock prevents double-firing).
+    if os.getenv("HERMES_DESKTOP") == "1":
+        try:
+            from hermes_cli.web_server import _start_desktop_cron_ticker
+            import threading as _threading
+
+            _cron_stop = _threading.Event()
+            _cron_thread = _threading.Thread(
+                target=_start_desktop_cron_ticker,
+                args=(_cron_stop,),
+                daemon=True,
+                name="desktop-cron-ticker-main",
+            )
+            _cron_thread.start()
+            logger.info(
+                "Desktop cron scheduler started in cmd_dashboard "
+                "(HERMES_DESKTOP=1)"
+            )
+        except Exception:
+            logger.exception(
+                "Failed to start desktop cron scheduler in cmd_dashboard"
+            )
+
     from hermes_cli.web_server import start_server
 
     # The in-browser Chat tab (the embedded TUI over PTY/WebSocket) is always

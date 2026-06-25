@@ -380,6 +380,7 @@ jobs:
           ls -la out
 
       - name: Sign manifest
+        if: env.RUNTIME_SIGN_PRIVATE_KEY_PEM
         shell: bash
         env:
           RUNTIME_SIGN_PRIVATE_KEY_PEM: ${{ secrets.RUNTIME_SIGN_PRIVATE_KEY_PEM }}

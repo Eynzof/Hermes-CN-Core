@@ -31,6 +31,7 @@
 | **P-021** | `gateway/run.py`、`cron/scheduler.py`、`cron/jobs.py`、`hermes_time.py` | 四项 cron "静默停摆" 根因修复：(1) `_start_cron_ticker` 初始化包在 try/except 中，防止 daemon 线程静默死亡；(2) 僵尸 `.tick.lock` 自动清理——锁文件 mtime 超过 `lock_stale_seconds`（默认 120s）则删除；(3) `_validate_cron_startup()` 启动前校验 `jobs.json` 可解析性；(4) `_ensure_aware` 按配置时区解释无时区时间戳；修复 `hermes_time.py` 缺失的 `def now()`；每次 tick 调用 `reset_cache()` 使时区配置热生效。 | `jobs.json` 损坏 → ticker 线程崩溃 → daemon 静默死亡。僵尸 `.tick.lock` → 所有后续 tick 永久阻塞。ticker 初始化 `ImportError` → 线程零日志死亡。服务器时区 ≠ 配置时区 → 调度时间静默偏移。 | 建议上游 |
 | **P-024** | `agent/agent_runtime_helpers.py`、`tests/run_agent/test_agent_guardrails.py`、`tests/run_agent/test_session_meta_filtering.py` | 在 `sanitize_api_messages` 中增加空内容过滤：丢弃 `content` 为 `""` 且无有效载荷的 `assistant`/`user`/`function` 消息；保留仍携带 `tool_calls`、`codex_reasoning_items`、`codex_message_items` 或 `reasoning_content` 的 `assistant` 消息。 | MiMo v2.5 及严格的 OpenAI 兼容网关会拒收空 `content` 消息（HTTP 400 / "text is not set"）。长会话（如飞书 3-13h）在上下文压缩/截断后可能留下这类消息。 | 建议上游 |
 | **P-023** | `tui_gateway/server.py` | 网关回合执行器现在会把"漏接"的 `/steer` 作为下一轮用户输入投递。`run_conversation()` 只能把 steer 注入到*后续*的工具结果里；落在最后一个工具批次之后（或纯文本回合）的 steer 会以 `result["pending_steer"]` 返回。`cli.py` 会重新投递它，但网关此前直接丢弃——导致桌面端（运行时输入行为默认 "引导/steer"）发出的 steer 静默丢失。仿照已有的 `goal_followup` 链路：在 `finally` 释放 `session["running"]` 后，用 steer 文本发起一次嵌套 `_run_prompt_submit`（受 `running` 保护，真实用户输入优先；优先级高于 goal 续跑）。 | 桌面端反馈（#193）："引导功能不好用……等到任务执行完，我引导的东西也没插入进去"——晚到的 steer 被 `agent.steer()` 接受却从未生效，因为网关忽略了 `pending_steer`。 | 建议上游（通用可靠性修复） |
+| **P-026** | `hermes_constants.py`、`hermes_bootstrap.py`、`tests/test_managed_runtime_caches.py` | 桌面以托管运行时方式启动时（`HERMES_DESKTOP_MANAGED=1`），`configure_managed_runtime_caches()` 用 `setdefault` 把第三方缓存/临时目录环境变量指向 `<HERMES_HOME>/cache` 的子目录：`HF_HOME`、`HUGGINGFACE_HUB_CACHE`、`TORCH_HOME`、`TIKTOKEN_CACHE_DIR`、`MPLCONFIGDIR`、`NLTK_DATA`、`PLAYWRIGHT_BROWSERS_PATH`，以及（仅当三者都未设置时）`TMPDIR/TEMP/TMP`。从 `hermes_bootstrap`（每个入口的第一个 import）调用，确保早于 transformers/tiktoken/playwright 加载。 | Windows 桌面占盘：即使桌面端已把自身运行时树锚定到所选安装盘，这些库仍默认把缓存写进 `~/.cache`（C 盘），导致用户选了 D 盘安装、C 盘照样被撑满。`setdefault` + `HERMES_DESKTOP_MANAGED` 门控让独立 CLI 安装与用户显式覆盖不受影响。 | CN 桌面收敛；环境变量钩子通用，可考虑上游 |
 
 ## 发布和维护支撑
 
@@ -42,6 +43,16 @@
 | managed runtime | `.github/workflows/release-runtime.yml`, `scripts/sign_runtime_manifest.py`, `docs/RUNTIME_RELEASES.md` | 构建 PyInstaller runtime，签名 manifest，并发布给 desktop 下载 |
 
 ## 补丁详情
+
+### P-026：桌面托管运行时收敛第三方缓存到 HERMES_HOME
+
+**现象**（Windows 桌面）：用户把 CN 桌面装到 D 盘以躲开快满的 C 盘，但 C 盘仍持续增长。桌面端自身的运行时树已经收敛，但内核引入的 Python 库仍把缓存散落在 C 盘的用户主目录里。
+
+**根因**：huggingface/transformers、torch、tiktoken、matplotlib、nltk、playwright 在未设置各自环境变量时，默认把缓存写到用户主目录（`~/.cache/...`、`%USERPROFILE%\...`），而托管运行时从未设置它们——于是无论装到哪个盘，这些缓存都逃逸出收敛根。当前运行时里真实可达的命中是 tiktoken（`hermes_cli/tools_config.py`）和 transformers tokenizer（`trajectory_compressor.py`）；playwright 已在 `browser_tool.py` 里自收敛，但只作用于其子进程环境，并非进程级。
+
+**修复**：`hermes_constants.configure_managed_runtime_caches()` 用 `setdefault` 把 `HF_HOME`、`HUGGINGFACE_HUB_CACHE`、`TORCH_HOME`、`TIKTOKEN_CACHE_DIR`、`MPLCONFIGDIR`、`NLTK_DATA`、`PLAYWRIGHT_BROWSERS_PATH` 指向 `<HERMES_HOME>/cache/<tool>`；仅当 `TMPDIR/TEMP/TMP` 都未设置时，再把它们指向 `<HERMES_HOME>/cache/tmp`。由于桌面端把 `HERMES_HOME` 设在其收敛的 `runtime_root()` 下（全新 Windows 安装时锚定到安装目录——见 Hermes-CN-Desktop），这些缓存随之落到所选盘。函数以 `HERMES_DESKTOP_MANAGED=1` 门控并使用 `setdefault`，因此独立 CLI 安装保留其共享 `~/.cache`（不触发重新下载），用户显式设置的值始终优先。挂在 `hermes_bootstrap`（每个入口最先 import）里，确保早于 transformers/tiktoken/playwright 加载。
+
+**测试**：`tests/test_managed_runtime_caches.py`——未设 `HERMES_DESKTOP_MANAGED` 时无操作；托管时把缓存变量设到 HERMES_HOME 下；`setdefault` 不覆盖已有值；已配置临时目录时不动它。
 
 ### P-001：provider dict/list 不一致修复
 

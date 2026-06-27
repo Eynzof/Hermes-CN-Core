@@ -154,3 +154,24 @@ def apply_windows_utf8_bootstrap() -> bool:
 # the very top of their module, before importing anything else.  The
 # import side effect does the right thing.
 apply_windows_utf8_bootstrap()
+
+
+def _configure_managed_runtime_caches() -> None:
+    """Converge third-party framework/tool caches under the desktop-managed
+    runtime's HERMES_HOME so they don't bloat C: on Windows.
+
+    No-op unless ``HERMES_DESKTOP_MANAGED=1``.  Done here, at the first import of
+    every entry point, so it runs before anything imports transformers / tiktoken
+    / playwright.  The import is lazy and the whole thing is guarded so this
+    module stays minimal and dependency-free for the UTF-8 fast path, and a
+    failure here can never block startup.
+    """
+    try:
+        from hermes_constants import configure_managed_runtime_caches
+
+        configure_managed_runtime_caches()
+    except Exception:
+        pass
+
+
+_configure_managed_runtime_caches()

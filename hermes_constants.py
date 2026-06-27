@@ -149,6 +149,62 @@ def get_default_hermes_root() -> Path:
     return env_path
 
 
+# Third-party framework / tooling caches that otherwise default into the user's
+# home dir (e.g. ~/.cache/huggingface, %USERPROFILE%\.cache\torch) and so escape
+# the converged runtime tree. Each maps to a subdir under <HERMES_HOME>/cache so
+# that, in the desktop-managed runtime, they follow HERMES_HOME onto whatever
+# drive the app was installed to instead of bloating C:. The matching anchor on
+# the desktop side is Hermes-CN-Desktop's runtime_root().
+_MANAGED_CACHE_ENV_DIRS: dict[str, str] = {
+    "HF_HOME": "huggingface",
+    "HUGGINGFACE_HUB_CACHE": "huggingface/hub",
+    "TORCH_HOME": "torch",
+    "TIKTOKEN_CACHE_DIR": "tiktoken",
+    "MPLCONFIGDIR": "matplotlib",
+    "NLTK_DATA": "nltk",
+    "PLAYWRIGHT_BROWSERS_PATH": "ms-playwright",
+}
+
+# Temp-dir vars share one "tmp" subdir. We only redirect them when the process
+# has no temp dir configured at all, so we never override an explicit TMPDIR.
+_MANAGED_TMP_ENV_VARS: tuple[str, ...] = ("TMPDIR", "TEMP", "TMP")
+
+
+def configure_managed_runtime_caches() -> None:
+    """Point third-party caches/temp at ``<HERMES_HOME>/cache`` when desktop-managed.
+
+    The Hermes-CN desktop sets ``HERMES_DESKTOP_MANAGED=1`` and a ``HERMES_HOME``
+    under its converged runtime root.  Without this, libraries such as
+    huggingface/transformers, torch, tiktoken, matplotlib, nltk and playwright
+    write their caches into the user's home directory (C: on Windows), defeating
+    the goal of keeping all app data under the chosen install drive.
+
+    Uses ``setdefault`` so an explicitly-configured value always wins, and is
+    gated on ``HERMES_DESKTOP_MANAGED`` so standalone CLI installs keep their
+    existing shared caches (no surprise re-downloads).  Best-effort and
+    idempotent: it never raises, so a bad path can't block startup.
+    """
+    if os.environ.get("HERMES_DESKTOP_MANAGED") != "1":
+        return
+    try:
+        cache_root = get_hermes_home() / "cache"
+        for var, subdir in _MANAGED_CACHE_ENV_DIRS.items():
+            os.environ.setdefault(var, str(cache_root.joinpath(*subdir.split("/"))))
+        # Only take over temp if nothing is configured, then keep the three vars
+        # consistent (a half-set TMPDIR/TEMP/TMP confuses cross-tool temp usage).
+        if not any(os.environ.get(var) for var in _MANAGED_TMP_ENV_VARS):
+            tmp_dir = cache_root / "tmp"
+            try:
+                tmp_dir.mkdir(parents=True, exist_ok=True)
+            except OSError:
+                pass
+            for var in _MANAGED_TMP_ENV_VARS:
+                os.environ[var] = str(tmp_dir)
+    except Exception:
+        # Cache redirection is best-effort; never block startup over it.
+        pass
+
+
 def _get_packaged_data_dir(name: str) -> Path | None:
     """Return an installed data-files directory if one exists.
 

@@ -11505,6 +11505,34 @@ def cmd_dashboard(args):
             exc_info=True,
         )
 
+    # Desktop-spawned backends (HERMES_DESKTOP=1) must run the cron scheduler
+    # tick loop in-process because there is no separate gateway process.
+    # Starting it HERE (cmd_dashboard, the synchronous main flow) — rather than
+    # relying solely on the FastAPI lifespan handler in web_server.py — ensures
+    # the scheduler still starts even if the lifespan ever fails silently
+    # (observed downstream: a crashed lifespan left cron dead for 14h with no
+    # log). The lifespan handler still starts its own ticker as a
+    # belt-and-suspenders fallback; the cron `.tick.lock` flock makes the two
+    # mutually exclusive, so a job is never double-fired.
+    if os.getenv("HERMES_DESKTOP") == "1":
+        try:
+            from hermes_cli.web_server import _start_desktop_cron_ticker
+
+            _cron_stop = threading.Event()
+            threading.Thread(
+                target=_start_desktop_cron_ticker,
+                args=(_cron_stop,),
+                daemon=True,
+                name="desktop-cron-ticker-main",
+            ).start()
+            logger.info(
+                "Desktop cron scheduler started in cmd_dashboard (HERMES_DESKTOP=1)"
+            )
+        except Exception:
+            logger.exception(
+                "Failed to start desktop cron scheduler in cmd_dashboard"
+            )
+
     from hermes_cli.web_server import start_server
 
     # Interactive auth setup: if this bind will engage the auth gate but no

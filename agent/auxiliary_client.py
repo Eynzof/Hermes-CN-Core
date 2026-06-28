@@ -88,11 +88,21 @@ class _OpenAIProxy:
     __slots__ = ()
 
     def __call__(self, *args, **kwargs):
+        # Copy once up front so we never mutate the caller's dict, then layer
+        # in auxiliary-wide defaults.
+        kwargs = dict(kwargs)
+        # Disable the OpenAI SDK's implicit retry/backoff (its default is
+        # max_retries=2). The auxiliary layer already has its own bounded
+        # retry-once-on-transient (call_llm) + multi-provider fallback +
+        # unhealthy-provider circuit breaker, so SDK-level retries are
+        # redundant and, worse, can block the calling thread for up to
+        # ``2 × timeout`` on 429s / connection stalls. setdefault preserves
+        # any explicit max_retries a caller passes.
+        kwargs.setdefault("max_retries", 0)
         if "http_client" not in kwargs:
             try:
                 from agent.httpx_clients import build_openai_http_client
 
-                kwargs = dict(kwargs)
                 kwargs["http_client"] = build_openai_http_client()
             except Exception:
                 pass
@@ -3762,6 +3772,11 @@ def _to_async_client(sync_client, model: str, is_vision: bool = False):
     async_kwargs = {
         "api_key": sync_client.api_key,
         "base_url": str(sync_client.base_url),
+        # Mirror the sync client's retry policy. Sync aux clients are built
+        # through _OpenAIProxy, which defaults max_retries to 0 (no implicit
+        # SDK backoff); inherit that here so the async path can't silently
+        # reintroduce blocking 429 / connection-stall retries.
+        "max_retries": getattr(sync_client, "max_retries", 0),
     }
     sync_base_url = str(sync_client.base_url)
     if base_url_host_matches(sync_base_url, "openrouter.ai"):

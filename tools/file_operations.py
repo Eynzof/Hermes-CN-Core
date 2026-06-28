@@ -168,6 +168,43 @@ def _has_bom(text: Optional[str]) -> bool:
     return bool(text) and text.startswith(_UTF8_BOM)
 
 
+# [CN-fork] P-037: legacy fallback codecs for in-process whole-file reads.
+#
+# The P-033 in-process read primitives replaced PowerShell ``Get-Content``,
+# which decodes via the system code page.  Hard-coding ``utf-8`` turned every
+# non-ASCII byte of a GBK/cp936 file — the common case on Chinese Windows, this
+# fork's audience — into U+FFFD, and a read→patch→write round-trip then
+# *persisted* that corruption (write_file re-encodes as UTF-8): silent data
+# loss.  On Windows ``"mbcs"`` maps to the active ANSI code page (``GetACP()``,
+# e.g. cp936/GBK on zh-CN) regardless of PYTHONUTF8.  Exposed at module level so
+# tests can substitute a concrete codec (the ``"mbcs"`` alias exists only on
+# Windows).
+_INPROC_FALLBACK_ENCODINGS: tuple[str, ...] = ("mbcs",) if _IS_WINDOWS else ()
+
+
+def _decode_file_bytes(
+    data: bytes, fallbacks: Optional[tuple[str, ...]] = None
+) -> str:
+    """Decode raw file bytes to text, tolerating non-UTF-8 legacy encodings.
+
+    Try UTF-8 strictly first (the modern default; strict decoding doubles as a
+    cheap "is this UTF-8?" probe).  On failure, try each legacy fallback codec
+    (the Windows ANSI code page by default), and only as a last resort fall back
+    to lossy ``utf-8`` replacement so a genuinely binary blob still returns
+    *something* rather than raising.
+    """
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        pass
+    for enc in (_INPROC_FALLBACK_ENCODINGS if fallbacks is None else fallbacks):
+        try:
+            return data.decode(enc)
+        except (UnicodeDecodeError, LookupError):
+            continue
+    return data.decode("utf-8", errors="replace")
+
+
 def _is_write_denied(path: str) -> bool:
     """Return True if path is on the write deny list."""
     return _shared_is_write_denied(path)
@@ -1120,7 +1157,7 @@ class ShellFileOperations(FileOperations):
             abs_path = self._abs_local(path)
             try:
                 with open(abs_path, "rb") as fh:
-                    return ExecuteResult(stdout=fh.read().decode("utf-8", errors="replace"), exit_code=0)
+                    return ExecuteResult(stdout=_decode_file_bytes(fh.read()), exit_code=0)
             except OSError as exc:
                 return ExecuteResult(stdout="" if suppress_stderr else str(exc), exit_code=1)
         redir = " 2>/dev/null" if suppress_stderr else ""
@@ -1132,7 +1169,7 @@ class ShellFileOperations(FileOperations):
             abs_path = self._abs_local(path)
             try:
                 with open(abs_path, "rb") as fh:
-                    text = fh.read().decode("utf-8", errors="replace")
+                    text = _decode_file_bytes(fh.read())
             except OSError as exc:
                 return ExecuteResult(stdout=str(exc), exit_code=1)
             lines = text.split("\n")
@@ -1768,10 +1805,12 @@ class ShellFileOperations(FileOperations):
         if _is_write_denied(path):
             return PatchResult(error=f"Write denied: '{path}' is a protected system/credential file.")
 
-        # Read current content
-        read_cmd = f"cat {self._escape_shell_arg(path)} 2>/dev/null"
-        read_result = self._exec(read_cmd)
-        
+        # Read current content. Route through the in-process primitive so the
+        # read works on a local Windows backend (PowerShell 5.1 has no POSIX
+        # ``cat`` and ``2>/dev/null`` redirects to a literal ``\dev\null`` file);
+        # every other backend runs the identical ``cat … 2>/dev/null`` shell read.
+        read_result = self._prim_read_all(path)
+
         if read_result.exit_code != 0:
             return PatchResult(error=f"Failed to read file: {path}")
         
@@ -1821,8 +1860,7 @@ class ShellFileOperations(FileOperations):
         # failures (backend FS oddities, race with another task, truncated
         # pipe, etc.) that would otherwise return success-with-diff while the
         # file is unchanged on disk.
-        verify_cmd = f"cat {self._escape_shell_arg(path)} 2>/dev/null"
-        verify_result = self._exec(verify_cmd)
+        verify_result = self._prim_read_all(path)
         if verify_result.exit_code != 0:
             return PatchResult(error=f"Post-write verification failed: could not re-read {path}")
         # Normalize line endings before comparing.  On Windows, Python's
@@ -1927,8 +1965,7 @@ class ShellFileOperations(FileOperations):
         if inproc is not None:
             # Need content — either passed in or read from disk.
             if content is None:
-                read_cmd = f"cat {self._escape_shell_arg(path)} 2>/dev/null"
-                read_result = self._exec(read_cmd)
+                read_result = self._prim_read_all(path)
                 if read_result.exit_code != 0:
                     return LintResult(skipped=True, message=f"Failed to read {path} for lint")
                 content = read_result.stdout

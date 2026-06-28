@@ -187,16 +187,24 @@ jobs:
               from cryptography.hazmat.primitives.ciphers import Cipher  # weixin/wecom AES
           except Exception as e:
               missing.append(f"cryptography: {e}")
-          import gateway.platforms.feishu as fs
-          import gateway.platforms.dingtalk as dt
-          import gateway.platforms.wecom_callback as wc
+          # The 飞书/钉钉/企微 adapters moved from gateway/platforms/*.py to
+          # bundled plugins (plugins/platforms/<name>/) in the upstream sync —
+          # see FORK_NOTES P-035. weixin (微信个人号, CN-only) was NOT migrated
+          # and still lives in gateway/platforms/weixin.py. Import each adapter
+          # from its current location and assert its SDK-availability flag, so a
+          # missing IM SDK still fails the build BEFORE PyInstaller.
+          import plugins.platforms.feishu.adapter as fs
+          import plugins.platforms.dingtalk.adapter as dt
+          import plugins.platforms.wecom.adapter as wcm
+          import plugins.platforms.wecom.callback_adapter as wc
           import gateway.platforms.weixin as wx
           flags = {
               "feishu.FEISHU_AVAILABLE": fs.FEISHU_AVAILABLE,
               "dingtalk.DINGTALK_STREAM_AVAILABLE": dt.DINGTALK_STREAM_AVAILABLE,
               "dingtalk.CARD_SDK_AVAILABLE": dt.CARD_SDK_AVAILABLE,
-              "wecom.DEFUSEDXML_AVAILABLE": wc.DEFUSEDXML_AVAILABLE,
-              "wecom.AIOHTTP_AVAILABLE": wc.AIOHTTP_AVAILABLE,
+              "wecom.AIOHTTP_AVAILABLE": wcm.AIOHTTP_AVAILABLE,
+              "wecom_callback.DEFUSEDXML_AVAILABLE": wc.DEFUSEDXML_AVAILABLE,
+              "wecom_callback.AIOHTTP_AVAILABLE": wc.AIOHTTP_AVAILABLE,
               "weixin.AIOHTTP_AVAILABLE": wx.AIOHTTP_AVAILABLE,
               "weixin.CRYPTO_AVAILABLE": wx.CRYPTO_AVAILABLE,
           }

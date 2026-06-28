@@ -101,6 +101,58 @@ def test_runtime_workflow_freezes_im_platform_backends():
         assert pkg in verified, f"verify step doesn't assert {pkg} dist-info"
 
 
+def test_release_workflow_imports_migrated_platform_adapters_from_plugins():
+    """飞书/钉钉/企微 adapters migrated from gateway/platforms/*.py to bundled
+    plugins (plugins/platforms/<name>/) in the upstream sync — see P-035. The
+    build-env gate must import them from the new location; the old
+    gateway.platforms.<name> modules are gone. weixin (微信个人号, CN-only) stayed
+    in gateway.platforms. Guards the exact drift that broke runtime-v0.17.0-cn.3
+    (``ModuleNotFoundError: No module named 'gateway.platforms.feishu'``).
+    """
+    root = _repo_root()
+
+    # Filesystem reality: migrated out of gateway.platforms, into plugins.
+    for name in ("feishu", "dingtalk"):
+        assert (root / "plugins" / "platforms" / name / "adapter.py").exists()
+        assert not (root / "gateway" / "platforms" / f"{name}.py").exists()
+    assert (root / "plugins" / "platforms" / "wecom" / "adapter.py").exists()
+    assert (root / "plugins" / "platforms" / "wecom" / "callback_adapter.py").exists()
+    assert not (root / "gateway" / "platforms" / "wecom_callback.py").exists()
+    # weixin is CN-fork-only and was NOT migrated.
+    assert (root / "gateway" / "platforms" / "weixin.py").exists()
+
+    # The build-env gate must target the live locations, not the removed modules.
+    workflow = _workflow_text()
+    for dead in (
+        "gateway.platforms.feishu",
+        "gateway.platforms.dingtalk",
+        "gateway.platforms.wecom_callback",
+    ):
+        assert dead not in workflow, f"release-runtime.yml still imports removed module {dead}"
+    for live in (
+        "plugins.platforms.feishu.adapter",
+        "plugins.platforms.dingtalk.adapter",
+        "plugins.platforms.wecom.adapter",
+    ):
+        assert live in workflow, f"release-runtime.yml does not import {live}"
+
+    # The adapters import without the optional SDKs (deps wrapped in try/except)
+    # and expose the SDK-availability flags the gate reads. Asserting the flag
+    # attributes exist — not their truthiness — keeps this honest in any test env.
+    import importlib
+
+    fs = importlib.import_module("plugins.platforms.feishu.adapter")
+    dt = importlib.import_module("plugins.platforms.dingtalk.adapter")
+    wcm = importlib.import_module("plugins.platforms.wecom.adapter")
+    wc = importlib.import_module("plugins.platforms.wecom.callback_adapter")
+    wx = importlib.import_module("gateway.platforms.weixin")
+    assert hasattr(fs, "FEISHU_AVAILABLE")
+    assert hasattr(dt, "DINGTALK_STREAM_AVAILABLE") and hasattr(dt, "CARD_SDK_AVAILABLE")
+    assert hasattr(wcm, "AIOHTTP_AVAILABLE")
+    assert hasattr(wc, "DEFUSEDXML_AVAILABLE") and hasattr(wc, "AIOHTTP_AVAILABLE")
+    assert hasattr(wx, "AIOHTTP_AVAILABLE") and hasattr(wx, "CRYPTO_AVAILABLE")
+
+
 def test_runtime_workflow_verifies_backends_in_build_env_and_frozen_output():
     """The workflow fails fast if a backend's SDK is missing.
 
@@ -110,6 +162,8 @@ def test_runtime_workflow_verifies_backends_in_build_env_and_frozen_output():
     workflow = _workflow_text()
     assert "Verify platform backends importable (build env)" in workflow
     assert "FEISHU_AVAILABLE" in workflow
+    # The gate must not import IM adapters from their pre-migration location.
+    assert "gateway.platforms.feishu" not in workflow
     assert "Verify frozen runtime backends" in workflow
     assert ".dist-info" in workflow
 

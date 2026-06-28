@@ -28,7 +28,9 @@ Usage:
 import os
 import re
 import shutil
+import stat as _stat
 import subprocess
+import tempfile
 import difflib
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -41,6 +43,26 @@ from agent.file_safety import (
     build_write_denied_prefixes,
     is_write_denied as _shared_is_write_denied,
 )
+
+# [CN-fork] P-030: On Windows the fork forces Windows PowerShell 5.1 as the
+# ONLY shell (git-bash was removed by P-016/P-019), and PowerShell has none of
+# the POSIX tools (``wc``/``sed``/``head``/``mktemp``/``cat``) that
+# ShellFileOperations shells out to.  That made read_file unusable (#53) and
+# made write_file silently report success while writing nothing (#54).  The
+# disk primitives below therefore do their I/O *in-process* (the Hermes process
+# is itself Python, always present, no interpreter-on-PATH dependency) on a
+# LOCAL Windows backend, and run the IDENTICAL shell command everywhere else so
+# the proven POSIX path (Linux/macOS local, and all remote docker/ssh/modal
+# backends) is byte-for-byte unchanged.  Module-level so tests can monkeypatch.
+_IS_WINDOWS = os.name == "nt"
+
+
+def _parse_optional_int(value: Optional[str]) -> Optional[int]:
+    """Parse an int from command/stat output, or ``None`` if non-numeric."""
+    try:
+        return int((value or "").strip())
+    except (ValueError, AttributeError):
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -1020,6 +1042,159 @@ class ShellFileOperations(FileOperations):
         # Use single quotes and escape any single quotes in the string
         return "'" + arg.replace("'", "'\"'\"'") + "'"
 
+    # =====================================================================
+    # [CN-fork] P-030: cross-platform disk primitives
+    #
+    # Each primitive does in-process Python I/O on a LOCAL Windows backend
+    # (where the POSIX shell tools don't exist under PowerShell 5.1) and runs
+    # the IDENTICAL shell command everywhere else.  read_file / read_file_raw /
+    # write_file call these instead of inlining ``self._exec(f"wc -c ...")`` so
+    # the high-level logic (BOM/line-ending/lint/LSP/pagination) is untouched.
+    # =====================================================================
+
+    def _use_inproc_io(self) -> bool:
+        """True iff disk I/O must bypass the shell (local Windows backend).
+
+        References the module-level ``_IS_WINDOWS`` at call time so tests can
+        monkeypatch it to exercise the in-process path on non-Windows CI.
+        """
+        return _IS_WINDOWS and self._is_local_env()
+
+    def _abs_local(self, path: str) -> str:
+        """Resolve ``path`` against the live tracked cwd for in-process I/O.
+
+        Mirrors :meth:`_exec`'s cwd resolution (live ``env.cwd`` → init-time
+        ``self.cwd``) so a relative path follows ``cd`` exactly like the shell
+        path does.  ``path`` has already been ``~``-expanded by the caller.
+        """
+        if os.path.isabs(path):
+            return path
+        base = getattr(self.env, "cwd", None) or getattr(self, "cwd", None) or "."
+        return os.path.join(base, path)
+
+    def _prim_stat_size(self, path: str) -> "ExecuteResult":
+        """Byte size of ``path`` (POSIX: ``wc -c``). Non-zero exit if missing."""
+        if self._use_inproc_io():
+            try:
+                return ExecuteResult(stdout=str(os.path.getsize(self._abs_local(path))), exit_code=0)
+            except OSError:
+                return ExecuteResult(stdout="", exit_code=1)
+        return self._exec(f"wc -c < {self._escape_shell_arg(path)} 2>/dev/null")
+
+    def _prim_read_sample(self, path: str, n: int) -> "ExecuteResult":
+        """First ``n`` bytes of ``path`` (POSIX: ``head -c n``), decoded text."""
+        if self._use_inproc_io():
+            abs_path = self._abs_local(path)
+            try:
+                with open(abs_path, "rb") as fh:
+                    data = fh.read(n)
+                return ExecuteResult(stdout=data.decode("utf-8", errors="replace"), exit_code=0)
+            except OSError:
+                return ExecuteResult(stdout="", exit_code=1)
+        return self._exec(f"head -c {int(n)} {self._escape_shell_arg(path)} 2>/dev/null")
+
+    def _prim_read_all(self, path: str, suppress_stderr: bool = True) -> "ExecuteResult":
+        """Full file text (POSIX: ``cat``)."""
+        if self._use_inproc_io():
+            abs_path = self._abs_local(path)
+            try:
+                with open(abs_path, "rb") as fh:
+                    return ExecuteResult(stdout=fh.read().decode("utf-8", errors="replace"), exit_code=0)
+            except OSError as exc:
+                return ExecuteResult(stdout="" if suppress_stderr else str(exc), exit_code=1)
+        redir = " 2>/dev/null" if suppress_stderr else ""
+        return self._exec(f"cat {self._escape_shell_arg(path)}{redir}")
+
+    def _prim_read_page(self, path: str, offset: int, end: int) -> "ExecuteResult":
+        """Lines ``offset..end`` 1-indexed inclusive (POSIX: ``sed -n``)."""
+        if self._use_inproc_io():
+            abs_path = self._abs_local(path)
+            try:
+                with open(abs_path, "rb") as fh:
+                    text = fh.read().decode("utf-8", errors="replace")
+            except OSError as exc:
+                return ExecuteResult(stdout=str(exc), exit_code=1)
+            lines = text.split("\n")
+            # A trailing newline yields a final empty element that ``sed`` does
+            # not treat as a line — drop it so pagination matches POSIX.
+            if lines and lines[-1] == "" and text.endswith("\n"):
+                lines = lines[:-1]
+            return ExecuteResult(stdout="\n".join(lines[offset - 1:end]), exit_code=0)
+        return self._exec(f"sed -n '{offset},{end}p' {self._escape_shell_arg(path)}")
+
+    def _prim_count_lines(self, path: str) -> "ExecuteResult":
+        """Newline count (POSIX: ``wc -l``) — matches the truncation logic."""
+        if self._use_inproc_io():
+            abs_path = self._abs_local(path)
+            try:
+                count = 0
+                with open(abs_path, "rb") as fh:
+                    for chunk in iter(lambda: fh.read(1 << 20), b""):
+                        count += chunk.count(b"\n")
+                return ExecuteResult(stdout=str(count), exit_code=0)
+            except OSError:
+                return ExecuteResult(stdout="0", exit_code=1)
+        return self._exec(f"wc -l < {self._escape_shell_arg(path)}")
+
+    def _prim_list_dir(self, dir_path: str) -> "ExecuteResult":
+        """Up to 50 entry names of ``dir_path`` (POSIX: ``ls -1 | head -50``)."""
+        if self._use_inproc_io():
+            try:
+                names = sorted(os.listdir(self._abs_local(dir_path)))[:50]
+                return ExecuteResult(stdout="\n".join(names), exit_code=0)
+            except OSError:
+                return ExecuteResult(stdout="", exit_code=1)
+        return self._exec(f"ls -1 {self._escape_shell_arg(dir_path)} 2>/dev/null | head -50")
+
+    def _prim_mkdirs(self, parent: str) -> "ExecuteResult":
+        """Create ``parent`` and ancestors (POSIX: ``mkdir -p``)."""
+        if self._use_inproc_io():
+            try:
+                os.makedirs(self._abs_local(parent), exist_ok=True)
+                return ExecuteResult(stdout="", exit_code=0)
+            except OSError as exc:
+                return ExecuteResult(stdout=str(exc), exit_code=1)
+        return self._exec(f"mkdir -p {self._escape_shell_arg(parent)}")
+
+    def _local_atomic_write(self, path: str, content: str) -> "ExecuteResult":
+        """In-process atomic write for the local Windows backend.
+
+        Streams to a temp file in the target's own directory, preserves the
+        existing file's mode, then ``os.replace()`` (atomic same-dir rename) —
+        the cross-platform equivalent of the POSIX ``mktemp``/``mv -f`` script.
+        On success ``stdout`` carries the verified on-disk byte count (read back
+        via ``getsize`` after the replace), so write_file never has to fabricate
+        a size (the root cause of the silent-success bug #54).
+        """
+        abs_path = self._abs_local(path)
+        parent = os.path.dirname(abs_path) or "."
+        try:
+            os.makedirs(parent, exist_ok=True)
+            mode: Optional[int] = None
+            try:
+                mode = _stat.S_IMODE(os.stat(abs_path).st_mode)
+            except OSError:
+                mode = None
+            fd, tmp = tempfile.mkstemp(prefix=".hermes-tmp.", dir=parent)
+            try:
+                with os.fdopen(fd, "wb") as fh:
+                    fh.write(content.encode("utf-8"))
+                if mode is not None:
+                    try:
+                        os.chmod(tmp, mode)
+                    except OSError:
+                        pass
+                os.replace(tmp, abs_path)
+            except BaseException:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+                raise
+            return ExecuteResult(stdout=str(os.path.getsize(abs_path)), exit_code=0)
+        except OSError as exc:
+            return ExecuteResult(stdout=f"atomic write failed: {exc}", exit_code=1)
+
     def _atomic_write(self, path: str, content: str) -> "ExecuteResult":
         """Write ``content`` to ``path`` atomically via temp-file + rename.
 
@@ -1035,6 +1210,11 @@ class ShellFileOperations(FileOperations):
         was swapped into place atomically. A non-zero exit means nothing was
         renamed and the original (if any) is intact.
         """
+        # [CN-fork] P-030: local Windows backend can't run the POSIX script
+        # (mktemp/cat/mv) under PowerShell 5.1 — do the atomic write in-process.
+        if self._use_inproc_io():
+            return self._local_atomic_write(path, content)
+
         q_path = self._escape_shell_arg(path)
         parent = os.path.dirname(path) or "."
         q_parent = self._escape_shell_arg(parent)
@@ -1089,8 +1269,7 @@ class ShellFileOperations(FileOperations):
             return _detect_line_ending(pre_content)
         # File may not exist (new write) — `head` exits 0 with empty
         # stdout in that case which yields None below.  Cheap probe.
-        head_cmd = f"head -c 4096 {self._escape_shell_arg(path)} 2>/dev/null"
-        head_result = self._exec(head_cmd)
+        head_result = self._prim_read_sample(path, 4096)
         if head_result.exit_code != 0 or not head_result.stdout:
             return None
         return _detect_line_ending(head_result.stdout)
@@ -1105,8 +1284,7 @@ class ShellFileOperations(FileOperations):
         """
         if pre_content is not None:
             return _has_bom(pre_content)
-        head_cmd = f"head -c 3 {self._escape_shell_arg(path)} 2>/dev/null"
-        head_result = self._exec(head_cmd)
+        head_result = self._prim_read_sample(path, 3)
         if head_result.exit_code != 0 or not head_result.stdout:
             return False
         return _has_bom(head_result.stdout)
@@ -1144,10 +1322,10 @@ class ShellFileOperations(FileOperations):
         
         offset, limit = normalize_read_pagination(offset, limit)
         
-        # Check if file exists and get size (wc -c is POSIX, works on Linux + macOS)
-        stat_cmd = f"wc -c < {self._escape_shell_arg(path)} 2>/dev/null"
-        stat_result = self._exec(stat_cmd)
-        
+        # Check if file exists and get size (POSIX ``wc -c``; in-process on
+        # a local Windows backend — see _prim_stat_size / P-030).
+        stat_result = self._prim_stat_size(path)
+
         if stat_result.exit_code != 0:
             # File not found - try to suggest similar files
             return self._suggest_similar_files(path)
@@ -1176,22 +1354,20 @@ class ShellFileOperations(FileOperations):
             )
         
         # Read a sample to check for binary content
-        sample_cmd = f"head -c 1000 {self._escape_shell_arg(path)} 2>/dev/null"
-        sample_result = self._exec(sample_cmd)
+        sample_result = self._prim_read_sample(path, 1000)
         sample_output = _strip_terminal_fence_leaks(sample_result.stdout)
-        
+
         if self._is_likely_binary(path, sample_output):
             return ReadResult(
                 is_binary=True,
                 file_size=file_size,
                 error="Binary file - cannot display as text. Use appropriate tools to handle this file type."
             )
-        
-        # Read with pagination using sed
+
+        # Read with pagination (POSIX ``sed -n``; in-process on local Windows)
         end_line = offset + limit - 1
-        read_cmd = f"sed -n '{offset},{end_line}p' {self._escape_shell_arg(path)}"
-        read_result = self._exec(read_cmd)
-        
+        read_result = self._prim_read_page(path, offset, end_line)
+
         if read_result.exit_code != 0:
             return ReadResult(error=f"Failed to read file: {read_result.stdout}")
         read_output = _strip_terminal_fence_leaks(read_result.stdout)
@@ -1201,9 +1377,8 @@ class ShellFileOperations(FileOperations):
         if offset == 1:
             read_output, _ = _strip_bom(read_output)
         
-        # Get total line count
-        wc_cmd = f"wc -l < {self._escape_shell_arg(path)}"
-        wc_result = self._exec(wc_cmd)
+        # Get total line count (POSIX ``wc -l``; in-process on local Windows)
+        wc_result = self._prim_count_lines(path)
         wc_output = _strip_terminal_fence_leaks(wc_result.stdout)
         try:
             total_lines = int(wc_output.strip())
@@ -1232,9 +1407,8 @@ class ShellFileOperations(FileOperations):
         ext = os.path.splitext(filename)[1].lower()
         lower_name = filename.lower()
 
-        # List files in the target directory
-        ls_cmd = f"ls -1 {self._escape_shell_arg(dir_path)} 2>/dev/null | head -50"
-        ls_result = self._exec(ls_cmd)
+        # List files in the target directory (in-process on local Windows)
+        ls_result = self._prim_list_dir(dir_path)
 
         scored: list = []  # (score, filepath) — higher is better
         if ls_result.exit_code == 0 and ls_result.stdout.strip():
@@ -1283,8 +1457,7 @@ class ShellFileOperations(FileOperations):
         Uses cat so the full file is returned regardless of size.
         """
         path = self._expand_path(path)
-        stat_cmd = f"wc -c < {self._escape_shell_arg(path)} 2>/dev/null"
-        stat_result = self._exec(stat_cmd)
+        stat_result = self._prim_stat_size(path)
         if stat_result.exit_code != 0:
             return self._suggest_similar_files(path)
         stat_output = _strip_terminal_fence_leaks(stat_result.stdout)
@@ -1294,14 +1467,14 @@ class ShellFileOperations(FileOperations):
             file_size = 0
         if self._is_image(path):
             return ReadResult(is_image=True, is_binary=True, file_size=file_size)
-        sample_result = self._exec(f"head -c 1000 {self._escape_shell_arg(path)} 2>/dev/null")
+        sample_result = self._prim_read_sample(path, 1000)
         sample_output = _strip_terminal_fence_leaks(sample_result.stdout)
         if self._is_likely_binary(path, sample_output):
             return ReadResult(
                 is_binary=True, file_size=file_size,
                 error="Binary file — cannot display as text."
             )
-        cat_result = self._exec(f"cat {self._escape_shell_arg(path)}")
+        cat_result = self._prim_read_all(path, suppress_stderr=False)
         if cat_result.exit_code != 0:
             return ReadResult(error=f"Failed to read file: {cat_result.stdout}")
         # Strip a leading UTF-8 BOM so patch's fuzzy matcher operates on
@@ -1446,8 +1619,7 @@ class ShellFileOperations(FileOperations):
             # pre_content as None which makes both downstream consumers
             # degrade gracefully (lint reports all errors; LSP skips the
             # shift map).
-            read_cmd = f"cat {self._escape_shell_arg(path)} 2>/dev/null"
-            read_result = self._exec(read_cmd)
+            read_result = self._prim_read_all(path)
             if read_result.exit_code == 0 and read_result.stdout:
                 pre_content = read_result.stdout
 
@@ -1486,8 +1658,7 @@ class ShellFileOperations(FileOperations):
         dirs_created = False
 
         if parent:
-            mkdir_cmd = f"mkdir -p {self._escape_shell_arg(parent)}"
-            mkdir_result = self._exec(mkdir_cmd)
+            mkdir_result = self._prim_mkdirs(parent)
             if mkdir_result.exit_code == 0:
                 dirs_created = True
 
@@ -1511,13 +1682,20 @@ class ShellFileOperations(FileOperations):
         if write_result.exit_code != 0:
             return WriteResult(error=f"Failed to write file: {write_result.stdout}")
 
-        # Get bytes written (wc -c is POSIX, works on Linux + macOS)
-        stat_cmd = f"wc -c < {self._escape_shell_arg(path)} 2>/dev/null"
-        stat_result = self._exec(stat_cmd)
-
-        try:
-            bytes_written = int(stat_result.stdout.strip())
-        except ValueError:
+        # Bytes actually on disk. The in-process local writer (P-030) returns
+        # the verified post-replace size in stdout; POSIX/remote backends stat
+        # with ``wc -c``.  We do NOT fall back to ``len(content)`` on a *failed*
+        # stat after a "successful" write — that fabrication is exactly what
+        # masked the silent Windows write failure in #54 (PowerShell can't run
+        # the POSIX script, the wrapper exits 0, and ``wc -c`` returns
+        # non-numeric → len(content) faked a byte count for a file that was
+        # never written).  The in-process writer removes that path entirely.
+        bytes_written = _parse_optional_int(write_result.stdout)
+        if bytes_written is None:
+            bytes_written = _parse_optional_int(self._prim_stat_size(path).stdout)
+        if bytes_written is None:
+            # Last resort for an exotic backend whose stat is unavailable: the
+            # write itself reported success, so report the encoded length.
             bytes_written = len(content.encode('utf-8'))
 
         # Post-write lint with delta refinement.

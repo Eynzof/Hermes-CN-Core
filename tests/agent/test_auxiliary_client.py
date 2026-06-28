@@ -4783,3 +4783,71 @@ class TestCompressionFallbackContextFilter:
         # Empty / unknown tasks have no minimum
         assert _task_minimum_context_length("") is None
         assert _task_minimum_context_length(None) is None
+
+
+class TestOpenAIProxyDisablesSdkRetries:
+    """Auxiliary OpenAI clients must default to ``max_retries=0``.
+
+    The OpenAI SDK retries (default 2) with exponential backoff on 429s and
+    connection stalls; on the auxiliary path that can block the calling thread
+    for up to ``2 × timeout``. The auxiliary layer already does its own bounded
+    retry-once + multi-provider fallback + unhealthy circuit breaker, so the
+    SDK-level retries are both redundant and a latency hazard. An explicit
+    ``max_retries`` from a caller must still win, and the async conversion must
+    inherit (not hardcode) the sync client's policy.
+    """
+
+    @staticmethod
+    def _capturing_cls():
+        captured = {}
+
+        class _Spy:
+            def __init__(self, *args, **kwargs):
+                captured["args"] = args
+                captured["kwargs"] = kwargs
+
+        return _Spy, captured
+
+    def test_proxy_defaults_max_retries_to_zero(self):
+        from agent import auxiliary_client as ac
+
+        spy, captured = self._capturing_cls()
+        with patch.object(ac, "_load_openai_cls", return_value=spy):
+            ac.OpenAI(
+                api_key="k",
+                base_url="https://example.test/v1",
+                http_client=object(),
+            )
+        assert captured["kwargs"]["max_retries"] == 0
+
+    def test_proxy_preserves_explicit_max_retries(self):
+        from agent import auxiliary_client as ac
+
+        spy, captured = self._capturing_cls()
+        with patch.object(ac, "_load_openai_cls", return_value=spy):
+            ac.OpenAI(
+                api_key="k",
+                base_url="https://example.test/v1",
+                http_client=object(),
+                max_retries=3,
+            )
+        assert captured["kwargs"]["max_retries"] == 3
+
+    def test_to_async_client_inherits_sync_retry_policy(self):
+        from agent import auxiliary_client as ac
+
+        captured = {}
+
+        class _AsyncSpy:
+            def __init__(self, **kwargs):
+                captured.update(kwargs)
+
+        # A non-zero value proves the async path inherits the sync client's
+        # policy rather than hardcoding 0.
+        sync = SimpleNamespace(
+            api_key="k", base_url="https://example.test/v1", max_retries=5
+        )
+        with patch("openai.AsyncOpenAI", _AsyncSpy):
+            _client, model = ac._to_async_client(sync, "model-x")
+        assert captured["max_retries"] == 5
+        assert model == "model-x"

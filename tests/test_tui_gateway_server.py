@@ -8549,3 +8549,42 @@ class TestResolveRuntimeWithFallback:
 
         assert agent.model == "gpt-5.5"
         assert captured["provider"] == "deepseek"
+
+
+def test_should_log_config_warning_dedupes_identical_warnings():
+    """The config-health warning is process-global, so an unchanged warning is
+    logged once and suppressed on subsequent session creates; a different
+    warning still surfaces."""
+    saved = server._last_logged_config_warning
+    server._last_logged_config_warning = None
+    try:
+        warn_a = "config.yaml has empty section(s): `foo`."
+        warn_b = "config.yaml has empty section(s): `bar`."
+        # First occurrence logs; immediate repeat is suppressed.
+        assert server._should_log_config_warning(warn_a) is True
+        assert server._should_log_config_warning(warn_a) is False
+        # A genuinely different warning is not suppressed.
+        assert server._should_log_config_warning(warn_b) is True
+        assert server._should_log_config_warning(warn_b) is False
+        # Empty string is never logged.
+        assert server._should_log_config_warning("") is False
+    finally:
+        server._last_logged_config_warning = saved
+
+
+def test_probe_config_health_warns_once_for_empty_sections():
+    """End-to-end with the real warning text: empty (null) config sections are
+    flagged, and the dedup helper only greenlights logging the first time."""
+    saved = server._last_logged_config_warning
+    server._last_logged_config_warning = None
+    try:
+        cfg = {"context_file_max_chars": None, "max_concurrent_sessions": None}
+        cfg_warn = server._probe_config_health(cfg)
+        assert "empty section(s)" in cfg_warn
+        assert "context_file_max_chars" in cfg_warn
+        assert "max_concurrent_sessions" in cfg_warn
+        # Same warning across repeated session creates: log once, then suppress.
+        assert server._should_log_config_warning(cfg_warn) is True
+        assert server._should_log_config_warning(cfg_warn) is False
+    finally:
+        server._last_logged_config_warning = saved

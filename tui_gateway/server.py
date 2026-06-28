@@ -137,6 +137,13 @@ _prompt_lock = threading.Lock()
 _cfg_cache: dict | None = None
 _cfg_mtime: float | None = None
 _cfg_path = None
+# Last config-health warning string already emitted to the log. _probe_config_health
+# runs on every session create, but the warning is process-global (about config.yaml,
+# not the session), so we only log each distinct warning once — re-logging it per
+# session floods the dashboard log. Reset whenever the warning content changes so a
+# newly-introduced config issue still surfaces. The per-session UI surfacing via
+# info["config_warning"] is unaffected.
+_last_logged_config_warning: str | None = None
 _session_resume_lock = threading.Lock()
 try:
     _slash_timeout = float(os.environ.get("HERMES_TUI_SLASH_TIMEOUT_S") or "45")
@@ -1267,8 +1274,11 @@ def _start_agent_build(sid: str, session: dict) -> None:
             info = _session_info(agent, current)
             cfg_warn = _probe_config_health(_load_cfg())
             if cfg_warn:
-                info["config_warning"] = cfg_warn
-                logger.warning(cfg_warn)
+                info["config_warning"] = cfg_warn  # per-session UI surfacing (always)
+                # Log only when the warning text changes, so an unchanged
+                # config issue isn't re-logged on every session create.
+                if _should_log_config_warning(cfg_warn):
+                    logger.warning(cfg_warn)
             _emit("session.info", sid, info)
             # If MCP discovery is still in flight (a server slower than the
             # bounded wait_for_mcp_discovery join in _make_agent), the agent
@@ -3036,6 +3046,24 @@ def _probe_config_health(cfg: dict) -> str:
                 "personality overlay will be skipped."
             )
     return " ".join(warnings).strip()
+
+
+def _should_log_config_warning(cfg_warn: str) -> bool:
+    """Return True iff ``cfg_warn`` hasn't been logged yet, recording it as the
+    last-logged warning.
+
+    ``_probe_config_health`` runs on every session create, but its warning is
+    about process-global config.yaml state, not the session — re-logging it each
+    time floods the dashboard log (the symptom this dedup fixes). We log each
+    distinct warning string once; a different warning (a newly-introduced config
+    issue) still surfaces because the comparison is by content. Per-session UI
+    surfacing via ``info["config_warning"]`` is independent and unaffected.
+    """
+    global _last_logged_config_warning
+    if cfg_warn and cfg_warn != _last_logged_config_warning:
+        _last_logged_config_warning = cfg_warn
+        return True
+    return False
 
 
 def _current_profile_name() -> str:

@@ -80,6 +80,20 @@ Hermes CN 的需求与 bug 修复通常**同时横跨 Core 与 [Desktop](https:/
 
 **收尾流程（每个仓库都要走完，缺一不可）**：改完 → 跑各自校验（Core：`scripts/run_tests.sh` 全套 + `ruff check .`；Desktop：`pnpm typecheck && pnpm test:unit && cargo check`）→ commit → push → 开 PR → **盯 PR 上 GitHub Actions 全绿**（Core：`lint.yml` + 测试切片），没过就回去修，别把任务当完成。
 
+## Git & GitHub Conventions
+
+**本仓库是 fork。所有 issue 查询、PR 创建、合并都只针对 fork 仓库，绝不针对上游仓库。**
+
+- **目标仓库永远是 fork：** Core 是 `Eynzof/Hermes-CN-Core`，Desktop 是 `Eynzof/Hermes-CN-Desktop`。
+  上游 `NousResearch/hermes-agent` 是只读参照，**不要**在它上面查 issue、开 PR 或合并（向上游提交干净 PR 是
+  唯一例外，且必须显式声明、走 `upstream-pr/*` 分支——见 "This is a fork"）。
+- **每个 `gh` 命令执行前先核验 repo scope。** 不要依赖 `gh` 的当前目录自动推断（fork 仓库的 `gh` 默认可能
+  指向上游）。显式带上 `--repo Eynzof/Hermes-CN-Core`（或对应 Desktop 仓库），例如
+  `gh issue list --repo Eynzof/Hermes-CN-Core`、`gh pr create --repo Eynzof/Hermes-CN-Core`、
+  `gh pr merge --repo Eynzof/Hermes-CN-Core`。
+- **创建 PR 时再确认 base 仓库。** `gh pr create` 默认的 base 是上游 fork 源；务必确认 base 落在 fork 自身
+  （`--repo` 指定 fork + base 分支为该 fork 的 `main`），避免把 PR 误开到上游。
+
 ## Architecture big picture
 
 Hermes is a **self-improving AI agent** that runs the same agent core across many front-ends and many chat

@@ -1589,7 +1589,13 @@ class TestSigkillEscalation:
                     for p in all_pids
                 )
 
-            assert _wait_until(_all_dead, timeout=4.0), (
+            # Generous wait: after the 1s term-grace the registry escalates to
+            # SIGKILL, but reaping a 3-process tree (parent + 2 children) and
+            # re-probing via psutil can exceed 4s on a loaded CI runner (8
+            # parallel workers) — which made this flake. We assert the tree is
+            # ALL killed, not how fast, so a larger ceiling removes the flake
+            # while still bounding a genuine escalation failure.
+            assert _wait_until(_all_dead, timeout=10.0), (
                 "entire SIGTERM-ignoring tree (parent + children) must be SIGKILLed"
             )
         finally:

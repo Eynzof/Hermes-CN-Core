@@ -162,11 +162,17 @@ class TestPowerShellWrapperOutput:
         monkeypatch.setattr(local_mod, "_IS_WINDOWS", True)
         monkeypatch.setattr(local_mod, "_resolve_shell", lambda: ("powershell", shell))
 
-        env = LocalEnvironment(cwd=str(tmp_path), timeout=10)
+        # Generous timeout: this is the only test here that spawns a REAL
+        # PowerShell subprocess. pwsh/powershell.exe cold-start can exceed 10s
+        # on a loaded CI runner (8 parallel workers), which previously made
+        # this test flaky with returncode 124 (timeout). The command itself is
+        # trivial — we're asserting output formatting, not latency — so a large
+        # ceiling removes the flake while still catching a genuinely hung shell.
+        env = LocalEnvironment(cwd=str(tmp_path), timeout=60)
         try:
             result = env.execute(
                 "Get-Location; Test-Path -LiteralPath .",
-                timeout=10,
+                timeout=60,
             )
         finally:
             env.cleanup()

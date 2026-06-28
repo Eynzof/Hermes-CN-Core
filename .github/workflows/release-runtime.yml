@@ -55,6 +55,11 @@ jobs:
     # a secret is present.
     env:
       RUNTIME_SIGN_PRIVATE_KEY_PEM: ${{ secrets.RUNTIME_SIGN_PRIVATE_KEY_PEM }}
+      # Node.js LTS bundled into the frozen runtime so the desktop /chat Ink
+      # TUI, embedded/external terminal, and node-based MCP/playwright/npx tools
+      # work without a host Node install. Bump as new 22.x LTS patches ship.
+      # See FORK_NOTES P-032.
+      NODE_RUNTIME_VERSION: "22.12.0"
     strategy:
       fail-fast: false
       matrix:
@@ -142,6 +147,23 @@ jobs:
           pip install -e ".[cn-desktop]"
           # Build tooling
           pip install pyinstaller==6.* cryptography
+
+      - name: Set up Node.js (build TUI bundle)
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      - name: Build embedded TUI bundle
+        shell: bash
+        run: |
+          # The desktop /chat pane and embedded terminal reuse the Ink TUI over
+          # a PTY (hermes_cli/web_server.py pty_ws). Build the self-contained
+          # esbuild bundle (ui-tui/scripts/build.mjs) and stage it into the
+          # runtime payload below so the frozen runtime launches it without a
+          # ui-tui/ source checkout. Mirrors the PyPI wheel pipeline
+          # (upload_to_pypi.yml). See FORK_NOTES P-032.
+          cd ui-tui && npm ci && npm run build
+          test -f dist/entry.js || { echo "::error::ui-tui/dist/entry.js not built" >&2; exit 1; }
 
       - name: Verify platform backends importable (build env)
         shell: bash
@@ -301,6 +323,51 @@ jobs:
             hermes_cli/main.py
           ls -la "dist/$NAME"
 
+      - name: Stage bundled Node runtime + TUI into payload
+        shell: bash
+        run: |
+          # Place the Node LTS runtime and the prebuilt Ink TUI bundle INTO the
+          # runtime payload BEFORE macOS normalize/sign so the node binary is
+          # codesigned (sign_macos_runtime_payload.sh signs every Mach-O) and
+          # the Ed25519 manifest (signed over the whole zip) covers them.
+          # Layout the desktop resolves (Hermes-CN-Desktop process/runtime.rs):
+          #   POSIX:   <root>/node/bin/{node,npm,npx} + <root>/node/lib/node_modules/npm
+          #   Windows: <root>/node/{node.exe,npm.cmd,npx.cmd} + <root>/node/node_modules/npm
+          #   TUI:     <root>/tui/dist/entry.js   (pointed at via HERMES_TUI_DIR)
+          # See FORK_NOTES P-032.
+          NAME="hermes-agent-cn-runtime-${{ matrix.platform }}-${{ matrix.arch }}"
+          ver="$NODE_RUNTIME_VERSION"
+          case "${{ matrix.platform }}-${{ matrix.arch }}" in
+            darwin-arm64) pkg="node-v$ver-darwin-arm64"; ar="tar.gz" ;;
+            darwin-x64)   pkg="node-v$ver-darwin-x64";   ar="tar.gz" ;;
+            linux-x64)    pkg="node-v$ver-linux-x64";    ar="tar.xz" ;;
+            win32-x64)    pkg="node-v$ver-win-x64";      ar="zip"    ;;
+            *) echo "::error::unmapped platform ${{ matrix.platform }}-${{ matrix.arch }} for node download" >&2; exit 1 ;;
+          esac
+          url="https://nodejs.org/dist/v$ver/$pkg.$ar"
+          echo "Downloading $url"
+          curl -fsSL --retry 3 -o "node_dist.$ar" "$url"
+
+          dest="dist/$NAME/node"
+          mkdir -p "$dest"
+          if [[ "$ar" == "zip" ]]; then
+            # Windows: node.exe + npm.cmd/npx.cmd + node_modules/npm at zip root.
+            unzip -q "node_dist.$ar"
+            cp -R "$pkg"/. "$dest"/
+          else
+            tar -xf "node_dist.$ar"
+            # POSIX: keep bin/ + lib/ (drop include/ + share/ to slim payload);
+            # cp -R preserves the bin/{npm,npx} symlinks into lib/node_modules.
+            cp -R "$pkg/bin" "$dest/bin"
+            cp -R "$pkg/lib" "$dest/lib"
+          fi
+
+          mkdir -p "dist/$NAME/tui/dist"
+          cp ui-tui/dist/entry.js "dist/$NAME/tui/dist/entry.js"
+
+          echo "Staged node + TUI into dist/$NAME:"
+          ls -la "$dest"
+
       - name: Normalize macOS framework layout
         if: matrix.platform == 'darwin'
         shell: bash
@@ -404,6 +471,25 @@ jobs:
           NAME="hermes-agent-cn-runtime-${{ matrix.platform }}-${{ matrix.arch }}"
           "./dist/$NAME/$NAME${{ matrix.ext }}" dashboard --help
 
+      - name: Verify bundled Node runtime + TUI
+        shell: bash
+        run: |
+          # The desktop /chat + terminal need a runnable node and the prebuilt
+          # TUI inside the payload; assert both rather than discover the gap on
+          # a user's machine as "Chat unavailable: 1". See FORK_NOTES P-032.
+          NAME="hermes-agent-cn-runtime-${{ matrix.platform }}-${{ matrix.arch }}"
+          root="dist/$NAME"
+          test -f "$root/tui/dist/entry.js" || { echo "::error::missing $root/tui/dist/entry.js" >&2; exit 1; }
+          if [[ "${{ matrix.platform }}" == "win32" ]]; then
+            node_bin="$root/node/node.exe"; npm_bin="$root/node/npm.cmd"; npx_bin="$root/node/npx.cmd"
+          else
+            node_bin="$root/node/bin/node"; npm_bin="$root/node/bin/npm"; npx_bin="$root/node/bin/npx"
+          fi
+          "$node_bin" --version
+          "$npm_bin" --version
+          "$npx_bin" --version
+          echo "Bundled node + npm + npx + TUI present in $root"
+
       - name: Zip artifact
         shell: bash
         run: |
@@ -417,7 +503,9 @@ jobs:
             # symlink targets as duplicate files and breaks codesign/notary.
             (cd dist && zip -r -y "../out/$NAME.zip" "$NAME")
           else
-            (cd dist && zip -r "../out/$NAME.zip" "$NAME")
+            # -y preserves the bundled node bin/{npm,npx} symlinks (Linux);
+            # without it Info-ZIP would store them as dereferenced copies.
+            (cd dist && zip -r -y "../out/$NAME.zip" "$NAME")
           fi
           ls -la out
 

@@ -48,6 +48,13 @@ permissions:
 
 jobs:
   build:
+    # Mapped at job level (not in the Sign-manifest step's own env) so the
+    # step's `if:` can read it — a step's `if` is evaluated BEFORE that step's
+    # own `env:` is applied, so a step-scoped env var is invisible to its own
+    # condition. Job-level env is the documented way to gate a step on whether
+    # a secret is present.
+    env:
+      RUNTIME_SIGN_PRIVATE_KEY_PEM: ${{ secrets.RUNTIME_SIGN_PRIVATE_KEY_PEM }}
     strategy:
       fail-fast: false
       matrix:
@@ -415,9 +422,12 @@ jobs:
           ls -la out
 
       - name: Sign manifest
+        # Skip cleanly when the signing key is absent (forks / secret-less
+        # workflow_dispatch) instead of failing; signs normally on real
+        # releases where the secret is set. RUNTIME_SIGN_PRIVATE_KEY_PEM comes
+        # from the job-level env above.
+        if: env.RUNTIME_SIGN_PRIVATE_KEY_PEM != ''
         shell: bash
-        env:
-          RUNTIME_SIGN_PRIVATE_KEY_PEM: ${{ secrets.RUNTIME_SIGN_PRIVATE_KEY_PEM }}
         run: |
           NAME="hermes-agent-cn-runtime-${{ matrix.platform }}-${{ matrix.arch }}"
           # Anticipate the URL the Release will publish at — this has to

@@ -650,13 +650,15 @@ def load_jobs() -> List[Dict[str, Any]]:
     _strict_retry = False  # track whether we used the strict=False fallback
 
     try:
-        with open(JOBS_FILE, 'r', encoding='utf-8') as f:
+        # utf-8-sig transparently strips a UTF-8 BOM if present (some editors
+        # on Windows add one), and is identical to utf-8 when there is none.
+        with open(JOBS_FILE, 'r', encoding='utf-8-sig') as f:
             data = json.load(f)
     except json.JSONDecodeError:
         # Retry with strict=False to handle bare control chars in string values
         _strict_retry = True
         try:
-            with open(JOBS_FILE, 'r', encoding='utf-8') as f:
+            with open(JOBS_FILE, 'r', encoding='utf-8-sig') as f:
                 data = json.loads(f.read(), strict=False)
         except Exception as e:
             logger.error("Failed to auto-repair jobs.json: %s", e)

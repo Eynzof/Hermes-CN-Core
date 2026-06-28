@@ -3394,10 +3394,22 @@ def save_config_value(key_path: str, value: any) -> bool:
     Returns:
         True if successful, False otherwise
     """
-    # Use the same precedence as load_cli_config: user config first, then project config
+    # Use the same precedence as load_cli_config: user config first, then project config.
+    # [CN-fork] P-027: only WRITE to the project-level cli-config.yaml when it
+    # ALREADY exists — never CREATE it. It lives in the installed package / source
+    # tree, which must not be written on first use; the user config is the correct
+    # write target (its parent dir is created below). The old "else project" branch
+    # created <repo>/cli-config.yaml whenever the (e.g. test-hermetic) HERMES_HOME
+    # had no config.yaml, which under parallel test runs leaked that file across
+    # workers and polluted project-config reads (load_cli_config under
+    # HERMES_IGNORE_USER_CONFIG). See FORK_NOTES.md P-027.
     user_config_path = _hermes_home / 'config.yaml'
     project_config_path = Path(__file__).parent / 'cli-config.yaml'
-    config_path = user_config_path if user_config_path.exists() else project_config_path
+    config_path = (
+        project_config_path
+        if project_config_path.exists() and not user_config_path.exists()
+        else user_config_path
+    )
     
     try:
         # Ensure parent directory exists (for ~/.hermes/config.yaml on first use)

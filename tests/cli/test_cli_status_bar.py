@@ -396,16 +396,23 @@ class TestCLIStatusBar:
 
         assert cli_obj._spinner_widget_height(width=64) == 2
 
-    def test_spinner_elapsed_format_is_fixed_width_to_reduce_wrap_jitter(self):
+    def test_spinner_elapsed_format_is_fixed_width_to_reduce_wrap_jitter(self, monkeypatch):
         cli_obj = _make_cli()
         cli_obj._spinner_text = "running tool"
 
+        # Pin a deterministic monotonic clock. A freshly-booted CI VM can report
+        # time.monotonic() < 65.2 (CLOCK_MONOTONIC is since boot), which makes
+        # `monotonic() - 65.2` negative -> _render_spinner_text takes the
+        # `t0 <= 0` branch and drops the elapsed parens -> a flaky IndexError in
+        # the `.split("(")[1]` below. Pinning the clock removes that dependency.
+        monkeypatch.setattr(cli_mod.time, "monotonic", lambda: 100_000.0)
+
         # <60s path
-        cli_obj._tool_start_time = time.monotonic() - 9.2
+        cli_obj._tool_start_time = 100_000.0 - 9.2
         short = cli_obj._render_spinner_text()
 
         # >=60s path
-        cli_obj._tool_start_time = time.monotonic() - 65.2
+        cli_obj._tool_start_time = 100_000.0 - 65.2
         long = cli_obj._render_spinner_text()
 
         short_elapsed = short.split("(", 1)[1].rstrip(")")
@@ -500,7 +507,7 @@ class TestCLIStatusBar:
 
 
 class TestCLIUsageReport:
-    def test_show_usage_includes_estimated_cost(self, capsys):
+    def test_show_usage_omits_cost_reporting(self, capsys):
         cli_obj = _attach_agent(
             _make_cli(),
             prompt_tokens=10_230,
@@ -516,52 +523,19 @@ class TestCLIUsageReport:
         cli_obj._show_usage()
         output = capsys.readouterr().out
 
+        # Token counts and session metadata still shown.
         assert "Model:" in output
-        assert "Cost status:" in output
-        assert "Cost source:" in output
-        assert "Total cost:" in output
-        assert "$" in output
-        assert "0.064" in output
+        assert "Input tokens:" in output
+        assert "Output tokens:" in output
+        assert "Total tokens:" in output
         assert "Session duration:" in output
         assert "Compressions:" in output
-
-    def test_show_usage_marks_unknown_pricing(self, capsys):
-        cli_obj = _attach_agent(
-            _make_cli(model="local/my-custom-model"),
-            prompt_tokens=1_000,
-            completion_tokens=500,
-            total_tokens=1_500,
-            api_calls=1,
-            context_tokens=1_000,
-            context_length=32_000,
-        )
-        cli_obj.verbose = False
-
-        cli_obj._show_usage()
-        output = capsys.readouterr().out
-
-        assert "Total cost:" in output
-        assert "n/a" in output
-        assert "Pricing unknown for local/my-custom-model" in output
-
-    def test_zero_priced_provider_models_stay_unknown(self, capsys):
-        cli_obj = _attach_agent(
-            _make_cli(model="glm-5"),
-            prompt_tokens=1_000,
-            completion_tokens=500,
-            total_tokens=1_500,
-            api_calls=1,
-            context_tokens=1_000,
-            context_length=32_000,
-        )
-        cli_obj.verbose = False
-
-        cli_obj._show_usage()
-        output = capsys.readouterr().out
-
-        assert "Total cost:" in output
-        assert "n/a" in output
-        assert "Pricing unknown for glm-5" in output
+        # Cost and cache-hit reporting is removed everywhere.
+        assert "Total cost:" not in output
+        assert "Cost status:" not in output
+        assert "Cost source:" not in output
+        assert "Cache read tokens:" not in output
+        assert "Cache write tokens:" not in output
 
 
 class TestStatusBarWidthSource:

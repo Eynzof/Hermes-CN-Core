@@ -29,6 +29,14 @@ else:
     import fcntl
 
 _GATEWAY_KIND = "hermes-gateway"
+# [CN-fork] P-034: the desktop runs the frozen PyInstaller runtime whose argv[0]
+# basename is ``hermes-agent-cn-runtime-<os>-<arch>`` (e.g.
+# ``hermes-agent-cn-runtime-darwin-arm64`` / ``hermes-agent-cn-runtime-win32-x64.exe``;
+# Desktop src/process/runtime.rs RUNTIME_BASENAME). The gateway-process
+# recognizer must treat it as a hermes CLI entrypoint or get_running_pid /
+# --replace / the scoped-lock staleness check all stop recognizing a live
+# desktop gateway. Lowercase: tokens are lowercased before the check.
+_CN_RUNTIME_BASENAME_PREFIX = "hermes-agent-cn-runtime"
 _RUNTIME_STATUS_FILE = "gateway_state.json"
 _LOCKS_DIRNAME = "gateway-locks"
 _IS_WINDOWS = sys.platform == "win32"
@@ -246,6 +254,16 @@ def _gateway_command_subcommand(command: str | None) -> str | None:
         "hermes_cli.main" in joined
         or "hermes_cli/main.py" in joined
         or any(t.rsplit("/", 1)[-1] in ("hermes", "hermes.exe") for t in tokens)
+        # [CN-fork] P-034: the frozen desktop runtime binary is a full hermes
+        # CLI that takes the same subcommands. Match the basename PREFIX so the
+        # per-os/arch suffix (and a trailing ``.exe``) are covered. This is
+        # added ONLY here, not to the gateway-dedicated-entrypoint scan above —
+        # that loop returns "run" unconditionally, which would make a frozen
+        # ``gateway status``/``stop``/``restart`` misread as a live ``run``.
+        or any(
+            t.rsplit("/", 1)[-1].startswith(_CN_RUNTIME_BASENAME_PREFIX)
+            for t in tokens
+        )
     )
     if not has_gateway_entry:
         return None

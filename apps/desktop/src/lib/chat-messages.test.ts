@@ -785,3 +785,101 @@ describe('upsertToolPart', () => {
     })
   })
 })
+
+describe('toChatMessages stored-tool-result resolution (issue #19 O(N^2) → O(N))', () => {
+  type ToolCallPart = Extract<ChatMessagePart, { type: 'tool-call' }>
+
+  const toolParts = (messages: ChatMessage[]): ToolCallPart[] =>
+    messages.flatMap(m => m.parts.filter((p): p is ToolCallPart => p.type === 'tool-call'))
+
+  const resultFor = (messages: ChatMessage[], toolCallId: string): unknown =>
+    toolParts(messages).find(p => p.toolCallId === toolCallId)?.result
+
+  it('resolves tool results to the matching tool-call by id even when rows arrive out of order', () => {
+    const messages = toChatMessages([
+      { role: 'user', content: 'go', timestamp: 1 },
+      {
+        role: 'assistant',
+        content: 'first',
+        timestamp: 2,
+        tool_calls: [{ id: 'tc-1', function: { name: 'terminal', arguments: '{}' } }]
+      },
+      {
+        role: 'assistant',
+        content: 'second',
+        timestamp: 3,
+        tool_calls: [{ id: 'tc-2', function: { name: 'terminal', arguments: '{}' } }]
+      },
+      // results arrive in REVERSE order of the calls
+      { role: 'tool', tool_call_id: 'tc-2', tool_name: 'terminal', content: '{"output":"RESULT-2"}', timestamp: 4 },
+      { role: 'tool', tool_call_id: 'tc-1', tool_name: 'terminal', content: '{"output":"RESULT-1"}', timestamp: 5 }
+    ])
+
+    expect(resultFor(messages, 'tc-1')).toMatchObject({ output: 'RESULT-1' })
+    expect(resultFor(messages, 'tc-2')).toMatchObject({ output: 'RESULT-2' })
+  })
+
+  it('disambiguates same-named tools by id, not tool name', () => {
+    const messages = toChatMessages([
+      {
+        role: 'assistant',
+        content: '',
+        timestamp: 1,
+        tool_calls: [
+          { id: 'a', function: { name: 'terminal', arguments: '{"command":"ls"}' } },
+          { id: 'b', function: { name: 'terminal', arguments: '{"command":"pwd"}' } }
+        ]
+      },
+      { role: 'tool', tool_call_id: 'b', tool_name: 'terminal', content: '{"output":"/home"}', timestamp: 2 },
+      { role: 'tool', tool_call_id: 'a', tool_name: 'terminal', content: '{"output":"file.txt"}', timestamp: 3 }
+    ])
+
+    expect(resultFor(messages, 'a')).toMatchObject({ output: 'file.txt' })
+    expect(resultFor(messages, 'b')).toMatchObject({ output: '/home' })
+  })
+
+  it('still resolves a tool row that has no tool_call_id via the tool-name fallback', () => {
+    const messages = toChatMessages([
+      {
+        role: 'assistant',
+        content: 'thinking',
+        timestamp: 1,
+        tool_calls: [{ id: 'only', function: { name: 'web_search', arguments: '{}' } }]
+      },
+      // legacy/orphaned row: no tool_call_id, matched by tool_name
+      { role: 'tool', tool_name: 'web_search', content: '{"summary":"hit"}', timestamp: 2 }
+    ])
+
+    expect(resultFor(messages, 'only')).toMatchObject({ summary: 'hit' })
+  })
+
+  it('attaches every result correctly across many turns (scale guard for the index path)', () => {
+    const N = 40
+    const rows = []
+
+    for (let i = 0; i < N; i += 1) {
+      rows.push({
+        role: 'assistant' as const,
+        content: `step ${i}`,
+        timestamp: i * 2 + 1,
+        tool_calls: [{ id: `tc-${i}`, function: { name: 'terminal', arguments: `{"command":"echo ${i}"}` } }]
+      })
+      rows.push({
+        role: 'tool' as const,
+        tool_call_id: `tc-${i}`,
+        tool_name: 'terminal',
+        content: `{"output":"out-${i}"}`,
+        timestamp: i * 2 + 2
+      })
+    }
+
+    const messages = toChatMessages(rows)
+    const parts = toolParts(messages)
+
+    expect(parts).toHaveLength(N)
+
+    for (let i = 0; i < N; i += 1) {
+      expect(resultFor(messages, `tc-${i}`)).toMatchObject({ output: `out-${i}` })
+    }
+  })
+})

@@ -574,10 +574,37 @@ function toolPartFromStoredCall(call: unknown, fallbackIndex: number): ChatMessa
   }
 }
 
-function applyStoredToolResult(messages: ChatMessage[], toolMessage: SessionMessage): boolean {
+function applyStoredToolResult(
+  messages: ChatMessage[],
+  toolMessage: SessionMessage,
+  toolCallIndex?: Map<string, { mi: number; pi: number }>
+): boolean {
   const toolCallId = toolMessage.tool_call_id || undefined
   const toolName = toolMessage.tool_name || toolMessage.name || 'tool'
   const content = toolMessage.content || toolMessage.text || toolMessage.context || toolMessage.name
+
+  // Fast O(1) path: tool-call ids are unique, so an index of where each
+  // tool-call part lives in `messages` resolves the result without the reverse
+  // scan below. That scan ran once per tool row over the whole transcript,
+  // making toChatMessages O(N^2) on long sessions (a desktop ANR contributor,
+  // issue #19). Falls through to the scan on a miss, or when the tool row has
+  // no id (legacy/orphaned rows resolved by tool-name) — preserving behavior.
+  if (toolCallId && toolCallIndex) {
+    const loc = toolCallIndex.get(toolCallId)
+
+    if (loc) {
+      const message = messages[loc.mi]
+      const existing = message?.parts[loc.pi]
+
+      if (message?.role === 'assistant' && existing?.type === 'tool-call' && existing.toolCallId === toolCallId) {
+        const parts = [...message.parts]
+        parts[loc.pi] = { ...existing, result: parseStoredToolResult(content), isError: false } as ChatMessagePart
+        messages[loc.mi] = { ...message, parts }
+
+        return true
+      }
+    }
+  }
 
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     const message = messages[i]
@@ -695,6 +722,30 @@ export function toChatMessages(messages: SessionMessage[]): ChatMessage[] {
   let pendingToolTimestamp: number | undefined
   let activeAssistantIndex: null | number = null
 
+  // Index of where each tool-call part lives in `result`, keyed by its unique
+  // toolCallId, so applyStoredToolResult resolves a stored tool result in O(1)
+  // instead of reverse-scanning the whole transcript per tool row (O(N^2),
+  // issue #19). Updated incrementally as tool-call parts are appended to
+  // `result`; positions are stable because results are filled in place and
+  // parts are only ever appended (never reordered/inserted before existing).
+  const toolCallIndex = new Map<string, { mi: number; pi: number }>()
+
+  const indexToolCallsFrom = (mi: number, fromPartIndex = 0) => {
+    const msg = result[mi]
+
+    if (!msg || msg.role !== 'assistant') {
+      return
+    }
+
+    for (let pi = fromPartIndex; pi < msg.parts.length; pi += 1) {
+      const part = msg.parts[pi]
+
+      if (part.type === 'tool-call' && part.toolCallId) {
+        toolCallIndex.set(part.toolCallId, { mi, pi })
+      }
+    }
+  }
+
   const clearPendingTools = () => {
     pendingToolParts = []
     pendingToolTimestamp = undefined
@@ -713,8 +764,10 @@ export function toChatMessages(messages: SessionMessage[]): ChatMessage[] {
       return false
     }
 
+    const startIndex = active.parts.length
     active.parts = [...active.parts, ...parts]
     active.timestamp = timestamp ?? active.timestamp
+    indexToolCallsFrom(activeAssistantIndex, startIndex)
 
     return true
   }
@@ -732,6 +785,7 @@ export function toChatMessages(messages: SessionMessage[]): ChatMessage[] {
         timestamp: pendingToolTimestamp
       })
       activeAssistantIndex = result.length - 1
+      indexToolCallsFrom(activeAssistantIndex, 0)
     }
 
     clearPendingTools()
@@ -747,7 +801,7 @@ export function toChatMessages(messages: SessionMessage[]): ChatMessage[] {
         return
       }
 
-      if (applyStoredToolResult(result, message)) {
+      if (applyStoredToolResult(result, message, toolCallIndex)) {
         return
       }
 
@@ -815,8 +869,10 @@ export function toChatMessages(messages: SessionMessage[]): ChatMessage[] {
       const activeHasToolCall = Boolean(activeAssistant?.parts.some(part => part.type === 'tool-call'))
 
       if (activeAssistant && (currentHasToolCall || activeHasToolCall)) {
+        const startIndex = activeAssistant.parts.length
         activeAssistant.parts = [...activeAssistant.parts, ...parts]
         activeAssistant.timestamp = message.timestamp ?? activeAssistant.timestamp
+        indexToolCallsFrom(activeAssistantIndex ?? -1, startIndex)
 
         return
       }
@@ -830,6 +886,7 @@ export function toChatMessages(messages: SessionMessage[]): ChatMessage[] {
       parts,
       timestamp: message.timestamp
     })
+    indexToolCallsFrom(result.length - 1, 0)
 
     activeAssistantIndex = message.role === 'assistant' ? result.length - 1 : null
   })

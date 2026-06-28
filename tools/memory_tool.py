@@ -148,6 +148,11 @@ class MemoryStore:
         """
         mem_dir = get_memory_dir()
         mem_dir.mkdir(parents=True, exist_ok=True)
+        # Log the resolved directory so a "memory looks lost across restarts"
+        # report (GitHub #335) can be diagnosed: the store is always persisted
+        # synchronously, so the usual cause is a HERMES_HOME / profile drift
+        # making two launches read different `memories/` dirs.
+        logger.info("memory: loading from %s", mem_dir)
 
         self.memory_entries = self._read_file(mem_dir / "MEMORY.md")
         self.user_entries = self._read_file(mem_dir / "USER.md")
@@ -273,7 +278,13 @@ class MemoryStore:
     def save_to_disk(self, target: str):
         """Persist entries to the appropriate file. Called after every mutation."""
         get_memory_dir().mkdir(parents=True, exist_ok=True)
-        self._write_file(self._path_for(target), self._entries_for(target))
+        path = self._path_for(target)
+        # Diagnostic for GitHub #335: every mutation persists here synchronously
+        # (mkstemp + fsync + atomic os.replace). Logging the path makes a
+        # cross-launch "lost memory" report traceable to profile/HERMES_HOME
+        # drift rather than a missing write.
+        logger.debug("memory: saving %s to %s", target, path)
+        self._write_file(path, self._entries_for(target))
 
     def _entries_for(self, target: str) -> List[str]:
         if target == "user":

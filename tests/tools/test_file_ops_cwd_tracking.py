@@ -19,6 +19,9 @@ from __future__ import annotations
 
 
 
+import os
+import re
+
 from tools.file_operations import ShellFileOperations
 
 
@@ -27,36 +30,86 @@ class _FakeEnv:
 
     Matches the real ``BaseEnvironment`` contract: ``cwd`` attribute plus
     an ``execute(command, cwd=...)`` method whose return dict carries
-    ``output`` and ``returncode``.  Commands are executed in a real
-    subdirectory so file system effects match production.
+    ``output`` and ``returncode``.  Commands are interpreted in-process so
+    the tests run on Windows without a ``bash``/``cat`` toolchain.
     """
 
     def __init__(self, start_cwd: str):
         self.cwd = start_cwd
         self.calls: list[dict] = []
 
+    def _resolve(self, path: str, cwd: str | None) -> str:
+        base = cwd or self.cwd
+        if os.path.isabs(path):
+            return path
+        return os.path.join(base, path)
+
     def execute(self, command: str, cwd: str = None, **kwargs) -> dict:
-        import subprocess
         self.calls.append({"command": command, "cwd": cwd})
+        workdir = cwd or self.cwd
+
         # Simulate cd by updating self.cwd (the real env does the same
         # via _extract_cwd_from_output after a successful command)
         if command.strip().startswith("cd "):
             new = command.strip()[3:].strip()
             self.cwd = new
             return {"output": "", "returncode": 0}
-        # Actually run the command — handle stdin via subprocess
+
         stdin_data = kwargs.get("stdin_data")
-        proc = subprocess.run(
-            ["bash", "-c", command],
-            cwd=cwd or self.cwd,
-            input=stdin_data,
-            capture_output=True,
-            text=True,
-        )
-        return {
-            "output": proc.stdout + proc.stderr,
-            "returncode": proc.returncode,
-        }
+        if stdin_data is not None:
+            # Atomic write script emitted by _atomic_write for remote backends.
+            # Extract the target path from ``t='...';`` and write stdin_data there.
+            match = re.search(r"t='([^']+)';", command)
+            if match:
+                target = match.group(1)
+                abs_target = self._resolve(target, cwd)
+                try:
+                    os.makedirs(os.path.dirname(abs_target), exist_ok=True)
+                    # Write bytes verbatim so LF/CRLF round-trips match the
+                    # real atomic-write path (binary mode, no OS translation).
+                    with open(abs_target, "wb") as fh:
+                        fh.write(stdin_data.encode("utf-8"))
+                    return {"output": "", "returncode": 0}
+                except Exception as exc:
+                    return {"output": str(exc), "returncode": 1}
+            return {"output": "unhandled stdin command", "returncode": 1}
+
+        stripped = command.strip()
+
+        # cat <file> [2>/dev/null]
+        cat_match = re.match(r"cat\s+(.+?)(?:\s+2>/dev/null)?$", stripped)
+        if cat_match:
+            path = cat_match.group(1).strip().strip("'\"")
+            abs_path = self._resolve(path, cwd)
+            try:
+                with open(abs_path, "r", encoding="utf-8") as fh:
+                    return {"output": fh.read(), "returncode": 0}
+            except Exception:
+                return {"output": "", "returncode": 1}
+
+        # mkdir -p <dir>
+        mkdir_match = re.match(r"mkdir\s+-p\s+(.+)$", stripped)
+        if mkdir_match:
+            path = mkdir_match.group(1).strip().strip("'\"")
+            abs_path = self._resolve(path, cwd)
+            try:
+                os.makedirs(abs_path, exist_ok=True)
+                return {"output": "", "returncode": 0}
+            except Exception as exc:
+                return {"output": str(exc), "returncode": 1}
+
+        # wc -c < <file> [2>/dev/null]
+        wc_match = re.match(r"wc\s+-c\s+<\s+(.+?)(?:\s+2>/dev/null)?$", stripped)
+        if wc_match:
+            path = wc_match.group(1).strip().strip("'\"")
+            abs_path = self._resolve(path, cwd)
+            try:
+                size = os.path.getsize(abs_path)
+                return {"output": str(size), "returncode": 0}
+            except Exception:
+                return {"output": "", "returncode": 1}
+
+        return {"output": f"unhandled command: {command}", "returncode": 1}
 
 
 class TestShellFileOpsCwdTracking:
@@ -135,16 +188,22 @@ class TestShellFileOpsCwdTracking:
 
     def test_env_without_cwd_attribute_falls_back_to_self_cwd(self, tmp_path):
         """Backends without a cwd attribute still work via init-time cwd."""
+        import os
         dir_a = tmp_path / "fixed"
         dir_a.mkdir()
         (dir_a / "target.txt").write_text("fixed-content\n")
 
         class _NoCwdEnv:
             def execute(self, command, cwd=None, **kwargs):
-                import subprocess
-                proc = subprocess.run(["bash", "-c", command], cwd=cwd,
-                                      capture_output=True, text=True)
-                return {"output": proc.stdout, "returncode": proc.returncode}
+                if not command.strip().startswith("cat "):
+                    return {"output": "", "returncode": 1}
+                path = command.strip()[4:].strip().strip("'\"")
+                abs_path = os.path.join(cwd or ".", path) if not os.path.isabs(path) else path
+                try:
+                    with open(abs_path, "r", encoding="utf-8") as fh:
+                        return {"output": fh.read(), "returncode": 0}
+                except Exception:
+                    return {"output": "", "returncode": 1}
 
         env = _NoCwdEnv()
         ops = ShellFileOperations(env, cwd=str(dir_a))

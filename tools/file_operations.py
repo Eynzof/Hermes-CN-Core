@@ -1183,9 +1183,9 @@ class ShellFileOperations(FileOperations):
         Streams to a temp file in the target's own directory, preserves the
         existing file's mode, then ``os.replace()`` (atomic same-dir rename) —
         the cross-platform equivalent of the POSIX ``mktemp``/``mv -f`` script.
-        On success ``stdout`` carries the verified on-disk byte count (read back
-        via ``getsize`` after the replace), so write_file never has to fabricate
-        a size (the root cause of the silent-success bug #54).
+        On success ``stdout`` carries the verified on-disk byte count (via
+        ``os.path.getsize`` after the replace), so write_file never has to
+        fabricate a size (the root cause of the silent-success bug #54).
         """
         abs_path = self._abs_local(path)
         parent = os.path.dirname(abs_path) or "."
@@ -1212,6 +1212,9 @@ class ShellFileOperations(FileOperations):
                 except OSError:
                     pass
                 raise
+            if not os.path.exists(abs_path):
+                raise OSError(f"File did not appear after atomic rename: {abs_path}")
+
             return ExecuteResult(stdout=str(os.path.getsize(abs_path)), exit_code=0)
         except OSError as exc:
             return ExecuteResult(stdout=f"atomic write failed: {exc}", exit_code=1)
@@ -1703,21 +1706,26 @@ class ShellFileOperations(FileOperations):
         if write_result.exit_code != 0:
             return WriteResult(error=f"Failed to write file: {write_result.stdout}")
 
-        # Bytes actually on disk. The in-process local writer (P-033) returns
-        # the verified post-replace size in stdout; POSIX/remote backends stat
-        # with ``wc -c``.  We do NOT fall back to ``len(content)`` on a *failed*
-        # stat after a "successful" write — that fabrication is exactly what
-        # masked the silent Windows write failure in #54 (PowerShell can't run
-        # the POSIX script, the wrapper exits 0, and ``wc -c`` returns
-        # non-numeric → len(content) faked a byte count for a file that was
-        # never written).  The in-process writer removes that path entirely.
-        bytes_written = _parse_optional_int(write_result.stdout)
-        if bytes_written is None:
-            bytes_written = _parse_optional_int(self._prim_stat_size(path).stdout)
-        if bytes_written is None:
-            # Last resort for an exotic backend whose stat is unavailable: the
-            # write itself reported success, so report the encoded length.
-            bytes_written = len(content.encode('utf-8'))
+        # Post-write verification: confirm the file exists and its size matches
+        # what we intended to write. This catches silent persistence failures
+        # (backend FS oddities, truncated pipe, race, PowerShell script no-op,
+        # etc.) without the cost of re-reading the entire file content.
+        expected_bytes = len(content.encode("utf-8"))
+        stat_result = self._prim_stat_size(path)
+        if stat_result.exit_code != 0:
+            return WriteResult(
+                error=f"Post-write verification failed: could not stat {path}"
+            )
+        bytes_written = _parse_optional_int(stat_result.stdout)
+        if bytes_written is None or bytes_written != expected_bytes:
+            return WriteResult(
+                error=(
+                    f"Post-write verification failed for {path}: on-disk size "
+                    f"({bytes_written} bytes) differs from intended write "
+                    f"({expected_bytes} bytes). The write did not persist. "
+                    "Re-read the file and try again."
+                )
+            )
 
         # Post-write lint with delta refinement.
         lint_result = self._check_lint_delta(path, pre_content=pre_content, post_content=content)
@@ -2824,9 +2832,13 @@ class ShellFileOperations(FileOperations):
                                has_hidden_ancestor: bool) -> tuple[List[str], bool]:
         """Walk *path* and return (file_paths, hit_scan_cap).
 
-        Prunes ``_FALLBACK_PRUNE_DIRS`` and (unless the root is already under a
-        hidden dir) hidden dirs/files. Stops once ``_FALLBACK_MAX_FILES_SCANNED``
-        paths have been collected, reporting that via the second return value.
+        Prunes ``_FALLBACK_PRUNE_DIRS`` and hidden dirs/files. The
+        ``has_hidden_ancestor`` flag only controls whether the search root
+        itself is allowed (it is passed in by the caller by deciding to enter
+        the root); hidden descendants are excluded either way, matching
+        ripgrep's default behavior and the POSIX ``find`` fallback path.
+        Stops once ``_FALLBACK_MAX_FILES_SCANNED`` paths have been collected,
+        reporting that via the second return value.
         """
         if os.path.isfile(path):
             return [path], False
@@ -2837,13 +2849,13 @@ class ShellFileOperations(FileOperations):
             for d in dirs:
                 if d in _FALLBACK_PRUNE_DIRS:
                     continue
-                if not has_hidden_ancestor and d.startswith('.'):
+                if d.startswith('.'):
                     continue
                 kept_dirs.append(d)
             dirs[:] = kept_dirs
 
             for f in files:
-                if not has_hidden_ancestor and f.startswith('.'):
+                if f.startswith('.'):
                     continue
                 paths.append(os.path.join(root, f))
                 if len(paths) >= _FALLBACK_MAX_FILES_SCANNED:

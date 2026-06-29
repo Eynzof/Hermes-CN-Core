@@ -4,6 +4,7 @@ import os
 import re
 import pytest
 import subprocess
+import tools.file_operations
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -15,6 +16,7 @@ from tools.file_operations import (
     SearchResult,
     SearchMatch,
     LintResult,
+    ExecuteResult,
     ShellFileOperations,
     MAX_LINE_LENGTH,
     normalize_read_pagination,
@@ -643,27 +645,19 @@ class TestSearchPathValidation:
 
 
 class TestSearchFilesFallbackHiddenPaths:
-    def _make_env(self):
-        env = MagicMock()
-        env.cwd = "/"
-
-        def execute(command, **kwargs):
-            completed = subprocess.run(
-                command,
-                shell=True,
-                text=True,
-                capture_output=True,
-            )
-            return {
-                "output": completed.stdout,
-                "returncode": completed.returncode,
-            }
-
-        env.execute = execute
-        return env
+    def _make_env(self, monkeypatch):
+        # Use the real local backend so the portable Python fallback is
+        # exercised; this keeps the tests runnable on Windows where the POSIX
+        # ``find`` command does not exist. Force rg off so we hit the Python
+        # walk rather than the rg path (rg includes hidden descendants when
+        # the root path itself is hidden, which differs from the find/Python
+        # semantics these tests assert).
+        monkeypatch.setattr(tools.file_operations.shutil, "which", lambda name: None)
+        from tools.environments.local import LocalEnvironment
+        return LocalEnvironment()
 
     def test_hidden_root_with_hidden_ancestor_includes_files(self, tmp_path, monkeypatch):
-        """Fallback find should include visible files when path is inside hidden root."""
+        """Fallback search should include visible files when path is inside hidden root."""
         root = tmp_path / ".hermes" / "logs"
         root.mkdir(parents=True)
         visible_file = root / "agent.log"
@@ -675,15 +669,14 @@ class TestSearchFilesFallbackHiddenPaths:
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text("x")
 
-        ops = ShellFileOperations(self._make_env())
-        monkeypatch.setattr(ops, "_has_command", lambda command: command == "find")
+        ops = ShellFileOperations(self._make_env(monkeypatch))
         result = ops._search_files("*.log", str(root), limit=50, offset=0)
 
         assert result.error is None
         assert set(result.files) == {str(visible_file), str(visible_nested_file)}
 
     def test_normal_root_still_excludes_hidden_descendants(self, tmp_path, monkeypatch):
-        """Fallback find should still exclude hidden descendant paths for normal roots."""
+        """Fallback search should still exclude hidden descendant paths for normal roots."""
         root = tmp_path / "repo"
         root.mkdir()
         visible_file = root / "agent.log"
@@ -694,12 +687,45 @@ class TestSearchFilesFallbackHiddenPaths:
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text("x")
 
-        ops = ShellFileOperations(self._make_env())
-        monkeypatch.setattr(ops, "_has_command", lambda command: command == "find")
+        ops = ShellFileOperations(self._make_env(monkeypatch))
         result = ops._search_files("*.log", str(root), limit=50, offset=0)
 
         assert result.error is None
         assert set(result.files) == {str(visible_file), str(visible_nested_file)}
+
+
+class TestShellFileOpsWriteVerification:
+    def test_write_file_verification_catches_mismatch(self, file_ops, monkeypatch):
+        """If _atomic_write claims success but the on-disk size differs,
+        write_file returns an error instead of silent success."""
+        monkeypatch.setattr(
+            file_ops, "_atomic_write",
+            lambda path, content: ExecuteResult(stdout="5", exit_code=0)
+        )
+        monkeypatch.setattr(
+            file_ops, "_prim_stat_size",
+            lambda path: ExecuteResult(stdout="99", exit_code=0)
+        )
+        result = file_ops.write_file("/tmp/test.txt", "hello")
+        assert result.error is not None
+        assert "verification failed" in result.error.lower()
+        assert "did not persist" in result.error.lower()
+        assert result.bytes_written == 0
+
+    def test_write_file_verification_catches_unstatable(self, file_ops, monkeypatch):
+        """If the post-write stat itself fails, write_file returns an error."""
+        monkeypatch.setattr(
+            file_ops, "_atomic_write",
+            lambda path, content: ExecuteResult(stdout="5", exit_code=0)
+        )
+        monkeypatch.setattr(
+            file_ops, "_prim_stat_size",
+            lambda path: ExecuteResult(stdout="", exit_code=1)
+        )
+        result = file_ops.write_file("/tmp/test.txt", "hello")
+        assert result.error is not None
+        assert "could not stat" in result.error.lower()
+        assert result.bytes_written == 0
 
 
 class TestShellFileOpsWriteDenied:

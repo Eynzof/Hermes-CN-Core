@@ -275,6 +275,30 @@ class TestWriteFile:
         assert "charlie" in result.content
         _assert_clean(result.content)
 
+    def test_write_empty_content_verifies(self, ops, tmp_path):
+        path = str(tmp_path / "empty.txt")
+        result = ops.write_file(path, "")
+        assert result.error is None
+        assert result.bytes_written == 0
+        assert Path(path).exists()
+        assert Path(path).read_text() == ""
+
+    def test_write_crlf_preserved_and_verified(self, ops, tmp_path):
+        path = str(tmp_path / "crlf.txt")
+        Path(path).write_text("line1\r\nline2\r\n", encoding="utf-8")
+        result = ops.write_file(path, "new1\nnew2\n")
+        assert result.error is None
+        on_disk = Path(path).read_bytes()
+        assert on_disk == b"new1\r\nnew2\r\n"
+
+    def test_write_bom_preserved_and_verified(self, ops, tmp_path):
+        path = str(tmp_path / "bom.txt")
+        Path(path).write_bytes(b"\xef\xbb\xbfold\n")
+        result = ops.write_file(path, "new\n")
+        assert result.error is None
+        on_disk = Path(path).read_bytes()
+        assert on_disk == b"\xef\xbb\xbfnew\n"
+
 
 # ── patch_replace ────────────────────────────────────────────────────────
 

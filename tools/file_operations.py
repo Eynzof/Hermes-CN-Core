@@ -30,6 +30,7 @@ import re
 import shutil
 import stat as _stat
 import subprocess
+import sys
 import tempfile
 import difflib
 import fnmatch
@@ -950,6 +951,13 @@ class ShellFileOperations(FileOperations):
         terminal's current directory — not the directory this file_ops was
         originally created in.  See test_file_ops_cwd_tracking.py.
         """
+        # On Windows, LocalEnvironment runs commands via PowerShell which
+        # doesn't understand POSIX ``/dev/null`` redirect syntax.  Translate
+        # the most common patterns to their PowerShell equivalents.
+        if sys.platform == "win32":
+            command = command.replace(">/dev/null 2>&1", "*>$null")
+            command = command.replace("2>/dev/null", "2>$null")
+            command = command.replace(">/dev/null", ">$null")
         kwargs = {}
         if timeout:
             kwargs['timeout'] = timeout

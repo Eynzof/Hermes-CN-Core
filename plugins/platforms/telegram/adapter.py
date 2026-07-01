@@ -64,6 +64,7 @@ import sys
 from pathlib import Path as _Path
 sys.path.insert(0, str(_Path(__file__).resolve().parents[3]))
 
+from hermes_cli._subprocess_compat import IS_WINDOWS, windows_hide_flags
 from gateway.config import Platform, PlatformConfig
 from gateway.platforms.base import (
     BasePlatformAdapter,
@@ -4632,10 +4633,14 @@ class TelegramAdapter(BasePlatformAdapter):
         cmd = [str(script_path), arg, *extra_args]
         success = False
         try:
+            _subprocess_kwargs = {}
+            if IS_WINDOWS:
+                _subprocess_kwargs["creationflags"] = windows_hide_flags()
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                **_subprocess_kwargs,
             )
             _stdout_bytes, stderr_bytes = await asyncio.wait_for(
                 proc.communicate(), timeout=60,

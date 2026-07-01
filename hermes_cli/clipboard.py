@@ -19,6 +19,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from hermes_cli._subprocess_compat import IS_WINDOWS, windows_hide_flags
 from hermes_constants import is_wsl as _is_wsl
 from tools.environments.windows_env import refresh_env_from_registry
 
@@ -200,9 +201,13 @@ _POWERSHELL_EXTRACT_IMAGE_SCRIPTS = (
 
 def _run_powershell(exe: str, script: str, timeout: int) -> subprocess.CompletedProcess:
     from tools.environments.windows_env import ps_with_utf8
+    _subprocess_kwargs = {}
+    if IS_WINDOWS:
+        _subprocess_kwargs["creationflags"] = windows_hide_flags()
     return subprocess.run(
         [exe, "-NoProfile", "-NonInteractive", "-Command", ps_with_utf8(script)],
         capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout,
+        **_subprocess_kwargs,
     )
 
 
@@ -259,9 +264,13 @@ def _find_powershell() -> str | None:
     refresh_env_from_registry()
     for name in ("powershell", "pwsh"):
         try:
+            _subprocess_kwargs = {}
+            if IS_WINDOWS:
+                _subprocess_kwargs["creationflags"] = windows_hide_flags()
             r = subprocess.run(
                 [name, "-NoProfile", "-NonInteractive", "-Command", "echo ok"],
                 capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=5,
+                **_subprocess_kwargs,
             )
             if r.returncode == 0 and "ok" in r.stdout:
                 return name

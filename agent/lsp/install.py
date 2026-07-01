@@ -35,6 +35,8 @@ import threading
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from hermes_cli._subprocess_compat import resolve_node_command
+
 logger = logging.getLogger("agent.lsp.install")
 
 # Package-name → install-strategy hint registry.  Each entry is a
@@ -261,7 +263,7 @@ def _install_npm(
             " ".join(install_targets),
         )
         proc = subprocess.run(
-            [npm, "install", "--prefix", str(staging), "--silent", "--no-fund", "--no-audit", *install_targets],
+            resolve_node_command("npm", ["install", "--prefix", str(staging), "--silent", "--no-fund", "--no-audit", *install_targets]),
             check=False,
             capture_output=True,
             text=True,

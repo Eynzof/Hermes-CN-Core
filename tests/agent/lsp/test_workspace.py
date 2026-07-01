@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -133,6 +134,7 @@ def test_resolve_workspace_falls_back_to_file_location(tmp_path: Path, monkeypat
     assert gated is True
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="HOME env var doesn't control Path.home() on Windows")
 def test_normalize_path_expands_tilde(monkeypatch):
     monkeypatch.setenv("HOME", "/home/user")
     p = normalize_path("~/x.py")

@@ -6,6 +6,9 @@ having LSP output prepended to the lint string.
 """
 from __future__ import annotations
 
+import sys
+
+import pytest
 from unittest.mock import patch
 
 
@@ -126,6 +129,7 @@ def test_write_file_skips_lsp_when_syntax_failed(tmp_path):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="PowerShell Out-String adds trailing newline breaking line-ending comparison")
 def test_patch_replace_propagates_lsp_diagnostics(tmp_path):
     """patch_replace's internal write_file populates lsp_diagnostics —
     the outer PatchResult must carry it forward."""

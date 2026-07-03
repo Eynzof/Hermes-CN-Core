@@ -12,7 +12,7 @@ Dashboard APIs consumed by [`Hermes-CN-Desktop`](https://github.com/Eynzof/Herme
 "clean reimplementation," assume "downstream patches on top of upstream." (`README.md` is the Chinese version;
 `README.en.md` is English. Some maintenance docs such as `MAINTAINING.md` still use the older `hermes-agent-cn` name.)
 
-- **Every fork-specific behavioral change is tracked in [`FORK_NOTES.md`](./FORK_NOTES.md) as `P-NNN`** (currently through P-029). Read it
+- **Every fork-specific behavioral change is tracked in [`FORK_NOTES.md`](./FORK_NOTES.md) as `P-NNN`** (currently through P-040). Read it
   before touching `hermes_cli/web_server.py`, `tui_gateway/`, or `hermes_cli/config.py`'s `OPTIONAL_ENV_VARS` —
   those files carry deliberate divergence from upstream. New behavioral patches use a `[CN-fork] P-NNN` commit
   prefix and must be added to the FORK_NOTES table.
@@ -28,7 +28,7 @@ Dashboard APIs consumed by [`Hermes-CN-Desktop`](https://github.com/Eynzof/Herme
 
 ## AGENTS.md is the canonical deep guide
 
-[`AGENTS.md`](./AGENTS.md) (~1,370 lines) is the authoritative development reference — architecture internals,
+[`AGENTS.md`](./AGENTS.md) (~1,385 lines) is the authoritative development reference — architecture internals,
 the tool registry chain, slash-command registry, TUI/Dashboard/Electron surfaces, plugins, skills, delegation,
 curator, cron, kanban, profiles, and the full "Known Pitfalls" list. **Read it for any non-trivial change.**
 This file is the orientation layer + fork specifics; AGENTS.md is the detail.
@@ -63,7 +63,7 @@ npm run dev        # watch (rebuild hermes-ink + tsx --watch)
 npm run build      # full build   | npm run typecheck | npm run lint | npm test (vitest)
 ```
 
-The Python test suite is large — ~1,600 test files; CI slices it 6 ways. Run the full suite before pushing.
+The Python test suite is large — ~1,700 test files; CI slices it 8 ways. Run the full suite before pushing.
 
 ## 开发前预检（双仓同步 + Worktree 隔离）
 

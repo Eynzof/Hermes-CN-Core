@@ -265,9 +265,19 @@ class LSPClient:
             cmd = self._win_wrap_cmd(cmd)
 
         try:
-            _subprocess_kwargs = {}
+            # Detach the LSP server into its own process group / session.
+            # Without this, the LSP server inherits the gateway's pgid (= TUI
+            # parent PID). When mcp_tool's _kill_orphaned_mcp_children races
+            # with LSP spawn and sweeps the gateway's child set, it captures
+            # the LSP PID, records the inherited pgid, and killpg() then kills
+            # the TUI parent itself. See tui_gateway_crash.log "killpg →
+            # SIGTERM received" stacks. POSIX uses start_new_session (setsid);
+            # [CN-fork] P-038 does the equivalent on Windows via creationflags.
+            _subprocess_kwargs: Dict[str, Any] = {}
             if sys.platform == "win32":
                 _subprocess_kwargs["creationflags"] = windows_detach_flags_without_breakaway()
+            else:
+                _subprocess_kwargs["start_new_session"] = True
             self._proc = await asyncio.create_subprocess_exec(
                 cmd[0],
                 *cmd[1:],

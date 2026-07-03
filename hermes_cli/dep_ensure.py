@@ -24,6 +24,7 @@ from pathlib import Path
 
 from tools.environments.windows_env import refresh_env_from_registry
 from hermes_constants import agent_browser_runnable
+from tools.environments.local import hermes_subprocess_env
 
 _IS_WINDOWS = platform.system() == "Windows"
 
@@ -158,7 +159,8 @@ def ensure_dependency(
     else:
         cmd = ["bash", str(script), "--ensure", dep]
 
-    run_env = {**os.environ, "IS_INTERACTIVE": "false"}
+    run_env = hermes_subprocess_env(inherit_credentials=False)
+    run_env["IS_INTERACTIVE"] = "false"
     result = subprocess.run(
         cmd,
         env=run_env,

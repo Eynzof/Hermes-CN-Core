@@ -25,8 +25,12 @@ from unittest.mock import patch
 from tools.environments import local as local_mod
 from tools.environments.local import (
     LocalEnvironment,
+    _make_run_env,
     _msys_to_windows_path,
     _resolve_safe_cwd,
+    _sanitize_subprocess_env,
+    _windows_to_msys_path,
+    hermes_subprocess_env,
 )
 
 
@@ -69,6 +73,35 @@ class TestMsysToWindowsPath:
     def test_empty_string(self, monkeypatch):
         monkeypatch.setattr(local_mod, "_IS_WINDOWS", True)
         assert _msys_to_windows_path("") == ""
+
+
+# ---------------------------------------------------------------------------
+# _windows_to_msys_path — reverse translation for bash builtin cd
+# ---------------------------------------------------------------------------
+
+class TestWindowsToMsysPath:
+    def test_noop_on_non_windows(self, monkeypatch):
+        monkeypatch.setattr(local_mod, "_IS_WINDOWS", False)
+        assert _windows_to_msys_path(r"C:\Users\NVIDIA") == r"C:\Users\NVIDIA"
+
+    def test_translates_backslash_path(self, monkeypatch):
+        monkeypatch.setattr(local_mod, "_IS_WINDOWS", True)
+        assert _windows_to_msys_path(r"C:\Users\NVIDIA") == "/c/Users/NVIDIA"
+        assert _windows_to_msys_path(r"D:\Projects\foo bar") == "/d/Projects/foo bar"
+
+    def test_translates_forward_slash_native_path(self, monkeypatch):
+        monkeypatch.setattr(local_mod, "_IS_WINDOWS", True)
+        assert _windows_to_msys_path("C:/Users/NVIDIA") == "/c/Users/NVIDIA"
+
+    def test_translates_drive_root(self, monkeypatch):
+        monkeypatch.setattr(local_mod, "_IS_WINDOWS", True)
+        assert _windows_to_msys_path(r"C:\\") == "/c/"
+        assert _windows_to_msys_path("D:/") == "/d/"
+
+    def test_does_not_translate_non_drive_path(self, monkeypatch):
+        monkeypatch.setattr(local_mod, "_IS_WINDOWS", True)
+        assert _windows_to_msys_path("/tmp/foo") == "/tmp/foo"
+        assert _windows_to_msys_path(r"\\server\share") == r"\\server\share"
 
 
 # ---------------------------------------------------------------------------
@@ -243,3 +276,97 @@ class TestExtractCwdFromOutputWindowsMsys:
             env._extract_cwd_from_output(result)
 
         assert env.cwd == str(new_dir)
+
+
+# ---------------------------------------------------------------------------
+# MSYS_NO_PATHCONV — native Windows command flags (#56700)
+# ---------------------------------------------------------------------------
+
+class TestWindowsMsysPathconvDefaults:
+    def test_make_run_env_sets_msys_no_pathconv_on_windows(self, monkeypatch):
+        monkeypatch.setattr(local_mod, "_IS_WINDOWS", True)
+        run_env = _make_run_env({})
+        assert run_env.get("MSYS_NO_PATHCONV") == "1"
+
+    def test_sanitize_subprocess_env_sets_msys_no_pathconv_on_windows(self, monkeypatch):
+        monkeypatch.setattr(local_mod, "_IS_WINDOWS", True)
+        env = _sanitize_subprocess_env({})
+        assert env.get("MSYS_NO_PATHCONV") == "1"
+
+    def test_hermes_subprocess_env_sets_msys_no_pathconv_on_windows(self, monkeypatch):
+        monkeypatch.setattr(local_mod, "_IS_WINDOWS", True)
+        env = hermes_subprocess_env()
+        assert env.get("MSYS_NO_PATHCONV") == "1"
+
+    def test_no_pathconv_not_set_on_posix(self, monkeypatch):
+        monkeypatch.setattr(local_mod, "_IS_WINDOWS", False)
+        assert "MSYS_NO_PATHCONV" not in _make_run_env({})
+
+    def test_respects_user_override(self, monkeypatch):
+        monkeypatch.setattr(local_mod, "_IS_WINDOWS", True)
+        run_env = _make_run_env({"MSYS_NO_PATHCONV": "0"})
+        assert run_env.get("MSYS_NO_PATHCONV") == "0"
+
+    def test_msys2_arg_conv_excl_set_on_windows(self, monkeypatch):
+        # MSYS2-proper / Cygwin bash ignore MSYS_NO_PATHCONV; they honor
+        # MSYS2_ARG_CONV_EXCL. Both must be set on every env builder.
+        monkeypatch.setattr(local_mod, "_IS_WINDOWS", True)
+        assert _make_run_env({}).get("MSYS2_ARG_CONV_EXCL") == "*"
+        assert _sanitize_subprocess_env({}).get("MSYS2_ARG_CONV_EXCL") == "*"
+        assert hermes_subprocess_env().get("MSYS2_ARG_CONV_EXCL") == "*"
+
+    def test_msys2_arg_conv_excl_not_set_on_posix(self, monkeypatch):
+        monkeypatch.setattr(local_mod, "_IS_WINDOWS", False)
+        assert "MSYS2_ARG_CONV_EXCL" not in _make_run_env({})
+
+    def test_msys2_arg_conv_excl_respects_user_override(self, monkeypatch):
+        monkeypatch.setattr(local_mod, "_IS_WINDOWS", True)
+        run_env = _make_run_env({"MSYS2_ARG_CONV_EXCL": "/custom"})
+        assert run_env.get("MSYS2_ARG_CONV_EXCL") == "/custom"
+
+
+# ---------------------------------------------------------------------------
+# Command wrapping — native Windows cwd must be Git Bash-friendly for cd
+# ---------------------------------------------------------------------------
+
+class TestWrapCommandWindowsNativeCwd:
+    """[CN-fork] P-019 rewrite of the upstream Git-Bash msys-cwd tests.
+
+    Upstream asserts ``_wrap_command`` converts a native ``C:\\Users\\x`` cwd to
+    the Git-Bash ``/c/Users/x`` form for ``builtin cd``. The fork removed Git
+    Bash entirely — Windows always runs PowerShell 5.1 (P-016/P-019) — so the
+    contract here is the opposite: the wrapper must use the NATIVE Windows
+    path verbatim (single-quoted for PowerShell), with no msys conversion.
+    """
+
+    def test_wrap_command_uses_native_cwd_for_set_location(self, monkeypatch):
+        monkeypatch.setattr(local_mod, "_IS_WINDOWS", True)
+
+        with patch.object(
+            LocalEnvironment, "init_session", autospec=True, return_value=None
+        ):
+            env = LocalEnvironment(cwd=r"C:\Users\liush", timeout=10)
+
+        wrapped = env._wrap_command("pwd", r"C:\Users\liush")
+
+        assert env._shell_type == "powershell"
+        assert r"Set-Location -LiteralPath 'C:\Users\liush'" in wrapped
+        assert "/c/Users/liush" not in wrapped
+
+    def test_init_session_powershell_skips_bash_bootstrap(self, monkeypatch):
+        """Windows init_session takes the PowerShell path (no snapshot
+        bootstrap) and never spawns the bash bootstrap script."""
+        monkeypatch.setattr(local_mod, "_IS_WINDOWS", True)
+
+        captured = {}
+
+        def fake_run_bash(self, cmd_string, *, login=False, timeout=120, stdin_data=None):
+            captured["script"] = cmd_string
+            raise RuntimeError("bash path must not run on Windows (P-019)")
+
+        monkeypatch.setattr(LocalEnvironment, "_run_bash", fake_run_bash)
+
+        env = LocalEnvironment(cwd=r"C:\Users\liush", timeout=10)
+
+        assert env._shell_type == "powershell"
+        assert captured == {}

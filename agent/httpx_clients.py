@@ -126,18 +126,26 @@ def build_httpx_client(
     timeout=None,
     headers=None,
     socket_options: Iterable[tuple] | None = None,
+    verify=None,
 ):
     """Build a sync httpx client using the shared SSL context.
 
     ``socket_options`` is used by the primary chat client to keep TCP
     keepalives.  Supplying a custom transport disables httpx's env-proxy
     discovery, so in that path we explicitly forward the matching proxy URL.
+
+    ``verify`` honors a caller-supplied verification policy (``False``, a CA
+    bundle path, or an ``ssl.SSLContext`` from config-level ``ssl_verify`` /
+    ``ca_bundle`` settings).  ``None``/``True`` — the "default verification"
+    cases — use the cached shared context so the expensive CA-bundle load
+    stays amortized across the process.
     """
 
     import httpx
 
     normalize_proxy_env_vars()
-    verify = get_shared_ssl_context()
+    if verify is None or verify is True:
+        verify = get_shared_ssl_context()
     kwargs = {"verify": verify}
     if timeout is not None:
         kwargs["timeout"] = timeout

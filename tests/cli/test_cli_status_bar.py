@@ -400,20 +400,20 @@ class TestCLIStatusBar:
         cli_obj = _make_cli()
         cli_obj._spinner_text = "running tool"
 
-        # Pin a deterministic monotonic clock. A freshly-booted CI VM can report
-        # time.monotonic() < 65.2 (CLOCK_MONOTONIC is since boot), which makes
-        # `monotonic() - 65.2` negative -> _render_spinner_text takes the
-        # `t0 <= 0` branch and drops the elapsed parens -> a flaky IndexError in
-        # the `.split("(")[1]` below. Pinning the clock removes that dependency.
-        monkeypatch.setattr(cli_mod.time, "monotonic", lambda: 100_000.0)
+        # Pin the clock: time.monotonic()'s epoch is arbitrary (often near
+        # boot), so deriving _tool_start_time from the real monotonic clock
+        # made the test fail on hosts where monotonic() < 65.2 — the start
+        # time went negative, the (t0 > 0) guard in _render_spinner_text
+        # dropped the "(elapsed)" suffix entirely, and the split below hit an
+        # IndexError. A fixed clock keeps both elapsed paths deterministic.
+        with patch.object(cli_mod.time, "monotonic", return_value=1000.0):
+            # <60s path
+            cli_obj._tool_start_time = 1000.0 - 9.2
+            short = cli_obj._render_spinner_text()
 
-        # <60s path
-        cli_obj._tool_start_time = 100_000.0 - 9.2
-        short = cli_obj._render_spinner_text()
-
-        # >=60s path
-        cli_obj._tool_start_time = 100_000.0 - 65.2
-        long = cli_obj._render_spinner_text()
+            # >=60s path
+            cli_obj._tool_start_time = 1000.0 - 65.2
+            long = cli_obj._render_spinner_text()
 
         short_elapsed = short.split("(", 1)[1].rstrip(")")
         long_elapsed = long.split("(", 1)[1].rstrip(")")

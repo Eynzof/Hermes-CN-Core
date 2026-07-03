@@ -429,3 +429,66 @@ class TestInitAgentDoesNotMutatePluginSingleton:
         assert not re.search(
             r"_selected_engine\s*=\s*_candidate\b", src
         ), "found the #42449 bug-shape alias `_selected_engine = _candidate`"
+
+
+class TestGetUsageStatus:
+    """Test ``get_usage_status()`` — added as part of the ContextUsage tool."""
+
+    def test_returns_zero_state_before_any_llm_call(self):
+        engine = StubEngine()
+        status = engine.get_usage_status()
+        assert status["used_tokens"] == 0
+        assert status["usage_percent"] == 0.0
+        assert status["max_context_tokens"] == 200000
+        assert status["threshold_tokens"] == 100000
+        assert status["compression_count"] == 0
+
+    def test_returns_usage_after_prompt(self):
+        engine = StubEngine()
+        engine.update_from_response({"prompt_tokens": 50000})
+        status = engine.get_usage_status()
+        assert status["used_tokens"] == 50000
+        assert 24.9 < status["usage_percent"] < 25.1  # 50000/200000 = 25%
+        assert status["max_context_tokens"] == 200000
+
+    def test_usage_percent_capped_at_100(self):
+        engine = StubEngine()
+        engine.update_from_response({"prompt_tokens": 500000})  # exceeds context
+        status = engine.get_usage_status()
+        assert status["usage_percent"] == 100.0
+
+    def test_usage_after_compression(self):
+        engine = StubEngine()
+        engine.compression_count = 3
+        engine.update_from_response({"prompt_tokens": 30000})
+        status = engine.get_usage_status()
+        assert status["compression_count"] == 3
+        assert status["used_tokens"] == 30000
+
+    def test_returns_json_serializable(self):
+        import json
+        engine = StubEngine()
+        engine.update_from_response({"prompt_tokens": 1000})
+        status = engine.get_usage_status()
+        dumped = json.dumps(status)
+        loaded = json.loads(dumped)
+        assert loaded["used_tokens"] == 1000
+
+    def test_delegates_to_get_status_consistently(self):
+        """get_status() should use get_usage_status() internally so fields match."""
+        engine = StubEngine()
+        engine.update_from_response({"prompt_tokens": 75000})
+        usage = engine.get_usage_status()
+        status = engine.get_status()
+        assert status["usage_percent"] == usage["usage_percent"]
+        assert status["threshold_tokens"] == usage["threshold_tokens"]
+        assert status["compression_count"] == usage["compression_count"]
+        assert status["context_length"] == usage["max_context_tokens"]
+
+    def test_handles_post_compression_sentinel(self):
+        """After compression, last_prompt_tokens is -1; get_usage_status clamps to 0."""
+        engine = StubEngine()
+        engine.last_prompt_tokens = -1
+        status = engine.get_usage_status()
+        assert status["used_tokens"] == 0
+        assert status["usage_percent"] == 0.0

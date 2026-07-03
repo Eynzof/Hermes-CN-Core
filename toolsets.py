@@ -213,7 +213,11 @@ TOOLSETS = {
     },
 
     "context_engine": {
-        "description": "Runtime tools exposed by the active context engine",
+        "description": (
+            "Runtime tools exposed by the active context engine — "
+            "context_usage (report context usage) and compact (proactive "
+            "context compaction with optional instruction and mode)."
+        ),
         "tools": [],
         "includes": []
     },

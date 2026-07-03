@@ -1330,7 +1330,7 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                 elif agent._should_emit_quiet_tool_messages():
                     agent._vprint(f"  {cute_msg}")
         elif agent._context_engine_tool_names and function_name in agent._context_engine_tool_names:
-            # Context engine tools (lcm_grep, lcm_describe, lcm_expand, etc.)
+            # Context engine tools (context_usage, compact, lcm_grep, etc.)
             spinner = None
             if agent._should_emit_quiet_tool_messages():
                 face = random.choice(KawaiiSpinner.get_waiting_faces())
@@ -1341,16 +1341,65 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                 spinner.start()
             _ce_result = None
             try:
-                def _execute(next_args: dict) -> Any:
-                    return agent.context_compressor.handle_tool_call(function_name, next_args, messages=messages)
-                function_result, function_args = _run_agent_tool_execution_middleware(
-                    agent,
-                    function_name=function_name,
-                    function_args=function_args,
-                    effective_task_id=effective_task_id,
-                    tool_call_id=getattr(tool_call, "id", "") or "",
-                    execute=_execute,
-                )
+                # Special case: the ``compact`` tool performs actual compression
+                # inline, not just acknowledgment. handle_tool_call validates the
+                # request first, then we run the full compression lifecycle.
+                if function_name == "compact":
+                    # Validate via handle_tool_call
+                    _ack = agent.context_compressor.handle_tool_call(
+                        function_name, function_args, messages=messages
+                    )
+                    _ack_data = json.loads(_ack)
+                    instruction = function_args.get("instruction", "")
+                    mode = function_args.get("mode", "balanced")
+                    focus_topic = instruction if instruction else None
+                    _pre_count = len(messages)
+                    try:
+                        system_message = getattr(agent, "_cached_system_prompt", "") or ""
+                        compressed_messages, new_system_prompt = agent._compress_context(
+                            messages, system_message,
+                            focus_topic=focus_topic,
+                            force=True,
+                            mode=mode,
+                        )
+                        # Only replace messages if compression actually changed them
+                        if len(compressed_messages) != len(messages):
+                            messages.clear()
+                            messages.extend(compressed_messages)
+                            function_result = json.dumps({
+                                "status": "completed",
+                                "message": f"Context compressed. Reduced from {_pre_count} to {len(compressed_messages)} messages.",
+                                "compression_count": getattr(
+                                    agent.context_compressor, "compression_count", 0
+                                ),
+                            })
+                        else:
+                            function_result = json.dumps({
+                                "status": "noop",
+                                "message": (
+                                    "Compression completed but no tokens were saved "
+                                    "(context may already be compacted or too small "
+                                    "to compress)."
+                                ),
+                            })
+                    except Exception as comp_err:
+                        function_result = json.dumps({
+                            "error": f"Compaction failed: {comp_err}",
+                            "status": "error",
+                        })
+                else:
+                    def _execute(next_args: dict) -> Any:
+                        return agent.context_compressor.handle_tool_call(
+                            function_name, next_args, messages=messages
+                        )
+                    function_result, function_args = _run_agent_tool_execution_middleware(
+                        agent,
+                        function_name=function_name,
+                        function_args=function_args,
+                        effective_task_id=effective_task_id,
+                        tool_call_id=getattr(tool_call, "id", "") or "",
+                        execute=_execute,
+                    )
                 _ce_result = function_result
             except Exception as tool_error:
                 function_result = json.dumps({"error": f"Context engine tool '{function_name}' failed: {tool_error}"})

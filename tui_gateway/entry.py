@@ -173,7 +173,7 @@ if hasattr(signal, "SIGPIPE"):
 if hasattr(signal, "SIGTERM"):
     signal.signal(signal.SIGTERM, _log_signal)
 if hasattr(signal, "SIGHUP"):
-    signal.signal(signal.SIGHUP, _log_signal)
+    signal.signal(signal.SIGHUP, _log_signal)  # windows-footgun: ok — hasattr-guarded above
 elif hasattr(signal, "SIGBREAK"):
     # Windows-only: Ctrl+Break in a console window delivers SIGBREAK.
     # Route it through the same handler so kills are diagnosable.

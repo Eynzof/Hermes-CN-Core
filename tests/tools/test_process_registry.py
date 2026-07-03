@@ -8,7 +8,6 @@ import sys
 import threading
 import time
 import pytest
-from contextlib import ExitStack
 from unittest.mock import MagicMock, patch
 
 from tools.environments.local import _HERMES_PROVIDER_ENV_FORCE_PREFIX
@@ -17,6 +16,7 @@ from tools.process_registry import (
     ProcessSession,
     FINISHED_TTL_SECONDS,
     MAX_PROCESSES,
+    MAX_ACTIVE_PROCESS_AGE,
 )
 
 
@@ -139,6 +139,118 @@ class TestGetAndPoll:
         result = registry.poll(s.id)
         assert result["status"] == "exited"
         assert result["exit_code"] == 0
+
+
+def test_request_close_terminal_without_sink_is_desktop_only_error(registry):
+    """No UI close sink wired (CLI/messaging) → clear desktop-only error, no raise."""
+    s = _make_session(sid="proc_close_nosink")
+    registry._running[s.id] = s
+
+    result = registry.request_close_terminal(s.id)
+
+    assert result["status"] == "error"
+    assert "desktop" in result["error"].lower()
+
+
+def test_request_close_terminal_invokes_sink_without_killing(registry):
+    """With a sink wired, close routes (session, process_id) to the UI and leaves
+    the process running — close is a view drop, not a kill."""
+    s = _make_session(sid="proc_close_live")
+    registry._running[s.id] = s
+    calls = []
+    registry.on_close = lambda session, pid: calls.append((session, pid))
+
+    result = registry.request_close_terminal(s.id)
+
+    assert result["status"] == "ok"
+    assert result["closed"] == "proc_close_live"
+    assert calls == [(s, "proc_close_live")]
+    # Still tracked as running — closing the tab must not reap the process.
+    assert s.id in registry._running
+
+
+def test_close_terminal_tool_requires_process_id():
+    """The desktop-gated close_terminal tool rejects a missing process_id."""
+    from tools.close_terminal_tool import close_terminal_tool
+
+    assert json.loads(close_terminal_tool(""))["error"]
+
+
+def test_close_terminal_tool_routes_to_registry(monkeypatch):
+    """close_terminal delegates to process_registry.request_close_terminal."""
+    import tools.close_terminal_tool as ct
+
+    seen = {}
+
+    def _fake_close(sid):
+        seen["sid"] = sid
+
+        return {"status": "ok", "closed": sid}
+
+    monkeypatch.setattr(ct.process_registry, "request_close_terminal", _fake_close)
+
+    out = ct.close_terminal_tool("proc_abc")
+
+    assert json.loads(out)["closed"] == "proc_abc"
+    assert seen["sid"] == "proc_abc"
+
+
+def test_close_terminal_tool_gated_on_desktop(monkeypatch):
+    """Hidden unless HERMES_DESKTOP is set (mirrors read_terminal gating)."""
+    from tools.close_terminal_tool import check_close_terminal_requirements
+
+    monkeypatch.delenv("HERMES_DESKTOP", raising=False)
+    assert check_close_terminal_requirements() is False
+
+    monkeypatch.setenv("HERMES_DESKTOP", "1")
+    assert check_close_terminal_requirements() is True
+
+
+def test_reader_loop_streams_incremental_chunks_from_read1(registry, monkeypatch):
+    """Local reader must emit live chunks, not one EOF burst.
+
+    Regression for desktop agent terminals: ``stdout.read(4096)`` can buffer
+    until process exit for small periodic output. ``buffer.read1(4096)`` should
+    surface each chunk as it arrives.
+    """
+
+    class _FakeBuffer:
+        def __init__(self, chunks):
+            self._chunks = list(chunks)
+
+        def read1(self, _n):
+            if self._chunks:
+                return self._chunks.pop(0)
+            return b""
+
+    class _FakeStdout:
+        def __init__(self, chunks):
+            self.buffer = _FakeBuffer(chunks)
+
+    class _FakeProcess:
+        def __init__(self, chunks):
+            self.stdout = _FakeStdout(chunks)
+            self.returncode = 0
+
+        def wait(self, timeout=None):
+            return 0
+
+    session = _make_session(sid="proc_reader_live")
+    session.process = _FakeProcess([b"tick 1\n", b"tick 2\n", b"tick 3\n", b""])
+    emitted = []
+    moved = []
+
+    monkeypatch.setattr(registry, "_check_watch_patterns", lambda _s, _c: None)
+    monkeypatch.setattr(registry, "_emit_output", lambda _s, chunk: emitted.append(chunk))
+    monkeypatch.setattr(registry, "_move_to_finished", lambda _s: moved.append(_s.id))
+
+    registry._reader_loop(session)
+
+    assert emitted == ["tick 1\n", "tick 2\n", "tick 3\n"]
+    assert session.output_buffer == "tick 1\ntick 2\ntick 3\n"
+    assert session.exited is True
+    assert session.exit_code == 0
+    assert moved == ["proc_reader_live"]
 
 
 # =========================================================================
@@ -367,13 +479,10 @@ class TestStdinHelpers:
         supported path.
         """
         session = registry.spawn_local(
-            "cat",
+            'python3 -c "import sys; print(sys.stdin.read().strip())"',
             cwd=str(tmp_path),
             use_pty=True,
         )
-
-        if session._pty is None:
-            pytest.skip("PTY library not available (winpty/ptyprocess not installed)")
 
         try:
             time.sleep(0.5)
@@ -419,6 +528,34 @@ class TestListSessions:
         assert len(result) == 1
         assert result[0]["session_id"] == "proc_1"
 
+    def test_session_key_surfaces_cross_task_processes(self, registry):
+        """A bg process under the same gateway session but a DIFFERENT task is
+        surfaced when session_key is passed, and flagged session_scoped (#29177).
+        """
+        # Current turn's task = "t_now"; forgotten preview server = "t_old"
+        # but both share gateway session_key "gw1".
+        own = _make_session(sid="proc_own", task_id="t_now")
+        own.session_key = "gw1"
+        forgotten = _make_session(sid="proc_forgotten", task_id="t_old")
+        forgotten.session_key = "gw1"
+        other = _make_session(sid="proc_other", task_id="t_x")
+        other.session_key = "gw_other"
+        registry._running[own.id] = own
+        registry._running[forgotten.id] = forgotten
+        registry._running[other.id] = other
+
+        # Task-only (legacy) view sees just the current task's process.
+        legacy = registry.list_sessions(task_id="t_now")
+        assert {r["session_id"] for r in legacy} == {"proc_own"}
+
+        # With session_key, the forgotten process under the same gateway
+        # session is surfaced and flagged; the unrelated session is not.
+        result = registry.list_sessions(task_id="t_now", session_key="gw1")
+        by_id = {r["session_id"]: r for r in result}
+        assert set(by_id) == {"proc_own", "proc_forgotten"}
+        assert by_id["proc_forgotten"].get("session_scoped") is True
+        assert "session_scoped" not in by_id["proc_own"]
+
     def test_list_entry_fields(self, registry):
         s = _make_session(output="preview text")
         registry._running[s.id] = s
@@ -447,6 +584,27 @@ class TestActiveQueries:
         registry._running[s.id] = s
         assert registry.has_active_for_session("gw_session_1") is True
         assert registry.has_active_for_session("other") is False
+
+    def test_has_active_for_session_with_max_age_recent(self, registry):
+        """Recent process is considered active when max_active_age is set."""
+        s = _make_session(started_at=time.time() - 100)
+        s.session_key = "gw_session_1"
+        registry._running[s.id] = s
+        assert registry.has_active_for_session("gw_session_1", max_active_age=3600) is True
+
+    def test_has_active_for_session_with_max_age_stale(self, registry):
+        """Stale process (older than max_active_age) is ignored."""
+        s = _make_session(started_at=time.time() - 90000)  # 25 hours ago
+        s.session_key = "gw_session_1"
+        registry._running[s.id] = s
+        assert registry.has_active_for_session("gw_session_1", max_active_age=86400) is False
+
+    def test_has_active_for_session_max_age_none_preserves_legacy(self, registry):
+        """Without max_active_age, any running process blocks (legacy behaviour)."""
+        s = _make_session(started_at=time.time() - 90000)  # 25 hours ago
+        s.session_key = "gw_session_1"
+        registry._running[s.id] = s
+        assert registry.has_active_for_session("gw_session_1") is True
 
     def test_exited_not_active(self, registry):
         s = _make_session(task_id="t1", exited=True, exit_code=0)
@@ -683,21 +841,11 @@ class TestPopenLeakOnSetupFailure:
         # and a real risk of SIGKILLing an innocent process group. Force the
         # ProcessLookupError fallback so the test deterministically exercises
         # proc.kill() and never issues a real killpg.
-        #
-        # On Windows os.getpgid does not exist; the code already skips the
-        # killpg branch, so we only mock it when available.
-        ctx = [
-            patch("tools.process_registry._find_shell", return_value="/bin/bash"),
-            patch("subprocess.Popen", return_value=proc),
-            patch("threading.Thread", side_effect=boom),
-            patch.object(registry, "_write_checkpoint"),
-        ]
-        if hasattr(os, "getpgid"):
-            ctx.append(patch("os.getpgid", side_effect=ProcessLookupError))
-
-        with ExitStack() as stack:
-            for cm in ctx:
-                stack.enter_context(cm)
+        with patch("tools.process_registry._find_shell", return_value="/bin/bash"), \
+             patch("subprocess.Popen", return_value=proc), \
+             patch("threading.Thread", side_effect=boom), \
+             patch("os.getpgid", side_effect=ProcessLookupError), \
+             patch.object(registry, "_write_checkpoint"):
             with pytest.raises(RuntimeError, match="Thread creation failed"):
                 registry.spawn_local("echo hello", cwd="/tmp")
 
@@ -725,21 +873,11 @@ class TestPopenLeakOnSetupFailure:
         # ProcessLookupError fallback so cleanup deterministically calls
         # proc.kill() instead of issuing a real os.killpg against whatever
         # process group happens to own the fake PID on the host.
-        #
-        # On Windows os.getpgid does not exist; the code already skips the
-        # killpg branch, so we only mock it when available.
-        ctx = [
-            patch("tools.process_registry._find_shell", return_value="/bin/bash"),
-            patch("subprocess.Popen", return_value=proc),
-            patch("threading.Thread", return_value=fake_thread),
-            patch.object(registry, "_write_checkpoint", side_effect=OSError("disk full")),
-        ]
-        if hasattr(os, "getpgid"):
-            ctx.append(patch("os.getpgid", side_effect=ProcessLookupError))
-
-        with ExitStack() as stack:
-            for cm in ctx:
-                stack.enter_context(cm)
+        with patch("tools.process_registry._find_shell", return_value="/bin/bash"), \
+             patch("subprocess.Popen", return_value=proc), \
+             patch("threading.Thread", return_value=fake_thread), \
+             patch("os.getpgid", side_effect=ProcessLookupError), \
+             patch.object(registry, "_write_checkpoint", side_effect=OSError("disk full")):
             with pytest.raises(OSError, match="disk full"):
                 registry.spawn_local("echo hello", cwd="/tmp")
 
@@ -965,26 +1103,60 @@ class TestKillProcess:
         result = registry.kill_process(s.id)
         assert result["status"] == "already_exited"
 
+    def test_kill_local_popen_uses_host_tree_terminator(self, registry, monkeypatch):
+        s = _make_session(sid="proc_local", command="sleep 999")
+        s.process = MagicMock()
+        s.process.pid = 12345
+        s.host_start_time = 67890
+        registry._running[s.id] = s
+        terminate_calls = []
+
+        monkeypatch.setattr(
+            registry,
+            "_terminate_host_pid",
+            lambda pid, expected_start=None: terminate_calls.append((pid, expected_start)),
+        )
+        monkeypatch.setattr(registry, "_write_checkpoint", lambda: None)
+
+        result = registry.kill_process(s.id)
+
+        assert result["status"] == "killed"
+        assert terminate_calls == [(12345, 67890)]
+
     def test_kill_detached_session_uses_host_pid(self, registry):
         s = _make_session(sid="proc_detached", command="sleep 999")
         s.pid = 424242
         s.detached = True
         registry._running[s.id] = s
 
+        terminate_calls = []
+
+        class FakeProcess:
+            def __init__(self, pid):
+                self.pid = pid
+            def children(self, recursive=False):
+                return []
+            def terminate(self):
+                terminate_calls.append(("terminate", self.pid))
+
+        import psutil as _psutil
+
         try:
             # Post-#21561: liveness probe routes through
             # ``ProcessRegistry._is_host_pid_alive`` (→
-            # ``gateway.status._pid_exists``), and the actual kill routes
-            # through ``ProcessRegistry._terminate_host_pid``. Mock both seams.
+            # ``gateway.status._pid_exists``), and the actual kill on POSIX
+            # routes through ``psutil.Process(pid).terminate()``. Neither
+            # touches ``os.kill`` directly. Mock both seams.  Disable the
+            # SIGKILL-escalation step (grace=0) so it doesn't call
+            # ``psutil.wait_procs`` on the FakeProcess.
             with patch("gateway.status._pid_exists", return_value=True), \
-                 patch.object(ProcessRegistry, "_terminate_host_pid") as mock_terminate:
+                 patch.object(ProcessRegistry, "_daemon_term_grace_seconds",
+                              staticmethod(lambda: 0.0)), \
+                 patch.object(_psutil, "Process", side_effect=lambda pid: FakeProcess(pid)):
                 result = registry.kill_process(s.id)
 
             assert result["status"] == "killed"
-            # Upstream's _terminate_host_pid takes (pid, expected_start); assert
-            # it was called once for the host pid, tolerating the 2nd arg.
-            mock_terminate.assert_called_once()
-            assert mock_terminate.call_args.args[0] == 424242
+            assert ("terminate", 424242) in terminate_calls
         finally:
             registry._running.pop(s.id, None)
 
@@ -1234,7 +1406,6 @@ class TestTerminateHostPidWindows:
     def test_windows_does_not_call_psutil(self, monkeypatch):
         """The Windows branch must NOT exercise the psutil tree-walk
         (it's unreliable on Windows — see the function docstring)."""
-        pytest.importorskip("psutil")
         from tools import process_registry as pr
         import psutil
 
@@ -1269,7 +1440,6 @@ class TestTerminateHostPidPosix:
     """POSIX branch walks the tree via psutil and SIGTERMs children first."""
 
     def test_posix_walks_tree_and_terminates_children_then_parent(self, monkeypatch):
-        pytest.importorskip("psutil")
         from tools import process_registry as pr
         import psutil
 
@@ -1308,7 +1478,6 @@ class TestTerminateHostPidPosix:
         )
 
     def test_posix_no_such_process_swallowed(self, monkeypatch):
-        pytest.importorskip("psutil")
         from tools import process_registry as pr
         import psutil
 
@@ -1322,7 +1491,6 @@ class TestTerminateHostPidPosix:
         pr.ProcessRegistry._terminate_host_pid(999999999)
 
     def test_posix_oserror_falls_back_to_os_kill(self, monkeypatch):
-        pytest.importorskip("psutil")
         from tools import process_registry as pr
         import psutil
 
@@ -1582,20 +1750,31 @@ class TestSigkillEscalation:
         try:
             ProcessRegistry._terminate_host_pid(parent.pid)
 
-            def _all_dead():
-                return not any(
-                    psutil.pid_exists(p)
-                    and ProcessRegistry._proc_alive(psutil.Process(p))
-                    for p in all_pids
-                )
+            def _pid_dead(p: int) -> bool:
+                # A pid is "dead" for our purposes if it no longer exists OR
+                # exists only as an unreaped zombie (already terminated, just
+                # not reaped by its reparented parent yet). psutil can also
+                # raise mid-probe if the pid vanishes between the existence
+                # check and the status read — treat any such race as dead.
+                try:
+                    if not psutil.pid_exists(p):
+                        return True
+                    return not ProcessRegistry._proc_alive(psutil.Process(p))
+                except Exception:
+                    return True
 
-            # Generous wait: after the 1s term-grace the registry escalates to
-            # SIGKILL, but reaping a 3-process tree (parent + 2 children) and
-            # re-probing via psutil can exceed 4s on a loaded CI runner (8
-            # parallel workers) — which made this flake. We assert the tree is
-            # ALL killed, not how fast, so a larger ceiling removes the flake
-            # while still bounding a genuine escalation failure.
-            assert _wait_until(_all_dead, timeout=10.0), (
+            def _all_dead():
+                return all(_pid_dead(p) for p in all_pids)
+
+            # _terminate_host_pid SIGKILLs synchronously before returning, so
+            # the kill signals are already delivered here. The only remaining
+            # wait is the kernel tearing down 3 processes and the reparented
+            # children transitioning to zombie — which can lag on a loaded CI
+            # runner. Give a generous budget (matches the wait() test's 10s)
+            # so this asserts the escalation BEHAVIOR, not the runner's
+            # scheduling latency. The assertion itself never weakens: every
+            # tree member must end up dead/zombie.
+            assert _wait_until(_all_dead, timeout=15.0, interval=0.02), (
                 "entire SIGTERM-ignoring tree (parent + children) must be SIGKILLed"
             )
         finally:
@@ -1605,3 +1784,59 @@ class TestSigkillEscalation:
                 except (ProcessLookupError, PermissionError, OSError):
                     pass
             parent.wait()
+
+
+class TestHandleProcessRedaction:
+    """`_handle_process` redacts background-process output before it reaches the
+    model / session.db / CLI display — issue #43025.
+
+    Mirrors the foreground `terminal` redaction so the two surfaces can't
+    diverge. Env-dump commands (`printenv`/`env`) get the ENV-assignment pass
+    so opaque tokens are masked; other commands stay on the code_file path.
+    """
+
+    def _setup(self, monkeypatch, command, output):
+        import agent.redact as _r
+        monkeypatch.setattr(_r, "_REDACT_ENABLED", True)
+        from tools import process_registry as pr
+        reg = ProcessRegistry()
+        sess = _make_session(sid="proc_redact1", command=command)
+        sess.output_buffer = output
+        sess.exited = True
+        sess.exit_code = 0
+        reg._running.clear()
+        reg._finished[sess.id] = sess
+        reg._running[sess.id] = sess
+        monkeypatch.setattr(pr, "process_registry", reg)
+        return pr, sess
+
+    def test_log_redacts_env_dump_opaque_token(self, monkeypatch):
+        pr, sess = self._setup(
+            monkeypatch, "printenv",
+            "MY_SERVICE_TOKEN=abc123randomopaquetokenvalue999\nHOME=/home/u",
+        )
+        out = json.loads(pr._handle_process({"action": "log", "session_id": sess.id}))
+        assert "abc123randomopaquetokenvalue999" not in out["output"]
+        assert "HOME=/home/u" in out["output"]
+
+    def test_poll_redacts_prefix_key(self, monkeypatch):
+        pr, sess = self._setup(
+            monkeypatch, "python app.py",
+            "leaked OPENAI_API_KEY sk-proj-abc123def456ghi789jkl012 here",
+        )
+        out = json.loads(pr._handle_process({"action": "poll", "session_id": sess.id}))
+        assert "abc123def456" not in out["output_preview"]
+
+    def test_disabled_passes_through(self, monkeypatch):
+        import agent.redact as _r
+        monkeypatch.setattr(_r, "_REDACT_ENABLED", False)
+        from tools import process_registry as pr
+        reg = ProcessRegistry()
+        sess = _make_session(sid="proc_redact2", command="printenv")
+        sess.output_buffer = "CUSTOM_TOKEN=zzzopaque1234567890abcdef"
+        sess.exited = True
+        sess.exit_code = 0
+        reg._running[sess.id] = sess
+        monkeypatch.setattr(pr, "process_registry", reg)
+        out = json.loads(pr._handle_process({"action": "log", "session_id": sess.id}))
+        assert "zzzopaque1234567890abcdef" in out["output"]

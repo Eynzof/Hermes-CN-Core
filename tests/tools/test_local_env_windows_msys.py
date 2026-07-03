@@ -330,7 +330,16 @@ class TestWindowsMsysPathconvDefaults:
 # ---------------------------------------------------------------------------
 
 class TestWrapCommandWindowsNativeCwd:
-    def test_wrap_command_converts_native_cwd_for_builtin_cd(self, monkeypatch):
+    """[CN-fork] P-019 rewrite of the upstream Git-Bash msys-cwd tests.
+
+    Upstream asserts ``_wrap_command`` converts a native ``C:\\Users\\x`` cwd to
+    the Git-Bash ``/c/Users/x`` form for ``builtin cd``. The fork removed Git
+    Bash entirely — Windows always runs PowerShell 5.1 (P-016/P-019) — so the
+    contract here is the opposite: the wrapper must use the NATIVE Windows
+    path verbatim (single-quoted for PowerShell), with no msys conversion.
+    """
+
+    def test_wrap_command_uses_native_cwd_for_set_location(self, monkeypatch):
         monkeypatch.setattr(local_mod, "_IS_WINDOWS", True)
 
         with patch.object(
@@ -338,29 +347,26 @@ class TestWrapCommandWindowsNativeCwd:
         ):
             env = LocalEnvironment(cwd=r"C:\Users\liush", timeout=10)
 
-        env._snapshot_ready = True
         wrapped = env._wrap_command("pwd", r"C:\Users\liush")
 
-        assert "builtin cd -- /c/Users/liush || exit 126" in wrapped
-        assert r"builtin cd -- C:\Users\liush || exit 126" not in wrapped
+        assert env._shell_type == "powershell"
+        assert r"Set-Location -LiteralPath 'C:\Users\liush'" in wrapped
+        assert "/c/Users/liush" not in wrapped
 
-    def test_init_session_bootstrap_converts_native_cwd_for_cd(self, monkeypatch):
-        """The snapshot bootstrap ``cd`` must also use the Git-Bash path form,
-        not just ``_wrap_command`` — otherwise ``pwd -P`` captures the login
-        shell's directory instead of ``terminal.cwd`` on Windows."""
+    def test_init_session_powershell_skips_bash_bootstrap(self, monkeypatch):
+        """Windows init_session takes the PowerShell path (no snapshot
+        bootstrap) and never spawns the bash bootstrap script."""
         monkeypatch.setattr(local_mod, "_IS_WINDOWS", True)
 
         captured = {}
 
         def fake_run_bash(self, cmd_string, *, login=False, timeout=120, stdin_data=None):
             captured["script"] = cmd_string
-            raise RuntimeError("stop after capturing bootstrap")
+            raise RuntimeError("bash path must not run on Windows (P-019)")
 
         monkeypatch.setattr(LocalEnvironment, "_run_bash", fake_run_bash)
 
-        # init_session swallows the exception and falls back; we only need the
-        # captured bootstrap script to assert the cd target was converted.
-        LocalEnvironment(cwd=r"C:\Users\liush", timeout=10)
+        env = LocalEnvironment(cwd=r"C:\Users\liush", timeout=10)
 
-        assert "builtin cd -- /c/Users/liush 2>/dev/null || true" in captured["script"]
-        assert r"C:\Users\liush" not in captured["script"]
+        assert env._shell_type == "powershell"
+        assert captured == {}

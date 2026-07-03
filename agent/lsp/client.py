@@ -47,6 +47,8 @@ import os
 import sys
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Set
+
+from hermes_cli._subprocess_compat import windows_detach_flags_without_breakaway
 from urllib.parse import quote, unquote
 
 from agent.lsp.protocol import (
@@ -263,6 +265,9 @@ class LSPClient:
             cmd = self._win_wrap_cmd(cmd)
 
         try:
+            _subprocess_kwargs = {}
+            if sys.platform == "win32":
+                _subprocess_kwargs["creationflags"] = windows_detach_flags_without_breakaway()
             self._proc = await asyncio.create_subprocess_exec(
                 cmd[0],
                 *cmd[1:],
@@ -271,6 +276,7 @@ class LSPClient:
                 stderr=asyncio.subprocess.PIPE,
                 env=env,
                 cwd=self._cwd,
+                **_subprocess_kwargs,
             )
         except FileNotFoundError as e:
             raise LSPProtocolError(

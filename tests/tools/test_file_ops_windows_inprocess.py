@@ -64,6 +64,21 @@ class TestWindowsInProcessWrite:
         assert res.bytes_written == 0
         assert not (tmp_path / "x.txt").exists()
 
+    def test_verification_catches_silent_noop(self, win_local_ops, tmp_path, monkeypatch):
+        """If _atomic_write reports success but never persisted the bytes,
+        write_file must surface an error instead of a fabricated success."""
+        target = tmp_path / "silent.txt"
+
+        def noop(path, content):
+            return ExecuteResult(stdout="5", exit_code=0)
+
+        monkeypatch.setattr(win_local_ops, "_atomic_write", noop)
+        res = win_local_ops.write_file(str(target), "hello")
+        assert res.error is not None
+        assert "verification failed" in res.error.lower()
+        assert res.bytes_written == 0
+        assert not target.exists()
+
     def test_unicode_roundtrip(self, win_local_ops, tmp_path):
         p = tmp_path / "u.txt"
         text = "中文 αβ 🚀\n"
@@ -94,7 +109,9 @@ class TestWindowsInProcessRead:
 
     def test_read_file_raw_returns_full_content(self, win_local_ops, tmp_path):
         p = tmp_path / "raw.txt"
-        p.write_text("alpha\nbeta\n", encoding="utf-8")
+        # Write with explicit newline so Windows text mode doesn't translate
+        # LF to CRLF; the assertion checks the bytes round-trip verbatim.
+        p.write_text("alpha\nbeta\n", encoding="utf-8", newline="\n")
         r = win_local_ops.read_file_raw(str(p))
         assert r.error is None
         assert r.content == "alpha\nbeta\n"

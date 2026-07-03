@@ -157,6 +157,18 @@ def _warm_gateway_module() -> None:
         pass
 
 
+def _warm_platform_registry() -> None:
+    # [CN-fork] P-040: resolve every deferred platform plugin loader (imports
+    # the heavyweight adapter modules) so the first /api/messaging/platforms
+    # request doesn't pay that cost. Exception-isolated fire-and-forget.
+    try:
+        from gateway.platform_registry import platform_registry
+
+        platform_registry.plugin_entries()
+    except Exception:
+        pass
+
+
 def _resolve_restart_drain_timeout() -> float:
     try:
         from hermes_cli.gateway import _get_restart_drain_timeout
@@ -184,6 +196,14 @@ async def _lifespan(app: "FastAPI"):
     # Running in an executor means the cost is paid in a worker thread while
     # the server socket is already open and accepting probes.
     asyncio.get_event_loop().run_in_executor(None, _warm_gateway_module)
+
+    # [CN-fork] P-040: pre-resolve the platform plugin registry off-thread.
+    # ``platform_registry.plugin_entries()`` imports every bundled IM adapter
+    # module on first call — discord.py alone can take 10s+ on a cold install —
+    # and the desktop calls /api/messaging/platforms during its very first
+    # boot paint. Warming here means that import cost is usually already paid
+    # (in a worker thread) before the request arrives.
+    asyncio.get_event_loop().run_in_executor(None, _warm_platform_registry)
 
     # Warm the models.dev registry off-thread (P-028). Hot paths read it
     # non-blocking (cache/bundled snapshot), so this only refreshes the shared
@@ -6394,6 +6414,17 @@ async def cancel_telegram_onboarding(pairing_id: str):
 
 @app.get("/api/messaging/platforms")
 async def get_messaging_platforms(profile: Optional[str] = None):
+    # [CN-fork] P-040: build the catalog OFF the event loop, and outside the
+    # profile scope. ``_messaging_platform_catalog`` triggers plugin discovery,
+    # which imports every bundled IM adapter module on first call (discord.py
+    # alone can take 10s+ cold) — doing that inline wedged the event loop and
+    # every other API call behind it, so the desktop's first boot sat on a
+    # blank screen. The registry is a process-global singleton, so resolving
+    # it is profile-independent; only the env/runtime reads below need the
+    # scope (and stay await-free inside it, preserving scope exclusivity).
+    catalog = await asyncio.get_running_loop().run_in_executor(
+        None, _messaging_platform_catalog
+    )
     # Profile-scoped so the dashboard's global profile switcher shows the
     # TARGET profile's channel credentials/state, not the root install's.
     # Inside _profile_scope, load_env()/read_runtime_status()/get_running_pid()
@@ -6408,7 +6439,7 @@ async def get_messaging_platforms(profile: Optional[str] = None):
                 _messaging_platform_payload(
                     entry, env_on_disk, runtime, scoped=scoped_dir is not None
                 )
-                for entry in _messaging_platform_catalog()
+                for entry in catalog
             ]
         }
 

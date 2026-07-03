@@ -711,23 +711,19 @@ class LocalEnvironment(BaseEnvironment):
         Uses ``-NoProfile`` for speed (profile loading can be slow).
         Windows paths are handled natively — no backslash conversion needed.
 
-        **Always** applies ``pwsh_transform`` to down-level any PowerShell
-        7+ syntax (``?:``, ``??``, ``??=``, ``&&``, ``||``, ``?.``, ``?[``)
-        to PowerShell 5.1-compatible ``if/else`` blocks.  The LLM may emit
-        modern syntax that 5.1 cannot parse; this is the load-bearing
-        compatibility bridge.
+        PS7→PS5.1 down-leveling (``pwsh_transform``) is **not** done here.  It
+        runs in :meth:`_wrap_command_powershell` on the raw user command, before
+        the command is embedded as a single-quoted ``Invoke-Expression`` literal
+        (P-037).  Transforming the assembled wrapper at this point would be a
+        no-op — the user's command sits inside a single-quoted string that the
+        transform's region mask skips.
         """
         # Refresh PATH/PATHEXT from registry so newly installed tools are
         # discoverable (e.g. WinGet, MSI).  No-op on non-Windows.
         refresh_env_from_registry()
 
-        # Unconditionally down-level PS7+ syntax → PS5.1.
-        cmd_string, pwsh_warnings = pwsh_transform(cmd_string)
-        self._pwsh_warnings = pwsh_warnings
-
         # Force PowerShell to emit UTF-8 on stdout/stderr regardless of the
-        # system code page.  Must come AFTER pwsh_transform so the preamble
-        # itself is never mangled by the down-level pass.
+        # system code page.
         from tools.environments.windows_env import ps_with_utf8
         cmd_string = ps_with_utf8(cmd_string)
 
@@ -779,6 +775,18 @@ class LocalEnvironment(BaseEnvironment):
           ``$?``      → ``$LASTEXITCODE``
           ``pwd -P``  → ``Get-Location``
         """
+
+        # [CN-fork] P-037: down-level PS7+ syntax (``&&`` ``||`` ``??`` ``?:``
+        # ``?.`` ``?[``) to PS5.1 on the RAW command *before* it is embedded as
+        # a single-quoted ``Invoke-Expression`` literal below.  ``pwsh_transform``
+        # builds a region mask that deliberately skips single-quoted string
+        # contents, so transforming the *assembled* wrapper (the old call site
+        # in ``_run_powershell``) never reached the user's command — the
+        # compatibility bridge was a silent no-op on the real exec path, and
+        # ``Invoke-Expression`` then re-parsed the un-leveled command under 5.1
+        # and raised a ParserError on ``&&`` etc.
+        command, pwsh_warnings = pwsh_transform(command)
+        self._pwsh_warnings = pwsh_warnings
 
         # Escape single quotes for PowerShell: double them
         escaped = command.replace("'", "''")

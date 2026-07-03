@@ -26,6 +26,10 @@ class _FakeAgent:
         self._client = _FakeClient(delay)
         self.status_events = []
         self.activities = []
+        # v0.18.0 upstream reads provider identity on the interruptible-call
+        # path (MoA slot routing, xAI/LM Studio special-casing).
+        self.provider = "openai"
+        self._base_url_hostname = ""
 
     def _create_request_openai_client(self, *, reason: str, api_kwargs=None):
         return self._client

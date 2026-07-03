@@ -32,15 +32,23 @@
  * as bootstrap-platform.cjs and hardening.cjs).
  */
 
-const { execFile } = require('node:child_process')
-const { promisify } = require('node:util')
-
-const execFileAsync = promisify(execFile)
+const { execFileSync } = require('node:child_process')
 
 const PROBE_TIMEOUT_MS = 5000
 
 /**
- * Return true iff `python -c "import hermes_cli"` exits 0.
+ * Return the Python snippet used to verify Hermes can import far enough to
+ * launch the CLI. Kept exported for tests so dependency regressions are
+ * caught without needing a real broken venv fixture.
+ *
+ * @returns {string}
+ */
+function hermesRuntimeImportProbe() {
+  return 'import yaml; import hermes_cli.config'
+}
+
+/**
+ * Return true iff the Hermes runtime import probe exits 0.
  *
  * Used to gate the "fallback to system Python with hermes_cli installed"
  * rung of resolveHermesBackend. Without this, a system Python 3.11-3.13
@@ -49,17 +57,21 @@ const PROBE_TIMEOUT_MS = 5000
  * site-packages -- and the resolver returns a backend that immediately
  * dies on spawn.
  *
- * Async so the resolver never blocks the Electron main (HWND-owning) thread on
- * a Python interpreter cold-start — on Windows that import walks site-packages
- * and can burn the full 5s timeout, freezing the window message pump.
+ * The probe intentionally imports hermes_cli.config, not just the top-level
+ * package: a broken/empty Windows launcher venv can still see the source tree
+ * through PYTHONPATH but lack PyYAML, then die on the first real CLI import.
  *
  * @param {string} pythonPath - Absolute path to a python.exe / python.
- * @returns {Promise<boolean>}
+ * @param {object} [opts]
+ * @param {object} [opts.env] - Additional environment for the probe.
+ * @returns {boolean}
  */
-async function canImportHermesCli(pythonPath) {
+function canImportHermesCli(pythonPath, opts = {}) {
   if (!pythonPath) return false
   try {
-    await execFileAsync(pythonPath, ['-c', 'import hermes_cli'], {
+    execFileSync(pythonPath, ['-c', hermesRuntimeImportProbe()], {
+      env: { ...process.env, ...(opts.env || {}) },
+      stdio: 'ignore',
       timeout: PROBE_TIMEOUT_MS,
       windowsHide: true
     })
@@ -88,12 +100,13 @@ async function canImportHermesCli(pythonPath) {
  *   .cmd/.bat shims on Windows execFileSync needs shell:true to find
  *   the cmd interpreter; mirrors the same flag isCommandScript() drives
  *   in resolveHermesBackend.
- * @returns {Promise<boolean>}
+ * @returns {boolean}
  */
-async function verifyHermesCli(hermesCommand, opts = {}) {
+function verifyHermesCli(hermesCommand, opts = {}) {
   if (!hermesCommand) return false
   try {
-    await execFileAsync(hermesCommand, ['--version'], {
+    execFileSync(hermesCommand, ['--version'], {
+      stdio: 'ignore',
       timeout: PROBE_TIMEOUT_MS,
       shell: Boolean(opts.shell),
       windowsHide: true
@@ -106,6 +119,7 @@ async function verifyHermesCli(hermesCommand, opts = {}) {
 
 module.exports = {
   canImportHermesCli,
+  hermesRuntimeImportProbe,
   verifyHermesCli,
   PROBE_TIMEOUT_MS
 }

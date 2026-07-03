@@ -975,7 +975,10 @@ class TestExplicitProviderRouting:
             "OPENROUTER_API_KEY not set" in record.message
             for record in caplog.records
         )
-        assert _is_provider_unhealthy("openrouter") is False
+        # v0.18.0 upstream marks the provider unhealthy (60s TTL) on this
+        # final-failure path; the fork keeps the precise-warning logging on
+        # top of that behaviour.
+        assert _is_provider_unhealthy("openrouter") is True
 
     def test_explicit_openrouter_missing_env_keeps_not_set_warning(self, monkeypatch, caplog):
         from agent.auxiliary_client import _is_provider_unhealthy
@@ -990,8 +993,10 @@ class TestExplicitProviderRouting:
             "OPENROUTER_API_KEY not set" in record.message
             for record in caplog.records
         )
-        assert not any("marking openrouter unhealthy" in record.message for record in caplog.records)
-        assert _is_provider_unhealthy("openrouter") is False
+        # v0.18.0 upstream marks the provider unhealthy (60s TTL) on this
+        # final-failure path — see test_try_openrouter_pool_exhausted_no_env_
+        # marks_unhealthy for the marking contract itself.
+        assert _is_provider_unhealthy("openrouter") is True
 
     def test_try_openrouter_pool_exhausted_falls_back_to_env(self, monkeypatch):
         """Pool present but exhausted → fall through to OPENROUTER_API_KEY env var."""

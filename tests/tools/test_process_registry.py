@@ -8,6 +8,7 @@ import sys
 import threading
 import time
 import pytest
+from contextlib import ExitStack
 from unittest.mock import MagicMock, patch
 
 from tools.environments.local import _HERMES_PROVIDER_ENV_FORCE_PREFIX
@@ -479,10 +480,13 @@ class TestStdinHelpers:
         supported path.
         """
         session = registry.spawn_local(
-            'python3 -c "import sys; print(sys.stdin.read().strip())"',
+            "cat",
             cwd=str(tmp_path),
             use_pty=True,
         )
+
+        if session._pty is None:
+            pytest.skip("PTY library not available (winpty/ptyprocess not installed)")
 
         try:
             time.sleep(0.5)
@@ -841,11 +845,21 @@ class TestPopenLeakOnSetupFailure:
         # and a real risk of SIGKILLing an innocent process group. Force the
         # ProcessLookupError fallback so the test deterministically exercises
         # proc.kill() and never issues a real killpg.
-        with patch("tools.process_registry._find_shell", return_value="/bin/bash"), \
-             patch("subprocess.Popen", return_value=proc), \
-             patch("threading.Thread", side_effect=boom), \
-             patch("os.getpgid", side_effect=ProcessLookupError), \
-             patch.object(registry, "_write_checkpoint"):
+        #
+        # On Windows os.getpgid does not exist; the code already skips the
+        # killpg branch, so we only mock it when available.
+        ctx = [
+            patch("tools.process_registry._find_shell", return_value="/bin/bash"),
+            patch("subprocess.Popen", return_value=proc),
+            patch("threading.Thread", side_effect=boom),
+            patch.object(registry, "_write_checkpoint"),
+        ]
+        if hasattr(os, "getpgid"):
+            ctx.append(patch("os.getpgid", side_effect=ProcessLookupError))
+
+        with ExitStack() as stack:
+            for cm in ctx:
+                stack.enter_context(cm)
             with pytest.raises(RuntimeError, match="Thread creation failed"):
                 registry.spawn_local("echo hello", cwd="/tmp")
 
@@ -873,11 +887,21 @@ class TestPopenLeakOnSetupFailure:
         # ProcessLookupError fallback so cleanup deterministically calls
         # proc.kill() instead of issuing a real os.killpg against whatever
         # process group happens to own the fake PID on the host.
-        with patch("tools.process_registry._find_shell", return_value="/bin/bash"), \
-             patch("subprocess.Popen", return_value=proc), \
-             patch("threading.Thread", return_value=fake_thread), \
-             patch("os.getpgid", side_effect=ProcessLookupError), \
-             patch.object(registry, "_write_checkpoint", side_effect=OSError("disk full")):
+        #
+        # On Windows os.getpgid does not exist; the code already skips the
+        # killpg branch, so we only mock it when available.
+        ctx = [
+            patch("tools.process_registry._find_shell", return_value="/bin/bash"),
+            patch("subprocess.Popen", return_value=proc),
+            patch("threading.Thread", return_value=fake_thread),
+            patch.object(registry, "_write_checkpoint", side_effect=OSError("disk full")),
+        ]
+        if hasattr(os, "getpgid"):
+            ctx.append(patch("os.getpgid", side_effect=ProcessLookupError))
+
+        with ExitStack() as stack:
+            for cm in ctx:
+                stack.enter_context(cm)
             with pytest.raises(OSError, match="disk full"):
                 registry.spawn_local("echo hello", cwd="/tmp")
 
@@ -1129,34 +1153,20 @@ class TestKillProcess:
         s.detached = True
         registry._running[s.id] = s
 
-        terminate_calls = []
-
-        class FakeProcess:
-            def __init__(self, pid):
-                self.pid = pid
-            def children(self, recursive=False):
-                return []
-            def terminate(self):
-                terminate_calls.append(("terminate", self.pid))
-
-        import psutil as _psutil
-
         try:
             # Post-#21561: liveness probe routes through
             # ``ProcessRegistry._is_host_pid_alive`` (→
-            # ``gateway.status._pid_exists``), and the actual kill on POSIX
-            # routes through ``psutil.Process(pid).terminate()``. Neither
-            # touches ``os.kill`` directly. Mock both seams.  Disable the
-            # SIGKILL-escalation step (grace=0) so it doesn't call
-            # ``psutil.wait_procs`` on the FakeProcess.
+            # ``gateway.status._pid_exists``), and the actual kill routes
+            # through ``ProcessRegistry._terminate_host_pid``. Mock both seams.
             with patch("gateway.status._pid_exists", return_value=True), \
-                 patch.object(ProcessRegistry, "_daemon_term_grace_seconds",
-                              staticmethod(lambda: 0.0)), \
-                 patch.object(_psutil, "Process", side_effect=lambda pid: FakeProcess(pid)):
+                 patch.object(ProcessRegistry, "_terminate_host_pid") as mock_terminate:
                 result = registry.kill_process(s.id)
 
             assert result["status"] == "killed"
-            assert ("terminate", 424242) in terminate_calls
+            # Upstream's _terminate_host_pid takes (pid, expected_start); assert
+            # it was called once for the host pid, tolerating the 2nd arg.
+            mock_terminate.assert_called_once()
+            assert mock_terminate.call_args.args[0] == 424242
         finally:
             registry._running.pop(s.id, None)
 
@@ -1406,6 +1416,7 @@ class TestTerminateHostPidWindows:
     def test_windows_does_not_call_psutil(self, monkeypatch):
         """The Windows branch must NOT exercise the psutil tree-walk
         (it's unreliable on Windows — see the function docstring)."""
+        pytest.importorskip("psutil")
         from tools import process_registry as pr
         import psutil
 
@@ -1440,6 +1451,7 @@ class TestTerminateHostPidPosix:
     """POSIX branch walks the tree via psutil and SIGTERMs children first."""
 
     def test_posix_walks_tree_and_terminates_children_then_parent(self, monkeypatch):
+        pytest.importorskip("psutil")
         from tools import process_registry as pr
         import psutil
 
@@ -1478,6 +1490,7 @@ class TestTerminateHostPidPosix:
         )
 
     def test_posix_no_such_process_swallowed(self, monkeypatch):
+        pytest.importorskip("psutil")
         from tools import process_registry as pr
         import psutil
 
@@ -1491,6 +1504,7 @@ class TestTerminateHostPidPosix:
         pr.ProcessRegistry._terminate_host_pid(999999999)
 
     def test_posix_oserror_falls_back_to_os_kill(self, monkeypatch):
+        pytest.importorskip("psutil")
         from tools import process_registry as pr
         import psutil
 

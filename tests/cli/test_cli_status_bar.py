@@ -396,7 +396,7 @@ class TestCLIStatusBar:
 
         assert cli_obj._spinner_widget_height(width=64) == 2
 
-    def test_spinner_elapsed_format_is_fixed_width_to_reduce_wrap_jitter(self):
+    def test_spinner_elapsed_format_is_fixed_width_to_reduce_wrap_jitter(self, monkeypatch):
         cli_obj = _make_cli()
         cli_obj._spinner_text = "running tool"
 

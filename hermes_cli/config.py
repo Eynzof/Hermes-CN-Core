@@ -5785,7 +5785,7 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
         if isinstance(raw_mc, dict) and raw_mc.get("url") in old_default_urls:
             raw_mc["url"] = "https://desktop.hermesagent.org.cn/api/model-catalog.json"
             config["model_catalog"] = raw_mc
-            save_config(config)
+            _persist_migration(config)
             results["config_added"].append("model_catalog.url → CN Desktop mirror")
             if not quiet:
                 print("  ✓ Updated model_catalog.url to the CN Desktop mirror")

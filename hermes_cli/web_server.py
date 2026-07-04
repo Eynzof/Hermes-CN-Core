@@ -117,6 +117,32 @@ except ImportError:
 WEB_DIST = Path(os.environ["HERMES_WEB_DIST"]) if "HERMES_WEB_DIST" in os.environ else Path(__file__).parent / "web_dist"
 _log = logging.getLogger(__name__)
 
+# P-041: on Windows, ``mimetypes`` seeds its global map from HKEY_CLASSES_ROOT,
+# where third-party installers commonly rewrite ``.js`` to ``text/plain`` (or
+# drop entries entirely). StaticFiles/FileResponse resolve Content-Type through
+# that map, and browsers hard-refuse module scripts served as ``text/plain``,
+# so the dashboard SPA renders as a blank page (#81). Pin every type the SPA
+# bundle ships so a polluted registry cannot override them.
+_STATIC_MIME_OVERRIDES: Dict[str, str] = {
+    ".js": "text/javascript",
+    ".mjs": "text/javascript",
+    ".css": "text/css",
+    ".html": "text/html",
+    ".json": "application/json",
+    ".svg": "image/svg+xml",
+    ".wasm": "application/wasm",
+    ".woff": "font/woff",
+    ".woff2": "font/woff2",
+}
+
+
+def _harden_static_mime_types() -> None:
+    for _ext, _mime in _STATIC_MIME_OVERRIDES.items():
+        mimetypes.add_type(_mime, _ext)
+
+
+_harden_static_mime_types()
+
 # ---------------------------------------------------------------------------
 # Per-channel subscriber registry used by /api/pub (PTY-side gateway → dashboard)
 # and /api/events (dashboard → browser sidebar).  Keyed by an opaque channel id

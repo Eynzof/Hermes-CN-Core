@@ -218,7 +218,7 @@ TOOLSETS = {
             "context_usage (report context usage) and compact (proactive "
             "context compaction with optional instruction and mode)."
         ),
-        "tools": [],
+        "tools": ["context_usage", "compact"],
         "includes": []
     },
     

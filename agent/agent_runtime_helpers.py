@@ -2146,6 +2146,22 @@ def invoke_tool(agent, function_name: str, function_args: dict, effective_task_i
     elif agent._memory_manager and agent._memory_manager.has_tool(function_name):
         def _execute(next_args: dict) -> Any:
             return _finish_agent_tool(agent._memory_manager.handle_tool_call(function_name, next_args), next_args)
+    elif getattr(agent, "_context_engine_tool_names", None) and function_name in agent._context_engine_tool_names:
+        # Context engine tools (context_usage, compact, and engine-specific
+        # tools like lcm_grep) are dispatched through the per-agent context
+        # compressor instance.  This mirrors the memory provider tool pattern
+        # above.
+        def _execute(next_args: dict) -> Any:
+            return _finish_agent_tool(
+                agent.context_compressor.handle_tool_call(
+                    function_name, next_args, messages=messages or []
+                ),
+                next_args,
+            )
+        # Special case: the ``compact`` tool performs actual compression
+        # inline in the sequential path (tool_executor.py).  The concurrent
+        # path only acknowledges the request; the next model turn picks up
+        # the compressed context.
     elif function_name == "clarify":
         def _execute(next_args: dict) -> Any:
             from tools.clarify_tool import clarify_tool as _clarify_tool

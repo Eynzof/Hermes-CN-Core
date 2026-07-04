@@ -1345,6 +1345,25 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                 # inline, not just acknowledgment. handle_tool_call validates the
                 # request first, then we run the full compression lifecycle.
                 if function_name == "compact":
+                    # Capture the assistant message that contains
+                    # tool_call(compact) BEFORE compression.
+                    # ``_sanitize_tool_pairs()`` inside the compressor
+                    # removes tool_calls whose results don't exist yet,
+                    # which orphans the compact tool_call.  We must
+                    # restore it so the tool_result below (line ~1645)
+                    # has a matching assistant tool_call, preserving
+                    # strict user/assistant/tool alternation.
+                    _tc_id = getattr(tool_call, "id", "") or ""
+                    _compact_assistant_msg = None
+                    for _msg in reversed(messages):
+                        if _msg.get("role") == "assistant":
+                            for _tc in (_msg.get("tool_calls") or []):
+                                if isinstance(_tc, dict) and (_tc.get("id") or "") == _tc_id:
+                                    _compact_assistant_msg = _msg
+                                    break
+                        if _compact_assistant_msg:
+                            break
+
                     # Validate via handle_tool_call
                     _ack = agent.context_compressor.handle_tool_call(
                         function_name, function_args, messages=messages
@@ -1366,6 +1385,23 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                         if len(compressed_messages) != len(messages):
                             messages.clear()
                             messages.extend(compressed_messages)
+
+                            # Restore the assistant tool_call message if
+                            # sanitization removed it (no tool result exists
+                            # yet for this tool_call).  The tool_result will
+                            # be appended below at line ~1645, so we need
+                            # the matching assistant message in place.
+                            if _compact_assistant_msg and not any(
+                                _msg.get("role") == "assistant"
+                                and any(
+                                    isinstance(_tc, dict)
+                                    and (_tc.get("id") or "") == _tc_id
+                                    for _tc in (_msg.get("tool_calls") or [])
+                                )
+                                for _msg in messages
+                            ):
+                                messages.append(_compact_assistant_msg)
+
                             function_result = json.dumps({
                                 "status": "completed",
                                 "message": f"Context compressed. Reduced from {_pre_count} to {len(compressed_messages)} messages.",

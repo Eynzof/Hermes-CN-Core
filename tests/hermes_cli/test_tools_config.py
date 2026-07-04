@@ -160,7 +160,11 @@ def test_get_platform_tools_active_context_engine_is_enabled_for_explicit_config
     assert "terminal" in enabled
 
 
-def test_get_platform_tools_context_engine_not_added_for_default_compressor():
+def test_get_platform_tools_context_engine_enabled_for_default_compressor():
+    """context_engine is now a first-class default toolset.
+
+    It should be enabled even when the default compressor engine is active.
+    """
     config = {
         "context": {"engine": "compressor"},
         "platform_toolsets": {"cli": ["web", "terminal"]},
@@ -168,7 +172,7 @@ def test_get_platform_tools_context_engine_not_added_for_default_compressor():
 
     enabled = _get_platform_tools(config, "cli", include_default_mcp_servers=False)
 
-    assert "context_engine" not in enabled
+    assert "context_engine" in enabled
 
 
 def test_get_platform_tools_context_engine_respects_explicit_empty_selection():

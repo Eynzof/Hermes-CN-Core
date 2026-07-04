@@ -1828,42 +1828,40 @@ def init_agent(
         except Exception:
             pass
 
-    # Inject context engine tool schemas (e.g. lcm_grep, lcm_describe, lcm_expand).
-    # Skip names that are already present — the _ra().get_tool_definitions()
-    # quiet_mode cache returned a shared list pre-#17335, so a stray
-    # mutation here would poison subsequent agent inits in the same
-    # Gateway process and trip provider-side 'duplicate tool name'
-    # errors. Even with the cache fix, dedup is the right defense
-    # against plugin paths that may register the same schemas via
-    # ctx.register_tool(). Mirrors the memory tools dedup above.
-    #
-    # Respect the platform's enabled_toolsets configuration (#5544):
-    # context engine tools follow the same gating pattern as memory
-    # provider tools — without the gate, `platform_toolsets: telegram: []`
-    # would still leak lcm_* tools into the tool surface and incur the
-    # same local-model latency penalty.
+    # Register context engine tool names for dispatch routing.
+    # Tools registered in the ``context_engine`` toolset (context_usage,
+    # compact) are resolved through the standard toolset pipeline above
+    # and are already in agent.valid_tool_names.  Engine-specific tools
+    # (returned by get_tool_schemas() but not in the registry) are still
+    # injected here to maintain backward compatibility.
     agent._context_engine_tool_names: set = set()
     if (
         hasattr(agent, "context_compressor")
         and agent.context_compressor
-        and agent.tools is not None
         and (
             agent.enabled_toolsets is None
             or "context_engine" in agent.enabled_toolsets
         )
     ):
+        # Seed with registry-registered context_engine tool names
+        try:
+            from tools.registry import registry as _ce_registry
+            agent._context_engine_tool_names.update(
+                _ce_registry.get_tool_names_for_toolset("context_engine")
+            )
+        except Exception:
+            pass
+
+        # Inject engine-specific tools not in the registry
         _existing_tool_names = {
             t.get("function", {}).get("name")
-            for t in agent.tools
+            for t in (agent.tools or [])
             if isinstance(t, dict)
         }
         from agent.memory_manager import normalize_tool_schema as _normalize_tool_schema
         for _raw_schema in agent.context_compressor.get_tool_schemas():
             _schema = _normalize_tool_schema(_raw_schema)
             if _schema is None:
-                # A schema with no resolvable name (e.g. an already-wrapped
-                # entry) would append a nameless tool that strict providers
-                # 400 on, disabling the whole toolset (#47707). Skip it.
                 _ra().logger.warning(
                     "Context engine returned a tool schema with no resolvable "
                     "name; skipping to avoid poisoning the request (%r)",
@@ -1871,10 +1869,11 @@ def init_agent(
                 )
                 continue
             _tname = _schema["name"]
-            if _tname in _existing_tool_names:
-                continue  # already registered via plugin/cache path
+            if _tname in _existing_tool_names or _tname in agent._context_engine_tool_names:
+                continue  # already registered via registry/toolset
             _wrapped = {"type": "function", "function": _schema}
-            agent.tools.append(_wrapped)
+            if agent.tools is not None:
+                agent.tools.append(_wrapped)
             agent.valid_tool_names.add(_tname)
             agent._context_engine_tool_names.add(_tname)
             _existing_tool_names.add(_tname)

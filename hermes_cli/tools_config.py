@@ -1609,22 +1609,17 @@ def _get_platform_tools(
                 enabled_toolsets.add(pts)
             # else: known but not in config = user disabled it
 
-    # Context-engine tools are runtime-provided by the active engine, so they
-    # are not part of any static platform composite. When a non-default engine
-    # is selected, keep its recovery/status tools available even after a user
-    # saves an explicit platform toolset list. Preserve the explicit empty-list
-    # contract: selecting no configurable tools means no context-engine tools
-    # either unless the user adds ``context_engine`` manually later.
-    context_cfg = config.get("context") or {}
-    if not isinstance(context_cfg, dict):
-        context_cfg = {}
-    context_engine_name = str(context_cfg.get("engine") or "compressor").strip().lower()
+    # Context-engine tools are now a first-class default toolset.
+    # They are enabled for every platform unless the user explicitly selected
+    # an empty toolset list (platform_toolsets: {cli: []}), which suppresses
+    # all toolsets including context_engine. Users can disable it via
+    # `hermes tools` or per-platform config.
     explicit_empty_selection = (
         platform in platform_toolsets
         and isinstance(platform_toolsets.get(platform), list)
         and not toolset_names
     )
-    if context_engine_name and context_engine_name != "compressor" and not explicit_empty_selection:
+    if not explicit_empty_selection:
         enabled_toolsets.add("context_engine")
 
     # Preserve any explicit non-configurable toolset entries (for example,

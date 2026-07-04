@@ -21,6 +21,13 @@ import importlib.util
 import json
 import logging
 import mimetypes
+# Register JavaScript MIME types explicitly so Windows (where the system
+# registry may not map .js → application/javascript) serves module scripts
+# with the correct Content-Type. Without this, ``<script type="module">``
+# blocks fail with "Failed to load module script: Expected a JavaScript or
+# WebAssembly module script".
+mimetypes.add_type("application/javascript", ".js")
+mimetypes.add_type("application/javascript", ".mjs")
 import os
 import re
 import secrets
@@ -35,7 +42,11 @@ import urllib.error
 import urllib.parse
 import zipfile
 
-from hermes_cli._subprocess_compat import windows_detach_flags, windows_hide_flags
+from hermes_cli._subprocess_compat import (
+    windows_detach_flags,
+    windows_detach_flags_without_breakaway,
+    windows_hide_flags,
+)
 import urllib.request
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -3036,7 +3047,17 @@ def _spawn_hermes_action(
     else:
         popen_kwargs["start_new_session"] = True
 
-    proc = subprocess.Popen(cmd, **popen_kwargs)
+    try:
+        proc = subprocess.Popen(cmd, **popen_kwargs)
+    except OSError:
+        # CREATE_BREAKAWAY_FROM_JOB can fail with "access denied" when the
+        # parent's job object doesn't permit breakaway (PyInstaller exe,
+        # Windows Terminal, etc.). Retry without the breakaway flag.
+        if sys.platform == "win32":
+            popen_kwargs["creationflags"] = windows_detach_flags_without_breakaway()
+            proc = subprocess.Popen(cmd, **popen_kwargs)
+        else:
+            raise
     # The child inherits its own duplicated fd for stdout/stderr, so the
     # parent's handle can be released immediately — otherwise we leak one
     # fd per spawned action.
@@ -13521,7 +13542,7 @@ def mount_spa(application: FastAPI):
                 css = css.replace(f"url('{asset_dir}", f"url('{prefix}{asset_dir}")
         return Response(content=css, media_type="text/css")
 
-    application.mount("/assets", StaticFiles(directory=WEB_DIST / "assets"), name="assets")
+    application.mount("/assets", StaticFiles(directory=WEB_DIST / "assets", html=True), name="assets")
 
     @application.get("/{full_path:path}")
     async def serve_spa(full_path: str, request: Request):

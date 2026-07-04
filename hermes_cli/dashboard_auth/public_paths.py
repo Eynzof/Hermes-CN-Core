@@ -51,10 +51,11 @@ PUBLIC_API_PATHS: frozenset[str] = frozenset({
     # string inside the route handler. The handler still rejects 401 on
     # mismatch; listing it here only lets the request reach that handler.
     "/api/v2/events",
-
-# Chronos managed-cron fire webhook (NAS -> agent). NOT cookie-gated: it
+    "/api/auth/me",          # Allow SPA pre-login identity probe to reach handler
+    # Chronos managed-cron fire webhook (NAS -> agent). NOT cookie-gated: it
     # carries its own short-lived NAS-minted JWT (purpose=cron_fire), which the
     # handler verifies as the real auth. Must bypass the dashboard auth gate so
     # the NAS relay's bearer-only callback reaches the verifier instead of a
     # 401 no_cookie. The JWT — not this allowlist — is the security boundary.
-    "/api/cron/fire",})
+    "/api/cron/fire",
+})

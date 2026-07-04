@@ -1164,7 +1164,11 @@ def _probe_container(cmd: list, backend: str, via_sudo: bool = False):
     all other exceptions propagate naturally.
     """
     try:
-        return subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        _subprocess_kwargs = {}
+        if sys.platform == "win32":
+            from hermes_cli._subprocess_compat import windows_hide_flags
+            _subprocess_kwargs["creationflags"] = windows_hide_flags()
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=15, **_subprocess_kwargs)  # windows-footgun: ok — creationflags in _subprocess_kwargs
     except subprocess.TimeoutExpired:
         label = f"sudo {backend}" if via_sudo else backend
         print(
@@ -1615,6 +1619,10 @@ def _ensure_tui_node() -> None:
 
     hermes_home = os.environ.get("HERMES_HOME") or str(Path.home() / ".hermes")
     try:
+        _subprocess_kwargs = {}
+        if sys.platform == "win32":
+            from hermes_cli._subprocess_compat import windows_hide_flags
+            _subprocess_kwargs["creationflags"] = windows_hide_flags()
         # Helper writes logs to stderr; we ask bash to print `command -v node`
         # on stdout once ensure_node succeeds. Subshell PATH edits don't leak
         # back into Python, so the stdout capture is the bridge.
@@ -1630,6 +1638,7 @@ def _ensure_tui_node() -> None:
             encoding="utf-8",
             errors="replace",
             check=False,
+            **_subprocess_kwargs,
         )
     except (OSError, subprocess.SubprocessError):
         return
@@ -1673,12 +1682,17 @@ def _restore_tui_workspace(tui_dir: Path) -> bool:
     if not git or not (tui_dir.parent / ".git").exists():
         return False
     try:
+        _subprocess_kwargs = {}
+        if sys.platform == "win32":
+            from hermes_cli._subprocess_compat import windows_hide_flags
+            _subprocess_kwargs["creationflags"] = windows_hide_flags()
         subprocess.run(
             [git, "restore", "--", tui_dir.name],
             cwd=str(tui_dir.parent),
             capture_output=True,
             text=True,
             check=False,
+            **_subprocess_kwargs,
         )
     except OSError:
         return False
@@ -6427,7 +6441,11 @@ def _stash_local_changes_if_needed(git_cmd: list[str], cwd: Path) -> Optional[st
     )
     if unmerged.stdout.strip():
         print("→ Clearing unmerged index entries from a previous conflict...")
-        subprocess.run(git_cmd + ["reset"], cwd=cwd, capture_output=True)
+        _gk = {}
+        if sys.platform == "win32":
+            from hermes_cli._subprocess_compat import windows_hide_flags
+            _gk["creationflags"] = windows_hide_flags()
+        subprocess.run(git_cmd + ["reset"], cwd=cwd, capture_output=True, **_gk)  # windows-footgun: ok — creationflags in _gk
 
     from datetime import datetime, timezone
 

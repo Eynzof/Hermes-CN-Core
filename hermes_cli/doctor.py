@@ -1473,7 +1473,11 @@ def run_doctor(args):
         if _safe_which("docker"):
             # Check if docker daemon is running
             try:
-                result = subprocess.run(["docker", "info"], capture_output=True, timeout=10)
+                _dkw = {}
+                if sys.platform == "win32":
+                    from hermes_cli._subprocess_compat import windows_hide_flags
+                    _dkw["creationflags"] = windows_hide_flags()
+                result = subprocess.run(["docker", "info"], capture_output=True, timeout=10, **_dkw)  # windows-footgun: ok — creationflags in _dkw
             except subprocess.TimeoutExpired:
                 result = None
             if result is not None and result.returncode == 0:

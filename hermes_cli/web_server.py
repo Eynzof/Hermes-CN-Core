@@ -10959,7 +10959,7 @@ def _resolve_profile_dir(name: str) -> Path:
 def _profile_setup_command(name: str) -> str:
     """Return the shell command used to configure a profile in the CLI."""
     _resolve_profile_dir(name)
-    return "hermes setup" if name == "default" else f"{name} setup"
+    return "hermes setup" if name == "default" else f"hermes setup --profile {name}"
 
 
 def _write_profile_model(profile_dir: Path, provider: str, model: str) -> None:
@@ -11264,7 +11264,15 @@ async def open_profile_terminal_endpoint(name: str):
         command = _profile_setup_command(name)
 
         if sys.platform.startswith("win"):
-            subprocess.Popen(["cmd.exe", "/c", "start", "", command])
+            # Pass as list argv to avoid cmd.exe re-tokenization of
+            # space-containing paths.  The title "Hermes Setup" keeps
+            # the window title readable; creationflags suppresses the
+            # console flash.
+            from hermes_cli._subprocess_compat import windows_hide_flags
+            subprocess.Popen(
+                ["cmd.exe", "/c", "start", "Hermes Setup", "hermes", "setup", "--profile", name],
+                creationflags=windows_hide_flags(),
+            )
         elif sys.platform == "darwin":
             escaped = command.replace("\\", "\\\\").replace('"', '\\"')
             applescript = (

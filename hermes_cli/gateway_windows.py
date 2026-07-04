@@ -740,6 +740,20 @@ def _resolve_detached_python(python_exe: str) -> tuple[str, Path, list[str]]:
     venvs, use the base ``pythonw.exe`` directly and put the repo + venv
     site-packages on ``PYTHONPATH`` so imports still resolve without the venv
     launcher.
+
+    **Fallback behavior:** When neither a ``pythonw.exe`` sibling nor a uv
+    base ``pythonw.exe`` is found, the original ``python.exe`` is returned.
+    In this case:
+    - Callers using ``_spawn_detached`` (direct Popen path): ``CREATE_NO_WINDOW``
+      is always set via ``windows_detach_flags()``, so no console flash occurs.
+    - Callers using ``_build_gateway_cmd_script`` (batch script path): the
+      fallback ``python.exe`` will allocate a console. This only affects
+      non-uv, non-standard venvs where ``pythonw.exe`` is genuinely absent.
+
+    **PyInstaller frozen builds:** This function is not called at all because
+    there is no ``python.exe`` to resolve — the frozen executable is itself a
+    GUI-subsystem binary (``--windowed`` / ``-w``) and does not allocate a
+    console on launch.
     """
     p = Path(python_exe)
     venv_dir = p.parent.parent

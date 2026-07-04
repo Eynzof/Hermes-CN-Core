@@ -11495,6 +11495,10 @@ def _(rid, params: dict) -> dict:
             # has all API keys in os.environ.
             from tools.environments.local import _sanitize_subprocess_env
             sanitized_env = _sanitize_subprocess_env(os.environ.copy())
+            _subprocess_kwargs = {}
+            if sys.platform == "win32":
+                from hermes_cli._subprocess_compat import windows_hide_flags
+                _subprocess_kwargs["creationflags"] = windows_hide_flags()
             r = subprocess.run(
                 qc.get("command", ""),
                 shell=True,
@@ -11503,6 +11507,7 @@ def _(rid, params: dict) -> dict:
                 timeout=30,
                 stdin=subprocess.DEVNULL,
                 env=sanitized_env,
+                **_subprocess_kwargs,
             )
             output = (
                 (r.stdout or "")
@@ -14188,9 +14193,13 @@ def _(rid, params: dict) -> dict:
     except ImportError:
         return _err(rid, 5001, "shell.exec unavailable: approval safety module not importable")
     try:
+        _subprocess_kwargs = {}
+        if sys.platform == "win32":
+            from hermes_cli._subprocess_compat import windows_hide_flags
+            _subprocess_kwargs["creationflags"] = windows_hide_flags()
         r = subprocess.run(
             cmd, shell=True, capture_output=True, text=True, timeout=30, cwd=os.getcwd(),
-            stdin=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL, **_subprocess_kwargs,
         )
         return _ok(
             rid,

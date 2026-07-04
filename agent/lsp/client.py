@@ -249,10 +249,17 @@ class LSPClient:
 
     @staticmethod
     def _win_wrap_cmd(cmd: List[str]) -> List[str]:
-        """On Windows, wrap .cmd/.bat shims so CreateProcess can run them."""
+        """On Windows, wrap .cmd/.bat shims so CreateProcess can run them.
+
+        cmd[0] is wrapped in quotes to prevent cmd.exe from tokenizing at
+        spaces when the path contains spaces (e.g. ``C:/Program Files/``).
+        Without the quotes, ``cmd.exe /c C:/Program Files/thing.cmd``
+        tries to run ``C:/Program`` as a command and fails with
+        ``'C:/Program' is not recognized``.
+        """
         exe = cmd[0]
         if exe.lower().endswith((".cmd", ".bat")):
-            return ["cmd.exe", "/c", *cmd]
+            return ["cmd.exe", "/c", f'"{cmd[0]}"', *cmd[1:]]
         return cmd
 
     async def _spawn(self) -> None:

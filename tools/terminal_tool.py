@@ -2840,13 +2840,21 @@ def check_terminal_requirements() -> bool:
             if not docker:
                 logger.error("Docker executable not found in PATH or common install locations")
                 return False
-            result = subprocess.run([docker, "version"], capture_output=True, timeout=5, stdin=subprocess.DEVNULL)
+            _dk = {}
+            if sys.platform == "win32":
+                from hermes_cli._subprocess_compat import windows_hide_flags
+                _dk["creationflags"] = windows_hide_flags()
+            result = subprocess.run([docker, "version"], capture_output=True, timeout=5, stdin=subprocess.DEVNULL, **_dk)  # windows-footgun: ok — creationflags in _dk
             return result.returncode == 0
 
         elif env_type == "singularity":
             executable = shutil.which("apptainer") or shutil.which("singularity")
             if executable:
-                result = subprocess.run([executable, "--version"], capture_output=True, timeout=5, stdin=subprocess.DEVNULL)
+                _tk = {}
+                if sys.platform == "win32":
+                    from hermes_cli._subprocess_compat import windows_hide_flags
+                    _tk["creationflags"] = windows_hide_flags()
+                result = subprocess.run([executable, "--version"], capture_output=True, timeout=5, stdin=subprocess.DEVNULL, **_tk)  # windows-footgun: ok — creationflags in _tk
                 return result.returncode == 0
             return False
 

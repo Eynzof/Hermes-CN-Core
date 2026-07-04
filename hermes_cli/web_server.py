@@ -949,6 +949,11 @@ CONFIG_SCHEMA = _ordered_schema
 class ConfigUpdate(BaseModel):
     config: dict
     profile: Optional[str] = None
+    # P-042: dotted config paths the client removed (e.g.
+    # ``providers.custom:foo``). ``_deep_merge`` can only overwrite, never
+    # delete — a key absent from ``config`` silently survives on disk, which
+    # made "delete custom provider" a no-op (Desktop #370/#188).
+    deleted_paths: Optional[List[str]] = None
 
 
 class EnvVarUpdate(BaseModel):
@@ -4982,6 +4987,58 @@ def _denormalize_config_from_web(config: Dict[str, Any]) -> Dict[str, Any]:
     return config
 
 
+def _apply_config_deleted_paths(cfg: dict, paths: List[str]) -> None:
+    """Delete dotted leaf paths from *cfg* in place (P-042).
+
+    ``_deep_merge`` in ``update_config`` can only overwrite, never remove: a
+    key the client dropped from its PUT body silently survives on disk. That
+    made "delete custom provider" a no-op — the entry resurrected from
+    ``config.providers`` on every reload (Desktop #370/#188). The client now
+    names the paths it removed; unknown/missing paths are ignored.
+
+    Deleting a ``providers.<id>`` entry also purges root ``custom_providers``
+    list entries with the same ``base_url``. Those are written by
+    ``/api/model/set`` → ``_save_custom_provider`` when the endpoint is used
+    as the main model, and would otherwise keep resurrecting stale metadata
+    (context windows, CLI picker entries) for a provider the user deleted.
+    """
+    removed_base_urls: set = set()
+    for path in paths:
+        parts = [part for part in str(path).split(".") if part]
+        if not parts:
+            continue
+        node = cfg
+        for part in parts[:-1]:
+            node = node.get(part) if isinstance(node, dict) else None
+            if node is None:
+                break
+        if not isinstance(node, dict) or parts[-1] not in node:
+            continue
+        removed = node.pop(parts[-1])
+        if (
+            len(parts) == 2
+            and parts[0] == "providers"
+            and isinstance(removed, dict)
+        ):
+            base_url = str(removed.get("base_url") or "").rstrip("/")
+            if base_url:
+                removed_base_urls.add(base_url)
+
+    if not removed_base_urls:
+        return
+    custom = cfg.get("custom_providers")
+    if not isinstance(custom, list):
+        return
+    cfg["custom_providers"] = [
+        entry
+        for entry in custom
+        if not (
+            isinstance(entry, dict)
+            and str(entry.get("base_url") or "").rstrip("/") in removed_base_urls
+        )
+    ]
+
+
 @app.put("/api/config")
 async def update_config(body: ConfigUpdate, profile: Optional[str] = None):
     try:
@@ -4994,7 +5051,13 @@ async def update_config(body: ConfigUpdate, profile: Optional[str] = None):
             # frontend can only overwrite what it explicitly sends.
             existing = read_raw_config()
             incoming = _denormalize_config_from_web(body.config)
-            save_config(_deep_merge(existing, incoming))
+            merged = _deep_merge(existing, incoming)
+            # Deletions the merge cannot express (P-042) apply after it, so a
+            # client that both rewrites a subtree and deletes a sibling key in
+            # one PUT gets both.
+            if body.deleted_paths:
+                _apply_config_deleted_paths(merged, body.deleted_paths)
+            save_config(merged)
         return {"ok": True}
     except HTTPException:
         raise

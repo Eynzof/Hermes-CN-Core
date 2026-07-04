@@ -1385,6 +1385,15 @@ DEFAULT_CONFIG = {
                                       # after live validation.
     },
 
+    # Compact reminder — hints the agent to call ``Compact`` when context usage
+    # exceeds a threshold.  Injected as ephemeral text appended to the user message
+    # (never persisted to session history).  Cooldown steps prevent spamming.
+    "compact_reminder": {
+        "enabled": True,
+        "threshold": 0.70,         # Inject reminder when context is above this ratio
+        "cooldown_steps": 5,       # Minimum steps between injections
+    },
+
     # Kanban subsystem (orchestrator workers + dispatcher-driven child tasks).
     # See tools/kanban_tools.py and hermes_cli/kanban_db.py for the actual
     # implementations. Per-platform notification opt-out is handled by the

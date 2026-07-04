@@ -609,6 +609,22 @@ def run_conversation(
     compression_attempts = 0
     _turn_exit_reason = "unknown"  # Diagnostic: why the loop ended
 
+    # ── System-reminder providers ──────────────────────────────────
+    # Create once at turn start. Currently only CompactReminderProvider,
+    # but the list pattern allows future providers.
+    _system_reminder_providers: List["SystemReminderProvider"] = []
+    if (
+        getattr(agent, "compact_reminder_enabled", True)
+        and getattr(agent, "context_compressor", None) is not None
+    ):
+        from agent.compact_reminder import CompactReminderProvider
+        _system_reminder_providers.append(
+            CompactReminderProvider(
+                threshold=getattr(agent, "compact_reminder_threshold", 0.70),
+                cooldown_steps=getattr(agent, "compact_reminder_cooldown_steps", 5),
+            )
+        )
+
     # Per-turn tally of consecutive successful credential-pool token refreshes,
     # keyed by (provider, pool-entry-id). A persistent upstream 401 lets
     # ``try_refresh_current()`` "succeed" forever on a single-entry OAuth pool,
@@ -807,6 +823,18 @@ def run_conversation(
                         _injections.append(_fenced)
                 if _plugin_user_context:
                     _injections.append(_plugin_user_context)
+                # Collect system-reminder injections (e.g. compact reminder).
+                for _provider in _system_reminder_providers:
+                    try:
+                        _reminders = _provider.get_reminders(agent, api_call_count)
+                        for _r in _reminders:
+                            _injections.append(f"[System Reminder: {_r.content}]")
+                    except Exception:
+                        logger.warning(
+                            "SystemReminderProvider %s failed",
+                            type(_provider).__name__,
+                            exc_info=True,
+                        )
                 if _injections:
                     _base = api_msg.get("content", "")
                     if isinstance(_base, str):
@@ -4635,6 +4663,16 @@ def run_conversation(
                     conversation_history = conversation_history_after_compression(
                         agent, messages
                     )
+                    # Notify system-reminder providers that context was compacted.
+                    for _provider in _system_reminder_providers:
+                        try:
+                            _provider.on_context_compacted(agent)
+                        except Exception:
+                            logger.warning(
+                                "SystemReminderProvider %s on_context_compacted failed",
+                                type(_provider).__name__,
+                                exc_info=True,
+                            )
                 
                 # Save session log incrementally (so progress is visible even if interrupted)
                 agent._session_messages = messages

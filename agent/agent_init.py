@@ -1787,6 +1787,18 @@ def init_agent(
     agent.compression_enabled = compression_enabled
     agent.compression_in_place = compression_in_place
 
+    # System-reminder provider configuration
+    # Read from config.yaml if available, otherwise use defaults.
+    try:
+        _cr_cfg = _agent_cfg.get("compact_reminder", {}) if isinstance(_agent_cfg, dict) else {}
+    except Exception:
+        _cr_cfg = {}
+    if not isinstance(_cr_cfg, dict):
+        _cr_cfg = {}
+    agent.compact_reminder_enabled = str(_cr_cfg.get("enabled", True)).lower() in {"true", "1", "yes"}
+    agent.compact_reminder_threshold = float(_cr_cfg.get("threshold", 0.70))
+    agent.compact_reminder_cooldown_steps = int(_cr_cfg.get("cooldown_steps", 5))
+
     # Reject models whose context window is below the minimum required
     # for reliable tool-calling workflows (64K tokens).
     _ctx = getattr(agent.context_compressor, "context_length", 0)

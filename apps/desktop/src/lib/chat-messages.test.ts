@@ -475,6 +475,78 @@ describe('upsertToolPart', () => {
     expect(clearedResult.todos).toEqual([])
   })
 
+  it('keeps back-to-back different-name tool calls as distinct rows', () => {
+    const writeFile = upsertToolPart(
+      [],
+      {
+        args: { content: '1', path: '/tmp/x' },
+        name: 'write_file',
+        tool_id: 'call-write'
+      },
+      'running'
+    )
+
+    const writeFileDone = upsertToolPart(
+      writeFile,
+      {
+        name: 'write_file',
+        result: { ok: true },
+        tool_id: 'call-write'
+      },
+      'complete'
+    )
+
+    const terminal = upsertToolPart(
+      writeFileDone,
+      {
+        args: { command: 'python /tmp/x' },
+        name: 'terminal',
+        tool_id: 'call-terminal'
+      },
+      'running'
+    )
+
+    expect(terminal).toHaveLength(2)
+    expect(terminal[0]?.type).toBe('tool-call')
+    expect(terminal[1]?.type).toBe('tool-call')
+    expect((terminal[0] as Extract<ChatMessagePart, { type: 'tool-call' }>).toolName).toBe(
+      'write_file'
+    )
+    expect((terminal[1] as Extract<ChatMessagePart, { type: 'tool-call' }>).toolName).toBe(
+      'terminal'
+    )
+  })
+
+  it('does not reuse a stable-id part whose name differs from the event', () => {
+    const started = upsertToolPart(
+      [],
+      {
+        args: { path: '/tmp/x' },
+        name: 'write_file',
+        tool_id: 'call-1'
+      },
+      'running'
+    )
+
+    const next = upsertToolPart(
+      started,
+      {
+        args: { command: 'ls' },
+        name: 'terminal',
+        tool_id: 'call-1'
+      },
+      'running'
+    )
+
+    const toolCalls = next.filter(
+      (part): part is Extract<ChatMessagePart, { type: 'tool-call' }> => part.type === 'tool-call'
+    )
+
+    expect(toolCalls).toHaveLength(2)
+    expect(toolCalls[0].toolName).toBe('write_file')
+    expect(toolCalls[1].toolName).toBe('terminal')
+  })
+
   it('keeps parallel same-name tools distinct without explicit ids', () => {
     const startedTokyo = upsertToolPart(
       [],

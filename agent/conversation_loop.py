@@ -4568,6 +4568,16 @@ def run_conversation(
                     except Exception:
                         pass
 
+                # Notify consumers that the assistant message carrying these
+                # tool calls has been committed to the conversation.  For
+                # tool-call-only turns this is the boundary event the UI uses to
+                # transition cleanly from ``awaitingResponse`` to tool execution.
+                if getattr(agent, "tool_calls_committed_callback", None):
+                    try:
+                        agent.tool_calls_committed_callback(assistant_msg)
+                    except Exception:
+                        pass
+
                 agent._execute_tool_calls(assistant_message, messages, effective_task_id, api_call_count)
 
                 # Dedup tracker: end this API call step.

@@ -48,6 +48,7 @@
 | **P-038** | `agent/lsp/client.py`、`agent/lsp/install.py`、`gateway/run.py`、`gateway/platforms/qqbot/adapter.py`、`gateway/platforms/whatsapp_cloud.py`、`hermes_cli/claw.py`、`hermes_cli/clipboard.py`、`plugins/platforms/telegram/adapter.py`、`plugins/teams_pipeline/pipeline.py`、`tools/file_operations.py`、相关 tests | 把既有 `hermes_cli/_subprocess_compat` 的 Windows creation flags 铺到剩余辅助子进程 spawn 点：LSP 服务器用 `windows_detach_flags_without_breakaway()`；ffmpeg/ffprobe 转换（QQ 机器人、WhatsApp Cloud、Teams 管线、网关音频时长探测）、网关看板 `exec_cmd`、`claw` 进程扫描、剪贴板 PowerShell、LSP 的 `npm install`（改走 `resolve_node_command`）用 `windows_hide_flags()`。另在 Windows 下把 `ShellFileOperations._exec` 的 POSIX `/dev/null` 重定向翻译为 PowerShell `*>$null`/`2>$null`/`>$null`；三个 POSIX-only 测试标记 win32 跳过。 | Windows 上这些 spawn 点要么闪控制台窗口、要么挂进父进程 console/job（父进程收场时连带被杀）——此前 `creationflags` 只在终端工具主路径生效。`/dev/null` 重定向在 PowerShell 5.1 下会生成字面 `\dev\null` 文件（或直接失败），与 P-037 的 `cat` shell-out 同类。 | 与上游本窗口的 Windows 控制台闪窗加固（如 #52340）有重叠；下次同步按"上游优先、fork 补缺"归并。相关：P-016/P-019、P-033/P-037。 |
 | **P-039** | `agent/auxiliary_client.py`、`hermes_cli/config.py`（auxiliary 文案）、`hermes_cli/main.py`、`tests/agent/test_auxiliary_client.py`、`tests/agent/test_auxiliary_main_first.py` | 辅助模型 "auto" 解析**从不隐式探测** OpenRouter 与 Nous Portal。文本链：主 provider → 本地/自定义端点 → 直连 API-key 服务商 → None（`_get_provider_chain` 去掉 openrouter/nous 两级）。视觉 auto 只回退原生 Anthropic（`_VISION_AUTO_PROVIDER_ORDER = ("anthropic",)`），`_VISION_EXPLICIT_PROVIDER_ORDER` 负责显式请求与主 provider 严格后端。用户主 provider 是 OpenRouter/Nous、或显式 `auxiliary.<task>.provider` 指定时仍正常可用。 | 国内用户通常连不上 openrouter.ai / Nous Portal；隐式回退探测给每次压缩/标题生成/视觉调用平添死等超时，辅助任务"慢慢失败"而不是快速回退到可达服务商。 | CN 专属默认，不上游。2026-06-07（`bc40674ac`）落地时未编号；v0.18.0 同步中险些被合并丢弃后补登记。 |
 | **P-040** | `hermes_cli/web_server.py`、`tests/hermes_cli/test_web_server_platforms_offload.py`（新增） | `/api/messaging/platforms` 的目录构建改走 `run_in_executor`（且移出 profile scope，scope 内保持无 await）；lifespan 启动时把 `_warm_platform_registry` 发进工作线程预热（与 `_warm_gateway_module` 同款）。 | `_messaging_platform_catalog()` 会触发平台插件发现，首次调用同步 import 所有内置 IM 适配器——仅 discord.py 冷启动就 10s+——而且是在 async handler 里**内联**执行。桌面端首屏就调这个端点，事件循环被卡死、所有启动期 API 排队：每次 runtime 更新后（新进程）用户会看到 15s+ 的白屏/"连接中"；Playwright E2E 对全新 v0.18.0 后端也因 15s 断言窗口而失败。 | 建议上游（官方桌面/dashboard 同样中招；与上游自己的冷启动 offload 惯例 #54448/#54523 同款）。 |
+| **P-041** | `agent/agent_init.py`、`agent/conversation_loop.py`、`tui_gateway/server.py`、`apps/desktop/src/app/session/hooks/use-message-stream/gateway-event.ts`、`apps/desktop/src/lib/chat-messages.ts`、`hermes_cli/config.py`、`tests/run_agent/test_tool_call_streaming_convergence.py`（新增）、`tests/tui_gateway/test_tool_call_committed_event.py`（新增）、`apps/desktop/src/lib/chat-messages.test.ts` | 修复 Windows 桌面端"工具调用后卡死"：当 `write_file` 工具调用前无正文、随后紧跟 `terminal` 工具调用时，UI 可能卡在"正在运行终端命令"无法恢复。新增显式的 `assistant.tool_calls_committed` 事件、会话级事件追踪、回合不活动看门狗、强化相邻工具调用匹配，并吞掉多余的 `None` 流式增量。 | 桌面端流状态机从 `message.start` 启动，期望收到文本增量或最终的 `message.complete`。纯工具调用的助手消息两者都不提供，导致连续工具调用时 UI 在 `tool.start` 边界上失去清晰状态切换。 | 建议上游 |
 
 ## 发布和维护支撑
 
@@ -59,6 +60,24 @@
 | managed runtime | `.github/workflows/release-runtime.yml`, `scripts/sign_runtime_manifest.py`, `docs/RUNTIME_RELEASES.md` | 构建 PyInstaller runtime，签名 manifest，并发布给 desktop 下载 |
 
 ## 补丁详情
+
+### P-041：修复 Windows 桌面端 `write_file` → `terminal` 卡死回合
+
+**现象**（Windows 桌面端）：助手先发出一个没有前导正文的 `write_file` 工具调用，该工具很快完成后模型又发出第二个工具调用（`terminal`）。UI 显示"正在运行终端命令"并伴随思考中指示器，始终不产生最终助手消息；用户发送 `again` 也无法恢复。
+
+**根因**：桌面端流状态机由 `message.start` 初始化，期望收到 `message.delta` 文本或最终的 `message.complete`。纯工具调用的助手消息两者都不提供：`message.start` 之后第一个实质性事件是 `tool.start`。缺少显式边界时，合并后的助手消息从第一个 `tool.start` 起一直 `pending` 到最终 `message.complete`。如果后续任何事件延迟或乱序，UI 没有可恢复的清晰节点。另一诱因是核心循环在工具执行前会 flush `stream_delta_callback(None)`，但网关只设置了 `_stream_callback`，该 flush 对网关无效；若两者接在一起，`None` 增量会被误发为 `message.delta {text: null}`。
+
+**改动**：
+- `agent/agent_init.py`、`agent/conversation_loop.py`：新增 `tool_calls_committed_callback` 参数；在追加工具调用助手消息后、执行工具前调用。
+- `tui_gateway/server.py`：把回调接到 `assistant.tool_calls_committed` 事件（携带 role、finish_reason、tool_call_ids、has_content）；在 `_stream` 中过滤 `None` 增量；新增按会话事件追踪（`gateway.event_trace`）到 `~/.hermes/logs/tui_gateway_events.log`，以及回合不活动看门狗（`gateway.turn_watchdog_seconds`，默认 600 秒），超时后 emit `error` 并释放 `session["running"]`。
+- `apps/desktop/src/app/session/hooks/use-message-stream/gateway-event.ts`：处理 `assistant.tool_calls_committed`，flush 队列增量并把 `sawAssistantPayload` 标为 true、`awaitingResponse` 标为 false。
+- `apps/desktop/src/lib/chat-messages.ts`：强化 `findToolPartIndex`，仅在 stable id 匹配且工具名也匹配时才复用 pending 行。
+- `hermes_cli/config.py`：登记新的 `gateway.event_trace` 与 `gateway.turn_watchdog_seconds` 配置项。
+- 测试：`tests/run_agent/test_tool_call_streaming_convergence.py`、`tests/tui_gateway/test_tool_call_committed_event.py`，并在 `apps/desktop/src/lib/chat-messages.test.ts` 新增用例。
+
+**是否可上游？** 是。该事件通用，匹配强化修复了所有消费网关事件流的客户端在纯工具调用回合上的状态机缺口。
+
+---
 
 ### P-026：桌面托管运行时收敛第三方缓存到 HERMES_HOME
 

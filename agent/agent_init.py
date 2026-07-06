@@ -252,6 +252,7 @@ def init_agent(
     read_terminal_callback: callable = None,
     step_callback: callable = None,
     stream_delta_callback: callable = None,
+    tool_calls_committed_callback: callable = None,
     interim_assistant_callback: callable = None,
     tool_gen_callback: callable = None,
     status_callback: callable = None,
@@ -486,6 +487,7 @@ def init_agent(
     agent.read_terminal_callback = read_terminal_callback
     agent.step_callback = step_callback
     agent.stream_delta_callback = stream_delta_callback
+    agent.tool_calls_committed_callback = tool_calls_committed_callback
     agent.interim_assistant_callback = interim_assistant_callback
     agent.status_callback = status_callback
     agent.notice_callback = notice_callback

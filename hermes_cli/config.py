@@ -2723,10 +2723,22 @@ DEFAULT_CONFIG = {
         "force_ipv4": False,
     },
 
-    # Gateway settings — control how messaging platforms (Telegram, Discord,
-    # Slack, etc.) deliver agent-produced files as native attachments.
-    "gateway": {
-        # Seconds the gateway waits for a single messaging platform to finish
+        # Gateway settings — control how messaging platforms (Telegram, Discord,
+        # Slack, etc.) deliver agent-produced files as native attachments.
+        "gateway": {
+            # Diagnostic trace: when true, the TUI/WebSocket gateway writes an
+            # ordered log of emitted event types to
+            # ~/.hermes/logs/tui_gateway_events.log.  Useful for diagnosing
+            # stuck turns without exposing large tool-result payloads.
+            "event_trace": False,
+
+            # Per-turn watchdog.  If a turn stays ``running`` with no gateway
+            # event activity for this many seconds, the gateway emits an error
+            # event, releases the session lock, and interrupts the agent.
+            # ``0`` disables the watchdog.
+            "turn_watchdog_seconds": 600,
+
+            # Seconds the gateway waits for a single messaging platform to finish
         # connecting during startup (and on reconnect). Discord in particular
         # can blow past the old fixed 30s when an account has many slash
         # commands to sync (#19776: 90-173 skills → ~28-31s sync). Raise this

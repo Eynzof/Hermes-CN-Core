@@ -6,6 +6,7 @@ import copy
 import inspect
 import json
 import logging
+import logging.handlers
 import os
 import queue
 import subprocess
@@ -15,7 +16,7 @@ import time
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from hermes_constants import (
     get_hermes_home,
@@ -54,6 +55,52 @@ load_hermes_dotenv(
 # Activity — exactly what was missing when the voice-mode turns started
 # exiting the gateway mid-TTS.
 _CRASH_LOG = os.path.join(_hermes_home, "logs", "tui_gateway_crash.log")
+
+# ── Per-session event trace ──────────────────────────────────────────────
+# Feature-flagged ordered event log used to diagnose stuck turns.  Writes to
+# ~/.hermes/logs/tui_gateway_events.log when ``gateway.event_trace`` is truthy
+# in config.yaml.  Each line is a JSON object with the event type, session id,
+# wall-clock timestamp, and payload keys (values are omitted to keep the log
+# readable and to avoid leaking large tool results).
+_EVENT_TRACE_LOG = os.path.join(_hermes_home, "logs", "tui_gateway_events.log")
+_event_trace_logger: logging.Logger | None = None
+_event_trace_enabled_cache: tuple[float, bool] | None = None
+
+
+def _event_trace_enabled() -> bool:
+    """Return True if the per-session event trace is enabled.
+
+    Cached for a few seconds because it is evaluated on every emitted event.
+    """
+    global _event_trace_enabled_cache
+    now = time.time()
+    if _event_trace_enabled_cache is not None and now - _event_trace_enabled_cache[0] < 5.0:
+        return _event_trace_enabled_cache[1]
+    try:
+        cfg = _load_cfg() or {}
+        enabled = bool((cfg.get("gateway") or {}).get("event_trace"))
+    except Exception:
+        enabled = False
+    _event_trace_enabled_cache = (now, enabled)
+    return enabled
+
+
+def _ensure_event_trace_logger() -> logging.Logger:
+    """Lazily create the rotating event-trace logger."""
+    global _event_trace_logger
+    if _event_trace_logger is not None:
+        return _event_trace_logger
+    logger = logging.getLogger("tui_gateway.event_trace")
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+    os.makedirs(os.path.dirname(_EVENT_TRACE_LOG), exist_ok=True)
+    handler = logging.handlers.RotatingFileHandler(
+        _EVENT_TRACE_LOG, maxBytes=10 * 1024 * 1024, backupCount=3
+    )
+    handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+    logger.addHandler(handler)
+    _event_trace_logger = logger
+    return logger
 
 
 def _panic_hook(exc_type, exc_value, exc_tb):
@@ -1016,6 +1063,24 @@ def _emit(event: str, sid: str, payload: dict | None = None):
     if payload is not None:
         params["payload"] = payload
     write_json({"jsonrpc": "2.0", "method": "event", "params": params})
+
+    # Keep the turn watchdog's inactivity detector alive.
+    session = _sessions.get(sid)
+    if session is not None:
+        session["last_turn_activity"] = time.time()
+
+    # Feature-flagged per-session event trace for stuck-turn forensics.
+    if _event_trace_enabled():
+        try:
+            trace_entry = {
+                "t": time.time(),
+                "sid": sid,
+                "event": event,
+                "payload_keys": sorted(payload.keys()) if isinstance(payload, dict) else [],
+            }
+            _ensure_event_trace_logger().info(json.dumps(trace_entry, default=str))
+        except Exception:
+            pass
 
 
 def _emit_approval_request(sid: str, data: dict | None) -> None:
@@ -3671,6 +3736,31 @@ def _mirror_subagent_to_child(event_type: str, payload: dict) -> None:
 
 def _agent_cbs(sid: str) -> dict:
     return {
+        # Emitted when the assistant message that requested the current batch of
+        # tool calls has been appended to the conversation and is about to be
+        # executed.  This gives the UI a clean boundary for tool-call-only
+        # turns that would otherwise have no ``message.delta`` between
+        # ``message.start`` and ``tool.start``.
+        "tool_calls_committed_callback": lambda assistant_msg: _emit(
+            "assistant.tool_calls_committed",
+            sid,
+            {
+                "role": assistant_msg.get("role") if isinstance(assistant_msg, dict) else None,
+                "finish_reason": assistant_msg.get("finish_reason")
+                if isinstance(assistant_msg, dict)
+                else None,
+                "tool_call_ids": [
+                    tc.get("id")
+                    for tc in (assistant_msg.get("tool_calls") or [])
+                    if isinstance(tc, dict)
+                ]
+                if isinstance(assistant_msg, dict)
+                else [],
+                "has_content": bool(assistant_msg.get("content"))
+                if isinstance(assistant_msg, dict)
+                else False,
+            },
+        ),
         "tool_start_callback": lambda tc_id, name, args: _on_tool_start(
             sid, tc_id, name, args
         ),
@@ -4857,6 +4947,92 @@ def _append_inflight_delta(session: dict, delta: Any) -> None:
 
 def _clear_inflight_turn(session: dict) -> None:
     session["inflight_turn"] = None
+
+
+def _turn_watchdog_seconds() -> int:
+    """Return the configured turn inactivity watchdog threshold.
+
+    ``gateway.turn_watchdog_seconds`` in config.yaml overrides the 10-minute
+    default.  ``0`` or a negative value disables the watchdog.
+    """
+    try:
+        cfg = _load_cfg() or {}
+        val = (cfg.get("gateway") or {}).get("turn_watchdog_seconds")
+        if isinstance(val, int) and val > 0:
+            return val
+        if isinstance(val, float) and val > 0:
+            return int(val)
+    except Exception:
+        pass
+    return 600
+
+
+def _start_turn_watchdog(sid: str, session: dict) -> Callable[[], None]:
+    """Start a daemon that kills a stuck turn after prolonged inactivity.
+
+    Returns a no-arg cancel function that must be called when the turn ends.
+    """
+    threshold = _turn_watchdog_seconds()
+    if threshold <= 0:
+        return lambda: None
+
+    started_at = time.time()
+    session["last_turn_activity"] = started_at
+    cancel_event = threading.Event()
+    history_lock = session.get("history_lock") or threading.RLock()
+
+    def _watch() -> None:
+        while not cancel_event.is_set():
+            # Sleep in short chunks so cancellation is responsive.
+            if cancel_event.wait(timeout=10.0):
+                return
+            if not session.get("running"):
+                return
+            last = session.get("last_turn_activity", started_at)
+            if time.time() - last < threshold:
+                continue
+
+            logger.warning(
+                "Turn watchdog fired for session %s after %ss of inactivity",
+                sid,
+                threshold,
+            )
+            try:
+                _emit(
+                    "error",
+                    sid,
+                    {
+                        "message": (
+                            f"Turn timed out after {threshold}s of inactivity. "
+                            "The agent may be stuck waiting for a provider or tool."
+                        )
+                    },
+                )
+            except Exception:
+                pass
+            try:
+                with history_lock:
+                    _clear_inflight_turn(session)
+                    session["running"] = False
+            except Exception:
+                pass
+            try:
+                agent = session.get("agent")
+                if agent is not None and callable(getattr(agent, "interrupt", None)):
+                    agent.interrupt("Turn watchdog: no activity")
+            except Exception:
+                pass
+            return
+
+    thread = threading.Thread(
+        target=_watch, daemon=True, name=f"turn-watchdog-{sid}"
+    )
+    thread.start()
+
+    def cancel() -> None:
+        cancel_event.set()
+
+    return cancel
 
 
 def _enqueue_prompt(session: dict, text: Any, transport: Any) -> None:
@@ -8548,7 +8724,9 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
         home_token = None  # per-turn HERMES_HOME override for a resumed remote profile
         goal_followup = None  # set by the post-turn goal hook below
         steer_followup = None  # set when a /steer landed too late to inject (P-023)
+        watchdog_cancel = None
         try:
+            watchdog_cancel = _start_turn_watchdog(sid, session)
             from tools.approval import (
                 reset_current_session_key,
                 set_current_session_key,
@@ -8662,6 +8840,12 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
                     run_message = _enrich_with_attached_images(prompt, images)
 
             def _stream(delta):
+                # ``delta`` can be ``None`` when the core agent loop flushes an
+                # open stream before tool execution.  The gateway treats
+                # ``tool.start`` as the authoritative transition, so a null
+                # delta must not become a ``message.delta {text: null}`` event.
+                if delta is None:
+                    return
                 with session["history_lock"]:
                     _append_inflight_delta(session, delta)
                 payload = {"text": delta}
@@ -8953,6 +9137,8 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
                 session["running"] = False
                 session["last_active"] = time.time()
                 _clear_inflight_turn(session)
+            if watchdog_cancel is not None:
+                watchdog_cancel()
             _emit("session.info", sid, _session_info(agent, session))
 
         # P-023: deliver a late /steer as the next user turn. run_conversation

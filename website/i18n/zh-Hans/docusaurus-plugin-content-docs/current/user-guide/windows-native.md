@@ -102,11 +102,11 @@ Dashboard 的 `/chat` 标签页通过 POSIX PTY（`ptyprocess`）内嵌了真实
 
 ## Hermes 如何在 Windows 上运行 shell 命令
 
-Hermes 的终端工具通过 **Windows PowerShell 5.1**（`powershell.exe`）运行命令——每套 Windows 10 和 Windows 11 系统自带，无需额外安装、无需下载、无需 Git Bash。
+Hermes 的终端工具优先使用 **PowerShell 7（pwsh）** 运行命令，当不可用时回退到 **Windows PowerShell 5.1**（`powershell.exe`）——两者均可轻松安装或随每套 Windows 10/11 系统自带。当检测到 pwsh 时，所有现代 PowerShell 语法（三元 `?:`、空合并 `??`、管道链 `&&`/`||`、null-条件 `?.`/`?[`）原生支持，无需任何兼容层。
 
-PowerShell 5.1 启动比 Git Bash 更快，原生处理 Windows 路径（无需 `/c/foo` 翻译），避免了整个 POSIX 翻译开销。Agent 被指示使用 PowerShell 语法（`Get-ChildItem`、`$env:VAR`、`Select-String`、`Get-Content`）。如果它意外使用了 PowerShell 7+ 语法（`?:`、`??`、`&&`、`||`、`?.`、`?[`），`pwsh_transform` 兼容层会自动将其降级为 5.1 兼容的 `if/else` 块。
+如果未安装 pwsh，Hermes 自动回退到 Windows PowerShell 5.1（`powershell.exe`），每套 Windows 系统自带——无需额外安装、无需下载、无需 Git Bash。
 
-在 `.env` 中设置 `HERMES_SHELL_TYPE=powershell`（或保持默认 `auto`）以使用 PowerShell。Windows 不支持 `HERMES_SHELL_TYPE=bash`。
+在 `.env` 中设置 `HERMES_SHELL_TYPE=pwsh`（优先使用 PowerShell 7）、`powershell`（强制使用 Windows PowerShell 5.1），或保持默认 `auto`。Windows 不支持 `HERMES_SHELL_TYPE=bash`。
 
 ## Windows 上的 UTF-8 控制台
 

@@ -527,47 +527,93 @@ def _find_powershell() -> str:
     """Return ``powershell.exe`` path on Windows.
 
     Windows PowerShell 5.1 ships with every Windows 10/11 system at
-    ``C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe``
+    ``C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe``
     and is always on PATH.  No probing needed — just return the first
     ``powershell.exe`` found via ``shutil.which``.
     """
     return shutil.which("powershell.exe") or "powershell.exe"
 
+
+def _find_pwsh() -> str | None:
+    """Detect PowerShell 7 (pwsh) using multiple strategies.
+
+    Returns the full path to pwsh.exe, or None if not found.
+    """
+    # Strategy 1: PATH search
+    path = shutil.which("pwsh") or shutil.which("pwsh.exe")
+    if path:
+        return path
+
+    # Strategy 2: Common install location via %%ProgramFiles%%
+    program_files = os.environ.get("ProgramFiles", r"C:\Program Files")
+    candidate = os.path.join(program_files, "PowerShell", "7", "pwsh.exe")
+    if os.path.isfile(candidate):
+        return candidate
+
+    # Strategy 3: Registry App Paths
+    try:
+        import winreg
+        with winreg.OpenKey(
+            winreg.HKEY_LOCAL_MACHINE,
+            r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\pwsh.exe",
+            0, winreg.KEY_READ
+        ) as key:
+            reg_path, _ = winreg.QueryValueEx(key, "")
+            if reg_path and os.path.isfile(reg_path):
+                return reg_path
+    except (OSError, FileNotFoundError):
+        pass
+
+    # Strategy 4: LocalAppData (Microsoft Store / winget install)
+    local_app_data = os.environ.get("LOCALAPPDATA", "")
+    if local_app_data:
+        candidate = os.path.join(
+            local_app_data, "Microsoft", "WindowsApps", "pwsh.exe"
+        )
+        if os.path.isfile(candidate):
+            return candidate
+
+    return None
+
+
 def _resolve_shell() -> tuple[str, str]:
     """Determine which shell to use for local command execution.
 
-    On Windows: always uses Windows PowerShell 5.1 (``powershell.exe``),
-    which ships with every Windows 10/11 system — no download or install
-    needed.
+    On Windows: prefers PowerShell 7 (``pwsh``) when available, falling
+    back to Windows PowerShell 5.1 (``powershell.exe``) which ships with
+    every Windows 10/11 system.
 
     On non-Windows: always uses bash.
 
     Env overrides:
-      ``HERMES_SHELL_TYPE`` — ``"powershell"``, ``"bash"``, or ``"auto"``
-      (default: ``"powershell"`` on Windows, ``"bash"`` otherwise).
+      ``HERMES_SHELL_TYPE`` — ``"powershell"``, ``"pwsh"``, ``"bash"``,
+      or ``"auto"`` (default: ``"auto"`` on Windows, ``"bash"`` otherwise).
       ``HERMES_SHELL_TYPE=bash`` on Windows raises a RuntimeError.
 
     Returns ``(shell_type, shell_path)`` where *shell_type* is
-    ``"powershell"`` or ``"bash"``.
+    ``"pwsh"``, ``"powershell"``, or ``"bash"``.
     """
     shell_type = os.environ.get("HERMES_SHELL_TYPE", "auto").strip().lower() or "auto"
 
     if _IS_WINDOWS:
-        # Map legacy pwsh value to powershell
-        if shell_type in ("auto", "powershell", "pwsh"):
+        if shell_type in ("auto", "pwsh", "powershell"):
+            # Prefer pwsh (PowerShell 7) when available
+            pwsh_path = _find_pwsh()
+            if pwsh_path:
+                logger.info("Selected shell: pwsh at %s", pwsh_path)
+                return ("pwsh", pwsh_path)
             ps_path = _find_powershell()
             logger.info("Selected shell: powershell at %s", ps_path)
             return ("powershell", ps_path)
         if shell_type == "bash":
             raise RuntimeError(
                 "Git Bash is no longer supported on Windows. "
-                "Set HERMES_SHELL_TYPE=powershell (or leave as auto) "
-                "to use Windows PowerShell 5.1, which ships with every "
-                "Windows 10/11 system."
+                "Set HERMES_SHELL_TYPE=pwsh/powershell (or leave as auto) "
+                "to use PowerShell."
             )
         raise RuntimeError(
             f"Unknown HERMES_SHELL_TYPE={shell_type!r} on Windows. "
-            "Supported values: 'auto' (default → powershell), 'powershell'."
+            "Supported values: 'auto' (default → pwsh/powershell), 'pwsh', 'powershell'."
         )
 
     # Non-Windows: always bash
@@ -1077,16 +1123,23 @@ class LocalEnvironment(BaseEnvironment):
           ``pwd -P``  → ``Get-Location``
         """
 
-        # [CN-fork] P-037: down-level PS7+ syntax (``&&`` ``||`` ``??`` ``?:``
-        # ``?.`` ``?[``) to PS5.1 on the RAW command *before* it is embedded as
-        # a single-quoted ``Invoke-Expression`` literal below.  ``pwsh_transform``
-        # builds a region mask that deliberately skips single-quoted string
-        # contents, so transforming the *assembled* wrapper (the old call site
-        # in ``_run_powershell``) never reached the user's command — the
-        # compatibility bridge was a silent no-op on the real exec path, and
-        # ``Invoke-Expression`` then re-parsed the un-leveled command under 5.1
-        # and raised a ParserError on ``&&`` etc.
-        command, pwsh_warnings = pwsh_transform(command)
+        # [CN-fork] P-037 / P-XXX: down-level PS7+ syntax (``&&`` ``||`` ``??``
+        # ``?:`` ``?.`` ``?[``) to PS5.1 on the RAW command *before* it is
+        # embedded as a single-quoted ``Invoke-Expression`` literal below.
+        # ``pwsh_transform`` builds a region mask that deliberately skips
+        # single-quoted string contents, so transforming the *assembled*
+        # wrapper (the old call site in ``_run_powershell``) never reached
+        # the user's command — the compatibility bridge was a silent no-op
+        # on the real exec path, and ``Invoke-Expression`` then re-parsed
+        # the un-leveled command under 5.1 and raised a ParserError on ``&&``
+        # etc.
+        #
+        # When running PowerShell 7 (``pwsh``) natively, skip the transform
+        # entirely — PS7 supports all modern operators natively.
+        if self._shell_type == "pwsh":
+            pwsh_warnings: list[str] = []
+        else:
+            command, pwsh_warnings = pwsh_transform(command)
         self._pwsh_warnings = pwsh_warnings
 
         # Escape single quotes for PowerShell: double them
@@ -1143,7 +1196,7 @@ class LocalEnvironment(BaseEnvironment):
         For **bash**: unchanged — captures env vars, functions, aliases
         into a snapshot file that subsequent commands source.
         """
-        if self._shell_type == "powershell":
+        if self._shell_type in ("powershell", "pwsh"):
             # Simple CWD marker write — no snapshot needed for powershell.
             self._snapshot_ready = False
             try:
@@ -1154,10 +1207,10 @@ class LocalEnvironment(BaseEnvironment):
                 Path(self._cwd_file).write_text(cwd_path, encoding="utf-8")
             except Exception as exc:
                 logger.warning(
-                    "init_session (powershell) failed to write CWD file: %s", exc
+                    "init_session (%s) failed to write CWD file: %s", self._shell_type, exc
                 )
             logger.info(
-                "powershell session ready (session=%s, cwd=%s)",
+                "%s session ready (session=%s, cwd=%s)", self._shell_type,
                 self._session_id,
                 self.cwd,
             )
@@ -1178,7 +1231,7 @@ class LocalEnvironment(BaseEnvironment):
         Dispatches to ``_run_powershell()`` when the active shell is
         powershell, otherwise uses the existing bash path (non-Windows).
         """
-        if self._shell_type == "powershell":
+        if self._shell_type in ("powershell", "pwsh"):
             return self._run_powershell(
                 cmd_string, login=login, timeout=timeout, stdin_data=stdin_data
             )
@@ -1257,7 +1310,7 @@ class LocalEnvironment(BaseEnvironment):
         Dispatches to ``_wrap_command_powershell()`` when the active shell
         is powershell, otherwise uses the base bash wrapping.
         """
-        if self._shell_type == "powershell":
+        if self._shell_type in ("powershell", "pwsh"):
             return self._wrap_command_powershell(command, cwd)
         return super()._wrap_command(command, cwd)
 
@@ -1355,7 +1408,7 @@ class LocalEnvironment(BaseEnvironment):
         try:
             with open(self._cwd_file, encoding="utf-8") as f:
                 cwd_path = f.read().strip()
-            if _IS_WINDOWS and self._shell_type == "bash":
+            if _IS_WINDOWS and self._shell_type not in ("powershell", "pwsh"):
                 cwd_path = _msys_to_windows_path(cwd_path)
             if cwd_path and os.path.isdir(cwd_path):
                 self.cwd = cwd_path
@@ -1378,7 +1431,7 @@ class LocalEnvironment(BaseEnvironment):
         prev_cwd = self.cwd
         super()._extract_cwd_from_output(result)
         if self.cwd != prev_cwd:
-            normalized = _msys_to_windows_path(self.cwd) if (_IS_WINDOWS and self._shell_type == "bash") else self.cwd
+            normalized = _msys_to_windows_path(self.cwd) if (_IS_WINDOWS and self._shell_type not in ("powershell", "pwsh")) else self.cwd
             if normalized and os.path.isdir(normalized):
                 self.cwd = normalized
             else:

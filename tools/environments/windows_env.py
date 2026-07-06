@@ -22,7 +22,8 @@ def ps_with_utf8(command: str) -> str:
 
     Prepends ``[Console]::OutputEncoding`` and ``$OutputEncoding`` settings
     so PowerShell emits UTF-8 to stdout regardless of the system code page.
-    No-op on non-Windows.
+    Works for both ``pwsh.exe`` (PowerShell 7) and ``powershell.exe``
+    (Windows PowerShell 5.1). No-op on non-Windows.
 
     Usage::
 

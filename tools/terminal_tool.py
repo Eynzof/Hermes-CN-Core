@@ -984,11 +984,12 @@ Do NOT use vim/nano/interactive tools without pty=true — they hang without a p
 def _detect_shell_for_description() -> str:
     """Detect shell type for description purposes.
 
-    Returns ``"powershell"`` or ``"bash"``.
+    Returns ``"pwsh"``, ``"powershell"``, or ``"bash"``.
 
-    On Windows, always returns ``"powershell"`` (Windows PowerShell 5.1
-    ships with every Windows 10/11 system). On non-Windows, returns
-    ``"bash"``.
+    On Windows, probes for PowerShell 7 (pwsh) first; if found returns
+    ``"pwsh"``, otherwise returns ``"powershell"`` (Windows PowerShell
+    5.1, which ships with every Windows 10/11 system).
+    On non-Windows, returns ``"bash"``.
 
     Cached via ``@lru_cache`` so repeated calls are essentially free.
     """
@@ -1000,7 +1001,15 @@ def _detect_shell_for_description() -> str:
     if shell_type == "bash":
         return "powershell"  # _resolve_shell() in local.py will raise RuntimeError
 
-    # Windows: always powershell
+    # Probe for pwsh (PowerShell 7)
+    try:
+        from tools.environments.local import _find_pwsh
+        if _find_pwsh():
+            return "pwsh"
+    except Exception:
+        pass
+
+    # Fallback to Windows PowerShell 5.1
     return "powershell"
 
 
@@ -1013,7 +1022,9 @@ def _build_dynamic_terminal_description() -> dict:
     """
     shell_type = _detect_shell_for_description()
 
-    if shell_type == "powershell":
+    if shell_type == "pwsh":
+        platform_env = "Execute powershell commands in a PowerShell 7 (pwsh) environment"
+    elif shell_type == "powershell":
         platform_env = "Execute powershell commands on a Windows PowerShell environment"
     else:
         platform_env = "Execute shell commands on a Linux environment"
@@ -1025,12 +1036,12 @@ def _build_dynamic_terminal_description() -> dict:
     )
 
     # ------------------------------------------------------------------
-    # For PowerShell, also adapt Linux/bash-specific command references
-    # so the agent sees cmdlets it might actually be tempted to misuse.
-    # The core guidance ("use agent tools instead of shell commands")
-    # stays the same; only the example commands change.
-    # ------------------------------------------------------------------
-    if shell_type == "powershell":
+    # For PowerShell (both pwsh and powershell.exe), also adapt
+    # Linux/bash-specific command references so the agent sees cmdlets it
+    # might actually be tempted to misuse. The core guidance ("use agent
+    # tools instead of shell commands") stays the same; only the example
+    # commands change.
+    if shell_type in ("powershell", "pwsh"):
         new_description = new_description.replace(
             "Do NOT use cat/head/tail to read files",
             "Do NOT use Get-Content/cat/type to read files",

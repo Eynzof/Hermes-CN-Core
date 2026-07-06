@@ -932,7 +932,8 @@ class BaseEnvironment(ABC):
         self._update_cwd(result)
 
         # Attach pwsh transform warnings if present (only LocalEnvironment
-        # running Windows PowerShell sets these — other environments won't).
+        # running Windows PowerShell 5.1 sets these — pwsh has native
+        # support, so no warnings are generated).
         pwsh_warnings = getattr(self, '_pwsh_warnings', None)
         if pwsh_warnings:
             result["pwsh_warnings"] = pwsh_warnings

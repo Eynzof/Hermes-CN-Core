@@ -919,6 +919,19 @@ _WINDOWS_POWERSHELL_SHELL_HINT = (
 )
 
 
+_WINDOWS_PWSH_SHELL_HINT = (
+    "Shell: on this Windows host your `terminal` tool runs commands through "
+    "PowerShell 7 (pwsh). Use PowerShell syntax. Key rules:\n"
+    "- Use `$env:VAR` for environment variables, not `$VAR`.\n"
+    "- Use `Get-ChildItem` (or `ls`/`dir`) for listing files.\n"
+    "- Use `Select-String` (or `findstr`) for searching, not `grep`.\n"
+    "- Use `Get-Content` (or `cat`/`type`) to read files.\n"
+    "- PS7+ operators (ternary `?:`, null-coalescing `??`, pipeline chains "
+    "`&&`/`||`, null-conditional `?.`/`?[`) ARE supported natively — no "
+    "compatibility layer needed."
+)
+
+
 def _probe_remote_backend(env_type: str) -> str | None:
     """Run a tiny introspection command inside the active terminal backend.
 
@@ -1103,10 +1116,15 @@ def build_environment_hints() -> str:
             )
         hints.append("\n".join(host_lines))
 
-        # Windows-local terminal runs PowerShell, not bash — the model must
-        # know this or it will issue bash syntax and fail.
+        # Windows-local terminal runs PowerShell (pwsh or powershell.exe),
+        # not bash — the model must know this or it will issue bash syntax
+        # and fail.
         if sys.platform == "win32" and not is_wsl():
-            hints.append(_WINDOWS_POWERSHELL_SHELL_HINT)
+            # Probe for pwsh to give the appropriate shell hint
+            if shutil.which("pwsh") or shutil.which("pwsh.exe"):
+                hints.append(_WINDOWS_PWSH_SHELL_HINT)
+            else:
+                hints.append(_WINDOWS_POWERSHELL_SHELL_HINT)
     else:
         # --- Remote backend block (host info suppressed) ---
         probe = _probe_remote_backend(backend)

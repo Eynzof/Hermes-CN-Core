@@ -344,6 +344,24 @@ def check_certificates() -> None:
         check_warn("SSL certificate check skipped", str(e))
 
 
+def _check_windows_defender_hint() -> None:
+    """On Windows, suggest a Defender exclusion for the Hermes home directory.
+
+    Real-time Defender scanning of Hermes's many small cache / ``.pyc`` / lock
+    files adds file-I/O latency to imports and tool writes; excluding
+    ``HERMES_HOME`` removes it.  Informational only — no settings are changed.
+    No-op (renders nothing) off Windows.
+    """
+    try:
+        from tools.environments.windows_env import suggest_defender_exclusion
+    except Exception:
+        return
+    hint = suggest_defender_exclusion()
+    if hint:
+        _section("Windows Performance")
+        check_info(hint)
+
+
 def _check_gateway_service_linger(issues: list[str]) -> None:
     """Warn when a systemd user gateway service will stop after logout.
 
@@ -657,6 +675,7 @@ def run_doctor(args):
 
     _section("SSL / CA Certificates")
     check_certificates()
+    _check_windows_defender_hint()
 
     _section("Required Packages")
     required_packages = [

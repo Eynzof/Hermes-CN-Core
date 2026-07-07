@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import re
+import threading
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -192,6 +193,142 @@ MINIMUM_CONTEXT_LENGTH = 64_000
 # restart freshness is handled by the reconcile logic re-probing after expiry.
 _LOCAL_CTX_PROBE_TTL_SECONDS = 30.0
 _LOCAL_CTX_PROBE_CACHE: Dict[tuple, tuple] = {}
+
+# ---------------------------------------------------------------------------
+# Fast endpoint reachability gate
+#
+# The local-server metadata probes below (detect_local_server_type,
+# _query_local_context_length_uncached, fetch_endpoint_model_metadata) each
+# issue several HTTP GET/POST requests. When the endpoint is DOWN or the URL is
+# a placeholder (e.g. a gateway/test agent constructed against
+# ``http://localhost:9999/v1``), every one of those requests pays the full
+# per-request connect timeout. On hosts where a closed loopback port is
+# *filtered* rather than actively refused (common on Windows, and for any
+# firewalled remote box), a single ``localhost`` connect fans out to ``::1``
+# then ``127.0.0.1`` and blocks ~2s each — so one agent construction could
+# stall 30-60s on nothing. See reports/perf/root-cause-analysis.md hotspots 1-4.
+#
+# The gate does one cheap TCP connect with a short timeout BEFORE the HTTP
+# probing. If the port isn't accepting connections we skip the HTTP round
+# trips entirely and let context-length resolution fall through to cache +
+# hardcoded defaults (exactly what it would have done after the slow probes
+# failed anyway). The verdict is cached briefly, keyed by (host, port):
+#   * reachable   -> 30s TTL (server is up; don't re-probe every construction)
+#   * unreachable -> short TTL so a server that comes up moments later is still
+#     picked up quickly by the reconcile logic, while back-to-back constructions
+#     in one process (gateway per-message agents, warm re-inits) collapse to a
+#     single connect instead of N.
+# ---------------------------------------------------------------------------
+_ENDPOINT_REACHABLE_TIMEOUT_SECONDS = 0.3
+_ENDPOINT_REACHABLE_POS_TTL_SECONDS = 30.0
+_ENDPOINT_REACHABLE_NEG_TTL_SECONDS = 5.0
+_endpoint_reachable_cache: Dict[Tuple[str, int], Tuple[bool, float]] = {}
+_endpoint_reachable_lock = threading.Lock()
+
+
+def _endpoint_host_port(base_url: str) -> Optional[Tuple[str, int]]:
+    """Extract (host, port) from a base URL, defaulting the port by scheme."""
+    normalized = _normalize_base_url(base_url)
+    if not normalized:
+        return None
+    url = normalized if "://" in normalized else f"http://{normalized}"
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return None
+    host = parsed.hostname or ""
+    if not host:
+        return None
+    port = parsed.port
+    if port is None:
+        port = 443 if (parsed.scheme or "").lower() == "https" else 80
+    return host, port
+
+
+def _probe_endpoint_reachable(base_url: str, timeout: float) -> bool:
+    """One cheap request to decide whether an endpoint accepts connections.
+
+    Returns True on ANY HTTP response (even an error status) and False only on a
+    genuine connection failure (refused / timed out / DNS failure). The probe is
+    routed through the SAME ``build_httpx_client`` the metadata probes use and
+    issues a ``HEAD`` (a verb the probes themselves never use), so:
+
+    * Unit tests that stub ``httpx.Client`` see a mock response → reachable=True
+      → the real probe logic runs against their mock exactly as before, and the
+      ``HEAD`` never collides with their ``.get``/``.post`` call assertions.
+    * A genuinely down/placeholder endpoint fails the connection → reachable=
+      False → the caller skips its multi-request probing and falls through to
+      cache/defaults instead of paying a pile of connect timeouts.
+    """
+    server_url = _normalize_base_url(base_url)
+    if not server_url:
+        return False
+    server_url = server_url.rstrip("/")
+    try:
+        import httpx
+        from agent.httpx_clients import build_httpx_client
+    except Exception:
+        # No usable HTTP stack to check with — fail open so we never suppress a
+        # probe that might otherwise have worked.
+        return True
+    try:
+        with build_httpx_client(timeout=timeout) as client:
+            client.head(server_url)
+        return True
+    except Exception as exc:  # noqa: BLE001 — classify below
+        conn_failures = (
+            getattr(httpx, "ConnectError", ()),
+            getattr(httpx, "ConnectTimeout", ()),
+            getattr(httpx, "TimeoutException", ()),
+            getattr(httpx, "NetworkError", ()),
+        )
+        conn_failures = tuple(c for c in conn_failures if isinstance(c, type))
+        if conn_failures and isinstance(exc, conn_failures):
+            return False
+        # Unexpected error (e.g. a bad URL, an unrelated bug): fail open so the
+        # gate can never REMOVE a probe that would otherwise have run.
+        return True
+
+
+def _endpoint_reachable(base_url: str, timeout: Optional[float] = None) -> bool:
+    """Fast, cached reachability check for a model endpoint.
+
+    Short-circuits the slow multi-request HTTP metadata probes when the endpoint
+    is down/unreachable, so agent construction never stalls tens of seconds on
+    connect timeouts (see reports/perf/root-cause-analysis.md hotspots 1-4). An
+    empty/unparseable URL is unreachable; verdicts are cached per (host, port)
+    — positive 30s, negative 5s — so back-to-back constructions in one process
+    (gateway per-message agents, warm re-inits) collapse to a single probe.
+    """
+    try:
+        hp = _endpoint_host_port(base_url)
+    except Exception:
+        return True
+    if hp is None:
+        return False
+    now = time.monotonic()
+    with _endpoint_reachable_lock:
+        cached = _endpoint_reachable_cache.get(hp)
+        if cached is not None:
+            reachable, ts = cached
+            ttl = _ENDPOINT_REACHABLE_POS_TTL_SECONDS if reachable else _ENDPOINT_REACHABLE_NEG_TTL_SECONDS
+            if (now - ts) < ttl:
+                return reachable
+    to = _ENDPOINT_REACHABLE_TIMEOUT_SECONDS if timeout is None else timeout
+    try:
+        reachable = _probe_endpoint_reachable(base_url, to)
+    except Exception:
+        # Never let a probe of the probe make things worse.
+        return True
+    with _endpoint_reachable_lock:
+        _endpoint_reachable_cache[hp] = (reachable, now)
+    return reachable
+
+
+def _reset_endpoint_reachable_cache() -> None:
+    """Clear the reachability cache (test hook / manual invalidation)."""
+    with _endpoint_reachable_lock:
+        _endpoint_reachable_cache.clear()
 
 # Thin fallback defaults — only broad model family patterns.
 # These fire only when provider is unknown AND models.dev/OpenRouter/Anthropic
@@ -628,6 +765,12 @@ def detect_local_server_type(base_url: str, api_key: str = "") -> Optional[str]:
 
     Returns one of: "ollama", "lm-studio", "vllm", "llamacpp", or None.
     """
+    # Fast reachability gate: if the port isn't accepting connections, none of
+    # the four probes below can succeed, so skip them and avoid paying four
+    # connect timeouts for nothing (a placeholder/down endpoint would otherwise
+    # stall agent construction tens of seconds — see _endpoint_reachable).
+    if not _endpoint_reachable(base_url):
+        return None
     normalized = _normalize_base_url(base_url)
     server_url = normalized
     if server_url.endswith("/v1"):
@@ -845,6 +988,13 @@ def fetch_endpoint_model_metadata(
         cached_at = _endpoint_model_metadata_cache_time.get(normalized, 0)
         if cached is not None and (time.time() - cached_at) < _ENDPOINT_MODEL_CACHE_TTL:
             return cached
+
+    # Fast reachability gate: skip the /models round trips (and, for local
+    # endpoints, the detect_local_server_type probe) when the endpoint is not
+    # accepting connections. Return empty WITHOUT caching so a server that
+    # comes up later is still discovered on the next call.
+    if not _endpoint_reachable(base_url):
+        return {}
 
     candidates = [normalized]
     if normalized.endswith("/v1"):
@@ -1445,6 +1595,12 @@ def _query_ollama_api_show(model: str, base_url: str, api_key: str = "") -> Opti
     The order is flipped vs ``query_ollama_num_ctx()`` because local users
     control ``num_ctx`` themselves; hosted users can't.
     """
+    # Fast reachability gate: a single /api/show POST against a down endpoint
+    # otherwise blocks on the full 5s connect timeout (doubled for dual-stack
+    # localhost). Reachable hosts — local Ollama or hosted ollama.com — pass the
+    # cheap TCP check and probe normally.
+    if not _endpoint_reachable(base_url):
+        return None
     server_url = base_url.rstrip("/")
     if server_url.endswith("/v1"):
         server_url = server_url[:-3]
@@ -1559,6 +1715,11 @@ def _query_local_context_length(model: str, base_url: str, api_key: str = "") ->
 
 def _query_local_context_length_uncached(model: str, base_url: str, api_key: str = "") -> Optional[int]:
     """Query a local server for the model's context length."""
+
+    # Fast reachability gate — an unreachable endpoint has no context length to
+    # report, so skip the probes rather than pay their connect timeouts.
+    if not _endpoint_reachable(base_url):
+        return None
 
     # Strip recognised provider prefix (e.g., "local:model-name" → "model-name").
     # Ollama "model:tag" colons (e.g. "qwen3.5:27b") are intentionally preserved.
@@ -2342,15 +2503,31 @@ def estimate_tokens_rough(text: str) -> int:
     return (len(text) + 3) // 4
 
 
-def estimate_messages_tokens_rough(messages: List[Dict[str, Any]]) -> int:
+# Flat per-image token cost (Anthropic pricing model). Counting a base64
+# screenshot by raw character length would estimate a ~1MB image at ~250K
+# tokens and trigger premature context compression; a flat cost avoids that.
+_IMAGE_TOKEN_COST = 1500
+
+
+def estimate_messages_tokens_rough(
+    messages: List[Dict[str, Any]],
+    estimator: "Optional[IncrementalTokenEstimator]" = None,
+) -> int:
     """Rough token estimate for a message list (pre-flight only).
 
     Image parts (base64 PNG/JPEG) are counted as a flat ~1500 tokens per
     image — the Anthropic pricing model — instead of counting raw base64
     character length. Without this, a single ~1MB screenshot would be
     estimated at ~250K tokens and trigger premature context compression.
+
+    Pass an :class:`IncrementalTokenEstimator` as ``estimator`` to reuse
+    per-message work across calls over an append-mostly conversation: the
+    estimate is then O(new messages) instead of O(all messages), and the
+    returned value is byte-for-byte identical to the stateless path (character
+    counts are summed *before* the single ceiling-division, exactly as here).
     """
-    _IMAGE_TOKEN_COST = 1500
+    if estimator is not None:
+        return estimator.estimate(messages)
     total_chars = 0
     image_tokens = 0
     for msg in messages:
@@ -2393,6 +2570,20 @@ def _estimate_message_chars(msg: Dict[str, Any]) -> int:
     """
     if not isinstance(msg, dict):
         return len(str(msg))
+    # Fast path: the shadow dict only ever differs from ``msg`` when a base64
+    # image needs stripping — i.e. when ``_anthropic_content_blocks`` is present
+    # or ``content`` is a list / a ``_multimodal`` dict. In every other case
+    # (scalar/str content, no stashed blocks) the shadow is a shallow copy of
+    # ``msg`` with identical key order, so ``str(shadow) == str(msg)``. Skip the
+    # per-key rebuild and stringify ``msg`` directly — identical result, one
+    # fewer dict allocation per message on the hot pre-flight path.
+    content = msg.get("content")
+    if (
+        "_anthropic_content_blocks" not in msg
+        and not isinstance(content, list)
+        and not (isinstance(content, dict) and content.get("_multimodal"))
+    ):
+        return len(str(msg))
     shadow: Dict[str, Any] = {}
     for k, v in msg.items():
         if k == "_anthropic_content_blocks":
@@ -2418,11 +2609,71 @@ def _estimate_message_chars(msg: Dict[str, Any]) -> int:
     return len(str(shadow))
 
 
+class IncrementalTokenEstimator:
+    """O(delta) rough token estimator for an append-mostly message list.
+
+    ``estimate_messages_tokens_rough`` re-stringifies every message on every
+    call.  On a long-lived conversation the per-turn pre-flight gate re-scans
+    the whole history even though only the last couple of messages are new —
+    an O(n) pass per turn, O(n²) across a session.
+
+    This estimator memoises each message's ``(chars, image_tokens)``
+    contribution keyed on the message object's identity, so re-estimating a
+    conversation that grew by a few messages only pays for the new ones.  A
+    strong reference to each still-present message is kept alongside its cached
+    contribution: it pins ``id()`` (guarding against identity reuse after GC)
+    and is revalidated with an ``is`` check on every hit.  Entries for messages
+    that dropped out of the list are discarded each call, so the cache tracks
+    the live conversation and never grows unbounded.
+
+    The result is byte-for-byte identical to the stateless function: character
+    counts are summed *before* the single ceiling-division, the same rounding
+    the stateless path uses.  It is intended only for the *rough* pre-flight
+    estimate — if a cached message is mutated in place the estimate drifts by a
+    handful of characters, which is immaterial to a ~4-chars/token gate.
+    """
+
+    __slots__ = ("_cache",)
+
+    def __init__(self) -> None:
+        # id(msg) -> (msg, chars, image_tokens)
+        self._cache: Dict[int, Any] = {}
+
+    def estimate(self, messages: List[Dict[str, Any]]) -> int:
+        """Return the rough token estimate for ``messages`` (cache-accelerated)."""
+        if not messages:
+            self._cache = {}
+            return 0
+        cache = self._cache
+        fresh: Dict[int, Any] = {}
+        total_chars = 0
+        image_tokens = 0
+        for msg in messages:
+            key = id(msg)
+            entry = cache.get(key)
+            if entry is not None and entry[0] is msg:
+                chars = entry[1]
+                imgs = entry[2]
+            else:
+                chars = _estimate_message_chars(msg)
+                imgs = _count_image_tokens(msg, _IMAGE_TOKEN_COST)
+            fresh[key] = (msg, chars, imgs)
+            total_chars += chars
+            image_tokens += imgs
+        self._cache = fresh
+        return ((total_chars + 3) // 4) + image_tokens
+
+    def invalidate(self) -> None:
+        """Drop all cached contributions (e.g. after a full history rebuild)."""
+        self._cache = {}
+
+
 def estimate_request_tokens_rough(
     messages: List[Dict[str, Any]],
     *,
     system_prompt: str = "",
     tools: Optional[List[Dict[str, Any]]] = None,
+    estimator: "Optional[IncrementalTokenEstimator]" = None,
 ) -> int:
     """Rough token estimate for a full chat-completions request.
 
@@ -2436,7 +2687,7 @@ def estimate_request_tokens_rough(
     if system_prompt:
         total += (len(system_prompt) + 3) // 4
     if messages:
-        total += estimate_messages_tokens_rough(messages)
+        total += estimate_messages_tokens_rough(messages, estimator=estimator)
     if tools:
         total += (len(str(tools)) + 3) // 4
     return total

@@ -12984,6 +12984,77 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin):
             ] if item is not None
         ]
 
+    # Once-per-process guard for the background agent-runtime warmup so a
+    # /clear or re-entered run() doesn't spawn duplicate warmup threads.
+    _agent_warmup_started = False
+    _agent_warmup_lock = threading.Lock()
+
+    def _spawn_agent_runtime_warmup(self) -> None:
+        """Pre-warm the agent runtime off-thread during the post-banner idle window.
+
+        The first ``AIAgent`` construction otherwise pays a cold-start tax:
+        building the full tool-schema catalog (process-wide cached, but empty
+        on first use) and resolving the model's context length (which may probe
+        the model endpoint). Warming both process-wide caches here — while the
+        banner is on screen and the user is still reading/typing — means the
+        first message starts its turn without that latency. Fire-and-forget and
+        guarded once-per-process; every warmed call is independently cached and
+        idempotent, so a missed/failed warmup only costs the original lazy path.
+        See reports/perf/root-cause-analysis.md (P0: lazy cold start).
+        """
+        with HermesCLI._agent_warmup_lock:
+            if HermesCLI._agent_warmup_started:
+                return
+            HermesCLI._agent_warmup_started = True
+
+        base_url = getattr(self, "base_url", "") or ""
+        api_key = getattr(self, "api_key", "") or ""
+        model = getattr(self, "model", "") or ""
+        provider = getattr(self, "provider", "") or ""
+
+        enabled_toolsets = getattr(self, "enabled_toolsets", None)
+        disabled_toolsets = getattr(self, "disabled_toolsets", None)
+
+        def _warm() -> None:
+            # 1) Warm the process-wide tool-dispatch path (the big one):
+            #    discovery + this session's schema catalog + pre-serialized
+            #    schemas. Scoped to the CLI's own toolsets so the exact cache
+            #    entry the first turn needs is the one we build. Runs inline in
+            #    this warmup thread (background=False) — no nested thread
+            #    (P-043, root-cause-analysis.md hotspots #8/#9).
+            try:
+                from model_tools import warm_dispatch_path
+                warm_dispatch_path(
+                    enabled_toolsets=enabled_toolsets,
+                    disabled_toolsets=disabled_toolsets,
+                    background=False,
+                )
+            except Exception:
+                pass
+            # 2) Warm model-endpoint metadata: context length + (transitively)
+            #    the endpoint-reachability verdict, so ContextCompressor init
+            #    inside the first AIAgent doesn't block resolving them.
+            try:
+                if model:
+                    from agent.model_metadata import get_model_context_length
+                    get_model_context_length(
+                        model, base_url=base_url, api_key=api_key, provider=provider,
+                    )
+                elif base_url:
+                    from agent.model_metadata import _endpoint_reachable
+                    _endpoint_reachable(base_url)
+            except Exception:
+                pass
+
+        try:
+            threading.Thread(
+                target=_warm, name="hermes-agent-warmup", daemon=True,
+            ).start()
+        except Exception:
+            # A thread-spawn failure (e.g. exhausted thread limit) must never
+            # block startup; the lazy path still runs on first construction.
+            pass
+
     def run(self):
         """Run the interactive CLI loop with persistent input at bottom."""
         if not self._claim_active_session("cli"):
@@ -13034,6 +13105,14 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin):
         try:
             from hermes_cli.model_switch import prewarm_picker_cache_async
             prewarm_picker_cache_async()
+        except Exception:
+            pass
+
+        # Pre-warm the agent runtime (tool-schema catalog + model-endpoint
+        # metadata) off-thread during this same idle window so the user's first
+        # message doesn't pay the cold-start tax. Fire-and-forget.
+        try:
+            self._spawn_agent_runtime_warmup()
         except Exception:
             pass
 

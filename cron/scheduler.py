@@ -3311,7 +3311,10 @@ def tick(verbose: bool = True, adapters=None, loop=None, sync: bool = True) -> i
         Number of jobs executed (0 if another tick is already running)
     """
     lock_dir, lock_file = _get_lock_paths()
-    lock_dir.mkdir(parents=True, exist_ok=True)
+    # Skip the mkdir syscall on the steady-state path where the dir already
+    # exists (every tick after the first) — a single is_dir() stat instead.
+    if not lock_dir.is_dir():
+        lock_dir.mkdir(parents=True, exist_ok=True)
 
     # Refresh timezone cache so config changes take effect without a
     # gateway restart (F-7).
@@ -3329,24 +3332,29 @@ def tick(verbose: bool = True, adapters=None, loop=None, sync: bool = True) -> i
     # live process that is legitimately running a long job — doing so would let
     # a second tick double-execute one-shot jobs (which are not advanced until
     # they finish). ---
-    lock_stale = _get_lock_stale_seconds()
-    if lock_file.exists():
-        try:
-            import time as _time
-            mtime = lock_file.stat().st_mtime
-            age = _time.time() - mtime
-            if age > lock_stale and not _lock_holder_alive(lock_file):
-                logger.warning(
-                    "Removing stale cron lock file (age=%.0fs, threshold=%.0fs); "
-                    "recorded holder PID is no longer running.",
-                    age, lock_stale,
-                )
-                try:
-                    lock_file.unlink()
-                except OSError:
-                    pass
-        except OSError:
-            pass
+    # A single stat() tells us both whether the lock file exists AND how old it
+    # is, avoiding the redundant exists()+stat() syscall pair on every tick (each
+    # syscall is comparatively expensive on Windows/NTFS). The config read for
+    # the stale threshold is likewise deferred until we actually have a lock file
+    # to evaluate, so a tick with no leftover lock skips it entirely.
+    import time as _time
+    try:
+        lock_stat = os.stat(lock_file)
+    except OSError:
+        lock_stat = None
+    if lock_stat is not None:
+        lock_stale = _get_lock_stale_seconds()
+        age = _time.time() - lock_stat.st_mtime
+        if age > lock_stale and not _lock_holder_alive(lock_file):
+            logger.warning(
+                "Removing stale cron lock file (age=%.0fs, threshold=%.0fs); "
+                "recorded holder PID is no longer running.",
+                age, lock_stale,
+            )
+            try:
+                lock_file.unlink()
+            except OSError:
+                pass
 
     # Cross-platform file locking: fcntl on Unix, msvcrt on Windows
     lock_fd = None

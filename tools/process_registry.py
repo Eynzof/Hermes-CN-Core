@@ -32,7 +32,7 @@ Usage:
 import json
 import logging
 import os
-import platform
+from platform_utils import is_windows
 import shlex
 import signal
 import subprocess
@@ -40,7 +40,7 @@ import threading
 import time
 import uuid
 
-_IS_WINDOWS = platform.system() == "Windows"
+_IS_WINDOWS = is_windows()
 from tools.environments.local import _find_shell, _resolve_safe_cwd, _sanitize_subprocess_env
 from hermes_cli._subprocess_compat import windows_hide_flags
 from dataclasses import dataclass, field

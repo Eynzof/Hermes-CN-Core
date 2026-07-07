@@ -33,7 +33,7 @@ import functools
 import json
 import logging
 import os
-import platform
+from platform_utils import is_windows
 import secrets
 import shlex
 import socket
@@ -44,7 +44,7 @@ import threading
 import time
 import uuid
 
-_IS_WINDOWS = platform.system() == "Windows"
+_IS_WINDOWS = is_windows()
 from typing import Any, Dict, List, Optional
 
 from tools.thread_context import propagate_context_to_thread

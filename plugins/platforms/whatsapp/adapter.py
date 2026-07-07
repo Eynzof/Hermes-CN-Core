@@ -18,12 +18,12 @@ with different backends via a bridge pattern.
 import asyncio
 import logging
 import os
-import platform
+import sys
 import re
 import signal
 import subprocess
 
-_IS_WINDOWS = platform.system() == "Windows"
+_IS_WINDOWS = sys.platform == "win32"
 from pathlib import Path
 from typing import Dict, Optional, Any
 

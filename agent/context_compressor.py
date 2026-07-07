@@ -16,6 +16,7 @@ Improvements over v2:
   - Richer tool call/result detail in summarizer input
 """
 
+import gc
 import hashlib
 import json
 import logging
@@ -189,6 +190,31 @@ _MAX_TAIL_MESSAGE_FLOOR = 8
 
 
 _PATH_MENTION_RE = re.compile(r"(?:/|~/?|[A-Za-z]:\\)[^\s`'\")\]}<>]+")
+
+# Minimum number of messages a single compaction must drop before we force a
+# cyclic GC pass.  Compaction is infrequent and discards a large slice of the
+# transcript (message dicts, their tool-result strings) plus the transient
+# objects the summariser LLM call allocated, so one explicit collection here
+# reclaims that memory promptly instead of waiting for the generational
+# threshold to trip.  Small drops aren't worth a stop-the-world pause.
+_GC_AFTER_COMPACTION_DROP_THRESHOLD = 10
+
+
+def maybe_collect_after_compaction(
+    dropped_count: int,
+    threshold: int = _GC_AFTER_COMPACTION_DROP_THRESHOLD,
+) -> bool:
+    """Force a cyclic GC pass when a compaction dropped ``dropped_count`` messages.
+
+    Returns ``True`` when :func:`gc.collect` was invoked.  Kept as a module-level
+    helper (rather than an inline ``gc.collect()``) so the trigger policy is
+    unit-testable in isolation and callers can tune the threshold.  A
+    non-positive ``threshold`` disables the trigger entirely.
+    """
+    if threshold <= 0 or dropped_count < threshold:
+        return False
+    gc.collect()
+    return True
 
 # MEDIA delivery directives must not reach the summarizer — if one leaks into
 # the summary, the downstream model may re-emit it as an active directive on
@@ -2985,6 +3011,17 @@ This compaction should PRIORITISE preserving all information related to the focu
                 savings_pct,
             )
             logger.info("Compression #%d complete", self.compression_count)
+
+        # Reclaim the dropped transcript slice promptly.  ``messages`` is still
+        # referenced by the caller here, but the summariser call, the pruned
+        # working copies, and any reference cycles created during summarisation
+        # are now unreachable; a single collection returns them (and their
+        # arena pages) instead of waiting on the generational threshold.
+        if maybe_collect_after_compaction(n_messages - len(compressed)) and not self.quiet_mode:
+            logger.debug(
+                "Post-compaction gc.collect() ran (%d -> %d messages)",
+                n_messages, len(compressed),
+            )
 
         return compressed
 

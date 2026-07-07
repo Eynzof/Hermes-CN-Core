@@ -7,6 +7,7 @@ assemble pieces, then combines them with memory and ephemeral prompts.
 import json
 import logging
 import os
+import shutil
 import threading
 import contextvars
 from collections import OrderedDict
@@ -1083,6 +1084,8 @@ def build_environment_hints() -> str:
     import platform
     import sys
 
+    from platform_utils import windows_release
+
     hints: list[str] = []
 
     backend = (os.getenv("TERMINAL_ENV") or "local").strip().lower()
@@ -1094,7 +1097,12 @@ def build_environment_hints() -> str:
         if is_wsl():
             host_lines.append("Host: WSL (Windows Subsystem for Linux)")
         elif sys.platform == "win32":
-            host_lines.append(f"Host: Windows ({platform.release()})")
+            # ``platform.release()`` builds ``platform.uname()``, which on
+            # Python 3.12+ issues a WMI ``_wmi.exec_query`` (``win32_ver``) —
+            # ~40ms paid every time the system prompt is built at agent init.
+            # ``windows_release()`` derives the same label WMI-free.
+            rel = windows_release()
+            host_lines.append(f"Host: Windows ({rel})" if rel else "Host: Windows")
         elif sys.platform == "darwin":
             mac_ver = platform.mac_ver()[0]
             host_lines.append(f"Host: macOS ({mac_ver or platform.release()})")

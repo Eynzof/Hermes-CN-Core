@@ -31,6 +31,19 @@ except ModuleNotFoundError:
     # means UTF-8 stdio setup is skipped on Windows; POSIX is unaffected.
     pass
 
+# Install the first-party import accelerator before this module's own (heavy)
+# import cascade runs, so Hermes top-level modules resolve via a dict lookup
+# instead of a per-entry sys.path scan (flame hotspots nt.stat / nt._path_exists
+# — see import_accelerator.py).  ``hermes_bootstrap`` normally installs it
+# already; this idempotent call also covers the ModuleNotFoundError fallback
+# above (bootstrap absent) and a direct ``from run_agent import AIAgent``.
+try:
+    import import_accelerator
+
+    import_accelerator.install()
+except Exception:
+    pass
+
 import asyncio
 import base64
 import copy
@@ -139,9 +152,26 @@ from model_tools import (
     handle_function_call,  # noqa: F401  # re-exported for tests that mock.patch("run_agent.handle_function_call")
     check_toolset_requirements,  # noqa: F401  # re-exported for tests that mock.patch("run_agent.check_toolset_requirements")
 )
-from tools.terminal_tool import cleanup_vm
 from tools.interrupt import set_interrupt as _set_interrupt
-from tools.browser_tool import cleanup_browser
+
+
+# ``cleanup_vm`` / ``cleanup_browser`` run only on agent teardown
+# (AIAgent.close), never on a hot path — but importing them eagerly dragged
+# the whole ``tools.browser_tool`` tree (playwright/CDP deps, ~215 ms) into
+# every ``from run_agent import AIAgent``. Keep them as module-level names so
+# existing tests can still patch ``run_agent.cleanup_vm`` directly (see
+# tests/gateway/test_agent_cache.py), but defer the heavy import to first call
+# via thin wrappers. Re-importing at call time also means a test that patches
+# ``tools.terminal_tool.cleanup_vm`` / ``tools.browser_tool.cleanup_browser``
+# is still honored.
+def cleanup_vm(task_id):
+    from tools.terminal_tool import cleanup_vm as _cleanup_vm
+    return _cleanup_vm(task_id)
+
+
+def cleanup_browser(task_id):
+    from tools.browser_tool import cleanup_browser as _cleanup_browser
+    return _cleanup_browser(task_id)
 
 
 # Agent internals extracted to agent/ package for modularity
@@ -165,6 +195,14 @@ from agent.prompt_builder import (  # noqa: F401  # re-exported via _ra() / mock
     load_soul_md,
 )
 from agent.process_bootstrap import _get_proxy_from_env  # noqa: F401
+# Canonical, dependency-free home for the message primitives AIAgent re-exports
+# below (see the static-method forwarders). Kept in a leaf module so the hot
+# ``sanitize_api_messages`` path never has to import this heavy module.
+from agent.message_utils import (  # noqa: F401
+    VALID_API_ROLES,
+    get_tool_call_id,
+    get_tool_call_name,
+)
 from agent.message_sanitization import (  # noqa: F401
     _SURROGATE_RE,
     _sanitize_surrogates,
@@ -196,6 +234,13 @@ from agent.tool_result_classification import (
 from agent.trajectory import (
     convert_scratchpad_to_think,
     save_trajectory as _save_trajectory_to_file,
+)
+from agent.tool_result_store import (
+    # Memory-bounded tool-result buffer with transparent disk spill, for
+    # large-result handling in long-running sessions. Re-exported here so
+    # callers and tests can `from run_agent import ToolResultStore`.
+    ToolResultStore,  # noqa: F401
+    ToolCallResult,  # noqa: F401
 )
 from agent.tool_dispatch_helpers import (
     _should_parallelize_tool_batch,
@@ -496,81 +541,95 @@ class AIAgent:
         checkpoint_max_file_size_mb: int = 10,
         pass_session_id: bool = False,
     ):
-        """Forwarder — see ``agent.agent_init.init_agent``."""
-        from agent.agent_init import init_agent
-        init_agent(
-            self,
-            base_url=base_url,
-            api_key=api_key,
-            provider=provider,
-            api_mode=api_mode,
-            acp_command=acp_command,
-            acp_args=acp_args,
-            command=command,
-            args=args,
-            model=model,
-            max_iterations=max_iterations,
-            tool_delay=tool_delay,
-            enabled_toolsets=enabled_toolsets,
-            disabled_toolsets=disabled_toolsets,
-            save_trajectories=save_trajectories,
-            verbose_logging=verbose_logging,
-            quiet_mode=quiet_mode,
-            tool_progress_mode=tool_progress_mode,
-            ephemeral_system_prompt=ephemeral_system_prompt,
-            log_prefix_chars=log_prefix_chars,
-            log_prefix=log_prefix,
-            providers_allowed=providers_allowed,
-            providers_ignored=providers_ignored,
-            providers_order=providers_order,
-            provider_sort=provider_sort,
-            provider_require_parameters=provider_require_parameters,
-            provider_data_collection=provider_data_collection,
-            openrouter_min_coding_score=openrouter_min_coding_score,
-            session_id=session_id,
-            tool_progress_callback=tool_progress_callback,
-            tool_start_callback=tool_start_callback,
-            tool_complete_callback=tool_complete_callback,
-            thinking_callback=thinking_callback,
-            reasoning_callback=reasoning_callback,
-            clarify_callback=clarify_callback,
-            read_terminal_callback=read_terminal_callback,
-            step_callback=step_callback,
-            stream_delta_callback=stream_delta_callback,
-            interim_assistant_callback=interim_assistant_callback,
-            tool_gen_callback=tool_gen_callback,
-            status_callback=status_callback,
-            notice_callback=notice_callback,
-            notice_clear_callback=notice_clear_callback,
-            event_callback=event_callback,
-            max_tokens=max_tokens,
-            reasoning_config=reasoning_config,
-            service_tier=service_tier,
-            request_overrides=request_overrides,
-            prefill_messages=prefill_messages,
-            platform=platform,
-            user_id=user_id,
-            user_id_alt=user_id_alt,
-            user_name=user_name,
-            chat_id=chat_id,
-            chat_name=chat_name,
-            chat_type=chat_type,
-            thread_id=thread_id,
-            gateway_session_key=gateway_session_key,
-            skip_context_files=skip_context_files,
-            load_soul_identity=load_soul_identity,
-            skip_memory=skip_memory,
-            session_db=session_db,
-            parent_session_id=parent_session_id,
-            iteration_budget=iteration_budget,
-            fallback_model=fallback_model,
-            credential_pool=credential_pool,
-            checkpoints_enabled=checkpoints_enabled,
-            checkpoint_max_snapshots=checkpoint_max_snapshots,
-            checkpoint_max_total_size_mb=checkpoint_max_total_size_mb,
-            checkpoint_max_file_size_mb=checkpoint_max_file_size_mb,
-            pass_session_id=pass_session_id,
-        )
+        """Forwarder — see ``agent.agent_init.init_agent``.
+
+        The construction is wrapped in ``gc_init_freeze()`` so the
+        allocation-heavy init (lazy tool-module import cascade, config
+        merges, provider/credential resolution, context-engine bootstrap)
+        runs with automatic cyclic GC suppressed and reclaims its garbage in
+        a single batched collection afterwards, instead of several
+        stop-the-world passes mid-init
+        (.plans/14-GC-Collection-Overhead.md). Wrapping here rather than
+        only inside ``init_agent`` also covers the one-time
+        ``from agent.agent_init import init_agent`` import cascade paid on
+        the first construction.
+        """
+        from agent.gc_tuning import gc_init_freeze
+        with gc_init_freeze():
+            from agent.agent_init import init_agent
+            init_agent(
+                self,
+                base_url=base_url,
+                api_key=api_key,
+                provider=provider,
+                api_mode=api_mode,
+                acp_command=acp_command,
+                acp_args=acp_args,
+                command=command,
+                args=args,
+                model=model,
+                max_iterations=max_iterations,
+                tool_delay=tool_delay,
+                enabled_toolsets=enabled_toolsets,
+                disabled_toolsets=disabled_toolsets,
+                save_trajectories=save_trajectories,
+                verbose_logging=verbose_logging,
+                quiet_mode=quiet_mode,
+                tool_progress_mode=tool_progress_mode,
+                ephemeral_system_prompt=ephemeral_system_prompt,
+                log_prefix_chars=log_prefix_chars,
+                log_prefix=log_prefix,
+                providers_allowed=providers_allowed,
+                providers_ignored=providers_ignored,
+                providers_order=providers_order,
+                provider_sort=provider_sort,
+                provider_require_parameters=provider_require_parameters,
+                provider_data_collection=provider_data_collection,
+                openrouter_min_coding_score=openrouter_min_coding_score,
+                session_id=session_id,
+                tool_progress_callback=tool_progress_callback,
+                tool_start_callback=tool_start_callback,
+                tool_complete_callback=tool_complete_callback,
+                thinking_callback=thinking_callback,
+                reasoning_callback=reasoning_callback,
+                clarify_callback=clarify_callback,
+                read_terminal_callback=read_terminal_callback,
+                step_callback=step_callback,
+                stream_delta_callback=stream_delta_callback,
+                interim_assistant_callback=interim_assistant_callback,
+                tool_gen_callback=tool_gen_callback,
+                status_callback=status_callback,
+                notice_callback=notice_callback,
+                notice_clear_callback=notice_clear_callback,
+                event_callback=event_callback,
+                max_tokens=max_tokens,
+                reasoning_config=reasoning_config,
+                service_tier=service_tier,
+                request_overrides=request_overrides,
+                prefill_messages=prefill_messages,
+                platform=platform,
+                user_id=user_id,
+                user_id_alt=user_id_alt,
+                user_name=user_name,
+                chat_id=chat_id,
+                chat_name=chat_name,
+                chat_type=chat_type,
+                thread_id=thread_id,
+                gateway_session_key=gateway_session_key,
+                skip_context_files=skip_context_files,
+                load_soul_identity=load_soul_identity,
+                skip_memory=skip_memory,
+                session_db=session_db,
+                parent_session_id=parent_session_id,
+                iteration_budget=iteration_budget,
+                fallback_model=fallback_model,
+                credential_pool=credential_pool,
+                checkpoints_enabled=checkpoints_enabled,
+                checkpoint_max_snapshots=checkpoint_max_snapshots,
+                checkpoint_max_total_size_mb=checkpoint_max_total_size_mb,
+                checkpoint_max_file_size_mb=checkpoint_max_file_size_mb,
+                pass_session_id=pass_session_id,
+            )
 
     def _get_session_db_for_recall(self):
         """Return a SessionDB for recall, lazily creating it if an entrypoint forgot.
@@ -3640,29 +3699,31 @@ class AIAgent:
 
     @staticmethod
     def _get_tool_call_id_static(tc) -> str:
-        """Extract call ID from a tool_call entry (dict or object)."""
-        if isinstance(tc, dict):
-            return (tc.get("call_id", "") or tc.get("id", "") or "").strip()
-        return (getattr(tc, "call_id", "") or getattr(tc, "id", "") or "").strip()
+        """Extract call ID from a tool_call entry (dict or object).
+
+        Thin forwarder — the canonical implementation is
+        ``agent.message_utils.get_tool_call_id`` (a dependency-free leaf module
+        the hot ``sanitize_api_messages`` path shares).
+        """
+        return get_tool_call_id(tc)
 
     @staticmethod
     def _get_tool_call_name_static(tc) -> str:
         """Extract function name from a tool_call entry (dict or object).
+
+        Thin forwarder — the canonical implementation is
+        ``agent.message_utils.get_tool_call_name``.
 
         Gemini's OpenAI-compatibility endpoint requires every `role: tool`
         message to carry the matching function name. OpenAI/Anthropic/ollama
         tolerate its absence, so the field is best-effort: callers fall back
         to "" and the message still works elsewhere.
         """
-        if isinstance(tc, dict):
-            fn = tc.get("function")
-            if isinstance(fn, dict):
-                return fn.get("name", "") or ""
-            return ""
-        fn = getattr(tc, "function", None)
-        return getattr(fn, "name", "") or ""
+        return get_tool_call_name(tc)
 
-    _VALID_API_ROLES = frozenset({"system", "user", "assistant", "tool", "function", "developer"})
+    # Canonical set lives in ``agent.message_utils``; aliased here for the many
+    # ``AIAgent._VALID_API_ROLES`` call sites and tests that read it.
+    _VALID_API_ROLES = VALID_API_ROLES
 
     @staticmethod
     def _sanitize_api_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -5726,6 +5787,40 @@ class AIAgent:
             persist_user_timestamp=persist_user_timestamp,
             moa_config=moa_config,
         )
+
+    def warmup(self, *, background: bool = True) -> "Optional[threading.Thread]":
+        """Pre-warm this agent's tool-dispatch path (P-043).
+
+        Completes deferred tool discovery, builds + caches the schema list for
+        THIS agent's toolset selection, and pre-serializes each tool's schema
+        so the first tool call / first API request doesn't pay the ~4.5 s cold
+        start (root-cause-analysis.md hotspots #8/#9). Idempotent per toolset
+        fingerprint (safe to call repeatedly / from every construction), thread
+        -safe, and never raises. Fire-and-forget by default — returns the daemon
+        warmup Thread (or None if already warmed / spawn failed); pass
+        ``background=False`` to warm synchronously.
+
+        Most useful when called on an entry point's idle window BEFORE the first
+        turn (e.g. after the CLI banner, at gateway/TUI startup), so discovery
+        overlaps with the user reading/typing instead of blocking their first
+        message.
+        """
+        from model_tools import warm_dispatch_path
+        return warm_dispatch_path(
+            enabled_toolsets=self.enabled_toolsets,
+            disabled_toolsets=self.disabled_toolsets,
+            background=background,
+        )
+
+    async def awarmup(self) -> None:
+        """Async wrapper for :meth:`warmup` — warms the dispatch path in a worker
+        thread so an event-loop caller (gateway/TUI/ACP) doesn't block on the
+        cold-start discovery. Never raises."""
+        import asyncio
+        try:
+            await asyncio.to_thread(self.warmup, background=False)
+        except Exception as e:  # pragma: no cover - defensive
+            logger.debug("awarmup skipped: %s", e)
 
     def chat(self, message: str, stream_callback: Optional[callable] = None) -> str:
         """

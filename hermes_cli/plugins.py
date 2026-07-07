@@ -1209,6 +1209,12 @@ class PluginManager:
         self._context_engine = None  # Set by a plugin via register_context_engine()
         self._plugin_commands: Dict[str, dict] = {}  # Slash commands registered by plugins
         self._discovered: bool = False
+        # Serializes discover_and_load() across threads. The CLI/gateway now
+        # kick off a background warmup thread that can call discover_plugins()
+        # while the main thread builds the first agent; the reentrant lock keeps
+        # two concurrent sweeps from double-loading plugins (and lets a
+        # plugin's register() re-enter discovery on the same thread).
+        self._discovery_lock = threading.RLock()
         self._cli_ref = None  # Set by CLI after plugin discovery
         # Plugin skill registry: qualified name → metadata dict.
         self._plugin_skills: Dict[str, Dict[str, Any]] = {}
@@ -1234,8 +1240,17 @@ class PluginManager:
         changes or newly-added bundled backends become visible in long-lived
         sessions without requiring a full agent restart.
         """
+        # Fast path without taking the lock: already discovered and not forcing.
         if self._discovered and not force:
             return
+        with self._discovery_lock:
+            # Re-check under the lock: another thread may have finished the
+            # sweep while we were blocked on it.
+            if self._discovered and not force:
+                return
+            self._discover_and_load_locked(force=force)
+
+    def _discover_and_load_locked(self, force: bool = False) -> None:
         # Safe mode (--safe-mode / HERMES_SAFE_MODE=1): troubleshooting run
         # with all customizations disabled. Skip plugin discovery entirely so
         # no third-party code (hooks, tools, platforms) loads. Mark as

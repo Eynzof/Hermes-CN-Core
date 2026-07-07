@@ -344,7 +344,45 @@ hermes-agent = "run_agent:main"
 hermes-acp = "acp_adapter.entry:main"
 
 [tool.setuptools]
-py-modules = ["run_agent", "model_tools", "toolsets", "batch_runner", "trajectory_compressor", "toolset_distributions", "cli", "hermes_bootstrap", "hermes_constants", "hermes_state", "hermes_time", "hermes_logging", "utils", "mcp_serve"]
+py-modules = ["run_agent", "model_tools", "toolsets", "batch_runner", "trajectory_compressor", "toolset_distributions", "cli", "hermes_bootstrap", "hermes_constants", "hermes_state", "hermes_time", "hermes_logging", "utils", "platform_utils", "import_accelerator", "mcp_serve"]
+
+# Ahead-of-time bytecode warm-up (scripts/precompile.py).  ``pip install`` already
+# byte-compiles installed packages; this table drives the run-from-source path
+# (the CN fork's Windows default), where nothing has compiled the tree yet, so
+# the first agent start would otherwise pay ``builtins.compile`` (~10.82% of cold
+# agent-init in the flame graph) + ``_io.open_code`` per module.  Build/update/CI
+# flows warm it with ``python scripts/precompile.py --if-needed --quiet``.
+# ``precompile.py`` reads these targets via ``_pyproject_targets()``; when the
+# table is absent it falls back to its own hardcoded defaults, so this is an
+# override, not a hard dependency.  Keep in lockstep with the source layout.
+[tool.hermes.precompile]
+targets = [
+  "agent",
+  "tools",
+  "hermes_cli",
+  "gateway",
+  "cron",
+  "plugins",
+  "providers",
+  "acp_adapter",
+  "tui_gateway",
+  "run_agent.py",
+  "model_tools.py",
+  "toolsets.py",
+  "toolset_distributions.py",
+  "batch_runner.py",
+  "trajectory_compressor.py",
+  "cli.py",
+  "hermes_bootstrap.py",
+  "hermes_constants.py",
+  "hermes_state.py",
+  "hermes_time.py",
+  "hermes_logging.py",
+  "utils.py",
+  "platform_utils.py",
+  "import_accelerator.py",
+  "mcp_serve.py",
+]
 
 [tool.setuptools.data-files]
 # i18n catalogs. locales/ is a bare data directory (no __init__.py), so it is

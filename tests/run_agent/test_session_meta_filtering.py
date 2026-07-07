@@ -43,11 +43,16 @@ class TestSanitizeApiMessagesRoleFilter:
         assert "tool" in roles
 
     def test_logs_warning_when_dropping(self, caplog):
+        # The sanitizer lives in (and logs from) ``agent.agent_runtime_helpers``
+        # — it no longer imports ``run_agent`` on the hot path.  Capture on the
+        # actual emitter's logger, resolved programmatically so this stays a
+        # behaviour contract rather than a hardcoded-name change-detector.
+        from agent import agent_runtime_helpers as _arh
         msgs = [
             {"role": "user", "content": "hello"},
             {"role": "session_meta", "content": {"info": "test"}},
         ]
-        with caplog.at_level(logging.DEBUG, logger="run_agent"):
+        with caplog.at_level(logging.DEBUG, logger=_arh.logger.name):
             AIAgent._sanitize_api_messages(msgs)
         assert any("invalid role" in r.message and "session_meta" in r.message for r in caplog.records)
 

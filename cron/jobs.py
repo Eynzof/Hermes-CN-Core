@@ -281,11 +281,21 @@ def _secure_file(path: Path):
 
 
 def ensure_dirs():
-    """Ensure cron directories exist with secure permissions."""
-    CRON_DIR.mkdir(parents=True, exist_ok=True)
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    _secure_dir(CRON_DIR)
-    _secure_dir(OUTPUT_DIR)
+    """Ensure cron directories exist with secure permissions.
+
+    Hot-path frugal: every ``_jobs_lock()`` acquisition, every ``save_jobs``,
+    and every ``load_jobs`` cache miss routes through here, and on Windows/NTFS
+    each mkdir+chmod syscall carries real overhead. Once the directories exist we
+    skip straight past on a single ``is_dir()`` stat, paying the create+harden
+    cost only when a directory is genuinely missing (fresh install, or a dir
+    removed mid-run — still recreated because the stat fails).
+    """
+    if not CRON_DIR.is_dir():
+        CRON_DIR.mkdir(parents=True, exist_ok=True)
+        _secure_dir(CRON_DIR)
+    if not OUTPUT_DIR.is_dir():
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        _secure_dir(OUTPUT_DIR)
 
 
 # =============================================================================
@@ -641,11 +651,112 @@ def get_ticker_success_age() -> Optional[float]:
 # Job CRUD Operations
 # =============================================================================
 
+# ---------------------------------------------------------------------------
+# In-memory read cache for jobs.json (invalidated on the file's identity).
+#
+# Every scheduler tick and every CRUD read funnels through ``load_jobs()``. On
+# Windows the read path (stat + open + parse) is dominated by NTFS + Defender
+# per-syscall overhead — see reports/perf/2026-07-06-cron-scheduler.md. Caching
+# the parsed job list and validating it against the file's
+# ``(path, st_mtime_ns, st_size)`` signature collapses the steady-state read to a
+# single ``stat()`` plus an in-memory deep copy, while staying correct across:
+#   * same-process writes  — ``save_jobs()`` primes the cache in place;
+#   * other-process writes  — a changed ``(mtime_ns, size)`` misses the cache;
+#   * tests / profile switches that repoint ``JOBS_FILE`` — the path is part of
+#     the key, so a repoint is a natural miss.
+#
+# ``load_jobs()`` always returns a *fresh* list, so the historical
+# load→mutate→save contract (callers append/pop and edit job dicts in place) is
+# preserved and the cached canonical copy can never be mutated by a caller.
+# ---------------------------------------------------------------------------
+_jobs_cache_lock = threading.Lock()
+_jobs_cache_key: Optional[Tuple[str, int, int]] = None
+_jobs_cache_value: Optional[List[Dict[str, Any]]] = None
+
+
+def _jobs_cache_signature(stat_result: os.stat_result) -> Tuple[str, int, int]:
+    """Cache-validation identity for jobs.json: (path, mtime_ns, size).
+
+    ``JOBS_FILE`` is read dynamically (not captured) so a monkeypatched or
+    profile-switched path participates in the key and invalidates naturally.
+    """
+    return (str(JOBS_FILE), stat_result.st_mtime_ns, stat_result.st_size)
+
+
+def _read_cached_jobs(signature: Tuple[str, int, int]) -> Optional[List[Dict[str, Any]]]:
+    """Return a deep copy of the cached jobs iff the signature still matches."""
+    with _jobs_cache_lock:
+        if _jobs_cache_value is not None and _jobs_cache_key == signature:
+            return copy.deepcopy(_jobs_cache_value)
+    return None
+
+
+def _store_cached_jobs(signature: Tuple[str, int, int], jobs: List[Dict[str, Any]]) -> None:
+    """Store a private deep copy of ``jobs`` under ``signature``."""
+    global _jobs_cache_key, _jobs_cache_value
+    with _jobs_cache_lock:
+        _jobs_cache_key = signature
+        _jobs_cache_value = copy.deepcopy(jobs)
+
+
+def _invalidate_jobs_cache() -> None:
+    """Drop the read cache so the next ``load_jobs()`` re-reads from disk."""
+    global _jobs_cache_key, _jobs_cache_value
+    with _jobs_cache_lock:
+        _jobs_cache_key = None
+        _jobs_cache_value = None
+
+
+def _refresh_jobs_cache_after_save(jobs: List[Dict[str, Any]]) -> None:
+    """Prime the read cache with the just-written jobs.
+
+    Called after a successful ``save_jobs`` so an immediately-following
+    ``load_jobs()`` in this process is a cache hit rather than a re-parse. The
+    signature is taken from a post-write ``stat()`` so it matches exactly what
+    the next ``load_jobs()`` will observe. Best-effort: on any stat failure we
+    drop the cache and let the next read re-parse.
+    """
+    try:
+        stat_result = os.stat(JOBS_FILE)
+    except OSError:
+        _invalidate_jobs_cache()
+        return
+    _store_cached_jobs(_jobs_cache_signature(stat_result), jobs)
+
+
 def load_jobs() -> List[Dict[str, Any]]:
-    """Load all jobs from storage."""
-    ensure_dirs()
-    if not JOBS_FILE.exists():
+    """Load all jobs from storage.
+
+    Fast path: a process-local cache keyed on jobs.json's
+    ``(path, st_mtime_ns, st_size)`` serves an unchanged file from memory after a
+    single ``stat()`` — no re-open/re-parse and no per-read ``ensure_dirs()``
+    mkdir/chmod. ``save_jobs()`` refreshes the cache in place; any cross-process
+    write (different mtime/size) or a repointed ``JOBS_FILE`` misses it. The
+    returned list is always fresh, preserving the load→mutate→save contract.
+    """
+    try:
+        stat_result = os.stat(JOBS_FILE)
+    except FileNotFoundError:
+        # Fresh install / never-written store. Preserve the historical side
+        # effect of creating the cron dir tree on read, then report empty.
+        ensure_dirs()
         return []
+    except OSError:
+        # Unstattable for some other reason (e.g. a transient permissions
+        # blip). Fall through to the uncached read so the existing error
+        # handling below still runs.
+        stat_result = None
+
+    signature: Optional[Tuple[str, int, int]] = None
+    if stat_result is not None:
+        signature = _jobs_cache_signature(stat_result)
+        cached = _read_cached_jobs(signature)
+        if cached is not None:
+            return cached
+
+    # Cache miss (or unstattable path): read + parse from disk. ensure_dirs()
+    # is only paid here — never on the hot cache-hit path.
+    ensure_dirs()
 
     _strict_retry = False  # track whether we used the strict=False fallback
 
@@ -675,8 +786,12 @@ def load_jobs() -> List[Dict[str, Any]]:
         jobs = data.get("jobs", [])
         if _strict_retry and jobs:
             # Hit control-character corruption — rewrite with proper escaping.
+            # save_jobs() re-primes the cache with the repaired content.
             save_jobs(jobs)
             logger.warning("Auto-repaired jobs.json (had invalid control characters)")
+            return jobs
+        if signature is not None:
+            _store_cached_jobs(signature, jobs)
         return jobs
     if isinstance(data, list):
         # Bare array — likely saved/edited outside save_jobs(). Wrap it back
@@ -684,7 +799,10 @@ def load_jobs() -> List[Dict[str, Any]]:
         if data:
             save_jobs(data)
             logger.warning("Auto-repaired jobs.json (bare list wrapped as dict)")
-        return data
+            return data
+        if signature is not None:
+            _store_cached_jobs(signature, [])
+        return []
 
     raise RuntimeError(
         f"Cron database corrupted: expected {{'jobs': [...]}}, got {type(data).__name__}"
@@ -703,11 +821,17 @@ def _save_jobs_unlocked(jobs: List[Dict[str, Any]]):
         atomic_replace(tmp_path, JOBS_FILE)
         _secure_file(JOBS_FILE)
     except BaseException:
+        # A failed/partial write must never leave a stale cache claiming success.
+        _invalidate_jobs_cache()
         try:
             os.unlink(tmp_path)
         except OSError:
             pass
         raise
+    else:
+        # Prime the read cache with what we just persisted so the next
+        # load_jobs() in this process is a hit, not a re-parse.
+        _refresh_jobs_cache_after_save(jobs)
 
 
 def save_jobs(jobs: List[Dict[str, Any]]):

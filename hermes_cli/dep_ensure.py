@@ -16,7 +16,7 @@ browser tool needs agent-browser).
 from __future__ import annotations
 
 import os
-import platform
+from platform_utils import is_windows
 import shutil
 import subprocess
 import sys
@@ -26,7 +26,7 @@ from tools.environments.windows_env import refresh_env_from_registry
 from hermes_constants import agent_browser_runnable
 from tools.environments.local import hermes_subprocess_env
 
-_IS_WINDOWS = platform.system() == "Windows"
+_IS_WINDOWS = is_windows()
 
 _DEP_CHECKS = {
     "node": lambda: shutil.which("node") is not None,

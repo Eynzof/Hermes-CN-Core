@@ -31,6 +31,7 @@ from typing import Any, Callable, Dict, List, Optional
 from urllib.parse import urlparse, parse_qs, urlunparse
 
 from agent.context_compressor import ContextCompressor
+from agent.gc_tuning import gc_frozen_init
 from agent.iteration_budget import IterationBudget
 from agent.memory_manager import StreamingContextScrubber
 from agent.model_metadata import (
@@ -213,6 +214,7 @@ def _merge_model_extra_body(agent, model_cfg: Dict[str, Any]) -> None:
     agent.request_overrides = overrides
 
 
+@gc_frozen_init
 def init_agent(
     agent,
     base_url: str = None,

@@ -27,9 +27,9 @@ import asyncio
 import logging
 import threading
 import time
-from typing import Dict, Any, List, Optional, Tuple, Callable
+from typing import Dict, Any, List, Optional, Set, Tuple, Callable
 
-from tools.registry import discover_builtin_tools, registry
+from tools.registry import registry
 from toolsets import resolve_toolset, validate_toolset
 
 _TOOL_FIELD_ALIASES_GENERAL = {
@@ -403,10 +403,30 @@ def _run_async(coro):
 
 
 # =============================================================================
-# Tool Discovery  (importing each module triggers its registry.register calls)
+# Tool Discovery  (deferred — see the lazy index in tools/registry.py)
 # =============================================================================
+#
+# Historically this module imported EVERY tools/*.py at import time (via
+# discover_builtin_tools()) plus ran plugin discovery — adding ~900 ms to the
+# ``from run_agent import AIAgent`` import cascade even for an agent that ends
+# up touching a handful of tools. Both are now deferred:
+#
+#   * Built-in tools: the registry keeps a statically-scanned metadata index
+#     (tool name -> module) and imports a tool's module only when that tool is
+#     first requested. We just flip the singleton into lazy mode here — cheap
+#     (no AST scan, no imports); the scan happens on first real use and is
+#     itself disk-cached.
+#   * Plugins: discover_plugins() is idempotent and already invoked explicitly
+#     at every real entry point (cli, gateway, cron, acp, tui, oneshot...). We
+#     run it lazily on the first API call that needs the full picture instead
+#     of as an unconditional import side effect.
+#
+# Aggregate queries (get_all_tool_names, TOOL_TO_TOOLSET_MAP, doctor/banner
+# availability checks, the default all-toolsets get_tool_definitions()) still
+# transparently load the whole catalog, so nothing that previously saw every
+# tool loses visibility — it just pays on first use, not on import.
 
-discover_builtin_tools()
+registry.enable_lazy_builtins()
 
 # MCP tool discovery (external MCP servers from config) used to run here as
 # a module-level side effect.  It was removed because discover_mcp_tools()
@@ -421,21 +441,56 @@ discover_builtin_tools()
 #   - tui_gateway/server.py     -> inline on startup (no event loop)
 #   - acp_adapter/server.py     -> asyncio.to_thread on session init
 
-# Plugin tool discovery (user/project/pip plugins)
-try:
-    from hermes_cli.plugins import discover_plugins
-    discover_plugins()
-except Exception as e:
-    logger.debug("Plugin discovery failed: %s", e)
+_discovery_plugins_done = False
+_discovery_lock = threading.RLock()
+
+
+def _ensure_discovered(need_plugins: bool = True) -> None:
+    """Idempotently complete deferred tool discovery.
+
+    The built-in lazy index is enabled at import, so this only has to run
+    plugin discovery — and only when a caller needs plugin-contributed
+    tools/toolsets (skipped for the explicit ``enabled_toolsets=[]`` fast
+    path). ``discover_plugins()`` is itself idempotent, so a racing or
+    duplicate call is harmless.
+    """
+    if not need_plugins:
+        return
+    global _discovery_plugins_done
+    if _discovery_plugins_done:
+        return
+    with _discovery_lock:
+        if _discovery_plugins_done:
+            return
+        try:
+            from hermes_cli.plugins import discover_plugins
+            discover_plugins()
+        except Exception as e:
+            logger.debug("Plugin discovery failed: %s", e)
+        _discovery_plugins_done = True
 
 
 # =============================================================================
-# Backward-compat constants  (built once after discovery)
+# Backward-compat constants  (lazily materialized on first access)
 # =============================================================================
+#
+# ``TOOL_TO_TOOLSET_MAP`` and ``TOOLSET_REQUIREMENTS`` used to be module-level
+# dicts built eagerly right after discovery. Building them now would force the
+# entire tool catalog to import at module-import time — exactly what the lazy
+# design avoids. They are exposed via module ``__getattr__`` (PEP 562) so
+# ``from model_tools import TOOL_TO_TOOLSET_MAP`` still works and returns a
+# complete map, but only callers that actually read them pay the cost.
 
-TOOL_TO_TOOLSET_MAP: Dict[str, str] = registry.get_tool_to_toolset_map()
 
-TOOLSET_REQUIREMENTS: Dict[str, dict] = registry.get_toolset_requirements()
+def __getattr__(name: str):
+    if name == "TOOL_TO_TOOLSET_MAP":
+        _ensure_discovered()
+        return registry.get_tool_to_toolset_map()
+    if name == "TOOLSET_REQUIREMENTS":
+        _ensure_discovered()
+        return registry.get_toolset_requirements()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 # Resolved tool names from the last get_tool_definitions() call.
 # Used by code_execution_tool to know which tools are available in this session.
@@ -469,17 +524,32 @@ _LEGACY_TOOLSET_MAP = {
 # =============================================================================
 
 # Module-level memoization for get_tool_definitions(). Keyed on
-# (frozenset(enabled_toolsets), frozenset(disabled_toolsets), registry._generation).
-# Hot callers (gateway runner, AIAgent.__init__) invoke this on every turn
-# with quiet_mode=True; caching avoids ~7 ms of registry walking + schema
-# filtering + check_fn probing per call. Only active when quiet_mode=True
-# because quiet_mode=False has stdout side effects (tool-selection prints).
+# (frozenset(enabled_toolsets), frozenset(disabled_toolsets), registry._generation,
+#  config fingerprint, kanban flag, tool-search flag, shell type). Hot callers
+# (gateway runner, AIAgent.__init__, the CLI background warmup) invoke this on
+# every agent construction; caching avoids ~12 ms of registry walking + schema
+# filtering + check_fn probing per call.
+#
+# Active in BOTH quiet and non-quiet modes. quiet_mode is deliberately NOT part
+# of the key: the computed schema list is identical regardless of it — only the
+# stdout side effect (tool-selection status lines) differs. We cache the
+# (schema_list, status_lines) pair and replay the status lines on a non-quiet
+# hit, so the CLI/TUI path is memoized too instead of rebuilding the whole
+# catalog on every construction.
 #
 # Invalidation happens transparently via the registry's _generation counter,
 # which bumps on register() / deregister() / register_toolset_alias(). The
 # inner check_fn TTL cache in registry.py handles environment drift (Docker
 # daemon start/stop, env var changes, etc.) on a 30 s horizon.
-_tool_defs_cache: Dict[tuple, List[Dict[str, Any]]] = {}
+_tool_defs_cache: Dict[tuple, "tuple[List[Dict[str, Any]], List[str]]"] = {}
+
+# Guards _tool_defs_cache against concurrent mutation. The CLI/gateway now
+# pre-warm tool definitions from a background thread while the main thread may
+# build the first agent, so the cache can be read and written from two threads
+# at once. The lock keeps the check → (compute) → store → LRU-evict sequence
+# from corrupting the dict ("dict changed size during iteration" on eviction).
+# A reentrant lock is used so _clear_tool_defs_cache() can be called while held.
+_tool_defs_cache_lock = threading.RLock()
 
 # Hard cap on memoized get_tool_definitions() results. A long-lived Gateway
 # process sees many distinct toolset/config fingerprints over its lifetime
@@ -494,7 +564,139 @@ def _clear_tool_defs_cache() -> None:
     """Drop memoized get_tool_definitions() results. Called when dynamic
     schema dependencies change (e.g. discord capability cache reset,
     execute_code sandbox reconfigured)."""
-    _tool_defs_cache.clear()
+    with _tool_defs_cache_lock:
+        _tool_defs_cache.clear()
+
+
+# =============================================================================
+# Dispatch-path warmup  (P-043: first-dispatch latency)
+# =============================================================================
+#
+# The FIRST tool dispatch (or first API request, which sends the tool schemas)
+# on a cold process pays a one-off ~4.5 s tax on Windows/py3.14: importing the
+# self-registering tool modules, running each toolset's check_fn probes, and
+# assembling + sanitizing the schema list. Every subsequent call is ~1-2 ms
+# because get_tool_definitions() is memoized process-wide. That cold outlier is
+# what makes the very first tool call feel like the agent is hanging
+# (root-cause-analysis.md hotspots #8/#9).
+#
+# warm_dispatch_path() moves that cost OFF the user-visible hot path: an entry
+# point (CLI banner idle window, gateway/TUI startup, or AIAgent.warmup())
+# fires it fire-and-forget so discovery + schema assembly finish while the user
+# is still reading the banner / typing. It is idempotent per toolset
+# fingerprint, thread-safe, and never raises — a skipped or failed warmup only
+# falls back to the original lazy path.
+
+_dispatch_warm_lock = threading.Lock()
+# Toolset fingerprints already warmed (or warming). Bounds thread churn on the
+# gateway, which builds a fresh AIAgent per message: only the FIRST agent for a
+# given (enabled, disabled) selection spawns a warmup thread.
+_dispatch_warmed_keys: Set[tuple] = set()
+
+
+def _dispatch_warm_key(
+    enabled_toolsets: Optional[List[str]],
+    disabled_toolsets: Optional[List[str]],
+) -> tuple:
+    return (
+        frozenset(enabled_toolsets) if enabled_toolsets is not None else None,
+        frozenset(disabled_toolsets) if disabled_toolsets else None,
+    )
+
+
+def _run_dispatch_warm(
+    enabled_toolsets: Optional[List[str]],
+    disabled_toolsets: Optional[List[str]],
+    key: tuple,
+) -> None:
+    """Body of the warmup: complete discovery, build+cache the schema list, and
+    pre-serialize each resolved tool's schema. Isolated from all failures."""
+    try:
+        # Plugin discovery is only needed when the selection may include
+        # plugin-contributed tools (mirrors get_tool_definitions()).
+        _ensure_discovered(
+            need_plugins=(enabled_toolsets is None or bool(enabled_toolsets))
+        )
+        defs = get_tool_definitions(
+            enabled_toolsets=enabled_toolsets,
+            disabled_toolsets=disabled_toolsets,
+            quiet_mode=True,
+        ) or []
+        # Pre-serialize each resolved tool's raw schema so the first caller that
+        # needs a JSON string (token estimation, tool_search, prompt-format for
+        # non-native-tool models) gets a registry cache hit instead of paying
+        # json.dumps on the hot path. Best-effort; a miss just re-serializes.
+        for td in defs:
+            name = (td.get("function") or {}).get("name")
+            if name:
+                try:
+                    registry.get_schema_json(name)
+                except Exception:
+                    pass
+    except Exception as e:  # pragma: no cover - defensive
+        logger.debug("dispatch warmup skipped: %s", e)
+        # Allow a later warmup to retry this fingerprint.
+        with _dispatch_warm_lock:
+            _dispatch_warmed_keys.discard(key)
+
+
+def warm_dispatch_path(
+    enabled_toolsets: Optional[List[str]] = None,
+    disabled_toolsets: Optional[List[str]] = None,
+    *,
+    background: bool = True,
+    force: bool = False,
+) -> "Optional[threading.Thread]":
+    """Pre-warm the tool-dispatch path so the first real dispatch / first API
+    request doesn't pay the cold-start tax.
+
+    Warms, for the given toolset selection: deferred plugin discovery, the
+    lazy tool-module imports, the process-wide get_tool_definitions() cache,
+    and each resolved tool's pre-serialized schema JSON.
+
+    Idempotent per ``(enabled_toolsets, disabled_toolsets)`` fingerprint and
+    thread-safe. Never raises. By default runs in a daemon thread
+    (fire-and-forget) and returns that Thread; pass ``background=False`` to warm
+    synchronously (returns None). ``force=True`` re-warms even if the
+    fingerprint was already warmed.
+
+    Returns the spawned Thread when ``background=True`` and a warmup was
+    started, otherwise None (already warmed / synchronous / spawn failed).
+    """
+    key = _dispatch_warm_key(enabled_toolsets, disabled_toolsets)
+    if not force:
+        with _dispatch_warm_lock:
+            if key in _dispatch_warmed_keys:
+                return None
+            _dispatch_warmed_keys.add(key)
+
+    if not background:
+        _run_dispatch_warm(enabled_toolsets, disabled_toolsets, key)
+        return None
+
+    try:
+        thread = threading.Thread(
+            target=_run_dispatch_warm,
+            args=(enabled_toolsets, disabled_toolsets, key),
+            name="dispatch-warmup",
+            daemon=True,
+        )
+        thread.start()
+        return thread
+    except Exception:
+        # Thread-spawn failure (e.g. exhausted OS thread limit) must never
+        # block the caller; drop the fingerprint so the lazy path still runs
+        # and a later warmup can retry.
+        with _dispatch_warm_lock:
+            _dispatch_warmed_keys.discard(key)
+        return None
+
+
+def _reset_dispatch_warm_state() -> None:
+    """Test hook: forget which fingerprints were warmed so a warmup can be
+    re-observed. Does not touch the underlying tool-definition cache."""
+    with _dispatch_warm_lock:
+        _dispatch_warmed_keys.clear()
 
 
 def get_tool_definitions(
@@ -521,31 +723,37 @@ def get_tool_definitions(
     Returns:
         Filtered list of OpenAI-format tool definitions.
     """
-    # Fast path: memoized result when the caller doesn't need stdout prints.
+    # Complete deferred discovery before resolving toolsets. The explicit
+    # empty-toolset case resolves to zero tools, so it needn't pay for plugin
+    # discovery (keeps its <50 ms fast-path). A non-empty or default (None)
+    # selection may include plugin-contributed tools, so run it there.
+    _ensure_discovered(need_plugins=(enabled_toolsets is None or bool(enabled_toolsets)))
+
+    # Process-wide memoization — active in BOTH quiet and non-quiet modes.
     # The cache key captures every argument-level input; the registry
     # generation captures registry mutations (MCP refresh, plugin load).
     # check_fn results are TTL-cached one level down, inside
-    # registry.get_definitions. The config-mtime fingerprint below captures
+    # registry.get_definitions. The config-mtime fingerprint captures
     # user-visible config edits that affect dynamic schemas (execute_code
     # mode, discord action allowlist, etc.) without needing an explicit
-    # invalidate hook on every config-writer.
-    if quiet_mode:
+    # invalidate hook on every config-writer. The shell type is included so a
+    # mid-session auto-install of pwsh (which changes the terminal tool's
+    # dynamic description) invalidates the cached definitions.
+    global _last_resolved_tool_names
+
+    def _cache_key() -> tuple:
         try:
             from hermes_cli.config import get_config_path
-            cfg_path = get_config_path()
-            cfg_stat = cfg_path.stat()
+            cfg_stat = get_config_path().stat()
             cfg_fp = (cfg_stat.st_mtime_ns, cfg_stat.st_size)
         except (FileNotFoundError, OSError, ImportError):
             cfg_fp = None
-        # Include current shell type in the cache key so that a mid-session
-        # auto-install of pwsh (which changes the terminal tool's dynamic
-        # description) invalidates the cached tool definitions.
         try:
             from tools.terminal_tool import _detect_shell_for_description
             _shell_fp = _detect_shell_for_description()
         except Exception:
             _shell_fp = "bash"
-        cache_key = (
+        return (
             frozenset(enabled_toolsets) if enabled_toolsets is not None else None,
             frozenset(disabled_toolsets) if disabled_toolsets else None,
             registry._generation,
@@ -554,34 +762,48 @@ def get_tool_definitions(
             bool(skip_tool_search_assembly),
             _shell_fp,
         )
-        cached = _tool_defs_cache.get(cache_key)
-        if cached is not None:
-            # Update _last_resolved_tool_names so downstream callers see
-            # consistent state even on a cache hit.
-            global _last_resolved_tool_names
-            _last_resolved_tool_names = [t["function"]["name"] for t in cached]
-            # Return a shallow copy of the list but share the dict references —
-            # schemas are treated as read-only by all known callers.
-            return list(cached)
 
-    result = _compute_tool_definitions(enabled_toolsets, disabled_toolsets, quiet_mode,
-                                       skip_tool_search_assembly=skip_tool_search_assembly)
-    if quiet_mode:
-        # Cache the freshly-computed list, but hand callers a shallow copy so
-        # downstream mutations (e.g. run_agent appending memory/LCM tool
-        # schemas to self.tools) don't poison the cache. Without this, a
-        # long-lived Gateway process accumulates duplicate tool names across
-        # agent inits and providers that enforce unique tool names
-        # (DeepSeek, Xiaomi MiMo, Moonshot Kimi) reject the request with
-        # HTTP 400. Mirrors the cache-hit path above. (issue #17335)
+    lookup_key = _cache_key()
+    with _tool_defs_cache_lock:
+        cached = _tool_defs_cache.get(lookup_key)
+    if cached is not None:
+        cached_result, cached_status = cached
+        # Keep _last_resolved_tool_names consistent even on a cache hit.
+        _last_resolved_tool_names = [t["function"]["name"] for t in cached_result]
+        # Replay the tool-selection status lines for non-quiet callers so the
+        # CLI still shows them on a cache hit (they were captured, not printed,
+        # during the original compute).
+        if not quiet_mode and cached_status:
+            print("\n".join(cached_status))
+        # Hand callers a shallow copy so downstream mutations (run_agent
+        # appending memory/LCM tool schemas to self.tools) don't poison the
+        # cache; the schema dicts themselves are treated as read-only. (#17335)
+        return list(cached_result)
+
+    result, status_lines = _compute_tool_definitions(
+        enabled_toolsets, disabled_toolsets, quiet_mode,
+        skip_tool_search_assembly=skip_tool_search_assembly,
+    )
+    if not quiet_mode and status_lines:
+        print("\n".join(status_lines))
+
+    # Re-derive the key AFTER compute. Resolving a toolset selection for the
+    # first time lazily imports its tool modules, and every register() bumps
+    # registry._generation — so the generation captured before compute is
+    # already stale by the time we store. Keying the stored entry on the
+    # post-compute (settled) generation lets the very NEXT call hit the cache
+    # instead of paying a second full rebuild; this is what makes the "second
+    # agent init" effectively free rather than a ~12 ms recompute. Any genuine
+    # later mutation still bumps the generation and invalidates correctly.
+    store_key = _cache_key()
+    with _tool_defs_cache_lock:
         # Bound the cache with LRU eviction so a long-lived Gateway process
         # doesn't accumulate entries unboundedly across the many distinct
         # toolset/config fingerprints it sees over its lifetime (#19251).
-        if len(_tool_defs_cache) >= _TOOL_DEFS_CACHE_MAX:
+        if store_key not in _tool_defs_cache and len(_tool_defs_cache) >= _TOOL_DEFS_CACHE_MAX:
             _tool_defs_cache.pop(next(iter(_tool_defs_cache)))  # evict oldest
-        _tool_defs_cache[cache_key] = result
-        return list(result)
-    return result
+        _tool_defs_cache[store_key] = (result, status_lines)
+    return list(result)
 
 
 def _compute_tool_definitions(
@@ -589,9 +811,18 @@ def _compute_tool_definitions(
     disabled_toolsets: Optional[List[str]] = None,
     quiet_mode: bool = False,
     skip_tool_search_assembly: bool = False,
-) -> List[Dict[str, Any]]:
-    """Uncached implementation of :func:`get_tool_definitions`."""
+) -> "tuple[List[Dict[str, Any]], List[str]]":
+    """Uncached implementation of :func:`get_tool_definitions`.
+
+    Returns ``(tool_defs, status_lines)``. The status lines are the
+    human-readable tool-selection messages (``✅ Enabled toolset ...``,
+    ``🛠️  Final tool selection ...``) collected here but NOT printed — the
+    caller emits them for non-quiet callers and caches them so a later
+    non-quiet cache hit can replay them. Keeping this side effect out of the
+    computation is what lets one memo entry serve quiet and non-quiet callers.
+    """
     # Determine which tool names the caller wants
+    status_lines: List[str] = []
     tools_to_include: set = set()
 
     if enabled_toolsets is not None:
@@ -607,15 +838,13 @@ def _compute_tool_definitions(
             if validate_toolset(toolset_name):
                 resolved = resolve_toolset(toolset_name)
                 tools_to_include.update(resolved)
-                if not quiet_mode:
-                    print(f"✅ Enabled toolset '{toolset_name}': {', '.join(resolved) if resolved else 'no tools'}")
+                status_lines.append(f"✅ Enabled toolset '{toolset_name}': {', '.join(resolved) if resolved else 'no tools'}")
             elif toolset_name in _LEGACY_TOOLSET_MAP:
                 legacy_tools = _LEGACY_TOOLSET_MAP[toolset_name]
                 tools_to_include.update(legacy_tools)
-                if not quiet_mode:
-                    print(f"✅ Enabled legacy toolset '{toolset_name}': {', '.join(legacy_tools)}")
-            elif not quiet_mode:
-                print(f"⚠️  Unknown toolset: {toolset_name}")
+                status_lines.append(f"✅ Enabled legacy toolset '{toolset_name}': {', '.join(legacy_tools)}")
+            else:
+                status_lines.append(f"⚠️  Unknown toolset: {toolset_name}")
     else:
         # Default: start with everything
         from toolsets import get_all_toolsets
@@ -638,7 +867,7 @@ def _compute_tool_definitions(
                     to_remove = bundle_non_core_tools(toolset_name)
                     tools_to_include.difference_update(to_remove)
                     resolved = sorted(to_remove)
-                    if not quiet_mode and toolset_name not in _WARNED_DISABLED_BUNDLES:
+                    if toolset_name not in _WARNED_DISABLED_BUNDLES:
                         _WARNED_DISABLED_BUNDLES.add(toolset_name)
                         logger.info(
                             "agent.disabled_toolsets contains platform-bundle "
@@ -652,15 +881,13 @@ def _compute_tool_definitions(
                 else:
                     resolved = resolve_toolset(toolset_name)
                     tools_to_include.difference_update(resolved)
-                if not quiet_mode:
-                    print(f"🚫 Disabled toolset '{toolset_name}': {', '.join(resolved) if resolved else 'no tools'}")
+                status_lines.append(f"🚫 Disabled toolset '{toolset_name}': {', '.join(resolved) if resolved else 'no tools'}")
             elif toolset_name in _LEGACY_TOOLSET_MAP:
                 legacy_tools = _LEGACY_TOOLSET_MAP[toolset_name]
                 tools_to_include.difference_update(legacy_tools)
-                if not quiet_mode:
-                    print(f"🚫 Disabled legacy toolset '{toolset_name}': {', '.join(legacy_tools)}")
-            elif not quiet_mode:
-                print(f"⚠️  Unknown toolset: {toolset_name}")
+                status_lines.append(f"🚫 Disabled legacy toolset '{toolset_name}': {', '.join(legacy_tools)}")
+            else:
+                status_lines.append(f"⚠️  Unknown toolset: {toolset_name}")
 
     # Plugin-registered tools are now resolved through the normal toolset
     # path — validate_toolset() / resolve_toolset() / get_all_toolsets()
@@ -739,12 +966,11 @@ def _compute_tool_definitions(
                     }
                     break
 
-    if not quiet_mode:
-        if filtered_tools:
-            tool_names = [t["function"]["name"] for t in filtered_tools]
-            print(f"🛠️  Final tool selection ({len(filtered_tools)} tools): {', '.join(tool_names)}")
-        else:
-            print("🛠️  No tools selected (all filtered out or unavailable)")
+    if filtered_tools:
+        tool_names = [t["function"]["name"] for t in filtered_tools]
+        status_lines.append(f"🛠️  Final tool selection ({len(filtered_tools)} tools): {', '.join(tool_names)}")
+    else:
+        status_lines.append("🛠️  No tools selected (all filtered out or unavailable)")
 
     global _last_resolved_tool_names
     _last_resolved_tool_names = [t["function"]["name"] for t in filtered_tools]
@@ -781,8 +1007,8 @@ def _compute_tool_definitions(
                 context_length=context_length,
                 config=ts_cfg,
             )
-            if assembly.activated and not quiet_mode:
-                print(
+            if assembly.activated:
+                status_lines.append(
                     f"🔎 Tool Search: {assembly.deferred_count} MCP/plugin tools deferred "
                     f"(~{assembly.deferred_tokens} tokens) behind tool_search/describe/call. "
                     f"Threshold ~{assembly.threshold_tokens} tokens."
@@ -791,7 +1017,7 @@ def _compute_tool_definitions(
     except Exception as e:  # pragma: no cover — never break tool loading
         logger.warning("Tool search assembly skipped: %s", e)
 
-    return filtered_tools
+    return filtered_tools, status_lines
 
 
 def _resolve_active_context_length() -> int:
@@ -1043,7 +1269,109 @@ def _repair_nested_args(
 # Tool argument type coercion
 # =========================================================================
 
-def coerce_tool_args(tool_name: str, args: Dict[str, Any]) -> Dict[str, Any]:
+def _value_matches_schema_type(value: Any, prop_schema: dict) -> bool:
+    """Return True when *value* already satisfies *prop_schema*'s type so that
+    :func:`coerce_tool_args` would leave it untouched.
+
+    Mirrors the coercion rules exactly, so a True result GUARANTEES coercion is
+    a no-op for this value.  The fast path in :func:`handle_function_call`
+    depends on that guarantee — a false positive would skip a needed
+    conversion — so anything ambiguous returns False (the value then takes the
+    normal, coercing path).
+    """
+    expected = prop_schema.get("type")
+
+    # Array fields: coerce_tool_args wraps any non-list value (and JSON-decodes
+    # list-shaped strings).  Only an actual list/tuple — or None, which is
+    # preserved — is a genuine no-op.
+    if expected == "array":
+        return value is None or isinstance(value, (list, tuple))
+
+    # Non-string values are never coerced for non-array fields.
+    if not isinstance(value, str):
+        return True
+
+    # value is a string from here on.  A nullable field rewrites the literal
+    # "null" to None, so that is not a no-op.
+    if _schema_allows_null(prop_schema) and value.strip().lower() == "null":
+        return False
+
+    # No declared type (and not the nullable-"null" case handled above) means
+    # coerce_tool_args leaves the string as-is.
+    if not expected:
+        return True
+
+    # A string survives unchanged only when the schema wants a string.  Scalar
+    # types (integer/number/boolean/object) and union types may rewrite it, so
+    # treat those conservatively as "not a no-op".
+    return expected == "string"
+
+
+def _prop_needs_nested_repair(prop_schema: dict) -> bool:
+    """True when a property is an object (or array-of-objects) that carries its
+    own ``properties`` — the shape ``repair_tool_arg_keys`` recurses into.
+
+    When any property in a schema has this shape, correct top-level keys are no
+    longer enough to prove repair is a no-op, so the exact-match fast path must
+    fall back to the full pipeline.
+    """
+    if not isinstance(prop_schema, dict):
+        return False
+    if prop_schema.get("type") == "object" and "properties" in prop_schema:
+        return True
+    if prop_schema.get("type") == "array":
+        items = prop_schema.get("items")
+        if (
+            isinstance(items, dict)
+            and items.get("type") == "object"
+            and "properties" in items
+        ):
+            return True
+    return False
+
+
+def _args_match_schema_exactly(args: Any, schema: Optional[dict]) -> bool:
+    """Return True when *args* already match *schema* so that BOTH
+    ``repair_tool_arg_keys`` and ``coerce_tool_args`` are guaranteed no-ops.
+
+    Sufficient conditions (all required):
+
+      * ``args`` is a dict.
+      * The schema declares no nested object / array-of-objects property (no
+        recursive repair can trigger).
+      * Every key present is a declared property (no aliasing / fuzzy repair).
+      * Every value already matches its declared type (no coercion needed).
+
+    A True result lets :func:`handle_function_call` skip the argument-repair
+    pipeline entirely on the hot dispatch path.  Conservative by construction:
+    any uncertainty yields False, which only costs a (correct) slow path.
+    """
+    if not isinstance(args, dict) or not schema:
+        return False
+    properties = (schema.get("parameters") or {}).get("properties")
+    if not properties:
+        # No declared properties: repair/coerce cannot act, but only treat
+        # genuinely-empty args as an exact match to stay conservative.
+        return not args
+    # If ANY property is a nested object/array-of-objects, repair may recurse
+    # even when the top-level keys are correct — bail to the slow path.
+    for prop in properties.values():
+        if _prop_needs_nested_repair(prop):
+            return False
+    for key, value in args.items():
+        prop = properties.get(key)
+        if not isinstance(prop, dict):
+            return False
+        if not _value_matches_schema_type(value, prop):
+            return False
+    return True
+
+
+def coerce_tool_args(
+    tool_name: str,
+    args: Dict[str, Any],
+    schema: Optional[dict] = None,
+) -> Dict[str, Any]:
     """Coerce tool call arguments to match their JSON Schema types.
 
     LLMs frequently return numbers as strings (``"42"`` instead of ``42``)
@@ -1340,10 +1668,41 @@ def handle_function_call(
     Returns:
         Function result as a JSON string.
     """
-    # Coerce string arguments to their schema-declared types (e.g. "42"→42)
-    function_args = coerce_tool_args(function_name, function_args)
-    if not isinstance(function_args, dict):
-        function_args = {}
+    # Ensure plugin tools are registered before dispatch (built-in tools
+    # lazy-load through the registry on demand). Idempotent flag-check after
+    # the first call, so this is free on the hot per-tool-call path.
+    _ensure_discovered()
+
+    # Tool arguments arrive as either a native dict (the normal agent-loop
+    # path) or a JSON string (some transports hand ``tool_call.arguments``
+    # straight through). Parse a string payload once here so its arguments are
+    # preserved instead of being silently dropped to ``{}`` downstream, and so
+    # the exact-match fast path below can inspect the real arguments.
+    if isinstance(function_args, str):
+        try:
+            _parsed_args = json.loads(function_args)
+        except (ValueError, TypeError):
+            _parsed_args = None
+        function_args = _parsed_args if isinstance(_parsed_args, dict) else {}
+
+    # Resolve the tool schema once and reuse it for coercion / exact-match so a
+    # hot dispatch does a single registry lookup instead of three (the pipeline
+    # used to re-fetch it in coerce → repair → coerce).
+    _tool_schema = registry.get_schema(function_name)
+
+    # Fast path (P1 concurrent dispatch): when the arguments already match the
+    # schema exactly — known keys, correct value types, no nested-object repair
+    # — both coerce_tool_args and repair_tool_arg_keys are guaranteed no-ops.
+    # Skip the argument-repair pipeline entirely; it is the dominant per-call
+    # overhead once tool discovery is warm. Coercion still runs for every
+    # payload that is NOT an exact match (string→int, bare-scalar→array, and
+    # field-alias repair) so model output drift is corrected exactly as before.
+    _args_exact = _args_match_schema_exactly(function_args, _tool_schema)
+    if not _args_exact:
+        # Coerce string arguments to their schema-declared types (e.g. "42"→42)
+        function_args = coerce_tool_args(function_name, function_args, schema=_tool_schema)
+        if not isinstance(function_args, dict):
+            function_args = {}
     _tool_middleware_trace = list(tool_request_middleware_trace or [])
 
     # ── Tool Search bridge dispatch ──────────────────────────────────
@@ -1441,12 +1800,17 @@ def handle_function_call(
         except Exception as _mw_err:
             logger.debug("tool_request middleware error: %s", _mw_err)
 
-    if not _tool_middleware_trace:
+    if not _tool_middleware_trace and not _args_match_schema_exactly(function_args, _tool_schema):
         # Repair common LLM field-name drift (e.g. "file"→"path") after the
         # request middleware seam.  Middleware must see and may intentionally
         # preserve the model's original payload shape; when no middleware has
         # rewritten the request we canonicalize before hooks/dispatch so legacy
         # observers and tool handlers still receive schema field names.
+        #
+        # Exactness is re-checked against the CURRENT args (request middleware
+        # may have rewritten them since the top-of-function check) so skipping
+        # repair here is always sound: an exact match means repair + coercion
+        # cannot change anything.
         repaired_args = repair_tool_arg_keys(function_name, function_args)
         if repaired_args != function_args:
             logger.info(
@@ -1464,7 +1828,7 @@ def handle_function_call(
                     )
                 except Exception:
                     pass  # Never let callback failure break tool dispatch
-        function_args = coerce_tool_args(function_name, repaired_args)
+        function_args = coerce_tool_args(function_name, repaired_args, schema=_tool_schema)
 
     try:
         if function_name in _AGENT_LOOP_TOOLS:
@@ -1660,24 +2024,29 @@ def handle_function_call(
 
 def get_all_tool_names() -> List[str]:
     """Return all registered tool names."""
+    _ensure_discovered()
     return registry.get_all_tool_names()
 
 
 def get_toolset_for_tool(tool_name: str) -> Optional[str]:
     """Return the toolset a tool belongs to."""
+    _ensure_discovered()
     return registry.get_toolset_for_tool(tool_name)
 
 
 def get_available_toolsets() -> Dict[str, dict]:
     """Return toolset availability info for UI display."""
+    _ensure_discovered()
     return registry.get_available_toolsets()
 
 
 def check_toolset_requirements() -> Dict[str, bool]:
     """Return {toolset: available_bool} for every registered toolset."""
+    _ensure_discovered()
     return registry.check_toolset_requirements()
 
 
 def check_tool_availability(quiet: bool = False) -> Tuple[List[str], List[dict]]:
     """Return (available_toolsets, unavailable_info)."""
+    _ensure_discovered()
     return registry.check_tool_availability(quiet=quiet)

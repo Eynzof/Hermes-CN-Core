@@ -919,7 +919,6 @@ _WINDOWS_POWERSHELL_SHELL_HINT = (
     "correct the syntax on your next turn."
 )
 
-
 _WINDOWS_PWSH_SHELL_HINT = (
     "Shell: on this Windows host your `terminal` tool runs commands through "
     "PowerShell 7 (pwsh). Use PowerShell syntax. Key rules:\n"
@@ -930,6 +929,16 @@ _WINDOWS_PWSH_SHELL_HINT = (
     "- PS7+ operators (ternary `?:`, null-coalescing `??`, pipeline chains "
     "`&&`/`||`, null-conditional `?.`/`?[`) ARE supported natively — no "
     "compatibility layer needed."
+)
+
+_WINDOWS_BASH_SHELL_HINT = (
+    "Shell: on this Windows host your `terminal` tool runs commands through "
+    "bash (git-bash / MSYS), NOT PowerShell or cmd.exe. Use POSIX shell "
+    "syntax (`ls`, `$HOME`, `&&`, `|`, single-quoted strings) inside terminal "
+    "calls. MSYS-style paths like `/c/Users/<user>/...` work alongside "
+    "native `C:\\Users\\<user>\\...` paths. PowerShell builtins "
+    "(`Get-ChildItem`, `$env:FOO`, `Select-String`) will NOT work — use their "
+    "POSIX equivalents (`ls`, `$FOO`, `grep`)."
 )
 
 
@@ -1124,15 +1133,29 @@ def build_environment_hints() -> str:
             )
         hints.append("\n".join(host_lines))
 
-        # Windows-local terminal runs PowerShell (pwsh or powershell.exe),
-        # not bash — the model must know this or it will issue bash syntax
-        # and fail.
+        # Windows-local terminal shell hint. The actual shell is still PS5.1
+        # by default; this only controls what the system prompt tells the model.
         if sys.platform == "win32" and not is_wsl():
-            # Probe for pwsh to give the appropriate shell hint
-            if shutil.which("pwsh") or shutil.which("pwsh.exe"):
-                hints.append(_WINDOWS_PWSH_SHELL_HINT)
-            else:
+            shell = "auto"
+            try:
+                from hermes_cli.config import load_config
+
+                shell = str(
+                    (load_config().get("terminal", {}) or {}).get("shell", "auto")
+                ).strip().lower()
+            except Exception as e:
+                logger.debug("Could not read terminal.shell from config: %s", e)
+
+            if shell == "bash":
+                hints.append(_WINDOWS_BASH_SHELL_HINT)
+            elif shell == "powershell":
                 hints.append(_WINDOWS_POWERSHELL_SHELL_HINT)
+            else:
+                # auto (or any unknown value): preserve existing behavior
+                if shutil.which("pwsh") or shutil.which("pwsh.exe"):
+                    hints.append(_WINDOWS_PWSH_SHELL_HINT)
+                else:
+                    hints.append(_WINDOWS_POWERSHELL_SHELL_HINT)
     else:
         # --- Remote backend block (host info suppressed) ---
         probe = _probe_remote_backend(backend)

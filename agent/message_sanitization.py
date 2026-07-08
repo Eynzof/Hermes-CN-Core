@@ -21,6 +21,26 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Native C FFI integration (optional, graceful fallback)
+# ---------------------------------------------------------------------------
+try:
+    from agent._agent_core.native_integration import (
+        sanitize_messages_surrogates as _native_sanitize_messages_surrogates,
+        repair_tool_call_arguments as _native_repair_tool_call_arguments,
+        escape_invalid_chars_in_json_strings as _native_escape_invalid_chars,
+        sanitize_messages_non_ascii as _native_sanitize_messages_non_ascii,
+        strip_images_from_messages as _native_strip_images_from_messages,
+        is_native_available as _native_available,
+        force_pure_mode as _force_pure,
+    )
+    _HAS_NATIVE = _native_available() and not _force_pure()
+except ImportError:
+    _HAS_NATIVE = False
+
+if _HAS_NATIVE:
+    logger.debug("Native C FFI loaded for message_sanitization")
+
 # Lone surrogate code points are invalid in UTF-8 and crash json.dumps
 # inside the OpenAI SDK.  Used by every surrogate-sanitization helper
 # below as well as by run_agent and the CLI for paste-from-clipboard
@@ -84,6 +104,13 @@ def _sanitize_messages_surrogates(messages: list) -> bool:
     that flow through to ``api_messages["reasoning_content"]`` on the next
     turn and crash json.dumps inside the OpenAI SDK.
     """
+    # Native C fast path
+    if _HAS_NATIVE:
+        try:
+            return _native_sanitize_messages_surrogates(messages)
+        except Exception:
+            pass  # Fall through to Python
+
     found = False
     for msg in messages:
         if not isinstance(msg, dict):
@@ -154,6 +181,13 @@ def _escape_invalid_chars_in_json_strings(raw: str) -> str:
     not enough (e.g. llama.cpp backends that emit literal apostrophes or
     tabs alongside other malformations).
     """
+    # Native C fast path
+    if _HAS_NATIVE:
+        try:
+            return _native_escape_invalid_chars(raw)
+        except Exception:
+            pass  # Fall through to Python
+
     out: list[str] = []
     in_string = False
     i = 0
@@ -191,6 +225,13 @@ def _repair_tool_call_arguments(raw_args: str, tool_name: str = "?") -> str:
     if all fail it returns ``"{}"`` so the request succeeds (better than
     crashing the session).  All repairs are logged at WARNING level.
     """
+    # Native C fast path
+    if _HAS_NATIVE:
+        try:
+            return _native_repair_tool_call_arguments(raw_args, tool_name)
+        except Exception:
+            pass  # Fall through to Python
+
     raw_stripped = raw_args.strip() if isinstance(raw_args, str) else ""
 
     # Fast-path: empty / whitespace-only -> empty object
@@ -327,6 +368,13 @@ def _sanitize_messages_non_ascii(messages: list) -> bool:
     (LANG=C, Chromebooks, minimal containers).  Returns True if any
     non-ASCII content was found and sanitized.
     """
+    # Native C fast path
+    if _HAS_NATIVE:
+        try:
+            return _native_sanitize_messages_non_ascii(messages)
+        except Exception:
+            pass  # Fall through to Python
+
     found = False
     for msg in messages:
         if not isinstance(msg, dict):
@@ -402,6 +450,13 @@ def _strip_images_from_messages(messages: list) -> bool:
 
     Returns True if any image parts were removed.
     """
+    # Native C fast path
+    if _HAS_NATIVE:
+        try:
+            return _native_strip_images_from_messages(messages)
+        except Exception:
+            pass  # Fall through to Python
+
     found = False
     to_delete = []
     for i, msg in enumerate(messages):

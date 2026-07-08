@@ -43,6 +43,24 @@ logger = logging.getLogger(__name__)
 
 from tools.threat_patterns import scan_for_threats as _scan_for_threats
 
+# ---------------------------------------------------------------------------
+# Native C FFI integration (optional, graceful fallback)
+# ---------------------------------------------------------------------------
+try:
+    from agent._agent_core.native_integration import (
+        truncate_content as _native_truncate_content,
+        strip_yaml_frontmatter as _native_strip_yaml_frontmatter,
+        build_context_files_prompt as _native_build_context_files_prompt,
+        is_native_available as _native_available,
+        force_pure_mode as _force_pure,
+    )
+    _HAS_NATIVE = _native_available() and not _force_pure()
+except ImportError:
+    _HAS_NATIVE = False
+
+if _HAS_NATIVE:
+    logger.debug("Native C FFI loaded for prompt_builder")
+
 
 def _scan_context_content(content: str, filename: str) -> str:
     """Scan context file content for injection. Returns sanitized content.
@@ -111,6 +129,13 @@ def _strip_yaml_frontmatter(content: str) -> str:
     strip it so only the human-readable markdown body is injected into the
     system prompt.
     """
+    # Native C fast path
+    if _HAS_NATIVE:
+        try:
+            return _native_strip_yaml_frontmatter(content)
+        except Exception:
+            pass  # Fall through to Python
+
     if content.startswith("---"):
         end = content.find("\n---", 3)
         if end != -1:
@@ -1800,6 +1825,15 @@ def _truncate_content(
     (defaults to ``filename`` when not supplied). ``context_length`` lets the
     cap scale to the model's window when no explicit config override is set.
     """
+    # Native C fast path (only when max_chars is set)
+    if _HAS_NATIVE and max_chars is not None and max_chars > 0:
+        try:
+            result = _native_truncate_content(content, filename, max_chars, read_path)
+            if result is not None:
+                return result
+        except Exception:
+            pass  # Fall through to Python
+
     if max_chars is None:
         max_chars = _get_context_file_max_chars(context_length)
     if len(content) <= max_chars:

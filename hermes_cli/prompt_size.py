@@ -14,7 +14,7 @@ calls ``build_system_prompt_parts`` / inspects ``agent.tools`` offline.
 from __future__ import annotations
 
 import orjson
-import re
+from agent.re_compat import re
 from typing import Any, Dict, List, Tuple
 
 # The skills index is wrapped in this tag pair inside the stable tier.

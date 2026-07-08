@@ -850,7 +850,7 @@ class TestResizeImageForVision:
                                            max_base64_bytes=50_000)
         assert result.startswith("data:image/")
         # Decode and check aspect ratio is roughly preserved
-        import base64
+        import pybase64 as base64
         header, b64data = result.split(",", 1)
         raw = base64.b64decode(b64data)
         from io import BytesIO
@@ -879,7 +879,7 @@ class TestResizeImageForVision:
         result = _resize_image_for_vision(path, mime_type="image/png",
                                            max_base64_bytes=50_000)
         assert result.startswith("data:image/")
-        import base64
+        import pybase64 as base64
         from io import BytesIO
         header, b64data = result.split(",", 1)
         raw = base64.b64decode(b64data)

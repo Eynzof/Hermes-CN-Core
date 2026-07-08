@@ -22,7 +22,7 @@ from __future__ import annotations
 import argparse
 import concurrent.futures
 import orjson
-import re
+from agent.re_compat import re
 import sys
 import urllib.error
 import urllib.request

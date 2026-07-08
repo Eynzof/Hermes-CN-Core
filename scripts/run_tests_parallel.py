@@ -327,8 +327,7 @@ def _parse_pytest_summary(output: str) -> dict[str, int]:
     Returns a dict with keys ``passed``, ``failed``, ``skipped``, ``errors``,
     ``xfailed``, ``xpassed`` (only keys found in the output are present).
     """
-    import re
-
+    from agent.re_compat import re
     result: dict[str, int] = {}
     # Walk backwards from the end — the summary line is always near the tail.
     for line in reversed(output.splitlines()):

@@ -16,7 +16,7 @@ Run as a module to print edge-density stats against real data:
 from __future__ import annotations
 
 import orjson
-import re
+from agent.re_compat import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path

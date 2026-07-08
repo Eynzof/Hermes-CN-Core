@@ -390,7 +390,7 @@ def _derive_base_url_from_proxy_ep(token: str) -> Optional[str]:
 
     Returns ``https://{api_hostname}`` or None if proxy-ep is absent.
     """
-    import re
+    from agent.re_compat import re
     m = re.search(r'(?:^|;)\s*proxy-ep=([^;\s]+)', token)
     if not m:
         return None

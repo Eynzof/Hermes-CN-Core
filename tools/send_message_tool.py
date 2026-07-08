@@ -9,7 +9,7 @@ import asyncio
 import orjson
 import logging
 import os
-import re
+from agent.re_compat import re
 import ssl
 import time
 from email.utils import formatdate

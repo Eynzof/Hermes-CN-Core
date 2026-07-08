@@ -1525,14 +1525,14 @@ class TestAutoTtsEmptyTextGuard:
 
     def test_empty_after_strip_skips_tts(self):
         """Markdown-only content should not trigger TTS call."""
-        import re
+        from agent.re_compat import re
         text_content = "****"
         speech_text = re.sub(r'[*_`#\[\]()]', '', text_content)[:4000].strip()
         assert not speech_text, "Expected empty after stripping markdown chars"
 
     def test_code_block_response_skips_tts(self):
         """Code-only response results in empty speech text."""
-        import re
+        from agent.re_compat import re
         text_content = "```python\nprint(1)\n```"
         speech_text = re.sub(r'[*_`#\[\]()]', '', text_content)[:4000].strip()
         # Note: base.py regex only strips individual chars, not full code blocks

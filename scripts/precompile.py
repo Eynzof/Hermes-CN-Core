@@ -26,7 +26,7 @@ import argparse
 import compileall
 import hashlib
 import os
-import re
+from agent.re_compat import re
 import sys
 import threading
 from pathlib import Path

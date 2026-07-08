@@ -1,6 +1,6 @@
 """Tests for agent.auxiliary_client resolution chain, provider overrides, and model overrides."""
 
-import base64
+import pybase64 as base64
 import orjson
 import logging
 import time
@@ -362,7 +362,7 @@ class TestReadCodexAccessToken:
 
     def test_expired_jwt_returns_none(self, tmp_path, monkeypatch):
         """Expired JWT tokens should be skipped so auto chain continues."""
-        import base64
+        import pybase64 as base64
         import time as _time
 
         # Build a JWT with exp in the past
@@ -388,7 +388,7 @@ class TestReadCodexAccessToken:
 
     def test_valid_jwt_returns_token(self, tmp_path, monkeypatch):
         """Non-expired JWT tokens should be returned."""
-        import base64
+        import pybase64 as base64
         import time as _time
 
         header = base64.urlsafe_b64encode(b'{"alg":"RS256","typ":"JWT"}').rstrip(b"=").decode()
@@ -778,7 +778,7 @@ class TestExpiredCodexFallback:
 
     def test_expired_codex_falls_through_to_next(self, tmp_path, monkeypatch):
         """When Codex token is expired, auto chain should skip it and try next provider."""
-        import base64
+        import pybase64 as base64
         import time as _time
 
         # Expired Codex JWT
@@ -811,7 +811,7 @@ class TestExpiredCodexFallback:
 
     def test_expired_codex_openrouter_key_is_not_implicit_fallback(self, tmp_path, monkeypatch):
         """OpenRouter key alone should not make auto probe OpenRouter implicitly."""
-        import base64
+        import pybase64 as base64
         import time as _time
 
         header = base64.urlsafe_b64encode(b'{"alg":"RS256","typ":"JWT"}').rstrip(b"=").decode()
@@ -845,7 +845,7 @@ class TestExpiredCodexFallback:
 
     def test_expired_codex_custom_endpoint_wins(self, tmp_path, monkeypatch):
         """With expired Codex + custom endpoint (Ollama), custom should win (3rd in chain)."""
-        import base64
+        import pybase64 as base64
         import time as _time
 
         header = base64.urlsafe_b64encode(b'{"alg":"RS256","typ":"JWT"}').rstrip(b"=").decode()
@@ -890,7 +890,7 @@ class TestExpiredCodexFallback:
 
     def test_jwt_missing_exp_passes_through(self, tmp_path, monkeypatch):
         """JWT with valid JSON but no exp claim should pass through."""
-        import base64
+        import pybase64 as base64
         header = base64.urlsafe_b64encode(b'{"alg":"RS256","typ":"JWT"}').rstrip(b"=").decode()
         payload_data = orjson.dumps({"sub": "user123"})  # no exp
         payload = base64.urlsafe_b64encode(payload_data).rstrip(b"=").decode()
@@ -912,7 +912,7 @@ class TestExpiredCodexFallback:
 
     def test_jwt_invalid_json_payload_passes_through(self, tmp_path, monkeypatch):
         """JWT with valid base64 but invalid JSON payload should pass through."""
-        import base64
+        import pybase64 as base64
         header = base64.urlsafe_b64encode(b'{"alg":"RS256"}').rstrip(b"=").decode()
         payload = base64.urlsafe_b64encode(b"not-json-content").rstrip(b"=").decode()
         bad_jwt = f"{header}.{payload}.fakesig"

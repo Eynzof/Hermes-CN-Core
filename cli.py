@@ -28,9 +28,9 @@ import os
 import shutil
 import sys
 import orjson
-import re
+from agent.re_compat import re
 import concurrent.futures
-import base64
+import pybase64 as base64
 import atexit
 import errno
 import tempfile
@@ -1285,7 +1285,7 @@ def _normalize_msys_path(p: Optional[str]) -> Optional[str]:
         return p
     if sys.platform != "win32":
         return p
-    import re as _re
+    from agent.re_compat import re as _re
     # /c/Users/... or /C/Users/...
     m = _re.match(r"^/([a-zA-Z])/(.*)$", p)
     if m:
@@ -1642,7 +1642,7 @@ def _worktree_lock_is_live(repo_root: str, worktree_path: str, timeout: int = 10
     Fails SAFE toward ``"live"``: if git can't be queried at all we cannot
     prove the worktree is safe to touch, so we report it as live.
     """
-    import re
+    from agent.re_compat import re
     import subprocess
 
     try:

@@ -26,7 +26,7 @@ import shlex
 import ssl
 import stat
 import sys
-import base64
+import pybase64 as base64
 import hashlib
 import subprocess
 import threading

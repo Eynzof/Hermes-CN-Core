@@ -24,8 +24,7 @@ returns the worktree's own root, which is why the client double-counted them).
 """
 
 from __future__ import annotations
-
-import re
+from agent.re_compat import re
 from typing import Any, Callable, Optional
 
 # A cwd -> git identity resolver. Returns ``{"repo_root", "worktree_root"}`` where

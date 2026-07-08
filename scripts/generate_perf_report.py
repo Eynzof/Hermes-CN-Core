@@ -15,7 +15,7 @@ hotspot ranking, and actionable recommendations.
 import argparse
 import orjson
 import os
-import re
+from agent.re_compat import re
 import sys
 from collections import defaultdict
 from datetime import datetime

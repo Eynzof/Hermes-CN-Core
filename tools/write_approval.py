@@ -418,7 +418,7 @@ def skill_gist(action: str, name: str, *, content: str = "",
 
 def _frontmatter_description(content: str) -> str:
     """Extract the ``description:`` value from SKILL.md YAML frontmatter."""
-    import re
+    from agent.re_compat import re
     m = re.search(r"^description:\s*(.+)$", content, re.MULTILINE)
     if not m:
         return ""

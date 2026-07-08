@@ -12,7 +12,7 @@ hot-reloaded by the webhook adapter without a gateway restart.
 
 import orjson
 import os
-import re
+from agent.re_compat import re
 import secrets
 import tempfile
 import time

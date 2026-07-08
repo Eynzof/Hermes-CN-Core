@@ -89,7 +89,7 @@ import orjson
 import logging
 import math
 import os
-import re
+from agent.re_compat import re
 import shutil
 import sys
 import threading
@@ -600,8 +600,7 @@ def _cache_mcp_image_block(block) -> str:
     a single bad block shouldn't kill the tool result, and the caller will
     fall through to any text blocks that did parse.
     """
-    import base64
-
+    import pybase64 as base64
     data = getattr(block, "data", None)
     mime_type = getattr(block, "mimeType", None)
     normalized_mime = str(mime_type or "").split(";", 1)[0].strip().lower()

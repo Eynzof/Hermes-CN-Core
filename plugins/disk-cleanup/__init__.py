@@ -21,7 +21,7 @@ needs to remember to run commands.
 from __future__ import annotations
 
 import logging
-import re
+from agent.re_compat import re
 import shlex
 import threading
 from pathlib import Path

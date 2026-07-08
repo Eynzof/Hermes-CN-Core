@@ -16,7 +16,7 @@ import copy
 import orjson
 import logging
 import os
-import re
+from agent.re_compat import re
 import shutil
 import stat
 import subprocess

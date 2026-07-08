@@ -11,7 +11,7 @@ configuration in ~/.hermes/config.yaml under the ``mcp_servers`` key.
 import asyncio
 import logging
 import os
-import re
+from agent.re_compat import re
 import time
 from typing import Any, Dict, List, Optional, Tuple
 

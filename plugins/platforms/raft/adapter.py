@@ -16,7 +16,7 @@ import hmac
 import orjson
 import logging
 import os
-import re
+from agent.re_compat import re
 import secrets
 import shutil
 import subprocess

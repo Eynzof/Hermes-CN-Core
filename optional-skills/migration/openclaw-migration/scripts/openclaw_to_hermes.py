@@ -12,7 +12,7 @@ import argparse
 import hashlib
 import orjson
 import os
-import re
+from agent.re_compat import re
 import shutil
 from dataclasses import asdict, dataclass, field
 from datetime import datetime

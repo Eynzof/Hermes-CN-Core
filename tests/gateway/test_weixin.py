@@ -1,7 +1,7 @@
 """Tests for the Weixin platform adapter."""
 
 import asyncio
-import base64
+import pybase64 as base64
 import orjson
 import os
 from unittest.mock import AsyncMock, Mock, patch
@@ -718,7 +718,7 @@ class TestWeixinMediaBuilder:
     """Media builder uses base64(hex_key), not base64(raw_bytes) for aes_key."""
 
     def test_image_builder_aes_key_is_base64_of_hex(self):
-        import base64
+        import pybase64 as base64
         adapter = _make_adapter()
         media_type, builder = adapter._outbound_media_builder("photo.jpg")
         assert media_type == weixin.MEDIA_IMAGE

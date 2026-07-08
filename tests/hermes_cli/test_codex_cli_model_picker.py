@@ -11,7 +11,7 @@ existing Codex CLI tokens via `hermes auth openai-codex`. The old
 "Codex CLI shared file" discovery tests were removed with that change.
 """
 
-import base64
+import pybase64 as base64
 import orjson
 import time
 from pathlib import Path

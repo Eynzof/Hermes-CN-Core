@@ -30,13 +30,13 @@ Configuration in config.yaml:
 from __future__ import annotations
 
 import asyncio
-import base64
+import pybase64 as base64
 import hashlib
 import orjson
 import logging
 import mimetypes
 import os
-import re
+from agent.re_compat import re
 import time
 import uuid
 from datetime import datetime, timezone

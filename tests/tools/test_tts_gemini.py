@@ -1,6 +1,6 @@
 """Tests for the Google Gemini TTS provider in tools/tts_tool.py."""
 
-import base64
+import pybase64 as base64
 import struct
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch

@@ -7,8 +7,7 @@ script adds `.decode('utf-8')` where needed and handles parameter conversion.
 
 Usage: python scripts/fix_alias_dumps.py [--dry-run]
 """
-
-import re
+from agent.re_compat import re
 import sys
 from pathlib import Path
 

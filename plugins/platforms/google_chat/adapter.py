@@ -42,7 +42,7 @@ import orjson
 import logging
 import os
 import random
-import re
+from agent.re_compat import re
 from pathlib import Path as _Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 

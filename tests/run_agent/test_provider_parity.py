@@ -4,7 +4,7 @@ and handles responses properly for all supported providers.
 Ensures changes to one provider path don't silently break another.
 """
 
-import base64
+import pybase64 as base64
 import orjson
 import sys
 import types

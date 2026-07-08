@@ -10,10 +10,10 @@ in and return transformed results.
 
 from __future__ import annotations
 
-import hashlib
+import xxhash
 import orjson
 import logging
-import re
+from agent.re_compat import re
 import uuid
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
@@ -187,7 +187,7 @@ def _deterministic_call_id(fn_name: str, arguments: str, index: int = 0) -> str:
     make every API call's prefix unique, breaking OpenAI's prompt cache.
     """
     seed = f"{fn_name}:{arguments}:{index}"
-    digest = hashlib.sha256(seed.encode("utf-8", errors="replace")).hexdigest()[:12]
+    digest = xxhash.xxh64(seed.encode("utf-8", errors="replace")).hexdigest()[:12]
     return f"call_{digest}"
 
 
@@ -233,7 +233,7 @@ def _derive_responses_function_call_id(
         return f"fc_{sanitized[:48]}"
 
     seed = source or str(response_item_id or "") or uuid.uuid4().hex
-    digest = hashlib.sha1(seed.encode("utf-8")).hexdigest()[:24]
+    digest = xxhash.xxh64(seed.encode("utf-8")).hexdigest()[:24]
     return f"fc_{digest}"
 
 

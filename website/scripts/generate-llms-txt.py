@@ -22,8 +22,7 @@ Called from `website/scripts/prebuild.mjs` on every `npm run start` /
 """
 
 from __future__ import annotations
-
-import re
+from agent.re_compat import re
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent

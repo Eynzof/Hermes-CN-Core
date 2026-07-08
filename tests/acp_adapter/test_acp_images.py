@@ -1,5 +1,4 @@
-import base64
-
+import pybase64 as base64
 import pytest
 from acp.schema import (
     BlobResourceContents,

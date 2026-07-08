@@ -30,7 +30,7 @@ import asyncio
 import orjson
 import logging
 import os
-import re
+from agent.re_compat import re
 import traceback
 import uuid
 from datetime import datetime, timezone

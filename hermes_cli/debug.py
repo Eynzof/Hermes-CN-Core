@@ -18,11 +18,11 @@ Currently supports:
 """
 
 import datetime
-import gzip
+import zstandard as _zstd
 import io
 import orjson
 import logging
-import re
+from agent.re_compat import re
 import sys
 import time
 import urllib.request

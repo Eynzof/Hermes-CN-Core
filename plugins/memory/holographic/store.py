@@ -2,8 +2,7 @@
 SQLite-backed fact store with entity resolution and trust scoring.
 Single-user Hermes memory store plugin.
 """
-
-import re
+from agent.re_compat import re
 import sqlite3
 import threading
 from pathlib import Path

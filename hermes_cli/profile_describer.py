@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import orjson
 import logging
-import re
+from agent.re_compat import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional

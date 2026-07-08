@@ -11,6 +11,7 @@ import sys
 import sysconfig
 from contextvars import ContextVar, Token
 from pathlib import Path
+from agent.re_compat import re
 
 
 _profile_fallback_warned: bool = False
@@ -403,8 +404,7 @@ def hermes_managed_node_tree_present(home: Path | None = None) -> bool:
 
 
 def _heal_managed_node_windows() -> bool:
-    """Redownload the portable Node zip into ``%HERMES_HOME%\\node`` on Windows."""
-    import re
+    """Redownload the portable Node zip into ``%HERMES_HOME%\node`` on Windows."""
     import tempfile
     import urllib.request
     import zipfile

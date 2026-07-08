@@ -386,8 +386,7 @@ class MSGraphWebhookAdapter(BasePlatformAdapter):
         return f"Microsoft Graph change notification:\n\n```json\n{rendered}\n```"
 
     def _render_template(self, template: str, payload: Dict[str, Any]) -> str:
-        import re
-
+        from agent.re_compat import re
         def _resolve(match: "re.Match[str]") -> str:
             key = match.group(1)
             value: Any = payload

@@ -60,7 +60,7 @@ from __future__ import annotations
 import argparse
 import orjson
 import os
-import re
+from agent.re_compat import re
 import sys
 from pathlib import Path
 

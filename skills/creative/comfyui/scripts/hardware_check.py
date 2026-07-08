@@ -26,7 +26,7 @@ from __future__ import annotations
 import orjson
 import os
 import platform
-import re
+from agent.re_compat import re
 import shutil
 import subprocess
 import sys

@@ -13,7 +13,7 @@ import fnmatch
 import functools
 import logging
 import os
-import re
+from agent.re_compat import re
 import shlex
 import sys
 import threading

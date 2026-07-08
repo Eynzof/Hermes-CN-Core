@@ -443,7 +443,7 @@ class TestSessionContext:
         content = agent_log.read_text()
         assert "untagged message" in content
         # Should not have any [xxx] session tag
-        import re
+        from agent.re_compat import re
         for line in content.splitlines():
             if "untagged message" in line:
                 assert not re.search(r"\[.+?\]", line.split("INFO")[1].split("test.no_session")[0])

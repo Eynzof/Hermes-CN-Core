@@ -35,7 +35,7 @@ Directory layout for user skills:
 import orjson
 import logging
 import os
-import re
+from agent.re_compat import re
 import shutil
 import tempfile
 import contextvars as _ctxvars

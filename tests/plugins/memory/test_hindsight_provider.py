@@ -7,7 +7,7 @@ turn counting, tags), and schema completeness.
 
 import orjson
 import os
-import re
+from agent.re_compat import re
 import stat
 import sys
 from types import SimpleNamespace

@@ -12,7 +12,7 @@ Usage:
 from contextlib import asynccontextmanager, contextmanager
 
 import asyncio
-import base64
+import pybase64 as base64
 import binascii
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -29,7 +29,7 @@ import mimetypes
 mimetypes.add_type("application/javascript", ".js")
 mimetypes.add_type("application/javascript", ".mjs")
 import os
-import re
+from agent.re_compat import re
 import secrets
 import shutil
 import stat
@@ -4071,7 +4071,7 @@ async def search_sessions(q: str = "", limit: int = 20, profile: Optional[str] =
             # Auto-add prefix wildcards so partial words match
             # e.g. "nimb" → "nimb*" matches "nimby"
             # Preserve quoted phrases and existing wildcards as-is
-            import re
+            from agent.re_compat import re
             terms = []
             for token in re.findall(r'"[^"]*"|\S+', q.strip()):
                 if token.startswith('"') or token.endswith("*"):
@@ -9655,7 +9655,7 @@ async def enable_webhooks():
 
 @app.post("/api/webhooks")
 async def create_webhook(body: WebhookCreate):
-    import re as _re
+    from agent.re_compat import re as _re
     import secrets as _secrets
     import time as _time
     import hermes_cli.webhook as wh

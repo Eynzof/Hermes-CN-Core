@@ -1577,7 +1577,7 @@ def patch_tool(mode: str = "replace", path: str = None, old_string: str = None,
     if path:
         _paths_to_check.append(path)
     if mode == "patch" and patch:
-        import re as _re
+        from agent.re_compat import re as _re
         from tools.path_security import has_traversal_component
         def _reject_v4a_traversal(v4a_path: str) -> str | None:
             # V4A path headers come from patch CONTENT, not the explicit

@@ -1382,7 +1382,7 @@ class TestOpenVikingMemoryUriBuilder:
 
     def test_uri_slug_is_twelve_hex_chars_and_unique(self):
         """Slug must be 12 hex chars and differ between calls."""
-        import re
+        from agent.re_compat import re
         p = self._make_provider()
         uri1 = p._build_memory_uri("preferences")
         uri2 = p._build_memory_uri("preferences")

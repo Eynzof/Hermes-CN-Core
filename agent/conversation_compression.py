@@ -990,7 +990,7 @@ def try_shrink_image_parts_in_messages(
         bytes-only check) if Pillow is missing or the payload is corrupt.
         """
         try:
-            import base64 as _b64_dim
+            import pybase64 as _b64_dim
             import io as _io_dim
             header_d, _, data_d = data_url.partition(",")
             if not data_d or not data_url.startswith("data:"):
@@ -1043,7 +1043,7 @@ def try_shrink_image_parts_in_messages(
                 mime_part = header[len("data:"):].split(";", 1)[0].strip()
                 if mime_part.startswith("image/"):
                     mime = mime_part
-            import base64 as _b64
+            import pybase64 as _b64
             raw = _b64.b64decode(data)
             suffix = {
                 "image/png": ".png", "image/gif": ".gif", "image/webp": ".webp",

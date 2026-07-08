@@ -22,7 +22,7 @@ Usage:
 
 import argparse
 import orjson
-import re
+from agent.re_compat import re
 import shutil
 import subprocess
 import sys

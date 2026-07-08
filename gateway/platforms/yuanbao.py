@@ -18,7 +18,7 @@ Configuration in config.yaml (or via env vars):
 from __future__ import annotations
 
 import asyncio
-import base64
+import pybase64 as base64
 import binascii
 import collections
 import dataclasses
@@ -27,7 +27,7 @@ import hmac
 import orjson
 import logging
 import os
-import re
+from agent.re_compat import re
 import secrets
 import time
 import urllib.parse

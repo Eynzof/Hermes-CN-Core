@@ -6,7 +6,7 @@ sidecar-event parsing without spawning the Node sidecar or binding ports.
 """
 from __future__ import annotations
 
-import base64
+import pybase64 as base64
 import orjson
 from pathlib import Path
 from typing import Any, Dict, List

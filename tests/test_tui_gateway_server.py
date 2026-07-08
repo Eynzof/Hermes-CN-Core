@@ -7884,8 +7884,7 @@ def test_image_attach_bytes_rejects_invalid_base64(monkeypatch, tmp_path):
 
 
 def test_image_attach_bytes_rejects_oversize(monkeypatch, tmp_path):
-    import base64 as _b64
-
+    import pybase64 as _b64
     _attach_bytes_cli(monkeypatch)
     monkeypatch.setattr(server, "_hermes_home", tmp_path)
     monkeypatch.setattr(server, "_ATTACH_BYTES_MAX_BYTES", 10)
@@ -7943,8 +7942,7 @@ def test_pdf_attach_requires_poppler(monkeypatch, tmp_path):
 
 
 def test_pdf_attach_rejects_non_pdf_bytes(monkeypatch, tmp_path):
-    import base64 as _b64
-
+    import pybase64 as _b64
     _attach_bytes_cli(monkeypatch)
     monkeypatch.setattr(server, "_hermes_home", tmp_path)
     monkeypatch.setattr("shutil.which", lambda _name: "/usr/bin/pdftoppm")
@@ -7976,8 +7974,7 @@ def test_pdf_attach_requires_path_or_bytes(monkeypatch, tmp_path):
 
 
 def test_decode_attach_base64_helper():
-    import base64 as _b64
-
+    import pybase64 as _b64
     raw = _b64.b64encode(b"hello").decode("ascii")
     assert server._decode_attach_base64(raw, mime_prefix="image/") == b"hello"
     assert (

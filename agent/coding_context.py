@@ -54,7 +54,7 @@ from __future__ import annotations
 import orjson
 import logging
 import os
-import re
+from agent.re_compat import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path

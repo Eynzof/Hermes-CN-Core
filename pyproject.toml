@@ -142,6 +142,20 @@ dependencies = [
   # Hence the ``sys_platform == 'win32'`` marker: the dep (and its portalocker
   # / pywin32 tree) ships only where it's actually used.
   "concurrent-log-handler==0.9.29; sys_platform == 'win32'",
+  # ── High-performance library replacements ──────────────────────────
+  # Phase 1 — Drop-in replacements (all already installed and in use)
+  "regex>=2026.3.32",        # 1.5-10× faster re replacement
+  "rapidfuzz>=3.14.5",       # 10-100× faster difflib replacement
+  "xxhash>=3.8.0",           # 5-10× faster non-crypto hashing
+  "pybase64>=1.4.3",          # 2-4× faster base64 via SIMD
+  "ciso8601>=2.3.3",         # 10-50× faster ISO8601 parsing
+  # Phase 2 — Verified replacements
+  "zstandard>=0.25.0",       # Better compression ratio + speed
+  "lz4>=4.4.5",              # Fastest decompression
+  # Phase 3 — Infrastructure
+  "uvloop>=0.21.0; sys_platform != 'win32'",  # 2-4× async throughput (Unix)
+  # Phase 4 — Nice-to-have (already used in some places)
+  "yarl>=1.23.0",            # C-accelerated URL type
 ]
 
 [project.optional-dependencies]

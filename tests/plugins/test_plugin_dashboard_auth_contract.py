@@ -21,8 +21,7 @@ If you have a legitimate reason to reference the token name (e.g. a comment
 explaining why NOT to use it), add the file to ``_ALLOWED_FILES`` with a note.
 """
 from __future__ import annotations
-
-import re
+from agent.re_compat import re
 from pathlib import Path
 
 import pytest

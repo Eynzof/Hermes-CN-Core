@@ -1,6 +1,6 @@
 """Tests for xAI Grok OAuth — tokens stored in Hermes auth store (~/.hermes/auth.json)."""
 
-import base64
+import pybase64 as base64
 import orjson
 import time
 from pathlib import Path

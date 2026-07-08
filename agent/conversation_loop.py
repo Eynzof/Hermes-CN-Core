@@ -20,7 +20,7 @@ import orjson
 import logging
 import os
 import random
-import re
+from agent.re_compat import re
 import ssl
 import threading
 import time

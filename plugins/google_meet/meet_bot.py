@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import orjson
 import os
-import re
+from agent.re_compat import re
 import signal
 import sys
 import threading
@@ -432,8 +432,7 @@ def _mac_audio_device_index(device_name: str) -> str:
         return "0"
     # ffmpeg prints the table on stderr. Lines look like:
     #   [AVFoundation indev @ 0x...] [0] BlackHole 2ch
-    import re as _re
-
+    from agent.re_compat import re as _re
     needle = device_name.strip().lower()
     for line in (out.stderr or "").splitlines():
         m = _re.search(r"\[(\d+)\]\s+(.+)$", line)

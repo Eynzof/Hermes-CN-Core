@@ -1,4 +1,4 @@
-import base64
+import pybase64 as base64
 import orjson
 import time
 from types import SimpleNamespace

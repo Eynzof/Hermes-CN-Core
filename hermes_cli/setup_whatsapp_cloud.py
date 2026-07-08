@@ -33,8 +33,7 @@ to verify the loop end-to-end once everything's running.
 """
 
 from __future__ import annotations
-
-import re
+from agent.re_compat import re
 import secrets
 import sys
 from typing import Optional

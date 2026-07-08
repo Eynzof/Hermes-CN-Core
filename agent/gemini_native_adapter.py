@@ -17,7 +17,7 @@ OpenAI-compat layer entirely.
 from __future__ import annotations
 
 import asyncio
-import base64
+import pybase64 as base64
 import orjson
 import logging
 import time

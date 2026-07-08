@@ -15,7 +15,7 @@ All HTTP is mocked: nothing here talks to a real IDP.
 
 from __future__ import annotations
 
-import base64
+import pybase64 as base64
 import hashlib
 import orjson
 import time

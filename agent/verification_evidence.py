@@ -8,7 +8,7 @@ blocks completion, and never upgrades targeted checks into "repo green".
 from __future__ import annotations
 
 import orjson
-import re
+from agent.re_compat import re
 import shlex
 import sqlite3
 import tempfile

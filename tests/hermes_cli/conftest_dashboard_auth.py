@@ -15,7 +15,7 @@ for ``verify_session`` to detect tampering and expiry.
 """
 from __future__ import annotations
 
-import base64
+import pybase64 as base64
 import hashlib
 import hmac
 import orjson

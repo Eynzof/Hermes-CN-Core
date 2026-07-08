@@ -665,7 +665,7 @@ def _build_anthropic_client_with_bearer_hook(
     # Strip any trailing /v1 — the Anthropic SDK appends /v1/messages.
     normalized_base_url = _normalize_base_url_text(base_url)
     if normalized_base_url:
-        import re as _re
+        from agent.re_compat import re as _re
         normalized_base_url = _re.sub(r"/v1/?$", "", normalized_base_url.rstrip("/"))
 
     http_client = build_bearer_http_client(token_provider, timeout=timeout_obj)
@@ -755,7 +755,7 @@ def build_anthropic_client(
 
     normalized_base_url = _normalize_base_url_text(base_url)
     if normalized_base_url:
-        import re as _re
+        from agent.re_compat import re as _re
         normalized_base_url = _re.sub(r"/v1/?$", "", normalized_base_url.rstrip("/"))
     _read_timeout = timeout if (isinstance(timeout, (int, float)) and timeout > 0) else 900.0
     kwargs = {
@@ -1400,7 +1400,7 @@ _HERMES_OAUTH_FILE = get_hermes_home() / ".anthropic_oauth.json"
 
 def _generate_pkce() -> tuple:
     """Generate PKCE code_verifier and code_challenge (S256)."""
-    import base64
+    import pybase64 as base64
     import hashlib
     import secrets
 
@@ -1612,7 +1612,7 @@ def _sanitize_tool_id(tool_id: str) -> str:
     Anthropic requires IDs matching [a-zA-Z0-9_-]. Replace invalid
     characters with underscores and ensure non-empty.
     """
-    import re
+    from agent.re_compat import re
     if not tool_id:
         return "tool_0"
     sanitized = re.sub(r"[^a-zA-Z0-9_-]", "_", tool_id)

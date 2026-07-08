@@ -6,7 +6,7 @@ Used by AIAgent._execute_tool_calls for CLI feedback.
 
 import logging
 import os
-import re
+from agent.re_compat import re
 import sys
 import threading
 import time

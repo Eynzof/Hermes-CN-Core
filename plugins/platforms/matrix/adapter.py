@@ -55,7 +55,7 @@ import inspect
 import logging
 import mimetypes
 import os
-import re
+from agent.re_compat import re
 import time
 from urllib.parse import urljoin, urlsplit, urlunsplit
 from dataclasses import dataclass, field

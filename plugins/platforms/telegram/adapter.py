@@ -14,7 +14,7 @@ import orjson
 import logging
 import os
 import html as _html
-import re
+from agent.re_compat import re
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Set, Any
 
@@ -1479,7 +1479,7 @@ class TelegramAdapter(BasePlatformAdapter):
             # short exponential schedule.
             _retry_after = getattr(exc, "retry_after", None)
             if _retry_after is None:
-                import re as _re
+                from agent.re_compat import re as _re
                 _m = _re.search(r"retry\s+(?:in\s+)?(\d+)", err_str, _re.IGNORECASE)
                 if _m:
                     _retry_after = float(_m.group(1))

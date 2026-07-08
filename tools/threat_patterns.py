@@ -41,8 +41,7 @@ commit 4ea29978.
 """
 
 from __future__ import annotations
-
-import re
+from agent.re_compat import re
 import unicodedata
 from typing import List, Optional, Tuple
 

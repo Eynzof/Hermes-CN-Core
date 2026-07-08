@@ -17,10 +17,10 @@ minimal environment with no extra pip installs.
 from __future__ import annotations
 
 import argparse
-import base64
+import pybase64 as base64
 import orjson
 import os
-import re
+from agent.re_compat import re
 import sys
 import urllib.error
 import urllib.parse

@@ -5,8 +5,7 @@ Anthropic now 404s the OAuth token endpoint for any ``claude-cli/`` UA prefix
 """
 
 from __future__ import annotations
-
-import re
+from agent.re_compat import re
 from unittest.mock import MagicMock, patch
 
 import pytest

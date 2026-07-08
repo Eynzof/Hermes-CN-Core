@@ -20,8 +20,7 @@ from __future__ import annotations
 
 
 import os
-import re
-
+from agent.re_compat import re
 from tools.file_operations import ShellFileOperations
 
 

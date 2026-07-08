@@ -33,8 +33,7 @@ def test_pet_generate_rejects_invalid_reference_image():
 
 
 def test_pet_generate_rejects_oversized_reference_image(monkeypatch):
-    import base64
-
+    import pybase64 as base64
     monkeypatch.setattr(server, "_PET_REFERENCE_MAX_BYTES", 8)
     payload = base64.b64encode(b"0123456789").decode("ascii")
     resp = server._methods["pet.generate"](

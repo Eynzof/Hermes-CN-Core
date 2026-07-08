@@ -14,7 +14,7 @@ import tempfile
 import threading
 import time
 import os
-import re
+from agent.re_compat import re
 import uuid
 
 # Cross-process advisory file locking for jobs.json critical sections.

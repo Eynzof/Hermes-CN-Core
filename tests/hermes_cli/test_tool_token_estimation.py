@@ -164,8 +164,7 @@ def test_status_fn_deduplicates_overlapping_tools(monkeypatch):
     both = status_fn({idx_map["web"], idx_map["browser"]})
 
     # Extract numeric token counts from strings like "~8.3k tokens" or "~350 tokens"
-    import re
-
+    from agent.re_compat import re
     def parse_tokens(s):
         m = re.search(r"~([\d.]+)k?\s+tokens", s)
         if not m:

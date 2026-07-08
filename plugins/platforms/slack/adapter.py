@@ -13,7 +13,7 @@ import contextvars
 import orjson
 import logging
 import os
-import re
+from agent.re_compat import re
 import time
 from dataclasses import dataclass, field
 from typing import Dict, Optional, Any, Tuple, List
@@ -1148,8 +1148,7 @@ class SlackAdapter(BasePlatformAdapter):
             # manifest's request URL, but it will not deliver an event for
             # a slash command the manifest doesn't declare.
             from hermes_cli.commands import slack_native_slashes
-            import re as _re
-
+            from agent.re_compat import re as _re
             _slash_names = [name for name, _d, _h in slack_native_slashes()]
             if _slash_names:
                 _slash_pattern = _re.compile(

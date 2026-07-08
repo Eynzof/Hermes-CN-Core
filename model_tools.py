@@ -22,7 +22,7 @@ Public API (signatures preserved from the original 2,400-line version):
 
 import os
 import orjson
-import re
+from agent.re_compat import re
 import asyncio
 import logging
 import threading
@@ -1180,20 +1180,22 @@ def repair_tool_arg_keys(
     # Fuzzy match remaining missing fields against still-unmapped keys.
     remaining_bad = [k for k in repaired if k not in expected]
     if remaining_bad and missing:
-        import difflib
+        import rapidfuzz.process as _fuzz_process
+        import rapidfuzz.fuzz as _fuzz
         candidates: list[tuple[float, str, str]] = []
         for miss in missing:
             if len(miss) < 4:
                 continue
             cutoff = 0.75 if len(miss) >= 8 else 0.80
-            close = difflib.get_close_matches(
-                miss, remaining_bad, n=1, cutoff=cutoff
+            score_cutoff = int(cutoff * 100)
+            close = _fuzz_process.extract(
+                miss, remaining_bad, limit=1, score_cutoff=score_cutoff
             )
             if close:
-                matched = close[0]
+                matched = close[0][0]
                 if len(matched) < 4:
                     continue
-                ratio = difflib.SequenceMatcher(None, miss, matched).ratio()
+                ratio = _fuzz.ratio(miss, matched) / 100.0
                 candidates.append((ratio, miss, matched))
 
         candidates.sort(key=lambda x: x[0], reverse=True)

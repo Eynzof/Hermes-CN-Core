@@ -37,7 +37,7 @@ import contextvars
 import orjson
 import logging
 import os
-import re
+from agent.re_compat import re
 import secrets
 import socket
 import stat

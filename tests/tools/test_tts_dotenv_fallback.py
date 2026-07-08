@@ -102,8 +102,7 @@ class TestDotenvFallbackPerProvider:
         assert captured["headers"]["Authorization"] == "Bearer mm-dotenv-key"
 
     def test_mistral_reads_dotenv_key(self, tmp_path):
-        import base64
-
+        import pybase64 as base64
         from tools import tts_tool
 
         seen_keys: list = []

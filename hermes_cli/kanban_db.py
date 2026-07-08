@@ -74,7 +74,7 @@ import contextlib
 import hashlib
 import orjson
 import os
-import re
+from agent.re_compat import re
 import random
 import secrets
 import shutil

@@ -14,7 +14,7 @@ import asyncio
 import orjson
 import logging
 import os
-import re
+from agent.re_compat import re
 from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)

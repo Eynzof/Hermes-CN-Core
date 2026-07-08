@@ -45,12 +45,12 @@ is present, so the gateway will not attempt to instantiate the adapter.
 """
 
 import asyncio
-import base64
+import pybase64 as base64
 import orjson
 import logging
 import os
 import random
-import re
+from agent.re_compat import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path

@@ -36,12 +36,12 @@ same SPI breakage class.
 from __future__ import annotations
 
 import asyncio
-import base64
+import pybase64 as base64
 import concurrent.futures
 import orjson
 import logging
 import os
-import re
+from agent.re_compat import re
 import shutil
 import subprocess
 import sys

@@ -27,8 +27,7 @@ adapter state — so it is trivially unit-testable.
 """
 
 from __future__ import annotations
-
-import re
+from agent.re_compat import re
 from typing import Any, Dict, List, Optional, Tuple
 
 # Slack Block Kit hard limits (https://docs.slack.dev/reference/block-kit/blocks)

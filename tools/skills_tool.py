@@ -71,7 +71,7 @@ import logging
 
 from hermes_constants import get_hermes_home, display_hermes_home
 import os
-import re
+from agent.re_compat import re
 from enum import Enum
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Dict, Any, List, Optional, Set, Tuple

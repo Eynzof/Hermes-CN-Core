@@ -15,7 +15,7 @@ Import chain (circular-import safe):
 """
 
 import ast
-import hashlib
+import xxhash
 import importlib
 import orjson
 import logging
@@ -235,7 +235,7 @@ def _tool_index_fingerprint(tools_path: Path) -> Optional[str]:
     if not parts:
         return None
     payload = "|".join(parts).encode("utf-8")
-    return f"{_TOOL_INDEX_VERSION}:{hashlib.sha1(payload).hexdigest()}"
+    return f"{_TOOL_INDEX_VERSION}:{xxhash.xxh64(payload).hexdigest()}"
 
 
 def _tool_index_cache_file() -> Optional[Path]:

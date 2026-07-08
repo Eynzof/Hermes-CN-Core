@@ -54,7 +54,7 @@ import functools
 import orjson
 import logging
 import os
-import re
+from agent.re_compat import re
 import subprocess
 import shutil
 import sys
@@ -3935,7 +3935,7 @@ def browser_vision(question: str, annotate: bool = False, task_id: Optional[str]
         from tools.browser_camofox import camofox_vision
         return camofox_vision(question, annotate, task_id)
 
-    import base64
+    import pybase64 as base64
     import uuid as uuid_mod
     from hermes_constants import get_hermes_dir
     screenshots_dir = get_hermes_dir("cache/screenshots", "browser_screenshots")

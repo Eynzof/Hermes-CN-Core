@@ -662,9 +662,7 @@ def _extract_semantic_text(reply: Dict[str, Any], self_open_id: str = "") -> str
 # ---------------------------------------------------------------------------
 # Document link parsing and wiki resolution
 # ---------------------------------------------------------------------------
-
-import re as _re
-
+from agent.re_compat import re as _re
 # Matches feishu/lark document URLs and extracts doc_type + token
 _FEISHU_DOC_URL_RE = _re.compile(
     r"(?:feishu\.cn|larkoffice\.com|larksuite\.com|lark\.suite\.com)"

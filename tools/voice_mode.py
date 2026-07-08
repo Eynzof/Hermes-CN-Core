@@ -12,7 +12,7 @@ Dependencies (optional):
 import logging
 import os
 import platform
-import re
+from agent.re_compat import re
 import shutil
 import subprocess
 import sys

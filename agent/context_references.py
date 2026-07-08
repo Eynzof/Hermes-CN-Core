@@ -5,7 +5,7 @@ import inspect
 import orjson
 import mimetypes
 import os
-import re
+from agent.re_compat import re
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path

@@ -25,7 +25,7 @@ container as ``http://host.docker.internal:3000``.
 
 from __future__ import annotations
 
-import base64
+import pybase64 as base64
 import orjson
 import logging
 import os
@@ -783,9 +783,7 @@ def camofox_get_images(task_id: Optional[str] = None) -> str:
         blocked = _camofox_private_page_block(session, task_id, "extract page images")
         if blocked:
             return blocked
-
-        import re
-
+        from agent.re_compat import re
         data = _get(
             f"/tabs/{session['tab_id']}/snapshot",
             params={"userId": session["user_id"]},

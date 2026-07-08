@@ -17,7 +17,7 @@ from __future__ import annotations
 import orjson
 import os
 import random
-import re
+from agent.re_compat import re
 import sys
 import time
 import uuid

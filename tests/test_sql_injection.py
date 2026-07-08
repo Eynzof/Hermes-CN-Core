@@ -1,7 +1,5 @@
 """Tests that verify SQL injection mitigations in insights and state modules."""
-
-import re
-
+from agent.re_compat import re
 from agent.insights import InsightsEngine
 
 

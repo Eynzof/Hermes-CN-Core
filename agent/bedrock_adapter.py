@@ -30,7 +30,7 @@ Requires: ``boto3`` (optional dependency — only needed when using the Bedrock 
 import orjson
 import logging
 import os
-import re
+from agent.re_compat import re
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Tuple
 

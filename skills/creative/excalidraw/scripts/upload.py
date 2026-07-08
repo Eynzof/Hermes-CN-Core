@@ -22,7 +22,7 @@ import os
 import struct
 import sys
 import zlib
-import base64
+import pybase64 as base64
 import urllib.request
 
 try:

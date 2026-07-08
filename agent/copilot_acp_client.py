@@ -11,7 +11,7 @@ from __future__ import annotations
 import orjson
 import os
 import queue
-import re
+from agent.re_compat import re
 import shlex
 import subprocess
 import threading

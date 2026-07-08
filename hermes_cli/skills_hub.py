@@ -11,7 +11,7 @@ handler are thin wrappers that parse args and delegate.
 """
 
 import orjson
-import re
+from agent.re_compat import re
 import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -1447,7 +1447,7 @@ def do_publish(skill_path: str, target: str = "github", repo: str = "",
     skill_md = (path / "SKILL.md").read_text(encoding="utf-8")
     fm = {}
     if skill_md.startswith("---"):
-        import re
+        from agent.re_compat import re
         match = re.search(r'\n---\s*\n', skill_md[3:])
         if match:
             try:
@@ -1556,7 +1556,7 @@ def _github_publish(skill_path: Path, skill_name: str, target_repo: str,
         rel = str(f.relative_to(skill_path))
         upload_path = f"skills/{skill_name}/{rel}"
         try:
-            import base64
+            import pybase64 as base64
             content_b64 = base64.b64encode(f.read_bytes()).decode()
             httpx.put(
                 f"https://api.github.com/repos/{fork_repo}/contents/{upload_path}",

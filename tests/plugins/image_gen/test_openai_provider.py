@@ -20,7 +20,7 @@ _PNG_HEX = (
 
 
 def _b64_png() -> str:
-    import base64
+    import pybase64 as base64
     return base64.b64encode(bytes.fromhex(_PNG_HEX)).decode()
 
 

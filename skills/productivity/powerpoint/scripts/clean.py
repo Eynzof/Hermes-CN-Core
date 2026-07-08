@@ -19,11 +19,7 @@ import sys
 from pathlib import Path
 
 import defusedxml.minidom
-
-
-import re
-
-
+from agent.re_compat import re
 def get_slides_in_sldidlst(unpacked_dir: Path) -> set[str]:
     pres_path = unpacked_dir / "ppt" / "presentation.xml"
     pres_rels_path = unpacked_dir / "ppt" / "_rels" / "presentation.xml.rels"

@@ -21,7 +21,7 @@ Two invariants:
 from __future__ import annotations
 
 import io
-import re
+from agent.re_compat import re
 import sys
 from contextlib import redirect_stdout
 from unittest.mock import patch

@@ -250,8 +250,7 @@ class TestAppMentionHandler:
             len(registered_commands) == 1
         ), f"expected 1 combined slash matcher, got {registered_commands!r}"
         slash_matcher = registered_commands[0]
-        import re as _re
-
+        from agent.re_compat import re as _re
         assert isinstance(slash_matcher, _re.Pattern)
         for expected in ("/hermes", "/btw", "/stop", "/model", "/help"):
             assert slash_matcher.match(

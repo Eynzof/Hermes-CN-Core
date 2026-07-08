@@ -18,7 +18,7 @@ import asyncio
 import orjson
 import logging
 import random
-import re
+from agent.re_compat import re
 import sqlite3
 import sys
 import threading

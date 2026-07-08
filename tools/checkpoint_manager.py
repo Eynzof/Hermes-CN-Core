@@ -48,11 +48,11 @@ reclaim object storage.  A size-cap pass drops the oldest checkpoints per
 project until total store size is under ``max_total_size_mb``.
 """
 
-import hashlib
+import xxhash
 import orjson
 import logging
 import os
-import re
+from agent.re_compat import re
 import shutil
 import subprocess
 import time
@@ -201,7 +201,7 @@ def _normalize_path(path_value: str) -> Path:
 def _project_hash(working_dir: str) -> str:
     """Deterministic per-project hash: sha256(abs_path)[:16]."""
     abs_path = str(_normalize_path(working_dir))
-    return hashlib.sha256(abs_path.encode()).hexdigest()[:16]
+    return xxhash.xxh64(abs_path.encode()).hexdigest()[:16]
 
 
 def _store_path(base: Optional[Path] = None) -> Path:

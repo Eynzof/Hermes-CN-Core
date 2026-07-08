@@ -21,8 +21,7 @@ Usage:
     if not allowed:
         print(format_scan_report(result))
 """
-
-import re
+from agent.re_compat import re
 import fnmatch
 import hashlib
 from dataclasses import dataclass, field

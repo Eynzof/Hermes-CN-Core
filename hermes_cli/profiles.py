@@ -21,7 +21,7 @@ Usage::
 
 import orjson
 import os
-import re
+from agent.re_compat import re
 import shlex
 import shutil
 import stat

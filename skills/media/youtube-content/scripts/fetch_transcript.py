@@ -19,7 +19,7 @@ Install dependency:  uv pip install youtube-transcript-api
 
 import argparse
 import orjson
-import re
+from agent.re_compat import re
 import sys
 
 

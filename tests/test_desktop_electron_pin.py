@@ -25,7 +25,7 @@ specific version (which is allowed to move):
 from __future__ import annotations
 
 import orjson
-import re
+from agent.re_compat import re
 from pathlib import Path
 
 import pytest

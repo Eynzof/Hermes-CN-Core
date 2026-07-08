@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-import base64
+import pybase64 as base64
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 

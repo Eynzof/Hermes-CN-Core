@@ -11,7 +11,7 @@ import ipaddress
 import logging
 import os
 import random
-import re
+from agent.re_compat import re
 import socket as _socket
 import subprocess
 import sys

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
-import base64
+import pybase64 as base64
 import contextvars
 import orjson
 import logging

@@ -32,7 +32,7 @@ Reference: https://bot.q.qq.com/wiki/develop/api-v2/
 from __future__ import annotations
 
 import asyncio
-import base64
+import pybase64 as base64
 import orjson
 import logging
 import mimetypes
@@ -3142,8 +3142,7 @@ class QQAdapter(BasePlatformAdapter):
     def _strip_at_mention(content: str) -> str:
         """Strip the @bot mention prefix from group message content."""
         # QQ group @-messages may have the bot's QQ/ID as prefix
-        import re
-
+        from agent.re_compat import re
         stripped = re.sub(r"^@\S+\s*", "", content.strip())
         return stripped
 

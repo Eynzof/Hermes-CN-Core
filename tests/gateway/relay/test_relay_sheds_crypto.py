@@ -21,7 +21,7 @@ change-detector snapshot of a frozen import list.
 from __future__ import annotations
 
 import ast
-import re
+from agent.re_compat import re
 from pathlib import Path
 
 # gateway/relay package directory: tests/gateway/relay/ -> repo root parents[3].

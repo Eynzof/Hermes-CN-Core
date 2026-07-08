@@ -1,6 +1,6 @@
 """Tests for Matrix platform adapter (mautrix-python backend)."""
 import asyncio
-import re
+from agent.re_compat import re
 import stat
 import sys
 import time

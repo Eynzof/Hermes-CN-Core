@@ -15,7 +15,7 @@ Works on Linux, macOS, and Windows.
 """
 
 import orjson
-import re
+from agent.re_compat import re
 import socket
 import ssl
 import sys

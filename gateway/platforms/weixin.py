@@ -13,13 +13,13 @@ Design notes:
 from __future__ import annotations
 
 import asyncio
-import base64
-import hashlib
+import pybase64 as base64
+import xxhash
 import orjson
 import logging
 import mimetypes
 import os
-import re
+from agent.re_compat import re
 import secrets
 import struct
 import tempfile
@@ -1416,7 +1416,7 @@ class WeixinAdapter(BasePlatformAdapter):
         item_list = message.get("item_list") or []
         text = _extract_text(item_list)
         if text:
-            content_key = f"content:{sender_id}:{hashlib.md5(text.encode()).hexdigest()}"
+            content_key = f"content:{sender_id}:{xxhash.xxh64(text.encode()).hexdigest()}"
             if self._dedup.is_duplicate(content_key):
                 logger.debug("[%s] Content-dedup: skipping duplicate message from %s", self.name, sender_id)
                 return
@@ -2114,7 +2114,7 @@ class WeixinAdapter(BasePlatformAdapter):
         filekey = secrets.token_hex(16)
         aes_key = secrets.token_bytes(16)
         rawsize = len(plaintext)
-        rawfilemd5 = hashlib.md5(plaintext).hexdigest()
+        rawfilemd5 = xxhash.xxh64(plaintext).hexdigest()
         upload_response = await _get_upload_url(
             self._send_session,
             base_url=self._base_url,

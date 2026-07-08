@@ -11,7 +11,7 @@ Adapt this for your specific task by modifying:
 """
 
 import torch
-import re
+from agent.re_compat import re
 from datasets import load_dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import LoraConfig

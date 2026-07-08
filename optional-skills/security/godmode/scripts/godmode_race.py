@@ -19,7 +19,7 @@ Usage in execute_code:
 """
 
 import os
-import re
+from agent.re_compat import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 

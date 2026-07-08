@@ -6,7 +6,7 @@ and Daytona.  Docker and Singularity use bind mounts (live host FS
 view) and don't need this.
 """
 
-import hashlib
+import xxhash
 import logging
 import os
 import posixpath
@@ -114,9 +114,9 @@ def unique_parent_dirs(files: list[tuple[str, str]]) -> list[str]:
     return sorted({posixpath.dirname(remote) for _, remote in files})
 
 
-def _sha256_file(path: str) -> str:
-    """Return hex SHA-256 digest of a file."""
-    h = hashlib.sha256()
+def _xxh64_file(path: str) -> str:
+    """Return hex XXH64 digest of a file."""
+    h = xxhash.xxh64()
     with open(path, "rb") as f:
         for chunk in iter(lambda: f.read(65536), b""):
             h.update(chunk)
@@ -220,7 +220,7 @@ class FileSyncManager:
 
             # --- Commit (all succeeded) ---
             for host_path, remote_path in to_upload:
-                self._pushed_hashes[remote_path] = _sha256_file(host_path)
+                self._pushed_hashes[remote_path] = _xxh64_file(host_path)
 
             for p in to_delete:
                 new_files.pop(p, None)

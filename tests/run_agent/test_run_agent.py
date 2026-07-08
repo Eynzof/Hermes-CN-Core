@@ -10,7 +10,7 @@ import inspect
 import io
 import orjson
 import logging
-import re
+from agent.re_compat import re
 import uuid
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -1286,7 +1286,7 @@ class TestBuildSystemPrompt:
                     f"Timestamp line has time-of-day, breaks daily cache stability: {line!r}"
                 )
                 # Must NOT contain a colon followed by two digits (HH:MM pattern)
-                import re as _re
+                from agent.re_compat import re as _re
                 assert not _re.search(r":\d{2}", line), (
                     f"Timestamp line has HH:MM, breaks daily cache stability: {line!r}"
                 )

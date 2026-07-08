@@ -22,8 +22,7 @@ the venv, so the venv stage uses whatever interpreter is actually present.
 These tests lock that contract at the source level (the script only runs on
 Windows, so there's no runner to execute it on Linux CI).
 """
-
-import re
+from agent.re_compat import re
 from pathlib import Path
 
 import pytest

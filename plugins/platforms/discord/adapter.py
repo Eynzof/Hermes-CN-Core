@@ -14,7 +14,7 @@ import hashlib
 import orjson
 import logging
 import os
-import re
+from agent.re_compat import re
 import struct
 import subprocess
 import tempfile
@@ -2525,8 +2525,7 @@ class DiscordAdapter(BasePlatformAdapter):
 
             # Try sending as a native voice message via raw API (flags=8192).
             try:
-                import base64
-
+                import pybase64 as base64
                 duration_secs = 5.0
                 try:
                     from mutagen.oggopus import OggOpus
@@ -7328,7 +7327,7 @@ def _standalone_sanitize_error(text) -> str:
     """
     s = str(text)
     # Mask anything that looks like a Bot token in an Authorization header.
-    import re as _re_san
+    from agent.re_compat import re as _re_san
     return _re_san.sub(
         r"(Authorization:\s*Bot\s+)\S+",
         r"\1***",

@@ -28,7 +28,7 @@ Platform: Linux / macOS only (Unix domain sockets for local). Disabled on Window
 Remote execution additionally requires Python 3 in the terminal backend.
 """
 
-import base64
+import pybase64 as base64
 import functools
 import orjson
 import logging

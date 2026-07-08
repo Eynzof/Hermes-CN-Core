@@ -38,7 +38,7 @@ import orjson
 import logging
 import os
 import socket as _socket
-import re
+from agent.re_compat import re
 import sqlite3
 import time
 import uuid
@@ -597,8 +597,7 @@ def _resolve_media_to_data_urls(text: str) -> str:
     """
     if not text or "MEDIA:" not in text:
         return text
-    import base64
-
+    import pybase64 as base64
     def _to_data_url(path_str: str) -> Optional[str]:
         p = Path(path_str.strip().strip("`\"'")).expanduser()
         suffix = p.suffix.lower()

@@ -4,8 +4,7 @@ Covers: _escape_mdv2 (pure function), format_message (markdown-to-MarkdownV2
 conversion pipeline), and edge cases that could produce invalid MarkdownV2
 or corrupt user-visible content.
 """
-
-import re
+from agent.re_compat import re
 import sys
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock

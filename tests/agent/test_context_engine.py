@@ -409,7 +409,7 @@ class TestInitAgentDoesNotMutatePluginSingleton:
         drive here, so this pins the exact line so a future revert to direct
         assignment fails CI. Regression for #42449."""
         import inspect
-        import re
+        from agent.re_compat import re
         import agent.agent_init as _ai
 
         src = inspect.getsource(_ai)

@@ -26,7 +26,7 @@ Usage:
 """
 
 import os
-import re
+from agent.re_compat import re
 import shutil
 import stat as _stat
 import subprocess

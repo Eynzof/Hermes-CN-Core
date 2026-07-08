@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import base64
+import pybase64 as base64
 import orjson
-from copy import deepcopy
+from agent.fast_deepcopy import fast_deepcopy as deepcopy
 from typing import Any
 
 MOA_MARKER_PREFIX = "__HERMES_MOA_TURN_V1__"

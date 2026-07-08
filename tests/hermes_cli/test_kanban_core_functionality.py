@@ -2582,7 +2582,7 @@ def test_cli_show_clamps_negative_elapsed(kanban_home):
     # since timestamps legitimately contain dashes (2026-04-28).
     out_show = run_slash(f"show {tid}")
     out_runs = run_slash(f"runs {tid}")
-    import re as _re
+    from agent.re_compat import re as _re
     neg_elapsed = _re.compile(r"-\d+s")
     assert not neg_elapsed.search(out_show), (
         f"show output has negative elapsed: {out_show!r}"
@@ -2726,7 +2726,7 @@ def test_build_worker_context_caps_comments(kanban_home):
         # Comment bodies are "comment 0".."comment 99" so we need to
         # match the body specifically (digit suffix), not the author
         # provenance line (which also starts with "comment ").
-        import re
+        from agent.re_compat import re
         body_count = sum(
             1 for line in ctx.splitlines() if re.fullmatch(r"comment \d+", line)
         )

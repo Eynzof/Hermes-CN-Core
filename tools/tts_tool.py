@@ -35,13 +35,13 @@ Usage:
 """
 
 import asyncio
-import base64
+import pybase64 as base64
 import datetime
 import orjson
 import logging
 import os
 import queue
-import re
+from agent.re_compat import re
 import shlex
 import shutil
 import subprocess

@@ -21,7 +21,7 @@ OpenRouter variant suffixes (``:free``, ``:extended``, ``:fast``).
 from __future__ import annotations
 
 import logging
-import re
+from agent.re_compat import re
 from dataclasses import dataclass
 from typing import Any, List, NamedTuple, Optional
 
@@ -332,7 +332,7 @@ def parse_model_flags(raw_args: str) -> tuple[str, str, bool, bool, bool]:
 
     # Normalize Unicode dashes (Telegram/iOS auto-converts -- to em/en dash)
     # A single Unicode dash before a flag keyword becomes "--"
-    import re as _re
+    from agent.re_compat import re as _re
     raw_args = _re.sub(r'[\u2012\u2013\u2014\u2015](provider|global|session|refresh)', r'--\1', raw_args)
 
     # Extract --global

@@ -7,7 +7,7 @@ can invoke skills via /skill-name commands.
 import orjson
 import logging
 import os
-import re
+from agent.re_compat import re
 from pathlib import Path
 from typing import Any, Dict, Optional
 

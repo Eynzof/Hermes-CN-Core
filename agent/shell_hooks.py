@@ -105,11 +105,11 @@ emitted by each built-in hook site.
 
 from __future__ import annotations
 
-import difflib
+import rapidfuzz.process as _fuzz_process
 import orjson
 import logging
 import os
-import re
+from agent.re_compat import re
 import shlex
 import subprocess
 import sys
@@ -308,13 +308,13 @@ def _parse_hooks_block(hooks_cfg: Any) -> List[ShellHookSpec]:
 
     for event_name, entries in hooks_cfg.items():
         if event_name not in VALID_HOOKS:
-            suggestion = difflib.get_close_matches(
-                str(event_name), VALID_HOOKS, n=1, cutoff=0.6,
+            suggestion = _fuzz_process.extract(
+                str(event_name), VALID_HOOKS, limit=1, score_cutoff=60.0,
             )
             if suggestion:
                 logger.warning(
                     "unknown hook event %r in hooks: config — did you mean %r?",
-                    event_name, suggestion[0],
+                    event_name, suggestion[0][0],
                 )
             else:
                 logger.warning(

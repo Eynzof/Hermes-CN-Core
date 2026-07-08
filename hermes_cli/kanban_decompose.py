@@ -39,7 +39,7 @@ from __future__ import annotations
 import orjson
 import logging
 import os
-import re
+from agent.re_compat import re
 from dataclasses import dataclass
 from typing import Optional
 

@@ -76,8 +76,7 @@ def test_token_expired_rejected():
     # Force expiry by signing with a manual past exp via the low-level helper.
     # Simpler: a 1s ttl token is still valid now; instead assert a clearly-old one.
     # Build an already-expired token by hand using the same scheme.
-    import base64
-
+    import pybase64 as base64
     signed = "p:1"  # exp=1 (1970) -> long past
     sig = sign(signed, _SECRET)
     raw = f"{signed}:{sig}".encode()

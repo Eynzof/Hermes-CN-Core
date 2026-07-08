@@ -21,7 +21,7 @@ Update logic:
 The manifest lives at ~/.hermes/skills/.bundled_manifest.
 """
 
-import hashlib
+import xxhash
 import orjson
 import logging
 import os
@@ -231,7 +231,7 @@ def _compute_relative_dest(skill_dir: Path, bundled_dir: Path) -> Path:
 
 def _dir_hash(directory: Path) -> str:
     """Compute a hash of all file contents in a directory for change detection."""
-    hasher = hashlib.md5()
+    hasher = xxhash.xxh64()
     try:
         for fpath in sorted(directory.rglob("*")):
             if fpath.is_file():

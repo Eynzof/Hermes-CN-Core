@@ -3,7 +3,7 @@
 import logging
 import os
 from platform_utils import is_windows
-import re
+from agent.re_compat import re
 import shutil
 import signal
 import subprocess

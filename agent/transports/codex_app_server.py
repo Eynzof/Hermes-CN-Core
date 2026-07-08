@@ -371,8 +371,7 @@ class CodexAppServerClient:
 def parse_codex_version(output: str) -> Optional[tuple[int, int, int]]:
     """Parse `codex --version` output. Returns (major, minor, patch) or None."""
     # Output format: "codex-cli 0.130.0" possibly followed by metadata.
-    import re
-
+    from agent.re_compat import re
     match = re.search(r"(\d+)\.(\d+)\.(\d+)", output or "")
     if not match:
         return None

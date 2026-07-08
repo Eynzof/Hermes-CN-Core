@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import orjson
 import os
-from base64 import b64encode
+from pybase64 import b64encode
 from pathlib import Path
 from typing import Any, Dict
 

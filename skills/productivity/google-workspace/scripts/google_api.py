@@ -21,7 +21,7 @@ Usage:
 """
 
 import argparse
-import base64
+import pybase64 as base64
 import orjson
 import os
 import shutil

@@ -10,8 +10,7 @@ Fixes the bootstrap failure seen in #53257 and desktop update paths that run
 """
 
 from __future__ import annotations
-
-import re
+from agent.re_compat import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent

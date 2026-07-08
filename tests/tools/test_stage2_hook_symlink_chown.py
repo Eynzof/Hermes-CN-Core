@@ -1,7 +1,6 @@
 """Regression tests for symlink-safe Docker stage2 ownership repair."""
 from __future__ import annotations
-
-import re
+from agent.re_compat import re
 import shutil
 import subprocess
 from pathlib import Path

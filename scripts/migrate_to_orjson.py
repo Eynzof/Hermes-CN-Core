@@ -20,7 +20,7 @@ Usage: python scripts/migrate_to_orjson.py [--dry-run] [path]
 
 import ast
 import os
-import re
+from agent.re_compat import re
 import sys
 from pathlib import Path
 

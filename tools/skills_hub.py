@@ -13,11 +13,11 @@ This is a library module (not an agent tool). It provides:
 Used by hermes_cli/skills_hub.py for CLI commands and the /skills slash command.
 """
 
-import hashlib
+import xxhash as _xxhash
 import orjson
 import logging
 import os
-import re
+from agent.re_compat import re
 import shutil
 import subprocess
 import time
@@ -1266,7 +1266,7 @@ class WellKnownSkillSource(SkillSource):
         }
 
     def _parse_index(self, index_url: str) -> Optional[dict]:
-        cache_key = f"well_known_index_{hashlib.md5(index_url.encode()).hexdigest()}"
+        cache_key = f"well_known_index_{_xxhash.xxh64(index_url.encode()).hexdigest()}"
         cached = _read_index_cache(cache_key)
         if isinstance(cached, dict) and isinstance(cached.get("skills"), list):
             return cached
@@ -1531,7 +1531,7 @@ class SkillsShSource(SkillSource):
             # entries; the sitemap walks the full ~20k+ catalog.
             return self._sitemap_catalog(limit)
 
-        cache_key = f"skills_sh_search_{hashlib.md5(f'{query}|{limit}'.encode()).hexdigest()}"
+        cache_key = f"skills_sh_search_{_xxhash.xxh64(f'{query}|{limit}'.encode()).hexdigest()}"
         cached = _read_index_cache(cache_key)
         if cached is not None:
             return [SkillMeta(**item) for item in cached][:limit]
@@ -1758,7 +1758,7 @@ class SkillsShSource(SkillSource):
         )
 
     def _fetch_detail_page(self, identifier: str) -> Optional[dict]:
-        cache_key = f"skills_sh_detail_{hashlib.md5(identifier.encode()).hexdigest()}"
+        cache_key = f"skills_sh_detail_{_xxhash.xxh64(identifier.encode()).hexdigest()}"
         cached = _read_index_cache(cache_key)
         if isinstance(cached, dict):
             return cached
@@ -2252,7 +2252,7 @@ class ClawHubSource(SkillSource):
 
         # Non-empty query catalog miss, or catalog walker failure: fall back to
         # the lightweight listing API for a best-effort response.
-        cache_key = f"clawhub_search_listing_v1_{hashlib.md5(query.encode()).hexdigest()}_{limit}"
+        cache_key = f"clawhub_search_listing_v1_{_xxhash.xxh64(query.encode()).hexdigest()}_{limit}"
         cached = _read_index_cache(cache_key)
         if cached is not None:
             return self._finalize_search_results(
@@ -3571,7 +3571,7 @@ def uninstall_skill(skill_name: str) -> Tuple[bool, str]:
 
 def bundle_content_hash(bundle: SkillBundle) -> str:
     """Compute a deterministic hash for an in-memory skill bundle."""
-    h = hashlib.sha256()
+    h = _xxhash.xxh64()
     for rel_path in sorted(bundle.files):
         # Include the path so swapping file contents between two paths
         # changes the hash (avoids filename-swap evading update detection).

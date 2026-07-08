@@ -1,7 +1,7 @@
 """Shared SKILL.md preprocessing helpers."""
 
 import logging
-import re
+from agent.re_compat import re
 import subprocess
 from pathlib import Path
 

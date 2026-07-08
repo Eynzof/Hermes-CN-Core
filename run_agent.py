@@ -45,14 +45,14 @@ except Exception:
     pass
 
 import asyncio
-import base64
+import pybase64 as base64
 import copy
 import hashlib
 import orjson
 import logging
 logger = logging.getLogger(__name__)
 import os
-import re
+from agent.re_compat import re
 import sys
 import tempfile
 import time

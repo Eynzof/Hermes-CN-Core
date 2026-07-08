@@ -40,7 +40,7 @@ from tests.hermes_cli.conftest_dashboard_auth import StubAuthProvider
 
 
 def _sign(secret: bytes, sub: str, kind: str, ttl: int) -> str:
-    import base64
+    import pybase64 as base64
     import hashlib
     import hmac
     import orjson
@@ -51,7 +51,7 @@ def _sign(secret: bytes, sub: str, kind: str, ttl: int) -> str:
 
 
 def _unsign(secret: bytes, token: str):
-    import base64
+    import pybase64 as base64
     import hashlib
     import hmac
     import orjson

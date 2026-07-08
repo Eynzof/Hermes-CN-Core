@@ -20,7 +20,7 @@ import argparse
 import csv
 import io
 import os
-import re
+from agent.re_compat import re
 import sys
 import time
 import urllib.request

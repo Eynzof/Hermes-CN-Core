@@ -10,7 +10,7 @@ so these tests verify:
 from __future__ import annotations
 
 import ast
-import re
+from agent.re_compat import re
 from pathlib import Path
 
 import pytest

@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import orjson
 import logging
-import re
+from agent.re_compat import re
 import threading
 import time
 from typing import Any, Dict, List, Optional

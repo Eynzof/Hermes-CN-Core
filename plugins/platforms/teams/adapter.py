@@ -467,7 +467,7 @@ _ALLOWED_TEAMS_SERVICE_HOSTS = frozenset({
 # combine digits, colons, hyphens, dots, '@', and the ``thread.skype`` /
 # ``thread.tacv2`` suffixes; reject anything outside this set so a hostile
 # value cannot path-traverse out of ``/v3/conversations/<id>/activities``.
-import re as _re_teams
+from agent.re_compat import re as _re_teams
 _TEAMS_CONV_ID_RE = _re_teams.compile(r"^[A-Za-z0-9:@\-_.]+$")
 
 
@@ -850,7 +850,7 @@ class TeamsAdapter(BasePlatformAdapter):
             text = activity.text
         # Strip <at>BotName</at> HTML tags that Teams prepends for @mentions
         if "<at>" in text:
-            import re
+            from agent.re_compat import re
             text = re.sub(r"<at>[^<]*</at>\s*", "", text).strip()
 
         # Determine chat type from conversation
@@ -1210,7 +1210,7 @@ class TeamsAdapter(BasePlatformAdapter):
             return SendResult(success=False, error="Teams app not initialized")
 
         try:
-            import base64
+            import pybase64 as base64
             import mimetypes
             from microsoft_teams.api import Attachment, MessageActivityInput
 

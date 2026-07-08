@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import orjson
 import logging
-import re
+from agent.re_compat import re
 import tempfile
 from concurrent.futures import TimeoutError as FutureTimeout
 from contextvars import ContextVar, Token

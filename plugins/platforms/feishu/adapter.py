@@ -58,7 +58,7 @@ import orjson
 import logging
 import mimetypes
 import os
-import re
+from agent.re_compat import re
 import threading
 import time
 import uuid

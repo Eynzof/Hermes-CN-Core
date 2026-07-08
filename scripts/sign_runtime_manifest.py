@@ -31,12 +31,12 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import base64
+import pybase64 as base64
 import datetime as _dt
 import hashlib
 import orjson
 import os
-import re
+from agent.re_compat import re
 import sys
 from pathlib import Path
 

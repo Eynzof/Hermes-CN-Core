@@ -10,8 +10,7 @@ These tests MUST pass on the current tini-based image AND continue to
 pass after the Phase 2 s6 migration. Any drift is a regression.
 """
 from __future__ import annotations
-
-import re
+from agent.re_compat import re
 import shlex
 import shutil
 import subprocess

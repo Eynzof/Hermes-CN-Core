@@ -30,7 +30,7 @@ from __future__ import annotations
 import orjson
 import logging
 import math
-import re
+from agent.re_compat import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 

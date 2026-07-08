@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import orjson
 import math
-import re
+from agent.re_compat import re
 import threading
 import time
 from pathlib import Path

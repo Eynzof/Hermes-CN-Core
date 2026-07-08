@@ -515,7 +515,7 @@ class TestStubSchemaDrift(unittest.TestCase):
     def test_stubs_cover_all_schema_params(self):
         """Every user-facing parameter in the real schema must appear in the
         corresponding _TOOL_STUBS entry."""
-        import re
+        from agent.re_compat import re
         from tools.code_execution_tool import _TOOL_STUBS
 
         # Import the registry and trigger tool registration
@@ -550,7 +550,7 @@ class TestStubSchemaDrift(unittest.TestCase):
     def test_stubs_pass_all_params_to_rpc(self):
         """The args_dict_expr in each stub must include every parameter from
         the signature, so that all params are actually sent over RPC."""
-        import re
+        from agent.re_compat import re
         from tools.code_execution_tool import _TOOL_STUBS
 
         for tool_name, (func_name, sig, doc, args_expr) in _TOOL_STUBS.items():

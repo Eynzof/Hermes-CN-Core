@@ -17,11 +17,11 @@ Improvements over v2:
 """
 
 import gc
-import hashlib
+import xxhash
 import orjson
 import logging
 import sqlite3
-import re
+from agent.re_compat import re
 import time
 from typing import Any, Dict, List, Optional
 
@@ -1252,7 +1252,7 @@ class ContextCompressor(ContextEngine):
                 continue
             if len(content) < 200:
                 continue
-            h = hashlib.md5(content.encode("utf-8", errors="replace")).hexdigest()[:12]
+            h = xxhash.xxh64(content.encode("utf-8", errors="replace")).hexdigest()[:12]
             if h in content_hashes:
                 # This is an older duplicate — replace with back-reference
                 result[i] = {**msg, "content": "[Duplicate tool output — same content as a more recent call]"}

@@ -676,7 +676,7 @@ def _codex_cloudflare_headers(access_token: str) -> Dict[str, str]:
     if not isinstance(access_token, str) or not access_token.strip():
         return headers
     try:
-        import base64
+        import pybase64 as base64
         parts = access_token.split(".")
         if len(parts) < 2:
             return headers
@@ -1680,7 +1680,7 @@ def _read_codex_access_token() -> Optional[str]:
         # Check JWT expiry — expired tokens block the auto chain and
         # prevent fallback to working providers (e.g. Anthropic).
         try:
-            import base64
+            import pybase64 as base64
             payload = access_token.split(".")[1]
             payload += "=" * (-len(payload) % 4)
             claims = orjson.loads(base64.urlsafe_b64decode(payload))
@@ -6590,8 +6590,7 @@ def extract_content_or_reasoning(response) -> str:
 
     Returns the best available text, or ``""`` if nothing found.
     """
-    import re
-
+    from agent.re_compat import re
     msg = response.choices[0].message
     content = (msg.content or "").strip()
 

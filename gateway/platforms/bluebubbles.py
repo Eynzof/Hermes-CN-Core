@@ -12,7 +12,7 @@ import asyncio
 import orjson
 import logging
 import os
-import re
+from agent.re_compat import re
 import uuid
 from collections import OrderedDict
 from datetime import datetime

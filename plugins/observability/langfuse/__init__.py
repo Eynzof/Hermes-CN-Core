@@ -26,7 +26,7 @@ import json
 import orjson
 import logging
 import os
-import re
+from agent.re_compat import re
 import threading
 import time
 from dataclasses import dataclass, field

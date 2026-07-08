@@ -36,7 +36,7 @@ live-session tests ``skipif`` when PowerShell is absent.
 
 from __future__ import annotations
 
-import base64
+import pybase64 as base64
 import logging
 import os
 from platform_utils import is_windows

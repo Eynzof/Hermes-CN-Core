@@ -170,8 +170,7 @@ def _passthrough_from_wire(raw: Dict[str, Any]) -> PassthroughForward:
     gateway re-processes byte-identical content (the connector is the trust
     boundary; it already verified at the edge).
     """
-    import base64
-
+    import pybase64 as base64
     body_b64 = raw.get("bodyB64", "") or ""
     try:
         body = base64.b64decode(body_b64)

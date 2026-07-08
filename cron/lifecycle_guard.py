@@ -32,8 +32,7 @@ only fail (silently) when it fires.
 """
 
 from __future__ import annotations
-
-import re
+from agent.re_compat import re
 from pathlib import Path
 from typing import Optional
 

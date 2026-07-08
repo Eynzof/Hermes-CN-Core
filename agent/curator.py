@@ -24,7 +24,7 @@ from __future__ import annotations
 import orjson
 import logging
 import os
-import re
+from agent.re_compat import re
 import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -743,7 +743,7 @@ def _parse_structured_summary(
     # Find the YAML fenced block. We look for ```yaml ... ``` specifically
     # rather than any fenced block so we don't accidentally pick up a code
     # sample the model quoted elsewhere.
-    import re
+    from agent.re_compat import re
     match = re.search(
         r"```ya?ml\s*\n(.*?)\n```",
         llm_final,

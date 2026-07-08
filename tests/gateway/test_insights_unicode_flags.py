@@ -3,7 +3,7 @@
 Telegram on iOS auto-converts -- to em/en dashes. The /insights handler
 normalizes these before parsing --days and --source flags.
 """
-import re
+from agent.re_compat import re
 import pytest
 
 

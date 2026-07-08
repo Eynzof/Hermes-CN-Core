@@ -11,9 +11,7 @@ Combines functionality from:
 import unittest
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
-import re
-
-
+from agent.re_compat import re
 # ---------------------------------------------------------------------------
 # Effort level parsing
 # ---------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 """Tests for tools/file_operations.py — deny list, result dataclasses, helpers."""
 
 import os
-import re
+from agent.re_compat import re
 import pytest
 import subprocess
 import tools.file_operations
@@ -327,7 +327,7 @@ class TestSearchResultDensify:
     def test_densify_is_lossless(self):
         # Every path, line number, and content byte must be recoverable from
         # the dense form.
-        import re
+        from agent.re_compat import re
         matches = [
             SearchMatch(path="src/x.py", line_number=12, content="    def foo():"),
             SearchMatch(path="src/x.py", line_number=45, content="        return bar"),

@@ -434,8 +434,7 @@ def _apply_profile_override() -> None:
     # Mirrors hermes_cli.profiles._PROFILE_ID_RE so we never call
     # resolve_profile_env() with a value it must reject + sys.exit on.
     if profile_name is not None and consume == 2:
-        import re as _re
-
+        from agent.re_compat import re as _re
         if not _re.match(r"^[a-z0-9][a-z0-9_-]{0,63}$", profile_name):
             profile_name = None
             consume = 0
@@ -3716,8 +3715,7 @@ def _auto_provider_name(base_url: str) -> str:
     "RunPod (xyz.runpod.io)".  Used as the default when prompting the
     user for a display name during custom endpoint setup.
     """
-    import re
-
+    from agent.re_compat import re
     clean = base_url.replace("https://", "").replace("http://", "").rstrip("/")
     clean = re.sub(r"/v1/?$", "", clean)
     name = clean.split("/")[0]
@@ -4748,8 +4746,7 @@ def _nixos_build_env() -> dict[str, str] | None:
     Returns an env dict suitable for ``subprocess.run(env=...)`` or
     ``None`` when we are not on NixOS or python3 is already on PATH.
     """
-    import re
-
+    from agent.re_compat import re
     try:
         os_release = Path("/etc/os-release").read_text(encoding="utf-8")
     except OSError:

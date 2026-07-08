@@ -7,7 +7,7 @@ tool registration or provider resolution.
 
 import logging
 import os
-import re
+from agent.re_compat import re
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple

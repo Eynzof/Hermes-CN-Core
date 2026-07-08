@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import orjson
 import random
-import re
+from agent.re_compat import re
 import unicodedata
 from typing import Optional
 

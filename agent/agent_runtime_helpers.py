@@ -25,7 +25,7 @@ from __future__ import annotations
 import copy
 import orjson
 import logging
-import re
+from agent.re_compat import re
 import time
 from datetime import datetime
 from pathlib import Path
@@ -2251,8 +2251,8 @@ def repair_tool_call(agent, tool_name: str) -> str | None:
 
     Returns the repaired name if found in valid_tool_names, else None.
     """
-    import re
-    from difflib import get_close_matches
+    from agent.re_compat import re
+    import rapidfuzz.process as _fuzz_process
 
     if not tool_name:
         return None
@@ -2317,9 +2317,9 @@ def repair_tool_call(agent, tool_name: str) -> str | None:
             return c
 
     # Fuzzy match as last resort.
-    matches = get_close_matches(lowered, agent.valid_tool_names, n=1, cutoff=0.7)
+    matches = _fuzz_process.extract(lowered, agent.valid_tool_names, limit=1, score_cutoff=70.0)
     if matches:
-        return matches[0]
+        return matches[0][0]
 
     return None
 

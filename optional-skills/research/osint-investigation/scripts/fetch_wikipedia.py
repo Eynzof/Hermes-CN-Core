@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import argparse
 import csv
-import re
+from agent.re_compat import re
 import sys
 import urllib.parse
 from pathlib import Path

@@ -34,7 +34,7 @@ from __future__ import annotations
 
 import orjson
 import logging
-import re
+from agent.re_compat import re
 from typing import Any, Dict, List, Optional
 
 from agent.web_search_provider import WebSearchProvider

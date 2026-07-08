@@ -2375,8 +2375,7 @@ def run_doctor(args):
 
     try:
         from hermes_cli.profiles import list_profiles, _get_wrapper_dir, profile_exists
-        import re as _re
-
+        from agent.re_compat import re as _re
         named_profiles = [p for p in list_profiles() if not p.is_default]
         if named_profiles:
             _section("Profiles")

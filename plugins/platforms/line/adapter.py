@@ -61,7 +61,7 @@ a single plugin-form module that requires zero core edits:
 from __future__ import annotations
 
 import asyncio
-import base64
+import pybase64 as base64
 import enum
 import hashlib
 import hmac
@@ -69,7 +69,7 @@ import orjson
 import logging
 import mimetypes
 import os
-import re
+from agent.re_compat import re
 import secrets
 import tempfile
 import time

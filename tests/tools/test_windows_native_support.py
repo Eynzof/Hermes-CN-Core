@@ -425,7 +425,7 @@ class TestTzdataDependencyDeclared:
         # not care about the exact pinned version (which is bumped over time)
         # — only that tzdata is declared with a win32 marker. This is an
         # invariant check, not a snapshot test.
-        import re
+        from agent.re_compat import re
         # Match `"tzdata` … `; sys_platform == 'win32'"` allowing any version
         # specifier in between (==X.Y.Z, >=X.Y.Z,<W, etc.) and either quote
         # style on the marker.

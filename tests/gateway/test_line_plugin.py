@@ -17,7 +17,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac
-import base64
+import pybase64 as base64
 import orjson
 from unittest.mock import AsyncMock, MagicMock
 

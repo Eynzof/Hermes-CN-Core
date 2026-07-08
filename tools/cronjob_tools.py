@@ -7,7 +7,7 @@ Compatibility wrappers remain for direct Python callers and legacy tests.
 
 import orjson
 import logging
-import re
+from agent.re_compat import re
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union

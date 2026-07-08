@@ -1679,7 +1679,7 @@ def _profile_suffix() -> str:
     Works correctly in Docker (HERMES_HOME=/opt/data) and standard deployments.
     """
     import hashlib
-    import re
+    from agent.re_compat import re
     from hermes_constants import get_default_hermes_root
 
     home = get_hermes_home().resolve()
@@ -1714,7 +1714,7 @@ def _profile_arg(hermes_home: str | None = None, default_root: str | Path | None
             process, where ``Path.home()`` and ``get_default_hermes_root()``
             refer to root but the target profile lives under the service user.
     """
-    import re
+    from agent.re_compat import re
     from hermes_constants import get_default_hermes_root
 
     home = Path(hermes_home or str(get_hermes_home())).resolve()
@@ -2810,8 +2810,7 @@ def _normalize_launchd_plist_for_comparison(text: str) -> str:
     That makes raw text comparison unstable across shells, so ignore the PATH
     payload when deciding whether the installed plist is stale.
     """
-    import re
-
+    from agent.re_compat import re
     normalized = _normalize_service_definition(text)
     return re.sub(
         r"(<key>PATH</key>\s*<string>)(.*?)(</string>)",
@@ -2859,7 +2858,7 @@ def _temp_home_in_service_definition(definition: str) -> str | None:
     Matches both systemd ``Environment="HERMES_HOME=..."`` lines and launchd
     ``<key>HERMES_HOME</key><string>...</string>`` pairs.
     """
-    import re
+    from agent.re_compat import re
     import tempfile
 
     candidates = re.findall(r'HERMES_HOME=([^"\n]+)', definition)

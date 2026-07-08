@@ -6597,8 +6597,7 @@ def _pet_sprite_payload(pet, *, scale: float) -> dict:
     Shared by ``pet.info`` (the active mascot) and ``pet.hatch`` (the unadopted
     preview) so both feed the desktop canvas / TUI from one shape.
     """
-    import base64
-
+    import pybase64 as base64
     from agent.pet import constants
 
     cache_key = _pet_payload_cache_key(pet, scale=scale)
@@ -6982,8 +6981,7 @@ def _(rid, params: dict) -> dict:
     if not slug:
         return _err(rid, 4004, "missing slug")
     try:
-        import base64
-
+        import pybase64 as base64
         from agent.pet import store
 
         filename, data = store.export_pet(slug)
@@ -7048,8 +7046,7 @@ def _(rid, params: dict) -> dict:
     if not slug:
         return _err(rid, 4004, "missing slug")
     try:
-        import base64
-
+        import pybase64 as base64
         from agent.pet import store
 
         data = store.thumbnail_png(slug, source_url=str(params.get("url") or ""))
@@ -7129,7 +7126,7 @@ def _pet_gen_sweep(root, *, max_age_s: float = 3600.0) -> None:
 
 def _pet_png_data_uri(path, *, max_px: int = 160) -> str:
     """Downscaled PNG data URI for a draft image (small preview payload)."""
-    import base64
+    import pybase64 as base64
     import io
 
     from PIL import Image
@@ -7166,10 +7163,9 @@ except (TypeError, ValueError):
 
 def _pet_reference_images_from_data_url(ref_raw: str, stage) -> list:
     """Decode + validate a reference-image data URL into the stage dir."""
-    import base64
+    import pybase64 as base64
     import binascii
-    import re as _re
-
+    from agent.re_compat import re as _re
     match = _re.match(r"^data:image/([a-zA-Z0-9.+-]+);base64,(.*)$", ref_raw, _re.DOTALL)
     if not match:
         raise ValueError("invalid reference image format")
@@ -9338,9 +9334,8 @@ def _decode_attach_base64(raw: str, *, mime_prefix: str) -> bytes | None:
     Accepts ``data:<mime_prefix>...;base64,<b64>`` plus embedded whitespace.
     Returns the decoded bytes, or ``None`` when the input isn't valid base64.
     """
-    import base64 as _base64
-    import re as _re
-
+    import pybase64 as _base64
+    from agent.re_compat import re as _re
     cleaned = raw.strip()
     m = _re.match(
         rf"^data:{_re.escape(mime_prefix)}[a-zA-Z0-9.+-]*;base64,(.*)$",
@@ -9598,8 +9593,7 @@ def _format_ref_value(value: str) -> str:
     Mirrors the desktop ``formatRefValue`` so the staged ``@file:`` ref round-trips
     through ``agent.context_references`` cleanly.
     """
-    import re as _re
-
+    from agent.re_compat import re as _re
     global _ATTACHMENT_REF_NEEDS_QUOTING_RE
     if _ATTACHMENT_REF_NEEDS_QUOTING_RE is None:
         _ATTACHMENT_REF_NEEDS_QUOTING_RE = _re.compile(r"""[\s()\[\]{}<>"'`]""")
@@ -9631,8 +9625,7 @@ def _desktop_attachment_dir(session: dict) -> Path:
 
 
 def _sanitize_attachment_name(name: str) -> str:
-    import re as _re
-
+    from agent.re_compat import re as _re
     candidate = Path(str(name or "").strip()).name
     candidate = _re.sub(r"[\x00-\x1f]+", "_", candidate)
     candidate = candidate.strip().strip(".")
@@ -9677,10 +9670,9 @@ def _decode_attachment_data_url(data_url: str) -> bytes:
     media type — text/csv, application/pdf, etc. — so non-image file uploads
     round-trip. Also tolerates a bare base64 string with no data-URL prefix.
     """
-    import base64 as _base64
+    import pybase64 as _base64
     import binascii as _binascii
-    import re as _re
-
+    from agent.re_compat import re as _re
     cleaned = (data_url or "").strip()
     m = _re.match(r"^data:[^;,]*(?:;[^;,=]+=[^;,]+)*;base64,(.*)$", cleaned, _re.DOTALL | _re.I)
     if m:

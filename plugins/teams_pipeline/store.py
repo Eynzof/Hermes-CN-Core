@@ -6,7 +6,7 @@ import hashlib
 import orjson
 import os
 import threading
-from copy import deepcopy
+from agent.fast_deepcopy import fast_deepcopy as deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import NamedTemporaryFile

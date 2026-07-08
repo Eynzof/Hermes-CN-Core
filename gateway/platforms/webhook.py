@@ -27,13 +27,13 @@ Security:
 """
 
 import asyncio
-import base64
+import pybase64 as base64
 import binascii
 import hashlib
 import hmac
 import orjson
 import logging
-import re
+from agent.re_compat import re
 import subprocess
 import time
 from collections import deque

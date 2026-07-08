@@ -13,8 +13,7 @@ This is an *invariant* test (the two sibling notices must agree), not a literal
 snapshot: it asserts the relationship "count line ⇒ discovery hint", so it
 keeps holding if the wording is reworded, as long as both sites stay in sync.
 """
-
-import re
+from agent.re_compat import re
 from pathlib import Path
 
 import hermes_cli.main as main_mod

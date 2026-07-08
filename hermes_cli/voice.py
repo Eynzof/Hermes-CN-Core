@@ -753,8 +753,7 @@ def speak_text(text: str) -> None:
     """
     if not text or not text.strip():
         return
-
-    import re
+    from agent.re_compat import re
     import tempfile
     import time
 

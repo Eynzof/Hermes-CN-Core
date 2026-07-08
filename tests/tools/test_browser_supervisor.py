@@ -15,7 +15,7 @@ Automated: skipped in CI unless ``HERMES_E2E_BROWSER=1`` is set.
 from __future__ import annotations
 
 import asyncio
-import base64
+import pybase64 as base64
 import orjson
 import shutil
 import subprocess
@@ -498,8 +498,7 @@ def test_bridge_captures_prompt_and_returns_reply_text(chrome_cdp, supervisor_re
     tripping our reply back into the page via Fetch.fulfillRequest, so
     ``prompt()`` actually returns the agent-supplied string to the page.
     """
-    import base64 as _b64
-
+    import pybase64 as _b64
     cdp_url, _port = chrome_cdp
     sv = supervisor_registry.get_or_start(task_id="pytest-bridge-prompt", cdp_url=cdp_url)
 

@@ -17,7 +17,7 @@ Usage:
 
 import argparse
 import orjson
-import re
+from agent.re_compat import re
 import subprocess
 import sys
 from collections import defaultdict

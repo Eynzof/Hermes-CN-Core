@@ -7,7 +7,7 @@ Coverage:
                               image attachment state, queue tuple routing
 """
 
-import base64
+import pybase64 as base64
 import os
 import queue
 import subprocess

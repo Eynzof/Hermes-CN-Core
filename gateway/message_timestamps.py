@@ -6,8 +6,7 @@ persisted message content should stay clean so replay does not accumulate
 """
 
 from __future__ import annotations
-
-import re
+from agent.re_compat import re
 from datetime import datetime
 from typing import Any, Optional, Tuple
 

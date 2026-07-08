@@ -10,8 +10,7 @@ values for the Bot API.
 """
 
 from __future__ import annotations
-
-import re
+from agent.re_compat import re
 from typing import Any, Union
 
 # Telegram usernames are 5-32 chars: letters, digits, underscores, with a

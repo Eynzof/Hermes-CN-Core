@@ -9,7 +9,7 @@ with compression thresholds — not exact tokenizer counts.
 from __future__ import annotations
 
 import orjson
-import re
+from agent.re_compat import re
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 _SKILLS_BLOCK_RE = re.compile(r"<available_skills>.*?</available_skills>", re.DOTALL)

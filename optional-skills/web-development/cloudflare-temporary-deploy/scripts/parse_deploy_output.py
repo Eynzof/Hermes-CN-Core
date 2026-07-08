@@ -13,7 +13,7 @@ Usage:
 from __future__ import annotations
 
 import orjson
-import re
+from agent.re_compat import re
 import sys
 
 # Match the live workers.dev URL (subdomain.subdomain.workers.dev).

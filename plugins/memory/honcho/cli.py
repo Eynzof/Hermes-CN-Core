@@ -1237,8 +1237,7 @@ def cmd_map(args) -> None:
     if not session_name:
         print("  Session name cannot be empty.\n")
         return
-
-    import re
+    from agent.re_compat import re
     sanitized = re.sub(r'[^a-zA-Z0-9_-]', '-', session_name).strip('-')
     if sanitized != session_name:
         print(f"  Session name sanitized to: {sanitized}")

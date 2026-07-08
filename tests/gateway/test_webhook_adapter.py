@@ -15,7 +15,7 @@ Covers:
 """
 
 import asyncio
-import base64
+import pybase64 as base64
 import hashlib
 import hmac
 import orjson

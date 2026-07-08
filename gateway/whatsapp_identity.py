@@ -32,7 +32,7 @@ from __future__ import annotations
 
 import orjson
 import logging
-import re
+from agent.re_compat import re
 from typing import Set
 
 logger = logging.getLogger(__name__)

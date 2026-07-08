@@ -1,4 +1,4 @@
-import re
+from agent.re_compat import re
 from pathlib import Path
 
 CHAT_SIDEBAR = Path(__file__).resolve().parent.parent / "web/src/components/ChatSidebar.tsx"

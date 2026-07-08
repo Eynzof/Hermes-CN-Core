@@ -8,7 +8,7 @@ and thread participation tracking.
 import asyncio
 import orjson
 import logging
-import re
+from agent.re_compat import re
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict

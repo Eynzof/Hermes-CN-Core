@@ -8,7 +8,7 @@ persistence via bind mounts.
 import orjson
 import logging
 import os
-import re
+from agent.re_compat import re
 import shutil
 import subprocess
 import sys
@@ -256,7 +256,7 @@ def _container_finished_at(docker_exe: str, container_id: str):
         return None
     # Docker emits RFC3339 with nanoseconds (e.g. "2026-05-28T13:45:00.123456789Z").
     # Python's fromisoformat handles microseconds but not nanoseconds; trim.
-    import re as _re
+    from agent.re_compat import re as _re
     raw = _re.sub(r"(\.\d{6})\d+", r"\1", raw)
     raw = raw.replace("Z", "+00:00")
     try:

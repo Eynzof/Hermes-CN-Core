@@ -1,6 +1,5 @@
 """Bash command preprocessing for Windows path compatibility."""
-
-import re
+from agent.re_compat import re
 import sys
 
 # Characters for which a backslash escape must be preserved in bash.

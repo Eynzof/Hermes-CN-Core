@@ -59,10 +59,10 @@ supports.
 
 from __future__ import annotations
 
-import base64
+import pybase64 as base64
 import orjson
 import logging
-import re
+from agent.re_compat import re
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Sequence, Union
 

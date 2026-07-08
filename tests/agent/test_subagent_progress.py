@@ -234,7 +234,7 @@ class TestThinkingCallback:
         delegate_depth: simulates self._delegate_depth.
             0 = main agent (should NOT fire), >=1 = subagent (should fire).
         """
-        import re
+        from agent.re_compat import re
         if (content and callback and delegate_depth > 0):
             _think_text = content.strip()
             _think_text = re.sub(

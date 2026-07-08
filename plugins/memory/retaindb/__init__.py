@@ -24,7 +24,7 @@ import orjson
 import logging
 import os
 import queue
-import re
+from agent.re_compat import re
 import sqlite3
 import threading
 import time

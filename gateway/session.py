@@ -8,7 +8,7 @@ Handles:
 - Dynamic system prompt injection (agent knows its context)
 """
 
-import hashlib
+import xxhash
 import logging
 import os
 import orjson
@@ -62,7 +62,7 @@ def auto_continue_freshness_window() -> float:
 
 def _hash_id(value: str) -> str:
     """Deterministic 12-char hex hash of an identifier."""
-    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:12]
+    return xxhash.xxh64(value.encode("utf-8")).hexdigest()[:12]
 
 
 def _hash_sender_id(value: str) -> str:

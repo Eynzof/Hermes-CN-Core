@@ -16,7 +16,7 @@ All HTTP is mocked: nothing in this file talks to a real Portal.
 
 from __future__ import annotations
 
-import base64
+import pybase64 as base64
 import hashlib
 import orjson
 import time

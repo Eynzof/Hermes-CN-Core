@@ -25,7 +25,7 @@ Or as a pytest smoke test (skipped automatically when Pillow is absent):
 
 from __future__ import annotations
 
-import base64
+import pybase64 as base64
 import io
 import sys
 from pathlib import Path

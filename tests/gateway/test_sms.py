@@ -4,7 +4,7 @@ Covers config loading, format/truncate, echo prevention,
 requirements check, toolset verification, and Twilio signature validation.
 """
 
-import base64
+import pybase64 as base64
 import hashlib
 import hmac
 import os

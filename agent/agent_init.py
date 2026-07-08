@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import logging
 import os
-import re
+from agent.re_compat import re
 import sys
 import threading
 import time

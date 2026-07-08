@@ -15,8 +15,7 @@ profile create/delete hooks (Phase 4) and the s6 dispatch path in
 ``hermes gateway start/stop/restart`` when running inside a container.
 """
 from __future__ import annotations
-
-import re
+from agent.re_compat import re
 from pathlib import Path
 from typing import Literal, Protocol, runtime_checkable
 

@@ -789,7 +789,7 @@ class TestResolveSessionNameLengthLimit:
 
     def test_truncated_result_respects_char_allowlist(self):
         """Truncated result must still match Honcho's [a-zA-Z0-9_-] allowlist."""
-        import re
+        from agent.re_compat import re
         key = "slack:T12345:thread-reply:" + ("x" * 300) + ":with:colons:and:slashes/here"
         config = HonchoClientConfig()
         result = config.resolve_session_name(gateway_session_key=key)
@@ -810,7 +810,7 @@ class TestResolveSessionNameLengthLimit:
 
     def test_truncated_result_has_hash_suffix(self):
         """Truncated IDs must end with '-<8 hex chars>' for collision resistance."""
-        import re
+        from agent.re_compat import re
         key = "matrix-" + ("a" * 300)
         config = HonchoClientConfig()
         result = config.resolve_session_name(gateway_session_key=key)

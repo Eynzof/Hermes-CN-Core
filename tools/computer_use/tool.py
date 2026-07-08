@@ -38,11 +38,11 @@ For captures / actions with `capture_after=True`:
 
 from __future__ import annotations
 
-import base64
+import pybase64 as base64
 import orjson
 import logging
 import os
-import re
+from agent.re_compat import re
 import struct
 import sys
 import threading
@@ -748,7 +748,7 @@ def _route_capture_through_aux_vision(
     if not cap.png_b64:
         return None
     try:
-        import base64 as _base64
+        import pybase64 as _base64
         import os as _os
         import uuid as _uuid
 

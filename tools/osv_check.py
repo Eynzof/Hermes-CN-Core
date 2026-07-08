@@ -13,7 +13,7 @@ Inspired by Block/goose's extension malware check.
 import orjson
 import logging
 import os
-import re
+from agent.re_compat import re
 import urllib.request
 from typing import Optional, Tuple
 

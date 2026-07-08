@@ -503,8 +503,7 @@ def _extract_progress_preview(content: str) -> str | None:
     - Legacy / custom tools:  ``🔧 tool_name: "<preview>"`` (quoted)
     - Friendly built-in verb: ``💻 Running <preview>`` (verb prefix, no quotes)
     """
-    import re
-
+    from agent.re_compat import re
     # Legacy quoted form takes precedence when present.
     match = re.search(r'"(.+)"', content)
     if match:

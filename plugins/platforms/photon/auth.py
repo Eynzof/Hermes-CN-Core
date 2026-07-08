@@ -39,9 +39,9 @@ from __future__ import annotations
 import orjson
 import logging
 import os
-import re
+from agent.re_compat import re
 import time
-from base64 import b64encode
+from pybase64 import b64encode
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple

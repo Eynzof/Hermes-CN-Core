@@ -31,7 +31,7 @@ import inspect
 import orjson
 import logging
 import os
-import re
+from agent.re_compat import re
 import shlex
 import site
 import sys
@@ -2128,7 +2128,7 @@ def _skill_slug_from_frontmatter(skill_md: Path) -> tuple[str | None, str | None
         return None, None
     slug = declared_name.lower().replace(" ", "-").replace("_", "-")
     # Mirror _SKILL_INVALID_CHARS and _SKILL_MULTI_HYPHEN from skill_commands
-    import re as _re
+    from agent.re_compat import re as _re
     slug = _re.sub(r"[^a-z0-9-]", "", slug)
     slug = _re.sub(r"-{2,}", "-", slug).strip("-")
     if not slug:
@@ -11972,7 +11972,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
         completes / blocks / auto-blocks / crashes without having to poll.
         """
         import asyncio
-        import re
+        from agent.re_compat import re
         import shlex
         from hermes_cli.kanban import run_slash
 
@@ -12636,7 +12636,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
         spoken replies. Dedup exact and near-exact repeats per guild/user over a
         short window while allowing genuinely new turns through.
         """
-        from difflib import SequenceMatcher
+        import rapidfuzz.fuzz as _fuzz
 
         normalized = re.sub(r"\s+", " ", transcript).strip().lower()
         normalized = re.sub(r"[^\w\s]", "", normalized)
@@ -12661,7 +12661,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                 recent_store[key] = recent
                 return True
             if len(prior) >= 16 and len(normalized) >= 16:
-                if SequenceMatcher(None, prior, normalized).ratio() >= 0.95:
+                if _fuzz.ratio(prior, normalized) / 100.0 >= 0.95:
                     recent_store[key] = recent
                     return True
 
@@ -20343,6 +20343,13 @@ def main():
         from hermes_cli.stdio import configure_windows_stdio
         configure_windows_stdio()
     except Exception:
+        pass
+
+    # Use uvloop on Unix for 2-4× async throughput (no-op on Windows).
+    try:
+        import uvloop
+        uvloop.install()
+    except ImportError:
         pass
 
     import argparse

@@ -7,7 +7,7 @@ The quiz question *generation* is done by the agent's LLM — this script only f
 
 import argparse
 import orjson
-import re
+from agent.re_compat import re
 import sys
 
 

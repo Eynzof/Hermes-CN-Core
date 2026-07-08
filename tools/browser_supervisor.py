@@ -1173,7 +1173,7 @@ class CDPSupervisor:
         }
         body = orjson.dumps(payload)
         try:
-            import base64 as _b64
+            import pybase64 as _b64
             await self._cdp(
                 "Fetch.fulfillRequest",
                 {

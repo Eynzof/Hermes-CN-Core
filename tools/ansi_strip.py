@@ -10,9 +10,7 @@ colon-separated params, intermediate bytes), OSC (BEL and ST terminators),
 DCS/SOS/PM/APC string sequences, nF multi-byte escapes, Fp/Fe/Fs
 single-byte escapes, and 8-bit C1 control characters.
 """
-
-import re
-
+from agent.re_compat import re
 _ANSI_ESCAPE_RE = re.compile(
     r"\x1b"
     r"(?:"

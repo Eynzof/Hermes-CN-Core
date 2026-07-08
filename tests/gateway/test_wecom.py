@@ -1,7 +1,7 @@
 """Tests for the WeCom platform adapter."""
 
 import asyncio
-import base64
+import pybase64 as base64
 import os
 from pathlib import Path
 from types import SimpleNamespace

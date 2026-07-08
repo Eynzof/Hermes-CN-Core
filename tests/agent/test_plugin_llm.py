@@ -9,7 +9,7 @@ so we don't hit real providers.
 from __future__ import annotations
 
 import asyncio
-import base64
+import pybase64 as base64
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock

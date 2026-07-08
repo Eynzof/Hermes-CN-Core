@@ -9,7 +9,7 @@ from __future__ import annotations
 import orjson
 import logging
 import os
-import re
+from agent.re_compat import re
 import threading
 import urllib.error
 import urllib.request

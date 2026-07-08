@@ -8,7 +8,7 @@ import ipaddress
 import orjson
 import logging
 import os
-import re
+from agent.re_compat import re
 import threading
 import time
 from pathlib import Path

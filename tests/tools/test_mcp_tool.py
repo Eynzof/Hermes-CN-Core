@@ -3988,7 +3988,7 @@ class TestSanitizeMcpNameComponent:
         schema = _convert_mcp_schema("ai.exa/exa", mcp_tool)
         assert schema["name"] == "mcp_ai_exa_exa_search"
         # Must match Anthropic's pattern: ^[a-zA-Z0-9_-]{1,128}$
-        import re
+        from agent.re_compat import re
         assert re.match(r"^[a-zA-Z0-9_-]{1,128}$", schema["name"])
 
     def test_slash_in_build_utility_schemas(self):

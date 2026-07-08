@@ -30,7 +30,7 @@ from __future__ import annotations
 import ctypes
 import locale
 import os
-import re
+from agent.re_compat import re
 import shlex
 import shutil
 import subprocess

@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
+from agent.re_compat import re
 import time
 from typing import Any, Optional
 

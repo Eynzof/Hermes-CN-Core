@@ -26,7 +26,7 @@ container as ``http://host.docker.internal:3000``.
 from __future__ import annotations
 
 import base64
-import json
+import orjson
 import logging
 import os
 import threading
@@ -556,16 +556,16 @@ def camofox_navigate(url: str, task_id: Optional[str] = None) -> str:
         except Exception:
             pass  # Navigation succeeded; snapshot is a bonus
 
-        return json.dumps(result)
+        return orjson.dumps(result).decode('utf-8')
     except requests.HTTPError as e:
         return tool_error(f"Navigation failed: {e}", success=False)
     except requests.ConnectionError:
-        return json.dumps({
+        return orjson.dumps({
             "success": False,
             "error": f"Cannot connect to Camofox at {get_camofox_url()}. "
                      "Is the server running? Start with: npm start (in camofox-browser dir) "
                      "or: docker run -p 9377:9377 -e CAMOFOX_PORT=9377 jo-inc/camofox-browser",
-        })
+        }).decode('utf-8')
     except Exception as e:
         return tool_error(str(e), success=False)
 
@@ -594,14 +594,14 @@ def _camofox_private_page_block(session: Dict[str, Any], task_id: Optional[str],
     blocked_url = _camofox_current_page_private_url(session["tab_id"], session["user_id"])
     if not blocked_url:
         return None
-    return json.dumps({
+    return orjson.dumps({
         "success": False,
         "error": (
             "Blocked: page URL targets a private or internal address "
             f"({blocked_url}). Refusing to {action} on this page in this "
             "browser mode."
         ),
-    }, ensure_ascii=False)
+    }).decode('utf-8')
 
 
 def camofox_snapshot(full: bool = False, task_id: Optional[str] = None,
@@ -637,11 +637,11 @@ def camofox_snapshot(full: bool = False, task_id: Optional[str] = None,
             else:
                 snapshot = _truncate_snapshot(snapshot)
 
-        return json.dumps({
+        return orjson.dumps({
             "success": True,
             "snapshot": snapshot,
             "element_count": refs_count,
-        })
+        }).decode('utf-8')
     except Exception as e:
         return tool_error(str(e), success=False)
 
@@ -660,11 +660,11 @@ def camofox_click(ref: str, task_id: Optional[str] = None) -> str:
             f"/tabs/{session['tab_id']}/click",
             {"userId": session["user_id"], "ref": clean_ref},
         )
-        return json.dumps({
+        return orjson.dumps({
             "success": True,
             "clicked": clean_ref,
             "url": data.get("url", ""),
-        })
+        }).decode('utf-8')
     except Exception as e:
         return tool_error(str(e), success=False)
 
@@ -699,7 +699,7 @@ def camofox_type(ref: str, text: str, task_id: Optional[str] = None) -> str:
             "element": clean_ref,
         }
         response = redact_browser_typed_text_for_display(response, text)
-        return json.dumps(response)
+        return orjson.dumps(response).decode('utf-8')
     except Exception as e:
         from agent.display import redact_browser_typed_text_for_display
 
@@ -717,7 +717,7 @@ def camofox_scroll(direction: str, task_id: Optional[str] = None) -> str:
             f"/tabs/{session['tab_id']}/scroll",
             {"userId": session["user_id"], "direction": direction},
         )
-        return json.dumps({"success": True, "scrolled": direction})
+        return orjson.dumps({"success": True, "scrolled": direction}).decode('utf-8')
     except Exception as e:
         return tool_error(str(e), success=False)
 
@@ -733,7 +733,7 @@ def camofox_back(task_id: Optional[str] = None) -> str:
             f"/tabs/{session['tab_id']}/back",
             {"userId": session["user_id"]},
         )
-        return json.dumps({"success": True, "url": data.get("url", "")})
+        return orjson.dumps({"success": True, "url": data.get("url", "")}).decode('utf-8')
     except Exception as e:
         return tool_error(str(e), success=False)
 
@@ -749,7 +749,7 @@ def camofox_press(key: str, task_id: Optional[str] = None) -> str:
             f"/tabs/{session['tab_id']}/press",
             {"userId": session["user_id"], "key": key},
         )
-        return json.dumps({"success": True, "pressed": key})
+        return orjson.dumps({"success": True, "pressed": key}).decode('utf-8')
     except Exception as e:
         return tool_error(str(e), success=False)
 
@@ -759,14 +759,14 @@ def camofox_close(task_id: Optional[str] = None) -> str:
     try:
         session = _drop_session(task_id)
         if not session:
-            return json.dumps({"success": True, "closed": True})
+            return orjson.dumps({"success": True, "closed": True}).decode('utf-8')
 
         _delete(
             f"/sessions/{session['user_id']}",
         )
-        return json.dumps({"success": True, "closed": True})
+        return orjson.dumps({"success": True, "closed": True}).decode('utf-8')
     except Exception as e:
-        return json.dumps({"success": True, "closed": True, "warning": str(e)})
+        return orjson.dumps({"success": True, "closed": True, "warning": str(e)}).decode('utf-8')
 
 
 def camofox_get_images(task_id: Optional[str] = None) -> str:
@@ -811,11 +811,11 @@ def camofox_get_images(task_id: Optional[str] = None) -> str:
                 if alt or src:
                     images.append({"src": src, "alt": alt})
 
-        return json.dumps({
+        return orjson.dumps({
             "success": True,
             "images": images,
             "count": len(images),
-        })
+        }).decode('utf-8')
     except Exception as e:
         return tool_error(str(e), success=False)
 
@@ -908,11 +908,11 @@ def camofox_vision(question: str, annotate: bool = False,
         from agent.redact import redact_sensitive_text
         analysis = redact_sensitive_text(analysis)
 
-        return json.dumps({
+        return orjson.dumps({
             "success": True,
             "analysis": analysis,
             "screenshot_path": screenshot_path,
-        })
+        }).decode('utf-8')
     except Exception as e:
         return tool_error(str(e), success=False)
 
@@ -923,7 +923,7 @@ def camofox_console(clear: bool = False, task_id: Optional[str] = None) -> str:
     Camofox does not expose browser console logs via its REST API.
     Returns an empty result with a note.
     """
-    return json.dumps({
+    return orjson.dumps({
         "success": True,
         "console_messages": [],
         "js_errors": [],
@@ -931,7 +931,7 @@ def camofox_console(clear: bool = False, task_id: Optional[str] = None) -> str:
         "total_errors": 0,
         "note": "Console log capture is not available with the Camofox backend. "
                 "Use browser_snapshot or browser_vision to inspect page state.",
-    })
+    }).decode('utf-8')
 
 
 

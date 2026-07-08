@@ -8,7 +8,7 @@ with ``terminal.read.respond``. This module is just schema + a thin dispatcher
 over the platform-injected callback.
 """
 
-import json
+import orjson
 import os
 from typing import Callable, Optional
 
@@ -44,9 +44,9 @@ def read_terminal_tool(
 
     # Desktop answers with a JSON object; pass it through, else wrap the raw text.
     try:
-        return json.dumps(json.loads(raw), ensure_ascii=False)
+        return orjson.dumps(orjson.loads(raw)).decode('utf-8')
     except (TypeError, ValueError):
-        return json.dumps({"text": str(raw)}, ensure_ascii=False)
+        return orjson.dumps({"text": str(raw)}).decode('utf-8')
 
 
 def check_read_terminal_requirements() -> bool:

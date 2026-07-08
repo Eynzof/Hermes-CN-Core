@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
-import json
+import orjson
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -95,7 +95,7 @@ def test_main_markets_json_prints_normalized_payload(capsys):
         exit_code = mod.main(["markets", "--limit", "1", "--json"])
 
     stdout = capsys.readouterr().out
-    rendered = json.loads(stdout)
+    rendered = orjson.loads(stdout)
 
     assert exit_code == 0
     assert rendered["count"] == 1
@@ -116,7 +116,7 @@ def test_main_candles_json_limits_rows(capsys):
         exit_code = mod.main(["candles", "BTC", "--limit", "2", "--json"])
 
     stdout = capsys.readouterr().out
-    rendered = json.loads(stdout)
+    rendered = orjson.loads(stdout)
 
     assert exit_code == 0
     assert rendered["count"] == 3
@@ -155,7 +155,7 @@ def test_main_review_json_builds_market_context_and_findings(capsys):
         exit_code = mod.main(["review", "0xabc", "--hours", "72", "--json"])
 
     stdout = capsys.readouterr().out
-    rendered = json.loads(stdout)
+    rendered = orjson.loads(stdout)
 
     assert exit_code == 0
     assert rendered["summary"]["fill_count"] == 4
@@ -188,7 +188,7 @@ def test_main_review_json_respects_coin_filter(capsys):
         exit_code = mod.main(["review", "0xabc", "--coin", "BTC", "--json"])
 
     stdout = capsys.readouterr().out
-    rendered = json.loads(stdout)
+    rendered = orjson.loads(stdout)
 
     assert exit_code == 0
     assert rendered["summary"]["fill_count"] == 1
@@ -233,7 +233,7 @@ def test_main_state_json_uses_env_fallback(monkeypatch, capsys):
         exit_code = mod.main(["state", "--json"])
 
     stdout = capsys.readouterr().out
-    rendered = json.loads(stdout)
+    rendered = orjson.loads(stdout)
 
     assert exit_code == 0
     assert rendered["user"] == "0xenv999"
@@ -309,8 +309,8 @@ def test_main_export_json_writes_expected_contract(tmp_path, capsys):
         )
 
     stdout = capsys.readouterr().out
-    rendered = json.loads(stdout)
-    saved = json.loads(output_path.read_text(encoding="utf-8"))
+    rendered = orjson.loads(stdout)
+    saved = orjson.loads(output_path.read_text(encoding="utf-8"))
 
     assert exit_code == 0
     assert rendered["output_path"] == str(output_path)
@@ -349,8 +349,8 @@ def test_main_export_json_skips_funding_for_spot(tmp_path, capsys):
         )
 
     stdout = capsys.readouterr().out
-    rendered = json.loads(stdout)
-    saved = json.loads(output_path.read_text(encoding="utf-8"))
+    rendered = orjson.loads(stdout)
+    saved = orjson.loads(output_path.read_text(encoding="utf-8"))
 
     assert exit_code == 0
     assert rendered["summary"]["funding_count"] == 0

@@ -14,7 +14,7 @@ sub-paths could read private content without ever touching snapshot/vision:
 This is the sibling fix for the eval return-value path of issue #44731.
 """
 
-import json
+import orjson
 
 import pytest
 
@@ -34,7 +34,7 @@ def _no_camofox(monkeypatch):
 
 
 def _eval(expression, task_id="test"):
-    return json.loads(browser_tool._browser_eval(expression, task_id=task_id))
+    return orjson.loads(browser_tool._browser_eval(expression, task_id=task_id))
 
 
 # ---------------------------------------------------------------------------
@@ -187,7 +187,7 @@ class TestCamofoxEvalGuard:
         assert result["success"] is False
         assert "private or internal address" in result["error"]
         assert PRIVATE_URL in result["error"]
-        assert "secret DOM text" not in json.dumps(result)
+        assert "secret DOM text" not in orjson.dumps(result).decode('utf-8')
 
     def test_camofox_uses_raw_task_id_not_resolved_session_key(self, monkeypatch):
         # Camofox keeps its own raw-task_id-keyed session map; eval must pass the

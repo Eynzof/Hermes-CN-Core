@@ -7,7 +7,7 @@ Data file: $HERMES_HOME/skills/productivity/memento-flashcards/data/cards.json
 
 import argparse
 import csv
-import json
+import orjson
 import os
 import sys
 import tempfile
@@ -43,11 +43,11 @@ def _load() -> dict:
         return _empty_store()
     try:
         with open(CARDS_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
+            data = orjson.loads(f.read())
         if not isinstance(data, dict) or "cards" not in data:
             return _empty_store()
         return data
-    except (json.JSONDecodeError, OSError):
+    except (orjson.JSONDecodeError, OSError):
         return _empty_store()
 
 
@@ -56,7 +56,7 @@ def _save(data: dict) -> None:
     fd, tmp = tempfile.mkstemp(dir=DATA_DIR, suffix=".tmp")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
+            f.write(orjson.dumps(data, option=orjson.OPT_INDENT_2).decode('utf-8'))
             f.write("\n")
         os.replace(tmp, CARDS_FILE)
     except BaseException:
@@ -68,7 +68,7 @@ def _save(data: dict) -> None:
 
 
 def _out(obj: object) -> None:
-    json.dump(obj, sys.stdout, indent=2, ensure_ascii=False)
+    sys.stdout.write(orjson.dumps(obj, option=orjson.OPT_INDENT_2).decode('utf-8'))
     sys.stdout.write("\n")
 
 
@@ -99,8 +99,8 @@ def cmd_add_quiz(args: argparse.Namespace) -> None:
     now = _now()
 
     try:
-        questions = json.loads(args.questions)
-    except json.JSONDecodeError as exc:
+        questions = orjson.loads(args.questions)
+    except orjson.JSONDecodeError as exc:
         _out({"ok": False, "error": f"Invalid JSON for --questions: {exc}"})
         sys.exit(1)
 

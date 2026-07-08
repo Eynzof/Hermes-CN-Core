@@ -4,7 +4,7 @@ All functions are stateless. AIAgent._build_system_prompt() calls these to
 assemble pieces, then combines them with memory and ephemeral prompts.
 """
 
-import json
+import orjson
 import logging
 import os
 import shutil
@@ -1325,7 +1325,7 @@ def _load_skills_snapshot(skills_dir: Path) -> Optional[dict]:
     if not snapshot_path.exists():
         return None
     try:
-        snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+        snapshot = orjson.loads(snapshot_path.read_text(encoding="utf-8"))
     except Exception:
         return None
     if not isinstance(snapshot, dict):

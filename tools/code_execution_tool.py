@@ -30,7 +30,7 @@ Remote execution additionally requires Python 3 in the terminal backend.
 
 import base64
 import functools
-import json
+import orjson
 import logging
 import os
 from platform_utils import is_windows
@@ -311,9 +311,9 @@ _COMMON_HELPERS = '''\
 
 def json_parse(text: str):
     """Parse JSON tolerant of control characters (strict=False).
-    Use this instead of json.loads() when parsing output from terminal()
+    Use this instead of orjson.loads() when parsing output from terminal()
     or web_extract() that may contain raw tabs/newlines in strings."""
-    return json.loads(text, strict=False)
+    return orjson.loads(text, strict=False)
 
 
 def shell_quote(s: str) -> str:
@@ -345,7 +345,7 @@ def retry(fn, max_attempts=3, delay=2):
 
 _UDS_TRANSPORT_HEADER = '''\
 """Auto-generated Hermes tools RPC stubs."""
-import json, os, socket, shlex, threading, time
+import orjson, os, socket, shlex, threading, time
 
 _sock = None
 # The RPC server handles a single client connection serially and has no
@@ -382,11 +382,11 @@ def _connect():
 
 def _call(tool_name, args):
     """Send a tool call to the parent process and return the parsed result."""
-    request = json.dumps({
+    request = orjson.dumps({
         "tool": tool_name,
         "args": args,
         "token": os.environ.get("HERMES_RPC_TOKEN", ""),
-    }) + "\\n"
+    }).decode('utf-8') + "\\n"
     with _call_lock:
         conn = _connect()
         conn.sendall(request.encode())
@@ -399,11 +399,11 @@ def _call(tool_name, args):
             if buf.endswith(b"\\n"):
                 break
     raw = buf.decode().strip()
-    result = json.loads(raw)
+    result = orjson.loads(raw)
     if isinstance(result, str):
         try:
-            return json.loads(result)
-        except (json.JSONDecodeError, TypeError):
+            return orjson.loads(result)
+        except (orjson.JSONDecodeError, TypeError):
             return result
     return result
 
@@ -413,7 +413,7 @@ def _call(tool_name, args):
 
 _FILE_TRANSPORT_HEADER = '''\
 """Auto-generated Hermes tools RPC stubs (file-based transport)."""
-import json, os, shlex, tempfile, threading, time
+import orjson, os, shlex, tempfile, threading, time
 
 _RPC_DIR = os.environ.get("HERMES_RPC_DIR") or os.path.join(tempfile.gettempdir(), "hermes_rpc")
 _seq = 0
@@ -439,12 +439,12 @@ def _call(tool_name, args):
     # non-ASCII chars in tool args when encoding them as JSON.
     tmp = req_file + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
-        json.dump({
+        f.write(orjson.dumps({
             "tool": tool_name,
             "args": args,
             "seq": seq,
             "token": os.environ.get("HERMES_RPC_TOKEN", ""),
-        }, f)
+        }).decode('utf-8'))
     os.rename(tmp, req_file)
 
     # Wait for response with adaptive polling
@@ -465,11 +465,11 @@ def _call(tool_name, args):
     except OSError:
         pass
 
-    result = json.loads(raw)
+    result = orjson.loads(raw)
     if isinstance(result, str):
         try:
-            return json.loads(result)
-        except (json.JSONDecodeError, TypeError):
+            return orjson.loads(result)
+        except (orjson.JSONDecodeError, TypeError):
             return result
     return result
 
@@ -532,8 +532,8 @@ def _rpc_server_loop(
 
                 call_start = time.monotonic()
                 try:
-                    request = json.loads(line.decode())
-                except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+                    request = orjson.loads(line.decode())
+                except (orjson.JSONDecodeError, UnicodeDecodeError) as exc:
                     resp = tool_error(f"Invalid RPC request: {exc}")
                     conn.sendall((resp + "\n").encode())
                     continue
@@ -541,7 +541,7 @@ def _rpc_server_loop(
                 if not rpc_token or not secrets.compare_digest(
                     str(request.get("token") or ""), rpc_token
                 ):
-                    resp = json.dumps({"error": "Unauthorized RPC request"})
+                    resp = orjson.dumps({"error": "Unauthorized RPC request"}).decode('utf-8')
                     conn.sendall((resp + "\n").encode())
                     continue
 
@@ -551,23 +551,23 @@ def _rpc_server_loop(
                 # Enforce the allow-list
                 if tool_name not in allowed_tools:
                     available = ", ".join(sorted(allowed_tools))
-                    resp = json.dumps({
+                    resp = orjson.dumps({
                         "error": (
                             f"Tool '{tool_name}' is not available in execute_code. "
                             f"Available: {available}"
                         )
-                    })
+                    }).decode('utf-8')
                     conn.sendall((resp + "\n").encode())
                     continue
 
                 # Enforce tool call limit
                 if tool_call_counter[0] >= max_tool_calls:
-                    resp = json.dumps({
+                    resp = orjson.dumps({
                         "error": (
                             f"Tool call limit reached ({max_tool_calls}). "
                             "No more tool calls allowed in this execution."
                         )
-                    })
+                    }).decode('utf-8')
                     conn.sendall((resp + "\n").encode())
                     continue
 
@@ -815,8 +815,8 @@ def _rpc_poll_loop(
                     timeout=10,
                 )
                 try:
-                    request = json.loads(read_result.get("output", ""))
-                except (json.JSONDecodeError, ValueError):
+                    request = orjson.loads(read_result.get("output", ""))
+                except (orjson.JSONDecodeError, ValueError):
                     logger.debug("Malformed RPC request in %s", req_file)
                     # Remove bad request to avoid infinite retry
                     env.execute(f"rm -f {quoted_req_file}", cwd="/", timeout=5)
@@ -839,20 +839,20 @@ def _rpc_poll_loop(
                 # Enforce allow-list
                 if tool_name not in allowed_tools:
                     available = ", ".join(sorted(allowed_tools))
-                    tool_result = json.dumps({
+                    tool_result = orjson.dumps({
                         "error": (
                             f"Tool '{tool_name}' is not available in execute_code. "
                             f"Available: {available}"
                         )
-                    })
+                    }).decode('utf-8')
                 # Enforce tool call limit
                 elif tool_call_counter[0] >= max_tool_calls:
-                    tool_result = json.dumps({
+                    tool_result = orjson.dumps({
                         "error": (
                             f"Tool call limit reached ({max_tool_calls}). "
                             "No more tool calls allowed in this execution."
                         )
-                    })
+                    }).decode('utf-8')
                 else:
                     # Strip forbidden terminal parameters
                     if tool_name == "terminal" and isinstance(tool_args, dict):
@@ -952,7 +952,7 @@ def _execute_remote(
             cwd="/", timeout=15,
         )
         if "OK" not in py_check.get("output", ""):
-            return json.dumps({
+            return orjson.dumps({
                 "status": "error",
                 "error": (
                     f"Python 3 is not available in the {env_type} terminal "
@@ -961,7 +961,7 @@ def _execute_remote(
                 ),
                 "tool_calls_made": 0,
                 "duration_seconds": 0,
-            })
+            }).decode('utf-8')
 
         # Create sandbox directory on remote
         env.execute(
@@ -1026,12 +1026,12 @@ def _execute_remote(
             duration, tool_call_counter[0], type(exc).__name__, exc,
             exc_info=True,
         )
-        return json.dumps({
+        return orjson.dumps({
             "status": "error",
             "error": str(exc),
             "tool_calls_made": tool_call_counter[0],
             "duration_seconds": duration,
-        }, ensure_ascii=False)
+        }).decode('utf-8')
 
     finally:
         # Stop the polling thread
@@ -1104,7 +1104,7 @@ def _execute_remote(
         result["status"] = "error"
         result["error"] = f"Script exited with code {exit_code}"
 
-    return json.dumps(result, ensure_ascii=False)
+    return orjson.dumps(result).decode('utf-8')
 
 
 # ---------------------------------------------------------------------------
@@ -1133,10 +1133,10 @@ def execute_code(
         JSON string with execution results.
     """
     if not SANDBOX_AVAILABLE:
-        return json.dumps({
+        return orjson.dumps({
             "error": "execute_code sandbox is unavailable in this environment. "
                      "Use normal tool calls (terminal, read_file, write_file, ...) instead."
-        })
+        }).decode('utf-8')
 
     if not code or not code.strip():
         return tool_error("No code provided.")
@@ -1158,12 +1158,12 @@ def execute_code(
         has_host_access=_docker_has_host_access(_env_config),
     )
     if not _guard.get("approved", False):
-        return json.dumps({
+        return orjson.dumps({
             "status": "error",
             "error": _guard.get("message") or "execute_code blocked by approval guard.",
             "tool_calls_made": 0,
             "duration_seconds": 0,
-        }, ensure_ascii=False)
+        }).decode('utf-8')
 
     if env_type != "local":
         return _execute_remote(code, task_id, enabled_tools)
@@ -1527,7 +1527,7 @@ def execute_code(
             if stderr_text:
                 result["output"] = stdout_text + "\n--- stderr ---\n" + stderr_text
 
-        return json.dumps(result, ensure_ascii=False)
+        return orjson.dumps(result).decode('utf-8')
 
     except Exception as exc:
         duration = round(time.monotonic() - exec_start, 2)
@@ -1539,12 +1539,12 @@ def execute_code(
             exc,
             exc_info=True,
         )
-        return json.dumps({
+        return orjson.dumps({
             "status": "error",
             "error": str(exc),
             "tool_calls_made": tool_call_counter[0],
             "duration_seconds": duration,
-        }, ensure_ascii=False)
+        }).decode('utf-8')
 
     finally:
         # Cleanup temp dir and socket

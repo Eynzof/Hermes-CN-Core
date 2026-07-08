@@ -43,7 +43,7 @@ those workflows should expose separate tools.
 
 from __future__ import annotations
 
-import json
+import orjson
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -252,17 +252,17 @@ def _missing_provider_error(configured: Optional[str]) -> str:
             f"installed video gen backends, or `hermes tools` → Video "
             f"Generation to pick one."
         )
-        return json.dumps(error_response(
+        return orjson.dumps(error_response(
             error=msg, error_type="provider_not_registered",
             provider=configured,
-        ))
+        )).decode('utf-8')
     msg = (
         "No video generation backend is configured. Run `hermes tools` → "
         "Video Generation to enable one (xAI, FAL, or Google Veo)."
     )
-    return json.dumps(error_response(
+    return orjson.dumps(error_response(
         error=msg, error_type="no_provider_configured",
-    ))
+    )).decode('utf-8')
 
 
 # ---------------------------------------------------------------------------
@@ -363,7 +363,7 @@ def _handle_video_generate(args: Dict[str, Any], **_kw: Any) -> str:
             "video_gen provider '%s' rejected kwargs (signature too narrow): %s",
             getattr(provider, "name", "?"), exc,
         )
-        return json.dumps(error_response(
+        return orjson.dumps(error_response(
             error=(
                 f"Provider '{getattr(provider, 'name', '?')}' signature is "
                 f"out of date with the video_generate schema. Report this "
@@ -373,30 +373,30 @@ def _handle_video_generate(args: Dict[str, Any], **_kw: Any) -> str:
             provider=getattr(provider, "name", ""),
             model=model or "",
             prompt=prompt,
-        ))
+        )).decode('utf-8')
     except Exception as exc:
         logger.warning(
             "video_gen provider '%s' raised: %s",
             getattr(provider, "name", "?"), exc,
         )
-        return json.dumps(error_response(
+        return orjson.dumps(error_response(
             error=f"Provider '{getattr(provider, 'name', '?')}' error: {exc}",
             error_type="provider_exception",
             provider=getattr(provider, "name", ""),
             model=model or "",
             prompt=prompt,
-        ))
+        )).decode('utf-8')
 
     if not isinstance(result, dict):
-        return json.dumps(error_response(
+        return orjson.dumps(error_response(
             error="Provider returned a non-dict result",
             error_type="provider_contract",
             provider=getattr(provider, "name", ""),
             model=model or "",
             prompt=prompt,
-        ))
+        )).decode('utf-8')
 
-    return json.dumps(result)
+    return orjson.dumps(result).decode('utf-8')
 
 
 # ---------------------------------------------------------------------------

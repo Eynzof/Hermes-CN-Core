@@ -129,15 +129,13 @@ def test_background_review_summarizer_receives_captured_messages_after_close(mon
     empty list and the user-visible self-improvement summary would silently
     disappear. The fix snapshots ``_session_messages`` before teardown.
     """
-    import json
+    import orjson
     import agent.background_review as bg_review
 
     review_tool_message = {
         "role": "tool",
         "tool_call_id": "call_bg",
-        "content": json.dumps(
-            {"success": True, "message": "Entry added", "target": "memory"}
-        ),
+        "content": orjson.dumps({"success": True, "message": "Entry added", "target": "memory"}).decode('utf-8'),
     }
     captured: dict = {}
     events: list[str] = []
@@ -258,7 +256,7 @@ def test_background_review_summary_is_attributed_to_self_improvement_loop(monkey
     summary prefix ``💾 Self-improvement review: …`` makes the origin
     explicit so both the CLI and gateway deliveries are unambiguous.
     """
-    import json
+    import orjson
 
     captured_prints: list = []
     captured_bg_callback: list = []
@@ -271,9 +269,7 @@ def test_background_review_summary_is_attributed_to_self_improvement_loop(monkey
                 {
                     "role": "tool",
                     "tool_call_id": "call_bg",
-                    "content": json.dumps(
-                        {"success": True, "message": "Entry added", "target": "memory"}
-                    ),
+                    "content": orjson.dumps({"success": True, "message": "Entry added", "target": "memory"}).decode('utf-8'),
                 }
             ]
 
@@ -365,7 +361,7 @@ def test_background_review_fork_skips_external_memory_plugins(monkeypatch):
 # memory_notifications mode: off | on | verbose
 # ---------------------------------------------------------------------------
 
-import json as _json
+import orjson as _json
 
 from agent.background_review import summarize_background_review_actions
 
@@ -380,13 +376,11 @@ def _memory_add_review():
                     "id": "call_mem1",
                     "function": {
                         "name": "memory",
-                        "arguments": _json.dumps(
-                            {
+                        "arguments": _json.dumps({
                                 "action": "add",
                                 "target": "memory",
                                 "content": "User prefers terse replies",
-                            }
-                        ),
+                            }).decode('utf-8'),
                     },
                 }
             ],
@@ -394,9 +388,7 @@ def _memory_add_review():
         {
             "role": "tool",
             "tool_call_id": "call_mem1",
-            "content": _json.dumps(
-                {"success": True, "message": "Entry added.", "target": "memory"}
-            ),
+            "content": _json.dumps({"success": True, "message": "Entry added.", "target": "memory"}).decode('utf-8'),
         },
     ]
 
@@ -410,9 +402,7 @@ def _skill_patch_review():
                     "id": "call_skill1",
                     "function": {
                         "name": "skill_manage",
-                        "arguments": _json.dumps(
-                            {"action": "patch", "name": "demo", "old_string": "a", "new_string": "b"}
-                        ),
+                        "arguments": _json.dumps({"action": "patch", "name": "demo", "old_string": "a", "new_string": "b"}).decode('utf-8'),
                     },
                 }
             ],
@@ -420,13 +410,11 @@ def _skill_patch_review():
         {
             "role": "tool",
             "tool_call_id": "call_skill1",
-            "content": _json.dumps(
-                {
+            "content": _json.dumps({
                     "success": True,
                     "message": "Patched SKILL.md in skill 'demo' (1 replacement).",
                     "_change": {"old": "a", "new": "b"},
-                }
-            ),
+                }).decode('utf-8'),
         },
     ]
 

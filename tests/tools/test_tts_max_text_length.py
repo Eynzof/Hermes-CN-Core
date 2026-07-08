@@ -5,7 +5,7 @@ provider at 4000 chars even though OpenAI allows 4096, xAI allows 15000,
 MiniMax allows 10000, and ElevenLabs allows 5000-40000 depending on model.
 """
 
-import json
+import orjson
 
 
 from tools.tts_tool import (
@@ -139,7 +139,7 @@ class TestTextToSpeechToolTruncation:
 
         from tools.tts_tool import text_to_speech_tool
         out = str(tmp_path / "out.mp3")
-        result = json.loads(text_to_speech_tool(text=text, output_path=out))
+        result = orjson.loads(text_to_speech_tool(text=text, output_path=out))
 
         assert result["success"] is True
         # Should be truncated to 4096, not the old 4000
@@ -164,7 +164,7 @@ class TestTextToSpeechToolTruncation:
 
         from tools.tts_tool import text_to_speech_tool
         out = str(tmp_path / "out.mp3")
-        result = json.loads(text_to_speech_tool(text=text, output_path=out))
+        result = orjson.loads(text_to_speech_tool(text=text, output_path=out))
 
         assert result["success"] is True
         # xAI should accept the full 12000 chars
@@ -188,7 +188,7 @@ class TestTextToSpeechToolTruncation:
 
         from tools.tts_tool import text_to_speech_tool
         out = str(tmp_path / "out.mp3")
-        result = json.loads(text_to_speech_tool(text=text, output_path=out))
+        result = orjson.loads(text_to_speech_tool(text=text, output_path=out))
 
         assert result["success"] is True
         assert len(captured_text["text"]) == 100

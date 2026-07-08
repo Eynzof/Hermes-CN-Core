@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-import json
+import orjson
 import logging
 import os
 import threading
@@ -830,7 +830,7 @@ def _jsonable(value: Any) -> Any:
     except Exception:
         pass
     try:
-        return json.loads(json.dumps(value, default=str))
+        return orjson.loads(orjson.dumps(value, default=str).decode('utf-8'))
     except Exception:
         return str(value)
 

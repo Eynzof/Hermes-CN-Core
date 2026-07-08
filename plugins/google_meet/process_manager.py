@@ -11,7 +11,7 @@ so the parent agent loop can't block on it. We communicate via files only.
 
 from __future__ import annotations
 
-import json
+import orjson
 import os
 import signal
 import subprocess
@@ -49,7 +49,7 @@ def _read_active() -> Optional[Dict[str, Any]]:
     if not p.is_file():
         return None
     try:
-        return json.loads(p.read_text(encoding="utf-8"))
+        return orjson.loads(p.read_text(encoding="utf-8"))
     except Exception:
         return None
 
@@ -58,7 +58,7 @@ def _write_active(data: Dict[str, Any]) -> None:
     p = _active_file()
     p.parent.mkdir(parents=True, exist_ok=True)
     tmp = p.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    tmp.write_text(orjson.dumps(data, option=orjson.OPT_INDENT_2).decode('utf-8'), encoding="utf-8")
     tmp.replace(p)
 
 
@@ -200,7 +200,7 @@ def status() -> Dict[str, Any]:
     bot_status: Dict[str, Any] = {}
     if status_path.is_file():
         try:
-            bot_status = json.loads(status_path.read_text(encoding="utf-8"))
+            bot_status = orjson.loads(status_path.read_text(encoding="utf-8"))
         except Exception:
             pass
 
@@ -276,7 +276,7 @@ def enqueue_say(text: str) -> Dict[str, Any]:
     queue_path = out_dir / "say_queue.jsonl"
     entry = {"id": uuid.uuid4().hex[:12], "text": text}
     with queue_path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(entry) + "\n")
+        f.write(orjson.dumps(entry).decode('utf-8') + "\n")
     return {
         "ok": True,
         "meetingId": active.get("meeting_id"),

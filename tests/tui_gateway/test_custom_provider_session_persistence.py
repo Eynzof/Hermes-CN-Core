@@ -23,7 +23,7 @@ Related investigation: GH #44070 / PR #44099 (credential-pool base_url
 pinning); same family of resolved-vs-requested identity loss.
 """
 
-import json
+import orjson
 import types
 from unittest.mock import MagicMock, patch
 
@@ -150,7 +150,7 @@ class TestResumeRoundTrip:
         model_config = _runtime_model_config(_custom_agent())
         row = {
             "model": "mimo-v2.5-pro",
-            "model_config": json.dumps(model_config),
+            "model_config": orjson.dumps(model_config).decode('utf-8'),
         }
         overrides = _stored_session_runtime_overrides(row)
         assert overrides["model_override"]["provider"] == "custom:mimo-v2.5-pro"
@@ -270,9 +270,7 @@ class TestBareCustomNoBaseUrlHealsFromConfig:
         # A poisoned row from before the fix: bare custom, no base_url.
         row = {
             "model": "mimo-v2.5-pro",
-            "model_config": json.dumps(
-                {"model": "mimo-v2.5-pro", "provider": "custom"}
-            ),
+            "model_config": orjson.dumps({"model": "mimo-v2.5-pro", "provider": "custom"}).decode('utf-8'),
             "billing_provider": "custom",
         }
         overrides = _stored_session_runtime_overrides(row)
@@ -292,9 +290,7 @@ class TestBareCustomNoBaseUrlHealsFromConfig:
 
         row = {
             "model": "some-model",
-            "model_config": json.dumps(
-                {"model": "some-model", "provider": "custom"}
-            ),
+            "model_config": orjson.dumps({"model": "some-model", "provider": "custom"}).decode('utf-8'),
             "billing_provider": "custom",
         }
         overrides = _stored_session_runtime_overrides(row)

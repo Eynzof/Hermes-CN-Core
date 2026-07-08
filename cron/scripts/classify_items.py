@@ -36,7 +36,7 @@ deduped upstream.
 from __future__ import annotations
 
 import argparse
-import json
+import orjson
 import sys
 from typing import Any, Dict, List, Optional
 
@@ -56,8 +56,8 @@ def _load_items(input_file: Optional[str]) -> List[Dict[str, Any]]:
     if not raw:
         return []
     try:
-        data = json.loads(raw)
-    except json.JSONDecodeError as e:
+        data = orjson.loads(raw)
+    except orjson.JSONDecodeError as e:
         _eprint(f"classify_items: input is not valid JSON: {e}")
         sys.exit(2)
     if isinstance(data, dict):
@@ -101,7 +101,7 @@ def _build_prompt(items: List[Dict[str, Any]], criteria: str) -> str:
         }
         if not view:
             view = item  # fall back to the whole object
-        lines.append(f"[{i}] {json.dumps(view, ensure_ascii=False)[:1200]}")
+        lines.append(f"[{i}] {orjson.dumps(view).decode('utf-8')[:1200]}")
     lines.append(
         "\nReturn the JSON array of scores now (one object per item, same order)."
     )
@@ -116,15 +116,15 @@ def _parse_scores(content: str, n_items: int) -> Dict[int, Dict[str, Any]]:
         if "\n" in text:
             text = text.split("\n", 1)[1]
     try:
-        arr = json.loads(text)
-    except json.JSONDecodeError:
+        arr = orjson.loads(text)
+    except orjson.JSONDecodeError:
         # Last-ditch: find the first [...] block.
         start = text.find("[")
         end = text.rfind("]")
         if start >= 0 and end > start:
             try:
-                arr = json.loads(text[start : end + 1])
-            except json.JSONDecodeError:
+                arr = orjson.loads(text[start : end + 1])
+            except orjson.JSONDecodeError:
                 _eprint("classify_items: could not parse classifier output")
                 return {}
         else:
@@ -200,7 +200,7 @@ def main() -> int:
             }
             for (i, item, s) in surfaced
         ]
-        print(json.dumps(out, ensure_ascii=False, indent=2))
+        print(orjson.dumps(out, option=orjson.OPT_INDENT_2).decode('utf-8'))
     else:
         blocks = []
         for (i, item, s) in surfaced:

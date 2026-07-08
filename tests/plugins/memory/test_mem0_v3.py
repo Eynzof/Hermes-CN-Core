@@ -1,6 +1,6 @@
 """Tests for Mem0 v3 API — new tool names, paginated responses, update/delete tools."""
 
-import json
+import orjson
 import time
 import pytest
 
@@ -61,7 +61,7 @@ class TestMem0V3Tools:
             ]
         })
         provider = self._make_provider(monkeypatch, backend)
-        result = json.loads(provider.handle_tool_call("mem0_list", {}))
+        result = orjson.loads(provider.handle_tool_call("mem0_list", {}))
         assert result["count"] == 2
         assert result["results"][0]["id"] == "mem-1"
         assert result["results"][0]["memory"] == "alpha"
@@ -76,13 +76,13 @@ class TestMem0V3Tools:
     def test_list_empty(self, monkeypatch):
         backend = FakeBackend()
         provider = self._make_provider(monkeypatch, backend)
-        result = json.loads(provider.handle_tool_call("mem0_list", {}))
+        result = orjson.loads(provider.handle_tool_call("mem0_list", {}))
         assert result["result"] == "No memories stored yet."
 
     def test_search_returns_ids(self, monkeypatch):
         backend = FakeBackend(search_results=[{"id": "mem-1", "memory": "foo", "score": 0.9}])
         provider = self._make_provider(monkeypatch, backend)
-        result = json.loads(provider.handle_tool_call("mem0_search", {"query": "test"}))
+        result = orjson.loads(provider.handle_tool_call("mem0_search", {"query": "test"}))
         assert result["results"][0]["id"] == "mem-1"
 
     def test_search_uses_filters(self, monkeypatch):
@@ -107,7 +107,7 @@ class TestMem0V3Tools:
     def test_add_uses_content_param(self, monkeypatch):
         backend = FakeBackend()
         provider = self._make_provider(monkeypatch, backend)
-        result = json.loads(provider.handle_tool_call("mem0_add", {"content": "user likes dark mode"}))
+        result = orjson.loads(provider.handle_tool_call("mem0_add", {"content": "user likes dark mode"}))
         assert len(backend.captured) == 1
         call = backend.captured[0]
         assert call[2]["infer"] is False
@@ -118,21 +118,21 @@ class TestMem0V3Tools:
     def test_add_returns_event_id(self, monkeypatch):
         backend = FakeBackend()
         provider = self._make_provider(monkeypatch, backend)
-        result = json.loads(provider.handle_tool_call("mem0_add", {"content": "test"}))
+        result = orjson.loads(provider.handle_tool_call("mem0_add", {"content": "test"}))
         assert result["event_id"] == "evt-test-123"
 
     def test_add_missing_content(self, monkeypatch):
         backend = FakeBackend()
         provider = self._make_provider(monkeypatch, backend)
-        result = json.loads(provider.handle_tool_call("mem0_add", {}))
+        result = orjson.loads(provider.handle_tool_call("mem0_add", {}))
         assert "error" in result
 
     def test_old_tool_names_return_unknown(self, monkeypatch):
         backend = FakeBackend()
         provider = self._make_provider(monkeypatch, backend)
-        result = json.loads(provider.handle_tool_call("mem0_profile", {}))
+        result = orjson.loads(provider.handle_tool_call("mem0_profile", {}))
         assert "error" in result
-        result = json.loads(provider.handle_tool_call("mem0_conclude", {}))
+        result = orjson.loads(provider.handle_tool_call("mem0_conclude", {}))
         assert "error" in result
 
 
@@ -149,7 +149,7 @@ class TestMem0UpdateDelete:
     def test_update_calls_sdk(self, monkeypatch):
         backend = FakeBackend()
         provider = self._make_provider(monkeypatch, backend)
-        result = json.loads(provider.handle_tool_call(
+        result = orjson.loads(provider.handle_tool_call(
             "mem0_update", {"memory_id": "mem-1", "text": "updated fact"}
         ))
         assert backend.captured[0][1] == "mem-1"
@@ -160,19 +160,19 @@ class TestMem0UpdateDelete:
     def test_update_missing_memory_id(self, monkeypatch):
         backend = FakeBackend()
         provider = self._make_provider(monkeypatch, backend)
-        result = json.loads(provider.handle_tool_call("mem0_update", {"text": "no id"}))
+        result = orjson.loads(provider.handle_tool_call("mem0_update", {"text": "no id"}))
         assert "error" in result
 
     def test_update_missing_text(self, monkeypatch):
         backend = FakeBackend()
         provider = self._make_provider(monkeypatch, backend)
-        result = json.loads(provider.handle_tool_call("mem0_update", {"memory_id": "mem-1"}))
+        result = orjson.loads(provider.handle_tool_call("mem0_update", {"memory_id": "mem-1"}))
         assert "error" in result
 
     def test_delete_calls_sdk(self, monkeypatch):
         backend = FakeBackend()
         provider = self._make_provider(monkeypatch, backend)
-        result = json.loads(provider.handle_tool_call(
+        result = orjson.loads(provider.handle_tool_call(
             "mem0_delete", {"memory_id": "mem-1"}
         ))
         assert backend.captured[0][1] == "mem-1"
@@ -181,7 +181,7 @@ class TestMem0UpdateDelete:
     def test_delete_missing_memory_id(self, monkeypatch):
         backend = FakeBackend()
         provider = self._make_provider(monkeypatch, backend)
-        result = json.loads(provider.handle_tool_call("mem0_delete", {}))
+        result = orjson.loads(provider.handle_tool_call("mem0_delete", {}))
         assert "error" in result
 
 
@@ -199,7 +199,7 @@ class TestMem0ErrorHandling:
         backend = FakeBackend()
         backend.update = lambda mid, text: (_ for _ in ()).throw(Exception("404 Not Found"))
         provider = self._make_provider(monkeypatch, backend)
-        result = json.loads(provider.handle_tool_call(
+        result = orjson.loads(provider.handle_tool_call(
             "mem0_update", {"memory_id": "bad-id", "text": "x"}
         ))
         assert "error" in result
@@ -209,7 +209,7 @@ class TestMem0ErrorHandling:
         backend = FakeBackend()
         backend.delete = lambda mid: (_ for _ in ()).throw(Exception("404 not found"))
         provider = self._make_provider(monkeypatch, backend)
-        result = json.loads(provider.handle_tool_call(
+        result = orjson.loads(provider.handle_tool_call(
             "mem0_delete", {"memory_id": "bad-id"}
         ))
         assert "error" in result
@@ -224,7 +224,7 @@ class TestMem0ErrorHandling:
             ValidationError('{"error":"memory_id should be a valid UUID"}')
         )
         provider = self._make_provider(monkeypatch, backend)
-        result = json.loads(provider.handle_tool_call(
+        result = orjson.loads(provider.handle_tool_call(
             "mem0_update", {"memory_id": "not-a-uuid", "text": "x"}
         ))
         assert "error" in result
@@ -238,7 +238,7 @@ class TestMem0ErrorHandling:
             ValidationError('{"error":"memory_id should be a valid UUID"}')
         )
         provider = self._make_provider(monkeypatch, backend)
-        result = json.loads(provider.handle_tool_call(
+        result = orjson.loads(provider.handle_tool_call(
             "mem0_delete", {"memory_id": "not-a-uuid"}
         ))
         assert "error" in result
@@ -276,9 +276,9 @@ class TestMem0V3Internal:
     def test_old_tool_names_return_unknown(self, monkeypatch):
         backend = FakeBackend()
         provider = self._make_provider(monkeypatch, backend)
-        result = json.loads(provider.handle_tool_call("mem0_profile", {}))
+        result = orjson.loads(provider.handle_tool_call("mem0_profile", {}))
         assert "error" in result
-        result = json.loads(provider.handle_tool_call("mem0_conclude", {}))
+        result = orjson.loads(provider.handle_tool_call("mem0_conclude", {}))
         assert "error" in result
 
 

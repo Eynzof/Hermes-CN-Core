@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import datetime as _dt
 import enum
-import json
+import orjson
 import logging
 import os
 import threading
@@ -78,7 +78,7 @@ def audit_log(event: AuditEvent, **fields: Any) -> None:
         "event": event.value,
         **safe_fields,
     }
-    line = json.dumps(entry, separators=(",", ":")) + "\n"
+    line = orjson.dumps(entry).decode('utf-8') + "\n"
     path = _resolve_log_path()
     try:
         path.parent.mkdir(parents=True, exist_ok=True)

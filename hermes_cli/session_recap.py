@@ -88,9 +88,9 @@ def _tool_call_name_and_args(tool_call: Any) -> Tuple[str, Mapping[str, Any]]:
         return name, raw_args
     if isinstance(raw_args, str) and raw_args:
         try:
-            import json
+            import orjson
 
-            parsed = json.loads(raw_args)
+            parsed = orjson.loads(raw_args)
             if isinstance(parsed, Mapping):
                 return name, parsed
         except Exception:

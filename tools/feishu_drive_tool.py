@@ -5,7 +5,7 @@ Uses the same lazy-import + BaseRequest pattern as feishu_comment.py.
 The lark client is injected per-thread by the comment event handler.
 """
 
-import json
+import orjson
 import logging
 import threading
 
@@ -72,9 +72,9 @@ def _do_request(client, method, uri, paths=None, queries=None, body=None):
     raw = getattr(response, "raw", None)
     if raw and hasattr(raw, "content"):
         try:
-            body_json = json.loads(raw.content)
+            body_json = orjson.loads(raw.content)
             data = body_json.get("data", {})
-        except (json.JSONDecodeError, AttributeError):
+        except (orjson.JSONDecodeError, AttributeError):
             pass
     if not data:
         resp_data = getattr(response, "data", None)

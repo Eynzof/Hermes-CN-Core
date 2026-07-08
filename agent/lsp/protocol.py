@@ -16,7 +16,7 @@ focus on protocol semantics.
 from __future__ import annotations
 
 import asyncio
-import json
+import orjson
 import logging
 from typing import Any, Optional, Tuple
 
@@ -58,7 +58,7 @@ def encode_message(obj: dict) -> bytes:
     separators) — matches what ``vscode-jsonrpc`` emits and keeps the
     Content-Length count exact.
     """
-    body = json.dumps(obj, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    body = orjson.dumps(obj)
     header = f"Content-Length: {len(body)}\r\n\r\n".encode("ascii")
     return header + body
 
@@ -122,8 +122,8 @@ async def read_message(reader: asyncio.StreamReader) -> Optional[dict]:
         ) from e
 
     try:
-        return json.loads(body.decode("utf-8"))
-    except json.JSONDecodeError as e:
+        return orjson.loads(body.decode("utf-8"))
+    except orjson.JSONDecodeError as e:
         raise LSPProtocolError(f"invalid JSON in LSP body: {e}") from e
     except UnicodeDecodeError as e:
         raise LSPProtocolError(f"non-UTF-8 LSP body: {e}") from e

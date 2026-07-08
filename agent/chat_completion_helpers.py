@@ -15,7 +15,7 @@ sites unchanged.  Symbols that tests patch on ``run_agent`` (e.g.
 
 from __future__ import annotations
 
-import json
+import orjson
 import logging
 import os
 import re
@@ -988,7 +988,7 @@ def build_assistant_message(agent, assistant_message, finish_reason: str) -> dic
                 pass
 
     # Sanitize surrogates from API response — some models (e.g. Kimi/GLM via Ollama)
-    # can return invalid surrogate code points that crash json.dumps() on persist.
+    # can return invalid surrogate code points that crash orjson.dumps().decode('utf-8') on persist.
     _raw_content = assistant_message.content or ""
     _san_content = _sanitize_surrogates(_raw_content)
     if reasoning_text:
@@ -2330,8 +2330,8 @@ def interruptible_streaming_api_call(agent, api_kwargs: dict, *, on_first_delta=
                 tool_name = tc["function"]["name"] or "?"
                 if arguments and arguments.strip():
                     try:
-                        json.loads(arguments)
-                    except json.JSONDecodeError:
+                        orjson.loads(arguments)
+                    except orjson.JSONDecodeError:
                         # Attempt repair before flagging as truncated.
                         # Models like GLM-5.1 via Ollama produce trailing
                         # commas, unclosed brackets, Python None, etc.

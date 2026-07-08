@@ -910,16 +910,16 @@ class TestPreprocessImagesWithVision:
 
     def _mock_vision_success(self, description="A test image with colored pixels."):
         """Return an async mock that simulates a successful vision_analyze_tool call."""
-        import json
+        import orjson
         async def _fake_vision(**kwargs):
-            return json.dumps({"success": True, "analysis": description})
+            return orjson.dumps({"success": True, "analysis": description}).decode('utf-8')
         return _fake_vision
 
     def _mock_vision_failure(self):
         """Return an async mock that simulates a failed vision_analyze_tool call."""
-        import json
+        import orjson
         async def _fake_vision(**kwargs):
-            return json.dumps({"success": False, "analysis": "Error"})
+            return orjson.dumps({"success": False, "analysis": "Error"}).decode('utf-8')
         return _fake_vision
 
     def test_single_image_with_text(self, cli, tmp_path):

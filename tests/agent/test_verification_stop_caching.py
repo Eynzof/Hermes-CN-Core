@@ -12,7 +12,7 @@ flags are registered there and that both sinks drop the flagged messages while
 keeping the real conversation.
 """
 
-import json
+import orjson
 import sys
 from unittest.mock import MagicMock
 
@@ -104,7 +104,7 @@ def test_json_log_drops_verification_scaffolding(tmp_path, monkeypatch):
 
     log_file = agent.logs_dir / "session_sess_json.json"
     assert log_file.exists()
-    data = json.loads(log_file.read_text(encoding="utf-8"))
+    data = orjson.loads(log_file.read_text(encoding="utf-8"))
     contents = [m.get("content") for m in data["messages"]]
     assert contents == ["hi", "verified and clean"]
     assert all(not m.get("_pre_verify_synthetic") for m in data["messages"])

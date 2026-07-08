@@ -4,7 +4,7 @@ Regression tests for issue #220: skill_view file_path parameter allowed
 reading arbitrary files (e.g., ~/.hermes/.env) via path traversal.
 """
 
-import json
+import orjson
 import pytest
 from unittest.mock import patch
 
@@ -47,11 +47,11 @@ class TestPathTraversalBlocked:
         (outside_skill / "SKILL.md").write_text("# Outside Skill\n")
         (outside_skill / ".env").write_text("ESCAPED_SECRET=do-not-leak")
 
-        result = json.loads(skill_view("../outside-skill", file_path=".env"))
+        result = orjson.loads(skill_view("../outside-skill", file_path=".env"))
 
         assert result["success"] is False
         assert "traversal" in result["error"].lower()
-        assert "do-not-leak" not in json.dumps(result)
+        assert "do-not-leak" not in orjson.dumps(result).decode('utf-8')
 
     def test_absolute_skill_name_blocked(self, fake_skills):
         """An absolute skill name must not bypass the trusted search root."""
@@ -61,38 +61,38 @@ class TestPathTraversalBlocked:
         (outside_skill / "SKILL.md").write_text("# Outside Absolute\n")
         (outside_skill / ".env").write_text("ABSOLUTE_SECRET=do-not-leak")
 
-        result = json.loads(skill_view(str(outside_skill), file_path=".env"))
+        result = orjson.loads(skill_view(str(outside_skill), file_path=".env"))
 
         assert result["success"] is False
         assert "relative path" in result["error"].lower()
-        assert "do-not-leak" not in json.dumps(result)
+        assert "do-not-leak" not in orjson.dumps(result).decode('utf-8')
 
     def test_legit_skill_name_still_works(self, fake_skills):
         """A normal skill name must still resolve after the name guard."""
-        result = json.loads(skill_view("test-skill"))
+        result = orjson.loads(skill_view("test-skill"))
         assert result["success"] is True
 
     def test_dotdot_in_file_path(self, fake_skills):
         """Direct .. traversal should be rejected."""
-        result = json.loads(skill_view("test-skill", file_path="../../.env"))
+        result = orjson.loads(skill_view("test-skill", file_path="../../.env"))
         assert result["success"] is False
         assert "traversal" in result["error"].lower()
 
     def test_dotdot_nested(self, fake_skills):
         """Nested .. traversal should also be rejected."""
-        result = json.loads(skill_view("test-skill", file_path="references/../../../.env"))
+        result = orjson.loads(skill_view("test-skill", file_path="references/../../../.env"))
         assert result["success"] is False
         assert "traversal" in result["error"].lower()
 
     def test_legitimate_file_still_works(self, fake_skills):
         """Valid paths within the skill directory should work normally."""
-        result = json.loads(skill_view("test-skill", file_path="references/api.md"))
+        result = orjson.loads(skill_view("test-skill", file_path="references/api.md"))
         assert result["success"] is True
         assert "API docs here" in result["content"]
 
     def test_no_file_path_shows_skill(self, fake_skills):
         """Calling skill_view without file_path should return the SKILL.md."""
-        result = json.loads(skill_view("test-skill"))
+        result = orjson.loads(skill_view("test-skill"))
         assert result["success"] is True
 
     def test_symlink_escape_blocked(self, fake_skills):
@@ -107,14 +107,14 @@ class TestPathTraversalBlocked:
         except OSError:
             pytest.skip("Symlinks not supported")
 
-        result = json.loads(skill_view("test-skill", file_path="evil-link"))
+        result = orjson.loads(skill_view("test-skill", file_path="evil-link"))
         # The resolve() check should catch the symlink escaping
         assert result["success"] is False
         assert "escapes" in result["error"].lower() or "boundary" in result["error"].lower()
 
     def test_sensitive_file_not_leaked(self, fake_skills):
         """Even if traversal somehow passes, sensitive content must not leak."""
-        result = json.loads(skill_view("test-skill", file_path="../../.env"))
+        result = orjson.loads(skill_view("test-skill", file_path="../../.env"))
         assert result["success"] is False
         assert "sk-do-not-leak" not in result.get("content", "")
-        assert "sk-do-not-leak" not in json.dumps(result)
+        assert "sk-do-not-leak" not in orjson.dumps(result).decode('utf-8')

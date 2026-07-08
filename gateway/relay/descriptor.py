@@ -30,7 +30,7 @@ the per-instance capability methods on ``BasePlatformAdapter``):
 
 from __future__ import annotations
 
-import json
+import orjson
 from dataclasses import asdict, dataclass
 
 # Bump additively (never reinterpret an existing field) during the experimental
@@ -61,7 +61,7 @@ class CapabilityDescriptor:
 
     def to_json(self) -> str:
         """Serialize to a compact, stable JSON string for the handshake frame."""
-        return json.dumps(asdict(self), sort_keys=True, ensure_ascii=False)
+        return orjson.dumps(asdict(self), option=orjson.OPT_SORT_KEYS).decode('utf-8')
 
     @classmethod
     def from_json(cls, data: str) -> "CapabilityDescriptor":
@@ -71,7 +71,7 @@ class CapabilityDescriptor:
         fields this gateway does not know yet); missing optional keys fall back
         to dataclass defaults.
         """
-        raw = json.loads(data)
+        raw = orjson.loads(data)
         known = {f for f in cls.__dataclass_fields__}  # type: ignore[attr-defined]
         filtered = {k: v for k, v in raw.items() if k in known}
         return cls(**filtered)

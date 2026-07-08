@@ -51,7 +51,7 @@ Activation (config ``agent.coding_context``):
 
 from __future__ import annotations
 
-import json
+import orjson
 import logging
 import os
 import re
@@ -761,8 +761,8 @@ def detect_project_facts(root: Path) -> ProjectFacts:
         verify.append("scripts/run_tests.sh")
     if (root / "package.json").is_file():
         try:
-            scripts = json.loads(_read_small(root / "package.json") or "{}").get("scripts") or {}
-        except (json.JSONDecodeError, AttributeError):
+            scripts = orjson.loads(_read_small(root / "package.json") or "{}").get("scripts") or {}
+        except (orjson.JSONDecodeError, AttributeError):
             scripts = {}
         js_pm = next((pm for lock, pm in _JS_LOCKFILES if (root / lock).is_file()), "npm")
         verify.extend(f"{js_pm} run {name}" for name in _VERIFY_TARGETS if name in scripts)

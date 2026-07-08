@@ -5,7 +5,7 @@ and run_agent.py for pre-flight context checks.
 """
 
 import ipaddress
-import json
+import orjson
 import logging
 import os
 import re
@@ -139,7 +139,7 @@ def _load_model_metadata_disk_cache() -> Dict[str, Dict[str, Any]]:
     try:
         cache_path = _get_model_metadata_cache_path()
         with cache_path.open("r", encoding="utf-8") as f:
-            data = json.load(f)
+            data = orjson.loads(f.read())
         if not isinstance(data, dict):
             return {}
         return {

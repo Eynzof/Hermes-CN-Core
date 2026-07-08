@@ -33,7 +33,7 @@ Usage:
 
 import functools
 import importlib.util
-import json
+import orjson
 import logging
 import os
 import platform
@@ -1274,7 +1274,7 @@ def _parse_env_var(name: str, default: str, converter: Any = int, type_label: st
     raw = os.getenv(name, default)
     try:
         return converter(raw)
-    except (ValueError, json.JSONDecodeError):
+    except (ValueError, orjson.JSONDecodeError):
         raise ValueError(
             f"Invalid value for {name}: {raw!r} (expected {type_label}). "
             f"Check ~/.hermes/.env or environment variables."
@@ -2125,12 +2125,12 @@ def terminal_tool(
                 "Rejected invalid terminal command value: %s",
                 type(command).__name__,
             )
-            return json.dumps({
+            return orjson.dumps({
                 "output": "",
                 "exit_code": -1,
                 "error": f"Invalid command: expected string, got {type(command).__name__}",
                 "status": "error",
-            }, ensure_ascii=False)
+            }).decode('utf-8')
 
         # Get configuration
         config = _get_env_config()
@@ -2188,25 +2188,25 @@ def terminal_tool(
         # Reject foreground commands where the model explicitly requests
         # a timeout above FOREGROUND_MAX_TIMEOUT — nudge it toward background.
         if not background and timeout and timeout > FOREGROUND_MAX_TIMEOUT:
-            return json.dumps({
+            return orjson.dumps({
                 "error": (
                     f"Foreground timeout {timeout}s exceeds the maximum of "
                     f"{FOREGROUND_MAX_TIMEOUT}s. Use background=true with "
                     f"notify_on_complete=true for long-running commands."
                 ),
-            }, ensure_ascii=False)
+            }).decode('utf-8')
 
         # Guardrail: long-lived server/watch commands should run as managed
         # background sessions, not foreground shell hacks.
         if not background:
             guidance = _foreground_background_guidance(command)
             if guidance:
-                return json.dumps({
+                return orjson.dumps({
                     "output": "",
                     "exit_code": -1,
                     "error": guidance,
                     "status": "error",
-                }, ensure_ascii=False)
+                }).decode('utf-8')
 
         # Start cleanup thread
         _start_cleanup_thread()
@@ -2302,12 +2302,12 @@ def terminal_tool(
                             host_cwd=config.get("host_cwd"),
                         )
                     except ImportError as e:
-                        return json.dumps({
+                        return orjson.dumps({
                             "output": "",
                             "exit_code": -1,
                             "error": f"Terminal tool disabled: environment creation failed ({e})",
                             "status": "disabled"
-                        }, ensure_ascii=False)
+                        }).decode('utf-8')
 
                     with _env_lock:
                         _active_environments[effective_task_id] = new_env
@@ -2325,7 +2325,7 @@ def terminal_tool(
         if os.environ.get("_HERMES_GATEWAY") == "1":
             from hermes_cli.cron import _contains_gateway_lifecycle_command
             if _contains_gateway_lifecycle_command(command):
-                return json.dumps({
+                return orjson.dumps({
                     "output": "",
                     "exit_code": 1,
                     "error": (
@@ -2336,7 +2336,7 @@ def terminal_tool(
                         "the running gateway."
                     ),
                     "status": "error",
-                }, ensure_ascii=False)
+                }).decode('utf-8')
 
         # Pre-exec security checks (tirith + dangerous command detection)
         # Skip check if force=True (user has confirmed they want to run it)
@@ -2349,7 +2349,7 @@ def terminal_tool(
             if not approval["approved"]:
                 # Check if this is an approval_required (gateway ask mode)
                 if approval.get("status") == "pending_approval":
-                    return json.dumps({
+                    return orjson.dumps({
                         "output": "",
                         "exit_code": -1,
                         "error": "",
@@ -2358,19 +2358,19 @@ def terminal_tool(
                         "command": approval.get("command", command),
                         "description": approval.get("description", "command flagged"),
                         "pattern_key": approval.get("pattern_key", ""),
-                    }, ensure_ascii=False)
+                    }).decode('utf-8')
                 # Command was blocked
                 desc = approval.get("description", "command flagged")
                 fallback_msg = (
                     f"Command denied: {desc}. "
                     "Use the approval prompt to allow it, or rephrase the command."
                 )
-                return json.dumps({
+                return orjson.dumps({
                     "output": "",
                     "exit_code": -1,
                     "error": approval.get("message", fallback_msg),
                     "status": "blocked"
-                }, ensure_ascii=False)
+                }).decode('utf-8')
             # Track whether approval was explicitly granted by the user
             if approval.get("user_approved"):
                 desc = approval.get("description", "flagged as dangerous")
@@ -2385,12 +2385,12 @@ def terminal_tool(
             if workdir_error:
                 logger.warning("Blocked dangerous workdir: %s (command: %s)",
                                workdir[:200], _safe_command_preview(command))
-                return json.dumps({
+                return orjson.dumps({
                     "output": "",
                     "exit_code": -1,
                     "error": workdir_error,
                     "status": "blocked"
-                }, ensure_ascii=False)
+                }).decode('utf-8')
 
         # Prepare command for execution
         pty_disabled_reason = None
@@ -2656,13 +2656,13 @@ def terminal_tool(
                     proc_session.watch_patterns = list(watch_patterns)
                     result_data["watch_patterns"] = proc_session.watch_patterns
 
-                return json.dumps(result_data, ensure_ascii=False)
+                return orjson.dumps(result_data).decode('utf-8')
             except Exception as e:
-                return json.dumps({
+                return orjson.dumps({
                     "output": "",
                     "exit_code": -1,
                     "error": f"Failed to start background process: {str(e)}"
-                }, ensure_ascii=False)
+                }).decode('utf-8')
         else:
             # Run foreground command with retry logic
             max_retries = 3
@@ -2685,11 +2685,11 @@ def terminal_tool(
                 except Exception as e:
                     error_str = str(e).lower()
                     if "timeout" in error_str:
-                        return json.dumps({
+                        return orjson.dumps({
                             "output": "",
                             "exit_code": 124,
                             "error": f"Command timed out after {effective_timeout} seconds"
-                        }, ensure_ascii=False)
+                        }).decode('utf-8')
                     
                     # Retry on transient errors
                     if retry_count < max_retries:
@@ -2702,11 +2702,11 @@ def terminal_tool(
                     
                     logger.error("Execution failed after %d retries - Command: %s - Error: %s: %s - Task: %s, Backend: %s",
                                  max_retries, _safe_command_preview(command), type(e).__name__, e, effective_task_id, env_type)
-                    return json.dumps({
+                    return orjson.dumps({
                         "output": "",
                         "exit_code": -1,
                         "error": f"Command execution failed: {type(e).__name__}: {str(e)}"
-                    }, ensure_ascii=False)
+                    }).decode('utf-8')
                 
                 # Got a result
                 break
@@ -2821,19 +2821,19 @@ def terminal_tool(
             if sudo_cache_cleared:
                 result_dict["sudo_cache_cleared"] = True
 
-            return json.dumps(result_dict, ensure_ascii=False)
+            return orjson.dumps(result_dict).decode('utf-8')
 
     except Exception as e:
         import traceback
         tb_str = traceback.format_exc()
         logger.error("terminal_tool exception:\n%s", tb_str)
-        return json.dumps({
+        return orjson.dumps({
             "output": "",
             "exit_code": -1,
             "error": f"Failed to execute command: {str(e)}",
             "traceback": tb_str,
             "status": "error"
-        }, ensure_ascii=False)
+        }).decode('utf-8')
 
 
 def check_terminal_requirements() -> bool:

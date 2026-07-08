@@ -14,7 +14,7 @@ Design:
 - Behavioral guidance lives entirely in the tool schema description
 """
 
-import json
+import orjson
 from typing import Dict, Any, List, Optional
 
 
@@ -219,8 +219,8 @@ def todo_tool(
         # Guard: LLM sometimes sends todos as a JSON string instead of a list
         if isinstance(todos, str):
             try:
-                todos = json.loads(todos)
-            except (json.JSONDecodeError, TypeError):
+                todos = orjson.loads(todos)
+            except (orjson.JSONDecodeError, TypeError):
                 return tool_error("todos must be a list of objects, got unparseable string")
         if not isinstance(todos, list):
             return tool_error(
@@ -236,7 +236,7 @@ def todo_tool(
     completed = sum(1 for i in items if i["status"] == "completed")
     cancelled = sum(1 for i in items if i["status"] == "cancelled")
 
-    return json.dumps({
+    return orjson.dumps({
         "todos": items,
         "summary": {
             "total": len(items),
@@ -245,7 +245,7 @@ def todo_tool(
             "completed": completed,
             "cancelled": cancelled,
         },
-    }, ensure_ascii=False)
+    }).decode('utf-8')
 
 
 def check_todo_requirements() -> bool:

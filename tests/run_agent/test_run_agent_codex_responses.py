@@ -1910,20 +1910,20 @@ def test_run_conversation_codex_continues_after_ack_for_directory_listing_prompt
 
 def test_dump_api_request_debug_uses_responses_url(monkeypatch, tmp_path):
     """Debug dumps should show /responses URL when in codex_responses mode."""
-    import json
+    import orjson
     agent = _build_agent(monkeypatch)
     agent.base_url = "http://127.0.0.1:9208/v1"
     agent.logs_dir = tmp_path
 
     dump_file = agent._dump_api_request_debug(_codex_request_kwargs(), reason="preflight")
 
-    payload = json.loads(dump_file.read_text())
+    payload = orjson.loads(dump_file.read_text())
     assert payload["request"]["url"] == "http://127.0.0.1:9208/v1/responses"
 
 
 def test_dump_api_request_debug_uses_chat_completions_url(monkeypatch, tmp_path):
     """Debug dumps should show /chat/completions URL for chat_completions mode."""
-    import json
+    import orjson
     _patch_agent_bootstrap(monkeypatch)
     agent = run_agent.AIAgent(
         model="gpt-4o",
@@ -1941,13 +1941,13 @@ def test_dump_api_request_debug_uses_chat_completions_url(monkeypatch, tmp_path)
         reason="preflight",
     )
 
-    payload = json.loads(dump_file.read_text())
+    payload = orjson.loads(dump_file.read_text())
     assert payload["request"]["url"] == "http://127.0.0.1:9208/v1/chat/completions"
 
 
 def test_dump_api_request_debug_redacts_request_and_error_secrets(monkeypatch, tmp_path, capsys):
     """Request debug dumps should redact secrets before disk/stdout output."""
-    import json
+    import orjson
 
     _patch_agent_bootstrap(monkeypatch)
     monkeypatch.setenv("HERMES_DUMP_REQUEST_STDOUT", "1")
@@ -1992,7 +1992,7 @@ def test_dump_api_request_debug_redacts_request_and_error_secrets(monkeypatch, t
         assert raw not in dumped_text
         assert raw not in stdout_text
 
-    payload = json.loads(dumped_text)
+    payload = orjson.loads(dumped_text)
     assert payload["request"]["headers"]["Authorization"].startswith("Bearer sk-ant-p...")
     assert "***" in dumped_text or "..." in dumped_text
 

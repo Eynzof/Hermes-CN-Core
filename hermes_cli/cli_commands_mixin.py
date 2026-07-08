@@ -14,7 +14,7 @@ Import discipline (mirrors gateway/slash_commands.py, PR #41886):
 
 from __future__ import annotations
 
-import json
+import orjson
 import os
 import sys
 import threading
@@ -1180,7 +1180,7 @@ class CLICommandsMixin:
         from tools.cronjob_tools import cronjob as cronjob_tool
 
         def _cron_api(**kwargs):
-            return json.loads(cronjob_tool(**kwargs))
+            return orjson.loads(cronjob_tool(**kwargs))
 
         def _normalize_skills(values):
             normalized = []

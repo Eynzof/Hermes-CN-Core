@@ -14,7 +14,7 @@ re-exports from ``run_agent`` remain in place so existing imports
 
 from __future__ import annotations
 
-import json
+import orjson
 import logging
 import re
 from typing import Any
@@ -31,7 +31,7 @@ _SURROGATE_RE = re.compile(r'[\ud800-\udfff]')
 def _sanitize_surrogates(text: str) -> str:
     """Replace lone surrogate code points with U+FFFD (replacement character).
 
-    Surrogates are invalid in UTF-8 and will crash ``json.dumps()`` inside the
+    Surrogates are invalid in UTF-8 and will crash ``orjson.dumps().decode('utf-8')`` inside the
     OpenAI SDK.  This is a fast no-op when the text contains no surrogates.
     """
     if _SURROGATE_RE.search(text):
@@ -150,7 +150,7 @@ def _escape_invalid_chars_in_json_strings(raw: str) -> str:
     else.
 
     Ported from #12093 — complements the other repair passes in
-    ``_repair_tool_call_arguments`` when ``json.loads(strict=False)`` is
+    ``_repair_tool_call_arguments`` when ``orjson.loads(strict=False)`` is
     not enough (e.g. llama.cpp backends that emit literal apostrophes or
     tabs alongside other malformations).
     """
@@ -209,15 +209,15 @@ def _repair_tool_call_arguments(raw_args: str, tool_name: str = "?") -> str:
     # result into wire-valid JSON without any string surgery. This is
     # the most common local-model repair case (#12068).
     try:
-        parsed = json.loads(raw_stripped, strict=False)
-        reserialised = json.dumps(parsed, separators=(",", ":"))
+        parsed = orjson.loads(raw_stripped, strict=False)
+        reserialised = orjson.dumps(parsed).decode('utf-8')
         if reserialised != raw_stripped:
             logger.warning(
                 "Repaired unescaped control chars in tool_call arguments for %s",
                 tool_name,
             )
         return reserialised
-    except (json.JSONDecodeError, TypeError, ValueError):
+    except (orjson.JSONDecodeError, TypeError, ValueError):
         pass
 
     # Attempt common JSON repairs
@@ -234,9 +234,9 @@ def _repair_tool_call_arguments(raw_args: str, tool_name: str = "?") -> str:
     # 3. Remove excess closing braces/brackets (bounded to 50 iterations)
     for _ in range(50):
         try:
-            json.loads(fixed)
+            orjson.loads(fixed)
             break
-        except json.JSONDecodeError:
+        except orjson.JSONDecodeError:
             if fixed.endswith('}') and fixed.count('}') > fixed.count('{'):
                 fixed = fixed[:-1]
             elif fixed.endswith(']') and fixed.count(']') > fixed.count('['):
@@ -245,13 +245,13 @@ def _repair_tool_call_arguments(raw_args: str, tool_name: str = "?") -> str:
                 break
 
     try:
-        json.loads(fixed)
+        orjson.loads(fixed)
         logger.warning(
             "Repaired malformed tool_call arguments for %s: %s → %s",
             tool_name, raw_stripped[:80], fixed[:80],
         )
         return fixed
-    except json.JSONDecodeError:
+    except orjson.JSONDecodeError:
         pass
 
     # Repair pass 4: escape unescaped control chars inside JSON strings,
@@ -260,13 +260,13 @@ def _repair_tool_call_arguments(raw_args: str, tool_name: str = "?") -> str:
     try:
         escaped = _escape_invalid_chars_in_json_strings(fixed)
         if escaped != fixed:
-            json.loads(escaped)
+            orjson.loads(escaped)
             logger.warning(
                 "Repaired control-char-laced tool_call arguments for %s: %s → %s",
                 tool_name, raw_stripped[:80], escaped[:80],
             )
             return escaped
-    except (json.JSONDecodeError, TypeError, ValueError):
+    except (orjson.JSONDecodeError, TypeError, ValueError):
         pass
 
     # Last resort: replace with empty object so the API request doesn't

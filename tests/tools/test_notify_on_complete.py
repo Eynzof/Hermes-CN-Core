@@ -8,7 +8,7 @@ Covers:
   - Terminal tool handler passes notify_on_complete through
 """
 
-import json
+import orjson
 import os
 import time
 import pytest
@@ -218,7 +218,7 @@ class TestCheckpointNotify:
             registry._running[s.id] = s
             registry._write_checkpoint()
 
-            data = json.loads((tmp_path / "procs.json").read_text())
+            data = orjson.loads((tmp_path / "procs.json").read_text())
             assert len(data) == 1
             assert data[0]["notify_on_complete"] is True
 
@@ -228,18 +228,18 @@ class TestCheckpointNotify:
             registry._running[s.id] = s
             registry._write_checkpoint()
 
-            data = json.loads((tmp_path / "procs.json").read_text())
+            data = orjson.loads((tmp_path / "procs.json").read_text())
             assert data[0]["notify_on_complete"] is False
 
     def test_recover_preserves_notify(self, registry, tmp_path):
         checkpoint = tmp_path / "procs.json"
-        checkpoint.write_text(json.dumps([{
+        checkpoint.write_text(orjson.dumps([{
             "session_id": "proc_live",
             "command": "sleep 999",
             "pid": os.getpid(),
             "task_id": "t1",
             "notify_on_complete": True,
-        }]))
+        }]).decode('utf-8'))
         with patch("tools.process_registry.CHECKPOINT_PATH", checkpoint):
             recovered = registry.recover_from_checkpoint()
             assert recovered == 1
@@ -248,7 +248,7 @@ class TestCheckpointNotify:
 
     def test_recover_requeues_notify_watchers(self, registry, tmp_path):
         checkpoint = tmp_path / "procs.json"
-        checkpoint.write_text(json.dumps([{
+        checkpoint.write_text(orjson.dumps([{
             "session_id": "proc_live",
             "command": "sleep 999",
             "pid": os.getpid(),
@@ -261,7 +261,7 @@ class TestCheckpointNotify:
             "watcher_thread_id": "42",
             "watcher_interval": 5,
             "notify_on_complete": True,
-        }]))
+        }]).decode('utf-8'))
         with patch("tools.process_registry.CHECKPOINT_PATH", checkpoint):
             recovered = registry.recover_from_checkpoint()
             assert recovered == 1
@@ -273,12 +273,12 @@ class TestCheckpointNotify:
     def test_recover_defaults_false(self, registry, tmp_path):
         """Old checkpoint entries without the field default to False."""
         checkpoint = tmp_path / "procs.json"
-        checkpoint.write_text(json.dumps([{
+        checkpoint.write_text(orjson.dumps([{
             "session_id": "proc_live",
             "command": "sleep 999",
             "pid": os.getpid(),
             "task_id": "t1",
-        }]))
+        }]).decode('utf-8'))
         with patch("tools.process_registry.CHECKPOINT_PATH", checkpoint):
             recovered = registry.recover_from_checkpoint()
             assert recovered == 1
@@ -507,7 +507,7 @@ def test_background_without_notify_emits_silent_process_hint(monkeypatch, tmp_pa
     and the agent has no signal it finished. Tool must nudge."""
     tt = _silent_bg_harness(monkeypatch, tmp_path)
     try:
-        result = json.loads(
+        result = orjson.loads(
             tt.terminal_tool(
                 command="while true; do gh pr checks 999; sleep 30; done",
                 background=True,
@@ -532,7 +532,7 @@ def test_background_with_notify_does_not_emit_hint(monkeypatch, tmp_path):
     """The correct shape — bg+notify together — must not nag."""
     tt = _silent_bg_harness(monkeypatch, tmp_path)
     try:
-        result = json.loads(
+        result = orjson.loads(
             tt.terminal_tool(
                 command="pytest tests/",
                 background=True,
@@ -553,7 +553,7 @@ def test_background_with_watch_patterns_does_not_emit_hint(monkeypatch, tmp_path
     """watch_patterns is the other legitimate non-silent shape — also no hint."""
     tt = _silent_bg_harness(monkeypatch, tmp_path)
     try:
-        result = json.loads(
+        result = orjson.loads(
             tt.terminal_tool(
                 command="uvicorn app:server --port 8080",
                 background=True,
@@ -585,7 +585,7 @@ def test_foreground_command_does_not_emit_hint(monkeypatch, tmp_path):
     monkeypatch.setitem(tt._active_environments, "default", dummy_env)
 
     try:
-        result = json.loads(
+        result = orjson.loads(
             tt.terminal_tool(
                 command="echo hello",
                 background=False,
@@ -619,7 +619,7 @@ def test_homebrew_ci_poller_via_statusCheckRollup_emits_hint(monkeypatch, tmp_pa
     JSON. Tool must point the agent at the green-ci-policy skill snippet."""
     tt = _silent_bg_harness(monkeypatch, tmp_path)
     try:
-        result = json.loads(
+        result = orjson.loads(
             tt.terminal_tool(
                 command=(
                     "PR=12345; while true; do "
@@ -653,7 +653,7 @@ def test_homebrew_ci_poller_via_gh_pr_checks_piped_to_jq_emits_hint(monkeypatch,
     keeps spinning with empty data)."""
     tt = _silent_bg_harness(monkeypatch, tmp_path)
     try:
-        result = json.loads(
+        result = orjson.loads(
             tt.terminal_tool(
                 command=(
                     "PR=99; while true; do "
@@ -680,7 +680,7 @@ def test_canonical_column2_awk_poller_does_not_emit_homebrew_hint(monkeypatch, t
     | jq`, NOT awk on tabs."""
     tt = _silent_bg_harness(monkeypatch, tmp_path)
     try:
-        result = json.loads(
+        result = orjson.loads(
             tt.terminal_tool(
                 command=(
                     "PR=1; while :; do "
@@ -711,7 +711,7 @@ def test_canonical_gh_pr_checks_exit_code_loop_does_not_emit_hint(monkeypatch, t
     Must not be flagged as a homebrew anti-pattern."""
     tt = _silent_bg_harness(monkeypatch, tmp_path)
     try:
-        result = json.loads(
+        result = orjson.loads(
             tt.terminal_tool(
                 command=(
                     "PR=1; while :; do "
@@ -740,7 +740,7 @@ def test_non_ci_background_command_does_not_emit_homebrew_hint(monkeypatch, tmp_
     combination of `gh pr ...` AND a stdout parser."""
     tt = _silent_bg_harness(monkeypatch, tmp_path)
     try:
-        result = json.loads(
+        result = orjson.loads(
             tt.terminal_tool(
                 command="cat /var/log/syslog | awk '/error/ {print}' > /tmp/errs.log",
                 background=True,

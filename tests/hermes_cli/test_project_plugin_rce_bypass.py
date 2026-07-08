@@ -30,7 +30,7 @@ These tests pin each layer of the new defence:
 """
 from __future__ import annotations
 
-import json
+import orjson
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -56,7 +56,7 @@ def _write_plugin_manifest(root: Path, name: str, manifest: dict) -> Path:
     return the dashboard dir path."""
     dashboard_dir = root / name / "dashboard"
     dashboard_dir.mkdir(parents=True)
-    (dashboard_dir / "manifest.json").write_text(json.dumps(manifest))
+    (dashboard_dir / "manifest.json").write_text(orjson.dumps(manifest).decode('utf-8'))
     return dashboard_dir
 
 

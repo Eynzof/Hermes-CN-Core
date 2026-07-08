@@ -23,7 +23,7 @@ Methods covered:
 from __future__ import annotations
 
 import copy
-import json
+import orjson
 import logging
 import re
 import time
@@ -156,8 +156,8 @@ def convert_to_trajectory_format(agent, messages: List[Dict[str, Any]], user_que
                     # Parse arguments - should always succeed since we validate during conversation
                     # but keep try-except as safety net
                     try:
-                        arguments = json.loads(tool_call["function"]["arguments"]) if isinstance(tool_call["function"]["arguments"], str) else tool_call["function"]["arguments"]
-                    except json.JSONDecodeError:
+                        arguments = orjson.loads(tool_call["function"]["arguments"]) if isinstance(tool_call["function"]["arguments"], str) else tool_call["function"]["arguments"]
+                    except orjson.JSONDecodeError:
                         # This shouldn't happen since we validate and retry during conversation,
                         # but if it does, log warning and use empty dict
                         logger.warning(f"Unexpected invalid JSON in trajectory conversion: {tool_call['function']['arguments'][:100]}")
@@ -167,7 +167,7 @@ def convert_to_trajectory_format(agent, messages: List[Dict[str, Any]], user_que
                         "name": tool_call["function"]["name"],
                         "arguments": arguments
                     }
-                    content += f"<tool_call>\n{json.dumps(tool_call_json, ensure_ascii=False)}\n</tool_call>\n"
+                    content += f"<tool_call>\n{orjson.dumps(tool_call_json).decode('utf-8')}\n</tool_call>\n"
                 
                 # Ensure every gpt turn has a <think> block (empty if no reasoning)
                 # so the format is consistent for training data
@@ -191,8 +191,8 @@ def convert_to_trajectory_format(agent, messages: List[Dict[str, Any]], user_que
                     tool_content = tool_msg["content"]
                     try:
                         if tool_content.strip().startswith(("{", "[")):
-                            tool_content = json.loads(tool_content)
-                    except (json.JSONDecodeError, AttributeError):
+                            tool_content = orjson.loads(tool_content)
+                    except (orjson.JSONDecodeError, AttributeError):
                         pass  # Keep as string if not valid JSON
                     
                     tool_index = len(tool_responses)
@@ -201,11 +201,11 @@ def convert_to_trajectory_format(agent, messages: List[Dict[str, Any]], user_que
                         if tool_index < len(msg["tool_calls"])
                         else "unknown"
                     )
-                    tool_response += json.dumps({
+                    tool_response += orjson.dumps({
                         "tool_call_id": tool_msg.get("tool_call_id", ""),
                         "name": tool_name,
                         "content": tool_content
-                    }, ensure_ascii=False)
+                    }).decode('utf-8')
                     tool_response += "\n</tool_response>"
                     tool_responses.append(tool_response)
                     j += 1
@@ -279,7 +279,7 @@ def sanitize_tool_call_arguments(
             tool_msg["content"] = marker
             return
         try:
-            existing_text = json.dumps(existing)
+            existing_text = orjson.dumps(existing).decode('utf-8')
         except TypeError:
             existing_text = str(existing)
         tool_msg["content"] = f"{marker}\n{existing_text}"
@@ -315,8 +315,8 @@ def sanitize_tool_call_arguments(
                 continue
 
             try:
-                json.loads(arguments)
-            except json.JSONDecodeError:
+                orjson.loads(arguments)
+            except orjson.JSONDecodeError:
                 tool_call_id = tool_call.get("id")
                 function_name = function.get("name", "?")
                 preview = arguments[:80]
@@ -1434,14 +1434,14 @@ def dump_api_request_debug(
         # output, then hand the resulting payload back to the shared atomic
         # JSON writer so request dumps keep the same write semantics as before.
         from agent.redact import redact_sensitive_text
-        _serialized = json.dumps(dump_payload, ensure_ascii=False, indent=2, default=str)
-        _redacted_payload = json.loads(redact_sensitive_text(_serialized, force=True))
+        _serialized = orjson.dumps(dump_payload, default=str, option=orjson.OPT_INDENT_2).decode('utf-8')
+        _redacted_payload = orjson.loads(redact_sensitive_text(_serialized, force=True))
         atomic_json_write(dump_file, _redacted_payload, default=str)
 
         agent._vprint(f"{agent.log_prefix}🧾 Request debug dump written to: {dump_file}")
 
         if env_var_enabled("HERMES_DUMP_REQUEST_STDOUT"):
-            print(json.dumps(_redacted_payload, ensure_ascii=False, indent=2, default=str))
+            print(orjson.dumps(_redacted_payload, default=str, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
         return dump_file
     except Exception as dump_error:
@@ -2053,7 +2053,7 @@ def invoke_tool(agent, function_name: str, function_args: dict, effective_task_i
         except Exception:
             pass
     if block_message is not None:
-        result = json.dumps({"error": block_message}, ensure_ascii=False)
+        result = orjson.dumps({"error": block_message}).decode('utf-8')
         try:
             from model_tools import _emit_post_tool_call_hook
             _emit_post_tool_call_hook(
@@ -2112,7 +2112,7 @@ def invoke_tool(agent, function_name: str, function_args: dict, effective_task_i
             session_db = agent._get_session_db_for_recall()
             if not session_db:
                 from hermes_state import format_session_db_unavailable
-                return _finish_agent_tool(json.dumps({"success": False, "error": format_session_db_unavailable()}), next_args)
+                return _finish_agent_tool(orjson.dumps({"success": False, "error": format_session_db_unavailable()}).decode('utf-8'), next_args)
             from tools.session_search_tool import session_search as _session_search
             return _finish_agent_tool(
                 _session_search(

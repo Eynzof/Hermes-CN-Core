@@ -17,7 +17,7 @@ Import chain (circular-import safe):
 import ast
 import hashlib
 import importlib
-import json
+import orjson
 import logging
 import os
 import sys
@@ -272,7 +272,7 @@ def load_or_build_tool_index(tools_dir: Optional[Path] = None) -> dict:
     cache_file = _tool_index_cache_file() if fingerprint else None
     if cache_file is not None:
         try:
-            cached = json.loads(cache_file.read_text(encoding="utf-8"))
+            cached = orjson.loads(cache_file.read_text(encoding="utf-8"))
             if (
                 cached.get("fingerprint") == fingerprint
                 and isinstance(cached.get("index"), dict)
@@ -293,7 +293,7 @@ def load_or_build_tool_index(tools_dir: Optional[Path] = None) -> dict:
         try:
             tmp = cache_file.with_name(f"{cache_file.name}.{os.getpid()}.tmp")
             tmp.write_text(
-                json.dumps({"fingerprint": fingerprint, "index": index}),
+                orjson.dumps({"fingerprint": fingerprint, "index": index}).decode('utf-8'),
                 encoding="utf-8",
             )
             os.replace(tmp, cache_file)
@@ -332,7 +332,7 @@ class ToolEntry:
     def __init__(self, name, toolset, schema, handler, check_fn,
                  requires_env, is_async, description, emoji,
                  max_result_size_chars=None, dynamic_schema_overrides=None):
-        # Lazily-computed cache of json.dumps(schema). Populated on first
+        # Lazily-computed cache of orjson.dumps(schema).decode('utf-8'). Populated on first
         # get_schema_json() request, never at register() time (that would add
         # a json.dumps per tool to the import cascade the lazy design avoids).
         # Bound to this entry, so a re-register() (fresh entry + generation
@@ -964,7 +964,7 @@ class ToolRegistry:
         """
         entry = self.get_entry(name)
         if not entry:
-            return json.dumps({"error": f"Unknown tool: {name}"})
+            return orjson.dumps({"error": f"Unknown tool: {name}"}).decode('utf-8')
         try:
             if entry.is_async:
                 from model_tools import _run_async
@@ -981,7 +981,7 @@ class ToolRegistry:
                 sanitized = _sanitize_tool_error(raw)
             except Exception:
                 sanitized = raw  # defensive: never let the sanitizer block error propagation
-            return json.dumps({"error": sanitized})
+            return orjson.dumps({"error": sanitized}).decode('utf-8')
 
     # ------------------------------------------------------------------
     # Query helpers  (replace redundant dicts in model_tools.py)
@@ -1026,8 +1026,8 @@ class ToolRegistry:
         the cache invalidates transparently. Mirrors :meth:`get_schema`: this is
         the STATIC registered schema, so per-call ``dynamic_schema_overrides``
         are intentionally not reflected. Output matches
-        ``json.dumps(get_schema(name), ensure_ascii=False)`` exactly, so
-        ``json.loads(get_schema_json(name)) == get_schema(name)``.
+        ``orjson.dumps(get_schema(name)).decode('utf-8')`` exactly, so
+        ``orjson.loads(get_schema_json(name)) == get_schema(name)``.
         """
         entry = self.get_entry(name)
         if entry is None:
@@ -1036,7 +1036,7 @@ class ToolRegistry:
         if cached is None:
             # Benign race: two threads may compute the same value concurrently;
             # both write an identical string, so no lock is needed.
-            cached = json.dumps(entry.schema, ensure_ascii=False)
+            cached = orjson.dumps(entry.schema).decode('utf-8')
             entry._schema_json = cached
         return cached
 
@@ -1149,7 +1149,7 @@ registry = ToolRegistry()
 # Helpers for tool response serialization
 # ---------------------------------------------------------------------------
 # Every tool handler must return a JSON string.  These helpers eliminate the
-# boilerplate ``json.dumps({"error": msg}, ensure_ascii=False)`` that appears
+# boilerplate ``orjson.dumps({"error": msg}).decode('utf-8')`` that appears
 # hundreds of times across tool files.
 #
 # Usage:
@@ -1172,7 +1172,7 @@ def tool_error(message, **extra) -> str:
     result = {"error": str(message)}
     if extra:
         result.update(extra)
-    return json.dumps(result, ensure_ascii=False)
+    return orjson.dumps(result).decode('utf-8')
 
 
 def tool_result(data=None, **kwargs) -> str:
@@ -1186,5 +1186,5 @@ def tool_result(data=None, **kwargs) -> str:
     '{"key": "value"}'
     """
     if data is not None:
-        return json.dumps(data, ensure_ascii=False)
-    return json.dumps(kwargs, ensure_ascii=False)
+        return orjson.dumps(data).decode('utf-8')
+    return orjson.dumps(kwargs).decode('utf-8')

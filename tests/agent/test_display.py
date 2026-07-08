@@ -1,6 +1,6 @@
 """Tests for agent/display.py — build_tool_preview() and inline diff previews."""
 
-import json
+import orjson
 import pytest
 from unittest.mock import MagicMock
 
@@ -244,21 +244,21 @@ class TestCuteToolMessagePreviewLength:
         assert "..." not in line
 
     def test_write_file_lint_error_result_is_not_marked_failed(self):
-        result = json.dumps({
+        result = orjson.dumps({
             "bytes_written": 12,
             "lint": {"status": "error", "output": "SyntaxError: invalid syntax"},
-        })
+        }).decode('utf-8')
 
         line = get_cute_tool_message("write_file", {"path": "/tmp/a.py"}, 0.1, result=result)
 
         assert "[error]" not in line
 
     def test_patch_lsp_diagnostics_result_is_not_marked_failed(self):
-        result = json.dumps({
+        result = orjson.dumps({
             "success": True,
             "diff": "--- a/tmp.py\n+++ b/tmp.py\n",
             "lsp_diagnostics": "<diagnostics>ERROR [1:1] type mismatch</diagnostics>",
-        })
+        }).decode('utf-8')
 
         line = get_cute_tool_message("patch", {"path": "/tmp/a.py"}, 0.1, result=result)
 

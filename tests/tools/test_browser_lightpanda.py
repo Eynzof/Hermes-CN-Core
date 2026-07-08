@@ -1,6 +1,6 @@
 """Tests for Lightpanda engine support in browser_tool.py."""
 
-import json
+import orjson
 import os
 from unittest.mock import MagicMock, patch
 
@@ -328,7 +328,7 @@ class TestLightpandaFallbackWarning:
 
 
     def test_browser_navigate_surfaces_fallback_warning(self):
-        import json
+        import orjson
         import tools.browser_tool as bt
 
         result = bt._annotate_lightpanda_fallback(
@@ -345,7 +345,7 @@ class TestLightpandaFallbackWarning:
                  result,
                  {"success": True, "data": {"snapshot": "- heading \"Fallback OK\" [ref=e1]", "refs": {"e1": {}}}},
              ]):
-            response = json.loads(bt.browser_navigate("https://example.com", task_id="warn-test"))
+            response = orjson.loads(bt.browser_navigate("https://example.com", task_id="warn-test"))
 
         assert response["success"] is True
         assert response["browser_engine"] == "chrome"
@@ -355,7 +355,7 @@ class TestLightpandaFallbackWarning:
         bt._last_active_session_key.pop("warn-test", None)
 
     def test_browser_navigate_surfaces_auto_snapshot_fallback_warning(self):
-        import json
+        import orjson
         import tools.browser_tool as bt
 
         snapshot_result = bt._annotate_lightpanda_fallback(
@@ -372,7 +372,7 @@ class TestLightpandaFallbackWarning:
                  {"success": True, "data": {"title": "Fallback OK", "url": "https://example.com/"}},
                  snapshot_result,
              ]):
-            response = json.loads(bt.browser_navigate("https://example.com", task_id="warn-test2"))
+            response = orjson.loads(bt.browser_navigate("https://example.com", task_id="warn-test2"))
 
         assert response["success"] is True
         assert response["browser_engine"] == "chrome"
@@ -381,7 +381,7 @@ class TestLightpandaFallbackWarning:
         bt._last_active_session_key.pop("warn-test2", None)
 
     def test_failed_fallback_warning_is_preserved_on_click_error(self):
-        import json
+        import orjson
         import tools.browser_tool as bt
 
         result = bt._annotate_lightpanda_fallback(
@@ -390,7 +390,7 @@ class TestLightpandaFallbackWarning:
         )
         bt._last_active_session_key["warn-test3"] = "warn-test3"
         with patch("tools.browser_tool._run_browser_command", return_value=result):
-            response = json.loads(bt.browser_click("@e1", task_id="warn-test3"))
+            response = orjson.loads(bt.browser_click("@e1", task_id="warn-test3"))
 
         assert response["success"] is False
         assert "Lightpanda fallback" in response["fallback_warning"]
@@ -399,7 +399,7 @@ class TestLightpandaFallbackWarning:
 
 
     def test_browser_vision_lightpanda_uses_chrome_capture_and_normal_call_llm_shape(self, tmp_path):
-        import json
+        import orjson
         import tools.browser_tool as bt
 
         chrome_shot = tmp_path / "chrome.png"
@@ -427,7 +427,7 @@ class TestLightpandaFallbackWarning:
              }), \
              patch("hermes_constants.get_hermes_dir", return_value=tmp_path), \
              patch("tools.browser_tool.call_llm", side_effect=fake_call_llm):
-            response = json.loads(bt.browser_vision("what is this?", task_id="vision-test"))
+            response = orjson.loads(bt.browser_vision("what is this?", task_id="vision-test"))
 
         assert response["success"] is True
         assert response["analysis"] == "Example Domain screenshot"
@@ -439,7 +439,7 @@ class TestLightpandaFallbackWarning:
 
 
     def test_browser_get_images_preserves_fallback_warning(self):
-        import json
+        import orjson
         import tools.browser_tool as bt
 
         result = bt._annotate_lightpanda_fallback(
@@ -448,7 +448,7 @@ class TestLightpandaFallbackWarning:
         )
         bt._last_active_session_key["warn-images"] = "warn-images"
         with patch("tools.browser_tool._run_browser_command", return_value=result):
-            response = json.loads(bt.browser_get_images(task_id="warn-images"))
+            response = orjson.loads(bt.browser_get_images(task_id="warn-images"))
 
         assert response["success"] is True
         assert response["browser_engine"] == "chrome"
@@ -456,7 +456,7 @@ class TestLightpandaFallbackWarning:
         bt._last_active_session_key.pop("warn-images", None)
 
     def test_browser_vision_lightpanda_response_has_structured_fallback(self, tmp_path):
-        import json
+        import orjson
         import tools.browser_tool as bt
 
         chrome_shot = tmp_path / "chrome-structured.png"
@@ -478,7 +478,7 @@ class TestLightpandaFallbackWarning:
              }), \
              patch("hermes_constants.get_hermes_dir", return_value=tmp_path), \
              patch("tools.browser_tool.call_llm", return_value=_Response()):
-            response = json.loads(bt.browser_vision("what is this?", task_id="vision-structured"))
+            response = orjson.loads(bt.browser_vision("what is this?", task_id="vision-structured"))
 
         assert response["success"] is True
         assert response["browser_engine"] == "chrome"
@@ -607,10 +607,10 @@ class TestEngineOverride:
             captured_cmds.append(cmd)
             return mock_proc
 
-        mock_stdout = json.dumps({
+        mock_stdout = orjson.dumps({
             "success": True,
             "data": {"snapshot": '- heading "Hello" [ref=e1]', "refs": {"e1": {}}},
-        })
+        }).decode('utf-8')
         with patch("tools.browser_tool._get_session_info", return_value={"session_name": "local-sidecar"}), \
              patch("tools.browser_tool._find_agent_browser", return_value="/usr/bin/agent-browser"), \
              patch("tools.browser_tool._is_local_mode", return_value=False), \

@@ -29,7 +29,7 @@ Usage:
     process_registry.kill(session.id)
 """
 
-import json
+import orjson
 import logging
 import os
 from platform_utils import is_windows
@@ -1800,7 +1800,7 @@ class ProcessRegistry:
             return 0
 
         try:
-            entries = json.loads(CHECKPOINT_PATH.read_text(encoding="utf-8"))
+            entries = orjson.loads(CHECKPOINT_PATH.read_text(encoding="utf-8"))
         except Exception:
             return 0
 
@@ -2185,28 +2185,25 @@ def _handle_process(args, **kw):
             session_key = get_current_session_key(default="") or ""
         except Exception:
             session_key = ""
-        return json.dumps(
-            {"processes": process_registry.list_sessions(task_id=task_id, session_key=session_key or None)},
-            ensure_ascii=False,
-        )
+        return orjson.dumps({"processes": process_registry.list_sessions(task_id=task_id, session_key=session_key or None)}).decode('utf-8')
     elif action in {"poll", "log", "wait", "kill", "write", "submit", "close"}:
         if not session_id:
             return tool_error(f"session_id is required for {action}")
         if action == "poll":
-            return json.dumps(_redact_process_result(process_registry.poll(session_id)), ensure_ascii=False)
+            return orjson.dumps(_redact_process_result(process_registry.poll(session_id))).decode('utf-8')
         elif action == "log":
-            return json.dumps(_redact_process_result(process_registry.read_log(
-                session_id, offset=args.get("offset", 0), limit=args.get("limit", 200))), ensure_ascii=False)
+            return orjson.dumps(_redact_process_result(process_registry.read_log(
+                session_id, offset=args.get("offset", 0), limit=args.get("limit", 200)))).decode('utf-8')
         elif action == "wait":
-            return json.dumps(_redact_process_result(process_registry.wait(session_id, timeout=args.get("timeout"))), ensure_ascii=False)
+            return orjson.dumps(_redact_process_result(process_registry.wait(session_id, timeout=args.get("timeout")))).decode('utf-8')
         elif action == "kill":
-            return json.dumps(process_registry.kill_process(session_id), ensure_ascii=False)
+            return orjson.dumps(process_registry.kill_process(session_id)).decode('utf-8')
         elif action == "write":
-            return json.dumps(process_registry.write_stdin(session_id, str(args.get("data", ""))), ensure_ascii=False)
+            return orjson.dumps(process_registry.write_stdin(session_id, str(args.get("data", "")))).decode('utf-8')
         elif action == "submit":
-            return json.dumps(process_registry.submit_stdin(session_id, str(args.get("data", ""))), ensure_ascii=False)
+            return orjson.dumps(process_registry.submit_stdin(session_id, str(args.get("data", "")))).decode('utf-8')
         elif action == "close":
-            return json.dumps(process_registry.close_stdin(session_id), ensure_ascii=False)
+            return orjson.dumps(process_registry.close_stdin(session_id)).decode('utf-8')
     return tool_error(f"Unknown process action: {action}. Use: list, poll, log, wait, kill, write, submit, close")
 
 

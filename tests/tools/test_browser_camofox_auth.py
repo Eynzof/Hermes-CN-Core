@@ -3,7 +3,7 @@
 Regression test for https://github.com/NousResearch/hermes-agent/issues/20476
 """
 
-import json
+import orjson
 from unittest.mock import MagicMock, patch
 
 import pytest

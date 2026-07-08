@@ -23,7 +23,7 @@ Usage:
 
 from __future__ import annotations
 
-import json
+import orjson
 import os
 import platform
 import re
@@ -133,7 +133,7 @@ def detect_rocm() -> dict | None:
     out = _run(["rocm-smi", "--showproductname", "--showmeminfo", "vram", "--json"])
     if out.strip().startswith("{"):
         try:
-            data = json.loads(out)
+            data = orjson.loads(out)
             cards = []
             for card_id, info in data.items():
                 if not card_id.startswith("card"):
@@ -156,7 +156,7 @@ def detect_rocm() -> dict | None:
                 if len(cards) > 1:
                     best["all_gpus"] = cards
                 return best
-        except json.JSONDecodeError:
+        except orjson.JSONDecodeError:
             pass
     # Fall back to text parsing
     out = _run(["rocm-smi", "--showproductname", "--showmeminfo", "vram"])
@@ -454,7 +454,7 @@ def main(argv: list[str] | None = None) -> int:
     report = build_report(check_pytorch=args.check_pytorch)
 
     if args.json:
-        print(json.dumps(report, indent=2))
+        print(orjson.dumps(report, option=orjson.OPT_INDENT_2).decode('utf-8'))
     else:
         print(f"OS:        {report['os']} ({report['arch']})")
         if report.get("wsl"):

@@ -13,7 +13,7 @@ Resolution order for host-specific settings:
 
 from __future__ import annotations
 
-import json
+import orjson
 import os
 import logging
 import hashlib
@@ -419,8 +419,8 @@ class HonchoClientConfig:
             return cls.from_env(host=resolved_host)
 
         try:
-            raw = json.loads(path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError) as e:
+            raw = orjson.loads(path.read_text(encoding="utf-8"))
+        except (orjson.JSONDecodeError, OSError) as e:
             logger.warning("Failed to read %s: %s, falling back to env", path, e)
             return cls.from_env(host=resolved_host)
 

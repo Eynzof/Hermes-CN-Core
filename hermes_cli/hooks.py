@@ -18,7 +18,7 @@ format) lives there.
 
 from __future__ import annotations
 
-import json
+import orjson
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -214,7 +214,7 @@ def _cmd_test(args) -> None:
 
     if getattr(args, "payload_file", None):
         try:
-            custom = json.loads(Path(args.payload_file).read_text(encoding="utf-8"))
+            custom = orjson.loads(Path(args.payload_file).read_text(encoding="utf-8"))
             if isinstance(custom, dict):
                 payload.update(custom)
             else:
@@ -268,7 +268,7 @@ def _print_run_result(result: Dict[str, Any]) -> None:
 
     parsed = result.get("parsed")
     if parsed:
-        print(f"      parsed (Hermes wire shape): {json.dumps(parsed)}")
+        print(f"      parsed (Hermes wire shape): {orjson.dumps(parsed).decode('utf-8')}")
     else:
         print("      parsed: <none — hook contributed nothing to the dispatcher>")
 
@@ -380,10 +380,10 @@ def _doctor_one(spec, shell_hooks) -> int:
             stdout = (result.get("stdout") or "").strip()
             if stdout:
                 try:
-                    json.loads(stdout)
+                    orjson.loads(stdout)
                     print(f"      ✓ produced valid JSON on synthetic payload "
                           f"(exit={rc}, {elapsed}s)")
-                except json.JSONDecodeError:
+                except orjson.JSONDecodeError:
                     problems += 1
                     print(f"      ✗ stdout was not valid JSON (exit={rc}, "
                           f"{elapsed}s): {_truncate(stdout, 120)}")

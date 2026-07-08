@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import json
+import orjson
 import time
 from unittest.mock import patch, MagicMock
 
@@ -576,7 +576,7 @@ class TestGoalStateSubgoalsBackcompat:
         round-trip with an empty list, not crash."""
         from hermes_cli.goals import GoalState
 
-        legacy = json.dumps({
+        legacy = orjson.dumps({
             "goal": "do a thing",
             "status": "active",
             "turns_used": 2,
@@ -584,7 +584,7 @@ class TestGoalStateSubgoalsBackcompat:
             "created_at": 1.0,
             "last_turn_at": 2.0,
             "consecutive_parse_failures": 0,
-        })
+        }).decode('utf-8')
         state = GoalState.from_json(legacy)
         assert state.goal == "do a thing"
         assert state.subgoals == []
@@ -985,12 +985,12 @@ class TestWaitBarrier:
         existed must load with no barrier."""
         from hermes_cli.goals import GoalState
 
-        legacy = json.dumps({
+        legacy = orjson.dumps({
             "goal": "old goal",
             "status": "active",
             "turns_used": 2,
             "max_turns": 20,
-        })
+        }).decode('utf-8')
         st = GoalState.from_json(legacy)
         assert st.goal == "old goal"
         assert st.waiting_on_pid is None
@@ -1215,9 +1215,9 @@ class TestSessionTriggerBarrier:
 
     def test_old_state_loads_without_session_field(self, hermes_home):
         from hermes_cli.goals import GoalState
-        st = GoalState.from_json(json.dumps({
+        st = GoalState.from_json(orjson.dumps({
             "goal": "g", "status": "active", "turns_used": 0, "max_turns": 20,
-        }))
+        }).decode('utf-8'))
         assert st.waiting_on_session is None
 
 

@@ -14,7 +14,7 @@ Does NOT spawn a real Chromium — we mock ``subprocess.Popen`` where needed.
 
 from __future__ import annotations
 
-import json
+import orjson
 import os
 import signal
 from pathlib import Path
@@ -93,7 +93,7 @@ def test_bot_state_dedupes_captions_and_flushes_status(tmp_path):
     # dedup — Alice line appears exactly once
     assert transcript.count("Alice: Hey everyone") == 1
 
-    status = json.loads((out / "status.json").read_text())
+    status = orjson.loads((out / "status.json").read_text())
     assert status["meetingId"] == "abc-defg-hij"
     assert status["transcriptLines"] == 2
     assert status["transcriptPath"].endswith("transcript.txt")
@@ -108,7 +108,7 @@ def test_bot_state_ignores_blank_text(tmp_path):
     state.record_caption("Alice", "   ")
     state.record_caption("", "text but no speaker")
 
-    status = json.loads((tmp_path / "s" / "status.json").read_text())
+    status = orjson.loads((tmp_path / "s" / "status.json").read_text())
     assert status["transcriptLines"] == 1
     # blank-speaker falls back to "Unknown"
     assert "Unknown: text but no speaker" in (tmp_path / "s" / "transcript.txt").read_text()
@@ -249,7 +249,7 @@ def test_stop_signals_process_and_clears_pointer(tmp_path):
 def test_meet_join_handler_missing_url_returns_error():
     from plugins.google_meet.tools import handle_meet_join
 
-    out = json.loads(handle_meet_join({}))
+    out = orjson.loads(handle_meet_join({}))
     assert out["success"] is False
     assert "url is required" in out["error"]
 
@@ -258,7 +258,7 @@ def test_meet_join_handler_respects_safety_gate():
     from plugins.google_meet.tools import handle_meet_join
 
     with patch("plugins.google_meet.tools.check_meet_requirements", return_value=True):
-        out = json.loads(handle_meet_join({"url": "https://evil.example.com/foo"}))
+        out = orjson.loads(handle_meet_join({"url": "https://evil.example.com/foo"}))
     assert out["success"] is False
     assert "refusing" in out["error"]
 
@@ -267,7 +267,7 @@ def test_meet_join_handler_returns_error_when_playwright_missing():
     from plugins.google_meet.tools import handle_meet_join
 
     with patch("plugins.google_meet.tools.check_meet_requirements", return_value=False):
-        out = json.loads(handle_meet_join({"url": "https://meet.google.com/abc-defg-hij"}))
+        out = orjson.loads(handle_meet_join({"url": "https://meet.google.com/abc-defg-hij"}))
     assert out["success"] is False
     assert "prerequisites missing" in out["error"]
 
@@ -275,7 +275,7 @@ def test_meet_join_handler_returns_error_when_playwright_missing():
 def test_meet_say_requires_text():
     from plugins.google_meet.tools import handle_meet_say
 
-    out = json.loads(handle_meet_say({}))
+    out = orjson.loads(handle_meet_say({}))
     assert out["success"] is False
     assert "text is required" in out["error"]
 
@@ -283,7 +283,7 @@ def test_meet_say_requires_text():
 def test_meet_say_no_active_meeting():
     from plugins.google_meet.tools import handle_meet_say
 
-    out = json.loads(handle_meet_say({"text": "hello everyone"}))
+    out = orjson.loads(handle_meet_say({"text": "hello everyone"}))
     assert out["success"] is False
     # Falls through to pm.enqueue_say which reports no active meeting.
     assert "no active meeting" in out.get("reason", "")
@@ -292,14 +292,14 @@ def test_meet_say_no_active_meeting():
 def test_meet_status_and_transcript_no_active():
     from plugins.google_meet.tools import handle_meet_status, handle_meet_transcript
 
-    assert json.loads(handle_meet_status({}))["success"] is False
-    assert json.loads(handle_meet_transcript({}))["success"] is False
+    assert orjson.loads(handle_meet_status({}))["success"] is False
+    assert orjson.loads(handle_meet_transcript({}))["success"] is False
 
 
 def test_meet_leave_no_active():
     from plugins.google_meet.tools import handle_meet_leave
 
-    out = json.loads(handle_meet_leave({}))
+    out = orjson.loads(handle_meet_leave({}))
     assert out["success"] is False
 
 
@@ -413,7 +413,7 @@ def test_enqueue_say_writes_jsonl_in_realtime_mode():
 
     queue = out_dir / "say_queue.jsonl"
     assert queue.is_file()
-    lines = [json.loads(ln) for ln in queue.read_text().splitlines() if ln.strip()]
+    lines = [orjson.loads(ln) for ln in queue.read_text().splitlines() if ln.strip()]
     assert len(lines) == 1
     assert lines[0]["text"] == "hello everyone"
 
@@ -468,7 +468,7 @@ def test_meet_join_accepts_realtime_mode():
 
     with patch("plugins.google_meet.tools.check_meet_requirements", return_value=True), \
          patch("plugins.google_meet.tools.pm.start", return_value={"ok": True, "meeting_id": "x-y-z"}) as start_mock:
-        out = json.loads(handle_meet_join({
+        out = orjson.loads(handle_meet_join({
             "url": "https://meet.google.com/abc-defg-hij",
             "mode": "realtime",
         }))
@@ -479,7 +479,7 @@ def test_meet_join_accepts_realtime_mode():
 def test_meet_join_rejects_bad_mode():
     from plugins.google_meet.tools import handle_meet_join
 
-    out = json.loads(handle_meet_join({
+    out = orjson.loads(handle_meet_join({
         "url": "https://meet.google.com/abc-defg-hij",
         "mode": "bogus",
     }))
@@ -494,7 +494,7 @@ def test_meet_join_rejects_bad_mode():
 def test_meet_join_unknown_node_returns_clear_error():
     from plugins.google_meet.tools import handle_meet_join
 
-    out = json.loads(handle_meet_join({
+    out = orjson.loads(handle_meet_join({
         "url": "https://meet.google.com/abc-defg-hij",
         "node": "my-mac",
     }))
@@ -511,7 +511,7 @@ def test_meet_join_routes_to_registered_node():
 
     with patch("plugins.google_meet.node.client.NodeClient.start_bot",
                return_value={"ok": True, "meeting_id": "a-b-c"}) as call_mock:
-        out = json.loads(handle_meet_join({
+        out = orjson.loads(handle_meet_join({
             "url": "https://meet.google.com/abc-defg-hij",
             "node": "my-mac",
             "mode": "realtime",
@@ -530,7 +530,7 @@ def test_meet_say_routes_to_node():
 
     with patch("plugins.google_meet.node.client.NodeClient.say",
                return_value={"ok": True, "enqueued_id": "abc"}) as call_mock:
-        out = json.loads(handle_meet_say({"text": "hello", "node": "my-mac"}))
+        out = orjson.loads(handle_meet_say({"text": "hello", "node": "my-mac"}))
     assert out["success"] is True
     assert out["node"] == "my-mac"
     call_mock.assert_called_once_with("hello")
@@ -545,7 +545,7 @@ def test_meet_join_auto_node_selects_sole_registered():
 
     with patch("plugins.google_meet.node.client.NodeClient.start_bot",
                return_value={"ok": True}) as call_mock:
-        out = json.loads(handle_meet_join({
+        out = orjson.loads(handle_meet_join({
             "url": "https://meet.google.com/abc-defg-hij",
             "node": "auto",
         }))
@@ -562,7 +562,7 @@ def test_meet_join_auto_node_ambiguous_returns_error():
     reg.add("a", "ws://1.2.3.4:18789", "tok")
     reg.add("b", "ws://5.6.7.8:18789", "tok")
 
-    out = json.loads(handle_meet_join({
+    out = orjson.loads(handle_meet_join({
         "url": "https://meet.google.com/abc-defg-hij",
         "node": "auto",
     }))
@@ -621,7 +621,7 @@ def test_bot_state_exposes_v2_telemetry_fields(tmp_path):
     state = _BotState(out_dir=tmp_path / "s", meeting_id="x-y-z",
                       url="https://meet.google.com/x-y-z")
     # Defaults for the new fields.
-    status = json.loads((tmp_path / "s" / "status.json").read_text())
+    status = orjson.loads((tmp_path / "s" / "status.json").read_text())
     for key in (
         "realtime", "realtimeReady", "realtimeDevice",
         "audioBytesOut", "lastAudioOutAt", "lastBargeInAt",
@@ -635,7 +635,7 @@ def test_bot_state_exposes_v2_telemetry_fields(tmp_path):
     # Setting them flushes them.
     state.set(realtime=True, realtime_ready=True, audio_bytes_out=1024,
               leave_reason="lobby_timeout")
-    status = json.loads((tmp_path / "s" / "status.json").read_text())
+    status = orjson.loads((tmp_path / "s" / "status.json").read_text())
     assert status["realtime"] is True
     assert status["realtimeReady"] is True
     assert status["audioBytesOut"] == 1024
@@ -708,7 +708,7 @@ def test_realtime_session_cancel_response_sends_cancel_frame():
     sess._ws = _FakeWs()
     assert sess.cancel_response() is True
     assert len(sent) == 1
-    import json as _j
+    import orjson as _j
     envelope = _j.loads(sent[0])
     assert envelope == {"type": "response.cancel"}
 

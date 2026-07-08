@@ -8,7 +8,7 @@ that is also another parent's delegate child) used to leak the parent into
 the deletion set, permanently deleting the parent session and its messages.
 """
 
-import json
+import orjson
 import sqlite3
 
 from hermes_state import _collect_delegate_child_ids, _delete_delegate_children
@@ -28,7 +28,7 @@ def _make_conn():
 
 
 def _add_session(conn, sid, *, delegate_from=None, parent_session_id=None, messages=0):
-    model_config = json.dumps({"_delegate_from": delegate_from}) if delegate_from else None
+    model_config = orjson.dumps({"_delegate_from": delegate_from}).decode('utf-8') if delegate_from else None
     conn.execute(
         "INSERT INTO sessions (id, parent_session_id, model_config) VALUES (?, ?, ?)",
         (sid, parent_session_id, model_config),

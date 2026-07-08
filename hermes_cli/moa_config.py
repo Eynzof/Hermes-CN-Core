@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import base64
-import json
+import orjson
 from copy import deepcopy
 from typing import Any
 
@@ -225,7 +225,7 @@ def encode_moa_turn(prompt: str, config: Any = None, preset: str | None = None) 
         "config": resolve_moa_preset(config or {}, preset),
     }
     encoded = base64.urlsafe_b64encode(
-        json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+        orjson.dumps(payload)
     ).decode("ascii")
     return f"{MOA_MARKER_PREFIX}{encoded}"
 
@@ -236,7 +236,7 @@ def decode_moa_turn(message: Any) -> tuple[str, dict[str, Any] | None]:
         return message, None
     encoded = message[len(MOA_MARKER_PREFIX):].strip()
     try:
-        payload = json.loads(base64.urlsafe_b64decode(encoded.encode("ascii")).decode("utf-8"))
+        payload = orjson.loads(base64.urlsafe_b64decode(encoded.encode("ascii")).decode("utf-8"))
     except Exception:
         return message, None
     prompt = str(payload.get("prompt") or "")

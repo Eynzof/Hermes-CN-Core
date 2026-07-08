@@ -31,7 +31,7 @@ Usage:
 import base64
 import contextlib
 import asyncio
-import json
+import orjson
 from concurrent.futures import ThreadPoolExecutor
 import logging
 import os
@@ -1156,7 +1156,7 @@ async def vision_analyze_tool(
         _debug.log_call("vision_analyze_tool", debug_call_data)
         _debug.save()
         
-        return json.dumps(result, indent=2, ensure_ascii=False)
+        return orjson.dumps(result, option=orjson.OPT_INDENT_2).decode('utf-8')
         
     except Exception as e:
         error_msg = f"Error analyzing image: {str(e)}"
@@ -1205,7 +1205,7 @@ async def vision_analyze_tool(
         _debug.log_call("vision_analyze_tool", debug_call_data)
         _debug.save()
         
-        return json.dumps(result, indent=2, ensure_ascii=False)
+        return orjson.dumps(result, option=orjson.OPT_INDENT_2).decode('utf-8')
     
     finally:
         # Clean up temporary image file (but NOT local/cached files)
@@ -1622,7 +1622,7 @@ async def video_analyze_tool(
         _debug.log_call("video_analyze_tool", debug_call_data)
         _debug.save()
 
-        return json.dumps(result, indent=2, ensure_ascii=False)
+        return orjson.dumps(result, option=orjson.OPT_INDENT_2).decode('utf-8')
 
     except Exception as e:
         error_msg = f"Error analyzing video: {str(e)}"
@@ -1671,7 +1671,7 @@ async def video_analyze_tool(
         _debug.log_call("video_analyze_tool", debug_call_data)
         _debug.save()
 
-        return json.dumps(result, indent=2, ensure_ascii=False)
+        return orjson.dumps(result, option=orjson.OPT_INDENT_2).decode('utf-8')
 
     finally:
         if should_cleanup and temp_video_path and temp_video_path.exists():

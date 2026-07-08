@@ -12,7 +12,7 @@ We shim the imports at module load so collection doesn't fail.
 """
 
 import asyncio
-import json
+import orjson
 import os
 import sys
 import types
@@ -188,7 +188,7 @@ def adapter(tmp_path):
 def _make_pubsub_message(data: dict, *, attributes=None):
     """Build a Mock Pub/Sub Message with ack/nack trackers."""
     msg = MagicMock()
-    msg.data = json.dumps(data).encode("utf-8")
+    msg.data = orjson.dumps(data)
     msg.attributes = attributes or {}
     msg.ack = MagicMock()
     msg.nack = MagicMock()
@@ -1518,7 +1518,7 @@ class TestSetupFilesSlashCommand:
 class TestUserOAuthHelper:
     @staticmethod
     def _assert_private_json_file(path, expected):
-        assert json.loads(path.read_text(encoding="utf-8")) == expected
+        assert orjson.loads(path.read_text(encoding="utf-8")) == expected
         assert list(path.parent.glob(f"{path.stem}.tmp.*")) == []
         if os.name != "nt":
             assert (path.stat().st_mode & 0o777) == 0o600
@@ -1625,14 +1625,12 @@ class TestUserOAuthHelper:
             "Creds",
             (),
             {
-                "to_json": lambda self: json.dumps(
-                    {
+                "to_json": lambda self: orjson.dumps({
                         "client_id": "cid",
                         "client_secret": "secret",
                         "refresh_token": "rtok",
                         "token": "atok",
-                    }
-                )
+                    }).decode('utf-8')
             },
         )()
 
@@ -1654,7 +1652,7 @@ class TestUserOAuthHelper:
         monkeypatch.setenv("HERMES_HOME", str(tmp_path))
         src = tmp_path / "client_secret.json"
         payload = {"installed": {"client_id": "cid", "client_secret": "secret"}}
-        src.write_text(json.dumps(payload), encoding="utf-8")
+        src.write_text(orjson.dumps(payload).decode('utf-8'), encoding="utf-8")
 
         from plugins.platforms.google_chat.oauth import (
             _client_secret_path,
@@ -1718,11 +1716,11 @@ class TestPerUserAttachmentRouting:
         monkeypatch.setenv("HERMES_HOME", str(tmp_path))
         users_dir = tmp_path / "google_chat_user_tokens"
         users_dir.mkdir(parents=True)
-        (users_dir / "alice@example.com.json").write_text(json.dumps({
+        (users_dir / "alice@example.com.json").write_text(orjson.dumps({
             "type": "authorized_user",
             "client_id": "cid", "client_secret": "csec",
             "refresh_token": "rtok", "token": "atok",
-        }))
+        }).decode('utf-8'))
         adapter._last_sender_by_chat["spaces/S"] = "alice@example.com"
 
         per_user_api = MagicMock()
@@ -1960,8 +1958,8 @@ class TestThreadCountStore:
         prev = store.incr("spaces/X", "spaces/X/threads/T")
         assert prev == 0
         # File now has valid JSON.
-        import json
-        data = json.loads(path.read_text())
+        import orjson
+        data = orjson.loads(path.read_text())
         assert data == {"spaces/X": {"spaces/X/threads/T": 1}}
 
     def test_incr_returns_pre_increment_value(self, tmp_path):
@@ -2001,13 +1999,13 @@ class TestThreadCountStore:
         """If someone hand-edits the file with weird shapes, drop the
         bad entries but keep the valid ones."""
         from plugins.platforms.google_chat.adapter import _ThreadCountStore
-        import json
+        import orjson
         path = tmp_path / "counts.json"
-        path.write_text(json.dumps({
+        path.write_text(orjson.dumps({
             "spaces/OK": {"spaces/OK/threads/T": 3},
             "spaces/BAD_VALUE": "not a dict",
             "spaces/BAD_COUNT": {"spaces/BAD_COUNT/threads/T": "five"},
-        }))
+        }).decode('utf-8'))
         store = _ThreadCountStore(path)
         store.load()
         assert store.get("spaces/OK", "spaces/OK/threads/T") == 3
@@ -2843,12 +2841,12 @@ class TestGoogleChatStandaloneSend:
         self, monkeypatch, tmp_path
     ):
         sa_file = tmp_path / "sa.json"
-        sa_file.write_text(json.dumps({
+        sa_file.write_text(orjson.dumps({
             "type": "service_account",
             "client_email": "bot@example.iam.gserviceaccount.com",
             "private_key": "fake",
             "token_uri": "https://example/token",
-        }))
+        }).decode('utf-8'))
         monkeypatch.setenv("GOOGLE_CHAT_SERVICE_ACCOUNT_JSON", str(sa_file))
 
         fake_creds = MagicMock()
@@ -2898,12 +2896,12 @@ class TestGoogleChatStandaloneSend:
     @pytest.mark.asyncio
     async def test_standalone_send_propagates_api_failure(self, monkeypatch, tmp_path):
         sa_file = tmp_path / "sa.json"
-        sa_file.write_text(json.dumps({
+        sa_file.write_text(orjson.dumps({
             "type": "service_account",
             "client_email": "bot@example.iam.gserviceaccount.com",
             "private_key": "fake",
             "token_uri": "https://example/token",
-        }))
+        }).decode('utf-8'))
         monkeypatch.setenv("GOOGLE_CHAT_SERVICE_ACCOUNT_JSON", str(sa_file))
 
         fake_creds = MagicMock()

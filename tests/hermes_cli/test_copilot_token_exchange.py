@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import json
+import orjson
 import time
 from unittest.mock import MagicMock, patch
 
@@ -25,7 +25,7 @@ class TestExchangeCopilotToken:
         """Create a mock urlopen context manager returning a token response."""
         if expires_at is None:
             expires_at = time.time() + 1800
-        resp_data = json.dumps({"token": token, "expires_at": expires_at}).encode()
+        resp_data = orjson.dumps({"token": token, "expires_at": expires_at})
         mock_resp = MagicMock()
         mock_resp.read.return_value = resp_data
         mock_resp.__enter__ = MagicMock(return_value=mock_resp)
@@ -81,7 +81,7 @@ class TestExchangeCopilotToken:
     def test_raises_on_empty_token(self, mock_urlopen):
         from hermes_cli.copilot_auth import exchange_copilot_token
 
-        resp_data = json.dumps({"token": "", "expires_at": 0}).encode()
+        resp_data = orjson.dumps({"token": "", "expires_at": 0})
         mock_resp = MagicMock()
         mock_resp.read.return_value = resp_data
         mock_resp.__enter__ = MagicMock(return_value=mock_resp)
@@ -200,7 +200,7 @@ class TestDeriveBaseUrlFromProxyEp:
 
         token_with_ep = "tid=abc;exp=999;proxy-ep=proxy.enterprise.githubcopilot.com"
         expires_at = time.time() + 1800
-        resp_data = json.dumps({"token": token_with_ep, "expires_at": expires_at}).encode()
+        resp_data = orjson.dumps({"token": token_with_ep, "expires_at": expires_at})
         mock_resp = MagicMock()
         mock_resp.read.return_value = resp_data
         mock_resp.__enter__ = MagicMock(return_value=mock_resp)
@@ -217,7 +217,7 @@ class TestDeriveBaseUrlFromProxyEp:
 
         token_no_ep = "tid=abc;exp=999;sku=copilot_individual"
         expires_at = time.time() + 1800
-        resp_data = json.dumps({"token": token_no_ep, "expires_at": expires_at}).encode()
+        resp_data = orjson.dumps({"token": token_no_ep, "expires_at": expires_at})
         mock_resp = MagicMock()
         mock_resp.read.return_value = resp_data
         mock_resp.__enter__ = MagicMock(return_value=mock_resp)

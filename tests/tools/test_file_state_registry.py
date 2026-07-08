@@ -16,7 +16,7 @@ Run:
 
 from __future__ import annotations
 
-import json
+import orjson
 import os
 import tempfile
 import threading
@@ -231,13 +231,13 @@ class FileToolsIntegrationTests(unittest.TestCase):
 
     def test_sibling_agent_write_surfaces_warning_through_handler(self):
         p = self._write_seed("shared.txt")
-        r = json.loads(read_file_tool(path=p, task_id="agentA"))
+        r = orjson.loads(read_file_tool(path=p, task_id="agentA"))
         self.assertNotIn("error", r)
 
-        w_b = json.loads(write_file_tool(path=p, content="B wrote\n", task_id="agentB"))
+        w_b = orjson.loads(write_file_tool(path=p, content="B wrote\n", task_id="agentB"))
         self.assertNotIn("error", w_b)
 
-        w_a = json.loads(write_file_tool(path=p, content="A stale\n", task_id="agentA"))
+        w_a = orjson.loads(write_file_tool(path=p, content="A stale\n", task_id="agentA"))
         warn = w_a.get("_warning", "")
         self.assertTrue(warn, f"expected warning, got: {w_a}")
         # The cross-agent message names the sibling task_id.
@@ -246,17 +246,17 @@ class FileToolsIntegrationTests(unittest.TestCase):
 
     def test_same_agent_consecutive_writes_no_false_warning(self):
         p = self._write_seed("own.txt")
-        json.loads(read_file_tool(path=p, task_id="agentC"))
-        w1 = json.loads(write_file_tool(path=p, content="one\n", task_id="agentC"))
+        orjson.loads(read_file_tool(path=p, task_id="agentC"))
+        w1 = orjson.loads(write_file_tool(path=p, content="one\n", task_id="agentC"))
         self.assertFalse(w1.get("_warning"))
-        w2 = json.loads(write_file_tool(path=p, content="two\n", task_id="agentC"))
+        w2 = orjson.loads(write_file_tool(path=p, content="two\n", task_id="agentC"))
         self.assertFalse(w2.get("_warning"))
 
     def test_patch_tool_also_surfaces_sibling_warning(self):
         p = self._write_seed("p.txt", "hello world\n")
-        json.loads(read_file_tool(path=p, task_id="agentA"))
-        json.loads(write_file_tool(path=p, content="hello planet\n", task_id="agentB"))
-        r = json.loads(
+        orjson.loads(read_file_tool(path=p, task_id="agentA"))
+        orjson.loads(write_file_tool(path=p, content="hello planet\n", task_id="agentB"))
+        r = orjson.loads(
             patch_tool(
                 mode="replace",
                 path=p,
@@ -278,7 +278,7 @@ class FileToolsIntegrationTests(unittest.TestCase):
     def test_net_new_file_no_warning(self):
         p = os.path.join(self._tmpdir, "brand_new.txt")
         # Nobody has read or written this before.
-        w = json.loads(write_file_tool(path=p, content="hi\n", task_id="agentX"))
+        w = orjson.loads(write_file_tool(path=p, content="hi\n", task_id="agentX"))
         self.assertFalse(w.get("_warning"))
         self.assertNotIn("error", w)
 

@@ -40,7 +40,7 @@ Payment / credit exhaustion fallback:
 """
 
 import contextlib
-import json
+import orjson
 import logging
 import os
 import threading
@@ -681,7 +681,7 @@ def _codex_cloudflare_headers(access_token: str) -> Dict[str, str]:
         if len(parts) < 2:
             return headers
         payload_b64 = parts[1] + "=" * (-len(parts[1]) % 4)
-        claims = json.loads(base64.urlsafe_b64decode(payload_b64))
+        claims = orjson.loads(base64.urlsafe_b64decode(payload_b64))
         acct_id = claims.get("https://api.openai.com/auth", {}).get("chatgpt_account_id")
         if isinstance(acct_id, str) and acct_id:
             headers["ChatGPT-Account-ID"] = acct_id
@@ -1480,7 +1480,7 @@ def _read_nous_auth() -> Optional[dict]:
     try:
         if not _AUTH_JSON_PATH.is_file():
             return None
-        data = json.loads(_AUTH_JSON_PATH.read_text())
+        data = orjson.loads(_AUTH_JSON_PATH.read_text())
         if data.get("active_provider") != "nous":
             return None
         provider = data.get("providers", {}).get("nous", {})
@@ -1683,7 +1683,7 @@ def _read_codex_access_token() -> Optional[str]:
             import base64
             payload = access_token.split(".")[1]
             payload += "=" * (-len(payload) % 4)
-            claims = json.loads(base64.urlsafe_b64decode(payload))
+            claims = orjson.loads(base64.urlsafe_b64decode(payload))
             exp = claims.get("exp", 0)
             if exp and time.time() > exp:
                 logger.debug("Codex access token expired (exp=%s), skipping", exp)

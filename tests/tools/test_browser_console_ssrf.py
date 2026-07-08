@@ -5,7 +5,7 @@ the page URL before returning content. browser_console (in console output mode) 
 do the same to prevent leakage of console log messages and exception details.
 """
 
-import json
+import orjson
 
 import pytest
 
@@ -49,7 +49,7 @@ def test_blocks_console_on_private_page(monkeypatch):
     monkeypatch.setattr(browser_tool, "_eval_ssrf_guard_active", lambda tid: True)
     monkeypatch.setattr(browser_tool, "_current_page_private_url", lambda tid: PRIVATE_URL)
 
-    result = json.loads(browser_tool.browser_console(task_id="test"))
+    result = orjson.loads(browser_tool.browser_console(task_id="test"))
     assert result["success"] is False
     assert "private or internal address" in result["error"]
     assert PRIVATE_URL in result["error"]
@@ -60,7 +60,7 @@ def test_allows_console_on_public_page(monkeypatch):
     monkeypatch.setattr(browser_tool, "_eval_ssrf_guard_active", lambda tid: True)
     monkeypatch.setattr(browser_tool, "_current_page_private_url", lambda tid: None)
 
-    result = json.loads(browser_tool.browser_console(task_id="test"))
+    result = orjson.loads(browser_tool.browser_console(task_id="test"))
     assert result["success"] is True
     assert result["total_messages"] == 1
     assert result["console_messages"][0]["text"] == "secret internal message"
@@ -70,7 +70,7 @@ def test_skips_guard_for_local_backend(monkeypatch):
     _mock_run_success(monkeypatch)
     monkeypatch.setattr(browser_tool, "_eval_ssrf_guard_active", lambda tid: False)
 
-    result = json.loads(browser_tool.browser_console(task_id="test"))
+    result = orjson.loads(browser_tool.browser_console(task_id="test"))
     assert result["success"] is True
     assert result["total_messages"] == 1
 
@@ -79,7 +79,7 @@ def test_skips_guard_when_private_urls_allowed(monkeypatch):
     _mock_run_success(monkeypatch)
     monkeypatch.setattr(browser_tool, "_eval_ssrf_guard_active", lambda tid: False)
 
-    result = json.loads(browser_tool.browser_console(task_id="test"))
+    result = orjson.loads(browser_tool.browser_console(task_id="test"))
     assert result["success"] is True
     assert result["total_messages"] == 1
 
@@ -92,7 +92,7 @@ def test_guard_does_not_block_on_failed_console_command(monkeypatch):
     monkeypatch.setattr(browser_tool, "_eval_ssrf_guard_active", lambda tid: True)
     monkeypatch.setattr(browser_tool, "_current_page_private_url", lambda tid: PRIVATE_URL)
 
-    result = json.loads(browser_tool.browser_console(task_id="test"))
+    result = orjson.loads(browser_tool.browser_console(task_id="test"))
     # When the page is private, the guard checks _current_page_private_url first.
     # Because it checks _current_page_private_url BEFORE running the command, it should block it.
     assert result["success"] is False

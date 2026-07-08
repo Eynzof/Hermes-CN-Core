@@ -1,7 +1,7 @@
 """Unit tests for hermes_cli.session_recap."""
 from __future__ import annotations
 
-import json
+import orjson
 
 
 from hermes_cli.session_recap import build_recap
@@ -22,7 +22,7 @@ def _tool_call(name, args):
     return {
         "id": f"call_{name}",
         "type": "function",
-        "function": {"name": name, "arguments": json.dumps(args)},
+        "function": {"name": name, "arguments": orjson.dumps(args).decode('utf-8')},
     }
 
 

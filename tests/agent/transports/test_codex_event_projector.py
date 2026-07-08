@@ -5,7 +5,7 @@ plus synthetic ones for item types we couldn't auth-test live."""
 
 from __future__ import annotations
 
-import json
+import orjson
 
 import pytest
 
@@ -91,7 +91,7 @@ class TestCommandExecutionProjection:
         tc = assistant["tool_calls"][0]
         assert tc["type"] == "function"
         assert tc["function"]["name"] == "exec_command"
-        args = json.loads(tc["function"]["arguments"])
+        args = orjson.loads(tc["function"]["arguments"])
         assert "echo hello" in args["command"]
         assert args["cwd"] == "/tmp"
 
@@ -188,7 +188,7 @@ class TestFileChangeProjection:
         assert len(msgs) == 2
         tc = msgs[0]["tool_calls"][0]
         assert tc["function"]["name"] == "apply_patch"
-        args = json.loads(tc["function"]["arguments"])
+        args = orjson.loads(tc["function"]["arguments"])
         assert len(args["changes"]) == 2
         assert all("kind" in c and "path" in c for c in args["changes"])
         assert "applied" in msgs[1]["content"]

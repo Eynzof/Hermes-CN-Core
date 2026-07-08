@@ -10,7 +10,7 @@ Uses slack-bolt (Python) with Socket Mode for:
 
 import asyncio
 import contextvars
-import json
+import orjson
 import logging
 import os
 import re
@@ -264,7 +264,7 @@ def _serialize_slack_blocks_for_agent(blocks: list, max_chars: int = 6000) -> st
         return repr(value)
 
     try:
-        payload = json.dumps(_sanitize(blocks), ensure_ascii=False, indent=2)
+        payload = orjson.dumps(_sanitize(blocks), option=orjson.OPT_INDENT_2).decode('utf-8')
     except Exception:
         payload = repr(blocks)
 
@@ -985,7 +985,7 @@ class SlackAdapter(BasePlatformAdapter):
         tokens_file = get_hermes_home() / "slack_tokens.json"
         if tokens_file.exists():
             try:
-                saved = json.loads(tokens_file.read_text(encoding="utf-8"))
+                saved = orjson.loads(tokens_file.read_text(encoding="utf-8"))
                 for team_id, entry in saved.items():
                     tok = entry.get("token", "") if isinstance(entry, dict) else ""
                     if tok and tok not in bot_tokens:
@@ -4233,7 +4233,7 @@ class SlackAdapter(BasePlatformAdapter):
             raw = os.getenv("SLACK_MENTION_PATTERNS", "").strip()
             if raw:
                 try:
-                    import json as _json
+                    import orjson as _json
                     patterns = _json.loads(raw)
                 except Exception:
                     patterns = [p.strip() for p in raw.replace("\n", ",").split(",") if p.strip()]
@@ -4381,7 +4381,7 @@ def interactive_setup() -> None:
         try:
             from hermes_cli.slack_cli import _build_full_manifest
             from hermes_constants import get_hermes_home
-            import json as _json
+            import orjson as _json
 
             manifest = _build_full_manifest(
                 bot_name="Hermes",
@@ -4390,7 +4390,7 @@ def interactive_setup() -> None:
             target = Path(get_hermes_home()) / "slack-manifest.json"
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(
-                _json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
+                _json.dumps(manifest, option=orjson.OPT_INDENT_2).decode('utf-8') + "\n",
                 encoding="utf-8",
             )
             print_success(f"Slack app manifest written to: {target}")

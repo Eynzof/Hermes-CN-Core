@@ -7,7 +7,7 @@ Add, remove, or reorder entries here — both `hermes setup` and
 
 from __future__ import annotations
 
-import json
+import orjson
 import os
 import urllib.parse
 import urllib.request
@@ -813,8 +813,8 @@ def _read_nous_recommended_disk(base: str) -> dict[str, Any] | None:
     """
     try:
         with open(_nous_recommended_disk_path(), encoding="utf-8") as fh:
-            blob = json.load(fh)
-    except (OSError, json.JSONDecodeError):
+            blob = orjson.loads(fh.read())
+    except (OSError, orjson.JSONDecodeError):
         return None
     if not isinstance(blob, dict):
         return None
@@ -837,16 +837,16 @@ def _write_nous_recommended_disk(base: str, data: dict[str, Any]) -> None:
     try:
         try:
             with open(path, encoding="utf-8") as fh:
-                blob = json.load(fh)
+                blob = orjson.loads(fh.read())
             if not isinstance(blob, dict):
                 blob = {}
-        except (OSError, json.JSONDecodeError):
+        except (OSError, orjson.JSONDecodeError):
             blob = {}
         blob[base] = {"data": data, "ts": time.time()}
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(path.suffix + ".tmp")
         with open(tmp, "w", encoding="utf-8") as fh:
-            json.dump(blob, fh, indent=2)
+            fh.write(orjson.dumps(blob, option=orjson.OPT_INDENT_2).decode('utf-8'))
             fh.write("\n")
         os.replace(tmp, path)
     except OSError as exc:
@@ -895,7 +895,7 @@ def fetch_nous_recommended_models(
             headers={"Accept": "application/json"},
         )
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            data = json.loads(resp.read().decode())
+            data = orjson.loads(resp.read().decode())
         if not isinstance(data, dict):
             data = {}
     except Exception:
@@ -1372,7 +1372,7 @@ def fetch_openrouter_models(
             headers={"Accept": "application/json"},
         )
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            payload = json.loads(resp.read().decode())
+            payload = orjson.loads(resp.read().decode())
     except Exception:
         return list(_openrouter_catalog_cache or fallback)
 
@@ -1493,7 +1493,7 @@ def fetch_models_with_pricing(
     try:
         req = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            payload = json.loads(resp.read().decode())
+            payload = orjson.loads(resp.read().decode())
     except Exception:
         _pricing_cache[cache_key] = {}
         return {}
@@ -1607,7 +1607,7 @@ def _fetch_novita_pricing(
     try:
         req = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            payload = json.loads(resp.read().decode())
+            payload = orjson.loads(resp.read().decode())
     except Exception:
         _pricing_cache[cache_key] = {}
         return {}
@@ -2592,7 +2592,7 @@ def _load_provider_models_cache() -> dict:
         if not path.exists():
             return {}
         with open(path, encoding="utf-8") as f:
-            data = json.load(f)
+            data = orjson.loads(f.read())
         return data if isinstance(data, dict) else {}
     except Exception:
         return {}
@@ -2721,7 +2721,7 @@ def _fetch_anthropic_models(
             headers=h,
         )
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return json.loads(resp.read().decode())
+            return orjson.loads(resp.read().decode())
 
     try:
         try:
@@ -2836,7 +2836,7 @@ def fetch_github_model_catalog(
         req = urllib.request.Request(COPILOT_MODELS_URL, headers=headers)
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
-                data = json.loads(resp.read().decode())
+                data = orjson.loads(resp.read().decode())
                 items = _payload_items(data)
                 models: list[dict[str, Any]] = []
                 seen_ids: set[str] = set()
@@ -2953,7 +2953,7 @@ def _lmstudio_fetch_raw_models(
     request = urllib.request.Request(server_root + "/api/v1/models", headers=headers)
     try:
         with urllib.request.urlopen(request, timeout=timeout) as resp:
-            payload = json.loads(resp.read().decode())
+            payload = orjson.loads(resp.read().decode())
     except urllib.error.HTTPError as exc:
         if exc.code in {401, 403}:
             from hermes_cli.auth import AuthError
@@ -3082,10 +3082,10 @@ def ensure_lmstudio_model_loaded(
         if isinstance(loaded_ctx, int) and loaded_ctx >= target_context_length:
             return loaded_ctx
 
-    body = json.dumps({
+    body = orjson.dumps({
         "model": model,
         "context_length": target_context_length,
-    }).encode()
+    })
     load_headers = dict(headers)
     load_headers["Content-Type"] = "application/json"
     try:
@@ -3511,7 +3511,7 @@ def probe_api_models(
         req = urllib.request.Request(url, headers=headers)
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
-                data = json.loads(resp.read().decode())
+                data = orjson.loads(resp.read().decode())
                 return {
                     "models": [m.get("id", "") for m in data.get("data", [])],
                     "probed_url": url,
@@ -3591,7 +3591,7 @@ def _load_ollama_cloud_cache(*, ignore_ttl: bool = False) -> Optional[dict]:
         if not cache_path.exists():
             return None
         with open(cache_path, encoding="utf-8") as f:
-            data = json.load(f)
+            data = orjson.loads(f.read())
         if not isinstance(data, dict):
             return None
         models = data.get("models")

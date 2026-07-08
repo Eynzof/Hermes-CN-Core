@@ -14,7 +14,7 @@ tests pin the prune behaviour:
     (so a long-running-but-still-active session isn't pruned)
 """
 
-import json
+import orjson
 import threading
 from datetime import datetime, timedelta
 from unittest.mock import patch
@@ -238,12 +238,12 @@ class TestPrunePersistsToDisk:
 
         # Verify pre-prune state on disk. Filter out metadata sentinels
         # (e.g. the "_README" note) so we assert on session keys only.
-        saved_pre = json.loads((tmp_path / "sessions.json").read_text())
+        saved_pre = orjson.loads((tmp_path / "sessions.json").read_text())
         assert {k for k in saved_pre if not k.startswith("_")} == {"stale", "fresh"}
 
         # Prune and check disk.
         store.prune_old_entries(max_age_days=90)
-        saved_post = json.loads((tmp_path / "sessions.json").read_text())
+        saved_post = orjson.loads((tmp_path / "sessions.json").read_text())
         assert {k for k in saved_post if not k.startswith("_")} == {"fresh"}
 
 
@@ -312,7 +312,7 @@ class TestReadmeSentinel:
         )
         store._save()
 
-        raw = json.loads((tmp_path / "sessions.json").read_text())
+        raw = orjson.loads((tmp_path / "sessions.json").read_text())
         assert "_README" in raw
         # Sentinel renders first so it's the first thing a user sees on `cat`.
         assert next(iter(raw)) == "_README"

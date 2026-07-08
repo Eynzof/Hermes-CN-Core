@@ -1207,8 +1207,8 @@ class TestNovitaProvider:
                 return False
 
             def read(self):
-                import json as _json
-                return _json.dumps(fake_payload).encode()
+                import orjson as _json
+                return _json.dumps(fake_payload)
 
         def fake_urlopen(req, timeout=None):
             call_count["n"] += 1

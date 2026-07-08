@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import json
+import orjson
 import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -289,7 +289,7 @@ def _cmd_show(args) -> None:
     if not job:
         print(f"Unknown job: {job_id}")
         return
-    print(json.dumps(_compact_job(job), indent=2, sort_keys=True))
+    print(orjson.dumps(_compact_job(job), option=orjson.OPT_INDENT_2 | orjson.OPT_SORT_KEYS).decode('utf-8'))
 
 
 def _cmd_run(args) -> None:
@@ -300,7 +300,7 @@ def _cmd_run(args) -> None:
     store = TeamsPipelineStore(_store_path(getattr(args, "store_path", None)))
     pipeline = TeamsMeetingPipeline(graph_client=build_graph_client(), store=store, config={})
     result = _run_async(pipeline.run_job(job_id))
-    print(json.dumps(_compact_job(result.to_dict()), indent=2, sort_keys=True))
+    print(orjson.dumps(_compact_job(result.to_dict()), option=orjson.OPT_INDENT_2 | orjson.OPT_SORT_KEYS).decode('utf-8'))
 
 
 def _cmd_fetch(args) -> None:
@@ -327,8 +327,7 @@ def _cmd_fetch(args) -> None:
         enrich_meeting_with_call_record(client, meeting_ref, call_record_id=call_record_id)
     )
     print(
-        json.dumps(
-            {
+        orjson.dumps({
                 "meeting_ref": meeting_ref.to_dict(),
                 "transcript_available": bool(transcript_artifact and transcript_text),
                 "transcript_artifact": transcript_artifact.to_dict() if transcript_artifact else None,
@@ -336,10 +335,7 @@ def _cmd_fetch(args) -> None:
                 "recording_count": len(recordings),
                 "recordings": [recording.to_dict() for recording in recordings[:5]],
                 "call_record": call_record.to_dict() if call_record else None,
-            },
-            indent=2,
-            sort_keys=True,
-        )
+            }, option=orjson.OPT_INDENT_2 | orjson.OPT_SORT_KEYS).decode('utf-8')
     )
 
 
@@ -392,7 +388,7 @@ def _cmd_subscribe(args) -> None:
 
     result = _run_async(build_graph_client().post_json("/subscriptions", json_body=payload))
     _sync_subscription_record(store, result, status="active")
-    print(json.dumps(result, indent=2, sort_keys=True))
+    print(orjson.dumps(result, option=orjson.OPT_INDENT_2 | orjson.OPT_SORT_KEYS).decode('utf-8'))
 
 
 def _cmd_renew_subscription(args) -> None:
@@ -411,7 +407,7 @@ def _cmd_renew_subscription(args) -> None:
     )
     merged = {"id": subscription_id, **(result or {}), "expirationDateTime": expiration}
     _sync_subscription_record(store, merged, status="active", renewed=True)
-    print(json.dumps(merged, indent=2, sort_keys=True))
+    print(orjson.dumps(merged, option=orjson.OPT_INDENT_2 | orjson.OPT_SORT_KEYS).decode('utf-8'))
 
 
 def _cmd_delete_subscription(args) -> None:
@@ -422,7 +418,7 @@ def _cmd_delete_subscription(args) -> None:
     store = TeamsPipelineStore(_store_path(getattr(args, "store_path", None)))
     result = _run_async(build_graph_client().delete(f"/subscriptions/{subscription_id}"))
     store.delete_subscription(subscription_id)
-    print(json.dumps({"subscription_id": subscription_id, "result": result}, indent=2, sort_keys=True))
+    print(orjson.dumps({"subscription_id": subscription_id, "result": result}, option=orjson.OPT_INDENT_2 | orjson.OPT_SORT_KEYS).decode('utf-8'))
 
 
 def _cmd_maintain_subscriptions(args) -> None:
@@ -437,7 +433,7 @@ def _cmd_maintain_subscriptions(args) -> None:
             client_state=str(getattr(args, "client_state", "") or "").strip() or None,
         )
     )
-    print(json.dumps(result, indent=2, sort_keys=True))
+    print(orjson.dumps(result, option=orjson.OPT_INDENT_2 | orjson.OPT_SORT_KEYS).decode('utf-8'))
 
 
 def _cmd_token_health(args) -> None:
@@ -452,10 +448,10 @@ def _cmd_token_health(args) -> None:
         except Exception as exc:
             payload["last_refresh_succeeded"] = False
             payload["refresh_error"] = str(exc)
-    print(json.dumps(payload, indent=2, sort_keys=True))
+    print(orjson.dumps(payload, option=orjson.OPT_INDENT_2 | orjson.OPT_SORT_KEYS).decode('utf-8'))
 
 
 def _cmd_validate(args) -> None:
     store = TeamsPipelineStore(_store_path(getattr(args, "store_path", None)))
     snapshot = _validate_configuration_snapshot(store)
-    print(json.dumps(snapshot, indent=2, sort_keys=True))
+    print(orjson.dumps(snapshot, option=orjson.OPT_INDENT_2 | orjson.OPT_SORT_KEYS).decode('utf-8'))

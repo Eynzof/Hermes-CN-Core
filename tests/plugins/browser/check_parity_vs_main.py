@@ -18,7 +18,7 @@ Run from the PR worktree:
 """
 from __future__ import annotations
 
-import json
+import orjson
 import subprocess
 import sys
 from pathlib import Path
@@ -43,7 +43,7 @@ assert (PR_DIR / "tools" / "browser_tool.py").exists(), (
 # Reduced shape comparison — exact instance addresses obviously differ
 # between subprocesses, so we compare the parts that matter for users.
 SUBPROCESS_SCRIPT = r"""
-import json, os, sys, tempfile
+import orjson, os, sys, tempfile
 sys.path.insert(0, sys.argv[1])
 
 # Isolated HERMES_HOME for the config write.
@@ -60,7 +60,7 @@ for k in (
     os.environ.pop(k, None)
 
 # Apply per-scenario env (passed as JSON via argv[2]).
-scenario_env = json.loads(sys.argv[2])
+scenario_env = orjson.loads(sys.argv[2])
 os.environ.update(scenario_env)
 
 # Apply per-scenario config (passed as YAML body via argv[3]).
@@ -100,7 +100,7 @@ shape = {
     "provider_name": provider_name,
     "is_available": is_available,
 }
-print(json.dumps(shape))
+print(orjson.dumps(shape).decode('utf-8'))
 """
 
 
@@ -189,7 +189,7 @@ def _run_scenario(repo_path: Path, label: str, config_yaml: str, env: dict) -> d
             "-c",
             SUBPROCESS_SCRIPT,
             str(repo_path),
-            json.dumps(env),
+            orjson.dumps(env).decode('utf-8'),
             config_yaml,
         ],
         capture_output=True,
@@ -203,7 +203,7 @@ def _run_scenario(repo_path: Path, label: str, config_yaml: str, env: dict) -> d
             "stderr": out.stderr[-500:],
         }
     try:
-        return json.loads(out.stdout.strip().splitlines()[-1])
+        return orjson.loads(out.stdout.strip().splitlines()[-1])
     except Exception as exc:
         return {"error": f"could not parse output: {exc}", "stdout": out.stdout}
 

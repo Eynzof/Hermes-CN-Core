@@ -14,7 +14,7 @@ thin stub that delegates through ``**kwargs`` for the concurrent path, but
 the actual execution always flows through the agent-level interceptor.
 """
 
-import json
+import orjson
 from typing import Any, Dict
 
 from tools.registry import registry, tool_error

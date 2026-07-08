@@ -879,7 +879,7 @@ def _looks_like_linter_unusable(base_cmd: str, output: str) -> bool:
 
 def _lint_json_inproc(content: str) -> tuple[bool, str]:
     """In-process JSON syntax check.  Returns (ok, error_message)."""
-    import json as _json
+    import orjson as _json
     try:
         _json.loads(content)
         return True, ""

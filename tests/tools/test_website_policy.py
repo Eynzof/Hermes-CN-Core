@@ -1,4 +1,4 @@
-import json
+import orjson
 from pathlib import Path
 
 import pytest
@@ -318,7 +318,7 @@ def test_browser_navigate_returns_policy_block(monkeypatch):
         lambda *args, **kwargs: pytest.fail("browser command should not run for blocked URL"),
     )
 
-    result = json.loads(browser_tool.browser_navigate("https://blocked.test"))
+    result = orjson.loads(browser_tool.browser_navigate("https://blocked.test"))
 
     assert result["success"] is False
     assert result["blocked_by_policy"]["rule"] == "blocked.test"
@@ -398,7 +398,7 @@ class TestWebToolPolicy:
         # Force the firecrawl plugin to be the active extract provider.
         monkeypatch.setenv("FIRECRAWL_API_KEY", "fake-key")
 
-        result = json.loads(await web_tools.web_extract_tool(["https://blocked.test"]))
+        result = orjson.loads(await web_tools.web_extract_tool(["https://blocked.test"]))
 
         assert result["results"][0]["url"] == "https://blocked.test"
         assert "Blocked by website policy" in result["results"][0]["error"]
@@ -444,7 +444,7 @@ class TestWebToolPolicy:
         monkeypatch.setattr("tools.interrupt.is_interrupted", lambda: False)
         monkeypatch.setenv("FIRECRAWL_API_KEY", "fake-key")
 
-        result = json.loads(await web_tools.web_extract_tool(["https://allowed.test"]))
+        result = orjson.loads(await web_tools.web_extract_tool(["https://allowed.test"]))
 
         assert result["results"][0]["url"] == "https://blocked.test/final"
         assert result["results"][0]["content"] == ""
@@ -488,7 +488,7 @@ class TestWebToolPolicy:
         monkeypatch.setattr("tools.interrupt.is_interrupted", lambda: False)
         monkeypatch.setenv("FIRECRAWL_API_KEY", "fake-key")
 
-        result = json.loads(await web_tools.web_extract_tool(["https://allowed.test"]))
+        result = orjson.loads(await web_tools.web_extract_tool(["https://allowed.test"]))
 
         assert checked_urls == ["https://allowed.test"]
         assert result["results"][0]["url"] == "http://169.254.169.254/latest/meta-data/"

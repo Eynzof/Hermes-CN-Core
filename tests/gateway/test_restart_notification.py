@@ -1,6 +1,6 @@
 """Tests for /restart notification — the gateway notifies the requester on comeback."""
 
-import json
+import orjson
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -69,7 +69,7 @@ async def test_restart_command_writes_notify_file(tmp_path, monkeypatch):
 
     notify_path = tmp_path / ".restart_notify.json"
     assert notify_path.exists()
-    data = json.loads(notify_path.read_text())
+    data = orjson.loads(notify_path.read_text())
     assert data["platform"] == "telegram"
     assert data["chat_id"] == "42"
     assert data["chat_type"] == "dm"
@@ -138,7 +138,7 @@ async def test_restart_command_preserves_thread_id(tmp_path, monkeypatch):
 
     await runner._handle_restart_command(event)
 
-    data = json.loads((tmp_path / ".restart_notify.json").read_text())
+    data = orjson.loads((tmp_path / ".restart_notify.json").read_text())
     assert data["chat_type"] == "dm"
     assert data["thread_id"] == "777"
     assert data["message_id"] == "m2"
@@ -379,10 +379,10 @@ async def test_send_restart_notification_delivers_and_cleans_up(tmp_path, monkey
     monkeypatch.setattr(gateway_run, "_hermes_home", tmp_path)
 
     notify_path = tmp_path / ".restart_notify.json"
-    notify_path.write_text(json.dumps({
+    notify_path.write_text(orjson.dumps({
         "platform": "telegram",
         "chat_id": "42",
-    }))
+    }).decode('utf-8'))
 
     runner, adapter = make_restart_runner()
     adapter.send = AsyncMock()
@@ -404,13 +404,13 @@ async def test_send_restart_notification_with_thread(tmp_path, monkeypatch):
     monkeypatch.setattr(gateway_run, "_hermes_home", tmp_path)
 
     notify_path = tmp_path / ".restart_notify.json"
-    notify_path.write_text(json.dumps({
+    notify_path.write_text(orjson.dumps({
         "platform": "telegram",
         "chat_id": "99",
         "chat_type": "dm",
         "thread_id": "777",
         "message_id": "m2",
-    }))
+    }).decode('utf-8'))
 
     runner, adapter = make_restart_runner()
     adapter.send = AsyncMock()
@@ -447,10 +447,10 @@ async def test_send_restart_notification_skips_when_adapter_missing(tmp_path, mo
     monkeypatch.setattr(gateway_run, "_hermes_home", tmp_path)
 
     notify_path = tmp_path / ".restart_notify.json"
-    notify_path.write_text(json.dumps({
+    notify_path.write_text(orjson.dumps({
         "platform": "discord",  # runner only has telegram adapter
         "chat_id": "42",
-    }))
+    }).decode('utf-8'))
 
     runner, _adapter = make_restart_runner()
 
@@ -468,10 +468,10 @@ async def test_send_restart_notification_cleans_up_on_send_failure(
     monkeypatch.setattr(gateway_run, "_hermes_home", tmp_path)
 
     notify_path = tmp_path / ".restart_notify.json"
-    notify_path.write_text(json.dumps({
+    notify_path.write_text(orjson.dumps({
         "platform": "telegram",
         "chat_id": "42",
-    }))
+    }).decode('utf-8'))
 
     runner, adapter = make_restart_runner()
     adapter.send = AsyncMock(side_effect=RuntimeError("network down"))
@@ -500,10 +500,10 @@ async def test_send_restart_notification_logs_warning_on_sendresult_failure(
     monkeypatch.setattr(gateway_run, "_hermes_home", tmp_path)
 
     notify_path = tmp_path / ".restart_notify.json"
-    notify_path.write_text(json.dumps({
+    notify_path.write_text(orjson.dumps({
         "platform": "telegram",
         "chat_id": "42",
-    }))
+    }).decode('utf-8'))
 
     runner, adapter = make_restart_runner()
     adapter.send = AsyncMock(
@@ -596,10 +596,10 @@ async def test_send_restart_notification_skipped_when_flag_disabled(
     monkeypatch.setattr(gateway_run, "_hermes_home", tmp_path)
 
     notify_path = tmp_path / ".restart_notify.json"
-    notify_path.write_text(json.dumps({
+    notify_path.write_text(orjson.dumps({
         "platform": "telegram",
         "chat_id": "42",
-    }))
+    }).decode('utf-8'))
 
     runner, adapter = make_restart_runner()
     runner.config.platforms[Platform.TELEGRAM].gateway_restart_notification = False
@@ -622,10 +622,10 @@ async def test_send_restart_notification_logs_info_on_sendresult_success(
     monkeypatch.setattr(gateway_run, "_hermes_home", tmp_path)
 
     notify_path = tmp_path / ".restart_notify.json"
-    notify_path.write_text(json.dumps({
+    notify_path.write_text(orjson.dumps({
         "platform": "telegram",
         "chat_id": "42",
-    }))
+    }).decode('utf-8'))
 
     runner, adapter = make_restart_runner()
     adapter.send = AsyncMock(return_value=SendResult(success=True, message_id="m-1"))

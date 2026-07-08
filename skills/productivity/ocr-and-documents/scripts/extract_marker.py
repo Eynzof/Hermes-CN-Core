@@ -31,11 +31,11 @@ def convert(path, output_dir=None, output_format="markdown", use_llm=False):
     rendered = converter(path)
 
     if output_format == "json":
-        import json
-        print(json.dumps({
+        import orjson
+        print(orjson.dumps({
             "markdown": rendered.markdown,
             "metadata": rendered.metadata if hasattr(rendered, "metadata") else {},
-        }, indent=2, ensure_ascii=False))
+        }, option=orjson.OPT_INDENT_2).decode('utf-8'))
     else:
         print(rendered.markdown)
 

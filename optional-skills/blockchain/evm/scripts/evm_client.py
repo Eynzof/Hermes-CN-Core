@@ -5,7 +5,7 @@ Zero external dependencies. Uses stdlib only: urllib, json, argparse, time, os, 
 """
 
 import argparse
-import json
+import orjson
 import os
 import sys
 import time
@@ -314,14 +314,14 @@ def _short_addr(addr: str) -> str:
     return addr or ""
 
 def print_json(data: Any) -> None:
-    print(json.dumps(data, indent=2, default=str))
+    print(orjson.dumps(data, default=str, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
 # ---------------------------------------------------------------------------
 # HTTP / JSON-RPC layer
 # ---------------------------------------------------------------------------
 
 def _http_post(url: str, payload: Any, retries: int = 5, timeout: int = 20) -> Any:
-    body = json.dumps(payload).encode()
+    body = orjson.dumps(payload)
     headers = {
         "Content-Type": "application/json",
         "Accept":       "application/json",
@@ -333,7 +333,7 @@ def _http_post(url: str, payload: Any, retries: int = 5, timeout: int = 20) -> A
     for attempt in range(retries):
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
-                return json.loads(resp.read().decode())
+                return orjson.loads(resp.read().decode())
         except urllib.error.HTTPError as e:
             if e.code == 429:
                 time.sleep(delay)
@@ -361,7 +361,7 @@ def _http_get(url: str, retries: int = 5, timeout: int = 20) -> Any:
     for attempt in range(retries):
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
-                return json.loads(resp.read().decode())
+                return orjson.loads(resp.read().decode())
         except urllib.error.HTTPError as e:
             if e.code == 429:
                 time.sleep(delay)

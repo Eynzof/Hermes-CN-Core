@@ -1,4 +1,4 @@
-import json
+import orjson
 import os
 import stat
 import time
@@ -122,13 +122,13 @@ def test_linked_ovcli_config_is_read_at_runtime(tmp_path, monkeypatch):
     _clear_openviking_env(monkeypatch)
     ovcli_path = tmp_path / "ovcli.conf"
     ovcli_path.write_text(
-        json.dumps({
+        orjson.dumps({
             "url": "http://openviking-one.local",
             "api_key": "key-one",
             "account": "acct-one",
             "user": "alice",
             "agent_id": "agent-one",
-        }),
+        }).decode('utf-8'),
         encoding="utf-8",
     )
     provider_config = {"use_ovcli_config": True, "ovcli_config_path": str(ovcli_path)}
@@ -144,11 +144,11 @@ def test_linked_ovcli_config_is_read_at_runtime(tmp_path, monkeypatch):
     }
 
     ovcli_path.write_text(
-        json.dumps({
+        orjson.dumps({
             "url": "http://openviking-two.local",
             "api_key": "key-two",
             "agent_id": "agent-two",
-        }),
+        }).decode('utf-8'),
         encoding="utf-8",
     )
 
@@ -167,13 +167,13 @@ def test_openviking_env_overrides_linked_ovcli_config(tmp_path, monkeypatch):
     _clear_openviking_env(monkeypatch)
     ovcli_path = tmp_path / "ovcli.conf"
     ovcli_path.write_text(
-        json.dumps({
+        orjson.dumps({
             "url": "http://openviking.local",
             "api_key": "file-key",
             "account": "file-account",
             "user": "file-user",
             "agent_id": "file-agent",
-        }),
+        }).decode('utf-8'),
         encoding="utf-8",
     )
     monkeypatch.setenv("OPENVIKING_ENDPOINT", "http://env.local")
@@ -201,11 +201,11 @@ def test_openviking_cli_config_env_overrides_saved_profile_path(tmp_path, monkey
     saved_path = tmp_path / "ovcli.conf.saved"
     env_path = tmp_path / "ovcli.conf.env"
     saved_path.write_text(
-        json.dumps({"url": "http://saved.local", "api_key": "saved-key"}),
+        orjson.dumps({"url": "http://saved.local", "api_key": "saved-key"}).decode('utf-8'),
         encoding="utf-8",
     )
     env_path.write_text(
-        json.dumps({"url": "http://env-profile.local", "api_key": "env-profile-key"}),
+        orjson.dumps({"url": "http://env-profile.local", "api_key": "env-profile-key"}).decode('utf-8'),
         encoding="utf-8",
     )
     monkeypatch.setenv("OPENVIKING_CLI_CONFIG_FILE", str(env_path))
@@ -238,17 +238,17 @@ def test_discover_ovcli_profiles_lists_saved_profiles_without_active_label(tmp_p
     openviking_home = tmp_path / ".openviking"
     openviking_home.mkdir()
     env_path = tmp_path / "custom-ovcli.conf"
-    env_path.write_text(json.dumps({"url": "http://env.local"}), encoding="utf-8")
+    env_path.write_text(orjson.dumps({"url": "http://env.local"}).decode('utf-8'), encoding="utf-8")
     (openviking_home / "ovcli.conf").write_text(
-        json.dumps({"url": "https://vps.example", "api_key": "secret"}),
+        orjson.dumps({"url": "https://vps.example", "api_key": "secret"}).decode('utf-8'),
         encoding="utf-8",
     )
     (openviking_home / "ovcli.conf.VPS").write_text(
-        json.dumps({"url": "https://vps.example", "api_key": "secret"}),
+        orjson.dumps({"url": "https://vps.example", "api_key": "secret"}).decode('utf-8'),
         encoding="utf-8",
     )
     (openviking_home / "ovcli.conf.bak").write_text(
-        json.dumps({"url": "http://backup.local"}),
+        orjson.dumps({"url": "http://backup.local"}).decode('utf-8'),
         encoding="utf-8",
     )
     (openviking_home / "ovcli.conf.bad").write_text("{", encoding="utf-8")
@@ -306,9 +306,9 @@ def test_post_setup_existing_profile_picker_validates_and_links_saved_profile(tm
     openviking_home.mkdir()
     active_path = openviking_home / "ovcli.conf"
     saved_path = openviking_home / "ovcli.conf.VPS"
-    active_path.write_text(json.dumps({"url": "http://active.local"}), encoding="utf-8")
+    active_path.write_text(orjson.dumps({"url": "http://active.local"}).decode('utf-8'), encoding="utf-8")
     saved_path.write_text(
-        json.dumps({"url": "https://vps.example", "api_key": "user-key"}),
+        orjson.dumps({"url": "https://vps.example", "api_key": "user-key"}).decode('utf-8'),
         encoding="utf-8",
     )
     monkeypatch.setenv("HERMES_HOME", str(hermes_home))
@@ -380,7 +380,7 @@ def test_post_setup_create_remote_user_profile_can_mirror_to_openviking_store(tm
 
     mirrored_path = tmp_path / ".openviking" / "ovcli.conf.VPS"
     assert mirrored_path.exists()
-    assert json.loads(mirrored_path.read_text(encoding="utf-8")) == {
+    assert orjson.loads(mirrored_path.read_text(encoding="utf-8")) == {
         "url": "https://openviking.example",
         "api_key": "user-secret",
         "actor_peer_id": "hermes",
@@ -1156,7 +1156,7 @@ def test_tool_search_sorts_by_raw_score_across_buckets():
         }
     }
 
-    result = json.loads(provider._tool_search({"query": "ranking"}))
+    result = orjson.loads(provider._tool_search({"query": "ranking"}))
 
     assert [entry["uri"] for entry in result["results"]] == [
         "viking://resources/1",
@@ -1185,7 +1185,7 @@ def test_tool_search_sorts_missing_raw_score_after_negative_scores():
         }
     }
 
-    result = json.loads(provider._tool_search({"query": "ranking"}))
+    result = orjson.loads(provider._tool_search({"query": "ranking"}))
 
     assert [entry["uri"] for entry in result["results"]] == [
         "viking://skills/positive",
@@ -1255,7 +1255,7 @@ def test_tool_add_resource_uploads_existing_local_file(tmp_path):
         "result": {"root_uri": "viking://resources/sample"},
     }
 
-    result = json.loads(provider._tool_add_resource({
+    result = orjson.loads(provider._tool_add_resource({
         "url": str(sample),
         "reason": "local test",
         "wait": True,
@@ -1283,7 +1283,7 @@ def test_tool_add_resource_uploads_file_uri(tmp_path):
         "result": {"root_uri": "viking://resources/sample"},
     }
 
-    result = json.loads(provider._tool_add_resource({
+    result = orjson.loads(provider._tool_add_resource({
         "url": sample.as_uri(),
         "reason": "file uri test",
     }))
@@ -1316,7 +1316,7 @@ def test_tool_add_resource_uploads_existing_local_directory_and_cleans_zip(tmp_p
         "result": {"root_uri": "viking://resources/docs"},
     }
 
-    result = json.loads(provider._tool_add_resource({
+    result = orjson.loads(provider._tool_add_resource({
         "url": str(docs),
         "reason": "directory test",
         "wait": True,
@@ -1366,7 +1366,7 @@ def test_tool_add_resource_directory_zip_skips_symlink_escape(tmp_path):
         "result": {"root_uri": "viking://resources/docs"},
     }
 
-    json.loads(provider._tool_add_resource({"url": str(docs)}))
+    orjson.loads(provider._tool_add_resource({"url": str(docs)}))
 
     assert archive_entries["names"] == ["guide.md"]
     assert b"do not upload" not in b"".join(archive_entries["payloads"].values())
@@ -1418,7 +1418,7 @@ def test_tool_add_resource_rejects_missing_local_path(tmp_path):
     provider = OpenVikingMemoryProvider()
     provider._client = MagicMock()
 
-    result = json.loads(provider._tool_add_resource({"url": str(missing)}))
+    result = orjson.loads(provider._tool_add_resource({"url": str(missing)}))
 
     assert result["error"] == f"Local resource path does not exist: {missing}"
     provider._client.upload_temp_file.assert_not_called()
@@ -1480,7 +1480,7 @@ def test_handle_tool_call_forget_deletes_exact_memory_file_uri():
         "result": {"uri": uri, "estimated_deleted_count": 1},
     }
 
-    result = json.loads(provider.handle_tool_call("viking_forget", {"uri": uri}))
+    result = orjson.loads(provider.handle_tool_call("viking_forget", {"uri": uri}))
 
     provider._client.delete.assert_called_once_with(
         "/api/v1/fs",
@@ -1502,7 +1502,7 @@ def test_handle_tool_call_forget_deletes_exact_memory_file_under_memories_root()
         "result": {"uri": uri, "estimated_deleted_count": 1},
     }
 
-    result = json.loads(provider.handle_tool_call("viking_forget", {"uri": uri}))
+    result = orjson.loads(provider.handle_tool_call("viking_forget", {"uri": uri}))
 
     provider._client.delete.assert_called_once_with(
         "/api/v1/fs",
@@ -1524,7 +1524,7 @@ def test_handle_tool_call_forget_allows_non_generated_dot_md_memory_file():
         "result": {"uri": uri, "estimated_deleted_count": 1},
     }
 
-    result = json.loads(provider.handle_tool_call("viking_forget", {"uri": uri}))
+    result = orjson.loads(provider.handle_tool_call("viking_forget", {"uri": uri}))
 
     provider._client.delete.assert_called_once_with(
         "/api/v1/fs",
@@ -1556,7 +1556,7 @@ def test_handle_tool_call_forget_rejects_non_memory_file_uris(uri):
     provider = OpenVikingMemoryProvider()
     provider._client = MagicMock()
 
-    result = json.loads(provider.handle_tool_call("viking_forget", {"uri": uri}))
+    result = orjson.loads(provider.handle_tool_call("viking_forget", {"uri": uri}))
 
     assert "error" in result
     provider._client.delete.assert_not_called()
@@ -2380,7 +2380,7 @@ def test_sync_turn_structured_messages_include_assistant_peer_id():
                 {
                     "id": "call-1",
                     "type": "function",
-                    "function": {"name": "shell_command", "arguments": json.dumps({"cmd": "pwd"})},
+                    "function": {"name": "shell_command", "arguments": orjson.dumps({"cmd": "pwd"}).decode('utf-8')},
                 }
             ],
         },

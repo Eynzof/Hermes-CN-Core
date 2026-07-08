@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import argparse
-import json
+import orjson
 import os
 import threading
 from pathlib import Path
@@ -161,7 +161,7 @@ def test_run_slash_block_unblock_cycle(kanban_home):
 
 def test_run_slash_json_output(kanban_home):
     out = kc.run_slash("create 'jsontask' --assignee alice --json")
-    payload = json.loads(out)
+    payload = orjson.loads(out)
     assert payload["title"] == "jsontask"
     assert payload["assignee"] == "alice"
     assert payload["status"] == "ready"
@@ -228,7 +228,7 @@ def test_kanban_list_json_includes_session_id(kanban_home):
             conn, title="acp task", assignee="alice", session_id="acp-x"
         )
     raw = kc.run_slash("list --json")
-    payload = json.loads(raw)
+    payload = orjson.loads(raw)
     assert any(
         row.get("title") == "acp task"
         and row.get("session_id") == "acp-x"

@@ -1,5 +1,5 @@
 import os
-import json
+import orjson
 from datetime import datetime, timedelta, timezone
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
@@ -83,7 +83,7 @@ def test_read_nous_access_token_refreshes_expiring_cached_token(tmp_path, monkey
     monkeypatch.delenv("TOOL_GATEWAY_USER_TOKEN", raising=False)
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
     expires_at = (datetime.now(timezone.utc) + timedelta(seconds=30)).isoformat()
-    (tmp_path / "auth.json").write_text(json.dumps({
+    (tmp_path / "auth.json").write_text(orjson.dumps({
         "providers": {
             "nous": {
                 "access_token": "stale-token",
@@ -91,7 +91,7 @@ def test_read_nous_access_token_refreshes_expiring_cached_token(tmp_path, monkey
                 "expires_at": expires_at,
             }
         }
-    }))
+    }).decode('utf-8'))
     monkeypatch.setattr(
         "hermes_cli.auth.resolve_nous_access_token",
         lambda refresh_skew_seconds=120: "fresh-token",
@@ -104,7 +104,7 @@ def test_is_managed_tool_gateway_ready_skips_refresh_for_expired_cached_token(tm
     monkeypatch.delenv("TOOL_GATEWAY_USER_TOKEN", raising=False)
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
     expired_at = (datetime.now(timezone.utc) - timedelta(seconds=30)).isoformat()
-    (tmp_path / "auth.json").write_text(json.dumps({
+    (tmp_path / "auth.json").write_text(orjson.dumps({
         "providers": {
             "nous": {
                 "access_token": "expired-token",
@@ -112,7 +112,7 @@ def test_is_managed_tool_gateway_ready_skips_refresh_for_expired_cached_token(tm
                 "expires_at": expired_at,
             }
         }
-    }))
+    }).decode('utf-8'))
     refresh_calls = []
 
     def _record_refresh(*, refresh_skew_seconds=120, **_kwargs):

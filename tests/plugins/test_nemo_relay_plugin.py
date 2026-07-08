@@ -6,7 +6,7 @@ import asyncio
 import builtins
 import gc
 import importlib
-import json
+import orjson
 import sys
 import warnings
 from pathlib import Path
@@ -143,7 +143,7 @@ class _FakeAtifExporter:
         return True
 
     def export_json(self):
-        return json.dumps({"session_id": self.session_id, "agent_name": self.agent_name})
+        return orjson.dumps({"session_id": self.session_id, "agent_name": self.agent_name}).decode('utf-8')
 
 
 def _fresh_plugin(monkeypatch, fake):

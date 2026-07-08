@@ -40,7 +40,7 @@ Exit code: 0 if every file's pytest exited 0; 1 otherwise.
 from __future__ import annotations
 
 import argparse
-import json
+import orjson
 import os
 import subprocess
 import sys
@@ -479,8 +479,8 @@ def _load_durations(repo_root: Path) -> dict[str, float]:
     if not path.is_file():
         return {}
     try:
-        return json.loads(path.read_text())
-    except (json.JSONDecodeError, OSError) as e:
+        return orjson.loads(path.read_text())
+    except (orjson.JSONDecodeError, OSError) as e:
         print("[ERROR] Failed to load json durations file! {e}")
         return {}
 
@@ -501,7 +501,7 @@ def _save_durations(
         key = _format_file(f, repo_root)
         data[key] = round(t, 3)
     path = repo_root / _DURATIONS_FILE
-    path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
+    path.write_text(orjson.dumps(data, option=orjson.OPT_INDENT_2 | orjson.OPT_SORT_KEYS).decode('utf-8') + "\n")
 
 
 def _compute_lpt_slices(
@@ -786,7 +786,7 @@ def main() -> int:
             ]
         }
         # Print to stdout so the CI step can capture it with $().
-        print(json.dumps(matrix))
+        print(orjson.dumps(matrix).decode('utf-8'))
         return 0
 
     # Count individual tests per file

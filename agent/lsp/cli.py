@@ -98,7 +98,7 @@ def _cmd_status(emit_json: bool) -> int:
     info = svc.get_status() if svc is not None else {"enabled": False}
 
     if emit_json:
-        import json
+        import orjson
         payload = {
             "service": info,
             "registry": [
@@ -111,7 +111,7 @@ def _cmd_status(emit_json: bool) -> int:
                 for s in SERVERS
             ],
         }
-        sys.stdout.write(json.dumps(payload, indent=2) + "\n")
+        sys.stdout.write(orjson.dumps(payload, option=orjson.OPT_INDENT_2).decode('utf-8') + "\n")
         return 0
 
     out = []

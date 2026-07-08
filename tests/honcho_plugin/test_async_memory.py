@@ -9,7 +9,7 @@ Covers:
   - shutdown() joins the thread
 """
 
-import json
+import orjson
 import time
 from unittest.mock import MagicMock, patch
 
@@ -53,47 +53,47 @@ def _make_manager(write_frequency="turn") -> HonchoSessionManager:
 class TestWriteFrequencyParsing:
     def test_string_async(self, tmp_path):
         cfg_file = tmp_path / "config.json"
-        cfg_file.write_text(json.dumps({"apiKey": "k", "writeFrequency": "async"}))
+        cfg_file.write_text(orjson.dumps({"apiKey": "k", "writeFrequency": "async"}).decode('utf-8'))
         cfg = HonchoClientConfig.from_global_config(config_path=cfg_file)
         assert cfg.write_frequency == "async"
 
     def test_string_turn(self, tmp_path):
         cfg_file = tmp_path / "config.json"
-        cfg_file.write_text(json.dumps({"apiKey": "k", "writeFrequency": "turn"}))
+        cfg_file.write_text(orjson.dumps({"apiKey": "k", "writeFrequency": "turn"}).decode('utf-8'))
         cfg = HonchoClientConfig.from_global_config(config_path=cfg_file)
         assert cfg.write_frequency == "turn"
 
     def test_string_session(self, tmp_path):
         cfg_file = tmp_path / "config.json"
-        cfg_file.write_text(json.dumps({"apiKey": "k", "writeFrequency": "session"}))
+        cfg_file.write_text(orjson.dumps({"apiKey": "k", "writeFrequency": "session"}).decode('utf-8'))
         cfg = HonchoClientConfig.from_global_config(config_path=cfg_file)
         assert cfg.write_frequency == "session"
 
     def test_integer_frequency(self, tmp_path):
         cfg_file = tmp_path / "config.json"
-        cfg_file.write_text(json.dumps({"apiKey": "k", "writeFrequency": 5}))
+        cfg_file.write_text(orjson.dumps({"apiKey": "k", "writeFrequency": 5}).decode('utf-8'))
         cfg = HonchoClientConfig.from_global_config(config_path=cfg_file)
         assert cfg.write_frequency == 5
 
     def test_integer_string_coerced(self, tmp_path):
         cfg_file = tmp_path / "config.json"
-        cfg_file.write_text(json.dumps({"apiKey": "k", "writeFrequency": "3"}))
+        cfg_file.write_text(orjson.dumps({"apiKey": "k", "writeFrequency": "3"}).decode('utf-8'))
         cfg = HonchoClientConfig.from_global_config(config_path=cfg_file)
         assert cfg.write_frequency == 3
 
     def test_host_block_overrides_root(self, tmp_path):
         cfg_file = tmp_path / "config.json"
-        cfg_file.write_text(json.dumps({
+        cfg_file.write_text(orjson.dumps({
             "apiKey": "k",
             "writeFrequency": "turn",
             "hosts": {"hermes": {"writeFrequency": "session"}},
-        }))
+        }).decode('utf-8'))
         cfg = HonchoClientConfig.from_global_config(config_path=cfg_file)
         assert cfg.write_frequency == "session"
 
     def test_defaults_to_async(self, tmp_path):
         cfg_file = tmp_path / "config.json"
-        cfg_file.write_text(json.dumps({"apiKey": "k"}))
+        cfg_file.write_text(orjson.dumps({"apiKey": "k"}).decode('utf-8'))
         cfg = HonchoClientConfig.from_global_config(config_path=cfg_file)
         assert cfg.write_frequency == "async"
 

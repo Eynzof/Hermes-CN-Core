@@ -26,7 +26,7 @@ Capabilities:
 from __future__ import annotations
 
 import atexit
-import json
+import orjson
 import logging
 import mimetypes
 import os
@@ -692,7 +692,7 @@ def _load_ovcli_config(path: Optional[Path] = None) -> dict:
     if not config_path.exists():
         return {}
     with config_path.open(encoding="utf-8") as f:
-        data = json.load(f)
+        data = orjson.loads(f.read())
     if not isinstance(data, dict):
         raise ValueError(f"OpenViking CLI config must be a JSON object: {config_path}")
     return data
@@ -2884,7 +2884,7 @@ class OpenVikingMemoryProvider(MemoryProvider):
             if not raw_args.strip():
                 return {}
             try:
-                parsed = json.loads(raw_args)
+                parsed = orjson.loads(raw_args)
             except Exception:
                 return {"value": raw_args}
             if isinstance(parsed, dict):
@@ -2903,7 +2903,7 @@ class OpenVikingMemoryProvider(MemoryProvider):
         text = cls._message_text(message.get("content")).strip()
         if text:
             try:
-                parsed = json.loads(text)
+                parsed = orjson.loads(text)
             except Exception:
                 parsed = None
             if isinstance(parsed, dict):
@@ -3106,7 +3106,7 @@ class OpenVikingMemoryProvider(MemoryProvider):
                         logger.info(
                             "OpenViking sync_turn trace: POST /api/v1/sessions/%s/messages/batch payload=%s",
                             sid,
-                            json.dumps(payload, ensure_ascii=False),
+                            orjson.dumps(payload).decode('utf-8'),
                         )
                     try:
                         client.post(f"/api/v1/sessions/{sid}/messages/batch", payload)
@@ -3418,10 +3418,10 @@ class OpenVikingMemoryProvider(MemoryProvider):
         scored_entries.sort(key=lambda x: x[0], reverse=True)
         formatted = [entry for _, entry in scored_entries]
 
-        return json.dumps({
+        return orjson.dumps({
             "results": formatted,
             "total": result.get("total", len(formatted)),
-        }, ensure_ascii=False)
+        }).decode('utf-8')
 
     def _read_uri_payload(
         self,
@@ -3535,10 +3535,7 @@ class OpenVikingMemoryProvider(MemoryProvider):
             else None
         )
         if len(selected) == 1 and not batch_requested:
-            return json.dumps(
-                self._read_uri_payload(selected[0], level),
-                ensure_ascii=False,
-            )
+            return orjson.dumps(self._read_uri_payload(selected[0], level)).decode('utf-8')
 
         results: List[Dict[str, Any]] = []
         for uri in selected:
@@ -3549,16 +3546,13 @@ class OpenVikingMemoryProvider(MemoryProvider):
             except Exception as e:
                 results.append({"uri": uri, "level": level, "error": str(e)})
 
-        return json.dumps(
-            {
+        return orjson.dumps({
                 "level": level,
                 "results": results,
                 "requested": len(uris),
                 "returned": len(results),
                 "truncated": len(uris) > len(selected),
-            },
-            ensure_ascii=False,
-        )
+            }).decode('utf-8')
 
     def _tool_browse(self, args: dict) -> str:
         action = args.get("action", "list")
@@ -3588,9 +3582,9 @@ class OpenVikingMemoryProvider(MemoryProvider):
                         "type": "dir" if is_dir else "file",
                         "abstract": e.get("abstract", ""),
                     })
-                return json.dumps({"path": path, "entries": entries}, ensure_ascii=False)
+                return orjson.dumps({"path": path, "entries": entries}).decode('utf-8')
 
-        return json.dumps(result, ensure_ascii=False)
+        return orjson.dumps(result).decode('utf-8')
 
     def _tool_remember(self, args: dict) -> str:
         content = args.get("content", "")
@@ -3611,10 +3605,10 @@ class OpenVikingMemoryProvider(MemoryProvider):
                 "mode": "create",
             })
             written = result.get("result", {}).get("written_bytes", 0)
-            return json.dumps({
+            return orjson.dumps({
                 "status": "stored",
                 "message": f"Memory stored ({written}b) and queued for vector indexing.",
-            })
+            }).decode('utf-8')
         except Exception as e:
             logger.error("OpenViking content/write failed: %s", e)
             return tool_error(f"Failed to store memory: {e}")
@@ -3642,7 +3636,7 @@ class OpenVikingMemoryProvider(MemoryProvider):
                 if key in result:
                     payload[key] = result[key]
 
-        return json.dumps(payload, ensure_ascii=False)
+        return orjson.dumps(payload).decode('utf-8')
 
     def _tool_add_resource(self, args: dict) -> str:
         url = args.get("url", "")
@@ -3696,11 +3690,11 @@ class OpenVikingMemoryProvider(MemoryProvider):
             if cleanup_path:
                 cleanup_path.unlink(missing_ok=True)
 
-        return json.dumps({
+        return orjson.dumps({
             "status": "added",
             "root_uri": result.get("root_uri", ""),
             "message": "Resource queued for processing. Use viking_search after a moment to find it.",
-        }, ensure_ascii=False)
+        }).decode('utf-8')
 
 
 # ---------------------------------------------------------------------------

@@ -14,7 +14,7 @@ See reports/perf/2026-07-06-cron-scheduler.md and
 .plans/08-Cron-Lock-File-Overhead.md for the motivating hotspot.
 """
 
-import json
+import orjson
 import os
 from unittest.mock import patch
 
@@ -162,7 +162,7 @@ class TestLockFileAtomicity:
 
         cron_jobs.save_jobs([{"id": "a", "prompt": "first"}])
         original = jobs_file.read_text(encoding="utf-8")
-        assert json.loads(original)["jobs"][0]["id"] == "a"
+        assert orjson.loads(original)["jobs"][0]["id"] == "a"
 
         # 1. All-or-nothing: a failure mid-write leaves the previous file intact.
         def boom(*a, **k):
@@ -185,7 +185,7 @@ class TestLockFileAtomicity:
         with patch.object(os, "replace", spy_replace):
             cron_jobs.save_jobs([{"id": "c", "prompt": "third"}])
         assert os.path.realpath(seen["dst"]) == os.path.realpath(str(jobs_file))
-        assert json.loads(jobs_file.read_text(encoding="utf-8"))["jobs"][0]["id"] == "c"
+        assert orjson.loads(jobs_file.read_text(encoding="utf-8"))["jobs"][0]["id"] == "c"
         assert list(jobs_file.parent.glob(".jobs_*.tmp")) == []
 
     def test_failed_write_invalidates_cache(self, tmp_cron_dir):

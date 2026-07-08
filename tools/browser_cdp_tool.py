@@ -18,7 +18,7 @@ Method reference: https://chromedevtools.github.io/devtools-protocol/
 from __future__ import annotations
 
 import asyncio
-import json
+import orjson
 import logging
 from typing import Any, Dict, Optional
 
@@ -218,13 +218,11 @@ async def _cdp_call(
             attach_id = next_id
             next_id += 1
             await ws.send(
-                json.dumps(
-                    {
+                orjson.dumps({
                         "id": attach_id,
                         "method": "Target.attachToTarget",
                         "params": {"targetId": target_id, "flatten": True},
-                    }
-                )
+                    }).decode('utf-8')
             )
             deadline = asyncio.get_running_loop().time() + timeout
             while True:
@@ -234,7 +232,7 @@ async def _cdp_call(
                         f"Timed out attaching to target {target_id}"
                     )
                 raw = await asyncio.wait_for(ws.recv(), timeout=remaining)
-                msg = json.loads(raw)
+                msg = orjson.loads(raw)
                 if msg.get("id") == attach_id:
                     if "error" in msg:
                         raise RuntimeError(
@@ -258,7 +256,7 @@ async def _cdp_call(
         }
         if session_id:
             req["sessionId"] = session_id
-        await ws.send(json.dumps(req))
+        await ws.send(orjson.dumps(req).decode('utf-8'))
 
         deadline = asyncio.get_running_loop().time() + timeout
         while True:
@@ -268,7 +266,7 @@ async def _cdp_call(
                     f"Timed out waiting for response to {method}"
                 )
             raw = await asyncio.wait_for(ws.recv(), timeout=remaining)
-            msg = json.loads(raw)
+            msg = orjson.loads(raw)
             if msg.get("id") == call_id:
                 if "error" in msg:
                     raise RuntimeError(f"CDP error: {msg['error']}")
@@ -388,7 +386,7 @@ def _browser_cdp_via_supervisor(
         "session_id": child_sid,
         "result": result_msg.get("result", {}),
     }
-    return json.dumps(payload, ensure_ascii=False)
+    return orjson.dumps(payload).decode('utf-8')
 
 
 def browser_cdp(
@@ -519,7 +517,7 @@ def browser_cdp(
     }
     if target_id:
         payload["target_id"] = target_id
-    return json.dumps(payload, ensure_ascii=False)
+    return orjson.dumps(payload).decode('utf-8')
 
 
 # ---------------------------------------------------------------------------

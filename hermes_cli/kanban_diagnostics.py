@@ -31,7 +31,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterable, Optional
-import json
+import orjson
 import time
 
 
@@ -154,7 +154,7 @@ def _parse_payload(ev) -> dict:
         return p
     if isinstance(p, str):
         try:
-            return json.loads(p) or {}
+            return orjson.loads(p) or {}
         except Exception:
             return {}
     return {}

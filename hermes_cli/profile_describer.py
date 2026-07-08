@@ -26,7 +26,7 @@ Design notes
 
 from __future__ import annotations
 
-import json
+import orjson
 import logging
 import re
 from dataclasses import dataclass
@@ -145,8 +145,8 @@ def _extract_json_blob(raw: str) -> Optional[dict]:
         return None
     candidate = stripped[first : last + 1]
     try:
-        val = json.loads(candidate)
-    except (ValueError, json.JSONDecodeError):
+        val = orjson.loads(candidate)
+    except (ValueError, orjson.JSONDecodeError):
         return None
     if not isinstance(val, dict):
         return None

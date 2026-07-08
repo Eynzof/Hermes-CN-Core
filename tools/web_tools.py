@@ -36,7 +36,7 @@ Usage:
     content = web_extract_tool(["https://example.com"], format="markdown")
 """
 
-import json
+import orjson
 import logging
 import os
 import re
@@ -592,7 +592,7 @@ def web_search_tool(query: str, limit: int = 5) -> str:
             response_data = provider.search(query, limit)
 
         debug_call_data["results_count"] = len(response_data.get("data", {}).get("web", []))
-        result_json = json.dumps(response_data, indent=2, ensure_ascii=False)
+        result_json = orjson.dumps(response_data, option=orjson.OPT_INDENT_2).decode('utf-8')
         debug_call_data["final_response_size"] = len(result_json)
         _debug.log_call("web_search_tool", debug_call_data)
         _debug.save()
@@ -654,14 +654,14 @@ async def web_extract_tool(
             or _PREFIX_RE.search(normalized_url)
             or _PREFIX_RE.search(unquote(normalized_url))
         ):
-            return json.dumps({
+            return orjson.dumps({
                 "success": False,
                 "error": "Blocked: URL contains what appears to be an API key or token. "
                          "Secrets must not be sent in URLs.",
-            })
+            }).decode('utf-8')
         sensitive_query_key = sensitive_query_param_name(normalized_url)
         if sensitive_query_key:
-            return json.dumps({
+            return orjson.dumps({
                 "success": False,
                 "error": (
                     "Blocked: URL contains a credential-like query parameter "
@@ -669,7 +669,7 @@ async def web_extract_tool(
                     "readers; remove the sensitive query parameter or use a local "
                     "browser session when this access is explicitly required."
                 ),
-            })
+            }).decode('utf-8')
         normalized_urls.append(normalized_url)
 
     debug_call_data = {
@@ -730,8 +730,7 @@ async def web_extract_tool(
                 # isn't registered at all (typo / uninstalled plugin), fall
                 # through to the active-provider walk.
                 if provider is not None and not provider.supports_extract():
-                    return json.dumps(
-                        {
+                    return orjson.dumps({
                             "success": False,
                             "error": (
                                 f"{provider.display_name} is a search-only "
@@ -739,22 +738,17 @@ async def web_extract_tool(
                                 "Set web.extract_backend to firecrawl, "
                                 "tavily, exa, or parallel."
                             ),
-                        },
-                        ensure_ascii=False,
-                    )
+                        }).decode('utf-8')
                 provider = get_active_extract_provider()
                 if provider is None:
-                    return json.dumps(
-                        {
+                    return orjson.dumps({
                             "success": False,
                             "error": (
                                 "No web extract provider configured. "
                                 "Set web.extract_backend to firecrawl, "
                                 "tavily, exa, or parallel."
                             ),
-                        },
-                        ensure_ascii=False,
-                    )
+                        }).decode('utf-8')
 
             logger.info(
                 "Web extract via %s: %d URL(s)", provider.name, len(safe_urls)
@@ -782,7 +776,7 @@ async def web_extract_tool(
         logger.info("Extracted content from %d pages", pages_extracted)
         
         debug_call_data["pages_extracted"] = pages_extracted
-        debug_call_data["original_response_size"] = len(json.dumps(response))
+        debug_call_data["original_response_size"] = len(orjson.dumps(response).decode('utf-8'))
 
         effective_char_limit = char_limit if char_limit is not None else _get_extract_char_limit()
         try:
@@ -832,7 +826,7 @@ async def web_extract_tool(
         if trimmed_response.get("results") == []:
             result_json = tool_error("Content was inaccessible or not found")
         else:
-            result_json = json.dumps(trimmed_response, indent=2, ensure_ascii=False)
+            result_json = orjson.dumps(trimmed_response, option=orjson.OPT_INDENT_2).decode('utf-8')
 
         # base64 images were already converted to placeholders per-result above;
         # this is a belt-and-suspenders sweep over the serialized JSON in case a

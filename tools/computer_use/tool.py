@@ -39,7 +39,7 @@ For captures / actions with `capture_after=True`:
 from __future__ import annotations
 
 import base64
-import json
+import orjson
 import logging
 import os
 import re
@@ -243,27 +243,27 @@ def handle_computer_use(args: Dict[str, Any], **kwargs) -> Any:
     """
     action = (args.get("action") or "").strip().lower()
     if not action:
-        return json.dumps({"error": "missing `action`"})
+        return orjson.dumps({"error": "missing `action`"}).decode('utf-8')
 
     # Safety: validate actions before approval prompt.
     if action == "type":
         text = args.get("text", "")
         pat = _is_blocked_type(text)
         if pat:
-            return json.dumps({
+            return orjson.dumps({
                 "error": f"blocked pattern in type text: {pat!r}",
                 "hint": "Dangerous shell patterns cannot be typed via computer_use.",
-            })
+            }).decode('utf-8')
 
     if action == "key":
         keys = args.get("keys", "")
         combo = _canon_key_combo(keys)
         for blocked in _BLOCKED_KEY_COMBOS:
             if blocked.issubset(combo) and len(blocked) <= len(combo):
-                return json.dumps({
+                return orjson.dumps({
                     "error": f"blocked key combo: {sorted(blocked)}",
                     "hint": "Destructive system shortcuts are hard-blocked.",
-                })
+                }).decode('utf-8')
 
     # Approval gate (destructive actions only).
     if action in _DESTRUCTIVE_ACTIONS:
@@ -275,17 +275,17 @@ def handle_computer_use(args: Dict[str, Any], **kwargs) -> Any:
     try:
         backend = _get_backend()
     except Exception as e:
-        return json.dumps({
+        return orjson.dumps({
             "error": f"computer_use backend unavailable: {e}",
             "hint": "If the cua-driver binary is missing, run `hermes computer-use install`. "
                     "If a Python dependency is missing, the error above shows the exact install command.",
-        })
+        }).decode('utf-8')
 
     try:
         return _dispatch(backend, action, args)
     except Exception as e:
         logger.exception("computer_use %s failed", action)
-        return json.dumps({"error": f"{action} failed: {e}"})
+        return orjson.dumps({"error": f"{action} failed: {e}"}).decode('utf-8')
 
 
 def _request_approval(action: str, args: Dict[str, Any]) -> Optional[str]:
@@ -313,7 +313,7 @@ def _request_approval(action: str, args: Dict[str, Any]) -> Optional[str]:
         if verdict == "always_approve":
             _session_auto_approve = True
         return None
-    return json.dumps({"error": "denied by user", "action": action})
+    return orjson.dumps({"error": "denied by user", "action": action}).decode('utf-8')
 
 
 def _summarize_action(action: str, args: Dict[str, Any]) -> str:
@@ -346,7 +346,7 @@ def _dispatch(backend: ComputerUseBackend, action: str, args: Dict[str, Any]) ->
     if action == "capture":
         mode = str(args.get("mode", "som"))
         if mode not in {"som", "vision", "ax"}:
-            return json.dumps({"error": f"bad mode {mode!r}; use som|vision|ax"})
+            return orjson.dumps({"error": f"bad mode {mode!r}; use som|vision|ax"}).decode('utf-8')
         cap = backend.capture(mode=mode, app=args.get("app"))
         return _capture_response(cap, max_elements=_coerce_max_elements(args.get("max_elements")))
 
@@ -357,12 +357,12 @@ def _dispatch(backend: ComputerUseBackend, action: str, args: Dict[str, Any]) ->
 
     if action == "list_apps":
         apps = backend.list_apps()
-        return json.dumps({"apps": apps, "count": len(apps)})
+        return orjson.dumps({"apps": apps, "count": len(apps)}).decode('utf-8')
 
     if action == "focus_app":
         app = args.get("app")
         if not app:
-            return json.dumps({"error": "focus_app requires `app`"})
+            return orjson.dumps({"error": "focus_app requires `app`"}).decode('utf-8')
         res = backend.focus_app(app, raise_window=bool(args.get("raise_window")))
         return _maybe_follow_capture(backend, res, capture_after)
 
@@ -391,9 +391,9 @@ def _dispatch(backend: ComputerUseBackend, action: str, args: Dict[str, Any]) ->
         has_elements = args.get("from_element") is not None and args.get("to_element") is not None
         has_coords = args.get("from_coordinate") and args.get("to_coordinate")
         if not has_elements and not has_coords:
-            return json.dumps({
+            return orjson.dumps({
                 "error": "drag requires from_coordinate/to_coordinate or from_element/to_element",
-            })
+            }).decode('utf-8')
         res = backend.drag(
             from_element=args.get("from_element"),
             to_element=args.get("to_element"),
@@ -427,11 +427,11 @@ def _dispatch(backend: ComputerUseBackend, action: str, args: Dict[str, Any]) ->
     if action == "set_value":
         value = args.get("value")
         if value is None:
-            return json.dumps({"error": "set_value requires `value`"})
+            return orjson.dumps({"error": "set_value requires `value`"}).decode('utf-8')
         res = backend.set_value(value=str(value), element=args.get("element"))
         return _maybe_follow_capture(backend, res, capture_after)
 
-    return json.dumps({"error": f"unknown action {action!r}"})
+    return orjson.dumps({"error": f"unknown action {action!r}"}).decode('utf-8')
 
 
 # ---------------------------------------------------------------------------
@@ -444,7 +444,7 @@ def _text_response(res: ActionResult) -> str:
         payload["message"] = res.message
     if res.meta:
         payload["meta"] = res.meta
-    return json.dumps(payload)
+    return orjson.dumps(payload).decode('utf-8')
 
 
 # Default cap for the AX `elements` array returned by capture. Dense UIs
@@ -617,7 +617,7 @@ def _capture_response(cap: CaptureResult, max_elements: int = _DEFAULT_MAX_ELEME
             }
             if truncated_elements:
                 payload["truncated_elements"] = truncated_elements
-            return json.dumps(payload)
+            return orjson.dumps(payload).decode('utf-8')
 
         # Prefer the explicit MIME type cua-driver attaches to its image
         # parts (Surface 7 of NousResearch/hermes-agent#47072 — trycua/cua#1961
@@ -662,7 +662,7 @@ def _capture_response(cap: CaptureResult, max_elements: int = _DEFAULT_MAX_ELEME
     }
     if truncated_elements:
         payload["truncated_elements"] = truncated_elements
-    return json.dumps(payload)
+    return orjson.dumps(payload).decode('utf-8')
 
 
 # ---------------------------------------------------------------------------
@@ -811,16 +811,16 @@ def _route_capture_through_aux_vision(
     analysis_text = ""
     if isinstance(result_json, str):
         try:
-            parsed = json.loads(result_json)
+            parsed = orjson.loads(result_json)
             if isinstance(parsed, dict):
                 analysis_text = str(parsed.get("analysis") or "").strip()
-        except (TypeError, json.JSONDecodeError):
+        except (TypeError, orjson.JSONDecodeError):
             analysis_text = result_json.strip()
 
     if not analysis_text:
         return None
 
-    return json.dumps({
+    return orjson.dumps({
         "mode": cap.mode,
         "width": cap.width,
         "height": cap.height,
@@ -830,7 +830,7 @@ def _route_capture_through_aux_vision(
         "summary": summary,
         "vision_analysis": analysis_text,
         "vision_analysis_routed_via": "auxiliary.vision",
-    })
+    }).decode('utf-8')
 
 
 def _maybe_follow_capture(
@@ -861,14 +861,14 @@ def _maybe_follow_capture(
         return resp
     # Fallback: action + text capture merged.
     try:
-        data = json.loads(resp)
-    except (TypeError, json.JSONDecodeError):
+        data = orjson.loads(resp)
+    except (TypeError, orjson.JSONDecodeError):
         data = {"capture": resp}
     data["action"] = res.action
     data["ok"] = res.ok
     if res.message:
         data["message"] = res.message
-    return json.dumps(data)
+    return orjson.dumps(data).decode('utf-8')
 
 
 def _format_elements(elements: List[UIElement], max_lines: int = 40) -> List[str]:

@@ -91,8 +91,8 @@ def test_healthy_crawl_writes_index_with_all_sources(tmp_path, monkeypatch):
     build_mod.main()  # exit 0 (no SystemExit)
 
     assert out.exists()
-    import json
-    data = json.loads(out.read_text())
+    import orjson
+    data = orjson.loads(out.read_text())
     sources = {s["source"] for s in data["skills"]}
     # Every GitHub-API-backed source that vanished in the regression is present.
     assert {"github", "claude-marketplace", "well-known"} <= sources

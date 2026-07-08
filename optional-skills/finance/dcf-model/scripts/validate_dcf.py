@@ -5,7 +5,7 @@ Validates Excel DCF models for formula errors and common DCF mistakes
 """
 
 import sys
-import json
+import orjson
 from pathlib import Path
 
 
@@ -267,12 +267,12 @@ def main():
         results = validate_dcf_model(excel_file)
 
         # Print results
-        print(json.dumps(results, indent=2))
+        print(orjson.dumps(results, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
         # Save to file if requested
         if output_file:
             with open(output_file, 'w') as f:
-                json.dump(results, f, indent=2)
+                f.write(orjson.dumps(results, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
         # Exit with error code if validation failed
         sys.exit(0 if results['status'] == 'PASS' else 1)
@@ -283,7 +283,7 @@ def main():
             'status': 'ERROR',
             'error': str(e)
         }
-        print(json.dumps(error_result, indent=2))
+        print(orjson.dumps(error_result, option=orjson.OPT_INDENT_2).decode('utf-8'))
         sys.exit(1)
 
 

@@ -24,7 +24,7 @@ working unchanged.
 
 from __future__ import annotations
 
-import json
+import orjson
 import logging
 import os
 import re
@@ -114,7 +114,7 @@ def _should_parallelize_tool_batch(tool_calls) -> bool:
     for tool_call in tool_calls:
         tool_name = tool_call.function.name
         try:
-            function_args = json.loads(tool_call.function.arguments)
+            function_args = orjson.loads(tool_call.function.arguments)
         except Exception:
             logging.debug(
                 "Could not parse args for %s — defaulting to sequential; raw=%s",
@@ -209,7 +209,7 @@ def _multimodal_text_summary(value: Any) -> str:
     if isinstance(value, str):
         return value
     try:
-        return json.dumps(value, default=str)
+        return orjson.dumps(value, default=str).decode('utf-8')
     except Exception:
         return str(value)
 
@@ -291,7 +291,7 @@ def _extract_landed_file_mutation_paths(
     if tool_name not in _FILE_MUTATING_TOOLS or not isinstance(result, str):
         return targets
     try:
-        data = json.loads(result.strip())
+        data = orjson.loads(result.strip())
     except Exception:
         return targets
     if not isinstance(data, dict):
@@ -323,7 +323,7 @@ def _extract_error_preview(result: Any, max_len: int = 180) -> str:
     stripped = text.strip()
     if stripped.startswith("{"):
         try:
-            data = json.loads(stripped)
+            data = orjson.loads(stripped)
             if isinstance(data, dict) and isinstance(data.get("error"), str):
                 text = data["error"]
         except Exception:

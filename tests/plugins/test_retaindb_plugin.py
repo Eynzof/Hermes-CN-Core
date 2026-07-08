@@ -4,7 +4,7 @@ Covers: _Client HTTP client, _WriteQueue SQLite queue, _build_overlay formatter,
 RetainDBMemoryProvider lifecycle/tools/prefetch, thread management, connection pooling.
 """
 
-import json
+import orjson
 import sqlite3
 import time
 from pathlib import Path
@@ -393,14 +393,14 @@ class TestRetainDBMemoryProvider:
 
     def test_handle_tool_call_not_initialized(self):
         p = RetainDBMemoryProvider()
-        result = json.loads(p.handle_tool_call("retaindb_profile", {}))
+        result = orjson.loads(p.handle_tool_call("retaindb_profile", {}))
         assert "error" in result
         assert "not initialized" in result["error"]
 
     def test_handle_tool_call_unknown_tool(self, tmp_path, monkeypatch):
         p = self._make_provider(tmp_path, monkeypatch)
         p.initialize("test-session", hermes_home=str(tmp_path / ".hermes"))
-        result = json.loads(p.handle_tool_call("retaindb_nonexistent", {}))
+        result = orjson.loads(p.handle_tool_call("retaindb_nonexistent", {}))
         assert result == {"error": "Unknown tool: retaindb_nonexistent"}
         p.shutdown()
 
@@ -408,14 +408,14 @@ class TestRetainDBMemoryProvider:
         p = self._make_provider(tmp_path, monkeypatch)
         p.initialize("test-session", hermes_home=str(tmp_path / ".hermes"))
         with patch.object(p._client, "get_profile", return_value={"memories": []}):
-            result = json.loads(p.handle_tool_call("retaindb_profile", {}))
+            result = orjson.loads(p.handle_tool_call("retaindb_profile", {}))
             assert "memories" in result
         p.shutdown()
 
     def test_dispatch_search_requires_query(self, tmp_path, monkeypatch):
         p = self._make_provider(tmp_path, monkeypatch)
         p.initialize("test-session", hermes_home=str(tmp_path / ".hermes"))
-        result = json.loads(p.handle_tool_call("retaindb_search", {}))
+        result = orjson.loads(p.handle_tool_call("retaindb_search", {}))
         assert result == {"error": "query is required"}
         p.shutdown()
 
@@ -423,7 +423,7 @@ class TestRetainDBMemoryProvider:
         p = self._make_provider(tmp_path, monkeypatch)
         p.initialize("test-session", hermes_home=str(tmp_path / ".hermes"))
         with patch.object(p._client, "search", return_value={"results": [{"content": "found"}]}):
-            result = json.loads(p.handle_tool_call("retaindb_search", {"query": "test"}))
+            result = orjson.loads(p.handle_tool_call("retaindb_search", {"query": "test"}))
             assert "results" in result
         p.shutdown()
 
@@ -441,14 +441,14 @@ class TestRetainDBMemoryProvider:
         p = self._make_provider(tmp_path, monkeypatch)
         p.initialize("test-session", hermes_home=str(tmp_path / ".hermes"))
         with patch.object(p._client, "add_memory", return_value={"id": "mem-1"}):
-            result = json.loads(p.handle_tool_call("retaindb_remember", {"content": "test fact"}))
+            result = orjson.loads(p.handle_tool_call("retaindb_remember", {"content": "test fact"}))
             assert result["id"] == "mem-1"
         p.shutdown()
 
     def test_dispatch_remember_requires_content(self, tmp_path, monkeypatch):
         p = self._make_provider(tmp_path, monkeypatch)
         p.initialize("test-session", hermes_home=str(tmp_path / ".hermes"))
-        result = json.loads(p.handle_tool_call("retaindb_remember", {}))
+        result = orjson.loads(p.handle_tool_call("retaindb_remember", {}))
         assert result == {"error": "content is required"}
         p.shutdown()
 
@@ -456,14 +456,14 @@ class TestRetainDBMemoryProvider:
         p = self._make_provider(tmp_path, monkeypatch)
         p.initialize("test-session", hermes_home=str(tmp_path / ".hermes"))
         with patch.object(p._client, "delete_memory", return_value={"deleted": True}):
-            result = json.loads(p.handle_tool_call("retaindb_forget", {"memory_id": "mem-1"}))
+            result = orjson.loads(p.handle_tool_call("retaindb_forget", {"memory_id": "mem-1"}))
             assert result["deleted"] is True
         p.shutdown()
 
     def test_dispatch_forget_requires_id(self, tmp_path, monkeypatch):
         p = self._make_provider(tmp_path, monkeypatch)
         p.initialize("test-session", hermes_home=str(tmp_path / ".hermes"))
-        result = json.loads(p.handle_tool_call("retaindb_forget", {}))
+        result = orjson.loads(p.handle_tool_call("retaindb_forget", {}))
         assert result == {"error": "memory_id is required"}
         p.shutdown()
 
@@ -472,7 +472,7 @@ class TestRetainDBMemoryProvider:
         p.initialize("test-session", hermes_home=str(tmp_path / ".hermes"))
         with patch.object(p._client, "query_context", return_value={"results": [{"content": "relevant"}]}), \
              patch.object(p._client, "get_profile", return_value={"memories": []}):
-            result = json.loads(p.handle_tool_call("retaindb_context", {"query": "current task"}))
+            result = orjson.loads(p.handle_tool_call("retaindb_context", {"query": "current task"}))
             assert "context" in result
             assert "raw" in result
         p.shutdown()
@@ -481,41 +481,41 @@ class TestRetainDBMemoryProvider:
         p = self._make_provider(tmp_path, monkeypatch)
         p.initialize("test-session", hermes_home=str(tmp_path / ".hermes"))
         with patch.object(p._client, "list_files", return_value={"files": []}):
-            result = json.loads(p.handle_tool_call("retaindb_list_files", {}))
+            result = orjson.loads(p.handle_tool_call("retaindb_list_files", {}))
             assert "files" in result
         p.shutdown()
 
     def test_dispatch_file_upload_missing_path(self, tmp_path, monkeypatch):
         p = self._make_provider(tmp_path, monkeypatch)
         p.initialize("test-session", hermes_home=str(tmp_path / ".hermes"))
-        result = json.loads(p.handle_tool_call("retaindb_upload_file", {}))
+        result = orjson.loads(p.handle_tool_call("retaindb_upload_file", {}))
         assert "error" in result
 
     def test_dispatch_file_upload_not_found(self, tmp_path, monkeypatch):
         p = self._make_provider(tmp_path, monkeypatch)
         p.initialize("test-session", hermes_home=str(tmp_path / ".hermes"))
-        result = json.loads(p.handle_tool_call("retaindb_upload_file", {"local_path": "/nonexistent/file.txt"}))
+        result = orjson.loads(p.handle_tool_call("retaindb_upload_file", {"local_path": "/nonexistent/file.txt"}))
         assert "File not found" in result["error"]
         p.shutdown()
 
     def test_dispatch_file_read_requires_id(self, tmp_path, monkeypatch):
         p = self._make_provider(tmp_path, monkeypatch)
         p.initialize("test-session", hermes_home=str(tmp_path / ".hermes"))
-        result = json.loads(p.handle_tool_call("retaindb_read_file", {}))
+        result = orjson.loads(p.handle_tool_call("retaindb_read_file", {}))
         assert result == {"error": "file_id is required"}
         p.shutdown()
 
     def test_dispatch_file_ingest_requires_id(self, tmp_path, monkeypatch):
         p = self._make_provider(tmp_path, monkeypatch)
         p.initialize("test-session", hermes_home=str(tmp_path / ".hermes"))
-        result = json.loads(p.handle_tool_call("retaindb_ingest_file", {}))
+        result = orjson.loads(p.handle_tool_call("retaindb_ingest_file", {}))
         assert result == {"error": "file_id is required"}
         p.shutdown()
 
     def test_dispatch_file_delete_requires_id(self, tmp_path, monkeypatch):
         p = self._make_provider(tmp_path, monkeypatch)
         p.initialize("test-session", hermes_home=str(tmp_path / ".hermes"))
-        result = json.loads(p.handle_tool_call("retaindb_delete_file", {}))
+        result = orjson.loads(p.handle_tool_call("retaindb_delete_file", {}))
         assert result == {"error": "file_id is required"}
         p.shutdown()
 
@@ -523,7 +523,7 @@ class TestRetainDBMemoryProvider:
         p = self._make_provider(tmp_path, monkeypatch)
         p.initialize("test-session", hermes_home=str(tmp_path / ".hermes"))
         with patch.object(p._client, "get_profile", side_effect=RuntimeError("API exploded")):
-            result = json.loads(p.handle_tool_call("retaindb_profile", {}))
+            result = orjson.loads(p.handle_tool_call("retaindb_profile", {}))
             assert "API exploded" in result["error"]
         p.shutdown()
 

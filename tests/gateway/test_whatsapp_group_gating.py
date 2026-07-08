@@ -1,4 +1,4 @@
-import json
+import orjson
 from unittest.mock import AsyncMock
 
 from gateway.config import Platform, PlatformConfig, load_gateway_config
@@ -134,7 +134,7 @@ def test_config_bridges_whatsapp_group_settings(monkeypatch, tmp_path):
     assert config.platforms[Platform.WHATSAPP].extra["require_mention"] is True
     assert config.platforms[Platform.WHATSAPP].extra["mention_patterns"] == [r"^\s*chompy\b"]
     assert __import__("os").environ["WHATSAPP_REQUIRE_MENTION"] == "true"
-    assert json.loads(__import__("os").environ["WHATSAPP_MENTION_PATTERNS"]) == [r"^\s*chompy\b"]
+    assert orjson.loads(__import__("os").environ["WHATSAPP_MENTION_PATTERNS"]) == [r"^\s*chompy\b"]
 
 
 def test_free_response_chats_bypass_mention_gating():

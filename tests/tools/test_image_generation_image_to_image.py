@@ -13,7 +13,7 @@ tool routes to a provider's edit endpoint when ``image_url`` /
 
 from __future__ import annotations
 
-import json
+import orjson
 from typing import Any, Dict, List, Optional
 
 import pytest
@@ -136,7 +136,7 @@ class TestFalRouting:
         self._patch_submit(monkeypatch, image_tool, capture)
 
         raw = image_tool.image_generate_tool(prompt="a cat", aspect_ratio="square")
-        out = json.loads(raw)
+        out = orjson.loads(raw)
         assert out["success"] is True
         assert out["modality"] == "text"
         assert capture["endpoint"] == "fal-ai/nano-banana-pro"
@@ -154,7 +154,7 @@ class TestFalRouting:
             aspect_ratio="square",
             image_url="https://in/src.png",
         )
-        out = json.loads(raw)
+        out = orjson.loads(raw)
         assert out["success"] is True
         assert out["modality"] == "image"
         assert capture["endpoint"] == "fal-ai/nano-banana-pro/edit"
@@ -173,7 +173,7 @@ class TestFalRouting:
             image_url="https://in/a.png",
             reference_image_urls=["https://in/b.png", "https://in/c.png", "https://in/d.png"],
         )
-        out = json.loads(raw)
+        out = orjson.loads(raw)
         assert out["success"] is True
         assert capture["arguments"]["image_urls"] == ["https://in/a.png", "https://in/b.png"]
 
@@ -187,7 +187,7 @@ class TestFalRouting:
         raw = image_tool.image_generate_tool(
             prompt="edit this", image_url="https://in/src.png",
         )
-        out = json.loads(raw)
+        out = orjson.loads(raw)
         assert out["success"] is False
         assert "image-to-image" in out["error"]
         # Must NOT have submitted anything.
@@ -209,7 +209,7 @@ class TestFalRouting:
         raw = image_tool.image_generate_tool(
             prompt="tweak", image_url="https://in/src.png",
         )
-        out = json.loads(raw)
+        out = orjson.loads(raw)
         assert out["success"] is True
         assert out["modality"] == "image"
         assert upscale_called["hit"] is False
@@ -274,7 +274,7 @@ class TestPluginDispatchImageToImage:
             image_url="https://in/src.png",
             reference_image_urls=["https://in/ref.png"],
         )
-        out = json.loads(raw)
+        out = orjson.loads(raw)
         assert out["success"] is True
         assert out["modality"] == "image"
         assert provider.received["image_url"] == "https://in/src.png"
@@ -292,7 +292,7 @@ class TestPluginDispatchImageToImage:
         monkeypatch.setattr(reg, "get_provider", lambda n: provider if n == "editcap" else None)
 
         raw = image_tool._dispatch_to_plugin_provider("a dog", "landscape")
-        out = json.loads(raw)
+        out = orjson.loads(raw)
         assert out["success"] is True
         assert provider.received["image_url"] is None
         assert "reference_image_urls" not in provider.received or provider.received["reference_image_urls"] is None
@@ -311,7 +311,7 @@ class TestPluginDispatchImageToImage:
         raw = image_tool._dispatch_to_plugin_provider(
             "edit it", "square", image_url="https://in/src.png",
         )
-        out = json.loads(raw)
+        out = orjson.loads(raw)
         assert out["success"] is False
         assert out["error_type"] == "modality_unsupported"
 

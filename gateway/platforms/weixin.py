@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
-import json
+import orjson
 import logging
 import mimetypes
 import os
@@ -168,7 +168,7 @@ def _safe_id(value: Optional[str], keep: int = 8) -> str:
 
 
 def _json_dumps(payload: Dict[str, Any]) -> str:
-    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    return orjson.dumps(payload).decode('utf-8')
 
 
 def _pkcs7_pad(data: bytes, block_size: int = 16) -> bytes:
@@ -260,7 +260,7 @@ def load_weixin_account(hermes_home: str, account_id: str) -> Optional[Dict[str,
     if not path.exists():
         return None
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        return orjson.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return None
 
@@ -283,7 +283,7 @@ class ContextTokenStore:
         if not path.exists():
             return
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
+            data = orjson.loads(path.read_text(encoding="utf-8"))
         except Exception as exc:
             logger.warning("weixin: failed to restore context tokens for %s: %s", _safe_id(account_id), exc)
             return
@@ -386,7 +386,7 @@ async def _api_post(
             raw = await response.text()
             if not response.ok:
                 raise RuntimeError(f"iLink POST {endpoint} HTTP {response.status}: {raw[:200]}")
-            return json.loads(raw)
+            return orjson.loads(raw)
     return await asyncio.wait_for(_do(), timeout=timeout_ms / 1000)
 
 
@@ -410,7 +410,7 @@ async def _api_get(
             raw = await response.text()
             if not response.ok:
                 raise RuntimeError(f"iLink GET {endpoint} HTTP {response.status}: {raw[:200]}")
-            return json.loads(raw)
+            return orjson.loads(raw)
     return await asyncio.wait_for(_do(), timeout=timeout_ms / 1000)
 
 
@@ -990,7 +990,7 @@ def _load_sync_buf(hermes_home: str, account_id: str) -> str:
     if not path.exists():
         return ""
     try:
-        return json.loads(path.read_text(encoding="utf-8")).get("get_updates_buf", "")
+        return orjson.loads(path.read_text(encoding="utf-8")).get("get_updates_buf", "")
     except Exception:
         return ""
 

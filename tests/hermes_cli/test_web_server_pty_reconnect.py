@@ -1,6 +1,6 @@
 """Focused tests for dashboard PTY reconnect breadcrumbs."""
 
-import json
+import orjson
 import sys
 from pathlib import Path
 from urllib.parse import urlencode
@@ -89,7 +89,7 @@ def test_channel_reconnect_resumes_active_session_file(pty_client, monkeypatch):
         )
         if active_session_file and not resume:
             Path(active_session_file).write_text(
-                json.dumps({"session_id": "sess-live"}),
+                orjson.dumps({"session_id": "sess-live"}).decode('utf-8'),
                 encoding="utf-8",
             )
         return (["fake-hermes-tui"], None, None)
@@ -113,7 +113,7 @@ def test_fresh_param_ignores_channel_active_session_file(pty_client, monkeypatch
     ws, client, token = pty_client
     channel = "fresh-chan"
     active_file = ws._active_session_file_for_channel(ws.app, channel)
-    active_file.write_text(json.dumps({"session_id": "sess-old"}), encoding="utf-8")
+    active_file.write_text(orjson.dumps({"session_id": "sess-old"}).decode('utf-8'), encoding="utf-8")
     captured = {}
 
     def fake_resolve(resume=None, sidecar_url=None, profile=None, active_session_file=None):

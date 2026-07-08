@@ -1,4 +1,4 @@
-import json
+import orjson
 import os
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -54,7 +54,7 @@ def _run_terminal(
     if invoke_hook is not _UNSET:
         monkeypatch.setattr("hermes_cli.plugins.invoke_hook", invoke_hook)
 
-    result = json.loads(terminal_tool_module.terminal_tool(command=command))
+    result = orjson.loads(terminal_tool_module.terminal_tool(command=command))
     return result, mock_env
 
 

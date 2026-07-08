@@ -250,11 +250,11 @@ class TestMaybePersistToolResult:
 
     def test_persists_full_content_as_is(self):
         """Content is persisted verbatim — no JSON extraction."""
-        import json
+        import orjson
         env = MagicMock()
         env.execute.return_value = {"output": "", "returncode": 0}
         raw = "line1\nline2\n" * 5_000
-        content = json.dumps({"output": raw, "exit_code": 0, "error": None})
+        content = orjson.dumps({"output": raw, "exit_code": 0, "error": None}).decode('utf-8')
         result = maybe_persist_tool_result(
             content=content,
             tool_name="terminal",

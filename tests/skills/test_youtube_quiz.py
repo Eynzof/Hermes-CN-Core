@@ -1,6 +1,6 @@
 """Tests for optional-skills/productivity/memento-flashcards/scripts/youtube_quiz.py"""
 
-import json
+import orjson
 import sys
 from pathlib import Path
 from unittest import mock
@@ -18,7 +18,7 @@ def _run(capsys, argv: list[str]) -> dict:
     with mock.patch("sys.argv", ["youtube_quiz"] + argv):
         youtube_quiz.main()
     captured = capsys.readouterr()
-    return json.loads(captured.out)
+    return orjson.loads(captured.out)
 
 
 class TestNormalizeSegments:
@@ -54,7 +54,7 @@ class TestFetchMissingDependency:
             _run(capsys, ["fetch", "test123"])
 
         captured = capsys.readouterr()
-        result = json.loads(captured.out)
+        result = orjson.loads(captured.out)
         assert result["ok"] is False
         assert result["error"] == "missing_dependency"
         assert "pip install" in result["message"]
@@ -97,7 +97,7 @@ class TestFetchWithMockedAPI:
                 _run(capsys, ["fetch", "bad_id"])
 
         captured = capsys.readouterr()
-        result = json.loads(captured.out)
+        result = orjson.loads(captured.out)
         assert result["ok"] is False
         assert result["error"] == "transcript_unavailable"
 
@@ -108,7 +108,7 @@ class TestFetchWithMockedAPI:
                 _run(capsys, ["fetch", "empty_vid"])
 
         captured = capsys.readouterr()
-        result = json.loads(captured.out)
+        result = orjson.loads(captured.out)
         assert result["ok"] is False
         assert result["error"] == "empty_transcript"
 

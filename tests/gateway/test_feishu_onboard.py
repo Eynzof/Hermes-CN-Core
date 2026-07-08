@@ -1,6 +1,6 @@
 """Tests for plugins.platforms.feishu.adapter — Feishu scan-to-create registration."""
 
-import json
+import orjson
 from unittest.mock import patch, MagicMock
 import pytest
 
@@ -8,7 +8,7 @@ import pytest
 def _mock_urlopen(response_data, status=200):
     """Create a mock for urllib.request.urlopen that returns JSON response_data."""
     mock_response = MagicMock()
-    mock_response.read.return_value = json.dumps(response_data).encode("utf-8")
+    mock_response.read.return_value = orjson.dumps(response_data)
     mock_response.status = status
     mock_response.__enter__ = lambda s: s
     mock_response.__exit__ = MagicMock(return_value=False)
@@ -396,7 +396,7 @@ class TestQrRegister:
         """Malformed server response is an expected failure → None."""
         from plugins.platforms.feishu.adapter import qr_register
 
-        mock_init.side_effect = json.JSONDecodeError("bad json", "", 0)
+        mock_init.side_effect = orjson.JSONDecodeError("bad json", "", 0)
         result = qr_register()
         assert result is None
 

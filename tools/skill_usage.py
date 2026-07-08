@@ -24,7 +24,7 @@ Lifecycle states:
 
 from __future__ import annotations
 
-import json
+import orjson
 import logging
 import os
 import tempfile
@@ -210,7 +210,7 @@ def _read_hub_installed_names() -> Set[str]:
     if not lock_path.exists():
         return set()
     try:
-        data = json.loads(lock_path.read_text(encoding="utf-8"))
+        data = orjson.loads(lock_path.read_text(encoding="utf-8"))
         if isinstance(data, dict):
             installed = data.get("installed") or {}
             if isinstance(installed, dict):
@@ -234,7 +234,7 @@ def _read_hub_installed_names() -> Set[str]:
                     if skill_md.exists():
                         names.add(_read_skill_name(skill_md, fallback=resolved.name))
                 return names
-    except (OSError, json.JSONDecodeError) as e:
+    except (OSError, orjson.JSONDecodeError) as e:
         logger.debug("Failed to read hub lock file: %s", e)
     return set()
 
@@ -503,8 +503,8 @@ def load_usage() -> Dict[str, Dict[str, Any]]:
     if not path.exists():
         return {}
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as e:
+        data = orjson.loads(path.read_text(encoding="utf-8"))
+    except (OSError, orjson.JSONDecodeError) as e:
         logger.debug("Failed to read %s: %s", path, e)
         return {}
     if not isinstance(data, dict):
@@ -527,7 +527,7 @@ def save_usage(data: Dict[str, Dict[str, Any]]) -> None:
         )
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2, sort_keys=True, ensure_ascii=False)
+                f.write(orjson.dumps(data, option=orjson.OPT_INDENT_2 | orjson.OPT_SORT_KEYS).decode('utf-8'))
                 f.flush()
                 os.fsync(f.fileno())
             os.replace(tmp_path, path)

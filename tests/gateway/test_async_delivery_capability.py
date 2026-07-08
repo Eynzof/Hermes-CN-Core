@@ -17,7 +17,7 @@ These are behavior/invariant tests (how the capability relates to the channel),
 not snapshots of a current value.
 """
 
-import json
+import orjson
 
 import pytest
 
@@ -158,7 +158,7 @@ class TestTerminalNotifyGate:
     def _run_bg(self, command):
         from tools.terminal_tool import terminal_tool
 
-        return json.loads(
+        return orjson.loads(
             terminal_tool(command=command, background=True, notify_on_complete=True)
         )
 

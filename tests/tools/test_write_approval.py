@@ -7,7 +7,7 @@ split, pending store CRUD, and the list/approve/reject/diff/approval
 subcommand dispatch.
 """
 
-import json
+import orjson
 import os
 import tempfile
 import shutil
@@ -72,7 +72,7 @@ def test_memory_gate_off_allows_write(hermes_home):
     from tools.memory_tool import memory_tool, MemoryStore
     from tools import write_approval as wa
     store = MemoryStore(); store.load_from_disk()
-    r = json.loads(memory_tool("add", "user", "save me", store=store))
+    r = orjson.loads(memory_tool("add", "user", "save me", store=store))
     assert r["success"] is True
     assert r["entry_count"] == 1
     assert wa.pending_count("memory") == 0
@@ -84,7 +84,7 @@ def test_memory_gate_on_no_interactive_stages(hermes_home):
     from tools import write_approval as wa
     _set_approval("memory", True)
     store = MemoryStore(); store.load_from_disk()
-    r = json.loads(memory_tool("add", "memory", "stage me", store=store))
+    r = orjson.loads(memory_tool("add", "memory", "stage me", store=store))
     assert r.get("staged") is True
     assert r.get("pending_id")
     # Not written to the live store yet.
@@ -99,7 +99,7 @@ def test_memory_gate_on_then_apply(hermes_home):
     from tools import write_approval as wa
     _set_approval("memory", True)
     store = MemoryStore(); store.load_from_disk()
-    r = json.loads(memory_tool("add", "user", "approved entry", store=store))
+    r = orjson.loads(memory_tool("add", "user", "approved entry", store=store))
     pid = r["pending_id"]
     rec = wa.get_pending("memory", pid)
     result = apply_memory_pending(rec["payload"], store)
@@ -112,14 +112,14 @@ def test_cli_memory_approve_without_live_agent_uses_fresh_store(hermes_home, cap
     Desktop GUI) passed ``memory_store=None`` into the shared handler, which
     returned "memory store unavailable" and applied nothing. The CLI handler must
     fall back to a freshly loaded on-disk store, like the gateway path does."""
-    import json
+    import orjson
     from tools.memory_tool import memory_tool, MemoryStore
     from tools import write_approval as wa
     from hermes_cli.cli_commands_mixin import CLICommandsMixin
 
     _set_approval("memory", True)
     staging = MemoryStore(); staging.load_from_disk()
-    r = json.loads(memory_tool("add", "memory", "remember the launch date", store=staging))
+    r = orjson.loads(memory_tool("add", "memory", "remember the launch date", store=staging))
     assert r.get("pending_id"), r
     assert wa.pending_count("memory") == 1
 
@@ -180,7 +180,7 @@ def test_skill_gate_off_allows_create(hermes_home):
     import tools.skill_manager_tool as smt
     importlib.reload(smt)
     from tools import write_approval as wa
-    r = json.loads(smt.skill_manage("create", "free-skill", content=_SKILL))
+    r = orjson.loads(smt.skill_manage("create", "free-skill", content=_SKILL))
     assert r.get("success") is True
     assert wa.pending_count("skills") == 0
 
@@ -190,7 +190,7 @@ def test_skill_gate_on_always_stages(hermes_home):
     from tools.skill_manager_tool import skill_manage
     from tools import write_approval as wa
     _set_approval("skills", True)
-    r = json.loads(skill_manage("create", "staged-skill", content=_SKILL))
+    r = orjson.loads(skill_manage("create", "staged-skill", content=_SKILL))
     assert r.get("staged") is True
     assert "staged-skill" in r.get("gist", "")
     assert wa.pending_count("skills") == 1
@@ -204,9 +204,9 @@ def test_skill_gate_on_then_apply_writes_file(hermes_home):
     importlib.reload(smt)
     from tools import write_approval as wa
     _set_approval("skills", True)
-    r = json.loads(smt.skill_manage("create", "applied-skill", content=_SKILL))
+    r = orjson.loads(smt.skill_manage("create", "applied-skill", content=_SKILL))
     rec = wa.get_pending("skills", r["pending_id"])
-    res = json.loads(smt.apply_skill_pending(rec["payload"]))
+    res = orjson.loads(smt.apply_skill_pending(rec["payload"]))
     assert res["success"] is True
     assert smt._find_skill("applied-skill") is not None
 
@@ -215,7 +215,7 @@ def test_skill_create_diff_is_full_content(hermes_home):
     from tools.skill_manager_tool import skill_manage
     from tools import write_approval as wa
     _set_approval("skills", True)
-    r = json.loads(skill_manage("create", "diff-skill", content=_SKILL))
+    r = orjson.loads(skill_manage("create", "diff-skill", content=_SKILL))
     rec = wa.get_pending("skills", r["pending_id"])
     diff = wa.skill_pending_diff(rec)
     assert "name: test-skill" in diff
@@ -353,7 +353,7 @@ def test_memory_inline_approve_writes(hermes_home, approval_callback_cleanup):
     set_approval_callback(approve_cb)
 
     store = MemoryStore(); store.load_from_disk()
-    r = json.loads(memory_tool("add", "memory", "approved fact", store=store))
+    r = orjson.loads(memory_tool("add", "memory", "approved fact", store=store))
     assert r["success"] is True
     assert r.get("staged") is None  # real write, not staged
     assert store.memory_entries == ["approved fact"]
@@ -371,7 +371,7 @@ def test_memory_inline_deny_blocks(hermes_home, approval_callback_cleanup):
     set_approval_callback(lambda command, description, **kw: "deny")
 
     store = MemoryStore(); store.load_from_disk()
-    r = json.loads(memory_tool("add", "memory", "denied fact", store=store))
+    r = orjson.loads(memory_tool("add", "memory", "denied fact", store=store))
     assert r["success"] is False
     assert "denied" in r["error"].lower()
     assert store.memory_entries == []
@@ -389,7 +389,7 @@ def test_memory_inline_callback_error_stages(hermes_home, approval_callback_clea
     set_approval_callback(broken_cb)
 
     store = MemoryStore(); store.load_from_disk()
-    r = json.loads(memory_tool("add", "memory", "fallback fact", store=store))
+    r = orjson.loads(memory_tool("add", "memory", "fallback fact", store=store))
     assert r.get("staged") is True
     assert wa.pending_count("memory") == 1
 
@@ -405,7 +405,7 @@ def test_gateway_context_stages_not_prompts(hermes_home, monkeypatch):
     monkeypatch.setenv("HERMES_GATEWAY_SESSION", "1")
 
     store = MemoryStore(); store.load_from_disk()
-    r = json.loads(memory_tool("add", "memory", "gateway fact", store=store))
+    r = orjson.loads(memory_tool("add", "memory", "gateway fact", store=store))
     assert r.get("staged") is True
     assert store.memory_entries == []
     assert wa.pending_count("memory") == 1
@@ -421,7 +421,7 @@ def test_skills_never_prompt_inline_even_with_callback(hermes_home, approval_cal
     calls = []
     set_approval_callback(lambda c, d, **kw: calls.append(1) or "once")
 
-    r = json.loads(skill_manage(
+    r = orjson.loads(skill_manage(
         action="create", name="test-inline-skill",
         content="---\nname: test-inline-skill\ndescription: x\n---\nbody\n"))
     assert r.get("staged") is True
@@ -436,6 +436,6 @@ def test_memory_invalid_params_rejected_before_staging(hermes_home):
     from tools import write_approval as wa
     _set_approval("memory", True)
     store = MemoryStore(); store.load_from_disk()
-    r = json.loads(memory_tool("add", "memory", None, store=store))
+    r = orjson.loads(memory_tool("add", "memory", None, store=store))
     assert r["success"] is False
     assert wa.pending_count("memory") == 0

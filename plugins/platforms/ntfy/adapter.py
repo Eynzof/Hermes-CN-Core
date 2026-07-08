@@ -45,7 +45,7 @@ by a read token for any real trust boundary.
 """
 
 import asyncio
-import json
+import orjson
 import logging
 import os
 import time
@@ -277,8 +277,8 @@ class NtfyAdapter(BasePlatformAdapter):
                 if not line:
                     continue
                 try:
-                    event = json.loads(line)
-                except json.JSONDecodeError:
+                    event = orjson.loads(line)
+                except orjson.JSONDecodeError:
                     continue
                 if event.get("event") == "message":
                     await self._on_message(event)

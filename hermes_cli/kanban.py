@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-import json
+import orjson
 import os
 import shlex
 import sys
@@ -1060,7 +1060,7 @@ def _cmd_boards_list(args: argparse.Namespace) -> int:
         b["counts"] = _board_task_counts(b["slug"])
         b["total"] = sum(b["counts"].values())
     if getattr(args, "json", False):
-        print(json.dumps(boards, indent=2, ensure_ascii=False))
+        print(orjson.dumps(boards, option=orjson.OPT_INDENT_2).decode('utf-8'))
         return 0
     # Human table: marker (•) for current, slug, display name, counts.
     if not boards:
@@ -1287,7 +1287,7 @@ def _cmd_assignees(args: argparse.Namespace) -> int:
     with kb.connect_closing() as conn:
         data = kb.known_assignees(conn)
     if getattr(args, "json", False):
-        print(json.dumps(data, indent=2, ensure_ascii=False))
+        print(orjson.dumps(data, option=orjson.OPT_INDENT_2).decode('utf-8'))
         return 0
     if not data:
         print("(no assignees — create a profile with `hermes -p <name> setup`)")
@@ -1350,7 +1350,7 @@ def _cmd_create(args: argparse.Namespace) -> int:
         )
         task = kb.get_task(conn, task_id)
     if getattr(args, "json", False):
-        print(json.dumps(_task_to_dict(task), indent=2, ensure_ascii=False))
+        print(orjson.dumps(_task_to_dict(task), option=orjson.OPT_INDENT_2).decode('utf-8'))
     else:
         print(f"Created {task_id}  ({task.status}, assignee={task.assignee or '-'})")
 
@@ -1390,7 +1390,7 @@ def _cmd_swarm(args: argparse.Namespace) -> int:
             idempotency_key=getattr(args, "idempotency_key", None),
         )
     if getattr(args, "json", False):
-        print(json.dumps(created.as_dict(), indent=2, ensure_ascii=False))
+        print(orjson.dumps(created.as_dict(), option=orjson.OPT_INDENT_2).decode('utf-8'))
     else:
         print(f"Swarm root: {created.root_id}")
         print("Workers: " + ", ".join(created.worker_ids))
@@ -1419,7 +1419,7 @@ def _cmd_list(args: argparse.Namespace) -> int:
             current_step_key=args.current_step_key,
         )
     if getattr(args, "json", False):
-        print(json.dumps([_task_to_dict(t) for t in tasks], indent=2, ensure_ascii=False))
+        print(orjson.dumps([_task_to_dict(t) for t in tasks], option=orjson.OPT_INDENT_2).decode('utf-8'))
         return 0
     # Passive discoverability: when the user has multiple boards, surface
     # which one they're looking at in the list header. Single-board users
@@ -1503,7 +1503,7 @@ def _cmd_show(args: argparse.Namespace) -> int:
                 for r in runs
             ],
         }
-        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        print(orjson.dumps(payload, option=orjson.OPT_INDENT_2).decode('utf-8'))
         return 0
 
     print(f"Task {task.id}: {task.title}")
@@ -1755,7 +1755,7 @@ def _cmd_diagnostics(args: argparse.Namespace) -> int:
             }
             for tid, dl in diags_by_task.items()
         ]
-        print(json.dumps(out_json, indent=2, ensure_ascii=False))
+        print(orjson.dumps(out_json, option=orjson.OPT_INDENT_2).decode('utf-8'))
         return 0
 
     if not diags_by_task:
@@ -1885,10 +1885,10 @@ def _cmd_complete(args: argparse.Namespace) -> int:
     metadata = None
     if raw_meta:
         try:
-            metadata = json.loads(raw_meta)
+            metadata = orjson.loads(raw_meta)
             if not isinstance(metadata, dict):
                 raise ValueError("must be a JSON object")
-        except (ValueError, json.JSONDecodeError) as exc:
+        except (ValueError, orjson.JSONDecodeError) as exc:
             print(f"kanban: --metadata: {exc}", file=sys.stderr)
             return 2
     failed: list[str] = []
@@ -1913,10 +1913,10 @@ def _cmd_edit(args: argparse.Namespace) -> int:
     metadata = None
     if raw_meta:
         try:
-            metadata = json.loads(raw_meta)
+            metadata = orjson.loads(raw_meta)
             if not isinstance(metadata, dict):
                 raise ValueError("must be a JSON object")
-        except (ValueError, json.JSONDecodeError) as exc:
+        except (ValueError, orjson.JSONDecodeError) as exc:
             print(f"kanban: --metadata: {exc}", file=sys.stderr)
             return 2
     with kb.connect_closing() as conn:
@@ -2054,7 +2054,7 @@ def _cmd_promote(args: argparse.Namespace) -> int:
     if as_json:
         # Single-id stays a flat object for back-compat; bulk emits a list.
         payload: object = results[0] if len(results) == 1 else results
-        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        print(orjson.dumps(payload, option=orjson.OPT_INDENT_2).decode('utf-8'))
         return 0 if not failed else 1
 
     tag = " (dry)" if args.dry_run else ""
@@ -2163,7 +2163,7 @@ def _cmd_dispatch(args: argparse.Namespace) -> int:
             max_in_progress_per_profile=max_in_progress_per_profile,
         )
     if getattr(args, "json", False):
-        print(json.dumps({
+        print(orjson.dumps({
             "reclaimed": res.reclaimed,
             "crashed": res.crashed,
             "timed_out": res.timed_out,
@@ -2181,7 +2181,7 @@ def _cmd_dispatch(args: argparse.Namespace) -> int:
                 for (tid, who, current) in res.skipped_per_profile_capped
             ],
             "auto_assigned_default": res.auto_assigned_default,
-        }, indent=2))
+        }, option=orjson.OPT_INDENT_2).decode('utf-8'))
         return 0
     print(f"Reclaimed:    {res.reclaimed}")
     print(f"Crashed:      {len(res.crashed)}")
@@ -2396,7 +2396,7 @@ def _cmd_watch(args: argparse.Namespace) -> int:
                 if args.tenant and r["tenant"] != args.tenant:
                     continue
                 try:
-                    payload = json.loads(r["payload"]) if r["payload"] else None
+                    payload = orjson.loads(r["payload"]) if r["payload"] else None
                 except Exception:
                     payload = None
                 pl = f" {payload}" if payload else ""
@@ -2415,7 +2415,7 @@ def _cmd_stats(args: argparse.Namespace) -> int:
     with kb.connect_closing() as conn:
         stats = kb.board_stats(conn)
     if getattr(args, "json", False):
-        print(json.dumps(stats, indent=2, ensure_ascii=False))
+        print(orjson.dumps(stats, option=orjson.OPT_INDENT_2).decode('utf-8'))
         return 0
     print("By status:")
     for k in ("triage", "todo", "scheduled", "ready", "running", "blocked", "done"):
@@ -2452,7 +2452,7 @@ def _cmd_notify_list(args: argparse.Namespace) -> int:
     with kb.connect_closing() as conn:
         subs = kb.list_notify_subs(conn, args.task_id)
     if getattr(args, "json", False):
-        print(json.dumps(subs, indent=2, ensure_ascii=False))
+        print(orjson.dumps(subs, option=orjson.OPT_INDENT_2).decode('utf-8'))
         return 0
     if not subs:
         print("(no subscriptions)")
@@ -2503,7 +2503,7 @@ def _cmd_runs(args: argparse.Namespace) -> int:
     with kb.connect_closing() as conn:
         runs = kb.list_runs(conn, args.task_id, **rsk)
     if getattr(args, "json", False):
-        print(json.dumps([
+        print(orjson.dumps([
             {
                 "id": r.id, "profile": r.profile, "status": r.status,
                 "outcome": r.outcome, "started_at": r.started_at,
@@ -2511,7 +2511,7 @@ def _cmd_runs(args: argparse.Namespace) -> int:
                 "error": r.error, "metadata": r.metadata,
                 "worker_pid": r.worker_pid, "step_key": r.step_key,
             } for r in runs
-        ], indent=2, ensure_ascii=False))
+        ], option=orjson.OPT_INDENT_2).decode('utf-8'))
         return 0
     if not runs:
         print(f"(no runs yet for {args.task_id})")
@@ -2571,7 +2571,7 @@ def _cmd_specify(args: argparse.Namespace) -> int:
                 + "."
             )
             if want_json:
-                print(json.dumps({"specified": 0, "total": 0}))
+                print(orjson.dumps({"specified": 0, "total": 0}).decode('utf-8'))
             else:
                 print(msg)
             return 0
@@ -2593,12 +2593,12 @@ def _cmd_specify(args: argparse.Namespace) -> int:
         else:
             fail_count += 1
         if want_json:
-            print(json.dumps({
+            print(orjson.dumps({
                 "task_id": outcome.task_id,
                 "ok": outcome.ok,
                 "reason": outcome.reason,
                 "new_title": outcome.new_title,
-            }))
+            }).decode('utf-8'))
         elif outcome.ok:
             title_suffix = (
                 f" — retitled: {outcome.new_title!r}"
@@ -2645,7 +2645,7 @@ def _cmd_decompose(args: argparse.Namespace) -> int:
                 + "."
             )
             if want_json:
-                print(json.dumps({"decomposed": 0, "total": 0}))
+                print(orjson.dumps({"decomposed": 0, "total": 0}).decode('utf-8'))
             else:
                 print(msg)
             return 0
@@ -2664,14 +2664,14 @@ def _cmd_decompose(args: argparse.Namespace) -> int:
         if outcome.ok:
             ok_count += 1
         if want_json:
-            print(json.dumps({
+            print(orjson.dumps({
                 "task_id": outcome.task_id,
                 "ok": outcome.ok,
                 "reason": outcome.reason,
                 "fanout": outcome.fanout,
                 "child_ids": outcome.child_ids,
                 "new_title": outcome.new_title,
-            }))
+            }).decode('utf-8'))
         elif outcome.ok:
             if outcome.fanout and outcome.child_ids:
                 child_summary = ", ".join(outcome.child_ids)

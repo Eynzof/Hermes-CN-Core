@@ -1,6 +1,6 @@
 """Tests for the ``hermes prompt-size`` diagnostic (issue #34667)."""
 
-import json
+import orjson
 
 import pytest
 
@@ -115,4 +115,4 @@ def test_render_breakdown_is_plain_text(isolated_home):
 def test_json_serializable(isolated_home):
     data = compute_prompt_breakdown("cli")
     # Round-trips cleanly for ``--json`` output.
-    assert json.loads(json.dumps(data)) == json.loads(json.dumps(data))
+    assert orjson.loads(orjson.dumps(data).decode('utf-8')) == orjson.loads(orjson.dumps(data).decode('utf-8'))

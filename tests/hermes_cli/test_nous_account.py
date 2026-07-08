@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import base64
-import json
+import orjson
 import time
 from typing import Any
 
@@ -21,7 +21,7 @@ from hermes_cli.nous_account import (
 
 def _jwt(claims: dict[str, Any]) -> str:
     def _part(payload: dict[str, Any]) -> str:
-        raw = json.dumps(payload, separators=(",", ":")).encode()
+        raw = orjson.dumps(payload)
         return base64.urlsafe_b64encode(raw).decode().rstrip("=")
 
     return f"{_part({'alg': 'none', 'typ': 'JWT'})}.{_part(claims)}.sig"

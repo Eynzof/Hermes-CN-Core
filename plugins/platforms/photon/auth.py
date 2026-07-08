@@ -36,7 +36,7 @@ https://photon.codes/docs/api-reference/device-login/request-device-+-user-code
 """
 from __future__ import annotations
 
-import json
+import orjson
 import logging
 import os
 import re
@@ -100,8 +100,8 @@ def _load_auth() -> Dict[str, Any]:
         return {}
     try:
         with path.open("r", encoding="utf-8") as fh:
-            return json.load(fh) or {}
-    except (OSError, json.JSONDecodeError) as e:
+            return orjson.loads(fh.read()) or {}
+    except (OSError, orjson.JSONDecodeError) as e:
         logger.warning("photon: could not read %s: %s", path, e)
         return {}
 
@@ -111,7 +111,7 @@ def _save_auth(data: Dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".json.tmp")
     with tmp.open("w", encoding="utf-8") as fh:
-        json.dump(data, fh, indent=2, sort_keys=True)
+        fh.write(orjson.dumps(data, option=orjson.OPT_INDENT_2 | orjson.OPT_SORT_KEYS).decode('utf-8'))
     try:
         os.chmod(tmp, 0o600)
     except OSError:
@@ -310,7 +310,7 @@ def _response_error_detail(resp: Any) -> str:
             val = data.get(key)
             if val:
                 return str(val)
-        return json.dumps(data, sort_keys=True)[:500]
+        return orjson.dumps(data, option=orjson.OPT_SORT_KEYS).decode('utf-8')[:500]
     text = getattr(resp, "text", "") or ""
     return text[:500] if text else "no response body"
 
@@ -391,7 +391,7 @@ def poll_for_token(
             try:
                 decoded = resp.json() or {}
                 body = decoded if isinstance(decoded, dict) else {}
-            except (TypeError, ValueError, json.JSONDecodeError):
+            except (TypeError, ValueError, orjson.JSONDecodeError):
                 body = {}
             candidates = _device_response_token_candidates(
                 body, headers=getattr(resp, "headers", {}),
@@ -413,7 +413,7 @@ def poll_for_token(
             body = {}
             try:
                 body = resp.json() or {}
-            except json.JSONDecodeError:
+            except orjson.JSONDecodeError:
                 pass
             err = body.get("error") or body.get("message") or ""
             if err == "authorization_pending":

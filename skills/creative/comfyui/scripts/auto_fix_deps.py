@@ -24,7 +24,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import json
+import orjson
 import shutil
 import subprocess
 import sys
@@ -103,8 +103,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     try:
         with wf_path.open() as f:
-            workflow = unwrap_workflow(json.load(f))
-    except (ValueError, json.JSONDecodeError) as e:
+            workflow = unwrap_workflow(orjson.loads(f.read()))
+    except (ValueError, orjson.JSONDecodeError) as e:
         emit_json({"error": str(e)})
         return 1
 
@@ -158,8 +158,8 @@ def main(argv: list[str] | None = None) -> int:
     sources: dict[str, str] = {}
     if args.models_from_file:
         try:
-            sources = json.loads(Path(args.models_from_file).read_text())
-        except (OSError, json.JSONDecodeError) as e:
+            sources = orjson.loads(Path(args.models_from_file).read_text())
+        except (OSError, orjson.JSONDecodeError) as e:
             log(f"Could not read --models-from-file: {e}")
 
     for entry in report["missing_models"]:

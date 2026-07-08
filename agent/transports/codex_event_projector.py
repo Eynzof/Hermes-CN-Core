@@ -29,7 +29,7 @@ Counters tracked alongside projection:
 from __future__ import annotations
 
 import hashlib
-import json
+import orjson
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
@@ -49,7 +49,7 @@ def _deterministic_call_id(item_type: str, item_id: str) -> str:
 
 def _format_tool_args(d: dict) -> str:
     """Format a dict as JSON the way Hermes' existing tool_calls path does."""
-    return json.dumps(d, ensure_ascii=False, sort_keys=True)
+    return orjson.dumps(d, option=orjson.OPT_SORT_KEYS).decode('utf-8')
 
 
 @dataclass
@@ -241,9 +241,9 @@ class CodexEventProjector:
         result = item.get("result")
         error = item.get("error")
         if error:
-            content = f"[error] {json.dumps(error, ensure_ascii=False)[:1000]}"
+            content = f"[error] {orjson.dumps(error).decode('utf-8')[:1000]}"
         elif result is not None:
-            content = json.dumps(result, ensure_ascii=False)[:4000]
+            content = orjson.dumps(result).decode('utf-8')[:4000]
         else:
             content = ""
         tool_msg = {
@@ -282,7 +282,7 @@ class CodexEventProjector:
             self._pending_reasoning = []
         content_items = item.get("contentItems") or []
         if isinstance(content_items, list) and content_items:
-            content = json.dumps(content_items, ensure_ascii=False)[:4000]
+            content = orjson.dumps(content_items).decode('utf-8')[:4000]
         else:
             success = item.get("success")
             content = f"success={success}"
@@ -299,7 +299,7 @@ class CodexEventProjector:
         # Record the existence of the item without inventing tool_calls.
         # Memory review will see this and may or may not save anything.
         try:
-            payload = json.dumps(item, ensure_ascii=False)[:1500]
+            payload = orjson.dumps(item).decode('utf-8')[:1500]
         except (TypeError, ValueError):
             payload = repr(item)[:1500]
         return ProjectionResult(

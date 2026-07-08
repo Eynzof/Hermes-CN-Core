@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-import json
+import orjson
 import os
 import threading
 from copy import deepcopy
@@ -54,7 +54,7 @@ class TeamsPipelineStore:
         with self._lock:
             if not self.path.exists():
                 return
-            data = json.loads(self.path.read_text(encoding="utf-8") or "{}")
+            data = orjson.loads(self.path.read_text(encoding="utf-8") or "{}")
             if not isinstance(data, dict):
                 return
             self._state["subscriptions"] = dict(data.get("subscriptions") or {})
@@ -71,7 +71,7 @@ class TeamsPipelineStore:
             dir=str(self.path.parent),
             delete=False,
         ) as tmp:
-            json.dump(self._state, tmp, indent=2, sort_keys=True)
+            tmp.write(orjson.dumps(self._state, option=orjson.OPT_INDENT_2 | orjson.OPT_SORT_KEYS).decode('utf-8'))
             tmp.flush()
             tmp_path = Path(tmp.name)
         tmp_path.replace(self.path)
@@ -109,7 +109,7 @@ class TeamsPipelineStore:
         explicit_id = notification.get("id")
         if explicit_id:
             return f"id:{explicit_id}"
-        canonical = json.dumps(notification, sort_keys=True, separators=(",", ":"))
+        canonical = orjson.dumps(notification, option=orjson.OPT_SORT_KEYS).decode('utf-8')
         digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
         return f"sha256:{digest}"
 

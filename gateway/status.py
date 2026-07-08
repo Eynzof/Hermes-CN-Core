@@ -11,7 +11,7 @@ different, user-installed Hermes executable.
 """
 
 import hashlib
-import json
+import orjson
 import os
 import shlex
 import signal
@@ -457,8 +457,8 @@ def _read_json_file(path: Path) -> Optional[dict[str, Any]]:
     if not raw:
         return None
     try:
-        payload = json.loads(raw)
-    except json.JSONDecodeError:
+        payload = orjson.loads(raw)
+    except orjson.JSONDecodeError:
         return None
     return payload if isinstance(payload, dict) else None
 
@@ -482,8 +482,8 @@ def _read_pid_record(pid_path: Optional[Path] = None) -> Optional[dict]:
         return None
 
     try:
-        payload = json.loads(raw)
-    except json.JSONDecodeError:
+        payload = orjson.loads(raw)
+    except orjson.JSONDecodeError:
         try:
             return {"pid": int(raw)}
         except ValueError:
@@ -534,7 +534,7 @@ def _cleanup_invalid_pid_path(pid_path: Path, *, cleanup_stale: bool) -> None:
 def _write_gateway_lock_record(handle) -> None:
     handle.seek(0)
     handle.truncate()
-    json.dump(_build_pid_record(), handle)
+    handle.write(orjson.dumps(_build_pid_record()).decode('utf-8'))
     handle.flush()
     try:
         os.fsync(handle.fileno())
@@ -755,7 +755,7 @@ def write_pid_file() -> None:
     """
     path = _get_pid_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    record = json.dumps(_build_pid_record())
+    record = orjson.dumps(_build_pid_record()).decode('utf-8')
     try:
         fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
     except FileExistsError:
@@ -1068,7 +1068,7 @@ def acquire_scoped_lock(scope: str, identity: str, metadata: Optional[dict[str, 
     if existing is None and lock_path.exists():
         # Lock file exists but is empty or contains invalid JSON — treat as
         # stale.  This happens when a previous process was killed between
-        # O_CREAT|O_EXCL and the subsequent json.dump() (e.g. DNS failure
+        # O_CREAT|O_EXCL and the subsequent () (e.g. DNS failure
         # during rapid Slack reconnect retries).
         try:
             lock_path.unlink(missing_ok=True)
@@ -1156,7 +1156,7 @@ def acquire_scoped_lock(scope: str, identity: str, metadata: Optional[dict[str, 
         return False, _read_json_file(lock_path)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            json.dump(record, handle)
+            handle.write(orjson.dumps(record).decode('utf-8'))
     except Exception:
         try:
             lock_path.unlink(missing_ok=True)

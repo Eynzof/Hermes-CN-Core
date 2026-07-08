@@ -75,7 +75,7 @@ def test_no_backend_message_mentions_managed_gateway_when_enabled(monkeypatch):
 
 def test_image_generate_tool_returns_actionable_error_when_no_backend(monkeypatch):
     """End-to-end: handler must surface the actionable message, not a bare string."""
-    import json
+    import orjson
 
     from tools import image_generation_tool
 
@@ -89,7 +89,7 @@ def test_image_generate_tool_returns_actionable_error_when_no_backend(monkeypatc
         image_generation_tool, "managed_nous_tools_enabled", lambda: False
     )
 
-    result = json.loads(
+    result = orjson.loads(
         image_generation_tool.image_generate_tool(prompt="a cat")
     )
 

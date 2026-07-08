@@ -32,7 +32,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
-import json
+import orjson
 import logging
 import mimetypes
 import os
@@ -480,7 +480,7 @@ class WeComAdapter(BasePlatformAdapter):
     @staticmethod
     def _parse_json(raw: Any) -> Optional[Dict[str, Any]]:
         try:
-            payload = json.loads(raw)
+            payload = orjson.loads(raw)
         except Exception:
             logger.debug("Failed to parse WeCom payload: %r", raw)
             return None
@@ -1571,7 +1571,7 @@ def qr_scan_for_bot_info(
     try:
         req = urllib.request.Request(generate_url, headers={"User-Agent": "HermesAgent/1.0"})
         with urllib.request.urlopen(req, timeout=15) as resp:
-            raw = json.loads(resp.read().decode("utf-8"))
+            raw = orjson.loads(resp.read().decode("utf-8"))
     except Exception as exc:
         logger.error("WeCom QR: failed to fetch QR code: %s", exc)
         print(f" failed: {exc}")
@@ -1621,7 +1621,7 @@ def qr_scan_for_bot_info(
         try:
             req = urllib.request.Request(query_url, headers={"User-Agent": "HermesAgent/1.0"})
             with urllib.request.urlopen(req, timeout=10) as resp:
-                result = json.loads(resp.read().decode("utf-8"))
+                result = orjson.loads(resp.read().decode("utf-8"))
         except Exception as exc:
             logger.debug("WeCom QR poll error: %s", exc)
             time.sleep(_QR_POLL_INTERVAL)

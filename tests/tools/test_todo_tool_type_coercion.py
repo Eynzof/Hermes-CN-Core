@@ -6,7 +6,7 @@ Covers three crash patterns:
 3. Well-formed input continues to work unchanged
 """
 
-import json
+import orjson
 
 from tools.todo_tool import TodoStore, todo_tool
 
@@ -16,11 +16,11 @@ class TestJsonStringCoercion:
 
     def test_json_string_is_parsed_into_list(self):
         store = TodoStore()
-        todos_str = json.dumps([
+        todos_str = orjson.dumps([
             {"id": "t1", "content": "Do A", "status": "pending"},
             {"id": "t2", "content": "Do B", "status": "in_progress"},
-        ])
-        result = json.loads(todo_tool(todos=todos_str, store=store))
+        ]).decode('utf-8')
+        result = orjson.loads(todo_tool(todos=todos_str, store=store))
         assert "error" not in result
         assert result["summary"]["total"] == 2
         assert result["todos"][0]["id"] == "t1"
@@ -28,18 +28,18 @@ class TestJsonStringCoercion:
 
     def test_unparseable_string_returns_error(self):
         store = TodoStore()
-        result = json.loads(todo_tool(todos="not valid json [", store=store))
+        result = orjson.loads(todo_tool(todos="not valid json [", store=store))
         assert "error" in result
 
     def test_json_string_that_parses_to_non_list_returns_error(self):
         store = TodoStore()
         # Valid JSON, but a dict instead of a list
-        result = json.loads(todo_tool(todos='{"id": "1"}', store=store))
+        result = orjson.loads(todo_tool(todos='{"id": "1"}', store=store))
         assert "error" in result
 
     def test_non_list_non_string_returns_error(self):
         store = TodoStore()
-        result = json.loads(todo_tool(todos=42, store=store))
+        result = orjson.loads(todo_tool(todos=42, store=store))
         assert "error" in result
 
 
@@ -86,7 +86,7 @@ class TestNonDictListItems:
     def test_non_dict_items_via_todo_tool(self):
         """End-to-end: non-dict list items produce valid output, not a crash."""
         store = TodoStore()
-        result = json.loads(todo_tool(todos=["bad", "also bad"], store=store))
+        result = orjson.loads(todo_tool(todos=["bad", "also bad"], store=store))
         assert "error" not in result
         assert result["summary"]["total"] == 2
         assert result["summary"]["pending"] == 2
@@ -101,7 +101,7 @@ class TestWellFormedInputUnchanged:
             {"id": "a", "content": "First", "status": "pending"},
             {"id": "b", "content": "Second", "status": "in_progress"},
         ]
-        result = json.loads(todo_tool(todos=items, store=store))
+        result = orjson.loads(todo_tool(todos=items, store=store))
         assert result["summary"]["total"] == 2
         assert result["summary"]["pending"] == 1
         assert result["summary"]["in_progress"] == 1
@@ -109,7 +109,7 @@ class TestWellFormedInputUnchanged:
     def test_merge_mode_still_works(self):
         store = TodoStore()
         store.write([{"id": "1", "content": "Original", "status": "pending"}])
-        result = json.loads(todo_tool(
+        result = orjson.loads(todo_tool(
             todos=[{"id": "1", "status": "completed"}],
             merge=True,
             store=store,
@@ -120,7 +120,7 @@ class TestWellFormedInputUnchanged:
     def test_read_mode_still_works(self):
         store = TodoStore()
         store.write([{"id": "x", "content": "Task", "status": "pending"}])
-        result = json.loads(todo_tool(store=store))
+        result = orjson.loads(todo_tool(store=store))
         assert result["summary"]["total"] == 1
 
     def test_dedup_still_works(self):

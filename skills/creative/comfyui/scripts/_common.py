@@ -14,7 +14,7 @@ Stdlib-only by design (with optional `requests` upgrade if installed). Python 3.
 
 from __future__ import annotations
 
-import json
+import orjson
 import os
 import random
 import re
@@ -412,7 +412,7 @@ class HTTPResponse:
         return self.body.decode(encoding, errors="replace")
 
     def json(self) -> Any:
-        return json.loads(self.body.decode("utf-8", errors="replace"))
+        return orjson.loads(self.body.decode("utf-8", errors="replace"))
 
 
 def _sleep_backoff(attempt: int, base: float = RETRY_BASE_DELAY, cap: float = RETRY_MAX_DELAY) -> None:
@@ -570,7 +570,7 @@ def _http_once(
 
     # ---------- stdlib fallback ----------
     if json_body is not None:
-        body_bytes = json.dumps(json_body).encode("utf-8")
+        body_bytes = orjson.dumps(json_body)
         headers.setdefault("Content-Type", "application/json")
     else:
         body_bytes = data
@@ -827,7 +827,7 @@ def fmt_kv(d: dict) -> str:
 
 def emit_json(obj: Any, *, indent: int = 2) -> None:
     """Print JSON to stdout. Centralised so behavior can be tweaked (e.g., --raw)."""
-    print(json.dumps(obj, indent=indent, default=str))
+    print(orjson.dumps(obj, default=str, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
 
 def log(msg: str) -> None:

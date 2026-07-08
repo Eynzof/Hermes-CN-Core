@@ -9,7 +9,7 @@ to verify functionality before running large batches.
 import pytest
 pytestmark = pytest.mark.integration
 
-import json
+import orjson
 import shutil
 from pathlib import Path
 
@@ -27,7 +27,7 @@ def create_test_dataset():
     
     with open(test_file, 'w') as f:
         for prompt in prompts:
-            f.write(json.dumps(prompt, ensure_ascii=False) + "\n")
+            f.write(orjson.dumps(prompt).decode('utf-8') + "\n")
     
     print(f"✅ Created test dataset: {test_file}")
     return test_file
@@ -75,7 +75,7 @@ def verify_output(run_name):
     
     # Load and display statistics
     with open(stats_file) as f:
-        stats = json.load(f)
+        stats = orjson.loads(f.read())
     
     print(f"\n📊 Statistics Summary:")
     print(f"   - Total prompts: {stats['total_prompts']}")

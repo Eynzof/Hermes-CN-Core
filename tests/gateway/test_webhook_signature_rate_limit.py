@@ -15,7 +15,7 @@ The correct order is:
 
 import hashlib
 import hmac
-import json
+import orjson
 
 import pytest
 from aiohttp import web
@@ -91,7 +91,7 @@ class TestSignatureBeforeRateLimit:
         adapter.handle_message = _capture
         app = _create_app(adapter)
 
-        body = json.dumps(SIMPLE_PAYLOAD).encode()
+        body = orjson.dumps(SIMPLE_PAYLOAD)
 
         async with TestClient(TestServer(app)) as cli:
             # First exhaust the rate limit with invalid signatures
@@ -163,7 +163,7 @@ class TestSignatureBeforeRateLimit:
         adapter.handle_message = _capture
         app = _create_app(adapter)
 
-        body = json.dumps(SIMPLE_PAYLOAD).encode()
+        body = orjson.dumps(SIMPLE_PAYLOAD)
 
         async with TestClient(TestServer(app)) as cli:
             # Send 'rate_limit' valid requests — all should succeed
@@ -223,7 +223,7 @@ class TestSignatureBeforeRateLimit:
         adapter.handle_message = _capture
         app = _create_app(adapter)
 
-        body = json.dumps(SIMPLE_PAYLOAD).encode()
+        body = orjson.dumps(SIMPLE_PAYLOAD)
 
         async with TestClient(TestServer(app)) as cli:
             # Send 2 valid requests (should succeed)

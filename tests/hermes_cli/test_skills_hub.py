@@ -772,7 +772,7 @@ def test_do_search_json_flag_emits_full_identifiers(capsys):
 
     # JSON goes to stdout via print(), not the Rich console sink.
     captured = capsys.readouterr().out
-    import json as _json
+    import orjson as _json
     payload = _json.loads(captured)
     assert isinstance(payload, list) and len(payload) == 1
     assert payload[0]["identifier"] == _LONG_SLUG

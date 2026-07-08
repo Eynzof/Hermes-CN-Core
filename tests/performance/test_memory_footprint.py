@@ -4,7 +4,7 @@ All tests run in OFFLINE mode — no real LLM API calls.
 """
 
 import gc
-import json
+import orjson
 import os
 import sys
 from pathlib import Path
@@ -92,7 +92,7 @@ def test_tool_result_storage_memory(timing_context):
     results = []
     for turn in range(50):
         for tnum in range(5):
-            results.append(json.dumps({"data": "A" * 1000}))
+            results.append(orjson.dumps({"data": "A" * 1000}).decode('utf-8'))
 
     total_mb = len(str(results)) / (1024 * 1024)
     print(f"\n  Stored 250 tool results: {total_mb:.2f} MB")

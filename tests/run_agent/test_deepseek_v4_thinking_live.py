@@ -10,7 +10,7 @@ environment variables before each test body runs.
 
 from __future__ import annotations
 
-import json
+import orjson
 import os
 import sys
 from typing import Any
@@ -71,7 +71,7 @@ def _jsonable(value: Any) -> Any:
 def _print_trace(label: str, value: Any) -> None:
     sys.__stdout__.write(f"\n--- {label} ---\n")
     sys.__stdout__.write(
-        json.dumps(_jsonable(value), ensure_ascii=False, indent=2, sort_keys=True)
+        orjson.dumps(_jsonable(value), option=orjson.OPT_INDENT_2 | orjson.OPT_SORT_KEYS).decode('utf-8')
     )
     sys.__stdout__.write("\n")
     sys.__stdout__.flush()
@@ -163,7 +163,7 @@ def test_deepseek_v4_thinking_tool_call_replay_round_trip(live_model: str):
     assert first_message.tool_calls, "DeepSeek did not return a tool call"
     first_tool_call = first_message.tool_calls[0]
     assert first_tool_call.function.name == TOOL_NAME
-    assert isinstance(json.loads(first_tool_call.function.arguments or "{}"), dict)
+    assert isinstance(orjson.loads(first_tool_call.function.arguments or "{}"), dict)
 
     raw_reasoning_content = _raw_reasoning_content(first_message)
     assert raw_reasoning_content is not None, (
@@ -200,10 +200,7 @@ def test_deepseek_v4_thinking_tool_call_replay_round_trip(live_model: str):
         {
             "role": "tool",
             "tool_call_id": tool_call_id,
-            "content": json.dumps(
-                {"ticket_id": "DS-4242", "status": "green", "source": "live-test"},
-                separators=(",", ":"),
-            ),
+            "content": orjson.dumps({"ticket_id": "DS-4242", "status": "green", "source": "live-test"}).decode('utf-8'),
         },
     ]
 

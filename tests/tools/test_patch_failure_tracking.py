@@ -9,7 +9,7 @@ of the loop (re-read, use longer context, or fall back to write_file).
 See issue #507 (Roo Code deep-dive, item 2f).
 """
 
-import json
+import orjson
 
 import pytest
 
@@ -68,7 +68,7 @@ class TestPatchFailureEscalation:
                 },
                 task_id="esc_t1",
             )
-            d = json.loads(result)
+            d = orjson.loads(result)
             hint = d.get("_hint", "") or ""
             assert "failure #" not in hint, (
                 f"Escalating hint fired too early on attempt {_i + 1}: {hint!r}"
@@ -91,7 +91,7 @@ class TestPatchFailureEscalation:
                 },
                 task_id="esc_t2",
             )
-            d = json.loads(result)
+            d = orjson.loads(result)
             last_hint = d.get("_hint", "") or ""
 
         assert "failure #3" in last_hint, repr(last_hint)
@@ -128,7 +128,7 @@ class TestPatchFailureEscalation:
             },
             task_id="esc_t3",
         )
-        d = json.loads(result)
+        d = orjson.loads(result)
         assert not d.get("error"), d
 
         # Next failure should be back to "attempt 1" — generic hint only.
@@ -141,7 +141,7 @@ class TestPatchFailureEscalation:
             },
             task_id="esc_t3",
         )
-        d = json.loads(result)
+        d = orjson.loads(result)
         hint = d.get("_hint", "") or ""
         assert "failure #" not in hint, (
             f"Counter should have been reset after success: {hint!r}"
@@ -179,7 +179,7 @@ class TestPatchFailureEscalation:
             },
             task_id="esc_t4",
         )
-        d = json.loads(result)
+        d = orjson.loads(result)
         hint = d.get("_hint", "") or ""
         assert "failure #" not in hint, (
             f"b.py's hint inherited a.py's count: {hint!r}"
@@ -215,7 +215,7 @@ class TestPatchFailureEscalation:
             },
             task_id="task_B",
         )
-        d = json.loads(result)
+        d = orjson.loads(result)
         hint = d.get("_hint", "") or ""
         assert "failure #" not in hint, (
             f"task_B's hint cross-contaminated from task_A: {hint!r}"

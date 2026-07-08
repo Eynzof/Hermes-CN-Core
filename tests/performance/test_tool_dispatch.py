@@ -3,7 +3,7 @@
 All tests run in OFFLINE mode — no real LLM API calls.
 """
 
-import json
+import orjson
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -26,7 +26,7 @@ def test_handle_function_call_simple(timing_context):
 
     with timing_context.measure("dispatch_simple"):
         for tool_name, args in test_cases:
-            result = handle_function_call(tool_name, json.dumps(args))
+            result = handle_function_call(tool_name, orjson.dumps(args).decode('utf-8'))
 
     summary = timing_context.summary()
     total_ms = summary.get("dispatch_simple", {}).get("total_ms", 0)
@@ -95,11 +95,11 @@ def test_tool_definitions_rebuild_timing(timing_context):
 def test_tool_schema_generation_timing(timing_context):
     """Measure JSON schema generation for tool definitions."""
     from model_tools import get_tool_definitions
-    import json as json_mod
+    import orjson as json_mod
 
     with timing_context.measure("schema_generation"):
         tools = get_tool_definitions()
-        schema_json = json_mod.dumps(tools)
+        schema_json = json_mod.dumps(tools).decode('utf-8')
 
     total_ms = timing_context.summary().get("schema_generation", {}).get("total_ms", 0)
     schema_size = len(schema_json)
@@ -114,7 +114,7 @@ def test_tool_budget_enforcement_timing(timing_context):
     from tools.tool_result_storage import enforce_turn_budget
 
     results = [
-        {"tool_name": f"tool_{i}", "result": json.dumps({"data": "x" * 500})}
+        {"tool_name": f"tool_{i}", "result": orjson.dumps({"data": "x" * 500}).decode('utf-8')}
         for i in range(20)
     ]
 
@@ -193,7 +193,7 @@ def test_dispatch_fast_path(timing_context, tmp_path, monkeypatch):
     # JSON-string arguments are parsed once and take the same fast path — they
     # must NOT be silently dropped to an empty dict.
     calls["n"] = 0
-    res_str = handle_function_call("read_file", json.dumps({"path": _fresh("jstr.txt", "hello jstr\n")}))
+    res_str = handle_function_call("read_file", orjson.dumps({"path": _fresh("jstr.txt", "hello jstr\n")}).decode('utf-8'))
     assert calls["n"] == 0
     assert "hello jstr" in res_str
 

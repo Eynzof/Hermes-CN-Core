@@ -7,7 +7,7 @@ mirror to external providers. These tests drive that method with a fake
 external provider and assert which ``on_memory_write`` calls land.
 """
 
-import json
+import orjson
 
 import pytest
 
@@ -56,7 +56,7 @@ def _manager_with_provider():
 def test_notifies_remove_with_old_text_after_success():
     mgr, provider = _manager_with_provider()
     mgr.notify_memory_tool_write(
-        json.dumps({"success": True}),
+        orjson.dumps({"success": True}).decode('utf-8'),
         {"action": "remove", "target": "memory", "old_text": "stale preference entry"},
     )
     assert provider.calls == [
@@ -72,7 +72,7 @@ def test_notifies_remove_with_old_text_after_success():
 def test_skips_failed_memory_write():
     mgr, provider = _manager_with_provider()
     mgr.notify_memory_tool_write(
-        json.dumps({"success": False, "error": "No entry matched"}),
+        orjson.dumps({"success": False, "error": "No entry matched"}).decode('utf-8'),
         {"action": "remove", "target": "memory", "old_text": "stale preference entry"},
     )
     assert provider.calls == []
@@ -81,7 +81,7 @@ def test_skips_failed_memory_write():
 def test_skips_staged_memory_write():
     mgr, provider = _manager_with_provider()
     mgr.notify_memory_tool_write(
-        json.dumps({"success": True, "staged": True, "pending_id": "abc123"}),
+        orjson.dumps({"success": True, "staged": True, "pending_id": "abc123"}).decode('utf-8'),
         {"action": "remove", "target": "memory", "old_text": "stale preference entry"},
     )
     assert provider.calls == []
@@ -100,7 +100,7 @@ def test_skips_unrecognized_tool_result_shape(tool_result):
 def test_preserves_old_text_for_replace_and_remove_batch():
     mgr, provider = _manager_with_provider()
     mgr.notify_memory_tool_write(
-        json.dumps({"success": True}),
+        orjson.dumps({"success": True}).decode('utf-8'),
         {
             "target": "user",
             "operations": [
@@ -122,7 +122,7 @@ def test_preserves_old_text_for_replace_and_remove_batch():
 def test_non_mutating_actions_are_not_mirrored():
     mgr, provider = _manager_with_provider()
     mgr.notify_memory_tool_write(
-        json.dumps({"success": True}),
+        orjson.dumps({"success": True}).decode('utf-8'),
         {"action": "read", "target": "memory"},
     )
     assert provider.calls == []
@@ -131,7 +131,7 @@ def test_non_mutating_actions_are_not_mirrored():
 def test_build_metadata_callback_is_merged_per_op():
     mgr, provider = _manager_with_provider()
     mgr.notify_memory_tool_write(
-        json.dumps({"success": True}),
+        orjson.dumps({"success": True}).decode('utf-8'),
         {"action": "add", "target": "memory", "content": "fact"},
         build_metadata=lambda: {"session_id": "s1", "tool_name": "memory"},
     )

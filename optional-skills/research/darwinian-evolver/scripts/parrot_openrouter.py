@@ -193,7 +193,7 @@ def main() -> int:
         should_verify_mutations=hp.verify_mutations,
     )
 
-    import json
+    import orjson
     log_path = out / "results.jsonl"
     snap_dir = out / "snapshots"
     snap_dir.mkdir(exist_ok=True)
@@ -204,12 +204,12 @@ def main() -> int:
         print(f"iter={snap.iteration} pop={snap.population_size} "
               f"best_score={best_eval.score:.3f}")
         with log_path.open("a") as f:
-            f.write(json.dumps({
+            f.write(orjson.dumps({
                 "iteration": snap.iteration,
                 "best_score": best_eval.score,
                 "pop_size": snap.population_size,
                 "score_percentiles": {str(k): v for k, v in snap.score_percentiles.items()},
-            }) + "\n")
+            }).decode('utf-8') + "\n")
     print(f"\nDone. Results in: {out}")
     return 0
 

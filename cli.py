@@ -27,7 +27,7 @@ import logging
 import os
 import shutil
 import sys
-import json
+import orjson
 import re
 import concurrent.futures
 import base64
@@ -305,7 +305,7 @@ def _load_prefill_messages(file_path: str) -> List[Dict[str, Any]]:
         return []
     try:
         with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
+            data = orjson.loads(f.read())
         if not isinstance(data, list):
             logger.warning("Prefill messages file must contain a JSON array: %s", path)
             return []
@@ -652,7 +652,7 @@ def load_cli_config() -> Dict[str, Any]:
             if _file_has_terminal_config or env_var not in os.environ:
                 val = terminal_config[config_key]
                 if isinstance(val, (list, dict)):
-                    os.environ[env_var] = json.dumps(val)
+                    os.environ[env_var] = orjson.dumps(val).decode('utf-8')
                 else:
                     os.environ[env_var] = str(val)
     
@@ -6399,7 +6399,7 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin):
                 result_json = _asyncio.run(
                     vision_analyze_tool(image_url=str(img_path), user_prompt=analysis_prompt)
                 )
-                result = json.loads(result_json)
+                result = orjson.loads(result_json)
                 if result.get("success"):
                     description = result.get("analysis", "")
                     enriched_parts.append(
@@ -7119,12 +7119,12 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin):
 
         try:
             with open(path, "w", encoding="utf-8") as f:
-                json.dump({
+                f.write(orjson.dumps({
                     "model": self.model,
                     "session_id": self.session_id,
                     "session_start": self.session_start.isoformat(),
                     "messages": self.conversation_history,
-                }, f, indent=2, ensure_ascii=False)
+                }, option=orjson.OPT_INDENT_2).decode('utf-8'))
             print(f"(^_^)v Conversation snapshot saved to: {path}")
             if self.session_id:
                 print(f"       Resume the live session with: hermes --resume {self.session_id}")
@@ -10954,7 +10954,7 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin):
         # the idle prompt doesn't read as "nothing happened" (⛓ tracks the work).
         if function_name == "delegate_task":
             try:
-                parsed = json.loads(function_result) if isinstance(function_result, str) else (function_result or {})
+                parsed = orjson.loads(function_result) if isinstance(function_result, str) else (function_result or {})
             except Exception:
                 parsed = {}
             if isinstance(parsed, dict) and parsed.get("status") == "dispatched" and parsed.get("mode") == "background":

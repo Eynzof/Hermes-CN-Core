@@ -210,7 +210,7 @@ def test_post_provision_body_includes_instanceId_only_when_set(monkeypatch):
     """The real _post_provision adds `instanceId` to the JSON body ONLY when a
     value is supplied — omitting it lets the connector store null (back-compat),
     rather than binding an empty string."""
-    import json
+    import orjson
 
     sent: dict = {}
 
@@ -222,10 +222,10 @@ def test_post_provision_body_includes_instanceId_only_when_set(monkeypatch):
             return False
 
         def read(self):
-            return json.dumps({"secret": "a" * 64, "deliveryKey": "b" * 64, "tenant": "t", "gatewayId": "gw-1"}).encode()
+            return orjson.dumps({"secret": "a" * 64, "deliveryKey": "b" * 64, "tenant": "t", "gatewayId": "gw-1"})
 
     def _fake_urlopen(req, timeout=None):  # noqa: ANN001
-        sent["body"] = json.loads(req.data.decode())
+        sent["body"] = orjson.loads(req.data.decode())
         return _Resp()
 
     monkeypatch.setattr("urllib.request.urlopen", _fake_urlopen)
@@ -303,7 +303,7 @@ def test_wake_url_absent_forwards_none(monkeypatch):
 def test_post_provision_body_includes_wakeUrl_only_when_set(monkeypatch):
     """The real _post_provision adds `wakeUrl` to the JSON body ONLY when a value
     is supplied — omitting it lets the connector store null (back-compat)."""
-    import json
+    import orjson
 
     sent: dict = {}
 
@@ -315,10 +315,10 @@ def test_post_provision_body_includes_wakeUrl_only_when_set(monkeypatch):
             return False
 
         def read(self):
-            return json.dumps({"secret": "a" * 64, "deliveryKey": "b" * 64, "tenant": "t", "gatewayId": "gw-1"}).encode()
+            return orjson.dumps({"secret": "a" * 64, "deliveryKey": "b" * 64, "tenant": "t", "gatewayId": "gw-1"})
 
     def _fake_urlopen(req, timeout=None):  # noqa: ANN001
-        sent["body"] = json.loads(req.data.decode())
+        sent["body"] = orjson.loads(req.data.decode())
         return _Resp()
 
     monkeypatch.setattr("urllib.request.urlopen", _fake_urlopen)

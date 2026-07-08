@@ -6,7 +6,7 @@ serialisation so we never leak refresh tokens or JWTs to disk.
 """
 from __future__ import annotations
 
-import json
+import orjson
 import pytest
 
 from hermes_cli.dashboard_auth.audit import audit_log, AuditEvent
@@ -36,7 +36,7 @@ def test_audit_writes_jsonlines(profile_home):
     lines = path.read_text().strip().splitlines()
     assert len(lines) == 2
 
-    second = json.loads(lines[1])
+    second = orjson.loads(lines[1])
     assert second["event"] == "login_success"
     assert second["provider"] == "nous"
     assert second["user_id"] == "u1"

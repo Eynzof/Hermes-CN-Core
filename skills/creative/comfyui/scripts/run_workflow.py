@@ -50,7 +50,7 @@ from __future__ import annotations
 
 import argparse
 import copy
-import json
+import orjson
 import sys
 import time
 from pathlib import Path
@@ -165,7 +165,7 @@ class ComfyRunner:
             endpoint="/upload/mask",
             extra_form={
                 "subfolder": "clipspace",
-                "original_ref": json.dumps(original_ref),
+                "original_ref": orjson.dumps(original_ref).decode('utf-8'),
             },
         )
 
@@ -281,7 +281,7 @@ class ComfyRunner:
                     # Binary preview frame — ignore for now; ws_monitor.py prints them
                     continue
                 try:
-                    payload = json.loads(msg)
+                    payload = orjson.loads(msg)
                 except Exception:
                     continue
                 mtype = payload.get("type", "")
@@ -451,7 +451,7 @@ def _inline_schema(workflow: dict) -> dict:
 def load_schema(schema_path: str | None, workflow: dict) -> dict:
     if schema_path:
         with open(schema_path) as f:
-            return json.load(f)
+            return orjson.loads(f.read())
     return _inline_schema(workflow)
 
 
@@ -607,12 +607,12 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     try:
         with wf_path.open() as f:
-            workflow_raw = json.load(f)
+            workflow_raw = orjson.loads(f.read())
         workflow = unwrap_workflow(workflow_raw)
     except ValueError as e:
         emit_json({"error": str(e)})
         return 1
-    except json.JSONDecodeError as e:
+    except orjson.JSONDecodeError as e:
         emit_json({"error": f"Invalid JSON in workflow file: {e}"})
         return 1
 
@@ -625,8 +625,8 @@ def main(argv: list[str] | None = None) -> int:
             emit_json({"error": f"Cannot read args file: {e}"})
             return 1
     try:
-        user_args = json.loads(args_str) if args_str.strip() else {}
-    except json.JSONDecodeError as e:
+        user_args = orjson.loads(args_str) if args_str.strip() else {}
+    except orjson.JSONDecodeError as e:
         emit_json({"error": f"Invalid --args JSON: {e}"})
         return 1
     if not isinstance(user_args, dict):

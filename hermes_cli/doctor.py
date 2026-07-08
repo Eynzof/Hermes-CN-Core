@@ -1704,7 +1704,7 @@ def run_doctor(args):
                     cwd=str(npm_dir),
                     capture_output=True, text=True, timeout=30,
                 )
-                import json as _json
+                import orjson as _json
                 audit_data = _json.loads(audit_result.stdout) if audit_result.stdout.strip() else {}
                 vuln_count = audit_data.get("metadata", {}).get("vulnerabilities", {})
                 critical = vuln_count.get("critical", 0)
@@ -2237,8 +2237,8 @@ def run_doctor(args):
         lock_file = hub_dir / "lock.json"
         if lock_file.exists():
             try:
-                import json
-                lock_data = json.loads(lock_file.read_text())
+                import orjson
+                lock_data = orjson.loads(lock_file.read_text())
                 count = len(lock_data.get("installed", {}))
                 check_ok(f"Lock file OK ({count} hub-installed skill(s))")
             except Exception:

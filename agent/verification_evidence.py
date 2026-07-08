@@ -7,7 +7,7 @@ blocks completion, and never upgrades targeted checks into "repo green".
 
 from __future__ import annotations
 
-import json
+import orjson
 import re
 import shlex
 import sqlite3
@@ -526,7 +526,7 @@ def mark_workspace_edited(
             existing: set[str] = set()
             if row is not None:
                 try:
-                    existing = set(json.loads(row["changed_paths_json"] or "[]"))
+                    existing = set(orjson.loads(row["changed_paths_json"] or "[]"))
                 except (TypeError, ValueError):
                     existing = set()
             merged = sorted((existing | set(changed_paths)))[-200:]
@@ -539,7 +539,7 @@ def mark_workspace_edited(
                     last_edit_at = excluded.last_edit_at,
                     changed_paths_json = excluded.changed_paths_json
                 """,
-                (sid, root, edited_at, json.dumps(merged)),
+                (sid, root, edited_at, orjson.dumps(merged).decode('utf-8')),
             )
             conn.commit()
 
@@ -591,7 +591,7 @@ def verification_status(
 
     changed_paths: list[str] = []
     try:
-        changed_paths = json.loads(state["changed_paths_json"] or "[]")
+        changed_paths = orjson.loads(state["changed_paths_json"] or "[]")
     except (TypeError, ValueError):
         changed_paths = []
 

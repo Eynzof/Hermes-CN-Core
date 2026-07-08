@@ -8,7 +8,7 @@ writes, and CLI flag surface.
 from __future__ import annotations
 
 import argparse
-import json as jsonlib
+import orjson as jsonlib
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -95,7 +95,7 @@ def test_specify_task_happy_path(kanban_home):
     content = jsonlib.dumps({
         "title": "Refined rough",
         "body": "**Goal**\nA concrete goal.",
-    })
+    }).decode('utf-8')
     p, _ = _patch_aux_client(content)
     with p:
         outcome = spec.specify_task(tid, author="ace")
@@ -247,7 +247,7 @@ def test_cli_specify_single_id_success(kanban_home, capsys):
     with kb.connect() as conn:
         tid = kb.create_task(conn, title="rough", triage=True)
 
-    content = jsonlib.dumps({"title": "clean", "body": "body"})
+    content = jsonlib.dumps({"title": "clean", "body": "body"}).decode('utf-8')
     p, _ = _patch_aux_client(content)
     with p:
         rc = _run_cli("specify", tid)
@@ -262,7 +262,7 @@ def test_cli_specify_all_success_and_json(kanban_home, capsys):
         a = kb.create_task(conn, title="a", triage=True)
         b = kb.create_task(conn, title="b", triage=True)
 
-    content = jsonlib.dumps({"title": "spec", "body": "body"})
+    content = jsonlib.dumps({"title": "spec", "body": "body"}).decode('utf-8')
     p, _ = _patch_aux_client(content)
     with p:
         rc = _run_cli("specify", "--all", "--json")
@@ -303,7 +303,7 @@ def test_cli_specify_tenant_filter(kanban_home, capsys):
             conn, title="inside", triage=True, tenant="proj-a",
         )
 
-    content = jsonlib.dumps({"title": "spec", "body": "body"})
+    content = jsonlib.dumps({"title": "spec", "body": "body"}).decode('utf-8')
     p, _ = _patch_aux_client(content)
     with p:
         rc = _run_cli("specify", "--all", "--tenant", "proj-a", "--json")
@@ -327,7 +327,7 @@ def test_cli_specify_author_passed_through(kanban_home, capsys):
     with kb.connect() as conn:
         tid = kb.create_task(conn, title="rough", triage=True)
 
-    content = jsonlib.dumps({"title": "fresh title", "body": "fresh body"})
+    content = jsonlib.dumps({"title": "fresh title", "body": "fresh body"}).decode('utf-8')
     p, _ = _patch_aux_client(content)
     with p:
         rc = _run_cli("specify", tid, "--author", "custom-agent")

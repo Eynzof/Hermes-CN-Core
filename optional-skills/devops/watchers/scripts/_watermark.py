@@ -21,7 +21,7 @@ Import and use from any custom watcher script:
 
 from __future__ import annotations
 
-import json
+import orjson
 import os
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
@@ -55,10 +55,10 @@ class Watermark:
         wm = cls(name, max_seen=max_seen)
         if wm._path.exists():
             try:
-                wm._data = json.loads(wm._path.read_text(encoding="utf-8"))
+                wm._data = orjson.loads(wm._path.read_text(encoding="utf-8"))
                 wm._data.setdefault("seen_ids", [])
                 wm._data["first_run"] = False
-            except (OSError, json.JSONDecodeError):
+            except (OSError, orjson.JSONDecodeError):
                 # Corrupt state file — treat as a first run but don't crash.
                 wm._data = {"seen_ids": [], "first_run": True}
         return wm
@@ -108,7 +108,7 @@ class Watermark:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self._path.with_suffix(".tmp")
         tmp.write_text(
-            json.dumps(self._data, indent=2, sort_keys=True),
+            orjson.dumps(self._data, option=orjson.OPT_INDENT_2 | orjson.OPT_SORT_KEYS).decode('utf-8'),
             encoding="utf-8",
         )
         os.replace(tmp, self._path)

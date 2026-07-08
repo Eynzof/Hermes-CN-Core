@@ -19,7 +19,7 @@ layer so refresh across restarts stays quiet.
 from __future__ import annotations
 
 import asyncio
-import json
+import orjson
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -74,7 +74,7 @@ class TestMetadataStorage:
         # Write something that doesn't validate as OAuthMetadata
         meta_path = storage._meta_path()
         meta_path.parent.mkdir(parents=True, exist_ok=True)
-        meta_path.write_text(json.dumps({"issuer": "not-a-url", "wrong_field": 123}))
+        meta_path.write_text(orjson.dumps({"issuer": "not-a-url", "wrong_field": 123}).decode('utf-8'))
 
         assert storage.load_oauth_metadata() is None
 

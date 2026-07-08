@@ -4,7 +4,7 @@ All tests run in OFFLINE mode — no real LLM API calls.
 Tests measure token estimation and message processing performance.
 """
 
-import json
+import orjson
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -76,7 +76,7 @@ def test_compression_with_tool_results(timing_context):
         })
         messages.append({
             "role": "tool", "tool_call_id": f"call_{i}",
-            "content": json.dumps({"files": [f"f_{j}.py" for j in range(20)]}),
+            "content": orjson.dumps({"files": [f"f_{j}.py" for j in range(20)]}).decode('utf-8'),
         })
 
     with timing_context.measure("compress_with_tools"):

@@ -6,7 +6,7 @@ output, while normal typed text is left intact.  The raw value is always sent
 to the browser backend regardless.
 """
 
-import json
+import orjson
 from unittest.mock import patch
 
 from tools.browser_tool import browser_type
@@ -22,10 +22,10 @@ def test_browser_type_redacts_api_key_in_output(monkeypatch):
         "tools.browser_tool._run_browser_command",
         return_value={"success": True},
     ) as mock_run:
-        result = json.loads(browser_type("@apikey", secret, task_id="redaction-test"))
+        result = orjson.loads(browser_type("@apikey", secret, task_id="redaction-test"))
 
     assert result["success"] is True
-    assert secret not in json.dumps(result)
+    assert secret not in orjson.dumps(result).decode('utf-8')
     assert result["typed"].startswith("sk-pro")
     # Raw secret still typed into the page.
     mock_run.assert_called_once()
@@ -42,7 +42,7 @@ def test_browser_type_keeps_normal_text_in_output(monkeypatch):
         "tools.browser_tool._run_browser_command",
         return_value={"success": True},
     ) as mock_run:
-        result = json.loads(browser_type("@search", text, task_id="redaction-test"))
+        result = orjson.loads(browser_type("@search", text, task_id="redaction-test"))
 
     assert result["success"] is True
     assert result["typed"] == text
@@ -65,7 +65,7 @@ def test_browser_type_failure_redacts_api_key_in_error(monkeypatch):
         },
     ) as mock_run:
         raw_result = browser_type("@apikey", secret, task_id="redaction-test")
-        result = json.loads(raw_result)
+        result = orjson.loads(raw_result)
 
     assert result["success"] is False
     assert secret not in raw_result

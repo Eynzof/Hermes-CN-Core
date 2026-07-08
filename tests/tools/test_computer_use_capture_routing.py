@@ -22,7 +22,7 @@ auxiliary client, or network access.
 from __future__ import annotations
 
 import base64
-import json
+import orjson
 import os
 from unittest.mock import MagicMock, patch
 
@@ -92,7 +92,7 @@ def _make_capture(
 
 def _stub_aux_analysis(text: str):
     """Return a fake vision_analyze_tool coroutine result (JSON envelope)."""
-    return json.dumps({"success": True, "analysis": text})
+    return orjson.dumps({"success": True, "analysis": text}).decode('utf-8')
 
 
 # ---------------------------------------------------------------------------
@@ -144,7 +144,7 @@ class TestCaptureResponseDefaultPath:
         # the image branch.
         routing.assert_not_called()
         assert isinstance(resp, str)
-        body = json.loads(resp)
+        body = orjson.loads(resp)
         assert body["mode"] == "ax"
 
 
@@ -187,7 +187,7 @@ class TestCaptureResponseRoutedToAuxVision:
         # the contract that prevents #24015's HTTP 404 from firing on the
         # next agent turn.
         assert isinstance(resp, str)
-        body = json.loads(resp)
+        body = orjson.loads(resp)
         assert body["mode"] == "som"
         assert body["app"] == "Safari"
         assert "Sign in" in body["vision_analysis"]
@@ -302,7 +302,7 @@ class TestCaptureResponseRoutedToAuxVision:
         # payload. Falling through to a multimodal envelope can hand pixels to
         # a text-only model and fail the provider request.
         assert isinstance(resp, str)
-        body = json.loads(resp)
+        body = orjson.loads(resp)
         assert body.get("vision_unavailable") is True
         # Temp file must still be cleaned up.
         assert observed_path["path"]
@@ -329,7 +329,7 @@ class TestCaptureResponseRoutedToAuxVision:
         # capture degrades to the AX/SOM text payload (elements stay usable)
         # rather than embedding an empty 'vision_analysis' string.
         assert isinstance(resp, str)
-        body = json.loads(resp)
+        body = orjson.loads(resp)
         assert body.get("vision_unavailable") is True
         assert body.get("elements") is not None
 
@@ -351,7 +351,7 @@ class TestCaptureResponseRoutedToAuxVision:
             resp = cu_tool._capture_response(cap)
 
         assert isinstance(resp, str)
-        body = json.loads(resp)
+        body = orjson.loads(resp)
         assert body.get("vision_unavailable") is True
 
 

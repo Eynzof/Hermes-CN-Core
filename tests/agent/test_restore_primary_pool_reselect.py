@@ -8,7 +8,7 @@ construction-time snapshot. The next turn immediately hits the same error,
 exhausting remaining entries and falling through to cross-provider fallback.
 """
 
-import json
+import orjson
 import logging
 import time
 from unittest.mock import MagicMock, patch

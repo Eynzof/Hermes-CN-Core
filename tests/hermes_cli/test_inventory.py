@@ -459,9 +459,9 @@ def test_end_to_end_with_real_context_no_credentials_leak(monkeypatch):
     payload = build_models_payload(
         ctx, include_unconfigured=True, picker_hints=True,
     )
-    import json as _json
+    import orjson as _json
 
-    assert canary not in _json.dumps(payload)
+    assert canary not in _json.dumps(payload).decode('utf-8')
 
 
 def test_payload_shape_compatible_with_modelpickerdialog_frontend():

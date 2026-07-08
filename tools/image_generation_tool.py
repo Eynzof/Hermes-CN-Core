@@ -20,7 +20,7 @@ Pricing shown in UI strings is as-of the initial commit; we accept drift and
 update when it's noticed.
 """
 
-import json
+import orjson
 import logging
 import os
 import datetime
@@ -811,7 +811,7 @@ def _postprocess_image_generate_result(raw: str, task_id: str | None = None) -> 
     the path the agent can use with terminal/file tools.
     """
     try:
-        payload = json.loads(raw) if isinstance(raw, str) else raw
+        payload = orjson.loads(raw) if isinstance(raw, str) else raw
     except Exception:
         return raw
 
@@ -832,7 +832,7 @@ def _postprocess_image_generate_result(raw: str, task_id: str | None = None) -> 
 
     payload.setdefault("host_image", image)
     payload.setdefault("agent_visible_image", agent_path)
-    return json.dumps(payload, ensure_ascii=False)
+    return orjson.dumps(payload).decode('utf-8')
 
 
 def image_generate_tool(
@@ -1015,7 +1015,7 @@ def image_generate_tool(
         _debug.log_call("image_generate_tool", debug_call_data)
         _debug.save()
 
-        return json.dumps(response_data, indent=2, ensure_ascii=False)
+        return orjson.dumps(response_data, option=orjson.OPT_INDENT_2).decode('utf-8')
 
     except Exception as e:
         generation_time = (datetime.datetime.now() - start_time).total_seconds()
@@ -1034,7 +1034,7 @@ def image_generate_tool(
         _debug.log_call("image_generate_tool", debug_call_data)
         _debug.save()
 
-        return json.dumps(response_data, indent=2, ensure_ascii=False)
+        return orjson.dumps(response_data, option=orjson.OPT_INDENT_2).decode('utf-8')
 
 
 def check_fal_api_key() -> bool:
@@ -1322,7 +1322,7 @@ def _dispatch_to_plugin_provider(
             logger.debug("image_gen plugin force-refresh skipped: %s", exc)
 
     if provider is None:
-        return json.dumps({
+        return orjson.dumps({
             "success": False,
             "image": None,
             "error": (
@@ -1331,7 +1331,7 @@ def _dispatch_to_plugin_provider(
                 f"available image gen backends."
             ),
             "error_type": "provider_not_registered",
-        })
+        }).decode('utf-8')
 
     kwargs: Dict[str, Any] = {"prompt": prompt, "aspect_ratio": aspect_ratio}
     try:
@@ -1358,7 +1358,7 @@ def _dispatch_to_plugin_provider(
                 "(signature too narrow): %s",
                 getattr(provider, "name", "?"), exc,
             )
-            return json.dumps({
+            return orjson.dumps({
                 "success": False,
                 "image": None,
                 "error": (
@@ -1369,36 +1369,36 @@ def _dispatch_to_plugin_provider(
                     f"supports editing via `hermes tools` → Image Generation."
                 ),
                 "error_type": "modality_unsupported",
-            })
+            }).decode('utf-8')
         logger.warning(
             "Image gen provider '%s' raised TypeError: %s",
             getattr(provider, "name", "?"), exc,
         )
-        return json.dumps({
+        return orjson.dumps({
             "success": False,
             "image": None,
             "error": f"Provider '{getattr(provider, 'name', '?')}' error: {exc}",
             "error_type": "provider_exception",
-        })
+        }).decode('utf-8')
     except Exception as exc:
         logger.warning(
             "Image gen provider '%s' raised: %s",
             getattr(provider, "name", "?"), exc,
         )
-        return json.dumps({
+        return orjson.dumps({
             "success": False,
             "image": None,
             "error": f"Provider '{getattr(provider, 'name', '?')}' error: {exc}",
             "error_type": "provider_exception",
-        })
+        }).decode('utf-8')
     if not isinstance(result, dict):
-        return json.dumps({
+        return orjson.dumps({
             "success": False,
             "image": None,
             "error": "Provider returned a non-dict result",
             "error_type": "provider_contract",
-        })
-    return json.dumps(result)
+        }).decode('utf-8')
+    return orjson.dumps(result).decode('utf-8')
 
 
 # ---------------------------------------------------------------------------
@@ -1494,20 +1494,20 @@ def _maybe_route_managed_krea(
         result = provider.generate(**kwargs)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Managed Krea routing failed: %s", exc)
-        return json.dumps({
+        return orjson.dumps({
             "success": False,
             "image": None,
             "error": f"Managed Krea generation error: {exc}",
             "error_type": "provider_exception",
-        })
+        }).decode('utf-8')
     if not isinstance(result, dict):
-        return json.dumps({
+        return orjson.dumps({
             "success": False,
             "image": None,
             "error": "Krea provider returned a non-dict result",
             "error_type": "provider_contract",
-        })
-    return json.dumps(result)
+        }).decode('utf-8')
+    return orjson.dumps(result).decode('utf-8')
 
 
 def _handle_image_generate(args, **kw):

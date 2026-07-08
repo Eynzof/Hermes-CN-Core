@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import json
+import orjson
 import shutil
 import subprocess
 import tempfile
@@ -81,7 +81,7 @@ def chrome_cdp(request):
             with urllib.request.urlopen(
                 f"http://127.0.0.1:{port}/json/version", timeout=1
             ) as r:
-                info = json.loads(r.read().decode())
+                info = orjson.loads(r.read().decode())
                 ws_url = info["webSocketDebuggerUrl"]
                 break
         except Exception:
@@ -155,9 +155,9 @@ def _fire_on_page(cdp_url: str, expression: str) -> None:
                     p["params"] = params
                 if session_id:
                     p["sessionId"] = session_id
-                await ws.send(json.dumps(p))
+                await ws.send(orjson.dumps(p).decode('utf-8'))
                 async for raw in ws:
-                    m = json.loads(raw)
+                    m = orjson.loads(raw)
                     if m.get("id") == cid:
                         return m
 
@@ -322,7 +322,7 @@ def test_browser_dialog_tool_no_supervisor():
     """browser_dialog returns a clear error when no supervisor is attached."""
     from tools.browser_dialog_tool import browser_dialog
 
-    r = json.loads(browser_dialog(action="accept", task_id="nonexistent-task"))
+    r = orjson.loads(browser_dialog(action="accept", task_id="nonexistent-task"))
     assert r["success"] is False
     assert "No CDP supervisor" in r["error"]
 
@@ -334,7 +334,7 @@ def test_browser_dialog_invalid_action(chrome_cdp, supervisor_registry):
     cdp_url, _port = chrome_cdp
     supervisor_registry.get_or_start(task_id="pytest-bad-action", cdp_url=cdp_url)
 
-    r = json.loads(browser_dialog(action="eat", task_id="pytest-bad-action"))
+    r = orjson.loads(browser_dialog(action="eat", task_id="pytest-bad-action"))
     assert r["success"] is False
     assert "accept" in r["error"] and "dismiss" in r["error"]
 
@@ -378,7 +378,7 @@ def test_browser_dialog_tool_end_to_end(chrome_cdp, supervisor_registry):
     _fire_on_page(cdp_url, "setTimeout(() => alert('PYTEST-TOOL-END2END'), 50)")
     assert _wait_for_dialog(supervisor), "no dialog detected via wait_for_dialog"
 
-    r = json.loads(browser_dialog(action="dismiss", task_id="pytest-tool"))
+    r = orjson.loads(browser_dialog(action="dismiss", task_id="pytest-tool"))
     assert r["success"] is True
     assert r["action"] == "dismiss"
     assert "PYTEST-TOOL-END2END" in r["dialog"]["message"]
@@ -420,7 +420,7 @@ def test_browser_cdp_frame_id_routes_via_supervisor(chrome_cdp, supervisor_regis
         frame_id=fake_frame_id,
         task_id="frame-id-test",
     )
-    r = json.loads(result)
+    r = orjson.loads(result)
     assert r.get("success") is True, f"expected success, got: {r}"
     assert r.get("frame_id") == fake_frame_id
     assert r.get("session_id") == sv._page_session_id
@@ -468,7 +468,7 @@ def test_browser_cdp_frame_id_missing_supervisor():
         frame_id="any-frame-id",
         task_id="no-such-task",
     )
-    r = json.loads(result)
+    r = orjson.loads(result)
     assert r.get("success") is not True
     assert "supervisor" in (r.get("error") or "").lower()
 
@@ -486,7 +486,7 @@ def test_browser_cdp_frame_id_not_in_frame_tree(chrome_cdp, supervisor_registry)
         frame_id="nonexistent-frame",
         task_id="bad-frame-test",
     )
-    r = json.loads(result)
+    r = orjson.loads(result)
     assert r.get("success") is not True
     assert "not found" in (r.get("error") or "").lower()
 
@@ -521,7 +521,7 @@ def test_bridge_captures_prompt_and_returns_reply_text(chrome_cdp, supervisor_re
             async def reader_fn():
                 try:
                     async for raw in ws:
-                        m = json.loads(raw)
+                        m = orjson.loads(raw)
                         if "id" in m:
                             fut = pending.pop(m["id"], None)
                             if fut and not fut.done():
@@ -538,7 +538,7 @@ def test_bridge_captures_prompt_and_returns_reply_text(chrome_cdp, supervisor_re
                 if sid: p["sessionId"] = sid
                 fut = _asyncio.get_event_loop().create_future()
                 pending[c] = fut
-                await ws.send(json.dumps(p))
+                await ws.send(orjson.dumps(p).decode('utf-8'))
                 return await _asyncio.wait_for(fut, timeout=20)
 
             try:
@@ -551,7 +551,7 @@ def test_bridge_captures_prompt_and_returns_reply_text(chrome_cdp, supervisor_re
                 nav_id = nid[0]; nid[0] += 1
                 nav_fut = _asyncio.get_event_loop().create_future()
                 pending[nav_id] = nav_fut
-                await ws.send(json.dumps({"id": nav_id, "method": "Page.navigate", "params": {"url": url}, "sessionId": sid}))
+                await ws.send(orjson.dumps({"id": nav_id, "method": "Page.navigate", "params": {"url": url}, "sessionId": sid}).decode('utf-8'))
 
                 # Wait for supervisor to see the prompt
                 deadline = time.monotonic() + 10

@@ -7,7 +7,7 @@ same arguments repeatedly without making progress.
 
 from __future__ import annotations
 
-import json
+import orjson
 from typing import Any, Optional, NamedTuple
 
 
@@ -65,12 +65,7 @@ def _canonical_tool_arguments(arguments: Any) -> str:
     Sorts JSON keys recursively. Falls back to str() for non-JSON values.
     """
     try:
-        return json.dumps(
-            _sort_json_value(arguments),
-            sort_keys=False,
-            ensure_ascii=False,
-            separators=(",", ":"),
-        )
+        return orjson.dumps(_sort_json_value(arguments), option=orjson.OPT_SORT_KEYS).decode('utf-8')
     except (TypeError, ValueError):
         return str(arguments)
 
@@ -78,8 +73,8 @@ def _canonical_tool_arguments(arguments: Any) -> str:
 def _canonical_tool_arguments_text(arguments: str) -> str:
     """Produce canonical args string from a JSON string."""
     try:
-        return _canonical_tool_arguments(json.loads(arguments))
-    except (json.JSONDecodeError, TypeError, ValueError):
+        return _canonical_tool_arguments(orjson.loads(arguments))
+    except (orjson.JSONDecodeError, TypeError, ValueError):
         return arguments
 
 

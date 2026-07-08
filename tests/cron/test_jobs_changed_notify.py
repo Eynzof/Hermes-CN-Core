@@ -76,19 +76,19 @@ def test_tool_create_notifies_provider(temp_home, monkeypatch):
                         lambda: calls.append("changed"))
 
     from tools.cronjob_tools import cronjob
-    import json
+    import orjson
 
-    out = json.loads(cronjob(action="create", prompt="echo hi", schedule="every 5m", name="w"))
+    out = orjson.loads(cronjob(action="create", prompt="echo hi", schedule="every 5m", name="w"))
     assert out["success"] is True
     assert calls == ["changed"]
 
 
 def test_tool_remove_notifies_provider(temp_home, monkeypatch):
     """Removing a job via the tool path invokes on_jobs_changed."""
-    import json
+    import orjson
     from tools.cronjob_tools import cronjob
 
-    created = json.loads(cronjob(action="create", prompt="x", schedule="every 5m", name="r"))
+    created = orjson.loads(cronjob(action="create", prompt="x", schedule="every 5m", name="r"))
     jid = created["job_id"]
 
     import cron.scheduler as sched
@@ -96,6 +96,6 @@ def test_tool_remove_notifies_provider(temp_home, monkeypatch):
     monkeypatch.setattr(sched, "_notify_provider_jobs_changed",
                         lambda: calls.append("changed"))
 
-    out = json.loads(cronjob(action="remove", job_id=jid))
+    out = orjson.loads(cronjob(action="remove", job_id=jid))
     assert out["success"] is True
     assert calls == ["changed"]

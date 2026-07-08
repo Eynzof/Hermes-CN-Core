@@ -16,7 +16,7 @@ Usage:
 """
 
 import argparse
-import json
+import orjson
 import re
 import subprocess
 import sys
@@ -116,14 +116,14 @@ def gh_pr_list():
         if result.returncode != 0:
             print(f"  [warn] gh pr list failed: {result.stderr.strip()}", file=sys.stderr)
             return []
-        return json.loads(result.stdout)
+        return orjson.loads(result.stdout)
     except FileNotFoundError:
         print("  [warn] 'gh' CLI not found — skipping salvaged PR scan.", file=sys.stderr)
         return []
     except subprocess.TimeoutExpired:
         print("  [warn] gh pr list timed out — skipping salvaged PR scan.", file=sys.stderr)
         return []
-    except json.JSONDecodeError:
+    except orjson.JSONDecodeError:
         print("  [warn] gh pr list returned invalid JSON — skipping salvaged PR scan.", file=sys.stderr)
         return []
 

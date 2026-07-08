@@ -1,7 +1,7 @@
 """Tests for agent.auxiliary_client resolution chain, provider overrides, and model overrides."""
 
 import base64
-import json
+import orjson
 import logging
 import time
 from types import SimpleNamespace
@@ -40,7 +40,7 @@ from agent.auxiliary_client import (
 
 def _jwt_with_claims(claims: dict) -> str:
     header = base64.urlsafe_b64encode(b'{"alg":"none","typ":"JWT"}').decode().rstrip("=")
-    payload = base64.urlsafe_b64encode(json.dumps(claims).encode()).decode().rstrip("=")
+    payload = base64.urlsafe_b64encode(orjson.dumps(claims)).decode().rstrip("=")
     return f"{header}.{payload}.sig"
 
 
@@ -85,12 +85,12 @@ def codex_auth_dir(tmp_path, monkeypatch):
     codex_dir = tmp_path / ".codex"
     codex_dir.mkdir()
     auth_file = codex_dir / "auth.json"
-    auth_file.write_text(json.dumps({
+    auth_file.write_text(orjson.dumps({
         "tokens": {
             "access_token": "codex-test-token-abc123",
             "refresh_token": "codex-refresh-xyz",
         }
-    }))
+    }).decode('utf-8'))
     monkeypatch.setattr(
         "agent.auxiliary_client._read_codex_access_token",
         lambda: "codex-test-token-abc123",
@@ -293,14 +293,14 @@ class TestReadCodexAccessToken:
     def test_valid_auth_store(self, tmp_path, monkeypatch):
         hermes_home = tmp_path / "hermes"
         hermes_home.mkdir(parents=True, exist_ok=True)
-        (hermes_home / "auth.json").write_text(json.dumps({
+        (hermes_home / "auth.json").write_text(orjson.dumps({
             "version": 1,
             "providers": {
                 "openai-codex": {
                     "tokens": {"access_token": "tok-123", "refresh_token": "r-456"},
                 },
             },
-        }))
+        }).decode('utf-8'))
         monkeypatch.setenv("HERMES_HOME", str(hermes_home))
         result = _read_codex_access_token()
         assert result == "tok-123"
@@ -322,7 +322,7 @@ class TestReadCodexAccessToken:
     def test_missing_returns_none(self, tmp_path, monkeypatch):
         hermes_home = tmp_path / "hermes"
         hermes_home.mkdir(parents=True, exist_ok=True)
-        (hermes_home / "auth.json").write_text(json.dumps({"version": 1, "providers": {}}))
+        (hermes_home / "auth.json").write_text(orjson.dumps({"version": 1, "providers": {}}).decode('utf-8'))
         monkeypatch.setenv("HERMES_HOME", str(hermes_home))
         with patch("agent.auxiliary_client._select_pool_entry", return_value=(False, None)):
             result = _read_codex_access_token()
@@ -331,14 +331,14 @@ class TestReadCodexAccessToken:
     def test_empty_token_returns_none(self, tmp_path, monkeypatch):
         hermes_home = tmp_path / "hermes"
         hermes_home.mkdir(parents=True, exist_ok=True)
-        (hermes_home / "auth.json").write_text(json.dumps({
+        (hermes_home / "auth.json").write_text(orjson.dumps({
             "version": 1,
             "providers": {
                 "openai-codex": {
                     "tokens": {"access_token": "  ", "refresh_token": "r"},
                 },
             },
-        }))
+        }).decode('utf-8'))
         monkeypatch.setenv("HERMES_HOME", str(hermes_home))
         result = _read_codex_access_token()
         assert result is None
@@ -354,7 +354,7 @@ class TestReadCodexAccessToken:
     def test_missing_tokens_key_returns_none(self, tmp_path):
         codex_dir = tmp_path / ".codex"
         codex_dir.mkdir()
-        (codex_dir / "auth.json").write_text(json.dumps({"other": "data"}))
+        (codex_dir / "auth.json").write_text(orjson.dumps({"other": "data"}).decode('utf-8'))
         with patch("agent.auxiliary_client.Path.home", return_value=tmp_path):
             result = _read_codex_access_token()
         assert result is None
@@ -367,20 +367,20 @@ class TestReadCodexAccessToken:
 
         # Build a JWT with exp in the past
         header = base64.urlsafe_b64encode(b'{"alg":"RS256","typ":"JWT"}').rstrip(b"=").decode()
-        payload_data = json.dumps({"exp": int(_time.time()) - 3600}).encode()
+        payload_data = orjson.dumps({"exp": int(_time.time()) - 3600}).decode('utf-8').encode()
         payload = base64.urlsafe_b64encode(payload_data).rstrip(b"=").decode()
         expired_jwt = f"{header}.{payload}.fakesig"
 
         hermes_home = tmp_path / "hermes"
         hermes_home.mkdir(parents=True, exist_ok=True)
-        (hermes_home / "auth.json").write_text(json.dumps({
+        (hermes_home / "auth.json").write_text(orjson.dumps({
             "version": 1,
             "providers": {
                 "openai-codex": {
                     "tokens": {"access_token": expired_jwt, "refresh_token": "r"},
                 },
             },
-        }))
+        }).decode('utf-8'))
         monkeypatch.setenv("HERMES_HOME", str(hermes_home))
         with patch("agent.auxiliary_client._select_pool_entry", return_value=(False, None)):
             result = _read_codex_access_token()
@@ -392,20 +392,20 @@ class TestReadCodexAccessToken:
         import time as _time
 
         header = base64.urlsafe_b64encode(b'{"alg":"RS256","typ":"JWT"}').rstrip(b"=").decode()
-        payload_data = json.dumps({"exp": int(_time.time()) + 3600}).encode()
+        payload_data = orjson.dumps({"exp": int(_time.time()) + 3600}).decode('utf-8').encode()
         payload = base64.urlsafe_b64encode(payload_data).rstrip(b"=").decode()
         valid_jwt = f"{header}.{payload}.fakesig"
 
         hermes_home = tmp_path / "hermes"
         hermes_home.mkdir(parents=True, exist_ok=True)
-        (hermes_home / "auth.json").write_text(json.dumps({
+        (hermes_home / "auth.json").write_text(orjson.dumps({
             "version": 1,
             "providers": {
                 "openai-codex": {
                     "tokens": {"access_token": valid_jwt, "refresh_token": "r"},
                 },
             },
-        }))
+        }).decode('utf-8'))
         monkeypatch.setenv("HERMES_HOME", str(hermes_home))
         result = _read_codex_access_token()
         assert result == valid_jwt
@@ -414,14 +414,14 @@ class TestReadCodexAccessToken:
         """Non-JWT tokens (no dots) should be returned as-is."""
         hermes_home = tmp_path / "hermes"
         hermes_home.mkdir(parents=True, exist_ok=True)
-        (hermes_home / "auth.json").write_text(json.dumps({
+        (hermes_home / "auth.json").write_text(orjson.dumps({
             "version": 1,
             "providers": {
                 "openai-codex": {
                     "tokens": {"access_token": "plain-token-no-jwt", "refresh_token": "r"},
                 },
             },
-        }))
+        }).decode('utf-8'))
         monkeypatch.setenv("HERMES_HOME", str(hermes_home))
         result = _read_codex_access_token()
         assert result == "plain-token-no-jwt"
@@ -440,10 +440,10 @@ class TestResolveXaiOAuthForAux:
 
         hermes_home = tmp_path / "hermes"
         hermes_home.mkdir(parents=True, exist_ok=True)
-        (hermes_home / "auth.json").write_text(json.dumps({
+        (hermes_home / "auth.json").write_text(orjson.dumps({
             "version": 1,
             "providers": {},
-        }))
+        }).decode('utf-8'))
         monkeypatch.setenv("HERMES_HOME", str(hermes_home))
         monkeypatch.delenv("HERMES_XAI_BASE_URL", raising=False)
         monkeypatch.delenv("XAI_BASE_URL", raising=False)
@@ -472,10 +472,10 @@ class TestResolveXaiOAuthForAux:
 
         hermes_home = tmp_path / "hermes"
         hermes_home.mkdir(parents=True, exist_ok=True)
-        (hermes_home / "auth.json").write_text(json.dumps({
+        (hermes_home / "auth.json").write_text(orjson.dumps({
             "version": 1,
             "providers": {},
-        }))
+        }).decode('utf-8'))
         monkeypatch.setenv("HERMES_HOME", str(hermes_home))
         monkeypatch.setenv("HERMES_XAI_BASE_URL", "https://example.x.ai/v1/")
 
@@ -783,20 +783,20 @@ class TestExpiredCodexFallback:
 
         # Expired Codex JWT
         header = base64.urlsafe_b64encode(b'{"alg":"RS256","typ":"JWT"}').rstrip(b"=").decode()
-        payload_data = json.dumps({"exp": int(_time.time()) - 3600}).encode()
+        payload_data = orjson.dumps({"exp": int(_time.time()) - 3600}).decode('utf-8').encode()
         payload = base64.urlsafe_b64encode(payload_data).rstrip(b"=").decode()
         expired_jwt = f"{header}.{payload}.fakesig"
 
         hermes_home = tmp_path / "hermes"
         hermes_home.mkdir(parents=True, exist_ok=True)
-        (hermes_home / "auth.json").write_text(json.dumps({
+        (hermes_home / "auth.json").write_text(orjson.dumps({
             "version": 1,
             "providers": {
                 "openai-codex": {
                     "tokens": {"access_token": expired_jwt, "refresh_token": "r"},
                 },
             },
-        }))
+        }).decode('utf-8'))
         monkeypatch.setenv("HERMES_HOME", str(hermes_home))
 
         # Set up Anthropic as fallback
@@ -815,20 +815,20 @@ class TestExpiredCodexFallback:
         import time as _time
 
         header = base64.urlsafe_b64encode(b'{"alg":"RS256","typ":"JWT"}').rstrip(b"=").decode()
-        payload_data = json.dumps({"exp": int(_time.time()) - 3600}).encode()
+        payload_data = orjson.dumps({"exp": int(_time.time()) - 3600}).decode('utf-8').encode()
         payload = base64.urlsafe_b64encode(payload_data).rstrip(b"=").decode()
         expired_jwt = f"{header}.{payload}.fakesig"
 
         hermes_home = tmp_path / "hermes"
         hermes_home.mkdir(parents=True, exist_ok=True)
-        (hermes_home / "auth.json").write_text(json.dumps({
+        (hermes_home / "auth.json").write_text(orjson.dumps({
             "version": 1,
             "providers": {
                 "openai-codex": {
                     "tokens": {"access_token": expired_jwt, "refresh_token": "r"},
                 },
             },
-        }))
+        }).decode('utf-8'))
         monkeypatch.setenv("HERMES_HOME", str(hermes_home))
         monkeypatch.setenv("OPENROUTER_API_KEY", "or-test-key")
 
@@ -849,20 +849,20 @@ class TestExpiredCodexFallback:
         import time as _time
 
         header = base64.urlsafe_b64encode(b'{"alg":"RS256","typ":"JWT"}').rstrip(b"=").decode()
-        payload_data = json.dumps({"exp": int(_time.time()) - 3600}).encode()
+        payload_data = orjson.dumps({"exp": int(_time.time()) - 3600}).decode('utf-8').encode()
         payload = base64.urlsafe_b64encode(payload_data).rstrip(b"=").decode()
         expired_jwt = f"{header}.{payload}.fakesig"
 
         hermes_home = tmp_path / "hermes"
         hermes_home.mkdir(parents=True, exist_ok=True)
-        (hermes_home / "auth.json").write_text(json.dumps({
+        (hermes_home / "auth.json").write_text(orjson.dumps({
             "version": 1,
             "providers": {
                 "openai-codex": {
                     "tokens": {"access_token": expired_jwt, "refresh_token": "r"},
                 },
             },
-        }))
+        }).decode('utf-8'))
         monkeypatch.setenv("HERMES_HOME", str(hermes_home))
 
         # Simulate Ollama or custom endpoint
@@ -892,20 +892,20 @@ class TestExpiredCodexFallback:
         """JWT with valid JSON but no exp claim should pass through."""
         import base64
         header = base64.urlsafe_b64encode(b'{"alg":"RS256","typ":"JWT"}').rstrip(b"=").decode()
-        payload_data = json.dumps({"sub": "user123"}).encode()  # no exp
+        payload_data = orjson.dumps({"sub": "user123"})  # no exp
         payload = base64.urlsafe_b64encode(payload_data).rstrip(b"=").decode()
         no_exp_jwt = f"{header}.{payload}.fakesig"
 
         hermes_home = tmp_path / "hermes"
         hermes_home.mkdir(parents=True, exist_ok=True)
-        (hermes_home / "auth.json").write_text(json.dumps({
+        (hermes_home / "auth.json").write_text(orjson.dumps({
             "version": 1,
             "providers": {
                 "openai-codex": {
                     "tokens": {"access_token": no_exp_jwt, "refresh_token": "r"},
                 },
             },
-        }))
+        }).decode('utf-8'))
         monkeypatch.setenv("HERMES_HOME", str(hermes_home))
         result = _read_codex_access_token()
         assert result == no_exp_jwt, "JWT without exp should pass through"
@@ -919,14 +919,14 @@ class TestExpiredCodexFallback:
 
         hermes_home = tmp_path / "hermes"
         hermes_home.mkdir(parents=True, exist_ok=True)
-        (hermes_home / "auth.json").write_text(json.dumps({
+        (hermes_home / "auth.json").write_text(orjson.dumps({
             "version": 1,
             "providers": {
                 "openai-codex": {
                     "tokens": {"access_token": bad_jwt, "refresh_token": "r"},
                 },
             },
-        }))
+        }).decode('utf-8'))
         monkeypatch.setenv("HERMES_HOME", str(hermes_home))
         result = _read_codex_access_token()
         assert result == bad_jwt, "JWT with invalid JSON payload should pass through"

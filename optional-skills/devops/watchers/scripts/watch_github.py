@@ -19,7 +19,7 @@ use the /search/issues endpoint instead of /repos/:owner/:repo/:scope.
 from __future__ import annotations
 
 import argparse
-import json
+import orjson
 import os
 import re
 import sys
@@ -134,8 +134,8 @@ def main() -> int:
         return 2
 
     try:
-        data = json.loads(raw.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as e:
+        data = orjson.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, orjson.JSONDecodeError) as e:
         print(f"watch_github: response is not valid JSON: {e}", file=sys.stderr)
         return 2
 

@@ -9,7 +9,7 @@ this module does not instantiate an agent directly.
 
 from __future__ import annotations
 
-import json
+import orjson
 import logging
 from dataclasses import dataclass
 from types import SimpleNamespace
@@ -54,8 +54,8 @@ def _as_dict(value: Any) -> Dict[str, Any]:
         return {str(k): v for k, v in value.items()}
     if isinstance(value, str):
         try:
-            parsed = json.loads(value)
-        except (TypeError, json.JSONDecodeError):
+            parsed = orjson.loads(value)
+        except (TypeError, orjson.JSONDecodeError):
             return {}
         return parsed if isinstance(parsed, dict) else {}
     return {}

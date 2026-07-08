@@ -2,7 +2,7 @@
 
 import asyncio
 import os
-import json
+import orjson
 import shutil
 import sys
 from pathlib import Path
@@ -421,7 +421,7 @@ class TestWebServerEndpoints:
         assert load_env()["HINDSIGHT_API_KEY"] == "hs-test-key"
 
         config_path = get_hermes_home() / "hindsight" / "config.json"
-        provider_config = json.loads(config_path.read_text(encoding="utf-8"))
+        provider_config = orjson.loads(config_path.read_text(encoding="utf-8"))
         assert provider_config == {
             "mode": "local_external",
             "api_url": "http://localhost:8888",
@@ -478,7 +478,7 @@ class TestWebServerEndpoints:
         fields = self._provider_field_map(data)
         assert fields["api_key"]["is_set"] is True
         assert fields["api_key"]["value"] == ""
-        assert "secret-value" not in json.dumps(data)
+        assert "secret-value" not in orjson.dumps(data).decode('utf-8')
 
     def test_get_moa_models_returns_provider_model_slots(self):
         resp = self.client.get("/api/model/moa")
@@ -1119,11 +1119,11 @@ class TestWebServerEndpoints:
         audio_file.write_bytes(b"ID3fake-audio-bytes")
 
         def fake_tts(text):
-            return json.dumps({
+            return orjson.dumps({
                 "success": True,
                 "file_path": str(audio_file),
                 "provider": "test",
-            })
+            }).decode('utf-8')
 
         monkeypatch.setattr(tts_tool, "text_to_speech_tool", fake_tts)
 
@@ -4706,11 +4706,11 @@ class TestProbeGatewayHealth:
         monkeypatch.setattr(ws, "_GATEWAY_HEALTH_URL", "http://gw:8642")
         monkeypatch.setattr(ws, "_GATEWAY_HEALTH_TIMEOUT", 1)
 
-        response_body = json.dumps({
+        response_body = orjson.dumps({
             "status": "ok",
             "gateway_state": "running",
             "pid": 42,
-        })
+        }).decode('utf-8')
 
         mock_resp = MagicMock()
         mock_resp.status = 200
@@ -4738,7 +4738,7 @@ class TestProbeGatewayHealth:
                 raise ConnectionError("detailed failed")
             mock_resp = MagicMock()
             mock_resp.status = 200
-            mock_resp.read.return_value = json.dumps({"status": "ok"}).encode()
+            mock_resp.read.return_value = orjson.dumps({"status": "ok"})
             mock_resp.__enter__ = MagicMock(return_value=mock_resp)
             mock_resp.__exit__ = MagicMock(return_value=False)
             return mock_resp
@@ -5760,10 +5760,10 @@ class TestDashboardPluginManifestExtensions:
     tab.hidden, slots) read by _discover_dashboard_plugins()."""
 
     def _write_plugin(self, tmp_path, name, manifest):
-        import json
+        import orjson
         plug_dir = tmp_path / "plugins" / name / "dashboard"
         plug_dir.mkdir(parents=True)
-        (plug_dir / "manifest.json").write_text(json.dumps(manifest))
+        (plug_dir / "manifest.json").write_text(orjson.dumps(manifest).decode('utf-8'))
         return plug_dir
 
     def test_override_and_hidden_carried_through(self, tmp_path, monkeypatch):

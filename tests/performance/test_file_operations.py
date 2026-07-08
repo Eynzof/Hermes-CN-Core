@@ -4,7 +4,7 @@ All tests use real temp files (local I/O, no network).
 Tests measure read/write/search performance at various file sizes.
 """
 
-import json
+import orjson
 import os
 import sys
 import tempfile

@@ -9,7 +9,7 @@ task failed", ...)``.
 from __future__ import annotations
 
 import asyncio
-import json
+import orjson
 import logging
 import os
 from io import StringIO
@@ -179,14 +179,14 @@ async def test_bare_ping_request_produces_proper_response_and_no_stderr_noise(
 
         # Send a bare `ping`
         request = {"jsonrpc": "2.0", "id": 1, "method": "ping", "params": {}}
-        in_write_file.write((json.dumps(request) + "\n").encode())
+        in_write_file.write((orjson.dumps(request).decode('utf-8') + "\n").encode())
         in_write_file.flush()
 
         response_line = await asyncio.wait_for(client_input.readline(), timeout=5.0)
         # Give the supervisor task a tick to fire (filter should eat it)
         await asyncio.sleep(0.2)
 
-        response = json.loads(response_line.decode())
+        response = orjson.loads(response_line.decode())
         assert response["error"]["code"] == -32601, response
         assert response["error"]["data"] == {"method": "ping"}, response
 

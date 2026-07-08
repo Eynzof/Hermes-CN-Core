@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import io
-import json
+import orjson
 import os
 import tempfile
 import unittest
@@ -49,7 +49,7 @@ class CopilotACPClientSafetyTests(unittest.TestCase):
         self.assertEqual(tool_call.id, "call_read")
         self.assertEqual(tool_call.function.name, "read_file")
         self.assertEqual(
-            json.loads(tool_call.function.arguments),
+            orjson.loads(tool_call.function.arguments),
             {"path": "README.md"},
         )
         self.assertEqual(dict(tool_call)["id"], "call_read")
@@ -97,7 +97,7 @@ class CopilotACPClientSafetyTests(unittest.TestCase):
         self.assertEqual(tool_delta.id, "call_read")
         self.assertEqual(tool_delta.function.name, "read_file")
         self.assertEqual(
-            json.loads(tool_delta.function.arguments),
+            orjson.loads(tool_delta.function.arguments),
             {"path": "README.md"},
         )
         self.assertEqual(chunks[1].choices, [])
@@ -139,7 +139,7 @@ class CopilotACPClientSafetyTests(unittest.TestCase):
         self.assertTrue(handled)
         payload = process.stdin.getvalue().strip()
         self.assertTrue(payload)
-        return json.loads(payload)
+        return orjson.loads(payload)
 
     def test_request_permission_is_not_auto_allowed(self) -> None:
         response = self._dispatch(

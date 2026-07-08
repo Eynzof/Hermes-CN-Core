@@ -8,7 +8,7 @@ We test at the tool-executor level by exercising the exact code path that
 was added, keeping the mock surface minimal.
 """
 
-import json
+import orjson
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch, call
 
@@ -34,11 +34,11 @@ def agent():
 
     # Compressor
     a.context_compressor = MagicMock()
-    a.context_compressor.handle_tool_call.return_value = json.dumps({
+    a.context_compressor.handle_tool_call.return_value = orjson.dumps({
         "status": "acknowledged",
         "message": "ok",
         "current_usage": {},
-    })
+    }).decode('utf-8')
     a.context_compressor.compression_count = 0
 
     # Bypass guardrails — return a decision that allows execution
@@ -105,15 +105,15 @@ class TestCompactDispatch:
 
     def test_calls_compress_context_with_force_and_mode(self, agent):
         """Compact must call _compress_context with force=True and mode forwarded."""
-        agent.context_compressor.handle_tool_call.return_value = json.dumps({
+        agent.context_compressor.handle_tool_call.return_value = orjson.dumps({
             "status": "acknowledged",
             "message": "Compaction request registered. Focus: Fix bugs. Mode: technical.",
             "current_usage": {},
-        })
+        }).decode('utf-8')
 
         tool_calls = [_mock_tool_call(
             name="compact",
-            arguments=json.dumps({"instruction": "Fix bugs", "mode": "technical"}),
+            arguments=orjson.dumps({"instruction": "Fix bugs", "mode": "technical"}).decode('utf-8'),
             call_id="c1",
         )]
         msg = SimpleNamespace(content="", tool_calls=tool_calls)
@@ -129,11 +129,11 @@ class TestCompactDispatch:
 
     def test_default_mode_is_balanced(self, agent):
         """Compact with empty args should use balanced mode."""
-        agent.context_compressor.handle_tool_call.return_value = json.dumps({
+        agent.context_compressor.handle_tool_call.return_value = orjson.dumps({
             "status": "acknowledged",
             "message": "Compaction request registered. Mode: balanced.",
             "current_usage": {},
-        })
+        }).decode('utf-8')
 
         tool_calls = [_mock_tool_call(name="compact", arguments="{}", call_id="c2")]
         msg = SimpleNamespace(content="", tool_calls=tool_calls)
@@ -146,9 +146,9 @@ class TestCompactDispatch:
 
     def test_messages_replaced_on_success(self, agent):
         """When compression returns fewer messages, the list must be replaced in-place."""
-        agent.context_compressor.handle_tool_call.return_value = json.dumps({
+        agent.context_compressor.handle_tool_call.return_value = orjson.dumps({
             "status": "acknowledged", "message": "ok", "current_usage": {},
-        })
+        }).decode('utf-8')
         # Return 0 messages to make it clearly shorter than the original 1
         agent._compress_context.side_effect = lambda msgs, sysp, **kw: (
             [],  # shorter than original 1
@@ -168,9 +168,9 @@ class TestCompactDispatch:
 
     def test_noop_when_no_savings(self, agent):
         """Same-length list from compress should yield status='noop'."""
-        agent.context_compressor.handle_tool_call.return_value = json.dumps({
+        agent.context_compressor.handle_tool_call.return_value = orjson.dumps({
             "status": "acknowledged", "message": "ok", "current_usage": {},
-        })
+        }).decode('utf-8')
         agent._compress_context.side_effect = lambda msgs, sysp, **kw: (
             list(msgs),  # same length
             "Same system prompt",
@@ -183,19 +183,19 @@ class TestCompactDispatch:
         execute_tool_calls_sequential(agent, msg, messages, "task-1")
 
         tool_results = [m for m in messages if m.get("role") == "tool"]
-        data = json.loads(tool_results[0]["content"])
+        data = orjson.loads(tool_results[0]["content"])
         assert data["status"] == "noop"
 
     def test_compress_error_returns_error_status(self, agent):
         """Exception from _compress_context should be caught and returned as error."""
-        agent.context_compressor.handle_tool_call.return_value = json.dumps({
+        agent.context_compressor.handle_tool_call.return_value = orjson.dumps({
             "status": "acknowledged", "message": "ok", "current_usage": {},
-        })
+        }).decode('utf-8')
         agent._compress_context.side_effect = RuntimeError("Service down")
 
         tool_calls = [_mock_tool_call(
             name="compact",
-            arguments=json.dumps({"mode": "aggressive"}),
+            arguments=orjson.dumps({"mode": "aggressive"}).decode('utf-8'),
             call_id="c5",
         )]
         msg = SimpleNamespace(content="", tool_calls=tool_calls)
@@ -204,7 +204,7 @@ class TestCompactDispatch:
         execute_tool_calls_sequential(agent, msg, messages, "task-1")
 
         tool_results = [m for m in messages if m.get("role") == "tool"]
-        data = json.loads(tool_results[0]["content"])
+        data = orjson.loads(tool_results[0]["content"])
         assert data["status"] == "error"
         assert "Compaction failed" in data["error"]
 
@@ -220,13 +220,13 @@ class TestContextUsageDispatch:
             "threshold_tokens": 100000,
             "compression_count": 2,
         }
-        agent.context_compressor.handle_tool_call.return_value = json.dumps({
+        agent.context_compressor.handle_tool_call.return_value = orjson.dumps({
             "usage_percent": 42.5,
             "used_tokens": 85000,
             "max_context_tokens": 200000,
             "threshold_tokens": 100000,
             "compression_count": 2,
-        })
+        }).decode('utf-8')
 
         tool_calls = [_mock_tool_call(name="context_usage", call_id="cu1")]
         msg = SimpleNamespace(content="", tool_calls=tool_calls)
@@ -236,7 +236,7 @@ class TestContextUsageDispatch:
 
         tool_results = [m for m in messages if m.get("role") == "tool"]
         assert len(tool_results) == 1
-        data = json.loads(tool_results[0]["content"])
+        data = orjson.loads(tool_results[0]["content"])
         assert data["used_tokens"] == 85000
         assert abs(data["usage_percent"] - 42.5) < 0.1
 
@@ -244,9 +244,9 @@ class TestContextUsageDispatch:
         """Use a tool name that IS in _context_engine_tool_names but returns an error."""
         # Add additional name to the context engine tool set
         agent._context_engine_tool_names = {"context_usage", "compact", "unknown_ce_tool"}
-        agent.context_compressor.handle_tool_call.return_value = json.dumps({
+        agent.context_compressor.handle_tool_call.return_value = orjson.dumps({
             "error": "Unknown tool: unknown_ce_tool",
-        })
+        }).decode('utf-8')
 
         tool_calls = [_mock_tool_call(name="unknown_ce_tool", call_id="err1")]
         msg = SimpleNamespace(content="", tool_calls=tool_calls)
@@ -256,5 +256,5 @@ class TestContextUsageDispatch:
 
         tool_results = [m for m in messages if m.get("role") == "tool"]
         assert len(tool_results) == 1
-        data = json.loads(tool_results[0]["content"])
+        data = orjson.loads(tool_results[0]["content"])
         assert "error" in data

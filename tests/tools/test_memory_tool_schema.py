@@ -17,7 +17,7 @@ These tests guard the schema against regressing back to a shape strict
 backends reject.
 """
 
-import json
+import orjson
 
 from tools.memory_tool import MEMORY_SCHEMA
 
@@ -51,4 +51,4 @@ def test_memory_schema_is_well_formed():
 
 
 def test_memory_schema_is_json_serializable():
-    json.dumps(MEMORY_SCHEMA)
+    orjson.dumps(MEMORY_SCHEMA).decode('utf-8')

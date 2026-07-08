@@ -37,7 +37,7 @@ Design notes
 from __future__ import annotations
 
 import base64
-import json
+import orjson
 import logging
 import os
 import threading
@@ -73,7 +73,7 @@ def measure_result_bytes(result: Any) -> int:
     if isinstance(result, str):
         return len(result.encode("utf-8", "replace"))
     try:
-        return len(json.dumps(result, ensure_ascii=False).encode("utf-8", "replace"))
+        return len(orjson.dumps(result).decode('utf-8').encode("utf-8", "replace"))
     except (TypeError, ValueError):
         return len(str(result).encode("utf-8", "replace"))
 
@@ -314,13 +314,13 @@ class ToolResultStore:
             envelope = {"kind": "str", "payload": result}
         else:
             try:
-                json.dumps(result, ensure_ascii=False)
+                orjson.dumps(result).decode('utf-8')
                 envelope = {"kind": "json", "payload": result}
             except (TypeError, ValueError):
                 envelope = {"kind": "str", "payload": str(result)}
 
         tmp = path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(envelope, ensure_ascii=False), encoding="utf-8")
+        tmp.write_text(orjson.dumps(envelope).decode('utf-8'), encoding="utf-8")
         # Atomic-ish publish so a crashed write never leaves a half file that
         # a later read would choke on.
         os.replace(tmp, path)
@@ -330,7 +330,7 @@ class ToolResultStore:
     def _read_from_disk(path: Optional[Path]) -> Any:
         if path is None:
             return None
-        envelope = json.loads(Path(path).read_text(encoding="utf-8"))
+        envelope = orjson.loads(Path(path).read_text(encoding="utf-8"))
         kind = envelope.get("kind")
         payload = envelope.get("payload")
         if kind == "bytes":

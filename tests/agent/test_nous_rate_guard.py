@@ -1,6 +1,6 @@
 """Tests for agent/nous_rate_guard.py — cross-session Nous Portal rate limit guard."""
 
-import json
+import orjson
 import os
 import time
 
@@ -29,7 +29,7 @@ class TestRecordNousRateLimit:
         path = _state_path()
         assert os.path.exists(path)
         with open(path) as f:
-            state = json.load(f)
+            state = orjson.loads(f.read())
         assert state["reset_seconds"] == pytest.approx(1800, abs=2)
         assert state["reset_at"] > time.time()
 
@@ -40,7 +40,7 @@ class TestRecordNousRateLimit:
         record_nous_rate_limit(headers=headers)
 
         with open(_state_path()) as f:
-            state = json.load(f)
+            state = orjson.loads(f.read())
         assert state["reset_seconds"] == pytest.approx(45, abs=2)
 
     def test_records_with_retry_after_header(self, rate_guard_env):
@@ -50,7 +50,7 @@ class TestRecordNousRateLimit:
         record_nous_rate_limit(headers=headers)
 
         with open(_state_path()) as f:
-            state = json.load(f)
+            state = orjson.loads(f.read())
         assert state["reset_seconds"] == pytest.approx(60, abs=2)
 
     def test_prefers_hourly_over_per_minute(self, rate_guard_env):
@@ -63,7 +63,7 @@ class TestRecordNousRateLimit:
         record_nous_rate_limit(headers=headers)
 
         with open(_state_path()) as f:
-            state = json.load(f)
+            state = orjson.loads(f.read())
         # Should use the hourly value, not the per-minute one
         assert state["reset_seconds"] == pytest.approx(1800, abs=2)
 
@@ -77,7 +77,7 @@ class TestRecordNousRateLimit:
         )
 
         with open(_state_path()) as f:
-            state = json.load(f)
+            state = orjson.loads(f.read())
         assert state["reset_at"] == pytest.approx(future_reset, abs=1)
 
     def test_falls_back_to_default_cooldown(self, rate_guard_env):
@@ -86,7 +86,7 @@ class TestRecordNousRateLimit:
         record_nous_rate_limit(headers=None)
 
         with open(_state_path()) as f:
-            state = json.load(f)
+            state = orjson.loads(f.read())
         # Default is 300 seconds (5 minutes)
         assert state["reset_seconds"] == pytest.approx(300, abs=2)
 
@@ -96,7 +96,7 @@ class TestRecordNousRateLimit:
         record_nous_rate_limit(headers=None, default_cooldown=120.0)
 
         with open(_state_path()) as f:
-            state = json.load(f)
+            state = orjson.loads(f.read())
         assert state["reset_seconds"] == pytest.approx(120, abs=2)
 
     def test_creates_directory_if_missing(self, rate_guard_env):
@@ -129,7 +129,7 @@ class TestNousRateLimitRemaining:
         state_dir = os.path.dirname(_state_path())
         os.makedirs(state_dir, exist_ok=True)
         with open(_state_path(), "w") as f:
-            json.dump({"reset_at": time.time() - 10, "recorded_at": time.time() - 100}, f)
+            f.write(orjson.dumps({"reset_at": time.time() - 10, "recorded_at": time.time() - 100}).decode('utf-8'))
 
         assert nous_rate_limit_remaining() is None
         # File should be cleaned up

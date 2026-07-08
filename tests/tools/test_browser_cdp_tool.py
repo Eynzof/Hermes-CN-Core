@@ -7,7 +7,7 @@ a real Chrome instance.
 from __future__ import annotations
 
 import asyncio
-import json
+import orjson
 import threading
 import time
 from typing import Any, Dict, List
@@ -60,7 +60,7 @@ class _CDPServer:
             async def _handler(ws):
                 try:
                     async for raw in ws:
-                        msg = json.loads(raw)
+                        msg = orjson.loads(raw)
                         call_id = msg.get("id")
                         method = msg.get("method", "")
                         params = msg.get("params", {}) or {}
@@ -89,7 +89,7 @@ class _CDPServer:
                                 }
                         if session_id:
                             reply["sessionId"] = session_id
-                        await ws.send(json.dumps(reply))
+                        await ws.send(orjson.dumps(reply).decode('utf-8'))
                 except websockets.exceptions.ConnectionClosed:
                     pass
 
@@ -149,14 +149,14 @@ def cdp_server(monkeypatch):
 
 
 def test_missing_method_returns_error():
-    result = json.loads(browser_cdp_tool.browser_cdp(method=""))
+    result = orjson.loads(browser_cdp_tool.browser_cdp(method=""))
     assert "error" in result
     assert "method" in result["error"].lower()
     assert result.get("cdp_docs") == browser_cdp_tool.CDP_DOCS_URL
 
 
 def test_non_string_method_returns_error():
-    result = json.loads(browser_cdp_tool.browser_cdp(method=123))  # type: ignore[arg-type]
+    result = orjson.loads(browser_cdp_tool.browser_cdp(method=123))  # type: ignore[arg-type]
     assert "error" in result
     assert "method" in result["error"].lower()
 
@@ -165,7 +165,7 @@ def test_non_dict_params_returns_error(monkeypatch):
     monkeypatch.setattr(
         browser_cdp_tool, "_resolve_cdp_endpoint", lambda: "ws://localhost:9999"
     )
-    result = json.loads(
+    result = orjson.loads(
         browser_cdp_tool.browser_cdp(method="Target.getTargets", params="not-a-dict")  # type: ignore[arg-type]
     )
     assert "error" in result
@@ -179,7 +179,7 @@ def test_non_dict_params_returns_error(monkeypatch):
 
 def test_no_endpoint_returns_helpful_error(monkeypatch):
     monkeypatch.setattr(browser_cdp_tool, "_resolve_cdp_endpoint", lambda: "")
-    result = json.loads(browser_cdp_tool.browser_cdp(method="Target.getTargets"))
+    result = orjson.loads(browser_cdp_tool.browser_cdp(method="Target.getTargets"))
     assert "error" in result
     assert "/browser connect" in result["error"]
     assert result.get("cdp_docs") == browser_cdp_tool.CDP_DOCS_URL
@@ -189,14 +189,14 @@ def test_non_ws_endpoint_returns_error(monkeypatch):
     monkeypatch.setattr(
         browser_cdp_tool, "_resolve_cdp_endpoint", lambda: "http://localhost:9222"
     )
-    result = json.loads(browser_cdp_tool.browser_cdp(method="Target.getTargets"))
+    result = orjson.loads(browser_cdp_tool.browser_cdp(method="Target.getTargets"))
     assert "error" in result
     assert "WebSocket" in result["error"]
 
 
 def test_websockets_missing_returns_error(monkeypatch):
     monkeypatch.setattr(browser_cdp_tool, "_WS_AVAILABLE", False)
-    result = json.loads(browser_cdp_tool.browser_cdp(method="Target.getTargets"))
+    result = orjson.loads(browser_cdp_tool.browser_cdp(method="Target.getTargets"))
     assert "error" in result
     assert "websockets" in result["error"].lower()
 
@@ -216,7 +216,7 @@ def test_browser_level_success(cdp_server):
             ]
         },
     )
-    result = json.loads(browser_cdp_tool.browser_cdp(method="Target.getTargets"))
+    result = orjson.loads(browser_cdp_tool.browser_cdp(method="Target.getTargets"))
     assert result["success"] is True
     assert result["method"] == "Target.getTargets"
     assert "target_id" not in result
@@ -235,17 +235,17 @@ def test_browser_level_redacts_secret_result(cdp_server):
         lambda params, sid: {"result": {"type": "string", "value": fake_key}},
     )
 
-    result = json.loads(browser_cdp_tool.browser_cdp(method="Runtime.evaluate"))
+    result = orjson.loads(browser_cdp_tool.browser_cdp(method="Runtime.evaluate"))
 
     assert result["success"] is True
-    serialized = json.dumps(result)
+    serialized = orjson.dumps(result).decode('utf-8')
     assert "CDPSECRETRESULT" not in serialized
     assert result["result"]["result"]["value"].startswith("sk-")
 
 
 def test_empty_params_sends_empty_object(cdp_server):
     cdp_server.on("Browser.getVersion", lambda params, sid: {"product": "Mock/1.0"})
-    json.loads(browser_cdp_tool.browser_cdp(method="Browser.getVersion"))
+    orjson.loads(browser_cdp_tool.browser_cdp(method="Browser.getVersion"))
     assert cdp_server.received()[0]["params"] == {}
 
 
@@ -265,7 +265,7 @@ def test_target_attach_then_call(cdp_server):
             "result": {"type": "string", "value": f"evaluated[{sid}]"},
         },
     )
-    result = json.loads(
+    result = orjson.loads(
         browser_cdp_tool.browser_cdp(
             method="Runtime.evaluate",
             params={"expression": "document.title", "returnByValue": True},
@@ -292,7 +292,7 @@ def test_target_attach_then_call(cdp_server):
 
 def test_cdp_method_error_returns_tool_error(cdp_server):
     # No handler registered -> server returns CDP error
-    result = json.loads(
+    result = orjson.loads(
         browser_cdp_tool.browser_cdp(method="NonExistent.method")
     )
     assert "error" in result
@@ -302,7 +302,7 @@ def test_cdp_method_error_returns_tool_error(cdp_server):
 
 def test_attach_failure_returns_tool_error(cdp_server):
     # Target.attachToTarget has no handler -> server errors on attach
-    result = json.loads(
+    result = orjson.loads(
         browser_cdp_tool.browser_cdp(
             method="Runtime.evaluate",
             params={"expression": "1+1"},
@@ -325,7 +325,7 @@ def test_timeout_when_server_never_replies(cdp_server):
         return {}
 
     cdp_server.on("Page.slowMethod", slow)
-    result = json.loads(
+    result = orjson.loads(
         browser_cdp_tool.browser_cdp(
             method="Page.slowMethod", timeout=0.5
         )
@@ -342,7 +342,7 @@ def test_timeout_when_server_never_replies(cdp_server):
 def test_timeout_clamped_above_max(cdp_server):
     cdp_server.on("Browser.getVersion", lambda p, s: {"product": "ok"})
     # timeout=10_000 should be clamped to 300 but still succeed
-    result = json.loads(
+    result = orjson.loads(
         browser_cdp_tool.browser_cdp(method="Browser.getVersion", timeout=10_000)
     )
     assert result["success"] is True
@@ -350,7 +350,7 @@ def test_timeout_clamped_above_max(cdp_server):
 
 def test_invalid_timeout_falls_back_to_default(cdp_server):
     cdp_server.on("Browser.getVersion", lambda p, s: {"product": "ok"})
-    result = json.loads(
+    result = orjson.loads(
         browser_cdp_tool.browser_cdp(method="Browser.getVersion", timeout="nope")  # type: ignore[arg-type]
     )
     assert result["success"] is True
@@ -383,7 +383,7 @@ def test_dispatch_through_registry(cdp_server):
     raw = registry.dispatch(
         "browser_cdp", {"method": "Target.getTargets"}, task_id="t1"
     )
-    result = json.loads(raw)
+    result = orjson.loads(raw)
     assert result["success"] is True
     assert result["method"] == "Target.getTargets"
 
@@ -416,7 +416,7 @@ def test_runtime_evaluate_blocked_when_current_page_is_private(monkeypatch):
 
     monkeypatch.setattr(browser_cdp_tool, "_cdp_call", fake_call)
 
-    result = json.loads(
+    result = orjson.loads(
         browser_cdp_tool.browser_cdp(
             method="Runtime.evaluate",
             params={"expression": "document.body.innerText"},
@@ -449,7 +449,7 @@ def test_page_navigate_to_private_url_blocked_before_cdp(monkeypatch):
 
     monkeypatch.setattr(browser_cdp_tool, "_cdp_call", fake_call)
 
-    result = json.loads(
+    result = orjson.loads(
         browser_cdp_tool.browser_cdp(
             method="Page.navigate",
             params={"url": PRIVATE_URL},
@@ -474,7 +474,7 @@ def test_private_guard_inactive_does_not_probe(monkeypatch, cdp_server):
 
     monkeypatch.setattr(bt, "_current_page_private_url", fail_probe)
 
-    result = json.loads(
+    result = orjson.loads(
         browser_cdp_tool.browser_cdp(
             method="Runtime.evaluate",
             params={"expression": "document.title"},

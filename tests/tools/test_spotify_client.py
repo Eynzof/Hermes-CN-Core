@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import json
+import orjson
 
 import pytest
 
@@ -13,7 +13,7 @@ class _FakeResponse:
     def __init__(self, status_code: int, payload: dict | None = None, *, text: str = "", headers: dict | None = None):
         self.status_code = status_code
         self._payload = payload
-        self.text = text or (json.dumps(payload) if payload is not None else "")
+        self.text = text or (orjson.dumps(payload).decode('utf-8') if payload is not None else "")
         self.headers = headers or {"content-type": "application/json"}
         self.content = self.text.encode("utf-8") if self.text else b""
 
@@ -160,7 +160,7 @@ def test_spotify_playback_get_currently_playing_returns_explanatory_empty_result
         }),
     )
 
-    payload = json.loads(spotify_tool._handle_spotify_playback({"action": "get_currently_playing"}))
+    payload = orjson.loads(spotify_tool._handle_spotify_playback({"action": "get_currently_playing"}))
 
     assert payload == {
         "success": True,
@@ -259,7 +259,7 @@ def test_spotify_library_tracks_list_routes_to_saved_tracks(monkeypatch: pytest.
             return {"items": [], "total": 0}
 
     monkeypatch.setattr(spotify_tool, "_spotify_client", lambda: _LibStub())
-    json.loads(spotify_tool._handle_spotify_library({"kind": "tracks", "action": "list"}))
+    orjson.loads(spotify_tool._handle_spotify_library({"kind": "tracks", "action": "list"}))
     assert seen == ["tracks"]
 
 
@@ -276,12 +276,12 @@ def test_spotify_library_albums_list_routes_to_saved_albums(monkeypatch: pytest.
             return {"items": [], "total": 0}
 
     monkeypatch.setattr(spotify_tool, "_spotify_client", lambda: _LibStub())
-    json.loads(spotify_tool._handle_spotify_library({"kind": "albums", "action": "list"}))
+    orjson.loads(spotify_tool._handle_spotify_library({"kind": "albums", "action": "list"}))
     assert seen == ["albums"]
 
 
 def test_spotify_library_rejects_missing_kind() -> None:
-    payload = json.loads(spotify_tool._handle_spotify_library({"action": "list"}))
+    payload = orjson.loads(spotify_tool._handle_spotify_library({"action": "list"}))
     assert "kind" in (payload.get("error") or "").lower()
 
 
@@ -295,7 +295,7 @@ def test_spotify_playback_recently_played_action(monkeypatch: pytest.MonkeyPatch
             return {"items": [{"track": {"name": "x"}}]}
 
     monkeypatch.setattr(spotify_tool, "_spotify_client", lambda: _RecentStub())
-    payload = json.loads(spotify_tool._handle_spotify_playback({"action": "recently_played", "limit": 5}))
+    payload = orjson.loads(spotify_tool._handle_spotify_playback({"action": "recently_played", "limit": 5}))
     assert seen and seen[0]["limit"] == 5
     assert isinstance(payload, dict)
 

@@ -355,11 +355,11 @@ class TestSearchResultDensify:
             assert rec[2] == orig.content
 
     def test_densify_smaller_than_verbose(self):
-        import json
+        import orjson
         matches = self._matches(40, paths=["pkg/module_one.py", "pkg/module_two.py"])
         r = SearchResult(matches=matches, total_count=40)
-        verbose = json.dumps(r.to_dict(densify=False), ensure_ascii=False)
-        dense = json.dumps(r.to_dict(densify=True), ensure_ascii=False)
+        verbose = orjson.dumps(r.to_dict(densify=False)).decode('utf-8')
+        dense = orjson.dumps(r.to_dict(densify=True)).decode('utf-8')
         assert len(dense) < len(verbose)
 
     @pytest.mark.parametrize("content", [

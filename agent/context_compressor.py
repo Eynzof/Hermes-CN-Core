@@ -18,7 +18,7 @@ Improvements over v2:
 
 import gc
 import hashlib
-import json
+import orjson
 import logging
 import sqlite3
 import re
@@ -395,7 +395,7 @@ def _truncate_tool_call_args_json(args: str, head_chars: int = 200) -> str:
     something neither we nor the backend can parse.
     """
     try:
-        parsed = json.loads(args)
+        parsed = orjson.loads(args)
     except (ValueError, TypeError):
         return args
 
@@ -412,7 +412,7 @@ def _truncate_tool_call_args_json(args: str, head_chars: int = 200) -> str:
 
     shrunken = _shrink(parsed)
     # ensure_ascii=False preserves CJK/emoji instead of bloating with \uXXXX
-    return json.dumps(shrunken, ensure_ascii=False)
+    return orjson.dumps(shrunken).decode('utf-8')
 
 
 _IMAGE_PART_TYPES = frozenset({"image_url", "input_image", "image"})
@@ -537,8 +537,8 @@ def _summarize_tool_result(tool_name: str, tool_args: str, tool_content: str) ->
         [search_files] content search for 'compress' in agent/ -> 12 matches
     """
     try:
-        args = json.loads(tool_args) if tool_args else {}
-    except (json.JSONDecodeError, TypeError):
+        args = orjson.loads(tool_args) if tool_args else {}
+    except (orjson.JSONDecodeError, TypeError):
         args = {}
 
     content = tool_content or ""
@@ -1465,7 +1465,7 @@ class ContextCompressor(ContextEngine):
                         call_id_to_tool[call_id] = (name, args)
                     if args:
                         try:
-                            parsed = json.loads(args)
+                            parsed = orjson.loads(args)
                         except Exception:
                             parsed = args
                         _collect_paths_from_jsonish(parsed)
@@ -1935,13 +1935,13 @@ This compaction should PRIORITISE preserving all information related to the focu
             # Non-JSON / malformed-body responses from misconfigured providers
             # or proxies (e.g. an HTML 502 page returned with
             # ``Content-Type: application/json``) bubble up as
-            # ``json.JSONDecodeError`` from the OpenAI SDK's ``response.json()``,
+            # ``orjson.JSONDecodeError`` from the OpenAI SDK's ``response.json()``,
             # or as a wrapping ``APIResponseValidationError`` whose message
             # carries the substring "expecting value".  Treat these like a
             # transient provider failure: one retry on the main model, then a
             # short cooldown.  Issue #22244.
             _is_json_decode = (
-                isinstance(e, json.JSONDecodeError)
+                isinstance(e, orjson.JSONDecodeError)
                 or "expecting value" in _err_str
             )
             # httpcore / httpx streaming premature-close errors surface as
@@ -3045,10 +3045,10 @@ This compaction should PRIORITISE preserving all information related to the focu
             tool and calls ``_compress_context()`` with the acknowledged
             parameters.
         """
-        import json
+        import orjson
 
         if name == "context_usage":
-            return json.dumps(self.get_usage_status())
+            return orjson.dumps(self.get_usage_status()).decode('utf-8')
 
         if name == "compact":
             instruction = args.get("instruction", "")
@@ -3057,7 +3057,7 @@ This compaction should PRIORITISE preserving all information related to the focu
             from agent.context_tools import CompactMode
             if mode not in [m.value for m in CompactMode]:
                 mode = CompactMode.BALANCED.value
-            return json.dumps({
+            return orjson.dumps({
                 "status": "acknowledged",
                 "message": (
                     "Compaction request registered. "
@@ -3065,6 +3065,6 @@ This compaction should PRIORITISE preserving all information related to the focu
                     f"Mode: {mode}."
                 ),
                 "current_usage": self.get_usage_status(),
-            })
+            }).decode('utf-8')
 
         return super().handle_tool_call(name, args, **kwargs)

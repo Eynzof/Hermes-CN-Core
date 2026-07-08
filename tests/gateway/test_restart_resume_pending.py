@@ -1620,7 +1620,7 @@ class TestStuckLoopEscalation:
         """Simulate a session that keeps getting restart-interrupted and
         hits the stuck-loop threshold: next startup should force it to
         fresh-session despite resume_pending being set."""
-        import json
+        import orjson
 
         from gateway.run import GatewayRunner
 
@@ -1632,7 +1632,7 @@ class TestStuckLoopEscalation:
         # Simulate counter already at threshold (3 consecutive interrupted
         # restarts).  _suspend_stuck_loop_sessions will flip suspended=True.
         counts_file = tmp_path / ".restart_failure_counts"
-        counts_file.write_text(json.dumps({entry.session_key: 3}))
+        counts_file.write_text(orjson.dumps({entry.session_key: 3}).decode('utf-8'))
 
         monkeypatch.setattr("gateway.run._hermes_home", tmp_path)
         runner = object.__new__(GatewayRunner)
@@ -1652,7 +1652,7 @@ class TestStuckLoopEscalation:
     ):
         """The gateway's post-turn cleanup should clear both signals so a
         future restart-interrupt starts with a fresh counter."""
-        import json
+        import orjson
 
         from gateway.run import GatewayRunner
 
@@ -1662,7 +1662,7 @@ class TestStuckLoopEscalation:
         store.mark_resume_pending(entry.session_key, reason="restart_timeout")
 
         counts_file = tmp_path / ".restart_failure_counts"
-        counts_file.write_text(json.dumps({entry.session_key: 2}))
+        counts_file.write_text(orjson.dumps({entry.session_key: 2}).decode('utf-8'))
 
         monkeypatch.setattr("gateway.run._hermes_home", tmp_path)
         runner = object.__new__(GatewayRunner)
@@ -1704,7 +1704,7 @@ class TestStuckLoopEscalation:
     def test_clear_restart_failure_count_uses_atomic_json_write_when_entries_remain(
         self, tmp_path, monkeypatch
     ):
-        import json
+        import orjson
 
         from gateway.run import GatewayRunner
 
@@ -1713,7 +1713,7 @@ class TestStuckLoopEscalation:
         other_key = "agent:main:telegram:dm:other"
         counts_file = tmp_path / ".restart_failure_counts"
         counts_file.write_text(
-            json.dumps({session_key: 2, other_key: 1}),
+            orjson.dumps({session_key: 2, other_key: 1}).decode('utf-8'),
             encoding="utf-8",
         )
 

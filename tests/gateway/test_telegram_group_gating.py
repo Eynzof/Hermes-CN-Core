@@ -1,5 +1,5 @@
 import asyncio
-import json
+import orjson
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 

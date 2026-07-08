@@ -25,7 +25,7 @@ Design rules:
 
 from __future__ import annotations
 
-import json
+import orjson
 import os
 import urllib.error
 import urllib.parse
@@ -290,13 +290,13 @@ def _request(
     if extra_headers:
         headers.update(extra_headers)
 
-    data = json.dumps(body).encode("utf-8") if body is not None else None
+    data = orjson.dumps(body) if body is not None else None
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
 
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             raw = resp.read().decode("utf-8")
-            return json.loads(raw) if raw.strip() else {}
+            return orjson.loads(raw) if raw.strip() else {}
     except urllib.error.HTTPError as exc:
         # A 401 on a cached token → drop the cache and retry once with a fresh
         # (refresh-aware) resolve before surfacing the auth error.
@@ -317,8 +317,8 @@ def _request(
         except Exception:
             raw = ""
         try:
-            payload = json.loads(raw) if raw.strip() else {}
-        except json.JSONDecodeError:
+            payload = orjson.loads(raw) if raw.strip() else {}
+        except orjson.JSONDecodeError:
             payload = {}
         _raise_for_error(exc.code, payload, getattr(exc, "headers", None))
         raise  # unreachable; _raise_for_error always raises

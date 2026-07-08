@@ -2,7 +2,7 @@
 
 import asyncio
 import base64
-import json
+import orjson
 import os
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -244,7 +244,7 @@ class TestWeixinStatePersistence:
         account_path = tmp_path / "weixin" / "accounts" / "acct.json"
         account_path.parent.mkdir(parents=True, exist_ok=True)
         original = {"token": "old-token", "base_url": "https://old.example.com"}
-        account_path.write_text(json.dumps(original), encoding="utf-8")
+        account_path.write_text(orjson.dumps(original).decode('utf-8'), encoding="utf-8")
 
         def _boom(_src, _dst):
             raise OSError("disk full")
@@ -264,12 +264,12 @@ class TestWeixinStatePersistence:
         else:
             raise AssertionError("expected save_weixin_account to propagate replace failure")
 
-        assert json.loads(account_path.read_text(encoding="utf-8")) == original
+        assert orjson.loads(account_path.read_text(encoding="utf-8")) == original
 
     def test_context_token_persist_preserves_existing_file_on_replace_failure(self, tmp_path, monkeypatch):
         token_path = tmp_path / "weixin" / "accounts" / "acct.context-tokens.json"
         token_path.parent.mkdir(parents=True, exist_ok=True)
-        token_path.write_text(json.dumps({"user-a": "old-token"}), encoding="utf-8")
+        token_path.write_text(orjson.dumps({"user-a": "old-token"}).decode('utf-8'), encoding="utf-8")
 
         def _boom(_src, _dst):
             raise OSError("disk full")
@@ -280,13 +280,13 @@ class TestWeixinStatePersistence:
         with patch.object(weixin.logger, "warning") as warning_mock:
             store.set("acct", "user-b", "new-token")
 
-        assert json.loads(token_path.read_text(encoding="utf-8")) == {"user-a": "old-token"}
+        assert orjson.loads(token_path.read_text(encoding="utf-8")) == {"user-a": "old-token"}
         warning_mock.assert_called_once()
 
     def test_save_sync_buf_preserves_existing_file_on_replace_failure(self, tmp_path, monkeypatch):
         sync_path = tmp_path / "weixin" / "accounts" / "acct.sync.json"
         sync_path.parent.mkdir(parents=True, exist_ok=True)
-        sync_path.write_text(json.dumps({"get_updates_buf": "old-sync"}), encoding="utf-8")
+        sync_path.write_text(orjson.dumps({"get_updates_buf": "old-sync"}).decode('utf-8'), encoding="utf-8")
 
         def _boom(_src, _dst):
             raise OSError("disk full")
@@ -300,7 +300,7 @@ class TestWeixinStatePersistence:
         else:
             raise AssertionError("expected _save_sync_buf to propagate replace failure")
 
-        assert json.loads(sync_path.read_text(encoding="utf-8")) == {"get_updates_buf": "old-sync"}
+        assert orjson.loads(sync_path.read_text(encoding="utf-8")) == {"get_updates_buf": "old-sync"}
 
 
 class TestWeixinQrLogin:

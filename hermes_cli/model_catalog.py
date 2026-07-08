@@ -44,7 +44,7 @@ breaking changes (renaming ``providers``, changing ``models`` shape).
 
 from __future__ import annotations
 
-import json
+import orjson
 import logging
 import time
 import urllib.error
@@ -122,8 +122,8 @@ def _fetch_manifest(url: str, timeout: float) -> dict[str, Any] | None:
             },
         )
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            data = json.loads(resp.read().decode())
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError) as exc:
+            data = orjson.loads(resp.read().decode())
+    except (urllib.error.URLError, TimeoutError, orjson.JSONDecodeError, OSError) as exc:
         logger.info("model catalog fetch failed (%s): %s", url, exc)
         return None
     except Exception as exc:  # pragma: no cover — defensive
@@ -172,8 +172,8 @@ def _read_disk_cache() -> tuple[dict[str, Any] | None, float]:
         return (None, 0.0)
     try:
         with open(path, encoding="utf-8") as fh:
-            data = json.load(fh)
-    except (OSError, json.JSONDecodeError):
+            data = orjson.loads(fh.read())
+    except (OSError, orjson.JSONDecodeError):
         return (None, 0.0)
     if not _validate_manifest(data):
         return (None, 0.0)
@@ -186,7 +186,7 @@ def _write_disk_cache(data: dict[str, Any]) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(path.suffix + ".tmp")
         with open(tmp, "w", encoding="utf-8") as fh:
-            json.dump(data, fh, indent=2)
+            fh.write(orjson.dumps(data, option=orjson.OPT_INDENT_2).decode('utf-8'))
             fh.write("\n")
         atomic_replace(tmp, path)
     except OSError as exc:
@@ -339,8 +339,8 @@ def seed_cache_from_checkout(project_root: "Path | str") -> bool:
     src = Path(project_root) / "website" / "static" / "api" / "model-catalog.json"
     try:
         with open(src, encoding="utf-8") as fh:
-            data = json.load(fh)
-    except (OSError, json.JSONDecodeError) as exc:
+            data = orjson.loads(fh.read())
+    except (OSError, orjson.JSONDecodeError) as exc:
         logger.debug("model catalog seed from checkout skipped (%s): %s", src, exc)
         return False
     if not _validate_manifest(data):

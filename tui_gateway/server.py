@@ -4,7 +4,7 @@ import contextlib
 import contextvars
 import copy
 import inspect
-import json
+import orjson
 import logging
 import logging.handlers
 import os
@@ -376,8 +376,8 @@ class _SlashWorker:
     def _drain_stdout(self):
         for line in self.proc.stdout or []:
             try:
-                self.stdout_queue.put(json.loads(line))
-            except json.JSONDecodeError:
+                self.stdout_queue.put(orjson.loads(line))
+            except orjson.JSONDecodeError:
                 continue
         self.stdout_queue.put(None)
 
@@ -393,7 +393,7 @@ class _SlashWorker:
         with self._lock:
             self._seq += 1
             rid = self._seq
-            self.proc.stdin.write(json.dumps({"id": rid, "command": command}) + "\n")
+            self.proc.stdin.write(orjson.dumps({"id": rid, "command": command}).decode('utf-8') + "\n")
             self.proc.stdin.flush()
 
             while True:
@@ -1078,7 +1078,7 @@ def _emit(event: str, sid: str, payload: dict | None = None):
                 "event": event,
                 "payload_keys": sorted(payload.keys()) if isinstance(payload, dict) else [],
             }
-            _ensure_event_trace_logger().info(json.dumps(trace_entry, default=str))
+            _ensure_event_trace_logger().info(orjson.dumps(trace_entry, default=str).decode('utf-8'))
         except Exception:
             pass
 
@@ -2104,7 +2104,7 @@ def _stored_session_runtime_overrides(row: dict | None) -> dict:
         model_config = raw_config
     elif isinstance(raw_config, str) and raw_config.strip():
         try:
-            parsed = json.loads(raw_config)
+            parsed = orjson.loads(raw_config)
             if isinstance(parsed, dict):
                 model_config = parsed
         except Exception:
@@ -2251,13 +2251,13 @@ def _persist_live_session_runtime(session: dict | None) -> None:
         if isinstance(raw_config, dict):
             existing_config = raw_config
         elif isinstance(raw_config, str) and raw_config.strip():
-            parsed = json.loads(raw_config)
+            parsed = orjson.loads(raw_config)
             if isinstance(parsed, dict):
                 existing_config = parsed
         model_config = _runtime_model_config(agent, existing_config)
         model = str(getattr(agent, "model", "") or "").strip()
         if hasattr(db, "update_session_meta"):
-            db.update_session_meta(session_key, json.dumps(model_config), model or None)
+            db.update_session_meta(session_key, orjson.dumps(model_config).decode('utf-8'), model or None)
         elif model and hasattr(db, "update_session_model"):
             db.update_session_model(session_key, model)
     except Exception:
@@ -3404,7 +3404,7 @@ def _redact_tui_verbose_text(text: str) -> str:
 
 def _tool_args_text(args: dict) -> str:
     try:
-        raw = json.dumps(args or {}, indent=2, ensure_ascii=False, default=str)
+        raw = orjson.dumps(args or {}, default=str, option=orjson.OPT_INDENT_2).decode('utf-8')
     except Exception:
         raw = str(args or {})
     return _redact_tui_verbose_text(raw)
@@ -3442,7 +3442,7 @@ def _count_list(obj: object, *path: str) -> int | None:
 
 def _tool_summary(name: str, result: str, duration_s: float | None) -> str | None:
     try:
-        data = json.loads(result)
+        data = orjson.loads(result)
     except Exception:
         data = None
 
@@ -3507,7 +3507,7 @@ def _on_tool_complete(sid: str, tool_call_id: str, name: str, args: dict, result
     if duration_s is not None:
         payload["duration_s"] = duration_s
     try:
-        payload["result"] = json.loads(result)
+        payload["result"] = orjson.loads(result)
     except Exception:
         payload["result"] = result
     summary = _tool_summary(name, result, duration_s)
@@ -3519,7 +3519,7 @@ def _on_tool_complete(sid: str, tool_call_id: str, name: str, args: dict, result
             payload["result_text"] = result_text
     if name == "todo":
         try:
-            data = json.loads(result)
+            data = orjson.loads(result)
             if isinstance(data, dict) and isinstance(data.get("todos"), list):
                 payload["todos"] = data.get("todos")
         except Exception:
@@ -4159,7 +4159,7 @@ def _preview_restart_history(session: dict, max_messages: int = 24, max_tool_cha
 
 def _preview_tool_result_preview(name: str, result: str) -> str:
     try:
-        data = json.loads(result)
+        data = orjson.loads(result)
     except Exception:
         return ""
 
@@ -4651,7 +4651,7 @@ def _resolve_checkpoint_hash(mgr, cwd: str, ref: str) -> str:
 
 def _enrich_with_attached_images(user_text: str, image_paths: list[str]) -> str:
     """Pre-analyze attached images via vision and prepend descriptions to user text."""
-    import asyncio, json as _json
+    import asyncio, orjson as _json
     from tools.vision_tools import vision_analyze_tool
 
     prompt = (
@@ -4820,8 +4820,8 @@ def _history_to_messages(history: list[dict]) -> list[dict]:
                 tc_id = tc.get("id", "")
                 if tc_id and fn.get("name"):
                     try:
-                        args = json.loads(fn.get("arguments", "{}"))
-                    except (json.JSONDecodeError, TypeError):
+                        args = orjson.loads(fn.get("arguments", "{}"))
+                    except (orjson.JSONDecodeError, TypeError):
                         args = {}
                     tool_call_args[tc_id] = (fn["name"], args)
             if not content_text.strip():
@@ -7963,18 +7963,13 @@ def _(rid, params: dict) -> dict:
 
     try:
         with open(path, "w", encoding="utf-8") as f:
-            json.dump(
-                {
+            f.write(orjson.dumps({
                     "model": getattr(agent, "model", ""),
                     "session_id": session_id,
                     "session_start": session_start,
                     "system_prompt": getattr(agent, "_cached_system_prompt", "") or "",
                     "messages": messages,
-                },
-                f,
-                indent=2,
-                ensure_ascii=False,
-            )
+                }, option=orjson.OPT_INDENT_2).decode('utf-8'))
         return _ok(rid, {"file": str(path)})
     except Exception as e:
         return _err(rid, 5011, str(e))
@@ -8187,7 +8182,7 @@ _SPAWN_TREE_INDEX = "_index.jsonl"
 def _append_spawn_tree_index(session_dir, entry: dict) -> None:
     try:
         with (session_dir / _SPAWN_TREE_INDEX).open("a", encoding="utf-8") as f:
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+            f.write(orjson.dumps(entry).decode('utf-8') + "\n")
     except OSError as exc:
         # Index is a cache — losing a line just means list() falls back
         # to a directory scan for that entry.  Never block the save.
@@ -8206,8 +8201,8 @@ def _read_spawn_tree_index(session_dir) -> list[dict]:
                 if not line:
                     continue
                 try:
-                    out.append(json.loads(line))
-                except json.JSONDecodeError:
+                    out.append(orjson.loads(line))
+                except orjson.JSONDecodeError:
                     continue
     except OSError:
         return []
@@ -8238,7 +8233,7 @@ def _(rid, params: dict) -> dict:
             "label": label,
             "subagents": subagents,
         }
-        path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        path.write_text(orjson.dumps(payload).decode('utf-8'), encoding="utf-8")
     except OSError as exc:
         return _err(rid, 5000, f"spawn_tree.save failed: {exc}")
 
@@ -8287,7 +8282,7 @@ def _(rid, params: dict) -> dict:
             try:
                 stat = p.stat()
                 try:
-                    raw = json.loads(p.read_text(encoding="utf-8"))
+                    raw = orjson.loads(p.read_text(encoding="utf-8"))
                 except Exception:
                     raw = {}
                 subagents = raw.get("subagents") or []
@@ -8325,8 +8320,8 @@ def _(rid, params: dict) -> dict:
         return _err(rid, 4030, f"path outside spawn-trees root: {exc}")
 
     try:
-        payload = json.loads(resolved.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        payload = orjson.loads(resolved.read_text(encoding="utf-8"))
+    except (OSError, orjson.JSONDecodeError) as exc:
         return _err(rid, 5000, f"spawn_tree.load failed: {exc}")
 
     return _ok(rid, payload)
@@ -14118,11 +14113,11 @@ def _(rid, params: dict) -> dict:
         from tools.cronjob_tools import cronjob
 
         if action == "list":
-            return _ok(rid, json.loads(cronjob(action="list")))
+            return _ok(rid, orjson.loads(cronjob(action="list")))
         if action == "add":
             return _ok(
                 rid,
-                json.loads(
+                orjson.loads(
                     cronjob(
                         action="create",
                         name=jid,
@@ -14132,7 +14127,7 @@ def _(rid, params: dict) -> dict:
                 ),
             )
         if action in {"remove", "pause", "resume"}:
-            return _ok(rid, json.loads(cronjob(action=action, job_id=jid)))
+            return _ok(rid, orjson.loads(cronjob(action=action, job_id=jid)))
         return _err(rid, 4016, f"unknown cron action: {action}")
     except Exception as e:
         return _err(rid, 5023, str(e))

@@ -768,9 +768,9 @@ class TestNousRecommendedModels:
 
     def _mock_urlopen(self, payload):
         """Return a context-manager mock mimicking urllib.request.urlopen()."""
-        import json as _json
+        import orjson as _json
         response = MagicMock()
-        response.read.return_value = _json.dumps(payload).encode()
+        response.read.return_value = _json.dumps(payload)
         cm = MagicMock()
         cm.__enter__.return_value = response
         cm.__exit__.return_value = False

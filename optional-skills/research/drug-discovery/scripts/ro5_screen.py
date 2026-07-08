@@ -4,7 +4,7 @@ ro5_screen.py — Batch Lipinski Ro5 + Veber screening via PubChem API.
 Usage: python3 ro5_screen.py aspirin ibuprofen paracetamol
 No external dependencies beyond stdlib.
 """
-import sys, json, time
+import sys, orjson, time
 import urllib.request, urllib.parse
 
 BASE = "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name"
@@ -14,7 +14,7 @@ def fetch(name):
     url = f"{BASE}/{urllib.parse.quote(name)}/property/{PROPS}/JSON"
     try:
         with urllib.request.urlopen(url, timeout=10) as r:
-            return json.loads(r.read())["PropertyTable"]["Properties"][0]
+            return orjson.loads(r.read())["PropertyTable"]["Properties"][0]
     except Exception:
         return None
 

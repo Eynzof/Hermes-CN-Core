@@ -11,7 +11,7 @@ in and return transformed results.
 from __future__ import annotations
 
 import hashlib
-import json
+import orjson
 import logging
 import re
 import uuid
@@ -515,7 +515,7 @@ def _chat_messages_to_responses_input(
 
                         arguments = fn.get("arguments", "{}")
                         if isinstance(arguments, dict):
-                            arguments = json.dumps(arguments, ensure_ascii=False)
+                            arguments = orjson.dumps(arguments).decode('utf-8')
                         elif not isinstance(arguments, str):
                             arguments = str(arguments)
                         arguments = arguments.strip() or "{}"
@@ -597,7 +597,7 @@ def _preflight_codex_input_items(raw_items: Any) -> List[Dict[str, Any]]:
 
             arguments = item.get("arguments", "{}")
             if isinstance(arguments, dict):
-                arguments = json.dumps(arguments, ensure_ascii=False)
+                arguments = orjson.dumps(arguments).decode('utf-8')
             elif not isinstance(arguments, str):
                 arguments = str(arguments)
             arguments = arguments.strip() or "{}"
@@ -1229,7 +1229,7 @@ def _normalize_codex_response(
             fn_name = getattr(item, "name", "") or ""
             arguments = getattr(item, "arguments", "{}")
             if not isinstance(arguments, str):
-                arguments = json.dumps(arguments, ensure_ascii=False)
+                arguments = orjson.dumps(arguments).decode('utf-8')
             raw_call_id = getattr(item, "call_id", None)
             raw_item_id = getattr(item, "id", None)
             embedded_call_id, _ = _split_responses_tool_id(raw_item_id)
@@ -1250,7 +1250,7 @@ def _normalize_codex_response(
             fn_name = getattr(item, "name", "") or ""
             arguments = getattr(item, "input", "{}")
             if not isinstance(arguments, str):
-                arguments = json.dumps(arguments, ensure_ascii=False)
+                arguments = orjson.dumps(arguments).decode('utf-8')
             raw_call_id = getattr(item, "call_id", None)
             raw_item_id = getattr(item, "id", None)
             embedded_call_id, _ = _split_responses_tool_id(raw_item_id)

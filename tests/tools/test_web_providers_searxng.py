@@ -11,7 +11,7 @@ Covers:
 """
 from __future__ import annotations
 
-import json
+import orjson
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -361,6 +361,6 @@ class TestSearXNGOnlyExtractCrawlErrors:
         result_str = asyncio.get_event_loop().run_until_complete(
             web_tools.web_extract_tool(["https://example.com"])
         )
-        result = json.loads(result_str)
+        result = orjson.loads(result_str)
         assert result["success"] is False
         assert "search-only" in result["error"].lower() or "SearXNG" in result["error"]

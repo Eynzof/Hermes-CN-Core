@@ -7,7 +7,7 @@ Output is saved to ~/.hermes/cron/output/{job_id}/{timestamp}.md
 
 import contextlib
 import copy
-import json
+import orjson
 import logging
 import shutil
 import tempfile
@@ -764,13 +764,13 @@ def load_jobs() -> List[Dict[str, Any]]:
         # utf-8-sig transparently strips a UTF-8 BOM if present (some editors
         # on Windows add one), and is identical to utf-8 when there is none.
         with open(JOBS_FILE, 'r', encoding='utf-8-sig') as f:
-            data = json.load(f)
-    except json.JSONDecodeError:
+            data = orjson.loads(f.read())
+    except orjson.JSONDecodeError:
         # Retry with strict=False to handle bare control chars in string values
         _strict_retry = True
         try:
             with open(JOBS_FILE, 'r', encoding='utf-8-sig') as f:
-                data = json.loads(f.read(), strict=False)
+                data = orjson.loads(f.read(), strict=False)
         except Exception as e:
             logger.error("Failed to auto-repair jobs.json: %s", e)
             raise RuntimeError(f"Cron database corrupted and unrepairable: {e}") from e
@@ -815,7 +815,7 @@ def _save_jobs_unlocked(jobs: List[Dict[str, Any]]):
     fd, tmp_path = tempfile.mkstemp(dir=str(JOBS_FILE.parent), suffix='.tmp', prefix='.jobs_')
     try:
         with os.fdopen(fd, 'w', encoding='utf-8') as f:
-            json.dump({"jobs": jobs, "updated_at": _hermes_now().isoformat()}, f, indent=2)
+            f.write(orjson.dumps({"jobs": jobs, "updated_at": _hermes_now().isoformat()}, option=orjson.OPT_INDENT_2).decode('utf-8'))
             f.flush()
             os.fsync(f.fileno())
         atomic_replace(tmp_path, JOBS_FILE)

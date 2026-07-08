@@ -1,6 +1,6 @@
 """Tests for the update check mechanism in hermes_cli.banner."""
 
-import json
+import orjson
 import os
 import threading
 import time
@@ -27,7 +27,7 @@ def test_check_for_updates_uses_cache(tmp_path, monkeypatch):
     (repo_dir / ".git").mkdir()
 
     cache_file = tmp_path / ".update_check"
-    cache_file.write_text(json.dumps({"ts": time.time(), "behind": 3, "ver": __version__}))
+    cache_file.write_text(orjson.dumps({"ts": time.time(), "behind": 3, "ver": __version__}).decode('utf-8'))
 
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
     with patch("hermes_cli.banner.subprocess.run") as mock_run:
@@ -55,7 +55,7 @@ def test_check_for_updates_invalidates_on_version_change(tmp_path, monkeypatch):
     # Fresh (within TTL) cache that says "behind", but stamped with an OLD version.
     cache_file = tmp_path / ".update_check"
     cache_file.write_text(
-        json.dumps({"ts": time.time(), "behind": 1, "rev": None, "ver": "0.0.1-old"})
+        orjson.dumps({"ts": time.time(), "behind": 1, "rev": None, "ver": "0.0.1-old"}).decode('utf-8')
     )
 
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
@@ -70,7 +70,7 @@ def test_check_for_updates_invalidates_on_version_change(tmp_path, monkeypatch):
     mock_run.assert_not_called()
 
     # Cache rewritten with the current installed version.
-    written = json.loads(cache_file.read_text())
+    written = orjson.loads(cache_file.read_text())
     assert written["ver"] == banner.VERSION
 
 
@@ -84,7 +84,7 @@ def test_check_for_updates_expired_cache(tmp_path, monkeypatch):
 
     # Write an expired cache (timestamp far in the past)
     cache_file = tmp_path / ".update_check"
-    cache_file.write_text(json.dumps({"ts": 0, "behind": 1}))
+    cache_file.write_text(orjson.dumps({"ts": 0, "behind": 1}).decode('utf-8'))
 
     mock_result = MagicMock(returncode=0, stdout="5\n")
 

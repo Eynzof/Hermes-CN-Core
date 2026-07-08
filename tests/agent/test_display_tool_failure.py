@@ -6,7 +6,7 @@ specific reason in square brackets at the end of the completion line —
 not a generic "[error]".
 """
 
-import json
+import orjson
 
 from agent.display import (
     _detect_tool_failure,
@@ -47,21 +47,21 @@ class TestDetectToolFailureTerminal:
     """terminal: non-zero exit_code is the canonical failure signal."""
 
     def test_success_returns_no_suffix(self):
-        result = json.dumps({"output": "ok\n", "exit_code": 0})
+        result = orjson.dumps({"output": "ok\n", "exit_code": 0}).decode('utf-8')
         assert _detect_tool_failure("terminal", result) == (False, "")
 
     def test_nonzero_exit_with_no_error_shows_exit_code(self):
-        result = json.dumps({"output": "", "exit_code": 1})
+        result = orjson.dumps({"output": "", "exit_code": 1}).decode('utf-8')
         is_failure, suffix = _detect_tool_failure("terminal", result)
         assert is_failure is True
         assert suffix == " [exit 1]"
 
     def test_nonzero_exit_with_error_shows_message(self):
-        result = json.dumps({
+        result = orjson.dumps({
             "output": "",
             "exit_code": 127,
             "error": "ls: cannot access 'foo': No such file or directory",
-        })
+        }).decode('utf-8')
         is_failure, suffix = _detect_tool_failure("terminal", result)
         assert is_failure is True
         assert "cannot access" in suffix
@@ -82,13 +82,13 @@ class TestDetectToolFailureMemory:
     """memory: 'full' is distinct from real errors."""
 
     def test_memory_full_returns_full_suffix(self):
-        result = json.dumps({"success": False, "error": "would exceed the limit"})
+        result = orjson.dumps({"success": False, "error": "would exceed the limit"}).decode('utf-8')
         assert _detect_tool_failure("memory", result) == (True, " [full]")
 
     def test_memory_other_error_returns_specific_message(self):
         # An error that's NOT a "full" overflow falls through to the
         # structured-error path and surfaces the actual message.
-        result = json.dumps({"success": False, "error": "invalid action: zap"})
+        result = orjson.dumps({"success": False, "error": "invalid action: zap"}).decode('utf-8')
         is_failure, suffix = _detect_tool_failure("memory", result)
         assert is_failure is True
         assert "invalid action" in suffix
@@ -98,11 +98,11 @@ class TestDetectToolFailureStructured:
     """Generic path: any tool that returns {"error": ...} JSON."""
 
     def test_read_file_error_surfaced(self):
-        result = json.dumps({
+        result = orjson.dumps({
             "path": "/nope/missing.py",
             "success": False,
             "error": "File not found: /nope/missing.py",
-        })
+        }).decode('utf-8')
         is_failure, suffix = _detect_tool_failure("read_file", result)
         assert is_failure is True
         # _trim_error reduces the path to the basename.
@@ -110,26 +110,26 @@ class TestDetectToolFailureStructured:
 
     def test_error_without_success_key_still_flagged(self):
         # Some tools return {"error": "..."} with no explicit success flag.
-        result = json.dumps({"error": "remote unavailable"})
+        result = orjson.dumps({"error": "remote unavailable"}).decode('utf-8')
         is_failure, suffix = _detect_tool_failure("web_search", result)
         assert is_failure is True
         assert suffix == " [remote unavailable]"
 
     def test_message_field_only_with_success_false_flagged(self):
         # When success is False and only 'message' is set, surface it.
-        result = json.dumps({"success": False, "message": "rate limited"})
+        result = orjson.dumps({"success": False, "message": "rate limited"}).decode('utf-8')
         is_failure, suffix = _detect_tool_failure("web_search", result)
         assert is_failure is True
         assert "rate limited" in suffix
 
     def test_successful_result_not_flagged(self):
-        result = json.dumps({"success": True, "data": "hello"})
+        result = orjson.dumps({"success": True, "data": "hello"}).decode('utf-8')
         assert _detect_tool_failure("web_search", result) == (False, "")
 
     def test_dict_without_error_or_success_uses_generic_heuristic(self):
         # Plain successful dict — should pass through the generic
         # heuristic which only fires on the string "Error" / '"error"' / etc.
-        result = json.dumps({"data": "hello"})
+        result = orjson.dumps({"data": "hello"}).decode('utf-8')
         is_failure, _ = _detect_tool_failure("web_search", result)
         assert is_failure is False
 
@@ -138,32 +138,32 @@ class TestGetCuteToolMessageFailureSuffix:
     """End-to-end: failure suffix is appended by get_cute_tool_message."""
 
     def test_read_file_failure_suffix_appended(self):
-        fail = json.dumps({
+        fail = orjson.dumps({
             "path": "/etc/missing",
             "success": False,
             "error": "File not found: /etc/missing",
-        })
+        }).decode('utf-8')
         line = get_cute_tool_message("read_file", {"path": "/etc/missing"}, 0.1, result=fail)
         assert "[File not found: missing]" in line
 
     def test_terminal_exit_only_suffix(self):
-        fail = json.dumps({"output": "", "exit_code": 2})
+        fail = orjson.dumps({"output": "", "exit_code": 2}).decode('utf-8')
         line = get_cute_tool_message("terminal", {"command": "false"}, 0.1, result=fail)
         assert "[exit 2]" in line
 
     def test_terminal_with_stderr_uses_message(self):
-        fail = json.dumps({
+        fail = orjson.dumps({
             "output": "",
             "exit_code": 127,
             "error": "command not found: notathing",
-        })
+        }).decode('utf-8')
         line = get_cute_tool_message("terminal", {"command": "notathing"}, 0.1, result=fail)
         assert "command not found" in line
         # No '[exit 127]' tag when we have a specific message
         assert "exit 127" not in line
 
     def test_memory_full_suffix(self):
-        fail = json.dumps({"success": False, "error": "would exceed the limit"})
+        fail = orjson.dumps({"success": False, "error": "would exceed the limit"}).decode('utf-8')
         line = get_cute_tool_message(
             "memory",
             {"action": "add", "target": "memory", "content": "x"},
@@ -173,7 +173,7 @@ class TestGetCuteToolMessageFailureSuffix:
         assert "[full]" in line
 
     def test_success_has_no_suffix(self):
-        ok = json.dumps({"success": True, "data": "hi"})
+        ok = orjson.dumps({"success": True, "data": "hi"}).decode('utf-8')
         line = get_cute_tool_message("web_search", {"query": "hi"}, 0.2, result=ok)
         assert "[" not in line.split("0.2s", 1)[1]
 

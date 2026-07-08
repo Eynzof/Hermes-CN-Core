@@ -21,7 +21,7 @@ Usage:
 import pytest
 pytestmark = pytest.mark.integration
 
-import json
+import orjson
 import shutil
 import sys
 import time
@@ -46,7 +46,7 @@ def create_test_dataset(num_prompts: int = 20) -> Path:
                 "prompt": f"Test prompt {i}: What is 2+2? Just answer briefly.",
                 "test_id": i
             }
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+            f.write(orjson.dumps(entry).decode('utf-8') + "\n")
     
     print(f"✅ Created test dataset: {dataset_file} ({num_prompts} prompts)")
     return dataset_file
@@ -81,7 +81,7 @@ def monitor_checkpoint_during_run(checkpoint_file: Path, duration: int = 30) -> 
                 
                 try:
                     with open(checkpoint_file, 'r') as f:
-                        checkpoint_data = json.load(f)
+                        checkpoint_data = orjson.loads(f.read())
                     
                     snapshot = {
                         "elapsed_seconds": round(elapsed, 2),
@@ -261,7 +261,7 @@ def test_interruption_and_resume():
             return False
         
         with open(checkpoint_file, 'r') as f:
-            checkpoint_data = json.load(f)
+            checkpoint_data = orjson.loads(f.read())
         
         initial_completed = len(checkpoint_data.get("completed_prompts", []))
         print(f"✅ First run completed: {initial_completed} prompts saved to checkpoint")
@@ -284,7 +284,7 @@ def test_interruption_and_resume():
         
         # Check final checkpoint
         with open(checkpoint_file, 'r') as f:
-            final_checkpoint = json.load(f)
+            final_checkpoint = orjson.loads(f.read())
         
         final_completed = len(final_checkpoint.get("completed_prompts", []))
         

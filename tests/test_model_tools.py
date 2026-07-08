@@ -1,6 +1,6 @@
 """Tests for model_tools.py — function call dispatch, agent-loop interception, legacy toolsets."""
 
-import json
+import orjson
 from unittest.mock import ANY, call, patch
 
 
@@ -21,19 +21,19 @@ from model_tools import (
 class TestHandleFunctionCall:
     def test_agent_loop_tool_returns_error(self):
         for tool_name in _AGENT_LOOP_TOOLS:
-            result = json.loads(handle_function_call(tool_name, {}))
+            result = orjson.loads(handle_function_call(tool_name, {}))
             assert "error" in result
             assert "agent loop" in result["error"].lower()
 
     def test_unknown_tool_returns_error(self):
-        result = json.loads(handle_function_call("totally_fake_tool_xyz", {}))
+        result = orjson.loads(handle_function_call("totally_fake_tool_xyz", {}))
         assert "error" in result
         assert "totally_fake_tool_xyz" in result["error"]
 
     def test_exception_returns_json_error(self):
         # Even if something goes wrong, should return valid JSON
         result = handle_function_call("web_search", None)  # None args may cause issues
-        parsed = json.loads(result)
+        parsed = orjson.loads(result)
         assert isinstance(parsed, dict)
         assert "error" in parsed
         assert len(parsed["error"]) > 0
@@ -165,7 +165,7 @@ class TestHandleFunctionCall:
 
         def fake_dispatch(tool_name, args, **kwargs):
             seen["dispatch"] = (tool_name, args, kwargs)
-            return json.dumps({"ok": True, "args": args})
+            return orjson.dumps({"ok": True, "args": args}).decode('utf-8')
 
         manager = type(
             "Manager",
@@ -182,7 +182,7 @@ class TestHandleFunctionCall:
         monkeypatch.setattr("hermes_cli.plugins.has_hook", lambda name: True)
         monkeypatch.setattr("model_tools.registry.dispatch", fake_dispatch)
 
-        result = json.loads(
+        result = orjson.loads(
             handle_function_call(
                 "web_search",
                 {"q": "test"},
@@ -246,7 +246,7 @@ class TestPreToolCallBlocking:
         monkeypatch.setattr("hermes_cli.plugins.has_hook", lambda name: True)
         monkeypatch.setattr("model_tools.registry.dispatch", fake_dispatch)
 
-        result = json.loads(handle_function_call("read_file", {"path": "test.txt"}, task_id="t1"))
+        result = orjson.loads(handle_function_call("read_file", {"path": "test.txt"}, task_id="t1"))
         assert result == {"error": "Blocked by policy"}
         assert not dispatch_called
         post_call = next(call for call in hook_calls if call[0] == "post_tool_call")
@@ -269,7 +269,7 @@ class TestPreToolCallBlocking:
         monkeypatch.setattr("tools.file_tools.notify_other_tool_call",
                             lambda task_id: notifications.append(task_id))
 
-        result = json.loads(handle_function_call("web_search", {"q": "test"}, task_id="t1"))
+        result = orjson.loads(handle_function_call("web_search", {"q": "test"}, task_id="t1"))
         assert result == {"error": "Blocked"}
         assert notifications == []
 
@@ -286,9 +286,9 @@ class TestPreToolCallBlocking:
 
         monkeypatch.setattr("hermes_cli.plugins.invoke_hook", fake_invoke_hook)
         monkeypatch.setattr("model_tools.registry.dispatch",
-                            lambda *a, **kw: json.dumps({"ok": True}))
+                            lambda *a, **kw: orjson.dumps({"ok": True}).decode('utf-8'))
 
-        result = json.loads(handle_function_call("read_file", {"path": "test.txt"}, task_id="t1"))
+        result = orjson.loads(handle_function_call("read_file", {"path": "test.txt"}, task_id="t1"))
         assert result == {"ok": True}
 
     def test_skip_flag_prevents_double_fire(self, monkeypatch):
@@ -309,7 +309,7 @@ class TestPreToolCallBlocking:
         monkeypatch.setattr("hermes_cli.plugins.invoke_hook", fake_invoke_hook)
         monkeypatch.setattr("hermes_cli.plugins.has_hook", lambda name: True)
         monkeypatch.setattr("model_tools.registry.dispatch",
-                            lambda *a, **kw: json.dumps({"ok": True}))
+                            lambda *a, **kw: orjson.dumps({"ok": True}).decode('utf-8'))
 
         handle_function_call("web_search", {"q": "test"}, task_id="t1",
                              skip_pre_tool_call_hook=True)
@@ -347,7 +347,7 @@ class TestPreToolCallBlocking:
 
         monkeypatch.setattr("hermes_cli.plugins.invoke_hook", fake_invoke_hook)
         monkeypatch.setattr("model_tools.registry.dispatch",
-                            lambda *a, **kw: json.dumps({"ok": True}))
+                            lambda *a, **kw: orjson.dumps({"ok": True}).decode('utf-8'))
 
         # Step 1: caller checks for a block directive (this fires pre_tool_call once).
         block = get_pre_tool_call_block_message(
@@ -449,7 +449,7 @@ class TestCoerceNumberInfNan:
         from model_tools import _coerce_number
         for s in ("inf", "-inf", "nan", "Infinity"):
             result = _coerce_number(s)
-            json.dumps({"x": result}, allow_nan=False)  # must not raise
+            orjson.dumps({"x": result}, allow_nan=False).decode('utf-8')  # must not raise
 
     def test_normal_numbers_still_coerce(self):
         """Guard against over-correction — real numbers still coerce."""

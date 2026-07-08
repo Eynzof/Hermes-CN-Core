@@ -10,7 +10,7 @@ Covers:
   - Terminal tool handler passes watch_patterns through
 """
 
-import json
+import orjson
 import time
 import pytest
 from unittest.mock import patch
@@ -283,7 +283,7 @@ class TestCheckpointPersistence:
         """watch_patterns survives checkpoint recovery."""
         import tools.process_registry as pr_mod
         checkpoint = tmp_path / "processes.json"
-        checkpoint.write_text(json.dumps([{
+        checkpoint.write_text(orjson.dumps([{
             "session_id": "proc_recovered",
             "command": "tail -f log",
             "pid": 99999999,  # non-existent
@@ -297,7 +297,7 @@ class TestCheckpointPersistence:
             "watcher_interval": 0,
             "notify_on_complete": False,
             "watch_patterns": ["PANIC", "OOM"],
-        }]))
+        }]).decode('utf-8'))
         monkeypatch.setattr(pr_mod, "CHECKPOINT_PATH", checkpoint)
         # PID doesn't exist, so nothing will be recovered
         count = registry.recover_from_checkpoint()
@@ -321,7 +321,7 @@ class TestTerminalToolSchema:
         """_handle_terminal passes watch_patterns to terminal_tool."""
         from tools.terminal_tool import _handle_terminal
         with patch("tools.terminal_tool.terminal_tool") as mock_tt:
-            mock_tt.return_value = json.dumps({"output": "ok", "exit_code": 0})
+            mock_tt.return_value = orjson.dumps({"output": "ok", "exit_code": 0}).decode('utf-8')
             _handle_terminal(
                 {"command": "echo hi", "watch_patterns": ["ERR"]},
                 task_id="t1",

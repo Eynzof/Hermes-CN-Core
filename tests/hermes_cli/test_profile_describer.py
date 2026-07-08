@@ -4,7 +4,7 @@ and the profile_describer LLM module.
 
 from __future__ import annotations
 
-import json as jsonlib
+import orjson as jsonlib
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -99,7 +99,7 @@ def test_describer_writes_description_with_auto_true(profile_env, monkeypatch):
         profiles_mod, "get_profile_dir", lambda n: profile_env,
     )
 
-    payload = jsonlib.dumps({"description": "writes Python codebases"})
+    payload = jsonlib.dumps({"description": "writes Python codebases"}).decode('utf-8')
     with _patch_aux_client(payload), patch(
         "agent.auxiliary_client.get_auxiliary_extra_body", return_value={}
     ):
@@ -135,7 +135,7 @@ def test_describer_overwrite_flag_replaces_user_authored(profile_env, monkeypatc
     monkeypatch.setattr(profiles_mod, "normalize_profile_name", lambda n: n)
     monkeypatch.setattr(profiles_mod, "get_profile_dir", lambda n: profile_env)
 
-    payload = jsonlib.dumps({"description": "new auto-gen"})
+    payload = jsonlib.dumps({"description": "new auto-gen"}).decode('utf-8')
     with _patch_aux_client(payload), patch(
         "agent.auxiliary_client.get_auxiliary_extra_body", return_value={}
     ):

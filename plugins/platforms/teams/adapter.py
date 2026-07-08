@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import asyncio
 import html
-import json
+import orjson
 import logging
 import os
 from typing import Any, Dict, Optional
@@ -374,7 +374,7 @@ class _AiohttpBridgeAdapter:
             if resp_body is not None:
                 return web.Response(
                     status=status,
-                    body=json.dumps(resp_body),
+                    body=orjson.dumps(resp_body).decode('utf-8'),
                     content_type="application/json",
                 )
             return web.Response(status=status)

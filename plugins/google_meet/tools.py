@@ -13,7 +13,7 @@ Tools:
 
 from __future__ import annotations
 
-import json
+import orjson
 from typing import Any, Dict, Optional
 
 from plugins.google_meet import process_manager as pm
@@ -226,7 +226,7 @@ MEET_SAY_SCHEMA: Dict[str, Any] = {
 # ---------------------------------------------------------------------------
 
 def _json(obj: Any) -> str:
-    return json.dumps(obj, ensure_ascii=False)
+    return orjson.dumps(obj).decode('utf-8')
 
 
 def _err(msg: str, **extra) -> str:

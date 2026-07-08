@@ -6,7 +6,7 @@ work, completes via the CLI. Designed to be spawned by the dispatcher
 exactly the way `hermes chat -q` would be, minus the LLM cost.
 """
 
-import json
+import orjson
 import os
 import subprocess
 import time
@@ -35,11 +35,11 @@ def main():
         [
             "hermes", "kanban", "complete", tid,
             "--summary", f"real-subprocess worker finished {tid}",
-            "--metadata", json.dumps({
+            "--metadata", orjson.dumps({
                 "workspace": workspace,
                 "worker_pid": os.getpid(),
                 "iterations": 3,
-            }),
+            }).decode('utf-8'),
         ],
         check=True, capture_output=True,
     )

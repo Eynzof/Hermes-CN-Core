@@ -1,6 +1,6 @@
 """Tests for the central tool registry."""
 
-import json
+import orjson
 import threading
 from pathlib import Path
 from unittest.mock import patch
@@ -9,7 +9,7 @@ from tools.registry import ToolRegistry, _module_registers_tools, discover_built
 
 
 def _dummy_handler(args, **kwargs):
-    return json.dumps({"ok": True})
+    return orjson.dumps({"ok": True}).decode('utf-8')
 
 
 def _make_schema(name="test_tool"):
@@ -29,14 +29,14 @@ class TestRegisterAndDispatch:
             schema=_make_schema("alpha"),
             handler=_dummy_handler,
         )
-        result = json.loads(reg.dispatch("alpha", {}))
+        result = orjson.loads(reg.dispatch("alpha", {}))
         assert result == {"ok": True}
 
     def test_dispatch_passes_args(self):
         reg = ToolRegistry()
 
         def echo_handler(args, **kw):
-            return json.dumps(args)
+            return orjson.dumps(args).decode('utf-8')
 
         reg.register(
             name="echo",
@@ -44,7 +44,7 @@ class TestRegisterAndDispatch:
             schema=_make_schema("echo"),
             handler=echo_handler,
         )
-        result = json.loads(reg.dispatch("echo", {"msg": "hi"}))
+        result = orjson.loads(reg.dispatch("echo", {"msg": "hi"}))
         assert result == {"msg": "hi"}
 
 
@@ -115,7 +115,7 @@ class TestGetDefinitions:
 class TestUnknownToolDispatch:
     def test_returns_error_json(self):
         reg = ToolRegistry()
-        result = json.loads(reg.dispatch("nonexistent", {}))
+        result = orjson.loads(reg.dispatch("nonexistent", {}))
         assert "error" in result
         assert "Unknown tool" in result["error"]
 
@@ -205,7 +205,7 @@ class TestToolsetAvailability:
         reg.register(
             name="bad", toolset="s", schema=_make_schema(), handler=bad_handler
         )
-        result = json.loads(reg.dispatch("bad", {}))
+        result = orjson.loads(reg.dispatch("bad", {}))
         assert "error" in result
         assert "RuntimeError" in result["error"]
 
@@ -405,7 +405,7 @@ class TestSecretCaptureResultContract:
             "stored_as": "TENOR_API_KEY",
             "validated": False,
         }
-        assert "secret" not in json.dumps(result).lower()
+        assert "secret" not in orjson.dumps(result).decode('utf-8').lower()
 
 
 class TestThreadSafety:

@@ -359,9 +359,9 @@ def _render_tool_calls(tool_calls: Any) -> str:
             args_text = args
         elif args is not None:
             try:
-                import json
+                import orjson
 
-                args_text = json.dumps(args, ensure_ascii=False)
+                args_text = orjson.dumps(args).decode('utf-8')
             except Exception:
                 args_text = str(args)
         else:

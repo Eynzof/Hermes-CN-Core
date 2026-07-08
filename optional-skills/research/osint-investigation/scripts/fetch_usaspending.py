@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import argparse
 import csv
-import json
+import orjson
 import sys
 import time
 import urllib.request
@@ -58,12 +58,12 @@ _FIELDS = [
 def _post(body: dict) -> dict:
     req = urllib.request.Request(
         ENDPOINT,
-        data=json.dumps(body).encode("utf-8"),
+        data=orjson.dumps(body),
         headers={"Content-Type": "application/json", "User-Agent": "hermes-agent osint-investigation"},
         method="POST",
     )
     with urllib.request.urlopen(req, timeout=60) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+        return orjson.loads(resp.read().decode("utf-8"))
 
 
 def fetch(

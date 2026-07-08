@@ -1,7 +1,7 @@
 """Tests for Feishu interactive card approval buttons."""
 
 import importlib.util
-import json
+import orjson
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -115,7 +115,7 @@ class TestFeishuExecApproval:
         assert kwargs["msg_type"] == "interactive"
 
         # Verify card payload contains the command and buttons
-        card = json.loads(kwargs["payload"])
+        card = orjson.loads(kwargs["payload"])
         assert card["header"]["template"] == "orange"
         assert "rm -rf /important" in card["elements"][0]["content"]
         assert "dangerous deletion" in card["elements"][0]["content"]
@@ -179,7 +179,7 @@ class TestFeishuExecApproval:
                 chat_id="oc_12345", command=long_cmd, session_key="s"
             )
 
-        card = json.loads(mock_send.call_args[1]["payload"])
+        card = orjson.loads(mock_send.call_args[1]["payload"])
         content = card["elements"][0]["content"]
         assert "..." in content
         assert len(content) < 5000
@@ -243,7 +243,7 @@ class TestFeishuUpdatePrompt:
         assert kwargs["msg_type"] == "interactive"
         assert kwargs["metadata"] == {"thread_id": "th_1"}
 
-        card = json.loads(kwargs["payload"])
+        card = orjson.loads(kwargs["payload"])
         assert card["header"]["template"] == "orange"
         assert "Restore stashed changes after update?" in card["elements"][0]["content"]
         assert "Default: `y`" in card["elements"][0]["content"]

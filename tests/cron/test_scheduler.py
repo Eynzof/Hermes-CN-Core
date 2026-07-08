@@ -1,7 +1,7 @@
 """Tests for cron/scheduler.py — origin resolution, delivery routing, and error logging."""
 
 import contextlib
-import json
+import orjson
 import logging
 import os
 from unittest.mock import AsyncMock, patch, MagicMock
@@ -1862,7 +1862,7 @@ class TestRunJobConfigEnvVarExpansion:
     def test_legacy_agent_prefill_messages_file_is_loaded(self, tmp_path, monkeypatch):
         """Cron accepts the legacy agent.prefill_messages_file fallback."""
         prefill = [{"role": "system", "content": "legacy cron prefill"}]
-        (tmp_path / "prefill.json").write_text(json.dumps(prefill), encoding="utf-8")
+        (tmp_path / "prefill.json").write_text(orjson.dumps(prefill).decode('utf-8'), encoding="utf-8")
         (tmp_path / "config.yaml").write_text(
             "agent:\n"
             "  prefill_messages_file: prefill.json\n",
@@ -2238,7 +2238,7 @@ class TestRunJobSkillBacked:
             from tools.env_passthrough import register_env_passthrough
 
             register_env_passthrough(["NOTION_API_KEY"])
-            return json.dumps({"success": True, "content": "# notion\nUse Notion."})
+            return orjson.dumps({"success": True, "content": "# notion\nUse Notion."}).decode('utf-8')
 
         def _run_conversation(prompt):
             from tools.env_passthrough import get_all_passthrough
@@ -2296,7 +2296,7 @@ class TestRunJobSkillBacked:
             from tools.credential_files import register_credential_file
 
             register_credential_file("credentials/google_token.json")
-            return json.dumps({"success": True, "content": "# google-workspace\nUse Google."})
+            return orjson.dumps({"success": True, "content": "# google-workspace\nUse Google."}).decode('utf-8')
 
         def _run_conversation(prompt):
             from tools.credential_files import _get_registered
@@ -2360,7 +2360,7 @@ class TestRunJobSkillBacked:
                      "api_mode": "chat_completions",
                  },
              ), \
-             patch("tools.skills_tool.skill_view", return_value=json.dumps({"success": True, "content": "# Blogwatcher\nFollow this skill."})), \
+             patch("tools.skills_tool.skill_view", return_value=orjson.dumps({"success": True, "content": "# Blogwatcher\nFollow this skill."}).decode('utf-8')), \
              patch("run_agent.AIAgent") as mock_agent_cls:
             mock_agent = MagicMock()
             mock_agent.run_conversation.return_value = {"final_response": "ok"}
@@ -2391,7 +2391,7 @@ class TestRunJobSkillBacked:
         fake_db = MagicMock()
 
         def _skill_view(name):
-            return json.dumps({"success": True, "content": f"# {name}\nInstructions for {name}."})
+            return orjson.dumps({"success": True, "content": f"# {name}\nInstructions for {name}."}).decode('utf-8')
 
         with patch("cron.scheduler._hermes_home", tmp_path), \
              patch("cron.scheduler._resolve_origin", return_value=None), \
@@ -2848,7 +2848,7 @@ class TestBuildJobPromptMissingSkill:
     """Verify that a missing skill logs a warning and does not crash the job."""
 
     def _missing_skill_view(self, name: str) -> str:
-        return json.dumps({"success": False, "error": f"Skill '{name}' not found."})
+        return orjson.dumps({"success": False, "error": f"Skill '{name}' not found."}).decode('utf-8')
 
     def test_missing_skill_does_not_raise(self):
         """Job should run even when a referenced skill is not installed."""
@@ -2876,8 +2876,8 @@ class TestBuildJobPromptMissingSkill:
 
         def _mixed_skill_view(name: str) -> str:
             if name == "real-skill":
-                return json.dumps({"success": True, "content": "Real skill content."})
-            return json.dumps({"success": False, "error": f"Skill '{name}' not found."})
+                return orjson.dumps({"success": True, "content": "Real skill content."}).decode('utf-8')
+            return orjson.dumps({"success": False, "error": f"Skill '{name}' not found."}).decode('utf-8')
 
         with patch("tools.skills_tool.skill_view", side_effect=_mixed_skill_view):
             result = _build_job_prompt({"skills": ["ghost-skill", "real-skill"], "prompt": "go"})
@@ -2892,7 +2892,7 @@ class TestBuildJobPromptBumpUse:
         """bump_use is called for each successfully loaded skill."""
 
         def _skill_view(name: str) -> str:
-            return json.dumps({"success": True, "content": f"Content for {name}."})
+            return orjson.dumps({"success": True, "content": f"Content for {name}."}).decode('utf-8')
 
         with patch("tools.skills_tool.skill_view", side_effect=_skill_view), \
              patch("tools.skill_usage.bump_use") as mock_bump:
@@ -2907,7 +2907,7 @@ class TestBuildJobPromptBumpUse:
         """bump_use is NOT called when a skill fails to load."""
 
         def _missing_view(name: str) -> str:
-            return json.dumps({"success": False, "error": "not found"})
+            return orjson.dumps({"success": False, "error": "not found"}).decode('utf-8')
 
         with patch("tools.skills_tool.skill_view", side_effect=_missing_view), \
              patch("tools.skill_usage.bump_use") as mock_bump:
@@ -2919,7 +2919,7 @@ class TestBuildJobPromptBumpUse:
         """If bump_use raises, the prompt still builds — error is logged at DEBUG."""
 
         def _skill_view(name: str) -> str:
-            return json.dumps({"success": True, "content": "Works."})
+            return orjson.dumps({"success": True, "content": "Works."}).decode('utf-8')
 
         with patch("tools.skills_tool.skill_view", side_effect=_skill_view), \
              patch("tools.skill_usage.bump_use", side_effect=RuntimeError("boom")), \

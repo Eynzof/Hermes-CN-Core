@@ -7,7 +7,7 @@ cron job store.
 """
 
 import importlib
-import json
+import orjson
 from pathlib import Path
 from unittest.mock import patch
 
@@ -241,5 +241,5 @@ class TestDocsGenerator:
         index = mod.build_index()
         assert isinstance(index, list) and len(index) == len(CATALOG)
         # Each entry must round-trip through json and carry the surfaces.
-        json.dumps(index)
+        orjson.dumps(index).decode('utf-8')
         assert all("command" in e and "appUrl" in e for e in index)

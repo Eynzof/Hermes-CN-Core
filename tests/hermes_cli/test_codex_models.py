@@ -1,4 +1,4 @@
-import json
+import orjson
 from unittest.mock import patch
 
 from hermes_cli.codex_models import DEFAULT_CODEX_MODELS, get_codex_model_ids
@@ -9,8 +9,7 @@ def test_get_codex_model_ids_prioritizes_default_and_cache(tmp_path, monkeypatch
     codex_home.mkdir(parents=True, exist_ok=True)
     (codex_home / "config.toml").write_text('model = "gpt-5.2-codex"\n')
     (codex_home / "models_cache.json").write_text(
-        json.dumps(
-            {
+        orjson.dumps({
                 "models": [
                     {"slug": "gpt-5.3-codex", "priority": 20, "supported_in_api": True},
                     {"slug": "gpt-5.3-codex-spark", "priority": 6, "supported_in_api": False},
@@ -18,8 +17,7 @@ def test_get_codex_model_ids_prioritizes_default_and_cache(tmp_path, monkeypatch
                     {"slug": "gpt-5.4", "priority": 1, "supported_in_api": True},
                     {"slug": "gpt-5-hidden-codex", "priority": 2, "visibility": "hidden"},
                 ]
-            }
-        )
+            }).decode('utf-8')
     )
     monkeypatch.setenv("CODEX_HOME", str(codex_home))
 

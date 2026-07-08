@@ -14,7 +14,7 @@ Covers:
 """
 
 import asyncio
-import json
+import orjson
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -87,9 +87,7 @@ class TestDeliverOnlyBypassesAgent:
         adapter.handle_message = _capture
 
         app = _create_app(adapter)
-        body = json.dumps(
-            {"payload": {"user": "alice", "other": "bob"}}
-        ).encode()
+        body = orjson.dumps({"payload": {"user": "alice", "other": "bob"}})
 
         async with TestClient(TestServer(app)) as cli:
             resp = await cli.post(
@@ -211,7 +209,7 @@ class TestDeliverOnlyStatusCodes:
             data = await resp.json()
             # Generic error — no adapter-level detail leaks
             assert data["error"] == "Delivery failed"
-            assert "rate limited" not in json.dumps(data)
+            assert "rate limited" not in orjson.dumps(data).decode('utf-8')
 
     @pytest.mark.asyncio
     async def test_delivery_exception_returns_502(self):
@@ -240,7 +238,7 @@ class TestDeliverOnlyStatusCodes:
             data = await resp.json()
             assert data["error"] == "Delivery failed"
             # Exception message must not leak
-            assert "exploded" not in json.dumps(data)
+            assert "exploded" not in orjson.dumps(data).decode('utf-8')
 
     @pytest.mark.asyncio
     async def test_target_platform_not_connected_returns_502(self):

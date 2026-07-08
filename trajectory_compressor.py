@@ -30,7 +30,7 @@ Usage:
     python trajectory_compressor.py --input=data/my_run --sample_percent=10
 """
 
-import json
+import orjson
 import os
 import time
 import yaml
@@ -1076,9 +1076,9 @@ Write only the summary, starting with "[CONTEXT SUMMARY]:" prefix."""
                     line = line.strip()
                     if line:
                         try:
-                            entry = json.loads(line)
+                            entry = orjson.loads(line)
                             all_entries.append((file_path, line_num, entry))
-                        except json.JSONDecodeError as e:
+                        except orjson.JSONDecodeError as e:
                             self.logger.warning(f"Skipping invalid JSON at {file_path}:{line_num}: {e}")
         
         total_entries = len(all_entries)
@@ -1228,7 +1228,7 @@ Write only the summary, starting with "[CONTEXT SUMMARY]:" prefix."""
             
             with open(output_path, 'w', encoding='utf-8') as f:
                 for entry in sorted_entries:
-                    f.write(json.dumps(entry, ensure_ascii=False) + '\n')
+                    f.write(orjson.dumps(entry).decode('utf-8') + '\n')
         
         # Record end time
         self.aggregate_metrics.processing_end_time = datetime.now().isoformat()
@@ -1241,7 +1241,7 @@ Write only the summary, starting with "[CONTEXT SUMMARY]:" prefix."""
         if self.config.metrics_enabled:
             metrics_path = output_dir / self.config.metrics_output_file
             with open(metrics_path, 'w', encoding="utf-8") as f:
-                json.dump(self.aggregate_metrics.to_dict(), f, indent=2)
+                f.write(orjson.dumps(self.aggregate_metrics.to_dict(), option=orjson.OPT_INDENT_2).decode('utf-8'))
             console.print(f"\n💾 Metrics saved to {metrics_path}")
     
     def _print_summary(self):
@@ -1446,8 +1446,8 @@ def main(
                 line = line.strip()
                 if line:
                     try:
-                        entries.append(json.loads(line))
-                    except json.JSONDecodeError as e:
+                        entries.append(orjson.loads(line))
+                    except orjson.JSONDecodeError as e:
                         print(f"⚠️  Skipping invalid JSON at line {line_num}: {e}")
         
         total_entries = len(entries)
@@ -1476,7 +1476,7 @@ def main(
             temp_input_file = temp_input_dir / "trajectories.jsonl"
             with open(temp_input_file, 'w', encoding='utf-8') as f:
                 for entry in entries:
-                    f.write(json.dumps(entry, ensure_ascii=False) + '\n')
+                    f.write(orjson.dumps(entry).decode('utf-8') + '\n')
             
             # Initialize compressor and process
             compressor = TrajectoryCompressor(compression_config)
@@ -1530,8 +1530,8 @@ def main(
                             line = line.strip()
                             if line:
                                 try:
-                                    entries.append(json.loads(line))
-                                except json.JSONDecodeError:
+                                    entries.append(orjson.loads(line))
+                                except orjson.JSONDecodeError:
                                     pass
                     
                     total_original += len(entries)
@@ -1543,7 +1543,7 @@ def main(
                     temp_file = temp_input_dir / jsonl_file.name
                     with open(temp_file, 'w', encoding='utf-8') as f:
                         for entry in sampled_entries:
-                            f.write(json.dumps(entry, ensure_ascii=False) + '\n')
+                            f.write(orjson.dumps(entry).decode('utf-8') + '\n')
                 
                 print(f"   Sampled {total_sampled:,} from {total_original:,} total trajectories")
                 

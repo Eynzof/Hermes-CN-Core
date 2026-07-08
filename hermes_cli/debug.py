@@ -20,7 +20,7 @@ Currently supports:
 import datetime
 import gzip
 import io
-import json
+import orjson
 import logging
 import re
 import sys
@@ -91,14 +91,14 @@ def _load_pending() -> list[dict]:
     if not path.exists():
         return []
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = orjson.loads(path.read_text(encoding="utf-8"))
         if isinstance(data, list):
             # Filter to well-formed entries only
             return [
                 e for e in data
                 if isinstance(e, dict) and "url" in e and "expire_at" in e
             ]
-    except (OSError, ValueError, json.JSONDecodeError):
+    except (OSError, ValueError, orjson.JSONDecodeError):
         pass
     return []
 
@@ -108,7 +108,7 @@ def _save_pending(entries: list[dict]) -> None:
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(entries, indent=2), encoding="utf-8")
+        tmp.write_text(orjson.dumps(entries, option=orjson.OPT_INDENT_2).decode('utf-8'), encoding="utf-8")
         atomic_replace(tmp, path)
     except OSError:
         # Non-fatal — worst case the user has to run ``hermes debug delete``
@@ -695,7 +695,7 @@ def build_nous_bundle(bundle: dict[str, str], redact: bool = True) -> bytes:
         "created": created,
         "files": bundle,
     }
-    return gzip.compress(json.dumps(envelope).encode("utf-8"))
+    return gzip.compress(orjson.dumps(envelope))
 
 
 # ---------------------------------------------------------------------------

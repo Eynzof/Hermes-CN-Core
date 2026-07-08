@@ -30,7 +30,7 @@ block order preserved.  It FAILS on the current code (documenting the bug) and
 should PASS once block ordering is preserved on replay.
 """
 
-import json
+import orjson
 from types import SimpleNamespace
 
 import pytest
@@ -254,9 +254,7 @@ class TestInterleavedReplayCredentialRedaction:
                     "type": "function",
                     "function": {
                         "name": "terminal",
-                        "arguments": json.dumps(
-                            {"command": f"curl -H 'Authorization: Bearer {REDACTED}'"}
-                        ),
+                        "arguments": orjson.dumps({"command": f"curl -H 'Authorization: Bearer {REDACTED}'"}).decode('utf-8'),
                     },
                 },
                 {
@@ -264,7 +262,7 @@ class TestInterleavedReplayCredentialRedaction:
                     "type": "function",
                     "function": {
                         "name": "terminal",
-                        "arguments": json.dumps({"command": "echo done"}),
+                        "arguments": orjson.dumps({"command": "echo done"}).decode('utf-8'),
                     },
                 },
             ],

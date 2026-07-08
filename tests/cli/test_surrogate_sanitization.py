@@ -1,11 +1,11 @@
 """Tests for surrogate character sanitization in user input.
 
-Surrogates (U+D800..U+DFFF) are invalid in UTF-8 and crash json.dumps()
+Surrogates (U+D800..U+DFFF) are invalid in UTF-8 and crash orjson.dumps().decode('utf-8')
 inside the OpenAI SDK. They can appear via clipboard paste from rich-text
 editors like Google Docs, OR from byte-level reasoning models (xiaomi/mimo,
 kimi, glm) emitting lone halves in reasoning output.
 """
-import json
+import orjson
 import pytest
 from unittest.mock import MagicMock, patch
 
@@ -45,14 +45,14 @@ class TestSanitizeSurrogates:
         """Sanitized text must survive json.dumps + utf-8 encoding."""
         dirty = "data \udce2\udcb0 from clipboard"
         clean = _sanitize_surrogates(dirty)
-        serialized = json.dumps({"content": clean}, ensure_ascii=False)
+        serialized = orjson.dumps({"content": clean}).decode('utf-8')
         # Must not raise UnicodeEncodeError
         serialized.encode("utf-8")
 
     def test_original_surrogates_fail_encoding(self):
         """Confirm the original bug: surrogates crash utf-8 encoding."""
         dirty = "data \udce2 from clipboard"
-        serialized = json.dumps({"content": dirty}, ensure_ascii=False)
+        serialized = orjson.dumps({"content": dirty}).decode('utf-8')
         with pytest.raises(UnicodeEncodeError):
             serialized.encode("utf-8")
 
@@ -116,7 +116,7 @@ class TestReasoningFieldSurrogates:
     xiaomi/mimo, kimi, glm and similar byte-level tokenizers can emit lone
     surrogates in reasoning output. These fields are carried through to the
     API as `reasoning_content` on assistant messages, and must be sanitized
-    or json.dumps() crashes with 'utf-8' codec can't encode surrogates.
+    or orjson.dumps().decode('utf-8') crashes with 'utf-8' codec can't encode surrogates.
     """
 
     def test_reasoning_field_sanitized(self):
@@ -191,7 +191,7 @@ class TestReasoningFieldSurrogates:
         ]
         _sanitize_messages_surrogates(msgs)
         # Must round-trip through json + utf-8 encoding without error
-        payload = json.dumps(msgs, ensure_ascii=False).encode("utf-8")
+        payload = orjson.dumps(msgs)
         assert b"\\" not in payload[:0]  # sanity — just ensure we got bytes
         assert len(payload) > 0
 
@@ -262,7 +262,7 @@ class TestApiMessagesSurrogateRecovery:
 
     The bug this guards against: a surrogate in `reasoning_content` on
     api_messages (transformed from `reasoning` during build) crashes the
-    OpenAI SDK's json.dumps(), and the recovery block previously only
+    OpenAI SDK's orjson.dumps().decode('utf-8'), and the recovery block previously only
     sanitized the canonical `messages` list — not `api_messages` — so the
     next retry would send the same broken payload and fail 3 times.
     """
@@ -287,7 +287,7 @@ class TestApiMessagesSurrogateRecovery:
         assert _sanitize_messages_surrogates(api_messages) is True
         assert "\udce2" not in api_messages[1]["reasoning_content"]
         # Full payload must now serialize clean
-        json.dumps(api_messages, ensure_ascii=False).encode("utf-8")
+        orjson.dumps(api_messages)
 
 
 class TestRunConversationSurrogateSanitization:

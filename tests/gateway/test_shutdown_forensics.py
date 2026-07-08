@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import json
+import orjson
 import os
 import signal
 import sys
@@ -133,7 +133,7 @@ class TestFormatters:
     def test_context_as_json_round_trips(self):
         ctx = sf.snapshot_shutdown_context(signal.SIGTERM)
         payload = sf.context_as_json(ctx)
-        decoded = json.loads(payload)
+        decoded = orjson.loads(payload)
         assert decoded["pid"] == os.getpid()
         assert decoded["signal"] == "SIGTERM"
 
@@ -141,7 +141,7 @@ class TestFormatters:
         ctx = {"signal": "SIGTERM", "weird": object()}
         payload = sf.context_as_json(ctx)
         # default=str means objects get repr'd, JSON stays valid
-        decoded = json.loads(payload)
+        decoded = orjson.loads(payload)
         assert decoded["signal"] == "SIGTERM"
         assert "weird" in decoded
 

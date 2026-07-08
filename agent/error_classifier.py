@@ -539,13 +539,13 @@ def classify_api_error(
                 _raw_json = _metadata.get("raw") or ""
                 if isinstance(_raw_json, str) and _raw_json.strip():
                     try:
-                        import json
-                        _inner = json.loads(_raw_json)
+                        import orjson
+                        _inner = orjson.loads(_raw_json)
                         if isinstance(_inner, dict):
                             _inner_err = _inner.get("error", {})
                             if isinstance(_inner_err, dict):
                                 _metadata_msg = str(_inner_err.get("message") or "").lower()
-                    except (json.JSONDecodeError, TypeError):
+                    except (orjson.JSONDecodeError, TypeError):
                         pass
         if not _body_msg:
             _body_msg = str(body.get("message") or "").lower()
@@ -1455,10 +1455,10 @@ def _extract_error_code(body: dict) -> str:
         # surfaces ``invalid_encrypted_content`` this way).
         message = error_obj.get("message")
         if isinstance(message, str) and message.strip().startswith("{"):
-            import json
+            import orjson
             try:
-                inner = json.loads(message)
-            except (json.JSONDecodeError, TypeError):
+                inner = orjson.loads(message)
+            except (orjson.JSONDecodeError, TypeError):
                 inner = None
             nested_code = _code_from_payload(inner)
             if nested_code:

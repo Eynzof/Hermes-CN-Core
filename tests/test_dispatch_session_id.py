@@ -1,6 +1,6 @@
 """Tests that handle_function_call forwards session_id into registry.dispatch."""
 
-import json
+import orjson
 from unittest.mock import MagicMock, patch
 
 
@@ -10,7 +10,7 @@ def _make_registry(captured: dict):
 
     def _dispatch(name, args, **kwargs):
         captured.update(kwargs)
-        return json.dumps({"result": "ok"})
+        return orjson.dumps({"result": "ok"}).decode('utf-8')
 
     registry.dispatch.side_effect = _dispatch
     return registry

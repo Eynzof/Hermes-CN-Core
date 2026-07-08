@@ -1,6 +1,6 @@
 """Tests for ProviderProfile.fetch_models base_url override (issue #47009)."""
 
-import json
+import orjson
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from threading import Thread
 from unittest.mock import patch, MagicMock
@@ -15,7 +15,7 @@ class _FakeModelHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path.rstrip("/") == "/models":
-            body = json.dumps({"data": self.models}).encode()
+            body = orjson.dumps({"data": self.models})
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()

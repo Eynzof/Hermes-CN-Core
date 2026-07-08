@@ -17,7 +17,7 @@ Config in $HERMES_HOME/config.yaml (profile-scoped):
 
 from __future__ import annotations
 
-import json
+import orjson
 import logging
 import re
 from typing import Any, Dict, List
@@ -279,7 +279,7 @@ class HolographicMemoryProvider(MemoryProvider):
                     category=args.get("category", "general"),
                     tags=args.get("tags", ""),
                 )
-                return json.dumps({"fact_id": fact_id, "status": "added"})
+                return orjson.dumps({"fact_id": fact_id, "status": "added"}).decode('utf-8')
 
             elif action == "search":
                 results = retriever.search(
@@ -288,7 +288,7 @@ class HolographicMemoryProvider(MemoryProvider):
                     min_trust=float(args.get("min_trust", self._min_trust)),
                     limit=int(args.get("limit", 10)),
                 )
-                return json.dumps({"results": results, "count": len(results)})
+                return orjson.dumps({"results": results, "count": len(results)}).decode('utf-8')
 
             elif action == "probe":
                 results = retriever.probe(
@@ -296,7 +296,7 @@ class HolographicMemoryProvider(MemoryProvider):
                     category=args.get("category"),
                     limit=int(args.get("limit", 10)),
                 )
-                return json.dumps({"results": results, "count": len(results)})
+                return orjson.dumps({"results": results, "count": len(results)}).decode('utf-8')
 
             elif action == "related":
                 results = retriever.related(
@@ -304,7 +304,7 @@ class HolographicMemoryProvider(MemoryProvider):
                     category=args.get("category"),
                     limit=int(args.get("limit", 10)),
                 )
-                return json.dumps({"results": results, "count": len(results)})
+                return orjson.dumps({"results": results, "count": len(results)}).decode('utf-8')
 
             elif action == "reason":
                 entities = args.get("entities", [])
@@ -315,14 +315,14 @@ class HolographicMemoryProvider(MemoryProvider):
                     category=args.get("category"),
                     limit=int(args.get("limit", 10)),
                 )
-                return json.dumps({"results": results, "count": len(results)})
+                return orjson.dumps({"results": results, "count": len(results)}).decode('utf-8')
 
             elif action == "contradict":
                 results = retriever.contradict(
                     category=args.get("category"),
                     limit=int(args.get("limit", 10)),
                 )
-                return json.dumps({"results": results, "count": len(results)})
+                return orjson.dumps({"results": results, "count": len(results)}).decode('utf-8')
 
             elif action == "update":
                 updated = store.update_fact(
@@ -332,11 +332,11 @@ class HolographicMemoryProvider(MemoryProvider):
                     tags=args.get("tags"),
                     category=args.get("category"),
                 )
-                return json.dumps({"updated": updated})
+                return orjson.dumps({"updated": updated}).decode('utf-8')
 
             elif action == "remove":
                 removed = store.remove_fact(int(args["fact_id"]))
-                return json.dumps({"removed": removed})
+                return orjson.dumps({"removed": removed}).decode('utf-8')
 
             elif action == "list":
                 facts = store.list_facts(
@@ -344,7 +344,7 @@ class HolographicMemoryProvider(MemoryProvider):
                     min_trust=float(args.get("min_trust", 0.0)),
                     limit=int(args.get("limit", 10)),
                 )
-                return json.dumps({"facts": facts, "count": len(facts)})
+                return orjson.dumps({"facts": facts, "count": len(facts)}).decode('utf-8')
 
             else:
                 return tool_error(f"Unknown action: {action}")
@@ -359,7 +359,7 @@ class HolographicMemoryProvider(MemoryProvider):
             fact_id = int(args["fact_id"])
             helpful = args["action"] == "helpful"
             result = self._store.record_feedback(fact_id, helpful=helpful)
-            return json.dumps(result)
+            return orjson.dumps(result).decode('utf-8')
         except KeyError as exc:
             return tool_error(f"Missing required argument: {exc}")
         except Exception as exc:

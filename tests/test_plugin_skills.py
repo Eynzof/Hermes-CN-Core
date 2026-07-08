@@ -6,7 +6,7 @@ Covers:
 - tools/skills_tool qualified name dispatch in skill_view
 """
 
-import json
+import orjson
 import logging
 
 import pytest
@@ -189,7 +189,7 @@ class TestSkillViewQualifiedName:
         from tools.skills_tool import skill_view
 
         self._register_skill(tmp_path)
-        result = json.loads(skill_view("superpowers:writing-plans"))
+        result = orjson.loads(skill_view("superpowers:writing-plans"))
 
         assert result["success"] is True
         assert result["name"] == "superpowers:writing-plans"
@@ -198,14 +198,14 @@ class TestSkillViewQualifiedName:
     def test_invalid_namespace_returns_error(self, tmp_path):
         from tools.skills_tool import skill_view
 
-        result = json.loads(skill_view("bad.namespace:foo"))
+        result = orjson.loads(skill_view("bad.namespace:foo"))
         assert result["success"] is False
         assert "Invalid namespace" in result["error"]
 
     def test_empty_namespace_returns_error(self, tmp_path):
         from tools.skills_tool import skill_view
 
-        result = json.loads(skill_view(":foo"))
+        result = orjson.loads(skill_view(":foo"))
         assert result["success"] is False
         assert "Invalid namespace" in result["error"]
 
@@ -217,7 +217,7 @@ class TestSkillViewQualifiedName:
         (skill_dir / "SKILL.md").write_text("---\nname: my-local\ndescription: local\n---\nLocal body.\n")
         monkeypatch.setattr("tools.skills_tool.SKILLS_DIR", tmp_path / "local-skills")
 
-        result = json.loads(skill_view("my-local"))
+        result = orjson.loads(skill_view("my-local"))
         assert result["success"] is True
         assert result["name"] == "my-local"
 
@@ -225,7 +225,7 @@ class TestSkillViewQualifiedName:
         from tools.skills_tool import skill_view
 
         self._register_skill(tmp_path, name="foo")
-        result = json.loads(skill_view("superpowers:nonexistent"))
+        result = orjson.loads(skill_view("superpowers:nonexistent"))
 
         assert result["success"] is False
         assert "nonexistent" in result["error"]
@@ -234,7 +234,7 @@ class TestSkillViewQualifiedName:
     def test_plugin_not_found_falls_through(self, tmp_path):
         from tools.skills_tool import skill_view
 
-        result = json.loads(skill_view("nonexistent-plugin:some-skill"))
+        result = orjson.loads(skill_view("nonexistent-plugin:some-skill"))
         assert result["success"] is False
         assert "not found" in result["error"].lower()
 
@@ -249,7 +249,7 @@ class TestSkillViewQualifiedName:
         )
         monkeypatch.setattr("tools.skills_tool.SKILLS_DIR", local_skills)
 
-        result = json.loads(skill_view("productivity:ticktick"))
+        result = orjson.loads(skill_view("productivity:ticktick"))
 
         assert result["success"] is True
         assert result["name"] == "ticktick"
@@ -261,7 +261,7 @@ class TestSkillViewQualifiedName:
         md = self._register_skill(tmp_path)
         md.unlink()  # delete behind the registry's back
 
-        result = json.loads(skill_view("superpowers:writing-plans"))
+        result = orjson.loads(skill_view("superpowers:writing-plans"))
         assert result["success"] is False
         assert "no longer exists" in result["error"]
         assert self.pm.find_plugin_skill("superpowers:writing-plans") is None
@@ -298,7 +298,7 @@ class TestSkillViewPluginGuards:
         self._reg(tmp_path, "---\nname: foo\n---\nBody.\n")
         monkeypatch.setattr("hermes_cli.plugins._get_disabled_plugins", lambda: {"myplugin"})
 
-        result = json.loads(skill_view("myplugin:foo"))
+        result = orjson.loads(skill_view("myplugin:foo"))
         assert result["success"] is False
         assert "disabled" in result["error"].lower()
 
@@ -308,7 +308,7 @@ class TestSkillViewPluginGuards:
         other = "linux" if self._platform.startswith("darwin") else "macos"
         self._reg(tmp_path, f"---\nname: foo\nplatforms: [{other}]\n---\nBody.\n")
 
-        result = json.loads(skill_view("myplugin:foo"))
+        result = orjson.loads(skill_view("myplugin:foo"))
         assert result["success"] is False
         assert "not supported on this platform" in result["error"]
 
@@ -319,7 +319,7 @@ class TestSkillViewPluginGuards:
         # Attach caplog directly to the skill_view logger so capture is not
         # dependent on propagation state (xdist / test-order hardening).
         with caplog.at_level(logging.WARNING, logger="tools.skills_tool"):
-            result = json.loads(skill_view("myplugin:foo"))
+            result = orjson.loads(skill_view("myplugin:foo"))
 
         assert result["success"] is True
         assert "Ignore previous instructions" in result["content"]
@@ -353,14 +353,14 @@ class TestBundleContextBanner:
         from tools.skills_tool import skill_view
 
         self._setup_bundle(tmp_path)
-        result = json.loads(skill_view("myplugin:foo"))
+        result = orjson.loads(skill_view("myplugin:foo"))
         assert "Bundle context" in result["content"]
 
     def test_banner_lists_siblings_not_self(self, tmp_path):
         from tools.skills_tool import skill_view
 
         self._setup_bundle(tmp_path)
-        result = json.loads(skill_view("myplugin:foo"))
+        result = orjson.loads(skill_view("myplugin:foo"))
         content = result["content"]
 
         sibling_line = next(
@@ -375,7 +375,7 @@ class TestBundleContextBanner:
         from tools.skills_tool import skill_view
 
         self._setup_bundle(tmp_path, skills=("only-one",))
-        result = json.loads(skill_view("myplugin:only-one"))
+        result = orjson.loads(skill_view("myplugin:only-one"))
         assert "Bundle context" in result["content"]
         assert "Sibling skills:" not in result["content"]
 
@@ -383,5 +383,5 @@ class TestBundleContextBanner:
         from tools.skills_tool import skill_view
 
         self._setup_bundle(tmp_path)
-        result = json.loads(skill_view("myplugin:foo"))
+        result = orjson.loads(skill_view("myplugin:foo"))
         assert "foo body." in result["content"]

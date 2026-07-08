@@ -10,7 +10,7 @@ Uses a bare ``ToolRegistry()`` (not the module singleton) so the tests stay
 isolated from whatever the process has already discovered.
 """
 
-import json
+import orjson
 
 from tools.registry import ToolRegistry
 
@@ -34,10 +34,10 @@ def test_get_schema_json_round_trips_to_raw_schema():
 
     js = reg.get_schema_json("demo")
     assert js is not None
-    # Exactly json.dumps(schema, ensure_ascii=False) — round-trips to the raw
+    # Exactly orjson.dumps(schema).decode('utf-8') — round-trips to the raw
     # schema dict returned by get_schema().
-    assert json.loads(js) == reg.get_schema("demo")
-    assert js == json.dumps(reg.get_schema("demo"), ensure_ascii=False)
+    assert orjson.loads(js) == reg.get_schema("demo")
+    assert js == orjson.dumps(reg.get_schema("demo")).decode('utf-8')
 
 
 def test_get_schema_json_is_cached_by_identity():
@@ -74,7 +74,7 @@ def test_get_schema_json_reregister_invalidates_cache():
     reg.register(name="demo", toolset="demo_ts", schema=_schema("original"),
                  handler=lambda args, **kw: "{}")
     before = reg.get_schema_json("demo")
-    assert json.loads(before)["description"] == "original"
+    assert orjson.loads(before)["description"] == "original"
 
     # Re-register the same tool (same toolset → in-place replace) with a new
     # schema. A fresh ToolEntry is built, so the cached JSON invalidates for
@@ -83,7 +83,7 @@ def test_get_schema_json_reregister_invalidates_cache():
                  handler=lambda args, **kw: "{}")
     after = reg.get_schema_json("demo")
     assert after != before
-    assert json.loads(after)["description"] == "changed"
+    assert orjson.loads(after)["description"] == "changed"
 
 
 def test_get_schema_json_matches_get_schema_after_warm():
@@ -92,4 +92,4 @@ def test_get_schema_json_matches_get_schema_after_warm():
     reg.register(name="demo", toolset="demo_ts", schema=_schema(),
                  handler=lambda args, **kw: "{}")
     reg.get_schema_json("demo")  # warm the cache
-    assert json.loads(reg.get_schema_json("demo")) == reg.get_schema("demo")
+    assert orjson.loads(reg.get_schema_json("demo")) == reg.get_schema("demo")

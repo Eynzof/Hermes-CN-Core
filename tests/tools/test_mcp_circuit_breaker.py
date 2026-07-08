@@ -11,7 +11,7 @@ tripped for the lifetime of the process. These tests lock in the
 half-open / cooldown / reconnect-resets-breaker behavior that fixes
 that.
 """
-import json
+import orjson
 from unittest.mock import MagicMock
 
 import pytest
@@ -106,7 +106,7 @@ def test_circuit_breaker_half_opens_after_cooldown(monkeypatch, tmp_path):
 
         # Before cooldown: must short-circuit (no session call).
         result = handler({})
-        parsed = json.loads(result)
+        parsed = orjson.loads(result)
         assert "error" in parsed, parsed
         assert "unreachable" in parsed["error"].lower()
         assert call_count["n"] == 0, (
@@ -118,7 +118,7 @@ def test_circuit_breaker_half_opens_after_cooldown(monkeypatch, tmp_path):
         fake_now[0] += cooldown + 1.0
 
         result = handler({})
-        parsed = json.loads(result)
+        parsed = orjson.loads(result)
         assert parsed.get("result") == "ok", parsed
         assert call_count["n"] == 1, "half-open probe should invoke session"
 
@@ -163,14 +163,14 @@ def test_circuit_breaker_reopens_on_probe_failure(monkeypatch, tmp_path):
         # Advance past cooldown, run probe, expect failure.
         fake_now[0] += cooldown + 1.0
         result = handler({})
-        parsed = json.loads(result)
+        parsed = orjson.loads(result)
         assert "error" in parsed
         assert call_count["n"] == 1, "probe should invoke session once"
 
         # The probe failure must have re-armed the cooldown — another
         # immediate call should short-circuit, not invoke session again.
         result = handler({})
-        parsed = json.loads(result)
+        parsed = orjson.loads(result)
         assert "unreachable" in parsed.get("error", "").lower()
         assert call_count["n"] == 1, (
             "breaker should re-open and block further calls after probe failure"
@@ -216,7 +216,7 @@ def test_half_open_probe_on_dead_session_requests_reconnect(monkeypatch, tmp_pat
 
         handler = _make_tool_handler("srv", "tool1", 10.0)
         result = handler({})
-        parsed = json.loads(result)
+        parsed = orjson.loads(result)
 
         # Clean "reconnecting" error, and a reconnect was actually signalled.
         assert "reconnect" in parsed.get("error", "").lower(), parsed
@@ -260,7 +260,7 @@ def test_half_open_dead_session_recovers_after_reconnect(monkeypatch, tmp_path):
         handler = _make_tool_handler("srv", "tool1", 10.0)
 
         # Probe 1: transport down → reconnect requested, clean error.
-        parsed = json.loads(handler({}))
+        parsed = orjson.loads(handler({}))
         assert "reconnect" in parsed.get("error", "").lower(), parsed
 
         # Simulate the run loop rebuilding the session + resetting the breaker
@@ -274,7 +274,7 @@ def test_half_open_dead_session_recovers_after_reconnect(monkeypatch, tmp_path):
         fake_now[0] += cooldown + 1.0
 
         # Next call goes straight through.
-        parsed = json.loads(handler({}))
+        parsed = orjson.loads(handler({}))
         assert parsed.get("result") == "ok", parsed
     finally:
         _cleanup(mcp_tool, "srv")
@@ -339,7 +339,7 @@ def test_circuit_breaker_cleared_on_reconnect(monkeypatch, tmp_path):
         # retry itself didn't succeed, but the breaker state must
         # reflect the successful reconnect.
         assert result is not None
-        parsed = json.loads(result)
+        parsed = orjson.loads(result)
         assert parsed.get("needs_reauth") is True, parsed
 
         # Post-reconnect count was reset to 0, then the failing retry

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import base64
-import json
+import orjson
 import time
 
 from hermes_cli import auth
@@ -9,12 +9,12 @@ from hermes_cli import auth
 
 def _jwt_with_exp(exp: int) -> str:
     header = (
-        base64.urlsafe_b64encode(json.dumps({"alg": "none"}).encode())
+        base64.urlsafe_b64encode(orjson.dumps({"alg": "none"}))
         .decode()
         .rstrip("=")
     )
     payload = (
-        base64.urlsafe_b64encode(json.dumps({"exp": exp}).encode())
+        base64.urlsafe_b64encode(orjson.dumps({"exp": exp}))
         .decode()
         .rstrip("=")
     )

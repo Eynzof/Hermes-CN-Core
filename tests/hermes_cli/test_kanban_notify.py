@@ -533,7 +533,7 @@ async def test_notifier_uploads_artifacts_on_completion(kanban_home, tmp_path, m
         })
     finally:
         os.environ.pop("HERMES_KANBAN_TASK", None)
-    import json as _json
+    import orjson as _json
     assert _json.loads(out)["ok"] is True
 
     runner = object.__new__(GatewayRunner)

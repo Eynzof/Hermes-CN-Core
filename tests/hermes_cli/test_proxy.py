@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-import json
+import orjson
 import threading
 from pathlib import Path
 from typing import Any, Dict
@@ -61,10 +61,10 @@ def test_get_adapter_unknown_provider_raises():
 def _write_auth_store(hermes_home: Path, nous_state: Dict[str, Any]) -> Path:
     """Write an auth.json with the given nous state into a hermetic HERMES_HOME."""
     auth_path = hermes_home / "auth.json"
-    auth_path.write_text(json.dumps({
+    auth_path.write_text(orjson.dumps({
         "version": 1,
         "providers": {"nous": nous_state},
-    }))
+    }).decode('utf-8'))
     return auth_path
 
 
@@ -87,10 +87,10 @@ def test_nous_adapter_not_authenticated_when_no_auth_file(tmp_path, monkeypatch)
 
 def test_nous_adapter_not_authenticated_when_provider_missing(tmp_path, monkeypatch):
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
-    (tmp_path / "auth.json").write_text(json.dumps({
+    (tmp_path / "auth.json").write_text(orjson.dumps({
         "version": 1,
         "providers": {},
-    }))
+    }).decode('utf-8'))
     assert not NousPortalAdapter().is_authenticated()
 
 
@@ -250,7 +250,7 @@ def test_nous_adapter_quarantines_terminal_refresh_failure(tmp_path, monkeypatch
         with pytest.raises(RuntimeError, match="Refresh session has been revoked"):
             adapter.get_credential()
 
-    stored = json.loads((tmp_path / "auth.json").read_text())
+    stored = orjson.loads((tmp_path / "auth.json").read_text())
     nous_state = stored["providers"]["nous"]
     assert not nous_state.get("refresh_token")
     assert not nous_state.get("access_token")
@@ -352,7 +352,7 @@ def _write_xai_pool_entry(
 ) -> Path:
     """Write an xai-oauth pool entry into a hermetic HERMES_HOME."""
     auth_path = hermes_home / "auth.json"
-    auth_path.write_text(json.dumps({
+    auth_path.write_text(orjson.dumps({
         "version": 1,
         "providers": {},
         "credential_pool": {
@@ -369,7 +369,7 @@ def _write_xai_pool_entry(
                 }
             ]
         },
-    }))
+    }).decode('utf-8'))
     return auth_path
 
 
@@ -384,11 +384,11 @@ def test_xai_adapter_metadata():
 
 def test_xai_adapter_not_authenticated_when_no_pool_entry(tmp_path, monkeypatch):
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
-    (tmp_path / "auth.json").write_text(json.dumps({
+    (tmp_path / "auth.json").write_text(orjson.dumps({
         "version": 1,
         "providers": {},
         "credential_pool": {},
-    }))
+    }).decode('utf-8'))
     assert not XAIGrokAdapter().is_authenticated()
 
 
@@ -465,7 +465,7 @@ def test_xai_adapter_retry_rotates_pool_entry_on_429(tmp_path, monkeypatch):
 
     # Two pool entries so rotation has somewhere to go.
     auth_path = tmp_path / "auth.json"
-    auth_path.write_text(json.dumps({
+    auth_path.write_text(orjson.dumps({
         "version": 1,
         "providers": {},
         "credential_pool": {
@@ -492,7 +492,7 @@ def test_xai_adapter_retry_rotates_pool_entry_on_429(tmp_path, monkeypatch):
                 },
             ]
         },
-    }))
+    }).decode('utf-8'))
 
     # Refresh must NOT be called on the 429 path — guard against
     # the fix accidentally trying to refresh-on-rate-limit.

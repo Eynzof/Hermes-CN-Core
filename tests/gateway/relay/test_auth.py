@@ -18,7 +18,7 @@ Two layers:
 
 from __future__ import annotations
 
-import json
+import orjson
 
 from gateway.relay.auth import (
     DELIVERY_SIG_HEADER,
@@ -112,14 +112,14 @@ def test_verify_signature_constant_time_multi_secret():
 
 
 def test_delivery_signature_accepts_valid():
-    body = json.dumps({"type": "message", "event": {"text": "x"}})
+    body = orjson.dumps({"type": "message", "event": {"text": "x"}}).decode('utf-8')
     ts = 1700000000
     s = sign(f"{ts}.{body}", _SECRET)
     assert verify_delivery_signature(body, str(ts), s, [_SECRET], now=ts) is True
 
 
 def test_delivery_signature_tamper_rejected():
-    body = json.dumps({"type": "message", "event": {"text": "x"}})
+    body = orjson.dumps({"type": "message", "event": {"text": "x"}}).decode('utf-8')
     ts = 1700000000
     s = sign(f"{ts}.{body}", _SECRET)
     # A single changed body byte breaks the HMAC.

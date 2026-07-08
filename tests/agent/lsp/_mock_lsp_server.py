@@ -24,7 +24,7 @@ under whatever Python the test process picks up.
 """
 from __future__ import annotations
 
-import json
+import orjson
 import os
 import sys
 import time
@@ -44,11 +44,11 @@ def read_message():
         headers[k.strip().lower()] = v.strip()
     n = int(headers["content-length"])
     body = sys.stdin.buffer.read(n)
-    return json.loads(body.decode("utf-8"))
+    return orjson.loads(body.decode("utf-8"))
 
 
 def write_message(obj):
-    body = json.dumps(obj, separators=(",", ":")).encode("utf-8")
+    body = orjson.dumps(obj)
     sys.stdout.buffer.write(f"Content-Length: {len(body)}\r\n\r\n".encode("ascii"))
     sys.stdout.buffer.write(body)
     sys.stdout.buffer.flush()

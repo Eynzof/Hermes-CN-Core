@@ -9,7 +9,7 @@ Saves per-platform tool configuration to ~/.hermes/config.yaml under
 the `platform_toolsets` key.
 """
 
-import json as _json
+import orjson as _json
 import logging
 import os
 import shutil
@@ -1865,7 +1865,7 @@ def _estimate_tool_tokens() -> Dict[str, int]:
         if schema:
             # Mirror what gets sent to the API:
             # {"type": "function", "function": <schema>}
-            text = _json.dumps({"type": "function", "function": schema})
+            text = _json.dumps({"type": "function", "function": schema}).decode('utf-8')
             counts[name] = len(enc.encode(text))
     _tool_token_cache = counts
     return _tool_token_cache

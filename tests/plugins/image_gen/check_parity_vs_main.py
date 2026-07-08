@@ -27,7 +27,7 @@ Run from the PR worktree:
 """
 from __future__ import annotations
 
-import json
+import orjson
 import subprocess
 import sys
 from pathlib import Path
@@ -59,7 +59,7 @@ assert (PR_DIR / "tools" / "image_generation_tool.py").exists(), (
 
 
 SUBPROCESS_SCRIPT = r"""
-import json, os, sys, tempfile
+import orjson, os, sys, tempfile
 sys.path.insert(0, sys.argv[1])
 
 # Isolated HERMES_HOME so the config write is hermetic.
@@ -74,7 +74,7 @@ for k in (
 ):
     os.environ.pop(k, None)
 
-scenario_env = json.loads(sys.argv[2])
+scenario_env = orjson.loads(sys.argv[2])
 os.environ.update(scenario_env)
 
 config_yaml = sys.argv[3]
@@ -102,7 +102,7 @@ try:
     if raw is None:
         dispatch_kind = "legacy_fal"
     else:
-        parsed = json.loads(raw) if isinstance(raw, str) else raw
+        parsed = orjson.loads(raw) if isinstance(raw, str) else raw
         if isinstance(parsed, dict):
             if parsed.get("error_type") == "provider_not_registered":
                 dispatch_kind = "error"
@@ -134,7 +134,7 @@ shape = {
     "model": model,
     "error_present": error_text is not None,
 }
-print(json.dumps(shape))
+print(orjson.dumps(shape).decode('utf-8'))
 """
 
 
@@ -185,7 +185,7 @@ def _run_scenario(repo_path: Path, label: str, config_yaml: str, env: dict) -> d
             "-c",
             SUBPROCESS_SCRIPT,
             str(repo_path),
-            json.dumps(env),
+            orjson.dumps(env).decode('utf-8'),
             config_yaml,
         ],
         capture_output=True,
@@ -199,7 +199,7 @@ def _run_scenario(repo_path: Path, label: str, config_yaml: str, env: dict) -> d
             "stderr": out.stderr[-500:],
         }
     try:
-        return json.loads(out.stdout.strip().splitlines()[-1])
+        return orjson.loads(out.stdout.strip().splitlines()[-1])
     except Exception as exc:
         return {"error": f"could not parse output: {exc}", "stdout": out.stdout}
 

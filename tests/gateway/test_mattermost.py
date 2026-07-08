@@ -1,5 +1,5 @@
 """Tests for Mattermost platform adapter."""
-import json
+import orjson
 import os
 import time
 import pytest
@@ -500,7 +500,7 @@ class TestMattermostWebSocketParsing:
         event = {
             "event": "posted",
             "data": {
-                "post": json.dumps(post_data),  # double-encoded JSON string
+                "post": orjson.dumps(post_data).decode('utf-8'),  # double-encoded JSON string
                 "channel_type": "O",
                 "sender_name": "@alice",
             },
@@ -525,7 +525,7 @@ class TestMattermostWebSocketParsing:
         event = {
             "event": "posted",
             "data": {
-                "post": json.dumps(post_data),
+                "post": orjson.dumps(post_data).decode('utf-8'),
                 "channel_type": "O",
             },
         }
@@ -557,7 +557,7 @@ class TestMattermostWebSocketParsing:
         event = {
             "event": "posted",
             "data": {
-                "post": json.dumps(post_data),
+                "post": orjson.dumps(post_data).decode('utf-8'),
                 "channel_type": "O",
             },
         }
@@ -577,7 +577,7 @@ class TestMattermostWebSocketParsing:
         event = {
             "event": "posted",
             "data": {
-                "post": json.dumps(post_data),
+                "post": orjson.dumps(post_data).decode('utf-8'),
                 "channel_type": "D",
                 "sender_name": "@bob",
             },
@@ -601,7 +601,7 @@ class TestMattermostWebSocketParsing:
         event = {
             "event": "posted",
             "data": {
-                "post": json.dumps(post_data),
+                "post": orjson.dumps(post_data).decode('utf-8'),
                 "channel_type": "O",
                 "sender_name": "@alice",
             },
@@ -648,7 +648,7 @@ class TestMattermostMentionBehavior:
         return {
             "event": "posted",
             "data": {
-                "post": json.dumps(post_data),
+                "post": orjson.dumps(post_data).decode('utf-8'),
                 "channel_type": channel_type,
                 "sender_name": "@alice",
             },
@@ -791,7 +791,7 @@ class TestMattermostDedup:
         event = {
             "event": "posted",
             "data": {
-                "post": json.dumps(post_data),
+                "post": orjson.dumps(post_data).decode('utf-8'),
                 "channel_type": "O",
                 "sender_name": "@alice",
             },
@@ -818,7 +818,7 @@ class TestMattermostDedup:
             event = {
                 "event": "posted",
                 "data": {
-                    "post": json.dumps(post_data),
+                    "post": orjson.dumps(post_data).decode('utf-8'),
                     "channel_type": "O",
                     "sender_name": "@alice",
                 },
@@ -900,7 +900,7 @@ class TestMattermostMediaTypes:
         return {
             "event": "posted",
             "data": {
-                "post": json.dumps(post_data),
+                "post": orjson.dumps(post_data).decode('utf-8'),
                 "channel_type": "O",
                 "sender_name": "@alice",
             },
@@ -992,7 +992,7 @@ async def test_mattermost_top_level_channel_post_is_thread_root():
     event = {
         "event": "posted",
         "data": {
-            "post": json.dumps(post_data),
+            "post": orjson.dumps(post_data).decode('utf-8'),
             "channel_type": "O",
             "sender_name": "@alice",
         },
@@ -1023,7 +1023,7 @@ async def test_mattermost_dm_post_does_not_seed_thread_root():
     event = {
         "event": "posted",
         "data": {
-            "post": json.dumps(post_data),
+            "post": orjson.dumps(post_data).decode('utf-8'),
             "channel_type": "D",
             "sender_name": "@alice",
         },

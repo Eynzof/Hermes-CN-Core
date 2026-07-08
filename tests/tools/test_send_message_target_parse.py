@@ -5,7 +5,7 @@ skips wholesale when optional Telegram dependencies are not installed.
 """
 
 import asyncio
-import json
+import orjson
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -68,7 +68,7 @@ def test_send_message_routes_whatsapp_group_jid_without_home_fallback() -> None:
          patch("model_tools._run_async", side_effect=_run_async_immediately), \
          patch("tools.send_message_tool._send_to_platform", new=AsyncMock(return_value={"success": True})) as send_mock, \
          patch("gateway.mirror.mirror_to_session", return_value=True):
-        result = json.loads(
+        result = orjson.loads(
             send_message_tool(
                 {
                     "action": "send",

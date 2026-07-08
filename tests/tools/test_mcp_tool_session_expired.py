@@ -10,7 +10,7 @@ Before the #13383 fix, this class of failure fell through as a plain
 tool error with no recovery path, so every subsequent call on the
 affected MCP server failed until the gateway was manually restarted.
 """
-import json
+import orjson
 import threading
 from unittest.mock import MagicMock
 
@@ -169,7 +169,7 @@ def test_call_tool_handler_reconnects_on_session_expired(monkeypatch, tmp_path):
     try:
         handler = _make_tool_handler("wpcom", "wpcom-mcp-content-authoring", 10.0)
         out = handler({"slug": "hello"})
-        parsed = json.loads(out)
+        parsed = orjson.loads(out)
         # Retry succeeded — no error surfaced to caller.
         assert "error" not in parsed, (
             f"Expected retry to succeed after reconnect; got: {parsed}"
@@ -211,7 +211,7 @@ def test_call_tool_handler_non_session_expired_error_falls_through(
     try:
         handler = _make_tool_handler("srv", "mytool", 10.0)
         out = handler({"arg": "v"})
-        parsed = json.loads(out)
+        parsed = orjson.loads(out)
         # Generic error path surfaced the failure.
         assert "MCP call failed" in parsed.get("error", "")
         # Reconnect was NOT triggered for this unrelated failure.
@@ -361,7 +361,7 @@ def test_non_tool_handlers_also_reconnect_on_session_expired(
             out = handler({"name": "p1"})
         else:
             out = handler({})
-        parsed = json.loads(out)
+        parsed = orjson.loads(out)
         assert "error" not in parsed, (
             f"{op_label}: expected retry success, got {parsed}"
         )

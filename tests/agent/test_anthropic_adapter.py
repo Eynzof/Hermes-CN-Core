@@ -1,6 +1,6 @@
 """Tests for agent/anthropic_adapter.py — Anthropic Messages API adapter."""
 
-import json
+import orjson
 import sys
 import time
 from types import SimpleNamespace
@@ -235,13 +235,13 @@ class TestReadClaudeCodeCredentials:
     def test_reads_valid_credentials(self, tmp_path, monkeypatch):
         cred_file = tmp_path / ".claude" / ".credentials.json"
         cred_file.parent.mkdir(parents=True)
-        cred_file.write_text(json.dumps({
+        cred_file.write_text(orjson.dumps({
             "claudeAiOauth": {
                 "accessToken": "sk-ant-oat01-token",
                 "refreshToken": "sk-ant-oat01-refresh",
                 "expiresAt": int(time.time() * 1000) + 3600_000,
             }
-        }))
+        }).decode('utf-8'))
         monkeypatch.setattr("agent.anthropic_adapter.Path.home", lambda: tmp_path)
         creds = read_claude_code_credentials()
         assert creds is not None
@@ -251,7 +251,7 @@ class TestReadClaudeCodeCredentials:
 
     def test_ignores_primary_api_key_for_native_anthropic_resolution(self, tmp_path, monkeypatch):
         claude_json = tmp_path / ".claude.json"
-        claude_json.write_text(json.dumps({"primaryApiKey": "sk-ant-api03-primary"}))
+        claude_json.write_text(orjson.dumps({"primaryApiKey": "sk-ant-api03-primary"}).decode('utf-8'))
         monkeypatch.setattr("agent.anthropic_adapter.Path.home", lambda: tmp_path)
 
         creds = read_claude_code_credentials()
@@ -264,16 +264,16 @@ class TestReadClaudeCodeCredentials:
     def test_returns_none_for_missing_oauth_key(self, tmp_path, monkeypatch):
         cred_file = tmp_path / ".claude" / ".credentials.json"
         cred_file.parent.mkdir(parents=True)
-        cred_file.write_text(json.dumps({"someOtherKey": {}}))
+        cred_file.write_text(orjson.dumps({"someOtherKey": {}}).decode('utf-8'))
         monkeypatch.setattr("agent.anthropic_adapter.Path.home", lambda: tmp_path)
         assert read_claude_code_credentials() is None
 
     def test_returns_none_for_empty_access_token(self, tmp_path, monkeypatch):
         cred_file = tmp_path / ".claude" / ".credentials.json"
         cred_file.parent.mkdir(parents=True)
-        cred_file.write_text(json.dumps({
+        cred_file.write_text(orjson.dumps({
             "claudeAiOauth": {"accessToken": "", "refreshToken": "x"}
-        }))
+        }).decode('utf-8'))
         monkeypatch.setattr("agent.anthropic_adapter.Path.home", lambda: tmp_path)
         assert read_claude_code_credentials() is None
 
@@ -304,7 +304,7 @@ class TestResolveAnthropicToken:
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         monkeypatch.delenv("ANTHROPIC_TOKEN", raising=False)
         monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
-        (tmp_path / ".claude.json").write_text(json.dumps({"primaryApiKey": "sk-ant-api03-primary"}))
+        (tmp_path / ".claude.json").write_text(orjson.dumps({"primaryApiKey": "sk-ant-api03-primary"}).decode('utf-8'))
         monkeypatch.setattr("agent.anthropic_adapter.Path.home", lambda: tmp_path)
 
         assert resolve_anthropic_token() is None
@@ -343,13 +343,13 @@ class TestResolveAnthropicToken:
         monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
         cred_file = tmp_path / ".claude" / ".credentials.json"
         cred_file.parent.mkdir(parents=True)
-        cred_file.write_text(json.dumps({
+        cred_file.write_text(orjson.dumps({
             "claudeAiOauth": {
                 "accessToken": "cc-auto-token",
                 "refreshToken": "refresh",
                 "expiresAt": int(time.time() * 1000) + 3600_000,
             }
-        }))
+        }).decode('utf-8'))
         monkeypatch.setattr("agent.anthropic_adapter.Path.home", lambda: tmp_path)
         assert resolve_anthropic_token() == "cc-auto-token"
 
@@ -484,13 +484,13 @@ class TestResolveAnthropicToken:
         monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
         cred_file = tmp_path / ".claude" / ".credentials.json"
         cred_file.parent.mkdir(parents=True)
-        cred_file.write_text(json.dumps({
+        cred_file.write_text(orjson.dumps({
             "claudeAiOauth": {
                 "accessToken": "cc-auto-token",
                 "refreshToken": "refresh-token",
                 "expiresAt": int(time.time() * 1000) + 3600_000,
             }
-        }))
+        }).decode('utf-8'))
         monkeypatch.setattr("agent.anthropic_adapter.Path.home", lambda: tmp_path)
 
         assert resolve_anthropic_token() == "cc-auto-token"
@@ -500,7 +500,7 @@ class TestResolveAnthropicToken:
         monkeypatch.setenv("ANTHROPIC_TOKEN", "sk-ant-oat01-static-token")
         monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
         claude_json = tmp_path / ".claude.json"
-        claude_json.write_text(json.dumps({"primaryApiKey": "sk-ant-api03-managed-key"}))
+        claude_json.write_text(orjson.dumps({"primaryApiKey": "sk-ant-api03-managed-key"}).decode('utf-8'))
         monkeypatch.setattr("agent.anthropic_adapter.Path.home", lambda: tmp_path)
 
         assert resolve_anthropic_token() == "sk-ant-oat01-static-token"
@@ -520,11 +520,11 @@ class TestRefreshOauthToken:
             "expiresAt": int(time.time() * 1000) - 3600_000,
         }
 
-        mock_response = json.dumps({
+        mock_response = orjson.dumps({
             "access_token": "new-token-abc",
             "refresh_token": "new-refresh-456",
             "expires_in": 7200,
-        }).encode()
+        })
 
         with patch("urllib.request.urlopen") as mock_urlopen:
             mock_ctx = MagicMock()
@@ -540,7 +540,7 @@ class TestRefreshOauthToken:
         # Verify credentials were written back
         cred_file = tmp_path / ".claude" / ".credentials.json"
         assert cred_file.exists()
-        written = json.loads(cred_file.read_text())
+        written = orjson.loads(cred_file.read_text())
         assert written["claudeAiOauth"]["accessToken"] == "new-token-abc"
         assert written["claudeAiOauth"]["refreshToken"] == "new-refresh-456"
 
@@ -561,7 +561,7 @@ class TestWriteClaudeCodeCredentials:
         _write_claude_code_credentials("tok", "ref", 12345)
         cred_file = tmp_path / ".claude" / ".credentials.json"
         assert cred_file.exists()
-        data = json.loads(cred_file.read_text())
+        data = orjson.loads(cred_file.read_text())
         assert data["claudeAiOauth"]["accessToken"] == "tok"
         assert data["claudeAiOauth"]["refreshToken"] == "ref"
         assert data["claudeAiOauth"]["expiresAt"] == 12345
@@ -571,9 +571,9 @@ class TestWriteClaudeCodeCredentials:
         cred_dir = tmp_path / ".claude"
         cred_dir.mkdir()
         cred_file = cred_dir / ".credentials.json"
-        cred_file.write_text(json.dumps({"otherField": "keep-me"}))
+        cred_file.write_text(orjson.dumps({"otherField": "keep-me"}).decode('utf-8'))
         _write_claude_code_credentials("new-tok", "new-ref", 99999)
-        data = json.loads(cred_file.read_text())
+        data = orjson.loads(cred_file.read_text())
         assert data["otherField"] == "keep-me"
         assert data["claudeAiOauth"]["accessToken"] == "new-tok"
 
@@ -606,13 +606,13 @@ class TestResolveWithRefresh:
         # Set up expired creds with a refresh token
         cred_file = tmp_path / ".claude" / ".credentials.json"
         cred_file.parent.mkdir(parents=True)
-        cred_file.write_text(json.dumps({
+        cred_file.write_text(orjson.dumps({
             "claudeAiOauth": {
                 "accessToken": "expired-tok",
                 "refreshToken": "valid-refresh",
                 "expiresAt": int(time.time() * 1000) - 3600_000,
             }
-        }))
+        }).decode('utf-8'))
         monkeypatch.setattr("agent.anthropic_adapter.Path.home", lambda: tmp_path)
 
         # Mock refresh to succeed
@@ -628,13 +628,13 @@ class TestResolveWithRefresh:
 
         cred_file = tmp_path / ".claude" / ".credentials.json"
         cred_file.parent.mkdir(parents=True)
-        cred_file.write_text(json.dumps({
+        cred_file.write_text(orjson.dumps({
             "claudeAiOauth": {
                 "accessToken": "expired-claude-creds-token",
                 "refreshToken": "valid-refresh",
                 "expiresAt": int(time.time() * 1000) - 3600_000,
             }
-        }))
+        }).decode('utf-8'))
         monkeypatch.setattr("agent.anthropic_adapter.Path.home", lambda: tmp_path)
 
         with patch("agent.anthropic_adapter._refresh_oauth_token", return_value="refreshed-token"):
@@ -658,13 +658,13 @@ class TestRunOauthSetupToken:
         # Pre-create credential files that will be found after subprocess
         cred_file = tmp_path / ".claude" / ".credentials.json"
         cred_file.parent.mkdir(parents=True)
-        cred_file.write_text(json.dumps({
+        cred_file.write_text(orjson.dumps({
             "claudeAiOauth": {
                 "accessToken": "from-cred-file",
                 "refreshToken": "refresh",
                 "expiresAt": int(time.time() * 1000) + 3600_000,
             }
-        }))
+        }).decode('utf-8'))
         monkeypatch.setattr("agent.anthropic_adapter.Path.home", lambda: tmp_path)
 
         with patch("subprocess.run") as mock_run:
@@ -1822,7 +1822,7 @@ class TestNormalizeResponse:
         assert nr.finish_reason == "tool_calls"
         assert len(nr.tool_calls) == 1
         assert nr.tool_calls[0].name == "search"
-        assert json.loads(nr.tool_calls[0].arguments) == {"query": "test"}
+        assert orjson.loads(nr.tool_calls[0].arguments) == {"query": "test"}
 
     def test_thinking_response(self):
         blocks = [

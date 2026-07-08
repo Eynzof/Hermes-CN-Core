@@ -7,7 +7,7 @@ written a transcript row yet.
 
 from __future__ import annotations
 
-import json
+import orjson
 import logging
 import os
 import time
@@ -145,7 +145,7 @@ class _FileLock:
 def _read_entries(path: Path) -> list[dict[str, Any]]:
     try:
         with open(path, "r", encoding="utf-8") as fh:
-            data = json.load(fh)
+            data = orjson.loads(fh.read())
     except FileNotFoundError:
         return []
     except Exception:
@@ -161,7 +161,7 @@ def _write_entries(path: Path, entries: list[dict[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f"{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
     with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump({"entries": entries}, fh, sort_keys=True)
+        fh.write(orjson.dumps({"entries": entries}, option=orjson.OPT_SORT_KEYS).decode('utf-8'))
     os.replace(tmp, path)
 
 

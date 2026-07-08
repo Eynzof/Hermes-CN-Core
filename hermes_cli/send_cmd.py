@@ -27,7 +27,7 @@ Design notes:
 from __future__ import annotations
 
 import argparse
-import json
+import orjson
 import sys
 from pathlib import Path
 from typing import Optional
@@ -106,14 +106,14 @@ def _emit_result(
     parse it, decide success/failure, and format accordingly.
     """
     try:
-        payload = json.loads(result_json) if result_json else {}
-    except json.JSONDecodeError:
+        payload = orjson.loads(result_json) if result_json else {}
+    except orjson.JSONDecodeError:
         # Shouldn't happen with the shared tool, but be defensive — pass the
         # raw string through so the user can still see what went wrong.
         payload = {"error": "invalid JSON from send_message_tool", "raw": result_json}
 
     if json_mode:
-        print(json.dumps(payload, indent=2))
+        print(orjson.dumps(payload, option=orjson.OPT_INDENT_2).decode('utf-8'))
     elif quiet:
         pass
     else:
@@ -127,7 +127,7 @@ def _emit_result(
                 print("sent")
         else:
             # Unknown shape — dump it so nothing is silently dropped.
-            print(json.dumps(payload, indent=2))
+            print(orjson.dumps(payload, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
     if payload.get("error"):
         return _FAILURE_EXIT
@@ -177,7 +177,7 @@ def _list_targets(platform_filter: Optional[str], *, json_mode: bool) -> int:
         platforms = filtered
 
     if json_mode:
-        print(json.dumps({"platforms": platforms}, indent=2, default=str))
+        print(orjson.dumps({"platforms": platforms}, default=str, option=orjson.OPT_INDENT_2).decode('utf-8'))
         return _SUCCESS_EXIT
 
     if not any(platforms.values()):

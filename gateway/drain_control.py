@@ -50,7 +50,7 @@ both degrade to the original presence-only behaviour — never fail-closed.
 from __future__ import annotations
 
 import functools
-import json
+import orjson
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
@@ -267,7 +267,7 @@ def read_drain_request(*, home: Optional[Path] = None) -> Optional[dict[str, Any
         _log.warning("drain-control: failed to read %s: %s", path, e)
         return None
     try:
-        data = json.loads(raw)
+        data = orjson.loads(raw)
     except (ValueError, TypeError):
         return {}
     return data if isinstance(data, dict) else {}

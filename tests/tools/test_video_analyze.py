@@ -1,7 +1,7 @@
 """Tests for video_analyze tool in tools/vision_tools.py."""
 
 import asyncio
-import json
+import orjson
 from unittest.mock import AsyncMock, MagicMock, patch
 
 
@@ -133,7 +133,7 @@ class TestHandleVideoAnalyze:
         monkeypatch.setenv("AUXILIARY_VISION_MODEL", "")
 
         with patch("tools.vision_tools.video_analyze_tool", new_callable=AsyncMock) as mock_tool:
-            mock_tool.return_value = json.dumps({"success": True, "analysis": "test"})
+            mock_tool.return_value = orjson.dumps({"success": True, "analysis": "test"}).decode('utf-8')
             result = _handle_video_analyze({"video_url": str(video_file), "question": "what is this?"})
             # Should return an awaitable (coroutine)
             assert asyncio.iscoroutine(result)
@@ -145,7 +145,7 @@ class TestHandleVideoAnalyze:
         monkeypatch.setenv("AUXILIARY_VISION_MODEL", "other-model")
 
         with patch("tools.vision_tools.video_analyze_tool", new_callable=AsyncMock) as mock_tool:
-            mock_tool.return_value = json.dumps({"success": True, "analysis": "ok"})
+            mock_tool.return_value = orjson.dumps({"success": True, "analysis": "ok"}).decode('utf-8')
             asyncio.get_event_loop().run_until_complete(
                 _handle_video_analyze({"video_url": "/tmp/test.mp4", "question": "test"})
             )
@@ -157,7 +157,7 @@ class TestHandleVideoAnalyze:
         monkeypatch.setenv("AUXILIARY_VISION_MODEL", "google/gemini-flash")
 
         with patch("tools.vision_tools.video_analyze_tool", new_callable=AsyncMock) as mock_tool:
-            mock_tool.return_value = json.dumps({"success": True, "analysis": "ok"})
+            mock_tool.return_value = orjson.dumps({"success": True, "analysis": "ok"}).decode('utf-8')
             asyncio.get_event_loop().run_until_complete(
                 _handle_video_analyze({"video_url": "/tmp/test.mp4", "question": "test"})
             )
@@ -189,14 +189,14 @@ class TestVideoAnalyzeTool:
             with patch("tools.vision_tools.extract_content_or_reasoning", return_value="A short video showing a demo."):
                 result = self._run(video_analyze_tool(str(video), "What is this?"))
 
-        data = json.loads(result)
+        data = orjson.loads(result)
         assert data["success"] is True
         assert "demo" in data["analysis"].lower()
 
     def test_local_file_not_found(self, tmp_path):
         """Non-existent file raises appropriate error."""
         result = self._run(video_analyze_tool("/nonexistent/video.mp4", "What?"))
-        data = json.loads(result)
+        data = orjson.loads(result)
         assert data["success"] is False
         assert "invalid video source" in data["analysis"].lower()
 
@@ -206,7 +206,7 @@ class TestVideoAnalyzeTool:
         video.write_bytes(b"\x00" * 100)
 
         result = self._run(video_analyze_tool(str(video), "What is this?"))
-        data = json.loads(result)
+        data = orjson.loads(result)
         assert data["success"] is False
         assert "unsupported video format" in data["analysis"].lower()
 
@@ -221,7 +221,7 @@ class TestVideoAnalyzeTool:
             mock_encode.return_value = "data:video/mp4;base64," + "A" * (_MAX_VIDEO_BASE64_BYTES + 1)
             result = self._run(video_analyze_tool(str(video), "What?"))
 
-        data = json.loads(result)
+        data = orjson.loads(result)
         assert data["success"] is False
         assert "too large" in data["analysis"].lower()
 
@@ -233,7 +233,7 @@ class TestVideoAnalyzeTool:
         with patch("tools.interrupt.is_interrupted", return_value=True):
             result = self._run(video_analyze_tool(str(video), "What?"))
 
-        data = json.loads(result)
+        data = orjson.loads(result)
         assert data["success"] is False
 
     def test_empty_response_retries(self, tmp_path):
@@ -255,7 +255,7 @@ class TestVideoAnalyzeTool:
             with patch("tools.vision_tools.extract_content_or_reasoning", side_effect=["", "Video analysis result."]):
                 result = self._run(video_analyze_tool(str(video), "What?"))
 
-        data = json.loads(result)
+        data = orjson.loads(result)
         assert data["success"] is True
         assert call_count == 2  # Initial call + retry
 
@@ -272,7 +272,7 @@ class TestVideoAnalyzeTool:
             with patch("tools.vision_tools.extract_content_or_reasoning", return_value="OK"):
                 result = self._run(video_analyze_tool(f"file://{video}", "What?"))
 
-        data = json.loads(result)
+        data = orjson.loads(result)
         assert data["success"] is True
 
     def test_api_message_format(self, tmp_path):

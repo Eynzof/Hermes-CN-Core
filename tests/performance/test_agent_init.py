@@ -51,7 +51,7 @@ def test_import_time_trace(timing_context, perf_output_dir):
 # ---------------------------------------------------------------------------
 
 _LAZY_IMPORT_PROBE = r'''
-import sys, json, time
+import sys, orjson, time
 
 def self_registering_tool_modules_loaded():
     import tools.registry as R
@@ -74,7 +74,7 @@ file_defs = model_tools.get_tool_definitions(enabled_toolsets=["file"], quiet_mo
 file_loaded = "tools.file_tools" in sys.modules
 browser_after_file = "tools.browser_tool" in sys.modules
 
-print("RESULT " + json.dumps({
+print("RESULT " + orjson.dumps({
     "import_ms": import_ms,
     "self_reg_loaded_after_import": loaded_after_import,
     "empty_defs": len(empty_defs),
@@ -82,7 +82,7 @@ print("RESULT " + json.dumps({
     "file_defs": len(file_defs),
     "file_tools_loaded": file_loaded,
     "browser_after_file": browser_after_file,
-}))
+}).decode('utf-8'))
 '''
 
 
@@ -92,7 +92,7 @@ def test_import_time_lazy(timing_context):
     and toolset selection must gate which tool modules get imported.
     """
     import subprocess
-    import json
+    import orjson
 
     with timing_context.measure("import_lazy"):
         result = subprocess.run(
@@ -102,7 +102,7 @@ def test_import_time_lazy(timing_context):
     assert result.returncode == 0, f"probe failed:\n{result.stderr[-2000:]}"
     lines = [ln for ln in result.stdout.splitlines() if ln.startswith("RESULT ")]
     assert lines, f"probe produced no RESULT line:\n{result.stdout[-2000:]}"
-    data = json.loads(lines[-1][len("RESULT "):])
+    data = orjson.loads(lines[-1][len("RESULT "):])
     print(f"\n  Lazy import probe: {data}")
 
     # THE core invariant: importing run_agent imports ZERO self-registering

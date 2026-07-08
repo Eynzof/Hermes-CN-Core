@@ -5,7 +5,7 @@ configurable resource limits (CPU, memory, disk), and optional filesystem
 persistence via bind mounts.
 """
 
-import json
+import orjson
 import logging
 import os
 import re
@@ -413,7 +413,7 @@ def _image_uses_init_entrypoint(docker_exe: str, image: str) -> bool:
     if not raw or raw == "null":
         return False
     try:
-        entrypoint = json.loads(raw)
+        entrypoint = orjson.loads(raw)
     except (ValueError, TypeError):
         return False
     if isinstance(entrypoint, str):

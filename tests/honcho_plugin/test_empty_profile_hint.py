@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import json
+import orjson
 from unittest.mock import MagicMock
 
 from plugins.memory.honcho import HonchoMemoryProvider
@@ -34,7 +34,7 @@ class TestEmptyProfileHint:
     def test_returns_hint_not_bare_error_message(self):
         provider = _make_provider()
         raw = provider.handle_tool_call("honcho_profile", {})
-        payload = json.loads(raw)
+        payload = orjson.loads(raw)
         assert payload["result"] == "No profile facts available yet."
         assert "hint" in payload
         assert "not an error" in payload["hint"].lower()
@@ -42,20 +42,20 @@ class TestEmptyProfileHint:
     def test_hint_mentions_warmup_when_turn_count_below_cadence(self):
         provider = _make_provider(turn_count=1, dialectic_cadence=3)
         raw = provider.handle_tool_call("honcho_profile", {})
-        payload = json.loads(raw)
+        payload = orjson.loads(raw)
         assert "turn" in payload["hint"].lower()
         assert "cadence" in payload["hint"].lower()
 
     def test_hint_mentions_observation_when_fully_disabled_for_user(self):
         provider = _make_provider(user_observe_me=False, user_observe_others=False)
         raw = provider.handle_tool_call("honcho_profile", {"peer": "user"})
-        payload = json.loads(raw)
+        payload = orjson.loads(raw)
         assert "observation is disabled" in payload["hint"].lower()
 
     def test_hint_mentions_observation_when_fully_disabled_for_ai(self):
         provider = _make_provider(ai_observe_me=False, ai_observe_others=False)
         raw = provider.handle_tool_call("honcho_profile", {"peer": "ai"})
-        payload = json.loads(raw)
+        payload = orjson.loads(raw)
         assert "observation is disabled" in payload["hint"].lower()
         assert "ai" in payload["hint"]
 
@@ -63,7 +63,7 @@ class TestEmptyProfileHint:
         """Mature session with observation on + enough turns = generic hint."""
         provider = _make_provider(turn_count=50, dialectic_cadence=1)
         raw = provider.handle_tool_call("honcho_profile", {})
-        payload = json.loads(raw)
+        payload = orjson.loads(raw)
         assert "hint" in payload
         # Generic hint mentions self-hosted as a common cause
         assert any(word in payload["hint"].lower() for word in ("self-hosted", "dialectic"))
@@ -71,7 +71,7 @@ class TestEmptyProfileHint:
     def test_hint_suggests_alternative_tools(self):
         provider = _make_provider()
         raw = provider.handle_tool_call("honcho_profile", {})
-        payload = json.loads(raw)
+        payload = orjson.loads(raw)
         # User-facing suggestion to try honcho_reasoning or honcho_search
         assert "honcho_reasoning" in payload["hint"] or "honcho_search" in payload["hint"]
 
@@ -80,6 +80,6 @@ class TestEmptyProfileHint:
         provider = _make_provider()
         provider._manager.get_peer_card.return_value = ["Fact 1", "Fact 2"]
         raw = provider.handle_tool_call("honcho_profile", {})
-        payload = json.loads(raw)
+        payload = orjson.loads(raw)
         assert payload["result"] == ["Fact 1", "Fact 2"]
         assert "hint" not in payload

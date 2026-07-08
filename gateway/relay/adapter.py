@@ -378,12 +378,12 @@ class RelayAdapter(BasePlatformAdapter):
         (e.g. a PING, which the connector already answers at the edge and never
         forwards).
         """
-        import json
+        import orjson
 
         from gateway.platforms.base import MessageType
 
         try:
-            payload = json.loads(bytes(getattr(forward, "body", b"")).decode("utf-8"))
+            payload = orjson.loads(bytes(getattr(forward, "body", b"")).decode("utf-8"))
         except Exception:  # noqa: BLE001
             return None
         if not isinstance(payload, dict):

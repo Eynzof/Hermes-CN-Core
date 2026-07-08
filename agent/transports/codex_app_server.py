@@ -16,7 +16,7 @@ runtime is not selected.
 
 from __future__ import annotations
 
-import json
+import orjson
 import os
 import queue
 import subprocess
@@ -299,7 +299,7 @@ class CodexAppServerClient:
         if self._proc.stdin is None:
             raise RuntimeError("codex app-server stdin not available")
         try:
-            self._proc.stdin.write((json.dumps(obj) + "\n").encode("utf-8"))
+            self._proc.stdin.write((orjson.dumps(obj).decode('utf-8') + "\n").encode("utf-8"))
             self._proc.stdin.flush()
         except (BrokenPipeError, ValueError) as exc:
             raise RuntimeError(
@@ -317,8 +317,8 @@ class CodexAppServerClient:
                 if not line:
                     continue
                 try:
-                    msg = json.loads(line)
-                except json.JSONDecodeError:
+                    msg = orjson.loads(line)
+                except orjson.JSONDecodeError:
                     # Non-JSON output is unexpected on stdout; tracing belongs
                     # on stderr. Surface it via stderr buffer for diagnostics.
                     with self._stderr_lock:

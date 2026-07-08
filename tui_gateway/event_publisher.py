@@ -19,7 +19,7 @@ Actual ``send`` calls run on a daemon thread so the TeeTransport's
 
 from __future__ import annotations
 
-import json
+import orjson
 import logging
 import queue
 import threading
@@ -91,7 +91,7 @@ class WsPublisherTransport:
         if self._dead or self._ws is None or self._worker is None:
             return False
 
-        line = json.dumps(obj, ensure_ascii=False)
+        line = orjson.dumps(obj).decode('utf-8')
 
         try:
             self._q.put_nowait(line)

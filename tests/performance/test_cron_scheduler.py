@@ -4,7 +4,7 @@ All tests run in OFFLINE mode — no real background tasks.
 Tests measure job parsing, lock I/O, and serialization performance.
 """
 
-import json
+import orjson
 import os
 import sys
 import time
@@ -42,7 +42,7 @@ def test_load_jobs_small(timing_context, tmp_path):
         {"id": f"job_{i}", "schedule": "0 9 * * *", "task": f"echo 'task {i}'"}
         for i in range(5)
     ]
-    jobs_file.write_text(json.dumps({"jobs": small_jobs}), encoding="utf-8")
+    jobs_file.write_text(orjson.dumps({"jobs": small_jobs}).decode('utf-8'), encoding="utf-8")
 
     # Patch the jobs file path
     with patch.object(cron_jobs, '_jobs_lock_file', return_value=tmp_path / ".tick.lock"):
@@ -50,7 +50,7 @@ def test_load_jobs_small(timing_context, tmp_path):
             with timing_context.measure("load_jobs_small"):
                 for _ in range(100):
                     # Direct JSON parsing for perf measurement
-                    data = json.loads(jobs_file.read_text(encoding="utf-8"))
+                    data = orjson.loads(jobs_file.read_text(encoding="utf-8"))
                     _ = data["jobs"]
 
     total_ms = timing_context.summary().get("load_jobs_small", {}).get("total_ms", 0)
@@ -62,11 +62,11 @@ def test_load_jobs_small(timing_context, tmp_path):
 @pytest.mark.perf
 def test_load_jobs_large(timing_context, tmp_path, sample_jobs):
     """Measure load_jobs with a large jobs.json (50 jobs)."""
-    serialized = json.dumps({"jobs": sample_jobs})
+    serialized = orjson.dumps({"jobs": sample_jobs}).decode('utf-8')
 
     with timing_context.measure("load_jobs_large"):
         for _ in range(100):
-            data = json.loads(serialized)
+            data = orjson.loads(serialized)
             _ = data["jobs"]
 
     total_ms = timing_context.summary().get("load_jobs_large", {}).get("total_ms", 0)
@@ -97,11 +97,11 @@ def test_lock_file_io_timing(timing_context, tmp_path):
 @pytest.mark.perf
 def test_job_serialization_timing(timing_context, sample_jobs):
     """Measure serialization/deserialization of job definitions."""
-    serialized = json.dumps({"jobs": sample_jobs})
+    serialized = orjson.dumps({"jobs": sample_jobs}).decode('utf-8')
 
     with timing_context.measure("job_serialization"):
         for _ in range(50):
-            parsed = json.loads(serialized)
+            parsed = orjson.loads(serialized)
             for job in parsed["jobs"]:
                 _ = job["id"]
                 _ = job["schedule"]
@@ -117,11 +117,11 @@ def test_job_serialization_timing(timing_context, sample_jobs):
 @pytest.mark.perf_baseline
 def test_tick_loop_baseline(timing_context, tmp_path, sample_jobs):
     """Baseline measurement for JSON parsing (simulating tick cycle)."""
-    serialized = json.dumps({"jobs": sample_jobs})
+    serialized = orjson.dumps({"jobs": sample_jobs}).decode('utf-8')
 
     with timing_context.measure("full_tick_cycle"):
         for _ in range(10):
-            data = json.loads(serialized)
+            data = orjson.loads(serialized)
             _ = [j for j in data["jobs"] if j["enabled"]]
 
     total_ms = timing_context.summary().get("full_tick_cycle", {}).get("total_ms", 0)

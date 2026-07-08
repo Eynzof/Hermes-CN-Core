@@ -10,7 +10,7 @@ the absolute path plus the resume hint for the live session.
 
 from __future__ import annotations
 
-import json
+import orjson
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -73,7 +73,7 @@ def test_save_conversation_writes_under_hermes_home(hermes_home, tmp_path, monke
     files = list(saved_dir.glob("hermes_conversation_*.json"))
     assert len(files) == 1, files
 
-    payload = json.loads(files[0].read_text())
+    payload = orjson.loads(files[0].read_text())
     assert payload["model"] == "test-model"
     assert payload["session_id"] == "20260101_120000_abc123"
     assert payload["messages"] == [

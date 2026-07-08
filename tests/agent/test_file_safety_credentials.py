@@ -141,7 +141,7 @@ def test_read_file_tool_blocks_relative_path_under_terminal_cwd(
     be blocked, even though ``get_read_block_error``'s own ``resolve()``
     is anchored at the (different) Python process cwd.
     """
-    import json
+    import orjson
 
     import tools.file_tools as ft
 
@@ -154,7 +154,7 @@ def test_read_file_tool_blocks_relative_path_under_terminal_cwd(
         ft, "_get_live_tracking_cwd", lambda task_id="default": None
     )
 
-    out = json.loads(ft.read_file_tool("auth.json"))
+    out = orjson.loads(ft.read_file_tool("auth.json"))
     assert "error" in out
     assert "credential store" in out["error"]
 
@@ -163,19 +163,17 @@ def test_read_file_tool_blocks_nested_google_oauth_path(
     fake_home, tmp_path, monkeypatch
 ):
     """The real read_file tool must not return Gemini OAuth token material."""
-    import json
+    import orjson
 
     import tools.file_tools as ft
 
     oauth = _create(fake_home, Path("auth") / "google_oauth.json")
     oauth.write_text(
-        json.dumps(
-            {
+        orjson.dumps({
                 "refresh": "REFRESH_TOKEN_MARKER",
                 "access": "ACCESS_TOKEN_MARKER",
                 "email": "user@example.com",
-            }
-        ),
+            }).decode('utf-8'),
         encoding="utf-8",
     )
     monkeypatch.chdir(tmp_path)
@@ -183,16 +181,16 @@ def test_read_file_tool_blocks_nested_google_oauth_path(
         ft, "_get_live_tracking_cwd", lambda task_id="default": None
     )
 
-    out = json.loads(ft.read_file_tool(str(oauth), task_id="google-oauth-test"))
+    out = orjson.loads(ft.read_file_tool(str(oauth), task_id="google-oauth-test"))
     assert "error" in out
     assert "credential store" in out["error"]
-    assert "REFRESH_TOKEN_MARKER" not in json.dumps(out)
-    assert "ACCESS_TOKEN_MARKER" not in json.dumps(out)
+    assert "REFRESH_TOKEN_MARKER" not in orjson.dumps(out).decode('utf-8')
+    assert "ACCESS_TOKEN_MARKER" not in orjson.dumps(out).decode('utf-8')
 
 
 def test_search_tool_blocks_direct_auth_json_path(fake_home, monkeypatch):
     """Searching a credential file directly must not invoke the search backend."""
-    import json
+    import orjson
 
     import tools.file_tools as ft
 
@@ -204,14 +202,14 @@ def test_search_tool_blocks_direct_auth_json_path(fake_home, monkeypatch):
 
     monkeypatch.setattr(ft, "_get_file_ops", fail_if_called)
 
-    out = json.loads(
+    out = orjson.loads(
         ft.search_tool(
             pattern="SEARCH_DIRECT_AUTH_SECRET",
             path=str(auth),
             task_id="search-direct-auth-json",
         )
     )
-    raw = json.dumps(out)
+    raw = orjson.dumps(out).decode('utf-8')
     assert "error" in out
     assert "credential store" in out["error"]
     assert "SEARCH_DIRECT_AUTH_SECRET" not in raw
@@ -219,7 +217,7 @@ def test_search_tool_blocks_direct_auth_json_path(fake_home, monkeypatch):
 
 def test_search_tool_filters_credential_results(fake_home, tmp_path, monkeypatch):
     """Directory searches omit credential and MCP-token result entries."""
-    import json
+    import orjson
 
     from tools.file_operations import SearchMatch, SearchResult
     import tools.file_tools as ft
@@ -264,8 +262,8 @@ def test_search_tool_filters_credential_results(fake_home, tmp_path, monkeypatch
         path=str(fake_home),
         task_id="search-filter-credentials",
     )
-    out = json.loads(search_response.split("\n\n[Hint:", 1)[0])
-    raw = json.dumps(out)
+    out = orjson.loads(search_response.split("\n\n[Hint:", 1)[0])
+    raw = orjson.dumps(out).decode('utf-8')
     returned_paths = {
         match["path"] for match in out.get("matches", [])
     } | set(out.get("files", []))

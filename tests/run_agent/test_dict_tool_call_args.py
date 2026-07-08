@@ -1,4 +1,4 @@
-import json
+import orjson
 from types import SimpleNamespace
 
 
@@ -54,7 +54,7 @@ def test_tool_call_validation_accepts_dict_arguments(monkeypatch):
     )
     monkeypatch.setattr(
         "run_agent.handle_function_call",
-        lambda name, args, task_id=None, **kwargs: json.dumps({"ok": True, "args": args}),
+        lambda name, args, task_id=None, **kwargs: orjson.dumps({"ok": True, "args": args}).decode('utf-8'),
     )
 
     agent = AIAgent(

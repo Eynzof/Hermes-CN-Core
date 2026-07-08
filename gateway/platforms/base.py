@@ -2613,8 +2613,8 @@ class BasePlatformAdapter(ABC):
 
         if mode == "verbose":
             if event.args:
-                import json
-                args_str = json.dumps(event.args, ensure_ascii=False, default=str)
+                import orjson
+                args_str = orjson.dumps(event.args, default=str).decode('utf-8')
                 if preview_max_len > 0 and len(args_str) > preview_max_len:
                     args_str = args_str[:preview_max_len - 3] + "..."
                 return f"{emoji} {event.tool_name}({list(event.args.keys())})\n{args_str}"
@@ -4972,7 +4972,7 @@ class BasePlatformAdapter(ABC):
                     try:
                         from tools.tts_tool import text_to_speech_tool, check_tts_requirements
                         if check_tts_requirements():
-                            import json as _json
+                            import orjson as _json
                             speech_text = self.prepare_tts_text(text_content)
                             if not speech_text:
                                 raise ValueError("Empty text after markdown cleanup")

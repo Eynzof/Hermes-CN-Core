@@ -631,7 +631,7 @@ class TestEdgeCases:
 
     def test_overview_pricing_sets_are_lists(self, db):
         """models_with/without_pricing should be JSON-serializable lists."""
-        import json as _json
+        import orjson as _json
         db.create_session(session_id="s1", source="cli", model="gpt-4o")
         db.create_session(session_id="s2", source="cli", model="my-custom")
         db._conn.commit()
@@ -643,7 +643,7 @@ class TestEdgeCases:
         assert isinstance(overview["models_with_pricing"], list)
         assert isinstance(overview["models_without_pricing"], list)
         # Should be JSON-serializable
-        _json.dumps(report["overview"])  # would raise if sets present
+        _json.dumps(report["overview"]).decode('utf-8')  # would raise if sets present
 
     def test_mixed_commercial_and_custom_models(self, db):
         """Mix of commercial and custom models: only commercial ones get costs."""

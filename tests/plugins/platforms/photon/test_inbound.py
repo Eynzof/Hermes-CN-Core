@@ -7,7 +7,7 @@ sidecar-event parsing without spawning the Node sidecar or binding ports.
 from __future__ import annotations
 
 import base64
-import json
+import orjson
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -317,7 +317,7 @@ async def test_on_inbound_line_dispatches_and_dedups(
     adapter = _make_adapter(monkeypatch)
     captured = _capture(adapter, monkeypatch)
 
-    line = json.dumps(_dm_event("ping", msg_id="dup-1"))
+    line = orjson.dumps(_dm_event("ping", msg_id="dup-1")).decode('utf-8')
     await adapter._on_inbound_line(line)
     await adapter._on_inbound_line(line)  # same messageId -> deduped
 

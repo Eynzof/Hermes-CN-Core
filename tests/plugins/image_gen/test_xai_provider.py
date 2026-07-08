@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-import json
+import orjson
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -250,7 +250,7 @@ class TestGenerate:
 
         response = req_lib.Response()
         response.status_code = 401
-        response._content = json.dumps({"error": {"message": "Invalid API key"}}).encode()
+        response._content = orjson.dumps({"error": {"message": "Invalid API key"}})
         response.headers["Content-Type"] = "application/json"
 
         response.raise_for_status = MagicMock(

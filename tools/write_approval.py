@@ -42,7 +42,7 @@ web dashboard.
 
 from __future__ import annotations
 
-import json
+import orjson
 import logging
 import os
 import time
@@ -144,7 +144,7 @@ def stage_write(subsystem: str, payload: Dict[str, Any],
         d.mkdir(parents=True, exist_ok=True)
         path = d / f"{pid}.json"
         tmp = path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp.write_text(orjson.dumps(record, option=orjson.OPT_INDENT_2).decode('utf-8'), encoding="utf-8")
         os.replace(tmp, path)
     except Exception as e:  # pragma: no cover - disk failure path
         logger.error("Failed to stage pending %s write: %s", subsystem, e, exc_info=True)
@@ -159,7 +159,7 @@ def list_pending(subsystem: str) -> List[Dict[str, Any]]:
     records: List[Dict[str, Any]] = []
     for p in d.glob("*.json"):
         try:
-            records.append(json.loads(p.read_text(encoding="utf-8")))
+            records.append(orjson.loads(p.read_text(encoding="utf-8")))
         except Exception:
             logger.warning("Skipping unreadable pending record: %s", p)
     records.sort(key=lambda r: r.get("created_at", 0))
@@ -172,7 +172,7 @@ def get_pending(subsystem: str, pending_id: str) -> Optional[Dict[str, Any]]:
     if not path.exists():
         return None
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        return orjson.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return None
 

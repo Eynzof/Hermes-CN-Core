@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import json
+import orjson
 import threading
 import time
 from types import SimpleNamespace
@@ -309,7 +309,7 @@ def test_honcho_tools_eager_init_failure_does_not_leave_ready_manager(monkeypatc
     assert provider._sync_thread is None
     assert not background_started.is_set()
 
-    result = json.loads(provider.handle_tool_call("honcho_profile", {"peer": "user"}))
+    result = orjson.loads(provider.handle_tool_call("honcho_profile", {"peer": "user"}))
     assert "could not be initialized" in result["error"]
     assert provider._manager is None
 
@@ -350,7 +350,7 @@ def test_honcho_tools_lazy_hooks_do_not_prestart_background_init(monkeypatch):
 
     monkeypatch.setattr(HonchoMemoryProvider, "_do_session_init", fake_session_init)
 
-    result = json.loads(provider.handle_tool_call("honcho_profile", {"peer": "user"}))
+    result = orjson.loads(provider.handle_tool_call("honcho_profile", {"peer": "user"}))
 
     assert result == {"result": ["ready"]}
     assert init_calls == ["session-1"]

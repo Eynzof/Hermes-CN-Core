@@ -8,7 +8,7 @@ sticker image on every send. Descriptions are concise (1-2 sentences).
 Cache location: ~/.hermes/sticker_cache.json
 """
 
-import json
+import orjson
 import os
 import tempfile
 import time
@@ -30,8 +30,8 @@ def _load_cache() -> dict:
     """Load the sticker cache from disk."""
     if CACHE_PATH.exists():
         try:
-            return json.loads(CACHE_PATH.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
+            return orjson.loads(CACHE_PATH.read_text(encoding="utf-8"))
+        except (orjson.JSONDecodeError, OSError):
             return {}
     return {}
 
@@ -44,7 +44,7 @@ def _save_cache(cache: dict) -> None:
     )
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(cache, f, indent=2, ensure_ascii=False)
+            f.write(orjson.dumps(cache, option=orjson.OPT_INDENT_2).decode('utf-8'))
             f.flush()
             os.fsync(f.fileno())
         os.replace(tmp_path, str(CACHE_PATH))

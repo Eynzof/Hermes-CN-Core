@@ -30,7 +30,7 @@ is easier to lazy-install than a wheels-with-Rust-extension dependency.
 from __future__ import annotations
 
 import hashlib
-import json
+import orjson
 import logging
 import os
 import platform
@@ -113,8 +113,8 @@ def _read_disk_cache(cache_key: _CacheKey, ttl_seconds: float,
     path = _disk_cache_path(home_path)
     try:
         with open(path, "r", encoding="utf-8") as f:
-            payload = json.load(f)
-    except (OSError, json.JSONDecodeError):
+            payload = orjson.loads(f.read())
+    except (OSError, orjson.JSONDecodeError):
         return None
     if not isinstance(payload, dict):
         return None
@@ -156,7 +156,7 @@ def _write_disk_cache(cache_key: _CacheKey, entry: "_CachedFetch",
         )
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as f:
-                json.dump(payload, f)
+                f.write(orjson.dumps(payload).decode('utf-8'))
             os.chmod(tmp, 0o600)
             os.replace(tmp, path)
         except BaseException:
@@ -548,8 +548,8 @@ def _run_bws_list(
         return {}, ["bws returned no output (empty project?)"]
 
     try:
-        payload = json.loads(raw)
-    except json.JSONDecodeError as exc:
+        payload = orjson.loads(raw)
+    except orjson.JSONDecodeError as exc:
         raise RuntimeError(f"bws returned non-JSON output: {exc}") from exc
 
     if not isinstance(payload, list):

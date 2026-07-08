@@ -21,7 +21,7 @@ Never touches: ~/.hermes/logs/ or any system directory.
 
 from __future__ import annotations
 
-import json
+import orjson
 import logging
 import shutil
 from datetime import datetime, timezone
@@ -110,12 +110,12 @@ def load_tracked() -> List[Dict[str, Any]]:
         return []
 
     try:
-        return json.loads(tf.read_text())
-    except (json.JSONDecodeError, ValueError):
+        return orjson.loads(tf.read_text())
+    except (orjson.JSONDecodeError, ValueError):
         bak = tf.with_suffix(".json.bak")
         if bak.exists():
             try:
-                data = json.loads(bak.read_text())
+                data = orjson.loads(bak.read_text())
                 _log("WARN: tracked.json corrupted — restored from .bak")
                 return data
             except Exception:
@@ -129,7 +129,7 @@ def save_tracked(tracked: List[Dict[str, Any]]) -> None:
     tf = get_tracked_file()
     tf.parent.mkdir(parents=True, exist_ok=True)
     tmp = tf.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(tracked, indent=2))
+    tmp.write_text(orjson.dumps(tracked, option=orjson.OPT_INDENT_2).decode('utf-8'))
     if tf.exists():
         shutil.copy2(tf, tf.with_suffix(".json.bak"))
     tmp.replace(tf)

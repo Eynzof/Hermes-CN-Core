@@ -60,7 +60,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
-import json
+import orjson
 import logging
 import os
 import secrets
@@ -174,7 +174,7 @@ _DUMMY_HASH = hash_password("dummy-password-for-constant-time-verify")
 
 
 def _sign(payload: dict, secret: bytes) -> str:
-    raw = json.dumps(payload, separators=(",", ":")).encode()
+    raw = orjson.dumps(payload)
     sig = hmac.new(secret, raw, hashlib.sha256).digest()
     return base64.urlsafe_b64encode(raw + sig).decode()
 
@@ -188,7 +188,7 @@ def _unsign(token: str, secret: bytes) -> Optional[dict]:
         expected = hmac.new(secret, raw, hashlib.sha256).digest()
         if not hmac.compare_digest(sig, expected):
             return None
-        return json.loads(raw)
+        return orjson.loads(raw)
     except Exception:
         return None
 

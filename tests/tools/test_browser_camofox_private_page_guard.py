@@ -8,7 +8,7 @@ page state and, on a non-local backend, could otherwise leak the content of a
 private/internal page the terminal itself can't reach.
 """
 
-import json
+import orjson
 
 import pytest
 
@@ -75,7 +75,7 @@ def test_private_page_blocks_camofox_reads(monkeypatch, _session, tool_call, act
     monkeypatch.setattr(browser_camofox, "_get_raw", fail_http)
     monkeypatch.setattr(browser_camofox, "_post", fail_http)
 
-    out = json.loads(tool_call())
+    out = orjson.loads(tool_call())
 
     assert out["success"] is False
     assert PRIVATE_URL in out["error"]
@@ -92,7 +92,7 @@ def test_snapshot_still_runs_when_page_is_public(monkeypatch, _session):
         lambda path, params=None: {"snapshot": "- heading \"Hi\" [e1]", "refsCount": 1},
     )
 
-    out = json.loads(browser_camofox.camofox_snapshot(task_id="t1"))
+    out = orjson.loads(browser_camofox.camofox_snapshot(task_id="t1"))
 
     assert out["success"] is True
     assert out["element_count"] == 1
@@ -113,7 +113,7 @@ def test_guard_inactive_does_not_probe(monkeypatch, _session):
         lambda path, params=None: {"snapshot": "- heading \"Hi\" [e1]", "refsCount": 1},
     )
 
-    out = json.loads(browser_camofox.camofox_snapshot(task_id="t1"))
+    out = orjson.loads(browser_camofox.camofox_snapshot(task_id="t1"))
 
     assert out["success"] is True
     assert out["element_count"] == 1

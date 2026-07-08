@@ -46,7 +46,7 @@ is present, so the gateway will not attempt to instantiate the adapter.
 
 import asyncio
 import base64
-import json
+import orjson
 import logging
 import os
 import random
@@ -314,9 +314,9 @@ class SimplexAdapter(BasePlatformAdapter):
                             break
                         self._last_ws_activity = time.time()
                         try:
-                            msg = json.loads(raw)
+                            msg = orjson.loads(raw)
                             await self._handle_event(msg)
-                        except json.JSONDecodeError:
+                        except orjson.JSONDecodeError:
                             logger.debug("SimpleX WS: invalid JSON: %.100s", raw)
                         except Exception:
                             logger.exception("SimpleX WS: error handling event")
@@ -751,7 +751,7 @@ class SimplexAdapter(BasePlatformAdapter):
             logger.debug("SimpleX: WS send dropped (not connected)")
             return
         try:
-            await ws.send(json.dumps(payload))
+            await ws.send(orjson.dumps(payload).decode('utf-8'))
         except Exception as e:
             logger.warning("SimpleX: WS send error: %s", e)
 
@@ -765,7 +765,7 @@ class SimplexAdapter(BasePlatformAdapter):
             return None
 
         corr_id = self._make_corr_id()
-        payload = json.dumps({"corrId": corr_id, "cmd": command})
+        payload = orjson.dumps({"corrId": corr_id, "cmd": command}).decode('utf-8')
 
         loop = asyncio.get_event_loop()
         fut: asyncio.Future = loop.create_future()
@@ -833,9 +833,7 @@ class SimplexAdapter(BasePlatformAdapter):
             if chat_id.startswith("group:"):
                 # Structured form: addresses by numeric ID, and json.dumps
                 # escapes newlines + special chars correctly.
-                composed = json.dumps(
-                    [{"msgContent": {"type": "text", "text": content}}]
-                )
+                composed = orjson.dumps([{"msgContent": {"type": "text", "text": content}}]).decode('utf-8')
                 cmd_str = f"/_send #{chat_id[6:]} json {composed}"
             else:
                 cmd_str = f"@{chat_id} {content}"
@@ -955,8 +953,7 @@ class SimplexAdapter(BasePlatformAdapter):
 
         # /_send addresses by numeric ID; /f only accepts display names which
         # breaks for group IDs.
-        composed = json.dumps(
-            [
+        composed = orjson.dumps([
                 {
                     "filePath": png_path,
                     "msgContent": {
@@ -965,8 +962,7 @@ class SimplexAdapter(BasePlatformAdapter):
                         "text": caption or "",
                     },
                 }
-            ]
-        )
+            ]).decode('utf-8')
 
         if chat_id.startswith("group:"):
             group_id = chat_id[6:]
@@ -1015,14 +1011,12 @@ class SimplexAdapter(BasePlatformAdapter):
         if not Path(file_path).exists():
             return SendResult(success=False, error="File not found")
 
-        composed = json.dumps(
-            [
+        composed = orjson.dumps([
                 {
                     "filePath": file_path,
                     "msgContent": {"type": "file", "text": caption or ""},
                 }
-            ]
-        )
+            ]).decode('utf-8')
 
         if chat_id.startswith("group:"):
             group_id = chat_id[6:]
@@ -1054,8 +1048,7 @@ class SimplexAdapter(BasePlatformAdapter):
         if not Path(audio_path).exists():
             return SendResult(success=False, error="Voice file not found")
 
-        composed = json.dumps(
-            [
+        composed = orjson.dumps([
                 {
                     "msgContent": {
                         "type": "voice",
@@ -1064,8 +1057,7 @@ class SimplexAdapter(BasePlatformAdapter):
                     },
                     "fileSource": {"filePath": audio_path},
                 }
-            ]
-        )
+            ]).decode('utf-8')
 
         if chat_id.startswith("group:"):
             group_id = chat_id[6:]
@@ -1193,9 +1185,7 @@ async def _standalone_send(
     try:
         if chat_id.startswith("group:"):
             group_id = chat_id[6:]
-            composed = json.dumps(
-                [{"msgContent": {"type": "text", "text": message}}]
-            )
+            composed = orjson.dumps([{"msgContent": {"type": "text", "text": message}}]).decode('utf-8')
             cmd_str = f"/_send #{group_id} json {composed}"
         else:
             # Direct contacts are addressed by display name without brackets.
@@ -1209,7 +1199,7 @@ async def _standalone_send(
         async with _wsclient.connect(
             ws_url, open_timeout=10, close_timeout=5
         ) as ws:
-            await ws.send(json.dumps(payload))
+            await ws.send(orjson.dumps(payload).decode('utf-8'))
             # Give the daemon a moment to process the command before closing.
             await asyncio.sleep(0.5)
 

@@ -1,7 +1,7 @@
 """Tests for xAI Grok OAuth — tokens stored in Hermes auth store (~/.hermes/auth.json)."""
 
 import base64
-import json
+import orjson
 import time
 from pathlib import Path
 
@@ -61,7 +61,7 @@ def _setup_hermes_auth(
         "providers": {"xai-oauth": state},
     }
     auth_file = hermes_home / "auth.json"
-    auth_file.write_text(json.dumps(auth_store, indent=2))
+    auth_file.write_text(orjson.dumps(auth_store, option=orjson.OPT_INDENT_2).decode('utf-8'))
     return auth_file
 
 
@@ -69,7 +69,7 @@ def _jwt_with_exp(exp_epoch: int) -> str:
     """Build a minimal JWT-shaped string with the given exp claim."""
     payload = {"exp": exp_epoch}
     encoded = (
-        base64.urlsafe_b64encode(json.dumps(payload).encode("utf-8"))
+        base64.urlsafe_b64encode(orjson.dumps(payload))
         .rstrip(b"=")
         .decode("utf-8")
     )
@@ -80,7 +80,7 @@ class _StubHTTPResponse:
     def __init__(self, status_code: int, payload):
         self.status_code = status_code
         self._payload = payload
-        self.text = json.dumps(payload) if isinstance(payload, (dict, list)) else str(payload)
+        self.text = orjson.dumps(payload).decode('utf-8') if isinstance(payload, (dict, list)) else str(payload)
 
     def json(self):
         if isinstance(self._payload, Exception):
@@ -166,7 +166,7 @@ def test_xai_access_token_is_expiring_returns_false_for_non_jwt():
 
 def test_xai_access_token_is_expiring_returns_false_for_jwt_without_exp():
     payload = {"sub": "user"}
-    encoded = base64.urlsafe_b64encode(json.dumps(payload).encode("utf-8")).rstrip(b"=").decode()
+    encoded = base64.urlsafe_b64encode(orjson.dumps(payload)).rstrip(b"=").decode()
     token = f"h.{encoded}.s"
     assert _xai_access_token_is_expiring(token, 0) is False
 
@@ -260,7 +260,7 @@ def test_xai_oauth_poll_device_token_waits_until_authorized(monkeypatch):
 def test_save_and_read_xai_oauth_tokens_roundtrip(tmp_path, monkeypatch):
     hermes_home = tmp_path / "hermes"
     hermes_home.mkdir(parents=True, exist_ok=True)
-    (hermes_home / "auth.json").write_text(json.dumps({"version": 1, "providers": {}}))
+    (hermes_home / "auth.json").write_text(orjson.dumps({"version": 1, "providers": {}}).decode('utf-8'))
     monkeypatch.setenv("HERMES_HOME", str(hermes_home))
 
     _save_xai_oauth_tokens(
@@ -284,7 +284,7 @@ def test_save_and_read_xai_oauth_tokens_roundtrip(tmp_path, monkeypatch):
 def test_read_xai_oauth_tokens_missing(tmp_path, monkeypatch):
     hermes_home = tmp_path / "hermes"
     hermes_home.mkdir(parents=True, exist_ok=True)
-    (hermes_home / "auth.json").write_text(json.dumps({"version": 1, "providers": {}}))
+    (hermes_home / "auth.json").write_text(orjson.dumps({"version": 1, "providers": {}}).decode('utf-8'))
     monkeypatch.setenv("HERMES_HOME", str(hermes_home))
 
     with pytest.raises(AuthError) as exc:
@@ -559,7 +559,7 @@ def _seed_xai_oauth_state(
         "active_provider": active_provider,
         "providers": {"xai-oauth": state},
     }
-    (hermes_home / "auth.json").write_text(json.dumps(auth_store, indent=2))
+    (hermes_home / "auth.json").write_text(orjson.dumps(auth_store, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
 
 def test_resolve_credentials_quarantines_dead_tokens_on_terminal_refresh_failure(
@@ -591,7 +591,7 @@ def test_resolve_credentials_quarantines_dead_tokens_on_terminal_refresh_failure
     assert exc_info.value.code == "xai_refresh_failed"
     assert exc_info.value.relogin_required is True
 
-    raw = json.loads((hermes_home / "auth.json").read_text())
+    raw = orjson.loads((hermes_home / "auth.json").read_text())
     tokens = raw["providers"]["xai-oauth"]["tokens"]
 
     # Dead OAuth fields must be cleared.
@@ -641,7 +641,7 @@ def test_resolve_credentials_does_not_quarantine_on_transient_refresh_failure(
     assert exc_info.value.relogin_required is False
 
     # Tokens must be untouched — no quarantine on transient errors.
-    raw = json.loads((hermes_home / "auth.json").read_text())
+    raw = orjson.loads((hermes_home / "auth.json").read_text())
     tokens = raw["providers"]["xai-oauth"]["tokens"]
     assert tokens["refresh_token"] == "dead-refresh-token"
     assert tokens["access_token"] == "dead-access-token"
@@ -670,7 +670,7 @@ def test_get_xai_oauth_auth_status_logged_in_via_singleton(tmp_path, monkeypatch
 def test_get_xai_oauth_auth_status_logged_out(tmp_path, monkeypatch):
     hermes_home = tmp_path / "hermes"
     hermes_home.mkdir(parents=True, exist_ok=True)
-    (hermes_home / "auth.json").write_text(json.dumps({"version": 1, "providers": {}}))
+    (hermes_home / "auth.json").write_text(orjson.dumps({"version": 1, "providers": {}}).decode('utf-8'))
     monkeypatch.setenv("HERMES_HOME", str(hermes_home))
 
     status = get_xai_oauth_auth_status()
@@ -826,7 +826,7 @@ def test_refresh_xai_oauth_pure_rejects_response_without_access_token(monkeypatc
 def test_refresh_xai_oauth_pure_raises_typed_error_on_malformed_json(monkeypatch):
     """xAI returning HTTP 200 with a non-JSON body (captive portal, proxy
     error page, etc.) must surface a typed AuthError, not a raw
-    ``json.JSONDecodeError`` traceback. Matches the qwen-oauth precedent
+    ``orjson.JSONDecodeError`` traceback. Matches the qwen-oauth precedent
     so the upstream UX layer (``format_auth_error``) can map the failure."""
     response = _StubHTTPResponse(200, ValueError("not json"))
     response.text = "<html>captive portal</html>"
@@ -842,7 +842,7 @@ def test_xai_oauth_discovery_raises_typed_error_on_malformed_json(monkeypatch):
     """Discovery is a cold-start, one-time fetch.  If the response is HTTP
     200 with a non-JSON body (corporate proxy / captive portal returning
     HTML), surface a typed AuthError rather than letting the
-    ``json.JSONDecodeError`` escape — so the message reads as an auth
+    ``orjson.JSONDecodeError`` escape — so the message reads as an auth
     problem instead of an internal parsing crash."""
     from hermes_cli.auth import _xai_oauth_discovery
 
@@ -1074,7 +1074,7 @@ def test_credential_pool_does_not_seed_when_singleton_missing_access_token(tmp_p
             }
         },
     }
-    (hermes_home / "auth.json").write_text(json.dumps(auth_store))
+    (hermes_home / "auth.json").write_text(orjson.dumps(auth_store).decode('utf-8'))
     monkeypatch.setenv("HERMES_HOME", str(hermes_home))
 
     pool = load_pool("xai-oauth")
@@ -1126,7 +1126,7 @@ def test_auth_remove_xai_oauth_clears_singleton_and_sticks(tmp_path, monkeypatch
     # Confirm pre-state: pool sees the seeded entry, auth.json has the singleton.
     pool = load_pool("xai-oauth")
     assert pool.has_credentials()
-    raw = json.loads((hermes_home / "auth.json").read_text())
+    raw = orjson.loads((hermes_home / "auth.json").read_text())
     assert "xai-oauth" in raw.get("providers", {})
 
     # Act: the user runs `hermes auth remove xai-oauth 1`.
@@ -1134,7 +1134,7 @@ def test_auth_remove_xai_oauth_clears_singleton_and_sticks(tmp_path, monkeypatch
 
     # Post-state: auth.json singleton must be cleared so a re-seed has
     # nothing to import.
-    raw_after = json.loads((hermes_home / "auth.json").read_text())
+    raw_after = orjson.loads((hermes_home / "auth.json").read_text())
     assert "xai-oauth" not in raw_after.get("providers", {}), (
         "auth.json providers.xai-oauth must be cleared — otherwise the "
         "next load_pool() reseeds the removed entry from the surviving "
@@ -1173,7 +1173,7 @@ def test_login_xai_oauth_relogin_clears_suppression_and_reseeds(tmp_path, monkey
 
     hermes_home = tmp_path / "hermes"
     hermes_home.mkdir(parents=True, exist_ok=True)
-    (hermes_home / "auth.json").write_text(json.dumps({"version": 1, "providers": {}}))
+    (hermes_home / "auth.json").write_text(orjson.dumps({"version": 1, "providers": {}}).decode('utf-8'))
     monkeypatch.setenv("HERMES_HOME", str(hermes_home))
     monkeypatch.delenv("HERMES_XAI_BASE_URL", raising=False)
     monkeypatch.delenv("XAI_BASE_URL", raising=False)
@@ -1262,7 +1262,7 @@ def test_pool_sync_back_writes_to_singleton(tmp_path, monkeypatch):
     # Singleton must reflect refreshed tokens — otherwise the next process
     # to load credentials would re-seed the consumed refresh token.
     auth_path = hermes_home / "auth.json"
-    raw = json.loads(auth_path.read_text())
+    raw = orjson.loads(auth_path.read_text())
     state = raw["providers"]["xai-oauth"]
     assert state["tokens"]["access_token"] == new_access
     assert state["tokens"]["refresh_token"] == "rt-new"
@@ -1299,7 +1299,7 @@ def test_runtime_provider_default_base_url_when_pool_entry_missing_url(tmp_path,
 
     hermes_home = tmp_path / "hermes"
     hermes_home.mkdir(parents=True, exist_ok=True)
-    (hermes_home / "auth.json").write_text(json.dumps({"version": 1, "providers": {}}))
+    (hermes_home / "auth.json").write_text(orjson.dumps({"version": 1, "providers": {}}).decode('utf-8'))
     monkeypatch.setenv("HERMES_HOME", str(hermes_home))
     monkeypatch.delenv("HERMES_XAI_BASE_URL", raising=False)
     monkeypatch.delenv("XAI_BASE_URL", raising=False)
@@ -1345,7 +1345,7 @@ def test_pool_entry_needs_refresh_when_jwt_within_skew(tmp_path, monkeypatch):
 
     hermes_home = tmp_path / "hermes"
     hermes_home.mkdir(parents=True, exist_ok=True)
-    (hermes_home / "auth.json").write_text(json.dumps({"version": 1, "providers": {}}))
+    (hermes_home / "auth.json").write_text(orjson.dumps({"version": 1, "providers": {}}).decode('utf-8'))
     monkeypatch.setenv("HERMES_HOME", str(hermes_home))
 
     # Token expires in 30s — well inside the proactive refresh skew window.
@@ -1374,7 +1374,7 @@ def test_pool_entry_no_refresh_for_fresh_jwt(tmp_path, monkeypatch):
 
     hermes_home = tmp_path / "hermes"
     hermes_home.mkdir(parents=True, exist_ok=True)
-    (hermes_home / "auth.json").write_text(json.dumps({"version": 1, "providers": {}}))
+    (hermes_home / "auth.json").write_text(orjson.dumps({"version": 1, "providers": {}}).decode('utf-8'))
     monkeypatch.setenv("HERMES_HOME", str(hermes_home))
 
     fresh = _jwt_with_exp(int(time.time()) + 2 * 60 * 60)
@@ -1403,7 +1403,7 @@ def test_pool_select_proactively_refreshes_expiring_token(tmp_path, monkeypatch)
 
     hermes_home = tmp_path / "hermes"
     hermes_home.mkdir(parents=True, exist_ok=True)
-    (hermes_home / "auth.json").write_text(json.dumps({"version": 1, "providers": {}}))
+    (hermes_home / "auth.json").write_text(orjson.dumps({"version": 1, "providers": {}}).decode('utf-8'))
     monkeypatch.setenv("HERMES_HOME", str(hermes_home))
 
     near_expiry = _jwt_with_exp(int(time.time()) + 30)
@@ -1457,7 +1457,7 @@ def test_pool_try_refresh_current_handles_xai_oauth(tmp_path, monkeypatch):
 
     hermes_home = tmp_path / "hermes"
     hermes_home.mkdir(parents=True, exist_ok=True)
-    (hermes_home / "auth.json").write_text(json.dumps({"version": 1, "providers": {}}))
+    (hermes_home / "auth.json").write_text(orjson.dumps({"version": 1, "providers": {}}).decode('utf-8'))
     monkeypatch.setenv("HERMES_HOME", str(hermes_home))
 
     # Even a "fresh-looking" token gets force-refreshed via try_refresh_current.
@@ -1512,7 +1512,7 @@ def test_pool_refresh_marks_entry_exhausted_on_failure(tmp_path, monkeypatch):
 
     hermes_home = tmp_path / "hermes"
     hermes_home.mkdir(parents=True, exist_ok=True)
-    (hermes_home / "auth.json").write_text(json.dumps({"version": 1, "providers": {}}))
+    (hermes_home / "auth.json").write_text(orjson.dumps({"version": 1, "providers": {}}).decode('utf-8'))
     monkeypatch.setenv("HERMES_HOME", str(hermes_home))
 
     def _fake_refresh_fail(*args, **kwargs):
@@ -1573,7 +1573,7 @@ def test_pool_seeded_entry_sync_back_after_refresh(tmp_path, monkeypatch):
     assert selected is not None
     assert selected.access_token == new_access
 
-    raw = json.loads((hermes_home / "auth.json").read_text())
+    raw = orjson.loads((hermes_home / "auth.json").read_text())
     tokens = raw["providers"]["xai-oauth"]["tokens"]
     assert tokens["access_token"] == new_access
     assert tokens["refresh_token"] == "rt-rotated"
@@ -1603,7 +1603,7 @@ def test_pool_refresh_adopts_singleton_tokens_when_consumed_elsewhere(tmp_path, 
     # Now simulate "another process refreshed the tokens" by overwriting
     # the singleton on disk WITHOUT touching this process's pool object.
     other_process_at = _jwt_with_exp(int(time.time()) + 2 * 60 * 60)
-    raw = json.loads((hermes_home / "auth.json").read_text())
+    raw = orjson.loads((hermes_home / "auth.json").read_text())
     raw["providers"]["xai-oauth"]["tokens"] = {
         "access_token": other_process_at,
         "refresh_token": "rt-rotated-by-other-process",
@@ -1611,7 +1611,7 @@ def test_pool_refresh_adopts_singleton_tokens_when_consumed_elsewhere(tmp_path, 
         "expires_in": 3600,
         "token_type": "Bearer",
     }
-    (hermes_home / "auth.json").write_text(json.dumps(raw))
+    (hermes_home / "auth.json").write_text(orjson.dumps(raw).decode('utf-8'))
 
     refresh_calls = {"refresh_token_seen": None}
     final_at = _jwt_with_exp(int(time.time()) + 7200)
@@ -1658,7 +1658,7 @@ def test_pool_refresh_recovers_when_other_process_already_refreshed(tmp_path, mo
         # Simulate the racing process winning at the auth server right
         # before our POST: by the time we reach this call, auth.json
         # already holds the fresher pair, but we POSTed with rt-shared.
-        raw = json.loads((hermes_home / "auth.json").read_text())
+        raw = orjson.loads((hermes_home / "auth.json").read_text())
         raw["providers"]["xai-oauth"]["tokens"] = {
             "access_token": other_process_at,
             "refresh_token": "rt-rotated",
@@ -1666,7 +1666,7 @@ def test_pool_refresh_recovers_when_other_process_already_refreshed(tmp_path, mo
             "expires_in": 3600,
             "token_type": "Bearer",
         }
-        (hermes_home / "auth.json").write_text(json.dumps(raw))
+        (hermes_home / "auth.json").write_text(orjson.dumps(raw).decode('utf-8'))
         raise AuthError(
             "refresh_token_reused",
             provider="xai-oauth",
@@ -1719,7 +1719,7 @@ def test_pool_exhausted_xai_entry_recovers_after_singleton_refresh(tmp_path, mon
     # Simulate the user re-running `hermes model` -> xAI Grok OAuth: the
     # singleton now has fresh tokens.
     fresh_at = _jwt_with_exp(int(time.time()) + 7200)
-    raw = json.loads((hermes_home / "auth.json").read_text())
+    raw = orjson.loads((hermes_home / "auth.json").read_text())
     raw["providers"]["xai-oauth"]["tokens"] = {
         "access_token": fresh_at,
         "refresh_token": "rt-fresh",
@@ -1727,7 +1727,7 @@ def test_pool_exhausted_xai_entry_recovers_after_singleton_refresh(tmp_path, mon
         "expires_in": 3600,
         "token_type": "Bearer",
     }
-    (hermes_home / "auth.json").write_text(json.dumps(raw))
+    (hermes_home / "auth.json").write_text(orjson.dumps(raw).decode('utf-8'))
 
     # _available_entries must sync from the singleton, lifting the
     # exhausted state for the seeded entry.
@@ -1825,7 +1825,7 @@ def test_pool_manual_entry_does_not_sync_back_to_singleton(tmp_path, monkeypatch
     assert len(manual_entries) == 1
     pool._refresh_entry(manual_entries[0], force=True)
 
-    raw = json.loads((hermes_home / "auth.json").read_text())
+    raw = orjson.loads((hermes_home / "auth.json").read_text())
     tokens = raw["providers"]["xai-oauth"]["tokens"]
     # Singleton must be untouched — manual refresh shouldn't leak across.
     assert tokens["access_token"] == singleton_at
@@ -1884,7 +1884,7 @@ def test_auxiliary_client_xai_oauth_returns_none_when_unauthenticated(tmp_path, 
 
     hermes_home = tmp_path / "hermes"
     hermes_home.mkdir(parents=True, exist_ok=True)
-    (hermes_home / "auth.json").write_text(json.dumps({"version": 1, "providers": {}}))
+    (hermes_home / "auth.json").write_text(orjson.dumps({"version": 1, "providers": {}}).decode('utf-8'))
     monkeypatch.setenv("HERMES_HOME", str(hermes_home))
 
     client, model = resolve_provider_client("xai-oauth", model="grok-4")
@@ -1931,9 +1931,9 @@ def test_pool_sync_back_preserves_active_provider(tmp_path, monkeypatch):
     # Simulate a multi-provider user whose actual chosen provider is
     # OpenRouter — xai-oauth tokens exist in the singleton but are NOT
     # the active provider.
-    raw = json.loads((hermes_home / "auth.json").read_text())
+    raw = orjson.loads((hermes_home / "auth.json").read_text())
     raw["active_provider"] = "openrouter"
-    (hermes_home / "auth.json").write_text(json.dumps(raw))
+    (hermes_home / "auth.json").write_text(orjson.dumps(raw).decode('utf-8'))
 
     new_access = _jwt_with_exp(int(time.time()) + 2 * 60 * 60)
 
@@ -1956,7 +1956,7 @@ def test_pool_sync_back_preserves_active_provider(tmp_path, monkeypatch):
 
     # The refresh wrote new tokens back into the singleton — the user's
     # prior ``active_provider`` choice (openrouter) MUST survive.
-    raw_after = json.loads((hermes_home / "auth.json").read_text())
+    raw_after = orjson.loads((hermes_home / "auth.json").read_text())
     assert raw_after["active_provider"] == "openrouter", (
         "pool sync-back must not flip active_provider; otherwise xAI/Codex/"
         "Nous token rotations silently take over multi-provider users' "

@@ -18,7 +18,7 @@ receiver can look up the correct asset in the emoji pack.
 
 from __future__ import annotations
 
-import json
+import orjson
 import random
 import re
 import unicodedata
@@ -543,16 +543,12 @@ def build_sticker_msg_body(sticker: dict) -> list:
 
     这是 send_sticker() 的内部辅助，确保 data 字段与原始 JS 插件一致。
     """
-    data_payload = json.dumps(
-        {
+    data_payload = orjson.dumps({
             "sticker_id": sticker["sticker_id"],
             "package_id": sticker["package_id"],
             "width": sticker.get("width", 128),
             "height": sticker.get("height", 128),
             "formats": sticker.get("formats", "png"),
             "name": sticker["name"],
-        },
-        ensure_ascii=False,
-        separators=(",", ":"),
-    )
+        }).decode('utf-8')
     return build_face_msg_body(face_index=0, data=data_payload)

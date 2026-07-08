@@ -28,7 +28,7 @@ through the board.
 """
 from __future__ import annotations
 
-import json
+import orjson
 import logging
 import os
 from typing import Any, Optional
@@ -288,7 +288,7 @@ def heartbeat_current_worker_from_env() -> bool:
 
 
 def _ok(**fields: Any) -> str:
-    return json.dumps({"ok": True, **fields})
+    return orjson.dumps({"ok": True, **fields}).decode('utf-8')
 
 
 def _normalize_profile(value: Any) -> Optional[str]:
@@ -409,7 +409,7 @@ def _handle_show(args: dict, **kw) -> str:
                     "started_at": r.started_at, "ended_at": r.ended_at,
                 }
 
-            return json.dumps({
+            return orjson.dumps({
                 "task": _task_dict(task),
                 "parents": parents,
                 "children": children,
@@ -429,7 +429,7 @@ def _handle_show(args: dict, **kw) -> str:
                 # the same string build_worker_context returns to the
                 # dispatcher at spawn time.
                 "worker_context": kb.build_worker_context(conn, tid),
-            })
+            }).decode('utf-8')
         finally:
             conn.close()
     except ValueError as e:
@@ -481,7 +481,7 @@ def _handle_list(args: dict, **kw) -> str:
             )
             truncated = len(rows) > limit
             tasks = rows[:limit]
-            return json.dumps({
+            return orjson.dumps({
                 "tasks": [_task_summary_dict(kb, conn, t) for t in tasks],
                 "count": len(tasks),
                 "limit": limit,
@@ -491,7 +491,7 @@ def _handle_list(args: dict, **kw) -> str:
                     if truncated and limit < KANBAN_LIST_MAX_LIMIT else None
                 ),
                 "promoted": promoted,
-            })
+            }).decode('utf-8')
         finally:
             conn.close()
     except ValueError as e:
@@ -519,11 +519,11 @@ def _handle_complete(args: dict, **kw) -> str:
     if result:
         result = redact_sensitive_text(str(result), force=True)
     if metadata is not None and isinstance(metadata, dict):
-        meta_json = json.dumps(metadata)
+        meta_json = orjson.dumps(metadata).decode('utf-8')
         meta_json = redact_sensitive_text(meta_json, force=True)
         try:
-            metadata = json.loads(meta_json)
-        except json.JSONDecodeError:
+            metadata = orjson.loads(meta_json)
+        except orjson.JSONDecodeError:
             pass
     created_cards = args.get("created_cards")
     artifacts = args.get("artifacts")

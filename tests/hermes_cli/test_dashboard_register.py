@@ -16,7 +16,7 @@ round-trip against the Vercel preview build is a separate manual step.
 from __future__ import annotations
 
 import argparse
-import json
+import orjson
 import urllib.error
 from io import BytesIO
 from unittest.mock import MagicMock, patch
@@ -70,7 +70,7 @@ class TestFastFails:
 def _fake_http_ok(payload: dict):
     """Return a context-manager urlopen stub yielding `payload` as JSON."""
     cm = MagicMock()
-    cm.__enter__.return_value.read.return_value = json.dumps(payload).encode()
+    cm.__enter__.return_value.read.return_value = orjson.dumps(payload)
     return cm
 
 
@@ -90,7 +90,7 @@ class TestHappyPath:
             if captured is not None:
                 captured["url"] = req.full_url
                 captured["headers"] = dict(req.header_items())
-                captured["body"] = json.loads(req.data.decode())
+                captured["body"] = orjson.loads(req.data.decode())
             return _fake_http_ok(response)
 
         saved = {}
@@ -589,7 +589,7 @@ class TestPortalErrors:
             code=code,
             msg="err",
             hdrs=None,
-            fp=BytesIO(json.dumps(body).encode()),
+            fp=BytesIO(orjson.dumps(body)),
         )
 
         with patch(

@@ -165,7 +165,7 @@ class TestTtsDispatcherMistral:
     def test_dispatcher_routes_to_mistral(
         self, tmp_path, mock_mistral_module, monkeypatch
     ):
-        import json
+        import orjson
 
         from tools.tts_tool import text_to_speech_tool
 
@@ -176,14 +176,14 @@ class TestTtsDispatcherMistral:
 
         output_path = str(tmp_path / "out.mp3")
         with patch("tools.tts_tool._load_tts_config", return_value={"provider": "mistral"}):
-            result = json.loads(text_to_speech_tool("Hello", output_path=output_path))
+            result = orjson.loads(text_to_speech_tool("Hello", output_path=output_path))
 
         assert result["success"] is True
         assert result["provider"] == "mistral"
         mock_mistral_module.audio.speech.complete.assert_called_once()
 
     def test_dispatcher_returns_error_when_sdk_not_installed(self, tmp_path, monkeypatch):
-        import json
+        import orjson
 
         from tools.tts_tool import text_to_speech_tool
 
@@ -191,7 +191,7 @@ class TestTtsDispatcherMistral:
         with patch(
             "tools.tts_tool._import_mistral_client", side_effect=ImportError("no module")
         ), patch("tools.tts_tool._load_tts_config", return_value={"provider": "mistral"}):
-            result = json.loads(
+            result = orjson.loads(
                 text_to_speech_tool("Hello", output_path=str(tmp_path / "out.mp3"))
             )
 

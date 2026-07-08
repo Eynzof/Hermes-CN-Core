@@ -18,7 +18,7 @@ pytestmark = pytest.mark.integration
 
 import os
 import sys
-import json
+import orjson
 from pathlib import Path
 
 # Try to load .env file if python-dotenv is available
@@ -94,7 +94,7 @@ def test_simple_command():
     
     print("Executing: echo 'Hello from Modal!'")
     result = terminal_tool("echo 'Hello from Modal!'", task_id=test_task_id)
-    result_json = json.loads(result)
+    result_json = orjson.loads(result)
     
     print(f"\nResult:")
     print(f"  Output: {result_json.get('output', '')[:200]}")
@@ -122,7 +122,7 @@ def test_python_execution():
     print(f"Executing: {python_cmd}")
     
     result = terminal_tool(python_cmd, task_id=test_task_id)
-    result_json = json.loads(result)
+    result_json = orjson.loads(result)
     
     print(f"\nResult:")
     print(f"  Output: {result_json.get('output', '')[:200]}")
@@ -154,7 +154,7 @@ def test_pip_install():
         task_id=test_task_id,
         timeout=120
     )
-    result_json = json.loads(result)
+    result_json = orjson.loads(result)
     
     print(f"\nResult:")
     output = result_json.get('output', '')
@@ -182,13 +182,13 @@ def test_filesystem_persistence():
     # Create a file
     print("Step 1: Creating test file...")
     result1 = terminal_tool("echo 'persistence test' > /tmp/modal_test.txt", task_id=test_task_id)
-    result1_json = json.loads(result1)
+    result1_json = orjson.loads(result1)
     print(f"  Exit code: {result1_json.get('exit_code')}")
     
     # Read the file back
     print("Step 2: Reading test file...")
     result2 = terminal_tool("cat /tmp/modal_test.txt", task_id=test_task_id)
-    result2_json = json.loads(result2)
+    result2_json = orjson.loads(result2)
     print(f"  Output: {result2_json.get('output', '')}")
     print(f"  Exit code: {result2_json.get('exit_code')}")
     
@@ -221,7 +221,7 @@ def test_environment_isolation():
     # Try to read from task2 (should not exist)
     print("Step 2: Trying to read file from task2 (should not exist)...")
     result2 = terminal_tool("cat /tmp/isolated.txt 2>&1 || echo 'FILE_NOT_FOUND'", task_id=task2)
-    result2_json = json.loads(result2)
+    result2_json = orjson.loads(result2)
     
     # The file should either not exist or be empty in task2
     output = result2_json.get('output', '')

@@ -5,7 +5,7 @@ MAX_SKILL_CONTENT_CHARS (100k) and MAX_SKILL_FILE_BYTES (1 MiB).
 Hand-placed and hub-installed skills have no hard limit.
 """
 
-import json
+import orjson
 
 import pytest
 
@@ -64,12 +64,12 @@ class TestCreateSkillSizeLimit:
 
     def test_create_within_limit(self, isolate_skills):
         content = _make_skill_content(5000)
-        result = json.loads(skill_manage(action="create", name="small-skill", content=content))
+        result = orjson.loads(skill_manage(action="create", name="small-skill", content=content))
         assert result["success"] is True
 
     def test_create_over_limit(self, isolate_skills):
         content = _make_skill_content(MAX_SKILL_CONTENT_CHARS + 100)
-        result = json.loads(skill_manage(action="create", name="huge-skill", content=content))
+        result = orjson.loads(skill_manage(action="create", name="huge-skill", content=content))
         assert result["success"] is False
         assert "100,000" in result["error"]
 
@@ -79,7 +79,7 @@ class TestCreateSkillSizeLimit:
         body_budget = MAX_SKILL_CONTENT_CHARS - len(frontmatter)
         content = frontmatter + ("x" * body_budget)
         assert len(content) == MAX_SKILL_CONTENT_CHARS
-        result = json.loads(skill_manage(action="create", name="edge-skill", content=content))
+        result = orjson.loads(skill_manage(action="create", name="edge-skill", content=content))
         assert result["success"] is True
 
 
@@ -89,13 +89,13 @@ class TestEditSkillSizeLimit:
     def test_edit_over_limit(self, isolate_skills):
         # Create a small skill first
         small = _make_skill_content(1000)
-        json.loads(skill_manage(action="create", name="grow-me", content=small))
+        orjson.loads(skill_manage(action="create", name="grow-me", content=small))
 
         # Try to edit it to be oversized
         big = _make_skill_content(MAX_SKILL_CONTENT_CHARS + 100)
         # Fix the name in frontmatter
         big = big.replace("name: test-skill", "name: grow-me")
-        result = json.loads(skill_manage(action="edit", name="grow-me", content=big))
+        result = orjson.loads(skill_manage(action="edit", name="grow-me", content=big))
         assert result["success"] is False
         assert "100,000" in result["error"]
 
@@ -106,10 +106,10 @@ class TestPatchSkillSizeLimit:
     def test_patch_that_would_exceed_limit(self, isolate_skills):
         # Create a skill near the limit
         near_limit = _make_skill_content(MAX_SKILL_CONTENT_CHARS - 50)
-        json.loads(skill_manage(action="create", name="near-limit", content=near_limit))
+        orjson.loads(skill_manage(action="create", name="near-limit", content=near_limit))
 
         # Patch that adds enough to go over
-        result = json.loads(skill_manage(
+        result = orjson.loads(skill_manage(
             action="patch",
             name="near-limit",
             old_string="# Test Skill",
@@ -130,7 +130,7 @@ class TestPatchSkillSizeLimit:
 
         # Patch that removes content to bring it under the limit.
         # Use replace_all to replace the repeated x's with a shorter string.
-        result = json.loads(skill_manage(
+        result = orjson.loads(skill_manage(
             action="patch",
             name="bloated",
             old_string="x" * 100,
@@ -143,16 +143,16 @@ class TestPatchSkillSizeLimit:
     def test_patch_supporting_file_size_limit(self, isolate_skills):
         """Patch on a supporting file also checks size."""
         small = _make_skill_content(1000)
-        json.loads(skill_manage(action="create", name="with-ref", content=small))
+        orjson.loads(skill_manage(action="create", name="with-ref", content=small))
         # Create a supporting file
-        json.loads(skill_manage(
+        orjson.loads(skill_manage(
             action="write_file",
             name="with-ref",
             file_path="references/data.md",
             file_content="# Data\n\nSmall content.",
         ))
         # Try to patch it to be oversized
-        result = json.loads(skill_manage(
+        result = orjson.loads(skill_manage(
             action="patch",
             name="with-ref",
             old_string="Small content.",
@@ -168,9 +168,9 @@ class TestWriteFileSizeLimit:
 
     def test_write_file_over_char_limit(self, isolate_skills):
         small = _make_skill_content(1000)
-        json.loads(skill_manage(action="create", name="file-test", content=small))
+        orjson.loads(skill_manage(action="create", name="file-test", content=small))
 
-        result = json.loads(skill_manage(
+        result = orjson.loads(skill_manage(
             action="write_file",
             name="file-test",
             file_path="references/huge.md",
@@ -181,9 +181,9 @@ class TestWriteFileSizeLimit:
 
     def test_write_file_within_limit(self, isolate_skills):
         small = _make_skill_content(1000)
-        json.loads(skill_manage(action="create", name="file-ok", content=small))
+        orjson.loads(skill_manage(action="create", name="file-ok", content=small))
 
-        result = json.loads(skill_manage(
+        result = orjson.loads(skill_manage(
             action="write_file",
             name="file-ok",
             file_path="references/normal.md",
@@ -205,7 +205,7 @@ class TestHandPlacedSkillsNoLimit:
         huge = huge.replace("name: test-skill", "name: manual-giant")
         (skill_dir / "SKILL.md").write_text(huge, encoding="utf-8")
 
-        result = json.loads(skill_view("manual-giant"))
+        result = orjson.loads(skill_view("manual-giant"))
         assert "content" in result
         # The full content is returned — no truncation at the storage layer
         assert len(result["content"]) > MAX_SKILL_CONTENT_CHARS

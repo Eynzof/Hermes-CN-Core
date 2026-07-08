@@ -907,7 +907,7 @@ class TestSummaryFallbackToMainModel:
         when a misconfigured proxy returns HTML/plain-text with
         ``Content-Type: application/json``) should trigger the same
         retry-on-main path as 404/timeout.  Issue #22244."""
-        import json as _json
+        import orjson as _json
 
         mock_ok = MagicMock()
         mock_ok.choices = [MagicMock()]
@@ -979,7 +979,7 @@ class TestSummaryFallbackToMainModel:
         fallback already happened), a JSONDecodeError should set the short
         30s cooldown, not the default 60s — provider bodies tend to
         recover quickly when an upstream proxy comes back online."""
-        import json as _json
+        import orjson as _json
 
         err_json = _json.JSONDecodeError("Expecting value", "<html/>", 0)
 
@@ -2738,12 +2738,12 @@ class TestTruncateToolCallArgsJson:
         return _truncate_tool_call_args_json
 
     def test_shrunken_args_remain_valid_json(self):
-        import json as _json
+        import orjson as _json
         shrink = self._helper()
         original = _json.dumps({
             "path": "~/.hermes/skills/shopping/browser-setup-notes.md",
             "content": "# Shopping Browser Setup Notes\n\n" + "abc " * 400,
-        })
+        }).decode('utf-8')
         assert len(original) > 500
         shrunk = shrink(original)
         parsed = _json.loads(shrunk)  # must not raise
@@ -2757,13 +2757,13 @@ class TestTruncateToolCallArgsJson:
         assert shrink(not_json) == not_json
 
     def test_short_string_leaves_unchanged(self):
-        import json as _json
+        import orjson as _json
         shrink = self._helper()
-        payload = _json.dumps({"command": "ls -la", "cwd": "/tmp"})
+        payload = _json.dumps({"command": "ls -la", "cwd": "/tmp"}).decode('utf-8')
         assert _json.loads(shrink(payload)) == {"command": "ls -la", "cwd": "/tmp"}
 
     def test_nested_structures_are_walked(self):
-        import json as _json
+        import orjson as _json
         shrink = self._helper()
         payload = _json.dumps({
             "messages": [
@@ -2771,14 +2771,14 @@ class TestTruncateToolCallArgsJson:
                 {"role": "assistant", "content": "ok"},
             ],
             "meta": {"note": "y" * 500},
-        })
+        }).decode('utf-8')
         parsed = _json.loads(shrink(payload))
         assert parsed["messages"][0]["content"].endswith("...[truncated]")
         assert parsed["messages"][1]["content"] == "ok"
         assert parsed["meta"]["note"].endswith("...[truncated]")
 
     def test_non_string_leaves_preserved(self):
-        import json as _json
+        import orjson as _json
         shrink = self._helper()
         payload = _json.dumps({
             "retries": 3,
@@ -2786,7 +2786,7 @@ class TestTruncateToolCallArgsJson:
             "timeout": None,
             "items": [1, 2, 3],
             "note": "z" * 500,
-        })
+        }).decode('utf-8')
         parsed = _json.loads(shrink(payload))
         assert parsed["retries"] == 3
         assert parsed["enabled"] is True
@@ -2795,17 +2795,17 @@ class TestTruncateToolCallArgsJson:
         assert parsed["note"].endswith("...[truncated]")
 
     def test_scalar_json_string_gets_shrunk(self):
-        import json as _json
+        import orjson as _json
         shrink = self._helper()
-        payload = _json.dumps("q" * 500)
+        payload = _json.dumps("q" * 500).decode('utf-8')
         parsed = _json.loads(shrink(payload))
         assert isinstance(parsed, str)
         assert parsed.endswith("...[truncated]")
 
     def test_unicode_preserved(self):
-        import json as _json
+        import orjson as _json
         shrink = self._helper()
-        payload = _json.dumps({"content": "非德满" + ("a" * 500)})
+        payload = _json.dumps({"content": "非德满" + ("a" * 500)}).decode('utf-8')
         out = shrink(payload)
         # ensure_ascii=False keeps CJK intact rather than emitting \uXXXX
         assert "非德满" in out
@@ -2813,7 +2813,7 @@ class TestTruncateToolCallArgsJson:
     def test_pass3_emits_valid_json_for_downstream_provider(self):
         """End-to-end: Pass 3 must never produce the exact failure payload
         that caused the 400 loop (unterminated string, missing brace)."""
-        import json as _json
+        import orjson as _json
         with patch("agent.context_compressor.get_model_context_length", return_value=100000):
             c = ContextCompressor(
                 model="test/model",
@@ -2826,7 +2826,7 @@ class TestTruncateToolCallArgsJson:
         args_payload = _json.dumps({
             "path": "~/.hermes/skills/shopping/browser-setup-notes.md",
             "content": huge_content,
-        })
+        }).decode('utf-8')
         assert len(args_payload) > 500  # triggers the Pass-3 shrink
         messages = [
             {"role": "user", "content": "please write two files"},

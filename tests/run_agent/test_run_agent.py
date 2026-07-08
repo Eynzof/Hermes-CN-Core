@@ -8,7 +8,7 @@ are made.
 import ast
 import inspect
 import io
-import json
+import orjson
 import logging
 import re
 import uuid
@@ -761,7 +761,7 @@ class TestSaveSessionLogRedactsSecrets:
         agent._save_session_log(messages)
 
         snapshot_text = (tmp_path / f"session_{agent.session_id}.json").read_text(encoding="utf-8")
-        snapshot = json.loads(snapshot_text)
+        snapshot = orjson.loads(snapshot_text)
         parts = snapshot["messages"][0]["content"]
         assert "gsk_abc123def456ghi789jkl012mno" not in parts[0]["text"]
         # Image part preserved untouched
@@ -1119,7 +1119,7 @@ class TestHydrateTodoStore:
             self._assistant_todo_call("c1"),
             {
                 "role": "tool",
-                "content": json.dumps({"todos": todos}),
+                "content": orjson.dumps({"todos": todos}).decode('utf-8'),
                 "tool_call_id": "c1",
             },
         ]
@@ -1147,7 +1147,7 @@ class TestHydrateTodoStore:
         history = [
             {
                 "role": "tool",
-                "content": json.dumps({"todos": todos}),
+                "content": orjson.dumps({"todos": todos}).decode('utf-8'),
                 "tool_call_id": "c1",
             },
         ]
@@ -1172,7 +1172,7 @@ class TestHydrateTodoStore:
             },
             {
                 "role": "tool",
-                "content": json.dumps({"todos": todos}),
+                "content": orjson.dumps({"todos": todos}).decode('utf-8'),
                 "tool_call_id": "c1",
             },
         ]
@@ -1189,7 +1189,7 @@ class TestHydrateTodoStore:
             {"role": "user", "content": "new turn"},
             {
                 "role": "tool",
-                "content": json.dumps({"todos": todos}),
+                "content": orjson.dumps({"todos": todos}).decode('utf-8'),
                 "tool_call_id": "c1",
             },
         ]
@@ -2212,14 +2212,14 @@ class TestFormatToolsForSystemMessage:
     def test_formats_single_tool(self, agent):
         agent.tools = _make_tool_defs("web_search")
         result = agent._format_tools_for_system_message()
-        parsed = json.loads(result)
+        parsed = orjson.loads(result)
         assert len(parsed) == 1
         assert parsed[0]["name"] == "web_search"
 
     def test_formats_multiple_tools(self, agent):
         agent.tools = _make_tool_defs("web_search", "terminal", "read_file")
         result = agent._format_tools_for_system_message()
-        parsed = json.loads(result)
+        parsed = orjson.loads(result)
         assert len(parsed) == 3
         names = {t["name"] for t in parsed}
         assert names == {"web_search", "terminal", "read_file"}
@@ -2251,11 +2251,11 @@ class TestExecuteToolCalls:
         old_text = "stale preference entry"
         tc = _mock_tool_call(
             name="memory",
-            arguments=json.dumps({
+            arguments=orjson.dumps({
                 "action": "remove",
                 "target": "memory",
                 "old_text": old_text,
-            }),
+            }).decode('utf-8'),
             call_id="mem-1",
         )
         mock_msg = _mock_assistant_msg(content="", tool_calls=[tc])
@@ -2272,7 +2272,7 @@ class TestExecuteToolCalls:
         agent._memory_manager = FakeMemoryManager()
         agent._memory_store = object()
 
-        with patch("tools.memory_tool.memory_tool", return_value=json.dumps({"success": True})):
+        with patch("tools.memory_tool.memory_tool", return_value=orjson.dumps({"success": True}).decode('utf-8')):
             agent._execute_tool_calls_sequential(mock_msg, messages, "task-1")
 
         assert len(calls) == 1
@@ -2314,7 +2314,7 @@ class TestExecuteToolCalls:
         assert post_calls[0]["api_request_id"] == "api-1"
         assert post_calls[0]["status"] == "cancelled"
         assert post_calls[0]["error_type"] == "keyboard_interrupt"
-        assert json.loads(post_calls[0]["result"])["status"] == "cancelled"
+        assert orjson.loads(post_calls[0]["result"])["status"] == "cancelled"
 
     def test_interrupt_skips_remaining(self, agent):
         tc1 = _mock_tool_call(name="web_search", arguments="{}", call_id="c1")
@@ -2637,7 +2637,7 @@ class TestConcurrentToolExecution:
 
         def fake_handle(name, args, task_id, **kwargs):
             call_log.append(name)
-            return json.dumps({"result": args.get("q", "")})
+            return orjson.dumps({"result": args.get("q", "")}).decode('utf-8')
 
         with patch("run_agent.handle_function_call", side_effect=fake_handle):
             agent._execute_tool_calls_concurrent(mock_msg, messages, "task-1")
@@ -2890,7 +2890,7 @@ class TestConcurrentToolExecution:
         secret = "sk-proj-ABCD1234567890EFGH"
         tool_call = _mock_tool_call(
             name="browser_type",
-            arguments=json.dumps({"ref": "@apikey", "text": secret}),
+            arguments=orjson.dumps({"ref": "@apikey", "text": secret}).decode('utf-8'),
             call_id="c-secret",
         )
         mock_msg = _mock_assistant_msg(content="", tool_calls=[tool_call])
@@ -2935,7 +2935,7 @@ class TestConcurrentToolExecution:
         secret = "sk-proj-ABCD1234567890EFGH"
         tc = _mock_tool_call(
             name="browser_type",
-            arguments=json.dumps({"ref": "@apikey", "text": secret}),
+            arguments=orjson.dumps({"ref": "@apikey", "text": secret}).decode('utf-8'),
             call_id="c-secret",
         )
         mock_msg = _mock_assistant_msg(content="", tool_calls=[tc])
@@ -2996,7 +2996,7 @@ class TestConcurrentToolExecution:
         with patch("tools.todo_tool.todo_tool", side_effect=AssertionError("should not run")) as mock_todo:
             result = agent._invoke_tool("todo", {"todos": []}, "task-1")
 
-        assert json.loads(result) == {"error": "Blocked by test policy"}
+        assert orjson.loads(result) == {"error": "Blocked by test policy"}
         mock_todo.assert_not_called()
 
     def test_invoke_tool_blocked_skips_handle_function_call(self, agent, monkeypatch):
@@ -3008,7 +3008,7 @@ class TestConcurrentToolExecution:
         with patch("run_agent.handle_function_call", side_effect=AssertionError("should not run")):
             result = agent._invoke_tool("web_search", {"q": "test"}, "task-1")
 
-        assert json.loads(result) == {"error": "Blocked"}
+        assert orjson.loads(result) == {"error": "Blocked"}
 
     def test_sequential_blocked_tool_skips_checkpoints_and_callbacks(self, agent, monkeypatch):
         """Sequential path: blocked tool should not trigger checkpoints or start callbacks."""
@@ -3037,7 +3037,7 @@ class TestConcurrentToolExecution:
         assert starts == []
         assert len(messages) == 1
         assert messages[0]["role"] == "tool"
-        assert json.loads(messages[0]["content"]) == {"error": "Blocked by policy"}
+        assert orjson.loads(messages[0]["content"]) == {"error": "Blocked by policy"}
 
     def test_sequential_blocked_tool_emits_terminal_post_tool_hook(self, agent, monkeypatch):
         """Blocked pre_tool_call decisions still terminate observer tool spans."""
@@ -3204,7 +3204,7 @@ class TestConcurrentToolExecution:
                 "memory", {"action": "add", "target": "memory", "content": "x"}, "task-1",
             )
 
-        assert json.loads(result) == {"error": "Blocked"}
+        assert orjson.loads(result) == {"error": "Blocked"}
         assert agent._turns_since_memory == 5
 
     def test_invoke_tool_memory_remove_notifies_provider_with_old_text(self, agent, monkeypatch):
@@ -3225,7 +3225,7 @@ class TestConcurrentToolExecution:
         agent._memory_manager = FakeMemoryManager()
         agent._memory_store = object()
 
-        with patch("tools.memory_tool.memory_tool", return_value=json.dumps({"success": True})):
+        with patch("tools.memory_tool.memory_tool", return_value=orjson.dumps({"success": True}).decode('utf-8')):
             agent._invoke_tool(
                 "memory",
                 {"action": "remove", "target": "memory", "old_text": old_text},
@@ -3258,7 +3258,7 @@ class TestConcurrentToolExecution:
 
         with patch(
             "tools.memory_tool.memory_tool",
-            return_value=json.dumps({"success": False, "error": "No entry matched"}),
+            return_value=orjson.dumps({"success": False, "error": "No entry matched"}).decode('utf-8'),
         ):
             agent._invoke_tool(
                 "memory",
@@ -6278,7 +6278,7 @@ class TestAnthropicImageFallback:
         }]
 
         with (
-            patch("tools.vision_tools.vision_analyze_tool", new=AsyncMock(return_value=json.dumps({"success": True, "analysis": "A cat sitting on a chair."}))),
+            patch("tools.vision_tools.vision_analyze_tool", new=AsyncMock(return_value=orjson.dumps({"success": True, "analysis": "A cat sitting on a chair."}).decode('utf-8'))),
             patch("agent.anthropic_adapter.build_anthropic_kwargs") as mock_build,
         ):
             mock_build.return_value = {"model": "claude-sonnet-4-20250514", "messages": [], "max_tokens": 4096}
@@ -6316,7 +6316,7 @@ class TestAnthropicImageFallback:
             },
         ]
 
-        mock_vision = AsyncMock(return_value=json.dumps({"success": True, "analysis": "A small test image."}))
+        mock_vision = AsyncMock(return_value=orjson.dumps({"success": True, "analysis": "A small test image."}).decode('utf-8'))
         with (
             patch("tools.vision_tools.vision_analyze_tool", new=mock_vision),
             patch("agent.anthropic_adapter.build_anthropic_kwargs") as mock_build,
@@ -7353,12 +7353,12 @@ class TestNormalizeCodexDictArguments:
 
     def test_function_call_dict_arguments_produce_valid_json(self, agent):
         """dict arguments from function_call must be serialised with
-        json.dumps, not str(), so downstream json.loads() succeeds."""
+        json.dumps, not str(), so downstream orjson.loads() succeeds."""
         args_dict = {"query": "weather in NYC", "units": "celsius"}
         response = self._make_codex_response("function_call", args_dict)
         msg, _ = _normalize_codex_response(response)
         tc = msg.tool_calls[0]
-        parsed = json.loads(tc.function.arguments)
+        parsed = orjson.loads(tc.function.arguments)
         assert parsed == args_dict
 
     def test_custom_tool_call_dict_arguments_produce_valid_json(self, agent):
@@ -7367,7 +7367,7 @@ class TestNormalizeCodexDictArguments:
         response = self._make_codex_response("custom_tool_call", args_dict)
         msg, _ = _normalize_codex_response(response)
         tc = msg.tool_calls[0]
-        parsed = json.loads(tc.function.arguments)
+        parsed = orjson.loads(tc.function.arguments)
         assert parsed == args_dict
 
     def test_string_arguments_unchanged(self, agent):

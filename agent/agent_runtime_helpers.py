@@ -376,6 +376,33 @@ def repair_message_sequence(agent, messages: List[Dict]) -> int:
     most shapes, but external callers (gateway multi-queue replay,
     session resume, cron, explicit conversation_history passed in by
     host code) can feed in already-broken histories.
+
+    Repairs applied:
+      0. Consecutive ``assistant`` messages with no intervening
+         ``tool``/``user`` turn — merged into a single assistant turn
+         (union of ``tool_calls``, concatenated ``content``). Strict
+         OpenAI-compatible providers (DeepSeek v4, Moonshot/Kimi) reject
+         a history where an ``assistant`` message carrying ``tool_calls``
+         is immediately followed by another ``assistant`` message instead
+         of its ``tool`` results — HTTP 400 "An assistant message with
+         'tool_calls' must be followed by tool messages…". The split
+         shape is produced by recovery/continuation paths that append an
+         interim assistant turn (thinking-prefill, codex
+         incomplete-continuation) or by host-fed / legacy-persisted /
+         resumed histories. Refs #29148, #49147.
+      1. Stray ``tool`` messages whose ``tool_call_id`` doesn't match
+         any preceding assistant tool_call — dropped.
+      2. Consecutive ``user`` messages — merged with newline separator
+         so no user input is lost.
+
+    Deliberately does NOT rewind orphan ``assistant(tool_calls)+tool``
+    pairs that precede a user message — that pattern IS valid when the
+    previous turn completed normally and the user jumped in to redirect
+    before the model got a continuation turn (the ongoing dialog
+    pattern). The empty-response scaffolding stripper handles the
+    genuinely-broken variant via its flag-gated rewind.
+
+    Returns the number of repairs made (for logging/telemetry).
     """
     # Native C fast path
     try:
@@ -388,10 +415,6 @@ def repair_message_sequence(agent, messages: List[Dict]) -> int:
         pass  # Fall through to Python
     if not messages:
         return 0
-
-    repairs = 0
-
-    # Pass 0:
 
     repairs = 0
 

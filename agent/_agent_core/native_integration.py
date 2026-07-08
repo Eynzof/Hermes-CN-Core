@@ -335,12 +335,12 @@ def sanitize_and_repair_messages(messages_json: str) -> str:
     Direct pass-through to the C combined function.
     """
     if not _native_enabled():
-        # Fallback: run both in sequence
-        from agent.agent_runtime_helpers import sanitize_api_messages as _san, repair_message_sequence as _rep
+        # Fallback: run sanitize in sequence
+        from agent.agent_runtime_helpers import sanitize_api_messages as _san
         messages = json.loads(messages_json)
         messages = _san(messages)
-        # repair_message_sequence takes agent + messages
-        return messages_json  # approximated
+        # repair_message_sequence is skipped because it requires an `agent` reference
+        return json.dumps(messages, ensure_ascii=False)
     
     try:
         return agent_native.sanitize_and_repair_messages(messages_json)

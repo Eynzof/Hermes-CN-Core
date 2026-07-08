@@ -1090,6 +1090,11 @@ DEFAULT_CONFIG = {
     
     "terminal": {
         "backend": "local",
+        # [CN-fork] Windows shell selection for the system prompt hint only.
+        # auto       - preserve current behavior: detect pwsh, otherwise PS5.1
+        # powershell - PowerShell-family hint (same as auto in this release)
+        # bash       - Git Bash / MSYS hint; avoids the PS5.1 restriction text
+        "shell": "auto",
         "modal_mode": "auto",
         "cwd": ".",  # Use current directory
         "timeout": 180,

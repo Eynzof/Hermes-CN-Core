@@ -13,7 +13,7 @@ the codebase were migrated to the helper; these tests pin that invariant.
 from __future__ import annotations
 
 import errno
-import json
+import orjson
 import os
 import sys
 from pathlib import Path
@@ -104,7 +104,7 @@ def test_atomic_json_write_preserves_symlink(tmp_path: Path) -> None:
     atomic_json_write(link, {"hello": "world"})
 
     assert link.is_symlink()
-    loaded = json.loads(real.read_text(encoding="utf-8"))
+    loaded = orjson.loads(real.read_text(encoding="utf-8"))
     assert loaded == {"hello": "world"}
 
 

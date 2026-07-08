@@ -12,7 +12,7 @@ Covers:
 
 from __future__ import annotations
 
-import json
+import orjson
 
 import pytest
 
@@ -141,7 +141,7 @@ class TestCronjobToolWorkdir:
     def test_create_with_workdir_json_roundtrip(self, tmp_cron_dir):
         from tools.cronjob_tools import cronjob
 
-        result = json.loads(
+        result = orjson.loads(
             cronjob(
                 action="create",
                 prompt="hi",
@@ -155,7 +155,7 @@ class TestCronjobToolWorkdir:
     def test_create_without_workdir_hides_field_in_format(self, tmp_cron_dir):
         from tools.cronjob_tools import cronjob
 
-        result = json.loads(
+        result = orjson.loads(
             cronjob(
                 action="create",
                 prompt="hi",
@@ -169,7 +169,7 @@ class TestCronjobToolWorkdir:
     def test_update_clears_workdir_with_empty_string(self, tmp_cron_dir):
         from tools.cronjob_tools import cronjob
 
-        created = json.loads(
+        created = orjson.loads(
             cronjob(
                 action="create",
                 prompt="hi",
@@ -179,7 +179,7 @@ class TestCronjobToolWorkdir:
         )
         job_id = created["job_id"]
 
-        updated = json.loads(
+        updated = orjson.loads(
             cronjob(action="update", job_id=job_id, workdir="")
         )
         assert updated["success"] is True

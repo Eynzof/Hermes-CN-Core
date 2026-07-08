@@ -43,12 +43,9 @@ def _sign(secret: bytes, sub: str, kind: str, ttl: int) -> str:
     import base64
     import hashlib
     import hmac
-    import json
+    import orjson
 
-    raw = json.dumps(
-        {"sub": sub, "kind": kind, "exp": int(time.time()) + ttl},
-        separators=(",", ":"),
-    ).encode()
+    raw = orjson.dumps({"sub": sub, "kind": kind, "exp": int(time.time()) + ttl}).decode('utf-8').encode()
     sig = hmac.new(secret, raw, hashlib.sha256).digest()
     return base64.urlsafe_b64encode(raw + sig).decode()
 
@@ -57,7 +54,7 @@ def _unsign(secret: bytes, token: str):
     import base64
     import hashlib
     import hmac
-    import json
+    import orjson
 
     try:
         blob = base64.urlsafe_b64decode(token.encode())
@@ -66,7 +63,7 @@ def _unsign(secret: bytes, token: str):
             sig, hmac.new(secret, raw, hashlib.sha256).digest()
         ):
             return None
-        return json.loads(raw)
+        return orjson.loads(raw)
     except Exception:
         return None
 

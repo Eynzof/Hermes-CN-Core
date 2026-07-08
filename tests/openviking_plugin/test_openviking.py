@@ -1,6 +1,6 @@
 """Tests for plugins/memory/openviking/__init__.py — URI normalization and payload handling."""
 
-import json
+import orjson
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any, cast
@@ -382,7 +382,7 @@ class TestOpenVikingTurnConversion:
                         "type": "function",
                         "function": {
                             "name": "shell_command",
-                            "arguments": json.dumps({"command": "rg assemble"}),
+                            "arguments": orjson.dumps({"command": "rg assemble"}).decode('utf-8'),
                         },
                     }
                 ],
@@ -416,7 +416,7 @@ class TestOpenVikingTurnConversion:
                         "type": "function",
                         "function": {
                             "name": "shell_command",
-                            "arguments": json.dumps({"command": "rg assemble"}),
+                            "arguments": orjson.dumps({"command": "rg assemble"}).decode('utf-8'),
                         },
                     }
                 ],
@@ -465,7 +465,7 @@ class TestOpenVikingTurnConversion:
                         "type": "function",
                         "function": {
                             "name": "read_file",
-                            "arguments": json.dumps({"path": "missing.md"}),
+                            "arguments": orjson.dumps({"path": "missing.md"}).decode('utf-8'),
                         },
                     }
                 ],
@@ -474,7 +474,7 @@ class TestOpenVikingTurnConversion:
                 "role": "tool",
                 "tool_call_id": "call_read_1",
                 "name": "read_file",
-                "content": json.dumps({"error": "File not found", "exit_code": 1}),
+                "content": orjson.dumps({"error": "File not found", "exit_code": 1}).decode('utf-8'),
             },
         ]
 
@@ -487,7 +487,7 @@ class TestOpenVikingTurnConversion:
                 "tool_id": "call_read_1",
                 "tool_name": "read_file",
                 "tool_input": {"path": "missing.md"},
-                "tool_output": json.dumps({"error": "File not found", "exit_code": 1}),
+                "tool_output": orjson.dumps({"error": "File not found", "exit_code": 1}).decode('utf-8'),
                 "tool_status": "error",
             }
         ]
@@ -504,7 +504,7 @@ class TestOpenVikingTurnConversion:
                         "type": "function",
                         "function": {
                             "name": "long_check",
-                            "arguments": json.dumps({"target": "repo"}),
+                            "arguments": orjson.dumps({"target": "repo"}).decode('utf-8'),
                         },
                     }
                 ],
@@ -536,7 +536,7 @@ class TestOpenVikingTurnConversion:
                         "type": "function",
                         "function": {
                             "name": "first_tool",
-                            "arguments": json.dumps({"x": 1}),
+                            "arguments": orjson.dumps({"x": 1}).decode('utf-8'),
                         },
                     },
                     {
@@ -544,7 +544,7 @@ class TestOpenVikingTurnConversion:
                         "type": "function",
                         "function": {
                             "name": "second_tool",
-                            "arguments": json.dumps({"y": 2}),
+                            "arguments": orjson.dumps({"y": 2}).decode('utf-8'),
                         },
                     },
                 ],
@@ -589,7 +589,7 @@ class TestOpenVikingTurnConversion:
                             "type": "function",
                             "function": {
                                 "name": recall_tool_name,
-                                "arguments": json.dumps({"query": "context assembly decision"}),
+                                "arguments": orjson.dumps({"query": "context assembly decision"}).decode('utf-8'),
                             },
                         },
                         {
@@ -597,7 +597,7 @@ class TestOpenVikingTurnConversion:
                             "type": "function",
                             "function": {
                                 "name": "shell_command",
-                                "arguments": json.dumps({"command": "rg preassemble"}),
+                                "arguments": orjson.dumps({"command": "rg preassemble"}).decode('utf-8'),
                             },
                         },
                     ],
@@ -606,14 +606,14 @@ class TestOpenVikingTurnConversion:
                     "role": "tool",
                     "tool_call_id": "call_recall_1",
                     "name": recall_tool_name,
-                    "content": json.dumps({
+                    "content": orjson.dumps({
                         "results": [
                             {
                                 "uri": "viking://user/hermes/memories/context",
                                 "abstract": "Old OpenViking memory content",
                             }
                         ]
-                    }),
+                    }).decode('utf-8'),
                 },
                 {
                     "role": "tool",
@@ -637,7 +637,7 @@ class TestOpenVikingTurnConversion:
                     "tool_status": "completed",
                 }
             ]
-            batch_text = json.dumps(batch)
+            batch_text = orjson.dumps(batch).decode('utf-8')
             assert recall_tool_name not in batch_text
             assert "Old OpenViking memory content" not in batch_text
 
@@ -657,7 +657,7 @@ class TestOpenVikingTurnConversion:
                         "type": "function",
                         "function": {
                             "name": "viking_search",
-                            "arguments": json.dumps({"query": "decision"}),
+                            "arguments": orjson.dumps({"query": "decision"}).decode('utf-8'),
                         },
                     }
                 ],
@@ -666,7 +666,7 @@ class TestOpenVikingTurnConversion:
                 "role": "tool",
                 "tool_call_id": "",
                 "name": "viking_search",
-                "content": json.dumps({"results": ["recall stuff"]}),
+                "content": orjson.dumps({"results": ["recall stuff"]}).decode('utf-8'),
             },
             {
                 "role": "tool",
@@ -679,7 +679,7 @@ class TestOpenVikingTurnConversion:
 
         batch = OpenVikingMemoryProvider._messages_to_openviking_batch(turn)
 
-        batch_text = json.dumps(batch)
+        batch_text = orjson.dumps(batch).decode('utf-8')
         # The unrelated (empty-id) shell result must survive.
         assert "important shell output" in batch_text
         # The recall tool result must still be excluded.
@@ -728,7 +728,7 @@ class TestOpenVikingRead:
             }
         )
 
-        result = json.loads(provider._tool_read({"uri": "viking://user/hermes/.overview.md", "level": "overview"}))
+        result = orjson.loads(provider._tool_read({"uri": "viking://user/hermes/.overview.md", "level": "overview"}))
 
         assert result["uri"] == "viking://user/hermes/.overview.md"
         assert result["resolved_uri"] == "viking://user/hermes"
@@ -750,7 +750,7 @@ class TestOpenVikingRead:
             }
         )
 
-        result = json.loads(provider._tool_read({"uri": "viking://user/hermes/memories/profile.md", "level": "full"}))
+        result = orjson.loads(provider._tool_read({"uri": "viking://user/hermes/memories/profile.md", "level": "full"}))
 
         assert result["uri"] == "viking://user/hermes/memories/profile.md"
         assert result["resolved_uri"] == "viking://user/hermes/memories/profile.md"
@@ -786,7 +786,7 @@ class TestOpenVikingRead:
             }
         )
 
-        result = json.loads(provider._tool_read({"uris": uris, "level": "full"}))
+        result = orjson.loads(provider._tool_read({"uris": uris, "level": "full"}))
 
         assert result["requested"] == 4
         assert result["returned"] == 3
@@ -819,7 +819,7 @@ class TestOpenVikingRead:
             }
         )
 
-        result = json.loads(
+        result = orjson.loads(
             provider._tool_read({"uris": [ok_uri, ok_uri, bad_uri], "level": "full"})
         )
 
@@ -850,7 +850,7 @@ class TestOpenVikingRead:
             }
         )
 
-        result = json.loads(provider._tool_read({"uri": file_uri, "level": "overview"}))
+        result = orjson.loads(provider._tool_read({"uri": file_uri, "level": "overview"}))
 
         assert result["uri"] == file_uri
         assert result["resolved_uri"] == file_uri
@@ -874,7 +874,7 @@ class TestOpenVikingRead:
             }
         )
 
-        result = json.loads(provider._tool_read({"uri": "viking://user/hermes/.overview.md", "level": "overview"}))
+        result = orjson.loads(provider._tool_read({"uri": "viking://user/hermes/.overview.md", "level": "overview"}))
 
         assert result["content"] == "overview"
         # No fs/stat call — normalization already determined it's a directory.
@@ -899,7 +899,7 @@ class TestOpenVikingRead:
             }
         )
 
-        result = json.loads(provider._tool_read({"uri": dir_uri, "level": "overview"}))
+        result = orjson.loads(provider._tool_read({"uri": dir_uri, "level": "overview"}))
 
         assert result["content"] == "dir overview"
         assert "fallback" not in result
@@ -929,7 +929,7 @@ class TestOpenVikingRead:
             }
         )
 
-        result = json.loads(provider._tool_read({"uri": file_uri, "level": "overview"}))
+        result = orjson.loads(provider._tool_read({"uri": file_uri, "level": "overview"}))
 
         assert result["uri"] == file_uri
         assert result["level"] == "overview"
@@ -969,7 +969,7 @@ class TestOpenVikingAutoRecallPrefetch:
 
         class Handler(BaseHTTPRequestHandler):
             def _send_json(self, payload):
-                body = json.dumps(payload).encode("utf-8")
+                body = orjson.dumps(payload)
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(body)))
@@ -994,7 +994,7 @@ class TestOpenVikingAutoRecallPrefetch:
 
             def do_POST(self):
                 length = int(self.headers.get("Content-Length", "0") or "0")
-                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                payload = orjson.loads(self.rfile.read(length).decode("utf-8") or "{}")
                 records["headers"].append(dict(self.headers))
                 if self.path == "/api/v1/search/search":
                     records["searches"].append(payload)
@@ -1340,7 +1340,7 @@ class TestOpenVikingBrowse:
             }
         )
 
-        result = json.loads(provider._tool_browse({"action": "list", "path": "viking://user/hermes"}))
+        result = orjson.loads(provider._tool_browse({"action": "list", "path": "viking://user/hermes"}))
 
         assert result["path"] == "viking://user/hermes"
         assert result["entries"] == [

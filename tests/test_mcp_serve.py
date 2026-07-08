@@ -10,7 +10,7 @@ Three layers of tests:
 
 import asyncio
 import inspect
-import json
+import orjson
 import os
 import sqlite3
 import time
@@ -117,7 +117,7 @@ def sample_sessions():
 
 @pytest.fixture
 def populated_sessions_dir(sessions_dir, sample_sessions):
-    (sessions_dir / "sessions.json").write_text(json.dumps(sample_sessions))
+    (sessions_dir / "sessions.json").write_text(orjson.dumps(sample_sessions).decode('utf-8'))
     return sessions_dir
 
 
@@ -156,12 +156,12 @@ def _create_test_db(db_path, session_id, messages):
     for msg in messages:
         content = msg.get("content", "")
         if isinstance(content, (list, dict)):
-            content = json.dumps(content)
+            content = orjson.dumps(content).decode('utf-8')
         conn.execute(
             "INSERT INTO messages (session_id, role, content, timestamp, tool_calls) VALUES (?, ?, ?, ?, ?)",
             (session_id, msg["role"], content,
              msg.get("timestamp", "2026-03-29T12:00:00"),
-             json.dumps(msg["tool_calls"]) if msg.get("tool_calls") else None),
+             orjson.dumps(msg["tool_calls"]).decode('utf-8') if msg.get("tool_calls") else None),
         )
     conn.commit()
     conn.close()
@@ -200,7 +200,7 @@ def mock_session_db(tmp_path, populated_sessions_dir):
             for r in rows:
                 d = dict(r)
                 if d.get("tool_calls"):
-                    d["tool_calls"] = json.loads(d["tool_calls"])
+                    d["tool_calls"] = orjson.loads(d["tool_calls"])
                 result.append(d)
             return result
 
@@ -514,7 +514,7 @@ def _run_tool(server, name, args=None):
     result = asyncio.get_event_loop().run_until_complete(
         server._tool_manager.call_tool(name, args or {})
     )
-    return json.loads(result) if isinstance(result, str) else result
+    return orjson.loads(result) if isinstance(result, str) else result
 
 
 @pytest.fixture
@@ -798,7 +798,7 @@ class TestE2EMessagesSend:
 
     def test_send_delegates_to_tool(self, mcp_server_e2e, _event_loop, monkeypatch):
         server, _ = mcp_server_e2e
-        mock = MagicMock(return_value=json.dumps({"success": True, "platform": "telegram"}))
+        mock = MagicMock(return_value=orjson.dumps({"success": True, "platform": "telegram"}).decode('utf-8'))
         monkeypatch.setattr("tools.send_message_tool.send_message_tool", mock)
 
         result = _run_tool(server, "messages_send",
@@ -1033,7 +1033,7 @@ class TestEdgeCases:
             "platform": "telegram",
             "updated_at": "2026-03-29T12:00:00",
         }}
-        (sessions_dir / "sessions.json").write_text(json.dumps(data))
+        (sessions_dir / "sessions.json").write_text(orjson.dumps(data).decode('utf-8'))
         import mcp_serve
         monkeypatch.setattr(mcp_serve, "_get_sessions_dir", lambda: sessions_dir)
         entries = mcp_serve._load_sessions_index()
@@ -1080,7 +1080,7 @@ class TestEventBridgePollE2E:
                 "origin": {"platform": "telegram", "chat_id": "poll_test"},
             }
         }
-        (sessions_dir / "sessions.json").write_text(json.dumps(sessions_data))
+        (sessions_dir / "sessions.json").write_text(orjson.dumps(sessions_data).decode('utf-8'))
 
         # Write messages to SQLite
         messages = [
@@ -1135,7 +1135,7 @@ class TestEventBridgePollE2E:
                 "origin": {"platform": "telegram", "chat_id": "skip"},
             }
         }
-        (sessions_dir / "sessions.json").write_text(json.dumps(sessions_data))
+        (sessions_dir / "sessions.json").write_text(orjson.dumps(sessions_data).decode('utf-8'))
         _create_test_db(db_path, session_id, [
             {"role": "user", "content": "Hello", "timestamp": "2026-03-29T15:00:01"},
         ])
@@ -1187,7 +1187,7 @@ class TestEventBridgePollE2E:
                 "origin": {"platform": "telegram", "chat_id": "new"},
             }
         }
-        (sessions_dir / "sessions.json").write_text(json.dumps(sessions_data))
+        (sessions_dir / "sessions.json").write_text(orjson.dumps(sessions_data).decode('utf-8'))
         _create_test_db(db_path, session_id, [
             {"role": "user", "content": "First", "timestamp": "2026-03-29T15:00:01"},
         ])
@@ -1224,7 +1224,7 @@ class TestEventBridgePollE2E:
 
         # Update sessions.json updated_at to trigger re-check
         sessions_data["agent:main:telegram:dm:new"]["updated_at"] = "2026-03-29T15:00:10"
-        (sessions_dir / "sessions.json").write_text(json.dumps(sessions_data))
+        (sessions_dir / "sessions.json").write_text(orjson.dumps(sessions_data).decode('utf-8'))
 
         # Second poll — should detect the new message
         bridge._poll_once(db)
@@ -1258,13 +1258,13 @@ class TestEventBridgePollE2E:
 
         session_id = "20260329_150000_late_register"
         sessions_json = sessions_dir / "sessions.json"
-        sessions_json.write_text(json.dumps({
+        sessions_json.write_text(orjson.dumps({
             "agent:main:telegram:dm:late": {
                 "session_id": session_id,
                 "platform": "telegram",
                 "origin": {"platform": "telegram", "chat_id": "late"},
             }
-        }))
+        }).decode('utf-8'))
 
         class DB:
             def get_messages(self, sid):

@@ -21,7 +21,7 @@ Design spec: ``website/docs/developer-guide/browser-supervisor.md``.
 from __future__ import annotations
 
 import asyncio
-import json
+import orjson
 import logging
 import threading
 import time
@@ -840,7 +840,7 @@ class CDPSupervisor:
             payload["sessionId"] = session_id
         fut: asyncio.Future = asyncio.get_running_loop().create_future()
         self._pending_calls[call_id] = fut
-        await self._ws.send(json.dumps(payload))
+        await self._ws.send(orjson.dumps(payload).decode('utf-8'))
         try:
             return await asyncio.wait_for(fut, timeout=timeout)
         finally:
@@ -854,7 +854,7 @@ class CDPSupervisor:
                 if self._stop_requested:
                     break
                 try:
-                    msg = json.loads(raw)
+                    msg = orjson.loads(raw)
                 except Exception:
                     logger.debug("CDP supervisor: non-JSON frame dropped")
                     continue
@@ -1171,7 +1171,7 @@ class CDPSupervisor:
             "prompt_text": prompt_text if dialog.type == "prompt" else "",
             "dialog_id": dialog.id,
         }
-        body = json.dumps(payload).encode()
+        body = orjson.dumps(payload)
         try:
             import base64 as _b64
             await self._cdp(

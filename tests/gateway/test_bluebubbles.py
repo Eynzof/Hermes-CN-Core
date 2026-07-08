@@ -1,6 +1,6 @@
 """Tests for the BlueBubbles iMessage gateway adapter."""
 import asyncio
-import json
+import orjson
 
 import pytest
 
@@ -168,7 +168,7 @@ class _FakeBlueBubblesRequest:
     def __init__(self, payload, password="secret"):
         self.query = {"password": password}
         self.headers = {}
-        self._body = json.dumps(payload).encode("utf-8")
+        self._body = orjson.dumps(payload)
 
     async def read(self):
         return self._body

@@ -31,7 +31,7 @@ in this directory.
 
 from __future__ import annotations
 
-import json
+import orjson
 import logging
 import os
 import re
@@ -246,7 +246,7 @@ def _on_transform_tool_result(
         return None
     # Don't decorate error results — the model already has bigger problems.
     try:
-        parsed = json.loads(result)
+        parsed = orjson.loads(result)
         if isinstance(parsed, dict) and "error" in parsed and len(parsed) <= 2:
             return None
     except (ValueError, TypeError):

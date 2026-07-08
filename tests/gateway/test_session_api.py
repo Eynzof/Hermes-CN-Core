@@ -346,7 +346,7 @@ async def test_session_chat_stream_run_completed_carries_turn_transcript(adapter
     client that lost intermediate (pre-tool-call) assistant text from the live
     delta stream can reconcile without a separate /messages fetch. Refs #34703.
     """
-    import json as _json
+    import orjson as _json
 
     session_id = session_db.create_session("transcript-session", "api_server")
 

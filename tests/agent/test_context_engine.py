@@ -1,6 +1,6 @@
 """Tests for the ContextEngine ABC and plugin slot."""
 
-import json
+import orjson
 import pytest
 from typing import Any, Dict, List
 
@@ -59,7 +59,7 @@ class StubEngine(ContextEngine):
 
     def handle_tool_call(self, name: str, args: Dict[str, Any]) -> str:
         self._tools_called.append(name)
-        return json.dumps({"ok": True, "tool": name})
+        return orjson.dumps({"ok": True, "tool": name}).decode('utf-8')
 
 
 # ---------------------------------------------------------------------------
@@ -108,7 +108,7 @@ class TestDefaults:
     def test_default_handle_tool_call_returns_error(self):
         engine = StubEngine()
         result = ContextEngine.handle_tool_call(engine, "unknown", {})
-        data = json.loads(result)
+        data = orjson.loads(result)
         assert "error" in data
 
     def test_default_get_status(self):
@@ -172,7 +172,7 @@ class TestStubEngine:
     def test_handle_tool_call(self):
         engine = StubEngine()
         result = engine.handle_tool_call("stub_search", {})
-        assert json.loads(result)["ok"] is True
+        assert orjson.loads(result)["ok"] is True
         assert "stub_search" in engine._tools_called
 
     def test_update_from_response(self):
@@ -466,12 +466,12 @@ class TestGetUsageStatus:
         assert status["used_tokens"] == 30000
 
     def test_returns_json_serializable(self):
-        import json
+        import orjson
         engine = StubEngine()
         engine.update_from_response({"prompt_tokens": 1000})
         status = engine.get_usage_status()
-        dumped = json.dumps(status)
-        loaded = json.loads(dumped)
+        dumped = orjson.dumps(status).decode('utf-8')
+        loaded = orjson.loads(dumped)
         assert loaded["used_tokens"] == 1000
 
     def test_delegates_to_get_status_consistently(self):

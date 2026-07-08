@@ -16,7 +16,7 @@ Commands:
 """
 
 import argparse
-import json
+import orjson
 import math
 import sys
 import time
@@ -148,7 +148,7 @@ OSRM_PROFILES = {
 
 def print_json(data):
     """Print data as pretty-printed JSON to stdout."""
-    print(json.dumps(data, indent=2, ensure_ascii=False))
+    print(orjson.dumps(data, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
 
 def error_exit(message, code=1):
@@ -177,7 +177,7 @@ def http_get(url, params=None, retries=MAX_RETRIES, silent=False):
         try:
             with urllib.request.urlopen(req, timeout=15) as resp:
                 raw = resp.read().decode("utf-8")
-                return json.loads(raw)
+                return orjson.loads(raw)
         except urllib.error.HTTPError as exc:
             last_error = f"HTTP {exc.code}: {exc.reason} for {url}"
             if exc.code in {429, 503, 502, 504}:
@@ -189,7 +189,7 @@ def http_get(url, params=None, retries=MAX_RETRIES, silent=False):
         except urllib.error.URLError as exc:
             last_error = f"URL error: {exc.reason}"
             time.sleep(RETRY_DELAY * attempt)
-        except json.JSONDecodeError as exc:
+        except orjson.JSONDecodeError as exc:
             last_error = f"JSON parse error: {exc}"
             time.sleep(RETRY_DELAY * attempt)
 
@@ -252,7 +252,7 @@ def http_post(url, data_str, retries=MAX_RETRIES):
         try:
             with urllib.request.urlopen(req, timeout=30) as resp:
                 raw = resp.read().decode("utf-8")
-                return json.loads(raw)
+                return orjson.loads(raw)
         except urllib.error.HTTPError as exc:
             last_error = f"HTTP {exc.code}: {exc.reason}"
             if exc.code in {429, 503, 502, 504}:
@@ -262,7 +262,7 @@ def http_post(url, data_str, retries=MAX_RETRIES):
         except urllib.error.URLError as exc:
             last_error = f"URL error: {exc.reason}"
             time.sleep(RETRY_DELAY * attempt)
-        except json.JSONDecodeError as exc:
+        except orjson.JSONDecodeError as exc:
             last_error = f"JSON parse error: {exc}"
             time.sleep(RETRY_DELAY * attempt)
 

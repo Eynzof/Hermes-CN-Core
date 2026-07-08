@@ -21,7 +21,7 @@ of the message string.
 
 from __future__ import annotations
 
-import json
+import orjson
 import os
 import shutil
 import sys
@@ -44,7 +44,7 @@ class _MockHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):  # noqa: N802 (http.server API)
         length = int(self.headers.get("Content-Length", 0))
-        req = json.loads(self.rfile.read(length).decode())
+        req = orjson.loads(self.rfile.read(length).decode())
         type(self).captured_requests.append(req)
         is_stream = req.get("stream") is True
         if type(self).response_queue:
@@ -68,11 +68,11 @@ class _MockHandler(BaseHTTPRequestHandler):
                         "function": {"name": tc["function"]["name"], "arguments": tc["function"]["arguments"]}}]}, "finish_reason": None}]})
             chunks.append({"id": "m", "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls" if tcs else "stop"}]})
             for c in chunks:
-                self.wfile.write(f"data: {json.dumps(c)}\n\n".encode())
+                self.wfile.write(f"data: {orjson.dumps(c).decode('utf-8')}\n\n".encode())
             self.wfile.write(b"data: [DONE]\n\n")
             self.wfile.flush()
         else:
-            body = json.dumps(resp).encode()
+            body = orjson.dumps(resp)
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))

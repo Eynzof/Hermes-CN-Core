@@ -10,7 +10,7 @@ surfacing a hard 401 — but ONLY for relogin-required failures, never for trans
 ones (e.g. 429 quota, where the stored token is still valid).
 """
 
-import json
+import orjson
 
 import pytest
 
@@ -152,7 +152,7 @@ def test_self_heals_missing_singleton_access_token_from_codex_cli(tmp_path, monk
     codex_home = tmp_path / "codex"
     hermes_home.mkdir()
     codex_home.mkdir()
-    (hermes_home / "auth.json").write_text(json.dumps({
+    (hermes_home / "auth.json").write_text(orjson.dumps({
         "version": 1,
         "providers": {
             "openai-codex": {
@@ -161,13 +161,13 @@ def test_self_heals_missing_singleton_access_token_from_codex_cli(tmp_path, monk
                 "auth_mode": "chatgpt",
             },
         },
-    }))
-    (codex_home / "auth.json").write_text(json.dumps({
+    }).decode('utf-8'))
+    (codex_home / "auth.json").write_text(orjson.dumps({
         "tokens": {
             "access_token": "fresh-access",
             "refresh_token": "fresh-refresh",
         },
-    }))
+    }).decode('utf-8'))
     monkeypatch.setenv("HERMES_HOME", str(hermes_home))
     monkeypatch.setenv("CODEX_HOME", str(codex_home))
 
@@ -175,7 +175,7 @@ def test_self_heals_missing_singleton_access_token_from_codex_cli(tmp_path, monk
 
     assert resolved["api_key"] == "fresh-access"
     assert resolved["source"] == "hermes-auth-store"
-    stored = json.loads((hermes_home / "auth.json").read_text())
+    stored = orjson.loads((hermes_home / "auth.json").read_text())
     tokens = stored["providers"]["openai-codex"]["tokens"]
     assert tokens["access_token"] == "fresh-access"
     assert tokens["refresh_token"] == "fresh-refresh"
@@ -187,7 +187,7 @@ def test_missing_singleton_access_token_reraises_when_codex_cli_half_token(tmp_p
     codex_home = tmp_path / "codex"
     hermes_home.mkdir()
     codex_home.mkdir()
-    (hermes_home / "auth.json").write_text(json.dumps({
+    (hermes_home / "auth.json").write_text(orjson.dumps({
         "version": 1,
         "providers": {
             "openai-codex": {
@@ -195,10 +195,10 @@ def test_missing_singleton_access_token_reraises_when_codex_cli_half_token(tmp_p
                 "auth_mode": "chatgpt",
             },
         },
-    }))
-    (codex_home / "auth.json").write_text(json.dumps({
+    }).decode('utf-8'))
+    (codex_home / "auth.json").write_text(orjson.dumps({
         "tokens": {"access_token": "fresh-only"},
-    }))
+    }).decode('utf-8'))
     monkeypatch.setenv("HERMES_HOME", str(hermes_home))
     monkeypatch.setenv("CODEX_HOME", str(codex_home))
 

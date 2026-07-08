@@ -20,7 +20,7 @@ guard is Windows-only (the ``_wmi`` builtin only exists there).
 from __future__ import annotations
 
 import importlib.util
-import json
+import orjson
 import subprocess
 import sys
 import textwrap
@@ -135,7 +135,7 @@ def test_agent_init_path_triggers_no_wmi():
 
         import agent.prompt_builder as pb
         pb.build_environment_hints()
-        print("RESULT " + json.dumps({"import": n_import, "total": len(calls), "queries": calls}))
+        print("RESULT " + orjson.dumps({"import": n_import, "total": len(calls), "queries": calls}).decode('utf-8'))
         """
     )
     r = subprocess.run(
@@ -148,7 +148,7 @@ def test_agent_init_path_triggers_no_wmi():
     assert r.returncode == 0, f"probe failed:\n{r.stderr[-2000:]}"
     lines = [ln for ln in r.stdout.splitlines() if ln.startswith("RESULT ")]
     assert lines, f"probe produced no RESULT line:\n{r.stdout[-2000:]}"
-    data = json.loads(lines[-1][len("RESULT "):])
+    data = orjson.loads(lines[-1][len("RESULT "):])
     assert data["import"] == 0, (
         f"importing run_agent triggered {data['import']} WMI queries "
         f"{data['queries']} — a module-level platform.system()/release() call "

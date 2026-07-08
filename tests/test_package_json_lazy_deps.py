@@ -30,7 +30,7 @@ expectations.
 
 from __future__ import annotations
 
-import json
+import orjson
 from pathlib import Path
 
 
@@ -39,7 +39,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 def _root_package_json() -> dict:
     with (REPO_ROOT / "package.json").open("r", encoding="utf-8") as fh:
-        return json.load(fh)
+        return orjson.loads(fh.read())
 
 
 def test_camofox_is_not_in_root_dependencies() -> None:

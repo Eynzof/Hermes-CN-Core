@@ -11,7 +11,7 @@ Subcommands:
 from __future__ import annotations
 
 import argparse
-import json
+import orjson
 import os
 import subprocess
 import sys
@@ -503,8 +503,8 @@ def _list_projects(
         return None
 
     try:
-        data = json.loads(res.stdout or "[]")
-    except json.JSONDecodeError as exc:
+        data = orjson.loads(res.stdout or "[]")
+    except orjson.JSONDecodeError as exc:
         console.print(f"  [red]bws returned non-JSON: {exc}[/red]")
         return None
     if not isinstance(data, list):

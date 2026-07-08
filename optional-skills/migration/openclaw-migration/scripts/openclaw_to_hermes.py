@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import json
+import orjson
 import os
 import re
 import shutil
@@ -659,7 +659,7 @@ def write_report(output_dir: Path, report: Dict[str, Any]) -> None:
     # copy is redacted.
     redacted = redact_migration_value(report)
     (output_dir / "report.json").write_text(
-        json.dumps(redacted, indent=2, ensure_ascii=False) + "\n",
+        orjson.dumps(redacted, option=orjson.OPT_INDENT_2).decode('utf-8') + "\n",
         encoding="utf-8",
     )
 
@@ -1208,8 +1208,8 @@ class Migrator:
             return
 
         try:
-            data = json.loads(source.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as exc:
+            data = orjson.loads(source.read_text(encoding="utf-8"))
+        except orjson.JSONDecodeError as exc:
             self.record("command-allowlist", source, destination, "error", f"Invalid JSON: {exc}")
             return
 
@@ -1262,9 +1262,9 @@ class Migrator:
             config_path = self.source_root / name
             if config_path.exists():
                 try:
-                    data = json.loads(config_path.read_text(encoding="utf-8"))
+                    data = orjson.loads(config_path.read_text(encoding="utf-8"))
                     return data if isinstance(data, dict) else {}
-                except json.JSONDecodeError:
+                except orjson.JSONDecodeError:
                     continue
         return {}
 
@@ -1343,8 +1343,8 @@ class Migrator:
         allowlist_path = self.source_root / "credentials" / "telegram-default-allowFrom.json"
         if allowlist_path.exists():
             try:
-                allow_data = json.loads(allowlist_path.read_text(encoding="utf-8"))
-            except json.JSONDecodeError:
+                allow_data = orjson.loads(allowlist_path.read_text(encoding="utf-8"))
+            except orjson.JSONDecodeError:
                 self.record("messaging-settings", allowlist_path, self.target_root / ".env", "error", "Invalid JSON in Telegram allowlist file")
             else:
                 allow_from = allow_data.get("allowFrom", [])
@@ -1617,7 +1617,7 @@ class Migrator:
         auth_profiles_path = self.source_root / "agents" / "main" / "agent" / "auth-profiles.json"
         if auth_profiles_path.exists():
             try:
-                profiles = json.loads(auth_profiles_path.read_text(encoding="utf-8"))
+                profiles = orjson.loads(auth_profiles_path.read_text(encoding="utf-8"))
                 if isinstance(profiles, dict):
                     # auth-profiles.json wraps profiles in a "profiles" key
                     profile_entries = profiles.get("profiles", profiles) if isinstance(profiles.get("profiles"), dict) else profiles
@@ -1635,7 +1635,7 @@ class Migrator:
                             secret_additions["OPENAI_API_KEY"] = api_key.strip()
                         elif "anthropic" in name_lower and "ANTHROPIC_API_KEY" not in secret_additions:
                             secret_additions["ANTHROPIC_API_KEY"] = api_key.strip()
-            except (json.JSONDecodeError, OSError):
+            except (orjson.JSONDecodeError, OSError):
                 pass
 
         if secret_additions:
@@ -2187,7 +2187,7 @@ class Migrator:
         if self.archive_dir and self.execute:
             self.archive_dir.mkdir(parents=True, exist_ok=True)
             dest = self.archive_dir / "plugins-config.json"
-            dest.write_text(json.dumps(plugins, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            dest.write_text(orjson.dumps(plugins, option=orjson.OPT_INDENT_2).decode('utf-8') + "\n", encoding="utf-8")
             self.record("plugins-config", "openclaw.json plugins.*", str(dest), "archived",
                         "Plugins config archived for manual review")
         else:
@@ -2226,7 +2226,7 @@ class Migrator:
             if self.archive_dir and self.execute:
                 self.archive_dir.mkdir(parents=True, exist_ok=True)
                 dest = self.archive_dir / "cron-config.json"
-                dest.write_text(json.dumps(cron, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+                dest.write_text(orjson.dumps(cron, option=orjson.OPT_INDENT_2).decode('utf-8') + "\n", encoding="utf-8")
                 self.record("cron-jobs", "openclaw.json cron.*", str(dest), "archived",
                             "Cron config archived. Use 'hermes cron' to recreate jobs manually.")
             else:
@@ -2257,7 +2257,7 @@ class Migrator:
         if self.archive_dir and self.execute:
             self.archive_dir.mkdir(parents=True, exist_ok=True)
             dest = self.archive_dir / "hooks-config.json"
-            dest.write_text(json.dumps(hooks, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            dest.write_text(orjson.dumps(hooks, option=orjson.OPT_INDENT_2).decode('utf-8') + "\n", encoding="utf-8")
             self.record("hooks-config", "openclaw.json hooks.*", str(dest), "archived",
                         "Hooks config archived for manual review")
         else:
@@ -2380,7 +2380,7 @@ class Migrator:
             if self.archive_dir and self.execute:
                 self.archive_dir.mkdir(parents=True, exist_ok=True)
                 dest = self.archive_dir / "agents-list.json"
-                dest.write_text(json.dumps(agent_list, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+                dest.write_text(orjson.dumps(agent_list, option=orjson.OPT_INDENT_2).decode('utf-8') + "\n", encoding="utf-8")
             self.record("agent-config", "openclaw.json agents.list", "archive/agents-list.json",
                         "archived", f"Multi-agent setup ({len(agent_list)} agents) archived for manual recreation")
 
@@ -2390,7 +2390,7 @@ class Migrator:
             if self.archive_dir and self.execute:
                 self.archive_dir.mkdir(parents=True, exist_ok=True)
                 dest = self.archive_dir / "bindings.json"
-                dest.write_text(json.dumps(bindings, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+                dest.write_text(orjson.dumps(bindings, option=orjson.OPT_INDENT_2).decode('utf-8') + "\n", encoding="utf-8")
             self.record("agent-config", "openclaw.json bindings", "archive/bindings.json",
                         "archived", f"Agent routing bindings ({len(bindings)} rules) archived")
 
@@ -2406,7 +2406,7 @@ class Migrator:
         if self.archive_dir and self.execute:
             self.archive_dir.mkdir(parents=True, exist_ok=True)
             dest = self.archive_dir / "gateway-config.json"
-            dest.write_text(json.dumps(gateway, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            dest.write_text(orjson.dumps(gateway, option=orjson.OPT_INDENT_2).decode('utf-8') + "\n", encoding="utf-8")
         self.record("gateway-config", "openclaw.json gateway.*", "archive/gateway-config.json",
                     "archived", "Gateway config archived. Use 'hermes gateway' to configure.")
 
@@ -2473,7 +2473,7 @@ class Migrator:
             if self.execute:
                 self.archive_dir.mkdir(parents=True, exist_ok=True)
                 dest = self.archive_dir / "session-config.json"
-                dest.write_text(json.dumps(complex_session, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+                dest.write_text(orjson.dumps(complex_session, option=orjson.OPT_INDENT_2).decode('utf-8') + "\n", encoding="utf-8")
             self.record("session-config", "openclaw.json session (advanced)",
                         "archive/session-config.json", "archived",
                         "Advanced session settings archived (identity links, thread bindings, etc.)")
@@ -2548,7 +2548,7 @@ class Migrator:
             if self.archive_dir and self.execute:
                 self.archive_dir.mkdir(parents=True, exist_ok=True)
                 dest = self.archive_dir / "model-aliases.json"
-                dest.write_text(json.dumps(model_aliases, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+                dest.write_text(orjson.dumps(model_aliases, option=orjson.OPT_INDENT_2).decode('utf-8') + "\n", encoding="utf-8")
             self.record("full-providers", "agents.defaults.models", "archive/model-aliases.json",
                         "archived", f"Model aliases/catalog ({len(model_aliases)} entries) archived")
 
@@ -2635,7 +2635,7 @@ class Migrator:
             if self.execute:
                 self.archive_dir.mkdir(parents=True, exist_ok=True)
                 dest = self.archive_dir / "channels-deep-config.json"
-                dest.write_text(json.dumps(complex_archive, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+                dest.write_text(orjson.dumps(complex_archive, option=orjson.OPT_INDENT_2).decode('utf-8') + "\n", encoding="utf-8")
             self.record("deep-channels", "openclaw.json channels (advanced settings)",
                         "archive/channels-deep-config.json", "archived",
                         f"Deep channel config for {len(complex_archive)} channels archived")
@@ -2676,7 +2676,7 @@ class Migrator:
             if self.execute:
                 self.archive_dir.mkdir(parents=True, exist_ok=True)
                 dest = self.archive_dir / "browser-config.json"
-                dest.write_text(json.dumps(advanced, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+                dest.write_text(orjson.dumps(advanced, option=orjson.OPT_INDENT_2).decode('utf-8') + "\n", encoding="utf-8")
             self.record("browser-config", "openclaw.json browser (advanced)",
                         "archive/browser-config.json", "archived")
 
@@ -2720,7 +2720,7 @@ class Migrator:
             if self.execute:
                 self.archive_dir.mkdir(parents=True, exist_ok=True)
                 dest = self.archive_dir / "tools-config.json"
-                dest.write_text(json.dumps(tools, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+                dest.write_text(orjson.dumps(tools, option=orjson.OPT_INDENT_2).decode('utf-8') + "\n", encoding="utf-8")
             self.record("tools-config", "openclaw.json tools (full)", "archive/tools-config.json",
                         "archived", "Full tools config archived for reference")
 
@@ -2753,7 +2753,7 @@ class Migrator:
             if self.execute:
                 self.archive_dir.mkdir(parents=True, exist_ok=True)
                 dest = self.archive_dir / "approvals-config.json"
-                dest.write_text(json.dumps(approvals, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+                dest.write_text(orjson.dumps(approvals, option=orjson.OPT_INDENT_2).decode('utf-8') + "\n", encoding="utf-8")
             self.record("approvals-config", "openclaw.json approvals (rules)",
                         "archive/approvals-config.json", "archived")
 
@@ -2768,7 +2768,7 @@ class Migrator:
         if self.archive_dir and self.execute:
             self.archive_dir.mkdir(parents=True, exist_ok=True)
             dest = self.archive_dir / "memory-backend-config.json"
-            dest.write_text(json.dumps(memory, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            dest.write_text(orjson.dumps(memory, option=orjson.OPT_INDENT_2).decode('utf-8') + "\n", encoding="utf-8")
         self.record("memory-backend", "openclaw.json memory.*", "archive/memory-backend-config.json",
                     "archived", "Memory backend config (QMD, vector search, citations) archived for manual review")
 
@@ -2784,7 +2784,7 @@ class Migrator:
         if self.archive_dir and self.execute:
             self.archive_dir.mkdir(parents=True, exist_ok=True)
             dest = self.archive_dir / "skills-registry-config.json"
-            dest.write_text(json.dumps(skills, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            dest.write_text(orjson.dumps(skills, option=orjson.OPT_INDENT_2).decode('utf-8') + "\n", encoding="utf-8")
         self.record("skills-config", "openclaw.json skills.*", "archive/skills-registry-config.json",
                     "archived", f"Skills registry config ({len(entries)} entries) archived")
 
@@ -2799,7 +2799,7 @@ class Migrator:
         if self.archive_dir and self.execute:
             self.archive_dir.mkdir(parents=True, exist_ok=True)
             dest = self.archive_dir / "ui-identity-config.json"
-            dest.write_text(json.dumps(ui, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            dest.write_text(orjson.dumps(ui, option=orjson.OPT_INDENT_2).decode('utf-8') + "\n", encoding="utf-8")
         self.record("ui-identity", "openclaw.json ui.*", "archive/ui-identity-config.json",
                     "archived", "UI theme and identity settings archived")
 
@@ -2820,7 +2820,7 @@ class Migrator:
         if self.archive_dir and self.execute:
             self.archive_dir.mkdir(parents=True, exist_ok=True)
             dest = self.archive_dir / "logging-diagnostics-config.json"
-            dest.write_text(json.dumps(combined, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            dest.write_text(orjson.dumps(combined, option=orjson.OPT_INDENT_2).decode('utf-8') + "\n", encoding="utf-8")
         self.record("logging-config", "openclaw.json logging/diagnostics",
                     "archive/logging-diagnostics-config.json", "archived")
 
@@ -3013,7 +3013,7 @@ def main() -> int:
     try:
         selected_options = resolve_selected_options(args.include, args.exclude, preset=args.preset)
     except ValueError as exc:
-        print(json.dumps({"error": str(exc)}, indent=2, ensure_ascii=False))
+        print(orjson.dumps({"error": str(exc)}, option=orjson.OPT_INDENT_2).decode('utf-8'))
         return 2
     migrator = Migrator(
         source_root=Path(os.path.expanduser(args.source)).resolve(),
@@ -3033,7 +3033,7 @@ def main() -> int:
     # When --json is set, print the redacted report to stdout and skip the
     # human-readable terminal recap.  Useful for CI and scripted wrappers.
     if getattr(args, "json_output", False):
-        print(json.dumps(redact_migration_value(report), indent=2, ensure_ascii=False))
+        print(orjson.dumps(redact_migration_value(report), option=orjson.OPT_INDENT_2).decode('utf-8'))
         return 0
 
     # ── Human-readable terminal recap ─────────────────────────
@@ -3127,7 +3127,7 @@ def main() -> int:
 
     # Also dump JSON for programmatic use
     if os.environ.get("MIGRATION_JSON_OUTPUT"):
-        print(json.dumps(report, indent=2, ensure_ascii=False))
+        print(orjson.dumps(report, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
     return 0 if s.get("error", 0) == 0 else 1
 

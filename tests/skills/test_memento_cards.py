@@ -1,7 +1,7 @@
 """Tests for optional-skills/productivity/memento-flashcards/scripts/memento_cards.py"""
 
 import csv
-import json
+import orjson
 import sys
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -32,7 +32,7 @@ def _run(capsys, argv: list[str]) -> dict:
     with mock.patch("sys.argv", ["memento_cards"] + argv):
         memento_cards.main()
     captured = capsys.readouterr()
-    return json.loads(captured.out)
+    return orjson.loads(captured.out)
 
 
 # ── Add / List / Delete ──────────────────────────────────────────────────────
@@ -284,10 +284,10 @@ class TestCSV:
 
 class TestQuizBatchAdd:
     def test_add_quiz_creates_cards(self, capsys):
-        questions = json.dumps([
+        questions = orjson.dumps([
             {"question": "Q1?", "answer": "A1"},
             {"question": "Q2?", "answer": "A2"},
-        ])
+        ]).decode('utf-8')
         result = _run(capsys, ["add-quiz", "--video-id", "abc123", "--questions", questions, "--collection", "Quiz - Test"])
         assert result["ok"] is True
         assert result["created_count"] == 2
@@ -296,7 +296,7 @@ class TestQuizBatchAdd:
             assert card["collection"] == "Quiz - Test"
 
     def test_add_quiz_deduplicates_by_video_id(self, capsys):
-        questions = json.dumps([{"question": "Q?", "answer": "A"}])
+        questions = orjson.dumps([{"question": "Q?", "answer": "A"}]).decode('utf-8')
         _run(capsys, ["add-quiz", "--video-id", "dup1", "--questions", questions])
         result = _run(capsys, ["add-quiz", "--video-id", "dup1", "--questions", questions])
         assert result["ok"] is True
@@ -365,7 +365,7 @@ class TestEdgeCases:
         """JSON without 'cards' key should be treated as empty."""
         memento_cards.DATA_DIR.mkdir(parents=True, exist_ok=True)
         with open(memento_cards.CARDS_FILE, "w") as f:
-            json.dump({"version": 1}, f)
+            f.write(orjson.dumps({"version": 1}).decode('utf-8'))
         result = _run(capsys, ["list"])
         assert result["count"] == 0
 

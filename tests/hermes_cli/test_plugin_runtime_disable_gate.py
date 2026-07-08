@@ -13,7 +13,7 @@ Covers two residual bypasses addressed in the PR:
 """
 from __future__ import annotations
 
-import json
+import orjson
 from pathlib import Path
 from unittest.mock import patch, AsyncMock
 
@@ -60,11 +60,11 @@ def _make_user_plugin(tmp_path, name="hot"):
     dist_dir = dashboard_dir / "dist"
     dist_dir.mkdir()
     (dist_dir / "index.js").write_text("console.log('hello');")
-    (dashboard_dir / "manifest.json").write_text(json.dumps({
+    (dashboard_dir / "manifest.json").write_text(orjson.dumps({
         "name": name,
         "label": name.title(),
         "entry": "dist/index.js",
-    }))
+    }).decode('utf-8'))
     return dashboard_dir
 
 
@@ -75,11 +75,11 @@ def _make_bundled_plugin(tmp_path, name="bundledx"):
     dist_dir = dashboard_dir / "dist"
     dist_dir.mkdir()
     (dist_dir / "index.js").write_text("console.log('bundled');")
-    (dashboard_dir / "manifest.json").write_text(json.dumps({
+    (dashboard_dir / "manifest.json").write_text(orjson.dumps({
         "name": name,
         "label": name.title(),
         "entry": "dist/index.js",
-    }))
+    }).decode('utf-8'))
     return dashboard_dir
 
 

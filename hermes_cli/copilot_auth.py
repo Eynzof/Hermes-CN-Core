@@ -18,7 +18,7 @@ Credential search order (matching Copilot CLI behaviour):
 
 from __future__ import annotations
 
-import json
+import orjson
 import logging
 import os
 import shutil
@@ -199,7 +199,7 @@ def copilot_device_code_login(
 
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
-            device_data = json.loads(resp.read().decode())
+            device_data = orjson.loads(resp.read().decode())
     except Exception as exc:
         logger.error("Failed to initiate device authorization: %s", exc)
         print(f"  ✗ Failed to start device authorization: {exc}")
@@ -245,7 +245,7 @@ def copilot_device_code_login(
 
         try:
             with urllib.request.urlopen(poll_req, timeout=10) as resp:
-                result = json.loads(resp.read().decode())
+                result = orjson.loads(resp.read().decode())
         except Exception:
             print(".", end="", flush=True)
             continue
@@ -344,7 +344,7 @@ def exchange_copilot_token(raw_token: str, *, timeout: float = 10.0) -> tuple[st
 
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            data = json.loads(resp.read().decode())
+            data = orjson.loads(resp.read().decode())
     except Exception as exc:
         raise ValueError(f"Copilot token exchange failed: {exc}") from exc
 

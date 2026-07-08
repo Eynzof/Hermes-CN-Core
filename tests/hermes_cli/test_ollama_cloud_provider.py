@@ -264,13 +264,13 @@ class TestOllamaCloudMergedDiscovery:
         _save_ollama_cloud_cache(["stale-model"])
 
         # Make the cache appear stale by backdating it
-        import json
+        import orjson
         cache_path = tmp_path / "ollama_cloud_models_cache.json"
         with open(cache_path) as f:
-            data = json.load(f)
+            data = orjson.loads(f.read())
         data["cached_at"] = 0  # epoch = very stale
         with open(cache_path, "w") as f:
-            json.dump(data, f)
+            f.write(orjson.dumps(data).decode('utf-8'))
 
         with patch("hermes_cli.models.fetch_api_models", return_value=None), \
              patch("agent.models_dev.fetch_models_dev", return_value={}):

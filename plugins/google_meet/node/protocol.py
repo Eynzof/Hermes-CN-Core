@@ -13,7 +13,7 @@ server). Mismatched tokens are rejected before dispatch.
 
 from __future__ import annotations
 
-import json
+import orjson
 import uuid
 from typing import Any, Dict, Tuple
 
@@ -74,7 +74,7 @@ def make_error(req_id: str, error: str) -> Dict[str, Any]:
 
 def encode(msg: Dict[str, Any]) -> str:
     """Serialize a message envelope to a JSON string."""
-    return json.dumps(msg, separators=(",", ":"), ensure_ascii=False)
+    return orjson.dumps(msg).decode('utf-8')
 
 
 def decode(raw: str) -> Dict[str, Any]:
@@ -85,8 +85,8 @@ def decode(raw: str) -> Dict[str, Any]:
     :func:`validate_request` on the server side.
     """
     try:
-        obj = json.loads(raw)
-    except (TypeError, json.JSONDecodeError) as exc:
+        obj = orjson.loads(raw)
+    except (TypeError, orjson.JSONDecodeError) as exc:
         raise ValueError(f"malformed JSON: {exc}") from exc
     if not isinstance(obj, dict):
         raise ValueError("envelope must be a JSON object")

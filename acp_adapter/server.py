@@ -6,7 +6,7 @@ import asyncio
 from datetime import datetime, timezone
 import base64
 import contextvars
-import json
+import orjson
 import logging
 import os
 from collections import defaultdict, deque
@@ -1002,7 +1002,7 @@ class HermesACPAgent(acp.Agent):
         raw_args = function.get("arguments") or tool_call.get("arguments") or tool_call.get("args") or {}
         if isinstance(raw_args, str):
             try:
-                parsed = json.loads(raw_args)
+                parsed = orjson.loads(raw_args)
             except Exception:
                 parsed = {"raw": raw_args}
             raw_args = parsed

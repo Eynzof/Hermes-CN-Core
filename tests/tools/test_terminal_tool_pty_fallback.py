@@ -1,4 +1,4 @@
-import json
+import orjson
 from types import SimpleNamespace
 
 import tools.terminal_tool as terminal_tool_module
@@ -43,7 +43,7 @@ def test_terminal_background_disables_pty_for_gh_with_token(monkeypatch, tmp_pat
     monkeypatch.setitem(terminal_tool_module._last_activity, "default", 0.0)
 
     try:
-        result = json.loads(
+        result = orjson.loads(
             terminal_tool_module.terminal_tool(
                 command="gh auth login --hostname github.com --git-protocol https --with-token",
                 background=True,
@@ -76,7 +76,7 @@ def test_terminal_background_keeps_pty_for_regular_interactive_commands(monkeypa
     monkeypatch.setitem(terminal_tool_module._last_activity, "default", 0.0)
 
     try:
-        result = json.loads(
+        result = orjson.loads(
             terminal_tool_module.terminal_tool(
                 command="python3 -c \"print(input())\"",
                 background=True,

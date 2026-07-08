@@ -4,7 +4,7 @@ Verifies that _threads (ThreadParticipationTracker) survives adapter restarts by
 being persisted to ~/.hermes/discord_threads.json.
 """
 
-import json
+import orjson
 import os
 from unittest.mock import patch
 
@@ -34,7 +34,7 @@ class TestDiscordThreadPersistence:
 
         state_file = tmp_path / "discord_threads.json"
         assert state_file.exists()
-        saved = json.loads(state_file.read_text())
+        saved = orjson.loads(state_file.read_text())
         assert set(saved) == {"111", "222"}
 
     def test_threads_survive_restart(self, tmp_path):
@@ -54,7 +54,7 @@ class TestDiscordThreadPersistence:
             adapter._threads.mark("111")
             adapter._threads.mark("111")  # no-op
 
-        saved = json.loads((tmp_path / "discord_threads.json").read_text())
+        saved = orjson.loads((tmp_path / "discord_threads.json").read_text())
         assert saved.count("111") == 1
 
     def test_caps_at_max_tracked_threads(self, tmp_path):
@@ -64,21 +64,21 @@ class TestDiscordThreadPersistence:
             for i in range(10):
                 adapter._threads.mark(str(i))
 
-        saved = json.loads((tmp_path / "discord_threads.json").read_text())
+        saved = orjson.loads((tmp_path / "discord_threads.json").read_text())
         assert len(saved) == 5
         assert saved == ["5", "6", "7", "8", "9"]
 
     def test_capacity_keeps_newest_thread_when_existing_state_is_full(self, tmp_path):
         """A newly joined thread must not be evicted by unordered set iteration."""
         state_file = tmp_path / "discord_threads.json"
-        state_file.write_text(json.dumps(["0", "1", "2", "3", "4"]), encoding="utf-8")
+        state_file.write_text(orjson.dumps(["0", "1", "2", "3", "4"]).decode('utf-8'), encoding="utf-8")
         adapter = self._make_adapter(tmp_path)
         adapter._threads._max_tracked = 5
 
         with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
             adapter._threads.mark("newest")
 
-        saved = json.loads(state_file.read_text(encoding="utf-8"))
+        saved = orjson.loads(state_file.read_text(encoding="utf-8"))
         assert saved == ["1", "2", "3", "4", "newest"]
         assert "newest" in adapter._threads
 

@@ -1,4 +1,4 @@
-import json
+import orjson
 import tempfile
 from pathlib import Path
 
@@ -16,7 +16,7 @@ from agent.verification_stop import (
 
 def _node_project(root: Path) -> None:
     (root / "package.json").write_text(
-        json.dumps({"scripts": {"test": "vitest", "lint": "eslint ."}}),
+        orjson.dumps({"scripts": {"test": "vitest", "lint": "eslint ."}}).decode('utf-8'),
         encoding="utf-8",
     )
     (root / "pnpm-lock.yaml").write_text("", encoding="utf-8")

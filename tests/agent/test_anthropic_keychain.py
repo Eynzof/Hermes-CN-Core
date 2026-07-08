@@ -1,6 +1,6 @@
 """Tests for Bug #12905 fixes in agent/anthropic_adapter.py — macOS Keychain support."""
 
-import json
+import orjson
 from unittest.mock import patch, MagicMock
 
 
@@ -54,7 +54,7 @@ class TestReadClaudeCodeCredentialsFromKeychain:
              patch("agent.anthropic_adapter.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
                 returncode=0,
-                stdout=json.dumps({"someOtherService": {"accessToken": "tok"}}),
+                stdout=orjson.dumps({"someOtherService": {"accessToken": "tok"}}).decode('utf-8'),
                 stderr="",
             )
             assert _read_claude_code_credentials_from_keychain() is None
@@ -64,7 +64,7 @@ class TestReadClaudeCodeCredentialsFromKeychain:
              patch("agent.anthropic_adapter.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
                 returncode=0,
-                stdout=json.dumps({"claudeAiOauth": {"accessToken": "", "refreshToken": "x"}}),
+                stdout=orjson.dumps({"claudeAiOauth": {"accessToken": "", "refreshToken": "x"}}).decode('utf-8'),
                 stderr="",
             )
             assert _read_claude_code_credentials_from_keychain() is None
@@ -74,13 +74,13 @@ class TestReadClaudeCodeCredentialsFromKeychain:
              patch("agent.anthropic_adapter.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
                 returncode=0,
-                stdout=json.dumps({
+                stdout=orjson.dumps({
                     "claudeAiOauth": {
                         "accessToken": "kc-access-token-abc",
                         "refreshToken": "kc-refresh-token-xyz",
                         "expiresAt": 9999999999999,
                     }
-                }),
+                }).decode('utf-8'),
                 stderr="",
             )
             creds = _read_claude_code_credentials_from_keychain()
@@ -99,13 +99,13 @@ class TestReadClaudeCodeCredentialsPriority:
         # Set up JSON file with "older" token
         json_cred_file = tmp_path / ".claude" / ".credentials.json"
         json_cred_file.parent.mkdir(parents=True)
-        json_cred_file.write_text(json.dumps({
+        json_cred_file.write_text(orjson.dumps({
             "claudeAiOauth": {
                 "accessToken": "json-token",
                 "refreshToken": "json-refresh",
                 "expiresAt": 9999999999999,
             }
-        }))
+        }).decode('utf-8'))
         monkeypatch.setattr("agent.anthropic_adapter.Path.home", lambda: tmp_path)
 
         # Mock Keychain to return a "newer" token
@@ -113,13 +113,13 @@ class TestReadClaudeCodeCredentialsPriority:
              patch("agent.anthropic_adapter.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
                 returncode=0,
-                stdout=json.dumps({
+                stdout=orjson.dumps({
                     "claudeAiOauth": {
                         "accessToken": "keychain-token",
                         "refreshToken": "keychain-refresh",
                         "expiresAt": 9999999999999,
                     }
-                }),
+                }).decode('utf-8'),
                 stderr="",
             )
             creds = read_claude_code_credentials()
@@ -133,13 +133,13 @@ class TestReadClaudeCodeCredentialsPriority:
         """When Keychain has no entry, JSON file is used as fallback."""
         json_cred_file = tmp_path / ".claude" / ".credentials.json"
         json_cred_file.parent.mkdir(parents=True)
-        json_cred_file.write_text(json.dumps({
+        json_cred_file.write_text(orjson.dumps({
             "claudeAiOauth": {
                 "accessToken": "json-fallback-token",
                 "refreshToken": "json-refresh",
                 "expiresAt": 9999999999999,
             }
-        }))
+        }).decode('utf-8'))
         monkeypatch.setattr("agent.anthropic_adapter.Path.home", lambda: tmp_path)
 
         with patch("agent.anthropic_adapter.platform.system", return_value="Darwin"), \
@@ -181,25 +181,25 @@ class TestReadClaudeCodeCredentialsDesync:
     def _setup(self, tmp_path, monkeypatch, *, file_expires_at, file_token="json-token"):
         json_cred_file = tmp_path / ".claude" / ".credentials.json"
         json_cred_file.parent.mkdir(parents=True)
-        json_cred_file.write_text(json.dumps({
+        json_cred_file.write_text(orjson.dumps({
             "claudeAiOauth": {
                 "accessToken": file_token,
                 "refreshToken": "json-refresh",
                 "expiresAt": file_expires_at,
             }
-        }))
+        }).decode('utf-8'))
         monkeypatch.setattr("agent.anthropic_adapter.Path.home", lambda: tmp_path)
 
     def _keychain_payload(self, *, access_token, expires_at, refresh_token="kc-refresh"):
         return MagicMock(
             returncode=0,
-            stdout=json.dumps({
+            stdout=orjson.dumps({
                 "claudeAiOauth": {
                     "accessToken": access_token,
                     "refreshToken": refresh_token,
                     "expiresAt": expires_at,
                 }
-            }),
+            }).decode('utf-8'),
             stderr="",
         )
 

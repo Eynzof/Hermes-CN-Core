@@ -28,7 +28,7 @@ home for these non-secret settings.
 from __future__ import annotations
 
 import atexit
-import json
+import orjson
 import logging
 import os
 import threading
@@ -94,7 +94,7 @@ def _load_config() -> dict:
     config_path = get_hermes_home() / "mem0.json"
     if config_path.exists():
         try:
-            file_cfg = json.loads(config_path.read_text(encoding="utf-8"))
+            file_cfg = orjson.loads(config_path.read_text(encoding="utf-8"))
             config.update({k: v for k, v in file_cfg.items()
                            if v is not None and v != ""})
         except Exception:
@@ -243,13 +243,13 @@ class Mem0MemoryProvider(MemoryProvider):
 
     def save_config(self, values, hermes_home):
         """Write config to $HERMES_HOME/mem0.json."""
-        import json
+        import orjson
         from pathlib import Path
         config_path = Path(hermes_home) / "mem0.json"
         existing = {}
         if config_path.exists():
             try:
-                existing = json.loads(config_path.read_text())
+                existing = orjson.loads(config_path.read_text())
             except Exception:
                 pass
         existing.update(values)
@@ -507,14 +507,14 @@ class Mem0MemoryProvider(MemoryProvider):
                 vs = self._config.get("oss", {}).get("vector_store", {})
                 provider = vs.get("provider", "vector store")
                 hint = f" Check that {provider} is running and reachable."
-            return json.dumps({"error": f"Mem0 backend not initialized: {err}.{hint}"})
+            return orjson.dumps({"error": f"Mem0 backend not initialized: {err}.{hint}"}).decode('utf-8')
 
         if self._is_breaker_open():
             msg = "Mem0 temporarily unavailable (multiple consecutive failures). Will retry automatically."
             if self._mode == "oss":
                 vs = self._config.get("oss", {}).get("vector_store", {})
                 msg += f" Check that your {vs.get('provider', 'vector store')} is running."
-            return json.dumps({"error": msg})
+            return orjson.dumps({"error": msg}).decode('utf-8')
 
         if tool_name == "mem0_list":
             try:
@@ -526,14 +526,14 @@ class Mem0MemoryProvider(MemoryProvider):
                 self._record_success()
                 results = response.get("results", [])
                 if not results:
-                    return json.dumps({"result": "No memories stored yet."})
+                    return orjson.dumps({"result": "No memories stored yet."}).decode('utf-8')
                 items = [{"id": m.get("id"), "memory": m.get("memory", "")}
                          for m in results]
-                return json.dumps({
+                return orjson.dumps({
                     "results": items,
                     "count": response.get("count", len(items)),
                     "page": page, "page_size": page_size,
-                })
+                }).decode('utf-8')
             except Exception as e:
                 if not _is_client_error(e):
                     self._record_failure()
@@ -553,10 +553,10 @@ class Mem0MemoryProvider(MemoryProvider):
                 results = self._backend.search(query, filters=self._read_filters(), top_k=top_k, rerank=rerank)
                 self._record_success()
                 if not results:
-                    return json.dumps({"result": "No relevant memories found."})
+                    return orjson.dumps({"result": "No relevant memories found."}).decode('utf-8')
                 items = [{"id": r.get("id"), "memory": r.get("memory", ""),
                           "score": r.get("score", 0)} for r in results]
-                return json.dumps({"results": items, "count": len(items)})
+                return orjson.dumps({"results": items, "count": len(items)}).decode('utf-8')
             except Exception as e:
                 if not _is_client_error(e):
                     self._record_failure()
@@ -577,7 +577,7 @@ class Mem0MemoryProvider(MemoryProvider):
                 self._record_success()
                 event_id = result.get("event_id") if isinstance(result, dict) else None
                 msg = "Fact stored." if self._mode == "oss" else "Fact queued for storage."
-                return json.dumps({"result": msg, "event_id": event_id})
+                return orjson.dumps({"result": msg, "event_id": event_id}).decode('utf-8')
             except Exception as e:
                 self._record_failure()
                 return tool_error(self._format_error("Failed to store", e))
@@ -592,7 +592,7 @@ class Mem0MemoryProvider(MemoryProvider):
             try:
                 result = self._backend.update(memory_id, text)
                 self._record_success()
-                return json.dumps(result)
+                return orjson.dumps(result).decode('utf-8')
             except Exception as e:
                 if _is_client_error(e):
                     return tool_error(f"Memory not found: {memory_id}")
@@ -606,7 +606,7 @@ class Mem0MemoryProvider(MemoryProvider):
             try:
                 result = self._backend.delete(memory_id)
                 self._record_success()
-                return json.dumps(result)
+                return orjson.dumps(result).decode('utf-8')
             except Exception as e:
                 if _is_client_error(e):
                     return tool_error(f"Memory not found: {memory_id}")

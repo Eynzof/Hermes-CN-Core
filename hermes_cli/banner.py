@@ -3,7 +3,7 @@
 Pure display functions with no HermesCLI state dependency.
 """
 
-import json
+import orjson
 import logging
 import os
 import shutil
@@ -270,7 +270,7 @@ def _fetch_pypi_latest(package: str = "hermes-agent") -> Optional[str]:
         url = f"https://pypi.org/pypi/{package}/json"
         req = urllib.request.Request(url, headers={"Accept": "application/json"})
         with urllib.request.urlopen(req, timeout=5) as resp:
-            data = json.loads(resp.read())
+            data = orjson.loads(resp.read())
             return data.get("info", {}).get("version")
     except Exception:
         return None
@@ -336,7 +336,7 @@ def check_for_updates() -> Optional[int]:
     now = time.time()
     try:
         if cache_file.exists():
-            cached = json.loads(cache_file.read_text())
+            cached = orjson.loads(cache_file.read_text())
             if (
                 now - cached.get("ts", 0) < _UPDATE_CHECK_CACHE_SECONDS
                 and cached.get("rev") == embedded_rev
@@ -362,7 +362,7 @@ def check_for_updates() -> Optional[int]:
 
     try:
         cache_file.write_text(
-            json.dumps({"ts": now, "behind": behind, "rev": embedded_rev, "ver": VERSION})
+            orjson.dumps({"ts": now, "behind": behind, "rev": embedded_rev, "ver": VERSION}).decode('utf-8')
         )
     except Exception:
         pass

@@ -8,7 +8,7 @@ Verifies:
 """
 from __future__ import annotations
 
-import json
+import orjson
 import os
 
 import pytest
@@ -174,7 +174,7 @@ def worker_env(monkeypatch, tmp_path):
 def test_show_defaults_to_env_task_id(worker_env):
     from tools import kanban_tools as kt
     out = kt._handle_show({})
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert "task" in d
     assert d["task"]["id"] == worker_env
     assert d["task"]["status"] == "running"
@@ -192,7 +192,7 @@ def test_show_explicit_task_id(worker_env):
         conn.close()
     from tools import kanban_tools as kt
     out = kt._handle_show({"task_id": other})
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert d["task"]["id"] == other
 
 
@@ -210,7 +210,7 @@ def test_list_filters_tasks(monkeypatch, worker_env):
 
     from tools import kanban_tools as kt
     out = kt._handle_list({"assignee": "factory", "status": "ready", "limit": 10})
-    d = json.loads(out)
+    d = orjson.loads(out)
     ids = [t["id"] for t in d["tasks"]]
     assert ids == [a, c]
     assert d["count"] == 2
@@ -223,7 +223,7 @@ def test_list_filters_tasks(monkeypatch, worker_env):
         "status": "ready",
         "tenant": "other",
     })
-    tenant_ids = [t["id"] for t in json.loads(tenant_out)["tasks"]]
+    tenant_ids = [t["id"] for t in orjson.loads(tenant_out)["tasks"]]
     assert tenant_ids == [c]
 
 
@@ -231,14 +231,14 @@ def test_list_rejects_invalid_status(monkeypatch, worker_env):
     monkeypatch.delenv("HERMES_KANBAN_TASK", raising=False)
     from tools import kanban_tools as kt
     out = kt._handle_list({"status": "not-a-state"})
-    assert "status must be one of" in json.loads(out).get("error", "")
+    assert "status must be one of" in orjson.loads(out).get("error", "")
 
 
 def test_list_rejects_bad_limit(monkeypatch, worker_env):
     monkeypatch.delenv("HERMES_KANBAN_TASK", raising=False)
     from tools import kanban_tools as kt
-    assert json.loads(kt._handle_list({"limit": "nope"})).get("error")
-    assert json.loads(kt._handle_list({"limit": 0})).get("error")
+    assert orjson.loads(kt._handle_list({"limit": "nope"})).get("error")
+    assert orjson.loads(kt._handle_list({"limit": 0})).get("error")
 
 
 def test_list_parses_include_archived_string_false(monkeypatch, worker_env):
@@ -257,7 +257,7 @@ def test_list_parses_include_archived_string_false(monkeypatch, worker_env):
         "assignee": "factory",
         "include_archived": "false",
     })
-    ids = [t["id"] for t in json.loads(out)["tasks"]]
+    ids = [t["id"] for t in orjson.loads(out)["tasks"]]
     assert live in ids
     assert archived not in ids
 
@@ -278,7 +278,7 @@ def test_list_parses_include_archived_string_true(monkeypatch, worker_env):
         "assignee": "factory",
         "include_archived": "true",
     })
-    ids = [t["id"] for t in json.loads(out)["tasks"]]
+    ids = [t["id"] for t in orjson.loads(out)["tasks"]]
     assert live in ids
     assert archived in ids
 
@@ -287,7 +287,7 @@ def test_list_rejects_bad_include_archived(monkeypatch, worker_env):
     monkeypatch.delenv("HERMES_KANBAN_TASK", raising=False)
     from tools import kanban_tools as kt
     out = kt._handle_list({"include_archived": "sometimes"})
-    assert "include_archived must be" in json.loads(out).get("error", "")
+    assert "include_archived must be" in orjson.loads(out).get("error", "")
 
 
 def test_complete_happy_path(worker_env):
@@ -296,7 +296,7 @@ def test_complete_happy_path(worker_env):
         "summary": "got the thing done",
         "metadata": {"files": 2},
     })
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert d["ok"] is True
     assert d["task_id"] == worker_env
     # Verify via kernel
@@ -328,10 +328,10 @@ def test_complete_metadata_round_trips_through_show(worker_env):
         "summary": "finished with structured evidence",
         "metadata": handoff,
     })
-    assert json.loads(complete_out)["ok"] is True
+    assert orjson.loads(complete_out)["ok"] is True
 
     show_out = kt._handle_show({"task_id": worker_env})
-    shown = json.loads(show_out)
+    shown = orjson.loads(show_out)
     assert shown["task"]["status"] == "done"
     assert shown["runs"][-1]["summary"] == "finished with structured evidence"
     assert shown["runs"][-1]["metadata"] == handoff
@@ -347,7 +347,7 @@ def test_complete_stamps_worker_session_id_from_env(monkeypatch, worker_env):
         "summary": "done by scoped worker",
         "metadata": metadata,
     })
-    assert json.loads(out)["ok"] is True
+    assert orjson.loads(out)["ok"] is True
     assert metadata["worker_session_id"] == "user-spoof"
 
     from hermes_cli import kanban_db as kb
@@ -375,7 +375,7 @@ def test_complete_does_not_stamp_worker_session_id_without_scoped_task(
         "summary": "done outside worker scope",
         "metadata": {"files": 2, "worker_session_id": "user-provided"},
     })
-    assert json.loads(out)["ok"] is True
+    assert orjson.loads(out)["ok"] is True
 
     from hermes_cli import kanban_db as kb
     conn = kb.connect()
@@ -393,7 +393,7 @@ def test_complete_with_result_only(worker_env):
     """`result` alone (without summary) is accepted for legacy compat."""
     from tools import kanban_tools as kt
     out = kt._handle_complete({"result": "legacy result"})
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert d["ok"] is True
 
 
@@ -408,7 +408,7 @@ def test_complete_with_artifacts_lands_in_event_payload(worker_env):
         "summary": "rendered the chart",
         "artifacts": ["/tmp/q3-revenue.png", "/tmp/q3-report.pdf"],
     })
-    assert json.loads(out)["ok"] is True
+    assert orjson.loads(out)["ok"] is True
 
     conn = kb.connect()
     try:
@@ -440,7 +440,7 @@ def test_complete_artifacts_accepts_single_string(worker_env):
         "summary": "one chart",
         "artifacts": "/tmp/chart.png",
     })
-    assert json.loads(out)["ok"] is True
+    assert orjson.loads(out)["ok"] is True
 
     conn = kb.connect()
     try:
@@ -461,7 +461,7 @@ def test_complete_artifacts_merges_with_explicit_metadata_field(worker_env):
         "metadata": {"artifacts": ["/tmp/a.png"], "other": "fact"},
         "artifacts": ["/tmp/b.pdf", "/tmp/a.png"],
     })
-    assert json.loads(out)["ok"] is True
+    assert orjson.loads(out)["ok"] is True
 
     conn = kb.connect()
     try:
@@ -480,20 +480,20 @@ def test_complete_rejects_non_list_artifacts(worker_env):
         "summary": "bad shape",
         "artifacts": {"not": "a list"},
     })
-    err = json.loads(out).get("error", "")
+    err = orjson.loads(out).get("error", "")
     assert "artifacts must be a list" in err
 
 
 def test_complete_rejects_no_handoff(worker_env):
     from tools import kanban_tools as kt
     out = kt._handle_complete({})
-    assert json.loads(out).get("error"), "should have errored"
+    assert orjson.loads(out).get("error"), "should have errored"
 
 
 def test_complete_rejects_non_dict_metadata(worker_env):
     from tools import kanban_tools as kt
     out = kt._handle_complete({"summary": "x", "metadata": [1, 2, 3]})
-    assert json.loads(out).get("error")
+    assert orjson.loads(out).get("error")
 
 
 def test_complete_phantom_card_message_advertises_retry(worker_env):
@@ -510,7 +510,7 @@ def test_complete_phantom_card_message_advertises_retry(worker_env):
         "summary": "oops claimed a phantom",
         "created_cards": ["t_phantomdeadbeef"],
     })
-    err = json.loads(out).get("error", "")
+    err = orjson.loads(out).get("error", "")
     assert err, f"expected an error, got {out!r}"
     # Phantom id surfaced verbatim.
     assert "t_phantomdeadbeef" in err
@@ -539,14 +539,14 @@ def test_complete_retry_with_empty_created_cards_succeeds(worker_env):
     from tools import kanban_tools as kt
 
     # Hit the gate first.
-    rejected = json.loads(kt._handle_complete({
+    rejected = orjson.loads(kt._handle_complete({
         "summary": "oops",
         "created_cards": ["t_phantomdeadbeef"],
     }))
     assert rejected.get("error")
 
     # Retry with the escape hatch.
-    ok = json.loads(kt._handle_complete({
+    ok = orjson.loads(kt._handle_complete({
         "summary": "retry without claims",
         "created_cards": [],
     }))
@@ -568,14 +568,14 @@ def test_complete_retry_with_corrected_created_cards_succeeds(worker_env):
 
     # Create a real child via the tool so it gets the worker-profile
     # attribution the gate trusts.
-    child = json.loads(kt._handle_create({
+    child = orjson.loads(kt._handle_create({
         "title": "real child", "assignee": "peer",
     }))
     assert child["ok"]
     real_id = child["task_id"]
 
     # First attempt mixes real + phantom — gate rejects.
-    rejected = json.loads(kt._handle_complete({
+    rejected = orjson.loads(kt._handle_complete({
         "summary": "oops",
         "created_cards": [real_id, "t_phantomdeadbeef"],
     }))
@@ -583,7 +583,7 @@ def test_complete_retry_with_corrected_created_cards_succeeds(worker_env):
     assert "t_phantomdeadbeef" in rejected["error"]
 
     # Retry with corrected list.
-    ok = json.loads(kt._handle_complete({
+    ok = orjson.loads(kt._handle_complete({
         "summary": "retry with corrected list",
         "created_cards": [real_id],
     }))
@@ -628,7 +628,7 @@ def test_complete_goal_mode_rejected_by_judge(monkeypatch, tmp_path):
 
     # Attempt to complete should be rejected
     out = kt._handle_complete({"summary": "I did some stuff but not X"})
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert "error" in d
     assert "Goal completion rejected by judge" in d["error"]
     assert "missing verification evidence" in d["error"]
@@ -683,7 +683,7 @@ def test_complete_goal_mode_allows_when_judge_unavailable(monkeypatch, tmp_path)
     monkeypatch.setattr("tools.kanban_tools._goal_judge_available", lambda: False)
 
     out = kt._handle_complete({"summary": "done enough"})
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert d.get("ok") is True
 
     conn2 = kb.connect()
@@ -696,7 +696,7 @@ def test_complete_goal_mode_allows_when_judge_unavailable(monkeypatch, tmp_path)
 def test_block_happy_path(worker_env):
     from tools import kanban_tools as kt
     out = kt._handle_block({"reason": "need clarification"})
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert d["ok"] is True
     from hermes_cli import kanban_db as kb
     conn = kb.connect()
@@ -710,7 +710,7 @@ def test_block_rejects_empty_reason(worker_env):
     from tools import kanban_tools as kt
     for bad in ["", "   ", None]:
         out = kt._handle_block({"reason": bad})
-        assert json.loads(out).get("error")
+        assert orjson.loads(out).get("error")
 
 
 def _make_goal_mode_worker_env(monkeypatch, tmp_path):
@@ -750,7 +750,7 @@ def test_block_goal_mode_rejects_missing_kind(monkeypatch, tmp_path):
 
     tid = _make_goal_mode_worker_env(monkeypatch, tmp_path)
     out = kt._handle_block({"reason": "giving up"})
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert "error" in d
     assert "goal_mode" in d["error"]
 
@@ -770,7 +770,7 @@ def test_block_goal_mode_rejects_disallowed_kind(monkeypatch, tmp_path):
     tid = _make_goal_mode_worker_env(monkeypatch, tmp_path)
     for kind in ("capability", "transient"):
         out = kt._handle_block({"reason": "blocked", "kind": kind})
-        d = json.loads(out)
+        d = orjson.loads(out)
         assert "error" in d, f"kind={kind} should be rejected for goal_mode"
 
     conn = kb.connect()
@@ -793,7 +793,7 @@ def test_block_goal_mode_allows_dependency_kind(monkeypatch, tmp_path):
 
     tid = _make_goal_mode_worker_env(monkeypatch, tmp_path)
     out = kt._handle_block({"reason": "waiting on another task", "kind": "dependency"})
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert d.get("ok") is True
 
     conn = kb.connect()
@@ -809,7 +809,7 @@ def test_block_goal_mode_allows_needs_input_kind(monkeypatch, tmp_path):
 
     tid = _make_goal_mode_worker_env(monkeypatch, tmp_path)
     out = kt._handle_block({"reason": "need a decision from the user", "kind": "needs_input"})
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert d.get("ok") is True
 
     conn = kb.connect()
@@ -824,13 +824,13 @@ def test_block_non_goal_mode_task_unaffected_by_new_gate(worker_env):
     blocking freely with no kind, exactly as before this fix."""
     from tools import kanban_tools as kt
     out = kt._handle_block({"reason": "need clarification"})
-    assert json.loads(out).get("ok") is True
+    assert orjson.loads(out).get("ok") is True
 
 
 def test_heartbeat_happy_path(worker_env):
     from tools import kanban_tools as kt
     out = kt._handle_heartbeat({"note": "progress"})
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert d["ok"] is True
 
 
@@ -838,7 +838,7 @@ def test_heartbeat_without_note(worker_env):
     """note is optional."""
     from tools import kanban_tools as kt
     out = kt._handle_heartbeat({})
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert d["ok"] is True
 
 
@@ -873,7 +873,7 @@ def test_heartbeat_extends_claim_expires(worker_env):
     assert before == 1
 
     out = kt._handle_heartbeat({"note": "still alive"})
-    assert json.loads(out).get("ok") is True
+    assert orjson.loads(out).get("ok") is True
 
     conn = kb.connect()
     try:
@@ -903,7 +903,7 @@ def test_comment_happy_path(worker_env):
         "task_id": worker_env,
         "body": "hello thread",
     })
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert d["ok"] is True
     assert d["comment_id"]
     from hermes_cli import kanban_db as kb
@@ -921,7 +921,7 @@ def test_comment_happy_path(worker_env):
 def test_comment_rejects_empty_body(worker_env):
     from tools import kanban_tools as kt
     out = kt._handle_comment({"task_id": worker_env, "body": "   "})
-    assert json.loads(out).get("error")
+    assert orjson.loads(out).get("error")
 
 
 def test_comment_ignores_caller_supplied_author(worker_env):
@@ -936,7 +936,7 @@ def test_comment_ignores_caller_supplied_author(worker_env):
     out = kt._handle_comment({
         "task_id": worker_env, "body": "hi", "author": "hermes-system",
     })
-    assert json.loads(out)["ok"]
+    assert orjson.loads(out)["ok"]
     from hermes_cli import kanban_db as kb
     conn = kb.connect()
     try:
@@ -965,7 +965,7 @@ def test_create_happy_path(worker_env):
         "assignee": "peer",
         "parents": [worker_env],
     })
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert d["ok"] is True
     assert d["task_id"]
     assert d["status"] == "todo"  # parent isn't done yet
@@ -998,7 +998,7 @@ def test_create_inherits_worker_dir_workspace(monkeypatch, worker_env):
         conn.close()
     monkeypatch.setenv("HERMES_KANBAN_TASK", self_tid)
 
-    d = json.loads(kt._handle_create({"title": "follow-up", "assignee": "peer"}))
+    d = orjson.loads(kt._handle_create({"title": "follow-up", "assignee": "peer"}))
     assert d["ok"] is True
     conn = kb.connect()
     try:
@@ -1025,7 +1025,7 @@ def test_create_explicit_workspace_beats_inheritance(monkeypatch, worker_env):
         conn.close()
     monkeypatch.setenv("HERMES_KANBAN_TASK", self_tid)
 
-    d = json.loads(kt._handle_create({
+    d = orjson.loads(kt._handle_create({
         "title": "scratch child", "assignee": "peer",
         "workspace_kind": "scratch",
     }))
@@ -1045,7 +1045,7 @@ def test_create_no_worker_task_stays_scratch(monkeypatch, worker_env):
     from hermes_cli import kanban_db as kb
 
     monkeypatch.delenv("HERMES_KANBAN_TASK", raising=False)
-    d = json.loads(kt._handle_create({"title": "orch child", "assignee": "peer"}))
+    d = orjson.loads(kt._handle_create({"title": "orch child", "assignee": "peer"}))
     assert d["ok"] is True
     conn = kb.connect()
     try:
@@ -1069,7 +1069,7 @@ def test_create_stamps_session_id_from_env(monkeypatch, worker_env):
         "assignee": "peer",
         "parents": [worker_env],
     })
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert d["ok"] is True
     conn = kb.connect()
     try:
@@ -1093,7 +1093,7 @@ def test_create_session_id_arg_overrides_env(monkeypatch, worker_env):
         "parents": [worker_env],
         "session_id": "explicit-arg",
     })
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert d["ok"] is True
     conn = kb.connect()
     try:
@@ -1115,7 +1115,7 @@ def test_create_session_id_absent_when_env_unset(monkeypatch, worker_env):
         "assignee": "peer",
         "parents": [worker_env],
     })
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert d["ok"] is True
     conn = kb.connect()
     try:
@@ -1127,19 +1127,19 @@ def test_create_session_id_absent_when_env_unset(monkeypatch, worker_env):
 
 def test_create_rejects_no_title(worker_env):
     from tools import kanban_tools as kt
-    assert json.loads(kt._handle_create({"assignee": "x"})).get("error")
-    assert json.loads(kt._handle_create({"title": "   ", "assignee": "x"})).get("error")
+    assert orjson.loads(kt._handle_create({"assignee": "x"})).get("error")
+    assert orjson.loads(kt._handle_create({"title": "   ", "assignee": "x"})).get("error")
 
 
 def test_create_rejects_no_assignee(worker_env):
     from tools import kanban_tools as kt
-    assert json.loads(kt._handle_create({"title": "t"})).get("error")
+    assert orjson.loads(kt._handle_create({"title": "t"})).get("error")
 
 
 def test_create_rejects_non_list_parents(worker_env):
     from tools import kanban_tools as kt
     out = kt._handle_create({"title": "t", "assignee": "a", "parents": 42})
-    assert json.loads(out).get("error")
+    assert orjson.loads(out).get("error")
 
 
 def test_create_parses_triage_string_false(worker_env):
@@ -1150,7 +1150,7 @@ def test_create_parses_triage_string_false(worker_env):
         "assignee": "peer",
         "triage": "false",
     })
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert d["ok"] is True
     conn = kb.connect()
     try:
@@ -1168,7 +1168,7 @@ def test_create_parses_triage_string_true(worker_env):
         "assignee": "peer",
         "triage": "true",
     })
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert d["ok"] is True
     conn = kb.connect()
     try:
@@ -1185,7 +1185,7 @@ def test_create_rejects_bad_triage(worker_env):
         "assignee": "peer",
         "triage": "sometimes",
     })
-    assert "triage must be" in json.loads(out).get("error", "")
+    assert "triage must be" in orjson.loads(out).get("error", "")
 
 
 def test_create_accepts_string_parent(worker_env):
@@ -1194,7 +1194,7 @@ def test_create_accepts_string_parent(worker_env):
     out = kt._handle_create({
         "title": "t", "assignee": "a", "parents": worker_env,
     })
-    assert json.loads(out)["ok"]
+    assert orjson.loads(out)["ok"]
 
 
 def test_create_accepts_skills_list(worker_env):
@@ -1206,7 +1206,7 @@ def test_create_accepts_skills_list(worker_env):
         "assignee": "linguist",
         "skills": ["translation", "github-code-review"],
     })
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert d["ok"] is True
     with kb.connect() as conn:
         task = kb.get_task(conn, d["task_id"])
@@ -1222,7 +1222,7 @@ def test_create_accepts_skills_string(worker_env):
         "assignee": "a",
         "skills": "translation",
     })
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert d["ok"] is True
     with kb.connect() as conn:
         task = kb.get_task(conn, d["task_id"])
@@ -1235,7 +1235,7 @@ def test_create_rejects_non_list_skills(worker_env):
     out = kt._handle_create({
         "title": "t", "assignee": "a", "skills": 42,
     })
-    assert json.loads(out).get("error")
+    assert orjson.loads(out).get("error")
 
 
 def test_link_happy_path(worker_env):
@@ -1248,20 +1248,20 @@ def test_link_happy_path(worker_env):
         conn.close()
     from tools import kanban_tools as kt
     out = kt._handle_link({"parent_id": a, "child_id": b})
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert d["ok"] is True
 
 
 def test_link_rejects_self_reference(worker_env):
     from tools import kanban_tools as kt
     out = kt._handle_link({"parent_id": worker_env, "child_id": worker_env})
-    assert json.loads(out).get("error")
+    assert orjson.loads(out).get("error")
 
 
 def test_link_rejects_missing_args(worker_env):
     from tools import kanban_tools as kt
-    assert json.loads(kt._handle_link({"parent_id": "x"})).get("error")
-    assert json.loads(kt._handle_link({"child_id": "y"})).get("error")
+    assert orjson.loads(kt._handle_link({"parent_id": "x"})).get("error")
+    assert orjson.loads(kt._handle_link({"child_id": "y"})).get("error")
 
 
 def test_link_rejects_cycle(worker_env):
@@ -1275,7 +1275,7 @@ def test_link_rejects_cycle(worker_env):
         conn.close()
     from tools import kanban_tools as kt
     out = kt._handle_link({"parent_id": b, "child_id": a})
-    assert json.loads(out).get("error")
+    assert orjson.loads(out).get("error")
 
 
 def test_unblock_happy_path(monkeypatch, worker_env):
@@ -1290,7 +1290,7 @@ def test_unblock_happy_path(monkeypatch, worker_env):
 
     from tools import kanban_tools as kt
     out = kt._handle_unblock({"task_id": tid})
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert d["ok"] is True
     assert d["status"] == "ready"
 
@@ -1305,7 +1305,7 @@ def test_unblock_rejects_non_blocked_task(monkeypatch, worker_env):
     monkeypatch.delenv("HERMES_KANBAN_TASK", raising=False)
     from tools import kanban_tools as kt
     out = kt._handle_unblock({"task_id": worker_env})
-    assert json.loads(out).get("error")
+    assert orjson.loads(out).get("error")
 
 
 def test_worker_lifecycle_through_tools(worker_env):
@@ -1315,20 +1315,20 @@ def test_worker_lifecycle_through_tools(worker_env):
     from tools import kanban_tools as kt
 
     # 1. show — worker orientation
-    show = json.loads(kt._handle_show({}))
+    show = orjson.loads(kt._handle_show({}))
     assert show["task"]["id"] == worker_env
 
     # 2. heartbeat during long op
-    assert json.loads(kt._handle_heartbeat({"note": "warming up"}))["ok"]
+    assert orjson.loads(kt._handle_heartbeat({"note": "warming up"}))["ok"]
 
     # 3. comment for a future peer
-    assert json.loads(kt._handle_comment({
+    assert orjson.loads(kt._handle_comment({
         "task_id": worker_env,
         "body": "note: using stdlib sqlite3 bindings",
     }))["ok"]
 
     # 4. spawn a child task for follow-up
-    child_out = json.loads(kt._handle_create({
+    child_out = orjson.loads(kt._handle_create({
         "title": "write integration test",
         "assignee": "qa",
         "parents": [worker_env],
@@ -1336,7 +1336,7 @@ def test_worker_lifecycle_through_tools(worker_env):
     assert child_out["ok"]
 
     # 5. complete with structured handoff
-    comp = json.loads(kt._handle_complete({
+    comp = orjson.loads(kt._handle_complete({
         "summary": "implemented + spawned QA follow-up",
         "metadata": {"child_task": child_out["task_id"]},
     }))
@@ -1488,7 +1488,7 @@ def test_worker_complete_rejects_foreign_task_id(worker_env):
 
     from tools import kanban_tools as kt
     out = kt._handle_complete({"task_id": other, "summary": "HIJACK"})
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert d.get("ok") is not True
     assert "refusing to mutate" in d.get("error", "")
 
@@ -1513,7 +1513,7 @@ def test_worker_block_rejects_foreign_task_id(worker_env):
 
     from tools import kanban_tools as kt
     out = kt._handle_block({"task_id": other, "reason": "evil"})
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert "refusing to mutate" in d.get("error", "")
 
     conn = kb.connect()
@@ -1537,7 +1537,7 @@ def test_worker_heartbeat_rejects_foreign_task_id(worker_env):
 
     from tools import kanban_tools as kt
     out = kt._handle_heartbeat({"task_id": other})
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert "refusing to mutate" in d.get("error", "")
 
 
@@ -1562,7 +1562,7 @@ def test_worker_can_comment_on_foreign_task(worker_env):
         "task_id": other,
         "body": "handoff: see prior findings before starting",
     })
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert d.get("ok") is True, f"cross-task comment must succeed: {d}"
 
     # The comment lands on the foreign task, attributed to the worker's
@@ -1595,7 +1595,7 @@ def test_worker_unblock_rejects_foreign_task_id(worker_env):
 
     from tools import kanban_tools as kt
     out = kt._handle_unblock({"task_id": other})
-    d = json.loads(out)
+    d = orjson.loads(out)
     err = d.get("error", "")
     assert "orchestrator-only" in err or "refusing to mutate" in err, (
         f"expected worker-rejection error, got {err}"
@@ -1613,7 +1613,7 @@ def test_worker_complete_own_task_still_works(worker_env):
     from tools import kanban_tools as kt
     # Both implicit (no task_id arg) and explicit (matching env) must work.
     out = kt._handle_complete({"task_id": worker_env, "summary": "explicit own"})
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert d.get("ok") is True and d.get("task_id") == worker_env
 
 
@@ -1647,7 +1647,7 @@ def test_worker_complete_rejects_stale_run_id(worker_env, monkeypatch):
     from tools import kanban_tools as kt
     monkeypatch.setenv("HERMES_KANBAN_RUN_ID", str(run1.id))
     out = kt._handle_complete({"summary": "late stale completion"})
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert d.get("ok") is not True
 
     conn = kb.connect()
@@ -1660,7 +1660,7 @@ def test_worker_complete_rejects_stale_run_id(worker_env, monkeypatch):
 
     monkeypatch.setenv("HERMES_KANBAN_RUN_ID", str(run2.id))
     out = kt._handle_complete({"summary": "current completion"})
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert d.get("ok") is True
 
 
@@ -1687,7 +1687,7 @@ def test_orchestrator_complete_any_task_allowed(monkeypatch, tmp_path):
 
     from tools import kanban_tools as kt
     out = kt._handle_complete({"task_id": tid, "summary": "orchestrator close"})
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert d.get("ok") is True and d.get("task_id") == tid
 
 
@@ -1761,7 +1761,7 @@ def test_board_param_routes_create_to_alt_board(multi_board_env):
         "assignee": "worker",
         "board": "alt",
     })
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert d["ok"] is True, d
     new_tid = d["task_id"]
 
@@ -1778,13 +1778,13 @@ def test_board_param_routes_list_to_alt_board(multi_board_env):
     from tools import kanban_tools as kt
 
     # Default — sees seed-default, not seed-alt.
-    default_out = json.loads(kt._handle_list({}))
+    default_out = orjson.loads(kt._handle_list({}))
     default_titles = {t["title"] for t in default_out["tasks"]}
     assert "seed-default" in default_titles
     assert "seed-alt" not in default_titles
 
     # Alt — sees seed-alt, not seed-default.
-    alt_out = json.loads(kt._handle_list({"board": "alt"}))
+    alt_out = orjson.loads(kt._handle_list({"board": "alt"}))
     alt_titles = {t["title"] for t in alt_out["tasks"]}
     assert "seed-alt" in alt_titles
     assert "seed-default" not in alt_titles
@@ -1801,11 +1801,11 @@ def test_board_param_routes_show_to_alt_board(multi_board_env):
 
     alt_seed = multi_board_env["alt_seed"]
     # Without board override, the alt task is invisible.
-    bad = json.loads(kt._handle_show({"task_id": alt_seed}))
+    bad = orjson.loads(kt._handle_show({"task_id": alt_seed}))
     assert "not found" in bad.get("error", "")
 
     # With board override, it's readable.
-    good = json.loads(kt._handle_show({"task_id": alt_seed, "board": "alt"}))
+    good = orjson.loads(kt._handle_show({"task_id": alt_seed, "board": "alt"}))
     assert good["task"]["id"] == alt_seed
     assert good["task"]["title"] == "seed-alt"
 
@@ -1822,7 +1822,7 @@ def test_board_param_routes_assign_via_create_to_alt(multi_board_env):
         "assignee": "linguist",
         "board": "alt",
     })
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert d["ok"] is True
     with kb.connect(board="alt") as conn:
         task = kb.get_task(conn, d["task_id"])
@@ -1841,7 +1841,7 @@ def test_board_param_routes_comment_to_alt_board(multi_board_env):
         "body": "alt comment",
         "board": "alt",
     })
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert d["ok"] is True
 
     with kb.connect(board="alt") as conn:
@@ -1869,7 +1869,7 @@ def test_board_param_routes_complete_to_alt_board(multi_board_env):
         "summary": "alt close",
         "board": "alt",
     })
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert d["ok"] is True
 
     with kb.connect(board="alt") as conn:
@@ -1894,7 +1894,7 @@ def test_board_param_routes_block_to_alt_board(multi_board_env):
         "reason": "need input on alt board",
         "board": "alt",
     })
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert d["ok"] is True
 
     with kb.connect(board="alt") as conn:
@@ -1912,7 +1912,7 @@ def test_board_param_routes_unblock_to_alt_board(multi_board_env):
         assert kb.get_task(conn, alt_seed).status == "blocked"
 
     out = kt._handle_unblock({"task_id": alt_seed, "board": "alt"})
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert d["ok"] is True
     assert d["status"] == "ready"
 
@@ -1943,7 +1943,7 @@ def test_board_param_routes_heartbeat_to_alt_board(monkeypatch, tmp_path):
 
     from tools import kanban_tools as kt
     out = kt._handle_heartbeat({"note": "alive on alt", "board": "alt"})
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert d["ok"] is True
 
     # Heartbeat event landed in the alt DB.
@@ -1966,7 +1966,7 @@ def test_board_param_routes_link_to_alt_board(multi_board_env):
         "child_id": b,
         "board": "alt",
     })
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert d["ok"] is True
 
     with kb.connect(board="alt") as conn:
@@ -1981,11 +1981,11 @@ def test_board_param_none_falls_back_to_env(worker_env):
     from tools import kanban_tools as kt
 
     out = kt._handle_show({})  # no board, no task_id
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert d["task"]["id"] == worker_env
 
     out = kt._handle_show({"task_id": worker_env, "board": None})
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert d["task"]["id"] == worker_env
 
     # Sanity: the env-resolved path is the legacy default DB, NOT an
@@ -2000,7 +2000,7 @@ def test_board_param_rejects_invalid_slug(multi_board_env):
     from tools import kanban_tools as kt
 
     out = kt._handle_list({"board": "Has Spaces"})
-    err = json.loads(out).get("error", "")
+    err = orjson.loads(out).get("error", "")
     assert "invalid board slug" in err, f"got {err!r}"
 
 
@@ -2088,7 +2088,7 @@ def test_create_subscribes_gateway_session(monkeypatch, worker_env):
         "title": "auto-sub gateway",
         "assignee": "peer",
     })
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert d["ok"] is True
     new_tid = d["task_id"]
     assert d["subscribed"] is True, d
@@ -2119,7 +2119,7 @@ def test_create_subscribes_tui_session_via_session_key(monkeypatch, worker_env):
         "title": "auto-sub tui",
         "assignee": "peer",
     })
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert d["ok"] is True
     new_tid = d["task_id"]
     assert d["subscribed"] is True, d
@@ -2143,7 +2143,7 @@ def test_create_does_not_subscribe_in_cli_session(monkeypatch, worker_env):
         "title": "no sub cli",
         "assignee": "peer",
     })
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert d["ok"] is True
     assert d["subscribed"] is False, d
 
@@ -2172,7 +2172,7 @@ def test_create_respects_auto_subscribe_on_create_false(monkeypatch, worker_env,
         "title": "no sub gated",
         "assignee": "peer",
     })
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert d["ok"] is True
     assert d["subscribed"] is False, d
 
@@ -2193,7 +2193,7 @@ def test_create_partial_session_context_no_subscribe(monkeypatch, worker_env):
         "title": "no sub partial",
         "assignee": "peer",
     })
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert d["ok"] is True
     assert d["subscribed"] is False, d
 
@@ -2218,6 +2218,6 @@ def test_maybe_auto_subscribe_swallows_add_notify_sub_failure(monkeypatch, worke
         "title": "auto-sub tolerates add_notify_sub failure",
         "assignee": "peer",
     })
-    d = json.loads(out)
+    d = orjson.loads(out)
     assert d["ok"] is True, d
     assert d["subscribed"] is False, d

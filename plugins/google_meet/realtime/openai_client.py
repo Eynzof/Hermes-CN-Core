@@ -14,7 +14,7 @@ is missing.
 from __future__ import annotations
 
 import base64
-import json
+import orjson
 import time
 import uuid
 from pathlib import Path
@@ -160,7 +160,7 @@ class RealtimeSession:
                     # Connection closed by peer.
                     break
                 try:
-                    frame = json.loads(raw) if isinstance(raw, (str, bytes, bytearray)) else raw
+                    frame = orjson.loads(raw) if isinstance(raw, (str, bytes, bytearray)) else raw
                 except (TypeError, ValueError):
                     continue
                 if not isinstance(frame, dict):
@@ -223,7 +223,7 @@ class RealtimeSession:
     def _send_json(self, payload: dict) -> None:
         assert self._ws is not None
         with self._send_lock:
-            self._ws.send(json.dumps(payload))
+            self._ws.send(orjson.dumps(payload).decode('utf-8'))
 
     def _recv(self, timeout: Optional[float] = None):
         assert self._ws is not None
@@ -267,7 +267,7 @@ class RealtimeSpeaker:
             if not line:
                 continue
             try:
-                entry = json.loads(line)
+                entry = orjson.loads(line)
             except ValueError:
                 continue
             if not isinstance(entry, dict):
@@ -284,7 +284,7 @@ class RealtimeSpeaker:
             self.queue_path.write_text("")
             return
         self.queue_path.write_text(
-            "\n".join(json.dumps(e) for e in remaining) + "\n"
+            "\n".join(orjson.dumps(e).decode('utf-8') for e in remaining) + "\n"
         )
 
     def _append_processed(self, entry: dict, result: dict) -> None:
@@ -293,7 +293,7 @@ class RealtimeSpeaker:
         self.processed_path.parent.mkdir(parents=True, exist_ok=True)
         record = {"id": entry.get("id"), "text": entry.get("text", ""), "result": result}
         with open(self.processed_path, "a", encoding="utf-8") as fp:
-            fp.write(json.dumps(record) + "\n")
+            fp.write(orjson.dumps(record).decode('utf-8') + "\n")
 
     # ── main loop ────────────────────────────────────────────────────────
 

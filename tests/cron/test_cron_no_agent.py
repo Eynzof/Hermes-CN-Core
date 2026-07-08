@@ -11,7 +11,7 @@ Covers:
 
 from __future__ import annotations
 
-import json
+import orjson
 from unittest.mock import patch
 
 import pytest
@@ -101,7 +101,7 @@ def test_update_job_roundtrips_no_agent_flag(hermes_env):
 def test_cronjob_tool_create_no_agent_without_script_errors(hermes_env):
     from tools.cronjob_tools import cronjob
 
-    result = json.loads(
+    result = orjson.loads(
         cronjob(action="create", schedule="every 5m", no_agent=True, deliver="local")
     )
     assert result.get("success") is False
@@ -114,7 +114,7 @@ def test_cronjob_tool_create_no_agent_with_script_succeeds(hermes_env):
     script_path = hermes_env / "scripts" / "alert.sh"
     script_path.write_text("#!/bin/bash\necho alert\n")
 
-    result = json.loads(
+    result = orjson.loads(
         cronjob(
             action="create",
             schedule="every 5m",
@@ -134,7 +134,7 @@ def test_cronjob_tool_update_toggles_no_agent(hermes_env):
     script_path = hermes_env / "scripts" / "w.sh"
     script_path.write_text("echo hi\n")
 
-    created = json.loads(
+    created = orjson.loads(
         cronjob(
             action="create",
             schedule="every 5m",
@@ -145,11 +145,11 @@ def test_cronjob_tool_update_toggles_no_agent(hermes_env):
     )
     job_id = created["job_id"]
 
-    off = json.loads(cronjob(action="update", job_id=job_id, no_agent=False, prompt="run"))
+    off = orjson.loads(cronjob(action="update", job_id=job_id, no_agent=False, prompt="run"))
     assert off["success"] is True
     assert off["job"].get("no_agent") in {False, None}
 
-    on = json.loads(cronjob(action="update", job_id=job_id, no_agent=True))
+    on = orjson.loads(cronjob(action="update", job_id=job_id, no_agent=True))
     assert on["success"] is True
     assert on["job"]["no_agent"] is True
 
@@ -158,12 +158,12 @@ def test_cronjob_tool_update_no_agent_without_script_errors(hermes_env):
     """Flipping no_agent=True on a job that has no script must fail."""
     from tools.cronjob_tools import cronjob
 
-    created = json.loads(
+    created = orjson.loads(
         cronjob(action="create", schedule="every 5m", prompt="do a thing", deliver="local")
     )
     job_id = created["job_id"]
 
-    result = json.loads(cronjob(action="update", job_id=job_id, no_agent=True))
+    result = orjson.loads(cronjob(action="update", job_id=job_id, no_agent=True))
     assert result.get("success") is False
     assert "without a script" in result.get("error", "")
 
@@ -175,7 +175,7 @@ def test_cronjob_tool_create_does_not_require_prompt_when_no_agent(hermes_env):
     script_path = hermes_env / "scripts" / "w.sh"
     script_path.write_text("echo hi\n")
 
-    result = json.loads(
+    result = orjson.loads(
         cronjob(
             action="create",
             schedule="every 5m",

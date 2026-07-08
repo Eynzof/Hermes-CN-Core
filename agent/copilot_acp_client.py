@@ -8,7 +8,7 @@ back into the minimal shape Hermes expects from an OpenAI client.
 
 from __future__ import annotations
 
-import json
+import orjson
 import os
 import queue
 import re
@@ -172,11 +172,11 @@ def _format_messages_as_prompt(
                 "Available tools (OpenAI function schema). "
                 "When using a tool, emit ONLY <tool_call>{...}</tool_call> with one JSON object "
                 "containing id/type/function{name,arguments}. arguments must be a JSON string.\n"
-                + json.dumps(tool_specs, ensure_ascii=False)
+                + orjson.dumps(tool_specs).decode('utf-8')
             )
 
     if tool_choice is not None:
-        sections.append(f"Tool choice hint: {json.dumps(tool_choice, ensure_ascii=False)}")
+        sections.append(f"Tool choice hint: {orjson.dumps(tool_choice).decode('utf-8')}")
 
     transcript: list[str] = []
     for message in messages:
@@ -219,7 +219,7 @@ def _render_message_content(content: Any) -> str:
             return str(content.get("text") or "").strip()
         if "content" in content and isinstance(content.get("content"), str):
             return str(content.get("content") or "").strip()
-        return json.dumps(content, ensure_ascii=True)
+        return orjson.dumps(content).decode('utf-8')
     if isinstance(content, list):
         parts: list[str] = []
         for item in content:
@@ -304,7 +304,7 @@ def _extract_tool_calls_from_text(text: str) -> tuple[list[ChatCompletionMessage
 
     def _try_add_tool_call(raw_json: str) -> None:
         try:
-            obj = json.loads(raw_json)
+            obj = orjson.loads(raw_json)
         except Exception:
             return
         if not isinstance(obj, dict):
@@ -317,7 +317,7 @@ def _extract_tool_calls_from_text(text: str) -> tuple[list[ChatCompletionMessage
             return
         fn_args = fn.get("arguments", "{}")
         if not isinstance(fn_args, str):
-            fn_args = json.dumps(fn_args, ensure_ascii=False)
+            fn_args = orjson.dumps(fn_args).decode('utf-8')
         call_id = obj.get("id")
         if not isinstance(call_id, str) or not call_id.strip():
             call_id = f"acp_call_{len(extracted)+1}"
@@ -535,7 +535,7 @@ class CopilotACPClient:
                 return
             for line in proc.stdout:
                 try:
-                    inbox.put(json.loads(line))
+                    inbox.put(orjson.loads(line))
                 except Exception:
                     inbox.put({"raw": line.rstrip("\n")})
 
@@ -562,7 +562,7 @@ class CopilotACPClient:
                 "method": method,
                 "params": params,
             }
-            proc.stdin.write(json.dumps(payload) + "\n")
+            proc.stdin.write(orjson.dumps(payload).decode('utf-8') + "\n")
             proc.stdin.flush()
 
             deadline = time.monotonic() + timeout_seconds
@@ -747,6 +747,6 @@ class CopilotACPClient:
                 f"ACP client method '{method}' is not supported by Hermes yet.",
             )
 
-        process.stdin.write(json.dumps(response) + "\n")
+        process.stdin.write(orjson.dumps(response).decode('utf-8') + "\n")
         process.stdin.flush()
         return True

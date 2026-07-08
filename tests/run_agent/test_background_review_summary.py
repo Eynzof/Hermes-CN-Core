@@ -5,7 +5,7 @@ to re-surface tool results that were already present in the conversation
 history before the review started (e.g. an earlier "Cron job '...' created.").
 """
 
-import json
+import orjson
 
 from run_agent import AIAgent
 
@@ -17,7 +17,7 @@ def _tool_msg(tool_call_id, payload):
     return {
         "role": "tool",
         "tool_call_id": tool_call_id,
-        "content": json.dumps(payload),
+        "content": orjson.dumps(payload).decode('utf-8'),
     }
 
 
@@ -61,7 +61,7 @@ def test_includes_genuinely_new_actions():
 def test_falls_back_to_content_equality_when_tool_call_id_missing():
     """If a tool message has no tool_call_id, match prior entries by content."""
     payload = {"success": True, "message": "Cron job 'X' created."}
-    raw = json.dumps(payload)
+    raw = orjson.dumps(payload).decode('utf-8')
     prior_msg = {"role": "tool", "content": raw}  # no tool_call_id
     review_messages = [
         {"role": "tool", "content": raw},  # same content -> stale, skip

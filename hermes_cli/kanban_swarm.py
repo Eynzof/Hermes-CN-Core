@@ -17,7 +17,7 @@ new service.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-import json
+import orjson
 import sqlite3
 from typing import Any, Iterable, Optional
 
@@ -235,7 +235,7 @@ def post_blackboard_update(
     _require_text(root_id, "root_id")
     author = _require_text(author, "author")
     key = _require_text(key, "key")
-    payload = json.dumps({"key": key, "value": value}, ensure_ascii=False, sort_keys=True)
+    payload = orjson.dumps({"key": key, "value": value}, option=orjson.OPT_SORT_KEYS).decode('utf-8')
     return kb.add_comment(conn, root_id, author=author, body=BLACKBOARD_PREFIX + payload)
 
 
@@ -253,8 +253,8 @@ def latest_blackboard(conn: sqlite3.Connection, root_id: str) -> dict[str, Any]:
         if not body.startswith(BLACKBOARD_PREFIX):
             continue
         try:
-            payload = json.loads(body[len(BLACKBOARD_PREFIX):])
-        except json.JSONDecodeError:
+            payload = orjson.loads(body[len(BLACKBOARD_PREFIX):])
+        except orjson.JSONDecodeError:
             continue
         key = payload.get("key")
         if not isinstance(key, str) or not key:

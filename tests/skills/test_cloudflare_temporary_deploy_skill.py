@@ -1,6 +1,6 @@
 """Tests for optional-skills/web-development/cloudflare-temporary-deploy/scripts/parse_deploy_output.py"""
 
-import json
+import orjson
 import sys
 from pathlib import Path
 from unittest import mock
@@ -148,14 +148,14 @@ class TestCli:
     def test_main_prints_json_and_exit_zero_on_live(self, capsys):
         with mock.patch.object(sys.stdin, "read", return_value=CREATED):
             rc = pdo.main([])
-        out = json.loads(capsys.readouterr().out)
+        out = orjson.loads(capsys.readouterr().out)
         assert rc == 0
         assert out["live_url"] == "https://my-worker.swift-otter.workers.dev"
 
     def test_main_exit_one_when_no_live_url(self, capsys):
         with mock.patch.object(sys.stdin, "read", return_value=NOT_LOGGED_IN):
             rc = pdo.main([])
-        out = json.loads(capsys.readouterr().out)
+        out = orjson.loads(capsys.readouterr().out)
         assert rc == 1
         assert out["live_url"] is None
 

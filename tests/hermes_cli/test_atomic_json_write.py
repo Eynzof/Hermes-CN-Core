@@ -1,6 +1,6 @@
 """Tests for utils.atomic_json_write — crash-safe JSON file writes."""
 
-import json
+import orjson
 import os
 from pathlib import Path
 from unittest.mock import patch
@@ -18,7 +18,7 @@ class TestAtomicJsonWrite:
         data = {"key": "value", "nested": {"a": 1}}
         atomic_json_write(target, data)
 
-        result = json.loads(target.read_text(encoding="utf-8"))
+        result = orjson.loads(target.read_text(encoding="utf-8"))
         assert result == data
 
     def test_creates_parent_directories(self, tmp_path):
@@ -26,27 +26,27 @@ class TestAtomicJsonWrite:
         atomic_json_write(target, {"ok": True})
 
         assert target.exists()
-        assert json.loads(target.read_text())["ok"] is True
+        assert orjson.loads(target.read_text())["ok"] is True
 
     def test_overwrites_existing_file(self, tmp_path):
         target = tmp_path / "data.json"
         target.write_text('{"old": true}')
 
         atomic_json_write(target, {"new": True})
-        result = json.loads(target.read_text())
+        result = orjson.loads(target.read_text())
         assert result == {"new": True}
 
     def test_preserves_original_on_serialization_error(self, tmp_path):
         target = tmp_path / "data.json"
         original = {"preserved": True}
-        target.write_text(json.dumps(original))
+        target.write_text(orjson.dumps(original).decode('utf-8'))
 
         # Try to write non-serializable data — should fail
         with pytest.raises(TypeError):
             atomic_json_write(target, {"bad": object()})
 
         # Original file should be untouched
-        result = json.loads(target.read_text())
+        result = orjson.loads(target.read_text())
         assert result == original
 
     def test_no_leftover_temp_files_on_success(self, tmp_path):
@@ -74,7 +74,7 @@ class TestAtomicJsonWrite:
 
         target = tmp_path / "data.json"
         original = {"preserved": True}
-        target.write_text(json.dumps(original), encoding="utf-8")
+        target.write_text(orjson.dumps(original).decode('utf-8'), encoding="utf-8")
 
         with patch("utils.json.dump", side_effect=SimulatedAbort):
             with pytest.raises(SimulatedAbort):
@@ -82,13 +82,13 @@ class TestAtomicJsonWrite:
 
         tmp_files = [f for f in tmp_path.iterdir() if ".tmp" in f.name]
         assert len(tmp_files) == 0
-        assert json.loads(target.read_text(encoding="utf-8")) == original
+        assert orjson.loads(target.read_text(encoding="utf-8")) == original
 
     def test_accepts_string_path(self, tmp_path):
         target = str(tmp_path / "string_path.json")
         atomic_json_write(target, {"string": True})
 
-        result = json.loads(Path(target).read_text())
+        result = orjson.loads(Path(target).read_text())
         assert result == {"string": True}
 
     def test_writes_list_data(self, tmp_path):
@@ -96,14 +96,14 @@ class TestAtomicJsonWrite:
         data = [1, "two", {"three": 3}]
         atomic_json_write(target, data)
 
-        result = json.loads(target.read_text())
+        result = orjson.loads(target.read_text())
         assert result == data
 
     def test_empty_list(self, tmp_path):
         target = tmp_path / "empty.json"
         atomic_json_write(target, [])
 
-        result = json.loads(target.read_text())
+        result = orjson.loads(target.read_text())
         assert result == []
 
     def test_custom_indent(self, tmp_path):
@@ -121,7 +121,7 @@ class TestAtomicJsonWrite:
         target = tmp_path / "custom_default.json"
         atomic_json_write(target, {"value": CustomValue()}, default=str)
 
-        result = json.loads(target.read_text(encoding="utf-8"))
+        result = orjson.loads(target.read_text(encoding="utf-8"))
         assert result == {"value": "custom-value"}
 
     def test_unicode_content(self, tmp_path):
@@ -129,7 +129,7 @@ class TestAtomicJsonWrite:
         data = {"emoji": "🎉", "japanese": "日本語"}
         atomic_json_write(target, data)
 
-        result = json.loads(target.read_text(encoding="utf-8"))
+        result = orjson.loads(target.read_text(encoding="utf-8"))
         assert result["emoji"] == "🎉"
         assert result["japanese"] == "日本語"
 
@@ -151,7 +151,7 @@ class TestAtomicJsonWrite:
         with patch.object(utils, "os", fake_os):
             atomic_json_write(target, {"api_key": "secret"}, mode=0o600)
 
-        assert json.loads(target.read_text(encoding="utf-8")) == {"api_key": "secret"}
+        assert orjson.loads(target.read_text(encoding="utf-8")) == {"api_key": "secret"}
 
     def test_mode_applied_when_supported(self, tmp_path):
         import stat as stat_mod
@@ -186,6 +186,6 @@ class TestAtomicJsonWrite:
 
         assert not errors
         # File should contain valid JSON from one of the writers
-        result = json.loads(target.read_text())
+        result = orjson.loads(target.read_text())
         assert "writer" in result
         assert len(result["data"]) == 100

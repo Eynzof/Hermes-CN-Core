@@ -1,7 +1,7 @@
 """Tests for plugins/memory/honcho/client.py — Honcho client configuration."""
 
 import importlib.util
-import json
+import orjson
 import os
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -98,7 +98,7 @@ class TestFromGlobalConfig:
 
     def test_reads_full_config(self, tmp_path, monkeypatch):
         config_file = tmp_path / "config.json"
-        config_file.write_text(json.dumps({
+        config_file.write_text(orjson.dumps({
             "apiKey": "***",
             "workspace": "my-workspace",
             "environment": "staging",
@@ -116,7 +116,7 @@ class TestFromGlobalConfig:
                     "aiPeer": "override-ai",
                 }
             }
-        }))
+        }).decode('utf-8'))
         # Isolate from real ~/.hermes/honcho.json
         monkeypatch.setenv("HERMES_HOME", str(tmp_path / "isolated"))
 
@@ -134,7 +134,7 @@ class TestFromGlobalConfig:
 
     def test_host_block_overrides_root(self, tmp_path):
         config_file = tmp_path / "config.json"
-        config_file.write_text(json.dumps({
+        config_file.write_text(orjson.dumps({
             "apiKey": "key",
             "workspace": "root-ws",
             "aiPeer": "root-ai",
@@ -144,7 +144,7 @@ class TestFromGlobalConfig:
                     "aiPeer": "host-ai",
                 }
             }
-        }))
+        }).decode('utf-8'))
 
         config = HonchoClientConfig.from_global_config(config_path=config_file)
         assert config.workspace_id == "host-ws"
@@ -152,11 +152,11 @@ class TestFromGlobalConfig:
 
     def test_root_fields_used_when_no_host_block(self, tmp_path):
         config_file = tmp_path / "config.json"
-        config_file.write_text(json.dumps({
+        config_file.write_text(orjson.dumps({
             "apiKey": "key",
             "workspace": "root-ws",
             "aiPeer": "root-ai",
-        }))
+        }).decode('utf-8'))
 
         config = HonchoClientConfig.from_global_config(config_path=config_file)
         assert config.workspace_id == "root-ws"
@@ -165,56 +165,56 @@ class TestFromGlobalConfig:
     def test_session_strategy_default_from_global_config(self, tmp_path):
         """from_global_config with no sessionStrategy should match dataclass default."""
         config_file = tmp_path / "config.json"
-        config_file.write_text(json.dumps({"apiKey": "***"}))
+        config_file.write_text(orjson.dumps({"apiKey": "***"}).decode('utf-8'))
         config = HonchoClientConfig.from_global_config(config_path=config_file)
         assert config.session_strategy == "per-directory"
 
     def test_context_tokens_default_is_none(self, tmp_path):
         """Default context_tokens should be None (uncapped) unless explicitly set."""
         config_file = tmp_path / "config.json"
-        config_file.write_text(json.dumps({"apiKey": "***"}))
+        config_file.write_text(orjson.dumps({"apiKey": "***"}).decode('utf-8'))
         config = HonchoClientConfig.from_global_config(config_path=config_file)
         assert config.context_tokens is None
 
     def test_context_tokens_explicit_sets_cap(self, tmp_path):
         """Explicit contextTokens in config sets the cap."""
         config_file = tmp_path / "config.json"
-        config_file.write_text(json.dumps({"apiKey": "***", "contextTokens": 1200}))
+        config_file.write_text(orjson.dumps({"apiKey": "***", "contextTokens": 1200}).decode('utf-8'))
         config = HonchoClientConfig.from_global_config(config_path=config_file)
         assert config.context_tokens == 1200
 
     def test_context_tokens_explicit_overrides_default(self, tmp_path):
         """Explicit contextTokens in config should override the default."""
         config_file = tmp_path / "config.json"
-        config_file.write_text(json.dumps({"apiKey": "***", "contextTokens": 2000}))
+        config_file.write_text(orjson.dumps({"apiKey": "***", "contextTokens": 2000}).decode('utf-8'))
         config = HonchoClientConfig.from_global_config(config_path=config_file)
         assert config.context_tokens == 2000
 
     def test_context_tokens_host_block_wins(self, tmp_path):
         """Host block contextTokens should override root."""
         config_file = tmp_path / "config.json"
-        config_file.write_text(json.dumps({
+        config_file.write_text(orjson.dumps({
             "apiKey": "key",
             "contextTokens": 1000,
             "hosts": {"hermes": {"contextTokens": 2000}},
-        }))
+        }).decode('utf-8'))
         config = HonchoClientConfig.from_global_config(config_path=config_file)
         assert config.context_tokens == 2000
 
     def test_recall_mode_from_config(self, tmp_path):
         """recallMode is read from config, host block wins."""
         config_file = tmp_path / "config.json"
-        config_file.write_text(json.dumps({
+        config_file.write_text(orjson.dumps({
             "apiKey": "key",
             "recallMode": "tools",
             "hosts": {"hermes": {"recallMode": "context"}},
-        }))
+        }).decode('utf-8'))
         config = HonchoClientConfig.from_global_config(config_path=config_file)
         assert config.recall_mode == "context"
 
     def test_recall_mode_default(self, tmp_path):
         config_file = tmp_path / "config.json"
-        config_file.write_text(json.dumps({"apiKey": "key"}))
+        config_file.write_text(orjson.dumps({"apiKey": "key"}).decode('utf-8'))
         config = HonchoClientConfig.from_global_config(config_path=config_file)
         assert config.recall_mode == "hybrid"
 
@@ -228,7 +228,7 @@ class TestFromGlobalConfig:
 
     def test_api_key_env_fallback(self, tmp_path):
         config_file = tmp_path / "config.json"
-        config_file.write_text(json.dumps({"enabled": True}))
+        config_file.write_text(orjson.dumps({"enabled": True}).decode('utf-8'))
 
         with patch.dict(os.environ, {"HONCHO_API_KEY": "env-key"}):
             config = HonchoClientConfig.from_global_config(config_path=config_file)
@@ -237,7 +237,7 @@ class TestFromGlobalConfig:
     def test_base_url_env_fallback(self, tmp_path):
         """HONCHO_BASE_URL env var is used when no baseUrl in config JSON."""
         config_file = tmp_path / "config.json"
-        config_file.write_text(json.dumps({"workspace": "local"}))
+        config_file.write_text(orjson.dumps({"workspace": "local"}).decode('utf-8'))
 
         with patch.dict(os.environ, {"HONCHO_BASE_URL": "http://localhost:8000"}, clear=False):
             config = HonchoClientConfig.from_global_config(config_path=config_file)
@@ -247,7 +247,7 @@ class TestFromGlobalConfig:
     def test_base_url_from_config_root(self, tmp_path):
         """baseUrl in config root is read and takes precedence over env var."""
         config_file = tmp_path / "config.json"
-        config_file.write_text(json.dumps({"baseUrl": "http://config-host:9000"}))
+        config_file.write_text(orjson.dumps({"baseUrl": "http://config-host:9000"}).decode('utf-8'))
 
         with patch.dict(os.environ, {"HONCHO_BASE_URL": "http://localhost:8000"}, clear=False):
             config = HonchoClientConfig.from_global_config(config_path=config_file)
@@ -256,24 +256,24 @@ class TestFromGlobalConfig:
     def test_base_url_not_read_from_host_block(self, tmp_path):
         """baseUrl is a root-level connection setting, not overridable per-host (consistent with apiKey)."""
         config_file = tmp_path / "config.json"
-        config_file.write_text(json.dumps({
+        config_file.write_text(orjson.dumps({
             "baseUrl": "http://root:9000",
             "hosts": {"hermes": {"baseUrl": "http://host-block:9001"}},
-        }))
+        }).decode('utf-8'))
 
         config = HonchoClientConfig.from_global_config(config_path=config_file)
         assert config.base_url == "http://root:9000"
 
     def test_timeout_from_config_root(self, tmp_path):
         config_file = tmp_path / "config.json"
-        config_file.write_text(json.dumps({"timeout": 75}))
+        config_file.write_text(orjson.dumps({"timeout": 75}).decode('utf-8'))
 
         config = HonchoClientConfig.from_global_config(config_path=config_file)
         assert config.timeout == 75.0
 
     def test_request_timeout_alias_from_config_root(self, tmp_path):
         config_file = tmp_path / "config.json"
-        config_file.write_text(json.dumps({"requestTimeout": "82.5"}))
+        config_file.write_text(orjson.dumps({"requestTimeout": "82.5"}).decode('utf-8'))
 
         config = HonchoClientConfig.from_global_config(config_path=config_file)
         assert config.timeout == 82.5
@@ -401,10 +401,10 @@ class TestResolveConfigPath:
         profile_home = default_home / "profiles" / "work"
         profile_home.mkdir(parents=True)
         default_cfg = default_home / "honcho.json"
-        default_cfg.write_text(json.dumps({
+        default_cfg.write_text(orjson.dumps({
             "apiKey": "default-key",
             "workspace": "default-ws",
-        }))
+        }).decode('utf-8'))
 
         monkeypatch.setattr(Path, "home", lambda: fake_home)
         monkeypatch.setenv("HERMES_HOME", str(profile_home))
@@ -418,10 +418,10 @@ class TestResolveConfigPath:
         hermes_home = tmp_path / "hermes"
         hermes_home.mkdir()
         local_cfg = hermes_home / "honcho.json"
-        local_cfg.write_text(json.dumps({
+        local_cfg.write_text(orjson.dumps({
             "apiKey": "***",
             "workspace": "local-ws",
-        }))
+        }).decode('utf-8'))
 
         with patch.dict(os.environ, {"HERMES_HOME": str(hermes_home)}), \
              patch.object(Path, "home", return_value=tmp_path):
@@ -495,7 +495,7 @@ class TestProfileScopedConfig:
 
     def test_from_global_config_reads_profile_host_block(self, tmp_path):
         config_file = tmp_path / "config.json"
-        config_file.write_text(json.dumps({
+        config_file.write_text(orjson.dumps({
             "apiKey": "shared-key",
             "hosts": {
                 "hermes": {"aiPeer": "hermes", "peerName": "alice"},
@@ -505,7 +505,7 @@ class TestProfileScopedConfig:
                     "workspace": "coder-ws",
                 },
             },
-        }))
+        }).decode('utf-8'))
         config = HonchoClientConfig.from_global_config(
             host="hermes_coder", config_path=config_file,
         )
@@ -516,12 +516,12 @@ class TestProfileScopedConfig:
 
     def test_from_global_config_auto_resolves_host(self, tmp_path):
         config_file = tmp_path / "config.json"
-        config_file.write_text(json.dumps({
+        config_file.write_text(orjson.dumps({
             "apiKey": "key",
             "hosts": {
                 "hermes_dreamer": {"peerName": "dreamer-user"},
             },
-        }))
+        }).decode('utf-8'))
         with patch("plugins.memory.honcho.client.resolve_active_host", return_value="hermes_dreamer"):
             config = HonchoClientConfig.from_global_config(config_path=config_file)
         assert config.host == "hermes_dreamer"
@@ -529,12 +529,12 @@ class TestProfileScopedConfig:
 
     def test_from_global_config_reads_legacy_dot_profile_host_block(self, tmp_path):
         config_file = tmp_path / "config.json"
-        config_file.write_text(json.dumps({
+        config_file.write_text(orjson.dumps({
             "apiKey": "key",
             "hosts": {
                 "hermes.dreamer": {"peerName": "dreamer-user"},
             },
-        }))
+        }).decode('utf-8'))
         config = HonchoClientConfig.from_global_config(
             host="hermes_dreamer",
             config_path=config_file,
@@ -550,45 +550,45 @@ class TestObservationModeMigration:
     def test_existing_config_defaults_to_unified(self, tmp_path):
         """Config with host block but no observationMode → 'unified' (old default)."""
         cfg_file = tmp_path / "config.json"
-        cfg_file.write_text(json.dumps({
+        cfg_file.write_text(orjson.dumps({
             "apiKey": "k",
             "hosts": {"hermes": {"enabled": True, "aiPeer": "hermes"}},
-        }))
+        }).decode('utf-8'))
         cfg = HonchoClientConfig.from_global_config(config_path=cfg_file)
         assert cfg.observation_mode == "unified"
 
     def test_new_config_defaults_to_directional(self, tmp_path):
         """Config with no host block and no credentials → 'directional' (new default)."""
         cfg_file = tmp_path / "config.json"
-        cfg_file.write_text(json.dumps({}))
+        cfg_file.write_text(orjson.dumps({}).decode('utf-8'))
         cfg = HonchoClientConfig.from_global_config(config_path=cfg_file)
         assert cfg.observation_mode == "directional"
 
     def test_explicit_directional_respected(self, tmp_path):
         """Existing config with explicit observationMode → uses what's set."""
         cfg_file = tmp_path / "config.json"
-        cfg_file.write_text(json.dumps({
+        cfg_file.write_text(orjson.dumps({
             "apiKey": "k",
             "hosts": {"hermes": {"enabled": True, "observationMode": "directional"}},
-        }))
+        }).decode('utf-8'))
         cfg = HonchoClientConfig.from_global_config(config_path=cfg_file)
         assert cfg.observation_mode == "directional"
 
     def test_explicit_unified_respected(self, tmp_path):
         """Existing config with explicit observationMode unified → stays unified."""
         cfg_file = tmp_path / "config.json"
-        cfg_file.write_text(json.dumps({
+        cfg_file.write_text(orjson.dumps({
             "apiKey": "k",
             "observationMode": "unified",
             "hosts": {"hermes": {"enabled": True}},
-        }))
+        }).decode('utf-8'))
         cfg = HonchoClientConfig.from_global_config(config_path=cfg_file)
         assert cfg.observation_mode == "unified"
 
     def test_granular_observation_overrides_preset(self, tmp_path):
         """Explicit observation object overrides both preset and migration default."""
         cfg_file = tmp_path / "config.json"
-        cfg_file.write_text(json.dumps({
+        cfg_file.write_text(orjson.dumps({
             "apiKey": "k",
             "hosts": {"hermes": {
                 "enabled": True,
@@ -597,7 +597,7 @@ class TestObservationModeMigration:
                     "ai": {"observeMe": False, "observeOthers": True},
                 },
             }},
-        }))
+        }).decode('utf-8'))
         cfg = HonchoClientConfig.from_global_config(config_path=cfg_file)
         # observation_mode falls back to "unified" (migration), but
         # granular booleans from the observation object win
@@ -838,84 +838,84 @@ class TestDialecticDepthParsing:
     def test_default_depth_is_1(self, tmp_path):
         """Default dialecticDepth should be 1."""
         config_file = tmp_path / "config.json"
-        config_file.write_text(json.dumps({"apiKey": "***"}))
+        config_file.write_text(orjson.dumps({"apiKey": "***"}).decode('utf-8'))
         config = HonchoClientConfig.from_global_config(config_path=config_file)
         assert config.dialectic_depth == 1
 
     def test_depth_from_root(self, tmp_path):
         config_file = tmp_path / "config.json"
-        config_file.write_text(json.dumps({"apiKey": "***", "dialecticDepth": 2}))
+        config_file.write_text(orjson.dumps({"apiKey": "***", "dialecticDepth": 2}).decode('utf-8'))
         config = HonchoClientConfig.from_global_config(config_path=config_file)
         assert config.dialectic_depth == 2
 
     def test_depth_host_block_wins(self, tmp_path):
         config_file = tmp_path / "config.json"
-        config_file.write_text(json.dumps({
+        config_file.write_text(orjson.dumps({
             "apiKey": "***",
             "dialecticDepth": 1,
             "hosts": {"hermes": {"dialecticDepth": 3}},
-        }))
+        }).decode('utf-8'))
         config = HonchoClientConfig.from_global_config(config_path=config_file)
         assert config.dialectic_depth == 3
 
     def test_depth_clamped_high(self, tmp_path):
         config_file = tmp_path / "config.json"
-        config_file.write_text(json.dumps({"apiKey": "***", "dialecticDepth": 10}))
+        config_file.write_text(orjson.dumps({"apiKey": "***", "dialecticDepth": 10}).decode('utf-8'))
         config = HonchoClientConfig.from_global_config(config_path=config_file)
         assert config.dialectic_depth == 3
 
     def test_depth_clamped_low(self, tmp_path):
         config_file = tmp_path / "config.json"
-        config_file.write_text(json.dumps({"apiKey": "***", "dialecticDepth": -1}))
+        config_file.write_text(orjson.dumps({"apiKey": "***", "dialecticDepth": -1}).decode('utf-8'))
         config = HonchoClientConfig.from_global_config(config_path=config_file)
         assert config.dialectic_depth == 1
 
     def test_depth_levels_default_none(self, tmp_path):
         config_file = tmp_path / "config.json"
-        config_file.write_text(json.dumps({"apiKey": "***"}))
+        config_file.write_text(orjson.dumps({"apiKey": "***"}).decode('utf-8'))
         config = HonchoClientConfig.from_global_config(config_path=config_file)
         assert config.dialectic_depth_levels is None
 
     def test_depth_levels_from_config(self, tmp_path):
         config_file = tmp_path / "config.json"
-        config_file.write_text(json.dumps({
+        config_file.write_text(orjson.dumps({
             "apiKey": "***",
             "dialecticDepth": 2,
             "dialecticDepthLevels": ["minimal", "high"],
-        }))
+        }).decode('utf-8'))
         config = HonchoClientConfig.from_global_config(config_path=config_file)
         assert config.dialectic_depth_levels == ["minimal", "high"]
 
     def test_depth_levels_padded_if_short(self, tmp_path):
         """Array shorter than depth gets padded with 'low'."""
         config_file = tmp_path / "config.json"
-        config_file.write_text(json.dumps({
+        config_file.write_text(orjson.dumps({
             "apiKey": "***",
             "dialecticDepth": 3,
             "dialecticDepthLevels": ["high"],
-        }))
+        }).decode('utf-8'))
         config = HonchoClientConfig.from_global_config(config_path=config_file)
         assert config.dialectic_depth_levels == ["high", "low", "low"]
 
     def test_depth_levels_truncated_if_long(self, tmp_path):
         """Array longer than depth gets truncated."""
         config_file = tmp_path / "config.json"
-        config_file.write_text(json.dumps({
+        config_file.write_text(orjson.dumps({
             "apiKey": "***",
             "dialecticDepth": 1,
             "dialecticDepthLevels": ["high", "max", "medium"],
-        }))
+        }).decode('utf-8'))
         config = HonchoClientConfig.from_global_config(config_path=config_file)
         assert config.dialectic_depth_levels == ["high"]
 
     def test_depth_levels_invalid_values_default_to_low(self, tmp_path):
         """Invalid reasoning levels in the array fall back to 'low'."""
         config_file = tmp_path / "config.json"
-        config_file.write_text(json.dumps({
+        config_file.write_text(orjson.dumps({
             "apiKey": "***",
             "dialecticDepth": 2,
             "dialecticDepthLevels": ["invalid", "high"],
-        }))
+        }).decode('utf-8'))
         config = HonchoClientConfig.from_global_config(config_path=config_file)
         assert config.dialectic_depth_levels == ["low", "high"]
 

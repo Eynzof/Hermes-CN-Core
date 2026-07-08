@@ -213,7 +213,7 @@ def test_disable_env_var(monkeypatch, restore_meta_path):
 # ---------------------------------------------------------------------------
 
 _BYPASS_PROBE = r'''
-import os, sys, json
+import os, sys, orjson
 sys.path.insert(0, ROOT)
 import import_accelerator as ia
 import importlib.machinery as machinery
@@ -254,11 +254,11 @@ try:
 except ModuleNotFoundError:
     control_failed = True
 
-print("RESULT " + json.dumps({
+print("RESULT " + orjson.dumps({
     "bypass_ok": bypass_ok,
     "pathfinder_touched": pathfinder_touched,
     "control_failed": control_failed,
-}))
+}).decode('utf-8'))
 '''
 
 
@@ -271,8 +271,8 @@ def _run_probe(probe: str, timeout: int = 60):
     assert result.returncode == 0, f"probe failed:\n{result.stderr[-2000:]}"
     lines = [ln for ln in result.stdout.splitlines() if ln.startswith("RESULT ")]
     assert lines, f"probe produced no RESULT line:\n{result.stdout[-2000:]}"
-    import json
-    return json.loads(lines[-1][len("RESULT "):])
+    import orjson
+    return orjson.loads(lines[-1][len("RESULT "):])
 
 
 def test_import_hook_bypass():
@@ -296,7 +296,7 @@ def test_import_hook_bypass():
 
 
 _TIMING_PROBE = r'''
-import os, sys, json, time
+import os, sys, orjson, time
 sys.path.insert(0, ROOT)
 import import_accelerator as ia
 
@@ -321,7 +321,7 @@ baseline = min(_reimport_cost(NAMES + MODS) for _ in range(5))
 ia.install()
 accel = min(_reimport_cost(NAMES + MODS) for _ in range(5))
 
-print("RESULT " + json.dumps({"baseline_ms": baseline, "accel_ms": accel}))
+print("RESULT " + orjson.dumps({"baseline_ms": baseline, "accel_ms": accel}).decode('utf-8'))
 '''
 
 
@@ -343,17 +343,17 @@ def test_accelerator_preserves_lazy_tool_import_invariant():
     tool module — the lazy tool-import optimization (P-043) must still hold with
     the accelerator active."""
     probe = r'''
-import sys, json
+import sys, orjson
 sys.path.insert(0, ROOT)
 from run_agent import AIAgent  # noqa: F401
 import import_accelerator as ia
 import tools.registry as R
 self_reg = set(R.build_tool_index()["modules"])
 loaded = sorted(m for m in sys.modules if m in self_reg)
-print("RESULT " + json.dumps({
+print("RESULT " + orjson.dumps({
     "installed": ia.is_installed(),
     "self_reg_loaded": loaded,
-}))
+}).decode('utf-8'))
 '''
     data = _run_probe(probe, timeout=120)
     assert data["installed"], "run_agent did not install the accelerator"

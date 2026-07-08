@@ -33,7 +33,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import json
+import orjson
 import logging
 import mimetypes
 import os
@@ -899,7 +899,7 @@ class QQAdapter(BasePlatformAdapter):
     @staticmethod
     def _parse_json(raw: Any) -> Optional[Dict[str, Any]]:
         try:
-            payload = json.loads(raw)
+            payload = orjson.loads(raw)
         except Exception:
             logger.warning("[QQBot] Failed to parse JSON: %r", raw)
             return None

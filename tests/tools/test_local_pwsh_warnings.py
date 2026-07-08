@@ -6,7 +6,7 @@ result dict, and terminal_tool surfaces them in JSON.
 Also verifies that pwsh (PowerShell 7) skips the transform entirely.
 """
 
-import json
+import orjson
 import os
 import sys
 import pytest
@@ -220,7 +220,7 @@ class TestTerminalToolSurfacesWarnings:
         with patch.object(tt, "_create_environment", return_value=fake_env), \
              patch.dict(tt._active_environments, {}, clear=True):
             raw = tt.terminal_tool("echo hi", task_id=task_id)
-        return json.loads(raw)
+        return orjson.loads(raw)
 
     def test_terminal_tool_json_includes_pwsh_warnings(self, tmp_path):
         parsed = self._run_with_fake_env_result(

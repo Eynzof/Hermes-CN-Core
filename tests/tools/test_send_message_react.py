@@ -4,7 +4,7 @@ Kept separate from ``test_send_message_tool.py`` because that module skips
 wholesale when optional Telegram dependencies are not installed.
 """
 
-import json
+import orjson
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -37,7 +37,7 @@ def _runner_with(adapter):
 
 
 def _call(args):
-    return json.loads(smt.send_message_tool(args))
+    return orjson.loads(smt.send_message_tool(args))
 
 
 def test_react_dispatches_to_add_reaction():
@@ -67,7 +67,7 @@ def test_unreact_dispatches_to_remove_reaction():
 def test_react_requires_emoji():
     result = _call({"action": "react", "target": "photon:+15551234567"})
     assert result.get("success") is not True
-    assert "emoji" in json.dumps(result)
+    assert "emoji" in orjson.dumps(result).decode('utf-8')
 
 
 def test_unreact_does_not_require_emoji():
@@ -85,7 +85,7 @@ def test_react_unsupported_platform_adapter():
             {"action": "react", "target": "photon:+15551234567", "emoji": "👍"}
         )
     assert result.get("success") is not True
-    assert "does not support" in json.dumps(result)
+    assert "does not support" in orjson.dumps(result).decode('utf-8')
 
 
 def test_react_without_live_gateway():
@@ -94,4 +94,4 @@ def test_react_without_live_gateway():
             {"action": "react", "target": "photon:+15551234567", "emoji": "👍"}
         )
     assert result.get("success") is not True
-    assert "live" in json.dumps(result)
+    assert "live" in orjson.dumps(result).decode('utf-8')

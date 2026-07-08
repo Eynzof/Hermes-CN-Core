@@ -20,7 +20,7 @@ POSIX-only: Windows has its own grandchild lifecycle (no shared session,
 
 from __future__ import annotations
 
-import json
+import orjson
 import os
 import subprocess
 import sys
@@ -118,12 +118,12 @@ def test_grandchild_leak_is_killed_by_runner(tmp_path: Path) -> None:
             # handoff, then walk away — don't close the pipe (would
             # signal EOF and let the child see SIGPIPE on next write).
             first_line = child.stdout.readline().decode().strip()
-            HANDOFF.write_text(json.dumps({{
+            HANDOFF.write_text(orjson.dumps({{
                 "pid": child.pid,
                 "diag": first_line,
                 "test_pid": os.getpid(),
                 "test_pgid": os.getpgid(0),
-            }}))
+            }}).decode('utf-8'))
             assert child.pid > 0
     """).strip()
     probe.write_text(probe_src + "\n")
@@ -153,7 +153,7 @@ def test_grandchild_leak_is_killed_by_runner(tmp_path: Path) -> None:
     assert handoff.exists(), (
         f"probe never wrote handoff file; runner output:\n{proc.stdout}"
     )
-    handoff_data = json.loads(handoff.read_text())
+    handoff_data = orjson.loads(handoff.read_text())
     grandchild_pid = handoff_data["pid"]
     diag = handoff_data.get("diag", "(no diag)")
     test_pid = handoff_data.get("test_pid")

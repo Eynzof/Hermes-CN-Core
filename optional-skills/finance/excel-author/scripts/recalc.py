@@ -12,7 +12,7 @@ Exits 0 on success (workbook recomputed and resaved in place), non-zero on
 failure. Writes status JSON to stdout either way.
 """
 
-import json
+import orjson
 import shutil
 import subprocess
 import sys
@@ -80,7 +80,7 @@ def main():
         sys.exit(2)
     timeout = int(sys.argv[2]) if len(sys.argv) > 2 else 60
     result = recalc(sys.argv[1], timeout=timeout)
-    print(json.dumps(result, indent=2))
+    print(orjson.dumps(result, option=orjson.OPT_INDENT_2).decode('utf-8'))
     sys.exit(0 if result["status"] == "success" else 1)
 
 

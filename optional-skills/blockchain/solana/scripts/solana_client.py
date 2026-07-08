@@ -20,7 +20,7 @@ Environment:
 """
 
 import argparse
-import json
+import orjson
 import os
 import sys
 import time
@@ -79,7 +79,7 @@ def _http_get_json(url: str, timeout: int = 10, retries: int = 2) -> Any:
         )
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
-                return json.load(resp)
+                return orjson.loads(resp.read())
         except urllib.error.HTTPError as exc:
             if exc.code == 429 and attempt < retries:
                 time.sleep(2.0 * (attempt + 1))
@@ -92,10 +92,10 @@ def _http_get_json(url: str, timeout: int = 10, retries: int = 2) -> Any:
 
 def _rpc_call(method: str, params: list = None, retries: int = 2) -> Any:
     """Send a JSON-RPC request with retry on 429 rate-limit."""
-    payload = json.dumps({
+    payload = orjson.dumps({
         "jsonrpc": "2.0", "id": 1,
         "method": method, "params": params or [],
-    }).encode()
+    })
 
     for attempt in range(retries + 1):
         req = urllib.request.Request(
@@ -104,7 +104,7 @@ def _rpc_call(method: str, params: list = None, retries: int = 2) -> Any:
         )
         try:
             with urllib.request.urlopen(req, timeout=20) as resp:
-                body = json.load(resp)
+                body = orjson.loads(resp.read())
             if "error" in body:
                 err = body["error"]
                 # Rate-limit: retry after delay
@@ -130,10 +130,10 @@ rpc = _rpc_call
 
 def rpc_batch(calls: list) -> list:
     """Send a batch of JSON-RPC requests (with retry on 429)."""
-    payload = json.dumps([
+    payload = orjson.dumps([
         {"jsonrpc": "2.0", "id": i, "method": c["method"], "params": c.get("params", [])}
         for i, c in enumerate(calls)
-    ]).encode()
+    ]).decode('utf-8').encode()
 
     for attempt in range(3):
         req = urllib.request.Request(
@@ -142,7 +142,7 @@ def rpc_batch(calls: list) -> list:
         )
         try:
             with urllib.request.urlopen(req, timeout=20) as resp:
-                return json.load(resp)
+                return orjson.loads(resp.read())
         except urllib.error.HTTPError as exc:
             if exc.code == 429 and attempt < 2:
                 time.sleep(1.5 * (attempt + 1))
@@ -158,7 +158,7 @@ def lamports_to_sol(lamports: int) -> float:
 
 
 def print_json(obj: Any) -> None:
-    print(json.dumps(obj, indent=2))
+    print(orjson.dumps(obj, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
 
 def _short_mint(mint: str) -> str:

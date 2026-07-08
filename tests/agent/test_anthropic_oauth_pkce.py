@@ -15,7 +15,7 @@ History:
 
 from __future__ import annotations
 
-import json
+import orjson
 from typing import Any, Dict
 from urllib.parse import parse_qs, urlparse
 
@@ -77,9 +77,9 @@ def _patch_oauth_flow(
     def fake_urlopen(req, *_a, **_kw):
         if capture_token_request is not None:
             capture_token_request["url"] = req.full_url
-            capture_token_request["data"] = json.loads(req.data.decode())
+            capture_token_request["data"] = orjson.loads(req.data.decode())
             capture_token_request["headers"] = dict(req.headers)
-        return _FakeResponse(json.dumps(token_response).encode())
+        return _FakeResponse(orjson.dumps(token_response))
 
     monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
 
@@ -222,13 +222,11 @@ def test_login_token_exchange_falls_back_to_console_host(monkeypatch, tmp_path):
         attempts.append(req.full_url)
         if req.full_url.startswith("https://platform.claude.com"):
             raise RuntimeError("HTTP Error 404: Not Found")
-        body = json.dumps(
-            {
+        body = orjson.dumps({
                 "access_token": "sk-ant-test-access",
                 "refresh_token": "sk-ant-test-refresh",
                 "expires_in": 3600,
-            }
-        ).encode()
+            })
         return _FakeResponse(body)
 
     monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)

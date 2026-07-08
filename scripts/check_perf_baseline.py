@@ -13,7 +13,7 @@ Usage:
 
 import argparse
 import glob
-import json
+import orjson
 import os
 import sys
 
@@ -27,7 +27,7 @@ def parse_args():
 
 def load_baseline(path: str) -> dict:
     with open(path) as f:
-        return json.load(f)
+        return orjson.loads(f.read())
 
 
 def collect_timings(raw_dir: str) -> dict:
@@ -35,7 +35,7 @@ def collect_timings(raw_dir: str) -> dict:
     summaries = {}
     for tf in timing_files:
         with open(tf) as f:
-            data = json.load(f)
+            data = orjson.loads(f.read())
         summary = data.get("summary", {})
         for section, metrics in summary.items():
             total_ms = metrics.get("total_ms", 0)

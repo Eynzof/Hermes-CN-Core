@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import io
-import json
+import orjson
 from contextlib import redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
@@ -98,7 +98,7 @@ class TestHooksTest:
                 for_tool=None, payload_file=None,
             ))
 
-        seen = json.loads(capture.read_text())
+        seen = orjson.loads(capture.read_text())
         # Same top-level keys _serialize_payload produces at runtime
         assert set(seen.keys()) == {
             "hook_event_name", "tool_name", "tool_input",
@@ -219,7 +219,7 @@ class TestHooksDoctor:
         # Manually stash an allowlist entry with an old mtime
         from agent.shell_hooks import allowlist_path
         allowlist_path().parent.mkdir(parents=True, exist_ok=True)
-        allowlist_path().write_text(json.dumps({
+        allowlist_path().write_text(orjson.dumps({
             "approvals": [
                 {
                     "event": "on_session_start",
@@ -228,7 +228,7 @@ class TestHooksDoctor:
                     "script_mtime_at_approval": "2000-01-01T00:00:00Z",
                 }
             ]
-        }))
+        }).decode('utf-8'))
 
         cfg = {"hooks": {"on_session_start": [{"command": str(script)}]}}
         with patch("hermes_cli.config.load_config", return_value=cfg):

@@ -5,7 +5,7 @@ Ensures changes to one provider path don't silently break another.
 """
 
 import base64
-import json
+import orjson
 import sys
 import types
 from types import SimpleNamespace
@@ -39,7 +39,7 @@ def _tool_defs(*names):
 
 def _fake_invoke_jwt() -> str:
     def _part(payload):
-        raw = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        raw = orjson.dumps(payload)
         return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
 
     return (

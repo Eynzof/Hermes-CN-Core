@@ -1,6 +1,6 @@
 """Tests for agent.context_tools — CompactMode enum, mode guidance, schema factories."""
 
-import json
+import orjson
 import pytest
 from agent.context_tools import (
     CompactMode,
@@ -82,8 +82,8 @@ class TestGetContextUsageSchema:
 
     def test_schema_is_valid_json_serializable(self):
         schema = get_context_usage_schema()
-        dumped = json.dumps(schema)
-        loaded = json.loads(dumped)
+        dumped = orjson.dumps(schema).decode('utf-8')
+        loaded = orjson.loads(dumped)
         assert loaded["name"] == "context_usage"
 
     def test_schema_type_is_object(self):
@@ -122,8 +122,8 @@ class TestGetCompactSchema:
 
     def test_schema_is_valid_json_serializable(self):
         schema = get_compact_schema()
-        dumped = json.dumps(schema)
-        loaded = json.loads(dumped)
+        dumped = orjson.dumps(schema).decode('utf-8')
+        loaded = orjson.loads(dumped)
         assert loaded["name"] == "compact"
 
     def test_schema_type_is_object(self):

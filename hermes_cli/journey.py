@@ -186,9 +186,9 @@ def _cmd_show(args: argparse.Namespace) -> int:
     from rich.console import Console
 
     if getattr(args, "json", False):
-        import json
+        import orjson
 
-        Console(no_color=bool(getattr(args, "no_color", False))).print_json(json.dumps(_build_payload()))
+        Console(no_color=bool(getattr(args, "no_color", False))).print_json(orjson.dumps(_build_payload()).decode('utf-8'))
         return 0
 
     payload = _build_payload()

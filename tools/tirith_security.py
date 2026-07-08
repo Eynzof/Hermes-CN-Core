@@ -21,7 +21,7 @@ never blocks.
 """
 
 import hashlib
-import json
+import orjson
 import logging
 import os
 import platform
@@ -827,11 +827,11 @@ def check_command_security(command: str) -> dict:
     findings = []
     summary = ""
     try:
-        data = json.loads(result.stdout) if result.stdout.strip() else {}
+        data = orjson.loads(result.stdout) if result.stdout.strip() else {}
         raw_findings = data.get("findings", [])
         findings = raw_findings[:_MAX_FINDINGS]
         summary = (data.get("summary", "") or "")[:_MAX_SUMMARY_LEN]
-    except (json.JSONDecodeError, AttributeError):
+    except (orjson.JSONDecodeError, AttributeError):
         # JSON parse failure degrades findings/summary, not the verdict
         logger.debug("tirith JSON parse failed, using exit code only")
         if action == "block":

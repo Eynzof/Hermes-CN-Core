@@ -16,7 +16,7 @@ Usage:
 
 from __future__ import annotations
 
-import json
+import orjson
 import logging
 import os
 import sys
@@ -73,12 +73,12 @@ def _messages_to_json(messages: List[Dict[str, Any]]) -> str:
             # SimpleNamespace or similar
             return {k: _convert(v) for k, v in obj.__dict__.items()}
         return obj
-    return json.dumps(_convert(messages), ensure_ascii=False)
+    return orjson.dumps(_convert(messages)).decode('utf-8')
 
 
 def _json_to_messages(json_str: str) -> List[Dict[str, Any]]:
     """Deserialize JSON string back to a message list."""
-    return json.loads(json_str)
+    return orjson.loads(json_str)
 
 
 def _json_to_bool(json_str: str) -> bool:
@@ -112,7 +112,7 @@ def sanitize_messages_surrogates(messages: List[Dict[str, Any]]) -> bool:
     try:
         inp_json = _messages_to_json(messages)
         out_json = agent_native.sanitize_messages_surrogates(inp_json)
-        out = json.loads(out_json)
+        out = orjson.loads(out_json)
         # Compare old vs new to determine if changes happened
         changed = _messages_to_json(messages) != _messages_to_json(out)
         # Mutate in-place
@@ -168,7 +168,7 @@ def sanitize_messages_non_ascii(messages: List[Dict[str, Any]]) -> bool:
     try:
         inp_json = _messages_to_json(messages)
         out_json = agent_native.sanitize_messages_non_ascii(inp_json)
-        out = json.loads(out_json)
+        out = orjson.loads(out_json)
         changed = _messages_to_json(messages) != _messages_to_json(out)
         messages[:] = out
         return changed
@@ -189,7 +189,7 @@ def strip_images_from_messages(messages: List[Dict[str, Any]]) -> bool:
     try:
         inp_json = _messages_to_json(messages)
         out_json = agent_native.strip_images_from_messages(inp_json)
-        out = json.loads(out_json)
+        out = orjson.loads(out_json)
         changed = _messages_to_json(messages) != _messages_to_json(out)
         messages[:] = out
         return changed
@@ -289,7 +289,7 @@ def sanitize_api_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]
     try:
         inp_json = _messages_to_json(messages)
         out_json = agent_native.sanitize_api_messages(inp_json)
-        return json.loads(out_json)
+        return orjson.loads(out_json)
     except Exception:
         from agent.agent_runtime_helpers import sanitize_api_messages as _py_fn
         return _py_fn(messages)
@@ -311,7 +311,7 @@ def repair_message_sequence(agent, messages: List[Dict]) -> int:
     try:
         inp_json = _messages_to_json(messages)
         out_json = agent_native.repair_message_sequence(inp_json)
-        out = json.loads(out_json)
+        out = orjson.loads(out_json)
         
         # Count repairs: difference in message count or content
         repairs = abs(len(messages) - len(out))
@@ -337,10 +337,10 @@ def sanitize_and_repair_messages(messages_json: str) -> str:
     if not _native_enabled():
         # Fallback: run sanitize in sequence
         from agent.agent_runtime_helpers import sanitize_api_messages as _san
-        messages = json.loads(messages_json)
+        messages = orjson.loads(messages_json)
         messages = _san(messages)
         # repair_message_sequence is skipped because it requires an `agent` reference
-        return json.dumps(messages, ensure_ascii=False)
+        return orjson.dumps(messages).decode('utf-8')
     
     try:
         return agent_native.sanitize_and_repair_messages(messages_json)
@@ -363,7 +363,7 @@ def sanitize_tool_pairs(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     try:
         inp_json = _messages_to_json(messages)
         out_json = agent_native.sanitize_tool_pairs(inp_json)
-        return json.loads(out_json)
+        return orjson.loads(out_json)
     except Exception:
         return messages
 
@@ -416,7 +416,7 @@ def prune_old_tool_results(messages: List[Dict[str, Any]]) -> List[Dict[str, Any
     try:
         inp_json = _messages_to_json(messages)
         out_json = agent_native.prune_old_tool_results(inp_json)
-        return json.loads(out_json)
+        return orjson.loads(out_json)
     except Exception:
         return messages
 

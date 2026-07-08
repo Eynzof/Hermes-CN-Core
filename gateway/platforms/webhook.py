@@ -31,7 +31,7 @@ import base64
 import binascii
 import hashlib
 import hmac
-import json
+import orjson
 import logging
 import re
 import subprocess
@@ -366,7 +366,7 @@ class WebhookAdapter(BasePlatformAdapter):
             mtime = subs_path.stat().st_mtime
             if mtime <= self._dynamic_routes_mtime:
                 return  # No change
-            data = json.loads(subs_path.read_text(encoding="utf-8"))
+            data = orjson.loads(subs_path.read_text(encoding="utf-8"))
             if not isinstance(data, dict):
                 return
             # Merge: static routes take precedence over dynamic ones.
@@ -515,8 +515,8 @@ class WebhookAdapter(BasePlatformAdapter):
 
         # Parse payload
         try:
-            payload = json.loads(raw_body)
-        except json.JSONDecodeError:
+            payload = orjson.loads(raw_body)
+        except orjson.JSONDecodeError:
             # Try form-encoded as fallback
             try:
                 import urllib.parse
@@ -946,7 +946,7 @@ class WebhookAdapter(BasePlatformAdapter):
         any webhook where the agent needs to see the full payload.
         """
         if not template:
-            truncated = json.dumps(payload, indent=2)[:4000]
+            truncated = orjson.dumps(payload, option=orjson.OPT_INDENT_2).decode('utf-8')[:4000]
             return (
                 f"Webhook event '{event_type}' on route "
                 f"'{route_name}':\n\n```json\n{truncated}\n```"
@@ -956,7 +956,7 @@ class WebhookAdapter(BasePlatformAdapter):
             key = match.group(1)
             # Special token: dump the entire payload as JSON
             if key == "__raw__":
-                return json.dumps(payload, indent=2)[:4000]
+                return orjson.dumps(payload, option=orjson.OPT_INDENT_2).decode('utf-8')[:4000]
             value: Any = payload
             for part in key.split("."):
                 if isinstance(value, dict):
@@ -964,7 +964,7 @@ class WebhookAdapter(BasePlatformAdapter):
                 else:
                     return f"{{{key}}}"
             if isinstance(value, (dict, list)):
-                return json.dumps(value, indent=2)[:2000]
+                return orjson.dumps(value, option=orjson.OPT_INDENT_2).decode('utf-8')[:2000]
             return str(value)
 
         return re.sub(r"\{([a-zA-Z0-9_.]+)\}", _resolve, template)

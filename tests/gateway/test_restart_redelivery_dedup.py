@@ -5,7 +5,7 @@ with a network error, Telegram re-delivers the `/restart` message to the new
 gateway process.  Without a dedup guard, the new gateway would process
 `/restart` again and immediately restart — a self-perpetuating loop.
 """
-import json
+import orjson
 import time
 from unittest.mock import MagicMock
 
@@ -41,7 +41,7 @@ async def test_restart_handler_writes_dedup_marker_with_update_id(tmp_path, monk
     assert "Restarting gateway" in result
     marker_path = tmp_path / ".restart_last_processed.json"
     assert marker_path.exists()
-    data = json.loads(marker_path.read_text())
+    data = orjson.loads(marker_path.read_text())
     assert data["platform"] == "telegram"
     assert data["update_id"] == 12345
     assert isinstance(data["requested_at"], (int, float))
@@ -55,11 +55,11 @@ async def test_redelivered_restart_with_same_update_id_is_ignored(tmp_path, monk
 
     # Previous gateway recorded update_id=12345 a few seconds ago
     marker = tmp_path / ".restart_last_processed.json"
-    marker.write_text(json.dumps({
+    marker.write_text(orjson.dumps({
         "platform": "telegram",
         "update_id": 12345,
         "requested_at": time.time() - 5,
-    }))
+    }).decode('utf-8'))
 
     runner, _adapter = make_restart_runner()
     runner.request_restart = MagicMock()
@@ -78,11 +78,11 @@ async def test_redelivered_restart_with_older_update_id_is_ignored(tmp_path, mon
     monkeypatch.delenv("INVOCATION_ID", raising=False)
 
     marker = tmp_path / ".restart_last_processed.json"
-    marker.write_text(json.dumps({
+    marker.write_text(orjson.dumps({
         "platform": "telegram",
         "update_id": 12345,
         "requested_at": time.time() - 5,
-    }))
+    }).decode('utf-8'))
 
     runner, _adapter = make_restart_runner()
     runner.request_restart = MagicMock()
@@ -104,11 +104,11 @@ async def test_fresh_restart_with_higher_update_id_is_processed(tmp_path, monkey
 
     # Previous restart recorded update_id=12345
     marker = tmp_path / ".restart_last_processed.json"
-    marker.write_text(json.dumps({
+    marker.write_text(orjson.dumps({
         "platform": "telegram",
         "update_id": 12345,
         "requested_at": time.time() - 5,
-    }))
+    }).decode('utf-8'))
 
     runner, _adapter = make_restart_runner()
     runner.request_restart = MagicMock(return_value=True)
@@ -120,7 +120,7 @@ async def test_fresh_restart_with_higher_update_id_is_processed(tmp_path, monkey
     runner.request_restart.assert_called_once()
 
     # Marker is overwritten with the new update_id
-    data = json.loads(marker.read_text())
+    data = orjson.loads(marker.read_text())
     assert data["update_id"] == 12346
 
 
@@ -131,11 +131,11 @@ async def test_stale_marker_older_than_5min_does_not_block(tmp_path, monkeypatch
     monkeypatch.delenv("INVOCATION_ID", raising=False)
 
     marker = tmp_path / ".restart_last_processed.json"
-    marker.write_text(json.dumps({
+    marker.write_text(orjson.dumps({
         "platform": "telegram",
         "update_id": 12345,
         "requested_at": time.time() - 600,  # 10 minutes ago
-    }))
+    }).decode('utf-8'))
 
     runner, _adapter = make_restart_runner()
     runner.request_restart = MagicMock(return_value=True)
@@ -190,11 +190,11 @@ async def test_event_without_update_id_bypasses_dedup(tmp_path, monkeypatch):
     monkeypatch.delenv("INVOCATION_ID", raising=False)
 
     marker = tmp_path / ".restart_last_processed.json"
-    marker.write_text(json.dumps({
+    marker.write_text(orjson.dumps({
         "platform": "telegram",
         "update_id": 999999,
         "requested_at": time.time(),
-    }))
+    }).decode('utf-8'))
 
     runner, _adapter = make_restart_runner()
     runner.request_restart = MagicMock(return_value=True)
@@ -217,11 +217,11 @@ async def test_different_platform_bypasses_dedup(tmp_path, monkeypatch):
     monkeypatch.delenv("INVOCATION_ID", raising=False)
 
     marker = tmp_path / ".restart_last_processed.json"
-    marker.write_text(json.dumps({
+    marker.write_text(orjson.dumps({
         "platform": "telegram",
         "update_id": 12345,
         "requested_at": time.time(),
-    }))
+    }).decode('utf-8'))
 
     runner, _adapter = make_restart_runner()
     runner.request_restart = MagicMock(return_value=True)

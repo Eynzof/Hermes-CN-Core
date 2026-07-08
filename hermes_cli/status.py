@@ -525,10 +525,10 @@ def show_status(args):
 
     jobs_file = get_hermes_home() / "cron" / "jobs.json"
     if jobs_file.exists():
-        import json
+        import orjson
         try:
             with open(jobs_file, encoding="utf-8") as f:
-                data = json.load(f)
+                data = orjson.loads(f.read())
                 jobs = data.get("jobs", [])
                 enabled_jobs = [j for j in jobs if j.get("enabled", True)]
                 print(f"  Jobs:         {len(enabled_jobs)} active, {len(jobs)} total")
@@ -545,10 +545,10 @@ def show_status(args):
 
     sessions_file = get_hermes_home() / "sessions" / "sessions.json"
     if sessions_file.exists():
-        import json
+        import orjson
         try:
             with open(sessions_file, encoding="utf-8") as f:
-                data = json.load(f)
+                data = orjson.loads(f.read())
                 print(f"  Active:       {len(data)} session(s)")
         except Exception:
             print("  Active:       (error reading sessions file)")

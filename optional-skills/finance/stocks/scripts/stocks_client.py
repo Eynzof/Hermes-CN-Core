@@ -5,7 +5,7 @@ Zero external dependencies - Python stdlib only.
 """
 
 import argparse
-import json
+import orjson
 import os
 import sys
 import time
@@ -38,7 +38,7 @@ _crumb: str | None = None
 
 
 def print_json(data: dict | list) -> None:
-    print(json.dumps(data, indent=2, ensure_ascii=False))
+    print(orjson.dumps(data, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
 
 def fmt_price(value) -> str | None:
@@ -122,7 +122,7 @@ def fetch_url(url: str, headers: dict | None = None, retries: int = MAX_RETRIES)
             req = _build_request(url, headers)
             with _opener.open(req, timeout=15) as resp:
                 raw = resp.read()
-                return json.loads(raw.decode("utf-8", errors="replace"))
+                return orjson.loads(raw.decode("utf-8", errors="replace"))
         except urllib.error.HTTPError as e:
             last_err = e
             if e.code in {404, 400}:
@@ -133,7 +133,7 @@ def fetch_url(url: str, headers: dict | None = None, retries: int = MAX_RETRIES)
             last_err = e
             wait = BACKOFF_BASE ** attempt
             time.sleep(wait)
-        except json.JSONDecodeError as e:
+        except orjson.JSONDecodeError as e:
             last_err = e
             break
     return None

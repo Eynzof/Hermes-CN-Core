@@ -29,7 +29,7 @@ MCP client config (e.g. claude_desktop_config.json):
 
 from __future__ import annotations
 
-import json
+import orjson
 import logging
 import os
 import re
@@ -93,7 +93,7 @@ def _load_sessions_index() -> dict:
         return {}
     try:
         with open(sessions_file, "r", encoding="utf-8") as f:
-            data = json.load(f)
+            data = orjson.loads(f.read())
         # Drop documentation/metadata sentinels (keys starting with "_", e.g.
         # the "_README" note the gateway writes into the index). They are not
         # session entries and would break consumers that treat every value as
@@ -118,7 +118,7 @@ def _load_channel_directory() -> dict:
         return {}
     try:
         with open(directory_file, "r", encoding="utf-8") as f:
-            return json.load(f)
+            return orjson.loads(f.read())
     except Exception as e:
         logger.debug("Failed to load channel_directory.json: %s", e)
         return {}
@@ -539,10 +539,10 @@ def create_mcp_server(event_bridge: Optional[EventBridge] = None) -> "FastMCP":
         conversations.sort(key=lambda c: c.get("updated_at", ""), reverse=True)
         conversations = conversations[:limit]
 
-        return json.dumps({
+        return orjson.dumps({
             "count": len(conversations),
             "conversations": conversations,
-        }, indent=2)
+        }, option=orjson.OPT_INDENT_2).decode('utf-8')
 
     # -- conversation_get --------------------------------------------------
 
@@ -557,10 +557,10 @@ def create_mcp_server(event_bridge: Optional[EventBridge] = None) -> "FastMCP":
         entry = entries.get(session_key)
 
         if not entry:
-            return json.dumps({"error": f"Conversation not found: {session_key}"})
+            return orjson.dumps({"error": f"Conversation not found: {session_key}"}).decode('utf-8')
 
         origin = entry.get("origin", {})
-        return json.dumps({
+        return orjson.dumps({
             "session_key": session_key,
             "session_id": entry.get("session_id", ""),
             "platform": entry.get("platform") or origin.get("platform", ""),
@@ -575,7 +575,7 @@ def create_mcp_server(event_bridge: Optional[EventBridge] = None) -> "FastMCP":
             "input_tokens": entry.get("input_tokens", 0),
             "output_tokens": entry.get("output_tokens", 0),
             "total_tokens": entry.get("total_tokens", 0),
-        }, indent=2)
+        }, option=orjson.OPT_INDENT_2).decode('utf-8')
 
     # -- messages_read -----------------------------------------------------
 
@@ -597,20 +597,20 @@ def create_mcp_server(event_bridge: Optional[EventBridge] = None) -> "FastMCP":
         entries = _load_sessions_index()
         entry = entries.get(session_key)
         if not entry:
-            return json.dumps({"error": f"Conversation not found: {session_key}"})
+            return orjson.dumps({"error": f"Conversation not found: {session_key}"}).decode('utf-8')
 
         session_id = entry.get("session_id", "")
         if not session_id:
-            return json.dumps({"error": "No session ID for this conversation"})
+            return orjson.dumps({"error": "No session ID for this conversation"}).decode('utf-8')
 
         db = _get_session_db()
         if not db:
-            return json.dumps({"error": "Session database unavailable"})
+            return orjson.dumps({"error": "Session database unavailable"}).decode('utf-8')
 
         try:
             all_messages = db.get_messages(session_id)
         except Exception as e:
-            return json.dumps({"error": f"Failed to read messages: {e}"})
+            return orjson.dumps({"error": f"Failed to read messages: {e}"}).decode('utf-8')
 
         filtered = []
         for msg in all_messages:
@@ -627,12 +627,12 @@ def create_mcp_server(event_bridge: Optional[EventBridge] = None) -> "FastMCP":
 
         messages = filtered[-limit:]
 
-        return json.dumps({
+        return orjson.dumps({
             "session_key": session_key,
             "count": len(messages),
             "total_in_session": len(filtered),
             "messages": messages,
-        }, indent=2)
+        }, option=orjson.OPT_INDENT_2).decode('utf-8')
 
     # -- attachments_fetch -------------------------------------------------
 
@@ -653,20 +653,20 @@ def create_mcp_server(event_bridge: Optional[EventBridge] = None) -> "FastMCP":
         entries = _load_sessions_index()
         entry = entries.get(session_key)
         if not entry:
-            return json.dumps({"error": f"Conversation not found: {session_key}"})
+            return orjson.dumps({"error": f"Conversation not found: {session_key}"}).decode('utf-8')
 
         session_id = entry.get("session_id", "")
         if not session_id:
-            return json.dumps({"error": "No session ID for this conversation"})
+            return orjson.dumps({"error": "No session ID for this conversation"}).decode('utf-8')
 
         db = _get_session_db()
         if not db:
-            return json.dumps({"error": "Session database unavailable"})
+            return orjson.dumps({"error": "Session database unavailable"}).decode('utf-8')
 
         try:
             all_messages = db.get_messages(session_id)
         except Exception as e:
-            return json.dumps({"error": f"Failed to read messages: {e}"})
+            return orjson.dumps({"error": f"Failed to read messages: {e}"}).decode('utf-8')
 
         # Find the target message
         target_msg = None
@@ -676,15 +676,15 @@ def create_mcp_server(event_bridge: Optional[EventBridge] = None) -> "FastMCP":
                 break
 
         if not target_msg:
-            return json.dumps({"error": f"Message not found: {message_id}"})
+            return orjson.dumps({"error": f"Message not found: {message_id}"}).decode('utf-8')
 
         attachments = _extract_attachments(target_msg)
 
-        return json.dumps({
+        return orjson.dumps({
             "message_id": message_id,
             "count": len(attachments),
             "attachments": attachments,
-        }, indent=2)
+        }, option=orjson.OPT_INDENT_2).decode('utf-8')
 
     # -- events_poll -------------------------------------------------------
 
@@ -713,7 +713,7 @@ def create_mcp_server(event_bridge: Optional[EventBridge] = None) -> "FastMCP":
             session_key=session_key,
             limit=limit,
         )
-        return json.dumps(result, indent=2)
+        return orjson.dumps(result, option=orjson.OPT_INDENT_2).decode('utf-8')
 
     # -- events_wait -------------------------------------------------------
 
@@ -746,8 +746,8 @@ def create_mcp_server(event_bridge: Optional[EventBridge] = None) -> "FastMCP":
             timeout_ms=timeout_ms,
         )
         if event:
-            return json.dumps({"event": event}, indent=2)
-        return json.dumps({"event": None, "reason": "timeout"}, indent=2)
+            return orjson.dumps({"event": event}, option=orjson.OPT_INDENT_2).decode('utf-8')
+        return orjson.dumps({"event": None, "reason": "timeout"}, option=orjson.OPT_INDENT_2).decode('utf-8')
 
     # -- messages_send -----------------------------------------------------
 
@@ -772,7 +772,7 @@ def create_mcp_server(event_bridge: Optional[EventBridge] = None) -> "FastMCP":
             message: The message text to send
         """
         if not target or not message:
-            return json.dumps({"error": "Both target and message are required"})
+            return orjson.dumps({"error": "Both target and message are required"}).decode('utf-8')
 
         try:
             from tools.send_message_tool import send_message_tool
@@ -781,9 +781,9 @@ def create_mcp_server(event_bridge: Optional[EventBridge] = None) -> "FastMCP":
             )
             return result_str
         except ImportError:
-            return json.dumps({"error": "Send message tool not available"})
+            return orjson.dumps({"error": "Send message tool not available"}).decode('utf-8')
         except Exception as e:
-            return json.dumps({"error": f"Send failed: {e}"})
+            return orjson.dumps({"error": f"Send failed: {e}"}).decode('utf-8')
 
     # -- channels_list -----------------------------------------------------
 
@@ -820,7 +820,7 @@ def create_mcp_server(event_bridge: Optional[EventBridge] = None) -> "FastMCP":
                     "name": entry.get("display_name") or origin.get("chat_name", ""),
                     "chat_type": entry.get("chat_type", origin.get("chat_type", "")),
                 })
-            return json.dumps({"count": len(targets), "channels": targets}, indent=2)
+            return orjson.dumps({"count": len(targets), "channels": targets}, option=orjson.OPT_INDENT_2).decode('utf-8')
 
         channels = []
         for plat, entries_list in directory.get("platforms", {}).items():
@@ -837,7 +837,7 @@ def create_mcp_server(event_bridge: Optional[EventBridge] = None) -> "FastMCP":
                             "chat_type": ch.get("type", ""),
                         })
 
-        return json.dumps({"count": len(channels), "channels": channels}, indent=2)
+        return orjson.dumps({"count": len(channels), "channels": channels}, option=orjson.OPT_INDENT_2).decode('utf-8')
 
     # -- permissions_list_open ---------------------------------------------
 
@@ -850,10 +850,10 @@ def create_mcp_server(event_bridge: Optional[EventBridge] = None) -> "FastMCP":
         from before the bridge connected are not included.
         """
         approvals = bridge.list_pending_approvals()
-        return json.dumps({
+        return orjson.dumps({
             "count": len(approvals),
             "approvals": approvals,
-        }, indent=2)
+        }, option=orjson.OPT_INDENT_2).decode('utf-8')
 
     # -- permissions_respond -----------------------------------------------
 
@@ -869,13 +869,13 @@ def create_mcp_server(event_bridge: Optional[EventBridge] = None) -> "FastMCP":
             decision: One of "allow-once", "allow-always", or "deny"
         """
         if decision not in {"allow-once", "allow-always", "deny"}:
-            return json.dumps({
+            return orjson.dumps({
                 "error": f"Invalid decision: {decision}. "
                          f"Must be allow-once, allow-always, or deny"
-            })
+            }).decode('utf-8')
 
         result = bridge.respond_to_approval(id, decision)
-        return json.dumps(result, indent=2)
+        return orjson.dumps(result, option=orjson.OPT_INDENT_2).decode('utf-8')
 
     return mcp
 

@@ -10,7 +10,7 @@ Fail-open: network errors allow the package to proceed.
 Inspired by Block/goose's extension malware check.
 """
 
-import json
+import orjson
 import logging
 import os
 import re
@@ -150,7 +150,7 @@ def _query_osv(
     if version:
         payload["version"] = version
 
-    data = json.dumps(payload).encode("utf-8")
+    data = orjson.dumps(payload)
     req = urllib.request.Request(
         _OSV_ENDPOINT,
         data=data,
@@ -162,7 +162,7 @@ def _query_osv(
     )
 
     with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
-        result = json.loads(resp.read())
+        result = orjson.loads(resp.read())
 
     vulns = result.get("vulns", [])
     # Only malware advisories — ignore regular CVEs

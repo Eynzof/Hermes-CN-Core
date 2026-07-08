@@ -1,6 +1,6 @@
 """Tests for tools/debug_helpers.py — DebugSession class."""
 
-import json
+import orjson
 import os
 from unittest.mock import patch
 
@@ -77,7 +77,7 @@ class TestDebugSessionEnabled:
         assert len(files) == 1
         assert "test_tool_debug_" in files[0].name
 
-        data = json.loads(files[0].read_text())
+        data = orjson.loads(files[0].read_text())
         assert data["session_id"] == ds.session_id
         assert data["debug_enabled"] is True
         assert data["total_calls"] == 1
@@ -112,6 +112,6 @@ class TestDebugSessionEnabled:
         ds.save()
         files = list(tmp_path.glob("*.json"))
         assert len(files) == 1
-        data = json.loads(files[0].read_text())
+        data = orjson.loads(files[0].read_text())
         assert data["total_calls"] == 0
         assert data["tool_calls"] == []

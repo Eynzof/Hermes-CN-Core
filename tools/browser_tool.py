@@ -51,7 +51,7 @@ Usage:
 
 import atexit
 import functools
-import json
+import orjson
 import logging
 import os
 import re
@@ -1141,7 +1141,7 @@ def _run_chrome_fallback_command(
             with open(stdout_path, "r", encoding="utf-8") as f:
                 stdout = f.read().strip()
             if stdout:
-                return json.loads(stdout.split("\n")[-1])
+                return orjson.loads(stdout.split("\n")[-1])
         except Exception as exc:
             logger.debug("Chrome fallback tmp cmd '%s' error: %s", cmd, exc)
         finally:
@@ -2525,7 +2525,7 @@ def _run_browser_command(
                 result = {"success": False, "error": f"Browser command '{command}' returned no output"}
             elif stdout_text:
                 try:
-                    parsed = json.loads(stdout_text)
+                    parsed = orjson.loads(stdout_text)
                     # Warn if snapshot came back empty (common sign of daemon/CDP issues)
                     if command == "snapshot" and parsed.get("success"):
                         snap_data = parsed.get("data", {})
@@ -2534,7 +2534,7 @@ def _run_browser_command(
                                            "Possible stale daemon or CDP connection issue. "
                                            "returncode=%s", returncode)
                     result = parsed
-                except json.JSONDecodeError:
+                except orjson.JSONDecodeError:
                     raw = stdout_text[:2000]
                     logger.warning("browser '%s' returned non-JSON output (rc=%s): %s",
                                    command, returncode, raw[:500])
@@ -2733,19 +2733,19 @@ def browser_navigate(url: str, task_id: Optional[str] = None) -> str:
     from agent.redact import _PREFIX_RE
     url_decoded = urllib.parse.unquote(url)
     if _PREFIX_RE.search(url) or _PREFIX_RE.search(url_decoded):
-        return json.dumps({
+        return orjson.dumps({
             "success": False,
             "error": "Blocked: URL contains what appears to be an API key or token. "
                      "Secrets must not be sent in URLs.",
-        })
+        }).decode('utf-8')
     url = _normalize_url_for_request(url)
     normalized_decoded = urllib.parse.unquote(url)
     if _PREFIX_RE.search(url) or _PREFIX_RE.search(normalized_decoded):
-        return json.dumps({
+        return orjson.dumps({
             "success": False,
             "error": "Blocked: URL contains what appears to be an API key or token. "
                      "Secrets must not be sent in URLs.",
-        })
+        }).decode('utf-8')
 
     # SSRF protection — block private/internal addresses before navigating.
     # Skipped for local backends (Camofox, headless Chromium without a cloud
@@ -2761,7 +2761,7 @@ def browser_navigate(url: str, task_id: Optional[str] = None) -> str:
 
     sensitive_query_key = _sensitive_query_param_name(url)
     if sensitive_query_key and not _is_local_backend() and not auto_local_this_nav:
-        return json.dumps({
+        return orjson.dumps({
             "success": False,
             "error": (
                 "Blocked: URL contains a credential-like query parameter "
@@ -2769,7 +2769,7 @@ def browser_navigate(url: str, task_id: Optional[str] = None) -> str:
                 "readers; use a local browser/CDP session or remove the sensitive "
                 "query parameter before navigating."
             ),
-        })
+        }).decode('utf-8')
 
     # Always-blocked floor: cloud metadata / IMDS endpoints are denied
     # regardless of backend, hybrid routing, or allow_private_urls.
@@ -2781,10 +2781,10 @@ def browser_navigate(url: str, task_id: Optional[str] = None) -> str:
     # including the pure-local headless Chromium and off-host CDP cases
     # (a local Chromium on a cloud VM still reaches the host IMDS).
     if _is_always_blocked_url(url):
-        return json.dumps({
+        return orjson.dumps({
             "success": False,
             "error": "Blocked: URL targets a cloud metadata endpoint",
-        })
+        }).decode('utf-8')
 
     if (
         not _is_local_backend()
@@ -2792,19 +2792,19 @@ def browser_navigate(url: str, task_id: Optional[str] = None) -> str:
         and not _allow_private_urls()
         and not _is_safe_url(url)
     ):
-        return json.dumps({
+        return orjson.dumps({
             "success": False,
             "error": "Blocked: URL targets a private or internal address",
-        })
+        }).decode('utf-8')
 
     # Website policy check — block before navigating
     blocked = check_website_access(url)
     if blocked:
-        return json.dumps({
+        return orjson.dumps({
             "success": False,
             "error": blocked["message"],
             "blocked_by_policy": {"host": blocked["host"], "rule": blocked["rule"], "source": blocked["source"]},
-        })
+        }).decode('utf-8')
 
     # Camofox backend — delegate after safety checks pass
     if _is_camofox_mode():
@@ -2857,10 +2857,10 @@ def browser_navigate(url: str, task_id: Optional[str] = None) -> str:
             and _is_always_blocked_url(final_url)
         ):
             _run_browser_command(nav_session_key, "open", ["about:blank"], timeout=10)
-            return json.dumps({
+            return orjson.dumps({
                 "success": False,
                 "error": "Blocked: redirect landed on a cloud metadata endpoint",
-            })
+            }).decode('utf-8')
 
         if (
             not _is_local_backend()
@@ -2870,10 +2870,10 @@ def browser_navigate(url: str, task_id: Optional[str] = None) -> str:
         ):
             # Navigate away to a blank page to prevent snapshot leaks
             _run_browser_command(nav_session_key, "open", ["about:blank"], timeout=10)
-            return json.dumps({
+            return orjson.dumps({
                 "success": False,
                 "error": "Blocked: redirect landed on a private/internal address",
-            })
+            }).decode('utf-8')
 
         response = {
             "success": True,
@@ -2932,12 +2932,12 @@ def browser_navigate(url: str, task_id: Optional[str] = None) -> str:
         except Exception as e:
             logger.debug("Auto-snapshot after navigate failed: %s", e)
 
-        return json.dumps(response, ensure_ascii=False)
+        return orjson.dumps(response).decode('utf-8')
     else:
-        return json.dumps({
+        return orjson.dumps({
             "success": False,
             "error": result.get("error", "Navigation failed")
-        }, ensure_ascii=False)
+        }).decode('utf-8')
 
 
 def browser_snapshot(
@@ -2994,14 +2994,14 @@ def browser_snapshot(
                         .strip().strip('"').strip("'")
                     )
                     if _current_url and not _is_safe_url(_current_url):
-                        return json.dumps({
+                        return orjson.dumps({
                             "success": False,
                             "error": (
                                 "Blocked: page URL targets a private or internal address "
                                 f"({_current_url}). This may have been caused by a "
                                 "JavaScript navigation via browser_console."
                             ),
-                        }, ensure_ascii=False)
+                        }).decode('utf-8')
             except Exception as _url_exc:
                 logger.debug("browser_snapshot: URL safety check failed (%s)", _url_exc)
 
@@ -3031,13 +3031,13 @@ def browser_snapshot(
         except Exception as _sv_exc:
             logger.debug("supervisor snapshot merge failed: %s", _sv_exc)
 
-        return json.dumps(response, ensure_ascii=False)
+        return orjson.dumps(response).decode('utf-8')
     else:
         response = {
             "success": False,
             "error": result.get("error", "Failed to get snapshot")
         }
-        return json.dumps(_copy_fallback_warning(response, result), ensure_ascii=False)
+        return orjson.dumps(_copy_fallback_warning(response, result)).decode('utf-8')
 
 
 def browser_click(ref: str, task_id: Optional[str] = None) -> str:
@@ -3071,13 +3071,13 @@ def browser_click(ref: str, task_id: Optional[str] = None) -> str:
             "success": True,
             "clicked": ref
         }
-        return json.dumps(_copy_fallback_warning(response, result), ensure_ascii=False)
+        return orjson.dumps(_copy_fallback_warning(response, result)).decode('utf-8')
     else:
         response = {
             "success": False,
             "error": result.get("error", f"Failed to click {ref}")
         }
-        return json.dumps(_copy_fallback_warning(response, result), ensure_ascii=False)
+        return orjson.dumps(_copy_fallback_warning(response, result)).decode('utf-8')
 
 
 def browser_type(ref: str, text: str, task_id: Optional[str] = None) -> str:
@@ -3127,7 +3127,7 @@ def browser_type(ref: str, text: str, task_id: Optional[str] = None) -> str:
         }
         response = _copy_fallback_warning(response, result)
         response = redact_browser_typed_text_for_display(response, text)
-        return json.dumps(response, ensure_ascii=False)
+        return orjson.dumps(response).decode('utf-8')
     else:
         response = {
             "success": False,
@@ -3135,7 +3135,7 @@ def browser_type(ref: str, text: str, task_id: Optional[str] = None) -> str:
         }
         response = _copy_fallback_warning(response, result)
         response = redact_browser_typed_text_for_display(response, text)
-        return json.dumps(response, ensure_ascii=False)
+        return orjson.dumps(response).decode('utf-8')
 
 
 def browser_scroll(direction: str, task_id: Optional[str] = None) -> str:
@@ -3151,10 +3151,10 @@ def browser_scroll(direction: str, task_id: Optional[str] = None) -> str:
     """
     # Validate direction
     if direction not in {"up", "down"}:
-        return json.dumps({
+        return orjson.dumps({
             "success": False,
             "error": f"Invalid direction '{direction}'. Use 'up' or 'down'."
-        }, ensure_ascii=False)
+        }).decode('utf-8')
 
     # Single scroll with pixel amount instead of 5x subprocess calls.
     # agent-browser supports: agent-browser scroll down 500
@@ -3178,13 +3178,13 @@ def browser_scroll(direction: str, task_id: Optional[str] = None) -> str:
             "success": False,
             "error": result.get("error", f"Failed to scroll {direction}")
         }
-        return json.dumps(_copy_fallback_warning(response, result), ensure_ascii=False)
+        return orjson.dumps(_copy_fallback_warning(response, result)).decode('utf-8')
 
     response = {
         "success": True,
         "scrolled": direction
     }
-    return json.dumps(_copy_fallback_warning(response, result), ensure_ascii=False)
+    return orjson.dumps(_copy_fallback_warning(response, result)).decode('utf-8')
 
 
 def browser_back(task_id: Optional[str] = None) -> str:
@@ -3216,26 +3216,26 @@ def browser_back(task_id: Optional[str] = None) -> str:
         if _eval_ssrf_guard_active(effective_task_id):
             _blocked_url = _current_page_private_url(effective_task_id)
             if _blocked_url:
-                return json.dumps({
+                return orjson.dumps({
                     "success": False,
                     "error": (
                         "Blocked: page URL targets a private or internal address "
                         f"({_blocked_url}). Browser history navigation (back) "
                         "landed on this address."
                     ),
-                }, ensure_ascii=False)
+                }).decode('utf-8')
         data = result.get("data", {})
         response = {
             "success": True,
             "url": data.get("url", "")
         }
-        return json.dumps(_copy_fallback_warning(response, result), ensure_ascii=False)
+        return orjson.dumps(_copy_fallback_warning(response, result)).decode('utf-8')
     else:
         response = {
             "success": False,
             "error": result.get("error", "Failed to go back")
         }
-        return json.dumps(_copy_fallback_warning(response, result), ensure_ascii=False)
+        return orjson.dumps(_copy_fallback_warning(response, result)).decode('utf-8')
 
 
 def browser_press(key: str, task_id: Optional[str] = None) -> str:
@@ -3264,13 +3264,13 @@ def browser_press(key: str, task_id: Optional[str] = None) -> str:
             "success": True,
             "pressed": key
         }
-        return json.dumps(_copy_fallback_warning(response, result), ensure_ascii=False)
+        return orjson.dumps(_copy_fallback_warning(response, result)).decode('utf-8')
     else:
         response = {
             "success": False,
             "error": result.get("error", f"Failed to press {key}")
         }
-        return json.dumps(_copy_fallback_warning(response, result), ensure_ascii=False)
+        return orjson.dumps(_copy_fallback_warning(response, result)).decode('utf-8')
 
 
 def _blocked_private_page_action(effective_task_id: str, action: str) -> Optional[str]:
@@ -3280,14 +3280,14 @@ def _blocked_private_page_action(effective_task_id: str, action: str) -> Optiona
     blocked_url = _current_page_private_url(effective_task_id)
     if not blocked_url:
         return None
-    return json.dumps({
+    return orjson.dumps({
         "success": False,
         "error": (
             "Blocked: page URL targets a private or internal address "
             f"({blocked_url}). Refusing to {action} on this page in this "
             "browser mode."
         ),
-    }, ensure_ascii=False)
+    }).decode('utf-8')
 
 
 def browser_console(clear: bool = False, expression: Optional[str] = None, task_id: Optional[str] = None) -> str:
@@ -3309,7 +3309,7 @@ def browser_console(clear: bool = False, expression: Optional[str] = None, task_
     if expression is not None:
         policy_error = _enforce_browser_eval_policy(expression)
         if policy_error:
-            return json.dumps({"success": False, "error": policy_error}, ensure_ascii=False)
+            return orjson.dumps({"success": False, "error": policy_error}).decode('utf-8')
         return _browser_eval(expression, task_id)
 
     # --- Console output mode (original behaviour) ---
@@ -3322,14 +3322,14 @@ def browser_console(clear: bool = False, expression: Optional[str] = None, task_
     if _eval_ssrf_guard_active(effective_task_id):
         _blocked_url = _current_page_private_url(effective_task_id)
         if _blocked_url:
-            return json.dumps({
+            return orjson.dumps({
                 "success": False,
                 "error": (
                     "Blocked: page URL targets a private or internal address "
                     f"({_blocked_url}). This may have been caused by a "
                     "JavaScript navigation via browser_console."
                 ),
-            }, ensure_ascii=False)
+            }).decode('utf-8')
 
     console_args = ["--clear"] if clear else []
     error_args = ["--clear"] if clear else []
@@ -3364,7 +3364,7 @@ def browser_console(clear: bool = False, expression: Optional[str] = None, task_
     _copy_fallback_warning(response, console_result)
     if errors_result.get("fallback_warning") and not response.get("fallback_warning"):
         _copy_fallback_warning(response, errors_result)
-    return json.dumps(response, ensure_ascii=False)
+    return orjson.dumps(response).decode('utf-8')
 
 
 def _eval_ssrf_guard_active(effective_task_id: str) -> bool:
@@ -3564,7 +3564,7 @@ def _browser_eval(expression: str, task_id: Optional[str] = None) -> str:
     if _eval_ssrf_guard_active(effective_task_id):
         blocked_literal = _expression_targets_private_url(expression)
         if blocked_literal:
-            return json.dumps({
+            return orjson.dumps({
                 "success": False,
                 "error": (
                     "Blocked: JavaScript expression targets a private or "
@@ -3572,7 +3572,7 @@ def _browser_eval(expression: str, task_id: Optional[str] = None) -> str:
                     "endpoints via browser_console is not permitted in this "
                     "browser mode."
                 ),
-            }, ensure_ascii=False)
+            }).decode('utf-8')
 
     # Camofox keeps its own raw-``task_id``-keyed session map, so pass the raw
     # id (matching every other Camofox tool) rather than the resolved
@@ -3605,15 +3605,15 @@ def _browser_eval(expression: str, task_id: Optional[str] = None) -> str:
                 parsed = raw_result
                 if isinstance(raw_result, str):
                     try:
-                        parsed = json.loads(raw_result)
-                    except (json.JSONDecodeError, ValueError):
+                        parsed = orjson.loads(raw_result)
+                    except (orjson.JSONDecodeError, ValueError):
                         pass  # keep as string
                 # Post-eval page-URL recheck: if this (or a prior) eval
                 # navigated the page to a private address, withhold the result.
                 if _eval_ssrf_guard_active(effective_task_id):
                     _blocked_url = _current_page_private_url(effective_task_id)
                     if _blocked_url:
-                        return json.dumps({
+                        return orjson.dumps({
                             "success": False,
                             "error": (
                                 "Blocked: page URL targets a private or internal "
@@ -3621,21 +3621,21 @@ def _browser_eval(expression: str, task_id: Optional[str] = None) -> str:
                                 "caused by a JavaScript navigation via "
                                 "browser_console."
                             ),
-                        }, ensure_ascii=False)
+                        }).decode('utf-8')
                 response = {
                     "success": True,
                     "result": _redact_browser_output(parsed),
                     "result_type": type(parsed).__name__,
                     "method": "cdp_supervisor",
                 }
-                return json.dumps(response, ensure_ascii=False, default=str)
+                return orjson.dumps(response, default=str).decode('utf-8')
             # JS exception is a real failure — surface it instead of falling
             # through to the subprocess path (which would just re-run and
             # produce the same exception, but slower).
             err = sup_result.get("error") or "evaluate_runtime failed"
             if "supervisor" not in err.lower():
                 # Real JS-side error — return it.
-                return json.dumps({"success": False, "error": err}, ensure_ascii=False)
+                return orjson.dumps({"success": False, "error": err}).decode('utf-8')
             # Supervisor-side failure (loop down, no session) — fall through.
             logger.debug(
                 "browser_eval: supervisor path unavailable (%s), falling back to subprocess",
@@ -3657,7 +3657,7 @@ def _browser_eval(expression: str, task_id: Optional[str] = None) -> str:
                 "success": False,
                 "error": f"JavaScript evaluation is not supported by this browser backend. {err}",
             }
-            return json.dumps(_copy_fallback_warning(response, result))
+            return orjson.dumps(_copy_fallback_warning(response, result)).decode('utf-8')
         # A live DOM node / NodeList / Window can't be JSON-serialized by CDP
         # and fails the eval with "Object reference chain is too long".  The
         # supervisor fast path retries with returnByValue=false, but the CLI
@@ -3673,12 +3673,12 @@ def _browser_eval(expression: str, task_id: Optional[str] = None) -> str:
                     "JSON.stringify() / a snapshot tool instead."
                 ),
             }
-            return json.dumps(_copy_fallback_warning(response, result))
+            return orjson.dumps(_copy_fallback_warning(response, result)).decode('utf-8')
         response = {
             "success": False,
             "error": err,
         }
-        return json.dumps(_copy_fallback_warning(response, result))
+        return orjson.dumps(_copy_fallback_warning(response, result)).decode('utf-8')
 
     data = result.get("data", {})
     raw_result = data.get("result")
@@ -3688,8 +3688,8 @@ def _browser_eval(expression: str, task_id: Optional[str] = None) -> str:
     parsed = raw_result
     if isinstance(raw_result, str):
         try:
-            parsed = json.loads(raw_result)
-        except (json.JSONDecodeError, ValueError):
+            parsed = orjson.loads(raw_result)
+        except (orjson.JSONDecodeError, ValueError):
             pass  # keep as string
 
     response = {
@@ -3702,15 +3702,15 @@ def _browser_eval(expression: str, task_id: Optional[str] = None) -> str:
     if _eval_ssrf_guard_active(effective_task_id):
         _blocked_url = _current_page_private_url(effective_task_id)
         if _blocked_url:
-            return json.dumps({
+            return orjson.dumps({
                 "success": False,
                 "error": (
                     "Blocked: page URL targets a private or internal address "
                     f"({_blocked_url}). This may have been caused by a "
                     "JavaScript navigation via browser_console."
                 ),
-            }, ensure_ascii=False)
-    return json.dumps(_copy_fallback_warning(response, result), ensure_ascii=False, default=str)
+            }).decode('utf-8')
+    return orjson.dumps(_copy_fallback_warning(response, result), default=str).decode('utf-8')
 
 
 def _camofox_current_page_private_url(tab_id: str, user_id: str) -> Optional[str]:
@@ -3752,36 +3752,36 @@ def _camofox_eval(expression: str, task_id: Optional[str] = None) -> str:
         parsed = raw_result
         if isinstance(raw_result, str):
             try:
-                parsed = json.loads(raw_result)
-            except (json.JSONDecodeError, ValueError):
+                parsed = orjson.loads(raw_result)
+            except (orjson.JSONDecodeError, ValueError):
                 pass
 
         if _eval_ssrf_guard_active(task_id or "default"):
             _blocked_url = _camofox_current_page_private_url(tab_id, user_id)
             if _blocked_url:
-                return json.dumps({
+                return orjson.dumps({
                     "success": False,
                     "error": (
                         "Blocked: page URL targets a private or internal address "
                         f"({_blocked_url}). This may have been caused by a "
                         "JavaScript navigation via browser_console."
                     ),
-                }, ensure_ascii=False)
+                }).decode('utf-8')
 
-        return json.dumps({
+        return orjson.dumps({
             "success": True,
             "result": _redact_browser_output(parsed),
             "result_type": type(parsed).__name__,
-        }, ensure_ascii=False, default=str)
+        }, default=str).decode('utf-8')
     except Exception as e:
         error_msg = str(e)
         # Graceful degradation — server may not support eval
         if any(code in error_msg for code in ("404", "405", "501")):
-            return json.dumps({
+            return orjson.dumps({
                 "success": False,
                 "error": "JavaScript evaluation is not supported by this Camofox server. "
                          "Use browser_snapshot or browser_vision to inspect page state.",
-            })
+            }).decode('utf-8')
         return tool_error(error_msg, success=False)
 
 
@@ -3867,14 +3867,14 @@ def browser_get_images(task_id: Optional[str] = None) -> str:
         if _eval_ssrf_guard_active(effective_task_id):
             _blocked_url = _current_page_private_url(effective_task_id)
             if _blocked_url:
-                return json.dumps({
+                return orjson.dumps({
                     "success": False,
                     "error": (
                         "Blocked: page URL targets a private or internal address "
                         f"({_blocked_url}). This may have been caused by a "
                         "JavaScript navigation via browser_console."
                     ),
-                }, ensure_ascii=False)
+                }).decode('utf-8')
 
         data = result.get("data", {})
         raw_result = data.get("result", "[]")
@@ -3882,7 +3882,7 @@ def browser_get_images(task_id: Optional[str] = None) -> str:
         try:
             # Parse the JSON string returned by JavaScript
             if isinstance(raw_result, str):
-                images = json.loads(raw_result)
+                images = orjson.loads(raw_result)
             else:
                 images = raw_result
 
@@ -3891,21 +3891,21 @@ def browser_get_images(task_id: Optional[str] = None) -> str:
                 "images": _redact_browser_output(images),
                 "count": len(images)
             }
-            return json.dumps(_copy_fallback_warning(response, result), ensure_ascii=False)
-        except json.JSONDecodeError:
+            return orjson.dumps(_copy_fallback_warning(response, result)).decode('utf-8')
+        except orjson.JSONDecodeError:
             response = {
                 "success": True,
                 "images": [],
                 "count": 0,
                 "warning": "Could not parse image data"
             }
-            return json.dumps(_copy_fallback_warning(response, result), ensure_ascii=False)
+            return orjson.dumps(_copy_fallback_warning(response, result)).decode('utf-8')
     else:
         response = {
             "success": False,
             "error": result.get("error", "Failed to get images")
         }
-        return json.dumps(_copy_fallback_warning(response, result), ensure_ascii=False)
+        return orjson.dumps(_copy_fallback_warning(response, result)).decode('utf-8')
 
 
 def browser_vision(question: str, annotate: bool = False, task_id: Optional[str] = None) -> Union[str, Dict[str, Any]]:
@@ -3962,14 +3962,14 @@ def browser_vision(question: str, annotate: bool = False, task_id: Optional[str]
                     .strip().strip('"').strip("'")
                 )
                 if _current_url and not _is_safe_url(_current_url):
-                    return json.dumps({
+                    return orjson.dumps({
                         "success": False,
                         "error": (
                             "Blocked: page URL targets a private or internal address "
                             f"({_current_url}). This may have been caused by a "
                             "JavaScript navigation via browser_console."
                         ),
-                    }, ensure_ascii=False)
+                    }).decode('utf-8')
         except Exception as _url_exc:
             logger.debug("browser_vision: URL safety check failed (%s)", _url_exc)
 
@@ -4060,7 +4060,7 @@ def browser_vision(question: str, annotate: bool = False, task_id: Optional[str]
                 "success": False,
                 "error": f"Failed to take screenshot ({mode} mode): {error_detail}"
             }
-            return json.dumps(_copy_fallback_warning(error_response, result), ensure_ascii=False)
+            return orjson.dumps(_copy_fallback_warning(error_response, result)).decode('utf-8')
 
         actual_screenshot_path = result.get("data", {}).get("path")
         if actual_screenshot_path:
@@ -4070,7 +4070,7 @@ def browser_vision(question: str, annotate: bool = False, task_id: Optional[str]
         if not screenshot_path.exists():
             _cp = _get_cloud_provider()
             mode = "local" if _cp is None else f"cloud ({_cp.provider_name()})"
-            return json.dumps({
+            return orjson.dumps({
                 "success": False,
                 "error": (
                     f"Screenshot file was not created at {screenshot_path} ({mode} mode). "
@@ -4078,7 +4078,7 @@ def browser_vision(question: str, annotate: bool = False, task_id: Optional[str]
                     f"a missing Chromium install ('agent-browser install'), "
                     f"or a stale daemon process."
                 ),
-            }, ensure_ascii=False)
+            }).decode('utf-8')
 
         # Convert screenshot to base64 at full resolution.
         _screenshot_bytes = screenshot_path.read_bytes()
@@ -4197,7 +4197,7 @@ def browser_vision(question: str, annotate: bool = False, task_id: Optional[str]
         # Include annotation data if annotated screenshot was taken
         if annotate and result.get("data", {}).get("annotations"):
             response_data["annotations"] = result["data"]["annotations"]
-        return json.dumps(response_data, ensure_ascii=False)
+        return orjson.dumps(response_data).decode('utf-8')
 
     except Exception as e:
         # Keep the screenshot if it was captured successfully — the failure is
@@ -4210,7 +4210,7 @@ def browser_vision(question: str, annotate: bool = False, task_id: Optional[str]
             error_info["screenshot_path"] = str(screenshot_path)
             error_info["note"] = "Screenshot was captured but vision analysis failed. You can still share it via MEDIA:<path>."
         _copy_fallback_warning(error_info, result if 'result' in locals() else {})
-        return json.dumps(error_info, ensure_ascii=False)
+        return orjson.dumps(error_info).decode('utf-8')
 
 
 def _cleanup_old_screenshots(screenshots_dir, max_age_hours=24):

@@ -13,7 +13,7 @@ Usage:
 """
 
 import csv
-import json
+import orjson
 import os
 import sys
 import time
@@ -112,7 +112,7 @@ class TimingContext:
 
     def to_json(self) -> str:
         """Serialize timing data as JSON."""
-        return json.dumps({
+        return orjson.dumps({
             "samples": [
                 {
                     "section": s.section,
@@ -122,7 +122,7 @@ class TimingContext:
                 for s in self.samples
             ],
             "summary": self.summary(),
-        }, indent=2)
+        }, option=orjson.OPT_INDENT_2).decode('utf-8')
 
     def save_raw(self, test_name: str):
         """Save raw timing data to reports/perf/raw/<test_name>.json."""
@@ -181,7 +181,7 @@ def mock_llm_response():
                     "type": "function",
                     "function": {
                         "name": tc["name"],
-                        "arguments": json.dumps(tc.get("arguments", {})),
+                        "arguments": orjson.dumps(tc.get("arguments", {})).decode('utf-8'),
                     },
                 }
                 for i, tc in enumerate(tool_calls)
@@ -387,7 +387,7 @@ def get_latest_baseline() -> Optional[Dict]:
     baselines = sorted(BASELINES_DIR.glob("*.json"))
     if not baselines:
         return None
-    return json.loads(baselines[-1].read_text(encoding="utf-8"))
+    return orjson.loads(baselines[-1].read_text(encoding="utf-8"))
 
 
 def save_baseline(test_name: str, summary: Dict):
@@ -395,5 +395,5 @@ def save_baseline(test_name: str, summary: Dict):
     import datetime
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     path = BASELINES_DIR / f"{timestamp}-{test_name}.json"
-    path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    path.write_text(orjson.dumps(summary, option=orjson.OPT_INDENT_2).decode('utf-8'), encoding="utf-8")
     return path

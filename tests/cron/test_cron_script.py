@@ -7,7 +7,7 @@ Tests cover:
 - Path resolution (absolute, relative to HERMES_HOME/scripts/)
 """
 
-import json
+import orjson
 import os
 import sys
 import textwrap
@@ -189,12 +189,12 @@ class TestRunJobScript:
         script.write_text(textwrap.dedent("""\
             import json
             data = {"new_prs": [{"number": 42, "title": "Fix bug"}]}
-            print(json.dumps(data, indent=2))
+            print(orjson.dumps(data, option=orjson.OPT_INDENT_2).decode('utf-8'))
         """))
 
         success, output = _run_job_script(str(script))
         assert success is True
-        parsed = json.loads(output)
+        parsed = orjson.loads(output)
         assert parsed["new_prs"][0]["number"] == 42
 
 
@@ -245,7 +245,7 @@ class TestCronjobToolScript:
         monkeypatch.setenv("HERMES_INTERACTIVE", "1")
         from tools.cronjob_tools import cronjob
 
-        result = json.loads(cronjob(
+        result = orjson.loads(cronjob(
             action="create",
             schedule="every 1h",
             prompt="Monitor things",
@@ -258,14 +258,14 @@ class TestCronjobToolScript:
         monkeypatch.setenv("HERMES_INTERACTIVE", "1")
         from tools.cronjob_tools import cronjob
 
-        create_result = json.loads(cronjob(
+        create_result = orjson.loads(cronjob(
             action="create",
             schedule="every 1h",
             prompt="Monitor things",
         ))
         job_id = create_result["job_id"]
 
-        update_result = json.loads(cronjob(
+        update_result = orjson.loads(cronjob(
             action="update",
             job_id=job_id,
             script="new_script.py",
@@ -277,7 +277,7 @@ class TestCronjobToolScript:
         monkeypatch.setenv("HERMES_INTERACTIVE", "1")
         from tools.cronjob_tools import cronjob
 
-        create_result = json.loads(cronjob(
+        create_result = orjson.loads(cronjob(
             action="create",
             schedule="every 1h",
             prompt="Monitor things",
@@ -285,7 +285,7 @@ class TestCronjobToolScript:
         ))
         job_id = create_result["job_id"]
 
-        update_result = json.loads(cronjob(
+        update_result = orjson.loads(cronjob(
             action="update",
             job_id=job_id,
             script="",
@@ -304,7 +304,7 @@ class TestCronjobToolScript:
             script="data_collector.py",
         )
 
-        list_result = json.loads(cronjob(action="list"))
+        list_result = orjson.loads(cronjob(action="list"))
         assert list_result["success"] is True
         assert len(list_result["jobs"]) == 1
         assert list_result["jobs"][0]["script"] == "data_collector.py"
@@ -425,7 +425,7 @@ class TestCronjobToolScriptValidation:
         monkeypatch.setenv("HERMES_INTERACTIVE", "1")
         from tools.cronjob_tools import cronjob
 
-        result = json.loads(cronjob(
+        result = orjson.loads(cronjob(
             action="create",
             schedule="every 1h",
             prompt="Monitor things",
@@ -438,7 +438,7 @@ class TestCronjobToolScriptValidation:
         monkeypatch.setenv("HERMES_INTERACTIVE", "1")
         from tools.cronjob_tools import cronjob
 
-        result = json.loads(cronjob(
+        result = orjson.loads(cronjob(
             action="create",
             schedule="every 1h",
             prompt="Monitor things",
@@ -451,7 +451,7 @@ class TestCronjobToolScriptValidation:
         monkeypatch.setenv("HERMES_INTERACTIVE", "1")
         from tools.cronjob_tools import cronjob
 
-        result = json.loads(cronjob(
+        result = orjson.loads(cronjob(
             action="create",
             schedule="every 1h",
             prompt="Monitor things",
@@ -464,7 +464,7 @@ class TestCronjobToolScriptValidation:
         monkeypatch.setenv("HERMES_INTERACTIVE", "1")
         from tools.cronjob_tools import cronjob
 
-        result = json.loads(cronjob(
+        result = orjson.loads(cronjob(
             action="create",
             schedule="every 1h",
             prompt="Monitor things",
@@ -477,14 +477,14 @@ class TestCronjobToolScriptValidation:
         monkeypatch.setenv("HERMES_INTERACTIVE", "1")
         from tools.cronjob_tools import cronjob
 
-        create_result = json.loads(cronjob(
+        create_result = orjson.loads(cronjob(
             action="create",
             schedule="every 1h",
             prompt="Monitor things",
         ))
         job_id = create_result["job_id"]
 
-        update_result = json.loads(cronjob(
+        update_result = orjson.loads(cronjob(
             action="update",
             job_id=job_id,
             script="/tmp/evil.py",
@@ -497,7 +497,7 @@ class TestCronjobToolScriptValidation:
         monkeypatch.setenv("HERMES_INTERACTIVE", "1")
         from tools.cronjob_tools import cronjob
 
-        create_result = json.loads(cronjob(
+        create_result = orjson.loads(cronjob(
             action="create",
             schedule="every 1h",
             prompt="Monitor things",
@@ -505,7 +505,7 @@ class TestCronjobToolScriptValidation:
         ))
         job_id = create_result["job_id"]
 
-        update_result = json.loads(cronjob(
+        update_result = orjson.loads(cronjob(
             action="update",
             job_id=job_id,
             script="",
@@ -517,7 +517,7 @@ class TestCronjobToolScriptValidation:
         monkeypatch.setenv("HERMES_INTERACTIVE", "1")
         from tools.cronjob_tools import cronjob
 
-        result = json.loads(cronjob(
+        result = orjson.loads(cronjob(
             action="create",
             schedule="every 1h",
             prompt="Monitor things",

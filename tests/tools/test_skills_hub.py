@@ -1,6 +1,6 @@
 """Tests for tools/skills_hub.py — source adapters, lock file, taps, dedup logic."""
 
-import json
+import orjson
 import time
 from typing import List, Optional
 from unittest.mock import patch, MagicMock
@@ -89,13 +89,13 @@ class TestSkillsShGroupings:
     """
 
     def test_parse_basic_groupings(self):
-        content = json.dumps({
+        content = orjson.dumps({
             "$schema": "https://skills.sh/schemas/skills.sh.schema.json",
             "groupings": [
                 {"title": "Inference AI", "skills": ["dynamo-router", "dynamo-recipe"]},
                 {"title": "Decision Optimization", "skills": ["cuopt-developer"]},
             ],
-        })
+        }).decode('utf-8')
         mapping = GitHubSource._parse_skillsh_groupings(content)
         assert mapping == {
             "dynamo-router": "Inference AI",
@@ -117,24 +117,24 @@ class TestSkillsShGroupings:
 
     def test_parse_tolerates_malformed_group(self):
         # A group missing its skills list is skipped; the valid one survives.
-        content = json.dumps({"groupings": [
+        content = orjson.dumps({"groupings": [
             {"title": "X"},                              # no skills -> skipped
             {"skills": ["a"]},                           # no title -> skipped
             {"title": "Y", "skills": ["b", 5, None]},    # only valid string members kept
-        ]})
+        ]}).decode('utf-8')
         assert GitHubSource._parse_skillsh_groupings(content) == {"b": "Y"}
 
     def test_parse_first_grouping_wins_on_duplicate(self):
-        content = json.dumps({"groupings": [
+        content = orjson.dumps({"groupings": [
             {"title": "First", "skills": ["dup"]},
             {"title": "Second", "skills": ["dup"]},
-        ]})
+        ]}).decode('utf-8')
         assert GitHubSource._parse_skillsh_groupings(content) == {"dup": "First"}
 
     def test_get_groupings_caches_per_repo(self):
         auth = MagicMock()
         src = GitHubSource(auth=auth)
-        content = json.dumps({"groupings": [{"title": "T", "skills": ["s"]}]})
+        content = orjson.dumps({"groupings": [{"title": "T", "skills": ["s"]}]}).decode('utf-8')
         with patch.object(src, "_fetch_file_content", return_value=content) as mock_fetch:
             first = src._get_skillsh_groupings("acme/skills")
             second = src._get_skillsh_groupings("acme/skills")
@@ -1316,10 +1316,10 @@ class TestHubLockFile:
 
     def test_load_valid_file(self, tmp_path):
         lock_file = tmp_path / "lock.json"
-        lock_file.write_text(json.dumps({
+        lock_file.write_text(orjson.dumps({
             "version": 1,
             "installed": {"my-skill": {"source": "github"}}
-        }))
+        }).decode('utf-8'))
         lock = HubLockFile(path=lock_file)
         data = lock.load()
         assert "my-skill" in data["installed"]
@@ -1414,7 +1414,7 @@ class TestTapsManager:
 
     def test_load_valid_file(self, tmp_path):
         taps_file = tmp_path / "taps.json"
-        taps_file.write_text(json.dumps({"taps": [{"repo": "owner/repo", "path": "skills/"}]}))
+        taps_file.write_text(orjson.dumps({"taps": [{"repo": "owner/repo", "path": "skills/"}]}).decode('utf-8'))
         mgr = TapsManager(path=taps_file)
         taps = mgr.load()
         assert len(taps) == 1
@@ -2232,7 +2232,7 @@ class TestInstallPathSafety:
         (target / "file.txt").write_text("important")
 
         # Bypass record_install's validator to simulate a poisoned lock file.
-        lock_path.write_text(json.dumps({
+        lock_path.write_text(orjson.dumps({
             "installed": {
                 "evil": {
                     "source": "github",
@@ -2247,7 +2247,7 @@ class TestInstallPathSafety:
                     "updated_at": "now",
                 }
             }
-        }))
+        }).decode('utf-8'))
 
         patch_lock_file(lock_path)
         ok, msg = uninstall_skill("evil")
@@ -2264,7 +2264,7 @@ class TestInstallPathSafety:
         sibling.mkdir()
         (sibling / "data").write_text("nope")
 
-        lock_path.write_text(json.dumps({
+        lock_path.write_text(orjson.dumps({
             "installed": {
                 "evil": {
                     "source": "github", "identifier": "x",
@@ -2275,7 +2275,7 @@ class TestInstallPathSafety:
                     "installed_at": "now", "updated_at": "now",
                 }
             }
-        }))
+        }).decode('utf-8'))
 
         patch_lock_file(lock_path)
         ok, msg = uninstall_skill("evil")
@@ -2292,7 +2292,7 @@ class TestInstallPathSafety:
         (isolated_skills_dir / "bystander" / "SKILL.md").write_text("safe")
 
         lock_path = tmp_path / "lock.json"
-        lock_path.write_text(json.dumps({
+        lock_path.write_text(orjson.dumps({
             "installed": {
                 "evil": {
                     "source": "github", "identifier": "x",
@@ -2303,7 +2303,7 @@ class TestInstallPathSafety:
                     "installed_at": "now", "updated_at": "now",
                 }
             }
-        }))
+        }).decode('utf-8'))
 
         patch_lock_file(lock_path)
         ok, msg = uninstall_skill("evil")
@@ -2329,7 +2329,7 @@ class TestInstallPathSafety:
             pytest.skip("symlink creation unsupported on this platform")
 
         lock_path = tmp_path / "lock.json"
-        lock_path.write_text(json.dumps({
+        lock_path.write_text(orjson.dumps({
             "installed": {
                 "evil": {
                     "source": "github", "identifier": "x",
@@ -2340,7 +2340,7 @@ class TestInstallPathSafety:
                     "installed_at": "now", "updated_at": "now",
                 }
             }
-        }))
+        }).decode('utf-8'))
 
         patch_lock_file(lock_path)
         ok, msg = uninstall_skill("evil")

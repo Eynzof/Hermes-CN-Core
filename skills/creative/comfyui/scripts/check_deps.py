@@ -25,7 +25,7 @@ Stdlib-only. Python 3.10+.
 from __future__ import annotations
 
 import argparse
-import json
+import orjson
 import sys
 from pathlib import Path
 
@@ -409,12 +409,12 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     try:
         with wf_path.open() as f:
-            payload = json.load(f)
+            payload = orjson.loads(f.read())
         workflow = unwrap_workflow(payload)
     except ValueError as e:
         emit_json({"error": str(e)})
         return 1
-    except json.JSONDecodeError as e:
+    except orjson.JSONDecodeError as e:
         emit_json({"error": f"Invalid JSON: {e}"})
         return 1
 

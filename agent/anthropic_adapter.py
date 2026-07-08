@@ -11,7 +11,7 @@ Auth supports:
 """
 
 import copy
-import json
+import orjson
 import logging
 import os
 import platform
@@ -922,8 +922,8 @@ def _read_claude_code_credentials_from_keychain() -> Optional[Dict[str, Any]]:
         return None
 
     try:
-        data = json.loads(raw)
-    except json.JSONDecodeError:
+        data = orjson.loads(raw)
+    except orjson.JSONDecodeError:
         logger.debug("Keychain: credentials payload is not valid JSON")
         return None
 
@@ -950,8 +950,8 @@ def _read_claude_code_credentials_from_file() -> Optional[Dict[str, Any]]:
     if not cred_path.exists():
         return None
     try:
-        data = json.loads(cred_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError, IOError) as e:
+        data = orjson.loads(cred_path.read_text(encoding="utf-8"))
+    except (orjson.JSONDecodeError, OSError, IOError) as e:
         logger.debug("Failed to read ~/.claude/.credentials.json: %s", e)
         return None
 
@@ -1035,11 +1035,11 @@ def refresh_anthropic_oauth_pure(refresh_token: str, *, use_json: bool = False) 
 
     client_id = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
     if use_json:
-        data = json.dumps({
+        data = orjson.dumps({
             "grant_type": "refresh_token",
             "refresh_token": refresh_token,
             "client_id": client_id,
-        }).encode()
+        })
         content_type = "application/json"
     else:
         data = urllib.parse.urlencode({
@@ -1066,7 +1066,7 @@ def refresh_anthropic_oauth_pure(refresh_token: str, *, use_json: bool = False) 
         )
         try:
             with urllib.request.urlopen(req, timeout=10) as resp:
-                result = json.loads(resp.read().decode())
+                result = orjson.loads(resp.read().decode())
         except Exception as exc:
             last_error = exc
             logger.debug("Anthropic token refresh failed at %s: %s", endpoint, exc)
@@ -1160,7 +1160,7 @@ def _write_claude_code_credentials(
         # Read existing file to preserve other fields
         existing = {}
         if cred_path.exists():
-            existing = json.loads(cred_path.read_text(encoding="utf-8"))
+            existing = orjson.loads(cred_path.read_text(encoding="utf-8"))
 
         oauth_data: Dict[str, Any] = {
             "accessToken": access_token,
@@ -1195,7 +1195,7 @@ def _write_claude_code_credentials(
                 stat.S_IRUSR | stat.S_IWUSR,
             )
             with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                json.dump(existing, fh, indent=2)
+                fh.write(orjson.dumps(existing, option=orjson.OPT_INDENT_2).decode('utf-8'))
                 fh.flush()
                 os.fsync(fh.fileno())
             os.replace(_tmp_cred, cred_path)
@@ -1481,14 +1481,14 @@ def run_hermes_oauth_login_pure() -> Optional[Dict[str, Any]]:
     try:
         import urllib.request
 
-        exchange_data = json.dumps({
+        exchange_data = orjson.dumps({
             "grant_type": "authorization_code",
             "client_id": _OAUTH_CLIENT_ID,
             "code": code,
             "state": received_state,
             "redirect_uri": _OAUTH_REDIRECT_URI,
             "code_verifier": verifier,
-        }).encode()
+        })
 
         # Anthropic migrated the OAuth token endpoint to platform.claude.com;
         # console.anthropic.com now 404s. Try the new host first, then fall
@@ -1509,7 +1509,7 @@ def run_hermes_oauth_login_pure() -> Optional[Dict[str, Any]]:
             )
             try:
                 with urllib.request.urlopen(req, timeout=15) as resp:
-                    result = json.loads(resp.read().decode())
+                    result = orjson.loads(resp.read().decode())
                 break
             except Exception as exc:
                 last_error = exc
@@ -1544,10 +1544,10 @@ def read_hermes_oauth_credentials() -> Optional[Dict[str, Any]]:
     """Read Hermes-managed OAuth credentials from ~/.hermes/.anthropic_oauth.json."""
     if _HERMES_OAUTH_FILE.exists():
         try:
-            data = json.loads(_HERMES_OAUTH_FILE.read_text(encoding="utf-8"))
+            data = orjson.loads(_HERMES_OAUTH_FILE.read_text(encoding="utf-8"))
             if data.get("accessToken"):
                 return data
-        except (json.JSONDecodeError, OSError, IOError) as e:
+        except (orjson.JSONDecodeError, OSError, IOError) as e:
             logger.debug("Failed to read Hermes OAuth credentials: %s", e)
     return None
 
@@ -1956,8 +1956,8 @@ def _convert_assistant_message(m: Dict[str, Any]) -> Dict[str, Any]:
             fn = tc.get("function", {}) or {}
             raw_args = fn.get("arguments", "{}")
             try:
-                parsed_args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
-            except (json.JSONDecodeError, ValueError):
+                parsed_args = orjson.loads(raw_args) if isinstance(raw_args, str) else raw_args
+            except (orjson.JSONDecodeError, ValueError):
                 parsed_args = {}
             redacted_input_by_id[_sanitize_tool_id(tc.get("id", ""))] = parsed_args
         replayed: List[Dict[str, Any]] = []
@@ -1993,8 +1993,8 @@ def _convert_assistant_message(m: Dict[str, Any]) -> Dict[str, Any]:
         fn = tc.get("function", {})
         args = fn.get("arguments", "{}")
         try:
-            parsed_args = json.loads(args) if isinstance(args, str) else args
-        except (json.JSONDecodeError, ValueError):
+            parsed_args = orjson.loads(args) if isinstance(args, str) else args
+        except (orjson.JSONDecodeError, ValueError):
             parsed_args = {}
         blocks.append({
             "type": "tool_use",
@@ -2076,7 +2076,7 @@ def _convert_tool_message_to_result(
     elif isinstance(content, str):
         result_content = content
     else:
-        result_content = json.dumps(content) if content else "(no output)"
+        result_content = orjson.dumps(content).decode('utf-8') if content else "(no output)"
     if not result_content:
         result_content = "(no output)"
     tool_result = {

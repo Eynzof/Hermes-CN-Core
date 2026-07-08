@@ -13,7 +13,7 @@ This module provides:
 """
 
 import copy
-import json
+import orjson
 import logging
 import os
 import re
@@ -6774,7 +6774,7 @@ TERMINAL_CONFIG_ENV_MAP = {
 
 def _terminal_env_value(value: Any) -> str:
     if isinstance(value, (list, dict)):
-        return json.dumps(value)
+        return orjson.dumps(value).decode('utf-8')
     return str(value)
 
 

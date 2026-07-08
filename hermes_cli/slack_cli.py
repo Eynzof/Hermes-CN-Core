@@ -17,7 +17,7 @@ for reinstall when scopes/commands change.
 """
 from __future__ import annotations
 
-import json
+import orjson
 import os
 import sys
 from pathlib import Path
@@ -159,7 +159,7 @@ def slack_manifest_command(args) -> int:
     else:
         manifest = _build_full_manifest(name, description, include_assistant=include_assistant)
 
-    payload = json.dumps(manifest, indent=2, ensure_ascii=False) + "\n"
+    payload = orjson.dumps(manifest, option=orjson.OPT_INDENT_2).decode('utf-8') + "\n"
 
     write_target = getattr(args, "write", None)
     if write_target is not None:

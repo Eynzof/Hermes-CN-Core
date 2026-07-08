@@ -29,7 +29,7 @@ broken breaker must never wedge a healthy gateway.
 
 from __future__ import annotations
 
-import json
+import orjson
 import logging
 import time
 from typing import List, Optional
@@ -51,7 +51,7 @@ def _state_path():
 def _load_boots() -> List[float]:
     try:
         raw = _state_path().read_text(encoding="utf-8")
-        data = json.loads(raw)
+        data = orjson.loads(raw)
         boots = data.get("boots", [])
         return [float(t) for t in boots if isinstance(t, (int, float))]
     except (OSError, ValueError, TypeError):
@@ -62,7 +62,7 @@ def _save_boots(boots: List[float]) -> None:
     try:
         path = _state_path()
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({"boots": boots}), encoding="utf-8")
+        path.write_text(orjson.dumps({"boots": boots}).decode('utf-8'), encoding="utf-8")
     except OSError:
         pass
 

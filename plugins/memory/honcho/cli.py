@@ -5,7 +5,7 @@ Handles: hermes honcho setup | status | sessions | map | peer
 
 from __future__ import annotations
 
-import json
+import orjson
 import os
 import sys
 from pathlib import Path
@@ -264,7 +264,7 @@ def _read_config() -> dict:
     path = _config_path()
     if path.exists():
         try:
-            return json.loads(path.read_text(encoding="utf-8"))
+            return orjson.loads(path.read_text(encoding="utf-8"))
         except Exception:
             pass
     return {}

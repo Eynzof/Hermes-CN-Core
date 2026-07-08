@@ -30,7 +30,7 @@ bump reintroduces a split tap requirement across the cluster.
 
 from __future__ import annotations
 
-import json
+import orjson
 from pathlib import Path
 
 import pytest
@@ -81,7 +81,7 @@ def _lock_packages() -> dict:
     if not lock_path.exists():
         pytest.skip("package-lock.json not materialized in this CI shard")
     with lock_path.open("r", encoding="utf-8") as fh:
-        return json.load(fh).get("packages", {})
+        return orjson.loads(fh.read()).get("packages", {})
 
 
 def _hoisted_tap_version(packages: dict) -> str:

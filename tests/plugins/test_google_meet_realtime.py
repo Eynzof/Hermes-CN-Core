@@ -6,7 +6,7 @@ Uses a scripted fake WebSocket — no network, no API key required.
 from __future__ import annotations
 
 import base64
-import json
+import orjson
 import sys
 import types
 
@@ -38,14 +38,14 @@ class _FakeWS:
         # Always accept str payloads — client encodes JSON with json.dumps.
         if isinstance(payload, (bytes, bytearray)):
             payload = payload.decode()
-        self.sent.append(json.loads(payload))
+        self.sent.append(orjson.loads(payload))
 
     def recv(self, timeout=None):  # noqa: ARG002
         if not self._recv_q:
             raise RuntimeError("fake ws: no more frames")
         frame = self._recv_q.pop(0)
         if isinstance(frame, dict):
-            return json.dumps(frame)
+            return orjson.dumps(frame).decode('utf-8')
         return frame
 
     def close(self):
@@ -237,8 +237,8 @@ def test_speaker_run_until_stopped_processes_queue(tmp_path):
     queue = tmp_path / "queue.jsonl"
     processed = tmp_path / "processed.jsonl"
     queue.write_text(
-        json.dumps({"id": "a", "text": "hello one"}) + "\n"
-        + json.dumps({"id": "b", "text": "hello two"}) + "\n"
+        orjson.dumps({"id": "a", "text": "hello one"}).decode('utf-8') + "\n"
+        + orjson.dumps({"id": "b", "text": "hello two"}).decode('utf-8') + "\n"
     )
 
     stub = _StubSession()
@@ -253,7 +253,7 @@ def test_speaker_run_until_stopped_processes_queue(tmp_path):
     assert stub.spoken == ["hello one", "hello two"]
 
     # Processed file has both entries, in order.
-    lines = [json.loads(l) for l in processed.read_text().splitlines() if l.strip()]
+    lines = [orjson.loads(l) for l in processed.read_text().splitlines() if l.strip()]
     assert [l["id"] for l in lines] == ["a", "b"]
     assert all(l["result"]["ok"] for l in lines)
 
@@ -265,7 +265,7 @@ def test_speaker_exits_immediately_when_stop_fn_true(tmp_path):
     from plugins.google_meet.realtime.openai_client import RealtimeSpeaker
 
     queue = tmp_path / "q.jsonl"
-    queue.write_text(json.dumps({"id": "x", "text": "never spoken"}) + "\n")
+    queue.write_text(orjson.dumps({"id": "x", "text": "never spoken"}).decode('utf-8') + "\n")
 
     stub = _StubSession()
     speaker = RealtimeSpeaker(stub, queue_path=queue)
@@ -277,7 +277,7 @@ def test_speaker_drops_line_without_processed_path_when_none(tmp_path):
     from plugins.google_meet.realtime.openai_client import RealtimeSpeaker
 
     queue = tmp_path / "q.jsonl"
-    queue.write_text(json.dumps({"id": "only", "text": "once"}) + "\n")
+    queue.write_text(orjson.dumps({"id": "only", "text": "once"}).decode('utf-8') + "\n")
 
     stub = _StubSession()
     speaker = RealtimeSpeaker(stub, queue_path=queue, processed_path=None)

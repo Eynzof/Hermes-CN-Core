@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import json
+import orjson
 import os
 import time
 from pathlib import Path
@@ -109,7 +109,7 @@ class TestFetchSuccess:
         cache_file = model_catalog._cache_path()
         assert cache_file.exists()
         with open(cache_file) as fh:
-            assert json.load(fh) == manifest
+            assert orjson.loads(fh.read()) == manifest
 
     def test_second_call_uses_in_process_cache(self, isolated_home):
         from hermes_cli import model_catalog
@@ -160,7 +160,7 @@ class TestFetchFailure:
         cache = model_catalog._cache_path()
         cache.parent.mkdir(parents=True, exist_ok=True)
         with open(cache, "w") as fh:
-            json.dump(manifest, fh)
+            fh.write(orjson.dumps(manifest).decode('utf-8'))
         old = time.time() - 30 * 24 * 3600  # 30 days ago
         import os as _os
         _os.utime(cache, (old, old))
@@ -339,12 +339,10 @@ class TestIntegrationWithModelsModule:
 
             active_home = Path(os.environ["HERMES_HOME"])
             (active_home / "auth.json").write_text(
-                json.dumps(
-                    {
+                orjson.dumps({
                         "providers": {"nous": {"access_token": "fake"}},
                         "credential_pool": {},
-                    }
-                )
+                    }).decode('utf-8')
             )
 
             # Stub the Portal recommendation union so the row is deterministic
@@ -391,12 +389,10 @@ class TestIntegrationWithModelsModule:
 
             active_home = Path(os.environ["HERMES_HOME"])
             (active_home / "auth.json").write_text(
-                json.dumps(
-                    {
+                orjson.dumps({
                         "providers": {"nous": {"access_token": "fake"}},
                         "credential_pool": {},
-                    }
-                )
+                    }).decode('utf-8')
             )
             with patch.object(
                 model_catalog, "_fetch_manifest", return_value=_valid_manifest()
@@ -483,7 +479,7 @@ class TestManifestMatchesInRepoLists:
         expected = mod.build_catalog()
 
         with open(manifest_path, encoding="utf-8") as fh:
-            actual = json.load(fh)
+            actual = orjson.loads(fh.read())
 
         assert self._strip_volatile(actual) == self._strip_volatile(expected), (
             "website/static/api/model-catalog.json is out of sync with "

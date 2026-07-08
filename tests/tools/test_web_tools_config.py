@@ -9,7 +9,7 @@ Coverage:
 """
 
 import importlib
-import json
+import orjson
 import os
 import sys
 import types
@@ -144,13 +144,13 @@ class TestFirecrawlClientConfig:
 
         hermes_home = tmp_path / "hermes-home"
         hermes_home.mkdir()
-        (hermes_home / "auth.json").write_text(json.dumps({
+        (hermes_home / "auth.json").write_text(orjson.dumps({
             "providers": {
                 "nous": {
                     "access_token": "nous-token",
                 }
             }
-        }))
+        }).decode('utf-8'))
 
         with patch.dict(os.environ, {
             "HOME": str(real_home),
@@ -485,7 +485,7 @@ class TestWebSearchSchema:
              patch("tools.interrupt.is_interrupted", return_value=False), \
              patch.object(tools.web_tools._debug, "log_call"), \
              patch.object(tools.web_tools._debug, "save"):
-            result = json.loads(tools.web_tools.web_search_tool("docs", limit=500))
+            result = orjson.loads(tools.web_tools.web_search_tool("docs", limit=500))
 
         assert result == {"success": True, "data": {"web": []}}
         fake_search.assert_called_once_with("docs", 100)
@@ -513,7 +513,7 @@ class TestWebSearchErrorHandling:
              patch("tools.interrupt.is_interrupted", return_value=False), \
              patch.object(tools.web_tools._debug, "log_call") as mock_log_call, \
              patch.object(tools.web_tools._debug, "save"):
-            result = json.loads(tools.web_tools.web_search_tool("test query", limit=3))
+            result = orjson.loads(tools.web_tools.web_search_tool("test query", limit=3))
 
         assert result == {"error": "Error searching web: boom"}
 
@@ -618,7 +618,7 @@ class TestCheckWebApiKey:
         monkeypatch.delenv("TOOL_GATEWAY_USER_TOKEN", raising=False)
         monkeypatch.setenv("HERMES_HOME", str(tmp_path))
         expired_at = "2000-01-01T00:00:00+00:00"
-        (tmp_path / "auth.json").write_text(json.dumps({
+        (tmp_path / "auth.json").write_text(orjson.dumps({
             "providers": {
                 "nous": {
                     "access_token": "expired-token",
@@ -626,7 +626,7 @@ class TestCheckWebApiKey:
                     "expires_at": expired_at,
                 }
             }
-        }))
+        }).decode('utf-8'))
         refresh_calls = []
 
         def _record_refresh(*, refresh_skew_seconds=120, **_kwargs):

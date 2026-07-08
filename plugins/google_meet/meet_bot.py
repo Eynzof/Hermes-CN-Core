@@ -28,7 +28,7 @@ No meet.google.com URL → exits non-zero. Any URL that doesn't start with
 
 from __future__ import annotations
 
-import json
+import orjson
 import os
 import re
 import signal
@@ -164,7 +164,7 @@ class _BotState:
             "leaveReason": self.leave_reason,
         }
         tmp = self.status_path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        tmp.write_text(orjson.dumps(data, option=orjson.OPT_INDENT_2).decode('utf-8'), encoding="utf-8")
         tmp.replace(self.status_path)
 
     def set(self, **kwargs) -> None:

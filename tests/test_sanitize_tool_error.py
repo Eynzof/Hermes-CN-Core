@@ -1,7 +1,7 @@
 """Tests for `_sanitize_tool_error` in model_tools.
 
 Ported from ironclaw#1639 — defense-in-depth on tool exception strings before
-they enter the model's `tool` message content. Note that `json.dumps()` in
+they enter the model's `tool` message content. Note that `orjson.dumps().decode('utf-8')` in
 `handle_function_call` already handles quote/backslash escaping at the wire
 layer; this helper exists to strip structural framing tokens the model
 itself might react to (XML role tags, CDATA, markdown code fences) and to
@@ -110,7 +110,7 @@ class TestHandleFunctionCallIntegration:
     """
 
     def test_exception_path_error_is_sanitized(self):
-        import json
+        import orjson
         from model_tools import handle_function_call
         from tools.registry import registry as _registry
 
@@ -128,7 +128,7 @@ class TestHandleFunctionCallIntegration:
         finally:
             _registry._tools[target].handler = original
 
-        payload = json.loads(result_str)
+        payload = orjson.loads(result_str)
         assert "error" in payload, payload
         assert payload["error"].startswith("[TOOL_ERROR] "), payload["error"]
         # Role-tag stripping carried through

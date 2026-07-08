@@ -1,6 +1,6 @@
 """Tests for gateway/mirror.py — session mirroring."""
 
-import json
+import orjson
 from unittest.mock import patch, MagicMock
 
 import gateway.mirror as mirror_mod
@@ -15,7 +15,7 @@ def _setup_sessions(tmp_path, sessions_data):
     sessions_dir = tmp_path / "sessions"
     sessions_dir.mkdir(parents=True, exist_ok=True)
     index_file = sessions_dir / "sessions.json"
-    index_file.write_text(json.dumps(sessions_data))
+    index_file.write_text(orjson.dumps(sessions_data).decode('utf-8'))
     return sessions_dir, index_file
 
 

@@ -9,7 +9,7 @@ Standalone -- works from CLI, cron, and gateway contexts without needing
 the full SessionStore machinery.
 """
 
-import json
+import orjson
 import logging
 from datetime import datetime
 from typing import Optional
@@ -115,7 +115,7 @@ def _find_session_id(
 
     try:
         with open(_SESSIONS_INDEX, encoding="utf-8") as f:
-            data = json.load(f)
+            data = orjson.loads(f.read())
     except Exception:
         return None
 

@@ -13,7 +13,7 @@ stores (profile + root under ``tmp_path``) rather than mocking the save
 boundary, so they exercise the actual atomic write path.
 """
 
-import json
+import orjson
 
 import pytest
 
@@ -22,11 +22,11 @@ from hermes_cli import auth
 
 def _write_store(path, store):
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(store), encoding="utf-8")
+    path.write_text(orjson.dumps(store).decode('utf-8'), encoding="utf-8")
 
 
 def _read_store(path):
-    return json.loads(path.read_text(encoding="utf-8"))
+    return orjson.loads(path.read_text(encoding="utf-8"))
 
 
 @pytest.fixture

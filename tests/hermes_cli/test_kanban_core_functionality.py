@@ -11,7 +11,7 @@ parity across every registered verb.
 from __future__ import annotations
 
 import argparse
-import json
+import orjson
 import os
 import subprocess
 import threading
@@ -829,9 +829,9 @@ def test_cli_block_bulk_via_ids_flag(kanban_home):
 
 def test_cli_create_with_idempotency_key(kanban_home):
     out1 = run_slash("create 'x' --idempotency-key abc --json")
-    tid1 = json.loads(out1)["id"]
+    tid1 = orjson.loads(out1)["id"]
     out2 = run_slash("create 'y' --idempotency-key abc --json")
-    tid2 = json.loads(out2)["id"]
+    tid2 = orjson.loads(out2)["id"]
     assert tid1 == tid2
 
 
@@ -846,7 +846,7 @@ def test_cli_stats_json(kanban_home):
     finally:
         conn.close()
     out = run_slash("stats --json")
-    data = json.loads(out)
+    data = orjson.loads(out)
     assert "by_status" in data
     assert "by_assignee" in data
     assert "oldest_ready_age_seconds" in data
@@ -854,13 +854,13 @@ def test_cli_stats_json(kanban_home):
 
 def test_cli_notify_subscribe_and_list(kanban_home):
     tid = run_slash("create 'x' --json")
-    tid = json.loads(tid)["id"]
+    tid = orjson.loads(tid)["id"]
     out = run_slash(
         f"notify-subscribe {tid} --platform telegram --chat-id 999",
     )
     assert "Subscribed" in out
     lst = run_slash("notify-list --json")
-    subs = json.loads(lst)
+    subs = orjson.loads(lst)
     assert any(s["task_id"] == tid and s["platform"] == "telegram" for s in subs)
     rm = run_slash(
         f"notify-unsubscribe {tid} --platform telegram --chat-id 999",
@@ -1345,7 +1345,7 @@ def test_cli_assignees_json(kanban_home):
     finally:
         conn.close()
     out = run_slash("assignees --json")
-    data = json.loads(out)
+    data = orjson.loads(out)
     names = [e["name"] for e in data]
     assert "someone" in names
 
@@ -1378,7 +1378,7 @@ def test_parse_duration_rejects_garbage():
 def test_cli_create_max_runtime_via_duration(kanban_home):
     """`hermes kanban create --max-runtime 2h` should persist 7200 seconds."""
     out = run_slash("create 'long task' --max-runtime 2h --json")
-    data = json.loads(out)
+    data = orjson.loads(out)
     tid = data["id"]
     conn = kb.connect()
     try:
@@ -1853,7 +1853,7 @@ def test_cli_runs_json(kanban_home):
     finally:
         conn.close()
     out = run_slash(f"runs {tid} --json")
-    data = json.loads(out)
+    data = orjson.loads(out)
     assert len(data) == 1
     assert data[0]["outcome"] == "completed"
     assert data[0]["metadata"] == {"files": 1}
@@ -2273,7 +2273,7 @@ def test_cli_create_on_fresh_home_auto_inits(tmp_path, monkeypatch):
         capture_output=True, text=True, env=env,
     )
     assert r.returncode == 0, f"rc={r.returncode} stderr={r.stderr}"
-    import json as _json
+    import orjson as _json
     out = _json.loads(r.stdout)
     assert out["status"] == "ready"
     # DB file exists now.
@@ -2312,7 +2312,7 @@ def test_cli_show_json_carries_runs(kanban_home):
         conn.close()
 
     out = run_slash(f"show {tid} --json")
-    import json as _json
+    import orjson as _json
     # run_slash returns combined text; find the JSON block.
     # The output IS json, single doc.
     # Strip any leading ansi or surrounding noise.
@@ -3132,7 +3132,7 @@ def test_cli_create_skill_flag_repeatable(kanban_home):
         "create 'multi-skill' --assignee linguist "
         "--skill translation --skill github-code-review --json"
     )
-    tid = json.loads(out)["id"]
+    tid = orjson.loads(out)["id"]
     with kb.connect() as conn:
         task = kb.get_task(conn, tid)
     assert task.skills == ["translation", "github-code-review"]
@@ -3142,7 +3142,7 @@ def test_cli_create_without_skill_flag_leaves_none(kanban_home):
     """No --skill on the CLI means Task.skills stays None (not []) —
     we don't want to silently write [] when the user didn't opt in."""
     out = run_slash("create 'no-skill' --assignee x --json")
-    tid = json.loads(out)["id"]
+    tid = orjson.loads(out)["id"]
     with kb.connect() as conn:
         task = kb.get_task(conn, tid)
     assert task.skills is None
@@ -3154,7 +3154,7 @@ def test_cli_show_renders_skills(kanban_home):
         "create 'show-test' --assignee x "
         "--skill translation --json"
     )
-    tid = json.loads(out)["id"]
+    tid = orjson.loads(out)["id"]
     shown = run_slash(f"show {tid}")
     assert "skills:" in shown
     assert "translation" in shown
@@ -3878,7 +3878,7 @@ def test_complete_with_created_cards_all_verified_records_manifest(kanban_home):
         ))
         completed = [e for e in evs if e["kind"] == "completed"]
         assert len(completed) == 1
-        import json as _json
+        import orjson as _json
         payload = _json.loads(completed[0]["payload"])
         assert payload.get("verified_cards") == [c1, c2]
     finally:
@@ -3969,7 +3969,7 @@ def test_complete_accepts_cross_worker_card_when_linked_as_child(kanban_home):
         )
         assert ok is True
         # The card should appear in the completed event's verified_cards list.
-        import json as _json
+        import orjson as _json
         row = conn.execute(
             "SELECT payload FROM task_events "
             "WHERE task_id=? AND kind='completed' ORDER BY id DESC LIMIT 1",
@@ -4069,7 +4069,7 @@ def test_complete_prose_scan_flags_nonexistent_ids(kanban_home):
         ))
         kinds = [r["kind"] for r in kinds_and_payloads]
         assert "suspected_hallucinated_references" in kinds
-        import json as _json
+        import orjson as _json
         susp = [
             _json.loads(r["payload"])
             for r in kinds_and_payloads
@@ -4156,7 +4156,7 @@ def test_reclaim_task_resets_running_to_ready(kanban_home, monkeypatch):
         assert row["claim_lock"] is None
         assert row["worker_pid"] is None
 
-        import json as _json
+        import orjson as _json
         reclaim_evs = [
             _json.loads(r["payload"])
             for r in conn.execute(

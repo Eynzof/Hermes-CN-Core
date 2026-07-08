@@ -106,7 +106,7 @@ emitted by each built-in hook site.
 from __future__ import annotations
 
 import difflib
-import json
+import orjson
 import logging
 import os
 import re
@@ -535,7 +535,7 @@ def _serialize_payload(event: str, kwargs: Dict[str, Any]) -> str:
         "cwd": cwd,
         "extra": extras,
     }
-    return json.dumps(payload, ensure_ascii=False, default=str)
+    return orjson.dumps(payload, default=str).decode('utf-8')
 
 
 def _block_message(primary: Any, secondary: Any) -> str:
@@ -570,8 +570,8 @@ def _parse_response(event: str, stdout: str) -> Optional[Dict[str, Any]]:
         return None
 
     try:
-        data = json.loads(stdout)
-    except json.JSONDecodeError:
+        data = orjson.loads(stdout)
+    except orjson.JSONDecodeError:
         logger.warning(
             "shell hook stdout was not valid JSON (event=%s): %s",
             event, stdout[:200],
@@ -618,8 +618,8 @@ def allowlist_path() -> Path:
 def load_allowlist() -> Dict[str, Any]:
     """Return the parsed allowlist, or an empty skeleton if absent."""
     try:
-        raw = json.loads(allowlist_path().read_text())
-    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        raw = orjson.loads(allowlist_path().read_text())
+    except (FileNotFoundError, orjson.JSONDecodeError, OSError):
         return {"approvals": []}
     if not isinstance(raw, dict):
         return {"approvals": []}
@@ -643,7 +643,7 @@ def save_allowlist(data: Dict[str, Any]) -> None:
         )
         try:
             with os.fdopen(fd, "w") as fh:
-                fh.write(json.dumps(data, indent=2, sort_keys=True))
+                fh.write(orjson.dumps(data, option=orjson.OPT_INDENT_2 | orjson.OPT_SORT_KEYS).decode('utf-8'))
             atomic_replace(tmp_path, p)
         except Exception:
             try:

@@ -7,7 +7,7 @@ context compression.
 Run with:  python -m pytest tests/tools/test_file_read_guards.py -v
 """
 
-import json
+import orjson
 import os
 import tempfile
 import time
@@ -174,7 +174,7 @@ class TestDevicePathBlocking(unittest.TestCase):
 
     def test_read_file_tool_rejects_device(self):
         """read_file_tool returns an error without any file I/O."""
-        result = json.loads(read_file_tool("/dev/zero", task_id="dev_test"))
+        result = orjson.loads(read_file_tool("/dev/zero", task_id="dev_test"))
         self.assertIn("error", result)
         self.assertIn("device file", result["error"])
 
@@ -187,7 +187,7 @@ class TestDevicePathBlocking(unittest.TestCase):
             except OSError as exc:
                 self.skipTest(f"symlink unavailable: {exc}")
 
-            result = json.loads(read_file_tool(link_path, task_id="dev_link_test"))
+            result = orjson.loads(read_file_tool(link_path, task_id="dev_link_test"))
 
         self.assertIn("error", result)
         self.assertIn("device file", result["error"])
@@ -212,7 +212,7 @@ class TestDevicePathBlocking(unittest.TestCase):
             try:
                 os.chdir(process_cwd)
                 with patch.dict(os.environ, {"TERMINAL_CWD": workspace}, clear=False):
-                    result = json.loads(read_file_tool("stdin-link", task_id="dev_rel_link_test"))
+                    result = orjson.loads(read_file_tool("stdin-link", task_id="dev_rel_link_test"))
             finally:
                 os.chdir(old_cwd)
 
@@ -244,7 +244,7 @@ class TestCharacterCountGuard(unittest.TestCase):
             total_lines=5000,
             file_size=len(big_content) + 100,  # bigger than content
         )
-        result = json.loads(read_file_tool("/tmp/huge.txt", task_id="big"))
+        result = orjson.loads(read_file_tool("/tmp/huge.txt", task_id="big"))
         self.assertIn("error", result)
         self.assertIn("safety limit", result["error"])
         self.assertIn("offset and limit", result["error"])
@@ -254,7 +254,7 @@ class TestCharacterCountGuard(unittest.TestCase):
     def test_small_read_not_rejected(self, mock_ops):
         """Normal-sized reads pass through fine."""
         mock_ops.return_value = _make_fake_ops(content="short\n", file_size=6)
-        result = json.loads(read_file_tool("/tmp/small.txt", task_id="small"))
+        result = orjson.loads(read_file_tool("/tmp/small.txt", task_id="small"))
         self.assertNotIn("error", result)
         self.assertIn("content", result)
 
@@ -266,7 +266,7 @@ class TestCharacterCountGuard(unittest.TestCase):
             content="y" * (_DEFAULT_MAX_READ_CHARS - 1),
             file_size=_DEFAULT_MAX_READ_CHARS - 1,
         )
-        result = json.loads(read_file_tool("/tmp/justunder.txt", task_id="under"))
+        result = orjson.loads(read_file_tool("/tmp/justunder.txt", task_id="under"))
         self.assertNotIn("error", result)
         self.assertIn("content", result)
 
@@ -300,11 +300,11 @@ class TestFileDedup(unittest.TestCase):
             content="line one\nline two\n", file_size=20,
         )
         # First read — full content
-        r1 = json.loads(read_file_tool(self._tmpfile, task_id="dup"))
+        r1 = orjson.loads(read_file_tool(self._tmpfile, task_id="dup"))
         self.assertNotIn("dedup", r1)
 
         # Second read — should get dedup stub
-        r2 = json.loads(read_file_tool(self._tmpfile, task_id="dup"))
+        r2 = orjson.loads(read_file_tool(self._tmpfile, task_id="dup"))
         self.assertTrue(r2.get("dedup"), "Second read should return dedup stub")
         self.assertEqual(r2.get("status"), "unchanged")
         self.assertIn("unchanged", r2.get("message", ""))
@@ -318,7 +318,7 @@ class TestFileDedup(unittest.TestCase):
         fake.write_file = MagicMock()
         mock_ops.return_value = fake
 
-        result = json.loads(write_file_tool(
+        result = orjson.loads(write_file_tool(
             self._tmpfile,
             _READ_DEDUP_STATUS_MESSAGE,
             task_id="guard",
@@ -342,7 +342,7 @@ class TestFileDedup(unittest.TestCase):
         mock_ops.return_value = fake
 
         wrapped = "Note: " + _READ_DEDUP_STATUS_MESSAGE + "\n\n(continuing.)"
-        result = json.loads(write_file_tool(
+        result = orjson.loads(write_file_tool(
             self._tmpfile,
             wrapped,
             task_id="guard",
@@ -375,7 +375,7 @@ class TestFileDedup(unittest.TestCase):
             f"    {_READ_DEDUP_STATUS_MESSAGE}\n\n"
             + ("This is documentation content. " * 200)
         )
-        result = json.loads(write_file_tool(
+        result = orjson.loads(write_file_tool(
             self._tmpfile,
             large_content,
             task_id="guard",
@@ -397,7 +397,7 @@ class TestFileDedup(unittest.TestCase):
         with open(self._tmpfile, "w") as f:
             f.write("changed content\n")
 
-        r2 = json.loads(read_file_tool(self._tmpfile, task_id="mod"))
+        r2 = orjson.loads(read_file_tool(self._tmpfile, task_id="mod"))
         self.assertNotEqual(r2.get("dedup"), True, "Modified file should not dedup")
 
     @patch("tools.file_tools._get_file_ops")
@@ -408,7 +408,7 @@ class TestFileDedup(unittest.TestCase):
         )
         read_file_tool(self._tmpfile, offset=1, limit=500, task_id="rng")
 
-        r2 = json.loads(read_file_tool(
+        r2 = orjson.loads(read_file_tool(
             self._tmpfile, offset=10, limit=500, task_id="rng",
         ))
         self.assertNotEqual(r2.get("dedup"), True)
@@ -421,7 +421,7 @@ class TestFileDedup(unittest.TestCase):
         )
         read_file_tool(self._tmpfile, task_id="task_a")
 
-        r2 = json.loads(read_file_tool(self._tmpfile, task_id="task_b"))
+        r2 = orjson.loads(read_file_tool(self._tmpfile, task_id="task_b"))
         self.assertNotEqual(r2.get("dedup"), True)
 
 
@@ -456,17 +456,17 @@ class TestDedupStubLoopGuard(unittest.TestCase):
             content="line one\nline two\n", file_size=20,
         )
         # 1. Real read — full content
-        r1 = json.loads(read_file_tool(self._tmpfile, task_id="loop"))
+        r1 = orjson.loads(read_file_tool(self._tmpfile, task_id="loop"))
         self.assertNotIn("dedup", r1)
         self.assertNotIn("error", r1)
 
         # 2. Dedup stub (first hit)
-        r2 = json.loads(read_file_tool(self._tmpfile, task_id="loop"))
+        r2 = orjson.loads(read_file_tool(self._tmpfile, task_id="loop"))
         self.assertTrue(r2.get("dedup"))
         self.assertNotIn("error", r2)
 
         # 3. Dedup stub (second hit) — escalates to BLOCKED
-        r3 = json.loads(read_file_tool(self._tmpfile, task_id="loop"))
+        r3 = orjson.loads(read_file_tool(self._tmpfile, task_id="loop"))
         self.assertIn("error", r3, "Second dedup stub should be BLOCKED")
         self.assertIn("BLOCKED", r3["error"])
         self.assertIn("STOP", r3["error"])
@@ -483,11 +483,11 @@ class TestDedupStubLoopGuard(unittest.TestCase):
         )
         read_file_tool(self._tmpfile, task_id="loop")  # read
         read_file_tool(self._tmpfile, task_id="loop")  # stub
-        r3 = json.loads(read_file_tool(self._tmpfile, task_id="loop"))
+        r3 = orjson.loads(read_file_tool(self._tmpfile, task_id="loop"))
         self.assertIn("error", r3)
         # 4th, 5th, ... calls must stay blocked, never revert to stub
         for _ in range(5):
-            rN = json.loads(read_file_tool(self._tmpfile, task_id="loop"))
+            rN = orjson.loads(read_file_tool(self._tmpfile, task_id="loop"))
             self.assertIn("error", rN)
             self.assertIn("BLOCKED", rN["error"])
 
@@ -500,7 +500,7 @@ class TestDedupStubLoopGuard(unittest.TestCase):
         )
         read_file_tool(self._tmpfile, task_id="loop")
         read_file_tool(self._tmpfile, task_id="loop")
-        r3 = json.loads(read_file_tool(self._tmpfile, task_id="loop"))
+        r3 = orjson.loads(read_file_tool(self._tmpfile, task_id="loop"))
         self.assertIn("error", r3)
 
         # File changes — mtime updates
@@ -508,7 +508,7 @@ class TestDedupStubLoopGuard(unittest.TestCase):
         with open(self._tmpfile, "w") as f:
             f.write("brand new content\n")
 
-        r4 = json.loads(read_file_tool(self._tmpfile, task_id="loop"))
+        r4 = orjson.loads(read_file_tool(self._tmpfile, task_id="loop"))
         self.assertNotIn("error", r4)
         self.assertNotIn("dedup", r4)
 
@@ -526,7 +526,7 @@ class TestDedupStubLoopGuard(unittest.TestCase):
         # stub-loop is broken.  Counter should reset.
         notify_other_tool_call("loop")
 
-        r3 = json.loads(read_file_tool(self._tmpfile, task_id="loop"))
+        r3 = orjson.loads(read_file_tool(self._tmpfile, task_id="loop"))
         # Should be a stub again, NOT blocked
         self.assertTrue(r3.get("dedup"))
         self.assertNotIn("error", r3)
@@ -541,13 +541,13 @@ class TestDedupStubLoopGuard(unittest.TestCase):
         # Burn down one range
         read_file_tool(self._tmpfile, offset=1, limit=100, task_id="loop")
         read_file_tool(self._tmpfile, offset=1, limit=100, task_id="loop")
-        r3 = json.loads(read_file_tool(
+        r3 = orjson.loads(read_file_tool(
             self._tmpfile, offset=1, limit=100, task_id="loop",
         ))
         self.assertIn("error", r3)
 
         # Different range — fresh read, should go through
-        r_other = json.loads(read_file_tool(
+        r_other = orjson.loads(read_file_tool(
             self._tmpfile, offset=1, limit=200, task_id="loop",
         ))
         self.assertNotIn("error", r_other)
@@ -561,13 +561,13 @@ class TestDedupStubLoopGuard(unittest.TestCase):
         )
         read_file_tool(self._tmpfile, task_id="loop")
         read_file_tool(self._tmpfile, task_id="loop")
-        r3 = json.loads(read_file_tool(self._tmpfile, task_id="loop"))
+        r3 = orjson.loads(read_file_tool(self._tmpfile, task_id="loop"))
         self.assertIn("error", r3)
 
         reset_file_dedup("loop")
 
         # Fresh session — real read, no stub, no block
-        r4 = json.loads(read_file_tool(self._tmpfile, task_id="loop"))
+        r4 = orjson.loads(read_file_tool(self._tmpfile, task_id="loop"))
         self.assertNotIn("error", r4)
         self.assertNotIn("dedup", r4)
 
@@ -605,14 +605,14 @@ class TestDedupResetOnCompression(unittest.TestCase):
         read_file_tool(self._tmpfile, task_id="comp")
 
         # Verify dedup works before reset
-        r_dedup = json.loads(read_file_tool(self._tmpfile, task_id="comp"))
+        r_dedup = orjson.loads(read_file_tool(self._tmpfile, task_id="comp"))
         self.assertTrue(r_dedup.get("dedup"), "Should dedup before reset")
 
         # Simulate compression
         reset_file_dedup("comp")
 
         # Read again — should get full content
-        r_post = json.loads(read_file_tool(self._tmpfile, task_id="comp"))
+        r_post = orjson.loads(read_file_tool(self._tmpfile, task_id="comp"))
         self.assertNotEqual(r_post.get("dedup"), True,
                             "Post-compression read should return full content")
 
@@ -627,8 +627,8 @@ class TestDedupResetOnCompression(unittest.TestCase):
 
         reset_file_dedup()  # no task_id — clear all
 
-        r1 = json.loads(read_file_tool(self._tmpfile, task_id="t1"))
-        r2 = json.loads(read_file_tool(self._tmpfile, task_id="t2"))
+        r1 = orjson.loads(read_file_tool(self._tmpfile, task_id="t1"))
+        r2 = orjson.loads(read_file_tool(self._tmpfile, task_id="t2"))
         self.assertNotEqual(r1.get("dedup"), True)
         self.assertNotEqual(r2.get("dedup"), True)
 
@@ -648,7 +648,7 @@ class TestDedupResetOnCompression(unittest.TestCase):
         # 3rd read — counter should still be at 2 from before reset
         # (dedup was hit for read 2, but consecutive counter was 1 for that)
         # After reset, this read goes through full path, incrementing to 2
-        r3 = json.loads(read_file_tool(self._tmpfile, task_id="loop"))
+        r3 = orjson.loads(read_file_tool(self._tmpfile, task_id="loop"))
         # Should NOT be blocked or warned — counter restarted since dedup
         # intercepted reads before they reached the counter
         self.assertNotIn("error", r3)
@@ -685,7 +685,7 @@ class TestLargeFileHint(unittest.TestCase):
         fake.read_file = patched_read
         mock_ops.return_value = fake
 
-        result = json.loads(read_file_tool("/tmp/bigfile.log", task_id="hint"))
+        result = orjson.loads(read_file_tool("/tmp/bigfile.log", task_id="hint"))
         self.assertIn("_hint", result)
         self.assertIn("section you need", result["_hint"])
 
@@ -713,7 +713,7 @@ class TestConfigOverride(unittest.TestCase):
     def test_custom_config_lowers_limit(self, _mock_cfg, mock_ops):
         """A config value of 50 should reject reads over 50 chars."""
         mock_ops.return_value = _make_fake_ops(content="x" * 60, file_size=60)
-        result = json.loads(read_file_tool("/tmp/cfgtest.txt", task_id="cfg1"))
+        result = orjson.loads(read_file_tool("/tmp/cfgtest.txt", task_id="cfg1"))
         self.assertIn("error", result)
         self.assertIn("safety limit", result["error"])
         self.assertIn("50", result["error"])  # should show the configured limit
@@ -726,7 +726,7 @@ class TestConfigOverride(unittest.TestCase):
         mock_ops.return_value = _make_fake_ops(
             content="y" * 200_000, file_size=200_000,
         )
-        result = json.loads(read_file_tool("/tmp/cfgtest2.txt", task_id="cfg2"))
+        result = orjson.loads(read_file_tool("/tmp/cfgtest2.txt", task_id="cfg2"))
         self.assertNotIn("error", result)
         self.assertIn("content", result)
 
@@ -777,7 +777,7 @@ class TestWriteInvalidatesDedup(unittest.TestCase):
         mock_ops.return_value = fake
 
         # 1. Read — populates dedup cache.
-        r1 = json.loads(read_file_tool(self._tmpfile, task_id="wr"))
+        r1 = orjson.loads(read_file_tool(self._tmpfile, task_id="wr"))
         self.assertNotEqual(r1.get("dedup"), True)
 
         # 2. Write — must invalidate dedup for this path.
@@ -788,7 +788,7 @@ class TestWriteInvalidatesDedup(unittest.TestCase):
         fake.read_file = lambda path, offset=1, limit=500: _FakeReadResult(
             content="new content\n", total_lines=1, file_size=13,
         )
-        r2 = json.loads(read_file_tool(self._tmpfile, task_id="wr"))
+        r2 = orjson.loads(read_file_tool(self._tmpfile, task_id="wr"))
         self.assertNotEqual(r2.get("dedup"), True,
                             "read after write must not return dedup stub")
         self.assertIn("content", r2)
@@ -813,8 +813,8 @@ class TestWriteInvalidatesDedup(unittest.TestCase):
         write_file_tool(self._tmpfile, "replaced\n", task_id="off")
 
         # Both reads should return fresh content.
-        r1 = json.loads(read_file_tool(self._tmpfile, offset=1, limit=100, task_id="off"))
-        r2 = json.loads(read_file_tool(self._tmpfile, offset=50, limit=100, task_id="off"))
+        r1 = orjson.loads(read_file_tool(self._tmpfile, offset=1, limit=100, task_id="off"))
+        r2 = orjson.loads(read_file_tool(self._tmpfile, offset=50, limit=100, task_id="off"))
         self.assertNotEqual(r1.get("dedup"), True,
                             "offset=1 should not dedup after write")
         self.assertNotEqual(r2.get("dedup"), True,
@@ -843,7 +843,7 @@ class TestWriteInvalidatesDedup(unittest.TestCase):
         write_file_tool(self._tmpfile, "changed A\n", task_id="iso")
 
         # File B should still dedup (untouched).
-        r2 = json.loads(read_file_tool(other, task_id="iso"))
+        r2 = orjson.loads(read_file_tool(other, task_id="iso"))
         self.assertTrue(r2.get("dedup"),
                         "Unrelated file should still dedup after writing another file")
 
@@ -872,7 +872,7 @@ class TestWriteInvalidatesDedup(unittest.TestCase):
         write_file_tool(self._tmpfile, "new\n", task_id="taskA")
 
         # Task A's dedup should be invalidated.
-        rA = json.loads(read_file_tool(self._tmpfile, task_id="taskA"))
+        rA = orjson.loads(read_file_tool(self._tmpfile, task_id="taskA"))
         self.assertNotEqual(rA.get("dedup"), True,
                             "Writing task's dedup should be invalidated")
 

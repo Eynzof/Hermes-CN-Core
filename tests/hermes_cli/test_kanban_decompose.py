@@ -7,7 +7,7 @@ and the assignee-fallback logic.
 
 from __future__ import annotations
 
-import json as jsonlib
+import orjson as jsonlib
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -85,7 +85,7 @@ def test_decompose_with_fanout_creates_children(kanban_home):
             {"title": "research", "body": "look it up", "assignee": "researcher", "parents": []},
             {"title": "build", "body": "code it", "assignee": "engineer", "parents": [0]},
         ],
-    })
+    }).decode('utf-8')
 
     patches = _patch_list_profiles(["orchestrator", "researcher", "engineer"])
     for p in patches:
@@ -121,7 +121,7 @@ def test_decompose_fanout_false_assigns_default_when_unassigned(kanban_home):
         "rationale": "single unit",
         "title": "Tightened title",
         "body": "**Goal**\nDo the thing.",
-    })
+    }).decode('utf-8')
 
     patches = _patch_list_profiles(["orchestrator", "fallback"])
     for p in patches:
@@ -163,7 +163,7 @@ def test_decompose_fanout_false_preserves_existing_assignee(kanban_home):
         "title": "Tightened title",
         "body": "Keep existing lane.",
         "assignee": "fallback",
-    })
+    }).decode('utf-8')
 
     patches = _patch_list_profiles(["orchestrator", "engineer", "fallback"])
     for p in patches:
@@ -196,7 +196,7 @@ def test_decompose_fanout_false_uses_valid_llm_assignee(kanban_home):
         "title": "Tightened title",
         "body": "Route to specialist.",
         "assignee": "engineer",
-    })
+    }).decode('utf-8')
 
     patches = _patch_list_profiles(["orchestrator", "engineer", "fallback"])
     for p in patches:
@@ -228,7 +228,7 @@ def test_decompose_fanout_false_invalid_llm_assignee_uses_default(kanban_home):
         "title": "Tightened title",
         "body": "Route to fallback.",
         "assignee": "made_up",
-    })
+    }).decode('utf-8')
 
     patches = _patch_list_profiles(["orchestrator", "fallback"])
     for p in patches:
@@ -261,7 +261,7 @@ def test_decompose_unknown_assignee_falls_back_to_default(kanban_home):
         "tasks": [
             {"title": "do X", "body": "", "assignee": "made_up", "parents": []},
         ],
-    })
+    }).decode('utf-8')
 
     patches = _patch_list_profiles(["orchestrator", "fallback"])
     for p in patches:

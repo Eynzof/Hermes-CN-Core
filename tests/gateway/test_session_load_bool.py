@@ -6,7 +6,7 @@ must not crash the entire session loading loop. The TypeError from
 loading ALL remaining sessions, not just the corrupted one.
 """
 
-import json
+import orjson
 import threading
 from pathlib import Path
 
@@ -21,7 +21,7 @@ class TestSessionLoadBoolCorruption:
         sessions_dir = tmp_path / "sessions"
         sessions_dir.mkdir(parents=True)
         (sessions_dir / "sessions.json").write_text(
-            json.dumps(sessions_data), encoding="utf-8"
+            orjson.dumps(sessions_data).decode('utf-8'), encoding="utf-8"
         )
         # SessionStore requires a config object with session reset policy
         class FakeConfig:

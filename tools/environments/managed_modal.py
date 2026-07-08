@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import json
+import orjson
 import logging
 import os
 import requests
@@ -272,7 +272,7 @@ class ManagedModalEnvironment(BaseModalExecutionEnvironment):
                 message = payload.get("error") or payload.get("message") or payload.get("code")
                 if isinstance(message, str) and message:
                     return f"{prefix}: {message}"
-                return f"{prefix}: {json.dumps(payload, ensure_ascii=False)}"
+                return f"{prefix}: {orjson.dumps(payload).decode('utf-8')}"
         except Exception:
             pass
 

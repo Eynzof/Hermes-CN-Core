@@ -10,7 +10,7 @@ Handles loading and validating configuration for:
 
 import logging
 import os
-import json
+import orjson
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any, Callable
@@ -873,7 +873,7 @@ def load_gateway_config() -> GatewayConfig:
     if gateway_json_path.exists():
         try:
             with open(gateway_json_path, "r", encoding="utf-8") as f:
-                gw_data = json.load(f) or {}
+                gw_data = orjson.loads(f.read()) or {}
             logger.info(
                 "Loaded legacy %s — consider moving settings to config.yaml",
                 gateway_json_path,
@@ -1861,7 +1861,7 @@ def _apply_env_overrides(config: GatewayConfig) -> None:
         bluebubbles_mention_patterns = os.getenv("BLUEBUBBLES_MENTION_PATTERNS")
         if bluebubbles_mention_patterns:
             try:
-                parsed_patterns = json.loads(bluebubbles_mention_patterns)
+                parsed_patterns = orjson.loads(bluebubbles_mention_patterns)
             except Exception:
                 parsed_patterns = [
                     part.strip()

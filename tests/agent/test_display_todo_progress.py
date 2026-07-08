@@ -4,13 +4,13 @@ Verifies the completion status rendering (done/total ✓) on all three
 todo tool call paths: read, create (merge=False), update (merge=True).
 """
 
-import json
+import orjson
 from agent.display import get_cute_tool_message
 
 
 def _todo_result(total: int, completed: int) -> str:
     """Build a fake todo_tool return value."""
-    return json.dumps({
+    return orjson.dumps({
         "todos": [],
         "summary": {
             "total": total,
@@ -19,7 +19,7 @@ def _todo_result(total: int, completed: int) -> str:
             "completed": completed,
             "cancelled": 0,
         },
-    })
+    }).decode('utf-8')
 
 
 class TestTodoRead:
@@ -181,7 +181,7 @@ class TestTodoUpdate:
                                     {"todos": [{"id": "a", "status": "completed"}],
                                      "merge": True},
                                     0.3,
-                                    result=json.dumps({"summary": {"completed": 2}}))
+                                    result=orjson.dumps({"summary": {"completed": 2}}).decode('utf-8'))
         assert "update 1 task(s)" in msg
         assert "✓" not in msg
 

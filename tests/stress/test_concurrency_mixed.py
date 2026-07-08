@@ -14,7 +14,7 @@ Pass criteria: runs invariant holds, no double-completions, no orphan
 runs, no SQLite errors escape the retry layer.
 """
 
-import json
+import orjson
 import multiprocessing as mp
 import os
 import random
@@ -138,7 +138,7 @@ def worker_loop(worker_id: int, hermes_home: str, result_file: str) -> None:
             conn.close()
 
     with open(result_file, "w") as f:
-        json.dump(events, f)
+        f.write(orjson.dumps(events).decode('utf-8'))
 
 
 def reclaimer_loop(hermes_home: str, result_file: str) -> None:
@@ -166,7 +166,7 @@ def reclaimer_loop(hermes_home: str, result_file: str) -> None:
         time.sleep(0.2)
 
     with open(result_file, "w") as f:
-        json.dump(events, f)
+        f.write(orjson.dumps(events).decode('utf-8'))
 
 
 def main():
@@ -215,13 +215,13 @@ def main():
     for i, f in enumerate(worker_results):
         if os.path.isfile(f):
             with open(f) as fh:
-                all_events.extend(json.load(fh))
+                all_events.extend(orjson.loads(fh.read()))
         else:
             print(f"  WORKER {i} died with no result file!")
     reclaim_events = []
     if os.path.isfile(reclaim_result):
         with open(reclaim_result) as fh:
-            reclaim_events = json.load(fh)
+            reclaim_events = orjson.loads(fh.read())
 
     # ============ INVARIANT CHECKS ============
     print()

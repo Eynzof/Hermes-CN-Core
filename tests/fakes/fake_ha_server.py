@@ -18,7 +18,7 @@ Usage::
 """
 
 import asyncio
-import json
+import orjson
 from typing import Any, Dict, List, Optional
 
 import aiohttp
@@ -186,7 +186,7 @@ class FakeHAServer:
         if msg.type != aiohttp.WSMsgType.TEXT:
             await ws.close()
             return ws
-        auth_msg = json.loads(msg.data)
+        auth_msg = orjson.loads(msg.data)
 
         # Step 3: validate
         if self.reject_auth or auth_msg.get("access_token") != self.token:
@@ -201,7 +201,7 @@ class FakeHAServer:
         if msg.type != aiohttp.WSMsgType.TEXT:
             await ws.close()
             return ws
-        sub_msg = json.loads(msg.data)
+        sub_msg = orjson.loads(msg.data)
         sub_id = sub_msg.get("id", 1)
 
         # Step 5: ACK

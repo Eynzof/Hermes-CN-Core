@@ -1,6 +1,6 @@
 """Tests for tools/skill_manager_tool.py — skill creation, editing, and deletion."""
 
-import json
+import orjson
 from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import patch
@@ -527,21 +527,21 @@ class TestSkillManageDispatcher:
     def test_unknown_action(self, tmp_path):
         with _skill_dir(tmp_path):
             raw = skill_manage(action="explode", name="test")
-        result = json.loads(raw)
+        result = orjson.loads(raw)
         assert result["success"] is False
         assert "Unknown action" in result["error"]
 
     def test_create_without_content(self, tmp_path):
         with _skill_dir(tmp_path):
             raw = skill_manage(action="create", name="test")
-        result = json.loads(raw)
+        result = orjson.loads(raw)
         assert result["success"] is False
         assert "content" in result["error"].lower()
 
     def test_patch_without_old_string(self, tmp_path):
         with _skill_dir(tmp_path):
             raw = skill_manage(action="patch", name="test")
-        result = json.loads(raw)
+        result = orjson.loads(raw)
         assert result["success"] is False
 
     def test_full_create_via_dispatcher(self, tmp_path):
@@ -556,7 +556,7 @@ class TestSkillManageDispatcher:
             raw = skill_manage(action="create", name="test-skill", content=VALID_SKILL_CONTENT)
             from tools.skill_usage import load_usage
             usage = load_usage()
-        result = json.loads(raw)
+        result = orjson.loads(raw)
         assert result["success"] is True
         # No provenance marker on a foreground create — record either missing
         # entirely (telemetry best-effort) or present with created_by unset.
@@ -577,7 +577,7 @@ class TestSkillManageDispatcher:
         finally:
             from tools.skill_provenance import reset_current_write_origin
             reset_current_write_origin(token)
-        result = json.loads(raw)
+        result = orjson.loads(raw)
         assert result["success"] is True
         assert usage["review-sediment"]["created_by"] == "agent"
 
@@ -588,7 +588,7 @@ class TestSkillManageDispatcher:
             skill_manage(action="create", name="umbrella", content=VALID_SKILL_CONTENT)
             skill_manage(action="create", name="narrow", content=VALID_SKILL_CONTENT)
             raw = skill_manage(action="delete", name="narrow", absorbed_into="umbrella")
-        result = json.loads(raw)
+        result = orjson.loads(raw)
         assert result["success"] is True
         assert "absorbed into 'umbrella'" in result["message"]
 
@@ -596,7 +596,7 @@ class TestSkillManageDispatcher:
         with _skill_dir(tmp_path):
             skill_manage(action="create", name="narrow", content=VALID_SKILL_CONTENT)
             raw = skill_manage(action="delete", name="narrow", absorbed_into="ghost")
-        result = json.loads(raw)
+        result = orjson.loads(raw)
         assert result["success"] is False
         assert "does not exist" in result["error"]
 
@@ -624,7 +624,7 @@ class TestSkillManageDispatcher:
         finally:
             reset_current_write_origin(token)
 
-        result = json.loads(raw)
+        result = orjson.loads(raw)
         assert result["success"] is False
         assert "bundled" in result["error"].lower()
         assert (tmp_path / "bundled" / "SKILL.md").exists()
@@ -906,7 +906,7 @@ class TestExternalSkillMutations:
         finally:
             reset_current_write_origin(token)
 
-        result = json.loads(raw)
+        result = orjson.loads(raw)
         assert result["success"] is False
         assert "external" in result["error"].lower()
         assert "OLD_MARKER" in (skill_dir / "SKILL.md").read_text()
@@ -940,7 +940,7 @@ class TestExternalSkillMutations:
             finally:
                 reset_current_write_origin(token)
 
-        result = json.loads(raw)
+        result = orjson.loads(raw)
         assert result["success"] is False
         assert "pinned" in result["error"].lower()
 
@@ -973,7 +973,7 @@ class TestExternalSkillMutations:
             finally:
                 reset_current_write_origin(token)
 
-        result = json.loads(raw)
+        result = orjson.loads(raw)
         assert result["success"] is True
 
 
@@ -1280,7 +1280,7 @@ class TestCuratorConsolidationDeleteGuard:
             _create_skill("narrow", _skill_content("narrow"))
             skill_usage.mark_agent_created("narrow")
             raw = skill_manage("delete", "narrow", absorbed_into="umbrella")
-            result = json.loads(raw)
+            result = orjson.loads(raw)
             assert result["success"] is True, result
             rec = skill_usage.get_record("narrow")
         # Record kept (not forgotten) and marked archived.
@@ -1294,7 +1294,7 @@ class TestCuratorConsolidationDeleteGuard:
         with _curator_pass(tmp_path, monkeypatch=monkeypatch):
             _create_skill("reviewed", _skill_content("reviewed"))
 
-            blocked = json.loads(skill_manage(
+            blocked = orjson.loads(skill_manage(
                 action="patch",
                 name="reviewed",
                 old_string="Step 1: Do the thing.",
@@ -1303,10 +1303,10 @@ class TestCuratorConsolidationDeleteGuard:
             assert blocked["success"] is False
             assert blocked.get("_read_before_write_required") is True
 
-            viewed = json.loads(skill_view("reviewed"))
+            viewed = orjson.loads(skill_view("reviewed"))
             assert viewed["success"] is True
 
-            allowed = json.loads(skill_manage(
+            allowed = orjson.loads(skill_manage(
                 action="patch",
                 name="reviewed",
                 old_string="Step 1: Do the thing.",
@@ -1328,8 +1328,8 @@ class TestCuratorConsolidationDeleteGuard:
             (ref / "workflow.md").write_text("old workflow\n", encoding="utf-8")
 
             # Reading SKILL.md does not authorize overwriting a linked file.
-            assert json.loads(skill_view("reviewed"))["success"] is True
-            blocked = json.loads(skill_manage(
+            assert orjson.loads(skill_view("reviewed"))["success"] is True
+            blocked = orjson.loads(skill_manage(
                 action="write_file",
                 name="reviewed",
                 file_path="references/workflow.md",
@@ -1338,8 +1338,8 @@ class TestCuratorConsolidationDeleteGuard:
             assert blocked["success"] is False
             assert blocked.get("_read_before_write_required") is True
 
-            assert json.loads(skill_view("reviewed", "references/workflow.md"))["success"] is True
-            allowed = json.loads(skill_manage(
+            assert orjson.loads(skill_view("reviewed", "references/workflow.md"))["success"] is True
+            allowed = orjson.loads(skill_manage(
                 action="write_file",
                 name="reviewed",
                 file_path="references/workflow.md",

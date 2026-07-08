@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import json
+import json; import orjson
 import uuid
 from typing import Any, Dict, List, Optional
 
@@ -188,7 +188,7 @@ def _json_loads_maybe(value: Optional[str]) -> Any:
     if not isinstance(value, str):
         return value
     try:
-        return json.loads(value)
+        return orjson.loads(value)
     except Exception:
         pass
 
@@ -744,7 +744,7 @@ def _format_structured_value(
 
     if max_depth <= 0:
         if isinstance(value, (dict, list)):
-            preview = json.dumps(value, ensure_ascii=False, default=str)
+            preview = orjson.dumps(value, default=str).decode('utf-8')
         else:
             preview = str(value)
         return [f"{bullet}{label} {_truncate_text(preview, limit=240)}" if label else f"{bullet}{_truncate_text(preview, limit=240)}"]
@@ -1217,7 +1217,7 @@ def build_tool_start(
 
     if tool_name in _POLISHED_TOOLS:
         try:
-            args_text = json.dumps(arguments, indent=2, default=str)
+            args_text = orjson.dumps(arguments, default=str, option=orjson.OPT_INDENT_2).decode('utf-8')
         except (TypeError, ValueError):
             args_text = str(arguments)
         content = [_text(_truncate_text(args_text, limit=1200))]
@@ -1232,7 +1232,7 @@ def build_tool_start(
 
     # Generic fallback
     try:
-        args_text = json.dumps(arguments, indent=2, default=str)
+        args_text = orjson.dumps(arguments, default=str, option=orjson.OPT_INDENT_2).decode('utf-8')
     except (TypeError, ValueError):
         args_text = str(arguments)
     content = [acp.tool_content(acp.text_block(args_text))]

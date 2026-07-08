@@ -4,7 +4,7 @@ Verifies that gateway user_id flows from AIAgent -> MemoryManager -> plugins,
 so each gateway user gets their own memory bucket instead of sharing a static one.
 """
 
-import json
+import orjson
 import os
 from unittest.mock import MagicMock, patch
 
@@ -49,7 +49,7 @@ class RecordingProvider(MemoryProvider):
         return []
 
     def handle_tool_call(self, tool_name, args, **kwargs):
-        return json.dumps({})
+        return orjson.dumps({}).decode('utf-8')
 
     def shutdown(self):
         pass

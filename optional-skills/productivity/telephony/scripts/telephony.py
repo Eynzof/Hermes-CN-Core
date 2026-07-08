@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import argparse
 import base64
-import json
+import orjson
 import os
 import re
 import sys
@@ -147,7 +147,7 @@ def _load_state(path: Path | None = None) -> dict[str, Any]:
     if not state_file.exists():
         return {"version": STATE_VERSION}
     try:
-        data = json.loads(state_file.read_text(encoding="utf-8"))
+        data = orjson.loads(state_file.read_text(encoding="utf-8"))
         if isinstance(data, dict):
             data.setdefault("version", STATE_VERSION)
             return data
@@ -159,7 +159,7 @@ def _load_state(path: Path | None = None) -> dict[str, Any]:
 def _save_state(state: dict[str, Any], path: Path | None = None) -> Path:
     state_file = path or _state_path()
     state_file.parent.mkdir(parents=True, exist_ok=True)
-    state_file.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    state_file.write_text(orjson.dumps(state, option=orjson.OPT_INDENT_2 | orjson.OPT_SORT_KEYS).decode('utf-8') + "\n", encoding="utf-8")
     return state_file
 
 
@@ -250,7 +250,7 @@ def _json_request(
     request_headers = dict(headers or {})
     body: bytes | None = None
     if json_body is not None:
-        body = json.dumps(json_body).encode("utf-8")
+        body = orjson.dumps(json_body)
         request_headers.setdefault("Content-Type", "application/json")
     elif form is not None:
         body = urllib.parse.urlencode(form, doseq=True).encode("utf-8")
@@ -260,11 +260,11 @@ def _json_request(
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
             payload = resp.read().decode("utf-8")
-            return json.loads(payload) if payload else {}
+            return orjson.loads(payload) if payload else {}
     except urllib.error.HTTPError as exc:
         body_text = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
         try:
-            parsed = json.loads(body_text) if body_text else {}
+            parsed = orjson.loads(body_text) if body_text else {}
         except Exception:
             parsed = {"raw": body_text}
         raise TelephonyError(f"HTTP {exc.code} from {url}: {parsed or exc.reason}") from exc
@@ -1332,10 +1332,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         result = _dispatch(args)
-        print(json.dumps(result, indent=2, ensure_ascii=False))
+        print(orjson.dumps(result, option=orjson.OPT_INDENT_2).decode('utf-8'))
         return 0
     except TelephonyError as exc:
-        print(json.dumps({"success": False, "error": str(exc)}, indent=2, ensure_ascii=False), file=sys.stderr)
+        print(orjson.dumps({"success": False, "error": str(exc)}, option=orjson.OPT_INDENT_2).decode('utf-8'), file=sys.stderr)
         return 1
 
 

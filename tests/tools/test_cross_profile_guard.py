@@ -12,7 +12,7 @@ This file tests that the tool surfaces:
 """
 from __future__ import annotations
 
-import json
+import orjson
 from pathlib import Path
 
 import pytest
@@ -62,7 +62,7 @@ class TestWriteFileCrossProfileGuard:
         target = fake_hermes["sec_home"] / "skills" / "new-skill" / "SKILL.md"
         target.parent.mkdir(parents=True)
         result_json = write_file_tool(str(target), "in-profile content")
-        result = json.loads(result_json)
+        result = orjson.loads(result_json)
         assert not result.get("error"), f"In-profile write should succeed: {result}"
         assert target.exists()
         assert target.read_text() == "in-profile content"
@@ -74,7 +74,7 @@ class TestWriteFileCrossProfileGuard:
         target = fake_hermes["root"] / "skills" / "shared-skill" / "SKILL.md"
         original = target.read_text()
         result_json = write_file_tool(str(target), "OVERWRITTEN")
-        result = json.loads(result_json)
+        result = orjson.loads(result_json)
         assert result.get("error"), "Cross-profile write should be refused"
         assert "cross-profile" in result["error"].lower()
         assert "default" in result["error"]
@@ -89,7 +89,7 @@ class TestWriteFileCrossProfileGuard:
         result_json = write_file_tool(
             str(target), "user-directed override", cross_profile=True
         )
-        result = json.loads(result_json)
+        result = orjson.loads(result_json)
         assert not result.get("error"), f"cross_profile=True must succeed: {result}"
         assert target.read_text() == "user-directed override"
 
@@ -98,7 +98,7 @@ class TestWriteFileCrossProfileGuard:
         target = tmp_path / "outside" / "main.py"
         target.parent.mkdir()
         result_json = write_file_tool(str(target), "print('hello')")
-        result = json.loads(result_json)
+        result = orjson.loads(result_json)
         assert not result.get("error")
         assert target.exists()
 
@@ -119,7 +119,7 @@ class TestPatchCrossProfileGuard:
             old_string="default copy.",
             new_string="HIJACKED.",
         )
-        result = json.loads(result_json)
+        result = orjson.loads(result_json)
         assert result.get("error")
         assert "cross-profile" in result["error"].lower()
         assert target.read_text() == original
@@ -134,7 +134,7 @@ class TestPatchCrossProfileGuard:
             new_string="user-directed update.",
             cross_profile=True,
         )
-        result = json.loads(result_json)
+        result = orjson.loads(result_json)
         assert not result.get("error"), f"cross_profile=True bypass: {result}"
         assert "user-directed update." in target.read_text()
 
@@ -153,7 +153,7 @@ class TestPatchCrossProfileGuard:
             "*** End Patch"
         )
         result_json = patch_tool(mode="patch", patch=v4a)
-        result = json.loads(result_json)
+        result = orjson.loads(result_json)
         assert result.get("error"), f"V4A cross-profile must block: {result}"
         assert "cross-profile" in result["error"].lower()
         assert target.read_text() == original

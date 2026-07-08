@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import json
+import orjson
 import re
 import tomllib
 from pathlib import Path
@@ -16,7 +16,7 @@ ALLOWED_DISTRIBUTIONS = {"binary", "npx", "uvx"}
 
 
 def _manifest() -> dict:
-    return json.loads(MANIFEST.read_text(encoding="utf-8"))
+    return orjson.loads(MANIFEST.read_text(encoding="utf-8"))
 
 
 def _pyproject_version() -> str:

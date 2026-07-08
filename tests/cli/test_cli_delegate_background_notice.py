@@ -6,7 +6,7 @@ finishes. ``_on_tool_complete`` prints a one-line, no-spinner reassurance at
 dispatch so the idle prompt doesn't read as "nothing happened".
 """
 
-import json
+import orjson
 
 import cli
 from cli import HermesCLI
@@ -28,7 +28,7 @@ def test_background_dispatch_prints_resume_notice(monkeypatch):
     cli_obj = _make_cli()
     printed = _capture(monkeypatch)
 
-    result = json.dumps({"status": "dispatched", "mode": "background", "count": 1})
+    result = orjson.dumps({"status": "dispatched", "mode": "background", "count": 1}).decode('utf-8')
     cli_obj._on_tool_complete("tc1", "delegate_task", {"goal": "x"}, result)
 
     joined = "\n".join(printed)
@@ -40,7 +40,7 @@ def test_background_batch_dispatch_pluralizes(monkeypatch):
     cli_obj = _make_cli()
     printed = _capture(monkeypatch)
 
-    result = json.dumps({"status": "dispatched", "mode": "background", "count": 3})
+    result = orjson.dumps({"status": "dispatched", "mode": "background", "count": 3}).decode('utf-8')
     cli_obj._on_tool_complete("tc2", "delegate_task", {"tasks": []}, result)
 
     joined = "\n".join(printed)
@@ -54,7 +54,7 @@ def test_synchronous_delegate_result_prints_no_notice(monkeypatch):
     cli_obj = _make_cli()
     printed = _capture(monkeypatch)
 
-    result = json.dumps({"results": [{"status": "completed", "summary": "done"}]})
+    result = orjson.dumps({"results": [{"status": "completed", "summary": "done"}]}).decode('utf-8')
     cli_obj._on_tool_complete("tc3", "delegate_task", {"goal": "x"}, result)
 
     assert not any("resume" in p.lower() for p in printed)

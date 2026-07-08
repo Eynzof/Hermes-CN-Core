@@ -25,7 +25,7 @@ Stdlib-only. Python 3.10+.
 from __future__ import annotations
 
 import argparse
-import json
+import orjson
 import sys
 from pathlib import Path
 from typing import Any
@@ -286,21 +286,21 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         with wf_path.open() as f:
-            payload = json.load(f)
+            payload = orjson.loads(f.read())
         workflow = unwrap_workflow(payload)
     except ValueError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
-    except json.JSONDecodeError as e:
+    except orjson.JSONDecodeError as e:
         print(f"Error: invalid JSON — {e}", file=sys.stderr)
         return 1
 
     schema = extract_schema(workflow)
 
     if args.summary_only:
-        out = json.dumps(schema["summary"], indent=2)
+        out = orjson.dumps(schema["summary"], option=orjson.OPT_INDENT_2).decode('utf-8')
     else:
-        out = json.dumps(schema, indent=2, default=str)
+        out = orjson.dumps(schema, default=str, option=orjson.OPT_INDENT_2).decode('utf-8')
 
     if args.output:
         Path(args.output).write_text(out)

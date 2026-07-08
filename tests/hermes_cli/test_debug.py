@@ -1016,7 +1016,7 @@ class TestScheduleAutoDelete:
     def test_records_pending_to_json(self, hermes_home):
         """Scheduled URLs are persisted to pending.json with expiration."""
         from hermes_cli.debug import _schedule_auto_delete, _pending_file
-        import json
+        import orjson
 
         _schedule_auto_delete(
             ["https://paste.rs/abc", "https://paste.rs/def"],
@@ -1026,7 +1026,7 @@ class TestScheduleAutoDelete:
         pending_path = _pending_file()
         assert pending_path.exists()
 
-        entries = json.loads(pending_path.read_text())
+        entries = orjson.loads(pending_path.read_text())
         assert len(entries) == 2
         urls = {e["url"] for e in entries}
         assert urls == {"https://paste.rs/abc", "https://paste.rs/def"}
@@ -1486,7 +1486,7 @@ class TestCollectShareBundle:
 class TestBuildNousBundle:
     def test_envelope_shape_and_gzip(self, hermes_home):
         import gzip
-        import json as _json
+        import orjson as _json
 
         from hermes_cli.debug import build_nous_bundle
 
@@ -1503,7 +1503,7 @@ class TestBuildNousBundle:
 
     def test_redacted_false_recorded(self):
         import gzip
-        import json as _json
+        import orjson as _json
 
         from hermes_cli.debug import build_nous_bundle
 

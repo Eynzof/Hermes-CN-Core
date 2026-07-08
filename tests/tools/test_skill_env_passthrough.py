@@ -1,6 +1,6 @@
 """Test that skill_view registers required env vars in the passthrough registry."""
 
-import json
+import orjson
 from unittest.mock import patch
 
 import pytest
@@ -57,7 +57,7 @@ class TestSkillViewRegistersPassthrough:
         with patch("tools.skills_tool._secret_capture_callback", None):
             from tools.skills_tool import skill_view
 
-            result = json.loads(skill_view(name="test-skill"))
+            result = orjson.loads(skill_view(name="test-skill"))
 
         assert result["success"] is True
         assert is_env_passthrough("TENOR_API_KEY")
@@ -84,7 +84,7 @@ class TestSkillViewRegistersPassthrough:
         with patch("tools.skills_tool._secret_capture_callback", None):
             from tools.skills_tool import skill_view
 
-            result = json.loads(skill_view(name="test-skill"))
+            result = orjson.loads(skill_view(name="test-skill"))
 
         assert result["success"] is True
         assert result["setup_needed"] is False
@@ -111,7 +111,7 @@ class TestSkillViewRegistersPassthrough:
         with patch("tools.skills_tool._secret_capture_callback", None):
             from tools.skills_tool import skill_view
 
-            result = json.loads(skill_view(name="test-skill"))
+            result = orjson.loads(skill_view(name="test-skill"))
 
         assert result["success"] is True
         assert not is_env_passthrough("NONEXISTENT_SKILL_KEY_XYZ")
@@ -126,7 +126,7 @@ class TestSkillViewRegistersPassthrough:
         with patch("tools.skills_tool._secret_capture_callback", None):
             from tools.skills_tool import skill_view
 
-            result = json.loads(skill_view(name="simple-skill"))
+            result = orjson.loads(skill_view(name="simple-skill"))
 
         assert result["success"] is True
         from tools.env_passthrough import get_all_passthrough

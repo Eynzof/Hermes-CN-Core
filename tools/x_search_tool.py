@@ -42,7 +42,7 @@ reworked to honor both auth modes per Teknium's design.
 
 from __future__ import annotations
 
-import json
+import orjson
 import logging
 import time
 from datetime import date, datetime, timezone
@@ -398,8 +398,7 @@ def x_search_tool(
             else None
         )
 
-        return json.dumps(
-            {
+        return orjson.dumps({
                 "success": True,
                 "provider": "xai",
                 "credential_source": source,
@@ -411,45 +410,34 @@ def x_search_tool(
                 "inline_citations": inline_citations,
                 "degraded": degraded,
                 "degraded_reason": degraded_reason,
-            },
-            ensure_ascii=False,
-        )
+            }).decode('utf-8')
     except requests.HTTPError as e:
         logger.error("x_search failed: %s", e, exc_info=True)
-        return json.dumps(
-            {
+        return orjson.dumps({
                 "success": False,
                 "provider": "xai",
                 "tool": "x_search",
                 "error": _http_error_message(e),
                 "error_type": type(e).__name__,
-            },
-            ensure_ascii=False,
-        )
+            }).decode('utf-8')
     except requests.ReadTimeout as e:
         logger.error("x_search timed out: %s", e, exc_info=True)
-        return json.dumps(
-            {
+        return orjson.dumps({
                 "success": False,
                 "provider": "xai",
                 "tool": "x_search",
                 "error": f"xAI x_search timed out after {_get_x_search_timeout_seconds()} seconds",
                 "error_type": type(e).__name__,
-            },
-            ensure_ascii=False,
-        )
+            }).decode('utf-8')
     except Exception as e:
         logger.error("x_search failed: %s", e, exc_info=True)
-        return json.dumps(
-            {
+        return orjson.dumps({
                 "success": False,
                 "provider": "xai",
                 "tool": "x_search",
                 "error": str(e),
                 "error_type": type(e).__name__,
-            },
-            ensure_ascii=False,
-        )
+            }).decode('utf-8')
 
 
 X_SEARCH_SCHEMA = {

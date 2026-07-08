@@ -26,7 +26,7 @@ Usage:
     python mini_swe_runner.py --prompts_file prompts.jsonl --output_file trajectories.jsonl --env docker
 """
 
-import json
+import orjson
 import logging
 import os
 from datetime import datetime
@@ -293,7 +293,7 @@ class MiniSWERunner:
                 "parameters": func.get("parameters", {}),
                 "required": None
             })
-        return json.dumps(formatted_tools, ensure_ascii=False)
+        return orjson.dumps(formatted_tools).decode('utf-8')
     
     def _convert_to_hermes_format(
         self,
@@ -347,17 +347,17 @@ class MiniSWERunner:
                     for tool_call in msg["tool_calls"]:
                         if not tool_call or not isinstance(tool_call, dict): continue
                         try:
-                            arguments = json.loads(tool_call["function"]["arguments"]) \
+                            arguments = orjson.loads(tool_call["function"]["arguments"]) \
                                 if isinstance(tool_call["function"]["arguments"], str) \
                                 else tool_call["function"]["arguments"]
-                        except json.JSONDecodeError:
+                        except orjson.JSONDecodeError:
                             arguments = {}
                         
                         tool_call_json = {
                             "name": tool_call["function"]["name"],
                             "arguments": arguments
                         }
-                        content += f"<tool_call>\n{json.dumps(tool_call_json, ensure_ascii=False)}\n</tool_call>\n"
+                        content += f"<tool_call>\n{orjson.dumps(tool_call_json).decode('utf-8')}\n</tool_call>\n"
                     
                     trajectory.append({"from": "gpt", "value": content.rstrip()})
                     
@@ -371,17 +371,17 @@ class MiniSWERunner:
                         # Try to parse as JSON
                         try:
                             if tool_content.strip().startswith(("{", "[")):
-                                tool_content = json.loads(tool_content)
-                        except (json.JSONDecodeError, AttributeError):
+                                tool_content = orjson.loads(tool_content)
+                        except (orjson.JSONDecodeError, AttributeError):
                             pass
                         
                         tool_response = "<tool_response>\n"
-                        tool_response += json.dumps({
+                        tool_response += orjson.dumps({
                             "tool_call_id": tool_msg.get("tool_call_id", ""),
                             "name": msg["tool_calls"][len(tool_responses)]["function"]["name"] \
                                 if len(tool_responses) < len(msg["tool_calls"]) else "unknown",
                             "content": tool_content
-                        }, ensure_ascii=False)
+                        }).decode('utf-8')
                         tool_response += "\n</tool_response>"
                         tool_responses.append(tool_response)
                         j += 1
@@ -500,8 +500,8 @@ Complete the user's task step by step."""
                     # Execute each tool call
                     for tc in assistant_message.tool_calls:
                         try:
-                            args = json.loads(tc.function.arguments)
-                        except json.JSONDecodeError:
+                            args = orjson.loads(tc.function.arguments)
+                        except orjson.JSONDecodeError:
                             args = {}
                         
                         command = args.get("command", "echo 'No command provided'")
@@ -513,13 +513,13 @@ Complete the user's task step by step."""
                         result = self._execute_command(command, timeout)
                         
                         # Format result
-                        result_json = json.dumps({
+                        result_json = orjson.dumps({
                             "content": {
                                 "output": result["output"],
                                 "exit_code": result["exit_code"],
                                 "error": result["error"]
                             }
-                        }, ensure_ascii=False)
+                        }).decode('utf-8')
                         
                         # Check for task completion signal
                         if "MINI_SWE_AGENT_FINAL_OUTPUT" in result["output"]:
@@ -601,7 +601,7 @@ Complete the user's task step by step."""
                     results.append(result)
                     
                     # Write to file immediately
-                    f.write(json.dumps(result, ensure_ascii=False) + "\n")
+                    f.write(orjson.dumps(result).decode('utf-8') + "\n")
                     f.flush()
                     
                     print(f"✅ Task {i} completed (api_calls={result['api_calls']})")
@@ -616,7 +616,7 @@ Complete the user's task step by step."""
                         "metadata": {"timestamp": datetime.now().isoformat()}
                     }
                     results.append(error_result)
-                    f.write(json.dumps(error_result, ensure_ascii=False) + "\n")
+                    f.write(orjson.dumps(error_result).decode('utf-8') + "\n")
                     f.flush()
         
         print(f"\n✅ Batch complete! {len(results)} trajectories saved to {output_file}")
@@ -697,7 +697,7 @@ def main(
         
         # Save to file
         with open(output_file, 'w', encoding='utf-8') as f:
-            f.write(json.dumps(result, ensure_ascii=False) + "\n")
+            f.write(orjson.dumps(result).decode('utf-8') + "\n")
         
         print(f"\n📁 Trajectory saved to: {output_file}")
         print(f"✅ Completed: {result['completed']}")
@@ -712,9 +712,9 @@ def main(
                 line = line.strip()
                 if line:
                     try:
-                        entry = json.loads(line)
+                        entry = orjson.loads(line)
                         prompts.append(entry.get("prompt", entry.get("task", "")))
-                    except json.JSONDecodeError:
+                    except orjson.JSONDecodeError:
                         prompts.append(line)
         
         if not prompts:

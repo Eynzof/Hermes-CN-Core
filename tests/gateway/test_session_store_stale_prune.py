@@ -7,7 +7,7 @@ and remove those stale routing entries before get_or_create_session() can reuse
 them and silently route incoming messages into a closed session (#52804).
 """
 
-import json
+import orjson
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
@@ -208,7 +208,7 @@ class TestEnsureLoadedCallsPrune:
     def test_stale_entry_pruned_during_load(self, tmp_path):
         entry = _make_entry("dm_key", "sid_stale")
         (tmp_path / "sessions.json").write_text(
-            json.dumps({"dm_key": entry.to_dict()}, indent=2), encoding="utf-8"
+            orjson.dumps({"dm_key": entry.to_dict()}, option=orjson.OPT_INDENT_2).decode('utf-8'), encoding="utf-8"
         )
         db = _db_returning({"sid_stale": {"end_reason": "agent_close", "id": "sid_stale"}})
         config = GatewayConfig(default_reset_policy=SessionResetPolicy(mode="none"))
@@ -222,7 +222,7 @@ class TestEnsureLoadedCallsPrune:
     def test_live_entry_survives_load(self, tmp_path):
         entry = _make_entry("active_key", "sid_live")
         (tmp_path / "sessions.json").write_text(
-            json.dumps({"active_key": entry.to_dict()}, indent=2), encoding="utf-8"
+            orjson.dumps({"active_key": entry.to_dict()}, option=orjson.OPT_INDENT_2).decode('utf-8'), encoding="utf-8"
         )
         db = _db_returning({"sid_live": {"end_reason": None, "id": "sid_live"}})
         config = GatewayConfig(default_reset_policy=SessionResetPolicy(mode="none"))

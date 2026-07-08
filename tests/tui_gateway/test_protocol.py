@@ -1,7 +1,7 @@
 """Tests for tui_gateway JSON-RPC protocol plumbing."""
 
 import io
-import json
+import orjson
 import sys
 import threading
 import time
@@ -77,7 +77,7 @@ def test_err_envelope(server):
 def test_write_json(capture):
     server, buf = capture
     assert server.write_json({"test": True})
-    assert json.loads(buf.getvalue()) == {"test": True}
+    assert orjson.loads(buf.getvalue()) == {"test": True}
 
 
 def test_write_json_broken_pipe(server):
@@ -153,7 +153,7 @@ def test_write_json_peer_gone_oserror_on_flush_returns_false(server):
 
     server._real_stdout = _FlushPeerGone()
     assert server.write_json({"x": 1}) is False
-    assert written and json.loads(written[0]) == {"x": 1}
+    assert written and orjson.loads(written[0]) == {"x": 1}
 
 
 def test_write_json_non_peer_gone_oserror_re_raises(server):
@@ -223,7 +223,7 @@ def test_disable_flush_env_var_actually_wires_to_module_constant(monkeypatch):
 def test_emit_with_payload(capture):
     server, buf = capture
     server._emit("test.event", "s1", {"key": "val"})
-    msg = json.loads(buf.getvalue())
+    msg = orjson.loads(buf.getvalue())
 
     assert msg["method"] == "event"
     assert msg["params"]["type"] == "test.event"
@@ -235,7 +235,7 @@ def test_emit_without_payload(capture):
     server, buf = capture
     server._emit("ping", "s2")
 
-    assert "payload" not in json.loads(buf.getvalue())["params"]
+    assert "payload" not in orjson.loads(buf.getvalue())["params"]
 
 
 # ── Blocking prompt round-trip ───────────────────────────────────────
@@ -1662,7 +1662,7 @@ def test_dispatch_offloads_long_handlers_and_emits_via_stdout(capture):
             break
         time.sleep(0.01)
 
-    written = json.loads(buf.getvalue())
+    written = orjson.loads(buf.getvalue())
     assert written == {"jsonrpc": "2.0", "id": "r2", "result": {"output": "hi"}}
 
 
@@ -1723,7 +1723,7 @@ def test_dispatch_long_handler_exception_produces_error_response(capture):
             break
         time.sleep(0.01)
 
-    written = json.loads(buf.getvalue())
+    written = orjson.loads(buf.getvalue())
     assert written["id"] == "r3"
     assert written["error"]["code"] == -32000
     assert "kaboom" in written["error"]["message"]

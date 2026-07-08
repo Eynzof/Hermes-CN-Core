@@ -23,7 +23,7 @@ See issue #26241 for the migration plan and the
 
 from __future__ import annotations
 
-import json
+import orjson
 import logging
 import os
 from typing import Any, Dict, List, Optional
@@ -173,7 +173,7 @@ class FalImageGenProvider(ImageGenProvider):
             }
 
         try:
-            response = json.loads(raw) if isinstance(raw, str) else raw
+            response = orjson.loads(raw) if isinstance(raw, str) else raw
         except Exception:  # noqa: BLE001
             response = {"success": False, "image": None, "error": "Invalid JSON from FAL pipeline"}
 

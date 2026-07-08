@@ -261,14 +261,14 @@ class TestRewriteSkillRefsPersistence:
     """Rewrites persist to disk and survive a reload."""
 
     def test_changes_persist_across_reload(self, cron_env):
-        import json
+        import orjson
         from cron.jobs import create_job, rewrite_skill_refs, JOBS_FILE
 
         create_job(prompt="", schedule="every 1h", skills=["legacy"])
         rewrite_skill_refs(consolidated={"legacy": "umbrella"}, pruned=[])
 
         # Read raw file contents
-        data = json.loads(JOBS_FILE.read_text())
+        data = orjson.loads(JOBS_FILE.read_text())
         assert data["jobs"][0]["skills"] == ["umbrella"]
         assert data["jobs"][0]["skill"] == "umbrella"
 

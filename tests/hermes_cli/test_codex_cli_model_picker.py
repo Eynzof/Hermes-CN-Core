@@ -12,7 +12,7 @@ existing Codex CLI tokens via `hermes auth openai-codex`. The old
 """
 
 import base64
-import json
+import orjson
 import time
 from pathlib import Path
 
@@ -23,7 +23,7 @@ def _make_fake_jwt(expiry_offset: int = 3600) -> str:
     """Build a fake JWT with a future expiry."""
     header = base64.urlsafe_b64encode(b'{"alg":"RS256"}').rstrip(b"=").decode()
     exp = int(time.time()) + expiry_offset
-    payload_bytes = json.dumps({"exp": exp, "sub": "test"}).encode()
+    payload_bytes = orjson.dumps({"exp": exp, "sub": "test"})
     payload = base64.urlsafe_b64encode(payload_bytes).rstrip(b"=").decode()
     return f"{header}.{payload}.fakesig"
 
@@ -38,7 +38,7 @@ def hermes_auth_only_env(tmp_path, monkeypatch):
     # Point CODEX_HOME to nonexistent dir to prove it's not needed
     monkeypatch.setenv("CODEX_HOME", str(tmp_path / "no_codex"))
 
-    (hermes_home / "auth.json").write_text(json.dumps({
+    (hermes_home / "auth.json").write_text(orjson.dumps({
         "version": 2,
         "providers": {
             "openai-codex": {
@@ -49,7 +49,7 @@ def hermes_auth_only_env(tmp_path, monkeypatch):
                 "last_refresh": "2026-04-12T00:00:00Z",
             }
         },
-    }))
+    }).decode('utf-8'))
 
     for var in [
         "OPENROUTER_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY",
@@ -78,12 +78,12 @@ def test_codex_picker_uses_live_codex_catalog(hermes_auth_only_env, tmp_path, mo
 
     codex_home = tmp_path / "codex-home"
     codex_home.mkdir()
-    (codex_home / "models_cache.json").write_text(json.dumps({
+    (codex_home / "models_cache.json").write_text(orjson.dumps({
         "models": [
             {"slug": "gpt-5.5", "priority": 0, "supported_in_api": True},
             {"slug": "gpt-5.3-codex-spark", "priority": 7, "supported_in_api": False},
         ]
-    }))
+    }).decode('utf-8'))
     monkeypatch.setenv("CODEX_HOME", str(codex_home))
     # Force the cache fallback path — without this the test issues a real
     # 10s HTTP probe to chatgpt.com/backend-api/codex/models which is both
@@ -116,19 +116,19 @@ def claude_code_only_env(tmp_path, monkeypatch):
     monkeypatch.setenv("CODEX_HOME", str(tmp_path / "no_codex"))
 
     (hermes_home / "auth.json").write_text(
-        json.dumps({"version": 2, "providers": {}})
+        orjson.dumps({"version": 2, "providers": {}}).decode('utf-8')
     )
 
     # Claude Code credentials in the correct format
     claude_dir = tmp_path / ".claude"
     claude_dir.mkdir()
-    (claude_dir / ".credentials.json").write_text(json.dumps({
+    (claude_dir / ".credentials.json").write_text(orjson.dumps({
         "claudeAiOauth": {
             "accessToken": _make_fake_jwt(),
             "refreshToken": "fake-refresh",
             "expiresAt": int(time.time() * 1000) + 3_600_000,
         }
-    }))
+    }).decode('utf-8'))
 
     # Patch Path.home() so the adapter finds the file
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
@@ -170,7 +170,7 @@ def test_no_codex_when_no_credentials(tmp_path, monkeypatch):
     monkeypatch.setenv("CODEX_HOME", str(tmp_path / "no_codex"))
 
     (hermes_home / "auth.json").write_text(
-        json.dumps({"version": 2, "providers": {}})
+        orjson.dumps({"version": 2, "providers": {}}).decode('utf-8')
     )
 
     for var in [

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import json
+import orjson
 from unittest.mock import patch
 
 
@@ -117,7 +117,7 @@ class TestVisionAnalyzeNative:
         )
         # tool_error returns a JSON string, not the multimodal envelope
         assert isinstance(result, str)
-        parsed = json.loads(result)
+        parsed = orjson.loads(result)
         assert parsed.get("success") is False
         assert "Invalid image source" in parsed.get("error", "")
 
@@ -126,7 +126,7 @@ class TestVisionAnalyzeNative:
             _vision_analyze_native("", "?")
         )
         assert isinstance(result, str)
-        parsed = json.loads(result)
+        parsed = orjson.loads(result)
         assert parsed.get("success") is False
         assert "image_url is required" in parsed.get("error", "")
 
@@ -299,5 +299,5 @@ class TestHandleVisionAnalyzeFastPath:
             clear_runtime_main()
 
         assert isinstance(result, str)
-        assert json.loads(result) == {"sentinel": "aux-path"}
+        assert orjson.loads(result) == {"sentinel": "aux-path"}
         mock_aux.assert_called_once()

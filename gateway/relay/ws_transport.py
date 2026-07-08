@@ -30,7 +30,7 @@ least two Class-1 platforms validate it.
 from __future__ import annotations
 
 import asyncio
-import json
+import orjson
 import logging
 import uuid
 from dataclasses import dataclass
@@ -545,7 +545,7 @@ class WebSocketRelayTransport:
     async def _send(self, frame: Dict[str, Any]) -> None:
         if self._ws is None:
             raise RuntimeError("relay transport not connected")
-        await self._ws.send(json.dumps(frame) + "\n")
+        await self._ws.send(orjson.dumps(frame).decode('utf-8') + "\n")
 
     async def _read_loop(self) -> None:
         assert self._ws is not None
@@ -641,13 +641,13 @@ class WebSocketRelayTransport:
 
     async def _handle_frame(self, line: str) -> None:
         try:
-            frame = json.loads(line)
-        except json.JSONDecodeError:
+            frame = orjson.loads(line)
+        except orjson.JSONDecodeError:
             logger.warning("relay: skipping malformed frame")
             return
         ftype = frame.get("type")
         if ftype == "descriptor":
-            descriptor = CapabilityDescriptor.from_json(json.dumps(frame.get("descriptor", {})))
+            descriptor = CapabilityDescriptor.from_json(orjson.dumps(frame.get("descriptor", {})).decode('utf-8'))
             self._descriptor = descriptor
             # Phase 7 Unit 7d-B: a received descriptor means the WS upgrade auth
             # passed and the connector accepted us — record that we've handshaked

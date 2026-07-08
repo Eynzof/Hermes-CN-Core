@@ -6,7 +6,7 @@ Covers:
 - _contains_gateway_lifecycle_command pattern matching
 """
 
-import json
+import orjson
 import os
 from argparse import Namespace
 
@@ -322,7 +322,7 @@ class TestTerminalToolGatewayLifecycleGuard:
         import tools.terminal_tool as tt
         self._patch_env(monkeypatch, self._make_fake_env(), inside_gateway=True)
 
-        result = json.loads(tt.terminal_tool(command=cmd))
+        result = orjson.loads(tt.terminal_tool(command=cmd))
 
         assert result["exit_code"] == 1
         assert "Blocked" in result["error"]
@@ -331,7 +331,7 @@ class TestTerminalToolGatewayLifecycleGuard:
         import tools.terminal_tool as tt
         self._patch_env(monkeypatch, self._make_fake_env(), inside_gateway=True)
 
-        result = json.loads(tt.terminal_tool(
+        result = orjson.loads(tt.terminal_tool(
             command="systemctl restart hermes-gateway", force=True
         ))
 
@@ -353,7 +353,7 @@ class TestTerminalToolGatewayLifecycleGuard:
         self._patch_env(monkeypatch, _FakeEnv(), inside_gateway=True)
         monkeypatch.setattr(tt, "_check_all_guards", lambda cmd, env, **kwargs: {"approved": True})
 
-        result = json.loads(tt.terminal_tool(command="systemctl status nginx"))
+        result = orjson.loads(tt.terminal_tool(command="systemctl status nginx"))
 
         assert result["exit_code"] == 0
         assert calls == ["systemctl status nginx"]
@@ -373,7 +373,7 @@ class TestTerminalToolGatewayLifecycleGuard:
         self._patch_env(monkeypatch, _FakeEnv(), inside_gateway=False)
         monkeypatch.setattr(tt, "_check_all_guards", lambda cmd, env, **kwargs: {"approved": True})
 
-        result = json.loads(tt.terminal_tool(command="systemctl restart hermes-gateway"))
+        result = orjson.loads(tt.terminal_tool(command="systemctl restart hermes-gateway"))
 
         # Outside the gateway the lifecycle guard doesn't block — the normal
         # approval flow handles it (here mocked as approved).
@@ -476,7 +476,7 @@ class TestCreateJobBlocksLifecycleCommands:
         monkeypatch.setenv("HERMES_HOME", str(tmp_path / ".hermes"))
         (tmp_path / ".hermes").mkdir(parents=True)
         from tools.cronjob_tools import cronjob
-        result = json.loads(cronjob(
+        result = orjson.loads(cronjob(
             action="create", schedule="0 9 * * *",
             prompt="please run hermes gateway restart nightly",
         ))

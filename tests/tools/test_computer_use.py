@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import base64
-import json
+import orjson
 import os
 import sys
 from typing import Any, Dict, List
@@ -53,7 +53,7 @@ class TestSchema:
         from tools.computer_use.schema import COMPUTER_USE_SCHEMA
         assert COMPUTER_USE_SCHEMA.get("type") != "computer_20251124"
         # The word should not appear in the description either.
-        dumped = json.dumps(COMPUTER_USE_SCHEMA)
+        dumped = orjson.dumps(COMPUTER_USE_SCHEMA).decode('utf-8')
         assert "computer_20251124" not in dumped
 
     def test_schema_supports_element_and_coordinate_targeting(self):
@@ -149,19 +149,19 @@ class TestDispatch:
     def test_missing_action_returns_error(self):
         from tools.computer_use.tool import handle_computer_use
         out = handle_computer_use({})
-        parsed = json.loads(out)
+        parsed = orjson.loads(out)
         assert "error" in parsed
 
     def test_unknown_action_returns_error(self):
         from tools.computer_use.tool import handle_computer_use
         out = handle_computer_use({"action": "nope"})
-        parsed = json.loads(out)
+        parsed = orjson.loads(out)
         assert "error" in parsed
 
     def test_list_apps_returns_json(self, noop_backend):
         from tools.computer_use.tool import handle_computer_use
         out = handle_computer_use({"action": "list_apps"})
-        parsed = json.loads(out)
+        parsed = orjson.loads(out)
         assert "apps" in parsed
         assert parsed["count"] == 0
 
@@ -169,14 +169,14 @@ class TestDispatch:
         from tools.computer_use.tool import handle_computer_use
         # The backend's default wait() uses time.sleep with clamping.
         out = handle_computer_use({"action": "wait", "seconds": 0.01})
-        parsed = json.loads(out)
+        parsed = orjson.loads(out)
         assert parsed["ok"] is True
         assert parsed["action"] == "wait"
 
     def test_click_without_target_returns_error(self, noop_backend):
         from tools.computer_use.tool import handle_computer_use
         out = handle_computer_use({"action": "click"})
-        parsed = json.loads(out)
+        parsed = orjson.loads(out)
         # Noop backend returns ok=True with no targeting; we only hard-error
         # for the cua backend. Just make sure the noop path doesn't crash.
         assert "action" in parsed or "error" in parsed
@@ -205,7 +205,7 @@ class TestDispatch:
         """type action must call backend.type_text, not type_text_chars (issue #24170, bug 3)."""
         from tools.computer_use.tool import handle_computer_use
         out = handle_computer_use({"action": "type", "text": "hello"})
-        parsed = json.loads(out)
+        parsed = orjson.loads(out)
         assert "error" not in parsed
         call_names = [c[0] for c in noop_backend.calls]
         assert "type" in call_names
@@ -220,7 +220,7 @@ class TestDispatch:
             "from_coordinate": [100, 200],
             "to_coordinate": [400, 500],
         })
-        parsed = json.loads(out)
+        parsed = orjson.loads(out)
         assert "error" not in parsed
         call_names = [c[0] for c in noop_backend.calls]
         assert "drag" in call_names
@@ -236,7 +236,7 @@ class TestDispatch:
             "from_element": 1,
             "to_element": 5,
         })
-        parsed = json.loads(out)
+        parsed = orjson.loads(out)
         assert "error" not in parsed
         call_names = [c[0] for c in noop_backend.calls]
         assert "drag" in call_names
@@ -248,14 +248,14 @@ class TestDispatch:
         """drag without from/to must return an error."""
         from tools.computer_use.tool import handle_computer_use
         out = handle_computer_use({"action": "drag"})
-        parsed = json.loads(out)
+        parsed = orjson.loads(out)
         assert "error" in parsed
 
     def test_set_value_routes_to_backend(self, noop_backend):
         """set_value must reach the backend — regression for missing _NoopBackend stub."""
         from tools.computer_use.tool import handle_computer_use
         out = handle_computer_use({"action": "set_value", "value": "Option A", "element": 5})
-        parsed = json.loads(out)
+        parsed = orjson.loads(out)
         assert parsed.get("ok") is True
         assert parsed.get("action") == "set_value"
         assert any(c[0] == "set_value" for c in noop_backend.calls)
@@ -263,7 +263,7 @@ class TestDispatch:
     def test_set_value_missing_value_returns_error(self, noop_backend):
         from tools.computer_use.tool import handle_computer_use
         out = handle_computer_use({"action": "set_value"})
-        parsed = json.loads(out)
+        parsed = orjson.loads(out)
         assert "error" in parsed
     def test_capture_after_skipped_when_action_failed(self, noop_backend):
         """capture_after must not fire when res.ok=False (regression guard).
@@ -282,7 +282,7 @@ class TestDispatch:
             out = handle_computer_use({"action": "click", "element": 99,
                                        "capture_after": True})
 
-        parsed = json.loads(out)
+        parsed = orjson.loads(out)
         # Should return the error, not a multimodal capture.
         assert parsed.get("ok") is False
         assert parsed.get("action") == "click"
@@ -315,7 +315,7 @@ class TestSafetyGuards:
     def test_blocked_type_patterns(self, text, noop_backend):
         from tools.computer_use.tool import handle_computer_use
         out = handle_computer_use({"action": "type", "text": text})
-        parsed = json.loads(out)
+        parsed = orjson.loads(out)
         assert "error" in parsed
         assert "blocked pattern" in parsed["error"]
 
@@ -328,20 +328,20 @@ class TestSafetyGuards:
     def test_blocked_key_combos(self, keys, noop_backend):
         from tools.computer_use.tool import handle_computer_use
         out = handle_computer_use({"action": "key", "keys": keys})
-        parsed = json.loads(out)
+        parsed = orjson.loads(out)
         assert "error" in parsed
         assert "blocked key combo" in parsed["error"]
 
     def test_safe_key_combos_pass(self, noop_backend):
         from tools.computer_use.tool import handle_computer_use
         out = handle_computer_use({"action": "key", "keys": "cmd+s"})
-        parsed = json.loads(out)
+        parsed = orjson.loads(out)
         assert "error" not in parsed
 
     def test_type_with_empty_string_is_allowed(self, noop_backend):
         from tools.computer_use.tool import handle_computer_use
         out = handle_computer_use({"action": "type", "text": ""})
-        parsed = json.loads(out)
+        parsed = orjson.loads(out)
         assert "error" not in parsed
 
 
@@ -354,7 +354,7 @@ class TestCaptureResponse:
         from tools.computer_use.tool import handle_computer_use
         out = handle_computer_use({"action": "capture", "mode": "ax"})
         # AX mode → always JSON string
-        parsed = json.loads(out)
+        parsed = orjson.loads(out)
         assert parsed["mode"] == "ax"
 
     def test_capture_vision_mode_with_image_returns_multimodal_envelope(self):
@@ -420,7 +420,7 @@ class TestCaptureResponse:
                           return_value=False):
             out = cu_tool._capture_response(cap)
 
-        parsed = json.loads(out)
+        parsed = orjson.loads(out)
         assert parsed["width"] == 2
         assert parsed["height"] == 2
         assert "screenshot omitted" in parsed["summary"]
@@ -507,7 +507,7 @@ class TestCaptureResponse:
         with patch.object(cu_tool, "_get_backend", return_value=fake_backend):
             out = cu_tool.handle_computer_use({"action": "capture", "mode": "ax"})
 
-        parsed = json.loads(out)
+        parsed = orjson.loads(out)
         assert parsed["mode"] == "ax"
         assert parsed["total_elements"] == 600
         assert len(parsed["elements"]) == cu_tool._DEFAULT_MAX_ELEMENTS
@@ -526,7 +526,7 @@ class TestCaptureResponse:
                 {"action": "capture", "mode": "ax", "max_elements": 250}
             )
 
-        parsed = json.loads(out)
+        parsed = orjson.loads(out)
         assert len(parsed["elements"]) == 250
         assert parsed["truncated_elements"] == 350
 
@@ -541,7 +541,7 @@ class TestCaptureResponse:
         with patch.object(cu_tool, "_get_backend", return_value=fake_backend):
             out = cu_tool.handle_computer_use({"action": "capture", "mode": "ax"})
 
-        parsed = json.loads(out)
+        parsed = orjson.loads(out)
         assert len(parsed["elements"]) == 5
         assert parsed["total_elements"] == 5
         assert "truncated_elements" not in parsed
@@ -560,7 +560,7 @@ class TestCaptureResponse:
                 out = cu_tool.handle_computer_use(
                     {"action": "capture", "mode": "ax", "max_elements": bad}
                 )
-            parsed = json.loads(out)
+            parsed = orjson.loads(out)
             assert len(parsed["elements"]) == cu_tool._DEFAULT_MAX_ELEMENTS, (
                 f"bad max_elements={bad!r} disabled the cap"
             )
@@ -578,7 +578,7 @@ class TestCaptureResponse:
             out = cu_tool.handle_computer_use(
                 {"action": "capture", "mode": "ax", "max_elements": 10_000}
             )
-        parsed = json.loads(out)
+        parsed = orjson.loads(out)
         assert len(parsed["elements"]) == cu_tool._MAX_ALLOWED_MAX_ELEMENTS
         assert parsed["total_elements"] == 5000
         assert parsed["truncated_elements"] == 5000 - cu_tool._MAX_ALLOWED_MAX_ELEMENTS
@@ -597,7 +597,7 @@ class TestCaptureResponse:
             out = cu_tool.handle_computer_use(
                 {"action": "capture", "mode": "ax", "max_elements": 5}
             )
-        parsed = json.loads(out)
+        parsed = orjson.loads(out)
         returned_indices = {e["index"] for e in parsed["elements"]}
         summary_lines = parsed["summary"].splitlines()
         indexed_lines = [ln for ln in summary_lines if ln.lstrip().startswith("#")]
@@ -1003,7 +1003,7 @@ class TestRunAgentMultimodalHelpers:
         with patch.object(agent, "_model_supports_vision", return_value=False):
             content = agent._tool_result_content_for_active_model("computer_use", result)
 
-        parsed = json.loads(content)
+        parsed = orjson.loads(content)
         assert "computer_use returned screenshot/image content" in parsed["error"]
         assert parsed["text_summary"] == "screen captured"
         assert "image_url" not in content
@@ -1058,8 +1058,8 @@ class TestUniversality:
         # OpenAI tool definition wrapper
         wrapped = {"type": "function", "function": COMPUTER_USE_SCHEMA}
         # Should serialize to JSON without error
-        blob = json.dumps(wrapped)
-        parsed = json.loads(blob)
+        blob = orjson.dumps(wrapped).decode('utf-8')
+        parsed = orjson.loads(blob)
         assert parsed["function"]["name"] == "computer_use"
 
     def test_no_provider_gating_in_tool_registration(self):

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import json
+import orjson
 import tempfile
 from pathlib import Path
 
@@ -47,7 +47,7 @@ def test_write_file_rejection_does_not_mutate_existing_file(tmp_path):
 
     set_edit_approval_requester(lambda _proposal: False)
 
-    result = json.loads(
+    result = orjson.loads(
         handle_function_call(
             "write_file",
             {"path": str(target), "content": "after\n"},
@@ -71,7 +71,7 @@ def test_write_file_approval_mutates_and_request_includes_diff(tmp_path):
 
     set_edit_approval_requester(approve)
 
-    result = json.loads(
+    result = orjson.loads(
         handle_function_call(
             "write_file",
             {"path": str(target), "content": "after\n"},
@@ -95,7 +95,7 @@ def test_write_file_new_file_request_has_empty_old_text(tmp_path):
 
     set_edit_approval_requester(lambda proposal: proposals.append(proposal) or True)
 
-    result = json.loads(
+    result = orjson.loads(
         handle_function_call(
             "write_file",
             {"path": str(target), "content": "created\n"},
@@ -118,7 +118,7 @@ def test_requester_exception_denies_and_does_not_mutate(tmp_path):
 
     set_edit_approval_requester(boom)
 
-    result = json.loads(
+    result = orjson.loads(
         handle_function_call(
             "write_file",
             {"path": str(target), "content": "after\n"},
@@ -137,7 +137,7 @@ def test_patch_replace_rejection_does_not_mutate(tmp_path):
 
     set_edit_approval_requester(lambda _proposal: False)
 
-    result = json.loads(
+    result = orjson.loads(
         handle_function_call(
             "patch",
             {
@@ -161,7 +161,7 @@ def test_patch_v4a_rejection_does_not_mutate(tmp_path):
 
     set_edit_approval_requester(lambda _proposal: False)
 
-    result = json.loads(
+    result = orjson.loads(
         handle_function_call(
             "patch",
             {
@@ -192,7 +192,7 @@ def test_patch_v4a_approval_request_includes_patch_targets(tmp_path):
 
     set_edit_approval_requester(lambda proposal: proposals.append(proposal) or False)
 
-    json.loads(
+    orjson.loads(
         handle_function_call(
             "patch",
             {
@@ -224,7 +224,7 @@ def test_patch_replace_approval_request_includes_full_file_diff(tmp_path):
 
     set_edit_approval_requester(lambda proposal: proposals.append(proposal) or True)
 
-    result = json.loads(
+    result = orjson.loads(
         handle_function_call(
             "patch",
             {

@@ -6,7 +6,7 @@ without requiring the ``piper-tts`` package to actually be installed
 (the synthesis step is monkey-patched to avoid needing the ONNX wheel).
 """
 
-import json
+import orjson
 import sys
 import types
 from pathlib import Path
@@ -347,7 +347,7 @@ class TestTextToSpeechToolWithPiper:
         monkeypatch.setattr(tts_tool, "_load_tts_config", lambda: cfg)
 
         result = text_to_speech_tool(text="hi", output_path=str(tmp_path / "clip.wav"))
-        data = json.loads(result)
+        data = orjson.loads(result)
 
         assert data["success"] is True, data
         assert data["provider"] == "piper"
@@ -363,7 +363,7 @@ class TestTextToSpeechToolWithPiper:
         monkeypatch.setattr(tts_tool, "_load_tts_config", lambda: cfg)
 
         result = text_to_speech_tool(text="hi", output_path=str(tmp_path / "clip.wav"))
-        data = json.loads(result)
+        data = orjson.loads(result)
 
         assert data["success"] is False
         assert "piper-tts" in data["error"]

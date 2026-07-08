@@ -15,7 +15,7 @@ with real file I/O against a temp HERMES_HOME — no mocks on the write path.
 
 from __future__ import annotations
 
-import json
+import orjson
 
 import pytest
 
@@ -75,7 +75,7 @@ def _read_single_trace(trace_dir, session_id):
     assert path.exists(), f"trace file not written: {path}"
     lines = path.read_text().strip().split("\n")
     assert len(lines) == 1
-    return json.loads(lines[0])
+    return orjson.loads(lines[0])
 
 
 def test_streamed_aggregator_output_captured_from_fallback(tmp_path, monkeypatch):

@@ -10,7 +10,7 @@ omission.
 Run with:  python -m pytest tests/tools/test_read_extract.py -v
 """
 
-import json
+import orjson
 import os
 import tempfile
 import unittest
@@ -31,7 +31,7 @@ from tools.file_tools import read_file_tool
 def _write_notebook(path, cells, nbformat=4):
     nb = {"cells": cells, "metadata": {}, "nbformat": nbformat, "nbformat_minor": 5}
     with open(path, "w", encoding="utf-8") as fh:
-        json.dump(nb, fh)
+        fh.write(orjson.dumps(nb).decode('utf-8'))
 
 
 def _write_docx(path, document_xml):
@@ -111,7 +111,7 @@ class TestNotebookExtraction(unittest.TestCase):
             {"cell_type": "code", "input": "ignored", "source": "legacy cell"}]}],
             "nbformat": 3}
         with open(p, "w") as fh:
-            json.dump(nb, fh)
+            fh.write(orjson.dumps(nb).decode('utf-8'))
         self.assertIn("legacy cell", extract_document_text(p))
 
     def test_malformed_notebook_raises(self):
@@ -256,7 +256,7 @@ class TestReadFileToolIntegration(unittest.TestCase):
             {"cell_type": "markdown", "source": "# H"},
             {"cell_type": "code", "source": "print(1)"},
         ])
-        res = json.loads(read_file_tool(p))
+        res = orjson.loads(read_file_tool(p))
         self.assertTrue(res.get("extracted_document"))
         self.assertIn("1|", res["content"])  # line-number gutter
         self.assertIn("print(1)", res["content"])
@@ -266,7 +266,7 @@ class TestReadFileToolIntegration(unittest.TestCase):
         _write_notebook(p, [
             {"cell_type": "code", "source": "a\nb\nc\nd\ne\nf"},
         ])
-        res = json.loads(read_file_tool(p, offset=1, limit=2))
+        res = orjson.loads(read_file_tool(p, offset=1, limit=2))
         self.assertTrue(res.get("truncated"))
         self.assertIn("offset=3", res.get("hint", ""))
         # Only first 2 lines present.
@@ -276,7 +276,7 @@ class TestReadFileToolIntegration(unittest.TestCase):
         p = os.path.join(self.tmp, "bad.docx")
         with open(p, "wb") as fh:
             fh.write(b"not a zip")
-        res = json.loads(read_file_tool(p))
+        res = orjson.loads(read_file_tool(p))
         # Should NOT crash; falls through to the binary-extension guard.
         self.assertIn("error", res)
         self.assertIn("binary", res["error"].lower())
@@ -286,7 +286,7 @@ class TestReadFileToolIntegration(unittest.TestCase):
         _write_docx(p, (f'<?xml version="1.0"?><w:document xmlns:w="{_NS_W}">'
                         '<w:body><w:p><w:r><w:t>Report body</w:t></w:r></w:p>'
                         '</w:body></w:document>'))
-        res = json.loads(read_file_tool(p))
+        res = orjson.loads(read_file_tool(p))
         self.assertTrue(res.get("extracted_document"))
         self.assertIn("Report body", res["content"])
 

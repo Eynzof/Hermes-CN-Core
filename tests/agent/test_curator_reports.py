@@ -6,7 +6,7 @@ the standard log dir, not inside the user's ``skills/`` data directory.
 
 from __future__ import annotations
 
-import json
+import orjson
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -113,7 +113,7 @@ def test_run_json_has_expected_shape(curator_env):
             ],
         ),
     )
-    payload = json.loads((run_dir / "run.json").read_text())
+    payload = orjson.loads((run_dir / "run.json").read_text())
 
     # top-level shape
     for k in (
@@ -161,12 +161,12 @@ def test_report_md_is_human_readable(curator_env):
                 # write_file under foo-umbrella referencing foo.
                 {
                     "name": "skill_manage",
-                    "arguments": json.dumps({
+                    "arguments": orjson.dumps({
                         "action": "write_file",
                         "name": "foo-umbrella",
                         "file_path": "references/foo.md",
                         "file_content": "# foo\nContent absorbed from the old foo skill.\n",
-                    }),
+                    }).decode('utf-8'),
                 },
             ],
         ),
@@ -238,7 +238,7 @@ def test_report_captures_llm_error_and_continues(curator_env):
     )
     md = (run_dir / "REPORT.md").read_text()
     assert "HTTP 400" in md
-    payload = json.loads((run_dir / "run.json").read_text())
+    payload = orjson.loads((run_dir / "run.json").read_text())
     assert payload["llm_error"] == "HTTP 400: No models provided"
 
 
@@ -261,7 +261,7 @@ def test_state_transitions_captured_in_report(curator_env):
         after_report=after,
         llm_meta=_make_llm_meta(),
     )
-    payload = json.loads((run_dir / "run.json").read_text())
+    payload = orjson.loads((run_dir / "run.json").read_text())
     assert payload["state_transitions"] == [
         {"name": "getting-old", "from": "active", "to": "stale"}
     ]
@@ -334,12 +334,12 @@ def test_curator_rewrites_cron_skills_when_skill_consolidated(curator_env_with_c
             tool_calls=[
                 {
                     "name": "skill_manage",
-                    "arguments": json.dumps({
+                    "arguments": orjson.dumps({
                         "action": "write_file",
                         "name": "foo-umbrella",
                         "file_path": "references/foo.md",
                         "file_content": "from foo",
-                    }),
+                    }).decode('utf-8'),
                 },
             ],
         ),
@@ -351,7 +351,7 @@ def test_curator_rewrites_cron_skills_when_skill_consolidated(curator_env_with_c
     assert loaded["skill"] == "foo-umbrella"
 
     # Rewrite is recorded in run.json
-    payload = json.loads((run_dir / "run.json").read_text())
+    payload = orjson.loads((run_dir / "run.json").read_text())
     assert payload["cron_rewrites"]["jobs_updated"] == 1
     assert payload["counts"]["cron_jobs_rewritten"] == 1
     rewrites = payload["cron_rewrites"]["rewrites"]
@@ -361,7 +361,7 @@ def test_curator_rewrites_cron_skills_when_skill_consolidated(curator_env_with_c
     # Separate cron_rewrites.json is written for convenience
     cron_file = run_dir / "cron_rewrites.json"
     assert cron_file.exists()
-    detail = json.loads(cron_file.read_text())
+    detail = orjson.loads(cron_file.read_text())
     assert detail["jobs_updated"] == 1
 
     # Markdown surfaces the change
@@ -400,7 +400,7 @@ def test_curator_drops_pruned_skill_from_cron_job(curator_env_with_cron):
     loaded = jobs.get_job(job["id"])
     assert loaded["skills"] == ["keep"]
 
-    payload = json.loads((run_dir / "run.json").read_text())
+    payload = orjson.loads((run_dir / "run.json").read_text())
     assert payload["cron_rewrites"]["jobs_updated"] == 1
     rewrites = payload["cron_rewrites"]["rewrites"]
     assert rewrites[0]["dropped"] == ["stale-one"]
@@ -430,6 +430,6 @@ def test_curator_report_has_no_cron_section_when_nothing_changes(curator_env_wit
     md = (run_dir / "REPORT.md").read_text()
     assert "Cron job skill references rewritten" not in md
 
-    payload = json.loads((run_dir / "run.json").read_text())
+    payload = orjson.loads((run_dir / "run.json").read_text())
     assert payload["cron_rewrites"]["jobs_updated"] == 0
     assert payload["counts"]["cron_jobs_rewritten"] == 0

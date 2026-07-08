@@ -21,7 +21,7 @@ Strict invariants:
 
 from __future__ import annotations
 
-import json
+import orjson
 import logging
 import os
 import re
@@ -89,12 +89,12 @@ def load_state() -> Dict[str, Any]:
     if not path.exists():
         return _default_state()
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = orjson.loads(path.read_text(encoding="utf-8"))
         if isinstance(data, dict):
             base = _default_state()
             base.update({k: v for k, v in data.items() if k in base or k.startswith("_")})
             return base
-    except (OSError, json.JSONDecodeError) as e:
+    except (OSError, orjson.JSONDecodeError) as e:
         logger.debug("Failed to read curator state: %s", e)
     return _default_state()
 
@@ -639,7 +639,7 @@ def _classify_removed_skills(
             args = raw
         elif isinstance(raw, str):
             try:
-                args = json.loads(raw)
+                args = orjson.loads(raw)
             except Exception:
                 # Truncated or malformed — fall back to substring match on
                 # the raw string so we still catch the common case.
@@ -832,7 +832,7 @@ def _extract_absorbed_into_declarations(
             args = raw
         elif isinstance(raw, str):
             try:
-                args = json.loads(raw)
+                args = orjson.loads(raw)
             except Exception:
                 continue
         if not isinstance(args, dict):
@@ -1241,7 +1241,7 @@ def _write_run_report(
     # run.json — machine-readable, full fidelity
     try:
         (run_dir / "run.json").write_text(
-            json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
+            orjson.dumps(payload, option=orjson.OPT_INDENT_2).decode('utf-8') + "\n",
             encoding="utf-8",
         )
     except Exception as e:
@@ -1259,7 +1259,7 @@ def _write_run_report(
     try:
         if int(cron_rewrites.get("jobs_updated", 0)) > 0:
             (run_dir / "cron_rewrites.json").write_text(
-                json.dumps(cron_rewrites, indent=2, ensure_ascii=False) + "\n",
+                orjson.dumps(cron_rewrites, option=orjson.OPT_INDENT_2).decode('utf-8') + "\n",
                 encoding="utf-8",
             )
     except Exception as e:

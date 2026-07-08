@@ -4,7 +4,7 @@ Tests both the _handle_update_command handler (spawns update process) and
 the _send_update_notification startup hook (sends results after restart).
 """
 
-import json
+import orjson
 from pathlib import Path
 from unittest.mock import patch, MagicMock, AsyncMock
 
@@ -217,7 +217,7 @@ class TestHandleUpdateCommand:
 
         pending_path = hermes_home / ".update_pending.json"
         assert pending_path.exists()
-        data = json.loads(pending_path.read_text())
+        data = orjson.loads(pending_path.read_text())
         assert data["platform"] == "telegram"
         assert data["chat_id"] == "99999"
         assert data["chat_type"] == "dm"
@@ -251,7 +251,7 @@ class TestHandleUpdateCommand:
              patch("subprocess.Popen"):
             await runner._handle_update_command(event)
 
-        data = json.loads((hermes_home / ".update_pending.json").read_text())
+        data = orjson.loads((hermes_home / ".update_pending.json").read_text())
         assert data["thread_id"] == "777"
         assert data["message_id"] == "m-update-thread"
 
@@ -553,9 +553,9 @@ class TestSendUpdateNotification:
         hermes_home.mkdir()
 
         pending_path = hermes_home / ".update_pending.json"
-        pending_path.write_text(json.dumps({
+        pending_path.write_text(orjson.dumps({
             "platform": "telegram", "chat_id": "67890", "user_id": "12345",
-        }))
+        }).decode('utf-8'))
         (hermes_home / ".update_output.txt").write_text("still running")
 
         mock_adapter = AsyncMock()
@@ -576,9 +576,9 @@ class TestSendUpdateNotification:
         hermes_home.mkdir()
 
         claimed_path = hermes_home / ".update_pending.claimed.json"
-        claimed_path.write_text(json.dumps({
+        claimed_path.write_text(orjson.dumps({
             "platform": "telegram", "chat_id": "67890", "user_id": "12345",
-        }))
+        }).decode('utf-8'))
         (hermes_home / ".update_output.txt").write_text("done")
         (hermes_home / ".update_exit_code").write_text("0")
 
@@ -606,7 +606,7 @@ class TestSendUpdateNotification:
             "user_id": "12345",
             "timestamp": "2026-03-04T21:00:00",
         }
-        (hermes_home / ".update_pending.json").write_text(json.dumps(pending))
+        (hermes_home / ".update_pending.json").write_text(orjson.dumps(pending).decode('utf-8'))
         (hermes_home / ".update_output.txt").write_text(
             "→ Found 3 new commit(s)\n✓ Code updated!\n✓ Update complete!"
         )
@@ -640,7 +640,7 @@ class TestSendUpdateNotification:
             "message_id": "m-update-thread",
             "user_id": "12345",
         }
-        (hermes_home / ".update_pending.json").write_text(json.dumps(pending))
+        (hermes_home / ".update_pending.json").write_text(orjson.dumps(pending).decode('utf-8'))
         (hermes_home / ".update_output.txt").write_text("done")
         (hermes_home / ".update_exit_code").write_text("0")
 
@@ -665,7 +665,7 @@ class TestSendUpdateNotification:
         hermes_home.mkdir()
 
         pending = {"platform": "telegram", "chat_id": "111", "user_id": "222"}
-        (hermes_home / ".update_pending.json").write_text(json.dumps(pending))
+        (hermes_home / ".update_pending.json").write_text(orjson.dumps(pending).decode('utf-8'))
         (hermes_home / ".update_output.txt").write_text(
             "\x1b[32m✓ Code updated!\x1b[0m\n\x1b[1mDone\x1b[0m"
         )
@@ -689,7 +689,7 @@ class TestSendUpdateNotification:
         hermes_home.mkdir()
 
         pending = {"platform": "telegram", "chat_id": "111", "user_id": "222"}
-        (hermes_home / ".update_pending.json").write_text(json.dumps(pending))
+        (hermes_home / ".update_pending.json").write_text(orjson.dumps(pending).decode('utf-8'))
         (hermes_home / ".update_output.txt").write_text("x" * 5000)
         (hermes_home / ".update_exit_code").write_text("0")
 
@@ -713,7 +713,7 @@ class TestSendUpdateNotification:
         hermes_home.mkdir()
 
         pending = {"platform": "telegram", "chat_id": "111", "user_id": "222"}
-        (hermes_home / ".update_pending.json").write_text(json.dumps(pending))
+        (hermes_home / ".update_pending.json").write_text(orjson.dumps(pending).decode('utf-8'))
         (hermes_home / ".update_output.txt").write_text("Traceback: boom")
         (hermes_home / ".update_exit_code").write_text("1")
 
@@ -736,7 +736,7 @@ class TestSendUpdateNotification:
         hermes_home.mkdir()
 
         pending = {"platform": "telegram", "chat_id": "111", "user_id": "222"}
-        (hermes_home / ".update_pending.json").write_text(json.dumps(pending))
+        (hermes_home / ".update_pending.json").write_text(orjson.dumps(pending).decode('utf-8'))
         # No .update_output.txt created
         (hermes_home / ".update_exit_code").write_text("0")
 
@@ -759,9 +759,9 @@ class TestSendUpdateNotification:
         pending_path = hermes_home / ".update_pending.json"
         output_path = hermes_home / ".update_output.txt"
         exit_code_path = hermes_home / ".update_exit_code"
-        pending_path.write_text(json.dumps({
+        pending_path.write_text(orjson.dumps({
             "platform": "telegram", "chat_id": "111", "user_id": "222",
-        }))
+        }).decode('utf-8'))
         output_path.write_text("✓ Done")
         exit_code_path.write_text("0")
 
@@ -785,9 +785,9 @@ class TestSendUpdateNotification:
         pending_path = hermes_home / ".update_pending.json"
         output_path = hermes_home / ".update_output.txt"
         exit_code_path = hermes_home / ".update_exit_code"
-        pending_path.write_text(json.dumps({
+        pending_path.write_text(orjson.dumps({
             "platform": "telegram", "chat_id": "111", "user_id": "222",
-        }))
+        }).decode('utf-8'))
         output_path.write_text("✓ Done")
         exit_code_path.write_text("0")
 
@@ -838,7 +838,7 @@ class TestSendUpdateNotification:
         pending_path = hermes_home / ".update_pending.json"
         output_path = hermes_home / ".update_output.txt"
         exit_code_path = hermes_home / ".update_exit_code"
-        pending_path.write_text(json.dumps(pending))
+        pending_path.write_text(orjson.dumps(pending).decode('utf-8'))
         output_path.write_text("Done")
         exit_code_path.write_text("0")
 
@@ -876,7 +876,7 @@ class TestSendUpdateNotification:
         pending_path = hermes_home / ".update_pending.json"
         output_path = hermes_home / ".update_output.txt"
         exit_code_path = hermes_home / ".update_exit_code"
-        pending_path.write_text(json.dumps(pending))
+        pending_path.write_text(orjson.dumps(pending).decode('utf-8'))
         output_path.write_text("✓ Update complete!")
         exit_code_path.write_text("0")
 

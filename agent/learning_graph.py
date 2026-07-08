@@ -15,7 +15,7 @@ Run as a module to print edge-density stats against real data:
 
 from __future__ import annotations
 
-import json
+import orjson
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -89,7 +89,7 @@ def _load_usage() -> dict[str, dict[str, Any]]:
     except Exception:
         path = get_hermes_home() / "skills" / ".usage.json"
         try:
-            return json.loads(path.read_text(encoding="utf-8"))
+            return orjson.loads(path.read_text(encoding="utf-8"))
         except Exception:
             return {}
 
@@ -325,4 +325,4 @@ def build_learning_graph() -> dict[str, Any]:
 
 if __name__ == "__main__":
     nodes = build_skill_nodes(_skill_roots())
-    print(json.dumps(density_stats(nodes, build_edges(nodes)), indent=2))
+    print(orjson.dumps(density_stats(nodes, build_edges(nodes)), option=orjson.OPT_INDENT_2).decode('utf-8'))

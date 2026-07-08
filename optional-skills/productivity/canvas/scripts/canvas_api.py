@@ -10,7 +10,7 @@ Usage:
 """
 
 import argparse
-import json
+import orjson
 import os
 import sys
 
@@ -89,7 +89,7 @@ def list_courses(args):
         }
         for c in courses
     ]
-    print(json.dumps(output, indent=2))
+    print(orjson.dumps(output, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
 
 def list_assignments(args):
@@ -117,7 +117,7 @@ def list_assignments(args):
         }
         for a in assignments
     ]
-    print(json.dumps(output, indent=2))
+    print(orjson.dumps(output, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
 
 # =========================================================================

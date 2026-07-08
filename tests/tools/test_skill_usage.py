@@ -1,6 +1,6 @@
 """Tests for tools/skill_usage.py — sidecar telemetry + provenance filtering."""
 
-import json
+import orjson
 import multiprocessing as mp
 import os
 from pathlib import Path
@@ -257,7 +257,7 @@ def test_agent_created_excludes_hub_installed(skills_home):
     hub_dir = skills_dir / ".hub"
     hub_dir.mkdir()
     (hub_dir / "lock.json").write_text(
-        json.dumps({"version": 1, "installed": {"hub-skill": {"source": "taps/main"}}}),
+        orjson.dumps({"version": 1, "installed": {"hub-skill": {"source": "taps/main"}}}).decode('utf-8'),
         encoding="utf-8",
     )
     names = list_agent_created_skill_names()
@@ -290,8 +290,7 @@ description: test skill
     hub_dir = skills_dir / ".hub"
     hub_dir.mkdir()
     (hub_dir / "lock.json").write_text(
-        json.dumps(
-            {
+        orjson.dumps({
                 "version": 1,
                 "installed": {
                     "getnote": {
@@ -299,8 +298,7 @@ description: test skill
                         "install_path": "productivity/getnote",
                     }
                 },
-            }
-        ),
+            }).decode('utf-8'),
         encoding="utf-8",
     )
 
@@ -318,7 +316,7 @@ def test_is_agent_created(skills_home):
     hub_dir = skills_dir / ".hub"
     hub_dir.mkdir()
     (hub_dir / "lock.json").write_text(
-        json.dumps({"installed": {"hubbed": {}}}), encoding="utf-8",
+        orjson.dumps({"installed": {"hubbed": {}}}).decode('utf-8'), encoding="utf-8",
     )
     assert is_agent_created("my-skill") is True
     assert is_agent_created("bundled") is False
@@ -400,7 +398,7 @@ def test_archive_refuses_hub_skill(skills_home):
     hub_dir = skills_dir / ".hub"
     hub_dir.mkdir()
     (hub_dir / "lock.json").write_text(
-        json.dumps({"installed": {"hub-skill": {}}}), encoding="utf-8",
+        orjson.dumps({"installed": {"hub-skill": {}}}).decode('utf-8'), encoding="utf-8",
     )
 
     ok, msg = archive_skill("hub-skill")
@@ -606,7 +604,7 @@ def test_agent_created_report_excludes_bundled_and_hub(skills_home):
     hub = skills_dir / ".hub"
     hub.mkdir()
     (hub / "lock.json").write_text(
-        json.dumps({"installed": {"hubbed": {}}}), encoding="utf-8",
+        orjson.dumps({"installed": {"hubbed": {}}}).decode('utf-8'), encoding="utf-8",
     )
     names = {r["name"] for r in agent_created_report()}
     assert "mine" in names
@@ -669,7 +667,7 @@ def test_bump_patch_tracks_hub_skill(skills_home):
     hub = skills_dir / ".hub"
     hub.mkdir()
     (hub / "lock.json").write_text(
-        json.dumps({"installed": {"from-hub": {}}}), encoding="utf-8",
+        orjson.dumps({"installed": {"from-hub": {}}}).decode('utf-8'), encoding="utf-8",
     )
 
     bump_patch("from-hub")
@@ -687,7 +685,7 @@ def test_bump_use_tracks_hub_skill(skills_home):
     hub = skills_dir / ".hub"
     hub.mkdir()
     (hub / "lock.json").write_text(
-        json.dumps({"installed": {"from-hub": {}}}), encoding="utf-8",
+        orjson.dumps({"installed": {"from-hub": {}}}).decode('utf-8'), encoding="utf-8",
     )
 
     bump_use("from-hub")
@@ -748,7 +746,7 @@ def test_end_to_end_telemetry_tracked_but_lifecycle_refused(skills_home):
     hub = skills_dir / ".hub"
     hub.mkdir()
     (hub / "lock.json").write_text(
-        json.dumps({"installed": {"hub-one": {}}}), encoding="utf-8",
+        orjson.dumps({"installed": {"hub-one": {}}}).decode('utf-8'), encoding="utf-8",
     )
 
     for name in ("bundled-one", "hub-one"):
@@ -798,7 +796,7 @@ def test_usage_report_covers_all_provenance(skills_home):
     hub = skills_dir / ".hub"
     hub.mkdir()
     (hub / "lock.json").write_text(
-        json.dumps({"installed": {"hub-one": {}}}), encoding="utf-8",
+        orjson.dumps({"installed": {"hub-one": {}}}).decode('utf-8'), encoding="utf-8",
     )
     mark_agent_created("mine")
     for n in ("bundled-one", "hub-one", "mine"):

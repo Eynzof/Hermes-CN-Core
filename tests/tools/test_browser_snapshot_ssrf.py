@@ -7,7 +7,7 @@ the private page content.
 This is the fix for the SSRF bypass described in issue #44731.
 """
 
-import json
+import orjson
 
 import pytest
 
@@ -77,7 +77,7 @@ class TestBrowserSnapshotPrivateNetworkGuard:
             browser_tool, "_run_browser_command", mock_run_browser_command
         )
 
-        result = json.loads(browser_browser_snapshot(task_id="test"))
+        result = orjson.loads(browser_browser_snapshot(task_id="test"))
         assert result["success"] is False
         assert "private or internal address" in result["error"]
         assert self.PRIVATE_URL in result["error"]
@@ -101,7 +101,7 @@ class TestBrowserSnapshotPrivateNetworkGuard:
             browser_tool, "_run_browser_command", mock_run_browser_command
         )
 
-        result = json.loads(browser_browser_snapshot(task_id="test"))
+        result = orjson.loads(browser_browser_snapshot(task_id="test"))
         assert result["success"] is True
         assert "snapshot" in result
 
@@ -118,7 +118,7 @@ class TestBrowserSnapshotPrivateNetworkGuard:
             browser_tool, "_run_browser_command", mock_run_browser_command
         )
 
-        result = json.loads(browser_browser_snapshot(task_id="test"))
+        result = orjson.loads(browser_browser_snapshot(task_id="test"))
         assert result["success"] is True
         assert "snapshot" in result
 
@@ -139,7 +139,7 @@ class TestBrowserSnapshotPrivateNetworkGuard:
             browser_tool, "_run_browser_command", mock_run_browser_command
         )
 
-        result = json.loads(browser_browser_snapshot(task_id="test"))
+        result = orjson.loads(browser_browser_snapshot(task_id="test"))
         assert result["success"] is True
         assert "snapshot" in result
 
@@ -157,7 +157,7 @@ class TestBrowserSnapshotPrivateNetworkGuard:
             browser_tool, "_run_browser_command", mock_run_browser_command
         )
 
-        result = json.loads(browser_browser_snapshot(task_id="test"))
+        result = orjson.loads(browser_browser_snapshot(task_id="test"))
         assert result["success"] is True
         assert "snapshot" in result
 
@@ -177,7 +177,7 @@ class TestBrowserSnapshotPrivateNetworkGuard:
             browser_tool, "_run_browser_command", mock_run_browser_command
         )
 
-        result = json.loads(browser_browser_snapshot(task_id="test"))
+        result = orjson.loads(browser_browser_snapshot(task_id="test"))
         # Should succeed — eval failure means we can't determine URL, fail-open
         assert result["success"] is True
 
@@ -197,7 +197,7 @@ class TestBrowserSnapshotPrivateNetworkGuard:
             browser_tool, "_run_browser_command", mock_run_browser_command
         )
 
-        result = json.loads(browser_browser_snapshot(task_id="test"))
+        result = orjson.loads(browser_browser_snapshot(task_id="test"))
         assert result["success"] is True
 
     def test_handles_eval_exception(self, monkeypatch):
@@ -216,7 +216,7 @@ class TestBrowserSnapshotPrivateNetworkGuard:
             browser_tool, "_run_browser_command", mock_run_browser_command
         )
 
-        result = json.loads(browser_browser_snapshot(task_id="test"))
+        result = orjson.loads(browser_browser_snapshot(task_id="test"))
         assert result["success"] is True
 
     def test_blocks_loopback_url(self, monkeypatch):
@@ -236,7 +236,7 @@ class TestBrowserSnapshotPrivateNetworkGuard:
             browser_tool, "_run_browser_command", mock_run_browser_command
         )
 
-        result = json.loads(browser_browser_snapshot(task_id="test"))
+        result = orjson.loads(browser_browser_snapshot(task_id="test"))
         assert result["success"] is False
         assert "private or internal address" in result["error"]
 
@@ -258,7 +258,7 @@ class TestBrowserSnapshotPrivateNetworkGuard:
                 browser_tool, "_run_browser_command", mock_run_browser_command
             )
 
-            result = json.loads(browser_browser_snapshot(task_id="test"))
+            result = orjson.loads(browser_browser_snapshot(task_id="test"))
             assert result["success"] is False, f"Expected block for {private_ip}"
             assert "private or internal address" in result["error"]
 
@@ -310,7 +310,7 @@ class TestBrowserVisionPrivateNetworkGuard:
             browser_tool, "_run_browser_command", mock_run_browser_command
         )
 
-        result = json.loads(browser_browser_vision(question="what do you see", task_id="test"))
+        result = orjson.loads(browser_browser_vision(question="what do you see", task_id="test"))
         assert result["success"] is False
         assert "private or internal address" in result["error"]
         assert self.PRIVATE_URL in result["error"]
@@ -335,7 +335,7 @@ class TestBrowserVisionPrivateNetworkGuard:
         # but the important thing is the guard didn't block it.
 
         result_raw = browser_browser_vision(question="what do you see", task_id="test")
-        result = json.loads(result_raw)
+        result = orjson.loads(result_raw)
         # Guard passed; function continues to screenshot path.
         # Since screenshot file doesn't exist, it returns a file-not-found error,
         # NOT the "private or internal address" error.
@@ -355,7 +355,7 @@ class TestBrowserVisionPrivateNetworkGuard:
         )
 
         result_raw = browser_browser_vision(question="what", task_id="test")
-        result = json.loads(result_raw)
+        result = orjson.loads(result_raw)
         assert "private or internal address" not in result.get("error", "")
 
 
@@ -376,7 +376,7 @@ class TestBrowserVisionPrivateNetworkGuard:
         )
 
         result_raw = browser_browser_vision(question="what", task_id="test")
-        result = json.loads(result_raw)
+        result = orjson.loads(result_raw)
         assert "private or internal address" not in result.get("error", "")
 
     def test_skips_check_when_private_urls_allowed(self, monkeypatch):
@@ -394,7 +394,7 @@ class TestBrowserVisionPrivateNetworkGuard:
         )
 
         result_raw = browser_browser_vision(question="what", task_id="test")
-        result = json.loads(result_raw)
+        result = orjson.loads(result_raw)
         assert "private or internal address" not in result.get("error", "")
 
     def test_handles_eval_failure_gracefully(self, monkeypatch):
@@ -414,7 +414,7 @@ class TestBrowserVisionPrivateNetworkGuard:
         )
 
         result_raw = browser_browser_vision(question="what", task_id="test")
-        result = json.loads(result_raw)
+        result = orjson.loads(result_raw)
         assert "private or internal address" not in result.get("error", "")
 
     def test_handles_eval_exception(self, monkeypatch):
@@ -434,5 +434,5 @@ class TestBrowserVisionPrivateNetworkGuard:
         )
 
         result_raw = browser_browser_vision(question="what", task_id="test")
-        result = json.loads(result_raw)
+        result = orjson.loads(result_raw)
         assert "private or internal address" not in result.get("error", "")

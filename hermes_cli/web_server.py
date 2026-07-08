@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import hmac
 import importlib.util
-import json
+import orjson
 import logging
 import mimetypes
 # Register JavaScript MIME types explicitly so Windows (where the system
@@ -1282,7 +1282,7 @@ def _probe_gateway_health() -> tuple[bool, dict | None]:
             req = urllib.request.Request(path, method="GET")
             with urllib.request.urlopen(req, timeout=_GATEWAY_HEALTH_TIMEOUT) as resp:
                 if resp.status == 200:
-                    body = json.loads(resp.read())
+                    body = orjson.loads(resp.read())
                     return True, body
         except Exception:
             continue
@@ -3588,7 +3588,7 @@ async def get_elevenlabs_voices():
 
         def _fetch() -> Dict[str, Any]:
             with urllib.request.urlopen(request, timeout=10) as response:
-                return json.loads(response.read().decode("utf-8"))
+                return orjson.loads(response.read().decode("utf-8"))
 
         payload = await loop.run_in_executor(None, _fetch)
     except urllib.error.HTTPError as exc:
@@ -3654,7 +3654,7 @@ async def speak_text(payload: TTSSpeakRequest):
         raise HTTPException(status_code=500, detail=f"Speech synthesis failed: {exc}")
 
     try:
-        result = json.loads(result_json) if isinstance(result_json, str) else result_json
+        result = orjson.loads(result_json) if isinstance(result_json, str) else result_json
     except Exception:
         raise HTTPException(status_code=500, detail="Invalid TTS response")
 
@@ -4139,7 +4139,7 @@ def _read_memory_provider_file(provider: MemoryProvider) -> Dict[str, Any]:
     if not path.exists():
         return {}
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = orjson.loads(path.read_text(encoding="utf-8"))
     except Exception:
         _log.warning("Failed to read memory provider config from %s", path, exc_info=True)
         return {}
@@ -7308,7 +7308,7 @@ def _save_anthropic_oauth_creds(access_token: str, refresh_token: str, expires_a
     )
     try:
         with tmp_path.open("w", encoding="utf-8") as handle:
-            handle.write(json.dumps(payload, indent=2))
+            handle.write(orjson.dumps(payload, option=orjson.OPT_INDENT_2).decode('utf-8'))
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(tmp_path, _HERMES_OAUTH_FILE)
@@ -7405,14 +7405,14 @@ def _submit_anthropic_pkce(
         return {"ok": False, "status": "error", "message": "No code provided"}
     state_from_callback = parts[1] if len(parts) > 1 else ""
 
-    exchange_data = json.dumps({
+    exchange_data = orjson.dumps({
         "grant_type": "authorization_code",
         "client_id": _ANTHROPIC_OAUTH_CLIENT_ID,
         "code": code,
         "state": state_from_callback or sess["state"],
         "redirect_uri": _ANTHROPIC_OAUTH_REDIRECT_URI,
         "code_verifier": sess["verifier"],
-    }).encode()
+    })
     # Anthropic migrated the OAuth token endpoint to platform.claude.com;
     # console.anthropic.com now 404s. Try the new host first, then fall back.
     result = None
@@ -7429,7 +7429,7 @@ def _submit_anthropic_pkce(
         )
         try:
             with urllib.request.urlopen(req, timeout=20) as resp:
-                result = json.loads(resp.read().decode())
+                result = orjson.loads(resp.read().decode())
             break
         except Exception as e:
             last_exc = e
@@ -12920,8 +12920,8 @@ def _active_session_file_for_channel(app: "FastAPI", channel: str) -> Path:
 
 def _read_active_session_file(path: Path) -> Optional[str]:
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+        data = orjson.loads(path.read_text(encoding="utf-8"))
+    except (OSError, orjson.JSONDecodeError):
         return None
 
     session_id = str(data.get("session_id") or "").strip()
@@ -13306,7 +13306,7 @@ async def gateway_rpc(request: Request) -> JSONResponse:
 
     try:
         body = await request.json()
-    except json.JSONDecodeError:
+    except orjson.JSONDecodeError:
         return JSONResponse(
             {
                 "jsonrpc": "2.0",
@@ -13997,7 +13997,7 @@ def _discover_dashboard_plugins() -> list:
             if not manifest_file.exists():
                 continue
             try:
-                data = json.loads(manifest_file.read_text(encoding="utf-8"))
+                data = orjson.loads(manifest_file.read_text(encoding="utf-8"))
                 name = data.get("name", child.name)
                 if name in seen_names:
                     continue
@@ -14635,7 +14635,7 @@ def _write_dashboard_ready_file(actual_port: int) -> None:
     try:
         path = Path(target)
         path.parent.mkdir(parents=True, exist_ok=True)
-        payload = json.dumps({"port": int(actual_port)}, separators=(",", ":"))
+        payload = orjson.dumps({"port": int(actual_port)}).decode('utf-8')
         with tempfile.NamedTemporaryFile(
             "w",
             encoding="utf-8",

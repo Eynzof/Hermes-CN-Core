@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import argparse
 import itertools
-import json
+import orjson
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -136,8 +136,8 @@ def main(argv: list[str] | None = None) -> int:
         emit_json({"error": "Specify --count N or --sweep '{...}'"})
         return 1
 
-    base_args = json.loads(args.args) if args.args.strip() else {}
-    sweep = json.loads(args.sweep) if args.sweep.strip() else {}
+    base_args = orjson.loads(args.args) if args.args.strip() else {}
+    sweep = orjson.loads(args.sweep) if args.sweep.strip() else {}
 
     # Validate sweep shape
     if sweep:
@@ -158,8 +158,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     try:
         with wf_path.open() as f:
-            workflow = unwrap_workflow(json.load(f))
-    except (ValueError, json.JSONDecodeError) as e:
+            workflow = unwrap_workflow(orjson.loads(f.read()))
+    except (ValueError, orjson.JSONDecodeError) as e:
         emit_json({"error": str(e)})
         return 1
 

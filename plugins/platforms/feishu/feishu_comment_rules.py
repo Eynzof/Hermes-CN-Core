@@ -9,7 +9,7 @@ Pairing store: ~/.hermes/feishu_comment_pairing.json.
 
 from __future__ import annotations
 
-import json
+import orjson
 import logging
 import time
 from dataclasses import dataclass, field
@@ -91,10 +91,10 @@ class _MtimeCache:
 
         try:
             with open(self._path, "r", encoding="utf-8") as f:
-                data = json.load(f)
+                data = orjson.loads(f.read())
             if not isinstance(data, dict):
                 data = {}
-        except (json.JSONDecodeError, OSError):
+        except (orjson.JSONDecodeError, OSError):
             logger.warning("[Feishu-Rules] Failed to read %s, using empty config", self._path)
             data = {}
 
@@ -236,7 +236,7 @@ def _save_pairing(data: dict) -> None:
     PAIRING_FILE.parent.mkdir(parents=True, exist_ok=True)
     tmp = PAIRING_FILE.with_suffix(".tmp")
     with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+        f.write(orjson.dumps(data, option=orjson.OPT_INDENT_2).decode('utf-8'))
     tmp.replace(PAIRING_FILE)
     # Invalidate cache so next load picks up change
     _pairing_cache._mtime = 0.0

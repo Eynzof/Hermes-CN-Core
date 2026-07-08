@@ -66,9 +66,9 @@ class TestMarkerContract:
 
     def test_write_is_atomic_json(self, home):
         dc.write_drain_request(principal="x")
-        import json
+        import orjson
 
-        data = json.loads(dc.drain_request_path().read_text())
+        data = orjson.loads(dc.drain_request_path().read_text())
         assert data["action"] == "drain"
 
 
@@ -100,10 +100,10 @@ class TestSuppressNotification:
         # A marker written before this change has no suppress_notification key →
         # must read as not-suppressed (broadcast still fires), while still being
         # an active drain.
-        import json
+        import orjson
 
         dc.drain_request_path().write_text(
-            json.dumps({"action": "drain", "epoch": dc.current_instantiation_epoch()}),
+            orjson.dumps({"action": "drain", "epoch": dc.current_instantiation_epoch()}).decode('utf-8'),
             encoding="utf-8",
         )
         assert dc.drain_requested() is True
@@ -172,10 +172,10 @@ class TestInstantiationEpoch:
     def test_legacy_marker_without_epoch_still_active(self, home):
         # A marker written before this change (no "epoch" key) must remain
         # fail-safe toward quiescing — never silently ignored.
-        import json
+        import orjson
 
         dc.drain_request_path().write_text(
-            json.dumps({"action": "drain", "requested_at": "x", "principal": "p"}),
+            orjson.dumps({"action": "drain", "requested_at": "x", "principal": "p"}).decode('utf-8'),
             encoding="utf-8",
         )
         assert dc.drain_requested() is True
@@ -190,10 +190,10 @@ class TestInstantiationEpoch:
         # No /proc (non-Linux, etc.) → epoch "" → degrade to presence-only:
         # any present marker (even with a foreign epoch) reads as active rather
         # than fail-closed.
-        import json
+        import orjson
 
         dc.drain_request_path().write_text(
-            json.dumps({"action": "drain", "epoch": "some-other-epoch"}),
+            orjson.dumps({"action": "drain", "epoch": "some-other-epoch"}).decode('utf-8'),
             encoding="utf-8",
         )
         monkeypatch.setattr(dc, "current_instantiation_epoch", lambda: "")

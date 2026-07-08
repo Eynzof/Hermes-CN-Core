@@ -22,7 +22,7 @@ Usage in a tool module:
 """
 
 import datetime
-import json
+import orjson
 import logging
 import os
 import uuid
@@ -83,7 +83,7 @@ class DebugSession:
                 "tool_calls": self._calls,
             }
             with open(filepath, "w", encoding="utf-8") as f:
-                json.dump(payload, f, indent=2, ensure_ascii=False)
+                f.write(orjson.dumps(payload, option=orjson.OPT_INDENT_2).decode('utf-8'))
             logger.debug("%s debug log saved: %s", self.tool_name, filepath)
         except Exception as e:
             logger.error("Error saving %s debug log: %s", self.tool_name, e)

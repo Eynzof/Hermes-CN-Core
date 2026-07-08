@@ -256,7 +256,7 @@ if _try_termux_ultrafast_version():
 
 import argparse
 import hashlib
-import json
+import orjson
 import shlex
 import shutil
 import stat
@@ -853,9 +853,9 @@ def _has_any_provider_configured() -> bool:
     auth_file = get_hermes_home() / "auth.json"
     if auth_file.exists():
         try:
-            import json
+            import orjson
 
-            auth = json.loads(auth_file.read_text())
+            auth = orjson.loads(auth_file.read_text())
             active = auth.get("active_provider")
             if active:
                 status = get_auth_status(active)
@@ -1316,7 +1316,7 @@ def _read_tui_active_session_file(path: Optional[str]) -> Optional[str]:
     if not path:
         return None
     try:
-        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        data = orjson.loads(Path(path).read_text(encoding="utf-8"))
         sid = str(data.get("session_id") or "").strip()
         return sid or None
     except Exception:
@@ -1502,9 +1502,9 @@ def _tui_need_npm_install(root: Path) -> bool:
     # can bump the root lockfile timestamp even when installed deps already
     # match. Fall back to mtime when either file is unparseable.
     try:
-        wanted = json.loads(lock.read_text(encoding="utf-8")).get("packages") or {}
-        installed = json.loads(marker.read_text(encoding="utf-8")).get("packages") or {}
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        wanted = orjson.loads(lock.read_text(encoding="utf-8")).get("packages") or {}
+        installed = orjson.loads(marker.read_text(encoding="utf-8")).get("packages") or {}
+    except (OSError, UnicodeDecodeError, orjson.JSONDecodeError):
         return lock.stat().st_mtime > marker.stat().st_mtime
 
     def comparable(pkg: dict) -> dict:
@@ -4415,7 +4415,7 @@ def cmd_uninstall(args):
     if getattr(args, "gui_summary", False):
         from hermes_cli.gui_uninstall import gui_install_summary
 
-        print(json.dumps(gui_install_summary()))
+        print(orjson.dumps(gui_install_summary()).decode('utf-8'))
         return
 
     # GUI-only uninstall. The desktop app shells out to this non-interactively
@@ -4549,7 +4549,7 @@ def _gateway_prompt(prompt_text: str, default: str = "", timeout: float = 300.0)
     config migration) are forwarded to the messenger instead of being silently
     skipped.
     """
-    import json as _json
+    import orjson as _json
     import uuid as _uuid
     from hermes_constants import get_hermes_home
 
@@ -4566,7 +4566,7 @@ def _gateway_prompt(prompt_text: str, default: str = "", timeout: float = 300.0)
         "id": str(_uuid.uuid4()),
     }
     tmp = prompt_path.with_suffix(".tmp")
-    tmp.write_text(_json.dumps(payload))
+    tmp.write_text(_json.dumps(payload).decode('utf-8'))
     tmp.replace(prompt_path)
 
     # Poll for response
@@ -5074,8 +5074,8 @@ def _desktop_build_needed(desktop_dir: Path, project_root: Path, *, source_mode:
         return True
 
     try:
-        stamp_data = json.loads(stamp_file.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError, KeyError):
+        stamp_data = orjson.loads(stamp_file.read_text(encoding="utf-8"))
+    except (OSError, orjson.JSONDecodeError, KeyError):
         return True
 
     # If the mode changed (source vs packaged), force a rebuild
@@ -5102,7 +5102,7 @@ def _write_desktop_build_stamp(project_root: Path, *, source_mode: bool) -> None
             "sourceMode": source_mode,
             "builtAt": datetime.now(timezone.utc).isoformat(),
         }
-        stamp_file.write_text(json.dumps(stamp_data, indent=2) + "\n", encoding="utf-8")
+        stamp_file.write_text(orjson.dumps(stamp_data, option=orjson.OPT_INDENT_2).decode('utf-8') + "\n", encoding="utf-8")
     except Exception as exc:
         # Never let stamp-writing block or fail a build
         logger.debug("Failed to write desktop build stamp: %s", exc)
@@ -13146,11 +13146,11 @@ def main():
                 from tools.computer_use.permissions import request_permissions_grant
                 sys.exit(request_permissions_grant())
             if perms_action == "status":
-                import json as _json
+                import orjson as _json
                 from tools.computer_use.permissions import computer_use_status
                 st = computer_use_status()
                 if bool(getattr(args, "json", False)):
-                    print(_json.dumps(st, indent=2, sort_keys=True))
+                    print(_json.dumps(st, option=orjson.OPT_INDENT_2 | orjson.OPT_SORT_KEYS).decode('utf-8'))
                     sys.exit(0 if st["ready"] else 1)
                 if not st["platform_supported"]:
                     print(f"Computer Use is not supported on {st['platform']}.")
@@ -13284,7 +13284,7 @@ def main():
             return False
 
     def cmd_sessions(args):
-        import json as _json
+        import orjson as _json
 
         action = args.sessions_action
 
@@ -13384,7 +13384,7 @@ def main():
                 if not data:
                     print(f"Session '{args.session_id}' not found.")
                     return
-                line = _json.dumps(data, ensure_ascii=False) + "\n"
+                line = _json.dumps(data).decode('utf-8') + "\n"
                 if args.output == "-":
 
                     sys.stdout.write(line)
@@ -13397,11 +13397,11 @@ def main():
                 if args.output == "-":
 
                     for s in sessions:
-                        sys.stdout.write(_json.dumps(s, ensure_ascii=False) + "\n")
+                        sys.stdout.write(_json.dumps(s).decode('utf-8') + "\n")
                 else:
                     with open(args.output, "w", encoding="utf-8") as f:
                         for s in sessions:
-                            f.write(_json.dumps(s, ensure_ascii=False) + "\n")
+                            f.write(_json.dumps(s).decode('utf-8') + "\n")
                     print(f"Exported {len(sessions)} sessions to {args.output}")
 
         elif action == "delete":

@@ -1,7 +1,7 @@
 """Tests for Google Workspace gws bridge and CLI wrapper."""
 
 import importlib.util
-import json
+import orjson
 import subprocess
 import sys
 import types
@@ -65,7 +65,7 @@ def _write_token(path: Path, *, token="ya29.test", expiry=None, **extra):
     }
     if expiry is not None:
         data["expiry"] = expiry
-    path.write_text(json.dumps(data))
+    path.write_text(orjson.dumps(data).decode('utf-8'))
 
 
 def test_bridge_returns_valid_token(bridge_module, tmp_path):
@@ -85,10 +85,10 @@ def test_bridge_refreshes_expired_token(bridge_module, tmp_path):
     _write_token(token_path, token="ya29.old", expiry=past)
 
     mock_resp = MagicMock()
-    mock_resp.read.return_value = json.dumps({
+    mock_resp.read.return_value = orjson.dumps({
         "access_token": "ya29.refreshed",
         "expires_in": 3600,
-    }).encode()
+    })
     mock_resp.__enter__ = lambda s: s
     mock_resp.__exit__ = MagicMock(return_value=False)
 
@@ -97,7 +97,7 @@ def test_bridge_refreshes_expired_token(bridge_module, tmp_path):
 
     assert result == "ya29.refreshed"
     # Verify persisted
-    saved = json.loads(token_path.read_text())
+    saved = orjson.loads(token_path.read_text())
     assert saved["token"] == "ya29.refreshed"
     assert saved["type"] == "authorized_user"
 
@@ -111,10 +111,10 @@ def test_bridge_refresh_passes_timeout_to_urlopen(bridge_module):
     _write_token(token_path, token="ya29.old", expiry=past)
 
     mock_resp = MagicMock()
-    mock_resp.read.return_value = json.dumps({
+    mock_resp.read.return_value = orjson.dumps({
         "access_token": "ya29.refreshed",
         "expires_in": 3600,
-    }).encode()
+    })
     mock_resp.__enter__ = lambda s: s
     mock_resp.__exit__ = MagicMock(return_value=False)
 
@@ -197,7 +197,7 @@ def test_api_calendar_list_uses_events_list(api_module):
     assert "events" in cmd
     assert "list" in cmd
     assert "--params" in cmd
-    params = json.loads(cmd[cmd.index("--params") + 1])
+    params = orjson.loads(cmd[cmd.index("--params") + 1])
     assert "timeMin" in params
     assert "timeMax" in params
     assert params["calendarId"] == "primary"
@@ -224,7 +224,7 @@ def test_api_calendar_list_respects_date_range(api_module):
 
     cmd = captured["cmd"]
     params_idx = cmd.index("--params")
-    params = json.loads(cmd[params_idx + 1])
+    params = orjson.loads(cmd[params_idx + 1])
     assert params["timeMin"] == "2026-04-01T00:00:00Z"
     assert params["timeMax"] == "2026-04-07T23:59:59Z"
 
@@ -262,7 +262,7 @@ def test_api_gmail_get_reads_headers_case_insensitively(api_module, capsys, head
 
     api_module.gmail_get(args)
 
-    result = json.loads(capsys.readouterr().out)
+    result = orjson.loads(capsys.readouterr().out)
     assert result["from"] == "sender@example.com"
     assert result["to"] == "recipient@example.com"
     assert result["subject"] == "case bug"
@@ -322,7 +322,7 @@ def test_api_gmail_search_reads_headers_case_insensitively(
     api_module.gmail_search(args)
 
     assert len(calls) == 2
-    result = json.loads(capsys.readouterr().out)
+    result = orjson.loads(capsys.readouterr().out)
     assert result == [
         {
             "id": "msg-1",
@@ -449,13 +449,13 @@ def test_api_get_credentials_refresh_persists_authorized_user_type(api_module, m
             self.expired = False
 
         def to_json(self):
-            return json.dumps({
+            return orjson.dumps({
                 "token": "ya29.refreshed",
                 "refresh_token": "1//refresh",
                 "client_id": "123.apps.googleusercontent.com",
                 "client_secret": "secret",
                 "token_uri": "https://oauth2.googleapis.com/token",
-            })
+            }).decode('utf-8')
 
     class FakeCredentialsModule:
         @staticmethod
@@ -480,7 +480,7 @@ def test_api_get_credentials_refresh_persists_authorized_user_type(api_module, m
 
     creds = api_module.get_credentials()
 
-    saved = json.loads(token_path.read_text())
+    saved = orjson.loads(token_path.read_text())
     assert isinstance(creds, FakeCredentials)
     assert saved["token"] == "ya29.refreshed"
     assert saved["type"] == "authorized_user"

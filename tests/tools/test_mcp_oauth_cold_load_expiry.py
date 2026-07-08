@@ -34,7 +34,7 @@ timestamp persisted alongside the access_token (``auth.ts:~180``).
 from __future__ import annotations
 
 import asyncio
-import json
+import orjson
 import time
 
 import pytest
@@ -70,7 +70,7 @@ class TestSetTokensAbsoluteExpiry:
         )
         after = time.time()
 
-        on_disk = json.loads(
+        on_disk = orjson.loads(
             (tmp_path / "mcp-tokens" / "srv.json").read_text()
         )
         assert "expires_at" in on_disk, (
@@ -100,7 +100,7 @@ class TestSetTokensAbsoluteExpiry:
             )
         )
 
-        on_disk = json.loads(
+        on_disk = orjson.loads(
             (tmp_path / "mcp-tokens" / "srv.json").read_text()
         )
         assert "expires_at" not in on_disk
@@ -148,15 +148,13 @@ class TestGetTokensReconstructsExpiresIn:
         token_dir.mkdir(parents=True, exist_ok=True)
         # Write an already-expired token file directly.
         (token_dir / "srv.json").write_text(
-            json.dumps(
-                {
+            orjson.dumps({
                     "access_token": "a",
                     "token_type": "Bearer",
                     "expires_in": 3600,
                     "expires_at": time.time() - 60,  # expired 1 min ago
                     "refresh_token": "r",
-                }
-            )
+                }).decode('utf-8')
         )
 
         storage = HermesTokenStorage("srv")
@@ -187,14 +185,12 @@ class TestGetTokensReconstructsExpiresIn:
         # well past its nominal expires_in.
         legacy_path = token_dir / "srv.json"
         legacy_path.write_text(
-            json.dumps(
-                {
+            orjson.dumps({
                     "access_token": "a",
                     "token_type": "Bearer",
                     "expires_in": 3600,
                     "refresh_token": "r",
-                }
-            )
+                }).decode('utf-8')
         )
         stale_time = time.time() - 7200  # 2hr ago, exceeds 3600s TTL
         import os
@@ -304,15 +300,13 @@ async def test_initialize_flags_expired_token_as_invalid(tmp_path, monkeypatch):
     token_dir = _get_token_dir()
     token_dir.mkdir(parents=True, exist_ok=True)
     (token_dir / "srv.json").write_text(
-        json.dumps(
-            {
+        orjson.dumps({
                 "access_token": "stale",
                 "token_type": "Bearer",
                 "expires_in": 3600,
                 "expires_at": time.time() - 60,
                 "refresh_token": "fresh",
-            }
-        )
+            }).decode('utf-8')
     )
 
     storage = HermesTokenStorage("srv")

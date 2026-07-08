@@ -267,8 +267,8 @@ def check_config(groq_key, eleven_key):
     voice_mode_path = HERMES_HOME / "gateway_voice_mode.json"
     if voice_mode_path.exists():
         try:
-            import json
-            modes = json.loads(voice_mode_path.read_text(encoding="utf-8"))
+            import orjson
+            modes = orjson.loads(voice_mode_path.read_text(encoding="utf-8"))
             off_count = sum(1 for v in modes.values() if v == "off")
             all_count = sum(1 for v in modes.values() if v == "all")
             check("Voice mode state", True, f"{all_count} on, {off_count} off, {len(modes)} total")

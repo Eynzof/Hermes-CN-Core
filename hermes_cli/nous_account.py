@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-import json
+import orjson
 import threading
 import time
 import urllib.request
@@ -572,7 +572,7 @@ def _fetch_nous_account_info(
     }
     req = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(req, timeout=8) as resp:
-        payload = json.loads(resp.read().decode())
+        payload = orjson.loads(resp.read().decode())
     return payload if isinstance(payload, dict) else {}
 
 

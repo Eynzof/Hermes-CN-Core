@@ -8,7 +8,7 @@ Verifies that:
 """
 
 import ast
-import json
+import orjson
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch, call
@@ -45,11 +45,11 @@ class TestUpdateSessionMeta:
         db = _tmp_db(tmp_path)
         db.create_session("s1", source="acp", model="gpt-4")
 
-        new_meta = json.dumps({"cwd": "/new/path", "provider": "openai"})
+        new_meta = orjson.dumps({"cwd": "/new/path", "provider": "openai"}).decode('utf-8')
         db.update_session_meta("s1", new_meta, model=None)
 
         row = db.get_session("s1")
-        stored = json.loads(row["model_config"])
+        stored = orjson.loads(row["model_config"])
         assert stored["cwd"] == "/new/path"
         assert stored["provider"] == "openai"
 
@@ -57,7 +57,7 @@ class TestUpdateSessionMeta:
         db = _tmp_db(tmp_path)
         db.create_session("s2", source="acp", model="gpt-3.5")
 
-        db.update_session_meta("s2", json.dumps({"cwd": "."}), model="gpt-4o")
+        db.update_session_meta("s2", orjson.dumps({"cwd": "."}).decode('utf-8'), model="gpt-4o")
 
         row = db.get_session("s2")
         assert row["model"] == "gpt-4o"
@@ -67,7 +67,7 @@ class TestUpdateSessionMeta:
         db = _tmp_db(tmp_path)
         db.create_session("s3", source="acp", model="claude-3")
 
-        db.update_session_meta("s3", json.dumps({"cwd": "."}), model=None)
+        db.update_session_meta("s3", orjson.dumps({"cwd": "."}).decode('utf-8'), model=None)
 
         row = db.get_session("s3")
         assert row["model"] == "claude-3"
@@ -85,7 +85,7 @@ class TestUpdateSessionMeta:
             return original(fn)
 
         db._execute_write = patched
-        db.update_session_meta("s4", json.dumps({"cwd": "."}), model="m")
+        db.update_session_meta("s4", orjson.dumps({"cwd": "."}).decode('utf-8'), model="m")
 
         assert call_count[0] >= 1, (
             "update_session_meta must call _execute_write at least once"
@@ -94,7 +94,7 @@ class TestUpdateSessionMeta:
     def test_noop_on_nonexistent_session(self, tmp_path):
         """Updating a non-existent session must not raise."""
         db = _tmp_db(tmp_path)
-        db.update_session_meta("ghost", json.dumps({"cwd": "."}), model=None)
+        db.update_session_meta("ghost", orjson.dumps({"cwd": "."}).decode('utf-8'), model=None)
 
 
 # ---------------------------------------------------------------------------
@@ -168,7 +168,7 @@ class TestPersistRoundTrip:
         manager.save_session(state.session_id)
 
         row = db.get_session(state.session_id)
-        mc = json.loads(row["model_config"])
+        mc = orjson.loads(row["model_config"])
         assert mc["cwd"] == "/updated"
 
     def test_model_persisted_via_update_session_meta(self, tmp_path):
@@ -189,7 +189,7 @@ class TestPersistRoundTrip:
 
         state = manager.create_session()
         # Manually set a model in DB
-        db.update_session_meta(state.session_id, json.dumps({"cwd": "."}), model="stored-model")
+        db.update_session_meta(state.session_id, orjson.dumps({"cwd": "."}).decode('utf-8'), model="stored-model")
 
         # Now save with empty model
         state.model = ""

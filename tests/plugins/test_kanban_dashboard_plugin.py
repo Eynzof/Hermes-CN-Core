@@ -2095,7 +2095,7 @@ def _patch_specifier_response(monkeypatch, *, content, model="test-model"):
 
 
 def test_specify_happy_path(client, monkeypatch):
-    import json as jsonlib
+    import orjson as jsonlib
 
     # Create a triage task.
     t = client.post(
@@ -2106,9 +2106,7 @@ def test_specify_happy_path(client, monkeypatch):
 
     _patch_specifier_response(
         monkeypatch,
-        content=jsonlib.dumps(
-            {"title": "Polished", "body": "**Goal**\nDo the thing."}
-        ),
+        content=jsonlib.dumps({"title": "Polished", "body": "**Goal**\nDo the thing."}).decode('utf-8'),
     )
 
     r = client.post(

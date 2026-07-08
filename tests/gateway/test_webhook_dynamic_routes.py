@@ -1,6 +1,6 @@
 """Tests for webhook adapter dynamic route loading."""
 
-import json
+import orjson
 import pytest
 
 from gateway.config import PlatformConfig
@@ -34,7 +34,7 @@ class TestDynamicRouteLoading:
 
     def test_loads_dynamic_routes(self, tmp_path):
         subs = {"my-hook": {"secret": "dynamic-secret", "prompt": "test", "events": []}}
-        (tmp_path / _DYNAMIC_ROUTES_FILENAME).write_text(json.dumps(subs))
+        (tmp_path / _DYNAMIC_ROUTES_FILENAME).write_text(orjson.dumps(subs).decode('utf-8'))
 
         adapter = _make_adapter(routes={"static": {"secret": "s"}})
         adapter._reload_dynamic_routes()
@@ -43,7 +43,7 @@ class TestDynamicRouteLoading:
 
     def test_static_takes_precedence(self, tmp_path):
         (tmp_path / _DYNAMIC_ROUTES_FILENAME).write_text(
-            json.dumps({"conflict": {"secret": "dynamic", "prompt": "dyn"}})
+            orjson.dumps({"conflict": {"secret": "dynamic", "prompt": "dyn"}}).decode('utf-8')
         )
         adapter = _make_adapter(routes={"conflict": {"secret": "static", "prompt": "stat"}})
         adapter._reload_dynamic_routes()
@@ -52,7 +52,7 @@ class TestDynamicRouteLoading:
     def test_mtime_gated(self, tmp_path):
         import time
         path = tmp_path / _DYNAMIC_ROUTES_FILENAME
-        path.write_text(json.dumps({"v1": {"secret": "s"}}))
+        path.write_text(orjson.dumps({"v1": {"secret": "s"}}).decode('utf-8'))
 
         adapter = _make_adapter()
         adapter._reload_dynamic_routes()
@@ -65,14 +65,14 @@ class TestDynamicRouteLoading:
 
         # New write — reloads
         time.sleep(0.05)
-        path.write_text(json.dumps({"v2": {"secret": "s"}}))
+        path.write_text(orjson.dumps({"v2": {"secret": "s"}}).decode('utf-8'))
         adapter._reload_dynamic_routes()
         assert "v2" in adapter._dynamic_routes
         assert "v1" not in adapter._dynamic_routes
 
     def test_file_removal_clears(self, tmp_path):
         path = tmp_path / _DYNAMIC_ROUTES_FILENAME
-        path.write_text(json.dumps({"temp": {"secret": "s"}}))
+        path.write_text(orjson.dumps({"temp": {"secret": "s"}}).decode('utf-8'))
         adapter = _make_adapter()
         adapter._reload_dynamic_routes()
         assert "temp" in adapter._dynamic_routes
@@ -104,7 +104,7 @@ class TestDynamicRouteSecretValidation:
         # Explicit empty-string secret must NOT fall back to the global
         # secret, and the route must be skipped entirely.
         (tmp_path / _DYNAMIC_ROUTES_FILENAME).write_text(
-            json.dumps({"evil": {"secret": "", "prompt": "rm -rf"}})
+            orjson.dumps({"evil": {"secret": "", "prompt": "rm -rf"}}).decode('utf-8')
         )
         adapter = _make_adapter()  # has global secret
         adapter._reload_dynamic_routes()
@@ -113,7 +113,7 @@ class TestDynamicRouteSecretValidation:
 
     def test_missing_secret_no_global_rejected(self, tmp_path):
         (tmp_path / _DYNAMIC_ROUTES_FILENAME).write_text(
-            json.dumps({"orphan": {"prompt": "test"}})
+            orjson.dumps({"orphan": {"prompt": "test"}}).decode('utf-8')
         )
         # No global secret configured
         adapter = _make_adapter(extra={"secret": ""})
@@ -125,7 +125,7 @@ class TestDynamicRouteSecretValidation:
         # No per-route secret but a global one is set → route is kept,
         # the global secret protects it. Preserves existing fallback.
         (tmp_path / _DYNAMIC_ROUTES_FILENAME).write_text(
-            json.dumps({"valid": {"prompt": "ok"}})
+            orjson.dumps({"valid": {"prompt": "ok"}}).decode('utf-8')
         )
         adapter = _make_adapter()  # global secret set
         adapter._reload_dynamic_routes()
@@ -134,7 +134,7 @@ class TestDynamicRouteSecretValidation:
     def test_insecure_no_auth_preserved(self, tmp_path):
         # Explicit opt-in escape hatch for local testing — must still load.
         (tmp_path / _DYNAMIC_ROUTES_FILENAME).write_text(
-            json.dumps({"test": {"secret": _INSECURE_NO_AUTH, "prompt": "p"}})
+            orjson.dumps({"test": {"secret": _INSECURE_NO_AUTH, "prompt": "p"}}).decode('utf-8')
         )
         adapter = _make_adapter(extra={"host": "127.0.0.1"})
         adapter._reload_dynamic_routes()
@@ -143,7 +143,7 @@ class TestDynamicRouteSecretValidation:
     def test_insecure_no_auth_rejected_on_non_loopback_bind(self, tmp_path):
         # Dynamic INSECURE_NO_AUTH routes are only valid on loopback hosts.
         (tmp_path / _DYNAMIC_ROUTES_FILENAME).write_text(
-            json.dumps({"pub": {"secret": _INSECURE_NO_AUTH, "prompt": "p"}})
+            orjson.dumps({"pub": {"secret": _INSECURE_NO_AUTH, "prompt": "p"}}).decode('utf-8')
         )
         adapter = _make_adapter(extra={"host": "0.0.0.0"})
         adapter._reload_dynamic_routes()
@@ -153,7 +153,7 @@ class TestDynamicRouteSecretValidation:
     def test_warning_logged_on_skip(self, tmp_path, caplog):
         import logging
         (tmp_path / _DYNAMIC_ROUTES_FILENAME).write_text(
-            json.dumps({"silent": {"secret": "", "prompt": "x"}})
+            orjson.dumps({"silent": {"secret": "", "prompt": "x"}}).decode('utf-8')
         )
         adapter = _make_adapter()
         with caplog.at_level(logging.WARNING, logger="gateway.platforms.webhook"):
@@ -163,10 +163,10 @@ class TestDynamicRouteSecretValidation:
     def test_partial_skip(self, tmp_path):
         # One route bad, one route good — only the bad one is dropped.
         (tmp_path / _DYNAMIC_ROUTES_FILENAME).write_text(
-            json.dumps({
+            orjson.dumps({
                 "bad":  {"secret": "", "prompt": "x"},
                 "good": {"secret": "valid-secret", "prompt": "y"},
-            })
+            }).decode('utf-8')
         )
         adapter = _make_adapter()
         adapter._reload_dynamic_routes()

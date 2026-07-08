@@ -1,6 +1,6 @@
 """Tests for agent/transports/types.py — dataclass construction + helpers."""
 
-import json
+import orjson
 
 from agent.transports.types import (
     NormalizedResponse,
@@ -102,7 +102,7 @@ class TestNormalizedResponse:
 class TestBuildToolCall:
     def test_dict_arguments_serialized(self):
         tc = build_tool_call(id="call_1", name="terminal", arguments={"cmd": "ls"})
-        assert tc.arguments == json.dumps({"cmd": "ls"})
+        assert tc.arguments == orjson.dumps({"cmd": "ls"}).decode('utf-8')
         assert tc.provider_data is None
 
     def test_string_arguments_passthrough(self):

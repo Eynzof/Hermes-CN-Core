@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
-import json
+import orjson
 import sys
 from pathlib import Path
 
@@ -37,7 +37,7 @@ def test_save_twilio_writes_env_and_state(tmp_path: Path, monkeypatch):
     )
 
     env_text = (tmp_path / ".hermes" / ".env").read_text(encoding="utf-8")
-    state = json.loads((tmp_path / ".hermes" / "telephony_state.json").read_text(encoding="utf-8"))
+    state = orjson.loads((tmp_path / ".hermes" / "telephony_state.json").read_text(encoding="utf-8"))
 
     assert result["success"] is True
     assert "TWILIO_ACCOUNT_SID=AC123" in env_text
@@ -99,7 +99,7 @@ def test_twilio_buy_number_saves_env_and_state(tmp_path: Path):
         env_path=env_path,
     )
 
-    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state = orjson.loads(state_path.read_text(encoding="utf-8"))
     env_text = env_path.read_text(encoding="utf-8")
 
     assert result["phone_sid"] == "PN111"
@@ -158,7 +158,7 @@ def test_twilio_inbox_marks_seen_checkpoint(tmp_path: Path):
     }
 
     result = mod._twilio_inbox(limit=10, since_last=True, mark_seen=True, state_path=state_path)
-    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state = orjson.loads(state_path.read_text(encoding="utf-8"))
 
     assert result["count"] == 1
     assert result["messages"][0]["sid"] == "SM3"
@@ -188,7 +188,7 @@ def test_vapi_import_twilio_number_saves_phone_number_id(tmp_path: Path):
         env_path=env_path,
     )
 
-    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state = orjson.loads(state_path.read_text(encoding="utf-8"))
     env_text = env_path.read_text(encoding="utf-8")
 
     assert result["phone_number_id"] == "vapi-phone-xyz"

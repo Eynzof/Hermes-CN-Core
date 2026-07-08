@@ -15,7 +15,7 @@ design.
 
 from __future__ import annotations
 
-import json
+import orjson
 import logging
 from typing import Any, Dict, Optional
 
@@ -89,8 +89,7 @@ def browser_dialog(
     effective_task_id = task_id or "default"
     supervisor = SUPERVISOR_REGISTRY.get(effective_task_id)
     if supervisor is None:
-        return json.dumps(
-            {
+        return orjson.dumps({
                 "success": False,
                 "error": (
                     "No CDP supervisor is attached to this task. Either the "
@@ -98,8 +97,7 @@ def browser_dialog(
                     "Playwright) or no browser session has been started yet. "
                     "Call browser_navigate or /browser connect first."
                 ),
-            }
-        )
+            }).decode('utf-8')
 
     result = supervisor.respond_to_dialog(
         action=action,
@@ -107,14 +105,12 @@ def browser_dialog(
         dialog_id=dialog_id,
     )
     if result.get("ok"):
-        return json.dumps(
-            {
+        return orjson.dumps({
                 "success": True,
                 "action": action,
                 "dialog": result.get("dialog", {}),
-            }
-        )
-    return json.dumps({"success": False, "error": result.get("error", "unknown error")})
+            }).decode('utf-8')
+    return orjson.dumps({"success": False, "error": result.get("error", "unknown error")}).decode('utf-8')
 
 
 def _browser_dialog_check() -> bool:

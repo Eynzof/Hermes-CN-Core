@@ -22,7 +22,7 @@ Live mirror URL (after the landing site deploy syncs this file):
 
 from __future__ import annotations
 
-import json
+import orjson
 import os
 import sys
 from datetime import datetime, timezone
@@ -82,7 +82,7 @@ def main() -> int:
     catalog = build_catalog()
     os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
     with open(OUTPUT_PATH, "w", encoding="utf-8") as fh:
-        json.dump(catalog, fh, indent=2)
+        fh.write(orjson.dumps(catalog, option=orjson.OPT_INDENT_2).decode('utf-8'))
         fh.write("\n")
 
     print(f"Wrote {OUTPUT_PATH}")

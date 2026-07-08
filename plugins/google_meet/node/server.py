@@ -24,7 +24,7 @@ actually host a node.
 
 from __future__ import annotations
 
-import json
+import orjson
 import secrets
 import time
 from pathlib import Path
@@ -62,18 +62,18 @@ class NodeServer:
             return self._token
         if self.token_path.is_file():
             try:
-                data = json.loads(self.token_path.read_text(encoding="utf-8"))
+                data = orjson.loads(self.token_path.read_text(encoding="utf-8"))
                 tok = data.get("token")
                 if isinstance(tok, str) and tok:
                     self._token = tok
                     return tok
-            except (OSError, json.JSONDecodeError):
+            except (OSError, orjson.JSONDecodeError):
                 pass
         tok = secrets.token_hex(16)  # 32 hex chars
         self.token_path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.token_path.with_suffix(".json.tmp")
         tmp.write_text(
-            json.dumps({"token": tok, "generated_at": time.time()}, indent=2),
+            orjson.dumps({"token": tok, "generated_at": time.time()}, option=orjson.OPT_INDENT_2).decode('utf-8'),
             encoding="utf-8",
         )
         # Restrict to owner-read-write only — the token grants full RPC
@@ -154,7 +154,7 @@ class NodeServer:
                     try:
                         queue.parent.mkdir(parents=True, exist_ok=True)
                         with queue.open("a", encoding="utf-8") as fh:
-                            fh.write(json.dumps({"text": text, "ts": time.time()}) + "\n")
+                            fh.write(orjson.dumps({"text": text, "ts": time.time()}).decode('utf-8') + "\n")
                         enqueued = True
                     except OSError:
                         enqueued = False

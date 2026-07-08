@@ -12,7 +12,7 @@ the realistic runtime context. See the conftest module docstring.
 """
 from __future__ import annotations
 
-import json
+import orjson
 import time
 
 from tests.docker.conftest import docker_exec, docker_exec_sh, start_container, poll_container
@@ -309,7 +309,7 @@ def test_dashboard_oauth_gate_engages_on_non_loopback_bind(
         f"/api/auth/providers should return 200 when a provider is "
         f"registered; got {status_code} body={body!r}"
     )
-    payload = json.loads(body)
+    payload = orjson.loads(body)
     provider_names = [p.get("name") for p in payload.get("providers", [])]
     assert "nous" in provider_names, (
         "Bundled dashboard_auth/nous provider should register when "
@@ -337,7 +337,7 @@ def test_dashboard_oauth_gate_engages_on_non_loopback_bind(
         "— the portal uses it as the wildcard-subdomain liveness probe. "
         f"Got: status={status_code} body={body!r}"
     )
-    status = json.loads(body)
+    status = orjson.loads(body)
     assert status.get("auth_required") is True, (
         "/api/status must report auth_required=True when the OAuth gate "
         f"is engaged so the SPA/portal can distinguish modes. Got: {status!r}"

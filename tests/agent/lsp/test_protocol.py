@@ -12,7 +12,7 @@ deadlock.  These tests exercise:
 from __future__ import annotations
 
 import asyncio
-import json
+import orjson
 import pytest
 
 from agent.lsp.protocol import (
@@ -47,7 +47,7 @@ def test_encode_message_uses_compact_separators_and_utf8():
     # Declared length must equal actual body bytes.
     assert declared == len(body)
     # Body parses as JSON and round-trips.
-    parsed = json.loads(body.decode("utf-8"))
+    parsed = orjson.loads(body.decode("utf-8"))
     assert parsed == msg
     # Body uses compact separators (no spaces between kv).
     assert b'"id":1' in body
@@ -59,7 +59,7 @@ def test_encode_message_handles_unicode_in_strings():
     header_end = out.index(b"\r\n\r\n") + 4
     declared = int(out[: out.index(b"\r\n")].split(b": ")[1])
     assert declared == len(out[header_end:])
-    assert json.loads(out[header_end:].decode("utf-8")) == msg
+    assert orjson.loads(out[header_end:].decode("utf-8")) == msg
 
 
 # ---------------------------------------------------------------------------

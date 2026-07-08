@@ -48,7 +48,7 @@ import asyncio
 import base64
 import copy
 import hashlib
-import json
+import orjson
 import logging
 logger = logging.getLogger(__name__)
 import os
@@ -1141,7 +1141,7 @@ class AIAgent:
             return False
         if not isinstance(error, ValueError):
             return False
-        if isinstance(error, (UnicodeEncodeError, json.JSONDecodeError)):
+        if isinstance(error, (UnicodeEncodeError, orjson.JSONDecodeError)):
             return False
         message = str(error).strip().lower()
         return "expected ident at line" in message
@@ -2139,7 +2139,7 @@ class AIAgent:
                     if nested_detail:
                         return nested_detail
             try:
-                return json.dumps(value, ensure_ascii=False, sort_keys=True)
+                return orjson.dumps(value, option=orjson.OPT_SORT_KEYS).decode('utf-8')
             except TypeError:
                 return str(value)
         if isinstance(value, (list, tuple)):
@@ -2206,8 +2206,8 @@ class AIAgent:
                 status_code = getattr(error, "status_code", None)
                 prefix = f"HTTP {status_code}: " if status_code else ""
                 try:
-                    payload = json.loads(snippet)
-                except (json.JSONDecodeError, TypeError):
+                    payload = orjson.loads(snippet)
+                except (orjson.JSONDecodeError, TypeError):
                     payload = None
                 if isinstance(payload, dict):
                     err = payload.get("error")
@@ -2414,14 +2414,14 @@ class AIAgent:
         payload = cls._hook_jsonable(value)
         limit = cls._hook_payload_max_chars()
         try:
-            encoded = json.dumps(payload, ensure_ascii=False, default=str)
+            encoded = orjson.dumps(payload, default=str).decode('utf-8')
         except Exception:
             return str(payload)[:limit]
         if len(encoded) <= limit:
             return payload
         payload = cls._hook_jsonable(value, max_string=1000, max_sequence=50)
         try:
-            encoded = json.dumps(payload, ensure_ascii=False, default=str)
+            encoded = orjson.dumps(payload, default=str).decode('utf-8')
         except Exception:
             return str(payload)[:limit]
         if len(encoded) <= limit:
@@ -2638,7 +2638,7 @@ class AIAgent:
             # partial history and would otherwise clobber the full JSON log.
             if log_file.exists():
                 try:
-                    existing = json.loads(log_file.read_text(encoding="utf-8"))
+                    existing = orjson.loads(log_file.read_text(encoding="utf-8"))
                     existing_count = existing.get("message_count", len(existing.get("messages", [])))
                     if existing_count > len(cleaned):
                         logging.debug(
@@ -3612,11 +3612,11 @@ class AIAgent:
             if '"todos"' not in content:
                 continue
             try:
-                data = json.loads(content)
+                data = orjson.loads(content)
                 if "todos" in data and isinstance(data["todos"], list):
                     last_todo_response = data["todos"]
                     break
-            except (json.JSONDecodeError, TypeError):
+            except (orjson.JSONDecodeError, TypeError):
                 continue
 
         if last_todo_response:
@@ -4865,7 +4865,7 @@ class AIAgent:
             result_json = asyncio.run(
                 vision_analyze_tool(image_url=vision_source, user_prompt=analysis_prompt)
             )
-            result = json.loads(result_json) if isinstance(result_json, str) else {}
+            result = orjson.loads(result_json) if isinstance(result_json, str) else {}
             description = (result.get("analysis") or "").strip()
         except Exception as e:
             description = f"Image analysis failed: {e}"
@@ -5095,7 +5095,7 @@ class AIAgent:
 
         summary = _multimodal_text_summary(result)
         if tool_name == "computer_use":
-            return json.dumps({
+            return orjson.dumps({
                 "error": (
                     "computer_use returned screenshot/image content, but the active "
                     "model/provider does not support image input. Switch to a "
@@ -5103,7 +5103,7 @@ class AIAgent:
                     "tools for browser tasks."
                 ),
                 "text_summary": summary,
-            })
+            }).decode('utf-8')
 
         logger.warning(
             "Tool %s returned image content for non-vision model %s/%s; "
@@ -6055,7 +6055,7 @@ def main(
         try:
             with open(sample_filename, "w", encoding="utf-8") as f:
                 # Pretty-print JSON with indent for readability
-                f.write(json.dumps(entry, ensure_ascii=False, indent=2))
+                f.write(orjson.dumps(entry, option=orjson.OPT_INDENT_2).decode('utf-8'))
             print(f"\n💾 Sample trajectory saved to: {sample_filename}")
         except Exception as e:
             print(f"\n⚠️ Failed to save sample: {e}")

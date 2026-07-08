@@ -22,7 +22,7 @@ The manifest lives at ~/.hermes/skills/.bundled_manifest.
 """
 
 import hashlib
-import json
+import orjson
 import logging
 import os
 import shutil
@@ -402,8 +402,8 @@ def _backfill_optional_provenance(quiet: bool = False) -> List[str]:
 
     lock_path = SKILLS_DIR / ".hub" / "lock.json"
     try:
-        data = json.loads(lock_path.read_text()) if lock_path.exists() else {"version": 1, "installed": {}}
-    except (json.JSONDecodeError, OSError):
+        data = orjson.loads(lock_path.read_text()) if lock_path.exists() else {"version": 1, "installed": {}}
+    except (orjson.JSONDecodeError, OSError):
         data = {"version": 1, "installed": {}}
     installed = data.setdefault("installed", {})
     existing_paths = {
@@ -459,7 +459,7 @@ def _backfill_optional_provenance(quiet: bool = False) -> List[str]:
         # an empty dict).
         import tempfile
 
-        payload = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+        payload = orjson.dumps(data, option=orjson.OPT_INDENT_2).decode('utf-8') + "\n"
         fd, tmp_path = tempfile.mkstemp(
             dir=str(lock_path.parent),
             prefix=".lock_",

@@ -19,7 +19,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import json
+import orjson
 import shutil
 import sys
 from pathlib import Path
@@ -108,7 +108,7 @@ def smoke_test(host: str, headers: dict, ckpt_name: str | None) -> dict:
     """
     if not ckpt_name:
         return {"ran": False, "reason": "no checkpoint available"}
-    wf = json.loads(json.dumps(SMOKE_WORKFLOW))
+    wf = orjson.loads(orjson.dumps(SMOKE_WORKFLOW).decode('utf-8'))
     wf["4"]["inputs"]["ckpt_name"] = ckpt_name
 
     # Lazy import to avoid circular issues
@@ -164,10 +164,10 @@ def main(argv: list[str] | None = None) -> int:
         else:
             try:
                 with wf_path.open() as f:
-                    workflow = unwrap_workflow(json.load(f))
+                    workflow = unwrap_workflow(orjson.loads(f.read()))
                 from check_deps import check_deps
                 workflow_check = check_deps(workflow, host=args.host, api_key=api_key)
-            except (ValueError, json.JSONDecodeError) as e:
+            except (ValueError, orjson.JSONDecodeError) as e:
                 workflow_check = {"error": str(e)}
 
     smoke = None

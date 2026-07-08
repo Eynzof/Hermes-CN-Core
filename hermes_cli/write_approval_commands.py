@@ -15,7 +15,7 @@ platform the gateway truncates it and points the user at the dashboard / file.
 
 from __future__ import annotations
 
-import json
+import orjson
 from typing import List, Optional
 
 from tools import write_approval as wa
@@ -149,7 +149,7 @@ def _apply_one(subsystem: str, rec, memory_store):
             return bool(result.get("success")), result.get("error", "")
         else:
             from tools.skill_manager_tool import apply_skill_pending
-            result = json.loads(apply_skill_pending(payload))
+            result = orjson.loads(apply_skill_pending(payload))
             return bool(result.get("success")), result.get("error", "")
     except Exception as e:
         return False, str(e)

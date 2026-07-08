@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-import json
+import orjson
 from typing import Any, Dict, Optional
 
 from hermes_cli.config import load_config
@@ -46,7 +46,7 @@ def _coerce_int(value: Any) -> Optional[int]:
 
 
 def _provider_not_configured_error() -> str:
-    return json.dumps({
+    return orjson.dumps({
         "success": False,
         "error": (
             "xAI video edit/extend tools require `video_gen.provider` to be "
@@ -54,7 +54,7 @@ def _provider_not_configured_error() -> str:
         ),
         "error_type": "provider_not_configured",
         "provider": "xai",
-    })
+    }).decode('utf-8')
 
 
 def _normalize_public_video_url(video_url: Any) -> Optional[str]:
@@ -158,7 +158,7 @@ def _handle_xai_video_edit(args: Dict[str, Any], **_kw: Any) -> str:
         video_url=video_url,
         model=model,
     )
-    return json.dumps(result)
+    return orjson.dumps(result).decode('utf-8')
 
 
 def _handle_xai_video_extend(args: Dict[str, Any], **_kw: Any) -> str:
@@ -183,7 +183,7 @@ def _handle_xai_video_extend(args: Dict[str, Any], **_kw: Any) -> str:
         duration=duration,
         model=model,
     )
-    return json.dumps(result)
+    return orjson.dumps(result).decode('utf-8')
 
 
 registry.register(

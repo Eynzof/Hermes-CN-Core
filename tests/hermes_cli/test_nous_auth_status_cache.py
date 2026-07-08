@@ -10,7 +10,7 @@ also call invalidate_nous_auth_status_cache().
 
 from __future__ import annotations
 
-import json
+import orjson
 import os
 from unittest.mock import patch
 
@@ -22,7 +22,7 @@ def _seed_auth_file(tmp_path):
     the file exists and we can mutate it to bump mtime.
     """
     auth = tmp_path / "auth.json"
-    auth.write_text(json.dumps({"providers": {}}), encoding="utf-8")
+    auth.write_text(orjson.dumps({"providers": {}}).decode('utf-8'), encoding="utf-8")
     return auth
 
 

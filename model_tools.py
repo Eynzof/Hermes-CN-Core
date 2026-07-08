@@ -21,7 +21,7 @@ Public API (signatures preserved from the original 2,400-line version):
 """
 
 import os
-import json
+import orjson
 import re
 import asyncio
 import logging
@@ -1059,7 +1059,7 @@ _READ_SEARCH_TOOLS = {"read_file", "search_files"}
 # =========================================================================
 #
 # Tool exceptions can carry arbitrary text into the model's context as the
-# `tool` message content. json.dumps() handles quote/backslash escaping so a
+# `tool` message content. orjson.dumps().decode('utf-8') handles quote/backslash escaping so a
 # raw injection of `</tool_call>` won't break message framing, but the model
 # still *reads* those tokens and they can confuse downstream tool-call
 # parsing or, in adversarial cases, nudge it toward role-confusion framing.
@@ -1517,7 +1517,7 @@ def _coerce_json(value: str, expected_python_type: type):
     Python type.
     """
     try:
-        parsed = json.loads(value)
+        parsed = orjson.loads(value)
     except (ValueError, TypeError) as exc:
         logger.warning(
             "coerce_tool_args: failed to parse string as JSON for expected type %s: %s",
@@ -1569,7 +1569,7 @@ def _coerce_boolean(value: str):
 
 def _tool_result_observer_fields(result: Any) -> tuple[str, Optional[str], Optional[str]]:
     try:
-        parsed_result = json.loads(result) if isinstance(result, str) else result
+        parsed_result = orjson.loads(result) if isinstance(result, str) else result
         if isinstance(parsed_result, dict) and parsed_result.get("error"):
             return "error", "tool_error", str(parsed_result.get("error"))
     except Exception:
@@ -1680,7 +1680,7 @@ def handle_function_call(
     # the exact-match fast path below can inspect the real arguments.
     if isinstance(function_args, str):
         try:
-            _parsed_args = json.loads(function_args)
+            _parsed_args = orjson.loads(function_args)
         except (ValueError, TypeError):
             _parsed_args = None
         function_args = _parsed_args if isinstance(_parsed_args, dict) else {}
@@ -1747,8 +1747,7 @@ def handle_function_call(
         if function_name == _ts_mod.TOOL_CALL_NAME:
             underlying_name, underlying_args, err = _ts_mod.resolve_underlying_call(function_args or {})
             if err or not underlying_name:
-                return json.dumps({"error": err or "tool_call could not be resolved"},
-                                  ensure_ascii=False)
+                return orjson.dumps({"error": err or "tool_call could not be resolved"}).decode('utf-8')
             # Defense in depth: the underlying tool MUST be in the session's
             # scoped deferrable catalog. resolve_underlying_call() only checks
             # that the name is deferrable in the global registry; this gate
@@ -1757,12 +1756,12 @@ def handle_function_call(
             # the bridge even if the catalog scoping above regressed.
             _scoped_deferrable = _ts_mod.scoped_deferrable_names(current_defs)
             if underlying_name not in _scoped_deferrable:
-                return json.dumps({
+                return orjson.dumps({
                     "error": (
                         f"'{underlying_name}' is not available in this session. "
                         "Use tool_search to find tools you can call."
                     ),
-                }, ensure_ascii=False)
+                }).decode('utf-8')
             # Recurse with the underlying tool. All hooks fire against the
             # real tool name. The bridge is invisible to hooks by design.
             return handle_function_call(
@@ -1832,7 +1831,7 @@ def handle_function_call(
 
     try:
         if function_name in _AGENT_LOOP_TOOLS:
-            return json.dumps({"error": f"{function_name} must be handled by the agent loop"})
+            return orjson.dumps({"error": f"{function_name} must be handled by the agent loop"}).decode('utf-8')
 
         # Check plugin hooks for a block directive (unless caller already
         # checked — e.g. run_agent._invoke_tool passes skip=True to
@@ -1862,7 +1861,7 @@ def handle_function_call(
                 logger.debug("pre_tool_call hook error: %s", _hook_err)
 
             if block_message is not None:
-                result = json.dumps({"error": block_message}, ensure_ascii=False)
+                result = orjson.dumps({"error": block_message}).decode('utf-8')
                 _emit_post_tool_call_hook(
                     function_name=function_name,
                     function_args=function_args,
@@ -1891,7 +1890,7 @@ def handle_function_call(
         except Exception as _edit_approval_err:
             logger.debug("ACP edit approval guard error: %s", _edit_approval_err)
             if function_name in {"write_file", "patch"}:
-                return json.dumps({"error": "Edit approval denied: approval guard failed"}, ensure_ascii=False)
+                return orjson.dumps({"error": "Edit approval denied: approval guard failed"}).decode('utf-8')
 
         # Notify the read-loop tracker when a non-read/search tool runs,
         # so the *consecutive* counter resets (reads after other work are fine).
@@ -2015,7 +2014,7 @@ def handle_function_call(
     except Exception as e:
         error_msg = f"Error executing {function_name}: {str(e)}"
         logger.exception(error_msg)
-        return json.dumps({"error": _sanitize_tool_error(error_msg)}, ensure_ascii=False)
+        return orjson.dumps({"error": _sanitize_tool_error(error_msg)}).decode('utf-8')
 
 
 # =============================================================================

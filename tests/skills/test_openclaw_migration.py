@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
-import json
+import orjson
 import sys
 from pathlib import Path
 
@@ -114,8 +114,7 @@ def test_migrator_copies_skill_and_merges_allowlist(tmp_path: Path):
         encoding="utf-8",
     )
     (source / "exec-approvals.json").write_text(
-        json.dumps(
-            {
+        orjson.dumps({
                 "agents": {
                     "*": {
                         "allowlist": [
@@ -124,8 +123,7 @@ def test_migrator_copies_skill_and_merges_allowlist(tmp_path: Path):
                         ]
                     }
                 }
-            }
-        ),
+            }).decode('utf-8'),
         encoding="utf-8",
     )
     (target / "config.yaml").write_text("command_allowlist:\n  - /usr/bin/*\n", encoding="utf-8")
@@ -154,16 +152,14 @@ def test_migrator_optionally_imports_supported_secrets_and_messaging_settings(tm
 
     (source / "credentials").mkdir(parents=True)
     (source / "openclaw.json").write_text(
-        json.dumps(
-            {
+        orjson.dumps({
                 "agents": {"defaults": {"workspace": "/tmp/openclaw-workspace"}},
                 "channels": {"telegram": {"botToken": "123:abc"}},
-            }
-        ),
+            }).decode('utf-8'),
         encoding="utf-8",
     )
     (source / "credentials" / "telegram-default-allowFrom.json").write_text(
-        json.dumps({"allowFrom": ["111", "222"]}),
+        orjson.dumps({"allowFrom": ["111", "222"]}).decode('utf-8'),
         encoding="utf-8",
     )
     target.mkdir()
@@ -196,7 +192,7 @@ def test_messaging_cwd_skipped_when_inside_source(tmp_path: Path):
     ws_path = str(source / "workspace")
     (source / "credentials").mkdir(parents=True)
     (source / "openclaw.json").write_text(
-        json.dumps({"agents": {"defaults": {"workspace": ws_path}}}),
+        orjson.dumps({"agents": {"defaults": {"workspace": ws_path}}}).decode('utf-8'),
         encoding="utf-8",
     )
 
@@ -304,7 +300,7 @@ def test_source_candidate_finds_files_in_custom_workspace(tmp_path: Path):
     (custom_ws / "memory" / "2026-01-01.md").write_text("- daily note\n", encoding="utf-8")
 
     (source / "openclaw.json").write_text(
-        json.dumps({"agents": {"defaults": {"workspace": str(custom_ws)}}}),
+        orjson.dumps({"agents": {"defaults": {"workspace": str(custom_ws)}}}).decode('utf-8'),
         encoding="utf-8",
     )
 
@@ -355,7 +351,7 @@ def test_source_candidate_prefers_standard_workspace_over_custom(tmp_path: Path)
     (custom_ws / "SOUL.md").write_text("# Custom soul\n", encoding="utf-8")
 
     (source / "openclaw.json").write_text(
-        json.dumps({"agents": {"defaults": {"workspace": str(custom_ws)}}}),
+        orjson.dumps({"agents": {"defaults": {"workspace": str(custom_ws)}}}).decode('utf-8'),
         encoding="utf-8",
     )
 
@@ -492,14 +488,14 @@ def test_discord_settings_migrated(tmp_path: Path):
     source.mkdir()
 
     (source / "openclaw.json").write_text(
-        json.dumps({
+        orjson.dumps({
             "channels": {
                 "discord": {
                     "token": "discord-bot-token-123",
                     "allowFrom": ["111222333", "444555666"],
                 }
             }
-        }),
+        }).decode('utf-8'),
         encoding="utf-8",
     )
 
@@ -523,7 +519,7 @@ def test_slack_settings_migrated(tmp_path: Path):
     source.mkdir()
 
     (source / "openclaw.json").write_text(
-        json.dumps({
+        orjson.dumps({
             "channels": {
                 "slack": {
                     "botToken": "xoxb-slack-bot",
@@ -531,7 +527,7 @@ def test_slack_settings_migrated(tmp_path: Path):
                     "allowFrom": ["U111", "U222"],
                 }
             }
-        }),
+        }).decode('utf-8'),
         encoding="utf-8",
     )
 
@@ -556,7 +552,7 @@ def test_signal_settings_migrated(tmp_path: Path):
     source.mkdir()
 
     (source / "openclaw.json").write_text(
-        json.dumps({
+        orjson.dumps({
             "channels": {
                 "signal": {
                     "account": "+15551234567",
@@ -564,7 +560,7 @@ def test_signal_settings_migrated(tmp_path: Path):
                     "allowFrom": ["+15559876543"],
                 }
             }
-        }),
+        }).decode('utf-8'),
         encoding="utf-8",
     )
 
@@ -589,9 +585,9 @@ def test_model_config_migrated(tmp_path: Path):
     source.mkdir()
 
     (source / "openclaw.json").write_text(
-        json.dumps({
+        orjson.dumps({
             "agents": {"defaults": {"model": "anthropic/claude-sonnet-4"}}
-        }),
+        }).decode('utf-8'),
         encoding="utf-8",
     )
     # config.yaml must exist for YAML merge to work
@@ -616,9 +612,9 @@ def test_model_config_object_format(tmp_path: Path):
     source.mkdir()
 
     (source / "openclaw.json").write_text(
-        json.dumps({
+        orjson.dumps({
             "agents": {"defaults": {"model": {"primary": "openai/gpt-4o"}}}
-        }),
+        }).decode('utf-8'),
         encoding="utf-8",
     )
     (target / "config.yaml").write_text("model: old-model\n", encoding="utf-8")
@@ -642,7 +638,7 @@ def test_tts_config_migrated(tmp_path: Path):
     source.mkdir()
 
     (source / "openclaw.json").write_text(
-        json.dumps({
+        orjson.dumps({
             "messages": {
                 "tts": {
                     "provider": "elevenlabs",
@@ -652,7 +648,7 @@ def test_tts_config_migrated(tmp_path: Path):
                     },
                 }
             }
-        }),
+        }).decode('utf-8'),
         encoding="utf-8",
     )
     (target / "config.yaml").write_text("tts:\n  provider: edge\n", encoding="utf-8")
@@ -732,7 +728,7 @@ def test_provider_keys_require_migrate_secrets_flag(tmp_path: Path):
     source.mkdir()
 
     (source / "openclaw.json").write_text(
-        json.dumps({
+        orjson.dumps({
             "models": {
                 "providers": {
                     "openrouter": {
@@ -741,7 +737,7 @@ def test_provider_keys_require_migrate_secrets_flag(tmp_path: Path):
                     }
                 }
             }
-        }),
+        }).decode('utf-8'),
         encoding="utf-8",
     )
 
@@ -795,10 +791,10 @@ def test_cron_store_is_archived_without_config_cron_section(tmp_path: Path):
     source.mkdir()
     target.mkdir()
 
-    (source / "openclaw.json").write_text(json.dumps({"channels": {}}), encoding="utf-8")
+    (source / "openclaw.json").write_text(orjson.dumps({"channels": {}}).decode('utf-8'), encoding="utf-8")
     (source / "cron").mkdir(parents=True)
     (source / "cron" / "jobs.json").write_text(
-        json.dumps({"version": 1, "jobs": [{"id": "job-1", "name": "demo"}]}),
+        orjson.dumps({"version": 1, "jobs": [{"id": "job-1", "name": "demo"}]}).decode('utf-8'),
         encoding="utf-8",
     )
 
@@ -984,7 +980,7 @@ def _run_model_migration(tmp_path: Path, openclaw_json: dict) -> dict:
     target = tmp_path / ".hermes"
     source.mkdir(parents=True)
     target.mkdir(parents=True)
-    (source / "openclaw.json").write_text(json.dumps(openclaw_json), encoding="utf-8")
+    (source / "openclaw.json").write_text(orjson.dumps(openclaw_json).decode('utf-8'), encoding="utf-8")
 
     migrator = mod.Migrator(
         source_root=source,

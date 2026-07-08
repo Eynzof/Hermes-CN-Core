@@ -13,7 +13,7 @@ Requires:
 
 import asyncio
 import base64
-import json
+import orjson
 import logging
 import os
 import random
@@ -458,9 +458,9 @@ class SignalAdapter(BasePlatformAdapter):
                                     continue
                                 self._last_sse_activity = time.time()
                                 try:
-                                    data = json.loads(data_str)
+                                    data = orjson.loads(data_str)
                                     await self._handle_envelope(data)
-                                except json.JSONDecodeError:
+                                except orjson.JSONDecodeError:
                                     logger.debug("Signal SSE: invalid JSON: %s", data_str[:100])
                                 except Exception:
                                     logger.exception("Signal SSE: error handling event")

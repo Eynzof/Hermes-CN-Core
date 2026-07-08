@@ -9,7 +9,7 @@ Direct-SQL setup is used to construct that state deterministically.
 from __future__ import annotations
 
 import argparse
-import json
+import orjson
 from pathlib import Path
 
 import pytest
@@ -90,7 +90,7 @@ def test_promote_emits_audit_event(conn):
         (child,),
     ).fetchone()
     assert ev is not None
-    payload = json.loads(ev["payload"])
+    payload = orjson.loads(ev["payload"])
     assert payload["actor"] == "tester"
     assert payload["reason"] == "manual recovery"
     assert payload["forced"] is False
@@ -104,7 +104,7 @@ def test_promote_force_records_forced_flag(conn):
         "WHERE task_id = ? AND kind = 'promoted_manual'",
         (child,),
     ).fetchone()
-    assert json.loads(ev["payload"])["forced"] is True
+    assert orjson.loads(ev["payload"])["forced"] is True
 
 
 def test_promote_does_not_change_assignee(conn):
@@ -218,7 +218,7 @@ def test_cli_promote_bulk_json_emits_list(kanban_home, capsys):
         conn.execute("UPDATE tasks SET status='done' WHERE id=?", (parent,))
     rc = kb_cli._cmd_promote(_promote_ns(a, ids=[b], as_json=True))
     assert rc == 0
-    payload = json.loads(capsys.readouterr().out)
+    payload = orjson.loads(capsys.readouterr().out)
     assert isinstance(payload, list) and len(payload) == 2
     assert {r["task_id"] for r in payload} == {a, b}
     assert all(r["promoted"] for r in payload)
@@ -232,7 +232,7 @@ def test_cli_promote_single_json_stays_flat_object(kanban_home, capsys):
         conn.execute("UPDATE tasks SET status='done' WHERE id=?", (parent,))
     rc = kb_cli._cmd_promote(_promote_ns(child, as_json=True))
     assert rc == 0
-    payload = json.loads(capsys.readouterr().out)
+    payload = orjson.loads(capsys.readouterr().out)
     assert isinstance(payload, dict)
     assert payload["task_id"] == child and payload["promoted"] is True
 

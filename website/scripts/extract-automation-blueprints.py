@@ -13,7 +13,7 @@ Output: ``website/static/api/automation-blueprints-index.json`` (served at
 
 from __future__ import annotations
 
-import json
+import orjson
 import sys
 from pathlib import Path
 
@@ -41,7 +41,7 @@ def main() -> int:
 
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     with open(OUTPUT, "w", encoding="utf-8") as f:
-        json.dump(index, f, separators=(",", ":"))
+        f.write(orjson.dumps(index).decode('utf-8'))
     sys.stderr.write(f"extract-automation-blueprints: wrote {len(index)} blueprints -> {OUTPUT}\n")
     return 0
 

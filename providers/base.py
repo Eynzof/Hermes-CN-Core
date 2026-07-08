@@ -193,7 +193,7 @@ class ProviderProfile:
                 return None
             url = effective_base.rstrip("/") + "/models"
 
-        import json
+        import orjson
         import urllib.request
 
         req = urllib.request.Request(url)
@@ -209,7 +209,7 @@ class ProviderProfile:
 
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
-                data = json.loads(resp.read().decode())
+                data = orjson.loads(resp.read().decode())
             items = data if isinstance(data, list) else data.get("data", [])
             return [m["id"] for m in items if isinstance(m, dict) and "id" in m]
         except Exception as exc:

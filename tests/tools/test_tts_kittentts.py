@@ -1,6 +1,6 @@
 """Tests for the KittenTTS local provider in tools/tts_tool.py."""
 
-import json
+import orjson
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -191,7 +191,7 @@ class TestDispatcherBranch:
             yaml.safe_dump({"tts": {"provider": "kittentts"}})
         )
 
-        result = json.loads(text_to_speech_tool(text="Hello"))
+        result = orjson.loads(text_to_speech_tool(text="Hello"))
         assert result["success"] is False
         assert "kittentts" in result["error"].lower()
         assert "hermes setup tts" in result["error"].lower()

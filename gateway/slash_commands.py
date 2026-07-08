@@ -4423,7 +4423,7 @@ class GatewaySlashCommandsMixin:
         can notify the user when the update finishes.
         """
         from gateway.run import _hermes_home, _resolve_hermes_bin
-        import json
+        import orjson
         import shutil
         import subprocess
         from datetime import datetime
@@ -4472,7 +4472,7 @@ class GatewaySlashCommandsMixin:
         if event.message_id:
             pending["message_id"] = event.message_id
         _tmp_pending = pending_path.with_suffix(".tmp")
-        _tmp_pending.write_text(json.dumps(pending))
+        _tmp_pending.write_text(orjson.dumps(pending).decode('utf-8'))
         _tmp_pending.replace(pending_path)
         exit_code_path.unlink(missing_ok=True)
 

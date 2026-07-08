@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import json
+import orjson
 from typing import Any
 
 
@@ -14,7 +14,7 @@ def file_mutation_result_landed(tool_name: str, result: Any) -> bool:
     if tool_name not in FILE_MUTATING_TOOL_NAMES or not isinstance(result, str):
         return False
     try:
-        data = json.loads(result.strip())
+        data = orjson.loads(result.strip())
     except Exception:
         return False
     if not isinstance(data, dict) or data.get("error"):

@@ -10,7 +10,7 @@ These tests exercise end-to-end flows through the webhook adapter:
 import asyncio
 import hashlib
 import hmac
-import json
+import orjson
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -109,7 +109,7 @@ class TestGitHubPRWebhook:
         adapter.handle_message = _capture
 
         app = _create_app(adapter)
-        body = json.dumps(GITHUB_PR_PAYLOAD).encode()
+        body = orjson.dumps(GITHUB_PR_PAYLOAD)
         sig = _github_signature(body, secret)
 
         async with TestClient(TestServer(app)) as cli:

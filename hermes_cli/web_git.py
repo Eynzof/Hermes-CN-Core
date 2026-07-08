@@ -12,7 +12,7 @@ can surface a toast. Callers pass an already path-hardened ``cwd``.
 
 from __future__ import annotations
 
-import json
+import orjson
 import os
 import re
 import shutil
@@ -439,8 +439,8 @@ def review_ship_info(cwd: str) -> dict:
     if not view_ok:
         return {"ghReady": True, "pr": None}
     try:
-        pr = json.loads(out)
-    except json.JSONDecodeError:
+        pr = orjson.loads(out)
+    except orjson.JSONDecodeError:
         return {"ghReady": True, "pr": None}
     if pr and pr.get("url"):
         return {"ghReady": True, "pr": {"url": pr["url"], "state": pr.get("state"), "number": pr.get("number")}}

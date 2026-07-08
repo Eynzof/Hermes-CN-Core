@@ -15,7 +15,7 @@ Usage:
     python scripts/sample_and_compress.py --output_name=compressed_16k
 """
 
-import json
+import orjson
 import random
 from pathlib import Path
 from typing import List, Dict, Any, Tuple
@@ -250,7 +250,7 @@ def save_samples_for_compression(
         output_file = output_dir / f"batch_{i}.jsonl"
         with open(output_file, 'w', encoding='utf-8') as f:
             for entry in batch:
-                f.write(json.dumps(entry, ensure_ascii=False) + '\n')
+                f.write(orjson.dumps(entry).decode('utf-8') + '\n')
     
     print(f"   ✅ Saved {num_batches} batch files")
 
@@ -302,12 +302,12 @@ def merge_output_to_single_jsonl(input_dir: Path, output_file: Path):
             for line in f:
                 line = line.strip()
                 if line:
-                    all_entries.append(json.loads(line))
+                    all_entries.append(orjson.loads(line))
     
     # Write merged file
     with open(output_file, 'w', encoding='utf-8') as f:
         for entry in all_entries:
-            f.write(json.dumps(entry, ensure_ascii=False) + '\n')
+            f.write(orjson.dumps(entry).decode('utf-8') + '\n')
     
     print(f"   ✅ Merged {len(all_entries):,} entries into {output_file.name}")
     return output_file

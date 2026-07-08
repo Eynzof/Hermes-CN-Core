@@ -15,7 +15,7 @@ Any of the ~100 popular imgflip templates can also be used by name or ID —
 unknown templates get smart default text positioning based on their box_count.
 """
 
-import json
+import orjson
 import os
 import sys
 from io import BytesIO
@@ -49,7 +49,7 @@ def _fetch_url(url: str, timeout: int = 15) -> bytes:
 def load_curated_templates() -> dict:
     """Load templates with hand-tuned text field positions."""
     with open(TEMPLATES_FILE) as f:
-        return json.load(f)
+        return orjson.loads(f.read())
 
 
 def _default_fields(box_count: int) -> list:
@@ -87,19 +87,19 @@ def fetch_imgflip_templates() -> list:
         age = time.time() - IMGFLIP_CACHE_FILE.stat().st_mtime
         if age < IMGFLIP_CACHE_MAX_AGE:
             with open(IMGFLIP_CACHE_FILE) as f:
-                return json.load(f)
+                return orjson.loads(f.read())
 
     try:
-        data = json.loads(_fetch_url(IMGFLIP_API))
+        data = orjson.loads(_fetch_url(IMGFLIP_API))
         memes = data.get("data", {}).get("memes", [])
         with open(IMGFLIP_CACHE_FILE, "w") as f:
-            json.dump(memes, f)
+            f.write(orjson.dumps(memes).decode('utf-8'))
         return memes
     except Exception as e:
         # If fetch fails and we have stale cache, use it
         if IMGFLIP_CACHE_FILE.exists():
             with open(IMGFLIP_CACHE_FILE) as f:
-                return json.load(f)
+                return orjson.loads(f.read())
         print(f"Warning: could not fetch imgflip templates: {e}", file=sys.stderr)
         return []
 

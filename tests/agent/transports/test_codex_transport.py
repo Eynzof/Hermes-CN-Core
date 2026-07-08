@@ -1,6 +1,6 @@
 """Tests for the ResponsesApiTransport (Codex)."""
 
-import json
+import orjson
 import pytest
 from types import SimpleNamespace
 
@@ -617,7 +617,7 @@ class TestCodexNormalizeResponse:
                     type="function_call",
                     call_id="call_abc123",
                     name="terminal",
-                    arguments=json.dumps({"command": "ls"}),
+                    arguments=orjson.dumps({"command": "ls"}).decode('utf-8'),
                     id="fc_abc123",
                     status="completed",
                 ),

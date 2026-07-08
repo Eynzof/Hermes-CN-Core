@@ -12,7 +12,7 @@ Usage:
 
 from __future__ import annotations
 
-import json
+import orjson
 import re
 import sys
 
@@ -113,7 +113,7 @@ def main(argv: list[str]) -> int:
         return _selftest()
     text = sys.stdin.read()
     result = parse(text)
-    print(json.dumps(result, indent=2))
+    print(orjson.dumps(result, option=orjson.OPT_INDENT_2).decode('utf-8'))
     # Non-zero exit if no live URL was found, so callers can branch on it.
     return 0 if result["live_url"] else 1
 

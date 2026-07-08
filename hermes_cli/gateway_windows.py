@@ -1311,7 +1311,7 @@ def _print_deep_probes() -> None:
       [5] gateway_state.json exists and parses (and is fresh-ish)
       [6] Last lifecycle event in gateway-exit-diag.log
     """
-    import json
+    import orjson
     from datetime import datetime, timezone
 
     from hermes_cli.config import get_hermes_home
@@ -1333,7 +1333,7 @@ def _print_deep_probes() -> None:
     pid_value: int | None = None
     if pid_exists:
         try:
-            data = json.loads(pid_path.read_text(encoding="utf-8"))
+            data = orjson.loads(pid_path.read_text(encoding="utf-8"))
             pid_value = int(data.get("pid")) if data.get("pid") is not None else None
             print(f"  [1] {_mark(True):4s}  PID file present: {pid_path} (pid={pid_value})")
         except Exception as exc:
@@ -1381,7 +1381,7 @@ def _print_deep_probes() -> None:
     # [5] runtime status file
     if state_path.exists():
         try:
-            state_data = json.loads(state_path.read_text(encoding="utf-8"))
+            state_data = orjson.loads(state_path.read_text(encoding="utf-8"))
             gateway_state = state_data.get("gateway_state")
             updated_at = state_data.get("updated_at")
             age_str = ""
@@ -1412,7 +1412,7 @@ def _print_deep_probes() -> None:
             last_event = next((ln for ln in reversed(tail) if ln.strip()), "")
             if last_event:
                 try:
-                    event = json.loads(last_event)
+                    event = orjson.loads(last_event)
                     tag = event.get("tag", "?")
                     pid = event.get("pid", "?")
                     ts = event.get("ts", "?")

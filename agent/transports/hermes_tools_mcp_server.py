@@ -44,7 +44,7 @@ Spawned by: CodexAppServerSession.ensure_started() when the runtime is
 
 from __future__ import annotations
 
-import json
+import orjson
 import logging
 import os
 import sys
@@ -165,7 +165,7 @@ def _build_server() -> Any:
                     return handle_function_call(tool_name, kwargs or {})
                 except Exception as exc:
                     logger.exception("tool %s raised", tool_name)
-                    return json.dumps({"error": str(exc), "tool": tool_name})
+                    return orjson.dumps({"error": str(exc), "tool": tool_name}).decode('utf-8')
             _dispatch.__name__ = tool_name
             _dispatch.__doc__ = description
             return _dispatch

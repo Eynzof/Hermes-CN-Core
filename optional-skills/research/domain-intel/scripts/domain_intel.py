@@ -14,7 +14,7 @@ All output is structured JSON. No dependencies beyond Python stdlib.
 Works on Linux, macOS, and Windows.
 """
 
-import json
+import orjson
 import re
 import socket
 import ssl
@@ -34,7 +34,7 @@ def subdomains(domain, include_expired=False, limit=200):
         "User-Agent": "domain-intel-skill/1.0", "Accept": "application/json",
     })
     with urllib.request.urlopen(req, timeout=15) as r:
-        entries = json.loads(r.read().decode())
+        entries = orjson.loads(r.read().decode())
 
     seen, results = set(), []
     now = datetime.now(timezone.utc)
@@ -234,7 +234,7 @@ def dns_records(domain, types=None):
             try:
                 req = urllib.request.Request(url, headers={"User-Agent": "domain-intel-skill/1.0"})
                 with urllib.request.urlopen(req, timeout=10) as r:
-                    data = json.loads(r.read())
+                    data = orjson.loads(r.read())
                 records[qtype] = [
                     a.get("data", "").strip().rstrip(".")
                     for a in data.get("Answer", []) if a.get("data")
@@ -261,7 +261,7 @@ def check_available(domain):
         ns_url = f"https://dns.google/resolve?name={urllib.parse.quote(domain)}&type=NS"
         req = urllib.request.Request(ns_url, headers={"User-Agent": "domain-intel-skill/1.0"})
         with urllib.request.urlopen(req, timeout=10) as r:
-            ns = [x.get("data", "") for x in json.loads(r.read()).get("Answer", [])]
+            ns = [x.get("data", "") for x in orjson.loads(r.read()).get("Answer", [])]
     except Exception:
         ns = []
 
@@ -390,7 +390,7 @@ def main():
         print(f"Available: {', '.join(COMMAND_MAP.keys())}, bulk")
         sys.exit(1)
 
-    print(json.dumps(result, indent=2))
+    print(orjson.dumps(result, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
 
 if __name__ == "__main__":

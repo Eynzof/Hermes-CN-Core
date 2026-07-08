@@ -1,4 +1,4 @@
-import json
+import orjson
 from types import SimpleNamespace
 
 
@@ -25,8 +25,8 @@ def test_postprocess_adds_agent_visible_image_for_active_ssh_env(monkeypatch, tm
     monkeypatch.setenv("HERMES_HOME", str(hermes_home))
     monkeypatch.setattr(image_generation_tool, "_active_terminal_env", lambda task_id: env)
 
-    raw = json.dumps({"success": True, "image": str(image_path)})
-    result = json.loads(
+    raw = orjson.dumps({"success": True, "image": str(image_path)}).decode('utf-8')
+    result = orjson.loads(
         image_generation_tool._postprocess_image_generate_result(raw, task_id="task-1")
     )
 
@@ -51,8 +51,8 @@ def test_postprocess_maps_docker_cache_path_without_active_env(monkeypatch, tmp_
     monkeypatch.setenv("TERMINAL_ENV", "docker")
     monkeypatch.setattr(image_generation_tool, "_active_terminal_env", lambda task_id: None)
 
-    raw = json.dumps({"success": True, "image": str(image_path)})
-    result = json.loads(image_generation_tool._postprocess_image_generate_result(raw))
+    raw = orjson.dumps({"success": True, "image": str(image_path)}).decode('utf-8')
+    result = orjson.loads(image_generation_tool._postprocess_image_generate_result(raw))
 
     assert result["image"] == str(image_path)
     assert result["agent_visible_image"] == "/root/.hermes/cache/images/generated.png"
@@ -71,8 +71,8 @@ def test_postprocess_maps_ssh_cache_path_without_active_env(monkeypatch, tmp_pat
     monkeypatch.setenv("TERMINAL_ENV", "ssh")
     monkeypatch.setattr(image_generation_tool, "_active_terminal_env", lambda task_id: None)
 
-    raw = json.dumps({"success": True, "image": str(image_path)})
-    result = json.loads(image_generation_tool._postprocess_image_generate_result(raw))
+    raw = orjson.dumps({"success": True, "image": str(image_path)}).decode('utf-8')
+    result = orjson.loads(image_generation_tool._postprocess_image_generate_result(raw))
 
     assert result["image"] == str(image_path)
     assert result["agent_visible_image"] == "~/.hermes/cache/images/first-call.png"
@@ -83,7 +83,7 @@ def test_postprocess_leaves_remote_image_urls_unchanged(monkeypatch):
 
     monkeypatch.setattr(image_generation_tool, "_active_terminal_env", lambda task_id: None)
 
-    raw = json.dumps({"success": True, "image": "https://example.com/image.png"})
+    raw = orjson.dumps({"success": True, "image": "https://example.com/image.png"}).decode('utf-8')
 
     assert image_generation_tool._postprocess_image_generate_result(raw) == raw
 
@@ -110,10 +110,10 @@ def test_handle_image_generate_postprocesses_plugin_result(monkeypatch, tmp_path
     monkeypatch.setattr(
         image_generation_tool,
         "_dispatch_to_plugin_provider",
-        lambda prompt, aspect_ratio, **kw: json.dumps({"success": True, "image": str(image_path)}),
+        lambda prompt, aspect_ratio, **kw: orjson.dumps({"success": True, "image": str(image_path)}).decode('utf-8'),
     )
 
-    result = json.loads(
+    result = orjson.loads(
         image_generation_tool._handle_image_generate(
             {"prompt": "draw", "aspect_ratio": "square"},
             task_id="plugin-task",

@@ -16,7 +16,7 @@ import sys
 import tempfile
 import time
 import urllib.request
-import json
+import orjson
 
 
 def _find_chrome() -> str:
@@ -47,7 +47,7 @@ def _start_chrome(port: int):
     while time.monotonic() < deadline:
         try:
             with urllib.request.urlopen(f"http://127.0.0.1:{port}/json/version", timeout=1) as r:
-                info = json.loads(r.read().decode())
+                info = orjson.loads(r.read().decode())
                 return proc, profile, info["webSocketDebuggerUrl"]
         except Exception:
             time.sleep(0.25)

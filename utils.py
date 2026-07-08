@@ -1,7 +1,7 @@
 """Shared utility functions for hermes-agent."""
 
 import errno
-import json
+import orjson
 import logging
 import os
 import shutil
@@ -129,7 +129,7 @@ def atomic_json_write(
         mode: Optional final permission mode. When set, the temp file is
             created and replaced with this mode, avoiding chmod-after-write
             TOCTOU exposure for secret-bearing files.
-        **dump_kwargs: Additional keyword args forwarded to json.dump(), such
+        **dump_kwargs: Additional keyword args forwarded to orjson.dumps(), such
             as default=str for non-native types.
     """
     path = Path(path)
@@ -149,13 +149,16 @@ def atomic_json_write(
             # the post-replace os.chmod below applies the final mode durably.
             os.fchmod(fd, mode)
         with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(
-                data,
-                f,
-                indent=indent,
-                ensure_ascii=False,
-                **dump_kwargs,
-            )
+            # Translate json.dumps-style kwargs to orjson.dumps-compatible form
+            _sort_keys = dump_kwargs.pop("sort_keys", False)
+            _option = orjson.OPT_INDENT_2
+            if _sort_keys:
+                _option |= orjson.OPT_SORT_KEYS
+            # Remove any other json.dumps-only kwargs that orjson doesn't accept
+            dump_kwargs.pop("indent", None)
+            dump_kwargs.pop("ensure_ascii", None)
+            dump_kwargs.pop("separators", None)
+            f.write(orjson.dumps(data, **dump_kwargs, option=_option).decode('utf-8'))
             f.flush()
             os.fsync(f.fileno())
         # Preserve symlinks — swap in-place on the real file (GitHub #16743).
@@ -329,13 +332,13 @@ def atomic_roundtrip_yaml_update(
 def safe_json_loads(text: str, default: Any = None) -> Any:
     """Parse JSON, returning *default* on any parse error.
 
-    Replaces the ``try: json.loads(x) except (JSONDecodeError, TypeError)``
+    Replaces the ``try: orjson.loads(x) except (JSONDecodeError, TypeError)``
     pattern duplicated across display.py, anthropic_adapter.py,
     auxiliary_client.py, and others.
     """
     try:
-        return json.loads(text)
-    except (json.JSONDecodeError, TypeError, ValueError):
+        return orjson.loads(text)
+    except (orjson.JSONDecodeError, TypeError, ValueError):
         return default
 
 

@@ -4,7 +4,7 @@ Provides polite retry + JSON convenience + User-Agent enforcement.
 """
 from __future__ import annotations
 
-import json
+import orjson
 import os
 import time
 import urllib.error
@@ -79,4 +79,4 @@ def get(
 
 
 def get_json(url: str, **kwargs) -> dict | list:
-    return json.loads(get(url, **kwargs).decode("utf-8"))
+    return orjson.loads(get(url, **kwargs).decode("utf-8"))

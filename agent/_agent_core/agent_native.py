@@ -29,7 +29,7 @@ The module can find the library in a few ways, in order of priority:
 from __future__ import annotations
 
 import ctypes
-import json
+import orjson
 import os
 import platform
 import sys

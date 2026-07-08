@@ -20,7 +20,7 @@ no confirm/callback step.
 Uses stdlib ``urllib`` only, matching ``debug.py`` style — no third-party deps.
 """
 
-import json
+import orjson
 import os
 import urllib.request
 
@@ -56,7 +56,7 @@ def request_upload_url(
     if size_bytes is not None:
         payload["sizeBytes"] = int(size_bytes)
 
-    data = json.dumps(payload).encode("utf-8")
+    data = orjson.dumps(payload)
     req = urllib.request.Request(
         f"{NAS_BASE}/api/diagnostics/upload-url",
         data=data,
@@ -78,8 +78,8 @@ def request_upload_url(
         body = resp.read().decode("utf-8")
 
     try:
-        result = json.loads(body)
-    except (ValueError, json.JSONDecodeError) as exc:
+        result = orjson.loads(body)
+    except (ValueError, orjson.JSONDecodeError) as exc:
         raise RuntimeError(
             f"diagnostics upload-url returned non-JSON response: {body[:200]}"
         ) from exc

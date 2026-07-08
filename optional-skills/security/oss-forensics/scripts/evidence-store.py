@@ -21,7 +21,7 @@ Usage example:
   python3 evidence-store.py --store evidence.json export > evidence-table.md
 """
 
-import json
+import orjson
 import argparse
 import os
 import datetime
@@ -73,8 +73,8 @@ class EvidenceStore:
         if os.path.exists(filepath):
             try:
                 with open(filepath, "r", encoding="utf-8") as f:
-                    self.data = json.load(f)
-            except (json.JSONDecodeError, IOError) as e:
+                    self.data = orjson.loads(f.read())
+            except (orjson.JSONDecodeError, IOError) as e:
                 print(f"Error loading evidence store '{filepath}': {e}", file=sys.stderr)
                 print("Hint: The file might be corrupted. Check for manual edits or syntax errors.", file=sys.stderr)
                 sys.exit(1)
@@ -82,7 +82,7 @@ class EvidenceStore:
     def _save(self):
         self.data["metadata"]["last_updated"] = _now_iso()
         with open(self.filepath, "w", encoding="utf-8") as f:
-            json.dump(self.data, f, indent=2, ensure_ascii=False)
+            f.write(orjson.dumps(self.data, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
     def _next_id(self) -> str:
         return f"EV-{len(self.data['evidence']) + 1:04d}"
@@ -304,8 +304,8 @@ def main():
     elif args.command == "summary":
         s = store.summary()
         print(f"Total evidence items : {s['total']}")
-        print(f"By type              : {json.dumps(s['by_type'], indent=2)}")
-        print(f"By verification      : {json.dumps(s['by_verification'], indent=2)}")
+        print(f"By type              : {orjson.dumps(s['by_type'], option=orjson.OPT_INDENT_2).decode('utf-8')}")
+        print(f"By verification      : {orjson.dumps(s['by_verification'], option=orjson.OPT_INDENT_2).decode('utf-8')}")
         print(f"Unique actors        : {s['unique_actors']}")
 
 

@@ -12,7 +12,7 @@ Skipped cleanly if the optional ``websockets`` dependency is absent.
 from __future__ import annotations
 
 import asyncio
-import json
+import orjson
 
 import pytest
 import pytest_asyncio
@@ -64,23 +64,23 @@ class _StubConnectorServer:
             for line in str(raw).split("\n"):
                 if not line.strip():
                     continue
-                frame = json.loads(line)
+                frame = orjson.loads(line)
                 self.received.append(frame)
                 await self._on_frame(ws, frame)
 
     async def _on_frame(self, ws, frame):
         ftype = frame.get("type")
         if ftype == "hello":
-            await ws.send(json.dumps({"type": "descriptor", "descriptor": DESCRIPTOR}) + "\n")
+            await ws.send(orjson.dumps({"type": "descriptor", "descriptor": DESCRIPTOR}).decode('utf-8') + "\n")
             # Deliver any queued inbound frames right after handshake.
             for f in self._to_push:
-                await ws.send(json.dumps(f) + "\n")
+                await ws.send(orjson.dumps(f).decode('utf-8') + "\n")
         elif ftype == "outbound":
             action = frame.get("action", {})
             # Echo a successful result correlated by requestId.
             result = {"success": True, "message_id": f"srv-{action.get('op')}"}
             await ws.send(
-                json.dumps({"type": "outbound_result", "requestId": frame["requestId"], "result": result})
+                orjson.dumps({"type": "outbound_result", "requestId": frame["requestId"], "result": result}).decode('utf-8')
                 + "\n"
             )
 
@@ -229,11 +229,11 @@ class _Revoking4401Server:
             for line in str(raw).split("\n"):
                 if not line.strip():
                     continue
-                frame = json.loads(line)
+                frame = orjson.loads(line)
                 if frame.get("type") == "hello":
                     if self._send_descriptor_first:
                         await ws.send(
-                            json.dumps({"type": "descriptor", "descriptor": DESCRIPTOR}) + "\n"
+                            orjson.dumps({"type": "descriptor", "descriptor": DESCRIPTOR}).decode('utf-8') + "\n"
                         )
                         # Let the descriptor flush + be processed before the close.
                         await asyncio.sleep(0.05)

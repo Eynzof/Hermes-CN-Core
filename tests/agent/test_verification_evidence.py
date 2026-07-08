@@ -1,4 +1,4 @@
-import json
+import orjson
 import sqlite3
 import tempfile
 from datetime import datetime, timedelta, timezone
@@ -14,7 +14,7 @@ from agent.verification_evidence import (
 
 def _node_project(root: Path) -> None:
     (root / "package.json").write_text(
-        json.dumps({"scripts": {"test": "vitest", "lint": "eslint .", "dev": "vite"}})
+        orjson.dumps({"scripts": {"test": "vitest", "lint": "eslint .", "dev": "vite"}}).decode('utf-8')
     )
     (root / "pnpm-lock.yaml").write_text("")
     scripts = root / "scripts"
@@ -287,7 +287,7 @@ def test_file_tool_stales_evidence_by_session_id_for_absolute_edit(tmp_path, mon
 
     from tools.file_tools import write_file_tool
 
-    result = json.loads(
+    result = orjson.loads(
         write_file_tool(
             str(target),
             "export const ok = true\n",

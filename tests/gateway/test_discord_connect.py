@@ -1,5 +1,5 @@
 import asyncio
-import json
+import orjson
 import os
 import sys
 from types import SimpleNamespace
@@ -788,7 +788,7 @@ async def test_post_connect_initialization_respects_discord_retry_after(tmp_path
         / discord_platform._DISCORD_COMMAND_SYNC_STATE_SUBDIR
         / discord_platform._DISCORD_COMMAND_SYNC_STATE_FILENAME
     )
-    state = json.loads(state_path.read_text())
+    state = orjson.loads(state_path.read_text())
     entry = state["999"]
     assert entry["retry_after"] == 123.0
     assert entry["retry_after_until"] > entry["last_attempt_at"]
@@ -828,7 +828,7 @@ async def test_post_connect_initialization_reraises_non_rate_limit_exceptions(tm
         / discord_platform._DISCORD_COMMAND_SYNC_STATE_SUBDIR
         / discord_platform._DISCORD_COMMAND_SYNC_STATE_FILENAME
     )
-    state = json.loads(state_path.read_text()) if state_path.exists() else {}
+    state = orjson.loads(state_path.read_text()) if state_path.exists() else {}
     entry = state.get("4242", {})
     # Attempt was recorded before the sync call, but no rate-limit cooldown
     # should have been persisted from the unrelated exception.

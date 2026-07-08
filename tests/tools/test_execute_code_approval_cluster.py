@@ -327,7 +327,7 @@ def test_execute_code_entry_blocks_before_spawn_when_guard_denies(monkeypatch, t
     """Behavioral wiring test: execute_code() consults the entry guard and, on
     denial, returns the block message WITHOUT spawning the child — proven by a
     marker file the script would create that never appears."""
-    import json
+    import orjson
 
     import tools.code_execution_tool as cet
     from tools import terminal_tool as TT
@@ -340,7 +340,7 @@ def test_execute_code_entry_blocks_before_spawn_when_guard_denies(monkeypatch, t
     monkeypatch.setattr(A, "_get_cron_approval_mode", lambda: "deny")
     monkeypatch.setattr(TT, "_get_env_config", lambda: {"env_type": "local"})
 
-    result = json.loads(
+    result = orjson.loads(
         cet.execute_code(f"open({str(marker)!r}, 'w').close()", task_id="cluster-t")
     )
     assert result["status"] == "error"

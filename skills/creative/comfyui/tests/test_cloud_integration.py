@@ -88,8 +88,8 @@ class TestHealthCheckLive:
         rc = health_main(["--host", "https://cloud.comfy.org", "--api-key", cloud_key])
         captured = capsys.readouterr()
         # Should produce JSON
-        import json
-        report = json.loads(captured.out)
+        import orjson
+        report = orjson.loads(captured.out)
         assert report["server"]["reachable"] is True
         assert report["checkpoints"]["queryable"] is True
         assert report["checkpoints"]["count"] > 0

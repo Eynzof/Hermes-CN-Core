@@ -188,8 +188,8 @@ class ContextEngine(ABC):
         kwargs may include:
           messages: the current in-memory message list (for live ingestion)
         """
-        import json
-        return json.dumps({"error": f"Unknown context engine tool: {name}"})
+        import orjson
+        return orjson.dumps({"error": f"Unknown context engine tool: {name}"}).decode('utf-8')
 
     # -- Optional: status / display ----------------------------------------
 

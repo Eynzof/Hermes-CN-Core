@@ -38,7 +38,7 @@ CARD_CLICKED is ACK'd only in v1 (follow-up PR implements interactivity).
 from __future__ import annotations
 
 import asyncio
-import json
+import orjson
 import logging
 import os
 import random
@@ -363,8 +363,8 @@ class _ThreadCountStore:
             return
         try:
             raw = self._path.read_text()
-            data = json.loads(raw) if raw.strip() else {}
-        except json.JSONDecodeError as exc:
+            data = orjson.loads(raw) if raw.strip() else {}
+        except orjson.JSONDecodeError as exc:
             logger.warning(
                 "[GoogleChat] thread-count store at %s is corrupt; "
                 "starting fresh: %s",
@@ -417,7 +417,7 @@ class _ThreadCountStore:
         try:
             self._path.parent.mkdir(parents=True, exist_ok=True)
             tmp = self._path.with_suffix(self._path.suffix + ".tmp")
-            tmp.write_text(json.dumps(self._counts, separators=(",", ":")))
+            tmp.write_text(orjson.dumps(self._counts).decode('utf-8'))
             os.replace(tmp, self._path)
         except OSError as exc:
             logger.warning(
@@ -573,8 +573,8 @@ class GoogleChatAdapter(BasePlatformAdapter):
             # Inline JSON (rare, but supported).
             if sa_path.lstrip().startswith("{"):
                 try:
-                    info = json.loads(sa_path)
-                except json.JSONDecodeError as exc:
+                    info = orjson.loads(sa_path)
+                except orjson.JSONDecodeError as exc:
                     raise ValueError(
                         f"Inline SA JSON is not valid JSON: {exc}"
                     ) from exc
@@ -588,8 +588,8 @@ class GoogleChatAdapter(BasePlatformAdapter):
             # Validate file parses before handing to google-auth for nicer error.
             try:
                 with open(sa_path, "r", encoding="utf-8") as fh:
-                    info = json.load(fh)
-            except json.JSONDecodeError as exc:
+                    info = orjson.loads(fh.read())
+            except orjson.JSONDecodeError as exc:
                 raise ValueError(
                     f"Service Account JSON file is not valid JSON: {exc}"
                 ) from exc
@@ -707,9 +707,9 @@ class GoogleChatAdapter(BasePlatformAdapter):
         if not path.exists():
             return None
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
+            data = orjson.loads(path.read_text(encoding="utf-8"))
             return data.get("bot_user_id") or None
-        except (OSError, json.JSONDecodeError):
+        except (OSError, orjson.JSONDecodeError):
             return None
 
     def _save_cached_bot_id(self, bot_user_id: str) -> None:
@@ -717,7 +717,7 @@ class GoogleChatAdapter(BasePlatformAdapter):
             path = self._bot_id_cache_path()
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(
-                json.dumps({"bot_user_id": bot_user_id}),
+                orjson.dumps({"bot_user_id": bot_user_id}).decode('utf-8'),
                 encoding="utf-8",
             )
         except OSError:
@@ -1160,7 +1160,7 @@ class GoogleChatAdapter(BasePlatformAdapter):
             message.nack()
             return
         try:
-            envelope = json.loads(message.data.decode("utf-8"))
+            envelope = orjson.loads(message.data.decode("utf-8"))
         except Exception:
             logger.exception("[GoogleChat] Could not parse Pub/Sub envelope")
             message.ack()
@@ -1181,7 +1181,7 @@ class GoogleChatAdapter(BasePlatformAdapter):
             try:
                 from agent.redact import redact_sensitive_text
 
-                dump = redact_sensitive_text(json.dumps(envelope))
+                dump = redact_sensitive_text(orjson.dumps(envelope).decode('utf-8'))
             except Exception:
                 dump = "<redact filter unavailable>"
             logger.debug("[GoogleChat] RAW envelope (redacted): %s", dump[:2000])
@@ -3194,8 +3194,8 @@ async def _standalone_send(
             stripped = sa_value.lstrip()
             if stripped.startswith("{"):
                 try:
-                    info = json.loads(sa_value)
-                except json.JSONDecodeError as exc:
+                    info = orjson.loads(sa_value)
+                except orjson.JSONDecodeError as exc:
                     return {"error": f"Google Chat standalone send: inline SA JSON is invalid: {exc}"}
                 creds = service_account.Credentials.from_service_account_info(info, scopes=_CHAT_SCOPES)
             else:
@@ -3203,8 +3203,8 @@ async def _standalone_send(
                     return {"error": f"Google Chat standalone send: SA JSON file not found at {sa_value}"}
                 try:
                     with open(sa_value, "r", encoding="utf-8") as fh:
-                        info = json.load(fh)
-                except json.JSONDecodeError as exc:
+                        info = orjson.loads(fh.read())
+                except orjson.JSONDecodeError as exc:
                     return {"error": f"Google Chat standalone send: SA JSON file is invalid: {exc}"}
                 creds = service_account.Credentials.from_service_account_info(info, scopes=_CHAT_SCOPES)
         else:

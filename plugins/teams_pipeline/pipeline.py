@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-import json
+import orjson
 import logging
 import os
 import shutil
@@ -652,7 +652,7 @@ def _parse_summary_json(content: str) -> dict[str, Any]:
     end = text.rfind("}")
     if start >= 0 and end > start:
         text = text[start : end + 1]
-    payload = json.loads(text)
+    payload = orjson.loads(text)
     return {
         "summary": str(payload.get("summary") or "").strip(),
         "key_decisions": [str(item).strip() for item in payload.get("key_decisions", []) if str(item).strip()],

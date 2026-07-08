@@ -9,7 +9,7 @@ downloading from PR #4588 (YuhangLin).
 """
 
 import asyncio
-import json
+import orjson
 import logging
 import os
 import re
@@ -172,7 +172,7 @@ class BlueBubblesAdapter(BasePlatformAdapter):
         elif isinstance(raw, str):
             text = raw.strip()
             try:
-                loaded = json.loads(text) if text else []
+                loaded = orjson.loads(text) if text else []
             except Exception:
                 loaded = None
             patterns = loaded if isinstance(loaded, list) else [
@@ -878,7 +878,7 @@ class BlueBubblesAdapter(BasePlatformAdapter):
             raw = await request.read()
             body = raw.decode("utf-8", errors="replace")
             try:
-                payload = json.loads(body)
+                payload = orjson.loads(body)
             except Exception:
                 from urllib.parse import parse_qs
 
@@ -889,7 +889,7 @@ class BlueBubblesAdapter(BasePlatformAdapter):
                     or form.get("message")
                     or [""]
                 )[0]
-                payload = json.loads(payload_str) if payload_str else {}
+                payload = orjson.loads(payload_str) if payload_str else {}
         except Exception as exc:
             logger.error("[bluebubbles] webhook parse error: %s", exc)
             return web.json_response({"error": "invalid payload"}, status=400)

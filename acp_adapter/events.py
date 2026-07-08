@@ -8,7 +8,7 @@ thread while the event loop lives on the main thread).
 """
 
 import asyncio
-import json
+import json; import orjson
 import logging
 from collections import deque
 from typing import Any, Callable, Deque, Dict
@@ -29,7 +29,7 @@ def _json_loads_maybe_prefix(value: str) -> Any:
     """Parse a JSON object even when Hermes appended a human hint after it."""
     text = value.strip()
     try:
-        return json.loads(text)
+        return orjson.loads(text)
     except Exception:
         decoder = json.JSONDecoder()
         data, _ = decoder.raw_decode(text)
@@ -137,8 +137,8 @@ def make_tool_progress_cb(
             return
         if isinstance(args, str):
             try:
-                args = json.loads(args)
-            except (json.JSONDecodeError, TypeError):
+                args = orjson.loads(args)
+            except (orjson.JSONDecodeError, TypeError):
                 args = {"raw": args}
         if not isinstance(args, dict):
             args = {}

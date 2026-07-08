@@ -13,7 +13,7 @@ Requires:
 """
 
 import asyncio
-import json
+import orjson
 import logging
 import os
 import time
@@ -251,10 +251,10 @@ class HomeAssistantAdapter(BasePlatformAdapter):
         async for ws_msg in self._ws:
             if ws_msg.type == aiohttp.WSMsgType.TEXT:
                 try:
-                    data = json.loads(ws_msg.data)
+                    data = orjson.loads(ws_msg.data)
                     if data.get("type") == "event":
                         await self._handle_ha_event(data.get("event", {}))
-                except json.JSONDecodeError:
+                except orjson.JSONDecodeError:
                     logger.debug("Invalid JSON from HA WS: %s", ws_msg.data[:200])
             elif ws_msg.type in {aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR}:
                 break

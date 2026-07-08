@@ -12,7 +12,7 @@ Tests cover:
 
 import sys
 import os
-import json
+import orjson
 
 # Ensure project root is on the path
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -107,7 +107,7 @@ def make_json_push(
     if group_code:
         push["CallbackCommand"] = "Group.CallbackAfterSendMsg"
         push["GroupId"] = group_code
-    return json.dumps(push).encode("utf-8")
+    return orjson.dumps(push)
 
 
 # ============================================================
@@ -909,7 +909,7 @@ class TestGroupAtGuardMiddleware:
         adapter._bot_id = "bot_123"
         msg_body = [
             {"msg_type": "TIMCustomElem", "msg_content": {
-                "data": json.dumps({"elem_type": 1002, "text": "@Bot", "user_id": "bot_123"})
+                "data": orjson.dumps({"elem_type": 1002, "text": "@Bot", "user_id": "bot_123"}).decode('utf-8')
             }},
         ]
         ctx = make_ctx(
@@ -1307,44 +1307,44 @@ class TestQuoteContextMiddleware:
 
     def test_extract_quote_context_no_quote_key(self):
         """Returns (None, None) when JSON has no 'quote' key."""
-        cloud_data = json.dumps({"foo": "bar"})
+        cloud_data = orjson.dumps({"foo": "bar"}).decode('utf-8')
         result = QuoteContextMiddleware()._extract_quote_context(cloud_data)
         assert result == (None, None)
 
     def test_extract_quote_context_with_desc(self):
         """Extracts quote_id and quote_text from desc."""
-        cloud_data = json.dumps({
+        cloud_data = orjson.dumps({
             "quote": {
                 "id": "quoted-msg-001",
                 "desc": "Hello world",
                 "sender_nickname": "Alice",
             }
-        })
+        }).decode('utf-8')
         quote_id, quote_text = QuoteContextMiddleware()._extract_quote_context(cloud_data)
         assert quote_id == "quoted-msg-001"
         assert quote_text == "Alice: Hello world"
 
     def test_extract_quote_context_empty_desc(self):
         """When desc is empty, quote_text is None but quote_id is preserved."""
-        cloud_data = json.dumps({
+        cloud_data = orjson.dumps({
             "quote": {
                 "id": "quoted-msg-003",
                 "desc": "",
                 "sender_nickname": "Carol",
             }
-        })
+        }).decode('utf-8')
         quote_id, quote_text = QuoteContextMiddleware()._extract_quote_context(cloud_data)
         assert quote_id == "quoted-msg-003"
         assert quote_text is None
 
     def test_extract_quote_context_no_quote_id(self):
         """When quote.id is empty, quote_id is None."""
-        cloud_data = json.dumps({
+        cloud_data = orjson.dumps({
             "quote": {
                 "id": "",
                 "desc": "some text",
             }
-        })
+        }).decode('utf-8')
         quote_id, _quote_text = QuoteContextMiddleware()._extract_quote_context(cloud_data)
         assert quote_id is None
 
@@ -1355,13 +1355,13 @@ class TestQuoteContextMiddleware:
         With no transcript store wired up, quote_media_refs falls back to []
         — media resolution from transcript is covered by separate tests.
         """
-        cloud_data = json.dumps({
+        cloud_data = orjson.dumps({
             "quote": {
                 "id": "quoted-msg-004",
                 "desc": "Check this image",
                 "sender_nickname": "Dave",
             }
-        })
+        }).decode('utf-8')
         adapter = make_adapter()
         adapter._session_store = None  # no transcript lookup path
         ctx = make_ctx(adapter=adapter, cloud_custom_data=cloud_data)

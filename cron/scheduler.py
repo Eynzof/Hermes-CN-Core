@@ -12,7 +12,7 @@ import asyncio
 import atexit
 import concurrent.futures
 import contextvars
-import json
+import orjson
 import logging
 import os
 import re
@@ -2038,8 +2038,8 @@ def _parse_wake_gate(script_output: str) -> bool:
         return True
     last_line = stripped_lines[-1].strip()
     try:
-        gate = json.loads(last_line)
-    except (json.JSONDecodeError, ValueError):
+        gate = orjson.loads(last_line)
+    except (orjson.JSONDecodeError, ValueError):
         return True
     if not isinstance(gate, dict):
         return True
@@ -2207,8 +2207,8 @@ def _build_job_prompt(job: dict, prerun_script: Optional[tuple] = None) -> str:
             continue
 
         try:
-            loaded = json.loads(skill_view(skill_name))
-        except (json.JSONDecodeError, TypeError):
+            loaded = orjson.loads(skill_view(skill_name))
+        except (orjson.JSONDecodeError, TypeError):
             logger.warning("Cron job '%s': skill '%s' returned invalid JSON, skipping", job.get("name", job.get("id")), skill_name)
             skipped.append(skill_name)
             continue
@@ -2759,7 +2759,7 @@ def run_job(job: dict) -> tuple[bool, str, str, Optional[str]]:
             if pfpath.exists():
                 try:
                     with open(pfpath, "r", encoding="utf-8") as _pf:
-                        prefill_messages = json.load(_pf)
+                        prefill_messages = orjson.loads(_pf.read())
                     if not isinstance(prefill_messages, list):
                         prefill_messages = None
                 except Exception as e:

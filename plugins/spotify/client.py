@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import json
+import orjson
 from typing import Any, Dict, Iterable, Optional
 from urllib.parse import urlparse
 
@@ -432,4 +432,4 @@ def normalize_spotify_uris(values: Iterable[str], expected_type: Optional[str] =
 
 
 def compact_json(data: Any) -> str:
-    return json.dumps(data, ensure_ascii=False)
+    return orjson.dumps(data).decode('utf-8')

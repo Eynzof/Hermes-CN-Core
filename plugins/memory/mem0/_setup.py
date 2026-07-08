@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import getpass
-import json
+import orjson
 import os
 import shutil
 import socket
@@ -213,11 +213,11 @@ def _save_mem0_json(hermes_home: str, data: dict) -> None:
     existing = {}
     if config_path.exists():
         try:
-            existing = json.loads(config_path.read_text(encoding="utf-8"))
+            existing = orjson.loads(config_path.read_text(encoding="utf-8"))
         except Exception:
             pass
     existing.update(data)
-    config_path.write_text(json.dumps(existing, indent=2) + "\n")
+    config_path.write_text(orjson.dumps(existing, option=orjson.OPT_INDENT_2).decode('utf-8') + "\n")
 
 
 def _setup_platform(hermes_home: str, config: dict, flags: dict[str, str]) -> None:
@@ -237,7 +237,7 @@ def _setup_platform(hermes_home: str, config: dict, flags: dict[str, str]) -> No
     config_path = Path(hermes_home) / "mem0.json"
     if config_path.exists():
         try:
-            existing_config = json.loads(config_path.read_text())
+            existing_config = orjson.loads(config_path.read_text())
         except Exception:
             pass
 
@@ -536,7 +536,7 @@ def _ollama_has_model(url: str, model: str) -> bool:
     try:
         req = urllib.request.Request(f"{url}/api/tags", method="GET")
         resp = urllib.request.urlopen(req, timeout=5)
-        data = json.loads(resp.read())
+        data = orjson.loads(resp.read())
         names = [m.get("name", "") for m in data.get("models", [])]
         base_model = model.split(":")[0]
         return any(model in n or base_model in n for n in names)

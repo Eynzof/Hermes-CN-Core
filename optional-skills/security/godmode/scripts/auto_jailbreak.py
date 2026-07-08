@@ -16,7 +16,7 @@ Usage in execute_code:
 """
 
 import os
-import json
+import orjson
 import time
 import yaml
 from pathlib import Path
@@ -410,7 +410,7 @@ def _write_config(system_prompt: str = None, prefill_file: str = None):
 def _write_prefill(prefill_messages: list):
     """Write prefill messages to ~/.hermes/prefill.json."""
     with open(PREFILL_PATH, "w") as f:
-        json.dump(prefill_messages, f, indent=2, ensure_ascii=False)
+        f.write(orjson.dumps(prefill_messages, option=orjson.OPT_INDENT_2).decode('utf-8'))
     return str(PREFILL_PATH)
 
 

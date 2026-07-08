@@ -19,7 +19,7 @@ exist on disk.
 """
 from __future__ import annotations
 
-import json
+import orjson
 import logging
 import os
 from dataclasses import dataclass
@@ -219,12 +219,12 @@ def _maybe_migrate_legacy_gateway_run_state(
 
     if not dry_run:
         import time
-        state_file.write_text(json.dumps({
+        state_file.write_text(orjson.dumps({
             "gateway_state": "running",
             "desired_state": "running",
             "timestamp": int(time.time()),
             "migrated_from": "legacy-container-cmd",
-        }) + "\n")
+        }).decode('utf-8') + "\n")
     return "running"
 
 
@@ -370,7 +370,7 @@ def _read_desired_state(profile_dir: Path) -> str | None:
     if not state_file.exists():
         return None
     try:
-        data = json.loads(state_file.read_text())
+        data = orjson.loads(state_file.read_text())
         desired_state = data.get("desired_state")
         if desired_state is not None:
             return desired_state
@@ -378,7 +378,7 @@ def _read_desired_state(profile_dir: Path) -> str | None:
         if gateway_state in _TRANSIENT_RUNNING_STATES:
             return "running"
         return gateway_state
-    except (OSError, json.JSONDecodeError):
+    except (OSError, orjson.JSONDecodeError):
         log.warning(
             "could not read %s; treating as no prior state", state_file,
         )

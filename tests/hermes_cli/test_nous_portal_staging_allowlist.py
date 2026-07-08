@@ -28,7 +28,7 @@ response), never a value the operator explicitly configured.
 
 from __future__ import annotations
 
-import json
+import orjson
 import logging
 
 from hermes_cli.auth import (
@@ -83,8 +83,7 @@ class TestResolveAccessTokenEnvOverrideWins:
     def _write_auth_file(self, tmp_path, *, stored_portal_url):
         auth_file = tmp_path / "auth.json"
         auth_file.write_text(
-            json.dumps(
-                {
+            orjson.dumps({
                     "version": 1,
                     "active_provider": "nous",
                     "providers": {
@@ -96,8 +95,7 @@ class TestResolveAccessTokenEnvOverrideWins:
                             "expires_at": "2000-01-01T00:00:00+00:00",
                         }
                     },
-                }
-            )
+                }).decode('utf-8')
         )
         return auth_file
 

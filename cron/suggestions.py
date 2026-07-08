@@ -27,7 +27,7 @@ writes, an in-process lock, and 0600 perms.
 
 from __future__ import annotations
 
-import json
+import orjson
 import logging
 import os
 import tempfile
@@ -78,8 +78,8 @@ def _load_raw() -> Dict[str, Any]:
         return {"suggestions": []}
     try:
         with open(SUGGESTIONS_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-    except (json.JSONDecodeError, OSError) as e:
+            data = orjson.loads(f.read())
+    except (orjson.JSONDecodeError, OSError) as e:
         logger.warning("suggestions.json unreadable (%s); starting empty", e)
         return {"suggestions": []}
     if isinstance(data, dict) and isinstance(data.get("suggestions"), list):
@@ -95,11 +95,7 @@ def _save_raw(suggestions: List[Dict[str, Any]]) -> None:
     fd, tmp_path = tempfile.mkstemp(dir=str(SUGGESTIONS_FILE.parent), suffix=".tmp", prefix=".sugg_")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(
-                {"suggestions": suggestions, "updated_at": _hermes_now().isoformat()},
-                f,
-                indent=2,
-            )
+            f.write(orjson.dumps({"suggestions": suggestions, "updated_at": _hermes_now().isoformat()}, option=orjson.OPT_INDENT_2).decode('utf-8'))
             f.flush()
             os.fsync(f.fileno())
         atomic_replace(tmp_path, SUGGESTIONS_FILE)

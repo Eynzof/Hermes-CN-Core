@@ -19,7 +19,7 @@ shape.
 
 from __future__ import annotations
 
-import json
+import orjson
 from io import StringIO
 from unittest.mock import MagicMock, patch
 
@@ -30,7 +30,7 @@ from unittest.mock import MagicMock, patch
 def _fake_proc_with_responses(*responses: dict) -> MagicMock:
     """Build a MagicMock subprocess.Popen handle that yields one JSON-RPC
     response per `readline()` call, then returns "" (EOF)."""
-    lines = [json.dumps(r) + "\n" for r in responses] + [""]
+    lines = [orjson.dumps(r).decode('utf-8') + "\n" for r in responses] + [""]
     proc = MagicMock()
     proc.stdin = MagicMock()
     proc.stdout = MagicMock()
@@ -185,7 +185,7 @@ class TestResponseShapeParsing:
                 "jsonrpc": "2.0", "id": 2,
                 "result": {
                     "content": [
-                        {"type": "text", "text": json.dumps(_ok_report())},
+                        {"type": "text", "text": orjson.dumps(_ok_report()).decode('utf-8')},
                     ],
                 },
             },
@@ -229,7 +229,7 @@ class TestArgPassthrough:
 
         # Inspect the second write to stdin — the tools/call payload.
         writes = [call.args[0] for call in proc.stdin.write.call_args_list]
-        call_payload = next(json.loads(w) for w in writes if "tools/call" in w)
+        call_payload = next(orjson.loads(w) for w in writes if "tools/call" in w)
         assert call_payload["params"]["arguments"]["include"] == [
             "binary_version", "tcc_accessibility",
         ]
@@ -246,7 +246,7 @@ class TestArgPassthrough:
              patch("sys.stdout", new_callable=StringIO):
             doctor.run_doctor(skip=["bundle_identity"])
         writes = [call.args[0] for call in proc.stdin.write.call_args_list]
-        call_payload = next(json.loads(w) for w in writes if "tools/call" in w)
+        call_payload = next(orjson.loads(w) for w in writes if "tools/call" in w)
         assert call_payload["params"]["arguments"]["skip"] == ["bundle_identity"]
 
     def test_no_filters_sends_empty_arguments(self):
@@ -264,7 +264,7 @@ class TestArgPassthrough:
              patch("sys.stdout", new_callable=StringIO):
             doctor.run_doctor()
         writes = [call.args[0] for call in proc.stdin.write.call_args_list]
-        call_payload = next(json.loads(w) for w in writes if "tools/call" in w)
+        call_payload = next(orjson.loads(w) for w in writes if "tools/call" in w)
         assert call_payload["params"]["arguments"] == {}
 
 
@@ -286,7 +286,7 @@ class TestJsonOutput:
         # Verify the captured text round-trips through json.loads and matches
         # the input report (the contract: --json passes the structured payload
         # through unchanged so downstream tooling can consume it directly).
-        parsed = json.loads(out.getvalue())
+        parsed = orjson.loads(out.getvalue())
         assert parsed == _ok_report()
 
 

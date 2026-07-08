@@ -1,6 +1,6 @@
 """Tests for the Microsoft Teams platform adapter plugin."""
 
-import json
+import orjson
 import sys
 import types
 from types import SimpleNamespace
@@ -517,7 +517,7 @@ class TestTeamsSummaryWriter:
 
         def _handler(request: httpx.Request) -> httpx.Response:
             seen["url"] = str(request.url)
-            seen["body"] = json.loads(request.content.decode("utf-8"))
+            seen["body"] = orjson.loads(request.content.decode("utf-8"))
             return httpx.Response(200, json={"ok": True})
 
         writer = TeamsSummaryWriter(transport=httpx.MockTransport(_handler))

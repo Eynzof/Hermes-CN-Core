@@ -1,6 +1,6 @@
 """Tests for batch_runner checkpoint behavior — incremental writes, resume, atomicity."""
 
-import json
+import orjson
 from pathlib import Path
 from threading import Lock
 
@@ -35,7 +35,7 @@ class TestSaveCheckpoint:
         data = {"run_name": "test", "completed_prompts": [1, 2, 3], "batch_stats": {}}
         runner._save_checkpoint(data)
 
-        result = json.loads(runner.checkpoint_file.read_text())
+        result = orjson.loads(runner.checkpoint_file.read_text())
         assert result["run_name"] == "test"
         assert result["completed_prompts"] == [1, 2, 3]
 
@@ -43,7 +43,7 @@ class TestSaveCheckpoint:
         data = {"run_name": "test", "completed_prompts": []}
         runner._save_checkpoint(data)
 
-        result = json.loads(runner.checkpoint_file.read_text())
+        result = orjson.loads(runner.checkpoint_file.read_text())
         assert "last_updated" in result
         assert result["last_updated"] is not None
 
@@ -51,7 +51,7 @@ class TestSaveCheckpoint:
         runner._save_checkpoint({"run_name": "test", "completed_prompts": [1]})
         runner._save_checkpoint({"run_name": "test", "completed_prompts": [1, 2, 3]})
 
-        result = json.loads(runner.checkpoint_file.read_text())
+        result = orjson.loads(runner.checkpoint_file.read_text())
         assert result["completed_prompts"] == [1, 2, 3]
 
     def test_with_lock(self, runner):
@@ -59,14 +59,14 @@ class TestSaveCheckpoint:
         data = {"run_name": "test", "completed_prompts": [42]}
         runner._save_checkpoint(data, lock=lock)
 
-        result = json.loads(runner.checkpoint_file.read_text())
+        result = orjson.loads(runner.checkpoint_file.read_text())
         assert result["completed_prompts"] == [42]
 
     def test_without_lock(self, runner):
         data = {"run_name": "test", "completed_prompts": [99]}
         runner._save_checkpoint(data, lock=None)
 
-        result = json.loads(runner.checkpoint_file.read_text())
+        result = orjson.loads(runner.checkpoint_file.read_text())
         assert result["completed_prompts"] == [99]
 
     def test_creates_parent_dirs(self, tmp_path):
@@ -96,7 +96,7 @@ class TestLoadCheckpoint:
     def test_loads_existing_checkpoint(self, runner):
         data = {"run_name": "test_run", "completed_prompts": [5, 10, 15],
                 "batch_stats": {"0": {"processed": 3}}}
-        runner.checkpoint_file.write_text(json.dumps(data))
+        runner.checkpoint_file.write_text(orjson.dumps(data).decode('utf-8'))
 
         result = runner._load_checkpoint()
         assert result["completed_prompts"] == [5, 10, 15]
@@ -121,7 +121,7 @@ class TestResumePreservesProgress:
             "batch_stats": {"0": {"processed": 5}},
             "last_updated": "2026-01-01T00:00:00",
         }
-        runner.checkpoint_file.write_text(json.dumps(prior))
+        runner.checkpoint_file.write_text(orjson.dumps(prior).decode('utf-8'))
 
         # Load checkpoint like run() does
         checkpoint_data = runner._load_checkpoint()
@@ -142,7 +142,7 @@ class TestResumePreservesProgress:
             "completed_prompts": [0, 1, 2],
             "batch_stats": {},
         }
-        runner.checkpoint_file.write_text(json.dumps(prior))
+        runner.checkpoint_file.write_text(orjson.dumps(prior).decode('utf-8'))
 
         checkpoint_data = runner._load_checkpoint()
         if checkpoint_data.get("run_name") != runner.run_name:
@@ -227,7 +227,7 @@ class TestFinalCheckpointNoDuplicates:
             "completed_prompts": final,
             "batch_stats": {},
         })
-        loaded = json.loads(runner.checkpoint_file.read_text())
+        loaded = orjson.loads(runner.checkpoint_file.read_text())
         cp = loaded["completed_prompts"]
         assert cp == sorted(set(cp))
         assert len(cp) == 4

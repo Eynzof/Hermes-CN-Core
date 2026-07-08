@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-import json
+import orjson
 import mimetypes
 import os
 import re
@@ -340,7 +340,7 @@ async def _default_url_fetcher(url: str) -> str:
     from tools.web_tools import web_extract_tool
 
     raw = await web_extract_tool([url], format="markdown")
-    payload = json.loads(raw)
+    payload = orjson.loads(raw)
     docs = payload.get("results", [])
     if not docs:
         return ""

@@ -1,7 +1,7 @@
 """Tests for the /voice command and auto voice reply in the gateway."""
 
 import importlib.util
-import json
+import orjson
 import os
 import queue
 import sys
@@ -149,12 +149,12 @@ class TestHandleVoiceCommand:
         event = _make_event("/voice on")
         await runner._handle_voice_command(event)
         assert runner._VOICE_MODE_PATH.exists()
-        data = json.loads(runner._VOICE_MODE_PATH.read_text())
+        data = orjson.loads(runner._VOICE_MODE_PATH.read_text())
         assert data["telegram:123"] == "voice_only"
 
     @pytest.mark.asyncio
     async def test_persistence_loaded(self, runner):
-        runner._VOICE_MODE_PATH.write_text(json.dumps({"telegram:456": "all"}))
+        runner._VOICE_MODE_PATH.write_text(orjson.dumps({"telegram:456": "all"}).decode('utf-8'))
         loaded = runner._load_voice_modes()
         assert loaded == {"telegram:456": "all"}
 
@@ -162,7 +162,7 @@ class TestHandleVoiceCommand:
     async def test_persistence_saved_for_off(self, runner):
         event = _make_event("/voice off")
         await runner._handle_voice_command(event)
-        data = json.loads(runner._VOICE_MODE_PATH.read_text())
+        data = orjson.loads(runner._VOICE_MODE_PATH.read_text())
         assert data["telegram:123"] == "off"
 
     def test_sync_voice_mode_state_to_adapter_restores_off_chats(self, runner):
@@ -226,7 +226,7 @@ class TestHandleVoiceCommand:
 
     def test_restart_restores_voice_off_state(self, runner, tmp_path):
         from gateway.config import Platform
-        runner._VOICE_MODE_PATH.write_text(json.dumps({"telegram:123": "off"}))
+        runner._VOICE_MODE_PATH.write_text(orjson.dumps({"telegram:123": "off"}).decode('utf-8'))
 
         restored_runner = _make_runner(tmp_path)
         restored_runner._voice_mode = restored_runner._load_voice_modes()
@@ -423,7 +423,7 @@ class TestSendVoiceReply:
         event.source.platform = Platform.TELEGRAM
         runner.adapters[event.source.platform] = mock_adapter
 
-        tts_result = json.dumps({"success": True, "file_path": "/tmp/test.ogg"})
+        tts_result = orjson.dumps({"success": True, "file_path": "/tmp/test.ogg"}).decode('utf-8')
 
         with patch("tools.tts_tool.text_to_speech_tool", return_value=tts_result) as mock_tts, \
              patch("tools.tts_tool._strip_markdown_for_tts", side_effect=lambda t: t), \
@@ -447,7 +447,7 @@ class TestSendVoiceReply:
         event.source.platform = Platform.SLACK
         runner.adapters[event.source.platform] = mock_adapter
 
-        tts_result = json.dumps({"success": True, "file_path": "/tmp/test.mp3"})
+        tts_result = orjson.dumps({"success": True, "file_path": "/tmp/test.mp3"}).decode('utf-8')
 
         with patch("tools.tts_tool.text_to_speech_tool", return_value=tts_result) as mock_tts, \
              patch("tools.tts_tool._strip_markdown_for_tts", side_effect=lambda t: t), \
@@ -472,7 +472,7 @@ class TestSendVoiceReply:
         event.message_id = "462"
         runner.adapters[event.source.platform] = mock_adapter
 
-        tts_result = json.dumps({"success": True, "file_path": "/tmp/test.ogg"})
+        tts_result = orjson.dumps({"success": True, "file_path": "/tmp/test.ogg"}).decode('utf-8')
 
         with patch("tools.tts_tool.text_to_speech_tool", return_value=tts_result), \
              patch("tools.tts_tool._strip_markdown_for_tts", side_effect=lambda t: t), \
@@ -509,7 +509,7 @@ class TestSendVoiceReply:
         event = _make_event()
         mock_adapter = AsyncMock()
         runner.adapters[event.source.platform] = mock_adapter
-        tts_result = json.dumps({"success": False, "error": "API error"})
+        tts_result = orjson.dumps({"success": False, "error": "API error"}).decode('utf-8')
 
         with patch("tools.tts_tool.text_to_speech_tool", return_value=tts_result), \
              patch("tools.tts_tool._strip_markdown_for_tts", side_effect=lambda t: t), \
@@ -2170,10 +2170,10 @@ class TestSendVoiceReplyCleanup:
         audio_file = fake_audio / "test.mp3"
         audio_file.write_bytes(b"fake audio")
 
-        tts_result = json.dumps({
+        tts_result = orjson.dumps({
             "success": True,
             "file_path": str(audio_file),
-        })
+        }).decode('utf-8')
 
         with patch("gateway.run.asyncio.to_thread", new_callable=AsyncMock, return_value=tts_result), \
              patch("tools.tts_tool._strip_markdown_for_tts", return_value="hello"), \

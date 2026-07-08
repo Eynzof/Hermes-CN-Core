@@ -3,7 +3,7 @@
 All tests run in OFFLINE mode — no real LLM API calls.
 """
 
-import json
+import orjson
 import os
 import sys
 import time
@@ -194,7 +194,7 @@ def test_tool_dispatch_timing(timing_context):
 
     with timing_context.measure("tool_dispatch_two_calls"):
         for tool_name, args in tool_calls:
-            result = handle_function_call(tool_name, json.dumps(args))
+            result = handle_function_call(tool_name, orjson.dumps(args).decode('utf-8'))
 
     summary = timing_context.summary()
     total_ms = summary.get("tool_dispatch_two_calls", {}).get("total_ms", 0)

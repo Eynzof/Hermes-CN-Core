@@ -358,9 +358,12 @@ class TestGithubReasoningEfforts:
     def test_legacy_catalog_reasoning_still_supported(self):
         catalog = [{"id": "openai/o3", "capabilities": ["reasoning"]}]
         assert github_model_reasoning_efforts("openai/o3", catalog=catalog) == [
+            "minimal",
             "low",
             "medium",
             "high",
+            "xhigh",
+            "max",
         ]
 
     def test_non_reasoning_model_returns_empty(self):

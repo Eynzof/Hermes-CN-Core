@@ -7,6 +7,7 @@ tests verify the config-driven prelude that fixes that.
 """
 
 import os
+import sys
 from unittest.mock import patch
 
 import pytest
@@ -18,6 +19,7 @@ from tools.environments.local import (
 )
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="bash shell init files are POSIX-specific")
 class TestResolveShellInitFiles:
     def test_auto_sources_bashrc_when_present(self, tmp_path, monkeypatch):
         bashrc = tmp_path / ".bashrc"
@@ -183,8 +185,9 @@ class TestPrependShellInit:
 
 
 @pytest.mark.skipif(
-    os.environ.get("CI") == "true" and not os.path.isfile("/bin/bash"),
-    reason="Requires bash; CI sandbox may strip it.",
+    os.environ.get("CI") == "true" and not os.path.isfile("/bin/bash")
+    or sys.platform == "win32",
+    reason="Requires bash; skipped on Windows where bash is not the default shell.",
 )
 class TestSnapshotEndToEnd:
     """Spin up a real LocalEnvironment and confirm the snapshot sources

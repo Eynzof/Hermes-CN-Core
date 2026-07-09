@@ -6,7 +6,10 @@ Covers:
 - Argument parser registration
 """
 
+import sys
 import time
+
+import pytest
 from unittest.mock import MagicMock, patch
 
 
@@ -242,6 +245,7 @@ class TestSessionBrowsePicker:
 
 # ─── Curses-based picker (mocked curses) ────────────────────────────────────
 
+@pytest.mark.skipif(sys.platform == "win32", reason="curses is not available on Windows")
 class TestCursesBrowse:
     """Tests for the curses-based interactive picker via simulated key sequences."""
 

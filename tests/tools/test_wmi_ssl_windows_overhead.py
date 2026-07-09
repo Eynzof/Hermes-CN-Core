@@ -30,6 +30,11 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 _WIN = sys.platform == "win32"
+try:
+    import _wmi as _wmi_module  # type: ignore
+except ImportError:
+    _wmi_module = None
+_WMI_AVAILABLE = _wmi_module is not None
 
 
 # ==========================================================================
@@ -80,7 +85,7 @@ def test_windows_release_matches_stdlib():
         assert pu.windows_release() == ""
 
 
-@pytest.mark.skipif(not _WIN, reason="_wmi builtin only exists on Windows")
+@pytest.mark.skipif(not _WIN or not _WMI_AVAILABLE, reason="_wmi builtin only exists on Windows")
 def test_windows_release_is_wmi_free():
     """Calling the helpers issues zero ``_wmi.exec_query`` queries."""
     import _wmi
@@ -109,7 +114,7 @@ def test_windows_release_is_wmi_free():
 # ==========================================================================
 
 
-@pytest.mark.skipif(not _WIN, reason="_wmi builtin only exists on Windows")
+@pytest.mark.skipif(not _WIN or not _WMI_AVAILABLE, reason="_wmi builtin only exists on Windows")
 def test_agent_init_path_triggers_no_wmi():
     """Importing ``run_agent`` and building the environment hints must issue
     ZERO WMI queries.

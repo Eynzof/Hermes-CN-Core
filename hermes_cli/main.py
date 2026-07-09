@@ -3920,22 +3920,28 @@ def _prompt_reasoning_effort_selection(efforts, current_effort=""):
             str(effort).strip().lower() for effort in efforts if str(effort).strip()
         )
     )
-    canonical_order = ("minimal", "low", "medium", "high", "xhigh")
+    canonical_order = ("off", "minimal", "low", "medium", "high", "xhigh", "max")
     ordered = [effort for effort in canonical_order if effort in deduped]
     ordered.extend(effort for effort in deduped if effort not in canonical_order)
     if not ordered:
         return None
 
     def _label(effort):
-        if effort == current_effort:
-            return f"{effort}  ← currently in use"
-        return effort
+        if effort == "off":
+            label = "off (disable reasoning)"
+        else:
+            label = effort
+        if effort == current_effort or (current_effort == "none" and effort == "off"):
+            return f"{label}  ← currently in use"
+        return label
 
-    disable_label = "Disable reasoning"
     skip_label = "Skip (keep current)"
+    has_off = "off" in ordered
 
-    if current_effort == "none":
-        default_idx = len(ordered)
+    if current_effort == "none" and has_off:
+        default_idx = ordered.index("off")
+    elif current_effort == "none":
+        default_idx = len(ordered)  # disable option past end
     elif current_effort in ordered:
         default_idx = ordered.index(current_effort)
     elif "medium" in ordered:
@@ -3947,7 +3953,8 @@ def _prompt_reasoning_effort_selection(efforts, current_effort=""):
         from hermes_cli.curses_ui import curses_radiolist
 
         choices = [_label(effort) for effort in ordered]
-        choices.append(disable_label)
+        if not has_off:
+            choices.append("Disable reasoning")
         choices.append(skip_label)
         idx = curses_radiolist(
             "Select reasoning effort:",
@@ -3959,7 +3966,12 @@ def _prompt_reasoning_effort_selection(efforts, current_effort=""):
             return None
         print()
         if idx < len(ordered):
-            return ordered[idx]
+            chosen = ordered[idx]
+            return "none" if chosen == "off" else chosen
+        if has_off:
+            # idx == len(ordered) → skip
+            return None
+        # idx == len(ordered) → disable, idx == len(ordered)+1 → skip
         if idx == len(ordered):
             return "none"
         return None
@@ -3970,23 +3982,33 @@ def _prompt_reasoning_effort_selection(efforts, current_effort=""):
     for i, effort in enumerate(ordered, 1):
         print(f"  {i}. {_label(effort)}")
     n = len(ordered)
-    print(f"  {n + 1}. {disable_label}")
-    print(f"  {n + 2}. {skip_label}")
+    if has_off:
+        print(f"  {n + 1}. {skip_label}")
+        n_choices = n + 1
+    else:
+        print(f"  {n + 1}. Disable reasoning")
+        print(f"  {n + 2}. {skip_label}")
+        n_choices = n + 2
     print()
 
     while True:
         try:
-            choice = input(f"Choice [1-{n + 2}] (default: keep current): ").strip()
+            choice = input(f"Choice [1-{n_choices}] (default: keep current): ").strip()
             if not choice:
                 return None
             idx = int(choice)
             if 1 <= idx <= n:
-                return ordered[idx - 1]
-            if idx == n + 1:
-                return "none"
-            if idx == n + 2:
-                return None
-            print(f"Please enter 1-{n + 2}")
+                chosen = ordered[idx - 1]
+                return "none" if chosen == "off" else chosen
+            if has_off:
+                if idx == n + 1:
+                    return None  # skip
+            else:
+                if idx == n + 1:
+                    return "none"  # disable
+                if idx == n + 2:
+                    return None  # skip
+            print(f"Please enter 1-{n_choices}")
         except ValueError:
             print("Please enter a number")
         except (KeyboardInterrupt, EOFError):

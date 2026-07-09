@@ -1,13 +1,17 @@
 """Tests for file permissions hardening on sensitive files."""
 
 import os
+import sys
 import stat
 import tempfile
 import unittest
+
+import pytest
 from pathlib import Path
 from unittest.mock import patch
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Unix permission modes are not enforced on Windows")
 class TestCronFilePermissions(unittest.TestCase):
     """Verify cron files get secure permissions."""
 
@@ -74,6 +78,7 @@ class TestCronFilePermissions(unittest.TestCase):
             self.assertEqual(dir_mode, 0o700)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Unix permission modes are not enforced on Windows")
 class TestConfigFilePermissions(unittest.TestCase):
     """Verify config files get secure permissions."""
 

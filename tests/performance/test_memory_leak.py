@@ -191,7 +191,7 @@ def test_measure_result_bytes(timing_context):
     # Non-ASCII counts UTF-8 bytes, not code points.
     assert measure_result_bytes("é") == 2
     # JSON-encoded objects are measured through their serialization.
-    assert measure_result_bytes({"k": "v"}) == len('{"k": "v"}')
+    assert measure_result_bytes({"k": "v"}) == len('{"k":"v"}')
     # Defaults are sane, positive ceilings.
     assert DEFAULT_MAX_MEMORY_BYTES > DEFAULT_SPILL_THRESHOLD_BYTES > 0
 

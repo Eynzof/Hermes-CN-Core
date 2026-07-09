@@ -474,11 +474,17 @@ class TestParseReasoningEffort:
 
     @pytest.mark.parametrize(
         "value",
-        ["bogus", "very-high", "max", "0", "off", "true", "default"],
+        ["bogus", "very-high", "0", "true", "default"],
     )
     def test_unknown_levels_return_none(self, value):
         """Unrecognized strings fall back to the caller default (None)."""
         assert parse_reasoning_effort(value) is None
+
+    def test_off_aliases_disable_reasoning(self):
+        """The literal "off" disables reasoning explicitly."""
+        assert parse_reasoning_effort("off") == {"enabled": False}
+        assert parse_reasoning_effort("OFF") == {"enabled": False}
+        assert parse_reasoning_effort(" Off ") == {"enabled": False}
 
     def test_known_supported_levels_are_documented(self):
         """Guard against silently dropping a documented level.
@@ -487,7 +493,7 @@ class TestParseReasoningEffort:
         If someone removes one from VALID_REASONING_EFFORTS without updating
         the docstring, this test will fail and force the call out.
         """
-        documented = {"minimal", "low", "medium", "high", "xhigh"}
+        documented = {"minimal", "low", "medium", "high", "xhigh", "max"}
         assert documented.issubset(set(VALID_REASONING_EFFORTS))
 
 

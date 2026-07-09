@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+import sys
 import yaml
 
 from hermes_cli.plugins_cmd import (
@@ -738,6 +739,7 @@ class TestPromptPluginEnvVars:
 # ── curses_radiolist ─────────────────────────────────────────────────────
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="curses is not available on Windows")
 class TestCursesRadiolist:
     """Test the curses_radiolist function."""
 

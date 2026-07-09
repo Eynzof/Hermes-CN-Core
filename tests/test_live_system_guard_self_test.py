@@ -18,10 +18,14 @@ the guard? Add a test here too.
 from __future__ import annotations
 
 import os
+import sys
 import signal
 import subprocess
 
 import pytest
+
+if sys.platform == "win32":
+    pytest.skip("POSIX-only live-system guard primitives", allow_module_level=True)
 
 # A guaranteed-foreign PID: PID 1 (init).  Owned by root, not us, and
 # always exists. A sane guard refuses to signal it.

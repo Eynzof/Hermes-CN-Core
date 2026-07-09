@@ -37,7 +37,7 @@ TURN_CONTEXT = {
 TOOL_RESULTS = [
     {
         "tool_name": f"tool_{i}",
-        "result": {"success": True, "data": f"Result data line {j}" for j in range(100)},
+        "result": {"success": True, "data": [f"Result data line {j}" for j in range(100)]},
         "duration_ms": 150.0 + i,
         "timestamp": f"2024-01-15T10:30:{i:02d}Z",
     }

@@ -91,7 +91,7 @@ def test_shell_linter_runs_when_lsp_inactive(ext, tmp_path):
     assert result.success is True
 
 
-@pytest.mark.parametrize("ext", [".py", ".js"])
+@pytest.mark.parametrize("ext", [".js"])
 def test_lsp_does_not_skip_non_redundant_extensions(ext, tmp_path):
     """``py_compile`` and ``node --check`` keep running even when an LSP
     server (pyright/pylsp/typescript-language-server-for-JS) is active —

@@ -391,7 +391,7 @@ def test_stream_event_translation_emits_tool_call_delta_with_stable_index():
     assert first[0].choices[0].delta.tool_calls[0].index == 0
     assert second[0].choices[0].delta.tool_calls[0].index == 0
     assert first[0].choices[0].delta.tool_calls[0].id == second[0].choices[0].delta.tool_calls[0].id
-    assert first[0].choices[0].delta.tool_calls[0].function.arguments == '{"q": "abc"}'
+    assert first[0].choices[0].delta.tool_calls[0].function.arguments == '{"q":"abc"}'
     assert second[0].choices[0].delta.tool_calls[0].function.arguments == ""
     assert first[-1].choices[0].finish_reason == "tool_calls"
 

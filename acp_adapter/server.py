@@ -11,6 +11,7 @@ import logging
 import os
 from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor
+import sys
 from pathlib import Path
 from typing import Any, Deque, Optional
 from urllib.parse import unquote, urlparse
@@ -174,14 +175,25 @@ def _path_from_file_uri(uri: str) -> Path | None:
         path_text = unquote(raw)
 
     # file:///C:/Users/... or C:\Users\...
-    if len(path_text) >= 3 and path_text[0] == "/" and path_text[2] == ":" and path_text[1].isalpha():
-        drive = path_text[1].lower()
-        rest = path_text[3:].lstrip("/\\").replace("\\", "/")
-        return Path("/mnt") / drive / rest
-    if len(path_text) >= 2 and path_text[1] == ":" and path_text[0].isalpha():
-        drive = path_text[0].lower()
-        rest = path_text[2:].lstrip("/\\").replace("\\", "/")
-        return Path("/mnt") / drive / rest
+    # On native Windows, keep the Windows path; on WSL/Linux, translate to /mnt/<drive>/...
+    if sys.platform == "win32":
+        # Keep native Windows paths
+        if len(path_text) >= 2 and path_text[1] == ":" and path_text[0].isalpha():
+            # Already a Windows path like C:\Users\... or C:/Users/...
+            return Path(path_text)
+        if path_text.startswith("/") and len(path_text) >= 3 and path_text[2] == ":" and path_text[1].isalpha():
+            # file:///C:/Users/... -> strip leading slash -> C:/Users/...
+            return Path(path_text[1:])
+    else:
+        # WSL / Linux: translate Windows drive paths to /mnt/<drive>/...
+        if len(path_text) >= 3 and path_text[0] == "/" and path_text[2] == ":" and path_text[1].isalpha():
+            drive = path_text[1].lower()
+            rest = path_text[3:].lstrip("/\\").replace("\\", "/")
+            return Path("/mnt") / drive / rest
+        if len(path_text) >= 2 and path_text[1] == ":" and path_text[0].isalpha():
+            drive = path_text[0].lower()
+            rest = path_text[2:].lstrip("/\\").replace("\\", "/")
+            return Path("/mnt") / drive / rest
 
     return Path(path_text)
 

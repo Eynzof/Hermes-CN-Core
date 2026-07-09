@@ -17,8 +17,6 @@ from tools.environments.base import BaseEnvironment, _pipe_stdin
 from tools.environments._process_bash_command import _prepare_bash_cmd
 from tools.environments.proccess_pwsh import pwsh_transform
 from tools.environments.windows_env import refresh_env_from_registry
-from hermes_cli._subprocess_compat import windows_hide_flags
-
 _IS_WINDOWS = is_windows()
 
 logger = logging.getLogger(__name__)
@@ -1241,7 +1239,7 @@ class LocalEnvironment(BaseEnvironment):
                 )
             self.cwd = safe_cwd
 
-        _popen_kwargs = {"creationflags": windows_hide_flags()} if _IS_WINDOWS else {}
+        _popen_kwargs = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW} if _IS_WINDOWS else {}
 
         proc = subprocess.Popen(
             args,
@@ -1304,6 +1302,7 @@ class LocalEnvironment(BaseEnvironment):
             # Force UTF-8 output encoding for stdout/stderr.
             "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8",
             "$OutputEncoding=[System.Text.Encoding]::UTF8",
+            "[Console]::TreatControlCAsInput=$true",
             # Suppress errors, cd to target
             "$ErrorActionPreference = 'Continue'",
             f"Set-Location -LiteralPath '{quoted_cwd}' -ErrorAction SilentlyContinue",
@@ -1514,7 +1513,7 @@ class LocalEnvironment(BaseEnvironment):
 
         refresh_env_from_registry()
         run_env = _make_run_env(self.env)
-        popen_kwargs = {"creationflags": windows_hide_flags()} if _IS_WINDOWS else {}
+        popen_kwargs = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW} if _IS_WINDOWS else {}
         # Eligibility guarantees no shell metacharacters, so the command is safe
         # to hand to cmd.exe as a single verbatim command line (no injection
         # surface) — building it ourselves avoids subprocess.list2cmdline
@@ -1709,7 +1708,7 @@ class LocalEnvironment(BaseEnvironment):
 
         _popen_cwd = self.cwd
 
-        _popen_kwargs = {"creationflags": windows_hide_flags()} if _IS_WINDOWS else {}
+        _popen_kwargs = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW} if _IS_WINDOWS else {}
 
         proc = subprocess.Popen(
             args,

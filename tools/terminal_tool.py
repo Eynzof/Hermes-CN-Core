@@ -60,6 +60,16 @@ from tools.interrupt import is_interrupted, _interrupt_event  # noqa: F401 — r
 # display_hermes_home imported lazily at call site (stale-module safety during hermes update)
 
 
+# ---------------------------------------------------------------------------
+# PowerShell / pwsh console init — prepended to every PowerShell command so
+# the shell always emits UTF-8 and Ctrl+C is forwarded to the child process
+# rather than killing the shell itself.
+# ---------------------------------------------------------------------------
+_PWSH_CONSOLE_INIT = (
+    "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8;"
+    "$OutputEncoding=[System.Text.Encoding]::UTF8;"
+    "[Console]::TreatControlCAsInput=$true;"
+)
 
 
 # =============================================================================
@@ -2853,8 +2863,7 @@ def check_terminal_requirements() -> bool:
                 return False
             _dk = {}
             if sys.platform == "win32":
-                from hermes_cli._subprocess_compat import windows_hide_flags
-                _dk["creationflags"] = windows_hide_flags()
+                _dk["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
             result = subprocess.run([docker, "version"], capture_output=True, timeout=5, stdin=subprocess.DEVNULL, **_dk)  # windows-footgun: ok — creationflags in _dk
             return result.returncode == 0
 
@@ -2863,8 +2872,7 @@ def check_terminal_requirements() -> bool:
             if executable:
                 _tk = {}
                 if sys.platform == "win32":
-                    from hermes_cli._subprocess_compat import windows_hide_flags
-                    _tk["creationflags"] = windows_hide_flags()
+                    _tk["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
                 result = subprocess.run([executable, "--version"], capture_output=True, timeout=5, stdin=subprocess.DEVNULL, **_tk)  # windows-footgun: ok — creationflags in _tk
                 return result.returncode == 0
             return False

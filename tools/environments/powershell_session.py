@@ -58,9 +58,7 @@ def _hide_flags() -> int:
     if not _IS_WINDOWS:
         return 0
     try:
-        from hermes_cli._subprocess_compat import windows_hide_flags
-
-        return windows_hide_flags()
+        return subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
     except Exception:
         return 0
 
@@ -74,6 +72,7 @@ _EOF = object()
 _INIT_SCRIPT = (
     "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; "
     "$OutputEncoding=[System.Text.Encoding]::UTF8; "
+    "[Console]::TreatControlCAsInput=$true; "
     "$ErrorActionPreference='Continue'; "
     "$ProgressPreference='SilentlyContinue'"
 )

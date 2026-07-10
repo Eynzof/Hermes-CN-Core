@@ -13160,8 +13160,41 @@ def _build_probe_url_candidates(base_url: str) -> list[str]:
     return candidates
 
 
+def _build_anthropic_probe_url_candidates(base_url: str) -> list[str]:
+    """Candidate /models URLs for an Anthropic-protocol (Claude Code relay) base_url.
+
+    Anthropic base URLs mirror what the SDK expects — it appends
+    ``/v1/messages`` itself, so bases are usually bare (``https://relay.example``)
+    or end in a vendor path (``…/api/claudecode``). The models listing lives at
+    ``{base}/v1/models`` (Anthropic's native models endpoint, same
+    ``data[].id`` shape as OpenAI). Some relays only expose it at the host
+    root, so that stays as a fallback.
+    """
+    from urllib.parse import urlparse
+
+    s = base_url.rstrip("/")
+    candidates: list[str] = []
+
+    if s.endswith("/v1"):
+        candidates.append(f"{s}/models")
+    else:
+        candidates.append(f"{s}/v1/models")
+
+    parsed = urlparse(s)
+    host_root = f"{parsed.scheme}://{parsed.netloc}/v1/models"
+    if host_root not in candidates:
+        candidates.append(host_root)
+
+    return candidates
+
+
+def _parse_probe_api_mode(value: object) -> str | None:
+    """Whitelist the probe-relevant api_mode; anything else means default OpenAI."""
+    return "anthropic_messages" if value == "anthropic_messages" else None
+
+
 def _fetch_provider_model_ids(
-    base_url: str, api_key: str, timeout_s: float
+    base_url: str, api_key: str, timeout_s: float, api_mode: str | None = None
 ) -> dict:
     """GET the first responding /models candidate and parse its model ids.
 
@@ -13174,12 +13207,26 @@ def _fetch_provider_model_ids(
     the Authorization header is only attached when a key is present. Failures
     are returned as data (never raised) so callers wrap them in an ``_ok``
     envelope and the UI can branch on ``error_kind``.
+
+    ``api_mode="anthropic_messages"`` switches both the URL candidates and the
+    auth headers to the Anthropic protocol (``x-api-key`` +
+    ``anthropic-version``, mirroring ``hermes_cli.models.probe_api_models``) —
+    Claude Code relays reject ``Authorization: Bearer``-only requests, so the
+    OpenAI-style probe misreported valid keys as auth failures.
     """
     import time
     import httpx
 
-    candidates = _build_probe_url_candidates(base_url)
-    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    if api_mode == "anthropic_messages":
+        candidates = _build_anthropic_probe_url_candidates(base_url)
+        headers = (
+            {"x-api-key": api_key, "anthropic-version": "2023-06-01"}
+            if api_key
+            else {}
+        )
+    else:
+        candidates = _build_probe_url_candidates(base_url)
+        headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
     timeout_ms = int(timeout_s * 1000)
     last_status: int | None = None
     last_error: str | None = None
@@ -13258,6 +13305,8 @@ def _(rid, params: dict) -> dict:
         provider: provider slug (e.g. "deepseek")
         api_key: optional override; falls back to PROVIDER_REGISTRY env var
         base_url: optional override; falls back to PROVIDER_REGISTRY default
+        api_mode: optional; "anthropic_messages" probes with the Anthropic
+            protocol (x-api-key auth), anything else uses OpenAI-style
         timeout_ms: optional, default 5000, clamped 1000-30000
 
     Returns ProbeResult dict (always _ok envelope — auth/network failures
@@ -13306,7 +13355,12 @@ def _(rid, params: dict) -> dict:
             timeout_ms = 5000
         timeout_ms = max(1000, min(timeout_ms, 30000))
 
-        result = _fetch_provider_model_ids(base_url, api_key, timeout_ms / 1000.0)
+        result = _fetch_provider_model_ids(
+            base_url,
+            api_key,
+            timeout_ms / 1000.0,
+            api_mode=_parse_probe_api_mode(params.get("api_mode")),
+        )
         model_ids = result["model_ids"]
         return _ok(rid, {
             "ok": result["ok"],
@@ -13338,6 +13392,8 @@ def _(rid, params: dict) -> dict:
             fallback, so custom providers may pass any non-empty placeholder.
         api_key: optional override; falls back to PROVIDER_REGISTRY env var.
         base_url: optional override; falls back to PROVIDER_REGISTRY default.
+        api_mode: optional; "anthropic_messages" lists with the Anthropic
+            protocol (x-api-key auth), anything else uses OpenAI-style.
         timeout_ms: optional, default 8000, clamped 1000-30000.
 
     Returns (always _ok envelope; failures are data, not RPC errors)::
@@ -13371,7 +13427,12 @@ def _(rid, params: dict) -> dict:
             timeout_ms = 8000
         timeout_ms = max(1000, min(timeout_ms, 30000))
 
-        result = _fetch_provider_model_ids(base_url, api_key, timeout_ms / 1000.0)
+        result = _fetch_provider_model_ids(
+            base_url,
+            api_key,
+            timeout_ms / 1000.0,
+            api_mode=_parse_probe_api_mode(params.get("api_mode")),
+        )
         return _ok(rid, {
             "ok": result["ok"],
             "models": result["model_ids"],

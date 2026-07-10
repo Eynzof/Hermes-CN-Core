@@ -17,7 +17,7 @@ TIM 消息体构建：
 
 from __future__ import annotations
 
-import hashlib
+import xxhash
 import hmac
 import logging
 import os
@@ -106,8 +106,8 @@ def get_image_format(mime_type: str) -> int:
 
 
 def md5_hex(data: bytes) -> str:
-    """计算 MD5 十六进制摘要。"""
-    return hashlib.md5(data).hexdigest()
+    """计算 XXH64 十六进制摘要。"""
+    return xxhash.xxh64(data).hexdigest()
 
 
 def generate_file_id() -> str:

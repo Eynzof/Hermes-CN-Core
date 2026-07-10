@@ -10,7 +10,7 @@ policy without import cycles.
 from __future__ import annotations
 
 import hashlib
-import re
+from agent.re_compat import re
 from typing import Any, Dict, Mapping
 
 

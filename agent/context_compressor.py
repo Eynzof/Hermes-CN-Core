@@ -16,11 +16,12 @@ Improvements over v2:
   - Richer tool call/result detail in summarizer input
 """
 
-import hashlib
-import json
+import gc
+import xxhash
+import orjson
 import logging
 import sqlite3
-import re
+from agent.re_compat import re
 import time
 from typing import Any, Dict, List, Optional
 
@@ -189,6 +190,31 @@ _MAX_TAIL_MESSAGE_FLOOR = 8
 
 
 _PATH_MENTION_RE = re.compile(r"(?:/|~/?|[A-Za-z]:\\)[^\s`'\")\]}<>]+")
+
+# Minimum number of messages a single compaction must drop before we force a
+# cyclic GC pass.  Compaction is infrequent and discards a large slice of the
+# transcript (message dicts, their tool-result strings) plus the transient
+# objects the summariser LLM call allocated, so one explicit collection here
+# reclaims that memory promptly instead of waiting for the generational
+# threshold to trip.  Small drops aren't worth a stop-the-world pause.
+_GC_AFTER_COMPACTION_DROP_THRESHOLD = 10
+
+
+def maybe_collect_after_compaction(
+    dropped_count: int,
+    threshold: int = _GC_AFTER_COMPACTION_DROP_THRESHOLD,
+) -> bool:
+    """Force a cyclic GC pass when a compaction dropped ``dropped_count`` messages.
+
+    Returns ``True`` when :func:`gc.collect` was invoked.  Kept as a module-level
+    helper (rather than an inline ``gc.collect()``) so the trigger policy is
+    unit-testable in isolation and callers can tune the threshold.  A
+    non-positive ``threshold`` disables the trigger entirely.
+    """
+    if threshold <= 0 or dropped_count < threshold:
+        return False
+    gc.collect()
+    return True
 
 # MEDIA delivery directives must not reach the summarizer — if one leaks into
 # the summary, the downstream model may re-emit it as an active directive on
@@ -369,7 +395,7 @@ def _truncate_tool_call_args_json(args: str, head_chars: int = 200) -> str:
     something neither we nor the backend can parse.
     """
     try:
-        parsed = json.loads(args)
+        parsed = orjson.loads(args)
     except (ValueError, TypeError):
         return args
 
@@ -386,7 +412,7 @@ def _truncate_tool_call_args_json(args: str, head_chars: int = 200) -> str:
 
     shrunken = _shrink(parsed)
     # ensure_ascii=False preserves CJK/emoji instead of bloating with \uXXXX
-    return json.dumps(shrunken, ensure_ascii=False)
+    return orjson.dumps(shrunken).decode('utf-8')
 
 
 _IMAGE_PART_TYPES = frozenset({"image_url", "input_image", "image"})
@@ -511,8 +537,8 @@ def _summarize_tool_result(tool_name: str, tool_args: str, tool_content: str) ->
         [search_files] content search for 'compress' in agent/ -> 12 matches
     """
     try:
-        args = json.loads(tool_args) if tool_args else {}
-    except (json.JSONDecodeError, TypeError):
+        args = orjson.loads(tool_args) if tool_args else {}
+    except (orjson.JSONDecodeError, TypeError):
         args = {}
 
     content = tool_content or ""
@@ -1226,7 +1252,7 @@ class ContextCompressor(ContextEngine):
                 continue
             if len(content) < 200:
                 continue
-            h = hashlib.md5(content.encode("utf-8", errors="replace")).hexdigest()[:12]
+            h = xxhash.xxh64(content.encode("utf-8", errors="replace")).hexdigest()[:12]
             if h in content_hashes:
                 # This is an older duplicate — replace with back-reference
                 result[i] = {**msg, "content": "[Duplicate tool output — same content as a more recent call]"}
@@ -1439,7 +1465,7 @@ class ContextCompressor(ContextEngine):
                         call_id_to_tool[call_id] = (name, args)
                     if args:
                         try:
-                            parsed = json.loads(args)
+                            parsed = orjson.loads(args)
                         except Exception:
                             parsed = args
                         _collect_paths_from_jsonish(parsed)
@@ -1603,6 +1629,7 @@ Summary generation was unavailable, so this is a best-effort deterministic fallb
         self,
         turns_to_summarize: List[Dict[str, Any]],
         focus_topic: Optional[str] = None,
+        mode: Optional[str] = None,
     ) -> Optional[str]:
         """Generate a structured summary of conversation turns.
 
@@ -1616,6 +1643,9 @@ Summary generation was unavailable, so this is a best-effort deterministic fallb
                 provided, the summariser prioritises preserving information
                 related to this topic and is more aggressive about compressing
                 everything else.  Inspired by Claude Code's ``/compact``.
+            mode: Optional compaction mode string ("balanced", "aggressive",
+                "retentive", "technical").  Injects style guidance into the
+                summarizer preamble.
 
         Returns None if all attempts fail — the caller should drop
         the middle turns without a summary rather than inject a useless
@@ -1792,6 +1822,14 @@ Use this exact structure:
 FOCUS TOPIC: "{focus_topic}"
 This compaction should PRIORITISE preserving all information related to the focus topic above. For content related to "{focus_topic}", include full detail — exact values, file paths, command outputs, error messages, and decisions. For content NOT related to the focus topic, summarise more aggressively (brief one-liners or omit if truly irrelevant). The focus topic sections should receive roughly 60-70% of the summary token budget. Even for the focus topic, NEVER preserve API keys, tokens, passwords, or credentials — use [REDACTED]."""
 
+        # Inject mode guidance when the agent calls compact with a mode parameter.
+        # This goes after focus topic to layer style guidance on top of topic focus.
+        if mode:
+            from agent.context_tools import get_guidance
+            guidance = get_guidance(mode)
+            if guidance:
+                prompt += f"\n\n{guidance}"
+
         try:
             call_kwargs = {
                 "task": "compression",
@@ -1897,13 +1935,13 @@ This compaction should PRIORITISE preserving all information related to the focu
             # Non-JSON / malformed-body responses from misconfigured providers
             # or proxies (e.g. an HTML 502 page returned with
             # ``Content-Type: application/json``) bubble up as
-            # ``json.JSONDecodeError`` from the OpenAI SDK's ``response.json()``,
+            # ``orjson.JSONDecodeError`` from the OpenAI SDK's ``response.json()``,
             # or as a wrapping ``APIResponseValidationError`` whose message
             # carries the substring "expecting value".  Treat these like a
             # transient provider failure: one retry on the main model, then a
             # short cooldown.  Issue #22244.
             _is_json_decode = (
-                isinstance(e, json.JSONDecodeError)
+                isinstance(e, orjson.JSONDecodeError)
                 or "expecting value" in _err_str
             )
             # httpcore / httpx streaming premature-close errors surface as
@@ -1960,7 +1998,7 @@ This compaction should PRIORITISE preserving all information related to the focu
                 else:
                     _reason = "timed out"
                 self._fallback_to_main_for_compression(e, _reason)
-                return self._generate_summary(turns_to_summarize, focus_topic=focus_topic)  # retry immediately
+                return self._generate_summary(turns_to_summarize, focus_topic=focus_topic, mode=mode)  # retry immediately
 
             # Unknown-error best-effort retry on main model.  Losing N turns of
             # context is almost always worse than one extra summary attempt, so
@@ -1977,7 +2015,7 @@ This compaction should PRIORITISE preserving all information related to the focu
                 and not getattr(self, "_summary_model_fallen_back", False)
             ):
                 self._fallback_to_main_for_compression(e, "failed")
-                return self._generate_summary(turns_to_summarize, focus_topic=focus_topic)
+                return self._generate_summary(turns_to_summarize, focus_topic=focus_topic, mode=mode)
 
             # Transient errors (timeout, rate limit, network, JSON decode,
             # streaming premature-close) — shorter cooldown for JSON decode and
@@ -2627,7 +2665,7 @@ This compaction should PRIORITISE preserving all information related to the focu
     # Main compression entry point
     # ------------------------------------------------------------------
 
-    def compress(self, messages: List[Dict[str, Any]], current_tokens: int = None, focus_topic: str = None, force: bool = False) -> List[Dict[str, Any]]:
+    def compress(self, messages: List[Dict[str, Any]], current_tokens: int = None, focus_topic: str = None, force: bool = False, mode: str = None) -> List[Dict[str, Any]]:
         """Compress conversation messages by summarizing middle turns.
 
         Algorithm:
@@ -2648,6 +2686,9 @@ This compaction should PRIORITISE preserving all information related to the focu
             force: If True, clear any active summary-failure cooldown before
                 running so a manual ``/compress`` can retry immediately after
                 an auto-compression abort.  Auto-compress callers pass False.
+            mode: Optional compaction mode string ("balanced", "aggressive",
+                "retentive", "technical").  Controls the summarizer style
+                guidance injected into the compression prompt.
         """
         # Reset per-call summary failure state — callers inspect these fields
         # after compress() returns to decide whether to surface a warning.
@@ -2769,7 +2810,9 @@ This compaction should PRIORITISE preserving all information related to the focu
 
         # Phase 3: Generate structured summary
         summary_focus_topic = focus_topic or self._derive_auto_focus_topic(messages)
-        summary = self._generate_summary(turns_to_summarize, focus_topic=summary_focus_topic)
+        summary = self._generate_summary(
+            turns_to_summarize, focus_topic=summary_focus_topic, mode=mode,
+        )
 
         # If summary generation failed, behavior splits on
         # ``abort_on_summary_failure`` (config: compression.abort_on_summary_failure):
@@ -2969,4 +3012,59 @@ This compaction should PRIORITISE preserving all information related to the focu
             )
             logger.info("Compression #%d complete", self.compression_count)
 
+        # Reclaim the dropped transcript slice promptly.  ``messages`` is still
+        # referenced by the caller here, but the summariser call, the pruned
+        # working copies, and any reference cycles created during summarisation
+        # are now unreachable; a single collection returns them (and their
+        # arena pages) instead of waiting on the generational threshold.
+        if maybe_collect_after_compaction(n_messages - len(compressed)) and not self.quiet_mode:
+            logger.debug(
+                "Post-compaction gc.collect() ran (%d -> %d messages)",
+                n_messages, len(compressed),
+            )
+
         return compressed
+
+    # ------------------------------------------------------------------
+    # Context engine tools (context_usage, compact)
+    # ------------------------------------------------------------------
+
+    def get_tool_schemas(self):
+        """Return schemas for ``context_usage`` and ``compact`` tools."""
+        from agent.context_tools import get_compact_schema, get_context_usage_schema
+        return [get_context_usage_schema(), get_compact_schema()]
+
+    def handle_tool_call(self, name: str, args: dict, **kwargs) -> str:
+        """Handle context engine tool calls from the agent.
+
+        Supported tools:
+          - ``context_usage``: reports current usage status as JSON.
+          - ``compact``: validates and acknowledges a compaction request.
+            The actual compression is deferred to the tool executor layer
+            (tool_executor.py inline dispatch) which detects the compact
+            tool and calls ``_compress_context()`` with the acknowledged
+            parameters.
+        """
+        import orjson
+
+        if name == "context_usage":
+            return orjson.dumps(self.get_usage_status()).decode('utf-8')
+
+        if name == "compact":
+            instruction = args.get("instruction", "")
+            mode = args.get("mode", "balanced")
+            # Validate mode
+            from agent.context_tools import CompactMode
+            if mode not in [m.value for m in CompactMode]:
+                mode = CompactMode.BALANCED.value
+            return orjson.dumps({
+                "status": "acknowledged",
+                "message": (
+                    "Compaction request registered. "
+                    f"{'Focus: ' + instruction + '. ' if instruction else ''}"
+                    f"Mode: {mode}."
+                ),
+                "current_usage": self.get_usage_status(),
+            }).decode('utf-8')
+
+        return super().handle_tool_call(name, args, **kwargs)

@@ -1,6 +1,6 @@
 """Tests for Mem0 setup wizard — flag parsing, config building, validation."""
 
-import json
+import orjson
 import sys
 import types
 import pytest
@@ -176,7 +176,7 @@ class TestPostSetup:
         assert config["memory"]["provider"] == "mem0"
         env_content = (tmp_path / ".env").read_text()
         assert "MEM0_API_KEY=sk-test" in env_content
-        mem0_json = json.loads((tmp_path / "mem0.json").read_text())
+        mem0_json = orjson.loads((tmp_path / "mem0.json").read_text())
         assert mem0_json["mode"] == "platform"
 
     def test_oss_flag_mode(self, tmp_path, monkeypatch):
@@ -189,7 +189,7 @@ class TestPostSetup:
         config = {"memory": {}}
         post_setup(str(tmp_path), config)
         assert config["memory"]["provider"] == "mem0"
-        mem0_json = json.loads((tmp_path / "mem0.json").read_text())
+        mem0_json = orjson.loads((tmp_path / "mem0.json").read_text())
         assert mem0_json["mode"] == "oss"
         assert mem0_json["oss"]["llm"]["provider"] == "openai"
 

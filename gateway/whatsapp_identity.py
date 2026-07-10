@@ -30,9 +30,9 @@ Hermes' own session keys.
 
 from __future__ import annotations
 
-import json
+import orjson
 import logging
-import re
+from agent.re_compat import re
 from typing import Set
 
 logger = logging.getLogger(__name__)
@@ -159,9 +159,9 @@ def expand_whatsapp_aliases(identifier: str) -> Set[str]:
                 continue
             try:
                 mapped = normalize_whatsapp_identifier(
-                    json.loads(mapping_path.read_text(encoding="utf-8"))
+                    orjson.loads(mapping_path.read_text(encoding="utf-8"))
                 )
-            except (OSError, json.JSONDecodeError) as exc:
+            except (OSError, orjson.JSONDecodeError) as exc:
                 logger.debug("whatsapp_identity: failed to read %s: %s", mapping_path, exc)
                 continue
             if mapped and mapped not in resolved:

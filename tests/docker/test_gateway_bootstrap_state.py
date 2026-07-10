@@ -12,7 +12,7 @@ Build the real image and verify the actual runtime behavior:
 """
 from __future__ import annotations
 
-import json
+import orjson
 import subprocess
 import tempfile
 from pathlib import Path
@@ -51,7 +51,7 @@ def test_seeds_running_state_on_blank_volume(
     assert r.stdout.strip() != "NONE", (
         f"gateway_state.json not seeded on fresh volume: {r.stdout}"
     )
-    state = json.loads(r.stdout.strip())
+    state = orjson.loads(r.stdout.strip())
     assert state.get("gateway_state") == "running", (
         f"expected gateway_state=running, got: {state}"
     )
@@ -69,7 +69,7 @@ def test_does_not_clobber_existing_state(
     boot — before the gateway service has a chance to write its own
     state — by reading it as fast as possible after container start.
     """
-    import json as _json
+    import orjson as _json
 
     volume = f"{container_name}-vol"
     subprocess.run(
@@ -78,7 +78,7 @@ def test_does_not_clobber_existing_state(
     )
 
     # Pre-create the state file via a throwaway container
-    existing = _json.dumps({"gateway_state": "stopped", "pid": 123})
+    existing = _json.dumps({"gateway_state": "stopped", "pid": 123}).decode('utf-8')
     subprocess.run(
         ["docker", "run", "--rm", "-v", f"{volume}:/opt/data",
          "--entrypoint", "sh", built_image,

@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import hmac
 import ipaddress
-import json
+import orjson
 import logging
 from collections import deque
 from hashlib import sha1
@@ -355,7 +355,7 @@ class MSGraphWebhookAdapter(BasePlatformAdapter):
         notification: Dict[str, Any],
         receipt_key: Optional[str],
     ) -> MessageEvent:
-        message_id = receipt_key or f"sha1:{sha1(json.dumps(notification, sort_keys=True).encode('utf-8')).hexdigest()}"
+        message_id = receipt_key or f"sha1:{sha1(orjson.dumps(notification, option=orjson.OPT_SORT_KEYS)).hexdigest()}"
         source = self.build_source(
             chat_id=f"msgraph:{notification.get('subscriptionId', 'unknown')}",
             chat_name="msgraph/webhook",
@@ -382,12 +382,11 @@ class MSGraphWebhookAdapter(BasePlatformAdapter):
                 "subscription_id": notification.get("subscriptionId", ""),
             }
             return self._render_template(template, payload)
-        rendered = json.dumps(notification, indent=2, sort_keys=True)[:4000]
+        rendered = orjson.dumps(notification, option=orjson.OPT_INDENT_2 | orjson.OPT_SORT_KEYS).decode('utf-8')[:4000]
         return f"Microsoft Graph change notification:\n\n```json\n{rendered}\n```"
 
     def _render_template(self, template: str, payload: Dict[str, Any]) -> str:
-        import re
-
+        from agent.re_compat import re
         def _resolve(match: "re.Match[str]") -> str:
             key = match.group(1)
             value: Any = payload
@@ -397,7 +396,7 @@ class MSGraphWebhookAdapter(BasePlatformAdapter):
                 else:
                     return f"{{{key}}}"
             if isinstance(value, (dict, list)):
-                return json.dumps(value, sort_keys=True)[:2000]
+                return orjson.dumps(value, option=orjson.OPT_SORT_KEYS).decode('utf-8')[:2000]
             return str(value)
 
         return re.sub(r"\{([a-zA-Z0-9_.]+)\}", _resolve, template)

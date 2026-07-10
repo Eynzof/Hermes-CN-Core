@@ -5,9 +5,9 @@ prefetch (auto_recall, preamble, query truncation), sync_turn (auto_retain,
 turn counting, tags), and schema completeness.
 """
 
-import json
+import orjson
 import os
-import re
+from agent.re_compat import re
 import stat
 import sys
 from types import SimpleNamespace
@@ -95,7 +95,7 @@ def _provider_for_mode(tmp_path, monkeypatch, mode: str):
     }
     config_path = tmp_path / "hindsight" / "config.json"
     config_path.parent.mkdir(parents=True, exist_ok=True)
-    config_path.write_text(json.dumps(config))
+    config_path.write_text(orjson.dumps(config).decode('utf-8'))
 
     monkeypatch.setattr(
         "plugins.memory.hindsight.get_hermes_home", lambda: tmp_path
@@ -164,7 +164,7 @@ def provider(tmp_path, monkeypatch):
     }
     config_path = tmp_path / "hindsight" / "config.json"
     config_path.parent.mkdir(parents=True, exist_ok=True)
-    config_path.write_text(json.dumps(config))
+    config_path.write_text(orjson.dumps(config).decode('utf-8'))
 
     monkeypatch.setattr(
         "plugins.memory.hindsight.get_hermes_home", lambda: tmp_path
@@ -191,7 +191,7 @@ def provider_with_config(tmp_path, monkeypatch):
         config.update(overrides)
         config_path = tmp_path / "hindsight" / "config.json"
         config_path.parent.mkdir(parents=True, exist_ok=True)
-        config_path.write_text(json.dumps(config))
+        config_path.write_text(orjson.dumps(config).decode('utf-8'))
 
         monkeypatch.setattr(
             "plugins.memory.hindsight.get_hermes_home", lambda: tmp_path
@@ -212,7 +212,7 @@ def test_normalize_retain_tags_accepts_csv_and_dedupes():
 
 
 def test_normalize_retain_tags_accepts_json_array_string():
-    value = json.dumps(["agent:fakeassistantname", "source_system:hermes-agent"])
+    value = orjson.dumps(["agent:fakeassistantname", "source_system:hermes-agent"]).decode('utf-8')
     assert _normalize_retain_tags(value) == ["agent:fakeassistantname", "source_system:hermes-agent"]
 
 
@@ -233,7 +233,7 @@ def test_normalize_observation_scopes_unknown_keyword_is_none():
 
 
 def test_normalize_observation_scopes_json_list_of_lists():
-    value = json.dumps([["user:alice"], ["team:eng"], ["user:alice", "team:eng"]])
+    value = orjson.dumps([["user:alice"], ["team:eng"], ["user:alice", "team:eng"]]).decode('utf-8')
     assert _normalize_observation_scopes(value) == [
         ["user:alice"],
         ["team:eng"],
@@ -619,7 +619,7 @@ class TestPostSetup:
         provider = HindsightMemoryProvider()
         provider.post_setup(str(hermes_home), {"memory": {}})
 
-        saved = json.loads((hermes_home / "hindsight" / "config.json").read_text())
+        saved = orjson.loads((hermes_home / "hindsight" / "config.json").read_text())
         assert saved["mode"] == "local_embedded"
         assert saved["llm_provider"] == "openai_compatible"
         assert saved["llm_base_url"] == "http://192.168.1.161:8060/v1"
@@ -639,7 +639,7 @@ class TestPostSetup:
 
 class TestToolHandlers:
     def test_retain_success(self, provider):
-        result = json.loads(provider.handle_tool_call(
+        result = orjson.loads(provider.handle_tool_call(
             "hindsight_retain", {"content": "user likes dark mode"}
         ))
         assert result["result"] == "Memory stored successfully."
@@ -684,13 +684,13 @@ class TestToolHandlers:
         assert "observation_scopes" not in item
 
     def test_retain_missing_content(self, provider):
-        result = json.loads(provider.handle_tool_call(
+        result = orjson.loads(provider.handle_tool_call(
             "hindsight_retain", {}
         ))
         assert "error" in result
 
     def test_recall_success(self, provider):
-        result = json.loads(provider.handle_tool_call(
+        result = orjson.loads(provider.handle_tool_call(
             "hindsight_recall", {"query": "dark mode"}
         ))
         assert "Memory 1" in result["result"]
@@ -717,38 +717,38 @@ class TestToolHandlers:
 
     def test_recall_no_results(self, provider):
         provider._client.arecall.return_value = SimpleNamespace(results=[])
-        result = json.loads(provider.handle_tool_call(
+        result = orjson.loads(provider.handle_tool_call(
             "hindsight_recall", {"query": "test"}
         ))
         assert result["result"] == "No relevant memories found."
 
     def test_recall_missing_query(self, provider):
-        result = json.loads(provider.handle_tool_call(
+        result = orjson.loads(provider.handle_tool_call(
             "hindsight_recall", {}
         ))
         assert "error" in result
 
     def test_reflect_success(self, provider):
-        result = json.loads(provider.handle_tool_call(
+        result = orjson.loads(provider.handle_tool_call(
             "hindsight_reflect", {"query": "summarize"}
         ))
         assert result["result"] == "Synthesized answer"
 
     def test_reflect_missing_query(self, provider):
-        result = json.loads(provider.handle_tool_call(
+        result = orjson.loads(provider.handle_tool_call(
             "hindsight_reflect", {}
         ))
         assert "error" in result
 
     def test_unknown_tool(self, provider):
-        result = json.loads(provider.handle_tool_call(
+        result = orjson.loads(provider.handle_tool_call(
             "hindsight_unknown", {}
         ))
         assert "error" in result
 
     def test_retain_error_handling(self, provider):
         provider._client.aretain_batch.side_effect = RuntimeError("connection failed")
-        result = json.loads(provider.handle_tool_call(
+        result = orjson.loads(provider.handle_tool_call(
             "hindsight_retain", {"content": "test"}
         ))
         assert "error" in result
@@ -756,7 +756,7 @@ class TestToolHandlers:
 
     def test_recall_error_handling(self, provider):
         provider._client.arecall.side_effect = RuntimeError("timeout")
-        result = json.loads(provider.handle_tool_call(
+        result = orjson.loads(provider.handle_tool_call(
             "hindsight_recall", {"query": "test"}
         ))
         assert "error" in result
@@ -774,7 +774,7 @@ class TestToolHandlers:
         provider._client = first_client
         monkeypatch.setattr(provider, "_get_client", lambda: next(clients))
 
-        result = json.loads(provider.handle_tool_call(
+        result = orjson.loads(provider.handle_tool_call(
             "hindsight_recall", {"query": "test"}
         ))
 
@@ -894,7 +894,7 @@ class TestSyncTurn:
         item = call_kwargs["items"][0]
         assert item["context"] == "conversation between Hermes Agent and the User"
         assert item["tags"] == ["conv", "session1", "session:session-1"]
-        content = json.loads(item["content"])
+        content = orjson.loads(item["content"])
         assert len(content) == 1
         assert content[0][0]["role"] == "user"
         assert content[0][0]["content"] == "User (fakeusername): hello"
@@ -961,7 +961,7 @@ class TestSyncTurn:
         assert call_kwargs["document_id"].startswith("test-session-")
         assert call_kwargs["retain_async"] is False
         item = call_kwargs["items"][0]
-        content = json.loads(item["content"])
+        content = orjson.loads(item["content"])
         assert len(content) == 3
         assert content[-1][0]["role"] == "user"
         assert content[-1][0]["content"] == "User: turn3-user"
@@ -1053,7 +1053,7 @@ class TestSyncTurn:
         config = {"mode": "cloud", "apiKey": "k", "api_url": "http://x", "bank_id": "b"}
         config_path = tmp_path / "hindsight" / "config.json"
         config_path.parent.mkdir(parents=True, exist_ok=True)
-        config_path.write_text(json.dumps(config))
+        config_path.write_text(orjson.dumps(config).decode('utf-8'))
         monkeypatch.setattr("plugins.memory.hindsight.get_hermes_home", lambda: tmp_path)
 
         p1 = HindsightMemoryProvider()
@@ -1083,7 +1083,7 @@ class TestSyncTurn:
         config = {"mode": "cloud", "apiKey": "k", "api_url": "http://x", "bank_id": "b"}
         config_path = tmp_path / "hindsight" / "config.json"
         config_path.parent.mkdir(parents=True, exist_ok=True)
-        config_path.write_text(json.dumps(config))
+        config_path.write_text(orjson.dumps(config).decode('utf-8'))
         monkeypatch.setattr("plugins.memory.hindsight.get_hermes_home", lambda: tmp_path)
 
         p = HindsightMemoryProvider()
@@ -1218,8 +1218,8 @@ class TestSessionSwitchBufferFlush:
         assert kw["document_id"] == old_doc
         item = kw["items"][0]
         # Both buffered turns must be present in the flushed payload.
-        content = json.loads(item["content"])
-        flat = json.dumps(content)
+        content = orjson.loads(item["content"])
+        flat = orjson.dumps(content).decode('utf-8')
         assert "turn1-user" in flat
         assert "turn2-user" in flat
         # Old session id must appear in lineage tags / metadata.
@@ -1575,7 +1575,7 @@ class TestBankIdTemplate:
         }
         config_path = tmp_path / "hindsight" / "config.json"
         config_path.parent.mkdir(parents=True, exist_ok=True)
-        config_path.write_text(json.dumps(config))
+        config_path.write_text(orjson.dumps(config).decode('utf-8'))
         monkeypatch.setattr("plugins.memory.hindsight.get_hermes_home", lambda: tmp_path)
 
         p = HindsightMemoryProvider()
@@ -1598,7 +1598,7 @@ class TestBankIdTemplate:
         }
         config_path = tmp_path / "hindsight" / "config.json"
         config_path.parent.mkdir(parents=True, exist_ok=True)
-        config_path.write_text(json.dumps(config))
+        config_path.write_text(orjson.dumps(config).decode('utf-8'))
         monkeypatch.setattr("plugins.memory.hindsight.get_hermes_home", lambda: tmp_path)
 
         p = HindsightMemoryProvider()
@@ -1620,7 +1620,7 @@ class TestBankIdTemplate:
         }
         config_path = tmp_path / "hindsight" / "config.json"
         config_path.parent.mkdir(parents=True, exist_ok=True)
-        config_path.write_text(json.dumps(config))
+        config_path.write_text(orjson.dumps(config).decode('utf-8'))
         monkeypatch.setattr("plugins.memory.hindsight.get_hermes_home", lambda: tmp_path)
 
         p = HindsightMemoryProvider()
@@ -1668,10 +1668,10 @@ class TestAvailability:
     def test_available_with_snake_case_api_key_in_config(self, tmp_path, monkeypatch):
         config_path = tmp_path / "hindsight" / "config.json"
         config_path.parent.mkdir(parents=True, exist_ok=True)
-        config_path.write_text(json.dumps({
+        config_path.write_text(orjson.dumps({
             "mode": "cloud",
             "api_key": "***",
-        }))
+        }).decode('utf-8'))
         monkeypatch.setattr(
             "plugins.memory.hindsight.get_hermes_home",
             lambda: tmp_path,
@@ -1704,7 +1704,7 @@ class TestAvailability:
         config = {"mode": "local_embedded"}
         config_path = tmp_path / "hindsight" / "config.json"
         config_path.parent.mkdir(parents=True, exist_ok=True)
-        config_path.write_text(json.dumps(config))
+        config_path.write_text(orjson.dumps(config).decode('utf-8'))
         monkeypatch.setattr(
             "plugins.memory.hindsight.get_hermes_home", lambda: tmp_path
         )

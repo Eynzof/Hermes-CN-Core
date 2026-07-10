@@ -9,7 +9,7 @@ tests/docker/test_container_restart.py.
 """
 from __future__ import annotations
 
-import json
+import orjson
 from pathlib import Path
 
 import pytest
@@ -70,11 +70,9 @@ def _make_profile(
             payload["gateway_state"] = state
         if desired_state is not None:
             payload["desired_state"] = desired_state
-        (p / "gateway_state.json").write_text(json.dumps(payload))
+        (p / "gateway_state.json").write_text(orjson.dumps(payload).decode('utf-8'))
     if with_pid:
-        (p / "gateway.pid").write_text(json.dumps(
-            {"pid": 99999, "host": "old-container"},
-        ))
+        (p / "gateway.pid").write_text(orjson.dumps({"pid": 99999, "host": "old-container"}).decode('utf-8'))
         (p / "processes.json").write_text("[]")
     return p
 
@@ -88,13 +86,11 @@ def _seed_default_root(
     """Populate gateway_state.json / stale runtime files at the
     HERMES_HOME root (the implicit default profile)."""
     if state is not None:
-        (hermes_home / "gateway_state.json").write_text(json.dumps({
+        (hermes_home / "gateway_state.json").write_text(orjson.dumps({
             "gateway_state": state, "timestamp": 1234567890,
-        }))
+        }).decode('utf-8'))
     if with_pid:
-        (hermes_home / "gateway.pid").write_text(json.dumps(
-            {"pid": 99999, "host": "old-container"},
-        ))
+        (hermes_home / "gateway.pid").write_text(orjson.dumps({"pid": 99999, "host": "old-container"}).decode('utf-8'))
         (hermes_home / "processes.json").write_text("[]")
 
 
@@ -690,7 +686,7 @@ def test_legacy_gateway_run_cmd_seeds_default_running_state(
     assert default_action.prior_state == "running"
     assert default_action.action == "started"
     assert not (scandir / "gateway-default" / "down").exists()
-    state = json.loads((tmp_path / "gateway_state.json").read_text())
+    state = orjson.loads((tmp_path / "gateway_state.json").read_text())
     assert state["gateway_state"] == "running"
     assert state["desired_state"] == "running"
     assert state["migrated_from"] == "legacy-container-cmd"
@@ -762,7 +758,7 @@ def test_default_slot_does_not_autostart_when_root_state_stopped(
     default_action = next(a for a in actions if a.profile == "default")
     assert default_action.action == "registered"
     assert (scandir / "gateway-default" / "down").exists()
-    state = json.loads((tmp_path / "gateway_state.json").read_text())
+    state = orjson.loads((tmp_path / "gateway_state.json").read_text())
     assert state["gateway_state"] == "stopped"
 
 

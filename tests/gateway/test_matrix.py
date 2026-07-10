@@ -1,6 +1,6 @@
 """Tests for Matrix platform adapter (mautrix-python backend)."""
 import asyncio
-import re
+from agent.re_compat import re
 import stat
 import sys
 import time
@@ -2396,6 +2396,7 @@ class TestMatrixDiagnostics:
         assert secret not in caplog.text
         assert "will not be logged" in caplog.text
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="Unix permission modes are not enforced on Windows")
     def test_matrix_recovery_key_output_file_is_0600(self, tmp_path, monkeypatch, caplog):
         from plugins.platforms.matrix.adapter import _handle_generated_matrix_recovery_key
 

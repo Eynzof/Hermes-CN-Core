@@ -7,7 +7,7 @@ These tests verify that ``_resolve_channel_prompt`` reads the adapter's
 """
 
 import asyncio
-import json
+import orjson
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -36,7 +36,7 @@ def _build_adapter(extra=None):
 
 def _run_inbound(adapter, chat_id="oc_chat"):
     message = SimpleNamespace(
-        content=json.dumps({"text": "plain message"}),
+        content=orjson.dumps({"text": "plain message"}).decode('utf-8'),
         message_type="text",
         message_id="m",
         mentions=[],

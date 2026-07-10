@@ -16,7 +16,7 @@ Usage:
     print(engine.format_terminal(report))
 """
 
-import json
+import orjson
 import time
 from collections import Counter, defaultdict
 from datetime import datetime
@@ -257,14 +257,14 @@ class InsightsEngine:
             try:
                 calls = row["tool_calls"]
                 if isinstance(calls, str):
-                    calls = json.loads(calls)
+                    calls = orjson.loads(calls)
                 if isinstance(calls, list):
                     for call in calls:
                         func = call.get("function", {}) if isinstance(call, dict) else {}
                         name = func.get("name")
                         if name:
                             tool_calls_counts[name] += 1
-            except (json.JSONDecodeError, TypeError, AttributeError):
+            except (orjson.JSONDecodeError, TypeError, AttributeError):
                 continue
 
         # Merge: prefer tool_name source, supplement with tool_calls source
@@ -314,10 +314,10 @@ class InsightsEngine:
             try:
                 calls = row["tool_calls"]
                 if isinstance(calls, str):
-                    calls = json.loads(calls)
+                    calls = orjson.loads(calls)
                 if not isinstance(calls, list):
                     continue
-            except (json.JSONDecodeError, TypeError):
+            except (orjson.JSONDecodeError, TypeError):
                 continue
 
             timestamp = row["timestamp"]
@@ -332,8 +332,8 @@ class InsightsEngine:
                 args = func.get("arguments")
                 if isinstance(args, str):
                     try:
-                        args = json.loads(args)
-                    except (json.JSONDecodeError, TypeError):
+                        args = orjson.loads(args)
+                    except (orjson.JSONDecodeError, TypeError):
                         continue
                 if not isinstance(args, dict):
                     continue

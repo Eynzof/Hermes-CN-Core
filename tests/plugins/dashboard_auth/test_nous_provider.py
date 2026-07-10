@@ -16,9 +16,9 @@ All HTTP is mocked: nothing in this file talks to a real Portal.
 
 from __future__ import annotations
 
-import base64
+import pybase64 as base64
 import hashlib
-import json
+import orjson
 import time
 import urllib.parse
 from typing import Any, Dict
@@ -532,7 +532,7 @@ class TestCompleteLogin:
         resp = MagicMock(spec=httpx.Response)
         resp.status_code = status_code
         if isinstance(body, dict):
-            resp.text = json.dumps(body)
+            resp.text = orjson.dumps(body).decode('utf-8')
             resp.json = MagicMock(return_value=body)
         else:
             resp.text = body
@@ -774,7 +774,7 @@ class TestRefreshAndRevoke:
         resp = MagicMock(spec=httpx.Response)
         resp.status_code = status_code
         if isinstance(body, dict):
-            resp.text = json.dumps(body)
+            resp.text = orjson.dumps(body).decode('utf-8')
             resp.json = MagicMock(return_value=body)
         else:
             resp.text = body

@@ -12,7 +12,7 @@ gateway wires to emit a ``terminal.close`` event the renderer handles. Like
 the GUI.
 """
 
-import json
+import orjson
 import os
 
 from utils import env_var_enabled
@@ -27,7 +27,7 @@ def close_terminal_tool(process_id: str) -> str:
     if not pid:
         return tool_error("process_id is required (the background process whose tab to close).")
 
-    return json.dumps(process_registry.request_close_terminal(pid), ensure_ascii=False)
+    return orjson.dumps(process_registry.request_close_terminal(pid)).decode('utf-8')
 
 
 def check_close_terminal_requirements() -> bool:

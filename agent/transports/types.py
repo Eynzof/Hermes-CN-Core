@@ -10,7 +10,7 @@ without polluting the shared type.
 
 from __future__ import annotations
 
-import json
+import orjson
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -159,7 +159,7 @@ def build_tool_call(
 
     Any extra keyword arguments are collected into ``provider_data``.
     """
-    args_str = json.dumps(arguments) if isinstance(arguments, dict) else str(arguments)
+    args_str = orjson.dumps(arguments).decode('utf-8') if isinstance(arguments, dict) else str(arguments)
     pd = dict(provider_fields) if provider_fields else None
     return ToolCall(id=id, name=name, arguments=args_str, provider_data=pd)
 

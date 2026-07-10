@@ -22,7 +22,7 @@ Working directory: $HERMES_HOME/byterover/ (profile-scoped context tree)
 
 from __future__ import annotations
 
-import json
+import orjson
 import logging
 import os
 import shutil
@@ -410,13 +410,13 @@ class ByteRoverMemoryProvider(MemoryProvider):
 
         output = result.get("output", "").strip()
         if not output or len(output) < _MIN_OUTPUT_LEN:
-            return json.dumps({"result": "No relevant memories found."})
+            return orjson.dumps({"result": "No relevant memories found."}).decode('utf-8')
 
         # Truncate very long results
         if len(output) > 8000:
             output = output[:8000] + "\n\n[... truncated]"
 
-        return json.dumps({"result": output})
+        return orjson.dumps({"result": output}).decode('utf-8')
 
     def _tool_curate(self, args: dict) -> str:
         content = args.get("content", "")
@@ -431,13 +431,13 @@ class ByteRoverMemoryProvider(MemoryProvider):
         if not result["success"]:
             return tool_error(result.get("error", "Curate failed"))
 
-        return json.dumps({"result": "Memory curated successfully."})
+        return orjson.dumps({"result": "Memory curated successfully."}).decode('utf-8')
 
     def _tool_status(self) -> str:
         result = _run_brv(["status"], timeout=15, cwd=self._cwd)
         if not result["success"]:
             return tool_error(result.get("error", "Status check failed"))
-        return json.dumps({"status": result.get("output", "")})
+        return orjson.dumps({"status": result.get("output", "")}).decode('utf-8')
 
 
 # ---------------------------------------------------------------------------

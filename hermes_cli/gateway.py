@@ -5,7 +5,7 @@ Handles: hermes gateway [run|start|stop|restart|status|install|uninstall|setup]
 """
 
 import asyncio
-import json
+import orjson
 import logging
 import os
 import shlex
@@ -770,8 +770,8 @@ def _spawn_gateway_restart_watcher(old_pid: int, run_argv: list[str]) -> bool:
 
     # Serialized as JSON literals embedded in the watcher source so the
     # inner respawn can apply cwd= / env= without extra argv plumbing.
-    respawn_cwd_literal = json.dumps(respawn_cwd)
-    respawn_env_literal = json.dumps(respawn_env_overlay)
+    respawn_cwd_literal = orjson.dumps(respawn_cwd).decode('utf-8')
+    respawn_env_literal = orjson.dumps(respawn_env_overlay).decode('utf-8')
 
     watcher = textwrap.dedent(
         """
@@ -1679,7 +1679,7 @@ def _profile_suffix() -> str:
     Works correctly in Docker (HERMES_HOME=/opt/data) and standard deployments.
     """
     import hashlib
-    import re
+    from agent.re_compat import re
     from hermes_constants import get_default_hermes_root
 
     home = get_hermes_home().resolve()
@@ -1714,7 +1714,7 @@ def _profile_arg(hermes_home: str | None = None, default_root: str | Path | None
             process, where ``Path.home()`` and ``get_default_hermes_root()``
             refer to root but the target profile lives under the service user.
     """
-    import re
+    from agent.re_compat import re
     from hermes_constants import get_default_hermes_root
 
     home = Path(hermes_home or str(get_hermes_home())).resolve()
@@ -2810,8 +2810,7 @@ def _normalize_launchd_plist_for_comparison(text: str) -> str:
     That makes raw text comparison unstable across shells, so ignore the PATH
     payload when deciding whether the installed plist is stale.
     """
-    import re
-
+    from agent.re_compat import re
     normalized = _normalize_service_definition(text)
     return re.sub(
         r"(<key>PATH</key>\s*<string>)(.*?)(</string>)",
@@ -2859,7 +2858,7 @@ def _temp_home_in_service_definition(definition: str) -> str | None:
     Matches both systemd ``Environment="HERMES_HOME=..."`` lines and launchd
     ``<key>HERMES_HOME</key><string>...</string>`` pairs.
     """
-    import re
+    from agent.re_compat import re
     import tempfile
 
     candidates = re.findall(r'HERMES_HOME=([^"\n]+)', definition)
@@ -3695,15 +3694,15 @@ def _launchd_unsupported_marker_path() -> Path:
 
 def _write_launchd_unsupported_marker() -> None:
     """Persist that launchd cannot supervise the gateway on this host."""
-    import json
+    import orjson
     from datetime import datetime, timezone
 
     try:
         _launchd_unsupported_marker_path().write_text(
-            json.dumps({
+            orjson.dumps({
                 "written_at": datetime.now(timezone.utc).isoformat(),
                 "reason": "launchd domain unsupported (exit 5/125)",
-            }),
+            }).decode('utf-8'),
             encoding="utf-8",
         )
     except OSError:
@@ -4735,10 +4734,10 @@ def run_gateway(verbose: int = 0, quiet: bool = False, replace: bool = False, fo
                 "platform": sys.platform,
                 **extra,
             }
-            import json as _json
+            import orjson as _json
 
             with open(log_dir / "gateway-exit-diag.log", "a", encoding="utf-8") as f:
-                f.write(_json.dumps(line, default=str) + "\n")
+                f.write(_json.dumps(line, default=str).decode('utf-8') + "\n")
         except Exception:
             pass  # never let the diagnostic itself crash the gateway
 

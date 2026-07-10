@@ -29,10 +29,10 @@ Usage:
     process_registry.kill(session.id)
 """
 
-import json
+import orjson
 import logging
 import os
-import platform
+from platform_utils import is_windows
 import shlex
 import signal
 import subprocess
@@ -40,9 +40,8 @@ import threading
 import time
 import uuid
 
-_IS_WINDOWS = platform.system() == "Windows"
+_IS_WINDOWS = is_windows()
 from tools.environments.local import _find_shell, _resolve_safe_cwd, _sanitize_subprocess_env
-from hermes_cli._subprocess_compat import windows_hide_flags
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -595,7 +594,7 @@ class ProcessRegistry:
                     capture_output=True,
                     text=True,
                     timeout=10,
-                    creationflags=windows_hide_flags(),
+                    creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW,
                     stdin=subprocess.DEVNULL,
                 )
             except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
@@ -759,7 +758,7 @@ class ProcessRegistry:
         # stdout is a pipe, hiding output from process(action="poll")).
         bg_env = _sanitize_subprocess_env(os.environ, env_vars)
         bg_env["PYTHONUNBUFFERED"] = "1"
-        _popen_kwargs = {"creationflags": windows_hide_flags()} if _IS_WINDOWS else {}
+        _popen_kwargs = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW} if _IS_WINDOWS else {}
 
         proc = subprocess.Popen(
             [user_shell, "-lic", f"set +m; {command}"],
@@ -1800,7 +1799,7 @@ class ProcessRegistry:
             return 0
 
         try:
-            entries = json.loads(CHECKPOINT_PATH.read_text(encoding="utf-8"))
+            entries = orjson.loads(CHECKPOINT_PATH.read_text(encoding="utf-8"))
         except Exception:
             return 0
 
@@ -2185,28 +2184,25 @@ def _handle_process(args, **kw):
             session_key = get_current_session_key(default="") or ""
         except Exception:
             session_key = ""
-        return json.dumps(
-            {"processes": process_registry.list_sessions(task_id=task_id, session_key=session_key or None)},
-            ensure_ascii=False,
-        )
+        return orjson.dumps({"processes": process_registry.list_sessions(task_id=task_id, session_key=session_key or None)}).decode('utf-8')
     elif action in {"poll", "log", "wait", "kill", "write", "submit", "close"}:
         if not session_id:
             return tool_error(f"session_id is required for {action}")
         if action == "poll":
-            return json.dumps(_redact_process_result(process_registry.poll(session_id)), ensure_ascii=False)
+            return orjson.dumps(_redact_process_result(process_registry.poll(session_id))).decode('utf-8')
         elif action == "log":
-            return json.dumps(_redact_process_result(process_registry.read_log(
-                session_id, offset=args.get("offset", 0), limit=args.get("limit", 200))), ensure_ascii=False)
+            return orjson.dumps(_redact_process_result(process_registry.read_log(
+                session_id, offset=args.get("offset", 0), limit=args.get("limit", 200)))).decode('utf-8')
         elif action == "wait":
-            return json.dumps(_redact_process_result(process_registry.wait(session_id, timeout=args.get("timeout"))), ensure_ascii=False)
+            return orjson.dumps(_redact_process_result(process_registry.wait(session_id, timeout=args.get("timeout")))).decode('utf-8')
         elif action == "kill":
-            return json.dumps(process_registry.kill_process(session_id), ensure_ascii=False)
+            return orjson.dumps(process_registry.kill_process(session_id)).decode('utf-8')
         elif action == "write":
-            return json.dumps(process_registry.write_stdin(session_id, str(args.get("data", ""))), ensure_ascii=False)
+            return orjson.dumps(process_registry.write_stdin(session_id, str(args.get("data", "")))).decode('utf-8')
         elif action == "submit":
-            return json.dumps(process_registry.submit_stdin(session_id, str(args.get("data", ""))), ensure_ascii=False)
+            return orjson.dumps(process_registry.submit_stdin(session_id, str(args.get("data", "")))).decode('utf-8')
         elif action == "close":
-            return json.dumps(process_registry.close_stdin(session_id), ensure_ascii=False)
+            return orjson.dumps(process_registry.close_stdin(session_id)).decode('utf-8')
     return tool_error(f"Unknown process action: {action}. Use: list, poll, log, wait, kill, write, submit, close")
 
 

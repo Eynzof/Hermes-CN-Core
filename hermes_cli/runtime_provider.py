@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
-import re
+from agent.re_compat import re
 from urllib.parse import urlparse
 from typing import Any, Dict, Optional
 

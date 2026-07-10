@@ -17,7 +17,7 @@ never the child's intermediate tool calls or reasoning.
 """
 
 import enum
-import json
+import orjson
 import logging
 
 logger = logging.getLogger(__name__)
@@ -289,12 +289,12 @@ def _stringify_tool_content(content: Any) -> str:
                 if isinstance(text, str):
                     parts.append(text)
                 else:
-                    parts.append(json.dumps(item, ensure_ascii=False, default=str))
+                    parts.append(orjson.dumps(item, default=str).decode('utf-8'))
             else:
                 parts.append(str(item))
         return "\n".join(parts)
     if isinstance(content, dict):
-        return json.dumps(content, ensure_ascii=False, default=str)
+        return orjson.dumps(content, default=str).decode('utf-8')
     return str(content)
 
 
@@ -315,7 +315,7 @@ def _looks_like_error_output(content: Any) -> bool:
     head = content.lstrip()
     if head.startswith("{") or head.startswith("["):
         try:
-            parsed = json.loads(content)
+            parsed = orjson.loads(content)
             if isinstance(parsed, dict):
                 if parsed.get("error"):
                     return True
@@ -1497,7 +1497,7 @@ def _dump_subagent_timeout_diagnostic(
         try:
             tools_schema = getattr(child, "tools", None)
             if tools_schema is not None:
-                _schema_json = json.dumps(tools_schema, default=str)
+                _schema_json = orjson.dumps(tools_schema, default=str).decode('utf-8')
                 _w(f"  tool_schema_count: {len(tools_schema)}")
                 _w(f"  tool_schema_bytes: {len(_schema_json.encode('utf-8'))}")
         except Exception as exc:
@@ -2327,8 +2327,8 @@ def _recover_tasks_from_json_string(
     if not raw:
         return None, "Provide either 'goal' (single task) or 'tasks' (batch)."
     try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError as exc:
+        parsed = orjson.loads(raw)
+    except orjson.JSONDecodeError as exc:
         return None, (
             "tasks must be a JSON array of task objects; received a string "
             f"that could not be parsed as JSON ({exc.msg})."
@@ -2393,8 +2393,7 @@ def delegate_task(
     depth = getattr(parent_agent, "_delegate_depth", 0)
     max_spawn = _get_max_spawn_depth()
     if depth >= max_spawn:
-        return json.dumps(
-            {
+        return orjson.dumps({
                 "error": (
                     f"Delegation depth limit reached (depth={depth}, "
                     f"max_spawn_depth={max_spawn}). Raise "
@@ -2402,8 +2401,7 @@ def delegate_task(
                     f"nesting is required (no hard ceiling, but each level "
                     f"multiplies API cost)."
                 )
-            }
-        )
+            }).decode('utf-8')
 
     # Load config
     cfg = _load_config()
@@ -2804,7 +2802,7 @@ def delegate_task(
                     "after the turn ends), so the subagent(s) ran SYNCHRONOUSLY and "
                     "the result is included above."
                 )
-            return json.dumps(_sync_result, ensure_ascii=False)
+            return orjson.dumps(_sync_result).decode('utf-8')
 
         _session_key = get_current_session_key(default="")
         _child_agents = [c for (_, _, c) in children]
@@ -2874,7 +2872,7 @@ def delegate_task(
                 "goals": _goals,
                 "note": note,
             }
-            return json.dumps(payload, ensure_ascii=False)
+            return orjson.dumps(payload).decode('utf-8')
 
         # Pool at capacity / schedule failure — children are still attached
         # (we detach above only on the parent list, but the async unit was
@@ -2893,10 +2891,10 @@ def delegate_task(
                 "delegation.max_concurrent_children in config.yaml to allow "
                 "more concurrent background delegations."
             )
-        return json.dumps(_cap_result, ensure_ascii=False)
+        return orjson.dumps(_cap_result).decode('utf-8')
 
     # ----- Synchronous path -----
-    return json.dumps(_execute_and_aggregate(), ensure_ascii=False)
+    return orjson.dumps(_execute_and_aggregate()).decode('utf-8')
 
 
 def _resolve_child_credential_pool(

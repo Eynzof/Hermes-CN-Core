@@ -18,7 +18,7 @@ for invariants and PR review criteria.
 
 from __future__ import annotations
 
-import json
+import orjson
 import logging
 import os
 from typing import Any, Dict, List, Optional
@@ -416,8 +416,8 @@ def summarize_background_review_actions(
             if fn_name not in notify_tools:
                 continue
             try:
-                args = json.loads(fn.get("arguments", "{}"))
-            except (json.JSONDecodeError, TypeError):
+                args = orjson.loads(fn.get("arguments", "{}"))
+            except (orjson.JSONDecodeError, TypeError):
                 args = {}
             if tcid:
                 call_details[tcid] = {
@@ -446,8 +446,8 @@ def summarize_background_review_actions(
         if tcid and all_tool_call_ids and tcid not in call_details:
             continue
         try:
-            data = json.loads(msg.get("content", "{}"))
-        except (json.JSONDecodeError, TypeError):
+            data = orjson.loads(msg.get("content", "{}"))
+        except (orjson.JSONDecodeError, TypeError):
             continue
         if not isinstance(data, dict) or not data.get("success"):
             continue

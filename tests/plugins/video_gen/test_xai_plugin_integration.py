@@ -8,7 +8,7 @@ because routing is the part most likely to break silently.
 from __future__ import annotations
 
 import asyncio
-import json
+import orjson
 from typing import Any, Dict, List, Optional
 
 import pytest
@@ -27,7 +27,7 @@ class _FakeResponse:
     def __init__(self, status: int = 200, payload: Optional[Dict[str, Any]] = None):
         self.status_code = status
         self._payload = payload or {}
-        self.text = json.dumps(self._payload)
+        self.text = orjson.dumps(self._payload).decode('utf-8')
 
     def raise_for_status(self):
         if self.status_code >= 400:

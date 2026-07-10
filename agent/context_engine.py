@@ -89,6 +89,7 @@ class ContextEngine(ABC):
         messages: List[Dict[str, Any]],
         current_tokens: int = None,
         focus_topic: str = None,
+        mode: str = None,
     ) -> List[Dict[str, Any]]:
         """Compact the message list and return the new message list.
 
@@ -103,6 +104,9 @@ class ContextEngine(ABC):
                 Engines that support guided compression should prioritise
                 preserving information related to this topic.  Engines that
                 don't support it may simply ignore this argument.
+            mode: Optional compaction mode string ("balanced", "aggressive",
+                "retentive", "technical").  Controls the summarizer style
+                guidance injected into the compression prompt.
         """
 
     # -- Optional: pre-flight check ----------------------------------------
@@ -184,16 +188,37 @@ class ContextEngine(ABC):
         kwargs may include:
           messages: the current in-memory message list (for live ingestion)
         """
-        import json
-        return json.dumps({"error": f"Unknown context engine tool: {name}"})
+        import orjson
+        return orjson.dumps({"error": f"Unknown context engine tool: {name}"}).decode('utf-8')
 
     # -- Optional: status / display ----------------------------------------
+
+    def get_usage_status(self) -> Dict[str, Any]:
+        """Return context usage status as a JSON-serializable dict.
+
+        Used by the context_usage tool and can be called by status displays.
+        Returns zeros gracefully when no context data is available yet.
+        """
+        last_prompt = self.last_prompt_tokens if self.last_prompt_tokens > 0 else 0
+        return {
+            "usage_percent": (
+                min(100.0, last_prompt / self.context_length * 100)
+                if self.context_length else 0.0
+            ),
+            "used_tokens": last_prompt,
+            "max_context_tokens": self.context_length,
+            "threshold_tokens": self.threshold_tokens,
+            "compression_count": self.compression_count,
+        }
 
     def get_status(self) -> Dict[str, Any]:
         """Return status dict for display/logging.
 
         Default returns the standard fields run_agent.py expects.
+        Delegates shared numeric state to :meth:`get_usage_status`
+        so the two methods stay consistent.
         """
+        usage = self.get_usage_status()
         # Clamp the -1 "compression just ran, awaiting real usage" sentinel
         # (set by conversation_compression) to 0 so status readers don't see a
         # raw -1 or a negative usage_percent on the transitional turn. Mirrors
@@ -201,13 +226,10 @@ class ContextEngine(ABC):
         last_prompt = self.last_prompt_tokens if self.last_prompt_tokens > 0 else 0
         return {
             "last_prompt_tokens": last_prompt,
-            "threshold_tokens": self.threshold_tokens,
-            "context_length": self.context_length,
-            "usage_percent": (
-                min(100, last_prompt / self.context_length * 100)
-                if self.context_length else 0
-            ),
-            "compression_count": self.compression_count,
+            "threshold_tokens": usage["threshold_tokens"],
+            "context_length": usage["max_context_tokens"],
+            "usage_percent": usage["usage_percent"],
+            "compression_count": usage["compression_count"],
         }
 
     # -- Optional: model switch support ------------------------------------

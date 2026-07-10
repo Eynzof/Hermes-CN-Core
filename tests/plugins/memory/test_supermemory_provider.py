@@ -1,4 +1,4 @@
-import json
+import orjson
 import os
 import stat
 import threading
@@ -270,7 +270,7 @@ def test_shutdown_joins_threads_and_flushes_buffer(provider, monkeypatch):
 
 
 def test_store_tool_returns_saved_payload(provider):
-    result = json.loads(provider.handle_tool_call("supermemory_store", {"content": "Jordan likes concise docs"}))
+    result = orjson.loads(provider.handle_tool_call("supermemory_store", {"content": "Jordan likes concise docs"}))
     assert result["saved"] is True
     assert result["id"] == "mem_123"
 
@@ -279,20 +279,20 @@ def test_search_tool_formats_results(provider):
     provider._client.search_results = [
         {"id": "m1", "memory": "Jordan likes concise docs", "similarity": 0.92}
     ]
-    result = json.loads(provider.handle_tool_call("supermemory_search", {"query": "concise docs"}))
+    result = orjson.loads(provider.handle_tool_call("supermemory_search", {"query": "concise docs"}))
     assert result["count"] == 1
     assert result["results"][0]["similarity"] == 92
 
 
 def test_forget_tool_by_id(provider):
-    result = json.loads(provider.handle_tool_call("supermemory_forget", {"id": "m1"}))
+    result = orjson.loads(provider.handle_tool_call("supermemory_forget", {"id": "m1"}))
     assert result == {"forgotten": True, "id": "m1"}
     assert provider._client.forgotten_ids == ["m1"]
 
 
 def test_forget_tool_by_query(provider):
     provider._client.forget_by_query_response = {"success": True, "message": "Forgot one", "id": "m7"}
-    result = json.loads(provider.handle_tool_call("supermemory_forget", {"query": "that thing"}))
+    result = orjson.loads(provider.handle_tool_call("supermemory_forget", {"query": "that thing"}))
     assert result["success"] is True
     assert result["id"] == "m7"
 
@@ -303,7 +303,7 @@ def test_profile_tool_formats_sections(provider):
         "dynamic": ["Working on Supermemory provider"],
         "search_results": [],
     }
-    result = json.loads(provider.handle_tool_call("supermemory_profile", {}))
+    result = orjson.loads(provider.handle_tool_call("supermemory_profile", {}))
     assert result["static_count"] == 1
     assert result["dynamic_count"] == 1
     assert "User Profile (Persistent)" in result["profile"]
@@ -312,7 +312,7 @@ def test_profile_tool_formats_sections(provider):
 def test_handle_tool_call_returns_error_when_unconfigured(monkeypatch):
     monkeypatch.delenv("SUPERMEMORY_API_KEY", raising=False)
     p = SupermemoryMemoryProvider()
-    result = json.loads(p.handle_tool_call("supermemory_search", {"query": "x"}))
+    result = orjson.loads(p.handle_tool_call("supermemory_search", {"query": "x"}))
     assert "error" in result
 
 
@@ -411,7 +411,7 @@ def test_multi_container_tool_store_with_custom_tag(monkeypatch, tmp_path):
     }, str(tmp_path))
     p = SupermemoryMemoryProvider()
     p.initialize("s1", hermes_home=str(tmp_path), platform="cli")
-    result = json.loads(p.handle_tool_call("supermemory_store", {
+    result = orjson.loads(p.handle_tool_call("supermemory_store", {
         "content": "test memory",
         "container_tag": "project-alpha",
     }))
@@ -430,7 +430,7 @@ def test_multi_container_rejects_unlisted_tag(monkeypatch, tmp_path):
     }, str(tmp_path))
     p = SupermemoryMemoryProvider()
     p.initialize("s1", hermes_home=str(tmp_path), platform="cli")
-    result = json.loads(p.handle_tool_call("supermemory_store", {
+    result = orjson.loads(p.handle_tool_call("supermemory_store", {
         "content": "test",
         "container_tag": "forbidden-tag",
     }))

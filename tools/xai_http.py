@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import datetime
-import json
+import orjson
 import os
 import uuid
 from typing import Any, Dict, Optional
@@ -41,7 +41,7 @@ def has_xai_credentials() -> bool:
         auth_path = get_hermes_home() / "auth.json"
         if not auth_path.exists():
             return False
-        store = json.loads(auth_path.read_text())
+        store = orjson.loads(auth_path.read_text())
         providers = store.get("providers") if isinstance(store, dict) else None
         xai_state = providers.get("xai-oauth") if isinstance(providers, dict) else None
         tokens = xai_state.get("tokens") if isinstance(xai_state, dict) else None

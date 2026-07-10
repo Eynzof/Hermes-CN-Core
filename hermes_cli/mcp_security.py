@@ -26,7 +26,7 @@ it can execute.
 from __future__ import annotations
 
 import os
-import re
+from agent.re_compat import re
 import shlex
 from typing import Any
 

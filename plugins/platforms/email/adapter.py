@@ -20,7 +20,7 @@ import email as email_lib
 import imaplib
 import logging
 import os
-import re
+from agent.re_compat import re
 import smtplib
 import socket
 import ssl

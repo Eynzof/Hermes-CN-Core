@@ -255,9 +255,9 @@ class TestPlayAckInVoice:
 
         ack_file = tmp_path / "ack.mp3"
         ack_file.write_bytes(b"id3")
-        import json as _json
+        import orjson as _json
         with patch("tools.tts_tool.text_to_speech_tool",
-                   return_value=_json.dumps({"success": True, "file_path": str(ack_file)})), \
+                   return_value=_json.dumps({"success": True, "file_path": str(ack_file)}).decode('utf-8')), \
                 patch.object(vm, "decode_to_pcm", return_value=b"\x00" * vm.FRAME_SIZE):
             ok = await adapter.play_ack_in_voice(111, phrase="Testing one two.")
         assert ok is True

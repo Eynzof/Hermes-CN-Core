@@ -16,9 +16,9 @@ the config loader.
 
 from __future__ import annotations
 
-import json
+import orjson
 import logging
-import re
+from agent.re_compat import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -65,7 +65,7 @@ def _read_pet_json(directory: Path) -> dict:
     if not pet_json.is_file():
         return {}
     try:
-        return json.loads(pet_json.read_text(encoding="utf-8"))
+        return orjson.loads(pet_json.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         logger.debug("unreadable pet.json in %s: %s", directory, exc)
         return {}
@@ -196,7 +196,7 @@ def install_pet(slug: str, *, force: bool = False, timeout: float = _DOWNLOAD_TI
     meta["spritesheetPath"] = sprite_path.name
     meta.setdefault("id", slug)
     meta.setdefault("displayName", entry.display_name)
-    (directory / "pet.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    (directory / "pet.json").write_text(orjson.dumps(meta, option=orjson.OPT_INDENT_2).decode('utf-8'), encoding="utf-8")
 
     pet = load_pet(slug)
     if pet is None or not pet.exists:
@@ -267,7 +267,7 @@ def register_local_pet(
         "spritesheetPath": sprite_path.name,
         "createdBy": "generator",
     }
-    (directory / "pet.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    (directory / "pet.json").write_text(orjson.dumps(meta, option=orjson.OPT_INDENT_2).decode('utf-8'), encoding="utf-8")
 
     pet = load_pet(slug)
     if pet is None or not pet.exists:
@@ -438,7 +438,7 @@ def rename_pet(slug: str, display_name: str) -> str | None:
     if not pet_json.is_file():
         return None
     try:
-        meta = json.loads(pet_json.read_text(encoding="utf-8"))
+        meta = orjson.loads(pet_json.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         meta = {}
     if not isinstance(meta, dict):
@@ -462,7 +462,7 @@ def rename_pet(slug: str, display_name: str) -> str | None:
             new_slug = slug  # keep the provisional slug if the move fails
 
     try:
-        pet_json.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+        pet_json.write_text(orjson.dumps(meta, option=orjson.OPT_INDENT_2).decode('utf-8'), encoding="utf-8")
     except OSError:
         return None
     return new_slug

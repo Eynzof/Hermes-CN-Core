@@ -47,7 +47,7 @@ import hmac
 import logging
 import mimetypes
 import os
-import re
+from agent.re_compat import re
 import shutil
 import uuid
 from collections import OrderedDict
@@ -1417,7 +1417,7 @@ class WhatsAppCloudAdapter(WhatsAppBehaviorMixin, BasePlatformAdapter):
         # Parse only AFTER signature passes — bad JSON from an attacker is
         # already filtered out, this just guards against Meta sending
         # something malformed.
-        import json as _json
+        import orjson as _json
 
         try:
             payload = _json.loads(raw)

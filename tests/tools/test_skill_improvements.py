@@ -1,6 +1,6 @@
 """Tests for skill fuzzy patching via tools.fuzzy_match."""
 
-import json
+import orjson
 
 import pytest
 
@@ -166,6 +166,6 @@ word word word
             old_string="  Step 1: Do the thing.",  # extra leading space
             new_string="Step 1: Updated.",
         )
-        result = json.loads(raw)
+        result = orjson.loads(raw)
         # Should succeed via line-trimmed or indentation-flexible matching
         assert result["success"] is True

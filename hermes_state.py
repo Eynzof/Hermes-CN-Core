@@ -15,10 +15,10 @@ Key design decisions:
 """
 
 import asyncio
-import json
+import orjson
 import logging
 import random
-import re
+from agent.re_compat import re
 import sqlite3
 import sys
 import threading
@@ -1623,7 +1623,7 @@ class SessionDB:
                     chat_type,
                     thread_id,
                     model,
-                    json.dumps(model_config) if model_config else None,
+                    orjson.dumps(model_config).decode('utf-8') if model_config else None,
                     system_prompt,
                     parent_session_id,
                     cwd,
@@ -3073,7 +3073,7 @@ class SessionDB:
         if content is None or isinstance(content, (str, bytes, int, float)):
             return content
         try:
-            return cls._CONTENT_JSON_PREFIX + json.dumps(content)
+            return cls._CONTENT_JSON_PREFIX + orjson.dumps(content).decode('utf-8')
         except (TypeError, ValueError):
             # Last-resort fallback: stringify so persistence never fails.
             return str(content)
@@ -3083,8 +3083,8 @@ class SessionDB:
         """Reverse :meth:`_encode_content`; returns scalars unchanged."""
         if isinstance(content, str) and content.startswith(cls._CONTENT_JSON_PREFIX):
             try:
-                return json.loads(content[len(cls._CONTENT_JSON_PREFIX):])
-            except (json.JSONDecodeError, TypeError):
+                return orjson.loads(content[len(cls._CONTENT_JSON_PREFIX):])
+            except (orjson.JSONDecodeError, TypeError):
                 logger.warning(
                     "Failed to decode JSON-encoded message content; "
                     "returning raw string"
@@ -3125,18 +3125,18 @@ class SessionDB:
         """
         # Serialize structured fields to JSON before entering the write txn
         reasoning_details_json = (
-            json.dumps(reasoning_details)
+            orjson.dumps(reasoning_details).decode('utf-8')
             if reasoning_details else None
         )
         codex_items_json = (
-            json.dumps(codex_reasoning_items)
+            orjson.dumps(codex_reasoning_items).decode('utf-8')
             if codex_reasoning_items else None
         )
         codex_message_items_json = (
-            json.dumps(codex_message_items)
+            orjson.dumps(codex_message_items).decode('utf-8')
             if codex_message_items else None
         )
-        tool_calls_json = json.dumps(tool_calls) if tool_calls else None
+        tool_calls_json = orjson.dumps(tool_calls).decode('utf-8') if tool_calls else None
         # Multimodal content (list of parts) must be JSON-encoded: sqlite3
         # cannot bind list/dict parameters directly.
         stored_content = self._encode_content(content)
@@ -3233,15 +3233,15 @@ class SessionDB:
                 msg.get("codex_message_items") if role == "assistant" else None
             )
             reasoning_details_json = (
-                json.dumps(reasoning_details) if reasoning_details else None
+                orjson.dumps(reasoning_details).decode('utf-8') if reasoning_details else None
             )
             codex_items_json = (
-                json.dumps(codex_reasoning_items) if codex_reasoning_items else None
+                orjson.dumps(codex_reasoning_items).decode('utf-8') if codex_reasoning_items else None
             )
             codex_message_items_json = (
-                json.dumps(codex_message_items) if codex_message_items else None
+                orjson.dumps(codex_message_items).decode('utf-8') if codex_message_items else None
             )
-            tool_calls_json = json.dumps(tool_calls) if tool_calls else None
+            tool_calls_json = orjson.dumps(tool_calls).decode('utf-8') if tool_calls else None
             # Accept either `platform_message_id` (new explicit name) or
             # `message_id` (yuanbao's existing convention on message dicts).
             platform_msg_id = (
@@ -3424,8 +3424,8 @@ class SessionDB:
                 msg["content"] = self._decode_content(msg["content"])
             if msg.get("tool_calls"):
                 try:
-                    msg["tool_calls"] = json.loads(msg["tool_calls"])
-                except (json.JSONDecodeError, TypeError):
+                    msg["tool_calls"] = orjson.loads(msg["tool_calls"])
+                except (orjson.JSONDecodeError, TypeError):
                     logger.warning("Failed to deserialize tool_calls in get_messages, falling back to []")
                     msg["tool_calls"] = []
             result.append(msg)
@@ -3491,8 +3491,8 @@ class SessionDB:
                 msg["content"] = self._decode_content(msg["content"])
             if msg.get("tool_calls"):
                 try:
-                    msg["tool_calls"] = json.loads(msg["tool_calls"])
-                except (json.JSONDecodeError, TypeError):
+                    msg["tool_calls"] = orjson.loads(msg["tool_calls"])
+                except (orjson.JSONDecodeError, TypeError):
                     logger.warning(
                         "Failed to deserialize tool_calls in get_messages_around, falling back to []"
                     )
@@ -3613,8 +3613,8 @@ class SessionDB:
                 msg["content"] = self._decode_content(msg["content"])
             if msg.get("tool_calls"):
                 try:
-                    msg["tool_calls"] = json.loads(msg["tool_calls"])
-                except (json.JSONDecodeError, TypeError):
+                    msg["tool_calls"] = orjson.loads(msg["tool_calls"])
+                except (orjson.JSONDecodeError, TypeError):
                     logger.warning(
                         "Failed to deserialize tool_calls in get_anchored_view, falling back to []"
                     )
@@ -3770,8 +3770,8 @@ class SessionDB:
                 msg["tool_name"] = row["tool_name"]
             if row["tool_calls"]:
                 try:
-                    msg["tool_calls"] = json.loads(row["tool_calls"])
-                except (json.JSONDecodeError, TypeError):
+                    msg["tool_calls"] = orjson.loads(row["tool_calls"])
+                except (orjson.JSONDecodeError, TypeError):
                     logger.warning("Failed to deserialize tool_calls in conversation replay, falling back to []")
                     msg["tool_calls"] = []
             # Surface the platform-side message id (e.g. yuanbao msg_id,
@@ -3795,20 +3795,20 @@ class SessionDB:
                     msg["reasoning_content"] = row["reasoning_content"]
                 if row["reasoning_details"]:
                     try:
-                        msg["reasoning_details"] = json.loads(row["reasoning_details"])
-                    except (json.JSONDecodeError, TypeError):
+                        msg["reasoning_details"] = orjson.loads(row["reasoning_details"])
+                    except (orjson.JSONDecodeError, TypeError):
                         logger.warning("Failed to deserialize reasoning_details, falling back to None")
                         msg["reasoning_details"] = None
                 if row["codex_reasoning_items"]:
                     try:
-                        msg["codex_reasoning_items"] = json.loads(row["codex_reasoning_items"])
-                    except (json.JSONDecodeError, TypeError):
+                        msg["codex_reasoning_items"] = orjson.loads(row["codex_reasoning_items"])
+                    except (orjson.JSONDecodeError, TypeError):
                         logger.warning("Failed to deserialize codex_reasoning_items, falling back to None")
                         msg["codex_reasoning_items"] = None
                 if row["codex_message_items"]:
                     try:
-                        msg["codex_message_items"] = json.loads(row["codex_message_items"])
-                    except (json.JSONDecodeError, TypeError):
+                        msg["codex_message_items"] = orjson.loads(row["codex_message_items"])
+                    except (orjson.JSONDecodeError, TypeError):
                         logger.warning("Failed to deserialize codex_message_items, falling back to None")
                         msg["codex_message_items"] = None
             if include_ancestors and self._is_duplicate_replayed_user_message(messages, msg):

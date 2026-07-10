@@ -6,7 +6,7 @@ that can be copy-pasted into Discord/GitHub/Telegram for support context.
 No ANSI colors, no checkmarks — just data.
 """
 
-import json
+import orjson
 import os
 import platform
 import subprocess
@@ -168,7 +168,7 @@ def _cron_summary(hermes_home: Path) -> str:
         return "0"
     try:
         with open(jobs_file, encoding="utf-8") as f:
-            data = json.load(f)
+            data = orjson.loads(f.read())
         jobs = data.get("jobs", [])
         active = sum(1 for j in jobs if j.get("enabled", True))
         return f"{active} active / {len(jobs)} total"

@@ -19,7 +19,7 @@ Gateway-specific env vars:
 """
 
 import asyncio
-import base64
+import pybase64 as base64
 import hashlib
 import hmac
 import logging
@@ -421,8 +421,7 @@ async def _standalone_send(
         import aiohttp
     except ImportError:
         return {"error": "aiohttp not installed. Run: pip install aiohttp"}
-    import base64
-
+    import pybase64 as base64
     account_sid = os.getenv("TWILIO_ACCOUNT_SID", "")
     from_number = os.getenv("TWILIO_PHONE_NUMBER", "")
     if not account_sid or not auth_token or not from_number:

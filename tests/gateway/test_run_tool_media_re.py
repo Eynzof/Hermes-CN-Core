@@ -14,9 +14,7 @@ Two identical _TOOL_MEDIA_RE patterns exist in run.py:
 This test file validates that both equivalent regex patterns correctly match
 Windows paths while preserving existing Unix path matching behavior.
 """
-
-import re
-
+from agent.re_compat import re
 import pytest
 
 

@@ -459,7 +459,7 @@ class TestSandboxWritesUtf8:
         # the two staging files.  Grep-style check: find every write of
         # a .py file inside tmpdir and assert the line also contains
         # ``encoding="utf-8"`` within a short window.
-        import re
+        from agent.re_compat import re
         pattern = re.compile(
             r'open\(\s*os\.path\.join\(\s*tmpdir\s*,\s*"[^"]+\.py"\s*\)\s*,\s*"w"[^)]*\)'
         )

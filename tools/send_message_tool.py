@@ -6,10 +6,10 @@ human-friendly channel names to IDs. Works in both CLI and gateway contexts.
 """
 
 import asyncio
-import json
+import orjson
 import logging
 import os
-import re
+from agent.re_compat import re
 import ssl
 import time
 from email.utils import formatdate
@@ -198,9 +198,9 @@ def _handle_list():
     """Return formatted list of available messaging targets."""
     try:
         from gateway.channel_directory import format_directory_for_display
-        return json.dumps({"targets": format_directory_for_display()})
+        return orjson.dumps({"targets": format_directory_for_display()}).decode('utf-8')
     except Exception as e:
-        return json.dumps(_error(f"Failed to load channel directory: {e}"))
+        return orjson.dumps(_error(f"Failed to load channel directory: {e}")).decode('utf-8')
 
 
 def _handle_react(args, remove=False):
@@ -289,10 +289,10 @@ def _handle_react(args, remove=False):
                 react_fn(chat_id=chat_id, emoji=emoji, message_id=message_id)
             )
     except Exception as e:
-        return json.dumps(_error(f"Reaction failed: {e}"))
+        return orjson.dumps(_error(f"Reaction failed: {e}")).decode('utf-8')
     if isinstance(result, dict):
-        return json.dumps(result)
-    return json.dumps({"success": bool(result)})
+        return orjson.dumps(result).decode('utf-8')
+    return orjson.dumps({"success": bool(result)}).decode('utf-8')
 
 
 def _handle_send(args):
@@ -321,15 +321,15 @@ def _handle_send(args):
             if resolved:
                 chat_id, thread_id, _ = _parse_target_ref(platform_name, resolved)
             else:
-                return json.dumps({
+                return orjson.dumps({
                     "error": f"Could not resolve '{target_ref}' on {platform_name}. "
                     f"Use send_message(action='list') to see available targets."
-                })
+                }).decode('utf-8')
         except Exception:
-            return json.dumps({
+            return orjson.dumps({
                 "error": f"Could not resolve '{target_ref}' on {platform_name}. "
                 f"Try using a numeric channel ID instead."
-            })
+            }).decode('utf-8')
 
     from tools.interrupt import is_interrupted
     if is_interrupted():
@@ -339,7 +339,7 @@ def _handle_send(args):
         from gateway.config import load_gateway_config, Platform
         config = load_gateway_config()
     except Exception as e:
-        return json.dumps(_error(f"Failed to load gateway config: {e}"))
+        return orjson.dumps(_error(f"Failed to load gateway config: {e}")).decode('utf-8')
 
     # Accept any platform name — built-in names resolve to their enum
     # member, plugin platform names create dynamic members via _missing_().
@@ -398,15 +398,15 @@ def _handle_send(args):
             home_env = _HOME_CHANNEL_ENV_OVERRIDES.get(
                 platform_name, f"{platform_name.upper()}_HOME_CHANNEL"
             )
-            return json.dumps({
+            return orjson.dumps({
                 "error": f"No home channel set for {platform_name} to determine where to send the message. "
                 f"Either specify a channel directly with '{platform_name}:CHANNEL_NAME', "
                 f"or set a home channel via: hermes config set {home_env} <channel_id>"
-            })
+            }).decode('utf-8')
 
     duplicate_skip = _maybe_skip_cron_duplicate_send(platform_name, chat_id, thread_id)
     if duplicate_skip:
-        return json.dumps(duplicate_skip)
+        return orjson.dumps(duplicate_skip).decode('utf-8')
 
     # Slack: resolve user IDs (U...) to DM channel IDs via conversations.open
     if platform_name == "slack" and chat_id and chat_id.startswith("U"):
@@ -426,9 +426,9 @@ def _handle_send(args):
             if dm_channel:
                 chat_id = dm_channel
             else:
-                return json.dumps({"error": f"Could not open DM with Slack user {chat_id}. Check bot permissions (im:write)."})
+                return orjson.dumps({"error": f"Could not open DM with Slack user {chat_id}. Check bot permissions (im:write)."}).decode('utf-8')
         except Exception as e:
-            return json.dumps({"error": f"Failed to open Slack DM: {e}"})
+            return orjson.dumps({"error": f"Failed to open Slack DM: {e}"}).decode('utf-8')
 
     try:
         from model_tools import _run_async
@@ -467,9 +467,9 @@ def _handle_send(args):
 
         if isinstance(result, dict) and "error" in result:
             result["error"] = _sanitize_error_text(result["error"])
-        return json.dumps(result)
+        return orjson.dumps(result).decode('utf-8')
     except Exception as e:
-        return json.dumps(_error(f"Send failed: {e}"))
+        return orjson.dumps(_error(f"Send failed: {e}")).decode('utf-8')
 
 
 def _parse_target_ref(platform_name: str, target_ref: str):

@@ -28,7 +28,7 @@ middleware doesn't 401 it first).
 from __future__ import annotations
 
 import asyncio
-import json
+import orjson
 import logging
 import uuid
 from typing import AsyncIterator, Dict, Optional
@@ -78,7 +78,7 @@ class SSETransport:
         # Serialize outside the loop coroutine so dict-encoding errors
         # surface to the caller (a programming bug we want in the crash
         # log, not a silent disconnect — see StdioTransport.write).
-        line = json.dumps(obj, ensure_ascii=False)
+        line = orjson.dumps(obj).decode('utf-8')
 
         try:
             on_loop = asyncio.get_running_loop() is self._loop
@@ -115,7 +115,7 @@ class SSETransport:
         ``: ping`` comment every :data:`_SSE_PING_INTERVAL_S` so idle
         proxies don't drop the connection.
         """
-        yield f"event: client_id\ndata: {json.dumps({'client_id': self.client_id})}\n\n"
+        yield f"event: client_id\ndata: {orjson.dumps({'client_id': self.client_id}).decode('utf-8')}\n\n"
 
         while not self._closed:
             try:

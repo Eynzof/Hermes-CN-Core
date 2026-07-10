@@ -19,7 +19,7 @@ Schema
 
 from __future__ import annotations
 
-import json
+import orjson
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -44,8 +44,8 @@ class NodeRegistry:
         if not self.path.is_file():
             return {"nodes": {}}
         try:
-            data = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+            data = orjson.loads(self.path.read_text(encoding="utf-8"))
+        except (OSError, orjson.JSONDecodeError):
             return {"nodes": {}}
         if not isinstance(data, dict) or not isinstance(data.get("nodes"), dict):
             return {"nodes": {}}
@@ -54,7 +54,7 @@ class NodeRegistry:
     def _save(self, data: Dict[str, Any]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        tmp.write_text(orjson.dumps(data, option=orjson.OPT_INDENT_2).decode('utf-8'), encoding="utf-8")
         tmp.replace(self.path)
 
     # ----- public API ---------------------------------------------------

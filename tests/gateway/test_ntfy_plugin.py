@@ -184,7 +184,7 @@ class TestAuthHeaders:
         adapter = self._make_adapter(token="user:pass")
         headers = adapter._auth_headers()
         assert headers["Authorization"].startswith("Basic ")
-        import base64
+        import pybase64 as base64
         expected = "Basic " + base64.b64encode(b"user:pass").decode()
         assert headers["Authorization"] == expected
 
@@ -940,7 +940,7 @@ class TestTokenHygiene:
     def test_basic_auth_token_also_stripped(self):
         h = _ntfy._build_auth_header("  user:pass  ")
         assert h["Authorization"].startswith("Basic ")
-        import base64
+        import pybase64 as base64
         assert h["Authorization"] == "Basic " + base64.b64encode(b"user:pass").decode()
 
     def test_adapter_strips_token_via_helper(self):

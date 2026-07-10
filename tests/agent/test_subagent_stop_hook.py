@@ -9,7 +9,7 @@ Covers wire-up from tools.delegate_tool.delegate_task:
 
 from __future__ import annotations
 
-import json
+import orjson
 import threading
 from unittest.mock import MagicMock, patch
 
@@ -219,6 +219,6 @@ class TestPayloadShape:
             }
             raw = delegate_task(goal="do X", parent_agent=_make_parent())
 
-        parsed = json.loads(raw)
+        parsed = orjson.loads(raw)
         assert "results" in parsed
         assert "_child_role" not in parsed["results"][0]

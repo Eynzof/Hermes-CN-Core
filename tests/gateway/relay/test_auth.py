@@ -18,7 +18,7 @@ Two layers:
 
 from __future__ import annotations
 
-import json
+import orjson
 
 from gateway.relay.auth import (
     DELIVERY_SIG_HEADER,
@@ -76,8 +76,7 @@ def test_token_expired_rejected():
     # Force expiry by signing with a manual past exp via the low-level helper.
     # Simpler: a 1s ttl token is still valid now; instead assert a clearly-old one.
     # Build an already-expired token by hand using the same scheme.
-    import base64
-
+    import pybase64 as base64
     signed = "p:1"  # exp=1 (1970) -> long past
     sig = sign(signed, _SECRET)
     raw = f"{signed}:{sig}".encode()
@@ -112,14 +111,14 @@ def test_verify_signature_constant_time_multi_secret():
 
 
 def test_delivery_signature_accepts_valid():
-    body = json.dumps({"type": "message", "event": {"text": "x"}})
+    body = orjson.dumps({"type": "message", "event": {"text": "x"}}).decode('utf-8')
     ts = 1700000000
     s = sign(f"{ts}.{body}", _SECRET)
     assert verify_delivery_signature(body, str(ts), s, [_SECRET], now=ts) is True
 
 
 def test_delivery_signature_tamper_rejected():
-    body = json.dumps({"type": "message", "event": {"text": "x"}})
+    body = orjson.dumps({"type": "message", "event": {"text": "x"}}).decode('utf-8')
     ts = 1700000000
     s = sign(f"{ts}.{body}", _SECRET)
     # A single changed body byte breaks the HMAC.

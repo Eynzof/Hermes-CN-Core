@@ -12,7 +12,7 @@ Usage:
     python3 polymarket.py trades [--limit 10] [--market CONDITION_ID]
 """
 
-import json
+import orjson
 import sys
 import urllib.request
 import urllib.parse
@@ -28,7 +28,7 @@ def _get(url: str) -> dict | list:
     req = urllib.request.Request(url, headers={"User-Agent": "hermes-agent/1.0"})
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
-            return json.loads(resp.read().decode())
+            return orjson.loads(resp.read().decode())
     except urllib.error.HTTPError as e:
         print(f"HTTP {e.code}: {e.reason}", file=sys.stderr)
         sys.exit(1)
@@ -41,8 +41,8 @@ def _parse_json_field(val):
     """Parse double-encoded JSON fields (outcomePrices, outcomes, clobTokenIds)."""
     if isinstance(val, str):
         try:
-            return json.loads(val)
-        except (json.JSONDecodeError, TypeError):
+            return orjson.loads(val)
+        except (orjson.JSONDecodeError, TypeError):
             return val
     return val
 

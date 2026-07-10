@@ -6,7 +6,7 @@ gateway/ticker active (e.g. a CLI-only Windows setup) the job never executed and
 last_run_at stayed null forever. Now action='run' claims the job (at-most-once,
 blocking a concurrent tick) and fires it inline via the shared run_one_job body.
 """
-import json
+import orjson
 from unittest.mock import patch
 
 from tools.cronjob_tools import cronjob, _execute_job_now
@@ -24,7 +24,7 @@ class TestCronjobRunExecutesImmediately:
              patch("tools.cronjob_tools.claim_job_for_fire", return_value=True) as m_claim, \
              patch("cron.scheduler.run_one_job", return_value=True) as m_run, \
              patch("tools.cronjob_tools.get_job", return_value=ran):
-            out = json.loads(cronjob(action="run", job_id="job-run-1"))
+            out = orjson.loads(cronjob(action="run", job_id="job-run-1"))
 
         assert out["success"] is True
         assert out["job"]["executed"] is True
@@ -38,7 +38,7 @@ class TestCronjobRunExecutesImmediately:
              patch("tools.cronjob_tools.claim_job_for_fire", return_value=False), \
              patch("cron.scheduler.run_one_job") as m_run, \
              patch("tools.cronjob_tools.get_job", return_value=dict(_JOB)):
-            out = json.loads(cronjob(action="run", job_id="job-run-1"))
+            out = orjson.loads(cronjob(action="run", job_id="job-run-1"))
 
         assert out["success"] is True
         assert out["job"]["executed"] is False
@@ -53,7 +53,7 @@ class TestCronjobRunExecutesImmediately:
              patch("tools.cronjob_tools.claim_job_for_fire", return_value=True), \
              patch("cron.scheduler.run_one_job", return_value=True), \
              patch("tools.cronjob_tools.get_job", return_value=failed):
-            out = json.loads(cronjob(action="run", job_id="job-run-1"))
+            out = orjson.loads(cronjob(action="run", job_id="job-run-1"))
 
         assert out["job"]["executed"] is True
         assert out["job"]["execution_success"] is False

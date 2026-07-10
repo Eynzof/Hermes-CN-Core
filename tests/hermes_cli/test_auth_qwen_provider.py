@@ -5,7 +5,7 @@ _qwen_access_token_is_expiring, _refresh_qwen_cli_tokens,
 resolve_qwen_runtime_credentials, get_qwen_auth_status.
 """
 
-import json
+import orjson
 import stat
 import time
 from pathlib import Path
@@ -59,7 +59,7 @@ def _write_qwen_creds(tmp_path, tokens=None):
     creds_path = qwen_dir / "oauth_creds.json"
     if tokens is None:
         tokens = _make_qwen_tokens()
-    creds_path.write_text(json.dumps(tokens), encoding="utf-8")
+    creds_path.write_text(orjson.dumps(tokens).decode('utf-8'), encoding="utf-8")
     return creds_path
 
 
@@ -112,7 +112,7 @@ def test_read_qwen_cli_tokens_invalid_json(qwen_env):
 def test_read_qwen_cli_tokens_non_dict(qwen_env):
     creds_path = qwen_env / ".qwen" / "oauth_creds.json"
     creds_path.parent.mkdir(parents=True, exist_ok=True)
-    creds_path.write_text(json.dumps(["a", "b"]), encoding="utf-8")
+    creds_path.write_text(orjson.dumps(["a", "b"]).decode('utf-8'), encoding="utf-8")
     with pytest.raises(AuthError) as exc:
         _read_qwen_cli_tokens()
     assert exc.value.code == "qwen_auth_invalid"
@@ -126,7 +126,7 @@ def test_save_qwen_cli_tokens_roundtrip(qwen_env):
     tokens = _make_qwen_tokens(access_token="saved-token")
     saved_path = _save_qwen_cli_tokens(tokens)
     assert saved_path.exists()
-    loaded = json.loads(saved_path.read_text(encoding="utf-8"))
+    loaded = orjson.loads(saved_path.read_text(encoding="utf-8"))
     assert loaded["access_token"] == "saved-token"
 
 
@@ -311,7 +311,7 @@ def test_refresh_qwen_cli_tokens_saves_to_disk(qwen_env):
     # Verify it was persisted
     creds_path = qwen_env / ".qwen" / "oauth_creds.json"
     assert creds_path.exists()
-    saved = json.loads(creds_path.read_text(encoding="utf-8"))
+    saved = orjson.loads(creds_path.read_text(encoding="utf-8"))
     assert saved["access_token"] == "disk-check"
 
 

@@ -15,9 +15,9 @@ All HTTP is mocked: nothing here talks to a real IDP.
 
 from __future__ import annotations
 
-import base64
+import pybase64 as base64
 import hashlib
-import json
+import orjson
 import time
 import urllib.parse
 from typing import Any, Dict
@@ -171,7 +171,7 @@ def _mock_post(status_code: int, body: Any, *, ctype: str = "application/json"):
     resp = MagicMock(spec=httpx.Response)
     resp.status_code = status_code
     if isinstance(body, dict):
-        resp.text = json.dumps(body)
+        resp.text = orjson.dumps(body).decode('utf-8')
         resp.json = MagicMock(return_value=body)
     else:
         resp.text = body
@@ -247,7 +247,7 @@ class TestDiscovery:
         resp = MagicMock(spec=httpx.Response)
         resp.status_code = status_code
         resp.json = MagicMock(return_value=body)
-        resp.text = json.dumps(body) if isinstance(body, dict) else str(body)
+        resp.text = orjson.dumps(body).decode('utf-8') if isinstance(body, dict) else str(body)
         resp.headers = {"content-type": ctype}
         return resp
 
@@ -390,14 +390,12 @@ class TestDiscoveryRealRedirect:
                     self.end_headers()
                     return
                 if self.path == "/canonical/openid-configuration":
-                    body = json.dumps(
-                        {
+                    body = orjson.dumps({
                             "issuer": issuer,
                             "authorization_endpoint": f"{issuer}/authorize",
                             "token_endpoint": f"{issuer}/token",
                             "jwks_uri": f"{issuer}/jwks",
-                        }
-                    ).encode()
+                        })
                     self.send_response(200)
                     self.send_header("Content-Type", "application/json")
                     self.send_header("Content-Length", str(len(body)))

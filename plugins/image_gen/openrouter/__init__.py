@@ -21,7 +21,7 @@ frame, which only works on models that accept image input. Gemini Flash Image
 
 from __future__ import annotations
 
-import base64
+import pybase64 as base64
 import logging
 import mimetypes
 import os

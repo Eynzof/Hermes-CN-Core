@@ -9,7 +9,7 @@ Run with:  python -m pytest tests/test_delegate.py -v
    or:     python tests/test_delegate.py
 """
 
-import json
+import orjson
 import os
 import threading
 import time
@@ -195,29 +195,29 @@ class TestStripBlockedTools(unittest.TestCase):
 
 class TestDelegateTask(unittest.TestCase):
     def test_no_parent_agent(self):
-        result = json.loads(delegate_task(goal="test"))
+        result = orjson.loads(delegate_task(goal="test"))
         self.assertIn("error", result)
         self.assertIn("parent agent", result["error"])
 
     def test_depth_limit(self):
         parent = _make_mock_parent(depth=2)
-        result = json.loads(delegate_task(goal="test", parent_agent=parent))
+        result = orjson.loads(delegate_task(goal="test", parent_agent=parent))
         self.assertIn("error", result)
         self.assertIn("depth limit", result["error"].lower())
 
     def test_no_goal_or_tasks(self):
         parent = _make_mock_parent()
-        result = json.loads(delegate_task(parent_agent=parent))
+        result = orjson.loads(delegate_task(parent_agent=parent))
         self.assertIn("error", result)
 
     def test_empty_goal(self):
         parent = _make_mock_parent()
-        result = json.loads(delegate_task(goal="  ", parent_agent=parent))
+        result = orjson.loads(delegate_task(goal="  ", parent_agent=parent))
         self.assertIn("error", result)
 
     def test_task_missing_goal(self):
         parent = _make_mock_parent()
-        result = json.loads(delegate_task(tasks=[{"context": "no goal here"}], parent_agent=parent))
+        result = orjson.loads(delegate_task(tasks=[{"context": "no goal here"}], parent_agent=parent))
         self.assertIn("error", result)
 
     @patch("tools.delegate_tool._run_single_child")
@@ -227,7 +227,7 @@ class TestDelegateTask(unittest.TestCase):
             "summary": "Done!", "api_calls": 3, "duration_seconds": 5.0
         }
         parent = _make_mock_parent()
-        result = json.loads(delegate_task(goal="Fix tests", context="error log...", parent_agent=parent))
+        result = orjson.loads(delegate_task(goal="Fix tests", context="error log...", parent_agent=parent))
         self.assertIn("results", result)
         self.assertEqual(len(result["results"]), 1)
         self.assertEqual(result["results"][0]["status"], "completed")
@@ -245,7 +245,7 @@ class TestDelegateTask(unittest.TestCase):
             {"goal": "Research topic A"},
             {"goal": "Research topic B"},
         ]
-        result = json.loads(delegate_task(tasks=tasks, parent_agent=parent))
+        result = orjson.loads(delegate_task(tasks=tasks, parent_agent=parent))
         self.assertIn("results", result)
         self.assertEqual(len(result["results"]), 2)
         self.assertEqual(result["results"][0]["summary"], "Result A")
@@ -271,14 +271,12 @@ class TestDelegateTask(unittest.TestCase):
             },
         ]
         parent = _make_mock_parent()
-        tasks = json.dumps(
-            [
+        tasks = orjson.dumps([
                 {"goal": "Research topic A"},
                 {"goal": "Research topic B"},
-            ]
-        )
+            ]).decode('utf-8')
 
-        result = json.loads(delegate_task(tasks=tasks, parent_agent=parent))
+        result = orjson.loads(delegate_task(tasks=tasks, parent_agent=parent))
 
         self.assertIn("results", result)
         self.assertEqual(len(result["results"]), 2)
@@ -289,7 +287,7 @@ class TestDelegateTask(unittest.TestCase):
     def test_batch_mode_rejects_non_object_tasks(self, mock_run):
         parent = _make_mock_parent()
 
-        result = json.loads(
+        result = orjson.loads(
             delegate_task(tasks=["not a task object"], parent_agent=parent)
         )
 
@@ -301,7 +299,7 @@ class TestDelegateTask(unittest.TestCase):
     def test_batch_mode_rejects_malformed_json_string_tasks(self, mock_run):
         parent = _make_mock_parent()
 
-        result = json.loads(
+        result = orjson.loads(
             delegate_task(tasks='[{"goal": "bad}', parent_agent=parent)
         )
 
@@ -318,7 +316,7 @@ class TestDelegateTask(unittest.TestCase):
         parent = _make_mock_parent()
         limit = _get_max_concurrent_children()
         tasks = [{"goal": f"Task {i}"} for i in range(limit + 2)]
-        result = json.loads(delegate_task(tasks=tasks, parent_agent=parent))
+        result = orjson.loads(delegate_task(tasks=tasks, parent_agent=parent))
         # Should return an error instead of silently truncating
         self.assertIn("error", result)
         self.assertIn("Too many tasks", result["error"])
@@ -332,7 +330,7 @@ class TestDelegateTask(unittest.TestCase):
             "summary": "Done", "api_calls": 1, "duration_seconds": 1.0
         }
         parent = _make_mock_parent()
-        result = json.loads(delegate_task(
+        result = orjson.loads(delegate_task(
             goal="This should be ignored",
             tasks=[{"goal": "Actual task"}],
             parent_agent=parent,
@@ -349,7 +347,7 @@ class TestDelegateTask(unittest.TestCase):
             "api_calls": 0, "duration_seconds": 0.5
         }
         parent = _make_mock_parent()
-        result = json.loads(delegate_task(goal="Break things", parent_agent=parent))
+        result = orjson.loads(delegate_task(goal="Break things", parent_agent=parent))
         self.assertEqual(result["results"][0]["status"], "error")
         self.assertIn("Something broke", result["results"][0]["error"])
 
@@ -488,7 +486,7 @@ class TestToolNamePreservation(unittest.TestCase):
             mock_child.run_conversation.side_effect = RuntimeError("boom")
             MockAgent.return_value = mock_child
 
-            result = json.loads(delegate_task(goal="Crash test", parent_agent=parent))
+            result = orjson.loads(delegate_task(goal="Crash test", parent_agent=parent))
             self.assertEqual(result["results"][0]["status"], "error")
 
         self.assertEqual(model_tools._last_resolved_tool_names, original_tools)
@@ -723,7 +721,7 @@ class TestDelegateObservability(unittest.TestCase):
             }
             MockAgent.return_value = mock_child
 
-            result = json.loads(delegate_task(goal="Test observability", parent_agent=parent))
+            result = orjson.loads(delegate_task(goal="Test observability", parent_agent=parent))
             entry = result["results"][0]
 
             # Core observability fields
@@ -764,7 +762,7 @@ class TestDelegateObservability(unittest.TestCase):
             }
             MockAgent.return_value = mock_child
 
-            result = json.loads(delegate_task(goal="Test list content", parent_agent=parent))
+            result = orjson.loads(delegate_task(goal="Test list content", parent_agent=parent))
             trace = result["results"][0]["tool_trace"]
             self.assertEqual(trace[0]["tool"], "image_generate")
             self.assertEqual(trace[0]["status"], "ok")
@@ -827,7 +825,7 @@ class TestDelegateObservability(unittest.TestCase):
             }
             MockAgent.return_value = mock_child
 
-            result = json.loads(delegate_task(goal="Test error trace", parent_agent=parent))
+            result = orjson.loads(delegate_task(goal="Test error trace", parent_agent=parent))
             trace = result["results"][0]["tool_trace"]
             self.assertEqual(trace[0]["status"], "error")
 
@@ -859,7 +857,7 @@ class TestDelegateObservability(unittest.TestCase):
             }
             MockAgent.return_value = mock_child
 
-            result = json.loads(delegate_task(goal="Test parallel", parent_agent=parent))
+            result = orjson.loads(delegate_task(goal="Test parallel", parent_agent=parent))
             trace = result["results"][0]["tool_trace"]
 
             # All three tool calls should have results
@@ -898,7 +896,7 @@ class TestDelegateObservability(unittest.TestCase):
             }
             MockAgent.return_value = mock_child
 
-            result = json.loads(delegate_task(goal="Test interrupt", parent_agent=parent))
+            result = orjson.loads(delegate_task(goal="Test interrupt", parent_agent=parent))
             self.assertEqual(result["results"][0]["exit_reason"], "interrupted")
 
     def test_exit_reason_max_iterations(self):
@@ -919,7 +917,7 @@ class TestDelegateObservability(unittest.TestCase):
             }
             MockAgent.return_value = mock_child
 
-            result = json.loads(delegate_task(goal="Test max iter", parent_agent=parent))
+            result = orjson.loads(delegate_task(goal="Test max iter", parent_agent=parent))
             self.assertEqual(result["results"][0]["exit_reason"], "max_iterations")
 
     def test_empty_sentinel_marks_status_failed(self):
@@ -944,7 +942,7 @@ class TestDelegateObservability(unittest.TestCase):
             }
             MockAgent.return_value = mock_child
 
-            result = json.loads(delegate_task(goal="Test empty sentinel", parent_agent=parent))
+            result = orjson.loads(delegate_task(goal="Test empty sentinel", parent_agent=parent))
             self.assertEqual(result["results"][0]["status"], "failed")
 
 
@@ -980,7 +978,7 @@ class TestSubagentCostRollup(unittest.TestCase):
             }
             MockAgent.return_value = mock_child
 
-            result = json.loads(delegate_task(goal="do stuff", parent_agent=parent))
+            result = orjson.loads(delegate_task(goal="do stuff", parent_agent=parent))
 
         # Parent footer must reflect parent_cost + child_cost.
         self.assertAlmostEqual(parent.session_estimated_cost_usd, 0.52, places=6)
@@ -1022,7 +1020,7 @@ class TestSubagentCostRollup(unittest.TestCase):
                     "_child_cost_usd": 0.03,
                 },
             ]
-            result = json.loads(
+            result = orjson.loads(
                 delegate_task(
                     tasks=[{"goal": "A"}, {"goal": "B"}, {"goal": "C"}],
                     parent_agent=parent,
@@ -1098,7 +1096,7 @@ class TestSubagentCostRollup(unittest.TestCase):
                 "duration_seconds": 0.5,
                 # no _child_role, no _child_cost_usd
             }
-            result = json.loads(delegate_task(goal="legacy", parent_agent=parent))
+            result = orjson.loads(delegate_task(goal="legacy", parent_agent=parent))
 
         # Parent cost unchanged.
         self.assertEqual(parent.session_estimated_cost_usd, 0.10)
@@ -1627,7 +1625,7 @@ class TestDelegationProviderIntegration(unittest.TestCase):
         )
         parent = _make_mock_parent(depth=0)
 
-        result = json.loads(delegate_task(goal="Should fail", parent_agent=parent))
+        result = orjson.loads(delegate_task(goal="Should fail", parent_agent=parent))
         self.assertIn("error", result)
         self.assertIn("Cannot resolve", result["error"])
         self.assertIn("nonexistent", result["error"])

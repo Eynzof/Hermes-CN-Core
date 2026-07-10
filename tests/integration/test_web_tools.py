@@ -18,7 +18,7 @@ Requirements:
 import pytest
 pytestmark = pytest.mark.integration
 
-import json
+import orjson
 import asyncio
 import sys
 import os
@@ -160,8 +160,8 @@ class WebToolsTester:
                 
                 # Parse result
                 try:
-                    data = json.loads(result)
-                except json.JSONDecodeError as e:
+                    data = orjson.loads(result)
+                except orjson.JSONDecodeError as e:
                     self.log_result(f"Search: {query[:30]}...", "failed", f"Invalid JSON: {e}")
                     if self.verbose:
                         print(f"    Raw response (first 500 chars): {result[:500]}...")
@@ -268,8 +268,8 @@ class WebToolsTester:
                 
                 # Parse result
                 try:
-                    data = json.loads(result)
-                except json.JSONDecodeError as e:
+                    data = orjson.loads(result)
+                except orjson.JSONDecodeError as e:
                     self.log_result("Extract (no LLM)", "failed", f"Invalid JSON: {e}")
                     if self.verbose:
                         print(f"    Raw response (first 500 chars): {result[:500]}...")
@@ -360,7 +360,7 @@ class WebToolsTester:
                 char_limit=1000,  # small budget to force truncation in the test
             )
             
-            data = json.loads(result)
+            data = orjson.loads(result)
             
             if "error" in data:
                 self.log_result("Extract (with LLM)", "failed", data["error"])
@@ -394,7 +394,7 @@ class WebToolsTester:
             else:
                 self.log_result("Extract (with LLM)", "failed", "No content field in result")
                 
-        except json.JSONDecodeError as e:
+        except orjson.JSONDecodeError as e:
             self.log_result("Extract (with LLM)", "failed", f"Invalid JSON: {e}")
         except Exception as e:
             self.log_result("Extract (with LLM)", "failed", str(e))
@@ -468,7 +468,7 @@ class WebToolsTester:
         
         try:
             with open(filename, 'w') as f:
-                json.dump(results, f, indent=2, ensure_ascii=False)
+                f.write(orjson.dumps(results, option=orjson.OPT_INDENT_2).decode('utf-8'))
             print_info(f"Test results saved to: {filename}")
         except Exception as e:
             print_warning(f"Failed to save results: {e}")

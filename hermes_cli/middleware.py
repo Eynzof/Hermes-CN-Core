@@ -8,7 +8,7 @@ contract helpers here so agent-loop call sites and plugins share one vocabulary.
 from __future__ import annotations
 
 import logging
-from copy import deepcopy
+from agent.fast_deepcopy import orjson_roundtrip_copy as _orjson_copy
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
 
@@ -58,17 +58,15 @@ def middleware_payload(**kwargs: Any) -> Dict[str, Any]:
 def _safe_copy(payload: Any) -> Any:
     """Deep-copy a request payload, tolerating non-deepcopyable members.
 
-    Request payloads are normally plain JSON-shaped dicts, but an LLM request
-    can occasionally carry non-deepcopyable objects (clients, callbacks, file
-    handles). A hard ``deepcopy`` failure there would otherwise abort the whole
-    request-middleware pass. Fall back to a shallow ``dict`` copy so middleware
-    still runs and the original nested objects are shared by reference rather
-    than corrupting the live payload.
+    Uses ``orjson`` round-trip for JSON-serializable payloads (2-10x faster
+    than ``copy.deepcopy``). Falls back to a shallow ``dict`` copy on failure
+    so middleware still runs and the original nested objects are shared by
+    reference rather than corrupting the live payload.
     """
     try:
-        return deepcopy(payload)
+        return _orjson_copy(payload)
     except Exception as exc:  # pragma: no cover - exercised via fallback test
-        logger.debug("deepcopy failed for request payload (%s); using shallow copy", exc)
+        logger.debug("orjson roundtrip copy failed (%s); using shallow copy", exc)
         if isinstance(payload, dict):
             return dict(payload)
         return payload

@@ -1,6 +1,6 @@
 """Tests for tools/cronjob_tools.py — prompt scanning, schedule/list/remove dispatchers."""
 
-import json
+import orjson
 import pytest
 
 from tools.cronjob_tools import (
@@ -248,7 +248,7 @@ class TestUnifiedCronjobTool:
         monkeypatch.setattr("cron.jobs.OUTPUT_DIR", tmp_path / "cron" / "output")
 
     def test_create_and_list(self):
-        created = json.loads(
+        created = orjson.loads(
             cronjob(
                 action="create",
                 prompt="Check server status",
@@ -258,7 +258,7 @@ class TestUnifiedCronjobTool:
         )
         assert created["success"] is True
 
-        listing = json.loads(cronjob(action="list"))
+        listing = orjson.loads(cronjob(action="list"))
         assert listing["success"] is True
         assert listing["count"] == 1
         assert listing["jobs"][0]["name"] == "Server Check"
@@ -279,7 +279,7 @@ class TestUnifiedCronjobTool:
             }
         ])
 
-        listing = json.loads(cronjob(action="list"))
+        listing = orjson.loads(cronjob(action="list"))
 
         assert listing["success"] is True
         assert listing["jobs"][0]["name"] == "abc123deadbe"
@@ -287,22 +287,22 @@ class TestUnifiedCronjobTool:
         assert listing["jobs"][0]["schedule"] == "every 60m"
 
     def test_pause_and_resume(self):
-        created = json.loads(cronjob(action="create", prompt="Check", schedule="every 1h"))
+        created = orjson.loads(cronjob(action="create", prompt="Check", schedule="every 1h"))
         job_id = created["job_id"]
 
-        paused = json.loads(cronjob(action="pause", job_id=job_id))
+        paused = orjson.loads(cronjob(action="pause", job_id=job_id))
         assert paused["success"] is True
         assert paused["job"]["state"] == "paused"
 
-        resumed = json.loads(cronjob(action="resume", job_id=job_id))
+        resumed = orjson.loads(cronjob(action="resume", job_id=job_id))
         assert resumed["success"] is True
         assert resumed["job"]["state"] == "scheduled"
 
     def test_update_schedule_recomputes_display(self):
-        created = json.loads(cronjob(action="create", prompt="Check", schedule="every 1h"))
+        created = orjson.loads(cronjob(action="create", prompt="Check", schedule="every 1h"))
         job_id = created["job_id"]
 
-        updated = json.loads(
+        updated = orjson.loads(
             cronjob(action="update", job_id=job_id, schedule="every 2h", name="New Name")
         )
         assert updated["success"] is True
@@ -310,7 +310,7 @@ class TestUnifiedCronjobTool:
         assert updated["job"]["schedule"] == "every 120m"
 
     def test_update_runtime_overrides_can_set_and_clear(self):
-        created = json.loads(
+        created = orjson.loads(
             cronjob(
                 action="create",
                 prompt="Check",
@@ -322,7 +322,7 @@ class TestUnifiedCronjobTool:
         )
         job_id = created["job_id"]
 
-        updated = json.loads(
+        updated = orjson.loads(
             cronjob(
                 action="update",
                 job_id=job_id,
@@ -375,9 +375,9 @@ class TestUnifiedCronjobTool:
         self._patch_named_legit(monkeypatch)
         job_id = self._save_legacy_unsafe_job()
 
-        result = json.loads(cronjob(action="update", job_id=job_id, name="renamed"))
+        result = orjson.loads(cronjob(action="update", job_id=job_id, name="renamed"))
         assert result["success"] is False
-        assert "not allowed" in json.dumps(result)
+        assert "not allowed" in orjson.dumps(result).decode('utf-8')
 
         # The rejected update must not have mutated the stored job at all.
         from cron.jobs import get_job
@@ -391,7 +391,7 @@ class TestUnifiedCronjobTool:
         self._patch_named_legit(monkeypatch)
         job_id = self._save_legacy_unsafe_job()
 
-        result = json.loads(
+        result = orjson.loads(
             cronjob(action="update", job_id=job_id, name="renamed", base_url="")
         )
         assert result["success"] is True
@@ -404,7 +404,7 @@ class TestUnifiedCronjobTool:
         self._patch_named_legit(monkeypatch)
         job_id = self._save_legacy_unsafe_job()
 
-        result = json.loads(
+        result = orjson.loads(
             cronjob(action="update", job_id=job_id,
                     base_url="https://legit.example/v1")
         )
@@ -412,7 +412,7 @@ class TestUnifiedCronjobTool:
         assert result["job"]["base_url"] == "https://legit.example/v1"
 
     def test_create_skill_backed_job(self):
-        result = json.loads(
+        result = orjson.loads(
             cronjob(
                 action="create",
                 skill="blogwatcher",
@@ -424,11 +424,11 @@ class TestUnifiedCronjobTool:
         assert result["success"] is True
         assert result["skill"] == "blogwatcher"
 
-        listing = json.loads(cronjob(action="list"))
+        listing = orjson.loads(cronjob(action="list"))
         assert listing["jobs"][0]["skill"] == "blogwatcher"
 
     def test_create_multi_skill_job(self):
-        result = json.loads(
+        result = orjson.loads(
             cronjob(
                 action="create",
                 skills=["blogwatcher", "maps"],
@@ -440,11 +440,11 @@ class TestUnifiedCronjobTool:
         assert result["success"] is True
         assert result["skills"] == ["blogwatcher", "maps"]
 
-        listing = json.loads(cronjob(action="list"))
+        listing = orjson.loads(cronjob(action="list"))
         assert listing["jobs"][0]["skills"] == ["blogwatcher", "maps"]
 
     def test_multi_skill_default_name_prefers_prompt_when_present(self):
-        result = json.loads(
+        result = orjson.loads(
             cronjob(
                 action="create",
                 skills=["blogwatcher", "maps"],
@@ -456,7 +456,7 @@ class TestUnifiedCronjobTool:
         assert result["name"] == "Use both skills and combine the result."
 
     def test_update_can_clear_skills(self):
-        created = json.loads(
+        created = orjson.loads(
             cronjob(
                 action="create",
                 skills=["blogwatcher", "maps"],
@@ -464,7 +464,7 @@ class TestUnifiedCronjobTool:
                 schedule="every 1h",
             )
         )
-        updated = json.loads(
+        updated = orjson.loads(
             cronjob(action="update", job_id=created["job_id"], skills=[])
         )
         assert updated["success"] is True
@@ -482,7 +482,7 @@ class TestUnifiedCronjobTool:
         """
         from cron.jobs import get_job
 
-        created = json.loads(
+        created = orjson.loads(
             cronjob(
                 action="create",
                 prompt="Daily briefing",
@@ -498,7 +498,7 @@ class TestUnifiedCronjobTool:
         """deliver=['telegram', 'discord'] is stored as 'telegram,discord'."""
         from cron.jobs import get_job
 
-        created = json.loads(
+        created = orjson.loads(
             cronjob(
                 action="create",
                 prompt="Daily briefing",
@@ -514,10 +514,10 @@ class TestUnifiedCronjobTool:
         """update with deliver=['telegram'] stores the canonical string."""
         from cron.jobs import get_job
 
-        created = json.loads(
+        created = orjson.loads(
             cronjob(action="create", prompt="x", schedule="every 1h")
         )
-        updated = json.loads(
+        updated = orjson.loads(
             cronjob(
                 action="update",
                 job_id=created["job_id"],
@@ -604,7 +604,7 @@ class TestLocalDeliveryNotice:
         clear_session_vars(tokens)
 
     def test_omitted_deliver_no_origin_emits_notice(self):
-        created = json.loads(
+        created = orjson.loads(
             cronjob(action="create", prompt="Output the time", schedule="every 2m")
         )
         assert created["success"] is True
@@ -614,7 +614,7 @@ class TestLocalDeliveryNotice:
         assert "deliver='telegram'" in created["message"]
 
     def test_explicit_origin_no_origin_emits_notice(self):
-        created = json.loads(
+        created = orjson.loads(
             cronjob(
                 action="create", prompt="x", schedule="every 2m", deliver="origin"
             )
@@ -624,7 +624,7 @@ class TestLocalDeliveryNotice:
 
     def test_explicit_local_no_notice(self):
         # The user explicitly asked for local — no surprise to flag.
-        created = json.loads(
+        created = orjson.loads(
             cronjob(
                 action="create", prompt="x", schedule="every 2m", deliver="local"
             )
@@ -634,7 +634,7 @@ class TestLocalDeliveryNotice:
 
     def test_explicit_platform_target_no_notice(self):
         # An explicit platform:chat target resolves to a real delivery target.
-        created = json.loads(
+        created = orjson.loads(
             cronjob(
                 action="create",
                 prompt="x",
@@ -651,7 +651,7 @@ class TestLocalDeliveryNotice:
         from gateway.session_context import set_session_vars
 
         set_session_vars(platform="telegram", chat_id="999")
-        created = json.loads(
+        created = orjson.loads(
             cronjob(action="create", prompt="x", schedule="every 2m")
         )
         assert created["deliver"] == "origin"

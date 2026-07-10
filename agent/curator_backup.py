@@ -39,9 +39,9 @@ we leave it alone.
 
 from __future__ import annotations
 
-import json
+import orjson
 import logging
-import re
+from agent.re_compat import re
 import shutil
 import tarfile
 from datetime import datetime, timezone
@@ -109,14 +109,14 @@ def _backup_cron_jobs_into(dest: Path) -> Dict[str, Any]:
     # `{"jobs": [...], "updated_at": ...}` — we count via that shape, and
     # fall back to bare-list shape just in case the format ever changes.
     try:
-        parsed = json.loads(raw)
+        parsed = orjson.loads(raw)
         if isinstance(parsed, dict):
             inner = parsed.get("jobs")
             if isinstance(inner, list):
                 info["jobs_count"] = len(inner)
         elif isinstance(parsed, list):
             info["jobs_count"] = len(parsed)
-    except (json.JSONDecodeError, TypeError):
+    except (orjson.JSONDecodeError, TypeError):
         info["jobs_count"] = 0
         info["parse_warning"] = "jobs.json was not valid JSON at snapshot time"
     try:
@@ -204,7 +204,7 @@ def _write_manifest(dest: Path, reason: str, archive_path: Path,
         if cron_info.get("parse_warning"):
             manifest["cron_jobs"]["parse_warning"] = cron_info["parse_warning"]
     (dest / "manifest.json").write_text(
-        json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8"
+        orjson.dumps(manifest, option=orjson.OPT_INDENT_2 | orjson.OPT_SORT_KEYS).decode('utf-8'), encoding="utf-8"
     )
 
 
@@ -337,8 +337,8 @@ def _read_manifest(snap_dir: Path) -> Dict[str, Any]:
     if not mf.exists():
         return {}
     try:
-        return json.loads(mf.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+        return orjson.loads(mf.read_text(encoding="utf-8"))
+    except (OSError, orjson.JSONDecodeError):
         return {}
 
 
@@ -429,8 +429,8 @@ def _restore_cron_skill_links(snapshot_dir: Path) -> Dict[str, Any]:
 
     try:
         backup_text = backup_file.read_text(encoding="utf-8")
-        backup_parsed = json.loads(backup_text)
-    except (OSError, json.JSONDecodeError) as e:
+        backup_parsed = orjson.loads(backup_text)
+    except (OSError, orjson.JSONDecodeError) as e:
         report["error"] = f"failed to load backed-up jobs: {e}"
         return report
     # jobs.json on disk is `{"jobs": [...], "updated_at": ...}`; accept both

@@ -1,6 +1,6 @@
 """Tests for tools/checkpoint_manager.py — CheckpointManager (v2 single-store)."""
 
-import json
+import orjson
 import logging
 import os
 import subprocess
@@ -638,7 +638,7 @@ class TestTouchProjectMalformedMeta:
         _touch_project(store, workdir)
 
         # Metadata file should now be a valid dict with last_touch updated
-        data = json.loads(meta_path.read_text(encoding="utf-8"))
+        data = orjson.loads(meta_path.read_text(encoding="utf-8"))
         assert isinstance(data, dict)
         assert "last_touch" in data
         assert "workdir" in data
@@ -785,7 +785,7 @@ def _seed_v2_project(base: Path, workdir: Path, last_touch: float = None) -> str
     }
     mp = _project_meta_path(store, dir_hash)
     mp.parent.mkdir(parents=True, exist_ok=True)
-    mp.write_text(json.dumps(meta))
+    mp.write_text(orjson.dumps(meta).decode('utf-8'))
     return dir_hash
 
 
@@ -902,9 +902,9 @@ class TestPruneCheckpointsV2:
         # Backdate stale's last_touch to 60 days ago
         stale_hash = _project_hash(str(stale))
         meta_path = base / "store" / "projects" / f"{stale_hash}.json"
-        meta = json.loads(meta_path.read_text())
+        meta = orjson.loads(meta_path.read_text())
         meta["last_touch"] = time.time() - 60 * 86400
-        meta_path.write_text(json.dumps(meta))
+        meta_path.write_text(orjson.dumps(meta).decode('utf-8'))
 
         result = prune_checkpoints(
             retention_days=30, delete_orphans=False, checkpoint_base=base,

@@ -5,7 +5,7 @@ Verifies that _discover_all_plugins() recurses into category directories
 and path-derived key against the enabled/disabled sets.
 """
 
-import json
+import orjson
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -323,7 +323,7 @@ class TestCmdListJson:
 
         cmd_list(args)
         captured = capsys.readouterr()
-        payload = json.loads(captured.out)
+        payload = orjson.loads(captured.out)
         names = [p["name"] for p in payload]
         assert "web-tavily" in names
         assert "disk-cleanup" in names
@@ -350,6 +350,6 @@ class TestCmdListJson:
 
             cmd_list(args)
             captured = capsys.readouterr()
-            payload = json.loads(captured.out)
+            payload = orjson.loads(captured.out)
             assert len(payload) == 1
             assert payload[0]["status"] == "enabled"

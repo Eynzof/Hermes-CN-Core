@@ -1,6 +1,6 @@
 """Tests for the SSH remote execution environment backend."""
 
-import json
+import orjson
 import os
 import subprocess
 from unittest.mock import MagicMock
@@ -25,7 +25,7 @@ requires_ssh = pytest.mark.skipif(
 
 def _run(command, task_id="ssh_test", **kwargs):
     from tools.terminal_tool import terminal_tool
-    return json.loads(terminal_tool(command, task_id=task_id, **kwargs))
+    return orjson.loads(terminal_tool(command, task_id=task_id, **kwargs))
 
 
 def _cleanup(task_id="ssh_test"):

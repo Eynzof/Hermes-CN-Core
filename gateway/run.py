@@ -28,10 +28,10 @@ import asyncio
 import concurrent.futures
 import dataclasses
 import inspect
-import json
+import orjson
 import logging
 import os
-import re
+from agent.re_compat import re
 import shlex
 import site
 import sys
@@ -1086,7 +1086,7 @@ def _collect_auto_append_media_tags(
         # deterministic even when the model omits the path from its reply.
         if tool_name == "image_generate" and "MEDIA:" not in content:
             try:
-                payload = json.loads(content)
+                payload = orjson.loads(content)
             except Exception:
                 payload = None
             if isinstance(payload, dict) and payload.get("success"):
@@ -1147,7 +1147,7 @@ def _collect_history_media_paths(agent_history: List[Dict[str, Any]]) -> set:
         cid = str(msg.get("tool_call_id") or msg.get("call_id") or "")
         if tool_name_by_call_id.get(cid) == "image_generate":
             try:
-                payload = json.loads(content)
+                payload = orjson.loads(content)
             except Exception:
                 payload = None
             if isinstance(payload, dict) and payload.get("success"):
@@ -1480,7 +1480,7 @@ if _config_path.exists():
                     if _cfg_key == "cwd" and isinstance(_val, str):
                         _val = os.path.expanduser(_val)
                     if isinstance(_val, (list, dict)):
-                        os.environ[_env_var] = json.dumps(_val)
+                        os.environ[_env_var] = orjson.dumps(_val).decode('utf-8')
                     else:
                         os.environ[_env_var] = str(_val)
         # Compression config is read directly from config.yaml by run_agent.py
@@ -2128,7 +2128,7 @@ def _skill_slug_from_frontmatter(skill_md: Path) -> tuple[str | None, str | None
         return None, None
     slug = declared_name.lower().replace(" ", "-").replace("_", "-")
     # Mirror _SKILL_INVALID_CHARS and _SKILL_MULTI_HYPHEN from skill_commands
-    import re as _re
+    from agent.re_compat import re as _re
     slug = _re.sub(r"[^a-z0-9-]", "", slug)
     slug = _re.sub(r"-{2,}", "-", slug).strip("-")
     if not slug:
@@ -3052,7 +3052,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
         volumes: List[str] = []
         if raw_volumes:
             try:
-                parsed = json.loads(raw_volumes)
+                parsed = orjson.loads(raw_volumes)
                 if isinstance(parsed, list):
                     volumes = [str(v) for v in parsed if isinstance(v, str)]
             except Exception:
@@ -3100,8 +3100,8 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
 
     def _load_voice_modes(self) -> Dict[str, str]:
         try:
-            data = json.loads(self._VOICE_MODE_PATH.read_text())
-        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            data = orjson.loads(self._VOICE_MODE_PATH.read_text())
+        except (FileNotFoundError, orjson.JSONDecodeError, OSError):
             return {}
 
         if not isinstance(data, dict):
@@ -3128,7 +3128,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
         try:
             self._VOICE_MODE_PATH.parent.mkdir(parents=True, exist_ok=True)
             self._VOICE_MODE_PATH.write_text(
-                json.dumps(self._voice_mode, indent=2)
+                orjson.dumps(self._voice_mode, option=orjson.OPT_INDENT_2).decode('utf-8')
             )
         except OSError as e:
             logger.warning("Failed to save voice modes: %s", e)
@@ -3837,7 +3837,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
             current_model = row.get("model")
             raw_config = row.get("model_config")
             try:
-                config = json.loads(raw_config) if raw_config else {}
+                config = orjson.loads(raw_config) if raw_config else {}
             except Exception:
                 config = {}
             if not isinstance(config, dict):
@@ -3848,7 +3848,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
             ):
                 return
             config["gateway_runtime"] = runtime
-            db.update_session_meta(session_id, json.dumps(config), model=model)
+            db.update_session_meta(session_id, orjson.dumps(config).decode('utf-8'), model=model)
         except Exception:
             logger.debug("Failed to sync gateway session model metadata", exc_info=True)
 
@@ -4565,7 +4565,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
             return []
         try:
             with open(path, "r", encoding="utf-8") as f:
-                data = json.load(f)
+                data = orjson.loads(f.read())
             if not isinstance(data, list):
                 logger.warning("Prefill messages file must contain a JSON array: %s", path)
                 return []
@@ -5813,11 +5813,11 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
         Sessions NOT in active_session_keys are removed (they completed
         successfully, so the loop is broken).
         """
-        import json
+        import orjson
 
         path = _hermes_home / self._STUCK_LOOP_FILE
         try:
-            counts = json.loads(path.read_text()) if path.exists() else {}
+            counts = orjson.loads(path.read_text()) if path.exists() else {}
         except Exception:
             counts = {}
 
@@ -5840,14 +5840,14 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
         AFTER suspend_recently_active() to catch the stuck-loop pattern:
         session loads → agent gets stuck → gateway restarts → repeat.
         """
-        import json
+        import orjson
 
         path = _hermes_home / self._STUCK_LOOP_FILE
         if not path.exists():
             return 0
 
         try:
-            counts = json.loads(path.read_text())
+            counts = orjson.loads(path.read_text())
         except Exception:
             return 0
 
@@ -5887,13 +5887,13 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
 
         Called after a successful agent turn to signal the loop is broken.
         """
-        import json
+        import orjson
 
         path = _hermes_home / self._STUCK_LOOP_FILE
         if not path.exists():
             return
         try:
-            counts = json.loads(path.read_text())
+            counts = orjson.loads(path.read_text())
             if session_key in counts:
                 del counts[session_key]
                 if counts:
@@ -11972,7 +11972,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
         completes / blocks / auto-blocks / crashes without having to poll.
         """
         import asyncio
-        import re
+        from agent.re_compat import re
         import shlex
         from hermes_cli.kanban import run_slash
 
@@ -12241,7 +12241,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                     self._booted_from_restart = False
                     return True
                 return False
-            data = json.loads(marker_path.read_text())
+            data = orjson.loads(marker_path.read_text())
         except Exception:
             return False
 
@@ -12636,7 +12636,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
         spoken replies. Dedup exact and near-exact repeats per guild/user over a
         short window while allowing genuinely new turns through.
         """
-        from difflib import SequenceMatcher
+        import rapidfuzz.fuzz as _fuzz
 
         normalized = re.sub(r"\s+", " ", transcript).strip().lower()
         normalized = re.sub(r"[^\w\s]", "", normalized)
@@ -12661,7 +12661,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                 recent_store[key] = recent
                 return True
             if len(prior) >= 16 and len(normalized) >= 16:
-                if SequenceMatcher(None, prior, normalized).ratio() >= 0.95:
+                if _fuzz.ratio(prior, normalized) / 100.0 >= 0.95:
                     recent_store[key] = recent
                     return True
 
@@ -12816,8 +12816,8 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                 text_to_speech_tool, text=tts_text, output_path=audio_path
             )
             try:
-                result = json.loads(result_json)
-            except (json.JSONDecodeError, TypeError):
+                result = orjson.loads(result_json)
+            except (orjson.JSONDecodeError, TypeError):
                 logger.warning("Auto voice reply TTS returned invalid JSON: %s", result_json[:200] if result_json else result_json)
                 return
 
@@ -14072,7 +14072,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
         for path in (claimed_path, pending_path):
             if path.exists():
                 try:
-                    pending = json.loads(path.read_text())
+                    pending = orjson.loads(path.read_text())
                     platform_str = pending.get("platform")
                     chat_id = pending.get("chat_id")
                     chat_type = pending.get("chat_type")
@@ -14210,7 +14210,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
             if (prompt_path.exists() and session_key
                     and not self._update_prompt_pending.get(session_key)):
                 try:
-                    prompt_data = json.loads(prompt_path.read_text())
+                    prompt_data = orjson.loads(prompt_path.read_text())
                     prompt_text = prompt_data.get("prompt", "")
                     default = prompt_data.get("default", "")
                     if prompt_text:
@@ -14250,7 +14250,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                         self._update_prompt_pending[session_key] = True
                         # .update_response to continue — it doesn't re-check
                         logger.info("Forwarded update prompt to %s: %s", session_key, prompt_text[:80])
-                except (json.JSONDecodeError, OSError) as e:
+                except (orjson.JSONDecodeError, OSError) as e:
                     logger.debug("Failed to read update prompt: %s", e)
 
             await asyncio.sleep(poll_interval)
@@ -14304,7 +14304,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
             elif not claimed_path.exists():
                 return True
 
-            pending = json.loads(claimed_path.read_text())
+            pending = orjson.loads(claimed_path.read_text())
             platform_str = pending.get("platform")
             chat_id = pending.get("chat_id")
             chat_type = pending.get("chat_type")
@@ -14399,7 +14399,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
             return None
 
         try:
-            data = json.loads(notify_path.read_text())
+            data = orjson.loads(notify_path.read_text())
             platform_str = data.get("platform")
             chat_id = data.get("chat_id")
             chat_type = data.get("chat_type")
@@ -14692,7 +14692,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                     image_url=path,
                     user_prompt=analysis_prompt,
                 )
-                result = json.loads(result_json)
+                result = orjson.loads(result_json)
                 if result.get("success"):
                     description = result.get("analysis", "")
                     description = sanitize_context(description)
@@ -15388,7 +15388,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
         Per-user agent rebuilds in shared threads trade prompt-cache
         warmth for correct memory attribution.
         """
-        import hashlib, json as _j
+        import hashlib, orjson as _j
 
         # Fingerprint the FULL credential string instead of using a short
         # prefix. OAuth/JWT-style tokens frequently share a common prefix
@@ -15399,8 +15399,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
 
         _cache_keys_sorted = sorted((cache_keys or {}).items())
 
-        blob = _j.dumps(
-            [
+        blob = _j.dumps([
                 model,
                 _api_key_fingerprint,
                 runtime.get("base_url", ""),
@@ -15413,10 +15412,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                 _cache_keys_sorted,
                 str(user_id or ""),
                 str(user_id_alt or ""),
-            ],
-            sort_keys=True,
-            default=str,
-        )
+            ], default=str, option=orjson.OPT_SORT_KEYS).decode('utf-8')
         return hashlib.sha256(blob.encode()).hexdigest()[:16]
 
     def _rehydrate_session_model_override(self, session_key: str) -> None:
@@ -16350,7 +16346,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                                 if data.strip() == "[DONE]":
                                     break
                                 try:
-                                    obj = json.loads(data)
+                                    obj = orjson.loads(data)
                                     choices = obj.get("choices", [])
                                     if choices:
                                         delta = choices[0].get("delta", {})
@@ -16359,7 +16355,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                                             full_response += content
                                             if _stream_consumer:
                                                 _stream_consumer.on_delta(content)
-                                except json.JSONDecodeError:
+                                except orjson.JSONDecodeError:
                                     pass
 
         except asyncio.CancelledError:
@@ -16847,7 +16843,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                 if args:
                     from agent.display import get_tool_preview_max_len
                     _pl = get_tool_preview_max_len()
-                    args_str = json.dumps(args, ensure_ascii=False, default=str)
+                    args_str = orjson.dumps(args, default=str).decode('utf-8')
                     # When tool_preview_length is 0 (default), don't truncate
                     # in verbose mode — the user explicitly asked for full
                     # detail.  Platform message-length limits handle the rest.
@@ -20347,6 +20343,13 @@ def main():
         from hermes_cli.stdio import configure_windows_stdio
         configure_windows_stdio()
     except Exception:
+        pass
+
+    # Use uvloop on Unix for 2-4× async throughput (no-op on Windows).
+    try:
+        import uvloop
+        uvloop.install()
+    except ImportError:
         pass
 
     import argparse

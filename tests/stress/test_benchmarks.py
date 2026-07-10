@@ -12,7 +12,7 @@ or future reviews. Not a pass/fail test — records numbers so we know
 when a change regresses latency by 10x and can decide whether to care.
 """
 
-import json
+import orjson
 import os
 import random
 import sys
@@ -213,7 +213,7 @@ def main():
     # Save for future diffing.
     out_path = "/tmp/kanban_bench_results.json"
     with open(out_path, "w") as f:
-        json.dump(results, f, indent=2)
+        f.write(orjson.dumps(results, option=orjson.OPT_INDENT_2).decode('utf-8'))
     print(f"\nResults saved to {out_path}")
 
 

@@ -23,8 +23,7 @@ Cross-Repo Coordination Checklist calls for.
 """
 
 from __future__ import annotations
-
-import re
+from agent.re_compat import re
 from pathlib import Path
 
 import pytest

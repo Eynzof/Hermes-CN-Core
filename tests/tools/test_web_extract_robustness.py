@@ -6,9 +6,7 @@ Covers two robustness gaps left unaddressed when #54843 merged:
      middle (was a literal `offset=<line>` placeholder the model had to guess).
 """
 from __future__ import annotations
-
-import re
-
+from agent.re_compat import re
 import tools.web_tools as wt
 
 

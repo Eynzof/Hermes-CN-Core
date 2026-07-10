@@ -1,7 +1,7 @@
-"""Regression guard for #14782: json.JSONDecodeError must not be classified
+"""Regression guard for #14782: orjson.JSONDecodeError must not be classified
 as a local validation error by the main agent loop.
 
-`json.JSONDecodeError` inherits from `ValueError`. The agent loop's
+`orjson.JSONDecodeError` inherits from `ValueError`. The agent loop's
 non-retryable classifier at run_agent.py treats `ValueError` / `TypeError`
 as local programming bugs and skips retry. Without an explicit carve-out,
 a transient provider hiccup (malformed response body, truncated stream,
@@ -18,7 +18,7 @@ any future refactor of that predicate must preserve the invariant:
 """
 from __future__ import annotations
 
-import json
+import orjson
 
 
 def _mirror_agent_predicate(err: BaseException) -> bool:
@@ -32,7 +32,7 @@ def _mirror_agent_predicate(err: BaseException) -> bool:
 
     return (
         isinstance(err, (ValueError, TypeError))
-        and not isinstance(err, (UnicodeEncodeError, json.JSONDecodeError))
+        and not isinstance(err, (UnicodeEncodeError, orjson.JSONDecodeError))
         and not isinstance(err, ssl.SSLError)
         # NoneType-is-not-iterable shape errors come from upstream SDK /
         # provider response mismatches, not local programming bugs. See
@@ -51,10 +51,10 @@ class TestJSONDecodeErrorIsRetryable:
         """Provider returning malformed JSON surfaces as JSONDecodeError —
         must be treated as transient so the retry path runs."""
         try:
-            json.loads("{not valid json")
-        except json.JSONDecodeError as exc:
+            orjson.loads("{not valid json")
+        except orjson.JSONDecodeError as exc:
             assert not _mirror_agent_predicate(exc), (
-                "json.JSONDecodeError must be excluded from the "
+                "orjson.JSONDecodeError must be excluded from the "
                 "ValueError/TypeError local-validation classification."
             )
         else:
@@ -80,7 +80,7 @@ class TestJSONDecodeErrorIsRetryable:
 
 class TestAgentLoopSourceStillHasCarveOut:
     """Belt-and-suspenders: the production source must actually include
-    the json.JSONDecodeError carve-out. Protects against an accidental
+    the orjson.JSONDecodeError carve-out. Protects against an accidental
     revert that happens to leave the test file intact."""
 
     def test_run_agent_excludes_jsondecodeerror_from_local_validation(self):
@@ -92,13 +92,13 @@ class TestAgentLoopSourceStillHasCarveOut:
         # disappears, this fails loudly rather than silently passing
         # against a non-existent inline replica.
         src = inspect.getsource(conversation_loop)
-        # The predicate we care about must reference json.JSONDecodeError
+        # The predicate we care about must reference orjson.JSONDecodeError
         # in its exclusion tuple. We check for the specific co-occurrence
         # rather than the literal string so harmless reformatting doesn't
         # break us.
         assert "is_local_validation_error" in src
         assert "JSONDecodeError" in src, (
-            "agent/conversation_loop.py must carve out json.JSONDecodeError "
+            "agent/conversation_loop.py must carve out orjson.JSONDecodeError "
             "from the is_local_validation_error classification — see #14782."
         )
 

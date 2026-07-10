@@ -5,7 +5,7 @@ wrapper, while preserving Hermes' persistent snapshot behavior across sessions.
 """
 
 import asyncio
-import base64
+import pybase64 as base64
 import io
 import logging
 import shlex

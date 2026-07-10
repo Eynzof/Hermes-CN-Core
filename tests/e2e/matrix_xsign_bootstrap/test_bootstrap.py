@@ -27,10 +27,10 @@ isn't reachable.
 """
 from __future__ import annotations
 
-import json
+import orjson
 import logging
 import os
-import re
+from agent.re_compat import re
 import secrets
 import shutil
 import subprocess
@@ -81,15 +81,15 @@ def _first_time_token() -> str | None:
 
 def _post_json(url: str, body: dict, headers: dict | None = None) -> tuple[int, dict]:
     req = urllib.request.Request(
-        url, data=json.dumps(body).encode(),
+        url, data=orjson.dumps(body),
         headers={"Content-Type": "application/json", **(headers or {})},
         method="POST",
     )
     try:
         r = urllib.request.urlopen(req)
-        return r.status, json.load(r)
+        return r.status, orjson.loads(r.read())
     except urllib.error.HTTPError as e:
-        return e.code, json.loads(e.read().decode())
+        return e.code, orjson.loads(e.read().decode())
 
 
 CONFIG_REG_TOKEN = "testreg"  # matches docker-compose.yml

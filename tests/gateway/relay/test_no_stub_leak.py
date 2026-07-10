@@ -8,8 +8,7 @@ under gateway/ or plugins/, that's a production leak — fail loudly.
 from __future__ import annotations
 
 import pathlib
-import re
-
+from agent.re_compat import re
 _REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
 _FORBIDDEN_DIRS = ("gateway", "plugins")
 # Match actual code leaks (imports / class definitions), not prose mentions in

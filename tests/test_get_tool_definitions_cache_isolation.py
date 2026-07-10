@@ -1,18 +1,21 @@
 """Regression tests for issue #17335.
 
-The ``quiet_mode=True`` fast path in :func:`model_tools.get_tool_definitions`
-memoizes results to avoid re-walking the registry on every Gateway call. The
-cached object must NOT be aliased into callers' return values \u2014 long-lived
-Gateway processes mutate the returned list (``run_agent`` appends memory and
-LCM context-engine tool schemas to ``self.tools``), and a shared list would
-poison subsequent agent inits with duplicate tool names. Providers that
-enforce uniqueness (DeepSeek, Xiaomi MiMo, Moonshot/Kimi) then reject the
-API call with HTTP 400.
+:func:`model_tools.get_tool_definitions` memoizes results process-wide to
+avoid re-walking the registry on every agent construction. The memo now serves
+both the Gateway ``quiet_mode=True`` path and the CLI/TUI ``quiet_mode=False``
+path from one entry (replaying the status prints for the latter). The cached
+object must NOT be aliased into callers' return values — long-lived Gateway
+processes mutate the returned list (``run_agent`` appends memory and LCM
+context-engine tool schemas to ``self.tools``), and a shared list would poison
+subsequent agent inits with duplicate tool names. Providers that enforce
+uniqueness (DeepSeek, Xiaomi MiMo, Moonshot/Kimi) then reject the API call
+with HTTP 400.
 
 These tests pin:
 - the cache-hit path returns a fresh list (existing #17098 behavior)
 - the first uncached call also returns a fresh list (the fix)
 - every call returns a list that is not the cached one, even after mutation
+- the cache is shared across quiet/non-quiet callers, replaying status prints
 """
 from __future__ import annotations
 
@@ -36,12 +39,13 @@ class TestQuietModeCacheIsolation:
         otherwise a caller mutating the returned list mutates the cache."""
         first = model_tools.get_tool_definitions(quiet_mode=True)
         assert isinstance(first, list)
-        # Find the cached value to compare identity.
+        # Find the cached value to compare identity. The cache stores a
+        # (schema_list, status_lines) pair; the schema list is element [0].
         assert len(model_tools._tool_defs_cache) == 1
-        cached = next(iter(model_tools._tool_defs_cache.values()))
-        assert first is not cached, (
+        cached_result, _status = next(iter(model_tools._tool_defs_cache.values()))
+        assert first is not cached_result, (
             "issue #17335: first quiet_mode call returned the cached list "
-            "by reference \u2014 mutations will leak into subsequent calls."
+            "by reference — mutations will leak into subsequent calls."
         )
 
     def test_cache_hit_returns_fresh_list(self):
@@ -49,8 +53,8 @@ class TestQuietModeCacheIsolation:
         first = model_tools.get_tool_definitions(quiet_mode=True)
         second = model_tools.get_tool_definitions(quiet_mode=True)
         assert first is not second
-        cached = next(iter(model_tools._tool_defs_cache.values()))
-        assert second is not cached
+        cached_result, _status = next(iter(model_tools._tool_defs_cache.values()))
+        assert second is not cached_result
 
     def test_caller_mutation_does_not_poison_cache(self):
         """Simulate run_agent appending LCM tool schemas to the returned
@@ -108,8 +112,39 @@ class TestQuietModeCacheIsolation:
             "Eviction should keep the cache at the cap, not clear it or grow"
         )
 
-    def test_non_quiet_mode_does_not_use_cache(self):
-        """Sanity: quiet_mode=False (TUI path) skips the cache entirely \u2014
-        explains why the bug only hit Gateway."""
-        model_tools.get_tool_definitions(quiet_mode=False)
-        assert len(model_tools._tool_defs_cache) == 0
+    def test_non_quiet_mode_uses_cache_and_replays_status(self, capsys):
+        """quiet_mode=False now shares the same process-wide memo as the
+        Gateway path (the schema list is identical regardless of quiet_mode;
+        only the status prints differ). A non-quiet call populates the cache,
+        and a subsequent non-quiet call is served from it while STILL emitting
+        the tool-selection status lines (replayed from the cached copy)."""
+        first = model_tools.get_tool_definitions(
+            enabled_toolsets=["file"], quiet_mode=False,
+        )
+        assert len(model_tools._tool_defs_cache) == 1
+        out1 = capsys.readouterr().out
+        assert "Final tool selection" in out1, (
+            "non-quiet call must print the tool-selection status lines"
+        )
+
+        # Second non-quiet call is a cache hit but must still replay the
+        # status lines so the CLI/TUI user keeps seeing them.
+        second = model_tools.get_tool_definitions(
+            enabled_toolsets=["file"], quiet_mode=False,
+        )
+        out2 = capsys.readouterr().out
+        assert "Final tool selection" in out2
+        # Same schema content, but a fresh list object (isolation preserved).
+        assert [t["function"]["name"] for t in first] == [
+            t["function"]["name"] for t in second
+        ]
+        assert first is not second
+
+    def test_quiet_mode_hit_is_silent(self, capsys):
+        """A quiet_mode cache hit must NOT emit status lines — the whole point
+        of quiet_mode is suppressed stdout, even when a prior non-quiet call
+        populated the shared cache entry."""
+        model_tools.get_tool_definitions(enabled_toolsets=["file"], quiet_mode=True)
+        capsys.readouterr()  # drain the (possibly non-empty) miss-path output
+        model_tools.get_tool_definitions(enabled_toolsets=["file"], quiet_mode=True)
+        assert capsys.readouterr().out == ""

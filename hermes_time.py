@@ -19,6 +19,25 @@ from datetime import datetime
 from hermes_constants import get_config_path
 from typing import Optional
 
+# ciso8601 is a C-accelerated ISO8601 parser (10-50× faster than stdlib)
+_HAS_CISO8601: bool
+try:
+    from ciso8601 import parse_datetime as _parse_datetime
+    _HAS_CISO8601 = True
+except ImportError:
+    _HAS_CISO8601 = False
+
+
+def parse_iso_datetime(text: str) -> datetime:
+    """Parse an ISO 8601 datetime string, using ``ciso8601`` when available.
+
+    Falls back to ``datetime.fromisoformat`` if ``ciso8601`` is not installed.
+    Handles the ``Z`` suffix that ``fromisoformat`` does not accept.
+    """
+    if _HAS_CISO8601:
+        return _parse_datetime(text)
+    return datetime.fromisoformat(text.replace("Z", "+00:00"))
+
 logger = logging.getLogger(__name__)
 
 try:

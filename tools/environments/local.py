@@ -2,13 +2,14 @@
 
 import logging
 import os
-import platform
-import re
+from platform_utils import is_windows
+from agent.re_compat import re
 import shutil
 import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -16,9 +17,7 @@ from tools.environments.base import BaseEnvironment, _pipe_stdin
 from tools.environments._process_bash_command import _prepare_bash_cmd
 from tools.environments.proccess_pwsh import pwsh_transform
 from tools.environments.windows_env import refresh_env_from_registry
-from hermes_cli._subprocess_compat import windows_hide_flags
-
-_IS_WINDOWS = platform.system() == "Windows"
+_IS_WINDOWS = is_windows()
 
 logger = logging.getLogger(__name__)
 
@@ -513,6 +512,147 @@ def hermes_subprocess_env(*, inherit_credentials: bool = False) -> dict[str, str
     return env
 
 
+def _resolve_pwsh_session_reuse(shell_type: str) -> bool:
+    """Return True when the persistent-PowerShell-session fast path is enabled.
+
+    [CN-fork P-042] Windows + PowerShell only.  Canonical setting is
+    ``terminal.powershell_session_reuse`` in config.yaml; the internal
+    ``HERMES_PWSH_SESSION_REUSE`` env var bridges it (and lets tests/subprocess
+    children flip it) and takes precedence when set.  Default OFF — a persistent
+    session carries shell state between commands, which is a deliberate opt-in.
+    """
+    if not _IS_WINDOWS or shell_type not in ("powershell", "pwsh"):
+        return False
+    override = os.environ.get("HERMES_PWSH_SESSION_REUSE")
+    if override is not None:
+        return override.strip().lower() in ("1", "true", "yes", "on")
+    try:
+        from hermes_cli.config import load_config
+
+        cfg = load_config() or {}
+        return bool((cfg.get("terminal") or {}).get("powershell_session_reuse", False))
+    except Exception:
+        return False
+
+
+class _SessionFallback(Exception):
+    """Raised inside a fast path to punt a command to the spawn path."""
+
+
+# ---------------------------------------------------------------------------
+# cmd.exe fast path for trivial builtins (P-042 #3, opt-in)
+# ---------------------------------------------------------------------------
+#
+# A cold ``powershell.exe`` spawn costs ~200-400ms (~80-100ms warm); a
+# ``cmd.exe`` spawn is ~10-20ms.  For a handful of trivial, self-contained
+# builtins that carry no PowerShell-only syntax, cmd.exe is a much cheaper
+# launcher.  This is OFF by default and strictly narrower than — and superseded
+# by — the persistent-session fast path, which is *faster* (~1-5ms warm) AND
+# keeps full PowerShell semantics (the shell the agent was prompted for).
+# cmd.exe routing exists only as a spawn-model option for deployments that
+# don't want a long-lived session holding shell state between commands.
+#
+# ``is_simple_command`` is the plan's coarse classifier (does the command LOOK
+# like a bare builtin?).  ``_cmd_fast_path_eligible`` is the strict executor
+# gate that additionally rejects shell metacharacters and stateful builtins, so
+# a routed command can't behave differently under cmd.exe than under PowerShell.
+
+_SIMPLE_COMMAND_PATTERNS = (
+    "dir", "echo", "type", "copy", "move", "del", "erase",
+    "mkdir", "md", "rmdir", "rd", "cd", "chdir", "cls",
+    "ver", "whoami", "hostname", "where",
+)
+_SIMPLE_COMMAND_RE = re.compile(
+    r"^(?:" + "|".join(_SIMPLE_COMMAND_PATTERNS) + r")\b",
+    re.IGNORECASE,
+)
+# Shell metacharacters whose meaning differs between cmd.exe and PowerShell
+# (pipes, redirection, chaining, quoting, expansion, globbing).  Any of them
+# forces the safe PowerShell path.
+_CMD_METACHAR_RE = re.compile(r"""[|&<>;`$%()'\"^!*?\[\]{}\n\r]""")
+# Builtins that mutate shell state (cwd / env).  A one-shot ``cmd /c`` can't
+# persist their effect, so they must never take the cmd fast path.
+_CMD_STATEFUL_RE = re.compile(
+    r"^(?:cd|chdir|pushd|popd|set|setx|start|call|exit)\b", re.IGNORECASE
+)
+
+
+def is_simple_command(command: str) -> bool:
+    """True when *command* looks like a bare cmd.exe-compatible builtin.
+
+    Coarse classifier from the P-042 plan: matches on the leading verb only
+    (``dir``/``echo``/``type``/``copy``/``move``/``del``/``mkdir``/``rmdir``/
+    ``cd`` …).  Callers that actually *route* to cmd.exe must additionally pass
+    :func:`_cmd_fast_path_eligible`, which rejects metacharacters and stateful
+    builtins so behaviour can't diverge from PowerShell.
+    """
+    return bool(command and _SIMPLE_COMMAND_RE.match(command.strip()))
+
+
+def _cmd_fast_path_eligible(command: str) -> bool:
+    """Strict gate: *command* is a bare builtin AND safe to run via cmd.exe.
+
+    Requires :func:`is_simple_command`, no shell metacharacters (so quoting /
+    redirection / chaining / globbing can't be reinterpreted), and no cwd/env-
+    mutating builtin (a one-shot ``cmd /c`` couldn't persist the change the
+    tracked session expects).  Everything it rejects simply falls through to the
+    unchanged PowerShell path — safety over coverage.
+    """
+    if not command:
+        return False
+    stripped = command.strip()
+    if not is_simple_command(stripped):
+        return False
+    if _CMD_METACHAR_RE.search(stripped):
+        return False
+    if _CMD_STATEFUL_RE.match(stripped):
+        return False
+    return True
+
+
+def _resolve_cmd_fast_path(shell_type: str) -> bool:
+    """True when the opt-in cmd.exe fast path is enabled (Windows + PowerShell).
+
+    Canonical setting ``terminal.cmd_fast_path`` in config.yaml; the internal
+    ``HERMES_CMD_FAST_PATH`` env var bridges it and wins when set.  Default OFF
+    — the persistent-session fast path is faster and preserves PowerShell
+    semantics, so cmd.exe routing is only for deployments that opt in.
+    """
+    if not _IS_WINDOWS or shell_type not in ("powershell", "pwsh"):
+        return False
+    override = os.environ.get("HERMES_CMD_FAST_PATH")
+    if override is not None:
+        return override.strip().lower() in ("1", "true", "yes", "on")
+    try:
+        from hermes_cli.config import load_config
+
+        cfg = load_config() or {}
+        return bool((cfg.get("terminal") or {}).get("cmd_fast_path", False))
+    except Exception:
+        return False
+
+
+def _decode_cmd_output(data: bytes) -> str:
+    """Decode cmd.exe output: UTF-8 first, then the system ANSI code page.
+
+    cmd builtins emit text in the console/OEM code page (cp936/GBK on a Chinese
+    Windows), so a hard UTF-8 decode would mojibake CJK.  Mirrors the file-read
+    fallback in file_operations (``_decode_file_bytes``).
+    """
+    if not data:
+        return ""
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        pass
+    if _IS_WINDOWS:
+        try:
+            return data.decode("mbcs", errors="replace")
+        except (LookupError, ValueError):
+            pass
+    return data.decode("utf-8", errors="replace")
+
+
 def _find_bash_posix() -> str:
     """Find bash on non-Windows systems."""
     return (
@@ -524,50 +664,96 @@ def _find_bash_posix() -> str:
     )
 
 def _find_powershell() -> str:
-    """Return ``powershell.exe`` path on Windows.
+    r"""Return ``powershell.exe`` path on Windows.
 
     Windows PowerShell 5.1 ships with every Windows 10/11 system at
-    ``C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe``
+    ``C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe``
     and is always on PATH.  No probing needed — just return the first
     ``powershell.exe`` found via ``shutil.which``.
     """
     return shutil.which("powershell.exe") or "powershell.exe"
 
+
+def _find_pwsh() -> str | None:
+    """Detect PowerShell 7 (pwsh) using multiple strategies.
+
+    Returns the full path to pwsh.exe, or None if not found.
+    """
+    # Strategy 1: PATH search
+    path = shutil.which("pwsh") or shutil.which("pwsh.exe")
+    if path:
+        return path
+
+    # Strategy 2: Common install location via %%ProgramFiles%%
+    program_files = os.environ.get("ProgramFiles", r"C:\Program Files")
+    candidate = os.path.join(program_files, "PowerShell", "7", "pwsh.exe")
+    if os.path.isfile(candidate):
+        return candidate
+
+    # Strategy 3: Registry App Paths
+    try:
+        import winreg
+        with winreg.OpenKey(
+            winreg.HKEY_LOCAL_MACHINE,
+            r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\pwsh.exe",
+            0, winreg.KEY_READ
+        ) as key:
+            reg_path, _ = winreg.QueryValueEx(key, "")
+            if reg_path and os.path.isfile(reg_path):
+                return reg_path
+    except (OSError, FileNotFoundError):
+        pass
+
+    # Strategy 4: LocalAppData (Microsoft Store / winget install)
+    local_app_data = os.environ.get("LOCALAPPDATA", "")
+    if local_app_data:
+        candidate = os.path.join(
+            local_app_data, "Microsoft", "WindowsApps", "pwsh.exe"
+        )
+        if os.path.isfile(candidate):
+            return candidate
+
+    return None
+
+
 def _resolve_shell() -> tuple[str, str]:
     """Determine which shell to use for local command execution.
 
-    On Windows: always uses Windows PowerShell 5.1 (``powershell.exe``),
-    which ships with every Windows 10/11 system — no download or install
-    needed.
+    On Windows: prefers PowerShell 7 (``pwsh``) when available, falling
+    back to Windows PowerShell 5.1 (``powershell.exe``) which ships with
+    every Windows 10/11 system.
 
     On non-Windows: always uses bash.
 
     Env overrides:
-      ``HERMES_SHELL_TYPE`` — ``"powershell"``, ``"bash"``, or ``"auto"``
-      (default: ``"powershell"`` on Windows, ``"bash"`` otherwise).
+      ``HERMES_SHELL_TYPE`` — ``"powershell"``, ``"pwsh"``, ``"bash"``,
+      or ``"auto"`` (default: ``"auto"`` on Windows, ``"bash"`` otherwise).
       ``HERMES_SHELL_TYPE=bash`` on Windows raises a RuntimeError.
 
     Returns ``(shell_type, shell_path)`` where *shell_type* is
-    ``"powershell"`` or ``"bash"``.
+    ``"pwsh"``, ``"powershell"``, or ``"bash"``.
     """
     shell_type = os.environ.get("HERMES_SHELL_TYPE", "auto").strip().lower() or "auto"
 
     if _IS_WINDOWS:
-        # Map legacy pwsh value to powershell
-        if shell_type in ("auto", "powershell", "pwsh"):
+        if shell_type in ("auto", "pwsh", "powershell"):
+            # Prefer pwsh (PowerShell 7) when available
+            pwsh_path = _find_pwsh()
+            if pwsh_path:
+                logger.info("Selected shell: pwsh at %s", pwsh_path)
+                return ("pwsh", pwsh_path)
             ps_path = _find_powershell()
             logger.info("Selected shell: powershell at %s", ps_path)
             return ("powershell", ps_path)
         if shell_type == "bash":
             raise RuntimeError(
                 "Git Bash is no longer supported on Windows. "
-                "Set HERMES_SHELL_TYPE=powershell (or leave as auto) "
-                "to use Windows PowerShell 5.1, which ships with every "
-                "Windows 10/11 system."
+                "Set HERMES_SHELL_TYPE=pwsh/powershell (or leave as auto) "
+                "to use PowerShell."
             )
         raise RuntimeError(
             f"Unknown HERMES_SHELL_TYPE={shell_type!r} on Windows. "
-            "Supported values: 'auto' (default → powershell), 'powershell'."
+            "Supported values: 'auto' (default → pwsh/powershell), 'pwsh', 'powershell'."
         )
 
     # Non-Windows: always bash
@@ -950,6 +1136,12 @@ class LocalEnvironment(BaseEnvironment):
             cwd = os.path.expanduser(cwd)
         super().__init__(cwd=cwd or os.getcwd(), timeout=timeout, env=env)
         self._shell_type, self._shell_path = _resolve_shell()
+        # [CN-fork P-042] persistent PowerShell session (opt-in, Windows only).
+        self._pwsh_session = None
+        self._pwsh_session_lock = threading.Lock()
+        self._pwsh_session_reuse = _resolve_pwsh_session_reuse(self._shell_type)
+        # [CN-fork P-042 #3] cmd.exe fast path for trivial builtins (opt-in).
+        self._cmd_fast_path = _resolve_cmd_fast_path(self._shell_type)
         self.init_session()
 
     def get_temp_dir(self) -> str:
@@ -1047,7 +1239,7 @@ class LocalEnvironment(BaseEnvironment):
                 )
             self.cwd = safe_cwd
 
-        _popen_kwargs = {"creationflags": windows_hide_flags()} if _IS_WINDOWS else {}
+        _popen_kwargs = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW} if _IS_WINDOWS else {}
 
         proc = subprocess.Popen(
             args,
@@ -1077,16 +1269,23 @@ class LocalEnvironment(BaseEnvironment):
           ``pwd -P``  → ``Get-Location``
         """
 
-        # [CN-fork] P-037: down-level PS7+ syntax (``&&`` ``||`` ``??`` ``?:``
-        # ``?.`` ``?[``) to PS5.1 on the RAW command *before* it is embedded as
-        # a single-quoted ``Invoke-Expression`` literal below.  ``pwsh_transform``
-        # builds a region mask that deliberately skips single-quoted string
-        # contents, so transforming the *assembled* wrapper (the old call site
-        # in ``_run_powershell``) never reached the user's command — the
-        # compatibility bridge was a silent no-op on the real exec path, and
-        # ``Invoke-Expression`` then re-parsed the un-leveled command under 5.1
-        # and raised a ParserError on ``&&`` etc.
-        command, pwsh_warnings = pwsh_transform(command)
+        # [CN-fork] P-037 / P-XXX: down-level PS7+ syntax (``&&`` ``||`` ``??``
+        # ``?:`` ``?.`` ``?[``) to PS5.1 on the RAW command *before* it is
+        # embedded as a single-quoted ``Invoke-Expression`` literal below.
+        # ``pwsh_transform`` builds a region mask that deliberately skips
+        # single-quoted string contents, so transforming the *assembled*
+        # wrapper (the old call site in ``_run_powershell``) never reached
+        # the user's command — the compatibility bridge was a silent no-op
+        # on the real exec path, and ``Invoke-Expression`` then re-parsed
+        # the un-leveled command under 5.1 and raised a ParserError on ``&&``
+        # etc.
+        #
+        # When running PowerShell 7 (``pwsh``) natively, skip the transform
+        # entirely — PS7 supports all modern operators natively.
+        if self._shell_type == "pwsh":
+            pwsh_warnings: list[str] = []
+        else:
+            command, pwsh_warnings = pwsh_transform(command)
         self._pwsh_warnings = pwsh_warnings
 
         # Escape single quotes for PowerShell: double them
@@ -1103,6 +1302,7 @@ class LocalEnvironment(BaseEnvironment):
             # Force UTF-8 output encoding for stdout/stderr.
             "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8",
             "$OutputEncoding=[System.Text.Encoding]::UTF8",
+            "[Console]::TreatControlCAsInput=$true",
             # Suppress errors, cd to target
             "$ErrorActionPreference = 'Continue'",
             f"Set-Location -LiteralPath '{quoted_cwd}' -ErrorAction SilentlyContinue",
@@ -1129,6 +1329,293 @@ class LocalEnvironment(BaseEnvironment):
         return "\n".join(parts)
 
     # ------------------------------------------------------------------
+    # Persistent PowerShell session fast path (P-042, opt-in)
+    # ------------------------------------------------------------------
+
+    def _wrap_command_powershell_session(self, command: str, cwd: str) -> str:
+        """Build the per-command body for the reused PowerShell session.
+
+        Same shape as :meth:`_wrap_command_powershell` (down-level PS7 syntax on
+        the RAW command, cd, ``Invoke-Expression | Out-String``, persist cwd to
+        the marker file) but WITHOUT the UTF-8 preamble (the session sets it once
+        at start), WITHOUT a trailing ``exit`` (that would end the session), and
+        WITHOUT the stdout cwd marker (the file is authoritative for the local
+        backend's :meth:`_update_cwd`).
+        """
+        if self._shell_type == "pwsh":
+            pwsh_warnings: list[str] = []
+        else:
+            command, pwsh_warnings = pwsh_transform(command)
+        self._pwsh_warnings = pwsh_warnings
+
+        escaped = command.replace("'", "''")
+        quoted_cwd = cwd.replace("'", "''")
+        quoted_cwd_file = self._cwd_file.replace("'", "''")
+        parts = [
+            "$ErrorActionPreference = 'Continue'",
+            f"Set-Location -LiteralPath '{quoted_cwd}' -ErrorAction SilentlyContinue",
+            f"Invoke-Expression '{escaped}' | Out-String -Width 4096 | Write-Output",
+            f"(Get-Location).Path | Out-File -Encoding utf8 -FilePath '{quoted_cwd_file}'",
+        ]
+        return "\n".join(parts)
+
+    def _session_env_refresh_prefix(self, run_env: dict) -> str:
+        """Return PS lines that re-assert PATH/PATHEXT into the live session.
+
+        The session process captured its env at spawn, so tools installed since
+        (P-020's whole point) wouldn't be on its PATH.  Re-assigning ``$env:PATH``
+        / ``$env:PATHEXT`` from the freshly-refreshed ``run_env`` on each command
+        keeps them discoverable without restarting the interpreter.
+        """
+        path_key = _path_env_key(run_env)
+        lines: list[str] = []
+        if path_key and run_env.get(path_key):
+            lines.append(f"$env:PATH = '{run_env[path_key].replace(chr(39), chr(39) * 2)}'")
+        pathext = run_env.get("PATHEXT")
+        if pathext:
+            lines.append(f"$env:PATHEXT = '{pathext.replace(chr(39), chr(39) * 2)}'")
+        return ("\n".join(lines) + "\n") if lines else ""
+
+    def _get_pwsh_session(self):
+        """Return a live :class:`PowerShellSession`, creating/reviving as needed."""
+        with self._pwsh_session_lock:
+            if self._pwsh_session is not None and self._pwsh_session.is_alive():
+                return self._pwsh_session
+            if self._pwsh_session is not None:
+                try:
+                    self._pwsh_session.close()
+                except Exception:
+                    pass
+            from tools.environments.powershell_session import PowerShellSession
+
+            refresh_env_from_registry()
+            run_env = _make_run_env(self.env)
+            session = PowerShellSession(
+                shell_path=self._shell_path,
+                cwd=_resolve_safe_cwd(self.cwd),
+                env=run_env,
+                default_timeout=float(self.timeout),
+            )
+            session.start()
+            self._pwsh_session = session
+            return session
+
+    def _execute_via_session(
+        self,
+        command: str,
+        cwd: str,
+        *,
+        timeout: int | None,
+        rewrite_compound_background: bool,
+    ) -> dict:
+        """Run *command* through the reused PowerShell session.
+
+        Mirrors the prep in :meth:`BaseEnvironment.execute` (sudo transform,
+        compound-background rewrite, cwd/timeout resolution, missing-cwd
+        recovery, pwsh-warning + cwd propagation) but pipes the wrapped body to
+        the warm interpreter instead of spawning a new process.  Raises
+        :class:`_SessionFallback` when the command can't be served this way (it
+        needs stdin, or the session vanished before output) so the caller drops
+        to the proven spawn path.
+        """
+        self._before_execute()
+
+        exec_command, sudo_stdin = self._prepare_command(command)
+        if sudo_stdin is not None:
+            # A sudo password needs stdin piping the shared session can't do.
+            raise _SessionFallback("command needs stdin")
+        if rewrite_compound_background:
+            from tools.terminal_tool import _rewrite_compound_background
+
+            exec_command = _rewrite_compound_background(exec_command)
+        effective_timeout = timeout or self.timeout
+        effective_cwd = cwd or self.cwd
+
+        # Recover a cwd deleted out from under us, same as the spawn path.
+        safe_cwd = _resolve_safe_cwd(effective_cwd)
+        if safe_cwd != effective_cwd:
+            normalized = os.path.normpath(
+                _msys_to_windows_path(effective_cwd) if _IS_WINDOWS else effective_cwd
+            )
+            if safe_cwd != normalized:
+                logger.warning(
+                    "LocalEnvironment cwd %r is missing on disk; falling back to "
+                    "%r so terminal commands keep working (session).",
+                    effective_cwd,
+                    safe_cwd,
+                )
+            self.cwd = safe_cwd
+            effective_cwd = safe_cwd
+
+        body = self._wrap_command_powershell_session(exec_command, effective_cwd)
+
+        session = self._get_pwsh_session()
+
+        refresh_env_from_registry()
+        run_env = _make_run_env(self.env)
+        script = self._session_env_refresh_prefix(run_env) + body
+
+        _now = time.monotonic()
+        from tools.environments.base import touch_activity_if_due
+
+        _activity_state = {"last_touch": _now, "start": _now}
+
+        def _activity() -> None:
+            touch_activity_if_due(_activity_state, "terminal command running")
+
+        res = session.run_script(
+            script, timeout=effective_timeout, activity_cb=_activity
+        )
+
+        if res.session_died and not res.output.strip():
+            # Interpreter died before producing anything; retry via spawn.
+            raise _SessionFallback("session died before output")
+
+        output = res.output
+        if res.timed_out:
+            suffix = f"\n[Command timed out after {effective_timeout}s]"
+            output = (output + suffix) if output else suffix.lstrip()
+        elif res.interrupted:
+            output = output + "\n[Command interrupted]"
+
+        result = {"output": output, "returncode": res.returncode}
+        self._update_cwd(result)
+
+        pwsh_warnings = getattr(self, "_pwsh_warnings", None)
+        if pwsh_warnings:
+            result["pwsh_warnings"] = pwsh_warnings
+            self._pwsh_warnings = None
+        return result
+
+    def _execute_via_cmd(self, command: str, cwd: str, *, timeout: int | None) -> dict:
+        """Run an eligible simple builtin through ``cmd.exe /c`` (P-042 #3).
+
+        Only reached for :func:`_cmd_fast_path_eligible` commands (bare builtin,
+        no metacharacters, no cwd/env mutation) when the opt-in flag is on and
+        the persistent session isn't handling the call.  Because eligible
+        commands can't change cwd, the tracked ``self.cwd`` is authoritative and
+        is used as the child's working directory — no marker round-trip needed.
+        Raises :class:`_SessionFallback` for anything it shouldn't serve so the
+        caller drops to the proven spawn path.
+        """
+        self._before_execute()
+        exec_command, sudo_stdin = self._prepare_command(command)
+        if sudo_stdin is not None:
+            raise _SessionFallback("command needs stdin")
+        # Re-check after _prepare_command: a sudo/transform rewrite could have
+        # introduced syntax that is no longer cmd-safe.
+        if not _cmd_fast_path_eligible(exec_command):
+            raise _SessionFallback("command not cmd-eligible after prepare")
+
+        effective_timeout = timeout or self.timeout
+        effective_cwd = _resolve_safe_cwd(cwd or self.cwd)
+        self.cwd = effective_cwd
+
+        refresh_env_from_registry()
+        run_env = _make_run_env(self.env)
+        popen_kwargs = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW} if _IS_WINDOWS else {}
+        # Eligibility guarantees no shell metacharacters, so the command is safe
+        # to hand to cmd.exe as a single verbatim command line (no injection
+        # surface) — building it ourselves avoids subprocess.list2cmdline
+        # re-quoting a spaced builtin into an unrunnable "dir foo" program name.
+        cmdline = f"cmd.exe /d /c {exec_command}"
+        try:
+            proc = subprocess.run(
+                cmdline,
+                cwd=effective_cwd if os.path.isdir(effective_cwd) else None,
+                env=run_env,
+                capture_output=True,
+                timeout=effective_timeout,
+                **popen_kwargs,
+            )
+        except subprocess.TimeoutExpired as exc:
+            partial = _decode_cmd_output(exc.output or b"") + _decode_cmd_output(
+                exc.stderr or b""
+            )
+            suffix = f"\n[Command timed out after {effective_timeout}s]"
+            return {
+                "output": (partial + suffix) if partial else suffix.lstrip(),
+                "returncode": 124,
+            }
+        except (OSError, ValueError) as exc:
+            raise _SessionFallback(f"cmd spawn failed: {exc}")
+
+        output = _decode_cmd_output(proc.stdout) + _decode_cmd_output(proc.stderr)
+        # Persist the (unchanged) cwd to the marker file so a later spawn/session
+        # call's _update_cwd reads a consistent value.
+        try:
+            Path(self._cwd_file).parent.mkdir(parents=True, exist_ok=True)
+            Path(self._cwd_file).write_text(effective_cwd, encoding="utf-8")
+        except OSError:
+            pass
+        return {"output": output, "returncode": proc.returncode}
+
+    def execute(
+        self,
+        command: str,
+        cwd: str = "",
+        *,
+        timeout: int | None = None,
+        stdin_data: str | None = None,
+        rewrite_compound_background: bool = True,
+    ) -> dict:
+        """Execute a command via the fastest eligible path (P-042).
+
+        Order: the persistent PowerShell session (opt-in, warm ~1-5ms) → the
+        opt-in cmd.exe fast path for trivial builtins (spawn ~10-20ms) → the
+        unchanged spawn-per-call path in :meth:`BaseEnvironment.execute`.  Both
+        fast paths are OFF by default and fall through to spawn on anything they
+        can't serve (stdin present, non-PowerShell shell, ineligible command).
+        """
+        if (
+            self._pwsh_session_reuse
+            and stdin_data is None
+            and self._shell_type in ("powershell", "pwsh")
+        ):
+            try:
+                return self._execute_via_session(
+                    command,
+                    cwd,
+                    timeout=timeout,
+                    rewrite_compound_background=rewrite_compound_background,
+                )
+            except _SessionFallback as exc:
+                logger.info(
+                    "PowerShell session fast path declined (%s); using spawn.", exc
+                )
+            except Exception as exc:  # noqa: BLE001 - never let the fast path
+                # wedge the tool; the spawn path is the safety net.
+                logger.warning(
+                    "PowerShell session execute failed (%s); using spawn.",
+                    exc,
+                    exc_info=True,
+                )
+        # [CN-fork P-042 #3] cmd.exe fast path (opt-in, spawn-model) — considered
+        # only when the session path didn't serve the call.  Narrow eligibility
+        # keeps behaviour identical to PowerShell; anything else falls through.
+        if (
+            self._cmd_fast_path
+            and stdin_data is None
+            and self._shell_type in ("powershell", "pwsh")
+            and _cmd_fast_path_eligible(command)
+        ):
+            try:
+                return self._execute_via_cmd(command, cwd, timeout=timeout)
+            except _SessionFallback as exc:
+                logger.info("cmd fast path declined (%s); using spawn.", exc)
+            except Exception as exc:  # noqa: BLE001 - safety net is the spawn path
+                logger.warning(
+                    "cmd fast path failed (%s); using spawn.", exc, exc_info=True
+                )
+        return super().execute(
+            command,
+            cwd,
+            timeout=timeout,
+            stdin_data=stdin_data,
+            rewrite_compound_background=rewrite_compound_background,
+        )
+
+    # ------------------------------------------------------------------
     # init_session override (handles both powershell and bash)
     # ------------------------------------------------------------------
 
@@ -1143,7 +1630,7 @@ class LocalEnvironment(BaseEnvironment):
         For **bash**: unchanged — captures env vars, functions, aliases
         into a snapshot file that subsequent commands source.
         """
-        if self._shell_type == "powershell":
+        if self._shell_type in ("powershell", "pwsh"):
             # Simple CWD marker write — no snapshot needed for powershell.
             self._snapshot_ready = False
             try:
@@ -1154,10 +1641,10 @@ class LocalEnvironment(BaseEnvironment):
                 Path(self._cwd_file).write_text(cwd_path, encoding="utf-8")
             except Exception as exc:
                 logger.warning(
-                    "init_session (powershell) failed to write CWD file: %s", exc
+                    "init_session (%s) failed to write CWD file: %s", self._shell_type, exc
                 )
             logger.info(
-                "powershell session ready (session=%s, cwd=%s)",
+                "%s session ready (session=%s, cwd=%s)", self._shell_type,
                 self._session_id,
                 self.cwd,
             )
@@ -1178,7 +1665,7 @@ class LocalEnvironment(BaseEnvironment):
         Dispatches to ``_run_powershell()`` when the active shell is
         powershell, otherwise uses the existing bash path (non-Windows).
         """
-        if self._shell_type == "powershell":
+        if self._shell_type in ("powershell", "pwsh"):
             return self._run_powershell(
                 cmd_string, login=login, timeout=timeout, stdin_data=stdin_data
             )
@@ -1221,7 +1708,7 @@ class LocalEnvironment(BaseEnvironment):
 
         _popen_cwd = self.cwd
 
-        _popen_kwargs = {"creationflags": windows_hide_flags()} if _IS_WINDOWS else {}
+        _popen_kwargs = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW} if _IS_WINDOWS else {}
 
         proc = subprocess.Popen(
             args,
@@ -1257,7 +1744,7 @@ class LocalEnvironment(BaseEnvironment):
         Dispatches to ``_wrap_command_powershell()`` when the active shell
         is powershell, otherwise uses the base bash wrapping.
         """
-        if self._shell_type == "powershell":
+        if self._shell_type in ("powershell", "pwsh"):
             return self._wrap_command_powershell(command, cwd)
         return super()._wrap_command(command, cwd)
 
@@ -1355,7 +1842,7 @@ class LocalEnvironment(BaseEnvironment):
         try:
             with open(self._cwd_file, encoding="utf-8") as f:
                 cwd_path = f.read().strip()
-            if _IS_WINDOWS and self._shell_type == "bash":
+            if _IS_WINDOWS and self._shell_type not in ("powershell", "pwsh"):
                 cwd_path = _msys_to_windows_path(cwd_path)
             if cwd_path and os.path.isdir(cwd_path):
                 self.cwd = cwd_path
@@ -1378,7 +1865,7 @@ class LocalEnvironment(BaseEnvironment):
         prev_cwd = self.cwd
         super()._extract_cwd_from_output(result)
         if self.cwd != prev_cwd:
-            normalized = _msys_to_windows_path(self.cwd) if (_IS_WINDOWS and self._shell_type == "bash") else self.cwd
+            normalized = _msys_to_windows_path(self.cwd) if (_IS_WINDOWS and self._shell_type not in ("powershell", "pwsh")) else self.cwd
             if normalized and os.path.isdir(normalized):
                 self.cwd = normalized
             else:
@@ -1387,7 +1874,14 @@ class LocalEnvironment(BaseEnvironment):
                 self.cwd = prev_cwd
 
     def cleanup(self):
-        """Clean up temp files."""
+        """Clean up temp files and tear down the persistent session if any."""
+        session = getattr(self, "_pwsh_session", None)
+        if session is not None:
+            try:
+                session.close()
+            except Exception:
+                pass
+            self._pwsh_session = None
         for f in (self._snapshot_path, self._cwd_file):
             try:
                 os.unlink(f)

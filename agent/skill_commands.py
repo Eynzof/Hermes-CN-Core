@@ -4,10 +4,10 @@ Shared between CLI (cli.py) and gateway (gateway/run.py) so both surfaces
 can invoke skills via /skill-name commands.
 """
 
-import json
+import orjson
 import logging
 import os
-import re
+from agent.re_compat import re
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -175,7 +175,7 @@ def _load_skill_payload(skill_identifier: str, task_id: str | None = None) -> tu
         else:
             normalized = raw_identifier.lstrip("/")
 
-        loaded_skill = json.loads(
+        loaded_skill = orjson.loads(
             skill_view(normalized, task_id=task_id, preprocess=False)
         )
     except Exception:

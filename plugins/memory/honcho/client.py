@@ -13,7 +13,7 @@ Resolution order for host-specific settings:
 
 from __future__ import annotations
 
-import json
+import orjson
 import os
 import logging
 import hashlib
@@ -419,8 +419,8 @@ class HonchoClientConfig:
             return cls.from_env(host=resolved_host)
 
         try:
-            raw = json.loads(path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError) as e:
+            raw = orjson.loads(path.read_text(encoding="utf-8"))
+        except (orjson.JSONDecodeError, OSError) as e:
             logger.warning("Failed to read %s: %s, falling back to env", path, e)
             return cls.from_env(host=resolved_host)
 
@@ -688,8 +688,7 @@ class HonchoClientConfig:
           6. per-directory strategy — directory basename
           7. global strategy — workspace name
         """
-        import re
-
+        from agent.re_compat import re
         if not cwd:
             cwd = os.getcwd()
 
@@ -897,7 +896,7 @@ def get_honcho_client(config: HonchoClientConfig | None = None) -> Honcho:
         # from ANY base_url — loopback, LAN, custom domain, or cloud alike.  The
         # SDK then appends its own versioned paths correctly.
         if resolved_base_url:
-            import re as _re
+            from agent.re_compat import re as _re
             resolved_base_url = _re.sub(r"/v\d+/*$", "", resolved_base_url).rstrip("/")
 
         kwargs: dict = {

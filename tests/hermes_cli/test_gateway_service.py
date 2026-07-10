@@ -3399,8 +3399,7 @@ class TestServiceWorkingDirIsStable:
         assert "/.worktrees/" not in value
 
     def test_launchd_workingdirectory_is_hermes_home(self, tmp_path, monkeypatch):
-        import re
-
+        from agent.re_compat import re
         home = tmp_path / ".hermes"
         home.mkdir()
         monkeypatch.setattr(gateway_cli, "get_hermes_home", lambda: home)

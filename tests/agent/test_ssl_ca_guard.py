@@ -9,6 +9,21 @@ from agent.errors import SSLConfigurationError
 from agent.ssl_guard import verify_ca_bundle, verify_ca_bundle_with_fallback
 
 
+@pytest.fixture(autouse=True)
+def _clean_ssl_guard_cache():
+    """Reset the process-level CA-validation memo around every test.
+
+    ``verify_ca_bundle`` memoises a successful validation (perf: the ~200ms
+    context load is otherwise re-paid on every AIAgent init).  Clearing it per
+    test keeps each case hermetic regardless of run order.
+    """
+    from agent.ssl_guard import _reset_ca_bundle_cache
+
+    _reset_ca_bundle_cache()
+    yield
+    _reset_ca_bundle_cache()
+
+
 def test_healthy_bundle_passes(monkeypatch):
     """A real, non-empty certifi bundle must verify without raising."""
     for key in ("HERMES_CA_BUNDLE", "SSL_CERT_FILE", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE"):
@@ -80,3 +95,80 @@ def test_skip_env_var_bypasses_guard(monkeypatch, tmp_path, value):
     monkeypatch.setenv("SSL_CERT_FILE", str(fake))
     verify_ca_bundle()
     verify_ca_bundle_with_fallback()
+
+
+
+# ---------------------------------------------------------------------------
+# Process-level memoisation (.plans/15 — SSL init hotspot, ~8.19% self-time)
+#
+# verify_ca_bundle() built a throwaway ssl.create_default_context() (~200ms on
+# Windows) on EVERY AIAgent construction. It now caches the successful verdict
+# on a fingerprint of the CA env vars + certifi bundle, so an unchanged CA
+# configuration is validated at most once per process while any change still
+# re-validates (and re-raises).
+# ---------------------------------------------------------------------------
+
+
+def _clear_ca_env(monkeypatch):
+    for key in ("HERMES_CA_BUNDLE", "SSL_CERT_FILE", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE"):
+        monkeypatch.delenv(key, raising=False)
+
+
+def test_verify_ca_bundle_memoized_on_repeat(monkeypatch):
+    """An unchanged CA configuration validates once, then serves cache hits —
+    the expensive per-bundle context build is not repeated."""
+    import agent.ssl_guard as g
+
+    _clear_ca_env(monkeypatch)
+    g._reset_ca_bundle_cache()
+
+    calls = {"n": 0}
+    orig = g._validate_bundle_path
+
+    def counting(*a, **k):
+        calls["n"] += 1
+        return orig(*a, **k)
+
+    monkeypatch.setattr(g, "_validate_bundle_path", counting)
+
+    g.verify_ca_bundle()  # cold: validates the certifi bundle
+    cold = calls["n"]
+    assert cold >= 1, "cold verify must actually validate the bundle"
+
+    for _ in range(5):
+        g.verify_ca_bundle()  # warm: fingerprint unchanged -> cache hits
+    assert calls["n"] == cold, "an unchanged CA config must not re-validate"
+
+    # A genuine bump (e.g. certifi reinstall) must re-validate.
+    g._reset_ca_bundle_cache()
+    g.verify_ca_bundle()
+    assert calls["n"] == cold + 1
+
+
+def test_verify_ca_bundle_reinvalidates_on_env_change(monkeypatch, tmp_path):
+    """Changing a CA env var busts the memo and re-runs validation (raises)."""
+    import agent.ssl_guard as g
+
+    _clear_ca_env(monkeypatch)
+    g._reset_ca_bundle_cache()
+    g.verify_ca_bundle()  # caches the good (certifi-only) verdict
+
+    bad = tmp_path / "missing.pem"
+    monkeypatch.setenv("SSL_CERT_FILE", str(bad))
+    with pytest.raises(SSLConfigurationError):
+        g.verify_ca_bundle()  # different fingerprint -> re-validate -> raise
+
+
+def test_fingerprint_tracks_certifi_identity(monkeypatch, tmp_path):
+    """The fingerprint changes when certifi's bundle path changes, so a swapped
+    bundle is re-validated rather than served from a stale verdict."""
+    import agent.ssl_guard as g
+
+    _clear_ca_env(monkeypatch)
+    fp_before = g._ca_bundle_fingerprint()
+
+    fake = tmp_path / "other.pem"
+    fake.write_bytes(b"x" * 2048)
+    monkeypatch.setattr("certifi.where", lambda: str(fake))
+    fp_after = g._ca_bundle_fingerprint()
+    assert fp_before != fp_after

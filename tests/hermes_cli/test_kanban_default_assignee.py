@@ -6,7 +6,7 @@ the task is skipped (existing behavior preserved).
 """
 from __future__ import annotations
 
-import json
+import orjson
 import os
 import sys
 import tempfile
@@ -83,7 +83,7 @@ def test_unassigned_task_auto_assigned_with_default_assignee(isolated_kanban_hom
             (task_id,),
         ))
     assert len(evs) == 1
-    payload = json.loads(evs[0][1])
+    payload = orjson.loads(evs[0][1])
     assert payload["assignee"] == "default"
     assert payload["source"] == "kanban.default_assignee"
 

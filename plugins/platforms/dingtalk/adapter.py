@@ -27,10 +27,10 @@ Configuration in config.yaml:
 """
 
 import asyncio
-import json
+import orjson
 import logging
 import os
-import re
+from agent.re_compat import re
 import traceback
 import uuid
 from datetime import datetime, timezone
@@ -430,7 +430,7 @@ class DingTalkAdapter(BasePlatformAdapter):
             raw = os.getenv("DINGTALK_MENTION_PATTERNS", "").strip()
             if raw:
                 try:
-                    loaded = json.loads(raw)
+                    loaded = orjson.loads(raw)
                 except Exception:
                     loaded = [part.strip() for part in raw.splitlines() if part.strip()]
                     if not loaded:
@@ -1447,7 +1447,7 @@ class _IncomingHandler(
             # CallbackMessage.data is a dict containing the raw DingTalk payload
             data = message.data
             if isinstance(data, str):
-                data = json.loads(data)
+                data = orjson.loads(data)
 
             # Parse dict into ChatbotMessage using SDK's from_dict
             chatbot_msg = ChatbotMessage.from_dict(data)
@@ -1644,11 +1644,11 @@ def _apply_yaml_config(yaml_cfg: dict, dingtalk_cfg: dict) -> dict | None:
     take precedence over YAML (each assignment guarded by not os.getenv(...)).
     Returns None — everything flows through env.
     """
-    import json as _json
+    import orjson as _json
     if "require_mention" in dingtalk_cfg and not os.getenv("DINGTALK_REQUIRE_MENTION"):
         os.environ["DINGTALK_REQUIRE_MENTION"] = str(dingtalk_cfg["require_mention"]).lower()
     if "mention_patterns" in dingtalk_cfg and not os.getenv("DINGTALK_MENTION_PATTERNS"):
-        os.environ["DINGTALK_MENTION_PATTERNS"] = _json.dumps(dingtalk_cfg["mention_patterns"])
+        os.environ["DINGTALK_MENTION_PATTERNS"] = _json.dumps(dingtalk_cfg["mention_patterns"]).decode('utf-8')
     frc = dingtalk_cfg.get("free_response_chats")
     if frc is not None and not os.getenv("DINGTALK_FREE_RESPONSE_CHATS"):
         if isinstance(frc, list):

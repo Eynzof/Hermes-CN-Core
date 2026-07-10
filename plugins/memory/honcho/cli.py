@@ -5,7 +5,7 @@ Handles: hermes honcho setup | status | sessions | map | peer
 
 from __future__ import annotations
 
-import json
+import orjson
 import os
 import sys
 from pathlib import Path
@@ -264,7 +264,7 @@ def _read_config() -> dict:
     path = _config_path()
     if path.exists():
         try:
-            return json.loads(path.read_text(encoding="utf-8"))
+            return orjson.loads(path.read_text(encoding="utf-8"))
         except Exception:
             pass
     return {}
@@ -1237,8 +1237,7 @@ def cmd_map(args) -> None:
     if not session_name:
         print("  Session name cannot be empty.\n")
         return
-
-    import re
+    from agent.re_compat import re
     sanitized = re.sub(r'[^a-zA-Z0-9_-]', '-', session_name).strip('-')
     if sanitized != session_name:
         print(f"  Session name sanitized to: {sanitized}")

@@ -24,8 +24,8 @@ specific version (which is allowed to move):
 
 from __future__ import annotations
 
-import json
-import re
+import orjson
+from agent.re_compat import re
 from pathlib import Path
 
 import pytest
@@ -42,7 +42,7 @@ _EXACT_SEMVER = re.compile(r"^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$")
 
 def _desktop_pkg() -> dict:
     assert DESKTOP_PKG.is_file(), f"missing {DESKTOP_PKG}"
-    return json.loads(DESKTOP_PKG.read_text(encoding="utf-8"))
+    return orjson.loads(DESKTOP_PKG.read_text(encoding="utf-8"))
 
 
 def _electron_spec(pkg: dict) -> str:
@@ -81,7 +81,7 @@ def test_lockfile_resolves_the_pinned_electron():
     if not ROOT_LOCK.is_file():
         pytest.skip("root package-lock.json not present")
     spec = _electron_spec(_desktop_pkg())
-    lock = json.loads(ROOT_LOCK.read_text(encoding="utf-8"))
+    lock = orjson.loads(ROOT_LOCK.read_text(encoding="utf-8"))
     packages = lock.get("packages", {})
     resolved = [
         meta.get("version")

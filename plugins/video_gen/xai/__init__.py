@@ -19,7 +19,7 @@ edit/extend; it is sent to xAI as ``video.url``.
 from __future__ import annotations
 
 import asyncio
-import base64
+import pybase64 as base64
 import logging
 import mimetypes
 import os

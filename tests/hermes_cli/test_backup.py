@@ -1,6 +1,6 @@
 """Tests for hermes backup and import commands."""
 
-import json
+import orjson
 import os
 import sqlite3
 import zipfile
@@ -1439,7 +1439,7 @@ class TestQuickSnapshot:
         from hermes_cli.backup import create_quick_snapshot
         snap_id = create_quick_snapshot(hermes_home=hermes_home)
         with open(hermes_home / "state-snapshots" / snap_id / "manifest.json") as f:
-            meta = json.load(f)
+            meta = orjson.loads(f.read())
         # gateway_state.json etc. don't exist in fixture
         assert "gateway_state.json" not in meta["files"]
 
@@ -1546,7 +1546,7 @@ class TestQuickSnapshot:
         assert (snap_dir / "feishu_comment_pairing.json").exists()
 
         with open(snap_dir / "manifest.json") as f:
-            meta = json.load(f)
+            meta = orjson.loads(f.read())
         files = meta["files"]
         assert "platforms/pairing/telegram-approved.json" in files
         assert "platforms/pairing/discord-approved.json" in files
@@ -1640,10 +1640,10 @@ class TestQuickSnapshot:
         # would actually write something at the escaped destination.
         manifest_path = snap_dir / "manifest.json"
         with open(manifest_path) as f:
-            meta = json.load(f)
+            meta = orjson.loads(f.read())
         meta["files"]["../../outside.txt"] = 9
         with open(manifest_path, "w") as f:
-            json.dump(meta, f)
+            f.write(orjson.dumps(meta).decode('utf-8'))
 
         # Source: ../../outside.txt resolves above the snapshot root.
         # Place a payload there so we can detect a successful escape.
@@ -2257,7 +2257,7 @@ class TestRestoreCronJobsIfEmptied:
     @staticmethod
     def _seed_jobs(path: Path, jobs):
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({"jobs": jobs}))
+        path.write_text(orjson.dumps({"jobs": jobs}).decode('utf-8'))
 
     def _make_snapshot(self, hermes_home: Path, label="pre-update"):
         from hermes_cli.backup import create_quick_snapshot
@@ -2273,7 +2273,7 @@ class TestRestoreCronJobsIfEmptied:
         assert snap_id
 
         # Migration silently empties the file (valid JSON, zero jobs).
-        jobs_path.write_text(json.dumps({"jobs": []}))
+        jobs_path.write_text(orjson.dumps({"jobs": []}).decode('utf-8'))
 
         result = restore_cron_jobs_if_emptied(snap_id, hermes_home=hermes_home)
         assert result is not None
@@ -2282,7 +2282,7 @@ class TestRestoreCronJobsIfEmptied:
         assert result["snapshot_id"] == snap_id
 
         # The live file now has the jobs back.
-        restored = json.loads(jobs_path.read_text())
+        restored = orjson.loads(jobs_path.read_text())
         assert len(restored["jobs"]) == 3
 
     def test_noop_when_live_file_still_has_jobs(self, tmp_path):
@@ -2311,7 +2311,7 @@ class TestRestoreCronJobsIfEmptied:
         assert snap_id
 
         # Desktop scheduler overwrites with only its own 1 job.
-        jobs_path.write_text(json.dumps({"jobs": [{"id": "desktop-watchdog"}]}))
+        jobs_path.write_text(orjson.dumps({"jobs": [{"id": "desktop-watchdog"}]}).decode('utf-8'))
 
         result = restore_cron_jobs_if_emptied(snap_id, hermes_home=hermes_home)
         assert result is not None
@@ -2319,7 +2319,7 @@ class TestRestoreCronJobsIfEmptied:
         assert result["job_count"] == 19
 
         # The live file now has all 19 jobs back.
-        restored = json.loads(jobs_path.read_text())
+        restored = orjson.loads(jobs_path.read_text())
         assert len(restored["jobs"]) == 19
 
     def test_noop_when_snapshot_had_no_jobs(self, tmp_path):
@@ -2329,7 +2329,7 @@ class TestRestoreCronJobsIfEmptied:
         # Pre-update genuinely had zero jobs; current is also empty.
         self._seed_jobs(jobs_path, [])
         snap_id = self._make_snapshot(hermes_home)
-        jobs_path.write_text(json.dumps({"jobs": []}))
+        jobs_path.write_text(orjson.dumps({"jobs": []}).decode('utf-8'))
 
         result = restore_cron_jobs_if_emptied(snap_id, hermes_home=hermes_home)
         assert result is None
@@ -2364,10 +2364,10 @@ class TestRestoreCronJobsIfEmptied:
         hermes_home = tmp_path / ".hermes"
         jobs_path = hermes_home / "cron" / "jobs.json"
         jobs_path.parent.mkdir(parents=True, exist_ok=True)
-        jobs_path.write_text(json.dumps([{"id": "a"}, {"id": "b"}]))
+        jobs_path.write_text(orjson.dumps([{"id": "a"}, {"id": "b"}]).decode('utf-8'))
         snap_id = self._make_snapshot(hermes_home)
 
-        jobs_path.write_text(json.dumps({"jobs": []}))
+        jobs_path.write_text(orjson.dumps({"jobs": []}).decode('utf-8'))
         result = restore_cron_jobs_if_emptied(snap_id, hermes_home=hermes_home)
         assert result is not None
         assert result["job_count"] == 2

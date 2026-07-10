@@ -1,8 +1,8 @@
 """Tests for Codex auth — tokens stored in Hermes auth store (~/.hermes/auth.json)."""
 
-import json
+import orjson
 import time
-import base64
+import pybase64 as base64
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -40,13 +40,13 @@ def _setup_hermes_auth(hermes_home: Path, *, access_token: str = "access", refre
         },
     }
     auth_file = hermes_home / "auth.json"
-    auth_file.write_text(json.dumps(auth_store, indent=2))
+    auth_file.write_text(orjson.dumps(auth_store, option=orjson.OPT_INDENT_2).decode('utf-8'))
     return auth_file
 
 
 def _jwt_with_exp(exp_epoch: int) -> str:
     payload = {"exp": exp_epoch}
-    encoded = base64.urlsafe_b64encode(json.dumps(payload).encode("utf-8")).rstrip(b"=").decode("utf-8")
+    encoded = base64.urlsafe_b64encode(orjson.dumps(payload)).rstrip(b"=").decode("utf-8")
     return f"h.{encoded}.s"
 
 
@@ -64,7 +64,7 @@ def test_read_codex_tokens_missing(tmp_path, monkeypatch):
     hermes_home = tmp_path / "hermes"
     hermes_home.mkdir(parents=True, exist_ok=True)
     # Empty auth store
-    (hermes_home / "auth.json").write_text(json.dumps({"version": 1, "providers": {}}))
+    (hermes_home / "auth.json").write_text(orjson.dumps({"version": 1, "providers": {}}).decode('utf-8'))
     monkeypatch.setenv("HERMES_HOME", str(hermes_home))
 
     with pytest.raises(AuthError) as exc:
@@ -152,7 +152,7 @@ def test_resolve_codex_runtime_credentials_falls_back_to_pool_when_singleton_emp
             ],
         },
     }
-    (hermes_home / "auth.json").write_text(json.dumps(auth_store))
+    (hermes_home / "auth.json").write_text(orjson.dumps(auth_store).decode('utf-8'))
     monkeypatch.setenv("HERMES_HOME", str(hermes_home))
 
     resolved = resolve_codex_runtime_credentials()
@@ -186,7 +186,7 @@ def test_resolve_codex_runtime_credentials_pool_fallback_skips_exhausted(tmp_pat
             ],
         },
     }
-    (hermes_home / "auth.json").write_text(json.dumps(auth_store))
+    (hermes_home / "auth.json").write_text(orjson.dumps(auth_store).decode('utf-8'))
     monkeypatch.setenv("HERMES_HOME", str(hermes_home))
 
     resolved = resolve_codex_runtime_credentials()
@@ -207,7 +207,7 @@ def test_resolve_codex_runtime_credentials_pool_fallback_no_usable_entry(tmp_pat
             ],
         },
     }
-    (hermes_home / "auth.json").write_text(json.dumps(auth_store))
+    (hermes_home / "auth.json").write_text(orjson.dumps(auth_store).decode('utf-8'))
     monkeypatch.setenv("HERMES_HOME", str(hermes_home))
 
     with pytest.raises(AuthError) as exc:
@@ -224,7 +224,7 @@ def test_resolve_provider_explicit_codex_does_not_fallback(monkeypatch):
 def test_save_codex_tokens_roundtrip(tmp_path, monkeypatch):
     hermes_home = tmp_path / "hermes"
     hermes_home.mkdir(parents=True, exist_ok=True)
-    (hermes_home / "auth.json").write_text(json.dumps({"version": 1, "providers": {}}))
+    (hermes_home / "auth.json").write_text(orjson.dumps({"version": 1, "providers": {}}).decode('utf-8'))
     monkeypatch.setenv("HERMES_HOME", str(hermes_home))
 
     _save_codex_tokens({"access_token": "at123", "refresh_token": "rt456"})
@@ -244,7 +244,7 @@ def test_save_codex_tokens_syncs_credential_pool(tmp_path, monkeypatch):
     """
     hermes_home = tmp_path / "hermes"
     hermes_home.mkdir(parents=True, exist_ok=True)
-    (hermes_home / "auth.json").write_text(json.dumps({
+    (hermes_home / "auth.json").write_text(orjson.dumps({
         "version": 1,
         "providers": {
             "openai-codex": {
@@ -275,13 +275,13 @@ def test_save_codex_tokens_syncs_credential_pool(tmp_path, monkeypatch):
                 },
             ],
         },
-    }))
+    }).decode('utf-8'))
     monkeypatch.setenv("HERMES_HOME", str(hermes_home))
 
     _save_codex_tokens({"access_token": "new-at", "refresh_token": "new-rt"},
                        last_refresh="2026-05-27T00:00:00Z")
 
-    auth = json.loads((hermes_home / "auth.json").read_text())
+    auth = orjson.loads((hermes_home / "auth.json").read_text())
     pool = auth["credential_pool"]["openai-codex"]
     seeded = next(e for e in pool if e["source"] == "device_code")
     assert seeded["access_token"] == "new-at"
@@ -322,7 +322,7 @@ def test_save_codex_tokens_syncs_manual_device_code_entries(tmp_path, monkeypatc
     """
     hermes_home = tmp_path / "hermes"
     hermes_home.mkdir(parents=True, exist_ok=True)
-    (hermes_home / "auth.json").write_text(json.dumps({
+    (hermes_home / "auth.json").write_text(orjson.dumps({
         "version": 1,
         "providers": {
             "openai-codex": {
@@ -372,13 +372,13 @@ def test_save_codex_tokens_syncs_manual_device_code_entries(tmp_path, monkeypatc
                 },
             ],
         },
-    }))
+    }).decode('utf-8'))
     monkeypatch.setenv("HERMES_HOME", str(hermes_home))
 
     _save_codex_tokens({"access_token": "fresh-at", "refresh_token": "fresh-rt"},
                        last_refresh="2026-05-28T00:00:00Z")
 
-    auth = json.loads((hermes_home / "auth.json").read_text())
+    auth = orjson.loads((hermes_home / "auth.json").read_text())
     pool = auth["credential_pool"]["openai-codex"]
 
     # Singleton-seeded device_code entry: refreshed and error markers cleared.
@@ -425,7 +425,7 @@ def test_save_codex_tokens_does_not_overwrite_independent_manual_entries(tmp_pat
     """
     hermes_home = tmp_path / "hermes"
     hermes_home.mkdir(parents=True, exist_ok=True)
-    (hermes_home / "auth.json").write_text(json.dumps({
+    (hermes_home / "auth.json").write_text(orjson.dumps({
         "version": 1,
         "providers": {
             "openai-codex": {
@@ -470,7 +470,7 @@ def test_save_codex_tokens_does_not_overwrite_independent_manual_entries(tmp_pat
                 },
             ],
         },
-    }))
+    }).decode('utf-8'))
     monkeypatch.setenv("HERMES_HOME", str(hermes_home))
 
     # User re-authenticates account A — fresh device-code login produces new
@@ -481,7 +481,7 @@ def test_save_codex_tokens_does_not_overwrite_independent_manual_entries(tmp_pat
         last_refresh="2026-06-05T00:00:00Z",
     )
 
-    auth = json.loads((hermes_home / "auth.json").read_text())
+    auth = orjson.loads((hermes_home / "auth.json").read_text())
     pool = auth["credential_pool"]["openai-codex"]
 
     # Singleton-seeded entry: refreshed (legitimate sync).
@@ -520,7 +520,7 @@ def test_save_codex_tokens_still_refreshes_legacy_manual_alias(tmp_path, monkeyp
     """
     hermes_home = tmp_path / "hermes"
     hermes_home.mkdir(parents=True, exist_ok=True)
-    (hermes_home / "auth.json").write_text(json.dumps({
+    (hermes_home / "auth.json").write_text(orjson.dumps({
         "version": 1,
         "providers": {
             "openai-codex": {
@@ -553,7 +553,7 @@ def test_save_codex_tokens_still_refreshes_legacy_manual_alias(tmp_path, monkeyp
                 },
             ],
         },
-    }))
+    }).decode('utf-8'))
     monkeypatch.setenv("HERMES_HOME", str(hermes_home))
 
     _save_codex_tokens(
@@ -561,7 +561,7 @@ def test_save_codex_tokens_still_refreshes_legacy_manual_alias(tmp_path, monkeyp
         last_refresh="2026-06-05T00:00:00Z",
     )
 
-    auth = json.loads((hermes_home / "auth.json").read_text())
+    auth = orjson.loads((hermes_home / "auth.json").read_text())
     pool = auth["credential_pool"]["openai-codex"]
 
     # Singleton: refreshed.
@@ -591,7 +591,7 @@ def test_save_codex_tokens_handles_missing_previous_singleton_tokens(tmp_path, m
     """
     hermes_home = tmp_path / "hermes"
     hermes_home.mkdir(parents=True, exist_ok=True)
-    (hermes_home / "auth.json").write_text(json.dumps({
+    (hermes_home / "auth.json").write_text(orjson.dumps({
         "version": 1,
         "providers": {},
         "credential_pool": {
@@ -606,7 +606,7 @@ def test_save_codex_tokens_handles_missing_previous_singleton_tokens(tmp_path, m
                 },
             ],
         },
-    }))
+    }).decode('utf-8'))
     monkeypatch.setenv("HERMES_HOME", str(hermes_home))
 
     _save_codex_tokens(
@@ -614,7 +614,7 @@ def test_save_codex_tokens_handles_missing_previous_singleton_tokens(tmp_path, m
         last_refresh="2026-06-05T00:00:00Z",
     )
 
-    auth = json.loads((hermes_home / "auth.json").read_text())
+    auth = orjson.loads((hermes_home / "auth.json").read_text())
     pool = auth["credential_pool"]["openai-codex"]
     # Pre-existing independent entry with no relationship to a (now-new)
     # singleton MUST be preserved.
@@ -633,7 +633,7 @@ def test_save_codex_tokens_alias_match_uses_access_token_only(tmp_path, monkeypa
     """
     hermes_home = tmp_path / "hermes"
     hermes_home.mkdir(parents=True, exist_ok=True)
-    (hermes_home / "auth.json").write_text(json.dumps({
+    (hermes_home / "auth.json").write_text(orjson.dumps({
         "version": 1,
         "providers": {
             "openai-codex": {
@@ -652,7 +652,7 @@ def test_save_codex_tokens_alias_match_uses_access_token_only(tmp_path, monkeypa
                 },
             ],
         },
-    }))
+    }).decode('utf-8'))
     monkeypatch.setenv("HERMES_HOME", str(hermes_home))
 
     _save_codex_tokens(
@@ -660,7 +660,7 @@ def test_save_codex_tokens_alias_match_uses_access_token_only(tmp_path, monkeypa
         last_refresh="2026-06-05T00:00:00Z",
     )
 
-    auth = json.loads((hermes_home / "auth.json").read_text())
+    auth = orjson.loads((hermes_home / "auth.json").read_text())
     pool = auth["credential_pool"]["openai-codex"]
     alias = next(e for e in pool if e["id"] == "alias-no-refresh")
     # Treated as alias → refreshed with new tokens.
@@ -676,7 +676,7 @@ def test_save_codex_tokens_clears_error_markers_only_on_refreshed_entries(tmp_pa
     """
     hermes_home = tmp_path / "hermes"
     hermes_home.mkdir(parents=True, exist_ok=True)
-    (hermes_home / "auth.json").write_text(json.dumps({
+    (hermes_home / "auth.json").write_text(orjson.dumps({
         "version": 1,
         "providers": {
             "openai-codex": {
@@ -707,7 +707,7 @@ def test_save_codex_tokens_clears_error_markers_only_on_refreshed_entries(tmp_pa
                 },
             ],
         },
-    }))
+    }).decode('utf-8'))
     monkeypatch.setenv("HERMES_HOME", str(hermes_home))
 
     _save_codex_tokens(
@@ -715,7 +715,7 @@ def test_save_codex_tokens_clears_error_markers_only_on_refreshed_entries(tmp_pa
         last_refresh="2026-06-05T00:00:00Z",
     )
 
-    auth = json.loads((hermes_home / "auth.json").read_text())
+    auth = orjson.loads((hermes_home / "auth.json").read_text())
     pool = auth["credential_pool"]["openai-codex"]
 
     # Singleton: refreshed AND error markers cleared.
@@ -736,9 +736,9 @@ def test_save_codex_tokens_clears_error_markers_only_on_refreshed_entries(tmp_pa
 def test_import_codex_cli_tokens(tmp_path, monkeypatch):
     codex_home = tmp_path / "codex-cli"
     codex_home.mkdir(parents=True, exist_ok=True)
-    (codex_home / "auth.json").write_text(json.dumps({
+    (codex_home / "auth.json").write_text(orjson.dumps({
         "tokens": {"access_token": "cli-at", "refresh_token": "cli-rt"},
-    }))
+    }).decode('utf-8'))
     monkeypatch.setenv("CODEX_HOME", str(codex_home))
 
     tokens = _import_codex_cli_tokens()
@@ -759,7 +759,7 @@ def test_codex_tokens_not_written_to_shared_file(tmp_path, monkeypatch):
     hermes_home.mkdir(parents=True, exist_ok=True)
     codex_home.mkdir(parents=True, exist_ok=True)
 
-    (hermes_home / "auth.json").write_text(json.dumps({"version": 1, "providers": {}}))
+    (hermes_home / "auth.json").write_text(orjson.dumps({"version": 1, "providers": {}}).decode('utf-8'))
     monkeypatch.setenv("HERMES_HOME", str(hermes_home))
     monkeypatch.setenv("CODEX_HOME", str(codex_home))
 
@@ -789,7 +789,7 @@ class _StubHTTPResponse:
         self.status_code = status_code
         self._payload = payload
         self.headers = headers or {}
-        self.text = json.dumps(payload) if isinstance(payload, (dict, list)) else str(payload)
+        self.text = orjson.dumps(payload).decode('utf-8') if isinstance(payload, (dict, list)) else str(payload)
 
     def json(self):
         if isinstance(self._payload, Exception):

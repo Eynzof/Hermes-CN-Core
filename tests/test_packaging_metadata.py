@@ -1,5 +1,5 @@
 import ast
-import re
+from agent.re_compat import re
 import tomllib
 from pathlib import Path
 

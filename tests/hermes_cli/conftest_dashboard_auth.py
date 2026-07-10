@@ -15,10 +15,10 @@ for ``verify_session`` to detect tampering and expiry.
 """
 from __future__ import annotations
 
-import base64
+import pybase64 as base64
 import hashlib
 import hmac
-import json
+import orjson
 import secrets
 import time
 
@@ -48,7 +48,7 @@ def _sign(payload: dict) -> str:
     appended as a fixed-length suffix (no separator) so binary HMAC bytes
     can't be confused with a delimiter.
     """
-    raw = json.dumps(payload, separators=(",", ":")).encode()
+    raw = orjson.dumps(payload)
     sig = hmac.new(_STUB_SECRET, raw, hashlib.sha256).digest()
     return base64.urlsafe_b64encode(raw + sig).decode()
 
@@ -63,7 +63,7 @@ def _unsign(token: str) -> dict | None:
         expected = hmac.new(_STUB_SECRET, raw, hashlib.sha256).digest()
         if not hmac.compare_digest(sig, expected):
             return None
-        return json.loads(raw)
+        return orjson.loads(raw)
     except Exception:
         return None
 

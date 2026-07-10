@@ -6,13 +6,13 @@ The quiz question *generation* is done by the agent's LLM — this script only f
 """
 
 import argparse
-import json
-import re
+import orjson
+from agent.re_compat import re
 import sys
 
 
 def _out(obj: object) -> None:
-    json.dump(obj, sys.stdout, indent=2, ensure_ascii=False)
+    sys.stdout.write(orjson.dumps(obj, option=orjson.OPT_INDENT_2).decode('utf-8'))
     sys.stdout.write("\n")
 
 

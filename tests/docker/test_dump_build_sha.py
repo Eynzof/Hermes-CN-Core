@@ -21,8 +21,7 @@ This test handles both cases:
   reporting bogus data from somewhere else.
 """
 from __future__ import annotations
-
-import re
+from agent.re_compat import re
 import subprocess
 
 

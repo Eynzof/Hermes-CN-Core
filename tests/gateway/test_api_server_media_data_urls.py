@@ -5,7 +5,7 @@ Remote OpenAI-compatible frontends can't read local file paths, so
 data URLs before crossing the HTTP boundary.
 """
 
-import base64
+import pybase64 as base64
 import unittest
 
 import pytest

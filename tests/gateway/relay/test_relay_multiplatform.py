@@ -14,7 +14,7 @@ The connector HTTP is monkeypatched; the cross-repo E2E exercises the real path.
 
 from __future__ import annotations
 
-import json
+import orjson
 
 import pytest
 
@@ -47,7 +47,7 @@ def test_identities_default_relay_when_unconfigured():
 
 def test_identities_single_platform(monkeypatch):
     monkeypatch.setenv("GATEWAY_RELAY_PLATFORMS", "discord")
-    monkeypatch.setenv("GATEWAY_RELAY_BOT_IDS", json.dumps({"discord": {"botId": "app-1"}}))
+    monkeypatch.setenv("GATEWAY_RELAY_BOT_IDS", orjson.dumps({"discord": {"botId": "app-1"}}).decode('utf-8'))
     assert relay.relay_platform_identities() == [("discord", "app-1")]
     assert relay.relay_platform_identity() == ("discord", "app-1")
 
@@ -56,12 +56,10 @@ def test_identities_multi_platform_keyed_map(monkeypatch):
     monkeypatch.setenv("GATEWAY_RELAY_PLATFORMS", "discord, telegram")
     monkeypatch.setenv(
         "GATEWAY_RELAY_BOT_IDS",
-        json.dumps(
-            {
+        orjson.dumps({
                 "discord": {"botId": "app-1"},
                 "telegram": {"botId": "bot-9", "username": "@my_bot"},
-            }
-        ),
+            }).decode('utf-8'),
     )
     # Order preserved; whitespace in the list trimmed.
     assert relay.relay_platform_identities() == [("discord", "app-1"), ("telegram", "bot-9")]
@@ -74,7 +72,7 @@ def test_identities_multi_platform_keyed_map(monkeypatch):
 
 def test_identities_platform_missing_from_map_gets_empty_bot_id(monkeypatch):
     monkeypatch.setenv("GATEWAY_RELAY_PLATFORMS", "discord,telegram")
-    monkeypatch.setenv("GATEWAY_RELAY_BOT_IDS", json.dumps({"discord": {"botId": "app-1"}}))
+    monkeypatch.setenv("GATEWAY_RELAY_BOT_IDS", orjson.dumps({"discord": {"botId": "app-1"}}).decode('utf-8'))
     # telegram is listed but absent from the ids map ⇒ empty bot_id (the
     # connector rejects an unprovisioned platform with a structured failure).
     assert relay.relay_platform_identities() == [("discord", "app-1"), ("telegram", "")]
@@ -99,7 +97,7 @@ def test_self_provision_loops_per_platform(monkeypatch):
     monkeypatch.setenv("GATEWAY_RELAY_PLATFORMS", "discord,telegram")
     monkeypatch.setenv(
         "GATEWAY_RELAY_BOT_IDS",
-        json.dumps({"discord": {"botId": "app-1"}, "telegram": {"botId": "bot-9"}}),
+        orjson.dumps({"discord": {"botId": "app-1"}, "telegram": {"botId": "bot-9"}}).decode('utf-8'),
     )
     calls = []
 
@@ -123,7 +121,7 @@ def test_self_provision_partial_failure_tolerant(monkeypatch):
     monkeypatch.setenv("GATEWAY_RELAY_PLATFORMS", "discord,telegram")
     monkeypatch.setenv(
         "GATEWAY_RELAY_BOT_IDS",
-        json.dumps({"discord": {"botId": "app-1"}, "telegram": {"botId": "bot-9"}}),
+        orjson.dumps({"discord": {"botId": "app-1"}, "telegram": {"botId": "bot-9"}}).decode('utf-8'),
     )
 
     def _fake(**kwargs):

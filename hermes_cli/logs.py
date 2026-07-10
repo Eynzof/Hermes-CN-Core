@@ -18,8 +18,7 @@ Usage examples::
     hermes logs --since 1h         # lines from the last hour
     hermes logs --since 30m -f     # follow, starting 30 min ago
 """
-
-import re
+from agent.re_compat import re
 import sys
 import time
 from datetime import datetime, timedelta

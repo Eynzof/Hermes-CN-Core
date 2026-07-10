@@ -309,13 +309,13 @@ class TestUpdateContextFrom:
     def test_update_adds_context_from_to_existing_job(self, cron_env):
         from cron.jobs import create_job, get_job
         from tools.cronjob_tools import cronjob
-        import json
+        import orjson
 
         job_a = create_job(prompt="Find news", schedule="every 1h")
         job_b = create_job(prompt="Summarize", schedule="every 2h")
         assert job_b.get("context_from") is None
 
-        result = json.loads(cronjob(
+        result = orjson.loads(cronjob(
             action="update",
             job_id=job_b["id"],
             context_from=job_a["id"],
@@ -328,7 +328,7 @@ class TestUpdateContextFrom:
     def test_update_changes_context_from_reference(self, cron_env):
         from cron.jobs import create_job, get_job
         from tools.cronjob_tools import cronjob
-        import json
+        import orjson
 
         job_a = create_job(prompt="Find news", schedule="every 1h")
         job_a2 = create_job(prompt="Find weather", schedule="every 1h")
@@ -337,7 +337,7 @@ class TestUpdateContextFrom:
         )
         assert job_b["context_from"] == [job_a["id"]]
 
-        result = json.loads(cronjob(
+        result = orjson.loads(cronjob(
             action="update",
             job_id=job_b["id"],
             context_from=[job_a2["id"]],
@@ -348,7 +348,7 @@ class TestUpdateContextFrom:
     def test_update_clears_context_from_with_empty_list(self, cron_env):
         from cron.jobs import create_job, get_job
         from tools.cronjob_tools import cronjob
-        import json
+        import orjson
 
         job_a = create_job(prompt="Find news", schedule="every 1h")
         job_b = create_job(
@@ -356,7 +356,7 @@ class TestUpdateContextFrom:
         )
         assert get_job(job_b["id"])["context_from"] == [job_a["id"]]
 
-        result = json.loads(cronjob(
+        result = orjson.loads(cronjob(
             action="update",
             job_id=job_b["id"],
             context_from=[],
@@ -367,14 +367,14 @@ class TestUpdateContextFrom:
     def test_update_clears_context_from_with_empty_string(self, cron_env):
         from cron.jobs import create_job, get_job
         from tools.cronjob_tools import cronjob
-        import json
+        import orjson
 
         job_a = create_job(prompt="Find news", schedule="every 1h")
         job_b = create_job(
             prompt="Summarize", schedule="every 2h", context_from=job_a["id"],
         )
 
-        result = json.loads(cronjob(
+        result = orjson.loads(cronjob(
             action="update",
             job_id=job_b["id"],
             context_from="",
@@ -385,11 +385,11 @@ class TestUpdateContextFrom:
     def test_update_rejects_unknown_job_reference(self, cron_env):
         from cron.jobs import create_job
         from tools.cronjob_tools import cronjob
-        import json
+        import orjson
 
         job_b = create_job(prompt="Summarize", schedule="every 2h")
 
-        result = json.loads(cronjob(
+        result = orjson.loads(cronjob(
             action="update",
             job_id=job_b["id"],
             context_from=["deadbeef0000"],
@@ -401,7 +401,7 @@ class TestUpdateContextFrom:
         """Updating other fields must not clobber context_from."""
         from cron.jobs import create_job, get_job
         from tools.cronjob_tools import cronjob
-        import json
+        import orjson
 
         job_a = create_job(prompt="Find news", schedule="every 1h")
         job_b = create_job(
@@ -409,7 +409,7 @@ class TestUpdateContextFrom:
         )
 
         # Update an unrelated field
-        result = json.loads(cronjob(
+        result = orjson.loads(cronjob(
             action="update",
             job_id=job_b["id"],
             prompt="Summarize v2",

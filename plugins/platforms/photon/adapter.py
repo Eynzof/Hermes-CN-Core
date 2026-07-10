@@ -24,11 +24,11 @@ Outbound:
 from __future__ import annotations
 
 import asyncio
-import base64
-import json
+import pybase64 as base64
+import orjson
 import logging
 import os
-import re
+from agent.re_compat import re
 import secrets
 import shutil
 import signal
@@ -288,7 +288,7 @@ class PhotonAdapter(BasePlatformAdapter):
         elif isinstance(raw, str):
             text = raw.strip()
             try:
-                loaded = json.loads(text) if text else []
+                loaded = orjson.loads(text) if text else []
             except Exception:
                 loaded = None
             patterns = loaded if isinstance(loaded, list) else [
@@ -505,8 +505,8 @@ class PhotonAdapter(BasePlatformAdapter):
 
     async def _on_inbound_line(self, line: str) -> None:
         try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
+            event = orjson.loads(line)
+        except orjson.JSONDecodeError:
             logger.debug("[photon] skipping non-JSON inbound line")
             return
         msg_id = event.get("messageId")

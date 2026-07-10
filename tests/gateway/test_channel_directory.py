@@ -1,7 +1,7 @@
 """Tests for gateway/channel_directory.py — channel resolution and display."""
 
 import asyncio
-import json
+import orjson
 import os
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -36,7 +36,7 @@ def _write_directory(tmp_path, platforms):
     """Helper to write a fake channel directory."""
     data = {"updated_at": "2026-01-01T00:00:00", "platforms": platforms}
     cache_file = tmp_path / "channel_directory.json"
-    cache_file.write_text(json.dumps(data))
+    cache_file.write_text(orjson.dumps(data).decode('utf-8'))
     return cache_file
 
 
@@ -68,7 +68,7 @@ class TestBuildChannelDirectoryWrites:
         cache_file = _write_directory(tmp_path, {
             "telegram": [{"id": "123", "name": "Alice", "type": "dm"}]
         })
-        previous = json.loads(cache_file.read_text())
+        previous = orjson.loads(cache_file.read_text())
 
         def broken_dump(data, fp, *args, **kwargs):
             fp.write('{"updated_at":')
@@ -192,7 +192,7 @@ class TestBuildFromSessions:
         """Write sessions.json at the path _build_from_sessions expects."""
         sessions_path = tmp_path / "sessions" / "sessions.json"
         sessions_path.parent.mkdir(parents=True)
-        sessions_path.write_text(json.dumps(sessions_data))
+        sessions_path.write_text(orjson.dumps(sessions_data).decode('utf-8'))
 
     def test_builds_from_sessions_json(self, tmp_path):
         self._write_sessions(tmp_path, {
@@ -383,9 +383,9 @@ class TestBuildSlack:
     def test_no_team_clients_falls_back_to_sessions(self, tmp_path):
         sessions_path = tmp_path / "sessions" / "sessions.json"
         sessions_path.parent.mkdir(parents=True)
-        sessions_path.write_text(json.dumps({
+        sessions_path.write_text(orjson.dumps({
             "s1": {"origin": {"platform": "slack", "chat_id": "D123", "chat_name": "Alice"}},
-        }))
+        }).decode('utf-8'))
 
         with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
             entries = asyncio.run(_build_slack(_make_slack_adapter({})))
@@ -451,10 +451,10 @@ class TestBuildSlack:
     def test_session_dms_merged_when_not_in_api_results(self, tmp_path):
         sessions_path = tmp_path / "sessions" / "sessions.json"
         sessions_path.parent.mkdir(parents=True)
-        sessions_path.write_text(json.dumps({
+        sessions_path.write_text(orjson.dumps({
             "s1": {"origin": {"platform": "slack", "chat_id": "D456", "chat_name": "Bob"}},
             "dup": {"origin": {"platform": "slack", "chat_id": "C001", "chat_name": "first"}},
-        }))
+        }).decode('utf-8'))
         client = _make_slack_client([
             {
                 "ok": True,
@@ -503,7 +503,7 @@ class TestChannelAliases:
 
     def _setup_aliases(self, tmp_path, aliases):
         alias_file = tmp_path / "channel_aliases.json"
-        alias_file.write_text(json.dumps(aliases))
+        alias_file.write_text(orjson.dumps(aliases).decode('utf-8'))
         return patch("gateway.channel_directory.CHANNEL_ALIASES_PATH", alias_file)
 
     def test_alias_renames_existing_entry_on_load(self, tmp_path):
@@ -560,7 +560,7 @@ class TestChannelAliases:
         with patch("gateway.channel_directory.DIRECTORY_PATH", cache_file), \
              self._setup_aliases(tmp_path, {"whatsapp": {"120363@g.us": "general"}}):
             asyncio.run(build_channel_directory({}))
-            on_disk = json.loads(cache_file.read_text())
+            on_disk = orjson.loads(cache_file.read_text())
         names = [e["name"] for e in on_disk["platforms"]["whatsapp"]
                  if e["id"] == "120363@g.us"]
         assert names == ["general"]

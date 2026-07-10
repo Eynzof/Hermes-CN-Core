@@ -11,7 +11,7 @@ _repair_tool_call_arguments() so repairable malformations (trailing commas,
 unclosed brackets, Python None) don't kill the session.
 """
 
-import json
+import orjson
 
 from run_agent import _repair_tool_call_arguments
 
@@ -31,7 +31,7 @@ class TestStreamingAssemblyRepair:
         """Model stops mid-JSON, common with output length limits."""
         raw = '{"command": "ls -la", "timeout": 30'
         result = _repair_tool_call_arguments(raw, "terminal")
-        parsed = json.loads(result)
+        parsed = orjson.loads(result)
         assert parsed["command"] == "ls -la"
         assert parsed["timeout"] == 30
 
@@ -39,7 +39,7 @@ class TestStreamingAssemblyRepair:
         """Model truncates inside a nested structure."""
         raw = '{"path": "/tmp/foo", "content": "hello"'
         result = _repair_tool_call_arguments(raw, "write_file")
-        parsed = json.loads(result)
+        parsed = orjson.loads(result)
         assert parsed["path"] == "/tmp/foo"
 
     def test_truncated_mid_value(self):
@@ -47,19 +47,19 @@ class TestStreamingAssemblyRepair:
         raw = '{"command": "git clone ht'
         result = _repair_tool_call_arguments(raw, "terminal")
         # Should produce valid JSON (even if command value is lost)
-        json.loads(result)
+        orjson.loads(result)
 
     # -- Trailing comma cases (Ollama/GLM common) --
 
     def test_trailing_comma_before_close_brace(self):
         raw = '{"path": "/tmp", "content": "x",}'
         result = _repair_tool_call_arguments(raw, "write_file")
-        assert json.loads(result) == {"path": "/tmp", "content": "x"}
+        assert orjson.loads(result) == {"path": "/tmp", "content": "x"}
 
     def test_trailing_comma_in_list(self):
         raw = '{"items": [1, 2, 3,]}'
         result = _repair_tool_call_arguments(raw, "test")
-        assert json.loads(result) == {"items": [1, 2, 3]}
+        assert orjson.loads(result) == {"items": [1, 2, 3]}
 
     # -- Python None from model output --
 
@@ -81,14 +81,14 @@ class TestStreamingAssemblyRepair:
     def test_valid_json_passthrough(self):
         raw = '{"path": "/tmp/foo", "content": "hello"}'
         result = _repair_tool_call_arguments(raw, "write_file")
-        assert json.loads(result) == {"path": "/tmp/foo", "content": "hello"}
+        assert orjson.loads(result) == {"path": "/tmp/foo", "content": "hello"}
 
     # -- Extra closing brackets (rare but happens) --
 
     def test_extra_closing_brace(self):
         raw = '{"key": "value"}}'
         result = _repair_tool_call_arguments(raw, "test")
-        assert json.loads(result) == {"key": "value"}
+        assert orjson.loads(result) == {"key": "value"}
 
     # -- Real-world GLM-5.1 truncation pattern --
 
@@ -103,13 +103,13 @@ class TestStreamingAssemblyRepair:
         raw = '{"command": "ls -la /tmp", "timeout": 30, "background":'
         result = _repair_tool_call_arguments(raw, "terminal")
         # Unrepairable — returns empty object (hanging colon can't be fixed)
-        parsed = json.loads(result)
+        parsed = orjson.loads(result)
         assert parsed == {}
 
     def test_glm_truncation_repairable(self):
         """GLM-5.1 truncation pattern that IS repairable."""
         raw = '{"command": "ls -la /tmp", "timeout": 30'
         result = _repair_tool_call_arguments(raw, "terminal")
-        parsed = json.loads(result)
+        parsed = orjson.loads(result)
         assert parsed["command"] == "ls -la /tmp"
         assert parsed["timeout"] == 30

@@ -11,10 +11,10 @@ from __future__ import annotations
 from hermes_constants import get_hermes_home
 
 import copy
-import json
+import orjson
 import logging
 import os
-import re
+from agent.re_compat import re
 import sys
 import time
 import uuid
@@ -337,8 +337,8 @@ class SessionManager:
             mc = row.get("model_config")
             if mc:
                 try:
-                    session_cwd = json.loads(mc).get("cwd", ".")
-                except (json.JSONDecodeError, TypeError):
+                    session_cwd = orjson.loads(mc).get("cwd", ".")
+                except (orjson.JSONDecodeError, TypeError):
                     pass
             if normalized_cwd and _normalize_cwd_for_compare(session_cwd) != normalized_cwd:
                 continue
@@ -442,7 +442,7 @@ class SessionManager:
             session_meta["base_url"] = base_url.strip()
         if isinstance(api_mode, str) and api_mode.strip():
             session_meta["api_mode"] = api_mode.strip()
-        cwd_json = json.dumps(session_meta)
+        cwd_json = orjson.dumps(session_meta).decode('utf-8')
 
         try:
             # Ensure the session record exists.
@@ -534,13 +534,13 @@ class SessionManager:
         mc = row.get("model_config")
         if mc:
             try:
-                meta = json.loads(mc)
+                meta = orjson.loads(mc)
                 if isinstance(meta, dict):
                     cwd = meta.get("cwd", ".")
                     requested_provider = meta.get("provider") or requested_provider
                     restored_base_url = meta.get("base_url") or restored_base_url
                     restored_api_mode = meta.get("api_mode") or restored_api_mode
-            except (json.JSONDecodeError, TypeError):
+            except (orjson.JSONDecodeError, TypeError):
                 pass
 
         model = row.get("model") or None

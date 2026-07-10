@@ -12,8 +12,8 @@ connector->gateway handlers on the transport).
 
 from __future__ import annotations
 
-import base64
-import json
+import pybase64 as base64
+import orjson
 
 import pytest
 
@@ -45,7 +45,7 @@ def adapter():
 
 
 def _interaction_forward(payload: dict) -> PassthroughForward:
-    body = json.dumps(payload).encode("utf-8")
+    body = orjson.dumps(payload)
     return PassthroughForward(
         platform="discord",
         bot_id="appShared",
@@ -59,7 +59,7 @@ def _interaction_forward(payload: dict) -> PassthroughForward:
 def test_passthrough_from_wire_byte_preserves_body():
     """The wire frame's base64 body decodes back to the exact bytes (parity with
     the connector's toPassthroughForward)."""
-    original = json.dumps({"type": 2, "data": {"name": "ping"}, "guild_id": "g1"}).encode("utf-8")
+    original = orjson.dumps({"type": 2, "data": {"name": "ping"}, "guild_id": "g1"})
     wire = {
         "platform": "discord",
         "botId": "appShared",

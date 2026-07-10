@@ -11,7 +11,7 @@ The fix replaces asyncio.run() with a persistent event loop in _run_async().
 """
 
 import asyncio
-import json
+import orjson
 import threading
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -386,7 +386,7 @@ class TestVisionDispatchLoopSafety:
                 {"image_url": "https://example.com/cat.png", "question": "What is this?"},
             )
 
-        result = json.loads(result_json)
+        result = orjson.loads(result_json)
         assert result.get("success") is True, f"dispatch failed: {result}"
         assert "cat" in result.get("analysis", "").lower()
 
@@ -428,10 +428,10 @@ class TestVisionDispatchLoopSafety:
         ):
             args = {"image_url": "https://example.com/cat.png", "question": "Describe"}
 
-            r1 = json.loads(registry.dispatch("vision_analyze", args))
+            r1 = orjson.loads(registry.dispatch("vision_analyze", args))
             loop_after_first = _get_tool_loop()
 
-            r2 = json.loads(registry.dispatch("vision_analyze", args))
+            r2 = orjson.loads(registry.dispatch("vision_analyze", args))
             loop_after_second = _get_tool_loop()
 
         assert r1.get("success") is True

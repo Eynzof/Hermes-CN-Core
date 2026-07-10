@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import importlib
-import json
+import orjson
 import os
 import sys
 import tarfile
@@ -52,7 +52,7 @@ def test_snapshot_creates_tarball_and_manifest(backup_env):
     snap = cb.snapshot_skills(reason="test")
     assert snap is not None, "snapshot should succeed with a populated skills dir"
     assert (snap / "skills.tar.gz").exists()
-    manifest = json.loads((snap / "manifest.json").read_text())
+    manifest = orjson.loads((snap / "manifest.json").read_text())
     assert manifest["reason"] == "test"
     assert manifest["skill_files"] == 2
     assert manifest["archive_bytes"] > 0
@@ -329,7 +329,7 @@ def _write_cron_jobs(home: Path, jobs: list) -> Path:
     cron_dir.mkdir(parents=True, exist_ok=True)
     path = cron_dir / "jobs.json"
     path.write_text(
-        json.dumps({"jobs": jobs, "updated_at": "2026-05-01T00:00:00Z"}, indent=2),
+        orjson.dumps({"jobs": jobs, "updated_at": "2026-05-01T00:00:00Z"}, option=orjson.OPT_INDENT_2).decode('utf-8'),
         encoding="utf-8",
     )
     return path
@@ -361,7 +361,7 @@ def test_snapshot_includes_cron_jobs(backup_env):
     assert snap is not None
     assert (snap / cb.CRON_JOBS_FILENAME).exists()
 
-    mf = json.loads((snap / "manifest.json").read_text(encoding="utf-8"))
+    mf = orjson.loads((snap / "manifest.json").read_text(encoding="utf-8"))
     assert mf["cron_jobs"]["backed_up"] is True
     assert mf["cron_jobs"]["jobs_count"] == 2
 
@@ -376,7 +376,7 @@ def test_snapshot_without_cron_jobs_file_still_succeeds(backup_env):
     assert snap is not None
     assert not (snap / cb.CRON_JOBS_FILENAME).exists()
 
-    mf = json.loads((snap / "manifest.json").read_text(encoding="utf-8"))
+    mf = orjson.loads((snap / "manifest.json").read_text(encoding="utf-8"))
     assert mf["cron_jobs"]["backed_up"] is False
     assert "cron/jobs.json" in mf["cron_jobs"]["reason"]
 
@@ -394,7 +394,7 @@ def test_snapshot_cron_jobs_malformed_json_still_captured(backup_env):
     # Raw file was copied even though we couldn't parse it
     assert (snap / cb.CRON_JOBS_FILENAME).read_text() == "{oh no"
 
-    mf = json.loads((snap / "manifest.json").read_text(encoding="utf-8"))
+    mf = orjson.loads((snap / "manifest.json").read_text(encoding="utf-8"))
     assert mf["cron_jobs"]["backed_up"] is True
     assert mf["cron_jobs"]["jobs_count"] == 0
     assert "parse_warning" in mf["cron_jobs"]
@@ -569,11 +569,11 @@ def test_restore_cron_skill_links_standalone(backup_env):
     # Prime a snapshot dir manually with cron-jobs.json
     backups_dir = home / "skills" / ".curator_backups" / "fake-id"
     backups_dir.mkdir(parents=True)
-    (backups_dir / cb.CRON_JOBS_FILENAME).write_text(json.dumps([
+    (backups_dir / cb.CRON_JOBS_FILENAME).write_text(orjson.dumps([
         {"id": "job-1", "name": "one", "skills": ["narrow-a", "narrow-b"]},
         {"id": "job-2", "name": "two", "skill": "legacy-single"},
         {"id": "job-gone", "name": "deleted", "skills": ["whatever"]},
-    ]), encoding="utf-8")
+    ]).decode('utf-8'), encoding="utf-8")
 
     # Live jobs: job-1 got rewritten, job-2 unchanged, job-gone deleted
     _write_cron_jobs(home, [

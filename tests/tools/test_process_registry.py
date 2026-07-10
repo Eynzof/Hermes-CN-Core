@@ -1,6 +1,6 @@
 """Tests for tools/process_registry.py — ProcessRegistry query methods, pruning, checkpoint."""
 
-import json
+import orjson
 import os
 import signal
 import subprocess
@@ -174,7 +174,7 @@ def test_close_terminal_tool_requires_process_id():
     """The desktop-gated close_terminal tool rejects a missing process_id."""
     from tools.close_terminal_tool import close_terminal_tool
 
-    assert json.loads(close_terminal_tool(""))["error"]
+    assert orjson.loads(close_terminal_tool(""))["error"]
 
 
 def test_close_terminal_tool_routes_to_registry(monkeypatch):
@@ -192,7 +192,7 @@ def test_close_terminal_tool_routes_to_registry(monkeypatch):
 
     out = ct.close_terminal_tool("proc_abc")
 
-    assert json.loads(out)["closed"] == "proc_abc"
+    assert orjson.loads(out)["closed"] == "proc_abc"
     assert seen["sid"] == "proc_abc"
 
 
@@ -946,7 +946,7 @@ class TestCheckpoint:
             registry._running[s.id] = s
             registry._write_checkpoint()
 
-            data = json.loads((tmp_path / "procs.json").read_text())
+            data = orjson.loads((tmp_path / "procs.json").read_text())
             assert len(data) == 1
             assert data[0]["session_id"] == s.id
 
@@ -956,12 +956,12 @@ class TestCheckpoint:
 
     def test_recover_dead_pid(self, registry, tmp_path):
         checkpoint = tmp_path / "procs.json"
-        checkpoint.write_text(json.dumps([{
+        checkpoint.write_text(orjson.dumps([{
             "session_id": "proc_dead",
             "command": "sleep 999",
             "pid": 999999999,  # almost certainly not running
             "task_id": "t1",
-        }]))
+        }]).decode('utf-8'))
         with patch("tools.process_registry.CHECKPOINT_PATH", checkpoint):
             recovered = registry.recover_from_checkpoint()
             assert recovered == 0
@@ -978,7 +978,7 @@ class TestCheckpoint:
             registry._running[s.id] = s
             registry._write_checkpoint()
 
-            data = json.loads((tmp_path / "procs.json").read_text())
+            data = orjson.loads((tmp_path / "procs.json").read_text())
             assert len(data) == 1
             assert data[0]["watcher_platform"] == "telegram"
             assert data[0]["watcher_chat_id"] == "999"
@@ -989,7 +989,7 @@ class TestCheckpoint:
 
     def test_recover_enqueues_watchers(self, registry, tmp_path):
         checkpoint = tmp_path / "procs.json"
-        checkpoint.write_text(json.dumps([{
+        checkpoint.write_text(orjson.dumps([{
             "session_id": "proc_live",
             "command": "sleep 999",
             "pid": os.getpid(),  # current process — guaranteed alive
@@ -1001,7 +1001,7 @@ class TestCheckpoint:
             "watcher_user_name": "alice",
             "watcher_thread_id": "42",
             "watcher_interval": 60,
-        }]))
+        }]).decode('utf-8'))
         with patch("tools.process_registry.CHECKPOINT_PATH", checkpoint):
             recovered = registry.recover_from_checkpoint()
             assert recovered == 1
@@ -1017,13 +1017,13 @@ class TestCheckpoint:
 
     def test_recover_skips_watcher_when_no_interval(self, registry, tmp_path):
         checkpoint = tmp_path / "procs.json"
-        checkpoint.write_text(json.dumps([{
+        checkpoint.write_text(orjson.dumps([{
             "session_id": "proc_live",
             "command": "sleep 999",
             "pid": os.getpid(),
             "task_id": "t1",
             "watcher_interval": 0,
-        }]))
+        }]).decode('utf-8'))
         with patch("tools.process_registry.CHECKPOINT_PATH", checkpoint):
             recovered = registry.recover_from_checkpoint()
             assert recovered == 1
@@ -1031,20 +1031,20 @@ class TestCheckpoint:
 
     def test_recovery_keeps_live_checkpoint_entries(self, registry, tmp_path):
         checkpoint = tmp_path / "procs.json"
-        checkpoint.write_text(json.dumps([{
+        checkpoint.write_text(orjson.dumps([{
             "session_id": "proc_live",
             "command": "sleep 999",
             "pid": os.getpid(),
             "task_id": "t1",
             "session_key": "sk1",
-        }]))
+        }]).decode('utf-8'))
 
         with patch("tools.process_registry.CHECKPOINT_PATH", checkpoint):
             recovered = registry.recover_from_checkpoint()
             assert recovered == 1
             assert registry.get("proc_live") is not None
 
-            data = json.loads(checkpoint.read_text())
+            data = orjson.loads(checkpoint.read_text())
             assert len(data) == 1
             assert data[0]["session_id"] == "proc_live"
             assert data[0]["pid"] == os.getpid()
@@ -1059,26 +1059,26 @@ class TestCheckpoint:
             "task_id": "t1",
             "pid_scope": "sandbox",
         }]
-        checkpoint.write_text(json.dumps(original))
+        checkpoint.write_text(orjson.dumps(original).decode('utf-8'))
 
         with patch("tools.process_registry.CHECKPOINT_PATH", checkpoint):
             recovered = registry.recover_from_checkpoint()
             assert recovered == 0
             assert registry.get("proc_remote") is None
 
-            data = json.loads(checkpoint.read_text())
+            data = orjson.loads(checkpoint.read_text())
             assert data == []
 
     def test_detached_recovered_process_eventually_exits(self, registry, tmp_path):
         proc = _spawn_python_sleep(0.4)
         checkpoint = tmp_path / "procs.json"
-        checkpoint.write_text(json.dumps([{
+        checkpoint.write_text(orjson.dumps([{
             "session_id": "proc_live",
             "command": "python -c 'import time; time.sleep(0.4)'",
             "pid": proc.pid,
             "task_id": "t1",
             "session_key": "sk1",
-        }]))
+        }]).decode('utf-8'))
 
         try:
             with patch("tools.process_registry.CHECKPOINT_PATH", checkpoint):
@@ -1178,17 +1178,17 @@ class TestKillProcess:
 class TestProcessToolHandler:
     def test_list_action(self):
         from tools.process_registry import _handle_process
-        result = json.loads(_handle_process({"action": "list"}))
+        result = orjson.loads(_handle_process({"action": "list"}))
         assert "processes" in result
 
     def test_poll_missing_session_id(self):
         from tools.process_registry import _handle_process
-        result = json.loads(_handle_process({"action": "poll"}))
+        result = orjson.loads(_handle_process({"action": "poll"}))
         assert "error" in result
 
     def test_unknown_action(self):
         from tools.process_registry import _handle_process
-        result = json.loads(_handle_process({"action": "unknown_action"}))
+        result = orjson.loads(_handle_process({"action": "unknown_action"}))
         assert "error" in result
 
 
@@ -1578,14 +1578,14 @@ class TestPidReuseGuard:
         """Checkpoint PID is alive but its start time changed → not adopted."""
         wrong_start = (ProcessRegistry._safe_host_start_time(os.getpid()) or 0) + 999
         checkpoint = tmp_path / "procs.json"
-        checkpoint.write_text(json.dumps([{
+        checkpoint.write_text(orjson.dumps([{
             "session_id": "proc_recycled",
             "command": "sleep 999",
             "pid": os.getpid(),            # alive...
             "pid_scope": "host",
             "host_start_time": wrong_start,  # ...but a different process now
             "task_id": "t1",
-        }]))
+        }]).decode('utf-8'))
         with patch("tools.process_registry.CHECKPOINT_PATH", checkpoint):
             assert registry.recover_from_checkpoint() == 0
             assert len(registry._running) == 0
@@ -1594,27 +1594,27 @@ class TestPidReuseGuard:
         """Checkpoint PID alive AND start time matches → adopted as before."""
         real_start = ProcessRegistry._safe_host_start_time(os.getpid())
         checkpoint = tmp_path / "procs.json"
-        checkpoint.write_text(json.dumps([{
+        checkpoint.write_text(orjson.dumps([{
             "session_id": "proc_match",
             "command": "sleep 999",
             "pid": os.getpid(),
             "pid_scope": "host",
             "host_start_time": real_start,
             "task_id": "t1",
-        }]))
+        }]).decode('utf-8'))
         with patch("tools.process_registry.CHECKPOINT_PATH", checkpoint):
             assert registry.recover_from_checkpoint() == 1
 
     def test_legacy_checkpoint_without_start_time_still_recovers(self, registry, tmp_path):
         """Entries written before host_start_time existed degrade to liveness."""
         checkpoint = tmp_path / "procs.json"
-        checkpoint.write_text(json.dumps([{
+        checkpoint.write_text(orjson.dumps([{
             "session_id": "proc_legacy",
             "command": "sleep 999",
             "pid": os.getpid(),
             "pid_scope": "host",
             "task_id": "t1",
-        }]))
+        }]).decode('utf-8'))
         with patch("tools.process_registry.CHECKPOINT_PATH", checkpoint):
             assert registry.recover_from_checkpoint() == 1
 
@@ -1626,7 +1626,7 @@ class TestPidReuseGuard:
             s.pid_scope = "host"
             registry._running[s.id] = s
             registry._write_checkpoint()
-            data = json.loads((tmp_path / "procs.json").read_text())
+            data = orjson.loads((tmp_path / "procs.json").read_text())
             assert data[0]["host_start_time"] is not None
 
     def test_refresh_detached_marks_recycled_pid_exited(self, registry):
@@ -1829,7 +1829,7 @@ class TestHandleProcessRedaction:
             monkeypatch, "printenv",
             "MY_SERVICE_TOKEN=abc123randomopaquetokenvalue999\nHOME=/home/u",
         )
-        out = json.loads(pr._handle_process({"action": "log", "session_id": sess.id}))
+        out = orjson.loads(pr._handle_process({"action": "log", "session_id": sess.id}))
         assert "abc123randomopaquetokenvalue999" not in out["output"]
         assert "HOME=/home/u" in out["output"]
 
@@ -1838,7 +1838,7 @@ class TestHandleProcessRedaction:
             monkeypatch, "python app.py",
             "leaked OPENAI_API_KEY sk-proj-abc123def456ghi789jkl012 here",
         )
-        out = json.loads(pr._handle_process({"action": "poll", "session_id": sess.id}))
+        out = orjson.loads(pr._handle_process({"action": "poll", "session_id": sess.id}))
         assert "abc123def456" not in out["output_preview"]
 
     def test_disabled_passes_through(self, monkeypatch):
@@ -1852,5 +1852,5 @@ class TestHandleProcessRedaction:
         sess.exit_code = 0
         reg._running[sess.id] = sess
         monkeypatch.setattr(pr, "process_registry", reg)
-        out = json.loads(pr._handle_process({"action": "log", "session_id": sess.id}))
+        out = orjson.loads(pr._handle_process({"action": "log", "session_id": sess.id}))
         assert "zzzopaque1234567890abcdef" in out["output"]

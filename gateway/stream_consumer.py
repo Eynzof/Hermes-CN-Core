@@ -19,7 +19,7 @@ import asyncio
 import inspect
 import logging
 import queue
-import re
+from agent.re_compat import re
 import time
 from dataclasses import dataclass
 from typing import Any, Callable, Optional

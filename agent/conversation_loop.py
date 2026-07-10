@@ -16,11 +16,11 @@ resolved through :func:`_ra` so those patches keep working.
 
 from __future__ import annotations
 
-import json
+import orjson
 import logging
 import os
 import random
-import re
+from agent.re_compat import re
 import ssl
 import threading
 import time
@@ -609,6 +609,22 @@ def run_conversation(
     compression_attempts = 0
     _turn_exit_reason = "unknown"  # Diagnostic: why the loop ended
 
+    # ── System-reminder providers ──────────────────────────────────
+    # Create once at turn start. Currently only CompactReminderProvider,
+    # but the list pattern allows future providers.
+    _system_reminder_providers: List["SystemReminderProvider"] = []
+    if (
+        getattr(agent, "compact_reminder_enabled", True)
+        and getattr(agent, "context_compressor", None) is not None
+    ):
+        from agent.compact_reminder import CompactReminderProvider
+        _system_reminder_providers.append(
+            CompactReminderProvider(
+                threshold=getattr(agent, "compact_reminder_threshold", 0.70),
+                cooldown_steps=getattr(agent, "compact_reminder_cooldown_steps", 5),
+            )
+        )
+
     # Per-turn tally of consecutive successful credential-pool token refreshes,
     # keyed by (provider, pool-entry-id). A persistent upstream 401 lets
     # ``try_refresh_current()`` "succeed" forever on a single-entry OAuth pool,
@@ -807,6 +823,18 @@ def run_conversation(
                         _injections.append(_fenced)
                 if _plugin_user_context:
                     _injections.append(_plugin_user_context)
+                # Collect system-reminder injections (e.g. compact reminder).
+                for _provider in _system_reminder_providers:
+                    try:
+                        _reminders = _provider.get_reminders(agent, api_call_count)
+                        for _r in _reminders:
+                            _injections.append(f"[System Reminder: {_r.content}]")
+                    except Exception:
+                        logger.warning(
+                            "SystemReminderProvider %s failed",
+                            type(_provider).__name__,
+                            exc_info=True,
+                        )
                 if _injections:
                     _base = api_msg.get("content", "")
                     if isinstance(_base, str):
@@ -935,13 +963,10 @@ def run_conversation(
             for tc in tcs:
                 if isinstance(tc, dict) and "function" in tc:
                     try:
-                        args_obj = json.loads(tc["function"]["arguments"])
+                        args_obj = orjson.loads(tc["function"]["arguments"])
                         tc = {**tc, "function": {
                             **tc["function"],
-                            "arguments": json.dumps(
-                                args_obj, separators=(",", ":"),
-                                sort_keys=True,
-                            ),
+                            "arguments": orjson.dumps(args_obj, option=orjson.OPT_SORT_KEYS).decode('utf-8'),
                         }}
                     except Exception:
                         tc["function"]["arguments"] = _repair_tool_call_arguments(
@@ -953,7 +978,7 @@ def run_conversation(
 
         # Proactively strip any surrogate characters before the API call.
         # Models served via Ollama (Kimi K2.5, GLM-5, Qwen) can return
-        # lone surrogates (U+D800-U+DFFF) that crash json.dumps() inside
+        # lone surrogates (U+D800-U+DFFF) that crash orjson.dumps().decode('utf-8') inside
         # the OpenAI SDK. Sanitizing here prevents the 3-retry cycle.
         _sanitize_messages_surrogates(api_messages)
 
@@ -3539,7 +3564,7 @@ def run_conversation(
                 # errors (ValueError, TypeError) are programming bugs.
                 # Exclude UnicodeEncodeError — it's a ValueError subclass
                 # but is handled separately by the surrogate sanitization
-                # path above.  Exclude json.JSONDecodeError — also a
+                # path above.  Exclude orjson.JSONDecodeError — also a
                 # ValueError subclass, but it indicates a transient
                 # provider/network failure (malformed response body,
                 # truncated stream, routing layer corruption), not a
@@ -3547,7 +3572,7 @@ def run_conversation(
                 is_local_validation_error = (
                     isinstance(api_error, (ValueError, TypeError))
                     and not isinstance(
-                        api_error, (UnicodeEncodeError, json.JSONDecodeError)
+                        api_error, (UnicodeEncodeError, orjson.JSONDecodeError)
                     )
                     # ssl.SSLError (and its subclass SSLCertVerificationError)
                     # inherits from OSError *and* ValueError via Python MRO,
@@ -4093,7 +4118,7 @@ def run_conversation(
             if assistant_message.content is not None and not isinstance(assistant_message.content, str):
                 raw = assistant_message.content
                 if isinstance(raw, dict):
-                    assistant_message.content = raw.get("text", "") or raw.get("content", "") or json.dumps(raw)
+                    assistant_message.content = raw.get("text", "") or raw.get("content", "") or orjson.dumps(raw).decode('utf-8')
                 elif isinstance(raw, list):
                     # Multimodal content list — extract text parts
                     parts = []
@@ -4362,7 +4387,7 @@ def run_conversation(
                 for tc in assistant_message.tool_calls:
                     args = tc.function.arguments
                     if isinstance(args, (dict, list)):
-                        tc.function.arguments = json.dumps(args)
+                        tc.function.arguments = orjson.dumps(args).decode('utf-8')
                         continue
                     if args is not None and not isinstance(args, str):
                         tc.function.arguments = str(args)
@@ -4372,8 +4397,8 @@ def run_conversation(
                         tc.function.arguments = "{}"
                         continue
                     try:
-                        json.loads(args)
-                    except json.JSONDecodeError as e:
+                        orjson.loads(args)
+                    except orjson.JSONDecodeError as e:
                         invalid_json_args.append((tc.function.name, str(e)))
                 
                 if invalid_json_args:
@@ -4540,6 +4565,16 @@ def run_conversation(
                     except Exception:
                         pass
 
+                # Notify consumers that the assistant message carrying these
+                # tool calls has been committed to the conversation.  For
+                # tool-call-only turns this is the boundary event the UI uses to
+                # transition cleanly from ``awaitingResponse`` to tool execution.
+                if getattr(agent, "tool_calls_committed_callback", None):
+                    try:
+                        agent.tool_calls_committed_callback(assistant_msg)
+                    except Exception:
+                        pass
+
                 agent._execute_tool_calls(assistant_message, messages, effective_task_id, api_call_count)
 
                 # Dedup tracker: end this API call step.
@@ -4635,6 +4670,16 @@ def run_conversation(
                     conversation_history = conversation_history_after_compression(
                         agent, messages
                     )
+                    # Notify system-reminder providers that context was compacted.
+                    for _provider in _system_reminder_providers:
+                        try:
+                            _provider.on_context_compacted(agent)
+                        except Exception:
+                            logger.warning(
+                                "SystemReminderProvider %s on_context_compacted failed",
+                                type(_provider).__name__,
+                                exc_info=True,
+                            )
                 
                 # Save session log incrementally (so progress is visible even if interrupted)
                 agent._session_messages = messages

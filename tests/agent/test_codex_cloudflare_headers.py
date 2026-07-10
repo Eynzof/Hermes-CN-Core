@@ -25,8 +25,8 @@ These tests pin:
 """
 from __future__ import annotations
 
-import base64
-import json
+import pybase64 as base64
+import orjson
 from unittest.mock import MagicMock, patch
 
 
@@ -48,7 +48,7 @@ def _make_codex_jwt(account_id: str = "acct-test-123") -> str:
             "chatgpt_plan_type": "plus",
         },
     }
-    payload = b64url(json.dumps(claims).encode())
+    payload = b64url(orjson.dumps(claims))
     sig = b64url(b"fake-sig")
     return f"{header}.{payload}.{sig}"
 
@@ -101,11 +101,11 @@ class TestCodexCloudflareHeaders:
     def test_jwt_without_chatgpt_account_id_claim(self):
         """A valid JWT that lacks the account_id claim should still return headers."""
         from agent.auxiliary_client import _codex_cloudflare_headers
-        import base64 as _b64, json as _json
+        import base64 as _b64, orjson as _json
 
         def b64url(data: bytes) -> str:
             return _b64.urlsafe_b64encode(data).rstrip(b"=").decode()
-        payload = b64url(_json.dumps({"sub": "user-xyz", "exp": 9999999999}).encode())
+        payload = b64url(_json.dumps({"sub": "user-xyz", "exp": 9999999999}))
         token = f"{b64url(b'{}')}.{payload}.{b64url(b'sig')}"
         headers = _codex_cloudflare_headers(token)
         assert headers["originator"] == "codex_cli_rs"

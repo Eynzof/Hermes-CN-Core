@@ -33,7 +33,7 @@ from __future__ import annotations
 import asyncio
 import atexit
 import importlib
-import json
+import orjson
 import logging
 import os
 import queue
@@ -192,7 +192,7 @@ def _fetch_hindsight_api_version(api_url: str, api_key: str | None = None,
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
             payload = resp.read().decode("utf-8", errors="replace")
-        data = json.loads(payload)
+        data = orjson.loads(payload)
     except Exception as exc:
         logger.debug("Hindsight /version probe failed for %s: %s", url, exc)
         return None
@@ -360,7 +360,7 @@ def _load_config() -> dict:
     profile_path = get_hermes_home() / "hindsight" / "config.json"
     if profile_path.exists():
         try:
-            return json.loads(profile_path.read_text(encoding="utf-8"))
+            return orjson.loads(profile_path.read_text(encoding="utf-8"))
         except Exception:
             pass
 
@@ -368,7 +368,7 @@ def _load_config() -> dict:
     legacy_path = Path.home() / ".hindsight" / "config.json"
     if legacy_path.exists():
         try:
-            return json.loads(legacy_path.read_text(encoding="utf-8"))
+            return orjson.loads(legacy_path.read_text(encoding="utf-8"))
         except Exception:
             pass
 
@@ -406,7 +406,7 @@ def _normalize_retain_tags(value: Any) -> List[str]:
             return []
         if text.startswith("["):
             try:
-                parsed = json.loads(text)
+                parsed = orjson.loads(text)
             except Exception:
                 parsed = None
             if isinstance(parsed, list):
@@ -455,7 +455,7 @@ def _normalize_observation_scopes(value: Any) -> Any:
             return text
         if text.startswith("["):
             try:
-                parsed = json.loads(text)
+                parsed = orjson.loads(text)
             except Exception:
                 return None
             return _normalize_observation_scopes(parsed)
@@ -738,7 +738,7 @@ class HindsightMemoryProvider(MemoryProvider):
 
     def save_config(self, values, hermes_home):
         """Write config to $HERMES_HOME/hindsight/config.json."""
-        import json
+        import orjson
         from pathlib import Path
         config_dir = Path(hermes_home) / "hindsight"
         config_dir.mkdir(parents=True, exist_ok=True)
@@ -746,7 +746,7 @@ class HindsightMemoryProvider(MemoryProvider):
         existing = {}
         if config_path.exists():
             try:
-                existing = json.loads(config_path.read_text())
+                existing = orjson.loads(config_path.read_text())
             except Exception:
                 pass
         existing.update(values)
@@ -944,7 +944,7 @@ class HindsightMemoryProvider(MemoryProvider):
             materialized_config = dict(provider_config)
             config_path = Path(hermes_home) / "hindsight" / "config.json"
             try:
-                materialized_config = json.loads(config_path.read_text(encoding="utf-8"))
+                materialized_config = orjson.loads(config_path.read_text(encoding="utf-8"))
             except Exception:
                 pass
 
@@ -1618,7 +1618,7 @@ class HindsightMemoryProvider(MemoryProvider):
         if session_id:
             self._session_id = str(session_id).strip()
 
-        turn = json.dumps(self._build_turn_messages(user_content, assistant_content), ensure_ascii=False)
+        turn = orjson.dumps(self._build_turn_messages(user_content, assistant_content)).decode('utf-8')
         self._session_turns.append(turn)
         self._turn_counter += 1
         self._turn_index = self._turn_counter
@@ -1721,7 +1721,7 @@ class HindsightMemoryProvider(MemoryProvider):
                     lambda client: client.aretain_batch(bank_id=self._bank_id, items=[item])
                 )
                 logger.debug("Tool hindsight_retain: success")
-                return json.dumps({"result": "Memory stored successfully."})
+                return orjson.dumps({"result": "Memory stored successfully."}).decode('utf-8')
             except Exception as e:
                 logger.warning("hindsight_retain failed: %s", e, exc_info=True)
                 return tool_error(f"Failed to store memory: {e}")
@@ -1746,9 +1746,9 @@ class HindsightMemoryProvider(MemoryProvider):
                 num_results = len(resp.results) if resp.results else 0
                 logger.debug("Tool hindsight_recall: %d results", num_results)
                 if not resp.results:
-                    return json.dumps({"result": "No relevant memories found."})
+                    return orjson.dumps({"result": "No relevant memories found."}).decode('utf-8')
                 lines = [f"{i}. {r.text}" for i, r in enumerate(resp.results, 1)]
-                return json.dumps({"result": "\n".join(lines)})
+                return orjson.dumps({"result": "\n".join(lines)}).decode('utf-8')
             except Exception as e:
                 logger.warning("hindsight_recall failed: %s", e, exc_info=True)
                 return tool_error(f"Failed to search memory: {e}")
@@ -1766,7 +1766,7 @@ class HindsightMemoryProvider(MemoryProvider):
                     )
                 )
                 logger.debug("Tool hindsight_reflect: response_len=%d", len(resp.text or ""))
-                return json.dumps({"result": resp.text or "No relevant memories found."})
+                return orjson.dumps({"result": resp.text or "No relevant memories found."}).decode('utf-8')
             except Exception as e:
                 logger.warning("hindsight_reflect failed: %s", e, exc_info=True)
                 return tool_error(f"Failed to reflect: {e}")

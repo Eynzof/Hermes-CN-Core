@@ -17,8 +17,8 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac
-import base64
-import json
+import pybase64 as base64
+import orjson
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -543,7 +543,7 @@ class TestPostbackButtonShape:
         actions = msg["template"]["actions"]
         assert len(actions) == 1
         assert actions[0]["type"] == "postback"
-        data = json.loads(actions[0]["data"])
+        data = orjson.loads(actions[0]["data"])
         assert data == {"action": "show_response", "request_id": "rid-1"}
 
     def test_text_truncated_to_160(self):

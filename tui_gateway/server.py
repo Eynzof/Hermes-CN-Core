@@ -4,8 +4,9 @@ import contextlib
 import contextvars
 import copy
 import inspect
-import json
+import orjson
 import logging
+import logging.handlers
 import os
 import queue
 import subprocess
@@ -15,7 +16,7 @@ import time
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from hermes_constants import (
     get_hermes_home,
@@ -54,6 +55,52 @@ load_hermes_dotenv(
 # Activity — exactly what was missing when the voice-mode turns started
 # exiting the gateway mid-TTS.
 _CRASH_LOG = os.path.join(_hermes_home, "logs", "tui_gateway_crash.log")
+
+# ── Per-session event trace ──────────────────────────────────────────────
+# Feature-flagged ordered event log used to diagnose stuck turns.  Writes to
+# ~/.hermes/logs/tui_gateway_events.log when ``gateway.event_trace`` is truthy
+# in config.yaml.  Each line is a JSON object with the event type, session id,
+# wall-clock timestamp, and payload keys (values are omitted to keep the log
+# readable and to avoid leaking large tool results).
+_EVENT_TRACE_LOG = os.path.join(_hermes_home, "logs", "tui_gateway_events.log")
+_event_trace_logger: logging.Logger | None = None
+_event_trace_enabled_cache: tuple[float, bool] | None = None
+
+
+def _event_trace_enabled() -> bool:
+    """Return True if the per-session event trace is enabled.
+
+    Cached for a few seconds because it is evaluated on every emitted event.
+    """
+    global _event_trace_enabled_cache
+    now = time.time()
+    if _event_trace_enabled_cache is not None and now - _event_trace_enabled_cache[0] < 5.0:
+        return _event_trace_enabled_cache[1]
+    try:
+        cfg = _load_cfg() or {}
+        enabled = bool((cfg.get("gateway") or {}).get("event_trace"))
+    except Exception:
+        enabled = False
+    _event_trace_enabled_cache = (now, enabled)
+    return enabled
+
+
+def _ensure_event_trace_logger() -> logging.Logger:
+    """Lazily create the rotating event-trace logger."""
+    global _event_trace_logger
+    if _event_trace_logger is not None:
+        return _event_trace_logger
+    logger = logging.getLogger("tui_gateway.event_trace")
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+    os.makedirs(os.path.dirname(_EVENT_TRACE_LOG), exist_ok=True)
+    handler = logging.handlers.RotatingFileHandler(
+        _EVENT_TRACE_LOG, maxBytes=10 * 1024 * 1024, backupCount=3
+    )
+    handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+    logger.addHandler(handler)
+    _event_trace_logger = logger
+    return logger
 
 
 def _panic_hook(exc_type, exc_value, exc_tb):
@@ -329,8 +376,8 @@ class _SlashWorker:
     def _drain_stdout(self):
         for line in self.proc.stdout or []:
             try:
-                self.stdout_queue.put(json.loads(line))
-            except json.JSONDecodeError:
+                self.stdout_queue.put(orjson.loads(line))
+            except orjson.JSONDecodeError:
                 continue
         self.stdout_queue.put(None)
 
@@ -346,7 +393,7 @@ class _SlashWorker:
         with self._lock:
             self._seq += 1
             rid = self._seq
-            self.proc.stdin.write(json.dumps({"id": rid, "command": command}) + "\n")
+            self.proc.stdin.write(orjson.dumps({"id": rid, "command": command}).decode('utf-8') + "\n")
             self.proc.stdin.flush()
 
             while True:
@@ -1016,6 +1063,24 @@ def _emit(event: str, sid: str, payload: dict | None = None):
     if payload is not None:
         params["payload"] = payload
     write_json({"jsonrpc": "2.0", "method": "event", "params": params})
+
+    # Keep the turn watchdog's inactivity detector alive.
+    session = _sessions.get(sid)
+    if session is not None:
+        session["last_turn_activity"] = time.time()
+
+    # Feature-flagged per-session event trace for stuck-turn forensics.
+    if _event_trace_enabled():
+        try:
+            trace_entry = {
+                "t": time.time(),
+                "sid": sid,
+                "event": event,
+                "payload_keys": sorted(payload.keys()) if isinstance(payload, dict) else [],
+            }
+            _ensure_event_trace_logger().info(orjson.dumps(trace_entry, default=str).decode('utf-8'))
+        except Exception:
+            pass
 
 
 def _emit_approval_request(sid: str, data: dict | None) -> None:
@@ -2039,7 +2104,7 @@ def _stored_session_runtime_overrides(row: dict | None) -> dict:
         model_config = raw_config
     elif isinstance(raw_config, str) and raw_config.strip():
         try:
-            parsed = json.loads(raw_config)
+            parsed = orjson.loads(raw_config)
             if isinstance(parsed, dict):
                 model_config = parsed
         except Exception:
@@ -2186,13 +2251,13 @@ def _persist_live_session_runtime(session: dict | None) -> None:
         if isinstance(raw_config, dict):
             existing_config = raw_config
         elif isinstance(raw_config, str) and raw_config.strip():
-            parsed = json.loads(raw_config)
+            parsed = orjson.loads(raw_config)
             if isinstance(parsed, dict):
                 existing_config = parsed
         model_config = _runtime_model_config(agent, existing_config)
         model = str(getattr(agent, "model", "") or "").strip()
         if hasattr(db, "update_session_meta"):
-            db.update_session_meta(session_key, json.dumps(model_config), model or None)
+            db.update_session_meta(session_key, orjson.dumps(model_config).decode('utf-8'), model or None)
         elif model and hasattr(db, "update_session_model"):
             db.update_session_model(session_key, model)
     except Exception:
@@ -3339,7 +3404,7 @@ def _redact_tui_verbose_text(text: str) -> str:
 
 def _tool_args_text(args: dict) -> str:
     try:
-        raw = json.dumps(args or {}, indent=2, ensure_ascii=False, default=str)
+        raw = orjson.dumps(args or {}, default=str, option=orjson.OPT_INDENT_2).decode('utf-8')
     except Exception:
         raw = str(args or {})
     return _redact_tui_verbose_text(raw)
@@ -3377,7 +3442,7 @@ def _count_list(obj: object, *path: str) -> int | None:
 
 def _tool_summary(name: str, result: str, duration_s: float | None) -> str | None:
     try:
-        data = json.loads(result)
+        data = orjson.loads(result)
     except Exception:
         data = None
 
@@ -3442,7 +3507,7 @@ def _on_tool_complete(sid: str, tool_call_id: str, name: str, args: dict, result
     if duration_s is not None:
         payload["duration_s"] = duration_s
     try:
-        payload["result"] = json.loads(result)
+        payload["result"] = orjson.loads(result)
     except Exception:
         payload["result"] = result
     summary = _tool_summary(name, result, duration_s)
@@ -3454,7 +3519,7 @@ def _on_tool_complete(sid: str, tool_call_id: str, name: str, args: dict, result
             payload["result_text"] = result_text
     if name == "todo":
         try:
-            data = json.loads(result)
+            data = orjson.loads(result)
             if isinstance(data, dict) and isinstance(data.get("todos"), list):
                 payload["todos"] = data.get("todos")
         except Exception:
@@ -3671,6 +3736,31 @@ def _mirror_subagent_to_child(event_type: str, payload: dict) -> None:
 
 def _agent_cbs(sid: str) -> dict:
     return {
+        # Emitted when the assistant message that requested the current batch of
+        # tool calls has been appended to the conversation and is about to be
+        # executed.  This gives the UI a clean boundary for tool-call-only
+        # turns that would otherwise have no ``message.delta`` between
+        # ``message.start`` and ``tool.start``.
+        "tool_calls_committed_callback": lambda assistant_msg: _emit(
+            "assistant.tool_calls_committed",
+            sid,
+            {
+                "role": assistant_msg.get("role") if isinstance(assistant_msg, dict) else None,
+                "finish_reason": assistant_msg.get("finish_reason")
+                if isinstance(assistant_msg, dict)
+                else None,
+                "tool_call_ids": [
+                    tc.get("id")
+                    for tc in (assistant_msg.get("tool_calls") or [])
+                    if isinstance(tc, dict)
+                ]
+                if isinstance(assistant_msg, dict)
+                else [],
+                "has_content": bool(assistant_msg.get("content"))
+                if isinstance(assistant_msg, dict)
+                else False,
+            },
+        ),
         "tool_start_callback": lambda tc_id, name, args: _on_tool_start(
             sid, tc_id, name, args
         ),
@@ -4069,7 +4159,7 @@ def _preview_restart_history(session: dict, max_messages: int = 24, max_tool_cha
 
 def _preview_tool_result_preview(name: str, result: str) -> str:
     try:
-        data = json.loads(result)
+        data = orjson.loads(result)
     except Exception:
         return ""
 
@@ -4561,7 +4651,7 @@ def _resolve_checkpoint_hash(mgr, cwd: str, ref: str) -> str:
 
 def _enrich_with_attached_images(user_text: str, image_paths: list[str]) -> str:
     """Pre-analyze attached images via vision and prepend descriptions to user text."""
-    import asyncio, json as _json
+    import asyncio, orjson as _json
     from tools.vision_tools import vision_analyze_tool
 
     prompt = (
@@ -4730,8 +4820,8 @@ def _history_to_messages(history: list[dict]) -> list[dict]:
                 tc_id = tc.get("id", "")
                 if tc_id and fn.get("name"):
                     try:
-                        args = json.loads(fn.get("arguments", "{}"))
-                    except (json.JSONDecodeError, TypeError):
+                        args = orjson.loads(fn.get("arguments", "{}"))
+                    except (orjson.JSONDecodeError, TypeError):
                         args = {}
                     tool_call_args[tc_id] = (fn["name"], args)
             if not content_text.strip():
@@ -4857,6 +4947,92 @@ def _append_inflight_delta(session: dict, delta: Any) -> None:
 
 def _clear_inflight_turn(session: dict) -> None:
     session["inflight_turn"] = None
+
+
+def _turn_watchdog_seconds() -> int:
+    """Return the configured turn inactivity watchdog threshold.
+
+    ``gateway.turn_watchdog_seconds`` in config.yaml overrides the 10-minute
+    default.  ``0`` or a negative value disables the watchdog.
+    """
+    try:
+        cfg = _load_cfg() or {}
+        val = (cfg.get("gateway") or {}).get("turn_watchdog_seconds")
+        if isinstance(val, int) and val > 0:
+            return val
+        if isinstance(val, float) and val > 0:
+            return int(val)
+    except Exception:
+        pass
+    return 600
+
+
+def _start_turn_watchdog(sid: str, session: dict) -> Callable[[], None]:
+    """Start a daemon that kills a stuck turn after prolonged inactivity.
+
+    Returns a no-arg cancel function that must be called when the turn ends.
+    """
+    threshold = _turn_watchdog_seconds()
+    if threshold <= 0:
+        return lambda: None
+
+    started_at = time.time()
+    session["last_turn_activity"] = started_at
+    cancel_event = threading.Event()
+    history_lock = session.get("history_lock") or threading.RLock()
+
+    def _watch() -> None:
+        while not cancel_event.is_set():
+            # Sleep in short chunks so cancellation is responsive.
+            if cancel_event.wait(timeout=10.0):
+                return
+            if not session.get("running"):
+                return
+            last = session.get("last_turn_activity", started_at)
+            if time.time() - last < threshold:
+                continue
+
+            logger.warning(
+                "Turn watchdog fired for session %s after %ss of inactivity",
+                sid,
+                threshold,
+            )
+            try:
+                _emit(
+                    "error",
+                    sid,
+                    {
+                        "message": (
+                            f"Turn timed out after {threshold}s of inactivity. "
+                            "The agent may be stuck waiting for a provider or tool."
+                        )
+                    },
+                )
+            except Exception:
+                pass
+            try:
+                with history_lock:
+                    _clear_inflight_turn(session)
+                    session["running"] = False
+            except Exception:
+                pass
+            try:
+                agent = session.get("agent")
+                if agent is not None and callable(getattr(agent, "interrupt", None)):
+                    agent.interrupt("Turn watchdog: no activity")
+            except Exception:
+                pass
+            return
+
+    thread = threading.Thread(
+        target=_watch, daemon=True, name=f"turn-watchdog-{sid}"
+    )
+    thread.start()
+
+    def cancel() -> None:
+        cancel_event.set()
+
+    return cancel
 
 
 def _enqueue_prompt(session: dict, text: Any, transport: Any) -> None:
@@ -6421,8 +6597,7 @@ def _pet_sprite_payload(pet, *, scale: float) -> dict:
     Shared by ``pet.info`` (the active mascot) and ``pet.hatch`` (the unadopted
     preview) so both feed the desktop canvas / TUI from one shape.
     """
-    import base64
-
+    import pybase64 as base64
     from agent.pet import constants
 
     cache_key = _pet_payload_cache_key(pet, scale=scale)
@@ -6806,8 +6981,7 @@ def _(rid, params: dict) -> dict:
     if not slug:
         return _err(rid, 4004, "missing slug")
     try:
-        import base64
-
+        import pybase64 as base64
         from agent.pet import store
 
         filename, data = store.export_pet(slug)
@@ -6872,8 +7046,7 @@ def _(rid, params: dict) -> dict:
     if not slug:
         return _err(rid, 4004, "missing slug")
     try:
-        import base64
-
+        import pybase64 as base64
         from agent.pet import store
 
         data = store.thumbnail_png(slug, source_url=str(params.get("url") or ""))
@@ -6953,7 +7126,7 @@ def _pet_gen_sweep(root, *, max_age_s: float = 3600.0) -> None:
 
 def _pet_png_data_uri(path, *, max_px: int = 160) -> str:
     """Downscaled PNG data URI for a draft image (small preview payload)."""
-    import base64
+    import pybase64 as base64
     import io
 
     from PIL import Image
@@ -6990,10 +7163,9 @@ except (TypeError, ValueError):
 
 def _pet_reference_images_from_data_url(ref_raw: str, stage) -> list:
     """Decode + validate a reference-image data URL into the stage dir."""
-    import base64
+    import pybase64 as base64
     import binascii
-    import re as _re
-
+    from agent.re_compat import re as _re
     match = _re.match(r"^data:image/([a-zA-Z0-9.+-]+);base64,(.*)$", ref_raw, _re.DOTALL)
     if not match:
         raise ValueError("invalid reference image format")
@@ -7787,18 +7959,13 @@ def _(rid, params: dict) -> dict:
 
     try:
         with open(path, "w", encoding="utf-8") as f:
-            json.dump(
-                {
+            f.write(orjson.dumps({
                     "model": getattr(agent, "model", ""),
                     "session_id": session_id,
                     "session_start": session_start,
                     "system_prompt": getattr(agent, "_cached_system_prompt", "") or "",
                     "messages": messages,
-                },
-                f,
-                indent=2,
-                ensure_ascii=False,
-            )
+                }, option=orjson.OPT_INDENT_2).decode('utf-8'))
         return _ok(rid, {"file": str(path)})
     except Exception as e:
         return _err(rid, 5011, str(e))
@@ -8011,7 +8178,7 @@ _SPAWN_TREE_INDEX = "_index.jsonl"
 def _append_spawn_tree_index(session_dir, entry: dict) -> None:
     try:
         with (session_dir / _SPAWN_TREE_INDEX).open("a", encoding="utf-8") as f:
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+            f.write(orjson.dumps(entry).decode('utf-8') + "\n")
     except OSError as exc:
         # Index is a cache — losing a line just means list() falls back
         # to a directory scan for that entry.  Never block the save.
@@ -8030,8 +8197,8 @@ def _read_spawn_tree_index(session_dir) -> list[dict]:
                 if not line:
                     continue
                 try:
-                    out.append(json.loads(line))
-                except json.JSONDecodeError:
+                    out.append(orjson.loads(line))
+                except orjson.JSONDecodeError:
                     continue
     except OSError:
         return []
@@ -8062,7 +8229,7 @@ def _(rid, params: dict) -> dict:
             "label": label,
             "subagents": subagents,
         }
-        path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        path.write_text(orjson.dumps(payload).decode('utf-8'), encoding="utf-8")
     except OSError as exc:
         return _err(rid, 5000, f"spawn_tree.save failed: {exc}")
 
@@ -8111,7 +8278,7 @@ def _(rid, params: dict) -> dict:
             try:
                 stat = p.stat()
                 try:
-                    raw = json.loads(p.read_text(encoding="utf-8"))
+                    raw = orjson.loads(p.read_text(encoding="utf-8"))
                 except Exception:
                     raw = {}
                 subagents = raw.get("subagents") or []
@@ -8149,8 +8316,8 @@ def _(rid, params: dict) -> dict:
         return _err(rid, 4030, f"path outside spawn-trees root: {exc}")
 
     try:
-        payload = json.loads(resolved.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        payload = orjson.loads(resolved.read_text(encoding="utf-8"))
+    except (OSError, orjson.JSONDecodeError) as exc:
         return _err(rid, 5000, f"spawn_tree.load failed: {exc}")
 
     return _ok(rid, payload)
@@ -8548,7 +8715,9 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
         home_token = None  # per-turn HERMES_HOME override for a resumed remote profile
         goal_followup = None  # set by the post-turn goal hook below
         steer_followup = None  # set when a /steer landed too late to inject (P-023)
+        watchdog_cancel = None
         try:
+            watchdog_cancel = _start_turn_watchdog(sid, session)
             from tools.approval import (
                 reset_current_session_key,
                 set_current_session_key,
@@ -8662,6 +8831,12 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
                     run_message = _enrich_with_attached_images(prompt, images)
 
             def _stream(delta):
+                # ``delta`` can be ``None`` when the core agent loop flushes an
+                # open stream before tool execution.  The gateway treats
+                # ``tool.start`` as the authoritative transition, so a null
+                # delta must not become a ``message.delta {text: null}`` event.
+                if delta is None:
+                    return
                 with session["history_lock"]:
                     _append_inflight_delta(session, delta)
                 payload = {"text": delta}
@@ -8953,6 +9128,8 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
                 session["running"] = False
                 session["last_active"] = time.time()
                 _clear_inflight_turn(session)
+            if watchdog_cancel is not None:
+                watchdog_cancel()
             _emit("session.info", sid, _session_info(agent, session))
 
         # P-023: deliver a late /steer as the next user turn. run_conversation
@@ -9157,9 +9334,8 @@ def _decode_attach_base64(raw: str, *, mime_prefix: str) -> bytes | None:
     Accepts ``data:<mime_prefix>...;base64,<b64>`` plus embedded whitespace.
     Returns the decoded bytes, or ``None`` when the input isn't valid base64.
     """
-    import base64 as _base64
-    import re as _re
-
+    import pybase64 as _base64
+    from agent.re_compat import re as _re
     cleaned = raw.strip()
     m = _re.match(
         rf"^data:{_re.escape(mime_prefix)}[a-zA-Z0-9.+-]*;base64,(.*)$",
@@ -9417,8 +9593,7 @@ def _format_ref_value(value: str) -> str:
     Mirrors the desktop ``formatRefValue`` so the staged ``@file:`` ref round-trips
     through ``agent.context_references`` cleanly.
     """
-    import re as _re
-
+    from agent.re_compat import re as _re
     global _ATTACHMENT_REF_NEEDS_QUOTING_RE
     if _ATTACHMENT_REF_NEEDS_QUOTING_RE is None:
         _ATTACHMENT_REF_NEEDS_QUOTING_RE = _re.compile(r"""[\s()\[\]{}<>"'`]""")
@@ -9450,8 +9625,7 @@ def _desktop_attachment_dir(session: dict) -> Path:
 
 
 def _sanitize_attachment_name(name: str) -> str:
-    import re as _re
-
+    from agent.re_compat import re as _re
     candidate = Path(str(name or "").strip()).name
     candidate = _re.sub(r"[\x00-\x1f]+", "_", candidate)
     candidate = candidate.strip().strip(".")
@@ -9496,10 +9670,9 @@ def _decode_attachment_data_url(data_url: str) -> bytes:
     media type — text/csv, application/pdf, etc. — so non-image file uploads
     round-trip. Also tolerates a bare base64 string with no data-URL prefix.
     """
-    import base64 as _base64
+    import pybase64 as _base64
     import binascii as _binascii
-    import re as _re
-
+    from agent.re_compat import re as _re
     cleaned = (data_url or "").strip()
     m = _re.match(r"^data:[^;,]*(?:;[^;,=]+=[^;,]+)*;base64,(.*)$", cleaned, _re.DOTALL | _re.I)
     if m:
@@ -11495,6 +11668,10 @@ def _(rid, params: dict) -> dict:
             # has all API keys in os.environ.
             from tools.environments.local import _sanitize_subprocess_env
             sanitized_env = _sanitize_subprocess_env(os.environ.copy())
+            _subprocess_kwargs = {}
+            if sys.platform == "win32":
+                from hermes_cli._subprocess_compat import windows_hide_flags
+                _subprocess_kwargs["creationflags"] = windows_hide_flags()
             r = subprocess.run(
                 qc.get("command", ""),
                 shell=True,
@@ -11503,6 +11680,7 @@ def _(rid, params: dict) -> dict:
                 timeout=30,
                 stdin=subprocess.DEVNULL,
                 env=sanitized_env,
+                **_subprocess_kwargs,
             )
             output = (
                 (r.stdout or "")
@@ -13927,11 +14105,11 @@ def _(rid, params: dict) -> dict:
         from tools.cronjob_tools import cronjob
 
         if action == "list":
-            return _ok(rid, json.loads(cronjob(action="list")))
+            return _ok(rid, orjson.loads(cronjob(action="list")))
         if action == "add":
             return _ok(
                 rid,
-                json.loads(
+                orjson.loads(
                     cronjob(
                         action="create",
                         name=jid,
@@ -13941,7 +14119,7 @@ def _(rid, params: dict) -> dict:
                 ),
             )
         if action in {"remove", "pause", "resume"}:
-            return _ok(rid, json.loads(cronjob(action=action, job_id=jid)))
+            return _ok(rid, orjson.loads(cronjob(action=action, job_id=jid)))
         return _err(rid, 4016, f"unknown cron action: {action}")
     except Exception as e:
         return _err(rid, 5023, str(e))
@@ -14188,9 +14366,13 @@ def _(rid, params: dict) -> dict:
     except ImportError:
         return _err(rid, 5001, "shell.exec unavailable: approval safety module not importable")
     try:
+        _subprocess_kwargs = {}
+        if sys.platform == "win32":
+            from hermes_cli._subprocess_compat import windows_hide_flags
+            _subprocess_kwargs["creationflags"] = windows_hide_flags()
         r = subprocess.run(
             cmd, shell=True, capture_output=True, text=True, timeout=30, cwd=os.getcwd(),
-            stdin=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL, **_subprocess_kwargs,
         )
         return _ok(
             rid,

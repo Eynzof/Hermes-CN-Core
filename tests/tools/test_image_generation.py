@@ -587,7 +587,7 @@ class TestManagedKreaRouting:
     ):
         from types import SimpleNamespace
         from unittest.mock import MagicMock
-        import json as _json
+        import orjson as _json
 
         monkeypatch.setattr(image_tool, "_read_configured_image_provider", lambda: None)
         monkeypatch.setattr(

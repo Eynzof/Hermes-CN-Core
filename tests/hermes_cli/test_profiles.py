@@ -5,7 +5,7 @@ management, export/import, renaming, alias collision checks, profile isolation,
 and shell completion generation.
 """
 
-import json
+import orjson
 import io
 import os
 import shutil
@@ -1074,7 +1074,7 @@ class TestRenameProfile:
         tmp_path = profile_env
         create_profile("ssi_health", no_alias=True)
         honcho_path = tmp_path / ".hermes" / "honcho.json"
-        honcho_path.write_text(json.dumps({
+        honcho_path.write_text(orjson.dumps({
             "hosts": {
                 "hermes.ssi_health": {
                     "recallMode": "hybrid",
@@ -1087,12 +1087,12 @@ class TestRenameProfile:
                     "enabled": True,
                 }
             }
-        }))
+        }).decode('utf-8'))
 
         with patch("hermes_cli.profiles.check_alias_collision", return_value="skip"):
             rename_profile("ssi_health", "heimdall")
 
-        cfg = json.loads(honcho_path.read_text())
+        cfg = orjson.loads(honcho_path.read_text())
         assert "hermes.ssi_health" not in cfg["hosts"]
         assert cfg["hosts"]["hermes_heimdall"]["aiPeer"] == "ssi_health"
         assert cfg["hosts"]["hermes_heimdall"]["peerName"] == "user-peer"
@@ -1101,16 +1101,16 @@ class TestRenameProfile:
         tmp_path = profile_env
         create_profile("ssi_health", no_alias=True)
         honcho_path = tmp_path / ".hermes" / "honcho.json"
-        honcho_path.write_text(json.dumps({
+        honcho_path.write_text(orjson.dumps({
             "hosts": {
                 "hermes.ssi_health": {"workspace": "hermes", "enabled": True}
             }
-        }))
+        }).decode('utf-8'))
 
         with patch("hermes_cli.profiles.check_alias_collision", return_value="skip"):
             rename_profile("ssi_health", "heimdall")
 
-        cfg = json.loads(honcho_path.read_text())
+        cfg = orjson.loads(honcho_path.read_text())
         assert "hermes.ssi_health" not in cfg["hosts"]
         assert cfg["hosts"]["hermes_heimdall"]["aiPeer"] == "ssi_health"
         assert cfg["hosts"]["hermes_heimdall"]["workspace"] == "hermes"
@@ -1119,17 +1119,17 @@ class TestRenameProfile:
         tmp_path = profile_env
         create_profile("ssi_health", no_alias=True)
         honcho_path = tmp_path / ".hermes" / "honcho.json"
-        honcho_path.write_text(json.dumps({
+        honcho_path.write_text(orjson.dumps({
             "hosts": {
                 "hermes.ssi_health": {"aiPeer": "ssi_health"},
                 "hermes_heimdall": {"aiPeer": "heimdall"},
             }
-        }))
+        }).decode('utf-8'))
 
         with patch("hermes_cli.profiles.check_alias_collision", return_value="skip"):
             rename_profile("ssi_health", "heimdall")
 
-        cfg = json.loads(honcho_path.read_text())
+        cfg = orjson.loads(honcho_path.read_text())
         assert cfg["hosts"]["hermes.ssi_health"]["aiPeer"] == "ssi_health"
         assert cfg["hosts"]["hermes_heimdall"]["aiPeer"] == "heimdall"
 
@@ -1610,16 +1610,14 @@ class TestEdgeCases:
         # a gateway-shaped argv, so get_runtime_status_running_pid validates it.
         live_pid = os.getpid()
         (default_home / "gateway_state.json").write_text(
-            json.dumps(
-                {
+            orjson.dumps({
                     "pid": live_pid,
                     "kind": "hermes-gateway",
                     "argv": ["hermes", "gateway", "run"],
                     "start_time": gw_status._get_process_start_time(live_pid),
                     "gateway_state": "running",
                     "active_agents": 0,
-                }
-            ),
+                }).decode('utf-8'),
             encoding="utf-8",
         )
 
@@ -1646,14 +1644,12 @@ class TestEdgeCases:
         default_home = tmp_path / ".hermes"
         default_home.mkdir(parents=True, exist_ok=True)
         (default_home / "gateway_state.json").write_text(
-            json.dumps(
-                {
+            orjson.dumps({
                     "pid": os.getpid(),
                     "kind": "hermes-gateway",
                     "argv": ["hermes", "gateway", "run"],
                     "gateway_state": "stopped",
-                }
-            ),
+                }).decode('utf-8'),
             encoding="utf-8",
         )
 
@@ -1678,15 +1674,13 @@ class TestEdgeCases:
         coder_home = tmp_path / ".hermes" / "profiles" / "coder"
         coder_home.mkdir(parents=True, exist_ok=True)
         (coder_home / "gateway_state.json").write_text(
-            json.dumps(
-                {
+            orjson.dumps({
                     "pid": 139,
                     "kind": "hermes-gateway",
                     "argv": ["hermes", "gateway", "run"],
                     "gateway_state": "running",
                     "active_agents": 0,
-                }
-            ),
+                }).decode('utf-8'),
             encoding="utf-8",
         )
 
@@ -1710,16 +1704,14 @@ class TestEdgeCases:
         coder_home = tmp_path / ".hermes" / "profiles" / "coder"
         coder_home.mkdir(parents=True, exist_ok=True)
         (coder_home / "gateway_state.json").write_text(
-            json.dumps(
-                {
+            orjson.dumps({
                     "pid": 139,
                     "kind": "hermes-gateway",
                     "argv": ["hermes", "gateway", "run"],
                     "start_time": 1000,
                     "gateway_state": "running",
                     "active_agents": 0,
-                }
-            ),
+                }).decode('utf-8'),
             encoding="utf-8",
         )
 

@@ -23,7 +23,7 @@ Flow:
 from __future__ import annotations
 
 import asyncio
-import json
+import orjson
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -61,7 +61,7 @@ async def _exec_request(client, method, uri, paths=None, queries=None, body=None
     """Execute a lark API request and return (code, msg, data_dict)."""
     logger.info("[Feishu-Comment] API >>> %s %s paths=%s queries=%s body=%s",
                  method, uri, paths, queries,
-                 json.dumps(body, ensure_ascii=False)[:500] if body else None)
+                 orjson.dumps(body).decode('utf-8')[:500] if body else None)
     request = _build_request(method, uri, paths, queries, body)
     response = await asyncio.to_thread(client.request, request)
 
@@ -72,9 +72,9 @@ async def _exec_request(client, method, uri, paths=None, queries=None, body=None
     raw = getattr(response, "raw", None)
     if raw and hasattr(raw, "content"):
         try:
-            body_json = json.loads(raw.content)
+            body_json = orjson.loads(raw.content)
             data = body_json.get("data", {})
-        except (json.JSONDecodeError, AttributeError):
+        except (orjson.JSONDecodeError, AttributeError):
             pass
     if not data:
         resp_data = getattr(response, "data", None)
@@ -604,8 +604,8 @@ def _extract_reply_text(reply: Dict[str, Any]) -> str:
     content = reply.get("content", {})
     if isinstance(content, str):
         try:
-            content = json.loads(content)
-        except (json.JSONDecodeError, TypeError):
+            content = orjson.loads(content)
+        except (orjson.JSONDecodeError, TypeError):
             return content
 
     elements = content.get("elements", [])
@@ -636,8 +636,8 @@ def _extract_semantic_text(reply: Dict[str, Any], self_open_id: str = "") -> str
     content = reply.get("content", {})
     if isinstance(content, str):
         try:
-            content = json.loads(content)
-        except (json.JSONDecodeError, TypeError):
+            content = orjson.loads(content)
+        except (orjson.JSONDecodeError, TypeError):
             return content
 
     elements = content.get("elements", [])
@@ -662,9 +662,7 @@ def _extract_semantic_text(reply: Dict[str, Any], self_open_id: str = "") -> str
 # ---------------------------------------------------------------------------
 # Document link parsing and wiki resolution
 # ---------------------------------------------------------------------------
-
-import re as _re
-
+from agent.re_compat import re as _re
 # Matches feishu/lark document URLs and extracts doc_type + token
 _FEISHU_DOC_URL_RE = _re.compile(
     r"(?:feishu\.cn|larkoffice\.com|larksuite\.com|lark\.suite\.com)"
@@ -686,8 +684,8 @@ def _extract_docs_links(replies: List[Dict[str, Any]]) -> List[Dict[str, str]]:
         content = reply.get("content", {})
         if isinstance(content, str):
             try:
-                content = json.loads(content)
-            except (json.JSONDecodeError, TypeError):
+                content = orjson.loads(content)
+            except (orjson.JSONDecodeError, TypeError):
                 continue
         for elem in content.get("elements", []):
             if elem.get("type") not in {"docs_link", "link"}:
@@ -1228,8 +1226,8 @@ async def handle_drive_comment_event(
             reply_list = wc.get("reply_list", {})
             if isinstance(reply_list, str):
                 try:
-                    reply_list = json.loads(reply_list)
-                except (json.JSONDecodeError, TypeError):
+                    reply_list = orjson.loads(reply_list)
+                except (orjson.JSONDecodeError, TypeError):
                     reply_list = {}
             replies = reply_list.get("replies", [])
             for r in replies:
@@ -1261,8 +1259,8 @@ async def handle_drive_comment_event(
             rl = wc.get("reply_list", {})
             if isinstance(rl, str):
                 try:
-                    rl = json.loads(rl)
-                except (json.JSONDecodeError, TypeError):
+                    rl = orjson.loads(rl)
+                except (orjson.JSONDecodeError, TypeError):
                     rl = {}
             all_raw_replies.extend(rl.get("replies", []))
         doc_links = _extract_docs_links(all_raw_replies)

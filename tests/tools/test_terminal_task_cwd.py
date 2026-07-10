@@ -1,6 +1,6 @@
 """Regression tests for task/session cwd propagation in terminal_tool."""
 
-import json
+import orjson
 from types import SimpleNamespace
 
 import tools.terminal_tool as terminal_tool
@@ -37,7 +37,7 @@ def test_foreground_command_uses_registered_task_cwd_for_existing_environment(mo
         lambda command, env_type, **kwargs: {"approved": True},
     )
 
-    result = json.loads(terminal_tool.terminal_tool(command="pwd", task_id=task_id))
+    result = orjson.loads(terminal_tool.terminal_tool(command="pwd", task_id=task_id))
 
     assert result["exit_code"] == 0
     assert calls == [("pwd", {"timeout": 60, "cwd": "/workspace/acp"})]
@@ -64,7 +64,7 @@ def test_explicit_workdir_still_wins_over_registered_task_cwd(monkeypatch):
         lambda command, env_type, **kwargs: {"approved": True},
     )
 
-    result = json.loads(
+    result = orjson.loads(
         terminal_tool.terminal_tool(
             command="pwd",
             task_id=task_id,
@@ -101,7 +101,7 @@ def test_foreground_command_prefers_live_env_cwd_over_init_time_cwd(monkeypatch)
         lambda command, env_type, **kwargs: {"approved": True},
     )
 
-    result = json.loads(terminal_tool.terminal_tool(command="pwd", task_id=task_id))
+    result = orjson.loads(terminal_tool.terminal_tool(command="pwd", task_id=task_id))
 
     assert result["exit_code"] == 0
     assert calls == [("pwd", {"timeout": 60, "cwd": "/workspace/live"})]
@@ -140,7 +140,7 @@ def test_background_command_prefers_live_env_cwd_over_init_time_cwd(monkeypatch)
     )
     monkeypatch.setattr(process_registry_mod, "process_registry", registry)
 
-    result = json.loads(
+    result = orjson.loads(
         terminal_tool.terminal_tool(
             command="sleep 1",
             task_id=task_id,

@@ -7,14 +7,14 @@ always either a bug or prompt-injection-controlled
 (e.g. ``output_path="audio/../../etc/cron.d/x"``).
 """
 
-import json
+import orjson
 
 from tools.tts_tool import text_to_speech_tool
 
 
 def test_output_path_rejects_traversal_escape():
     """A path with '..' components must be rejected before any provider work."""
-    result = json.loads(text_to_speech_tool(
+    result = orjson.loads(text_to_speech_tool(
         text="hello",
         output_path="audio/../../etc/cron.d/malicious",
     ))
@@ -24,7 +24,7 @@ def test_output_path_rejects_traversal_escape():
 
 def test_output_path_rejects_bare_dotdot():
     """Bare '..' prefix must be rejected."""
-    result = json.loads(text_to_speech_tool(
+    result = orjson.loads(text_to_speech_tool(
         text="hello",
         output_path="../escape.mp3",
     ))
@@ -41,7 +41,7 @@ def test_output_path_absolute_path_passes_guard(tmp_path, monkeypatch):
     that the 'traversal' rejection didn't fire.
     """
     inside = tmp_path / "clip.mp3"
-    result = json.loads(text_to_speech_tool(
+    result = orjson.loads(text_to_speech_tool(
         text="hello",
         output_path=str(inside),
     ))
@@ -52,7 +52,7 @@ def test_output_path_absolute_path_passes_guard(tmp_path, monkeypatch):
 def test_output_path_relative_no_dotdot_passes_guard(tmp_path, monkeypatch):
     """Relative paths without '..' components must pass the guard."""
     monkeypatch.chdir(tmp_path)
-    result = json.loads(text_to_speech_tool(
+    result = orjson.loads(text_to_speech_tool(
         text="hello",
         output_path="subdir/clip.mp3",
     ))

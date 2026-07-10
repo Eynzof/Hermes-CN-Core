@@ -24,7 +24,7 @@ so this client never needs to know the namespace convention.
 
 from __future__ import annotations
 
-import json
+import orjson
 import os
 import random
 import sys
@@ -125,7 +125,7 @@ def _register_self_hosted_client(
     if existing_client_id:
         body["client_id"] = existing_client_id
 
-    data = json.dumps(body).encode("utf-8")
+    data = orjson.dumps(body)
     req = urllib.request.Request(
         url,
         data=data,
@@ -139,12 +139,12 @@ def _register_self_hosted_client(
 
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            payload = json.loads(resp.read().decode())
+            payload = orjson.loads(resp.read().decode())
     except urllib.error.HTTPError as exc:
         # The endpoint returns structured JSON errors ({error, error_description}).
         detail = ""
         try:
-            err_body = json.loads(exc.read().decode())
+            err_body = orjson.loads(exc.read().decode())
             detail = (
                 err_body.get("error_description")
                 or err_body.get("error")

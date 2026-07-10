@@ -1,6 +1,6 @@
 """Tests for the memory provider interface, manager, and builtin provider."""
 
-import json
+import orjson
 import pytest
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -60,7 +60,7 @@ class FakeMemoryProvider(MemoryProvider):
         return self._tools
 
     def handle_tool_call(self, tool_name, args, **kwargs):
-        return json.dumps({"handled": tool_name, "args": args})
+        return orjson.dumps({"handled": tool_name, "args": args}).decode('utf-8')
 
     def shutdown(self):
         self.shutdown_called = True
@@ -311,13 +311,13 @@ class TestMemoryManager:
         mgr.add_provider(p2)
 
         assert mgr.has_tool("shared_tool")
-        result = json.loads(mgr.handle_tool_call("shared_tool", {"q": "test"}))
+        result = orjson.loads(mgr.handle_tool_call("shared_tool", {"q": "test"}))
         assert result["handled"] == "shared_tool"
         # Should be handled by p1 (first registered)
 
     def test_handle_unknown_tool(self):
         mgr = MemoryManager()
-        result = json.loads(mgr.handle_tool_call("nonexistent", {}))
+        result = orjson.loads(mgr.handle_tool_call("nonexistent", {}))
         assert "error" in result
 
     def test_tool_routing(self):
@@ -331,9 +331,9 @@ class TestMemoryManager:
         mgr.add_provider(p1)
         mgr.add_provider(p2)
 
-        r1 = json.loads(mgr.handle_tool_call("builtin_tool", {"a": 1}))
+        r1 = orjson.loads(mgr.handle_tool_call("builtin_tool", {"a": 1}))
         assert r1["handled"] == "builtin_tool"
-        r2 = json.loads(mgr.handle_tool_call("ext_tool", {"b": 2}))
+        r2 = orjson.loads(mgr.handle_tool_call("ext_tool", {"b": 2}))
         assert r2["handled"] == "ext_tool"
 
     # -- Lifecycle hooks -----------------------------------------------------
@@ -734,7 +734,7 @@ class TestSequentialDispatchRouting:
         ])
         mgr.add_provider(provider)
 
-        result = json.loads(mgr.handle_tool_call("hindsight_recall", {"query": "alice"}))
+        result = orjson.loads(mgr.handle_tool_call("hindsight_recall", {"query": "alice"}))
         assert result["handled"] == "hindsight_recall"
         assert result["args"] == {"query": "alice"}
 
@@ -746,7 +746,7 @@ class TestSequentialDispatchRouting:
         ])
         mgr.add_provider(provider)
 
-        result = json.loads(mgr.handle_tool_call("terminal", {"command": "ls"}))
+        result = orjson.loads(mgr.handle_tool_call("terminal", {"command": "ls"}))
         assert "error" in result
 
     def test_multiple_providers_route_to_correct_one(self):
@@ -761,10 +761,10 @@ class TestSequentialDispatchRouting:
         mgr.add_provider(builtin)
         mgr.add_provider(external)
 
-        r1 = json.loads(mgr.handle_tool_call("builtin_tool", {}))
+        r1 = orjson.loads(mgr.handle_tool_call("builtin_tool", {}))
         assert r1["handled"] == "builtin_tool"
 
-        r2 = json.loads(mgr.handle_tool_call("hindsight_recall", {"query": "test"}))
+        r2 = orjson.loads(mgr.handle_tool_call("hindsight_recall", {"query": "test"}))
         assert r2["handled"] == "hindsight_recall"
 
     def test_tool_names_include_all_providers(self):

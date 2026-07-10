@@ -1,5 +1,5 @@
-import base64
-import json
+import pybase64 as base64
+import orjson
 import time
 from types import SimpleNamespace
 
@@ -11,12 +11,10 @@ from hermes_cli import runtime_provider as rp
 def _fake_invoke_jwt(ttl_seconds=3600):
     header = base64.urlsafe_b64encode(b'{"alg":"none","typ":"JWT"}').decode().rstrip("=")
     payload = base64.urlsafe_b64encode(
-        json.dumps(
-            {
+        orjson.dumps({
                 "scope": "inference:invoke",
                 "exp": int(time.time() + ttl_seconds),
-            }
-        ).encode()
+            }).decode('utf-8').encode()
     ).decode().rstrip("=")
     return f"{header}.{payload}.sig"
 

@@ -11,7 +11,7 @@ gateway/run.py for messaging). This module defines the schema, validation, and
 a thin dispatcher that delegates to a platform-provided callback.
 """
 
-import json
+import orjson
 from typing import List, Optional, Callable
 
 
@@ -93,24 +93,18 @@ def clarify_tool(
             choices = None  # empty list → open-ended
 
     if callback is None:
-        return json.dumps(
-            {"error": "Clarify tool is not available in this execution context."},
-            ensure_ascii=False,
-        )
+        return orjson.dumps({"error": "Clarify tool is not available in this execution context."}).decode('utf-8')
 
     try:
         user_response = callback(question, choices)
     except Exception as exc:
-        return json.dumps(
-            {"error": f"Failed to get user input: {exc}"},
-            ensure_ascii=False,
-        )
+        return orjson.dumps({"error": f"Failed to get user input: {exc}"}).decode('utf-8')
 
-    return json.dumps({
+    return orjson.dumps({
         "question": question,
         "choices_offered": choices,
         "user_response": str(user_response).strip(),
-    }, ensure_ascii=False)
+    }).decode('utf-8')
 
 
 def check_clarify_requirements() -> bool:

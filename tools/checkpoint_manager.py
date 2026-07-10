@@ -48,11 +48,11 @@ reclaim object storage.  A size-cap pass drops the oldest checkpoints per
 project until total store size is under ``max_total_size_mb``.
 """
 
-import hashlib
-import json
+import xxhash
+import orjson
 import logging
 import os
-import re
+from agent.re_compat import re
 import shutil
 import subprocess
 import time
@@ -201,7 +201,7 @@ def _normalize_path(path_value: str) -> Path:
 def _project_hash(working_dir: str) -> str:
     """Deterministic per-project hash: sha256(abs_path)[:16]."""
     abs_path = str(_normalize_path(working_dir))
-    return hashlib.sha256(abs_path.encode()).hexdigest()[:16]
+    return xxhash.xxh64(abs_path.encode()).hexdigest()[:16]
 
 
 def _store_path(base: Optional[Path] = None) -> Path:
@@ -492,14 +492,14 @@ def _register_project(store: Path, working_dir: str) -> None:
                   "created_at": now, "last_touch": now}
     if meta_path.exists():
         try:
-            existing = json.loads(meta_path.read_text(encoding="utf-8"))
+            existing = orjson.loads(meta_path.read_text(encoding="utf-8"))
             if isinstance(existing, dict):
                 meta["created_at"] = existing.get("created_at", now)
         except (OSError, ValueError):
             pass
     try:
         meta_path.parent.mkdir(parents=True, exist_ok=True)
-        meta_path.write_text(json.dumps(meta), encoding="utf-8")
+        meta_path.write_text(orjson.dumps(meta).decode('utf-8'), encoding="utf-8")
     except OSError as exc:
         logger.debug("Could not write project metadata %s: %s", meta_path, exc)
 
@@ -512,7 +512,7 @@ def _touch_project(store: Path, working_dir: str) -> None:
         _register_project(store, working_dir)
         return
     try:
-        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        meta = orjson.loads(meta_path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         meta = {}
     if not isinstance(meta, dict):
@@ -521,7 +521,7 @@ def _touch_project(store: Path, working_dir: str) -> None:
     meta["last_touch"] = time.time()
     meta.setdefault("created_at", meta["last_touch"])
     try:
-        meta_path.write_text(json.dumps(meta), encoding="utf-8")
+        meta_path.write_text(orjson.dumps(meta).decode('utf-8'), encoding="utf-8")
     except OSError as exc:
         logger.debug("Could not update project metadata %s: %s", meta_path, exc)
 
@@ -535,7 +535,7 @@ def _list_projects(store: Path) -> List[Dict]:
     for meta_path in projects_dir.glob("*.json"):
         dir_hash = meta_path.stem
         try:
-            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            meta = orjson.loads(meta_path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
         if not isinstance(meta, dict):

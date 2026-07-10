@@ -6,7 +6,7 @@ SDK so that WeCom can verify, encrypt, and decrypt callback payloads.
 
 from __future__ import annotations
 
-import base64
+import pybase64 as base64
 import hashlib
 import os
 import secrets

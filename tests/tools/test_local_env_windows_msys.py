@@ -344,6 +344,8 @@ class TestWrapCommandWindowsNativeCwd:
 
         with patch.object(
             LocalEnvironment, "init_session", autospec=True, return_value=None
+        ), patch.object(
+            local_mod, "_find_pwsh", return_value=None
         ):
             env = LocalEnvironment(cwd=r"C:\Users\liush", timeout=10)
 
@@ -366,7 +368,10 @@ class TestWrapCommandWindowsNativeCwd:
 
         monkeypatch.setattr(LocalEnvironment, "_run_bash", fake_run_bash)
 
-        env = LocalEnvironment(cwd=r"C:\Users\liush", timeout=10)
+        with patch.object(
+            local_mod, "_find_pwsh", return_value=None
+        ):
+            env = LocalEnvironment(cwd=r"C:\Users\liush", timeout=10)
 
         assert env._shell_type == "powershell"
         assert captured == {}

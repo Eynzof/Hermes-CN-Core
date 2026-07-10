@@ -35,13 +35,13 @@ Usage:
 """
 
 import asyncio
-import base64
+import pybase64 as base64
 import datetime
-import json
+import orjson
 import logging
 import os
 import queue
-import re
+from agent.re_compat import re
 import shlex
 import shutil
 import subprocess
@@ -1861,7 +1861,7 @@ def _generate_neutts(text: str, output_path: str, tts_config: Dict[str, Any]) ->
         "--device", device,
     ]
 
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=120, stdin=subprocess.DEVNULL)
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=120, stdin=subprocess.DEVNULL, creationflags=windows_hide_flags())  # windows-footgun: ok
     if result.returncode != 0:
         stderr = result.stderr.strip()
         # Filter out the "OK:" line from stderr
@@ -2193,14 +2193,14 @@ def text_to_speech_tool(
         # unattended TTS surface from materializing files via traversal.
         from tools.path_security import has_traversal_component
         if has_traversal_component(output_path):
-            return json.dumps({
+            return orjson.dumps({
                 "success": False,
                 "error": (
                     f"output_path contains '..' traversal component: "
                     f"{output_path}. Use an absolute path or one relative "
                     "to the current directory without '..'."
                 ),
-            }, ensure_ascii=False)
+            }).decode('utf-8')
         file_path = Path(output_path).expanduser()
         if command_provider_config is not None:
             # Respect caller-supplied path but align the extension with the
@@ -2256,10 +2256,10 @@ def text_to_speech_tool(
             try:
                 _import_elevenlabs()
             except ImportError:
-                return json.dumps({
+                return orjson.dumps({
                     "success": False,
                     "error": "ElevenLabs provider selected but 'elevenlabs' package not installed. Run: pip install elevenlabs"
-                }, ensure_ascii=False)
+                }).decode('utf-8')
             logger.info("Generating speech with ElevenLabs...")
             _generate_elevenlabs(text, file_str, tts_config)
 
@@ -2267,10 +2267,10 @@ def text_to_speech_tool(
             try:
                 _import_openai_client()
             except ImportError:
-                return json.dumps({
+                return orjson.dumps({
                     "success": False,
                     "error": "OpenAI provider selected but 'openai' package not installed."
-                }, ensure_ascii=False)
+                }).decode('utf-8')
             logger.info("Generating speech with OpenAI TTS...")
             _generate_openai_tts(text, file_str, tts_config)
 
@@ -2286,11 +2286,11 @@ def text_to_speech_tool(
             try:
                 _import_mistral_client()
             except ImportError:
-                return json.dumps({
+                return orjson.dumps({
                     "success": False,
                     "error": "Mistral provider selected but 'mistralai' package not installed. "
                              "Run: pip install 'hermes-agent[mistral]'"
-                }, ensure_ascii=False)
+                }).decode('utf-8')
             logger.info("Generating speech with Mistral Voxtral TTS...")
             _generate_mistral_tts(text, file_str, tts_config)
 
@@ -2300,11 +2300,11 @@ def text_to_speech_tool(
 
         elif provider == "neutts":
             if not _check_neutts_available():
-                return json.dumps({
+                return orjson.dumps({
                     "success": False,
                     "error": "NeuTTS provider selected but neutts is not installed. "
                              "Run hermes setup and choose NeuTTS, or install espeak-ng and run python -m pip install -U neutts[all]."
-                }, ensure_ascii=False)
+                }).decode('utf-8')
             logger.info("Generating speech with NeuTTS (local)...")
             _generate_neutts(text, file_str, tts_config)
 
@@ -2312,12 +2312,12 @@ def text_to_speech_tool(
             try:
                 _import_kittentts()
             except ImportError:
-                return json.dumps({
+                return orjson.dumps({
                     "success": False,
                     "error": "KittenTTS provider selected but 'kittentts' package not installed. "
                              "Run 'hermes setup tts' and choose KittenTTS, or install manually: "
                              "pip install https://github.com/KittenML/KittenTTS/releases/download/0.8.1/kittentts-0.8.1-py3-none-any.whl"
-                }, ensure_ascii=False)
+                }).decode('utf-8')
             logger.info("Generating speech with KittenTTS (local, ~25MB)...")
             _generate_kittentts(text, file_str, tts_config)
 
@@ -2325,12 +2325,12 @@ def text_to_speech_tool(
             try:
                 _import_piper()
             except ImportError:
-                return json.dumps({
+                return orjson.dumps({
                     "success": False,
                     "error": "Piper provider selected but 'piper-tts' package not installed. "
                              "Run 'hermes tools' and select Piper under TTS, or install manually: "
                              "pip install piper-tts",
-                }, ensure_ascii=False)
+                }).decode('utf-8')
             logger.info("Generating speech with Piper (local)...")
             _generate_piper_tts(text, file_str, tts_config)
 
@@ -2357,18 +2357,18 @@ def text_to_speech_tool(
                 provider = "neutts"
                 _generate_neutts(text, file_str, tts_config)
             else:
-                return json.dumps({
+                return orjson.dumps({
                     "success": False,
                     "error": "No TTS provider available. Install edge-tts (pip install edge-tts) "
                              "or set up NeuTTS for local synthesis."
-                }, ensure_ascii=False)
+                }).decode('utf-8')
 
         # Check the file was actually created
         if not os.path.exists(file_str) or os.path.getsize(file_str) == 0:
-            return json.dumps({
+            return orjson.dumps({
                 "success": False,
                 "error": f"TTS generation produced no output (provider: {provider})"
-            }, ensure_ascii=False)
+            }).decode('utf-8')
 
         # Try Opus conversion for Telegram compatibility.
         # Edge TTS outputs MP3, NeuTTS/KittenTTS output WAV. Keep those native
@@ -2417,13 +2417,13 @@ def text_to_speech_tool(
         if voice_compatible:
             media_tag = f"[[audio_as_voice]]\n{media_tag}"
 
-        return json.dumps({
+        return orjson.dumps({
             "success": True,
             "file_path": file_str,
             "media_tag": media_tag,
             "provider": provider,
             "voice_compatible": voice_compatible,
-        }, ensure_ascii=False)
+        }).decode('utf-8')
 
     except ValueError as e:
         # Configuration errors (missing API keys, etc.)

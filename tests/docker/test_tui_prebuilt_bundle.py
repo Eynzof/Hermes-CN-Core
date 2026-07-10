@@ -16,7 +16,7 @@ that invariant holds in the built image.
 """
 from __future__ import annotations
 
-import json
+import orjson
 import shlex
 import subprocess
 
@@ -67,9 +67,9 @@ def test_prebuilt_bundle_present_and_no_runtime_install(built_image: str) -> Non
         "  'argv': argv,\n"
         "  'uses_prebuilt': ('dist/entry.js' in ' '.join(argv)) and ('npm' not in argv[0].lower()),\n"
         "}\n"
-        "print(json.dumps(out))\n"
+        "print(orjson.dumps(out).decode('utf-8'))\n"
     )
-    out = json.loads(_exec_py(built_image, py))
+    out = orjson.loads(_exec_py(built_image, py))
     assert out["dist_entry_exists"], "prebuilt ui-tui/dist/entry.js missing from image"
     # With HERMES_TUI_DIR set, _make_tui_argv returns the prebuilt path BEFORE
     # ever reaching the install check — so the resolved argv is what matters.

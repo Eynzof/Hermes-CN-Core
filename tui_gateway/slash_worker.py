@@ -19,7 +19,7 @@ hermes_bootstrap.harden_import_path()
 import argparse
 import contextlib
 import io
-import json
+import orjson
 import os
 import sys
 import threading
@@ -141,13 +141,13 @@ def main():
         _in_flight.set()
         rid = None
         try:
-            req = json.loads(line)
+            req = orjson.loads(line)
             rid = req.get("id")
             out = _run(cli, req.get("command", ""))
-            sys.stdout.write(json.dumps({"id": rid, "ok": True, "output": out}) + "\n")
+            sys.stdout.write(orjson.dumps({"id": rid, "ok": True, "output": out}).decode('utf-8') + "\n")
             sys.stdout.flush()
         except Exception as e:
-            sys.stdout.write(json.dumps({"id": rid, "ok": False, "error": str(e)}) + "\n")
+            sys.stdout.write(orjson.dumps({"id": rid, "ok": False, "error": str(e)}).decode('utf-8') + "\n")
             sys.stdout.flush()
         finally:
             _in_flight.clear()

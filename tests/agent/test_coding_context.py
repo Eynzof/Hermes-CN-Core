@@ -1,6 +1,6 @@
 """Tests for agent.coding_context — RuntimeMode seam, resolver, toolset, git probe."""
 
-import json
+import orjson
 import os
 import subprocess
 import shutil
@@ -157,7 +157,7 @@ class TestProjectFacts:
     def test_package_json_scripts_surface_verify_commands(self, tmp_path):
         _git_init(tmp_path)
         (tmp_path / "package.json").write_text(
-            json.dumps({"scripts": {"test": "vitest", "lint": "eslint .", "dev": "vite"}})
+            orjson.dumps({"scripts": {"test": "vitest", "lint": "eslint .", "dev": "vite"}}).decode('utf-8')
         )
         (tmp_path / "pnpm-lock.yaml").write_text("")
         block = cc.build_coding_workspace_block(tmp_path)
@@ -230,7 +230,7 @@ class TestProjectFacts:
 
     def test_detect_project_facts_structured(self, tmp_path):
         (tmp_path / "package.json").write_text(
-            json.dumps({"scripts": {"test": "vitest", "dev": "vite"}})
+            orjson.dumps({"scripts": {"test": "vitest", "dev": "vite"}}).decode('utf-8')
         )
         (tmp_path / "pnpm-lock.yaml").write_text("")
         facts = cc.detect_project_facts(tmp_path)
@@ -244,7 +244,7 @@ class TestProjectFacts:
         # commands the prompt snapshot renders — one detector feeds both.
         _git_init(tmp_path)
         (tmp_path / "package.json").write_text(
-            json.dumps({"scripts": {"test": "vitest", "lint": "eslint ."}})
+            orjson.dumps({"scripts": {"test": "vitest", "lint": "eslint ."}}).decode('utf-8')
         )
         (tmp_path / "pnpm-lock.yaml").write_text("")
         facts = cc.project_facts_for(tmp_path)

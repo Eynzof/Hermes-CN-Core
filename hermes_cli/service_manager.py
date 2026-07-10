@@ -15,8 +15,7 @@ profile create/delete hooks (Phase 4) and the s6 dispatch path in
 ``hermes gateway start/stop/restart`` when running inside a container.
 """
 from __future__ import annotations
-
-import re
+from agent.re_compat import re
 from pathlib import Path
 from typing import Literal, Protocol, runtime_checkable
 
@@ -367,7 +366,7 @@ def _write_gateway_desired_state(name: str, desired_state: str) -> None:
     best-effort: a failed persistence attempt must not prevent immediate s6
     lifecycle control.
     """
-    import json
+    import orjson
     import time
 
     profile_dir = _profile_dir_for_gateway_service(name)
@@ -376,15 +375,15 @@ def _write_gateway_desired_state(name: str, desired_state: str) -> None:
         if not profile_dir.exists():
             return
         try:
-            data = json.loads(state_file.read_text()) if state_file.exists() else {}
+            data = orjson.loads(state_file.read_text()) if state_file.exists() else {}
             if not isinstance(data, dict):
                 data = {}
-        except (OSError, json.JSONDecodeError):
+        except (OSError, orjson.JSONDecodeError):
             data = {}
         data["desired_state"] = desired_state
         data["updated_at"] = int(time.time())
         tmp = state_file.with_suffix(state_file.suffix + ".tmp")
-        tmp.write_text(json.dumps(data, separators=(",", ":")) + "\n")
+        tmp.write_text(orjson.dumps(data).decode('utf-8') + "\n")
         tmp.replace(state_file)
     except OSError:
         return

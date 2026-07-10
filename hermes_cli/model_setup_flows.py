@@ -888,7 +888,21 @@ def _model_flow_custom(config):
             context_length = None
 
     if model_name:
+        from hermes_cli.main import _current_reasoning_effort, _prompt_reasoning_effort_selection, _set_reasoning_effort
+
         _save_model_choice(model_name)
+
+        # Determine available efforts based on API mode
+        from hermes_constants import VALID_REASONING_EFFORTS
+        api_mode_lower = (api_mode or "").lower()
+        if api_mode_lower == "anthropic_messages":
+            efforts = ["off", "minimal", "low", "medium", "high", "xhigh", "max"]
+        else:
+            efforts = ["off"] + list(VALID_REASONING_EFFORTS)
+
+        selected_effort = None
+        current_effort = _current_reasoning_effort(config)
+        selected_effort = _prompt_reasoning_effort_selection(efforts, current_effort=current_effort)
 
         # Update config and deactivate any OAuth provider
         cfg = load_config()
@@ -904,6 +918,8 @@ def _model_flow_custom(config):
             model["api_mode"] = api_mode
         else:
             model.pop("api_mode", None)
+        if selected_effort is not None:
+            _set_reasoning_effort(cfg, selected_effort)
         save_config(cfg)
         deactivate_provider()
 
@@ -914,6 +930,10 @@ def _model_flow_custom(config):
         config["model"] = dict(model)
 
         print(f"Default model set to: {model_name} (via {effective_url})")
+        if selected_effort == "none":
+            print("Reasoning disabled for this model.")
+        elif selected_effort:
+            print(f"Reasoning effort set to: {selected_effort}")
     else:
         if base_url or api_key:
             deactivate_provider()
@@ -1440,6 +1460,20 @@ def _model_flow_named_custom(config, provider_info):
     # Activate and save the model to the custom_providers entry
     _save_model_choice(model_name)
 
+    from hermes_cli.main import _current_reasoning_effort, _prompt_reasoning_effort_selection, _set_reasoning_effort
+
+    # Determine efforts based on api_mode
+    from hermes_constants import VALID_REASONING_EFFORTS
+    api_mode_lower = (api_mode or "").lower()
+    if api_mode_lower == "anthropic_messages":
+        efforts = ["off", "minimal", "low", "medium", "high", "xhigh", "max"]
+    else:
+        efforts = ["off"] + list(VALID_REASONING_EFFORTS)
+
+    selected_effort = None
+    current_effort = _current_reasoning_effort(config)
+    selected_effort = _prompt_reasoning_effort_selection(efforts, current_effort=current_effort)
+
     cfg = load_config()
     model = cfg.get("model")
     if not isinstance(model, dict):
@@ -1462,6 +1496,8 @@ def _model_flow_named_custom(config, provider_info):
         model["api_mode"] = custom_api_mode
     else:
         model.pop("api_mode", None)  # let runtime auto-detect from URL
+    if selected_effort is not None:
+        _set_reasoning_effort(cfg, selected_effort)
     save_config(cfg)
     deactivate_provider()
 
@@ -1502,6 +1538,10 @@ def _model_flow_named_custom(config, provider_info):
 
     print(f"\n✅ Model set to: {model_name}")
     print(f"   Provider: {name} ({base_url})")
+    if selected_effort == "none":
+        print("   Reasoning disabled for this model.")
+    elif selected_effort:
+        print(f"   Reasoning effort set to: {selected_effort}")
 
 def _model_flow_copilot(config, current_model=""):
     """GitHub Copilot flow using env vars, gh CLI, or OAuth device code."""
@@ -2748,10 +2788,26 @@ def _model_flow_api_key_provider(config, provider_id, current_model=""):
             selected = None
 
     if selected:
+        from hermes_cli.main import _current_reasoning_effort, _prompt_reasoning_effort_selection, _set_reasoning_effort
+
         if provider_id in {"opencode-zen", "opencode-go"}:
             selected = normalize_opencode_model_id(provider_id, selected)
 
         _save_model_choice(selected)
+
+        # Determine available efforts by provider
+        from hermes_constants import VALID_REASONING_EFFORTS
+        _provider_efforts_map = {
+            "openai-api": ["off", "minimal", "low", "medium", "high", "xhigh", "max"],
+            "deepseek": ["off", "minimal", "low", "medium", "high", "xhigh", "max"],
+            "gemini": ["off", "minimal", "low", "medium", "high", "xhigh", "max"],
+            "xai": ["off", "low", "medium", "high", "xhigh", "max"],
+        }
+        efforts = _provider_efforts_map.get(provider_id, ["off"] + list(VALID_REASONING_EFFORTS))
+
+        selected_effort = None
+        current_effort = _current_reasoning_effort(config)
+        selected_effort = _prompt_reasoning_effort_selection(efforts, current_effort=current_effort)
 
         # Update config with provider, base URL, and provider-specific API mode
         cfg = load_config()
@@ -2766,10 +2822,16 @@ def _model_flow_api_key_provider(config, provider_id, current_model=""):
             model["api_mode"] = opencode_model_api_mode(provider_id, selected)
         else:
             model.pop("api_mode", None)
+        if selected_effort is not None:
+            _set_reasoning_effort(cfg, selected_effort)
         save_config(cfg)
         deactivate_provider()
 
         print(f"Default model set to: {selected} (via {pconfig.name})")
+        if selected_effort == "none":
+            print("Reasoning disabled for this model.")
+        elif selected_effort:
+            print(f"Reasoning effort set to: {selected_effort}")
     else:
         print("No change.")
 
@@ -2903,6 +2965,13 @@ def _model_flow_anthropic(config, current_model=""):
             selected = None
 
     if selected:
+        from hermes_cli.main import _current_reasoning_effort, _prompt_reasoning_effort_selection, _set_reasoning_effort
+
+        efforts = ["off", "minimal", "low", "medium", "high", "xhigh", "max"]
+        selected_effort = None
+        current_effort = _current_reasoning_effort(config)
+        selected_effort = _prompt_reasoning_effort_selection(efforts, current_effort=current_effort)
+
         _save_model_choice(selected)
 
         # Update config with provider — clear base_url since
@@ -2917,9 +2986,15 @@ def _model_flow_anthropic(config, current_model=""):
         model["provider"] = "anthropic"
         model.pop("base_url", None)
         clear_model_endpoint_credentials(model)
+        if selected_effort is not None:
+            _set_reasoning_effort(cfg, selected_effort)
         save_config(cfg)
         deactivate_provider()
 
         print(f"Default model set to: {selected} (via Anthropic)")
+        if selected_effort == "none":
+            print("Reasoning disabled for this model.")
+        elif selected_effort:
+            print(f"Reasoning effort set to: {selected_effort}")
     else:
         print("No change.")

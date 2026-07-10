@@ -10,9 +10,9 @@ Covers:
 """
 from __future__ import annotations
 
-import base64
+import pybase64 as base64
 import hashlib
-import json
+import orjson
 import time
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
@@ -47,7 +47,7 @@ def _make_httpx_response(status_code: int, body: dict | None = None, text: str =
     resp.status_code = status_code
     if body is not None:
         resp.json.return_value = body
-        resp.text = json.dumps(body)
+        resp.text = orjson.dumps(body).decode('utf-8')
     else:
         resp.json.side_effect = Exception("No body")
         resp.text = text

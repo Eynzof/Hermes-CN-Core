@@ -19,7 +19,7 @@ list of files that did NOT change.
 
 from __future__ import annotations
 
-import json
+import orjson
 
 import pytest
 
@@ -97,7 +97,7 @@ class TestExtractFileMutationTargets:
 
 class TestExtractErrorPreview:
     def test_json_error_field_preferred(self):
-        raw = json.dumps({"success": False, "error": "Could not find old_string in /tmp/x"})
+        raw = orjson.dumps({"success": False, "error": "Could not find old_string in /tmp/x"}).decode('utf-8')
         assert _extract_error_preview(raw) == "Could not find old_string in /tmp/x"
 
     def test_plain_string_falls_through(self):
@@ -143,7 +143,7 @@ class TestRecordFileMutationResult:
 
     def test_failure_recorded(self):
         agent = _bare_agent()
-        result = json.dumps({"success": False, "error": "Could not find old_string"})
+        result = orjson.dumps({"success": False, "error": "Could not find old_string"}).decode('utf-8')
         agent._record_file_mutation_result(
             "patch", {"mode": "replace", "path": "/tmp/a.md", "old_string": "x", "new_string": "y"},
             result, is_error=True,
@@ -158,13 +158,13 @@ class TestRecordFileMutationResult:
         # First attempt fails
         agent._record_file_mutation_result(
             "patch", {"mode": "replace", "path": "/tmp/a.md", "old_string": "x", "new_string": "y"},
-            json.dumps({"error": "not found"}), is_error=True,
+            orjson.dumps({"error": "not found"}).decode('utf-8'), is_error=True,
         )
         assert "/tmp/a.md" in agent._turn_failed_file_mutations
         # Second attempt with corrected old_string succeeds
         agent._record_file_mutation_result(
             "patch", {"mode": "replace", "path": "/tmp/a.md", "old_string": "real", "new_string": "fixed"},
-            json.dumps({"success": True, "diff": "..."}), is_error=False,
+            orjson.dumps({"success": True, "diff": "..."}).decode('utf-8'), is_error=False,
         )
         assert agent._turn_failed_file_mutations == {}
         assert agent._turn_file_mutation_paths == {"/tmp/a.md"}
@@ -175,7 +175,7 @@ class TestRecordFileMutationResult:
         agent._record_file_mutation_result(
             "write_file",
             {"path": "a.py", "content": "print('ok')\n"},
-            json.dumps({"bytes_written": 12, "files_modified": ["/tmp/project/a.py"]}),
+            orjson.dumps({"bytes_written": 12, "files_modified": ["/tmp/project/a.py"]}).decode('utf-8'),
             is_error=False,
         )
 
@@ -185,10 +185,10 @@ class TestRecordFileMutationResult:
         paths = _extract_landed_file_mutation_paths(
             "patch",
             {"mode": "replace", "path": "src/app.py"},
-            json.dumps({
+            orjson.dumps({
                 "success": True,
                 "files_modified": ["/tmp/project/src/app.py"],
-            }),
+            }).decode('utf-8'),
         )
 
         assert paths == ["/tmp/project/src/app.py"]
@@ -198,15 +198,15 @@ class TestRecordFileMutationResult:
         agent._record_file_mutation_result(
             "write_file",
             {"path": "/tmp/a.py", "content": "bad"},
-            json.dumps({"error": "write failed"}),
+            orjson.dumps({"error": "write failed"}).decode('utf-8'),
             is_error=True,
         )
         assert "/tmp/a.py" in agent._turn_failed_file_mutations
 
-        result = json.dumps({
+        result = orjson.dumps({
             "bytes_written": 24,
             "lint": {"status": "error", "output": "SyntaxError: invalid syntax"},
-        })
+        }).decode('utf-8')
 
         agent._record_file_mutation_result(
             "write_file",
@@ -222,17 +222,17 @@ class TestRecordFileMutationResult:
         agent._record_file_mutation_result(
             "patch",
             {"mode": "replace", "path": "/tmp/a.py", "old_string": "x", "new_string": "y"},
-            json.dumps({"error": "Could not find old_string"}),
+            orjson.dumps({"error": "Could not find old_string"}).decode('utf-8'),
             is_error=True,
         )
         assert "/tmp/a.py" in agent._turn_failed_file_mutations
 
-        result = json.dumps({
+        result = orjson.dumps({
             "success": True,
             "diff": "--- a/tmp.py\n+++ b/tmp.py\n",
             "files_modified": ["/tmp/a.py"],
             "lsp_diagnostics": "<diagnostics>ERROR [1:1] type mismatch</diagnostics>",
-        })
+        }).decode('utf-8')
 
         agent._record_file_mutation_result(
             "patch",
@@ -247,11 +247,11 @@ class TestRecordFileMutationResult:
         agent = _bare_agent()
         agent._record_file_mutation_result(
             "patch", {"mode": "replace", "path": "/tmp/a.md", "old_string": "v1", "new_string": "y"},
-            json.dumps({"error": "first error"}), is_error=True,
+            orjson.dumps({"error": "first error"}).decode('utf-8'), is_error=True,
         )
         agent._record_file_mutation_result(
             "patch", {"mode": "replace", "path": "/tmp/a.md", "old_string": "v2", "new_string": "y"},
-            json.dumps({"error": "second error"}), is_error=True,
+            orjson.dumps({"error": "second error"}).decode('utf-8'), is_error=True,
         )
         # Keep the original error — swapping to the latest would obscure
         # the initial root cause.
@@ -267,7 +267,7 @@ class TestRecordFileMutationResult:
         )
         agent._record_file_mutation_result(
             "patch", {"mode": "patch", "patch": body},
-            json.dumps({"error": "parse failure"}), is_error=True,
+            orjson.dumps({"error": "parse failure"}).decode('utf-8'), is_error=True,
         )
         assert set(agent._turn_failed_file_mutations) == {"/tmp/a.md", "/tmp/b.md"}
 
@@ -282,14 +282,14 @@ class TestRecordFileMutationResult:
         # Should not raise
         agent._record_file_mutation_result(
             "patch", {"mode": "replace", "path": "/tmp/a.md"},
-            json.dumps({"error": "x"}), is_error=True,
+            orjson.dumps({"error": "x"}).decode('utf-8'), is_error=True,
         )
 
     def test_missing_path_arg_recorded_nowhere(self):
         agent = _bare_agent()
         agent._record_file_mutation_result(
             "patch", {"mode": "replace"},  # no path
-            json.dumps({"error": "path required"}), is_error=True,
+            orjson.dumps({"error": "path required"}).decode('utf-8'), is_error=True,
         )
         # No path → nothing to key on, state stays empty.  The per-turn
         # state is about file paths, not individual tool-call IDs.

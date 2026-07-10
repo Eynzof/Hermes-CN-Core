@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import queue
-import re
+from agent.re_compat import re
 import logging
 import threading
 from dataclasses import dataclass, field

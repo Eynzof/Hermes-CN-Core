@@ -10,7 +10,7 @@ asserting the expected env var outcomes.
 """
 
 import os
-import json
+import orjson
 
 
 def _simulate_config_bridge(cfg: dict, initial_env: dict | None = None):
@@ -50,7 +50,7 @@ def _simulate_config_bridge(cfg: dict, initial_env: dict | None = None):
                 if cfg_key == "cwd" and isinstance(val, str):
                     val = os.path.expanduser(val)
                 if isinstance(val, list):
-                    env[env_var] = json.dumps(val)
+                    env[env_var] = orjson.dumps(val).decode('utf-8')
                 else:
                     env[env_var] = str(val)
 

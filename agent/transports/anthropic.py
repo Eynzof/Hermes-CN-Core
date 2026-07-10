@@ -83,7 +83,7 @@ class AnthropicTransport(ProviderTransport):
         Parses content blocks (text, thinking, tool_use), maps stop_reason
         to OpenAI finish_reason, and collects reasoning_details in provider_data.
         """
-        import json
+        import orjson
         from agent.anthropic_adapter import _to_plain_data, _sanitize_replay_block
         from agent.transports.types import ToolCall
 
@@ -155,7 +155,7 @@ class AnthropicTransport(ProviderTransport):
                     ToolCall(
                         id=block.id,
                         name=name,
-                        arguments=json.dumps(block.input),
+                        arguments=orjson.dumps(block.input).decode('utf-8'),
                     )
                 )
 

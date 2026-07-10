@@ -12,7 +12,7 @@ Mode is sourced exclusively from ``code_execution.mode`` in config.yaml —
 there is no env-var override. Tests patch ``_load_config`` directly.
 """
 
-import json
+import orjson
 import os
 import sys
 import unittest
@@ -54,10 +54,10 @@ def _mock_mode(mode):
 def _mock_handle_function_call(function_name, function_args, task_id=None, user_task=None):
     """Minimal mock dispatcher reused across tests."""
     if function_name == "terminal":
-        return json.dumps({"output": "mock", "exit_code": 0})
+        return orjson.dumps({"output": "mock", "exit_code": 0}).decode('utf-8')
     if function_name == "read_file":
-        return json.dumps({"content": "line1\n", "total_lines": 1})
-    return json.dumps({"error": f"Unknown tool: {function_name}"})
+        return orjson.dumps({"content": "line1\n", "total_lines": 1}).decode('utf-8')
+    return orjson.dumps({"error": f"Unknown tool: {function_name}"}).decode('utf-8')
 
 
 # ---------------------------------------------------------------------------
@@ -292,7 +292,7 @@ class TestExecuteCodeModeIntegration(unittest.TestCase):
                         task_id=f"test-{mode}",
                         enabled_tools=enabled_tools or list(SANDBOX_ALLOWED_TOOLS),
                     )
-        return json.loads(raw)
+        return orjson.loads(raw)
 
     def test_strict_mode_runs_in_tmpdir(self):
         """Strict mode: script's os.getcwd() is the staging tmpdir."""
@@ -391,7 +391,7 @@ class TestSecurityInvariantsAcrossModes(unittest.TestCase):
                     task_id=f"test-sec-{mode}",
                     enabled_tools=list(SANDBOX_ALLOWED_TOOLS),
                 )
-        return json.loads(raw)
+        return orjson.loads(raw)
 
     def test_api_keys_scrubbed_in_strict_mode(self):
         code = (

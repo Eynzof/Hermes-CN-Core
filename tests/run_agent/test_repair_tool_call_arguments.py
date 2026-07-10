@@ -1,6 +1,6 @@
 """Tests for _repair_tool_call_arguments — malformed JSON repair pipeline."""
 
-import json
+import orjson
 
 from run_agent import _repair_tool_call_arguments
 
@@ -32,16 +32,16 @@ class TestRepairToolCallArguments:
 
     def test_trailing_comma_in_object(self):
         result = _repair_tool_call_arguments('{"key": "value",}', "t")
-        assert json.loads(result) == {"key": "value"}
+        assert orjson.loads(result) == {"key": "value"}
 
     def test_trailing_comma_in_array(self):
         result = _repair_tool_call_arguments('{"a": [1, 2,]}', "t")
-        parsed = json.loads(result)
+        parsed = orjson.loads(result)
         assert parsed == {"a": [1, 2]}
 
     def test_multiple_trailing_commas(self):
         result = _repair_tool_call_arguments('{"a": 1, "b": 2,}', "t")
-        parsed = json.loads(result)
+        parsed = orjson.loads(result)
         assert parsed["a"] == 1
         assert parsed["b"] == 2
 
@@ -49,7 +49,7 @@ class TestRepairToolCallArguments:
 
     def test_unclosed_brace(self):
         result = _repair_tool_call_arguments('{"key": "value"', "t")
-        parsed = json.loads(result)
+        parsed = orjson.loads(result)
         assert parsed == {"key": "value"}
 
     def test_unclosed_bracket_and_brace(self):
@@ -57,19 +57,19 @@ class TestRepairToolCallArguments:
         # Bracket counting adds ']' then '}', producing {"a": [1, 2]}
         # which is valid JSON.  But the naive count can't always recover
         # complex nesting — verify we at least get valid JSON.
-        json.loads(result)
+        orjson.loads(result)
 
     # -- Stage 5: excess closing delimiters --
 
     def test_extra_closing_brace(self):
         result = _repair_tool_call_arguments('{"key": "value"}}', "t")
-        parsed = json.loads(result)
+        parsed = orjson.loads(result)
         assert parsed == {"key": "value"}
 
     def test_extra_closing_bracket(self):
         result = _repair_tool_call_arguments('{"a": [1]]}', "t")
         # Should produce valid JSON
-        json.loads(result)
+        orjson.loads(result)
 
     # -- Stage 6: last resort --
 
@@ -87,7 +87,7 @@ class TestRepairToolCallArguments:
         happen), but the repair pipeline still produces valid output."""
         raw = '{"path": "/tmp/foo", "content": "hello"}'
         result = _repair_tool_call_arguments(raw, "t")
-        parsed = json.loads(result)
+        parsed = orjson.loads(result)
         assert parsed["path"] == "/tmp/foo"
 
     # -- Combined repairs --
@@ -96,14 +96,14 @@ class TestRepairToolCallArguments:
         result = _repair_tool_call_arguments('{"a": 1, "b": 2,', "t")
         # Trailing comma stripped first, then closing brace added.
         # May or may not fully recover — verify valid JSON at minimum.
-        json.loads(result)
+        orjson.loads(result)
 
     def test_real_world_glm_truncation(self):
         """Simulates GLM-5.1 truncating mid-argument."""
         raw = '{"command": "ls -la /tmp", "timeout": 30, "background":'
         result = _repair_tool_call_arguments(raw, "terminal")
         # Should at least be valid JSON, even if background is lost
-        json.loads(result)
+        orjson.loads(result)
 
     # -- Stage 0: strict=False (literal control chars in strings) --
     # llama.cpp backends sometimes emit literal tabs/newlines inside JSON
@@ -113,13 +113,13 @@ class TestRepairToolCallArguments:
     def test_literal_newline_inside_string_value(self):
         raw = '{"summary": "line one\nline two"}'
         result = _repair_tool_call_arguments(raw, "t")
-        parsed = json.loads(result)
+        parsed = orjson.loads(result)
         assert parsed == {"summary": "line one\nline two"}
 
     def test_literal_tab_inside_string_value(self):
         raw = '{"summary": "col1\tcol2"}'
         result = _repair_tool_call_arguments(raw, "t")
-        parsed = json.loads(result)
+        parsed = orjson.loads(result)
         assert parsed == {"summary": "col1\tcol2"}
 
     def test_literal_control_char_reserialised_to_wire_form(self):
@@ -127,7 +127,7 @@ class TestRepairToolCallArguments:
         raw = '{"msg": "has\tliteral\ttabs"}'
         result = _repair_tool_call_arguments(raw, "t")
         # strict=True must now accept this
-        parsed = json.loads(result)
+        parsed = orjson.loads(result)
         assert parsed["msg"] == "has\tliteral\ttabs"
 
     # -- Stage 4: control-char escape fallback --
@@ -137,6 +137,6 @@ class TestRepairToolCallArguments:
         + control-char escape rescues it."""
         raw = '{"msg": "line\none",}'
         result = _repair_tool_call_arguments(raw, "t")
-        parsed = json.loads(result)
+        parsed = orjson.loads(result)
         assert "line" in parsed["msg"]
 

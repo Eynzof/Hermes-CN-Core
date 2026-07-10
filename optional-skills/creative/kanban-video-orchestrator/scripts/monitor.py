@@ -17,7 +17,7 @@ decisions should remain human/AI-overseen.
 from __future__ import annotations
 
 import argparse
-import json
+import orjson
 import shutil
 import subprocess
 import sys
@@ -39,8 +39,8 @@ def kanban_list(tenant: str) -> list[dict]:
             capture_output=True, text=True, check=False,
         )
         if out.returncode == 0 and out.stdout.strip().startswith("["):
-            return json.loads(out.stdout)
-    except (FileNotFoundError, json.JSONDecodeError):
+            return orjson.loads(out.stdout)
+    except (FileNotFoundError, orjson.JSONDecodeError):
         pass
     # Fallback: textual parse of `hermes kanban list`
     out = subprocess.run(
@@ -74,8 +74,8 @@ def kanban_show(task_id: str) -> dict | None:
     if out.returncode != 0:
         return None
     try:
-        return json.loads(out.stdout)
-    except json.JSONDecodeError:
+        return orjson.loads(out.stdout)
+    except orjson.JSONDecodeError:
         return None
 
 

@@ -18,7 +18,7 @@ guard.
 """
 
 import inspect
-import re
+from agent.re_compat import re
 from unittest.mock import MagicMock, patch
 
 import pytest

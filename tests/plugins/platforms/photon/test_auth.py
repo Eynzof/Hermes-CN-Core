@@ -1,9 +1,9 @@
 """Tests for the Photon auth module (device login + dashboard API)."""
 from __future__ import annotations
 
-import json
+import orjson
 import os
-from base64 import b64encode
+from pybase64 import b64encode
 from pathlib import Path
 from typing import Any, Dict
 
@@ -67,7 +67,7 @@ def test_store_and_load_photon_token(tmp_hermes_home: Path) -> None:
     photon_auth.store_photon_token("abc123def456")
     assert photon_auth.load_photon_token() == "abc123def456"
 
-    auth_json = json.loads((tmp_hermes_home / "auth.json").read_text())
+    auth_json = orjson.loads((tmp_hermes_home / "auth.json").read_text())
     assert auth_json["credential_pool"]["photon"][0]["access_token"] == "abc123def456"
 
 

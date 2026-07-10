@@ -8,8 +8,8 @@ with compression thresholds — not exact tokenizer counts.
 
 from __future__ import annotations
 
-import json
-import re
+import orjson
+from agent.re_compat import re
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 _SKILLS_BLOCK_RE = re.compile(r"<available_skills>.*?</available_skills>", re.DOTALL)
@@ -37,7 +37,7 @@ def _chars_to_tokens(text: str) -> int:
 def _json_tokens(value: Any) -> int:
     if not value:
         return 0
-    return _chars_to_tokens(json.dumps(value, ensure_ascii=False))
+    return _chars_to_tokens(orjson.dumps(value).decode('utf-8'))
 
 
 def _tool_name(tool: dict) -> str:

@@ -3,9 +3,7 @@
 Used by entity_resolution.py and timing_analysis.py.
 """
 from __future__ import annotations
-
-import re
-
+from agent.re_compat import re
 # Legal suffixes / corporate boilerplate to strip during normalization.
 _SUFFIX_TOKENS = {
     "INC", "INCORPORATED", "LLC", "LLP", "LP", "LTD", "LIMITED",

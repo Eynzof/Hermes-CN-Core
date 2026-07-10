@@ -14,8 +14,7 @@ in ``command_link_dir`` and the venv entry point is left intact.
 """
 
 from __future__ import annotations
-
-import re
+from agent.re_compat import re
 import stat
 import subprocess
 from pathlib import Path

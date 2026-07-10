@@ -31,7 +31,7 @@ survive.
 
 from __future__ import annotations
 
-import difflib
+import rapidfuzz.process as _fuzz_process
 import logging
 import shlex
 from dataclasses import dataclass
@@ -136,11 +136,11 @@ def match_blueprint(query: str) -> Tuple[Optional[Any], List[Any]]:
 
     # Fuzzy on keys (typo tolerance).
     keys = [r.key for r in CATALOG]
-    close = difflib.get_close_matches(q, keys, n=3, cutoff=0.6)
+    close = _fuzz_process.extract(q, keys, limit=3, score_cutoff=60.0)
     if len(close) == 1:
-        return get_blueprint(close[0]), []
+        return get_blueprint(close[0][0]), []
     if len(close) > 1:
-        return None, [get_blueprint(k) for k in close]
+        return None, [get_blueprint(k[0]) for k in close]
 
     return None, []
 
@@ -226,10 +226,10 @@ def _fmt_no_match(query: str) -> str:
     from cron.blueprint_catalog import CATALOG
 
     keys = [r.key for r in CATALOG]
-    close = difflib.get_close_matches((query or "").lower(), keys, n=3, cutoff=0.4)
+    close = _fuzz_process.extract((query or "").lower(), keys, limit=3, score_cutoff=40.0)
     msg = f"No automation blueprint matches '{query}'."
     if close:
-        msg += " Did you mean: " + ", ".join(close) + "?"
+        msg += " Did you mean: " + ", ".join(c[0] for c in close) + "?"
     msg += " Run /blueprint to see the catalog."
     return msg
 

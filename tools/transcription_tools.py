@@ -449,8 +449,7 @@ def _render_command_stt_template(
     ``}}`` are preserved as literal ``{`` / ``}`` for users who want to
     embed JSON snippets in their command.
     """
-    import re
-
+    from agent.re_compat import re
     names = "|".join(re.escape(name) for name in placeholders)
     pattern = re.compile(
         rf"(?<!\$)(?:\{{\{{(?P<double>{names})\}}\}}|\{{(?P<single>{names})\}})"

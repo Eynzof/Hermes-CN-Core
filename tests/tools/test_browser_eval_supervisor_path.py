@@ -7,7 +7,7 @@ real browser, no real WebSocket.  Real-CDP coverage lives in
 """
 from __future__ import annotations
 
-import json
+import orjson
 from unittest.mock import MagicMock
 
 import pytest
@@ -56,7 +56,7 @@ class TestBrowserEvalSupervisorPath:
             lambda *a, **kw: pytest.fail("subprocess path must not run when supervisor is healthy"),
         )
 
-        out = json.loads(bt._browser_eval("1 + 41"))
+        out = orjson.loads(bt._browser_eval("1 + 41"))
         assert out["success"] is True
         assert out["result"] == 42
         assert out["method"] == "cdp_supervisor"
@@ -78,7 +78,7 @@ class TestBrowserEvalSupervisorPath:
             lambda *a, **kw: pytest.fail("subprocess path must not run"),
         )
 
-        out = json.loads(bt._browser_eval('JSON.stringify({a:1,b:[2,3]})'))
+        out = orjson.loads(bt._browser_eval('JSON.stringify({a:1,b:[2,3]})'))
         assert out["success"] is True
         assert out["result"] == {"a": 1, "b": [2, 3]}
         # result_type reflects the parsed Python type, not the raw JS type.
@@ -96,7 +96,7 @@ class TestBrowserEvalSupervisorPath:
         _patch_supervisor(monkeypatch, sup)
         monkeypatch.setattr(bt, "_run_browser_command", lambda *a, **kw: pytest.fail("nope"))
 
-        out = json.loads(bt._browser_eval('"hello world"'))
+        out = orjson.loads(bt._browser_eval('"hello world"'))
         assert out["result"] == "hello world"
         assert out["result_type"] == "str"
 
@@ -118,7 +118,7 @@ class TestBrowserEvalSupervisorPath:
 
         monkeypatch.setattr(bt, "_run_browser_command", _fake_subprocess)
 
-        out = json.loads(bt._browser_eval("foo.bar"))
+        out = orjson.loads(bt._browser_eval("foo.bar"))
         assert out["success"] is False
         assert "ReferenceError" in out["error"]
         assert called["subprocess"] is False, \
@@ -144,7 +144,7 @@ class TestBrowserEvalSupervisorPath:
 
         monkeypatch.setattr(bt, "_run_browser_command", _fake_subprocess)
 
-        out = json.loads(bt._browser_eval("anything"))
+        out = orjson.loads(bt._browser_eval("anything"))
         assert called["subprocess"] is True
         assert out["success"] is True
         assert out["result"] == "fallback-result"
@@ -164,7 +164,7 @@ class TestBrowserEvalSupervisorPath:
 
         monkeypatch.setattr(bt, "_run_browser_command", _fake_subprocess)
 
-        out = json.loads(bt._browser_eval("1+1"))
+        out = orjson.loads(bt._browser_eval("1+1"))
         assert called["subprocess"] is True
         assert out["success"] is True
         assert out.get("method") != "cdp_supervisor"
@@ -186,7 +186,7 @@ class TestBrowserEvalSupervisorPath:
             return {"success": True, "data": {"result": "fallback"}}
 
         monkeypatch.setattr(bt, "_run_browser_command", _fake_subprocess)
-        json.loads(bt._browser_eval("1+1"))
+        orjson.loads(bt._browser_eval("1+1"))
         assert called["subprocess"] is True
 
     def test_subprocess_reference_chain_error_becomes_guidance(self, monkeypatch):
@@ -207,7 +207,7 @@ class TestBrowserEvalSupervisorPath:
 
         monkeypatch.setattr(bt, "_run_browser_command", _fake_subprocess)
 
-        out = json.loads(bt._browser_eval("document.body"))
+        out = orjson.loads(bt._browser_eval("document.body"))
         assert out["success"] is False
         # Raw protocol error must NOT leak through.
         assert "reference chain" not in out["error"].lower()

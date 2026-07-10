@@ -8,10 +8,10 @@ Handles:
 - Dynamic system prompt injection (agent knows its context)
 """
 
-import hashlib
+import xxhash
 import logging
 import os
-import json
+import orjson
 import threading
 import uuid
 from pathlib import Path
@@ -62,7 +62,7 @@ def auto_continue_freshness_window() -> float:
 
 def _hash_id(value: str) -> str:
     """Deterministic 12-char hex hash of an identifier."""
-    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:12]
+    return xxhash.xxh64(value.encode("utf-8")).hexdigest()[:12]
 
 
 def _hash_sender_id(value: str) -> str:
@@ -335,7 +335,7 @@ def _format_untrusted_prompt_value(value: Any, *, max_chars: int = _MAX_PROMPT_M
     text = "".join(ch if ch >= " " or ch in "\n\t" else " " for ch in text)
     if max_chars and len(text) > max_chars:
         text = text[: max_chars - 3] + "..."
-    return json.dumps(text, ensure_ascii=False)
+    return orjson.dumps(text).decode('utf-8')
 
 
 def build_session_context_prompt(
@@ -951,7 +951,7 @@ class SessionStore:
         if sessions_file.exists():
             try:
                 with open(sessions_file, "r", encoding="utf-8") as f:
-                    data = json.load(f)
+                    data = orjson.loads(f.read())
                 for key, entry_data in data.items():
                     # Keys starting with "_" are documentation/metadata sentinels
                     # (e.g. the "_README" note written by _save), not session
@@ -1096,7 +1096,7 @@ class SessionStore:
         )
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2)
+                f.write(orjson.dumps(data, option=orjson.OPT_INDENT_2).decode('utf-8'))
                 f.flush()
                 os.fsync(f.fileno())
             atomic_replace(tmp_path, sessions_file)

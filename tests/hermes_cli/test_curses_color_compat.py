@@ -17,7 +17,7 @@ if sys.platform == "win32":
     pytest.skip("curses is not available on Windows", allow_module_level=True)
 
 import curses
-import re
+from agent.re_compat import re
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 

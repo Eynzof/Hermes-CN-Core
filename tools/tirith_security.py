@@ -20,8 +20,8 @@ chain provenance proof.  Installation runs in a background thread so startup
 never blocks.
 """
 
-import hashlib
-import json
+import xxhash
+import orjson
 import logging
 import os
 import platform
@@ -345,7 +345,7 @@ def _verify_checksum(archive_path: str, checksums_path: str, archive_name: str) 
         logger.warning("No checksum entry for %s", archive_name)
         return False
 
-    sha = hashlib.sha256()
+    sha = xxhash.xxh64()
     with open(archive_path, "rb") as f:
         for chunk in iter(lambda: f.read(8192), b""):
             sha.update(chunk)
@@ -827,11 +827,11 @@ def check_command_security(command: str) -> dict:
     findings = []
     summary = ""
     try:
-        data = json.loads(result.stdout) if result.stdout.strip() else {}
+        data = orjson.loads(result.stdout) if result.stdout.strip() else {}
         raw_findings = data.get("findings", [])
         findings = raw_findings[:_MAX_FINDINGS]
         summary = (data.get("summary", "") or "")[:_MAX_SUMMARY_LEN]
-    except (json.JSONDecodeError, AttributeError):
+    except (orjson.JSONDecodeError, AttributeError):
         # JSON parse failure degrades findings/summary, not the verdict
         logger.debug("tirith JSON parse failed, using exit code only")
         if action == "block":

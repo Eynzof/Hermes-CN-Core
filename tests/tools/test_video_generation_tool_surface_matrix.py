@@ -14,7 +14,7 @@ the network.
 from __future__ import annotations
 
 import asyncio
-import json
+import orjson
 import types
 from typing import Any, Dict, List
 
@@ -66,7 +66,7 @@ def matrix_env(tmp_path, monkeypatch):
         def __init__(self, p, s=200):
             self.status_code = s
             self._p = p
-            self.text = json.dumps(p)
+            self.text = orjson.dumps(p).decode('utf-8')
         def raise_for_status(self):
             if self.status_code >= 400:
                 raise httpx.HTTPStatusError("err", request=None, response=self)  # type: ignore
@@ -122,7 +122,7 @@ def _invoke_tool(home, cfg: dict, args: dict, tool_name: str = "video_generate")
     if tool_name not in registry._tools:
         discover_builtin_tools()
     handler = registry._tools[tool_name].handler
-    return json.loads(handler(args))
+    return orjson.loads(handler(args))
 
 
 # ─────────────────────────────────────────────────────────────────────────

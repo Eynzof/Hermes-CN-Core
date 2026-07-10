@@ -25,7 +25,7 @@ returns a 403 at call time and :func:`_enrich_403` maps it to
 actionable guidance the model can relay to the user.
 """
 
-import json
+import orjson
 import logging
 import os
 import urllib.error
@@ -70,7 +70,7 @@ def _discord_request(
 
     data = None
     if body is not None:
-        data = json.dumps(body).encode("utf-8")
+        data = orjson.dumps(body)
 
     req = urllib.request.Request(
         url,
@@ -87,7 +87,7 @@ def _discord_request(
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             if resp.status == 204:
                 return None
-            return json.loads(resp.read().decode("utf-8"))
+            return orjson.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         error_body = ""
         try:
@@ -198,13 +198,13 @@ def _list_guilds(token: str, **_kwargs: Any) -> str:
             "owner": g.get("owner", False),
             "permissions": g.get("permissions"),
         })
-    return json.dumps({"guilds": result, "count": len(result)})
+    return orjson.dumps({"guilds": result, "count": len(result)}).decode('utf-8')
 
 
 def _server_info(token: str, guild_id: str, **_kwargs: Any) -> str:
     """Get detailed information about a guild."""
     g = _discord_request("GET", f"/guilds/{guild_id}", token, params={"with_counts": "true"})
-    return json.dumps({
+    return orjson.dumps({
         "id": g["id"],
         "name": g["name"],
         "description": g.get("description"),
@@ -216,7 +216,7 @@ def _server_info(token: str, guild_id: str, **_kwargs: Any) -> str:
         "premium_tier": g.get("premium_tier"),
         "premium_subscription_count": g.get("premium_subscription_count"),
         "verification_level": g.get("verification_level"),
-    })
+    }).decode('utf-8')
 
 
 def _list_channels(token: str, guild_id: str, **_kwargs: Any) -> str:
@@ -271,13 +271,13 @@ def _list_channels(token: str, guild_id: str, **_kwargs: Any) -> str:
         })
 
     total = sum(len(group["channels"]) for group in result)
-    return json.dumps({"channel_groups": result, "total_channels": total})
+    return orjson.dumps({"channel_groups": result, "total_channels": total}).decode('utf-8')
 
 
 def _channel_info(token: str, channel_id: str, **_kwargs: Any) -> str:
     """Get detailed info about a specific channel."""
     ch = _discord_request("GET", f"/channels/{channel_id}", token)
-    return json.dumps({
+    return orjson.dumps({
         "id": ch["id"],
         "name": ch.get("name"),
         "type": _channel_type_name(ch["type"]),
@@ -288,7 +288,7 @@ def _channel_info(token: str, channel_id: str, **_kwargs: Any) -> str:
         "parent_id": ch.get("parent_id"),
         "rate_limit_per_user": ch.get("rate_limit_per_user", 0),
         "last_message_id": ch.get("last_message_id"),
-    })
+    }).decode('utf-8')
 
 
 def _list_roles(token: str, guild_id: str, **_kwargs: Any) -> str:
@@ -306,14 +306,14 @@ def _list_roles(token: str, guild_id: str, **_kwargs: Any) -> str:
             "member_count": r.get("member_count"),
             "hoist": r.get("hoist", False),
         })
-    return json.dumps({"roles": result, "count": len(result)})
+    return orjson.dumps({"roles": result, "count": len(result)}).decode('utf-8')
 
 
 def _member_info(token: str, guild_id: str, user_id: str, **_kwargs: Any) -> str:
     """Get info about a specific guild member."""
     m = _discord_request("GET", f"/guilds/{guild_id}/members/{user_id}", token)
     user = m.get("user", {})
-    return json.dumps({
+    return orjson.dumps({
         "user_id": user.get("id"),
         "username": user.get("username"),
         "display_name": user.get("global_name"),
@@ -323,7 +323,7 @@ def _member_info(token: str, guild_id: str, user_id: str, **_kwargs: Any) -> str
         "roles": m.get("roles", []),
         "joined_at": m.get("joined_at"),
         "premium_since": m.get("premium_since"),
-    })
+    }).decode('utf-8')
 
 
 def _search_members(token: str, guild_id: str, query: str, limit: int = 20, **_kwargs: Any) -> str:
@@ -345,7 +345,7 @@ def _search_members(token: str, guild_id: str, query: str, limit: int = 20, **_k
             "bot": user.get("bot", False),
             "roles": m.get("roles", []),
         })
-    return json.dumps({"members": result, "count": len(result)})
+    return orjson.dumps({"members": result, "count": len(result)}).decode('utf-8')
 
 
 def _fetch_messages(
@@ -388,7 +388,7 @@ def _fetch_messages(
             ] if msg.get("reactions") else [],
             "pinned": msg.get("pinned", False),
         })
-    return json.dumps({"messages": result, "count": len(result)})
+    return orjson.dumps({"messages": result, "count": len(result)}).decode('utf-8')
 
 
 def _list_pins(token: str, channel_id: str, **_kwargs: Any) -> str:
@@ -403,25 +403,25 @@ def _list_pins(token: str, channel_id: str, **_kwargs: Any) -> str:
             "author": author.get("username"),
             "timestamp": msg.get("timestamp"),
         })
-    return json.dumps({"pinned_messages": result, "count": len(result)})
+    return orjson.dumps({"pinned_messages": result, "count": len(result)}).decode('utf-8')
 
 
 def _pin_message(token: str, channel_id: str, message_id: str, **_kwargs: Any) -> str:
     """Pin a message in a channel."""
     _discord_request("PUT", f"/channels/{channel_id}/pins/{message_id}", token)
-    return json.dumps({"success": True, "message": f"Message {message_id} pinned."})
+    return orjson.dumps({"success": True, "message": f"Message {message_id} pinned."}).decode('utf-8')
 
 
 def _unpin_message(token: str, channel_id: str, message_id: str, **_kwargs: Any) -> str:
     """Unpin a message from a channel."""
     _discord_request("DELETE", f"/channels/{channel_id}/pins/{message_id}", token)
-    return json.dumps({"success": True, "message": f"Message {message_id} unpinned."})
+    return orjson.dumps({"success": True, "message": f"Message {message_id} unpinned."}).decode('utf-8')
 
 
 def _delete_message(token: str, channel_id: str, message_id: str, **_kwargs: Any) -> str:
     """Delete a message from a channel or thread."""
     _discord_request("DELETE", f"/channels/{channel_id}/messages/{message_id}", token)
-    return json.dumps({"success": True, "message": f"Message {message_id} deleted."})
+    return orjson.dumps({"success": True, "message": f"Message {message_id} deleted."}).decode('utf-8')
 
 
 def _create_thread(
@@ -447,23 +447,23 @@ def _create_thread(
             "type": 11,  # PUBLIC_THREAD
         }
     thread = _discord_request("POST", path, token, body=body)
-    return json.dumps({
+    return orjson.dumps({
         "success": True,
         "thread_id": thread["id"],
         "name": thread.get("name"),
-    })
+    }).decode('utf-8')
 
 
 def _add_role(token: str, guild_id: str, user_id: str, role_id: str, **_kwargs: Any) -> str:
     """Add a role to a guild member."""
     _discord_request("PUT", f"/guilds/{guild_id}/members/{user_id}/roles/{role_id}", token)
-    return json.dumps({"success": True, "message": f"Role {role_id} added to user {user_id}."})
+    return orjson.dumps({"success": True, "message": f"Role {role_id} added to user {user_id}."}).decode('utf-8')
 
 
 def _remove_role(token: str, guild_id: str, user_id: str, role_id: str, **_kwargs: Any) -> str:
     """Remove a role from a guild member."""
     _discord_request("DELETE", f"/guilds/{guild_id}/members/{user_id}/roles/{role_id}", token)
-    return json.dumps({"success": True, "message": f"Role {role_id} removed from user {user_id}."})
+    return orjson.dumps({"success": True, "message": f"Role {role_id} removed from user {user_id}."}).decode('utf-8')
 
 
 # ---------------------------------------------------------------------------
@@ -843,26 +843,26 @@ def _run_discord_action(
     """Shared handler logic for both discord tools."""
     token = _get_bot_token()
     if not token:
-        return json.dumps({"error": "DISCORD_BOT_TOKEN not configured."})
+        return orjson.dumps({"error": "DISCORD_BOT_TOKEN not configured."}).decode('utf-8')
 
     action_fn = valid_actions.get(action)
     if not action_fn:
-        return json.dumps({
+        return orjson.dumps({
             "error": f"Unknown action: {action}",
             "available_actions": list(valid_actions.keys()),
-        })
+        }).decode('utf-8')
 
     # Config-level allowlist gate (defense in depth — schema already filtered,
     # but a stale cached schema from a prior config should not let denied
     # actions through).
     allowlist = _load_allowed_actions_config()
     if allowlist is not None and action not in allowlist:
-        return json.dumps({
+        return orjson.dumps({
             "error": (
                 f"Action '{action}' is disabled by config (discord.server_actions). "
                 f"Allowed: {', '.join(allowlist) if allowlist else '<none>'}"
             ),
-        })
+        }).decode('utf-8')
 
     local_vars = {
         "guild_id": guild_id,
@@ -876,9 +876,9 @@ def _run_discord_action(
 
     missing = [p for p in _REQUIRED_PARAMS.get(action, []) if not local_vars.get(p)]
     if missing:
-        return json.dumps({
+        return orjson.dumps({
             "error": f"Missing required parameters for '{action}': {', '.join(missing)}",
-        })
+        }).decode('utf-8')
 
     try:
         return action_fn(
@@ -898,11 +898,11 @@ def _run_discord_action(
     except DiscordAPIError as e:
         logger.warning("Discord API error in %s action '%s': %s", tool_label, action, e)
         if e.status == 403:
-            return json.dumps({"error": _enrich_403(action, e.body)})
-        return json.dumps({"error": str(e)})
+            return orjson.dumps({"error": _enrich_403(action, e.body)}).decode('utf-8')
+        return orjson.dumps({"error": str(e)}).decode('utf-8')
     except Exception as e:
         logger.exception("Unexpected error in %s action '%s'", tool_label, action)
-        return json.dumps({"error": f"Unexpected error: {e}"})
+        return orjson.dumps({"error": f"Unexpected error: {e}"}).decode('utf-8')
 
 
 def discord_core(action: str, **kwargs) -> str:

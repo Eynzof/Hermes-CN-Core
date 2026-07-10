@@ -5,7 +5,7 @@ are made.
 """
 
 import io
-import json
+import orjson
 import urllib.error
 from unittest.mock import MagicMock, patch
 
@@ -38,7 +38,7 @@ class TestRequestUploadUrl:
             "viewUrl": "https://support.example.com/diagnostics/abc-123",
             "uploadExpiresInSeconds": 900,
         }
-        resp = _resp(status=200, body=json.dumps(payload).encode())
+        resp = _resp(status=200, body=orjson.dumps(payload))
 
         with patch(
             "hermes_cli.diagnostics_upload.urllib.request.urlopen",
@@ -52,7 +52,7 @@ class TestRequestUploadUrl:
         req = urlopen.call_args[0][0]
         assert req.method == "POST"
         assert req.full_url.endswith("/api/diagnostics/upload-url")
-        sent = json.loads(req.data.decode())
+        sent = orjson.loads(req.data.decode())
         assert sent["contentType"] == "application/gzip"
         assert sent["sizeBytes"] == 512
         # urllib lower-cases header keys.
@@ -72,7 +72,7 @@ class TestRequestUploadUrl:
     def test_missing_upload_url_raises(self):
         from hermes_cli.diagnostics_upload import request_upload_url
 
-        resp = _resp(status=200, body=json.dumps({"id": "x"}).encode())
+        resp = _resp(status=200, body=orjson.dumps({"id": "x"}))
         with patch(
             "hermes_cli.diagnostics_upload.urllib.request.urlopen",
             return_value=resp,
@@ -104,7 +104,7 @@ class TestRequestUploadUrl:
             assert mod.NAS_BASE == "https://staging.example.com"
             resp = _resp(
                 status=200,
-                body=json.dumps({"uploadUrl": "u", "id": "i", "viewUrl": "v"}).encode(),
+                body=orjson.dumps({"uploadUrl": "u", "id": "i", "viewUrl": "v"}),
             )
             with patch(
                 "hermes_cli.diagnostics_upload.urllib.request.urlopen",

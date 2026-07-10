@@ -17,8 +17,8 @@ OpenAI-compat layer entirely.
 from __future__ import annotations
 
 import asyncio
-import base64
-import json
+import pybase64 as base64
+import orjson
 import logging
 import time
 import uuid
@@ -246,8 +246,8 @@ def _translate_tool_call_to_gemini(tool_call: Dict[str, Any]) -> Dict[str, Any]:
     fn = tool_call.get("function") or {}
     args_raw = fn.get("arguments", "")
     try:
-        args = json.loads(args_raw) if isinstance(args_raw, str) and args_raw else {}
-    except json.JSONDecodeError:
+        args = orjson.loads(args_raw) if isinstance(args_raw, str) and args_raw else {}
+    except orjson.JSONDecodeError:
         args = {"_raw": args_raw}
     if not isinstance(args, dict):
         args = {"_value": args}
@@ -278,8 +278,8 @@ def _translate_tool_result_to_gemini(
     )
     content = _coerce_content_to_text(message.get("content"))
     try:
-        parsed = json.loads(content) if content.strip().startswith(("{", "[")) else None
-    except json.JSONDecodeError:
+        parsed = orjson.loads(content) if content.strip().startswith(("{", "[")) else None
+    except orjson.JSONDecodeError:
         parsed = None
     response = parsed if isinstance(parsed, dict) else {"output": content}
     return {
@@ -541,7 +541,7 @@ def translate_gemini_response(resp: Dict[str, Any], model: str) -> SimpleNamespa
         fc = part.get("functionCall")
         if isinstance(fc, dict) and fc.get("name"):
             try:
-                args_str = json.dumps(fc.get("args") or {}, ensure_ascii=False)
+                args_str = orjson.dumps(fc.get("args") or {}).decode('utf-8')
             except (TypeError, ValueError):
                 args_str = "{}"
             tool_call = SimpleNamespace(
@@ -652,8 +652,8 @@ def _iter_sse_events(response: httpx.Response) -> Iterator[Dict[str, Any]]:
             if data == "[DONE]":
                 return
             try:
-                payload = json.loads(data)
-            except json.JSONDecodeError:
+                payload = orjson.loads(data)
+            except orjson.JSONDecodeError:
                 logger.debug("Non-JSON Gemini SSE line: %s", data[:200])
                 continue
             if isinstance(payload, dict):
@@ -680,18 +680,15 @@ def translate_stream_event(event: Dict[str, Any], model: str, tool_call_indices:
         if isinstance(fc, dict) and fc.get("name"):
             name = str(fc["name"])
             try:
-                args_str = json.dumps(fc.get("args") or {}, ensure_ascii=False, sort_keys=True)
+                args_str = orjson.dumps(fc.get("args") or {}, option=orjson.OPT_SORT_KEYS).decode('utf-8')
             except (TypeError, ValueError):
                 args_str = "{}"
             thought_signature = part.get("thoughtSignature") if isinstance(part.get("thoughtSignature"), str) else ""
-            call_key = json.dumps(
-                {
+            call_key = orjson.dumps({
                     "part_index": part_index,
                     "name": name,
                     "thought_signature": thought_signature,
-                },
-                sort_keys=True,
-            )
+                }, option=orjson.OPT_SORT_KEYS).decode('utf-8')
             slot = tool_call_indices.get(call_key)
             if slot is None:
                 slot = {
@@ -752,7 +749,7 @@ def gemini_http_error(response: httpx.Response) -> GeminiAPIError:
         body_text = ""
     if body_text:
         try:
-            parsed = json.loads(body_text)
+            parsed = orjson.loads(body_text)
             if isinstance(parsed, dict):
                 body_json = parsed
         except (ValueError, TypeError):

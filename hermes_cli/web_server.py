@@ -12,17 +12,24 @@ Usage:
 from contextlib import asynccontextmanager, contextmanager
 
 import asyncio
-import base64
+import pybase64 as base64
 import binascii
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import hmac
 import importlib.util
-import json
+import orjson
 import logging
 import mimetypes
+# Register JavaScript MIME types explicitly so Windows (where the system
+# registry may not map .js → application/javascript) serves module scripts
+# with the correct Content-Type. Without this, ``<script type="module">``
+# blocks fail with "Failed to load module script: Expected a JavaScript or
+# WebAssembly module script".
+mimetypes.add_type("application/javascript", ".js")
+mimetypes.add_type("application/javascript", ".mjs")
 import os
-import re
+from agent.re_compat import re
 import secrets
 import shutil
 import stat
@@ -35,7 +42,11 @@ import urllib.error
 import urllib.parse
 import zipfile
 
-from hermes_cli._subprocess_compat import windows_detach_flags, windows_hide_flags
+from hermes_cli._subprocess_compat import (
+    windows_detach_flags,
+    windows_detach_flags_without_breakaway,
+    windows_hide_flags,
+)
 import urllib.request
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -778,6 +789,11 @@ _SCHEMA_OVERRIDES: Dict[str, Dict[str, Any]] = {
         "description": "CLI visual theme",
         "options": ["default", "ares", "mono", "slate"],
     },
+    "display.theme": {
+        "type": "select",
+        "description": "UI color mode (auto = detect from terminal)",
+        "options": ["auto", "light", "dark"],
+    },
     "dashboard.theme": {
         "type": "select",
         "description": "Web dashboard visual theme",
@@ -1271,7 +1287,7 @@ def _probe_gateway_health() -> tuple[bool, dict | None]:
             req = urllib.request.Request(path, method="GET")
             with urllib.request.urlopen(req, timeout=_GATEWAY_HEALTH_TIMEOUT) as resp:
                 if resp.status == 200:
-                    body = json.loads(resp.read())
+                    body = orjson.loads(resp.read())
                     return True, body
         except Exception:
             continue
@@ -3036,7 +3052,17 @@ def _spawn_hermes_action(
     else:
         popen_kwargs["start_new_session"] = True
 
-    proc = subprocess.Popen(cmd, **popen_kwargs)
+    try:
+        proc = subprocess.Popen(cmd, **popen_kwargs)
+    except OSError:
+        # CREATE_BREAKAWAY_FROM_JOB can fail with "access denied" when the
+        # parent's job object doesn't permit breakaway (PyInstaller exe,
+        # Windows Terminal, etc.). Retry without the breakaway flag.
+        if sys.platform == "win32":
+            popen_kwargs["creationflags"] = windows_detach_flags_without_breakaway()
+            proc = subprocess.Popen(cmd, **popen_kwargs)
+        else:
+            raise
     # The child inherits its own duplicated fd for stdout/stderr, so the
     # parent's handle can be released immediately — otherwise we leak one
     # fd per spawned action.
@@ -3567,7 +3593,7 @@ async def get_elevenlabs_voices():
 
         def _fetch() -> Dict[str, Any]:
             with urllib.request.urlopen(request, timeout=10) as response:
-                return json.loads(response.read().decode("utf-8"))
+                return orjson.loads(response.read().decode("utf-8"))
 
         payload = await loop.run_in_executor(None, _fetch)
     except urllib.error.HTTPError as exc:
@@ -3633,7 +3659,7 @@ async def speak_text(payload: TTSSpeakRequest):
         raise HTTPException(status_code=500, detail=f"Speech synthesis failed: {exc}")
 
     try:
-        result = json.loads(result_json) if isinstance(result_json, str) else result_json
+        result = orjson.loads(result_json) if isinstance(result_json, str) else result_json
     except Exception:
         raise HTTPException(status_code=500, detail="Invalid TTS response")
 
@@ -4050,7 +4076,7 @@ async def search_sessions(q: str = "", limit: int = 20, profile: Optional[str] =
             # Auto-add prefix wildcards so partial words match
             # e.g. "nimb" → "nimb*" matches "nimby"
             # Preserve quoted phrases and existing wildcards as-is
-            import re
+            from agent.re_compat import re
             terms = []
             for token in re.findall(r'"[^"]*"|\S+', q.strip()):
                 if token.startswith('"') or token.endswith("*"):
@@ -4118,7 +4144,7 @@ def _read_memory_provider_file(provider: MemoryProvider) -> Dict[str, Any]:
     if not path.exists():
         return {}
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = orjson.loads(path.read_text(encoding="utf-8"))
     except Exception:
         _log.warning("Failed to read memory provider config from %s", path, exc_info=True)
         return {}
@@ -7287,7 +7313,7 @@ def _save_anthropic_oauth_creds(access_token: str, refresh_token: str, expires_a
     )
     try:
         with tmp_path.open("w", encoding="utf-8") as handle:
-            handle.write(json.dumps(payload, indent=2))
+            handle.write(orjson.dumps(payload, option=orjson.OPT_INDENT_2).decode('utf-8'))
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(tmp_path, _HERMES_OAUTH_FILE)
@@ -7384,14 +7410,14 @@ def _submit_anthropic_pkce(
         return {"ok": False, "status": "error", "message": "No code provided"}
     state_from_callback = parts[1] if len(parts) > 1 else ""
 
-    exchange_data = json.dumps({
+    exchange_data = orjson.dumps({
         "grant_type": "authorization_code",
         "client_id": _ANTHROPIC_OAUTH_CLIENT_ID,
         "code": code,
         "state": state_from_callback or sess["state"],
         "redirect_uri": _ANTHROPIC_OAUTH_REDIRECT_URI,
         "code_verifier": sess["verifier"],
-    }).encode()
+    })
     # Anthropic migrated the OAuth token endpoint to platform.claude.com;
     # console.anthropic.com now 404s. Try the new host first, then fall back.
     result = None
@@ -7408,7 +7434,7 @@ def _submit_anthropic_pkce(
         )
         try:
             with urllib.request.urlopen(req, timeout=20) as resp:
-                result = json.loads(resp.read().decode())
+                result = orjson.loads(resp.read().decode())
             break
         except Exception as e:
             last_exc = e
@@ -9634,7 +9660,7 @@ async def enable_webhooks():
 
 @app.post("/api/webhooks")
 async def create_webhook(body: WebhookCreate):
-    import re as _re
+    from agent.re_compat import re as _re
     import secrets as _secrets
     import time as _time
     import hermes_cli.webhook as wh
@@ -10959,7 +10985,7 @@ def _resolve_profile_dir(name: str) -> Path:
 def _profile_setup_command(name: str) -> str:
     """Return the shell command used to configure a profile in the CLI."""
     _resolve_profile_dir(name)
-    return "hermes setup" if name == "default" else f"{name} setup"
+    return "hermes setup" if name == "default" else f"hermes setup --profile {name}"
 
 
 def _write_profile_model(profile_dir: Path, provider: str, model: str) -> None:
@@ -11264,7 +11290,15 @@ async def open_profile_terminal_endpoint(name: str):
         command = _profile_setup_command(name)
 
         if sys.platform.startswith("win"):
-            subprocess.Popen(["cmd.exe", "/c", "start", "", command])
+            # Pass as list argv to avoid cmd.exe re-tokenization of
+            # space-containing paths.  The title "Hermes Setup" keeps
+            # the window title readable; creationflags suppresses the
+            # console flash.
+            from hermes_cli._subprocess_compat import windows_hide_flags
+            subprocess.Popen(
+                ["cmd.exe", "/c", "start", "Hermes Setup", "hermes", "setup", "--profile", name],
+                creationflags=windows_hide_flags(),
+            )
         elif sys.platform == "darwin":
             escaped = command.replace("\\", "\\\\").replace('"', '\\"')
             applescript = (
@@ -12891,8 +12925,8 @@ def _active_session_file_for_channel(app: "FastAPI", channel: str) -> Path:
 
 def _read_active_session_file(path: Path) -> Optional[str]:
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+        data = orjson.loads(path.read_text(encoding="utf-8"))
+    except (OSError, orjson.JSONDecodeError):
         return None
 
     session_id = str(data.get("session_id") or "").strip()
@@ -13277,7 +13311,7 @@ async def gateway_rpc(request: Request) -> JSONResponse:
 
     try:
         body = await request.json()
-    except json.JSONDecodeError:
+    except orjson.JSONDecodeError:
         return JSONResponse(
             {
                 "jsonrpc": "2.0",
@@ -13513,7 +13547,7 @@ def mount_spa(application: FastAPI):
                 css = css.replace(f"url('{asset_dir}", f"url('{prefix}{asset_dir}")
         return Response(content=css, media_type="text/css")
 
-    application.mount("/assets", StaticFiles(directory=WEB_DIST / "assets"), name="assets")
+    application.mount("/assets", StaticFiles(directory=WEB_DIST / "assets", html=True), name="assets")
 
     @application.get("/{full_path:path}")
     async def serve_spa(full_path: str, request: Request):
@@ -13968,7 +14002,7 @@ def _discover_dashboard_plugins() -> list:
             if not manifest_file.exists():
                 continue
             try:
-                data = json.loads(manifest_file.read_text(encoding="utf-8"))
+                data = orjson.loads(manifest_file.read_text(encoding="utf-8"))
                 name = data.get("name", child.name)
                 if name in seen_names:
                     continue
@@ -14606,7 +14640,7 @@ def _write_dashboard_ready_file(actual_port: int) -> None:
     try:
         path = Path(target)
         path.parent.mkdir(parents=True, exist_ok=True)
-        payload = json.dumps({"port": int(actual_port)}, separators=(",", ":"))
+        payload = orjson.dumps({"port": int(actual_port)}).decode('utf-8')
         with tempfile.NamedTemporaryFile(
             "w",
             encoding="utf-8",

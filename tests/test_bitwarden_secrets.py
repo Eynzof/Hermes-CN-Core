@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import io
-import json
+import orjson
 import os
 import stat
 import subprocess
@@ -251,7 +251,7 @@ def test_install_bws_missing_checksum_entry(hermes_home, monkeypatch):
 
 
 def _fake_bws_payload(items):
-    return json.dumps(items)
+    return orjson.dumps(items).decode('utf-8')
 
 
 def test_fetch_happy_path(monkeypatch, tmp_path):
@@ -695,7 +695,7 @@ def test_disk_cache_written_after_first_fetch(monkeypatch, tmp_path):
     assert mode == 0o600, f"expected 0o600, got 0o{mode:o}"
 
     # File contents: key (fingerprint not raw token), secrets dict, fetched_at
-    payload_disk = json.loads(cache_path.read_text())
+    payload_disk = orjson.loads(cache_path.read_text())
     assert set(payload_disk.keys()) == {"key", "secrets", "fetched_at"}
     assert payload_disk["secrets"] == {"K1": "v1"}
     # Critically, the raw access token must NOT appear anywhere in the file
@@ -760,9 +760,9 @@ def test_disk_cache_expires_with_ttl(monkeypatch, tmp_path):
 
     # Backdate the disk cache so the TTL window has passed
     cache_path = bw._disk_cache_path(home)
-    payload_disk = json.loads(cache_path.read_text())
+    payload_disk = orjson.loads(cache_path.read_text())
     payload_disk["fetched_at"] = time.time() - 10_000
-    cache_path.write_text(json.dumps(payload_disk))
+    cache_path.write_text(orjson.dumps(payload_disk).decode('utf-8'))
     bw._CACHE.clear()
 
     # Second call: stale disk → refetch
@@ -791,11 +791,11 @@ def test_disk_cache_key_mismatch_triggers_refetch(monkeypatch, tmp_path):
     # Write a cache entry for a DIFFERENT token/project pair
     cache_path = bw._disk_cache_path(home)
     cache_path.parent.mkdir(parents=True, exist_ok=True)
-    cache_path.write_text(json.dumps({
+    cache_path.write_text(orjson.dumps({
         "key": "deadbeef00000000|other-project|",
         "secrets": {"OTHER": "should-not-leak"},
         "fetched_at": time.time(),
-    }))
+    }).decode('utf-8'))
 
     secrets, _ = bw.fetch_bitwarden_secrets(
         access_token="0.t", project_id="proj-1", binary=fake_binary,
@@ -864,7 +864,7 @@ def test_disk_cache_corrupt_file_falls_through(monkeypatch, tmp_path):
     # Refetched cleanly
     assert secrets == {"K1": "v1"}
     # And the corrupt file was replaced with a valid one
-    assert json.loads(cache_path.read_text())["secrets"] == {"K1": "v1"}
+    assert orjson.loads(cache_path.read_text())["secrets"] == {"K1": "v1"}
 
 
 def test_reset_cache_for_tests_deletes_disk_file(tmp_path):

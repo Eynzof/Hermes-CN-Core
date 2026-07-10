@@ -4,7 +4,7 @@ Covers convert_base64_images_to_links, _truncate_with_footer, _store_full_text,
 _get_extract_char_limit, and the end-to-end web_extract_tool truncation behavior.
 """
 import asyncio
-import json
+import orjson
 import os
 from unittest.mock import patch
 
@@ -117,7 +117,7 @@ class TestEndToEnd:
              patch("tools.web_tools._get_extract_backend", return_value="fake"), \
              patch("tools.web_tools.async_is_safe_url", new=_AsyncTrue()), \
              patch("agent.web_search_registry.get_provider", return_value=FakeProvider()):
-            result = json.loads(asyncio.new_event_loop().run_until_complete(
+            result = orjson.loads(asyncio.new_event_loop().run_until_complete(
                 wt.web_extract_tool(["https://example.com/big"], char_limit=5000)
             ))
 

@@ -23,7 +23,7 @@ the macOS permission detail into one payload for the desktop card, the
 
 from __future__ import annotations
 
-import json
+import orjson
 import os
 import shutil
 import subprocess
@@ -70,7 +70,7 @@ def _run(binary: str, *args: str, timeout: float) -> subprocess.CompletedProcess
 def _json_out(binary: str, *args: str, timeout: float) -> Any:
     """Run ``binary args`` and parse stdout as JSON, or ``None`` on any failure."""
     raw = (_run(binary, *args, timeout=timeout).stdout or "").strip()
-    return json.loads(raw) if raw else None
+    return orjson.loads(raw) if raw else None
 
 
 def _doctor(binary: str) -> Optional[Dict[str, Any]]:

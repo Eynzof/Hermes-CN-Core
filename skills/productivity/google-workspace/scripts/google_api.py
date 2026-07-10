@@ -21,8 +21,8 @@ Usage:
 """
 
 import argparse
-import base64
-import json
+import pybase64 as base64
+import orjson
 import os
 import shutil
 import subprocess
@@ -70,7 +70,7 @@ def _ensure_authenticated():
 
 def _stored_token_scopes() -> list[str]:
     try:
-        data = json.loads(TOKEN_PATH.read_text())
+        data = orjson.loads(TOKEN_PATH.read_text())
     except Exception:
         return list(SCOPES)
     scopes = data.get("scopes")
@@ -101,9 +101,9 @@ def _run_gws(parts: list[str], *, params: dict | None = None, body: dict | None 
 
     cmd = [binary, *parts]
     if params is not None:
-        cmd.extend(["--params", json.dumps(params)])
+        cmd.extend(["--params", orjson.dumps(params).decode('utf-8')])
     if body is not None:
-        cmd.extend(["--json", json.dumps(body)])
+        cmd.extend(["--json", orjson.dumps(body).decode('utf-8')])
 
     result = subprocess.run(
         cmd,
@@ -121,8 +121,8 @@ def _run_gws(parts: list[str], *, params: dict | None = None, body: dict | None 
         return {}
 
     try:
-        return json.loads(stdout)
-    except json.JSONDecodeError:
+        return orjson.loads(stdout)
+    except orjson.JSONDecodeError:
         print("ERROR: Unexpected non-JSON output from gws:", file=sys.stderr)
         print(stdout, file=sys.stderr)
         sys.exit(1)
@@ -189,10 +189,7 @@ def get_credentials():
     if creds.expired and creds.refresh_token:
         creds.refresh(Request())
         TOKEN_PATH.write_text(
-            json.dumps(
-                _normalize_authorized_user_payload(json.loads(creds.to_json())),
-                indent=2,
-            )
+            orjson.dumps(_normalize_authorized_user_payload(orjson.loads(creds.to_json())), option=orjson.OPT_INDENT_2).decode('utf-8')
         )
     if not creds.valid:
         print("Token is invalid. Re-run setup.", file=sys.stderr)
@@ -242,7 +239,7 @@ def gmail_search(args):
                     "labels": msg.get("labelIds", []),
                 }
             )
-        print(json.dumps(output, indent=2, ensure_ascii=False))
+        print(orjson.dumps(output, option=orjson.OPT_INDENT_2).decode('utf-8'))
         return
 
     service = build_service("gmail", "v1")
@@ -271,7 +268,7 @@ def gmail_search(args):
             "snippet": msg.get("snippet", ""),
             "labels": msg.get("labelIds", []),
         })
-    print(json.dumps(output, indent=2, ensure_ascii=False))
+    print(orjson.dumps(output, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
 
 
@@ -292,7 +289,7 @@ def gmail_get(args):
             "labels": msg.get("labelIds", []),
             "body": _extract_message_body(msg),
         }
-        print(json.dumps(result, indent=2, ensure_ascii=False))
+        print(orjson.dumps(result, option=orjson.OPT_INDENT_2).decode('utf-8'))
         return
 
     service = build_service("gmail", "v1")
@@ -311,7 +308,7 @@ def gmail_get(args):
         "labels": msg.get("labelIds", []),
         "body": _extract_message_body(msg),
     }
-    print(json.dumps(result, indent=2, ensure_ascii=False))
+    print(orjson.dumps(result, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
 
 
@@ -335,7 +332,7 @@ def gmail_send(args):
             params={"userId": "me"},
             body=body,
         )
-        print(json.dumps({"status": "sent", "id": result["id"], "threadId": result.get("threadId", "")}, indent=2))
+        print(orjson.dumps({"status": "sent", "id": result["id"], "threadId": result.get("threadId", "")}, option=orjson.OPT_INDENT_2).decode('utf-8'))
         return
 
     service = build_service("gmail", "v1")
@@ -354,7 +351,7 @@ def gmail_send(args):
         body["threadId"] = args.thread_id
 
     result = service.users().messages().send(userId="me", body=body).execute()
-    print(json.dumps({"status": "sent", "id": result["id"], "threadId": result.get("threadId", "")}, indent=2))
+    print(orjson.dumps({"status": "sent", "id": result["id"], "threadId": result.get("threadId", "")}, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
 
 
@@ -390,7 +387,7 @@ def gmail_reply(args):
             params={"userId": "me"},
             body={"raw": raw, "threadId": original["threadId"]},
         )
-        print(json.dumps({"status": "sent", "id": result["id"], "threadId": result.get("threadId", "")}, indent=2))
+        print(orjson.dumps({"status": "sent", "id": result["id"], "threadId": result.get("threadId", "")}, option=orjson.OPT_INDENT_2).decode('utf-8'))
         return
 
     service = build_service("gmail", "v1")
@@ -417,7 +414,7 @@ def gmail_reply(args):
     body = {"raw": raw, "threadId": original["threadId"]}
 
     result = service.users().messages().send(userId="me", body=body).execute()
-    print(json.dumps({"status": "sent", "id": result["id"], "threadId": result.get("threadId", "")}, indent=2))
+    print(orjson.dumps({"status": "sent", "id": result["id"], "threadId": result.get("threadId", "")}, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
 
 
@@ -425,13 +422,13 @@ def gmail_labels(args):
     if _gws_binary():
         results = _run_gws(["gmail", "users", "labels", "list"], params={"userId": "me"})
         labels = [{"id": l["id"], "name": l["name"], "type": l.get("type", "")} for l in results.get("labels", [])]
-        print(json.dumps(labels, indent=2))
+        print(orjson.dumps(labels, option=orjson.OPT_INDENT_2).decode('utf-8'))
         return
 
     service = build_service("gmail", "v1")
     results = service.users().labels().list(userId="me").execute()
     labels = [{"id": l["id"], "name": l["name"], "type": l.get("type", "")} for l in results.get("labels", [])]
-    print(json.dumps(labels, indent=2))
+    print(orjson.dumps(labels, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
 
 
@@ -448,12 +445,12 @@ def gmail_modify(args):
             params={"userId": "me", "id": args.message_id},
             body=body,
         )
-        print(json.dumps({"id": result["id"], "labels": result.get("labelIds", [])}, indent=2))
+        print(orjson.dumps({"id": result["id"], "labels": result.get("labelIds", [])}, option=orjson.OPT_INDENT_2).decode('utf-8'))
         return
 
     service = build_service("gmail", "v1")
     result = service.users().messages().modify(userId="me", id=args.message_id, body=body).execute()
-    print(json.dumps({"id": result["id"], "labels": result.get("labelIds", [])}, indent=2))
+    print(orjson.dumps({"id": result["id"], "labels": result.get("labelIds", [])}, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
 
 # =========================================================================
@@ -490,7 +487,7 @@ def calendar_list(args):
                 "status": e.get("status", ""),
                 "htmlLink": e.get("htmlLink", ""),
             })
-        print(json.dumps(events, indent=2, ensure_ascii=False))
+        print(orjson.dumps(events, option=orjson.OPT_INDENT_2).decode('utf-8'))
         return
 
     service = build_service("calendar", "v3")
@@ -511,7 +508,7 @@ def calendar_list(args):
             "status": e.get("status", ""),
             "htmlLink": e.get("htmlLink", ""),
         })
-    print(json.dumps(events, indent=2, ensure_ascii=False))
+    print(orjson.dumps(events, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
 
 
@@ -534,34 +531,34 @@ def calendar_create(args):
             params={"calendarId": args.calendar},
             body=event,
         )
-        print(json.dumps({
+        print(orjson.dumps({
             "status": "created",
             "id": result["id"],
             "summary": result.get("summary", ""),
             "htmlLink": result.get("htmlLink", ""),
-        }, indent=2))
+        }, option=orjson.OPT_INDENT_2).decode('utf-8'))
         return
 
     service = build_service("calendar", "v3")
     result = service.events().insert(calendarId=args.calendar, body=event).execute()
-    print(json.dumps({
+    print(orjson.dumps({
         "status": "created",
         "id": result["id"],
         "summary": result.get("summary", ""),
         "htmlLink": result.get("htmlLink", ""),
-    }, indent=2))
+    }, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
 
 
 def calendar_delete(args):
     if _gws_binary():
         _run_gws(["calendar", "events", "delete"], params={"calendarId": args.calendar, "eventId": args.event_id})
-        print(json.dumps({"status": "deleted", "eventId": args.event_id}))
+        print(orjson.dumps({"status": "deleted", "eventId": args.event_id}).decode('utf-8'))
         return
 
     service = build_service("calendar", "v3")
     service.events().delete(calendarId=args.calendar, eventId=args.event_id).execute()
-    print(json.dumps({"status": "deleted", "eventId": args.event_id}))
+    print(orjson.dumps({"status": "deleted", "eventId": args.event_id}).decode('utf-8'))
 
 
 # =========================================================================
@@ -580,7 +577,7 @@ def drive_search(args):
                 "fields": "files(id, name, mimeType, modifiedTime, webViewLink)",
             },
         )
-        print(json.dumps(results.get("files", []), indent=2, ensure_ascii=False))
+        print(orjson.dumps(results.get("files", []), option=orjson.OPT_INDENT_2).decode('utf-8'))
         return
 
     service = build_service("drive", "v3")
@@ -588,7 +585,7 @@ def drive_search(args):
         q=query, pageSize=args.max, fields="files(id, name, mimeType, modifiedTime, webViewLink)",
     ).execute()
     files = results.get("files", [])
-    print(json.dumps(files, indent=2, ensure_ascii=False))
+    print(orjson.dumps(files, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
 
 def drive_get(args):
@@ -599,12 +596,12 @@ def drive_get(args):
             ["drive", "files", "get"],
             params={"fileId": args.file_id, "fields": fields},
         )
-        print(json.dumps(result, indent=2, ensure_ascii=False))
+        print(orjson.dumps(result, option=orjson.OPT_INDENT_2).decode('utf-8'))
         return
 
     service = build_service("drive", "v3")
     result = service.files().get(fileId=args.file_id, fields=fields).execute()
-    print(json.dumps(result, indent=2, ensure_ascii=False))
+    print(orjson.dumps(result, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
 
 def drive_upload(args):
@@ -630,13 +627,13 @@ def drive_upload(args):
         media_body=media,
         fields="id, name, mimeType, webViewLink",
     ).execute()
-    print(json.dumps({
+    print(orjson.dumps({
         "status": "uploaded",
         "id": result["id"],
         "name": result.get("name", ""),
         "mimeType": result.get("mimeType", ""),
         "webViewLink": result.get("webViewLink", ""),
-    }, indent=2, ensure_ascii=False))
+    }, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
 
 def drive_download(args):
@@ -679,13 +676,13 @@ def drive_download(args):
         _, done = downloader.next_chunk()
     fh.close()
 
-    print(json.dumps({
+    print(orjson.dumps({
         "status": "downloaded",
         "id": args.file_id,
         "name": name,
         "path": str(out_path),
         "mimeType": mime,
-    }, indent=2, ensure_ascii=False))
+    }, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
 
 def drive_create_folder(args):
@@ -702,22 +699,22 @@ def drive_create_folder(args):
             params={"fields": "id, name, webViewLink"},
             body=body,
         )
-        print(json.dumps({
+        print(orjson.dumps({
             "status": "created",
             "id": result["id"],
             "name": result.get("name", ""),
             "webViewLink": result.get("webViewLink", ""),
-        }, indent=2, ensure_ascii=False))
+        }, option=orjson.OPT_INDENT_2).decode('utf-8'))
         return
 
     service = build_service("drive", "v3")
     result = service.files().create(body=body, fields="id, name, webViewLink").execute()
-    print(json.dumps({
+    print(orjson.dumps({
         "status": "created",
         "id": result["id"],
         "name": result.get("name", ""),
         "webViewLink": result.get("webViewLink", ""),
-    }, indent=2, ensure_ascii=False))
+    }, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
 
 def drive_share(args):
@@ -745,13 +742,13 @@ def drive_share(args):
             },
             body=permission,
         )
-        print(json.dumps({
+        print(orjson.dumps({
             "status": "shared",
             "permissionId": result.get("id", ""),
             "fileId": args.file_id,
             "role": permission["role"],
             "type": permission["type"],
-        }, indent=2, ensure_ascii=False))
+        }, option=orjson.OPT_INDENT_2).decode('utf-8'))
         return
 
     service = build_service("drive", "v3")
@@ -761,13 +758,13 @@ def drive_share(args):
         sendNotificationEmail=args.notify,
         fields="id",
     ).execute()
-    print(json.dumps({
+    print(orjson.dumps({
         "status": "shared",
         "permissionId": result.get("id", ""),
         "fileId": args.file_id,
         "role": permission["role"],
         "type": permission["type"],
-    }, indent=2, ensure_ascii=False))
+    }, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
 
 def drive_delete(args):
@@ -775,11 +772,11 @@ def drive_delete(args):
     if args.permanent:
         if _gws_binary():
             _run_gws(["drive", "files", "delete"], params={"fileId": args.file_id})
-            print(json.dumps({"status": "deleted", "fileId": args.file_id, "permanent": True}))
+            print(orjson.dumps({"status": "deleted", "fileId": args.file_id, "permanent": True}).decode('utf-8'))
             return
         service = build_service("drive", "v3")
         service.files().delete(fileId=args.file_id).execute()
-        print(json.dumps({"status": "deleted", "fileId": args.file_id, "permanent": True}))
+        print(orjson.dumps({"status": "deleted", "fileId": args.file_id, "permanent": True}).decode('utf-8'))
         return
 
     # Trash (reversible). Use files.update with trashed=True.
@@ -790,12 +787,12 @@ def drive_delete(args):
             params={"fileId": args.file_id},
             body=body,
         )
-        print(json.dumps({"status": "trashed", "fileId": args.file_id, "permanent": False}))
+        print(orjson.dumps({"status": "trashed", "fileId": args.file_id, "permanent": False}).decode('utf-8'))
         return
 
     service = build_service("drive", "v3")
     service.files().update(fileId=args.file_id, body=body).execute()
-    print(json.dumps({"status": "trashed", "fileId": args.file_id, "permanent": False}))
+    print(orjson.dumps({"status": "trashed", "fileId": args.file_id, "permanent": False}).decode('utf-8'))
 
 
 # =========================================================================
@@ -823,7 +820,7 @@ def contacts_list(args):
                 "emails": [e.get("value", "") for e in emails],
                 "phones": [p.get("value", "") for p in phones],
             })
-        print(json.dumps(contacts, indent=2, ensure_ascii=False))
+        print(orjson.dumps(contacts, option=orjson.OPT_INDENT_2).decode('utf-8'))
         return
 
     service = build_service("people", "v1")
@@ -842,7 +839,7 @@ def contacts_list(args):
             "emails": [e.get("value", "") for e in emails],
             "phones": [p.get("value", "") for p in phones],
         })
-    print(json.dumps(contacts, indent=2, ensure_ascii=False))
+    print(orjson.dumps(contacts, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
 
 # =========================================================================
@@ -856,19 +853,19 @@ def sheets_get(args):
             ["sheets", "spreadsheets", "values", "get"],
             params={"spreadsheetId": args.sheet_id, "range": args.range},
         )
-        print(json.dumps(result.get("values", []), indent=2, ensure_ascii=False))
+        print(orjson.dumps(result.get("values", []), option=orjson.OPT_INDENT_2).decode('utf-8'))
         return
 
     service = build_service("sheets", "v4")
     result = service.spreadsheets().values().get(
         spreadsheetId=args.sheet_id, range=args.range,
     ).execute()
-    print(json.dumps(result.get("values", []), indent=2, ensure_ascii=False))
+    print(orjson.dumps(result.get("values", []), option=orjson.OPT_INDENT_2).decode('utf-8'))
 
 
 
 def sheets_update(args):
-    values = json.loads(args.values)
+    values = orjson.loads(args.values)
     body = {"values": values}
 
     if _gws_binary():
@@ -881,7 +878,7 @@ def sheets_update(args):
             },
             body=body,
         )
-        print(json.dumps({"updatedCells": result.get("updatedCells", 0), "updatedRange": result.get("updatedRange", "")}, indent=2))
+        print(orjson.dumps({"updatedCells": result.get("updatedCells", 0), "updatedRange": result.get("updatedRange", "")}, option=orjson.OPT_INDENT_2).decode('utf-8'))
         return
 
     service = build_service("sheets", "v4")
@@ -889,12 +886,12 @@ def sheets_update(args):
         spreadsheetId=args.sheet_id, range=args.range,
         valueInputOption="USER_ENTERED", body=body,
     ).execute()
-    print(json.dumps({"updatedCells": result.get("updatedCells", 0), "updatedRange": result.get("updatedRange", "")}, indent=2))
+    print(orjson.dumps({"updatedCells": result.get("updatedCells", 0), "updatedRange": result.get("updatedRange", "")}, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
 
 
 def sheets_append(args):
-    values = json.loads(args.values)
+    values = orjson.loads(args.values)
     body = {"values": values}
 
     if _gws_binary():
@@ -908,7 +905,7 @@ def sheets_append(args):
             },
             body=body,
         )
-        print(json.dumps({"updatedCells": result.get("updates", {}).get("updatedCells", 0)}, indent=2))
+        print(orjson.dumps({"updatedCells": result.get("updates", {}).get("updatedCells", 0)}, option=orjson.OPT_INDENT_2).decode('utf-8'))
         return
 
     service = build_service("sheets", "v4")
@@ -916,7 +913,7 @@ def sheets_append(args):
         spreadsheetId=args.sheet_id, range=args.range,
         valueInputOption="USER_ENTERED", insertDataOption="INSERT_ROWS", body=body,
     ).execute()
-    print(json.dumps({"updatedCells": result.get("updates", {}).get("updatedCells", 0)}, indent=2))
+    print(orjson.dumps({"updatedCells": result.get("updates", {}).get("updatedCells", 0)}, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
 
 def sheets_create(args):
@@ -927,24 +924,24 @@ def sheets_create(args):
 
     if _gws_binary():
         result = _run_gws(["sheets", "spreadsheets", "create"], body=body)
-        print(json.dumps({
+        print(orjson.dumps({
             "status": "created",
             "spreadsheetId": result.get("spreadsheetId", ""),
             "title": result.get("properties", {}).get("title", ""),
             "spreadsheetUrl": result.get("spreadsheetUrl", ""),
-        }, indent=2, ensure_ascii=False))
+        }, option=orjson.OPT_INDENT_2).decode('utf-8'))
         return
 
     service = build_service("sheets", "v4")
     result = service.spreadsheets().create(
         body=body, fields="spreadsheetId,properties,spreadsheetUrl",
     ).execute()
-    print(json.dumps({
+    print(orjson.dumps({
         "status": "created",
         "spreadsheetId": result.get("spreadsheetId", ""),
         "title": result.get("properties", {}).get("title", ""),
         "spreadsheetUrl": result.get("spreadsheetUrl", ""),
-    }, indent=2, ensure_ascii=False))
+    }, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
 
 # =========================================================================
@@ -960,7 +957,7 @@ def docs_get(args):
             "documentId": doc.get("documentId", ""),
             "body": _extract_doc_text(doc),
         }
-        print(json.dumps(result, indent=2, ensure_ascii=False))
+        print(orjson.dumps(result, option=orjson.OPT_INDENT_2).decode('utf-8'))
         return
 
     service = build_service("docs", "v1")
@@ -970,7 +967,7 @@ def docs_get(args):
         "documentId": doc.get("documentId", ""),
         "body": _extract_doc_text(doc),
     }
-    print(json.dumps(result, indent=2, ensure_ascii=False))
+    print(orjson.dumps(result, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
 
 def docs_create(args):
@@ -988,12 +985,12 @@ def docs_create(args):
     if args.body and doc_id:
         _docs_insert_text(doc_id, args.body, index=1)
 
-    print(json.dumps({
+    print(orjson.dumps({
         "status": "created",
         "documentId": doc_id,
         "title": doc.get("title", ""),
         "url": f"https://docs.google.com/document/d/{doc_id}/edit" if doc_id else "",
-    }, indent=2, ensure_ascii=False))
+    }, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
 
 def docs_append(args):
@@ -1018,12 +1015,12 @@ def docs_append(args):
     text = args.text if args.text.endswith("\n") else args.text + "\n"
     _docs_insert_text(args.doc_id, text, index=insert_index)
 
-    print(json.dumps({
+    print(orjson.dumps({
         "status": "appended",
         "documentId": args.doc_id,
         "inserted_at": insert_index,
         "characters": len(text),
-    }, indent=2, ensure_ascii=False))
+    }, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
 
 def _docs_insert_text(doc_id: str, text: str, index: int) -> None:

@@ -187,6 +187,18 @@ class TestMergeDedupPaths:
 class TestRefreshEnvFromRegistry:
     """``refresh_env_from_registry`` — end-to-end with mocked registry."""
 
+    @pytest.fixture(autouse=True)
+    def _reset_cache(self):
+        # P-042 added a signature-keyed cache: on a real Windows host the
+        # Environment keys don't change between these tests, so without a reset
+        # the second test's refresh would be skipped and its mocked values never
+        # applied. Reset around each test so every one exercises a real read.
+        from tools.environments.windows_env import _reset_registry_env_cache
+
+        _reset_registry_env_cache()
+        yield
+        _reset_registry_env_cache()
+
     def test_non_windows_noop(self):
         """On non-Windows platforms the function is a no-op."""
         with patch("sys.platform", "linux"):
@@ -287,3 +299,102 @@ class TestRefreshEnvFromRegistry:
             parts = [p.strip() for p in path.split(";") if p.strip()]
             # Each directory should appear at most once
             assert len(parts) == len(set(p.lower() for p in parts))
+
+
+# =========================================================================
+# refresh_env_from_registry caching (P-042)
+# =========================================================================
+
+
+class TestRefreshEnvCache:
+    """Signature-keyed caching: the underlying registry read is skipped while
+    the Environment keys' last-write signature is unchanged, and re-runs the
+    moment it changes (a tool install) or ``force=True`` is passed.
+
+    These are behavior-contract tests (call-count relationships), not timing
+    snapshots, so they run on any host with the registry fully mocked.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _reset_cache(self):
+        from tools.environments.windows_env import _reset_registry_env_cache
+
+        _reset_registry_env_cache()
+        yield
+        _reset_registry_env_cache()
+
+    def test_repeated_calls_read_registry_once(self):
+        """Ten calls with an unchanged signature do exactly one real read."""
+        import tools.environments.windows_env as we
+
+        calls = {"n": 0}
+        with patch.object(
+            we, "_do_refresh_env_from_registry", lambda: calls.__setitem__("n", calls["n"] + 1)
+        ), patch.object(
+            we, "_registry_env_signature", return_value=("sigA", "sigB")
+        ), patch("sys.platform", "win32"):
+            for _ in range(10):
+                we.refresh_env_from_registry()
+
+        assert calls["n"] == 1, "cache should collapse 10 calls into 1 real read"
+
+    def test_signature_change_triggers_reread(self):
+        """A changed key signature (e.g. a tool install edited PATH) re-reads."""
+        import tools.environments.windows_env as we
+
+        calls = {"n": 0}
+        # call1 miss, call2 hit, call3 miss (changed), call4 hit
+        signatures = [("a", "a"), ("a", "a"), ("b", "b"), ("b", "b")]
+        with patch.object(
+            we, "_do_refresh_env_from_registry", lambda: calls.__setitem__("n", calls["n"] + 1)
+        ), patch.object(
+            we, "_registry_env_signature", side_effect=signatures
+        ), patch("sys.platform", "win32"):
+            for _ in range(4):
+                we.refresh_env_from_registry()
+
+        assert calls["n"] == 2, "unchanged->hit, changed->miss"
+
+    def test_force_bypasses_cache(self):
+        """``force=True`` reads even when the signature is unchanged."""
+        import tools.environments.windows_env as we
+
+        calls = {"n": 0}
+        with patch.object(
+            we, "_do_refresh_env_from_registry", lambda: calls.__setitem__("n", calls["n"] + 1)
+        ), patch.object(
+            we, "_registry_env_signature", return_value=("sig", "sig")
+        ), patch("sys.platform", "win32"):
+            we.refresh_env_from_registry()          # miss -> read (1)
+            we.refresh_env_from_registry()          # hit  -> skip
+            we.refresh_env_from_registry(force=True)  # forced -> read (2)
+
+        assert calls["n"] == 2
+
+    def test_unreadable_signature_never_skips(self):
+        """When the signature can't be read (None), every call refreshes."""
+        import tools.environments.windows_env as we
+
+        calls = {"n": 0}
+        with patch.object(
+            we, "_do_refresh_env_from_registry", lambda: calls.__setitem__("n", calls["n"] + 1)
+        ), patch.object(
+            we, "_registry_env_signature", return_value=None
+        ), patch("sys.platform", "win32"):
+            for _ in range(3):
+                we.refresh_env_from_registry()
+
+        assert calls["n"] == 3, "no signature -> no caching, fail safe (always read)"
+
+    def test_non_windows_never_reads(self):
+        """Off Windows the cache wrapper short-circuits before any read."""
+        import tools.environments.windows_env as we
+
+        calls = {"n": 0}
+        with patch.object(
+            we, "_do_refresh_env_from_registry", lambda: calls.__setitem__("n", calls["n"] + 1)
+        ), patch("sys.platform", "linux"):
+            we.refresh_env_from_registry()
+            we.refresh_env_from_registry(force=True)
+
+        assert calls["n"] == 0

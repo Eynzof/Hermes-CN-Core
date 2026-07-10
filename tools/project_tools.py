@@ -12,7 +12,7 @@ toolsets, so no CLI/messaging/cron schema carries them. The GUI also wires
 session's cwd and the sidebar follows the move; the DB write is the durable part.
 """
 
-import json
+import orjson
 import os
 from typing import Callable, Optional
 
@@ -73,7 +73,7 @@ def project_list(task_id: Optional[str] = None) -> str:
         active = pdb.get_active_id(conn)
         projects = pdb.list_projects(conn)
 
-    return json.dumps({
+    return orjson.dumps({
         "active_id": active,
         "projects": [
             {
@@ -85,13 +85,13 @@ def project_list(task_id: Optional[str] = None) -> str:
             }
             for p in projects
         ],
-    })
+    }).decode('utf-8')
 
 
 def project_create(name: str, path: Optional[str] = None, task_id: Optional[str] = None) -> str:
     name = (name or "").strip()
     if not name:
-        return json.dumps({"success": False, "error": "name is required"})
+        return orjson.dumps({"success": False, "error": "name is required"}).decode('utf-8')
 
     from hermes_cli import projects_db as pdb
 
@@ -105,15 +105,15 @@ def project_create(name: str, path: Optional[str] = None, task_id: Optional[str]
             pdb.set_active(conn, pid)
             proj = pdb.get_project(conn, pid)
     except ValueError as exc:
-        return json.dumps({"success": False, "error": str(exc)})
+        return orjson.dumps({"success": False, "error": str(exc)}).decode('utf-8')
 
     if proj is None:
-        return json.dumps({"success": False, "error": "project vanished after create"})
+        return orjson.dumps({"success": False, "error": "project vanished after create"}).decode('utf-8')
 
     primary = _primary_path(proj)
     _apply_workspace(task_id, primary, proj.name)
 
-    return json.dumps({"success": True, "id": proj.id, "slug": proj.slug, "name": proj.name, "primary_path": primary})
+    return orjson.dumps({"success": True, "id": proj.id, "slug": proj.slug, "name": proj.name, "primary_path": primary}).decode('utf-8')
 
 
 def project_switch(project: str, task_id: Optional[str] = None) -> str:
@@ -122,13 +122,13 @@ def project_switch(project: str, task_id: Optional[str] = None) -> str:
     with pdb.connect_closing() as conn:
         proj = _resolve(conn, project)
         if proj is None:
-            return json.dumps({"success": False, "error": f"no project matching '{project}'"})
+            return orjson.dumps({"success": False, "error": f"no project matching '{project}'"}).decode('utf-8')
         pdb.set_active(conn, proj.id)
 
     primary = _primary_path(proj)
     _apply_workspace(task_id, primary, proj.name)
 
-    return json.dumps({"success": True, "id": proj.id, "slug": proj.slug, "name": proj.name, "primary_path": primary})
+    return orjson.dumps({"success": True, "id": proj.id, "slug": proj.slug, "name": proj.name, "primary_path": primary}).decode('utf-8')
 
 
 registry.register(

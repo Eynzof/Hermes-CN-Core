@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import json
+import orjson
 from types import SimpleNamespace
 
 import pytest
@@ -13,7 +13,7 @@ class DummyResponse:
         self.status_code = status_code
         self._payload = payload or {}
         self.headers = headers or {}
-        self.text = text if text is not None else json.dumps(self._payload)
+        self.text = text if text is not None else orjson.dumps(self._payload).decode('utf-8')
 
     def json(self):
         return self._payload
@@ -205,7 +205,7 @@ def test_translate_native_response_surfaces_reasoning_and_tool_calls():
     assert choice.finish_reason == "tool_calls"
     assert choice.message.reasoning == "thinking..."
     assert choice.message.tool_calls[0].function.name == "search"
-    assert json.loads(choice.message.tool_calls[0].function.arguments) == {"q": "hermes"}
+    assert orjson.loads(choice.message.tool_calls[0].function.arguments) == {"q": "hermes"}
 
 
 def test_native_client_uses_x_goog_api_key_and_native_models_endpoint(monkeypatch):
@@ -391,7 +391,7 @@ def test_stream_event_translation_emits_tool_call_delta_with_stable_index():
     assert first[0].choices[0].delta.tool_calls[0].index == 0
     assert second[0].choices[0].delta.tool_calls[0].index == 0
     assert first[0].choices[0].delta.tool_calls[0].id == second[0].choices[0].delta.tool_calls[0].id
-    assert first[0].choices[0].delta.tool_calls[0].function.arguments == '{"q": "abc"}'
+    assert first[0].choices[0].delta.tool_calls[0].function.arguments == '{"q":"abc"}'
     assert second[0].choices[0].delta.tool_calls[0].function.arguments == ""
     assert first[-1].choices[0].finish_reason == "tool_calls"
 

@@ -134,7 +134,7 @@ def _xai_image_field(source: str) -> Dict[str, str]:
     if lower.startswith(("http://", "https://", "data:")):
         return {"url": source, "type": "image_url"}
     # Local file path → base64 data URI.
-    import base64
+    import pybase64 as base64
     import os as _os
 
     with open(_os.path.expanduser(source), "rb") as fh:  # windows-footgun: ok

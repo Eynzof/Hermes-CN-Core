@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import json
+import orjson
 from typing import Any, Dict, List, Optional
 
 import pytest
@@ -76,7 +76,7 @@ class TestUnifiedDispatch:
         finally:
             video_generation_tool._read_configured_video_provider = saved  # type: ignore
             plugins_module._ensure_plugins_discovered = saved_discover  # type: ignore
-        return json.loads(raw)
+        return orjson.loads(raw)
 
     def test_no_provider_returns_clear_error(self):
         result = self._run({"prompt": "a dog"})

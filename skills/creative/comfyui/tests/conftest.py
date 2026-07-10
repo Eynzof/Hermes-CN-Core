@@ -6,7 +6,7 @@ provides a few common fixtures.
 
 from __future__ import annotations
 
-import json
+import orjson
 import os
 import sys
 from pathlib import Path
@@ -22,17 +22,17 @@ sys.path.insert(0, str(SCRIPTS))
 
 @pytest.fixture
 def sd15_workflow() -> dict:
-    return json.loads((WORKFLOWS / "sd15_txt2img.json").read_text())
+    return orjson.loads((WORKFLOWS / "sd15_txt2img.json").read_text())
 
 
 @pytest.fixture
 def flux_workflow() -> dict:
-    return json.loads((WORKFLOWS / "flux_dev_txt2img.json").read_text())
+    return orjson.loads((WORKFLOWS / "flux_dev_txt2img.json").read_text())
 
 
 @pytest.fixture
 def video_workflow() -> dict:
-    return json.loads((WORKFLOWS / "wan_video_t2v.json").read_text())
+    return orjson.loads((WORKFLOWS / "wan_video_t2v.json").read_text())
 
 
 @pytest.fixture

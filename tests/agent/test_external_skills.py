@@ -1,6 +1,6 @@
 """Tests for external skill directories (skills.external_dirs config)."""
 
-import json
+import orjson
 import os
 from unittest.mock import patch
 
@@ -151,6 +151,6 @@ class TestExternalSkillView:
             patch("tools.skills_tool.SKILLS_DIR", local_skills),
         ):
             from tools.skills_tool import skill_view
-            result = json.loads(skill_view("my-external-skill"))
+            result = orjson.loads(skill_view("my-external-skill"))
         assert result["success"] is True
         assert "external things" in result["content"]

@@ -25,7 +25,7 @@ Covered:
 
 from __future__ import annotations
 
-import json
+import orjson
 from typing import cast
 from unittest.mock import MagicMock
 
@@ -193,7 +193,7 @@ class TestRuntimeDictSerializationGuard:
         either raise on plain ``json.dumps`` (good — fail loud) or be
         sanitized BEFORE serialization. This test pins the loud-fail
         behaviour so future changes that introduce
-        ``json.dumps(..., default=str)`` over a runtime dict are caught
+        ``orjson.dumps(..., default=str).decode('utf-8')`` over a runtime dict are caught
         by a regression here."""
 
         def provider():
@@ -207,7 +207,7 @@ class TestRuntimeDictSerializationGuard:
         # Plain json.dumps — must raise, not silently produce
         # ``"<function provider at 0x...>"``.
         with pytest.raises(TypeError):
-            json.dumps(runtime)
+            orjson.dumps(runtime).decode('utf-8')
 
 
 # ---------------------------------------------------------------------------

@@ -15,9 +15,9 @@ Config: Uses the existing Honcho config chain:
 
 from __future__ import annotations
 
-import json
+import orjson
 import logging
-import re
+from agent.re_compat import re
 import threading
 import time
 from typing import Any, Dict, List, Optional
@@ -264,14 +264,14 @@ class HonchoMemoryProvider(MemoryProvider):
 
     def save_config(self, values, hermes_home):
         """Write config to $HERMES_HOME/honcho.json (Honcho SDK native format)."""
-        import json
+        import orjson
         import os
         from pathlib import Path
         config_path = Path(hermes_home) / "honcho.json"
         existing = {}
         if config_path.exists():
             try:
-                existing = json.loads(config_path.read_text())
+                existing = orjson.loads(config_path.read_text())
             except Exception:
                 pass
         existing.update(values)
@@ -1330,11 +1330,11 @@ class HonchoMemoryProvider(MemoryProvider):
                     result = self._manager.set_peer_card(self._session_key, card_update, peer=peer)
                     if result is None:
                         return tool_error("Failed to update peer card.")
-                    return json.dumps({"result": f"Peer card updated ({len(result)} facts).", "card": result})
+                    return orjson.dumps({"result": f"Peer card updated ({len(result)} facts).", "card": result}).decode('utf-8')
                 card = self._manager.get_peer_card(self._session_key, peer=peer)
                 if not card:
-                    return json.dumps(self._empty_profile_hint(peer))
-                return json.dumps({"result": card})
+                    return orjson.dumps(self._empty_profile_hint(peer)).decode('utf-8')
+                return orjson.dumps({"result": card}).decode('utf-8')
 
             elif tool_name == "honcho_search":
                 query = args.get("query", "")
@@ -1346,8 +1346,8 @@ class HonchoMemoryProvider(MemoryProvider):
                     self._session_key, query, max_tokens=max_tokens, peer=peer
                 )
                 if not result:
-                    return json.dumps({"result": "No relevant context found."})
-                return json.dumps({"result": result})
+                    return orjson.dumps({"result": "No relevant context found."}).decode('utf-8')
+                return orjson.dumps({"result": result}).decode('utf-8')
 
             elif tool_name == "honcho_reasoning":
                 query = args.get("query", "")
@@ -1362,13 +1362,13 @@ class HonchoMemoryProvider(MemoryProvider):
                 )
                 # Update cadence tracker so auto-injection respects the gap after an explicit call
                 self._last_dialectic_turn = self._turn_count
-                return json.dumps({"result": result or "No result from Honcho."})
+                return orjson.dumps({"result": result or "No result from Honcho."}).decode('utf-8')
 
             elif tool_name == "honcho_context":
                 peer = args.get("peer", "user")
                 ctx = self._manager.get_session_context(self._session_key, peer=peer)
                 if not ctx:
-                    return json.dumps({"result": "No context available yet."})
+                    return orjson.dumps({"result": "No context available yet."}).decode('utf-8')
                 parts = []
                 if ctx.get("summary"):
                     parts.append(f"## Summary\n{ctx['summary']}")
@@ -1383,7 +1383,7 @@ class HonchoMemoryProvider(MemoryProvider):
                         for m in msgs[-5:]  # last 5 for brevity
                     )
                     parts.append(f"## Recent messages\n{msg_str}")
-                return json.dumps({"result": "\n\n".join(parts) or "No context available."})
+                return orjson.dumps({"result": "\n\n".join(parts) or "No context available."}).decode('utf-8')
 
             elif tool_name == "honcho_conclude":
                 delete_id = (args.get("delete_id") or "").strip()
@@ -1398,11 +1398,11 @@ class HonchoMemoryProvider(MemoryProvider):
                 if has_delete_id:
                     ok = self._manager.delete_conclusion(self._session_key, delete_id, peer=peer)
                     if ok:
-                        return json.dumps({"result": f"Conclusion {delete_id} deleted."})
+                        return orjson.dumps({"result": f"Conclusion {delete_id} deleted."}).decode('utf-8')
                     return tool_error(f"Failed to delete conclusion {delete_id}.")
                 ok = self._manager.create_conclusion(self._session_key, conclusion, peer=peer)
                 if ok:
-                    return json.dumps({"result": f"Conclusion saved for {peer}: {conclusion}"})
+                    return orjson.dumps({"result": f"Conclusion saved for {peer}: {conclusion}"}).decode('utf-8')
                 return tool_error("Failed to save conclusion.")
 
             return tool_error(f"Unknown tool: {tool_name}")

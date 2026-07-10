@@ -4,7 +4,7 @@ Requires DAYTONA_API_KEY to be set. Run with:
     TERMINAL_ENV=daytona pytest tests/integration/test_daytona_terminal.py -v
 """
 
-import json
+import orjson
 import os
 import sys
 from pathlib import Path
@@ -50,7 +50,7 @@ def task_id(request):
 
 def _run(command, task_id, **kwargs):
     result = terminal_tool(command, task_id=task_id, **kwargs)
-    return json.loads(result)
+    return orjson.loads(result)
 
 
 class TestDaytonaBasic:

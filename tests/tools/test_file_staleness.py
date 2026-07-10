@@ -8,7 +8,7 @@ the write should include a warning so the agent can re-read and verify.
 Run with:  python -m pytest tests/tools/test_file_staleness.py -v
 """
 
-import json
+import orjson
 import os
 import tempfile
 import time
@@ -99,7 +99,7 @@ class TestStalenessCheck(unittest.TestCase):
         mock_ops.return_value = _make_fake_ops("original content\n", 18)
         read_file_tool(self._tmpfile, task_id="t1")
 
-        result = json.loads(write_file_tool(self._tmpfile, "new content", task_id="t1"))
+        result = orjson.loads(write_file_tool(self._tmpfile, "new content", task_id="t1"))
         self.assertNotIn("_warning", result)
 
     @patch("tools.file_tools._get_file_ops")
@@ -113,7 +113,7 @@ class TestStalenessCheck(unittest.TestCase):
         with open(self._tmpfile, "w") as f:
             f.write("someone else changed this\n")
 
-        result = json.loads(write_file_tool(self._tmpfile, "new content", task_id="t1"))
+        result = orjson.loads(write_file_tool(self._tmpfile, "new content", task_id="t1"))
         self.assertIn("_warning", result)
         self.assertIn("modified since you last read", result["_warning"])
 
@@ -121,7 +121,7 @@ class TestStalenessCheck(unittest.TestCase):
     def test_no_warning_when_file_never_read(self, mock_ops):
         """Writing a file that was never read — no warning."""
         mock_ops.return_value = _make_fake_ops()
-        result = json.loads(write_file_tool(self._tmpfile, "new content", task_id="t2"))
+        result = orjson.loads(write_file_tool(self._tmpfile, "new content", task_id="t2"))
         self.assertNotIn("_warning", result)
 
     @patch("tools.file_tools._get_file_ops")
@@ -129,7 +129,7 @@ class TestStalenessCheck(unittest.TestCase):
         """Creating a new file — no warning."""
         mock_ops.return_value = _make_fake_ops()
         new_path = os.path.join(self._tmpdir, "brand_new.txt")
-        result = json.loads(write_file_tool(new_path, "content", task_id="t3"))
+        result = orjson.loads(write_file_tool(new_path, "content", task_id="t3"))
         self.assertNotIn("_warning", result)
         try:
             os.unlink(new_path)
@@ -146,7 +146,7 @@ class TestStalenessCheck(unittest.TestCase):
         with open(self._tmpfile, "w") as f:
             f.write("changed\n")
 
-        result = json.loads(write_file_tool(self._tmpfile, "new", task_id="task_b"))
+        result = orjson.loads(write_file_tool(self._tmpfile, "new", task_id="task_b"))
         self.assertNotIn("_warning", result)
 
     @patch("tools.file_tools._get_file_ops")
@@ -183,7 +183,7 @@ class TestStalenessCheck(unittest.TestCase):
                 with open(live_file, "w") as f:
                     f.write("live copy modified elsewhere\n")
 
-                result = json.loads(
+                result = orjson.loads(
                     write_file_tool("shared.txt", "replacement", task_id="live_task")
                 )
         finally:
@@ -230,7 +230,7 @@ class TestPatchStaleness(unittest.TestCase):
         with open(self._tmpfile, "w") as f:
             f.write("externally modified\n")
 
-        result = json.loads(patch_tool(
+        result = orjson.loads(patch_tool(
             mode="replace", path=self._tmpfile,
             old_string="original", new_string="patched",
             task_id="p1",
@@ -244,7 +244,7 @@ class TestPatchStaleness(unittest.TestCase):
         mock_ops.return_value = _make_fake_ops("original line\n", 15)
         read_file_tool(self._tmpfile, task_id="p2")
 
-        result = json.loads(patch_tool(
+        result = orjson.loads(patch_tool(
             mode="replace", path=self._tmpfile,
             old_string="original", new_string="patched",
             task_id="p2",

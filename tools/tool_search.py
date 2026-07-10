@@ -27,10 +27,10 @@ for the full rationale):
 
 from __future__ import annotations
 
-import json
+import orjson
 import logging
 import math
-import re
+from agent.re_compat import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -225,7 +225,7 @@ def estimate_tokens_from_schemas(tool_defs: Iterable[Dict[str, Any]]) -> int:
     total_chars = 0
     for td in tool_defs:
         try:
-            total_chars += len(json.dumps(td, ensure_ascii=False, separators=(",", ":")))
+            total_chars += len(orjson.dumps(td).decode('utf-8'))
         except (TypeError, ValueError):
             total_chars += len(str(td))
     return int(math.ceil(total_chars / CHARS_PER_TOKEN))
@@ -611,7 +611,7 @@ def dispatch_tool_search(args: Dict[str, Any],
         config = load_config()
     query = str(args.get("query") or "").strip()
     if not query:
-        return json.dumps({"error": "query is required"}, ensure_ascii=False)
+        return orjson.dumps({"error": "query is required"}).decode('utf-8')
 
     raw_limit = args.get("limit")
     if raw_limit is None:
@@ -622,11 +622,11 @@ def dispatch_tool_search(args: Dict[str, Any],
     _, deferrable = classify_tools(current_tool_defs)
     catalog = build_catalog(deferrable)
     hits = search_catalog(catalog, query, limit=limit)
-    return json.dumps({
+    return orjson.dumps({
         "query": query,
         "total_available": len(catalog),
         "matches": [_format_search_hit(h) for h in hits],
-    }, ensure_ascii=False)
+    }).decode('utf-8')
 
 
 def dispatch_tool_describe(args: Dict[str, Any],
@@ -635,26 +635,26 @@ def dispatch_tool_describe(args: Dict[str, Any],
     """Execute the ``tool_describe`` bridge tool. Returns a JSON string."""
     name = str(args.get("name") or "").strip()
     if not name:
-        return json.dumps({"error": "name is required"}, ensure_ascii=False)
+        return orjson.dumps({"error": "name is required"}).decode('utf-8')
     if not is_deferrable_tool_name(name):
-        return json.dumps({
+        return orjson.dumps({
             "error": (
                 f"'{name}' is not a deferrable tool. If you see it in the tools list "
                 "already, call it directly; otherwise check the spelling against tool_search."
             ),
-        }, ensure_ascii=False)
+        }).decode('utf-8')
     _, deferrable = classify_tools(current_tool_defs)
     for td in deferrable:
         fn = td.get("function") or {}
         if fn.get("name") == name:
-            return json.dumps({
+            return orjson.dumps({
                 "name": name,
                 "description": fn.get("description", ""),
                 "parameters": fn.get("parameters", {}),
-            }, ensure_ascii=False)
-    return json.dumps({
+            }).decode('utf-8')
+    return orjson.dumps({
         "error": f"'{name}' is not currently available. Re-run tool_search to refresh.",
-    }, ensure_ascii=False)
+    }).decode('utf-8')
 
 
 def scoped_deferrable_names(tool_defs: List[Dict[str, Any]]) -> frozenset[str]:
@@ -697,8 +697,8 @@ def resolve_underlying_call(args: Dict[str, Any]) -> Tuple[Optional[str], Dict[s
         raw_args = {}
     if isinstance(raw_args, str):
         try:
-            raw_args = json.loads(raw_args)
-        except json.JSONDecodeError as e:
+            raw_args = orjson.loads(raw_args)
+        except orjson.JSONDecodeError as e:
             return None, {}, f"tool_call 'arguments' is not valid JSON: {e}"
     if not isinstance(raw_args, dict):
         return None, {}, "tool_call 'arguments' must be an object"

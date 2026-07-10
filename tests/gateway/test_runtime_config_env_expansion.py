@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import json
+import orjson
 
 import pytest
 
@@ -26,7 +26,7 @@ def gateway_home(monkeypatch, tmp_path):
 
 def test_load_prefill_messages_expands_env_var_path(monkeypatch, gateway_home):
     prefill = [{"role": "system", "content": "few-shot"}]
-    (gateway_home / "prefill.json").write_text(json.dumps(prefill), encoding="utf-8")
+    (gateway_home / "prefill.json").write_text(orjson.dumps(prefill).decode('utf-8'), encoding="utf-8")
     _write_config(gateway_home, "prefill_messages_file: ${PREFILL_FILE}\n")
     monkeypatch.setenv("PREFILL_FILE", "prefill.json")
 
@@ -35,7 +35,7 @@ def test_load_prefill_messages_expands_env_var_path(monkeypatch, gateway_home):
 
 def test_load_prefill_messages_accepts_legacy_agent_key(monkeypatch, gateway_home):
     prefill = [{"role": "system", "content": "legacy few-shot"}]
-    (gateway_home / "prefill.json").write_text(json.dumps(prefill), encoding="utf-8")
+    (gateway_home / "prefill.json").write_text(orjson.dumps(prefill).decode('utf-8'), encoding="utf-8")
     _write_config(gateway_home, "agent:\n  prefill_messages_file: prefill.json\n")
 
     assert gateway_run.GatewayRunner._load_prefill_messages() == prefill
@@ -44,8 +44,8 @@ def test_load_prefill_messages_accepts_legacy_agent_key(monkeypatch, gateway_hom
 def test_load_prefill_messages_prefers_top_level_over_legacy(monkeypatch, gateway_home):
     top_level = [{"role": "system", "content": "top-level"}]
     legacy = [{"role": "system", "content": "legacy"}]
-    (gateway_home / "top.json").write_text(json.dumps(top_level), encoding="utf-8")
-    (gateway_home / "legacy.json").write_text(json.dumps(legacy), encoding="utf-8")
+    (gateway_home / "top.json").write_text(orjson.dumps(top_level).decode('utf-8'), encoding="utf-8")
+    (gateway_home / "legacy.json").write_text(orjson.dumps(legacy).decode('utf-8'), encoding="utf-8")
     _write_config(
         gateway_home,
         "prefill_messages_file: top.json\n"

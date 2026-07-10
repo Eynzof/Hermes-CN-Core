@@ -6,7 +6,7 @@ streaming, or the _run_codex_stream() call path.
 """
 
 import hashlib
-import json
+import orjson
 from typing import Any, Dict, List, Optional
 
 from agent.transports.base import ProviderTransport
@@ -36,9 +36,7 @@ def _content_cache_key(instructions: str, tools: Optional[List[Dict[str, Any]]])
             (t for t in tools if isinstance(t, dict)),
             key=lambda t: str(t.get("name") or t.get("type") or ""),
         )
-        tools_part = json.dumps(
-            sorted_tools, sort_keys=True, ensure_ascii=False, separators=(",", ":")
-        )
+        tools_part = orjson.dumps(sorted_tools, option=orjson.OPT_SORT_KEYS).decode('utf-8')
     # \x00 separator so instructions ending in the tool JSON can't collide with
     # a request whose instructions contain that JSON and whose tools are empty.
     content = f"{instructions or ''}\x00{tools_part}"

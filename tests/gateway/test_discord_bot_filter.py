@@ -1,7 +1,7 @@
 """Tests for Discord bot message filtering (DISCORD_ALLOW_BOTS)."""
 
 import os
-import re
+from agent.re_compat import re
 import unittest
 from unittest.mock import MagicMock
 

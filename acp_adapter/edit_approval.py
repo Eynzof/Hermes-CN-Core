@@ -8,9 +8,9 @@ CLI, gateway, and other sessions leave it unset and therefore bypass this guard.
 from __future__ import annotations
 
 import asyncio
-import json
+import orjson
 import logging
-import re
+from agent.re_compat import re
 import tempfile
 from concurrent.futures import TimeoutError as FutureTimeout
 from contextvars import ContextVar, Token
@@ -245,7 +245,7 @@ def maybe_require_edit_approval(tool_name: str, arguments: dict[str, Any]) -> st
         proposal = build_edit_proposal(tool_name, arguments)
     except Exception as exc:
         logger.warning("Could not build ACP edit approval proposal for %s: %s", tool_name, exc)
-        return json.dumps({"error": f"Edit approval denied: could not prepare diff ({exc})"}, ensure_ascii=False)
+        return orjson.dumps({"error": f"Edit approval denied: could not prepare diff ({exc})"}).decode('utf-8')
 
     if proposal is None:
         return None
@@ -258,7 +258,7 @@ def maybe_require_edit_approval(tool_name: str, arguments: dict[str, Any]) -> st
 
     if approved:
         return None
-    return json.dumps({"error": "Edit approval denied by ACP client; file was not modified."}, ensure_ascii=False)
+    return orjson.dumps({"error": "Edit approval denied by ACP client; file was not modified."}).decode('utf-8')
 
 
 def build_acp_edit_tool_call(proposal: EditProposal):

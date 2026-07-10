@@ -30,7 +30,7 @@ keyboard types). Authorship preserved via Co-authored-by.
 from __future__ import annotations
 
 import logging
-import re
+from agent.re_compat import re
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 

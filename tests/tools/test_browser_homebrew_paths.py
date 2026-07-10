@@ -1,6 +1,6 @@
 """Tests for macOS Homebrew PATH discovery in browser_tool.py."""
 
-import json
+import orjson
 import os
 from pathlib import Path
 from unittest.mock import patch, MagicMock, mock_open
@@ -262,7 +262,7 @@ class TestRunBrowserCommandPathConstruction:
             "session_id": "test-id",
             "cdp_url": None,
         }
-        fake_json = json.dumps({"success": True})
+        fake_json = orjson.dumps({"success": True}).decode('utf-8')
         browser_path = "/Users/test/Library/Application Support/hermes/node_modules/.bin/agent-browser"
         hermes_home = str(tmp_path / "hermes-home")
 
@@ -315,7 +315,7 @@ class TestRunBrowserCommandPathConstruction:
             "session_id": "test-id",
             "cdp_url": None,
         }
-        fake_json = json.dumps({"success": True})
+        fake_json = orjson.dumps({"success": True}).decode('utf-8')
         hermes_home = str(tmp_path / "hermes-home")
 
         with patch("tools.browser_tool._find_agent_browser", return_value="npx agent-browser"), \
@@ -378,7 +378,7 @@ class TestRunBrowserCommandPathConstruction:
         }
 
         # Write fake JSON output to the stdout temp file
-        fake_json = json.dumps({"success": True})
+        fake_json = orjson.dumps({"success": True}).decode('utf-8')
         stdout_file = tmp_path / "stdout"
         stdout_file.write_text(fake_json)
 
@@ -437,7 +437,7 @@ class TestRunBrowserCommandPathConstruction:
             "cdp_url": None,
         }
 
-        fake_json = json.dumps({"success": True})
+        fake_json = orjson.dumps({"success": True}).decode('utf-8')
         real_isdir = os.path.isdir
 
         def selective_isdir(p):
@@ -483,7 +483,7 @@ class TestRunBrowserCommandPathConstruction:
             "cdp_url": None,
         }
 
-        fake_json = json.dumps({"success": True})
+        fake_json = orjson.dumps({"success": True}).decode('utf-8')
         real_isdir = os.path.isdir
 
         def selective_isdir(path):

@@ -19,7 +19,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import json
+import orjson
 import os
 import sys
 import urllib.error
@@ -56,7 +56,7 @@ def api_get(path: str, token: str, params: dict | None = None,
             "User-Agent": "ci-timings-report",
         })
         with urllib.request.urlopen(req) as resp:
-            data = json.loads(resp.read())
+            data = orjson.loads(resp.read())
             link_header = resp.headers.get("Link", "")
 
         if list_key:
@@ -742,7 +742,7 @@ def main():
     # Collect or load timings
     if args.from_json:
         with open(args.from_json, encoding="utf-8") as f:
-            timings = json.load(f)
+            timings = orjson.loads(f.read())
     else:
         token = expect_env("GITHUB_TOKEN")
         repo = expect_env("GITHUB_REPOSITORY")
@@ -753,14 +753,14 @@ def main():
 
     # Save JSON
     with open(args.json_out, "w", encoding="utf-8") as f:
-        json.dump(timings, f, indent=2)
+        f.write(orjson.dumps(timings, option=orjson.OPT_INDENT_2).decode('utf-8'))
     print(f"Saved timings to {args.json_out} ({len(timings.get('jobs', []))} jobs)")
 
     # Load baseline
     baseline = None
     if os.path.exists(args.baseline):
         with open(args.baseline, encoding="utf-8") as f:
-            baseline = json.load(f)
+            baseline = orjson.loads(f.read())
         print(f"Loaded baseline from {args.baseline}")
     else:
         print(f"No baseline file at {args.baseline} — generating current-only report")

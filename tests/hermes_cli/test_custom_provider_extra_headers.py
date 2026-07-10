@@ -4,7 +4,7 @@ PR #3526 salvage — user-configurable extra HTTP headers on LLM API calls
 (reverse proxies, gateways, custom auth such as Cloudflare Access tokens).
 """
 
-import json
+import orjson
 
 from hermes_cli.config import (
     _normalize_custom_provider_entry,
@@ -154,7 +154,7 @@ def test_fetch_api_models_sends_extra_headers_to_models_probe(monkeypatch):
             return False
 
         def read(self):
-            return json.dumps({"data": [{"id": "proxy-model"}]}).encode()
+            return orjson.dumps({"data": [{"id": "proxy-model"}]})
 
     def fake_urlopen(request, timeout=0):
         captured["url"] = request.full_url

@@ -36,7 +36,7 @@ the port.
 from __future__ import annotations
 
 import asyncio
-import json
+import orjson
 import logging
 import sqlite3
 import time
@@ -905,7 +905,7 @@ def update_task(task_id: str, payload: UpdateTaskBody, board: Optional[str] = Qu
                 conn.execute(
                     "INSERT INTO task_events (task_id, kind, payload, created_at) "
                     "VALUES (?, 'reprioritized', ?, ?)",
-                    (task_id, json.dumps({"priority": int(payload.priority)}),
+                    (task_id, orjson.dumps({"priority": int(payload.priority)}).decode('utf-8'),
                      int(time.time())),
                 )
 
@@ -1040,7 +1040,7 @@ def _set_status_direct(
         conn.execute(
             "INSERT INTO task_events (task_id, run_id, kind, payload, created_at) "
             "VALUES (?, ?, 'status', ?, ?)",
-            (task_id, run_id, json.dumps({"status": new_status}), int(time.time())),
+            (task_id, run_id, orjson.dumps({"status": new_status}).decode('utf-8'), int(time.time())),
         )
         if reopening_satisfied_parent:
             # A parent leaving done/archived invalidates any direct child that
@@ -1063,13 +1063,11 @@ def _set_status_direct(
                         "VALUES (?, 'status', ?, ?)",
                         (
                             child_id,
-                            json.dumps(
-                                {
+                            orjson.dumps({
                                     "status": "todo",
                                     "reason": "parent_reopened",
                                     "parent": task_id,
-                                }
-                            ),
+                                }).decode('utf-8'),
                             int(time.time()),
                         ),
                     )
@@ -1244,7 +1242,7 @@ def bulk_update(payload: BulkTaskBody, board: Optional[str] = Query(None)):
                         conn.execute(
                             "INSERT INTO task_events (task_id, kind, payload, created_at) "
                             "VALUES (?, 'reprioritized', ?, ?)",
-                            (tid, json.dumps({"priority": int(payload.priority)}),
+                            (tid, orjson.dumps({"priority": int(payload.priority)}).decode('utf-8'),
                              int(time.time())),
                         )
             except Exception as e:  # defensive — one bad id shouldn't kill the batch
@@ -2416,7 +2414,7 @@ async def stream_events(ws: WebSocket):
                 new_cursor = cursor_val
                 for r in rows:
                     try:
-                        payload = json.loads(r["payload"]) if r["payload"] else None
+                        payload = orjson.loads(r["payload"]) if r["payload"] else None
                     except Exception:
                         payload = None
                     out.append({

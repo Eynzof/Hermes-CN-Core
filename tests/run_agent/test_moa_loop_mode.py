@@ -896,7 +896,7 @@ def test_moa_full_trace_written_when_enabled(monkeypatch, tmp_path):
     and the aggregator's FULL input (incl. injected reference guidance) +
     output — the true full turn, auditable offline.
     """
-    import json
+    import orjson
 
     home = tmp_path / ".hermes"
     home.mkdir()
@@ -948,7 +948,7 @@ moa:
     assert trace_file.exists(), "trace file not written"
     lines = trace_file.read_text(encoding="utf-8").strip().splitlines()
     assert len(lines) == 1
-    rec = json.loads(lines[0])
+    rec = orjson.loads(lines[0])
 
     # Turn framing.
     assert rec["session_id"] == "sess-xyz"
@@ -972,7 +972,7 @@ moa:
     assert agg["model"] == "anthropic/claude-opus-4.8"
     assert agg["streamed"] is False
     assert agg["output"] == "AGGREGATOR FINAL ANSWER"
-    agg_text = json.dumps(agg["input_messages"])
+    agg_text = orjson.dumps(agg["input_messages"]).decode('utf-8')
     assert "Mixture of Agents reference context" in agg_text
     assert "advice from adv-a" in agg_text and "advice from adv-b" in agg_text
 

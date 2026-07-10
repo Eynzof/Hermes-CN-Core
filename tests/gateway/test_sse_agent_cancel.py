@@ -295,13 +295,13 @@ def _capturing_response():
 
 def _finish_reason(chunks: list):
     """Extract the terminal finish_reason and its chunk from captured SSE."""
-    import json
+    import orjson
 
     sse = "".join(chunks)
     finish = None
     for line in sse.splitlines():
         if line.startswith("data: ") and '"finish_reason"' in line:
-            obj = json.loads(line[6:])
+            obj = orjson.loads(line[6:])
             if obj["choices"][0].get("finish_reason") is not None:
                 finish = obj
     return (finish["choices"][0]["finish_reason"] if finish else None), finish, sse

@@ -7,7 +7,7 @@ test_kanban_tools.py.
 """
 from __future__ import annotations
 
-import json
+import orjson
 
 import pytest
 
@@ -106,7 +106,7 @@ def test_kanban_complete_metadata_scrubbed(worker_env):
         conn.close()
     assert run is not None
     # metadata is stored on the run; serialize to catch any nesting
-    meta_raw = json.dumps(run.metadata) if run.metadata else "{}"
+    meta_raw = orjson.dumps(run.metadata).decode('utf-8') if run.metadata else "{}"
     assert secret not in meta_raw
 
 

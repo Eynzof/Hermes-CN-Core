@@ -3340,7 +3340,7 @@ class TestListSessionsRich:
 
     def test_v16_migration_tags_linked_delegate_rows(self, tmp_path):
         """Pre-marker linked subagent rows get tagged, then cascade with parent."""
-        import json
+        import orjson
 
         db_path = tmp_path / "state.db"
         db = SessionDB(db_path=db_path)
@@ -3352,13 +3352,13 @@ class TestListSessionsRich:
 
         db = SessionDB(db_path=db_path)
         row = db.get_session("delegate")
-        assert json.loads(row["model_config"])["_delegate_from"] == "parent"
+        assert orjson.loads(row["model_config"])["_delegate_from"] == "parent"
         assert db.delete_session("parent") is True
         assert db.get_session("delegate") is None
         db.close()
 
     def test_v16_migration_tags_orphaned_delegate_rows(self, tmp_path):
-        import json
+        import orjson
 
         db_path = tmp_path / "state.db"
         db = SessionDB(db_path=db_path)
@@ -3372,7 +3372,7 @@ class TestListSessionsRich:
         db = SessionDB(db_path=db_path)
         assert "orphan" not in [s["id"] for s in db.list_sessions_rich()]
         row = db.get_session("orphan")
-        assert json.loads(row["model_config"])["_delegate_from"] == "__orphaned__"
+        assert orjson.loads(row["model_config"])["_delegate_from"] == "__orphaned__"
         db.close()
 
     def test_branch_session_visible_after_parent_reopen_and_reend(self, db):
@@ -3384,7 +3384,7 @@ class TestListSessionsRich:
         'branched' — which broke the legacy end_reason heuristic. The stable
         _branched_from marker in model_config keeps them visible.
         """
-        import json as _json
+        import orjson as _json
 
         db.create_session("parent", "cli")
         db.end_session("parent", "branched")

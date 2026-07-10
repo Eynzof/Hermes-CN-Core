@@ -1,7 +1,7 @@
 """Tests for MCP tool structuredContent preservation."""
 
 import asyncio
-import json
+import orjson
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -75,7 +75,7 @@ class TestStructuredContentPreservation:
         )
         handler = mcp_tool._make_tool_handler("test-server", "my-tool", 30.0)
         raw = handler({})
-        data = json.loads(raw)
+        data = orjson.loads(raw)
         assert data == {"result": "hello"}
 
     def test_both_content_and_structured(self, _patch_mcp_server):
@@ -90,7 +90,7 @@ class TestStructuredContentPreservation:
         )
         handler = mcp_tool._make_tool_handler("test-server", "my-tool", 30.0)
         raw = handler({})
-        data = json.loads(raw)
+        data = orjson.loads(raw)
         # content is the primary result, structuredContent is supplementary
         assert data["result"] == "OK"
         assert data["structuredContent"] == payload
@@ -109,7 +109,7 @@ class TestStructuredContentPreservation:
         )
         handler = mcp_tool._make_tool_handler("test-server", "my-tool", 30.0)
         raw = handler({})
-        data = json.loads(raw)
+        data = orjson.loads(raw)
         assert data["result"] == file_text
         assert data["structuredContent"] == metadata
 
@@ -124,7 +124,7 @@ class TestStructuredContentPreservation:
         )
         handler = mcp_tool._make_tool_handler("test-server", "my-tool", 30.0)
         raw = handler({})
-        data = json.loads(raw)
+        data = orjson.loads(raw)
         assert data == {"result": "done"}
 
     def test_empty_text_with_structured_content(self, _patch_mcp_server):
@@ -139,5 +139,5 @@ class TestStructuredContentPreservation:
         )
         handler = mcp_tool._make_tool_handler("test-server", "my-tool", 30.0)
         raw = handler({})
-        data = json.loads(raw)
+        data = orjson.loads(raw)
         assert data["result"] == payload

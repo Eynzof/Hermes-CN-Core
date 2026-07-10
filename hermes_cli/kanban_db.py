@@ -72,9 +72,9 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
-import json
+import orjson
 import os
-import re
+from agent.re_compat import re
 import random
 import secrets
 import shutil
@@ -653,13 +653,13 @@ def read_board_metadata(board: Optional[str] = None) -> dict:
     try:
         p = board_metadata_path(slug)
         if p.exists():
-            raw = json.loads(p.read_text(encoding="utf-8"))
+            raw = orjson.loads(p.read_text(encoding="utf-8"))
             if isinstance(raw, dict):
                 # Never let the metadata file claim a different slug than
                 # its directory — trust the filesystem.
                 raw["slug"] = slug
                 meta.update(raw)
-    except (OSError, json.JSONDecodeError):
+    except (OSError, orjson.JSONDecodeError):
         pass
     meta["db_path"] = str(kanban_db_path(slug))
     return meta
@@ -702,7 +702,7 @@ def write_board_metadata(
     path = board_metadata_path(slug)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
-        json.dumps(meta, indent=2, ensure_ascii=False) + "\n",
+        orjson.dumps(meta, option=orjson.OPT_INDENT_2).decode('utf-8') + "\n",
         encoding="utf-8",
     )
     meta["db_path"] = str(kanban_db_path(slug))
@@ -922,7 +922,7 @@ class Task:
         skills_value: Optional[list] = None
         if "skills" in keys and row["skills"]:
             try:
-                parsed = json.loads(row["skills"])
+                parsed = orjson.loads(row["skills"])
                 if isinstance(parsed, list):
                     skills_value = [str(s) for s in parsed if s]
             except Exception:
@@ -1032,7 +1032,7 @@ class Run:
     @classmethod
     def from_row(cls, row: sqlite3.Row) -> "Run":
         try:
-            meta = json.loads(row["metadata"]) if row["metadata"] else None
+            meta = orjson.loads(row["metadata"]) if row["metadata"] else None
         except Exception:
             meta = None
         return cls(
@@ -2654,7 +2654,7 @@ def create_task(
                         tenant,
                         idempotency_key,
                         int(max_runtime_seconds) if max_runtime_seconds is not None else None,
-                        json.dumps(skills_list) if skills_list is not None else None,
+                        orjson.dumps(skills_list).decode('utf-8') if skills_list is not None else None,
                         int(max_retries) if max_retries is not None else None,
                         1 if goal_mode else 0,
                         int(goal_max_turns) if goal_max_turns is not None else None,
@@ -3081,7 +3081,7 @@ def list_events(conn: sqlite3.Connection, task_id: str) -> list[Event]:
     out = []
     for r in rows:
         try:
-            payload = json.loads(r["payload"]) if r["payload"] else None
+            payload = orjson.loads(r["payload"]) if r["payload"] else None
         except Exception:
             payload = None
         out.append(
@@ -3113,7 +3113,7 @@ def _append_event(
     and the row carries NULL.
     """
     now = int(time.time())
-    pl = json.dumps(payload, ensure_ascii=False) if payload else None
+    pl = orjson.dumps(payload).decode('utf-8') if payload else None
     conn.execute(
         "INSERT INTO task_events (task_id, run_id, kind, payload, created_at) "
         "VALUES (?, ?, ?, ?, ?)",
@@ -3167,7 +3167,7 @@ def _end_run(
             outcome,
             summary,
             error,
-            json.dumps(metadata, ensure_ascii=False) if metadata else None,
+            orjson.dumps(metadata).decode('utf-8') if metadata else None,
             now,
             run_id,
         ),
@@ -3229,7 +3229,7 @@ def _synthesize_ended_run(
             task_id, profile, step_key,
             outcome, outcome,
             summary, error,
-            json.dumps(metadata, ensure_ascii=False) if metadata else None,
+            orjson.dumps(metadata).decode('utf-8') if metadata else None,
             now, now,
         ),
     )
@@ -4517,7 +4517,7 @@ def edit_completed_task_result(
             if metadata is not None:
                 conn.execute(
                     "UPDATE task_runs SET metadata = ? WHERE id = ?",
-                    (json.dumps(metadata, ensure_ascii=False), run_id),
+                    (orjson.dumps(metadata).decode('utf-8'), run_id),
                 )
         ev_summary = (
             handoff_summary.strip().splitlines()[0][:400]
@@ -8017,7 +8017,7 @@ def build_worker_context(conn: sqlite3.Connection, task_id: str) -> str:
                 lines.append(f"_error_: {_cap(run.error)}")
             if run.metadata:
                 try:
-                    meta_str = json.dumps(run.metadata, ensure_ascii=False, sort_keys=True)
+                    meta_str = orjson.dumps(run.metadata, option=orjson.OPT_SORT_KEYS).decode('utf-8')
                     lines.append(f"_metadata_: `{_cap(meta_str)}`")
                 except Exception:
                     pass
@@ -8073,7 +8073,7 @@ def build_worker_context(conn: sqlite3.Connection, task_id: str) -> str:
 
             if run is not None and run.metadata:
                 try:
-                    meta_str = json.dumps(run.metadata, ensure_ascii=False, sort_keys=True)
+                    meta_str = orjson.dumps(run.metadata, option=orjson.OPT_SORT_KEYS).decode('utf-8')
                     body_lines.append(f"_metadata_: `{_cap(meta_str)}`")
                 except Exception:
                     pass
@@ -8335,7 +8335,7 @@ def unseen_events_for_sub(
     max_id = cursor
     for r in rows:
         try:
-            payload = json.loads(r["payload"]) if r["payload"] else None
+            payload = orjson.loads(r["payload"]) if r["payload"] else None
         except Exception:
             payload = None
         out.append(Event(

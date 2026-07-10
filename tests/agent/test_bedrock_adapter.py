@@ -9,7 +9,7 @@ Covers:
   - Edge cases: empty messages, consecutive roles, image content
 """
 
-import json
+import orjson
 from contextlib import contextmanager
 from types import ModuleType
 from unittest.mock import MagicMock, patch
@@ -416,7 +416,7 @@ class TestNormalizeConverseResponse:
         assert len(tool_calls) == 1
         assert tool_calls[0].id == "call_abc"
         assert tool_calls[0].function.name == "read_file"
-        assert json.loads(tool_calls[0].function.arguments) == {"path": "/tmp/test.txt"}
+        assert orjson.loads(tool_calls[0].function.arguments) == {"path": "/tmp/test.txt"}
 
     def test_multiple_tool_calls(self):
         from agent.bedrock_adapter import normalize_converse_response
@@ -524,7 +524,7 @@ class TestNormalizeConverseStreamEvents:
         assert len(tc) == 1
         assert tc[0].id == "call_1"
         assert tc[0].function.name == "read_file"
-        assert json.loads(tc[0].function.arguments) == {"path": "/tmp/f"}
+        assert orjson.loads(tc[0].function.arguments) == {"path": "/tmp/f"}
 
     def test_mixed_text_and_tool_stream(self):
         from agent.bedrock_adapter import normalize_converse_stream_events

@@ -106,8 +106,8 @@ def _run_scenario(name, chat_id, is_dm, reply_chat_type):
     assert sid, f"{name}: _find_session_id found NO session — the reply would dead-end"
     # Read the session transcript back and confirm the brief text is present.
     idx = mirror._SESSIONS_INDEX
-    import json
-    data = json.loads(idx.read_text())
+    import orjson
+    data = orjson.loads(idx.read_text())
     entry = next((e for e in data.values() if isinstance(e, dict) and e.get("session_id") == sid), None)
     assert entry, f"{name}: session {sid} not in index"
     # transcript lives in the JSONL / SQLite; verify via the store's own read.

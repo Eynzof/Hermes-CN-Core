@@ -21,8 +21,8 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
-import json
-import re
+import orjson
+from agent.re_compat import re
 import sys
 import urllib.error
 import urllib.request
@@ -283,18 +283,18 @@ def _discover_mcp() -> list[Component]:
 
 
 def _http_post_json(url: str, payload: dict) -> dict:
-    data = json.dumps(payload).encode("utf-8")
+    data = orjson.dumps(payload)
     req = urllib.request.Request(
         url, data=data, headers={"Content-Type": "application/json"}, method="POST"
     )
     with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+        return orjson.loads(resp.read().decode("utf-8"))
 
 
 def _http_get_json(url: str) -> dict:
     req = urllib.request.Request(url, method="GET")
     with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+        return orjson.loads(resp.read().decode("utf-8"))
 
 
 def _osv_query_batch(components: list[Component]) -> dict[Component, list[str]]:
@@ -506,7 +506,7 @@ def _render_json(findings: list[Finding], total_components: int) -> str:
             for f in findings
         ],
     }
-    return json.dumps(payload, indent=2)
+    return orjson.dumps(payload, option=orjson.OPT_INDENT_2).decode('utf-8')
 
 
 def _count_components(
@@ -547,7 +547,7 @@ def cmd_security_audit(args: argparse.Namespace) -> int:
     if total == 0:
         msg = "No components discovered (everything skipped, or empty environment)."
         if output_json:
-            print(json.dumps({"total_components_scanned": 0, "finding_count": 0, "findings": []}))
+            print(orjson.dumps({"total_components_scanned": 0, "finding_count": 0, "findings": []}).decode('utf-8'))
         else:
             print(msg)
         return 0

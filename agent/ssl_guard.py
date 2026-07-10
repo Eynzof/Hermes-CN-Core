@@ -29,6 +29,47 @@ def _skip_ssl_guard_enabled() -> bool:
     return os.getenv("HERMES_SKIP_SSL_GUARD", "").strip().lower() in _SKIP_VALUES
 
 
+# ---------------------------------------------------------------------------
+# Process-level validation cache
+# ---------------------------------------------------------------------------
+# ``verify_ca_bundle`` builds a throwaway ``ssl.create_default_context()`` to
+# prove the CA bundle loads.  On Windows that certificate load costs ~200ms and
+# the guard runs on EVERY ``AIAgent`` construction (see agent_init.py), so a
+# gateway spawning many agents/subagents re-pays it for a bundle that cannot
+# change mid-process.  We memoise the *successful* validation, keyed on a cheap
+# fingerprint of the CA-relevant env vars + the certifi bundle (path/size/mtime).
+# When the fingerprint is unchanged the expensive re-load is skipped; any change
+# (an env var edited, certifi reinstalled) invalidates it on the next call.
+# Failures are never cached — they must re-raise every time they are hit.
+_last_valid_fingerprint: "tuple | None" = None
+
+
+def _ca_bundle_fingerprint() -> tuple:
+    """Return a cheap change-signature for the CA configuration.
+
+    Captures the four CA-bundle env vars plus certifi's bundle identity
+    (path + size + mtime) without building an ``SSLContext`` — microseconds
+    versus the ~200ms validation it guards.  A missing/broken certifi yields a
+    distinct signature so the guard always re-runs (and raises) for it.
+    """
+    parts: list = [(var, os.getenv(var) or "") for var in _CA_BUNDLE_ENV_VARS]
+    try:
+        import certifi
+
+        ca = certifi.where()
+        st = os.stat(ca)
+        parts.append(("certifi", ca, st.st_size, st.st_mtime_ns))
+    except Exception as exc:  # missing/unreadable certifi -> distinct signature
+        parts.append(("certifi_error", repr(exc)))
+    return tuple(parts)
+
+
+def _reset_ca_bundle_cache() -> None:
+    """Drop the memoised validation verdict (test hook / forced re-check)."""
+    global _last_valid_fingerprint
+    _last_valid_fingerprint = None
+
+
 def _repair_hint() -> str:
     return (
         "Repair: python -m pip install --force-reinstall certifi openai httpx\n"
@@ -66,8 +107,15 @@ def verify_ca_bundle() -> None:
             points at a bad path, or if certifi's bundled ``cacert.pem`` is
             missing/corrupt.
     """
+    global _last_valid_fingerprint
     if _skip_ssl_guard_enabled():
         logger.debug("SSL CA bundle guard skipped via HERMES_SKIP_SSL_GUARD")
+        return
+
+    fingerprint = _ca_bundle_fingerprint()
+    if fingerprint == _last_valid_fingerprint:
+        # Same CA configuration already validated in this process; the bundle is
+        # immutable process state, so skip the expensive context re-load.
         return
 
     for env_var in _CA_BUNDLE_ENV_VARS:
@@ -82,6 +130,9 @@ def verify_ca_bundle() -> None:
 
     ca_bundle = str(certifi.where())
     _validate_bundle_path("certifi", ca_bundle, require_substantial=True)
+
+    # Only reached when every bundle validated cleanly — cache the verdict.
+    _last_valid_fingerprint = fingerprint
 
 
 def verify_ca_bundle_with_fallback() -> None:

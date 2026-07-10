@@ -6,7 +6,7 @@ exchange → install_grant → forced-expiry refresh with rotation. This is the
 deterministic "real smoke test" for the consumer flow.
 """
 
-import json
+import orjson
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -72,7 +72,7 @@ class _FakeAS(BaseHTTPRequestHandler):
                 "environment": "production",
                 "hosts": {"hermes": {"saveMessages": True, "recallMode": "hybrid"}},
             }
-        payload = json.dumps(body).encode()
+        payload = orjson.dumps(body)
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
@@ -118,7 +118,7 @@ def _browser_driver(authorize_url: str) -> None:
 
 def test_full_loopback_flow_then_refresh(tmp_path, fake_as):
     config_path = tmp_path / "honcho.json"
-    config_path.write_text(json.dumps({"hosts": {"obsidian": {"workspace": "obsidian"}}}))
+    config_path.write_text(orjson.dumps({"hosts": {"obsidian": {"workspace": "obsidian"}}}).decode('utf-8'))
 
     cred = oauth_flow.authorize_via_loopback(
         config_path=config_path,
@@ -129,7 +129,7 @@ def test_full_loopback_flow_then_refresh(tmp_path, fake_as):
 
     # Grant installed: token stored, config deep-merged, other host preserved.
     assert cred.access_token == "hch-at-1"
-    saved = json.loads(config_path.read_text())
+    saved = orjson.loads(config_path.read_text())
     assert saved["hosts"]["hermes"]["apiKey"] == "hch-at-1"
     assert saved["hosts"]["hermes"]["oauth"]["refreshToken"] == "hch-rt-1"
     assert saved["hosts"]["hermes"]["recallMode"] == "hybrid"
@@ -142,7 +142,7 @@ def test_full_loopback_flow_then_refresh(tmp_path, fake_as):
     )
     assert refreshed is True
     assert token == "hch-at-2"
-    rotated = json.loads(config_path.read_text())["hosts"]["hermes"]["oauth"]
+    rotated = orjson.loads(config_path.read_text())["hosts"]["hermes"]["oauth"]
     assert rotated["refreshToken"] == "hch-rt-2"
 
 
@@ -178,7 +178,7 @@ def test_grant_persists_default_client_id(tmp_path, fake_as, monkeypatch):
     # store client_id=hermes-agent so refresh reuses the right client.
     monkeypatch.delenv("HONCHO_OAUTH_CLIENT_ID", raising=False)
     config_path = tmp_path / "honcho.json"
-    config_path.write_text(json.dumps({"hosts": {}}))
+    config_path.write_text(orjson.dumps({"hosts": {}}).decode('utf-8'))
 
     oauth_flow.authorize_via_loopback(
         config_path=config_path,
@@ -188,7 +188,7 @@ def test_grant_persists_default_client_id(tmp_path, fake_as, monkeypatch):
         open_url=lambda url: _browser_driver(url),
         timeout=10,
     )
-    saved = json.loads(config_path.read_text())
+    saved = orjson.loads(config_path.read_text())
     assert saved["hosts"]["hermes"]["oauth"]["clientId"] == "hermes-agent"
 
 
@@ -213,7 +213,7 @@ def test_display_config_path_never_leaks_absolute_path():
 def test_cli_flow_stores_tokens_without_applying_config(tmp_path, fake_as):
     # apply_config=False (the CLI path): grant config must NOT touch settings.
     config_path = tmp_path / "honcho.json"
-    config_path.write_text(json.dumps({"hosts": {"hermes": {"saveMessages": False}}}))
+    config_path.write_text(orjson.dumps({"hosts": {"hermes": {"saveMessages": False}}}).decode('utf-8'))
 
     cred = oauth_flow.authorize_via_loopback(
         config_path=config_path,
@@ -224,7 +224,7 @@ def test_cli_flow_stores_tokens_without_applying_config(tmp_path, fake_as):
         timeout=10,
     )
 
-    saved = json.loads(config_path.read_text())
+    saved = orjson.loads(config_path.read_text())
     host = saved["hosts"]["hermes"]
     assert host["apiKey"] == cred.access_token
     assert host["oauth"]["refreshToken"] == cred.refresh_token
@@ -316,18 +316,18 @@ def test_get_flow_status_reports_stored_connection(tmp_path, monkeypatch, reset_
     monkeypatch.setattr(honcho_client, "resolve_active_host", lambda: "hermes")
     monkeypatch.delenv("HONCHO_API_KEY", raising=False)
 
-    cfgfile.write_text(json.dumps({"hosts": {"hermes": {}}}))
+    cfgfile.write_text(orjson.dumps({"hosts": {"hermes": {}}}).decode('utf-8'))
     assert oauth_flow.get_flow_status()["connected"] is False
 
-    cfgfile.write_text(json.dumps({"hosts": {"hermes": {"apiKey": "hch-v3-static"}}}))
+    cfgfile.write_text(orjson.dumps({"hosts": {"hermes": {"apiKey": "hch-v3-static"}}}).decode('utf-8'))
     s = oauth_flow.get_flow_status()
     assert s["connected"] is True and s["auth"] == "apikey"
 
-    cfgfile.write_text(json.dumps({"hosts": {"hermes": {
+    cfgfile.write_text(orjson.dumps({"hosts": {"hermes": {
         "apiKey": "hch-at-tok",
         "oauth": {"refreshToken": "hch-rt-x", "expiresAt": 9_999_999_999,
                   "clientId": "hermes-desktop", "tokenEndpoint": "http://x/oauth/token"},
-    }}}))
+    }}}).decode('utf-8'))
     s = oauth_flow.get_flow_status()
     assert s["connected"] is True and s["auth"] == "oauth"
 

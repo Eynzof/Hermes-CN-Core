@@ -1,7 +1,7 @@
 """Tests for _parse_env_var and _get_env_config env-var validation."""
 
 import importlib
-import json
+import orjson
 from unittest.mock import patch
 
 import pytest

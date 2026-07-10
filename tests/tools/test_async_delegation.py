@@ -266,8 +266,8 @@ def test_delegate_task_background_routes_async_and_does_not_block(monkeypatch):
         background=True, parent_agent=parent,
     )
 
-    import json
-    parsed = json.loads(out)
+    import orjson
+    parsed = orjson.loads(out)
     assert parsed["status"] == "dispatched"
     assert parsed["mode"] == "background"
     assert parsed["delegation_id"].startswith("deleg_")
@@ -294,7 +294,7 @@ def test_delegate_task_background_batch_runs_as_one_unit(monkeypatch):
     ONE background unit (one handle, one async slot). The children run in
     parallel and join; the consolidated results come back as a single
     completion event when ALL of them finish."""
-    import json
+    import orjson
     from unittest.mock import MagicMock, patch
     import tools.delegate_tool as dt
 
@@ -335,7 +335,7 @@ def test_delegate_task_background_batch_runs_as_one_unit(monkeypatch):
         parent_agent=parent,
     )
 
-    parsed = json.loads(out)
+    parsed = orjson.loads(out)
     assert parsed["status"] == "dispatched"
     assert parsed["mode"] == "background"
     assert parsed["count"] == 3
@@ -483,8 +483,8 @@ def test_delegate_task_background_detaches_child_from_parent(monkeypatch):
          patch.object(dt, "_resolve_delegation_credentials", return_value=creds):
         out = dt.delegate_task(goal="bg task", background=True, parent_agent=parent)
 
-    import json
-    assert json.loads(out)["status"] == "dispatched"
+    import orjson
+    assert orjson.loads(out)["status"] == "dispatched"
     # Child detached immediately at dispatch, while it is still running.
     assert fake_child not in parent._active_children
     gate.set()

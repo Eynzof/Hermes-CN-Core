@@ -7,7 +7,7 @@ guard that would have caught that specific failure mode.
 
 from __future__ import annotations
 
-import json
+import orjson
 import os
 import sys
 from typing import List, Dict, Any
@@ -288,12 +288,12 @@ class TestBridgeDispatch:
     def test_tool_search_requires_query(self):
         from tools.tool_search import dispatch_tool_search
         result = dispatch_tool_search({}, current_tool_defs=[])
-        assert "error" in json.loads(result)
+        assert "error" in orjson.loads(result)
 
     def test_tool_describe_requires_name(self):
         from tools.tool_search import dispatch_tool_describe
         result = dispatch_tool_describe({}, current_tool_defs=[])
-        assert "error" in json.loads(result)
+        assert "error" in orjson.loads(result)
 
     def test_tool_describe_rejects_non_deferrable(self):
         """If the model asks to describe a core tool, refuse — it's already
@@ -302,7 +302,7 @@ class TestBridgeDispatch:
         result = dispatch_tool_describe(
             {"name": "terminal"}, current_tool_defs=[_td("terminal", "Run shell")],
         )
-        assert "error" in json.loads(result)
+        assert "error" in orjson.loads(result)
 
     def test_resolve_underlying_call_parses_object_args(self):
         from tools.tool_search import resolve_underlying_call
@@ -359,7 +359,7 @@ class TestHandleFunctionCallIntegration:
             function_name="tool_search",
             function_args={"query": "nothing matches this"},
         )
-        parsed = json.loads(result)
+        parsed = orjson.loads(result)
         # Without a real registry, the matches will be empty, but the
         # dispatch path completed without error.
         assert "matches" in parsed or "error" in parsed
@@ -438,7 +438,7 @@ class TestRegression_ToolsetScoping:
         from tools.registry import registry
 
         def _handler(args, task_id=None, **kw):
-            return json.dumps({"ok": True, "tool": name})
+            return orjson.dumps({"ok": True, "tool": name}).decode('utf-8')
 
         registry.register(
             name=name,
@@ -461,7 +461,7 @@ class TestRegression_ToolsetScoping:
             function_args={"query": "mcp_scoped_gh", "limit": 5},
             enabled_toolsets=["mcp-scoped-gh"],
         )
-        parsed = json.loads(result)
+        parsed = orjson.loads(result)
         assert parsed["total_available"] == 12, (
             f"expected scoped catalog of 12, got {parsed['total_available']} "
             "— catalog leaked tools outside the session's toolsets"
@@ -477,7 +477,7 @@ class TestRegression_ToolsetScoping:
 
         # Out-of-scope plugin tool: rejected even though it is registered
         # and deferrable in the global registry.
-        rejected = json.loads(model_tools.handle_function_call(
+        rejected = orjson.loads(model_tools.handle_function_call(
             function_name="tool_call",
             function_args={"name": "inscope_oos_plugin", "arguments": {}},
             enabled_toolsets=["mcp-inscope-gh"],
@@ -486,7 +486,7 @@ class TestRegression_ToolsetScoping:
         assert "not available in this session" in rejected["error"]
 
         # In-scope tool: dispatches normally.
-        ok = json.loads(model_tools.handle_function_call(
+        ok = orjson.loads(model_tools.handle_function_call(
             function_name="tool_call",
             function_args={"name": "mcp_inscope_gh_op", "arguments": {"repo": "a/b"}},
             enabled_toolsets=["mcp-inscope-gh"],

@@ -17,7 +17,7 @@ def test_prompt_model_selection_falls_back_on_menu_runtime_error(monkeypatch):
     from hermes_cli.auth import _prompt_model_selection
 
     monkeypatch.setattr("hermes_cli.curses_ui.curses_radiolist", _raise_menu)
-    responses = iter(["2"])
+    responses = iter(["2", ""])  # select model-b, skip reasoning effort
     monkeypatch.setattr("builtins.input", lambda _prompt="": next(responses))
 
     selected = _prompt_model_selection(["model-a", "model-b"])
@@ -112,7 +112,7 @@ def test_named_custom_provider_model_picker_falls_back_on_menu_runtime_error(tmp
     cfg = load_config()
     save_config(cfg)
 
-    responses = iter(["2"])
+    responses = iter(["2", ""])  # select model-b, then skip reasoning effort
     monkeypatch.setattr("builtins.input", lambda _prompt="": next(responses))
 
     _model_flow_named_custom(

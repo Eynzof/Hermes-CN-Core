@@ -24,7 +24,7 @@ Agent workflow:
 from __future__ import annotations  # allow PEP 604 `X | None` on Python 3.9+
 
 import argparse
-import json
+import orjson
 import os
 import shutil
 import subprocess
@@ -71,7 +71,7 @@ def _normalize_authorized_user_payload(payload: dict) -> dict:
 
 def _load_token_payload(path: Path = TOKEN_PATH) -> dict:
     try:
-        return json.loads(path.read_text())
+        return orjson.loads(path.read_text())
     except Exception:
         return {}
 
@@ -217,10 +217,7 @@ def check_auth(quiet: bool = False):
         try:
             creds.refresh(Request())
             TOKEN_PATH.write_text(
-                json.dumps(
-                    _normalize_authorized_user_payload(json.loads(creds.to_json())),
-                    indent=2,
-                )
+                orjson.dumps(_normalize_authorized_user_payload(orjson.loads(creds.to_json())), option=orjson.OPT_INDENT_2).decode('utf-8')
             )
             missing_scopes = _missing_scopes_from_payload(_load_token_payload(TOKEN_PATH))
             if missing_scopes:
@@ -260,8 +257,8 @@ def store_client_secret(path: str):
         sys.exit(1)
 
     try:
-        data = json.loads(src.read_text())
-    except json.JSONDecodeError:
+        data = orjson.loads(src.read_text())
+    except orjson.JSONDecodeError:
         print("ERROR: File is not valid JSON.")
         sys.exit(1)
 
@@ -270,21 +267,18 @@ def store_client_secret(path: str):
         print("Download the correct file from: https://console.cloud.google.com/apis/credentials")
         sys.exit(1)
 
-    CLIENT_SECRET_PATH.write_text(json.dumps(data, indent=2))
+    CLIENT_SECRET_PATH.write_text(orjson.dumps(data, option=orjson.OPT_INDENT_2).decode('utf-8'))
     print(f"OK: Client secret saved to {CLIENT_SECRET_PATH}")
 
 
 def _save_pending_auth(*, state: str, code_verifier: str):
     """Persist the OAuth session bits needed for a later token exchange."""
     PENDING_AUTH_PATH.write_text(
-        json.dumps(
-            {
+        orjson.dumps({
                 "state": state,
                 "code_verifier": code_verifier,
                 "redirect_uri": REDIRECT_URI,
-            },
-            indent=2,
-        )
+            }, option=orjson.OPT_INDENT_2).decode('utf-8')
     )
 
 
@@ -295,7 +289,7 @@ def _load_pending_auth() -> dict:
         sys.exit(1)
 
     try:
-        data = json.loads(PENDING_AUTH_PATH.read_text())
+        data = orjson.loads(PENDING_AUTH_PATH.read_text())
     except Exception as e:
         print(f"ERROR: Could not read pending OAuth session: {e}")
         print("Run --auth-url again to start a fresh OAuth session.")
@@ -393,7 +387,7 @@ def exchange_auth_code(code: str):
         sys.exit(1)
 
     creds = flow.credentials
-    token_payload = _normalize_authorized_user_payload(json.loads(creds.to_json()))
+    token_payload = _normalize_authorized_user_payload(orjson.loads(creds.to_json()))
 
     # Store only the scopes actually granted by the user, not what was requested.
     # creds.to_json() writes the requested scopes, which causes refresh to fail
@@ -410,7 +404,7 @@ def exchange_auth_code(code: str):
         print(f"WARNING: Token missing some Google Workspace scopes: {', '.join(missing_scopes)}")
         print("Some services may not be available.")
 
-    TOKEN_PATH.write_text(json.dumps(token_payload, indent=2))
+    TOKEN_PATH.write_text(orjson.dumps(token_payload, option=orjson.OPT_INDENT_2).decode('utf-8'))
     PENDING_AUTH_PATH.unlink(missing_ok=True)
     print(f"OK: Authenticated. Token saved to {TOKEN_PATH}")
     print(f"Profile-scoped token location: {display_hermes_home()}/google_token.json")

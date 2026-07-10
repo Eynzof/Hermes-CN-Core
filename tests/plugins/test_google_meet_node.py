@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import json
+import orjson
 from pathlib import Path
 
 import pytest
@@ -69,9 +69,9 @@ def test_protocol_decode_raises_on_malformed():
     with pytest.raises(ValueError):
         protocol.decode("[]")  # list, not object
     with pytest.raises(ValueError):
-        protocol.decode(json.dumps({"id": "x"}))  # missing type
+        protocol.decode(orjson.dumps({"id": "x"}).decode('utf-8'))  # missing type
     with pytest.raises(ValueError):
-        protocol.decode(json.dumps({"type": "ping"}))  # missing id
+        protocol.decode(orjson.dumps({"type": "ping"}).decode('utf-8'))  # missing id
 
 
 def test_protocol_validate_request_happy_path():
@@ -239,7 +239,7 @@ def test_server_ensure_token_generates_and_persists(tmp_path):
     t2 = s2.ensure_token()
     assert t1 == t2
 
-    data = json.loads(p.read_text(encoding="utf-8"))
+    data = orjson.loads(p.read_text(encoding="utf-8"))
     assert data["token"] == t1
     assert "generated_at" in data
 
@@ -399,7 +399,7 @@ def test_server_handle_request_say_enqueues_when_active(tmp_path, monkeypatch):
     assert resp["payload"]["enqueued"] is True
     q = (out / "say_queue.jsonl").read_text(encoding="utf-8").strip().splitlines()
     assert len(q) == 1
-    assert json.loads(q[0])["text"] == "hello"
+    assert orjson.loads(q[0])["text"] == "hello"
 
 
 def test_server_handle_request_say_without_active_still_ok(tmp_path, monkeypatch):
@@ -490,7 +490,7 @@ def test_client_rpc_sends_correct_envelope_and_parses_response(monkeypatch):
     out = c._rpc("ping", {"hello": 1})
     assert out == {"ok": True, "echo": "ping"}
 
-    sent = json.loads(holder["ws"].sent[0])
+    sent = orjson.loads(holder["ws"].sent[0])
     assert sent["type"] == "ping"
     assert sent["token"] == "tok123"
     assert sent["payload"] == {"hello": 1}
@@ -638,7 +638,7 @@ def test_cli_status_pings_via_node_client(capsys, monkeypatch):
     rc = args.func(args)
     assert rc == 0
     out = capsys.readouterr().out.strip()
-    data = json.loads(out)
+    data = orjson.loads(out)
     assert data["ok"] is True
     assert data["node"] == "mac"
 
@@ -669,6 +669,6 @@ def test_cli_status_reports_client_error(capsys, monkeypatch):
     args = p.parse_args(["status", "mac"])
     rc = args.func(args)
     assert rc == 1
-    data = json.loads(capsys.readouterr().out.strip())
+    data = orjson.loads(capsys.readouterr().out.strip())
     assert data["ok"] is False
     assert "connection refused" in data["error"]

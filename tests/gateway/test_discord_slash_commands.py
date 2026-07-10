@@ -980,7 +980,7 @@ def test_register_skill_command_payload_fits_discord_8kb_limit(adapter):
     confirms the serialized command still fits. Autocomplete options are
     not part of this payload, so the budget is essentially constant.
     """
-    import json
+    import orjson
 
     # Simulate the largest catalog the collector will ever produce:
     # 20 categories × 25 skills each, with verbose 100-char descriptions.
@@ -1002,14 +1002,14 @@ def test_register_skill_command_payload_fits_discord_8kb_limit(adapter):
     skill_cmd = adapter._client.tree.commands["skill"]
     # Approximate the serialized registration payload (name + description only).
     # Autocomplete options are NOT registered — they're fetched dynamically.
-    payload = json.dumps({
+    payload = orjson.dumps({
         "name": skill_cmd.name,
         "description": skill_cmd.description,
         "options": [
             {"name": "name", "description": "Which skill to run", "type": 3, "required": True},
             {"name": "args", "description": "Optional arguments for the skill", "type": 3, "required": False},
         ],
-    })
+    }).decode('utf-8')
     assert len(payload) < 500, (
         f"Flat /skill command payload is ~{len(payload)} bytes — the whole "
         f"point of this design is that it stays small regardless of skill count"

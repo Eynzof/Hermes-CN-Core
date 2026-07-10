@@ -1,7 +1,6 @@
 """Contract tests for the Docker image's immutable /opt/hermes install tree."""
 from __future__ import annotations
-
-import re
+from agent.re_compat import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]

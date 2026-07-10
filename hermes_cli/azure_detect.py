@@ -37,9 +37,9 @@ rest.
 
 from __future__ import annotations
 
-import json
+import orjson
 import logging
-import re
+from agent.re_compat import re
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 from urllib import request as urllib_request
@@ -161,7 +161,7 @@ def _http_get_json(url: str,
         with urllib_request.urlopen(req, timeout=timeout) as resp:
             body = resp.read()
             try:
-                return resp.status, json.loads(body.decode("utf-8", errors="replace"))
+                return resp.status, orjson.loads(body.decode("utf-8", errors="replace"))
             except Exception:
                 return resp.status, None
     except HTTPError as exc:
@@ -257,11 +257,11 @@ def _probe_anthropic_messages(base_url: str,
     """
     base = _strip_trailing_v1(base_url)
     url = f"{base}/v1/messages?api-version={_AZURE_ANTHROPIC_API_VERSION}"
-    payload = json.dumps({
+    payload = orjson.dumps({
         "model": "probe",
         "max_tokens": 1,
         "messages": [{"role": "user", "content": "ping"}],
-    }).encode("utf-8")
+    })
     req = urllib_request.Request(url, method="POST", data=payload)
     token, mode = _resolve_credential(api_key, token_provider)
     _apply_auth_headers(req, token, mode)

@@ -15,7 +15,7 @@ Run with:  python -m pytest tests/test_code_execution.py -v
 import pytest
 # pytestmark removed — tests run fine (61 pass, ~99s)
 
-import json
+import orjson
 import os
 import socket
 import time
@@ -53,20 +53,20 @@ def _mock_handle_function_call(function_name, function_args, task_id=None, user_
     """Mock dispatcher that returns canned responses for each tool."""
     if function_name == "terminal":
         cmd = function_args.get("command", "")
-        return json.dumps({"output": f"mock output for: {cmd}", "exit_code": 0})
+        return orjson.dumps({"output": f"mock output for: {cmd}", "exit_code": 0}).decode('utf-8')
     if function_name == "web_search":
-        return json.dumps({"results": [{"url": "https://example.com", "title": "Example", "description": "A test result"}]})
+        return orjson.dumps({"results": [{"url": "https://example.com", "title": "Example", "description": "A test result"}]}).decode('utf-8')
     if function_name == "read_file":
-        return json.dumps({"content": "line 1\nline 2\nline 3\n", "total_lines": 3})
+        return orjson.dumps({"content": "line 1\nline 2\nline 3\n", "total_lines": 3}).decode('utf-8')
     if function_name == "write_file":
-        return json.dumps({"status": "ok", "path": function_args.get("path", "")})
+        return orjson.dumps({"status": "ok", "path": function_args.get("path", "")}).decode('utf-8')
     if function_name == "search_files":
-        return json.dumps({"matches": [{"file": "test.py", "line": 1, "text": "match"}]})
+        return orjson.dumps({"matches": [{"file": "test.py", "line": 1, "text": "match"}]}).decode('utf-8')
     if function_name == "patch":
-        return json.dumps({"status": "ok", "replacements": 1})
+        return orjson.dumps({"status": "ok", "replacements": 1}).decode('utf-8')
     if function_name == "web_extract":
-        return json.dumps("# Extracted content\nSome text from the page.")
-    return json.dumps({"error": f"Unknown tool in mock: {function_name}"})
+        return orjson.dumps("# Extracted content\nSome text from the page.").decode('utf-8')
+    return orjson.dumps({"error": f"Unknown tool in mock: {function_name}"}).decode('utf-8')
 
 
 class TestSandboxRequirements(unittest.TestCase):
@@ -164,7 +164,7 @@ class TestExecuteCodeRemoteTempDir(unittest.TestCase):
              patch("tools.code_execution_tool._get_or_create_env", return_value=(env, "ssh")), \
              patch("tools.code_execution_tool._ship_file_to_remote"), \
              patch("tools.code_execution_tool.threading.Thread", return_value=fake_thread):
-            result = json.loads(_execute_remote("print('hello')", "task-1", ["terminal"]))
+            result = orjson.loads(_execute_remote("print('hello')", "task-1", ["terminal"]))
 
         self.assertEqual(result["status"], "success")
         mkdir_cmd = env.commands[1][0]
@@ -205,7 +205,7 @@ class TestExecuteCodeRemoteTempDir(unittest.TestCase):
              patch("tools.code_execution_tool.threading.Thread",
                    return_value=fake_thread), \
              patch.dict(os.environ, {"HERMES_TIMEZONE": malicious_tz}):
-            result = json.loads(_execute_remote("print('hello')", "task-1", ["terminal"]))
+            result = orjson.loads(_execute_remote("print('hello')", "task-1", ["terminal"]))
 
         self.assertEqual(result["status"], "success")
         run_cmd = next(cmd for cmd, _, _ in env.commands if "python3 script.py" in cmd)
@@ -233,7 +233,7 @@ class TestExecuteCode(unittest.TestCase):
                 task_id="test-task",
                 enabled_tools=enabled_tools or list(SANDBOX_ALLOWED_TOOLS),
             )
-        return json.loads(result)
+        return orjson.loads(result)
 
     def test_basic_print(self):
         """Script that just prints -- no tool calls."""
@@ -336,7 +336,7 @@ else:
                 cmd = function_args.get("command", "")
                 # Echo semantics: strip leading "echo " and return the rest
                 out = cmd[5:] if cmd.startswith("echo ") else f"mock: {cmd}"
-                return json.dumps({"output": out, "exit_code": 0})
+                return orjson.dumps({"output": out, "exit_code": 0}).decode('utf-8')
             return _mock_handle_function_call(
                 function_name, function_args, task_id=task_id, user_task=user_task
             )
@@ -347,7 +347,7 @@ else:
                 task_id="test-concurrent",
                 enabled_tools=list(SANDBOX_ALLOWED_TOOLS),
             )
-        result = json.loads(raw)
+        result = orjson.loads(raw)
         self.assertEqual(result["status"], "success", msg=result)
         self.assertIn("OK 10/10", result["output"],
                       msg=f"Concurrent tool calls mismatched: {result['output']!r}")
@@ -366,7 +366,7 @@ print(result)
 
     def test_empty_code(self):
         """Empty code string returns an error."""
-        result = json.loads(execute_code("", task_id="test"))
+        result = orjson.loads(execute_code("", task_id="test"))
         self.assertIn("error", result)
 
     def test_output_captured(self):
@@ -398,7 +398,7 @@ raise RuntimeError("deliberate crash")
         with patch("model_tools.handle_function_call", side_effect=_mock_handle_function_call):
             # Override config to use a very short timeout
             with patch("tools.code_execution_tool._load_config", return_value={"timeout": 2, "max_tool_calls": 50}):
-                result = json.loads(execute_code(
+                result = orjson.loads(execute_code(
                     code=code,
                     task_id="test-task",
                     enabled_tools=list(SANDBOX_ALLOWED_TOOLS),
@@ -422,7 +422,7 @@ print(f"Found {len(results.get('results', []))} results")
         self.assertIn("Found 1 results", result["output"])
 
     def test_json_parse_helper(self):
-        """json_parse handles control characters that json.loads(strict=True) rejects."""
+        """json_parse handles control characters that orjson.loads(strict=True) rejects."""
         code = r"""
 from hermes_tools import json_parse
 # This JSON has a literal tab character which strict mode rejects
@@ -515,7 +515,7 @@ class TestStubSchemaDrift(unittest.TestCase):
     def test_stubs_cover_all_schema_params(self):
         """Every user-facing parameter in the real schema must appear in the
         corresponding _TOOL_STUBS entry."""
-        import re
+        from agent.re_compat import re
         from tools.code_execution_tool import _TOOL_STUBS
 
         # Import the registry and trigger tool registration
@@ -550,7 +550,7 @@ class TestStubSchemaDrift(unittest.TestCase):
     def test_stubs_pass_all_params_to_rpc(self):
         """The args_dict_expr in each stub must include every parameter from
         the signature, so that all params are actually sent over RPC."""
-        import re
+        from agent.re_compat import re
         from tools.code_execution_tool import _TOOL_STUBS
 
         for tool_name, (func_name, sig, doc, args_expr) in _TOOL_STUBS.items():
@@ -732,7 +732,7 @@ class TestEnvVarFiltering(unittest.TestCase):
         """Run a script that dumps its environment and return the env dict."""
         code = (
             "import os, json\n"
-            "print(json.dumps(dict(os.environ)))\n"
+            "print(orjson.dumps(dict(os.environ)).decode('utf-8'))\n"
         )
         env_backup = os.environ.copy()
         try:
@@ -747,9 +747,9 @@ class TestEnvVarFiltering(unittest.TestCase):
             os.environ.clear()
             os.environ.update(env_backup)
 
-        result = json.loads(raw)
+        result = orjson.loads(raw)
         self.assertEqual(result["status"], "success", result.get("error", ""))
-        return json.loads(result["output"].strip())
+        return orjson.loads(result["output"].strip())
 
     def test_api_keys_excluded(self):
         child_env = self._get_child_env({
@@ -834,12 +834,12 @@ class TestExecuteCodeEdgeCases(unittest.TestCase):
         error is only emitted when SANDBOX_AVAILABLE is explicitly
         flipped off (e.g. for future platform-specific disables)."""
         with patch("tools.code_execution_tool.SANDBOX_AVAILABLE", False):
-            result = json.loads(execute_code("print('hi')", task_id="test"))
+            result = orjson.loads(execute_code("print('hi')", task_id="test"))
             self.assertIn("error", result)
             self.assertIn("unavailable", result["error"].lower())
 
     def test_whitespace_only_code(self):
-        result = json.loads(execute_code("   \n\t  ", task_id="test"))
+        result = orjson.loads(execute_code("   \n\t  ", task_id="test"))
         self.assertIn("error", result)
         self.assertIn("No code", result["error"])
 
@@ -851,8 +851,8 @@ class TestExecuteCodeEdgeCases(unittest.TestCase):
             "print('all imports ok')\n"
         )
         with patch("model_tools.handle_function_call",
-                    return_value=json.dumps({"ok": True})):
-            result = json.loads(execute_code(code, task_id="test-none",
+                    return_value=orjson.dumps({"ok": True}).decode('utf-8')):
+            result = orjson.loads(execute_code(code, task_id="test-none",
                                              enabled_tools=None))
         self.assertEqual(result["status"], "success")
         self.assertIn("all imports ok", result["output"])
@@ -865,8 +865,8 @@ class TestExecuteCodeEdgeCases(unittest.TestCase):
             "print('imports ok')\n"
         )
         with patch("model_tools.handle_function_call",
-                    return_value=json.dumps({"ok": True})):
-            result = json.loads(execute_code(code, task_id="test-empty",
+                    return_value=orjson.dumps({"ok": True}).decode('utf-8')):
+            result = orjson.loads(execute_code(code, task_id="test-empty",
                                              enabled_tools=[]))
         self.assertEqual(result["status"], "success")
         self.assertIn("imports ok", result["output"])
@@ -880,8 +880,8 @@ class TestExecuteCodeEdgeCases(unittest.TestCase):
             "print('fallback ok')\n"
         )
         with patch("model_tools.handle_function_call",
-                    return_value=json.dumps({"ok": True})):
-            result = json.loads(execute_code(
+                    return_value=orjson.dumps({"ok": True}).decode('utf-8')):
+            result = orjson.loads(execute_code(
                 code, task_id="test-nonoverlap",
                 enabled_tools=["vision_analyze", "browser_snapshot"],
             ))
@@ -942,10 +942,10 @@ class TestInterruptHandling(unittest.TestCase):
 
         try:
             with patch("model_tools.handle_function_call",
-                        return_value=json.dumps({"ok": True})), \
+                        return_value=orjson.dumps({"ok": True}).decode('utf-8')), \
                  patch("tools.code_execution_tool._load_config",
                        return_value={"timeout": 30, "max_tool_calls": 50}):
-                result = json.loads(execute_code(
+                result = orjson.loads(execute_code(
                     code, task_id="test-interrupt",
                     enabled_tools=list(SANDBOX_ALLOWED_TOOLS),
                 ))
@@ -966,7 +966,7 @@ class TestHeadTailTruncation(unittest.TestCase):
                 task_id="test-task",
                 enabled_tools=list(SANDBOX_ALLOWED_TOOLS),
             )
-        return json.loads(result)
+        return orjson.loads(result)
 
     def test_short_output_not_truncated(self):
         """Output under MAX_STDOUT_BYTES should not be truncated."""
@@ -1071,7 +1071,7 @@ class TestRpcTokenAuthorization(unittest.TestCase):
         responses = []
         try:
             for req in requests:
-                cli.sendall((json.dumps(req) + "\n").encode())
+                cli.sendall((orjson.dumps(req).decode('utf-8') + "\n").encode())
             cli.settimeout(5)
             buf = b""
             while len(responses) < len(requests):
@@ -1083,7 +1083,7 @@ class TestRpcTokenAuthorization(unittest.TestCase):
                     line, buf = buf.split(b"\n", 1)
                     line = line.strip()
                     if line:
-                        responses.append(json.loads(line.decode()))
+                        responses.append(orjson.loads(line.decode()))
         finally:
             stop_event.set()
             cli.close()
@@ -1115,8 +1115,8 @@ class TestRpcTokenAuthorization(unittest.TestCase):
             [{"tool": "terminal", "args": {"command": "echo hi"}, "token": "secret-token"}],
         )
         self.assertEqual(len(resp), 1)
-        self.assertNotIn("Unauthorized", json.dumps(resp[0]))
-        self.assertIn("mock output for: echo hi", json.dumps(resp[0]))
+        self.assertNotIn("Unauthorized", orjson.dumps(resp[0]).decode('utf-8'))
+        self.assertIn("mock output for: echo hi", orjson.dumps(resp[0]).decode('utf-8'))
 
     def test_empty_server_token_fails_closed(self):
         """An empty server-side token rejects everything (fail-closed)."""

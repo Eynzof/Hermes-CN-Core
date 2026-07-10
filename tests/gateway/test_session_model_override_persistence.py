@@ -14,7 +14,7 @@ Covers:
     restart cannot resurrect it
   - api_key is NEVER serialized to sessions.json
 """
-import json
+import orjson
 from unittest.mock import patch
 
 import pytest
@@ -96,7 +96,7 @@ def test_api_key_never_serialized(store_factory, tmp_path):
     assert "sk-SUPER-SECRET-do-not-persist" not in raw
     assert "api_key" not in raw
     # api_mode is re-derived from provider resolution; not persisted either.
-    data = json.loads(raw)
+    data = orjson.loads(raw)
     stored = data[entry.session_key]["model_override"]
     assert set(stored) == {"model", "provider", "base_url"}
 

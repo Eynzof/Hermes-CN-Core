@@ -82,14 +82,14 @@ def _relay_bot_ids_map() -> dict:
     """Parse ``GATEWAY_RELAY_BOT_IDS`` (JSON keyed map). Never raises — a malformed
     map yields ``{}`` so a bad config degrades to empty bot ids (the connector
     rejects an unprovisioned platform) rather than crashing boot."""
-    import json
+    import orjson
     import logging
 
     raw = os.environ.get("GATEWAY_RELAY_BOT_IDS", "").strip()
     if not raw:
         return {}
     try:
-        parsed = json.loads(raw)
+        parsed = orjson.loads(raw)
         return parsed if isinstance(parsed, dict) else {}
     except Exception:  # noqa: BLE001 - a bad map must not crash boot
         logging.getLogger("gateway.relay").warning(
@@ -386,7 +386,7 @@ def _post_provision(
     ``{secret, deliveryKey, tenant, gatewayId, routeKeys}``. Raises RuntimeError
     with a user-facing message on any non-2xx / transport failure.
     """
-    import json
+    import orjson
     import urllib.error
     import urllib.request
 
@@ -405,7 +405,7 @@ def _post_provision(
     # stores null and simply can't wake this instance (buffering still works).
     if wake_url:
         body["wakeUrl"] = wake_url
-    data = json.dumps(body).encode("utf-8")
+    data = orjson.dumps(body)
     req = urllib.request.Request(
         provision_url,
         data=data,
@@ -418,11 +418,11 @@ def _post_provision(
     )
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            payload = json.loads(resp.read().decode())
+            payload = orjson.loads(resp.read().decode())
     except urllib.error.HTTPError as exc:
         detail = ""
         try:
-            detail = (json.loads(exc.read().decode()) or {}).get("error", "")
+            detail = (orjson.loads(exc.read().decode()) or {}).get("error", "")
         except Exception:
             pass
         raise RuntimeError(
@@ -584,11 +584,11 @@ def _post_policy(*, policy_url: str, token: str, policy: dict, timeout: float = 
     body. Raises RuntimeError on transport failure (the caller treats any
     failure as non-fatal — relevance is an optimization, not a boot dependency).
     """
-    import json
+    import orjson
     import urllib.error
     import urllib.request
 
-    data = json.dumps(policy).encode("utf-8")
+    data = orjson.dumps(policy)
     req = urllib.request.Request(
         policy_url,
         data=data,

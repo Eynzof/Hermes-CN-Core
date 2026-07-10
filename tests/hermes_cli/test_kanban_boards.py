@@ -15,7 +15,7 @@ Covers the pieces added when boards became a first-class concept:
 
 from __future__ import annotations
 
-import json
+import orjson
 import os
 import subprocess
 import sys
@@ -488,7 +488,7 @@ class TestCLI:
         env = {"HERMES_HOME": str(tmp_path)}
         res = _cli(["boards", "list", "--json"], env_extra=env)
         assert res.returncode == 0, res.stderr
-        data = json.loads(res.stdout)
+        data = orjson.loads(res.stdout)
         slugs = [b["slug"] for b in data]
         assert slugs == ["default"]
         assert data[0]["is_current"] is True
@@ -504,7 +504,7 @@ class TestCLI:
         assert "Switched" in r1.stdout
 
         r2 = _cli(["boards", "list", "--json"], env_extra=env)
-        data = json.loads(r2.stdout)
+        data = orjson.loads(r2.stdout)
         cur = [b for b in data if b["is_current"]][0]
         assert cur["slug"] == "myproj"
 
@@ -524,9 +524,9 @@ class TestCLI:
         listB = _cli(["--board", "projB", "list", "--json"], env_extra=env)
         listD = _cli(["list", "--json"], env_extra=env)
 
-        titlesA = [t["title"] for t in json.loads(listA.stdout)]
-        titlesB = [t["title"] for t in json.loads(listB.stdout)]
-        titlesD = [t["title"] for t in json.loads(listD.stdout)]
+        titlesA = [t["title"] for t in orjson.loads(listA.stdout)]
+        titlesB = [t["title"] for t in orjson.loads(listB.stdout)]
+        titlesD = [t["title"] for t in orjson.loads(listD.stdout)]
 
         assert titlesA == ["Task A"]
         assert titlesB == ["Task B"]
@@ -555,5 +555,5 @@ class TestCLI:
         assert "archived" in r.stdout
         # Default board list no longer shows it.
         res = _cli(["boards", "list", "--json"], env_extra=env)
-        slugs = [b["slug"] for b in json.loads(res.stdout)]
+        slugs = [b["slug"] for b in orjson.loads(res.stdout)]
         assert "rmme" not in slugs

@@ -16,7 +16,7 @@ key-sorted to match the disk-cache format and keep diffs reviewable.
 
 from __future__ import annotations
 
-import json
+import orjson
 import os
 import sys
 import urllib.request
@@ -29,12 +29,12 @@ DEST = Path(__file__).resolve().parent.parent / "agent" / "models_dev_snapshot.j
 def main() -> int:
     print(f"Fetching {URL} ...", file=sys.stderr)
     with urllib.request.urlopen(URL, timeout=30) as resp:  # noqa: S310
-        data = json.loads(resp.read().decode("utf-8"))
+        data = orjson.loads(resp.read().decode("utf-8"))
     if not isinstance(data, dict) or not data:
         print("error: unexpected models.dev payload (not a non-empty dict)", file=sys.stderr)
         return 1
     with open(DEST, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+        f.write(orjson.dumps(data, option=orjson.OPT_SORT_KEYS).decode('utf-8'))
     total_models = sum(
         len(p.get("models", {})) for p in data.values() if isinstance(p, dict)
     )

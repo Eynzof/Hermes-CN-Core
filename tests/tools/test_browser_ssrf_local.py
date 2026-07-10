@@ -9,7 +9,7 @@ Cloud backends (Browserbase, BrowserUse) enforce SSRF by default.  Users
 can opt out for cloud mode via ``browser.allow_private_urls: true``.
 """
 
-import json
+import orjson
 
 import pytest
 
@@ -59,7 +59,7 @@ class TestPreNavigationSsrf:
         monkeypatch.setattr(browser_tool, "_allow_private_urls", lambda: False)
         monkeypatch.setattr(browser_tool, "_is_safe_url", lambda url: False)
 
-        result = json.loads(browser_tool.browser_navigate(self.PRIVATE_URL))
+        result = orjson.loads(browser_tool.browser_navigate(self.PRIVATE_URL))
 
         assert result["success"] is False
         assert "private or internal address" in result["error"]
@@ -70,7 +70,7 @@ class TestPreNavigationSsrf:
         monkeypatch.setattr(browser_tool, "_allow_private_urls", lambda: True)
         monkeypatch.setattr(browser_tool, "_is_safe_url", lambda url: False)
 
-        result = json.loads(browser_tool.browser_navigate(self.PRIVATE_URL))
+        result = orjson.loads(browser_tool.browser_navigate(self.PRIVATE_URL))
 
         assert result["success"] is True
 
@@ -80,7 +80,7 @@ class TestPreNavigationSsrf:
         monkeypatch.setattr(browser_tool, "_allow_private_urls", lambda: False)
         monkeypatch.setattr(browser_tool, "_is_safe_url", lambda url: True)
 
-        result = json.loads(browser_tool.browser_navigate("https://example.com"))
+        result = orjson.loads(browser_tool.browser_navigate("https://example.com"))
 
         assert result["success"] is True
 
@@ -92,7 +92,7 @@ class TestPreNavigationSsrf:
         monkeypatch.setattr(browser_tool, "_allow_private_urls", lambda: False)
         monkeypatch.setattr(browser_tool, "_is_safe_url", lambda url: False)
 
-        result = json.loads(browser_tool.browser_navigate(self.PRIVATE_URL))
+        result = orjson.loads(browser_tool.browser_navigate(self.PRIVATE_URL))
 
         assert result["success"] is True
 
@@ -102,7 +102,7 @@ class TestPreNavigationSsrf:
         monkeypatch.setattr(browser_tool, "_allow_private_urls", lambda: False)
         monkeypatch.setattr(browser_tool, "_is_safe_url", lambda url: True)
 
-        result = json.loads(browser_tool.browser_navigate("https://example.com"))
+        result = orjson.loads(browser_tool.browser_navigate("https://example.com"))
 
         assert result["success"] is True
 
@@ -138,7 +138,7 @@ class TestPreNavigationSsrf:
         # always-blocked floor as an independent gate.
         monkeypatch.setattr(browser_tool, "_is_safe_url", lambda url: True)
 
-        result = json.loads(browser_tool.browser_navigate(imds_url))
+        result = orjson.loads(browser_tool.browser_navigate(imds_url))
 
         assert result["success"] is False
         assert "cloud metadata endpoint" in result["error"]
@@ -159,7 +159,7 @@ class TestPreNavigationSsrf:
             "http://10.0.0.5/",
             "http://myservice.local/",
         ):
-            result = json.loads(browser_tool.browser_navigate(private))
+            result = orjson.loads(browser_tool.browser_navigate(private))
             assert result["success"] is True, f"Unexpected block for {private}: {result}"
 
 
@@ -265,7 +265,7 @@ class TestPostRedirectSsrf:
             lambda *a, **kw: _make_browser_result(url=self.PRIVATE_FINAL_URL),
         )
 
-        result = json.loads(browser_tool.browser_navigate(self.PUBLIC_URL))
+        result = orjson.loads(browser_tool.browser_navigate(self.PUBLIC_URL))
 
         assert result["success"] is False
         assert "redirect landed on a private/internal address" in result["error"]
@@ -283,7 +283,7 @@ class TestPostRedirectSsrf:
             lambda *a, **kw: _make_browser_result(url=self.PRIVATE_FINAL_URL),
         )
 
-        result = json.loads(browser_tool.browser_navigate(self.PUBLIC_URL))
+        result = orjson.loads(browser_tool.browser_navigate(self.PUBLIC_URL))
 
         assert result["success"] is True
         assert result["url"] == self.PRIVATE_FINAL_URL
@@ -303,7 +303,7 @@ class TestPostRedirectSsrf:
             lambda *a, **kw: _make_browser_result(url=self.PRIVATE_FINAL_URL),
         )
 
-        result = json.loads(browser_tool.browser_navigate(self.PUBLIC_URL))
+        result = orjson.loads(browser_tool.browser_navigate(self.PUBLIC_URL))
 
         assert result["success"] is True
         assert result["url"] == self.PRIVATE_FINAL_URL
@@ -320,7 +320,7 @@ class TestPostRedirectSsrf:
             lambda *a, **kw: _make_browser_result(url=final),
         )
 
-        result = json.loads(browser_tool.browser_navigate(self.PUBLIC_URL))
+        result = orjson.loads(browser_tool.browser_navigate(self.PUBLIC_URL))
 
         assert result["success"] is True
         assert result["url"] == final
@@ -346,7 +346,7 @@ class TestPostRedirectSsrf:
             lambda *a, **kw: _make_browser_result(url=imds_final),
         )
 
-        result = json.loads(browser_tool.browser_navigate(self.PUBLIC_URL))
+        result = orjson.loads(browser_tool.browser_navigate(self.PUBLIC_URL))
 
         assert result["success"] is False
         assert "cloud metadata endpoint" in result["error"]

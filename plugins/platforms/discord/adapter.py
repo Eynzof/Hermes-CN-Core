@@ -11,10 +11,10 @@ Uses discord.py library for:
 
 import asyncio
 import hashlib
-import json
+import orjson
 import logging
 import os
-import re
+from agent.re_compat import re
 import struct
 import subprocess
 import tempfile
@@ -202,7 +202,7 @@ class _DiscordNonConversationalMessageTracker:
         if not path.exists():
             return []
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
+            data = orjson.loads(path.read_text(encoding="utf-8"))
             if isinstance(data, list):
                 return [str(message_id) for message_id in data if str(message_id).strip()]
         except Exception:
@@ -1428,7 +1428,7 @@ class DiscordAdapter(BasePlatformAdapter):
             path = self._command_sync_state_path()
             if not path.exists():
                 return {}
-            data = json.loads(path.read_text(encoding="utf-8"))
+            data = orjson.loads(path.read_text(encoding="utf-8"))
         except Exception:
             return {}
         return data if isinstance(data, dict) else {}
@@ -1453,7 +1453,7 @@ class DiscordAdapter(BasePlatformAdapter):
                 for command in tree.get_commands()
             ]
         desired.sort(key=lambda item: (item.get("type", 1), item.get("name", "")))
-        payload = json.dumps(desired, sort_keys=True, separators=(",", ":"))
+        payload = orjson.dumps(desired, option=orjson.OPT_SORT_KEYS).decode('utf-8')
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
     def _command_sync_skip_reason(self, app_id: Any, fingerprint: str) -> Optional[str]:
@@ -2525,8 +2525,7 @@ class DiscordAdapter(BasePlatformAdapter):
 
             # Try sending as a native voice message via raw API (flags=8192).
             try:
-                import base64
-
+                import pybase64 as base64
                 duration_secs = 5.0
                 try:
                     from mutagen.oggopus import OggOpus
@@ -2538,7 +2537,7 @@ class DiscordAdapter(BasePlatformAdapter):
                 waveform_bytes = bytes([128] * 256)
                 waveform_b64 = base64.b64encode(waveform_bytes).decode()
 
-                import json as _json
+                import orjson as _json
                 payload = _json.dumps({
                     "flags": 8192,
                     "attachments": [{
@@ -2547,7 +2546,7 @@ class DiscordAdapter(BasePlatformAdapter):
                         "duration_secs": round(duration_secs, 2),
                         "waveform": waveform_b64,
                     }],
-                })
+                }).decode('utf-8')
                 form = [
                     {"name": "payload_json", "value": payload},
                     {
@@ -2697,7 +2696,7 @@ class DiscordAdapter(BasePlatformAdapter):
             result_json = await asyncio.to_thread(
                 text_to_speech_tool, text=phrase, output_path=audio_path
             )
-            result = json.loads(result_json)
+            result = orjson.loads(result_json)
             actual = result.get("file_path", audio_path)
             if not result.get("success") or not os.path.isfile(actual):
                 return False
@@ -7328,7 +7327,7 @@ def _standalone_sanitize_error(text) -> str:
     """
     s = str(text)
     # Mask anything that looks like a Bot token in an Authorization header.
-    import re as _re_san
+    from agent.re_compat import re as _re_san
     return _re_san.sub(
         r"(Authorization:\s*Bot\s+)\S+",
         r"\1***",
@@ -7443,7 +7442,7 @@ async def _standalone_send(
                             for idx, path in enumerate(valid_media)
                         ]
                         starter_message = {"content": message, "attachments": attachments_meta}
-                        payload_json = json.dumps({"name": thread_name, "message": starter_message})
+                        payload_json = orjson.dumps({"name": thread_name, "message": starter_message}).decode('utf-8')
 
                         form = aiohttp.FormData()
                         form.add_field("payload_json", payload_json, content_type="application/json")

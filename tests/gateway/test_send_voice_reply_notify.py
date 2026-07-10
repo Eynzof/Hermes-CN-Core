@@ -7,7 +7,7 @@ it as a normal push instead of a silent message — mirroring the existing
 final-text path in ``gateway/platforms/base.py``.
 """
 
-import json
+import orjson
 import os
 import tempfile
 from types import SimpleNamespace
@@ -54,7 +54,7 @@ def _fake_tts_call(monkeypatch, audio_bytes=b"\x00" * 32):
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         with open(output_path, "wb") as fh:
             fh.write(audio_bytes)
-        return json.dumps({"success": True, "file_path": output_path})
+        return orjson.dumps({"success": True, "file_path": output_path}).decode('utf-8')
 
     monkeypatch.setattr(
         "tools.tts_tool.text_to_speech_tool",

@@ -21,9 +21,9 @@ Output: ./out/<scenario_id>__<enabled|disabled>.json
 
 from __future__ import annotations
 
-import json
+import orjson
 import os
-import re
+from agent.re_compat import re
 import shutil
 import sys
 import tempfile
@@ -299,7 +299,7 @@ def _yaml_dump(obj: Any) -> str:
         import yaml
         return yaml.safe_dump(obj, sort_keys=False)
     except ImportError:
-        return json.dumps(obj, indent=2)
+        return orjson.dumps(obj, option=orjson.OPT_INDENT_2).decode('utf-8')
 
 
 def register_fake_tools() -> int:
@@ -309,9 +309,9 @@ def register_fake_tools() -> int:
     def make_handler(tool_def):
         def _handler(*args, **kwargs):
             try:
-                return json.dumps(tool_def["returns"](kwargs), ensure_ascii=False)
+                return orjson.dumps(tool_def["returns"](kwargs)).decode('utf-8')
             except Exception as e:
-                return json.dumps({"error": f"fake tool handler error: {e}"})
+                return orjson.dumps({"error": f"fake tool handler error: {e}"}).decode('utf-8')
         return _handler
 
     count = 0
@@ -437,7 +437,7 @@ def run_one_scenario(scenario: Dict[str, Any], enabled: bool, out_dir: Path) -> 
 
     suffix = "enabled" if enabled else "disabled"
     out_path = out_dir / f"{scenario['id']}__{suffix}.json"
-    out_path.write_text(json.dumps(record, indent=2, default=str), encoding="utf-8")
+    out_path.write_text(orjson.dumps(record, default=str, option=orjson.OPT_INDENT_2).decode('utf-8'), encoding="utf-8")
 
     # Cleanup
     shutil.rmtree(home.parent, ignore_errors=True)
@@ -498,8 +498,8 @@ def _extract_bridge_calls(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]
             if name in bridges:
                 raw_args = fn.get("arguments") or "{}"
                 try:
-                    args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
-                except json.JSONDecodeError:
+                    args = orjson.loads(raw_args) if isinstance(raw_args, str) else raw_args
+                except orjson.JSONDecodeError:
                     args = {"_raw": raw_args}
                 out.append({"name": name, "args": _trim_args(args)})
     return out
@@ -535,7 +535,7 @@ def main():
             })
 
     summary_path = out_dir / "_summary.json"
-    summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    summary_path.write_text(orjson.dumps(summary, option=orjson.OPT_INDENT_2).decode('utf-8'), encoding="utf-8")
     print(f"\nSummary saved to: {summary_path}")
 
     # Restore original HERMES_HOME

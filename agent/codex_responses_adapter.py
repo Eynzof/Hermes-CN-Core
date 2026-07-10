@@ -10,10 +10,10 @@ in and return transformed results.
 
 from __future__ import annotations
 
-import hashlib
-import json
+import xxhash
+import orjson
 import logging
-import re
+from agent.re_compat import re
 import uuid
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
@@ -187,7 +187,7 @@ def _deterministic_call_id(fn_name: str, arguments: str, index: int = 0) -> str:
     make every API call's prefix unique, breaking OpenAI's prompt cache.
     """
     seed = f"{fn_name}:{arguments}:{index}"
-    digest = hashlib.sha256(seed.encode("utf-8", errors="replace")).hexdigest()[:12]
+    digest = xxhash.xxh64(seed.encode("utf-8", errors="replace")).hexdigest()[:12]
     return f"call_{digest}"
 
 
@@ -233,7 +233,7 @@ def _derive_responses_function_call_id(
         return f"fc_{sanitized[:48]}"
 
     seed = source or str(response_item_id or "") or uuid.uuid4().hex
-    digest = hashlib.sha1(seed.encode("utf-8")).hexdigest()[:24]
+    digest = xxhash.xxh64(seed.encode("utf-8")).hexdigest()[:24]
     return f"fc_{digest}"
 
 
@@ -515,7 +515,7 @@ def _chat_messages_to_responses_input(
 
                         arguments = fn.get("arguments", "{}")
                         if isinstance(arguments, dict):
-                            arguments = json.dumps(arguments, ensure_ascii=False)
+                            arguments = orjson.dumps(arguments).decode('utf-8')
                         elif not isinstance(arguments, str):
                             arguments = str(arguments)
                         arguments = arguments.strip() or "{}"
@@ -597,7 +597,7 @@ def _preflight_codex_input_items(raw_items: Any) -> List[Dict[str, Any]]:
 
             arguments = item.get("arguments", "{}")
             if isinstance(arguments, dict):
-                arguments = json.dumps(arguments, ensure_ascii=False)
+                arguments = orjson.dumps(arguments).decode('utf-8')
             elif not isinstance(arguments, str):
                 arguments = str(arguments)
             arguments = arguments.strip() or "{}"
@@ -1229,7 +1229,7 @@ def _normalize_codex_response(
             fn_name = getattr(item, "name", "") or ""
             arguments = getattr(item, "arguments", "{}")
             if not isinstance(arguments, str):
-                arguments = json.dumps(arguments, ensure_ascii=False)
+                arguments = orjson.dumps(arguments).decode('utf-8')
             raw_call_id = getattr(item, "call_id", None)
             raw_item_id = getattr(item, "id", None)
             embedded_call_id, _ = _split_responses_tool_id(raw_item_id)
@@ -1250,7 +1250,7 @@ def _normalize_codex_response(
             fn_name = getattr(item, "name", "") or ""
             arguments = getattr(item, "input", "{}")
             if not isinstance(arguments, str):
-                arguments = json.dumps(arguments, ensure_ascii=False)
+                arguments = orjson.dumps(arguments).decode('utf-8')
             raw_call_id = getattr(item, "call_id", None)
             raw_item_id = getattr(item, "id", None)
             embedded_call_id, _ = _split_responses_tool_id(raw_item_id)

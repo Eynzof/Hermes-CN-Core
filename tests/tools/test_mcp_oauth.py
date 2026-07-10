@@ -1,6 +1,6 @@
 """Tests for tools/mcp_oauth.py — OAuth 2.1 PKCE support for MCP servers."""
 
-import json
+import orjson
 import os
 import stat
 import sys
@@ -58,7 +58,7 @@ class TestHermesTokenStorage:
         # File exists with correct permissions
         token_path = tmp_path / "mcp-tokens" / "test-server.json"
         assert token_path.exists()
-        data = json.loads(token_path.read_text())
+        data = orjson.loads(token_path.read_text())
         assert data["access_token"] == "abc123"
 
     @pytest.mark.skipif(sys.platform.startswith("win"), reason="POSIX mode bits not enforced on Windows")
@@ -196,7 +196,7 @@ class TestBuildOAuthAuth:
 
         client_path = tmp_path / "mcp-tokens" / "slack.client.json"
         assert client_path.exists()
-        data = json.loads(client_path.read_text())
+        data = orjson.loads(client_path.read_text())
         assert data["client_id"] == "my-app-id"
         assert data["client_secret"] == "my-secret"
 
@@ -570,10 +570,10 @@ class TestBuildOAuthAuthNonInteractive:
         # Pre-populate cached tokens
         d = tmp_path / "mcp-tokens"
         d.mkdir(parents=True)
-        (d / "atlassian.json").write_text(json.dumps({
+        (d / "atlassian.json").write_text(orjson.dumps({
             "access_token": "cached",
             "token_type": "Bearer",
-        }))
+        }).decode('utf-8'))
 
         import logging
         with caplog.at_level(logging.WARNING, logger="tools.mcp_oauth"):

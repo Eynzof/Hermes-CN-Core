@@ -50,7 +50,7 @@ def test_sanitize_fts_query_extracts_content_tokens(query, expected_tokens):
 
     # OR-joined phrase literals: `"tok1" OR "tok2" OR ...`
     # Extract the tokens between quotes, order-independent.
-    import re
+    from agent.re_compat import re
     matches = re.findall(r'"([^"]+)"', result)
     assert set(matches) == expected_tokens, f"got {result!r}"
 

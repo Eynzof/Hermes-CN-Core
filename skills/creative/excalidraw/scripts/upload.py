@@ -17,12 +17,12 @@ Example:
     # prints: https://excalidraw.com/#json=abc123,encryptionKeyHere
 """
 
-import json
+import orjson
 import os
 import struct
 import sys
 import zlib
-import base64
+import pybase64 as base64
 import urllib.request
 
 try:
@@ -61,7 +61,7 @@ def upload(excalidraw_json: str) -> str:
         Shareable URL string.
     """
     # 1. Inner payload: concat_buffers(file_metadata, data)
-    file_metadata = json.dumps({}).encode("utf-8")
+    file_metadata = orjson.dumps({})
     data_bytes = excalidraw_json.encode("utf-8")
     inner_payload = concat_buffers(file_metadata, data_bytes)
 
@@ -75,11 +75,11 @@ def upload(excalidraw_json: str) -> str:
     encrypted = aesgcm.encrypt(iv, compressed, None)
 
     # 4. Encoding metadata
-    encoding_meta = json.dumps({
+    encoding_meta = orjson.dumps({
         "version": 2,
         "compression": "pako@1",
         "encryption": "AES-GCM",
-    }).encode("utf-8")
+    })
 
     # 5. Outer payload: concat_buffers(encoding_meta, iv, encrypted)
     payload = concat_buffers(encoding_meta, iv, encrypted)
@@ -89,7 +89,7 @@ def upload(excalidraw_json: str) -> str:
     with urllib.request.urlopen(req, timeout=30) as resp:
         if resp.status != 200:
             raise RuntimeError(f"Upload failed with HTTP {resp.status}")
-        result = json.loads(resp.read().decode("utf-8"))
+        result = orjson.loads(resp.read().decode("utf-8"))
 
     file_id = result.get("id")
     if not file_id:
@@ -117,8 +117,8 @@ def main():
 
     # Basic validation: should be valid JSON with an "elements" key
     try:
-        doc = json.loads(content)
-    except json.JSONDecodeError as e:
+        doc = orjson.loads(content)
+    except orjson.JSONDecodeError as e:
         print(f"Error: File is not valid JSON: {e}")
         sys.exit(1)
 

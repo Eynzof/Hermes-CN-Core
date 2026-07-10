@@ -20,8 +20,8 @@ image-to-image/editing are sent as Responses ``input_image`` content parts.
 
 from __future__ import annotations
 
-import base64
-import json
+import pybase64 as base64
+import orjson
 import logging
 import os
 from pathlib import Path
@@ -334,7 +334,7 @@ def _iter_sse_json(response: Any):
         data_lines = []
         if not raw or raw == "[DONE]":
             return None
-        payload = json.loads(raw)
+        payload = orjson.loads(raw)
         if isinstance(payload, dict) and event and "type" not in payload:
             payload["type"] = event
         return payload

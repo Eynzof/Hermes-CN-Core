@@ -30,7 +30,7 @@ from __future__ import annotations
 import ctypes
 import locale
 import os
-import re
+from agent.re_compat import re
 import shlex
 import shutil
 import subprocess
@@ -740,6 +740,20 @@ def _resolve_detached_python(python_exe: str) -> tuple[str, Path, list[str]]:
     venvs, use the base ``pythonw.exe`` directly and put the repo + venv
     site-packages on ``PYTHONPATH`` so imports still resolve without the venv
     launcher.
+
+    **Fallback behavior:** When neither a ``pythonw.exe`` sibling nor a uv
+    base ``pythonw.exe`` is found, the original ``python.exe`` is returned.
+    In this case:
+    - Callers using ``_spawn_detached`` (direct Popen path): ``CREATE_NO_WINDOW``
+      is always set via ``windows_detach_flags()``, so no console flash occurs.
+    - Callers using ``_build_gateway_cmd_script`` (batch script path): the
+      fallback ``python.exe`` will allocate a console. This only affects
+      non-uv, non-standard venvs where ``pythonw.exe`` is genuinely absent.
+
+    **PyInstaller frozen builds:** This function is not called at all because
+    there is no ``python.exe`` to resolve — the frozen executable is itself a
+    GUI-subsystem binary (``--windowed`` / ``-w``) and does not allocate a
+    console on launch.
     """
     p = Path(python_exe)
     venv_dir = p.parent.parent
@@ -1297,7 +1311,7 @@ def _print_deep_probes() -> None:
       [5] gateway_state.json exists and parses (and is fresh-ish)
       [6] Last lifecycle event in gateway-exit-diag.log
     """
-    import json
+    import orjson
     from datetime import datetime, timezone
 
     from hermes_cli.config import get_hermes_home
@@ -1319,7 +1333,7 @@ def _print_deep_probes() -> None:
     pid_value: int | None = None
     if pid_exists:
         try:
-            data = json.loads(pid_path.read_text(encoding="utf-8"))
+            data = orjson.loads(pid_path.read_text(encoding="utf-8"))
             pid_value = int(data.get("pid")) if data.get("pid") is not None else None
             print(f"  [1] {_mark(True):4s}  PID file present: {pid_path} (pid={pid_value})")
         except Exception as exc:
@@ -1367,7 +1381,7 @@ def _print_deep_probes() -> None:
     # [5] runtime status file
     if state_path.exists():
         try:
-            state_data = json.loads(state_path.read_text(encoding="utf-8"))
+            state_data = orjson.loads(state_path.read_text(encoding="utf-8"))
             gateway_state = state_data.get("gateway_state")
             updated_at = state_data.get("updated_at")
             age_str = ""
@@ -1398,7 +1412,7 @@ def _print_deep_probes() -> None:
             last_event = next((ln for ln in reversed(tail) if ln.strip()), "")
             if last_event:
                 try:
-                    event = json.loads(last_event)
+                    event = orjson.loads(last_event)
                     tag = event.get("tag", "?")
                     pid = event.get("pid", "?")
                     ts = event.get("ts", "?")

@@ -6,7 +6,7 @@ is exercised in the E2E test embedded in PR validation, not here.
 
 from __future__ import annotations
 
-import json
+import orjson
 from pathlib import Path
 from unittest.mock import patch
 
@@ -292,7 +292,7 @@ class TestExitCodes:
         # The bitwarden banner can leak above the json; pick the first { line.
         lines = payload.splitlines()
         json_start = next(i for i, l in enumerate(lines) if l.startswith("{"))
-        data = json.loads("\n".join(lines[json_start:]))
+        data = orjson.loads("\n".join(lines[json_start:]))
         assert data["finding_count"] == 1
         assert data["findings"][0]["severity"] == "HIGH"
         assert data["findings"][0]["fixed_versions"] == ["1.1"]

@@ -12,9 +12,7 @@ text-only reply, even when the path-based dedup set fails to capture it.
 """
 
 import pytest
-import re
-
-
+from agent.re_compat import re
 def extract_media_tags_fixed(result_messages, history_len):
     """
     Extract MEDIA tags from tool results, but ONLY from new messages

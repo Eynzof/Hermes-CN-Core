@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
-import json
+import orjson
 import os
 import sys
 import time
@@ -120,7 +120,7 @@ def _resolve_user(user: Optional[str]) -> str:
 
 
 def _post_info(payload: Dict[str, Any], timeout: int = 20, retries: int = 2) -> Any:
-    data = json.dumps(payload).encode("utf-8")
+    data = orjson.dumps(payload)
     headers = {
         "Content-Type": "application/json",
         "Accept": "application/json",
@@ -131,7 +131,7 @@ def _post_info(payload: Dict[str, Any], timeout: int = 20, retries: int = 2) -> 
         request = urllib.request.Request(_info_url(), data=data, headers=headers, method="POST")
         try:
             with urllib.request.urlopen(request, timeout=timeout) as response:
-                body = json.load(response)
+                body = orjson.loads(response.read())
             return body
         except urllib.error.HTTPError as exc:
             if exc.code == 429 and attempt < retries:
@@ -140,7 +140,7 @@ def _post_info(payload: Dict[str, Any], timeout: int = 20, retries: int = 2) -> 
             sys.exit(f"Hyperliquid HTTP error: {exc}")
         except urllib.error.URLError as exc:
             sys.exit(f"Hyperliquid connection error: {exc}")
-        except json.JSONDecodeError as exc:
+        except orjson.JSONDecodeError as exc:
             sys.exit(f"Hyperliquid response was not valid JSON: {exc}")
 
     return None
@@ -796,7 +796,7 @@ def _default_export_path(coin: str, interval: str, hours: float) -> Path:
 
 def _write_json_file(path: Path, payload: Dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    path.write_text(orjson.dumps(payload, option=orjson.OPT_INDENT_2 | orjson.OPT_SORT_KEYS).decode('utf-8') + "\n", encoding="utf-8")
 
 
 def _export_summary(candles: List[Dict[str, Any]], funding_history: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -1650,7 +1650,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     payload = args.func(args)
     if args.json:
-        print(json.dumps(payload, indent=2))
+        print(orjson.dumps(payload, option=orjson.OPT_INDENT_2).decode('utf-8'))
     else:
         print(args.renderer(payload))
     return 0

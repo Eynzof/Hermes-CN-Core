@@ -34,11 +34,11 @@ main model.
 
 from __future__ import annotations
 
-import base64
+import pybase64 as base64
 import logging
 import mimetypes
 import os
-import re
+from agent.re_compat import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 

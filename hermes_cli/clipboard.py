@@ -12,7 +12,7 @@ Platform support:
   Linux   — wl-paste (Wayland), xclip (X11)
 """
 
-import base64
+import pybase64 as base64
 import logging
 import os
 import subprocess

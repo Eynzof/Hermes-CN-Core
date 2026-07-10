@@ -27,10 +27,10 @@ import logging
 import os
 import shutil
 import sys
-import json
-import re
+import orjson
+from agent.re_compat import re
 import concurrent.futures
-import base64
+import pybase64 as base64
 import atexit
 import errno
 import tempfile
@@ -305,7 +305,7 @@ def _load_prefill_messages(file_path: str) -> List[Dict[str, Any]]:
         return []
     try:
         with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
+            data = orjson.loads(f.read())
         if not isinstance(data, list):
             logger.warning("Prefill messages file must contain a JSON array: %s", path)
             return []
@@ -652,7 +652,7 @@ def load_cli_config() -> Dict[str, Any]:
             if _file_has_terminal_config or env_var not in os.environ:
                 val = terminal_config[config_key]
                 if isinstance(val, (list, dict)):
-                    os.environ[env_var] = json.dumps(val)
+                    os.environ[env_var] = orjson.dumps(val).decode('utf-8')
                 else:
                     os.environ[env_var] = str(val)
     
@@ -1285,7 +1285,7 @@ def _normalize_msys_path(p: Optional[str]) -> Optional[str]:
         return p
     if sys.platform != "win32":
         return p
-    import re as _re
+    from agent.re_compat import re as _re
     # /c/Users/... or /C/Users/...
     m = _re.match(r"^/([a-zA-Z])/(.*)$", p)
     if m:
@@ -1642,7 +1642,7 @@ def _worktree_lock_is_live(repo_root: str, worktree_path: str, timeout: int = 10
     Fails SAFE toward ``"live"``: if git can't be queried at all we cannot
     prove the worktree is safe to touch, so we report it as live.
     """
-    import re
+    from agent.re_compat import re
     import subprocess
 
     try:
@@ -2156,6 +2156,21 @@ def _detect_light_mode() -> bool:
     global _LIGHT_MODE_CACHE
     if _LIGHT_MODE_CACHE is not None:
         return _LIGHT_MODE_CACHE
+
+    # 0. Check config display.theme for explicit override before any terminal detection
+    try:
+        from hermes_cli.config import load_config_readonly
+        cfg = load_config_readonly()
+        theme = cfg.get("display", {}).get("theme", "auto")
+        if theme == "light":
+            _LIGHT_MODE_CACHE = True
+            return True
+        if theme == "dark":
+            _LIGHT_MODE_CACHE = False
+            return False
+    except Exception:
+        pass  # fall through to auto-detection
+
     result = False
     try:
         # 1. Explicit env override
@@ -6399,7 +6414,7 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin):
                 result_json = _asyncio.run(
                     vision_analyze_tool(image_url=str(img_path), user_prompt=analysis_prompt)
                 )
-                result = json.loads(result_json)
+                result = orjson.loads(result_json)
                 if result.get("success"):
                     description = result.get("analysis", "")
                     enriched_parts.append(
@@ -7119,12 +7134,12 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin):
 
         try:
             with open(path, "w", encoding="utf-8") as f:
-                json.dump({
+                f.write(orjson.dumps({
                     "model": self.model,
                     "session_id": self.session_id,
                     "session_start": self.session_start.isoformat(),
                     "messages": self.conversation_history,
-                }, f, indent=2, ensure_ascii=False)
+                }, option=orjson.OPT_INDENT_2).decode('utf-8'))
             print(f"(^_^)v Conversation snapshot saved to: {path}")
             if self.session_id:
                 print(f"       Resume the live session with: hermes --resume {self.session_id}")
@@ -10954,7 +10969,7 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin):
         # the idle prompt doesn't read as "nothing happened" (⛓ tracks the work).
         if function_name == "delegate_task":
             try:
-                parsed = json.loads(function_result) if isinstance(function_result, str) else (function_result or {})
+                parsed = orjson.loads(function_result) if isinstance(function_result, str) else (function_result or {})
             except Exception:
                 parsed = {}
             if isinstance(parsed, dict) and parsed.get("status") == "dispatched" and parsed.get("mode") == "background":
@@ -12984,6 +12999,77 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin):
             ] if item is not None
         ]
 
+    # Once-per-process guard for the background agent-runtime warmup so a
+    # /clear or re-entered run() doesn't spawn duplicate warmup threads.
+    _agent_warmup_started = False
+    _agent_warmup_lock = threading.Lock()
+
+    def _spawn_agent_runtime_warmup(self) -> None:
+        """Pre-warm the agent runtime off-thread during the post-banner idle window.
+
+        The first ``AIAgent`` construction otherwise pays a cold-start tax:
+        building the full tool-schema catalog (process-wide cached, but empty
+        on first use) and resolving the model's context length (which may probe
+        the model endpoint). Warming both process-wide caches here — while the
+        banner is on screen and the user is still reading/typing — means the
+        first message starts its turn without that latency. Fire-and-forget and
+        guarded once-per-process; every warmed call is independently cached and
+        idempotent, so a missed/failed warmup only costs the original lazy path.
+        See reports/perf/root-cause-analysis.md (P0: lazy cold start).
+        """
+        with HermesCLI._agent_warmup_lock:
+            if HermesCLI._agent_warmup_started:
+                return
+            HermesCLI._agent_warmup_started = True
+
+        base_url = getattr(self, "base_url", "") or ""
+        api_key = getattr(self, "api_key", "") or ""
+        model = getattr(self, "model", "") or ""
+        provider = getattr(self, "provider", "") or ""
+
+        enabled_toolsets = getattr(self, "enabled_toolsets", None)
+        disabled_toolsets = getattr(self, "disabled_toolsets", None)
+
+        def _warm() -> None:
+            # 1) Warm the process-wide tool-dispatch path (the big one):
+            #    discovery + this session's schema catalog + pre-serialized
+            #    schemas. Scoped to the CLI's own toolsets so the exact cache
+            #    entry the first turn needs is the one we build. Runs inline in
+            #    this warmup thread (background=False) — no nested thread
+            #    (P-043, root-cause-analysis.md hotspots #8/#9).
+            try:
+                from model_tools import warm_dispatch_path
+                warm_dispatch_path(
+                    enabled_toolsets=enabled_toolsets,
+                    disabled_toolsets=disabled_toolsets,
+                    background=False,
+                )
+            except Exception:
+                pass
+            # 2) Warm model-endpoint metadata: context length + (transitively)
+            #    the endpoint-reachability verdict, so ContextCompressor init
+            #    inside the first AIAgent doesn't block resolving them.
+            try:
+                if model:
+                    from agent.model_metadata import get_model_context_length
+                    get_model_context_length(
+                        model, base_url=base_url, api_key=api_key, provider=provider,
+                    )
+                elif base_url:
+                    from agent.model_metadata import _endpoint_reachable
+                    _endpoint_reachable(base_url)
+            except Exception:
+                pass
+
+        try:
+            threading.Thread(
+                target=_warm, name="hermes-agent-warmup", daemon=True,
+            ).start()
+        except Exception:
+            # A thread-spawn failure (e.g. exhausted thread limit) must never
+            # block startup; the lazy path still runs on first construction.
+            pass
+
     def run(self):
         """Run the interactive CLI loop with persistent input at bottom."""
         if not self._claim_active_session("cli"):
@@ -13034,6 +13120,14 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin):
         try:
             from hermes_cli.model_switch import prewarm_picker_cache_async
             prewarm_picker_cache_async()
+        except Exception:
+            pass
+
+        # Pre-warm the agent runtime (tool-schema catalog + model-endpoint
+        # metadata) off-thread during this same idle window so the user's first
+        # message doesn't pay the cold-start tax. Fire-and-forget.
+        try:
+            self._spawn_agent_runtime_warmup()
         except Exception:
             pass
 

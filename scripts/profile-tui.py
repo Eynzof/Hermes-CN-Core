@@ -24,7 +24,7 @@ or produced no perf data (suggests HERMES_DEV_PERF wiring is broken).
 from __future__ import annotations
 
 import argparse
-import json
+import orjson
 import os
 import pty
 import select
@@ -119,8 +119,8 @@ def summarize(log: Path, since_ts_ms: int) -> dict[str, Any]:
         if not line:
             continue
         try:
-            row = json.loads(line)
-        except json.JSONDecodeError:
+            row = orjson.loads(line)
+        except orjson.JSONDecodeError:
             continue
         if int(row.get("ts", 0)) < since_ts_ms:
             continue
@@ -508,7 +508,7 @@ def main() -> int:
 
     if args.save:
         path = Path(f"/tmp/perf-{args.save}.json")
-        path.write_text(json.dumps(metrics, indent=2), encoding="utf-8")
+        path.write_text(orjson.dumps(metrics, option=orjson.OPT_INDENT_2).decode('utf-8'), encoding="utf-8")
         print(f"\n• saved: {path}")
 
     if args.compare:
@@ -516,7 +516,7 @@ def main() -> int:
         if not path.exists():
             print(f"\n⚠ no baseline at {path} — run with --save {args.compare} first")
         else:
-            before = json.loads(path.read_text())
+            before = orjson.loads(path.read_text())
             print(f"\n═══ A/B diff vs /tmp/perf-{args.compare}.json ═══")
             print(format_diff(before, metrics))
 

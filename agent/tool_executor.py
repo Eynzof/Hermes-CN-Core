@@ -13,7 +13,7 @@ extracted functions reach back through the ``run_agent`` module via
 from __future__ import annotations
 
 import concurrent.futures
-import json
+import orjson
 import logging
 import os
 import random
@@ -157,13 +157,10 @@ def _emit_terminal_post_tool_call(
 
 
 def _cancelled_tool_result(reason: str = "user interrupt") -> str:
-    return json.dumps(
-        {
+    return orjson.dumps({
             "error": f"Tool execution cancelled by {reason}",
             "status": "cancelled",
-        },
-        ensure_ascii=False,
-    )
+        }).decode('utf-8')
 
 
 def _emit_cancelled_terminal_post_tool_call(
@@ -344,8 +341,8 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
             agent._iters_since_skill = 0
 
         try:
-            function_args = json.loads(tool_call.function.arguments)
-        except json.JSONDecodeError:
+            function_args = orjson.loads(tool_call.function.arguments)
+        except orjson.JSONDecodeError:
             function_args = {}
         if not isinstance(function_args, dict):
             function_args = {}
@@ -376,12 +373,12 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                         function_name = _underlying
                         function_args = _underlying_args
                     else:
-                        _ts_scope_block = json.dumps({
+                        _ts_scope_block = orjson.dumps({
                             "error": (
                                 f"'{_underlying}' is not available in this session. "
                                 "Use tool_search to find tools you can call."
                             ),
-                        }, ensure_ascii=False)
+                        }).decode('utf-8')
         except Exception:
             pass
 
@@ -430,7 +427,7 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                 block_message = None
 
             if block_message is not None:
-                block_result = json.dumps({"error": block_message}, ensure_ascii=False)
+                block_result = orjson.dumps({"error": block_message}).decode('utf-8')
                 _emit_terminal_post_tool_call(
                     agent,
                     function_name=function_name,
@@ -493,10 +490,10 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
         print(f"  ⚡ Concurrent: {num_tools} tool calls — {tool_names_str}")
         for i, (tc, name, args, middleware_trace, block_result, blocked_by_guardrail) in enumerate(parsed_calls, 1):
             display_args = _redact_tool_args_for_display(name, args) or args
-            args_str = json.dumps(display_args, ensure_ascii=False)
+            args_str = orjson.dumps(display_args).decode('utf-8')
             if agent.verbose_logging:
                 print(f"  📞 Tool {i}: {name}({list(display_args.keys())})")
-                print(agent._wrap_verbose("Args: ", json.dumps(display_args, indent=2, ensure_ascii=False)))
+                print(agent._wrap_verbose("Args: ", orjson.dumps(display_args, option=orjson.OPT_INDENT_2).decode('utf-8')))
             else:
                 args_preview = args_str[:agent.log_prefix_chars] + "..." if len(args_str) > agent.log_prefix_chars else args_str
                 print(f"  📞 Tool {i}: {name}({list(args.keys())}) - {args_preview}")
@@ -995,8 +992,8 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
         function_name = tool_call.function.name
 
         try:
-            function_args = json.loads(tool_call.function.arguments)
-        except json.JSONDecodeError as e:
+            function_args = orjson.loads(tool_call.function.arguments)
+        except orjson.JSONDecodeError as e:
             logger.warning(f"Unexpected JSON error after validation: {e}")
             function_args = {}
         if not isinstance(function_args, dict):
@@ -1072,10 +1069,10 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
 
         if not agent.quiet_mode and getattr(agent, "tool_progress_mode", "all") != "off":
             display_args = _redact_tool_args_for_display(function_name, function_args) or function_args
-            args_str = json.dumps(display_args, ensure_ascii=False)
+            args_str = orjson.dumps(display_args).decode('utf-8')
             if agent.verbose_logging:
                 print(f"  📞 Tool {i}: {function_name}({list(display_args.keys())})")
-                print(agent._wrap_verbose("Args: ", json.dumps(display_args, indent=2, ensure_ascii=False)))
+                print(agent._wrap_verbose("Args: ", orjson.dumps(display_args, option=orjson.OPT_INDENT_2).decode('utf-8')))
             else:
                 args_preview = args_str[:agent.log_prefix_chars] + "..." if len(args_str) > agent.log_prefix_chars else args_str
                 print(f"  📞 Tool {i}: {function_name}({list(function_args.keys())}) - {args_preview}")
@@ -1137,7 +1134,7 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
 
         if _block_msg is not None:
             # Tool blocked by plugin policy — return error without executing.
-            function_result = json.dumps({"error": _block_msg}, ensure_ascii=False)
+            function_result = orjson.dumps({"error": _block_msg}).decode('utf-8')
             tool_duration = 0.0
             _emit_terminal_post_tool_call(
                 agent,
@@ -1192,7 +1189,7 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                 session_db = agent._get_session_db_for_recall()
                 if not session_db:
                     from hermes_state import format_session_db_unavailable
-                    return json.dumps({"success": False, "error": format_session_db_unavailable()})
+                    return orjson.dumps({"success": False, "error": format_session_db_unavailable()}).decode('utf-8')
                 from tools.session_search_tool import session_search as _session_search
                 return _session_search(
                     query=next_args.get("query", ""),
@@ -1330,7 +1327,7 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                 elif agent._should_emit_quiet_tool_messages():
                     agent._vprint(f"  {cute_msg}")
         elif agent._context_engine_tool_names and function_name in agent._context_engine_tool_names:
-            # Context engine tools (lcm_grep, lcm_describe, lcm_expand, etc.)
+            # Context engine tools (context_usage, compact, lcm_grep, etc.)
             spinner = None
             if agent._should_emit_quiet_tool_messages():
                 face = random.choice(KawaiiSpinner.get_waiting_faces())
@@ -1341,19 +1338,104 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                 spinner.start()
             _ce_result = None
             try:
-                def _execute(next_args: dict) -> Any:
-                    return agent.context_compressor.handle_tool_call(function_name, next_args, messages=messages)
-                function_result, function_args = _run_agent_tool_execution_middleware(
-                    agent,
-                    function_name=function_name,
-                    function_args=function_args,
-                    effective_task_id=effective_task_id,
-                    tool_call_id=getattr(tool_call, "id", "") or "",
-                    execute=_execute,
-                )
+                # Special case: the ``compact`` tool performs actual compression
+                # inline, not just acknowledgment. handle_tool_call validates the
+                # request first, then we run the full compression lifecycle.
+                if function_name == "compact":
+                    # Capture the assistant message that contains
+                    # tool_call(compact) BEFORE compression.
+                    # ``_sanitize_tool_pairs()`` inside the compressor
+                    # removes tool_calls whose results don't exist yet,
+                    # which orphans the compact tool_call.  We must
+                    # restore it so the tool_result below (line ~1645)
+                    # has a matching assistant tool_call, preserving
+                    # strict user/assistant/tool alternation.
+                    _tc_id = getattr(tool_call, "id", "") or ""
+                    _compact_assistant_msg = None
+                    for _msg in reversed(messages):
+                        if _msg.get("role") == "assistant":
+                            for _tc in (_msg.get("tool_calls") or []):
+                                if isinstance(_tc, dict) and (_tc.get("id") or "") == _tc_id:
+                                    _compact_assistant_msg = _msg
+                                    break
+                        if _compact_assistant_msg:
+                            break
+
+                    # Validate via handle_tool_call
+                    _ack = agent.context_compressor.handle_tool_call(
+                        function_name, function_args, messages=messages
+                    )
+                    _ack_data = orjson.loads(_ack)
+                    instruction = function_args.get("instruction", "")
+                    mode = function_args.get("mode", "balanced")
+                    focus_topic = instruction if instruction else None
+                    _pre_count = len(messages)
+                    try:
+                        system_message = getattr(agent, "_cached_system_prompt", "") or ""
+                        compressed_messages, new_system_prompt = agent._compress_context(
+                            messages, system_message,
+                            focus_topic=focus_topic,
+                            force=True,
+                            mode=mode,
+                        )
+                        # Only replace messages if compression actually changed them
+                        if len(compressed_messages) != len(messages):
+                            messages.clear()
+                            messages.extend(compressed_messages)
+
+                            # Restore the assistant tool_call message if
+                            # sanitization removed it (no tool result exists
+                            # yet for this tool_call).  The tool_result will
+                            # be appended below at line ~1645, so we need
+                            # the matching assistant message in place.
+                            if _compact_assistant_msg and not any(
+                                _msg.get("role") == "assistant"
+                                and any(
+                                    isinstance(_tc, dict)
+                                    and (_tc.get("id") or "") == _tc_id
+                                    for _tc in (_msg.get("tool_calls") or [])
+                                )
+                                for _msg in messages
+                            ):
+                                messages.append(_compact_assistant_msg)
+
+                            function_result = orjson.dumps({
+                                "status": "completed",
+                                "message": f"Context compressed. Reduced from {_pre_count} to {len(compressed_messages)} messages.",
+                                "compression_count": getattr(
+                                    agent.context_compressor, "compression_count", 0
+                                ),
+                            }).decode('utf-8')
+                        else:
+                            function_result = orjson.dumps({
+                                "status": "noop",
+                                "message": (
+                                    "Compression completed but no tokens were saved "
+                                    "(context may already be compacted or too small "
+                                    "to compress)."
+                                ),
+                            }).decode('utf-8')
+                    except Exception as comp_err:
+                        function_result = orjson.dumps({
+                            "error": f"Compaction failed: {comp_err}",
+                            "status": "error",
+                        }).decode('utf-8')
+                else:
+                    def _execute(next_args: dict) -> Any:
+                        return agent.context_compressor.handle_tool_call(
+                            function_name, next_args, messages=messages
+                        )
+                    function_result, function_args = _run_agent_tool_execution_middleware(
+                        agent,
+                        function_name=function_name,
+                        function_args=function_args,
+                        effective_task_id=effective_task_id,
+                        tool_call_id=getattr(tool_call, "id", "") or "",
+                        execute=_execute,
+                    )
                 _ce_result = function_result
             except Exception as tool_error:
-                function_result = json.dumps({"error": f"Context engine tool '{function_name}' failed: {tool_error}"})
+                function_result = orjson.dumps({"error": f"Context engine tool '{function_name}' failed: {tool_error}"}).decode('utf-8')
                 logger.error("context_engine.handle_tool_call raised for %s: %s", function_name, tool_error, exc_info=True)
             finally:
                 tool_duration = time.time() - tool_start_time
@@ -1387,7 +1469,7 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                 )
                 _mem_result = function_result
             except Exception as tool_error:
-                function_result = json.dumps({"error": f"Memory tool '{function_name}' failed: {tool_error}"})
+                function_result = orjson.dumps({"error": f"Memory tool '{function_name}' failed: {tool_error}"}).decode('utf-8')
                 logger.error("memory_manager.handle_tool_call raised for %s: %s", function_name, tool_error, exc_info=True)
             finally:
                 tool_duration = time.time() - tool_start_time

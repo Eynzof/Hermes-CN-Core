@@ -10,9 +10,9 @@ Subscriptions persist to ~/.hermes/webhook_subscriptions.json and are
 hot-reloaded by the webhook adapter without a gateway restart.
 """
 
-import json
+import orjson
 import os
-import re
+from agent.re_compat import re
 import secrets
 import tempfile
 import time
@@ -42,7 +42,7 @@ def _load_subscriptions() -> Dict[str, dict]:
     if not path.exists():
         return {}
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = orjson.loads(path.read_text(encoding="utf-8"))
         return data if isinstance(data, dict) else {}
     except Exception:
         return {}
@@ -64,7 +64,7 @@ def _save_subscriptions(subs: Dict[str, dict]) -> None:
     tmp_path = Path(tmp_name)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            json.dump(subs, fh, indent=2, ensure_ascii=False)
+            fh.write(orjson.dumps(subs, option=orjson.OPT_INDENT_2).decode('utf-8'))
             fh.flush()
             os.fsync(fh.fileno())
         os.chmod(tmp_path, _SUBSCRIPTIONS_FILE_MODE)

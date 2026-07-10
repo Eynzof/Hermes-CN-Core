@@ -34,11 +34,11 @@ Requires:
 import asyncio
 import hashlib
 import hmac
-import json
+import orjson
 import logging
 import os
 import socket as _socket
-import re
+from agent.re_compat import re
 import sqlite3
 import time
 import uuid
@@ -454,8 +454,8 @@ class ResponseStore:
         )
         self._conn.commit()
         try:
-            return json.loads(row[0])
-        except (json.JSONDecodeError, TypeError):
+            return orjson.loads(row[0])
+        except (orjson.JSONDecodeError, TypeError):
             logger.warning(
                 "Corrupted JSON in response store for id=%s, evicting entry",
                 response_id,
@@ -471,7 +471,7 @@ class ResponseStore:
         """Store a response, evicting the oldest if at capacity."""
         self._conn.execute(
             "INSERT OR REPLACE INTO responses (response_id, data, accessed_at) VALUES (?, ?, ?)",
-            (response_id, json.dumps(data, default=str), time.time()),
+            (response_id, orjson.dumps(data, default=str).decode('utf-8'), time.time()),
         )
         # Evict oldest entries beyond max_size
         count = self._conn.execute("SELECT COUNT(*) FROM responses").fetchone()[0]
@@ -597,8 +597,7 @@ def _resolve_media_to_data_urls(text: str) -> str:
     """
     if not text or "MEDIA:" not in text:
         return text
-    import base64
-
+    import pybase64 as base64
     def _to_data_url(path_str: str) -> Optional[str]:
         p = Path(path_str.strip().strip("`\"'")).expanduser()
         suffix = p.suffix.lower()
@@ -2023,7 +2022,7 @@ class APIServerAdapter(BasePlatformAdapter):
                 if item is None:
                     break
                 name, payload = item
-                data = json.dumps(payload, ensure_ascii=False)
+                data = orjson.dumps(payload).decode('utf-8')
                 await response.write(f"event: {name}\ndata: {data}\n\n".encode("utf-8"))
                 last_write = time.monotonic()
         except (asyncio.CancelledError, ConnectionResetError):
@@ -2047,7 +2046,7 @@ class APIServerAdapter(BasePlatformAdapter):
         # Parse request body
         try:
             body = await request.json()
-        except (json.JSONDecodeError, Exception):
+        except (orjson.JSONDecodeError, Exception):
             return web.json_response(_openai_error("Invalid JSON in request body"), status=400)
 
         messages = body.get("messages")
@@ -2417,7 +2416,7 @@ class APIServerAdapter(BasePlatformAdapter):
                 "created": created, "model": model,
                 "choices": [{"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}],
             }
-            await response.write(f"data: {json.dumps(role_chunk)}\n\n".encode())
+            await response.write(f"data: {orjson.dumps(role_chunk).decode('utf-8')}\n\n".encode())
             last_activity = time.monotonic()
 
             # Helper — route a queue item to the correct SSE event.
@@ -2432,7 +2431,7 @@ class APIServerAdapter(BasePlatformAdapter):
                 #16588 for the ``toolCallId``/``status`` lifecycle fields.
                 """
                 if isinstance(item, tuple) and len(item) == 2 and item[0] == "__tool_progress__":
-                    event_data = json.dumps(item[1])
+                    event_data = orjson.dumps(item[1]).decode('utf-8')
                     await response.write(
                         f"event: hermes.tool.progress\ndata: {event_data}\n\n".encode()
                     )
@@ -2442,7 +2441,7 @@ class APIServerAdapter(BasePlatformAdapter):
                         "created": created, "model": model,
                         "choices": [{"index": 0, "delta": {"content": item}, "finish_reason": None}],
                     }
-                    await response.write(f"data: {json.dumps(content_chunk)}\n\n".encode())
+                    await response.write(f"data: {orjson.dumps(content_chunk).decode('utf-8')}\n\n".encode())
                 return time.monotonic()
 
             # Stream content chunks as they arrive from the agent
@@ -2535,7 +2534,7 @@ class APIServerAdapter(BasePlatformAdapter):
                     "error": err_msg,
                     "error_code": "output_truncated" if finish_reason == "length" else "agent_error",
                 }
-            await response.write(f"data: {json.dumps(finish_chunk)}\n\n".encode())
+            await response.write(f"data: {orjson.dumps(finish_chunk).decode('utf-8')}\n\n".encode())
             await response.write(b"data: [DONE]\n\n")
         except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, OSError):
             # Client disconnected mid-stream.  Interrupt the agent so it
@@ -2566,7 +2565,7 @@ class APIServerAdapter(BasePlatformAdapter):
                     "created": created, "model": model,
                     "choices": [{"index": 0, "delta": {}, "finish_reason": "error"}],
                 }
-                await response.write(f"data: {json.dumps(error_chunk)}\n\n".encode())
+                await response.write(f"data: {orjson.dumps(error_chunk).decode('utf-8')}\n\n".encode())
                 await response.write(b"data: [DONE]\n\n")
             except Exception:
                 pass
@@ -2664,7 +2663,7 @@ class APIServerAdapter(BasePlatformAdapter):
             if "sequence_number" not in data:
                 data["sequence_number"] = sequence_number
             sequence_number += 1
-            payload = f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
+            payload = f"event: {event_type}\ndata: {orjson.dumps(data).decode('utf-8')}\n\n"
             await response.write(payload.encode())
 
         def _envelope(status: str) -> Dict[str, Any]:
@@ -2793,7 +2792,7 @@ class APIServerAdapter(BasePlatformAdapter):
                 call_id = payload.get("tool_call_id") or f"call_{response_id[5:]}_{call_counter}"
                 args = payload.get("arguments", {})
                 if isinstance(args, dict):
-                    arguments_str = json.dumps(args)
+                    arguments_str = orjson.dumps(args).decode('utf-8')
                 else:
                     arguments_str = str(args)
                 item = {
@@ -2859,7 +2858,7 @@ class APIServerAdapter(BasePlatformAdapter):
                 })
 
                 # function_call_output added (result)
-                result_str = result if isinstance(result, str) else json.dumps(result)
+                result_str = result if isinstance(result, str) else orjson.dumps(result).decode('utf-8')
                 output_parts = [{"type": "input_text", "text": result_str}]
                 output_item = {
                     "id": f"fco_{uuid.uuid4().hex[:24]}",
@@ -3034,12 +3033,12 @@ class APIServerAdapter(BasePlatformAdapter):
             for _item in final_items:
                 if _item.get("type") == "function_call":
                     try:
-                        _args = json.loads(_item.get("arguments", "{}")) if isinstance(_item.get("arguments"), str) else _item.get("arguments", {})
+                        _args = orjson.loads(_item.get("arguments", "{}")) if isinstance(_item.get("arguments"), str) else _item.get("arguments", {})
                         if isinstance(_args, dict):
                             for _k in ("content", "query", "pattern", "old_string", "new_string"):
                                 if isinstance(_args.get(_k), str) and len(_args[_k]) > 500:
                                     _args[_k] = "[" + str(len(_args[_k])) + " chars — truncated for response.completed]"
-                            _item["arguments"] = json.dumps(_args)
+                            _item["arguments"] = orjson.dumps(_args).decode('utf-8')
                     except Exception:
                         pass
                 elif _item.get("type") == "function_call_output":
@@ -3188,7 +3187,7 @@ class APIServerAdapter(BasePlatformAdapter):
         # Parse request body
         try:
             body = await request.json()
-        except (json.JSONDecodeError, Exception):
+        except (orjson.JSONDecodeError, Exception):
             return web.json_response(
                 {"error": {"message": "Invalid JSON in request body", "type": "invalid_request_error"}},
                 status=400,
@@ -4505,7 +4504,7 @@ class APIServerAdapter(BasePlatformAdapter):
                     # Run finished — send final SSE comment and close
                     await response.write(b": stream closed\n\n")
                     break
-                payload = f"data: {json.dumps(event)}\n\n"
+                payload = f"data: {orjson.dumps(event).decode('utf-8')}\n\n"
                 await response.write(payload.encode())
         except Exception as exc:
             logger.debug("[api_server] SSE stream error for run %s: %s", run_id, exc)

@@ -13,7 +13,7 @@ bridge's ``lid-mapping-*.json`` session files (the same source the gateway
 authz and session-key paths already use).
 """
 
-import json
+import orjson
 from unittest.mock import AsyncMock
 
 from gateway.config import Platform, PlatformConfig
@@ -54,9 +54,9 @@ def _write_lid_mapping(phone=PHONE, lid=LID):
     """Mirror what the JS bridge writes: phone→lid and lid→phone (reverse)."""
     session_dir = get_hermes_home() / "whatsapp" / "session"
     session_dir.mkdir(parents=True, exist_ok=True)
-    (session_dir / f"lid-mapping-{phone}.json").write_text(json.dumps(lid), encoding="utf-8")
+    (session_dir / f"lid-mapping-{phone}.json").write_text(orjson.dumps(lid).decode('utf-8'), encoding="utf-8")
     (session_dir / f"lid-mapping-{lid}_reverse.json").write_text(
-        json.dumps(phone), encoding="utf-8"
+        orjson.dumps(phone).decode('utf-8'), encoding="utf-8"
     )
 
 

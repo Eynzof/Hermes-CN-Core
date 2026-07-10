@@ -1,7 +1,7 @@
 """Tests for the tirith security scanning subprocess wrapper."""
 
 import io
-import json
+import orjson
 import os
 import subprocess
 import tarfile
@@ -47,7 +47,7 @@ def _mock_run(returncode=0, stdout="", stderr=""):
 
 
 def _json_stdout(findings=None, summary=""):
-    return json.dumps({"findings": findings or [], "summary": summary})
+    return orjson.dumps({"findings": findings or [], "summary": summary}).decode('utf-8')
 
 
 # ---------------------------------------------------------------------------

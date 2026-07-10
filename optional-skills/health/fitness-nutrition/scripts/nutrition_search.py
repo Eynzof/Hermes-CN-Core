@@ -12,7 +12,7 @@ No external dependencies.
 """
 import sys
 import os
-import json
+import orjson
 import time
 import urllib.request
 import urllib.parse
@@ -31,7 +31,7 @@ def search(query, max_results=3):
     try:
         req = urllib.request.Request(url, headers={"Accept": "application/json"})
         with urllib.request.urlopen(req, timeout=15) as r:
-            return json.loads(r.read())
+            return orjson.loads(r.read())
     except Exception as e:
         print(f"  API error: {e}", file=sys.stderr)
         return None

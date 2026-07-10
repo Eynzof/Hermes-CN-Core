@@ -14,10 +14,10 @@ Environment variables:
 from __future__ import annotations
 
 import asyncio
-import json
+import orjson
 import logging
 import os
-import re
+from agent.re_compat import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -753,8 +753,8 @@ class MattermostAdapter(BasePlatformAdapter):
                 raw_msg.type.BINARY,
             }:
                 try:
-                    event = json.loads(raw_msg.data)
-                except (json.JSONDecodeError, TypeError):
+                    event = orjson.loads(raw_msg.data)
+                except (orjson.JSONDecodeError, TypeError):
                     continue
                 await self._handle_ws_event(event)
             elif raw_msg.type in {
@@ -778,8 +778,8 @@ class MattermostAdapter(BasePlatformAdapter):
             return
 
         try:
-            post = json.loads(raw_post_str)
-        except (json.JSONDecodeError, TypeError):
+            post = orjson.loads(raw_post_str)
+        except (orjson.JSONDecodeError, TypeError):
             return
 
         # Ignore own messages.

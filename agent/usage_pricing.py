@@ -1,6 +1,5 @@
 from __future__ import annotations
-
-import re
+from agent.re_compat import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal

@@ -172,8 +172,7 @@ def _run_install_fn(distro: str, version: str, *, native_fails: bool,
         "run_playwright_install",
     ]
     src = INSTALL_SH.read_text()
-    import re
-
+    from agent.re_compat import re
     extracted = []
     for name in fn_names:
         m = re.search(rf"^{re.escape(name)}\(\) \{{.*?^\}}", src, re.MULTILINE | re.DOTALL)

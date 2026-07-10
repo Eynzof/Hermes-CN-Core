@@ -1,4 +1,4 @@
-import json
+import orjson
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -35,7 +35,7 @@ def test_edge_cli_preserves_native_mp3(tmp_path, monkeypatch):
     monkeypatch.setattr(tts_tool, "_generate_edge_tts", _write_edge_output)
     monkeypatch.setattr(tts_tool, "_convert_to_opus", convert)
 
-    result = json.loads(tts_tool.text_to_speech_tool("hello", output_path=str(out)))
+    result = orjson.loads(tts_tool.text_to_speech_tool("hello", output_path=str(out)))
 
     assert result["success"] is True
     assert result["file_path"] == str(out)
@@ -61,7 +61,7 @@ def test_edge_telegram_converts_to_opus_voice(tmp_path, monkeypatch):
     monkeypatch.setattr(tts_tool, "_generate_edge_tts", _write_edge_output)
     monkeypatch.setattr(tts_tool, "_convert_to_opus", convert)
 
-    result = json.loads(tts_tool.text_to_speech_tool("hello", output_path=str(out)))
+    result = orjson.loads(tts_tool.text_to_speech_tool("hello", output_path=str(out)))
 
     assert result["success"] is True
     assert result["file_path"] == str(opus)

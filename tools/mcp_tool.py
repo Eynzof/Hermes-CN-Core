@@ -85,11 +85,11 @@ import asyncio
 import contextvars
 import concurrent.futures
 import inspect
-import json
+import orjson
 import logging
 import math
 import os
-import re
+from agent.re_compat import re
 import shutil
 import sys
 import threading
@@ -600,8 +600,7 @@ def _cache_mcp_image_block(block) -> str:
     a single bad block shouldn't kill the tool result, and the caller will
     fall through to any text blocks that did parse.
     """
-    import base64
-
+    import pybase64 as base64
     data = getattr(block, "data", None)
     mime_type = getattr(block, "mimeType", None)
     normalized_mime = str(mime_type or "").split(";", 1)[0].strip().lower()
@@ -973,7 +972,7 @@ class SamplingHandler:
                         "type": "function",
                         "function": {
                             "name": tu.name,
-                            "arguments": json.dumps(tu.input, ensure_ascii=False) if isinstance(tu.input, dict) else str(tu.input),
+                            "arguments": orjson.dumps(tu.input).decode('utf-8') if isinstance(tu.input, dict) else str(tu.input),
                         },
                     })
                 msg_dict: dict = {"role": msg.role, "tool_calls": tc_list}
@@ -1041,8 +1040,8 @@ class SamplingHandler:
             args = tc.function.arguments
             if isinstance(args, str):
                 try:
-                    parsed = json.loads(args)
-                except (json.JSONDecodeError, ValueError):
+                    parsed = orjson.loads(args)
+                except (orjson.JSONDecodeError, ValueError):
                     logger.warning(
                         "MCP server '%s': malformed tool_calls arguments "
                         "from LLM (wrapping as raw): %.100s",
@@ -2800,11 +2799,11 @@ def _handle_auth_error_and_retry(
         try:
             result = retry_call()
             try:
-                parsed = json.loads(result)
+                parsed = orjson.loads(result)
                 if "error" not in parsed:
                     _reset_server_error(server_name)
                     return result
-            except (json.JSONDecodeError, TypeError):
+            except (orjson.JSONDecodeError, TypeError):
                 _reset_server_error(server_name)
                 return result
         except Exception as retry_exc:
@@ -2817,7 +2816,7 @@ def _handle_auth_error_and_retry(
     # needs_reauth error. Bumps the circuit breaker so the model stops
     # retrying the tool.
     _bump_server_error(server_name)
-    return json.dumps({
+    return orjson.dumps({
         "error": (
             f"MCP server '{server_name}' requires re-authentication. "
             f"Run `hermes mcp login {server_name}` (or delete the tokens "
@@ -2826,7 +2825,7 @@ def _handle_auth_error_and_retry(
         ),
         "needs_reauth": True,
         "server": server_name,
-    }, ensure_ascii=False)
+    }).decode('utf-8')
 
 
 # Substrings (lower-cased match) that indicate the MCP server rejected
@@ -2943,11 +2942,11 @@ def _handle_session_expired_and_retry(
     try:
         result = retry_call()
         try:
-            parsed = json.loads(result)
+            parsed = orjson.loads(result)
             if "error" not in parsed:
                 _server_error_counts[server_name] = 0
                 return result
-        except (json.JSONDecodeError, TypeError):
+        except (orjson.JSONDecodeError, TypeError):
             _server_error_counts[server_name] = 0
             return result
     except Exception as retry_exc:
@@ -3214,9 +3213,9 @@ def _run_on_mcp_loop(coro_or_factory, timeout: float = 30):
 
 def _interrupted_call_result() -> str:
     """Standardized JSON error for a user-interrupted MCP tool call."""
-    return json.dumps({
+    return orjson.dumps({
         "error": "MCP call interrupted: user sent a new message"
-    }, ensure_ascii=False)
+    }).decode('utf-8')
 
 
 # ---------------------------------------------------------------------------
@@ -3358,7 +3357,7 @@ def _make_tool_handler(server_name: str, tool_name: str, tool_timeout: float):
             age = time.monotonic() - opened_at
             if age < _CIRCUIT_BREAKER_COOLDOWN_SEC:
                 remaining = max(1, int(_CIRCUIT_BREAKER_COOLDOWN_SEC - age))
-                return json.dumps({
+                return orjson.dumps({
                     "error": (
                         f"MCP server '{server_name}' is unreachable after "
                         f"{_server_error_counts[server_name]} consecutive "
@@ -3366,16 +3365,16 @@ def _make_tool_handler(server_name: str, tool_name: str, tool_timeout: float):
                         f"Do NOT retry this tool yet — use alternative "
                         f"approaches or ask the user to check the MCP server."
                     )
-                }, ensure_ascii=False)
+                }).decode('utf-8')
             # Cooldown elapsed → fall through as a half-open probe.
 
         with _lock:
             server = _servers.get(server_name)
         if not server:
             _bump_server_error(server_name)
-            return json.dumps({
+            return orjson.dumps({
                 "error": f"MCP server '{server_name}' is not connected"
-            }, ensure_ascii=False)
+            }).decode('utf-8')
 
         if not server.session:
             # No live session — the server task is reconnecting, or it has
@@ -3389,16 +3388,16 @@ def _make_tool_handler(server_name: str, tool_name: str, tool_timeout: float):
             # initializes (_run_stdio/_run_http call _reset_server_error).
             _bump_server_error(server_name)
             if _signal_reconnect(server):
-                return json.dumps({
+                return orjson.dumps({
                     "error": (
                         f"MCP server '{server_name}' transport is down; "
                         f"reconnect requested. Do NOT retry this tool "
                         f"immediately — give it a few seconds to come back."
                     )
-                }, ensure_ascii=False)
-            return json.dumps({
+                }).decode('utf-8')
+            return orjson.dumps({
                 "error": f"MCP server '{server_name}' is not connected"
-            }, ensure_ascii=False)
+            }).decode('utf-8')
 
         async def _call():
             async with server._rpc_lock:
@@ -3417,11 +3416,11 @@ def _make_tool_handler(server_name: str, tool_name: str, tool_timeout: float):
                 for block in (result.content or []):
                     if hasattr(block, "text"):
                         error_text += block.text
-                return json.dumps({
+                return orjson.dumps({
                     "error": _sanitize_error(
                         error_text or "MCP tool returned an error"
                     )
-                }, ensure_ascii=False)
+                }).decode('utf-8')
 
             # Collect text from content blocks. MCP tool results can also
             # include ImageContent blocks (screenshot / Blockbench / Playwright
@@ -3451,12 +3450,12 @@ def _make_tool_handler(server_name: str, tool_name: str, tool_timeout: float):
             structured = getattr(result, "structuredContent", None)
             if structured is not None:
                 if text_result:
-                    return json.dumps({
+                    return orjson.dumps({
                         "result": text_result,
                         "structuredContent": structured,
-                    }, ensure_ascii=False)
-                return json.dumps({"result": structured}, ensure_ascii=False)
-            return json.dumps({"result": text_result}, ensure_ascii=False)
+                    }).decode('utf-8')
+                return orjson.dumps({"result": structured}).decode('utf-8')
+            return orjson.dumps({"result": text_result}).decode('utf-8')
 
         def _call_once():
             return _run_on_mcp_loop(_call, timeout=tool_timeout)
@@ -3465,12 +3464,12 @@ def _make_tool_handler(server_name: str, tool_name: str, tool_timeout: float):
             result = _call_once()
             # Check if the MCP tool itself returned an error
             try:
-                parsed = json.loads(result)
+                parsed = orjson.loads(result)
                 if "error" in parsed:
                     _bump_server_error(server_name)
                 else:
                     _reset_server_error(server_name)  # success — reset
-            except (json.JSONDecodeError, TypeError):
+            except (orjson.JSONDecodeError, TypeError):
                 _reset_server_error(server_name)  # non-JSON = success
             return result
         except InterruptedError:
@@ -3501,11 +3500,11 @@ def _make_tool_handler(server_name: str, tool_name: str, tool_timeout: float):
                 "MCP tool %s/%s call failed: %s",
                 server_name, tool_name, exc,
             )
-            return json.dumps({
+            return orjson.dumps({
                 "error": _sanitize_error(
                     f"MCP call failed: {type(exc).__name__}: {_exc_str(exc)}"
                 )
-            }, ensure_ascii=False)
+            }).decode('utf-8')
 
     return _handler
 
@@ -3517,9 +3516,9 @@ def _make_list_resources_handler(server_name: str, tool_timeout: float):
         with _lock:
             server = _servers.get(server_name)
         if not server or not server.session:
-            return json.dumps({
+            return orjson.dumps({
                 "error": f"MCP server '{server_name}' is not connected"
-            }, ensure_ascii=False)
+            }).decode('utf-8')
 
         async def _call():
             async with server._rpc_lock:
@@ -3536,7 +3535,7 @@ def _make_list_resources_handler(server_name: str, tool_timeout: float):
                 if hasattr(r, "mimeType") and r.mimeType:
                     entry["mimeType"] = r.mimeType
                 resources.append(entry)
-            return json.dumps({"resources": resources}, ensure_ascii=False)
+            return orjson.dumps({"resources": resources}).decode('utf-8')
 
         def _call_once():
             return _run_on_mcp_loop(_call, timeout=tool_timeout)
@@ -3559,11 +3558,11 @@ def _make_list_resources_handler(server_name: str, tool_timeout: float):
             logger.error(
                 "MCP %s/list_resources failed: %s", server_name, exc,
             )
-            return json.dumps({
+            return orjson.dumps({
                 "error": _sanitize_error(
                     f"MCP call failed: {type(exc).__name__}: {_exc_str(exc)}"
                 )
-            }, ensure_ascii=False)
+            }).decode('utf-8')
 
     return _handler
 
@@ -3577,9 +3576,9 @@ def _make_read_resource_handler(server_name: str, tool_timeout: float):
         with _lock:
             server = _servers.get(server_name)
         if not server or not server.session:
-            return json.dumps({
+            return orjson.dumps({
                 "error": f"MCP server '{server_name}' is not connected"
-            }, ensure_ascii=False)
+            }).decode('utf-8')
 
         uri = args.get("uri")
         if not uri:
@@ -3596,7 +3595,7 @@ def _make_read_resource_handler(server_name: str, tool_timeout: float):
                     parts.append(block.text)
                 elif hasattr(block, "blob"):
                     parts.append(f"[binary data, {len(block.blob)} bytes]")
-            return json.dumps({"result": "\n".join(parts) if parts else ""}, ensure_ascii=False)
+            return orjson.dumps({"result": "\n".join(parts) if parts else ""}).decode('utf-8')
 
         def _call_once():
             return _run_on_mcp_loop(_call, timeout=tool_timeout)
@@ -3619,11 +3618,11 @@ def _make_read_resource_handler(server_name: str, tool_timeout: float):
             logger.error(
                 "MCP %s/read_resource failed: %s", server_name, exc,
             )
-            return json.dumps({
+            return orjson.dumps({
                 "error": _sanitize_error(
                     f"MCP call failed: {type(exc).__name__}: {_exc_str(exc)}"
                 )
-            }, ensure_ascii=False)
+            }).decode('utf-8')
 
     return _handler
 
@@ -3635,9 +3634,9 @@ def _make_list_prompts_handler(server_name: str, tool_timeout: float):
         with _lock:
             server = _servers.get(server_name)
         if not server or not server.session:
-            return json.dumps({
+            return orjson.dumps({
                 "error": f"MCP server '{server_name}' is not connected"
-            }, ensure_ascii=False)
+            }).decode('utf-8')
 
         async def _call():
             async with server._rpc_lock:
@@ -3659,7 +3658,7 @@ def _make_list_prompts_handler(server_name: str, tool_timeout: float):
                         for a in p.arguments
                     ]
                 prompts.append(entry)
-            return json.dumps({"prompts": prompts}, ensure_ascii=False)
+            return orjson.dumps({"prompts": prompts}).decode('utf-8')
 
         def _call_once():
             return _run_on_mcp_loop(_call, timeout=tool_timeout)
@@ -3682,11 +3681,11 @@ def _make_list_prompts_handler(server_name: str, tool_timeout: float):
             logger.error(
                 "MCP %s/list_prompts failed: %s", server_name, exc,
             )
-            return json.dumps({
+            return orjson.dumps({
                 "error": _sanitize_error(
                     f"MCP call failed: {type(exc).__name__}: {_exc_str(exc)}"
                 )
-            }, ensure_ascii=False)
+            }).decode('utf-8')
 
     return _handler
 
@@ -3700,9 +3699,9 @@ def _make_get_prompt_handler(server_name: str, tool_timeout: float):
         with _lock:
             server = _servers.get(server_name)
         if not server or not server.session:
-            return json.dumps({
+            return orjson.dumps({
                 "error": f"MCP server '{server_name}' is not connected"
-            }, ensure_ascii=False)
+            }).decode('utf-8')
 
         name = args.get("name")
         if not name:
@@ -3730,7 +3729,7 @@ def _make_get_prompt_handler(server_name: str, tool_timeout: float):
             resp = {"messages": messages}
             if hasattr(result, "description") and result.description:
                 resp["description"] = result.description
-            return json.dumps(resp, ensure_ascii=False)
+            return orjson.dumps(resp).decode('utf-8')
 
         def _call_once():
             return _run_on_mcp_loop(_call, timeout=tool_timeout)
@@ -3753,11 +3752,11 @@ def _make_get_prompt_handler(server_name: str, tool_timeout: float):
             logger.error(
                 "MCP %s/get_prompt failed: %s", server_name, exc,
             )
-            return json.dumps({
+            return orjson.dumps({
                 "error": _sanitize_error(
                     f"MCP call failed: {type(exc).__name__}: {_exc_str(exc)}"
                 )
-            }, ensure_ascii=False)
+            }).decode('utf-8')
 
     return _handler
 

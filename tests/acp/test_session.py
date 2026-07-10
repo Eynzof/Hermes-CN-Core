@@ -2,7 +2,7 @@
 
 import contextlib
 import io
-import json
+import orjson
 import time
 from types import SimpleNamespace
 import pytest
@@ -448,7 +448,7 @@ class TestPersistence:
         assert row is not None
         assert row["source"] == "acp"
         # cwd stored in model_config JSON
-        mc = json.loads(row["model_config"])
+        mc = orjson.loads(row["model_config"])
         assert mc["cwd"] == "/project"
 
     def test_get_session_restores_from_db(self, manager):
@@ -594,7 +594,7 @@ class TestPersistence:
         # Should also be persisted in DB.
         db = manager._get_db()
         row = db.get_session(sid)
-        mc = json.loads(row["model_config"])
+        mc = orjson.loads(row["model_config"])
         assert mc["cwd"] == "/new"
 
     def test_only_restores_acp_sessions(self, manager):

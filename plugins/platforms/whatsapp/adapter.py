@@ -18,12 +18,12 @@ with different backends via a bridge pattern.
 import asyncio
 import logging
 import os
-import platform
-import re
+import sys
+from agent.re_compat import re
 import signal
 import subprocess
 
-_IS_WINDOWS = platform.system() == "Windows"
+_IS_WINDOWS = sys.platform == "win32"
 from pathlib import Path
 from typing import Dict, Optional, Any
 
@@ -1530,11 +1530,11 @@ def _apply_yaml_config(yaml_cfg: dict, whatsapp_cfg: dict) -> dict | None:
     whatsapp_cfg block from gateway/config.py::load_gateway_config(). Env vars
     take precedence over YAML. Returns None — everything flows through env.
     """
-    import json as _json
+    import orjson as _json
     if "require_mention" in whatsapp_cfg and not os.getenv("WHATSAPP_REQUIRE_MENTION"):
         os.environ["WHATSAPP_REQUIRE_MENTION"] = str(whatsapp_cfg["require_mention"]).lower()
     if "mention_patterns" in whatsapp_cfg and not os.getenv("WHATSAPP_MENTION_PATTERNS"):
-        os.environ["WHATSAPP_MENTION_PATTERNS"] = _json.dumps(whatsapp_cfg["mention_patterns"])
+        os.environ["WHATSAPP_MENTION_PATTERNS"] = _json.dumps(whatsapp_cfg["mention_patterns"]).decode('utf-8')
     frc = whatsapp_cfg.get("free_response_chats")
     if frc is not None and not os.getenv("WHATSAPP_FREE_RESPONSE_CHATS"):
         if isinstance(frc, list):

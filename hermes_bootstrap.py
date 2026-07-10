@@ -210,11 +210,88 @@ def activate_durable_lazy_target() -> None:
         pass
 
 
+def install_import_accelerator() -> bool:
+    """Install the first-party import accelerator (``import_accelerator``).
+
+    Places a meta-path finder at ``sys.meta_path[0]`` that resolves Hermes's own
+    top-level modules/packages with a single dict lookup, skipping the
+    ``sys.path`` directory scan (``nt.stat`` / ``nt._path_exists``) the stock
+    machinery pays per import.  Done here — the first import of every entry
+    point — so the entire ``run_agent`` import cascade benefits.
+
+    Fully guarded and idempotent: any failure (or a missing module during a
+    partial ``hermes update``) leaves the standard import machinery untouched,
+    exactly like the UTF-8 fast path above.  Returns True when THIS call
+    installed the finder.  Honour ``HERMES_DISABLE_IMPORT_ACCELERATOR`` inside
+    ``import_accelerator.install`` itself.
+    """
+    try:
+        import import_accelerator
+
+        return import_accelerator.install()
+    except Exception:
+        return False
+
+
+def maybe_precompile_on_start() -> bool:
+    """Opt-in background ``.pyc`` warm-up for the run-from-source layout.
+
+    ``scripts/precompile.py`` front-loads ``builtins.compile`` (~10.82% of cold
+    agent-init) off the hot path.  ``pip install`` already byte-compiles
+    installed packages, so this only matters when Hermes runs *from source* (the
+    CN fork's Windows default).  It is gated behind ``HERMES_PRECOMPILE_ON_START``
+    and is a strict no-op:
+
+    * unless that env var is truthy (so it never surprises anyone);
+    * under a frozen build (no source tree to compile);
+    * under pytest — the hermetic test runner gives every test file its own
+      fresh temp ``HERMES_HOME`` (hence no stamp), so an ungated warm-up would
+      spawn a ``compileall`` thread in *every* test subprocess and thrash CI.
+
+    Runs :func:`precompile_in_background` (a daemon thread, stamp-guarded), so
+    the first start after an update warms the cache while the user reads the
+    banner and the NEXT start reads ready ``.pyc``.  Returns True when a warm-up
+    thread was started.  Never raises.
+    """
+    if os.environ.get("HERMES_PRECOMPILE_ON_START") not in ("1", "true", "True"):
+        return False
+    if getattr(sys, "frozen", False):
+        return False
+    if os.environ.get("PYTEST_CURRENT_TEST") or "pytest" in sys.modules:
+        return False
+    try:
+        import importlib.util
+
+        root = os.path.dirname(os.path.abspath(__file__))
+        pc_path = os.path.join(root, "scripts", "precompile.py")
+        if not os.path.isfile(pc_path):
+            return False
+        spec = importlib.util.spec_from_file_location("_hermes_precompile_boot", pc_path)
+        if spec is None or spec.loader is None:
+            return False
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        module.precompile_in_background(quiet=True)
+        return True
+    except Exception:
+        # A warm-up helper must never break startup.
+        return False
+
+
 # Apply on import — entry points just need ``import hermes_bootstrap``
 # (or ``from hermes_bootstrap import apply_windows_utf8_bootstrap``) at
 # the very top of their module, before importing anything else.  The
 # import side effect does the right thing.
 apply_windows_utf8_bootstrap()
+
+# Accelerate the first-party import cascade that follows (best-effort; installed
+# before the heavy modules load so they resolve via a dict lookup instead of a
+# per-entry sys.path scan).
+install_import_accelerator()
+
+# Opt-in background .pyc warm-up (run-from-source only; no-op by default and
+# under tests/frozen builds).
+maybe_precompile_on_start()
 
 # Activate the durable lazy-install target (immutable Docker images) so
 # packages installed into the data volume on a previous run are importable

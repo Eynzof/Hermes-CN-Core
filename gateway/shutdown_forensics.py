@@ -17,7 +17,7 @@ the async helper, never in the synchronous probe.
 
 from __future__ import annotations
 
-import json
+import orjson
 import os
 import signal
 import subprocess
@@ -314,7 +314,7 @@ def format_context_for_log(ctx: Dict[str, Any]) -> str:
 def context_as_json(ctx: Dict[str, Any]) -> str:
     """JSON-serialise a context dict for structured ingestion.  Never raises."""
     try:
-        return json.dumps(ctx, default=str, sort_keys=True)
+        return orjson.dumps(ctx, default=str, option=orjson.OPT_SORT_KEYS).decode('utf-8')
     except (TypeError, ValueError):
         return "{}"
 

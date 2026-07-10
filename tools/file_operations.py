@@ -26,12 +26,14 @@ Usage:
 """
 
 import os
-import re
+from agent.re_compat import re
 import shutil
 import stat as _stat
 import subprocess
 import sys
 import tempfile
+import threading
+import zlib
 import difflib
 import fnmatch
 from abc import ABC, abstractmethod
@@ -65,6 +67,116 @@ def _parse_optional_int(value: Optional[str]) -> Optional[int]:
         return int((value or "").strip())
     except (ValueError, AttributeError):
         return None
+
+
+# ---------------------------------------------------------------------------
+# [CN-fork] P1 (concurrent tool dispatch): striped per-file write locks
+# ---------------------------------------------------------------------------
+#
+# The agent runs concurrent tool calls on a ThreadPoolExecutor, so two writers
+# can target the same path at once.  The in-process atomic write below is
+# crash-safe on its own (temp-file + ``os.replace``, an atomic rename on POSIX
+# *and* Windows), but the surrounding stat-mode / getsize steps — and any
+# concurrent reader — are only consistent when same-path writes don't
+# interleave.
+#
+# A single global lock would serialize ALL file I/O (the exact contention this
+# work set out to remove).  A per-path dict of locks removes cross-file
+# contention but grows unbounded over a long-lived gateway's lifetime.  Lock
+# *striping* gets both properties: a fixed pool of locks indexed by the path
+# hash.  Distinct files almost always land on distinct stripes and run fully in
+# parallel; the same file always maps to the same stripe and is serialized.
+# Memory is O(_FILE_LOCK_STRIPES) for the life of the process.
+_FILE_LOCK_STRIPES = 64
+_file_lock_stripes: tuple = tuple(threading.Lock() for _ in range(_FILE_LOCK_STRIPES))
+
+
+def _get_file_lock(path: str) -> "threading.Lock":
+    """Return the stripe lock guarding writes to ``path``.
+
+    Keyed on the normalized absolute path so two spellings of the same file
+    (``a/b.txt`` vs ``a/./b.txt``, or case variants on Windows) share a lock.
+    Different files may collide on a stripe — harmless, just a rare and brief
+    serialization — but the same file never splits across stripes.
+    """
+    try:
+        key = os.path.normcase(os.path.abspath(path))
+    except Exception:  # noqa: BLE001 - never let path canonicalization break a write
+        key = path
+    return _file_lock_stripes[hash(key) % _FILE_LOCK_STRIPES]
+
+
+# ---------------------------------------------------------------------------
+# In-process write verification (P-042 #4 — CRC-32 integrity check)
+# ---------------------------------------------------------------------------
+#
+# The local Windows in-process atomic write (P-033) encodes the content to a
+# temp file and ``os.replace()``s it over the target.  Before P-042 the only
+# integrity signal was the post-rename size stat at the write_file caller
+# (P-033b): it catches truncation / silent no-ops but not silent *corruption*
+# (a flipped byte still has the right length).  A streamed CRC-32 of the temp
+# file, compared against the CRC of the bytes we meant to write, closes that
+# gap cheaply — it re-reads the just-written temp (warm in the page cache) and
+# compares two 4-byte digests instead of building + normalizing a second full
+# copy of the content for a string ``==`` (what a naive "re-read and compare"
+# costs).  It runs *before* the atomic rename, so a mismatch aborts with the
+# original file still intact — never a corrupt swap.
+#
+# Gated by ``_WRITE_VERIFY_CRC`` (env ``HERMES_WRITE_VERIFY_CRC``) so a caller
+# that prizes raw throughput over the read-back can opt out; default ON because
+# the cost is negligible and the safety is real.  Resolved once at import
+# (writes are hot); tests flip the module attribute directly.
+
+
+def _resolve_write_verify_crc() -> bool:
+    val = os.environ.get("HERMES_WRITE_VERIFY_CRC")
+    if val is not None:
+        return val.strip().lower() not in ("0", "false", "no", "off", "")
+    return True
+
+
+_WRITE_VERIFY_CRC = _resolve_write_verify_crc()
+
+
+def _crc32_of_file(path: str, chunk_size: int = 1 << 20) -> "tuple[int, int]":
+    """Return ``(crc32, byte_count)`` for *path*, streamed so a large file is
+    never held in memory twice.  ``crc32`` is masked to 32 bits so it compares
+    equal to ``zlib.crc32(data) & 0xFFFFFFFF``."""
+    crc = 0
+    size = 0
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(chunk_size), b""):
+            crc = zlib.crc32(chunk, crc)
+            size += len(chunk)
+    return crc & 0xFFFFFFFF, size
+
+
+# Opt-in (env ``HERMES_MARK_TEMP_FILES``): tag the ``.hermes-tmp`` staging file
+# of an atomic write ``FILE_ATTRIBUTE_TEMPORARY`` so Windows keeps it in cache /
+# AV deprioritises it, then clear the bit before the rename so the permanent
+# file it becomes is not left marked temporary.  OFF by default — zero syscalls
+# added on the hot path unless a deployment measures a Defender win and enables
+# it (mirrors the ``powershell_session_reuse`` opt-in).
+
+
+def _resolve_mark_temp_files() -> bool:
+    val = os.environ.get("HERMES_MARK_TEMP_FILES")
+    if val is not None:
+        return val.strip().lower() in ("1", "true", "yes", "on")
+    return False
+
+
+_MARK_TEMP_FILES = _resolve_mark_temp_files()
+
+
+def _set_temp_attr(path: str, temporary: bool) -> bool:
+    """Best-effort ``FILE_ATTRIBUTE_TEMPORARY`` toggle (lazy import; never raises)."""
+    try:
+        from tools.environments.windows_env import set_file_temporary
+
+        return set_file_temporary(path, temporary)
+    except Exception:
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -767,7 +879,7 @@ def _looks_like_linter_unusable(base_cmd: str, output: str) -> bool:
 
 def _lint_json_inproc(content: str) -> tuple[bool, str]:
     """In-process JSON syntax check.  Returns (ok, error_message)."""
-    import json as _json
+    import orjson as _json
     try:
         _json.loads(content)
         return True, ""
@@ -1225,42 +1337,79 @@ class ShellFileOperations(FileOperations):
     def _local_atomic_write(self, path: str, content: str) -> "ExecuteResult":
         """In-process atomic write for the local Windows backend.
 
-        Streams to a temp file in the target's own directory, preserves the
+        Streams to a temp file in the target's own directory, verifies the
+        just-written bytes (CRC-32 + size, P-042) unless disabled, preserves the
         existing file's mode, then ``os.replace()`` (atomic same-dir rename) —
         the cross-platform equivalent of the POSIX ``mktemp``/``mv -f`` script.
-        On success ``stdout`` carries the verified on-disk byte count (via
+        The integrity check runs BEFORE the rename, so a corrupt/short write
+        aborts with the original file intact instead of clobbering it.  On
+        success ``stdout`` carries the verified on-disk byte count (via
         ``os.path.getsize`` after the replace), so write_file never has to
         fabricate a size (the root cause of the silent-success bug #54).
         """
         abs_path = self._abs_local(path)
         parent = os.path.dirname(abs_path) or "."
+        data = content.encode("utf-8")
+        expected_crc = zlib.crc32(data) & 0xFFFFFFFF
+        expected_size = len(data)
+        # Serialize concurrent writers targeting the SAME file (striped, so
+        # distinct files still run fully in parallel). The temp-file +
+        # os.replace swap is atomic on its own; the lock keeps the surrounding
+        # stat-mode / getsize steps and any concurrent reader from observing a
+        # half-applied write when two calls hit the same path at once.
+        lock = _get_file_lock(abs_path)
         try:
-            os.makedirs(parent, exist_ok=True)
-            mode: Optional[int] = None
-            try:
-                mode = _stat.S_IMODE(os.stat(abs_path).st_mode)
-            except OSError:
-                mode = None
-            fd, tmp = tempfile.mkstemp(prefix=".hermes-tmp.", dir=parent)
-            try:
-                with os.fdopen(fd, "wb") as fh:
-                    fh.write(content.encode("utf-8"))
-                if mode is not None:
+            with lock:
+                os.makedirs(parent, exist_ok=True)
+                mode: Optional[int] = None
+                try:
+                    mode = _stat.S_IMODE(os.stat(abs_path).st_mode)
+                except OSError:
+                    mode = None
+                fd, tmp = tempfile.mkstemp(prefix=".hermes-tmp.", dir=parent)
+                if _MARK_TEMP_FILES:
+                    _set_temp_attr(tmp, True)
+                try:
+                    with os.fdopen(fd, "wb") as fh:
+                        fh.write(data)
+                    # Integrity gate (P-042): re-read the flushed temp and
+                    # confirm CRC-32 + length match what we meant to write.
+                    # Cheap (the temp is page-cache warm; two 4-byte digests)
+                    # and it catches a corrupt/short write BEFORE it can replace
+                    # the good original — the size stat at the caller can't see a
+                    # same-length bit flip.
+                    if _WRITE_VERIFY_CRC:
+                        actual_crc, actual_size = _crc32_of_file(tmp)
+                        if (
+                            actual_size != expected_size
+                            or actual_crc != expected_crc
+                        ):
+                            raise OSError(
+                                "write verification failed: CRC/size mismatch "
+                                f"for {abs_path} (expected {expected_crc:08x}/"
+                                f"{expected_size}B, got {actual_crc:08x}/"
+                                f"{actual_size}B)"
+                            )
+                    if mode is not None:
+                        try:
+                            os.chmod(tmp, mode)
+                        except OSError:
+                            pass
+                    if _MARK_TEMP_FILES:
+                        # Clear the hint so the renamed-into-place file (now
+                        # permanent user data) isn't left marked temporary.
+                        _set_temp_attr(tmp, False)
+                    os.replace(tmp, abs_path)
+                except BaseException:
                     try:
-                        os.chmod(tmp, mode)
+                        os.unlink(tmp)
                     except OSError:
                         pass
-                os.replace(tmp, abs_path)
-            except BaseException:
-                try:
-                    os.unlink(tmp)
-                except OSError:
-                    pass
-                raise
-            if not os.path.exists(abs_path):
-                raise OSError(f"File did not appear after atomic rename: {abs_path}")
+                    raise
+                if not os.path.exists(abs_path):
+                    raise OSError(f"File did not appear after atomic rename: {abs_path}")
 
-            return ExecuteResult(stdout=str(os.path.getsize(abs_path)), exit_code=0)
+                return ExecuteResult(stdout=str(os.path.getsize(abs_path)), exit_code=0)
         except OSError as exc:
             return ExecuteResult(stdout=f"atomic write failed: {exc}", exit_code=1)
 

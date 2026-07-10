@@ -58,9 +58,9 @@ function. A minimal example:
 from __future__ import annotations
 
 import argparse
-import json
+import orjson
 import os
-import re
+from agent.re_compat import re
 import sys
 from pathlib import Path
 
@@ -349,8 +349,8 @@ def render_setup_sh(plan: dict, brief_md: str, team_md: str) -> str:
     # safely through to the Python YAML patcher.
     profile_configs = []
     for t in plan["team"]:
-        ts_json = json.dumps(t["toolsets"])
-        sk_json = json.dumps(t["skills"])
+        ts_json = orjson.dumps(t["toolsets"]).decode('utf-8')
+        sk_json = orjson.dumps(t["skills"]).decode('utf-8')
         # Use single-quoted bash strings; JSON only contains "/[/], no single
         # quotes, so this is safe.
         profile_configs.append(
@@ -471,7 +471,7 @@ def main():
                     help="Write TEAM.md alongside (default: skipped)")
     args = ap.parse_args()
 
-    plan = json.loads(Path(args.plan_json).read_text())
+    plan = orjson.loads(Path(args.plan_json).read_text())
     errors = validate_plan(plan)
     if errors:
         print("Plan validation failed:", file=sys.stderr)

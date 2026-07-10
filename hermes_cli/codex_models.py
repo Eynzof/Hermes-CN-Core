@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import json
+import orjson
 import logging
 from pathlib import Path
 from typing import List, Optional
@@ -142,7 +142,7 @@ def _read_cache_models(codex_home: Path) -> List[str]:
     if not cache_path.exists():
         return []
     try:
-        raw = json.loads(cache_path.read_text(encoding="utf-8"))
+        raw = orjson.loads(cache_path.read_text(encoding="utf-8"))
     except Exception:
         return []
 

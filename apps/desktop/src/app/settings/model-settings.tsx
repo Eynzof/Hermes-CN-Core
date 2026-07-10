@@ -36,7 +36,7 @@ import { ListRow, LoadingState, Pill, SectionHeading } from './primitives'
 
 // Hermes' reasoning levels (VALID_REASONING_EFFORTS); `none` = thinking off.
 // Empty config = Hermes default (medium), shown as Medium.
-const EFFORT_VALUES = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'] as const
+const EFFORT_VALUES = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
 
 // agent.service_tier stores "fast"/"priority"/"on" for fast; anything else is
 // normal (mirrors tui_gateway _load_service_tier).

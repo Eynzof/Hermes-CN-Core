@@ -31,10 +31,10 @@ defined on the mixin and may be overridden per-adapter if needed.
 
 from __future__ import annotations
 
-import json
+import orjson
 import logging
 import os
-import re
+from agent.re_compat import re
 from typing import Any, Dict, Optional
 
 
@@ -234,7 +234,7 @@ class WhatsAppBehaviorMixin:
             raw = os.getenv("WHATSAPP_MENTION_PATTERNS", "").strip()
             if raw:
                 try:
-                    patterns = json.loads(raw)
+                    patterns = orjson.loads(raw)
                 except Exception:
                     patterns = [
                         part.strip() for part in raw.splitlines() if part.strip()

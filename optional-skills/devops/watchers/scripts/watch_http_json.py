@@ -21,7 +21,7 @@ Optional ``--header KEY:VALUE`` flags pass HTTP headers (repeatable).
 from __future__ import annotations
 
 import argparse
-import json
+import orjson
 import sys
 import urllib.error
 import urllib.request
@@ -91,8 +91,8 @@ def main() -> int:
         return 2
 
     try:
-        data = json.loads(raw.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as e:
+        data = orjson.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, orjson.JSONDecodeError) as e:
         print(f"watch_http_json: response is not valid JSON: {e}", file=sys.stderr)
         return 2
 

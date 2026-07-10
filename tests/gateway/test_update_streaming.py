@@ -7,7 +7,7 @@ Tests the new --gateway mode for hermes update, including:
 - _restore_stashed_changes() with input_fn parameter
 """
 
-import json
+import orjson
 import os
 import time
 import asyncio
@@ -100,7 +100,7 @@ class TestGatewayPrompt:
             prompt_path = hermes_home / ".update_prompt.json"
             for _ in range(20):
                 if prompt_path.exists():
-                    prompt_data = json.loads(prompt_path.read_text())
+                    prompt_data = orjson.loads(prompt_path.read_text())
                     (hermes_home / ".update_response").write_text("n")
                     return
                 time.sleep(0.1)
@@ -258,7 +258,7 @@ class TestWatchUpdateProgress:
 
         pending = {"platform": "telegram", "chat_id": "111", "user_id": "222",
                    "session_key": "agent:main:telegram:dm:111"}
-        (hermes_home / ".update_pending.json").write_text(json.dumps(pending))
+        (hermes_home / ".update_pending.json").write_text(orjson.dumps(pending).decode('utf-8'))
         # Write output
         (hermes_home / ".update_output.txt").write_text("→ Fetching updates...\n", encoding="utf-8")
 
@@ -296,7 +296,7 @@ class TestWatchUpdateProgress:
 
         pending = {"platform": "telegram", "chat_id": "111", "user_id": "222",
                    "session_key": "agent:main:telegram:dm:111"}
-        (hermes_home / ".update_pending.json").write_text(json.dumps(pending))
+        (hermes_home / ".update_pending.json").write_text(orjson.dumps(pending).decode('utf-8'))
         (hermes_home / ".update_output.txt").write_text("output\n")
 
         mock_adapter = AsyncMock()
@@ -306,7 +306,7 @@ class TestWatchUpdateProgress:
         async def simulate_prompt_cycle():
             await asyncio.sleep(0.3)
             prompt = {"prompt": "Restore local changes? [Y/n]", "default": "y", "id": "test1"}
-            (hermes_home / ".update_prompt.json").write_text(json.dumps(prompt))
+            (hermes_home / ".update_prompt.json").write_text(orjson.dumps(prompt).decode('utf-8'))
             # Simulate user responding
             await asyncio.sleep(0.5)
             (hermes_home / ".update_response").write_text("y")
@@ -344,13 +344,13 @@ class TestWatchUpdateProgress:
             "user_id": "222",
             "session_key": "agent:main:telegram:group:111:777",
         }
-        (hermes_home / ".update_pending.json").write_text(json.dumps(pending))
+        (hermes_home / ".update_pending.json").write_text(orjson.dumps(pending).decode('utf-8'))
         (hermes_home / ".update_output.txt").write_text("")
-        (hermes_home / ".update_prompt.json").write_text(json.dumps({
+        (hermes_home / ".update_prompt.json").write_text(orjson.dumps({
             "prompt": "Restore local changes? [Y/n]",
             "default": "y",
             "id": "threaded-prompt",
-        }))
+        }).decode('utf-8'))
 
         class _PromptCapableAdapter:
             def __init__(self):
@@ -394,7 +394,7 @@ class TestWatchUpdateProgress:
         pending_path = hermes_home / ".update_pending.json"
         output_path = hermes_home / ".update_output.txt"
         exit_code_path = hermes_home / ".update_exit_code"
-        pending_path.write_text(json.dumps(pending))
+        pending_path.write_text(orjson.dumps(pending).decode('utf-8'))
         output_path.write_text("done\n")
         exit_code_path.write_text("0")
 
@@ -421,7 +421,7 @@ class TestWatchUpdateProgress:
 
         pending = {"platform": "telegram", "chat_id": "111", "user_id": "222",
                    "session_key": "agent:main:telegram:dm:111"}
-        (hermes_home / ".update_pending.json").write_text(json.dumps(pending))
+        (hermes_home / ".update_pending.json").write_text(orjson.dumps(pending).decode('utf-8'))
         (hermes_home / ".update_output.txt").write_text("error occurred\n")
         (hermes_home / ".update_exit_code").write_text("1")
 
@@ -454,7 +454,7 @@ class TestWatchUpdateProgress:
         # Target platform (discord) isn't connected yet; the update is finished.
         pending = {"platform": "discord", "chat_id": "111", "user_id": "222"}
         pending_path = hermes_home / ".update_pending.json"
-        pending_path.write_text(json.dumps(pending))
+        pending_path.write_text(orjson.dumps(pending).decode('utf-8'))
         (hermes_home / ".update_output.txt").write_text("done\n")
         (hermes_home / ".update_exit_code").write_text("0")
 
@@ -497,7 +497,7 @@ class TestWatchUpdateProgress:
 
         pending = {"platform": "telegram", "chat_id": "111", "user_id": "222",
                    "session_key": "agent:main:telegram:dm:111"}
-        (hermes_home / ".update_pending.json").write_text(json.dumps(pending))
+        (hermes_home / ".update_pending.json").write_text(orjson.dumps(pending).decode('utf-8'))
         (hermes_home / ".update_output.txt").write_text("")
 
         mock_adapter = AsyncMock()
@@ -507,7 +507,7 @@ class TestWatchUpdateProgress:
         # The watcher should forward it exactly once, then delete it.
         prompt = {"prompt": "Would you like to configure new options now? Y/n",
                   "default": "n", "id": "dup-test"}
-        (hermes_home / ".update_prompt.json").write_text(json.dumps(prompt))
+        (hermes_home / ".update_prompt.json").write_text(orjson.dumps(prompt).decode('utf-8'))
 
         async def finish_after_polls():
             # Wait long enough for multiple poll cycles to occur, then
@@ -551,9 +551,9 @@ class TestWatchUpdateProgress:
             "default": "y",
             "id": "restart-recover",
         }
-        (hermes_home / ".update_pending.json").write_text(json.dumps(pending))
+        (hermes_home / ".update_pending.json").write_text(orjson.dumps(pending).decode('utf-8'))
         (hermes_home / ".update_output.txt").write_text("")
-        (hermes_home / ".update_prompt.json").write_text(json.dumps(prompt))
+        (hermes_home / ".update_prompt.json").write_text(orjson.dumps(prompt).decode('utf-8'))
 
         runner1 = _make_runner()
         adapter1 = AsyncMock()
@@ -623,7 +623,7 @@ class TestUpdatePromptInterception:
         # The session key uses the full format from build_session_key
         session_key = "agent:main:telegram:dm:67890"
         runner._update_prompt_pending[session_key] = True
-        (hermes_home / ".update_prompt.json").write_text(json.dumps({"prompt": "test"}))
+        (hermes_home / ".update_prompt.json").write_text(orjson.dumps({"prompt": "test"}).decode('utf-8'))
 
         # Mock authorization and _session_key_for_source
         runner._is_user_authorized = MagicMock(return_value=True)
@@ -660,7 +660,7 @@ class TestUpdatePromptInterception:
         runner._is_user_authorized = MagicMock(return_value=True)
         runner._session_key_for_source = MagicMock(return_value=session_key)
         runner._handle_reset_command = AsyncMock(return_value="reset ok")
-        (hermes_home / ".update_prompt.json").write_text(json.dumps({"prompt": "test"}))
+        (hermes_home / ".update_prompt.json").write_text(orjson.dumps({"prompt": "test"}).decode('utf-8'))
 
         with patch("gateway.run._hermes_home", hermes_home):
             result = await runner._handle_message(event)
@@ -690,7 +690,7 @@ class TestUpdatePromptInterception:
         runner._update_prompt_pending[session_key] = True
         runner._is_user_authorized = MagicMock(return_value=True)
         runner._session_key_for_source = MagicMock(return_value=session_key)
-        (hermes_home / ".update_prompt.json").write_text(json.dumps({"prompt": "test"}))
+        (hermes_home / ".update_prompt.json").write_text(orjson.dumps({"prompt": "test"}).decode('utf-8'))
 
         with patch("gateway.run._hermes_home", hermes_home):
             result = await runner._handle_message(event)

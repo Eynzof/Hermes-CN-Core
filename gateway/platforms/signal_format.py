@@ -5,10 +5,7 @@ live Signal adapter and standalone send paths emit the same bodyRanges.
 """
 
 from __future__ import annotations
-
-import re
-
-
+from agent.re_compat import re
 def markdown_to_signal(text: str) -> tuple[str, list[str]]:
     """Convert markdown to plain text + Signal textStyles list.
 

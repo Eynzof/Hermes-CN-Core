@@ -29,9 +29,9 @@ Nothing in this module touches the agent's system prompt or toolset.
 
 from __future__ import annotations
 
-import json
+import orjson
 import logging
-import re
+from agent.re_compat import re
 import time
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
@@ -437,11 +437,11 @@ class GoalState:
     def to_json(self) -> str:
         data = asdict(self)
         # asdict already recursed GoalContract into a plain dict.
-        return json.dumps(data, ensure_ascii=False)
+        return orjson.dumps(data).decode('utf-8')
 
     @classmethod
     def from_json(cls, raw: str) -> "GoalState":
-        data = json.loads(raw)
+        data = orjson.loads(raw)
         raw_subgoals = data.get("subgoals") or []
         subgoals: List[str] = []
         if isinstance(raw_subgoals, list):
@@ -723,13 +723,13 @@ def _parse_judge_response(raw: str) -> Tuple[str, str, bool, Optional[Dict[str, 
     # First try: parse the whole blob.
     data: Optional[Dict[str, Any]] = None
     try:
-        data = json.loads(text)
+        data = orjson.loads(text)
     except Exception:
         # Second try: pull the first JSON object out.
         match = _JSON_OBJECT_RE.search(text)
         if match:
             try:
-                data = json.loads(match.group(0))
+                data = orjson.loads(match.group(0))
             except Exception:
                 data = None
 
@@ -1057,13 +1057,13 @@ def _extract_json_object(raw: str) -> Optional[Dict[str, Any]]:
         if nl != -1:
             text = text[nl + 1:]
     try:
-        data = json.loads(text)
+        data = orjson.loads(text)
     except Exception:
         match = _JSON_OBJECT_RE.search(text)
         if not match:
             return None
         try:
-            data = json.loads(match.group(0))
+            data = orjson.loads(match.group(0))
         except Exception:
             return None
     return data if isinstance(data, dict) else None

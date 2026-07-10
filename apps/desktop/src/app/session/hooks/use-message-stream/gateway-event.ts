@@ -249,6 +249,18 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
         if (isActiveEvent) {
           setTurnStartedAt(Date.now())
         }
+      } else if (event.type === 'assistant.tool_calls_committed') {
+        if (sessionId) {
+          // Flush any text deltas that arrived right up to the tool boundary,
+          // then mark the assistant payload as committed so the UI can move
+          // cleanly from "awaiting response" into tool execution.
+          flushQueuedDeltas(sessionId)
+          updateSessionState(sessionId, state => ({
+            ...state,
+            awaitingResponse: false,
+            sawAssistantPayload: true
+          }))
+        }
       } else if (event.type === 'message.delta') {
         if (sessionId) {
           appendAssistantDelta(sessionId, coerceGatewayText(payload?.text))

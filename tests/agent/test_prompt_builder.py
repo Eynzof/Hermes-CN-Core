@@ -33,6 +33,9 @@ from agent.prompt_builder import (
     SESSION_SEARCH_GUIDANCE,
     PLATFORM_HINTS,
     WSL_ENVIRONMENT_HINT,
+    _WINDOWS_BASH_SHELL_HINT,
+    _WINDOWS_POWERSHELL_SHELL_HINT,
+    _WINDOWS_PWSH_SHELL_HINT,
 )
 from hermes_cli.nous_subscription import NousFeatureState, NousSubscriptionFeatures
 
@@ -1175,6 +1178,9 @@ class TestEnvironmentHints:
         monkeypatch.setattr(_pb, "is_wsl", lambda: False)
         monkeypatch.setattr(sys, "platform", "win32")
         monkeypatch.delenv("TERMINAL_ENV", raising=False)
+        # Force the PS5.1 hint so the test is deterministic regardless of
+        # whether pwsh happens to be on the runner's PATH.
+        monkeypatch.setattr("shutil.which", lambda name: None)
         _pb._clear_backend_probe_cache()
         result = _pb.build_environment_hints()
         assert "Host: Windows" in result
@@ -1185,6 +1191,107 @@ class TestEnvironmentHints:
         assert "NOT the username" in result
         assert "bash" in result
         assert "PowerShell" in result
+
+    def test_build_environment_hints_shell_bash_uses_bash_hint(self, monkeypatch):
+        import agent.prompt_builder as _pb
+        import sys
+        monkeypatch.setattr(_pb, "is_wsl", lambda: False)
+        monkeypatch.setattr(sys, "platform", "win32")
+        monkeypatch.delenv("TERMINAL_ENV", raising=False)
+        monkeypatch.setattr(
+            "hermes_cli.config.load_config",
+            lambda: {"terminal": {"shell": "bash"}},
+        )
+        monkeypatch.setattr("shutil.which", lambda name: None)
+        _pb._clear_backend_probe_cache()
+        result = _pb.build_environment_hints()
+        assert _WINDOWS_BASH_SHELL_HINT in result
+        assert _WINDOWS_POWERSHELL_SHELL_HINT not in result
+        assert _WINDOWS_PWSH_SHELL_HINT not in result
+
+    def test_build_environment_hints_shell_powershell_uses_ps51_hint(self, monkeypatch):
+        import agent.prompt_builder as _pb
+        import sys
+        monkeypatch.setattr(_pb, "is_wsl", lambda: False)
+        monkeypatch.setattr(sys, "platform", "win32")
+        monkeypatch.delenv("TERMINAL_ENV", raising=False)
+        monkeypatch.setattr(
+            "hermes_cli.config.load_config",
+            lambda: {"terminal": {"shell": "powershell"}},
+        )
+        monkeypatch.setattr("shutil.which", lambda name: None)
+        _pb._clear_backend_probe_cache()
+        result = _pb.build_environment_hints()
+        assert _WINDOWS_POWERSHELL_SHELL_HINT in result
+        assert _WINDOWS_BASH_SHELL_HINT not in result
+        assert _WINDOWS_PWSH_SHELL_HINT not in result
+
+    def test_build_environment_hints_shell_auto_detects_pwsh(self, monkeypatch):
+        import agent.prompt_builder as _pb
+        import sys
+        monkeypatch.setattr(_pb, "is_wsl", lambda: False)
+        monkeypatch.setattr(sys, "platform", "win32")
+        monkeypatch.delenv("TERMINAL_ENV", raising=False)
+        monkeypatch.setattr(
+            "hermes_cli.config.load_config",
+            lambda: {"terminal": {"shell": "auto"}},
+        )
+        monkeypatch.setattr("shutil.which", lambda name: "pwsh" if name == "pwsh" else None)
+        _pb._clear_backend_probe_cache()
+        result = _pb.build_environment_hints()
+        assert _WINDOWS_PWSH_SHELL_HINT in result
+        assert _WINDOWS_POWERSHELL_SHELL_HINT not in result
+        assert _WINDOWS_BASH_SHELL_HINT not in result
+
+    def test_build_environment_hints_shell_auto_falls_back_to_ps51(self, monkeypatch):
+        import agent.prompt_builder as _pb
+        import sys
+        monkeypatch.setattr(_pb, "is_wsl", lambda: False)
+        monkeypatch.setattr(sys, "platform", "win32")
+        monkeypatch.delenv("TERMINAL_ENV", raising=False)
+        monkeypatch.setattr(
+            "hermes_cli.config.load_config",
+            lambda: {"terminal": {"shell": "auto"}},
+        )
+        monkeypatch.setattr("shutil.which", lambda name: None)
+        _pb._clear_backend_probe_cache()
+        result = _pb.build_environment_hints()
+        assert _WINDOWS_POWERSHELL_SHELL_HINT in result
+        assert _WINDOWS_PWSH_SHELL_HINT not in result
+        assert _WINDOWS_BASH_SHELL_HINT not in result
+
+    def test_build_environment_hints_shell_bash_is_ignored_on_non_windows(self, monkeypatch):
+        import agent.prompt_builder as _pb
+        import sys
+        monkeypatch.setattr(_pb, "is_wsl", lambda: False)
+        monkeypatch.setattr(sys, "platform", "linux")
+        monkeypatch.delenv("TERMINAL_ENV", raising=False)
+        monkeypatch.setattr(
+            "hermes_cli.config.load_config",
+            lambda: {"terminal": {"shell": "bash"}},
+        )
+        _pb._clear_backend_probe_cache()
+        result = _pb.build_environment_hints()
+        assert _WINDOWS_BASH_SHELL_HINT not in result
+        assert _WINDOWS_POWERSHELL_SHELL_HINT not in result
+        assert _WINDOWS_PWSH_SHELL_HINT not in result
+
+    def test_build_environment_hints_shell_invalid_value_falls_back_to_auto(self, monkeypatch):
+        import agent.prompt_builder as _pb
+        import sys
+        monkeypatch.setattr(_pb, "is_wsl", lambda: False)
+        monkeypatch.setattr(sys, "platform", "win32")
+        monkeypatch.delenv("TERMINAL_ENV", raising=False)
+        monkeypatch.setattr(
+            "hermes_cli.config.load_config",
+            lambda: {"terminal": {"shell": "zsh"}},
+        )
+        monkeypatch.setattr("shutil.which", lambda name: None)
+        _pb._clear_backend_probe_cache()
+        result = _pb.build_environment_hints()
+        # Unknown value should behave like auto when pwsh is absent.
+        assert _WINDOWS_POWERSHELL_SHELL_HINT in result
+        assert _WINDOWS_BASH_SHELL_HINT not in result
 
     def test_build_environment_hints_on_macos_local(self, monkeypatch):
         import agent.prompt_builder as _pb

@@ -14,7 +14,7 @@ Import discipline (mirrors gateway/slash_commands.py, PR #41886):
 
 from __future__ import annotations
 
-import json
+import orjson
 import os
 import sys
 import threading
@@ -1180,7 +1180,7 @@ class CLICommandsMixin:
         from tools.cronjob_tools import cronjob as cronjob_tool
 
         def _cron_api(**kwargs):
-            return json.loads(cronjob_tool(**kwargs))
+            return orjson.loads(cronjob_tool(**kwargs))
 
         def _normalize_skills(values):
             normalized = []
@@ -2316,9 +2316,18 @@ class CLICommandsMixin:
             try:
                 subprocess.call([*shlex.split(editor), path])
             except Exception:
-                # Fall back to a bare invocation (editor value may not be a
-                # simple argv-splittable string on some platforms).
-                subprocess.call(f"{editor} {shlex.quote(path)}", shell=True)
+                # Fall back to shell invocation for platforms where the
+                # editor value can't be split into argv.  Quote the editor
+                # path and use creationflags to suppress console flash.
+                _kw = {}
+                if sys.platform == "win32":
+                    from hermes_cli._subprocess_compat import windows_hide_flags
+                    _kw["creationflags"] = windows_hide_flags()
+                subprocess.call(
+                    f'"{editor}" {shlex.quote(path)}',
+                    shell=True,
+                    **_kw,
+                )
             with open(path, "r", encoding="utf-8") as fh:
                 raw = fh.read()
         finally:

@@ -25,9 +25,9 @@ Usage in run_agent.py:
 
 from __future__ import annotations
 
-import json
+import orjson
 import logging
-import re
+from agent.re_compat import re
 import inspect
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -923,7 +923,7 @@ class MemoryManager:
         """
         if isinstance(result, str):
             try:
-                result = json.loads(result)
+                result = orjson.loads(result)
             except Exception:
                 return False
         if not isinstance(result, dict):

@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import logging
 import os
-import re
+from agent.re_compat import re
 import sys
 import threading
 import time
@@ -31,6 +31,7 @@ from typing import Any, Callable, Dict, List, Optional
 from urllib.parse import urlparse, parse_qs, urlunparse
 
 from agent.context_compressor import ContextCompressor
+from agent.gc_tuning import gc_frozen_init
 from agent.iteration_budget import IterationBudget
 from agent.memory_manager import StreamingContextScrubber
 from agent.model_metadata import (
@@ -213,6 +214,7 @@ def _merge_model_extra_body(agent, model_cfg: Dict[str, Any]) -> None:
     agent.request_overrides = overrides
 
 
+@gc_frozen_init
 def init_agent(
     agent,
     base_url: str = None,
@@ -252,6 +254,7 @@ def init_agent(
     read_terminal_callback: callable = None,
     step_callback: callable = None,
     stream_delta_callback: callable = None,
+    tool_calls_committed_callback: callable = None,
     interim_assistant_callback: callable = None,
     tool_gen_callback: callable = None,
     status_callback: callable = None,
@@ -486,6 +489,7 @@ def init_agent(
     agent.read_terminal_callback = read_terminal_callback
     agent.step_callback = step_callback
     agent.stream_delta_callback = stream_delta_callback
+    agent.tool_calls_committed_callback = tool_calls_committed_callback
     agent.interim_assistant_callback = interim_assistant_callback
     agent.status_callback = status_callback
     agent.notice_callback = notice_callback
@@ -1787,6 +1791,18 @@ def init_agent(
     agent.compression_enabled = compression_enabled
     agent.compression_in_place = compression_in_place
 
+    # System-reminder provider configuration
+    # Read from config.yaml if available, otherwise use defaults.
+    try:
+        _cr_cfg = _agent_cfg.get("compact_reminder", {}) if isinstance(_agent_cfg, dict) else {}
+    except Exception:
+        _cr_cfg = {}
+    if not isinstance(_cr_cfg, dict):
+        _cr_cfg = {}
+    agent.compact_reminder_enabled = str(_cr_cfg.get("enabled", True)).lower() in {"true", "1", "yes"}
+    agent.compact_reminder_threshold = float(_cr_cfg.get("threshold", 0.70))
+    agent.compact_reminder_cooldown_steps = int(_cr_cfg.get("cooldown_steps", 5))
+
     # Reject models whose context window is below the minimum required
     # for reliable tool-calling workflows (64K tokens).
     _ctx = getattr(agent.context_compressor, "context_length", 0)
@@ -1828,42 +1844,40 @@ def init_agent(
         except Exception:
             pass
 
-    # Inject context engine tool schemas (e.g. lcm_grep, lcm_describe, lcm_expand).
-    # Skip names that are already present — the _ra().get_tool_definitions()
-    # quiet_mode cache returned a shared list pre-#17335, so a stray
-    # mutation here would poison subsequent agent inits in the same
-    # Gateway process and trip provider-side 'duplicate tool name'
-    # errors. Even with the cache fix, dedup is the right defense
-    # against plugin paths that may register the same schemas via
-    # ctx.register_tool(). Mirrors the memory tools dedup above.
-    #
-    # Respect the platform's enabled_toolsets configuration (#5544):
-    # context engine tools follow the same gating pattern as memory
-    # provider tools — without the gate, `platform_toolsets: telegram: []`
-    # would still leak lcm_* tools into the tool surface and incur the
-    # same local-model latency penalty.
+    # Register context engine tool names for dispatch routing.
+    # Tools registered in the ``context_engine`` toolset (context_usage,
+    # compact) are resolved through the standard toolset pipeline above
+    # and are already in agent.valid_tool_names.  Engine-specific tools
+    # (returned by get_tool_schemas() but not in the registry) are still
+    # injected here to maintain backward compatibility.
     agent._context_engine_tool_names: set = set()
     if (
         hasattr(agent, "context_compressor")
         and agent.context_compressor
-        and agent.tools is not None
         and (
             agent.enabled_toolsets is None
             or "context_engine" in agent.enabled_toolsets
         )
     ):
+        # Seed with registry-registered context_engine tool names
+        try:
+            from tools.registry import registry as _ce_registry
+            agent._context_engine_tool_names.update(
+                _ce_registry.get_tool_names_for_toolset("context_engine")
+            )
+        except Exception:
+            pass
+
+        # Inject engine-specific tools not in the registry
         _existing_tool_names = {
             t.get("function", {}).get("name")
-            for t in agent.tools
+            for t in (agent.tools or [])
             if isinstance(t, dict)
         }
         from agent.memory_manager import normalize_tool_schema as _normalize_tool_schema
         for _raw_schema in agent.context_compressor.get_tool_schemas():
             _schema = _normalize_tool_schema(_raw_schema)
             if _schema is None:
-                # A schema with no resolvable name (e.g. an already-wrapped
-                # entry) would append a nameless tool that strict providers
-                # 400 on, disabling the whole toolset (#47707). Skip it.
                 _ra().logger.warning(
                     "Context engine returned a tool schema with no resolvable "
                     "name; skipping to avoid poisoning the request (%r)",
@@ -1871,10 +1885,11 @@ def init_agent(
                 )
                 continue
             _tname = _schema["name"]
-            if _tname in _existing_tool_names:
-                continue  # already registered via plugin/cache path
+            if _tname in _existing_tool_names or _tname in agent._context_engine_tool_names:
+                continue  # already registered via registry/toolset
             _wrapped = {"type": "function", "function": _schema}
-            agent.tools.append(_wrapped)
+            if agent.tools is not None:
+                agent.tools.append(_wrapped)
             agent.valid_tool_names.add(_tname)
             agent._context_engine_tool_names.add(_tname)
             _existing_tool_names.add(_tname)

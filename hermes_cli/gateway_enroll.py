@@ -30,7 +30,7 @@ EXPERIMENTAL: the relay auth scheme may change without a deprecation cycle until
 
 from __future__ import annotations
 
-import json
+import orjson
 import os
 import socket
 import sys
@@ -100,7 +100,7 @@ def _post_enroll(
     on success, ``{error}`` at 400/401/403.
     """
     url = f"{connector_base_url.rstrip('/')}/relay/enroll"
-    data = json.dumps({"enrollmentToken": enrollment_token, "gatewayId": gateway_id}).encode("utf-8")
+    data = orjson.dumps({"enrollmentToken": enrollment_token, "gatewayId": gateway_id})
     req = urllib.request.Request(
         url,
         data=data,
@@ -113,11 +113,11 @@ def _post_enroll(
     )
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            payload = json.loads(resp.read().decode())
+            payload = orjson.loads(resp.read().decode())
     except urllib.error.HTTPError as exc:
         detail = ""
         try:
-            detail = (json.loads(exc.read().decode()) or {}).get("error", "")
+            detail = (orjson.loads(exc.read().decode()) or {}).get("error", "")
         except Exception:
             pass
         if exc.code == 401:

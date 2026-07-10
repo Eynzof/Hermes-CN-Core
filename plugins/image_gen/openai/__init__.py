@@ -139,8 +139,7 @@ def _load_image_bytes(ref: str) -> Tuple[bytes, str]:
         name = ref.split("?", 1)[0].rsplit("/", 1)[-1] or "image.png"
         return resp.content, name
     if lower.startswith("data:"):
-        import base64
-
+        import pybase64 as base64
         header, _, b64 = ref.partition(",")
         ext = "png"
         if "image/" in header:

@@ -8,7 +8,7 @@ service; the raw Telegram token is saved locally after one-time retrieval.
 from __future__ import annotations
 
 import os
-import re
+from agent.re_compat import re
 import secrets
 import sys
 import time

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import argparse
-import json
+import orjson
 import os
 import threading
 from pathlib import Path
@@ -116,7 +116,7 @@ def test_run_slash_create_with_parent_and_cascade(kanban_home):
     # Parent then child via --parent
     out1 = kc.run_slash("create 'parent' --assignee alice")
     # Extract the "t_xxxx" id from "Created t_xxxx (ready, ...)"
-    import re
+    from agent.re_compat import re
     m = re.search(r"(t_[a-f0-9]+)", out1)
     assert m
     p = m.group(1)
@@ -132,7 +132,7 @@ def test_run_slash_create_with_parent_and_cascade(kanban_home):
 
 def test_run_slash_show_includes_comments(kanban_home):
     out = kc.run_slash("create 'x'")
-    import re
+    from agent.re_compat import re
     tid = re.search(r"(t_[a-f0-9]+)", out).group(1)
     kc.run_slash(f"comment {tid} 'remember to include performance section'")
     show = kc.run_slash(f"show {tid}")
@@ -141,7 +141,7 @@ def test_run_slash_show_includes_comments(kanban_home):
 
 def test_run_slash_comment_max_len_trims_long_body(kanban_home):
     out = kc.run_slash("create 'x'")
-    import re
+    from agent.re_compat import re
     tid = re.search(r"(t_[a-f0-9]+)", out).group(1)
     kc.run_slash(f"comment {tid} '{'x' * 30}' --max-len 20")
     show = kc.run_slash(f"show {tid}")
@@ -151,7 +151,7 @@ def test_run_slash_comment_max_len_trims_long_body(kanban_home):
 
 def test_run_slash_block_unblock_cycle(kanban_home):
     out = kc.run_slash("create 'x' --assignee alice")
-    import re
+    from agent.re_compat import re
     tid = re.search(r"(t_[a-f0-9]+)", out).group(1)
     # Claim first so block() finds it running
     kc.run_slash(f"claim {tid}")
@@ -161,7 +161,7 @@ def test_run_slash_block_unblock_cycle(kanban_home):
 
 def test_run_slash_json_output(kanban_home):
     out = kc.run_slash("create 'jsontask' --assignee alice --json")
-    payload = json.loads(out)
+    payload = orjson.loads(out)
     assert payload["title"] == "jsontask"
     assert payload["assignee"] == "alice"
     assert payload["status"] == "ready"
@@ -176,7 +176,7 @@ def test_run_slash_dispatch_dry_run_counts(kanban_home):
 
 def test_run_slash_context_output_format(kanban_home):
     out = kc.run_slash("create 'tech spec' --assignee alice --body 'write an RFC'")
-    import re
+    from agent.re_compat import re
     tid = re.search(r"(t_[a-f0-9]+)", out).group(1)
     kc.run_slash(f"comment {tid} 'remember to include performance section'")
     ctx = kc.run_slash(f"context {tid}")
@@ -228,7 +228,7 @@ def test_kanban_list_json_includes_session_id(kanban_home):
             conn, title="acp task", assignee="alice", session_id="acp-x"
         )
     raw = kc.run_slash("list --json")
-    payload = json.loads(raw)
+    payload = orjson.loads(raw)
     assert any(
         row.get("title") == "acp task"
         and row.get("session_id") == "acp-x"
@@ -244,7 +244,7 @@ def test_run_slash_usage_error_returns_message(kanban_home):
 
 def test_run_slash_assign_reassigns(kanban_home):
     out = kc.run_slash("create 'x' --assignee alice")
-    import re
+    from agent.re_compat import re
     tid = re.search(r"(t_[a-f0-9]+)", out).group(1)
     assert "Assigned" in kc.run_slash(f"assign {tid} bob")
     show = kc.run_slash(f"show {tid}")
@@ -254,7 +254,7 @@ def test_run_slash_assign_reassigns(kanban_home):
 def test_run_slash_link_unlink(kanban_home):
     a = kc.run_slash("create 'a'")
     b = kc.run_slash("create 'b'")
-    import re
+    from agent.re_compat import re
     ta = re.search(r"(t_[a-f0-9]+)", a).group(1)
     tb = re.search(r"(t_[a-f0-9]+)", b).group(1)
     assert "Linked" in kc.run_slash(f"link {ta} {tb}")
@@ -369,7 +369,7 @@ def test_kanban_not_gateway_only():
 # ---------------------------------------------------------------------------
 
 def test_run_slash_reclaim_running_task(kanban_home):
-    import re
+    from agent.re_compat import re
     import time
     import secrets
     from hermes_cli import kanban_db as kb
@@ -407,7 +407,7 @@ def test_run_slash_reclaim_running_task(kanban_home):
 
 
 def test_run_slash_reassign_with_reclaim_flag(kanban_home):
-    import re
+    from agent.re_compat import re
     import time
     import secrets
     from hermes_cli import kanban_db as kb
@@ -454,7 +454,7 @@ def test_run_slash_specify_end_to_end(kanban_home, monkeypatch):
 
     # Create a triage task via the same slash surface.
     create_out = kc.run_slash("create 'rough idea' --triage")
-    import re
+    from agent.re_compat import re
     m = re.search(r"(t_[a-f0-9]+)", create_out)
     assert m, f"no task id in: {create_out!r}"
     tid = m.group(1)

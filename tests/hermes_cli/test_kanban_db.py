@@ -695,7 +695,7 @@ def test_stale_claim_reclaim_event_records_diagnostic_payload(
     and worker_pid so operators can diagnose why a claim went stale
     (#23025: previous payload only had ``stale_lock`` which gives no
     timing context)."""
-    import json
+    import orjson
     import hermes_cli.kanban_db as _kb
 
     with kb.connect() as conn:
@@ -719,7 +719,7 @@ def test_stale_claim_reclaim_event_records_diagnostic_payload(
             (t,),
         ).fetchone()
         assert row is not None
-        payload = json.loads(row["payload"])
+        payload = orjson.loads(row["payload"])
         assert payload["claim_expires"] == old_expires
         assert payload["last_heartbeat_at"] == hb_at
         assert payload["worker_pid"] == 12345

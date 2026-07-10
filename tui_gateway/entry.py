@@ -10,7 +10,7 @@ import hermes_bootstrap
 
 hermes_bootstrap.harden_import_path()
 
-import json
+import orjson
 import logging
 import signal
 import time
@@ -360,8 +360,8 @@ def main():
             continue
 
         try:
-            req = json.loads(line)
-        except json.JSONDecodeError:
+            req = orjson.loads(line)
+        except orjson.JSONDecodeError:
             if not write_json({"jsonrpc": "2.0", "error": {"code": -32700, "message": "parse error"}, "id": None}):
                 _log_exit("parse-error-response write failed (broken stdout pipe)")
                 sys.exit(0)

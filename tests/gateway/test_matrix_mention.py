@@ -1,6 +1,6 @@
 """Tests for Matrix require-mention gating and auto-thread features."""
 
-import json
+import orjson
 import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -590,7 +590,7 @@ class TestThreadPersistence:
         adapter = _make_adapter()
         adapter._threads.mark("$thread_abc")
 
-        data = json.loads(state_path.read_text())
+        data = orjson.loads(state_path.read_text())
         assert "$thread_abc" in data
 
     def test_threads_survive_reload(self, tmp_path, monkeypatch):
@@ -598,7 +598,7 @@ class TestThreadPersistence:
         from gateway.platforms.helpers import ThreadParticipationTracker
 
         state_path = tmp_path / "matrix_threads.json"
-        state_path.write_text(json.dumps(["$t1", "$t2"]))
+        state_path.write_text(orjson.dumps(["$t1", "$t2"]).decode('utf-8'))
         monkeypatch.setattr(
             ThreadParticipationTracker,
             "_state_path",
@@ -624,7 +624,7 @@ class TestThreadPersistence:
         for i in range(10):
             adapter._threads.mark(f"$t{i}")
 
-        data = json.loads(state_path.read_text())
+        data = orjson.loads(state_path.read_text())
         assert len(data) == 5
 
 

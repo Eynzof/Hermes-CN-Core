@@ -107,7 +107,7 @@ class TestRegisterSlackActionHandlerAPI:
 
     def test_regex_action_id_is_accepted(self):
         """slack_bolt accepts re.Pattern matchers — so should the plugin API."""
-        import re as _re
+        from agent.re_compat import re as _re
         mgr, ctx = _make_ctx()
 
         async def cb(ack, body, action):  # pragma: no cover

@@ -22,7 +22,7 @@ Cost model note: gated OFF by default. When off, the only overhead is the
 
 from __future__ import annotations
 
-import json
+import orjson
 import logging
 import os
 import time
@@ -162,6 +162,6 @@ def save_moa_turn(
             },
         }
         with path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
+            f.write(orjson.dumps(record, default=str).decode('utf-8') + "\n")
     except Exception as exc:  # pragma: no cover - tracing must never break a turn
         logger.debug("MoA trace write failed (session=%s): %s", session_id, exc)

@@ -12,7 +12,7 @@ Wires ``hermes meet <subcommand>``:
 from __future__ import annotations
 
 import argparse
-import json
+import orjson
 import sys
 from pathlib import Path
 from typing import Optional
@@ -402,7 +402,7 @@ def _cmd_join(
         except Exception as e:
             print(f"remote start_bot failed: {e}")
             return 1
-        print(json.dumps({"node": entry.get("name"), **res}, indent=2))
+        print(orjson.dumps({"node": entry.get("name"), **res}, option=orjson.OPT_INDENT_2).decode('utf-8'))
         return 0 if res.get("ok") else 1
 
     auth = _auth_state_path()
@@ -414,7 +414,7 @@ def _cmd_join(
         auth_state=str(auth) if auth.is_file() else None,
         mode=mode,
     )
-    print(json.dumps(res, indent=2))
+    print(orjson.dumps(res, option=orjson.OPT_INDENT_2).decode('utf-8'))
     return 0 if res.get("ok") else 1
 
 
@@ -440,24 +440,24 @@ def _cmd_say(text: str, node: Optional[str] = None) -> int:
         except Exception as e:
             print(f"remote say failed: {e}")
             return 1
-        print(json.dumps({"node": entry.get("name"), **res}, indent=2))
+        print(orjson.dumps({"node": entry.get("name"), **res}, option=orjson.OPT_INDENT_2).decode('utf-8'))
         return 0 if res.get("ok") else 1
 
     res = pm.enqueue_say(text)
-    print(json.dumps(res, indent=2))
+    print(orjson.dumps(res, option=orjson.OPT_INDENT_2).decode('utf-8'))
     return 0 if res.get("ok") else 1
 
 
 def _cmd_status() -> int:
     res = pm.status()
-    print(json.dumps(res, indent=2))
+    print(orjson.dumps(res, option=orjson.OPT_INDENT_2).decode('utf-8'))
     return 0 if res.get("ok") else 1
 
 
 def _cmd_transcript(last: Optional[int]) -> int:
     res = pm.transcript(last=last)
     if not res.get("ok"):
-        print(json.dumps(res, indent=2))
+        print(orjson.dumps(res, option=orjson.OPT_INDENT_2).decode('utf-8'))
         return 1
     for ln in res.get("lines", []):
         print(ln)
@@ -466,7 +466,7 @@ def _cmd_transcript(last: Optional[int]) -> int:
 
 def _cmd_stop() -> int:
     res = pm.stop(reason="hermes meet stop")
-    print(json.dumps(res, indent=2))
+    print(orjson.dumps(res, option=orjson.OPT_INDENT_2).decode('utf-8'))
     return 0 if res.get("ok") else 1
 
 

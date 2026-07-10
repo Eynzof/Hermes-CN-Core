@@ -14,7 +14,7 @@ Config files are stored in ~/.hermes/ for easy access.
 import importlib.util
 import logging
 import os
-import re
+from agent.re_compat import re
 import shutil
 import sys
 import copy
@@ -1446,7 +1446,11 @@ def setup_terminal_backend(config: dict):
                 ssh_cmd.extend(["-p", port])
             ssh_cmd.append(f"{user}@{host}" if user else host)
             ssh_cmd.append("echo ok")
-            result = subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=10)
+            _sk = {}
+            if sys.platform == "win32":
+                from hermes_cli._subprocess_compat import windows_hide_flags
+                _sk["creationflags"] = windows_hide_flags()
+            result = subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=10, **_sk)  # windows-footgun: ok — creationflags in _sk
             if result.returncode == 0:
                 print_success("  SSH connection successful!")
             else:

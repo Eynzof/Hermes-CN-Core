@@ -1,6 +1,6 @@
 """Tests for browser_console tool and browser_vision annotate param."""
 
-import json
+import orjson
 import os
 import sys
 from unittest.mock import patch, MagicMock
@@ -39,7 +39,7 @@ class TestBrowserConsole:
 
         with patch("tools.browser_tool._run_browser_command") as mock_cmd:
             mock_cmd.side_effect = [console_response, errors_response]
-            result = json.loads(browser_console(task_id="test"))
+            result = orjson.loads(browser_console(task_id="test"))
 
         assert result["success"] is True
         assert result["total_messages"] == 2
@@ -76,7 +76,7 @@ class TestBrowserConsole:
 
         empty = {"success": True, "data": {"messages": [], "errors": []}}
         with patch("tools.browser_tool._run_browser_command", return_value=empty):
-            result = json.loads(browser_console(task_id="test"))
+            result = orjson.loads(browser_console(task_id="test"))
 
         assert result["total_messages"] == 0
         assert result["total_errors"] == 0
@@ -88,7 +88,7 @@ class TestBrowserConsole:
 
         failed = {"success": False, "error": "No session"}
         with patch("tools.browser_tool._run_browser_command", return_value=failed):
-            result = json.loads(browser_console(task_id="test"))
+            result = orjson.loads(browser_console(task_id="test"))
 
         # Should still return success with empty data
         assert result["success"] is True
@@ -109,9 +109,9 @@ class TestBrowserConsole:
         }
         with patch("tools.browser_tool._run_browser_command") as mock_cmd:
             mock_cmd.side_effect = [console_response, errors_response]
-            result = json.loads(browser_console(task_id="test"))
+            result = orjson.loads(browser_console(task_id="test"))
 
-        serialized = json.dumps(result)
+        serialized = orjson.dumps(result).decode('utf-8')
         # The secret body must be gone. The exact mask format
         # (partial ``sk-…7890`` vs full ``***`` for keyed ``token=`` values)
         # is owned by agent.redact and intentionally not pinned here.
@@ -127,10 +127,10 @@ class TestBrowserConsole:
         with patch("tools.browser_tool._last_session_key", return_value="test"), \
              patch("tools.browser_tool._is_camofox_mode", return_value=False), \
              patch("tools.browser_tool._run_browser_command", return_value={"success": True, "data": {"result": fake_key}}):
-            result = json.loads(_browser_eval("document.body.innerText", task_id="test"))
+            result = orjson.loads(_browser_eval("document.body.innerText", task_id="test"))
 
         assert result["success"] is True
-        assert "BROWSEREVALSECRET" not in json.dumps(result)
+        assert "BROWSEREVALSECRET" not in orjson.dumps(result).decode('utf-8')
         assert result["result"].startswith("ghp_")
 
     def test_redacts_secrets_from_snapshot_output(self):
@@ -144,7 +144,7 @@ class TestBrowserConsole:
         with patch("tools.browser_tool._last_session_key", return_value="test"), \
              patch("tools.browser_tool._is_camofox_mode", return_value=False), \
              patch("tools.browser_tool._run_browser_command", return_value=snapshot_response):
-            result = json.loads(browser_snapshot(task_id="test"))
+            result = orjson.loads(browser_snapshot(task_id="test"))
 
         assert result["success"] is True
         assert "BROWSERSNAPSHOTSECRET" not in result["snapshot"]
@@ -154,8 +154,8 @@ class TestBrowserConsole:
         from tools.browser_tool import browser_console
 
         with patch("tools.browser_tool._allow_unsafe_browser_evaluate", return_value=False), \
-             patch("tools.browser_tool._browser_eval", return_value=json.dumps({"success": True, "result": "Example"})) as mock_eval:
-            result = json.loads(browser_console(expression="document.title", task_id="test"))
+             patch("tools.browser_tool._browser_eval", return_value=orjson.dumps({"success": True, "result": "Example"}).decode('utf-8')) as mock_eval:
+            result = orjson.loads(browser_console(expression="document.title", task_id="test"))
 
         assert result == {"success": True, "result": "Example"}
         mock_eval.assert_called_once_with("document.title", "test")
@@ -165,7 +165,7 @@ class TestBrowserConsole:
 
         with patch("tools.browser_tool._allow_unsafe_browser_evaluate", return_value=False), \
              patch("tools.browser_tool._browser_eval") as mock_eval:
-            result = json.loads(browser_console(expression="document.cookie", task_id="test"))
+            result = orjson.loads(browser_console(expression="document.cookie", task_id="test"))
 
         assert result["success"] is False
         assert "Blocked" in result["error"]
@@ -187,7 +187,7 @@ class TestBrowserConsole:
         with patch("tools.browser_tool._allow_unsafe_browser_evaluate", return_value=False), \
              patch("tools.browser_tool._browser_eval") as mock_eval:
             for expr in risky_expressions:
-                result = json.loads(browser_console(expression=expr, task_id="test"))
+                result = orjson.loads(browser_console(expression=expr, task_id="test"))
                 assert result["success"] is False, expr
                 assert "Blocked" in result["error"], expr
 
@@ -211,7 +211,7 @@ class TestBrowserConsole:
         with patch("tools.browser_tool._allow_unsafe_browser_evaluate", return_value=False), \
              patch("tools.browser_tool._browser_eval") as mock_eval:
             for expr in risky_expressions:
-                result = json.loads(browser_console(expression=expr, task_id="test"))
+                result = orjson.loads(browser_console(expression=expr, task_id="test"))
                 assert result["success"] is False, expr
                 assert "Blocked" in result["error"], expr
 
@@ -221,8 +221,8 @@ class TestBrowserConsole:
         from tools.browser_tool import browser_console
 
         with patch("tools.browser_tool._allow_unsafe_browser_evaluate", return_value=False), \
-             patch("tools.browser_tool._browser_eval", return_value=json.dumps({"success": True, "result": True})) as mock_eval:
-            result = json.loads(browser_console(expression='document.title.includes("Example")', task_id="test"))
+             patch("tools.browser_tool._browser_eval", return_value=orjson.dumps({"success": True, "result": True}).decode('utf-8')) as mock_eval:
+            result = orjson.loads(browser_console(expression='document.title.includes("Example")', task_id="test"))
 
         assert result == {"success": True, "result": True}
         mock_eval.assert_called_once_with('document.title.includes("Example")', "test")
@@ -231,8 +231,8 @@ class TestBrowserConsole:
         from tools.browser_tool import browser_console
 
         with patch("tools.browser_tool._allow_unsafe_browser_evaluate", return_value=True), \
-             patch("tools.browser_tool._browser_eval", return_value=json.dumps({"success": True, "result": "cookie=value"})) as mock_eval:
-            result = json.loads(browser_console(expression="document.cookie", task_id="test"))
+             patch("tools.browser_tool._browser_eval", return_value=orjson.dumps({"success": True, "result": "cookie=value"}).decode('utf-8')) as mock_eval:
+            result = orjson.loads(browser_console(expression="document.cookie", task_id="test"))
 
         assert result == {"success": True, "result": "cookie=value"}
         mock_eval.assert_called_once_with("document.cookie", "test")
@@ -369,7 +369,7 @@ class TestBrowserVisionConfig:
             patch("hermes_cli.config.load_config", return_value={"auxiliary": {"vision": {"temperature": 1, "timeout": 45}}}),
             patch("tools.browser_tool.call_llm", return_value=mock_response) as mock_llm,
         ):
-            result = json.loads(browser_vision("what is on the page?", task_id="test"))
+            result = orjson.loads(browser_vision("what is on the page?", task_id="test"))
 
         assert result["success"] is True
         assert result["analysis"] == "Annotated screenshot analysis"
@@ -393,7 +393,7 @@ class TestBrowserVisionConfig:
             patch("hermes_cli.config.load_config", return_value={"auxiliary": {"vision": {}}}),
             patch("tools.browser_tool.call_llm", return_value=mock_response) as mock_llm,
         ):
-            result = json.loads(browser_vision("what is on the page?", task_id="test"))
+            result = orjson.loads(browser_vision("what is on the page?", task_id="test"))
 
         assert result["success"] is True
         assert result["analysis"] == "Default screenshot analysis"
@@ -469,7 +469,7 @@ class TestBrowserVisionConfig:
                 patch("tools.browser_tool._get_vision_model", return_value="test-model"),
                 patch("tools.browser_tool.call_llm", return_value=mock_response) as mock_llm,
             ):
-                result = json.loads(browser_vision("what is on the page?", task_id="test"))
+                result = orjson.loads(browser_vision("what is on the page?", task_id="test"))
         finally:
             clear_runtime_main()
 

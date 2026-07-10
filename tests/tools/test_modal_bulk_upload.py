@@ -1,7 +1,7 @@
 """Tests for Modal bulk upload via tar/base64 archive."""
 
 import asyncio
-import base64
+import pybase64 as base64
 import io
 import tarfile
 from unittest.mock import AsyncMock, MagicMock

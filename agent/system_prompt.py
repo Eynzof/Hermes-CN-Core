@@ -23,7 +23,7 @@ Pure helpers that read the agent's state.  AIAgent keeps thin forwarders.
 
 from __future__ import annotations
 
-import json
+import orjson
 from typing import Any, Dict, List, Optional
 
 from agent.prompt_builder import (
@@ -525,7 +525,7 @@ def format_tools_for_system_message(agent: Any) -> str:
         }
         formatted_tools.append(formatted_tool)
 
-    return json.dumps(formatted_tools, ensure_ascii=False)
+    return orjson.dumps(formatted_tools).decode('utf-8')
 
 
 __all__ = [

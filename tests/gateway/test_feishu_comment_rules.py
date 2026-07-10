@@ -1,6 +1,6 @@
 """Tests for feishu_comment_rules — 3-tier access control rule engine."""
 
-import json
+import orjson
 import os
 import tempfile
 import time
@@ -209,7 +209,7 @@ class TestMtimeCache(unittest.TestCase):
 
     def test_reads_file_and_caches(self):
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-            json.dump({"key": "value"}, f)
+            f.write(orjson.dumps({"key": "value"}).decode('utf-8'))
             f.flush()
             path = Path(f.name)
         try:
@@ -224,7 +224,7 @@ class TestMtimeCache(unittest.TestCase):
 
     def test_reloads_on_mtime_change(self):
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-            json.dump({"v": 1}, f)
+            f.write(orjson.dumps({"v": 1}).decode('utf-8'))
             f.flush()
             path = Path(f.name)
         try:
@@ -233,7 +233,7 @@ class TestMtimeCache(unittest.TestCase):
             # Modify file
             time.sleep(0.05)
             with open(path, "w") as f2:
-                json.dump({"v": 2}, f2)
+                f2.write(orjson.dumps({"v": 2}).decode('utf-8'))
             # Force mtime change detection
             os.utime(path, (time.time() + 1, time.time() + 1))
             self.assertEqual(cache.load(), {"v": 2})
@@ -253,7 +253,7 @@ class TestLoadConfig(unittest.TestCase):
             },
         }
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-            json.dump(raw, f)
+            f.write(orjson.dumps(raw).decode('utf-8'))
             path = Path(f.name)
         try:
             with patch("plugins.platforms.feishu.feishu_comment_rules.RULES_FILE", path):
@@ -282,7 +282,7 @@ class TestPairingStore(unittest.TestCase):
         self._tmpdir = tempfile.mkdtemp()
         self._pairing_file = Path(self._tmpdir) / "pairing.json"
         with open(self._pairing_file, "w") as f:
-            json.dump({"approved": {}}, f)
+            f.write(orjson.dumps({"approved": {}}).decode('utf-8'))
         self._patcher_file = patch("plugins.platforms.feishu.feishu_comment_rules.PAIRING_FILE", self._pairing_file)
         self._patcher_cache = patch(
             "plugins.platforms.feishu.feishu_comment_rules._pairing_cache",

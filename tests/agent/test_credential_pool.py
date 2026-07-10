@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import base64
-import json
+import pybase64 as base64
+import orjson
 import time
 from datetime import datetime, timezone
 
@@ -13,12 +13,12 @@ import pytest
 def _write_auth_store(tmp_path, payload: dict) -> None:
     hermes_home = tmp_path / "hermes"
     hermes_home.mkdir(parents=True, exist_ok=True)
-    (hermes_home / "auth.json").write_text(json.dumps(payload, indent=2))
+    (hermes_home / "auth.json").write_text(orjson.dumps(payload, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
 
 def _jwt_with_claims(claims: dict) -> str:
     def _part(payload: dict) -> str:
-        raw = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        raw = orjson.dumps(payload)
         return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
 
     return f"{_part({'alg': 'none', 'typ': 'JWT'})}.{_part(claims)}.sig"
@@ -373,7 +373,7 @@ def test_mark_exhausted_and_rotate_persists_status(tmp_path, monkeypatch):
     assert next_entry is not None
     assert next_entry.id == "cred-2"
 
-    auth_payload = json.loads((tmp_path / "hermes" / "auth.json").read_text())
+    auth_payload = orjson.loads((tmp_path / "hermes" / "auth.json").read_text())
     persisted = auth_payload["credential_pool"]["anthropic"][0]
     assert persisted["last_status"] == "exhausted"
     assert persisted["last_error_code"] == 402
@@ -437,7 +437,7 @@ def test_token_invalidated_marks_credential_dead(tmp_path, monkeypatch):
     assert next_entry.id == "cred-ok"
 
     # The revoked credential is now permanently marked DEAD.
-    auth_payload = json.loads((tmp_path / "hermes" / "auth.json").read_text())
+    auth_payload = orjson.loads((tmp_path / "hermes" / "auth.json").read_text())
     persisted = auth_payload["credential_pool"]["openai-codex"][0]
     assert persisted["last_status"] == STATUS_DEAD
     assert persisted["last_error_code"] == 401
@@ -501,7 +501,7 @@ def test_dead_credential_never_re_enters_rotation_after_ttl(tmp_path, monkeypatc
     assert selected.id == "cred-ok"
 
     # The DEAD entry is still marked dead on disk — not cleared by TTL.
-    auth_payload = json.loads((tmp_path / "hermes" / "auth.json").read_text())
+    auth_payload = orjson.loads((tmp_path / "hermes" / "auth.json").read_text())
     dead_entry = next(e for e in auth_payload["credential_pool"]["openai-codex"]
                        if e["id"] == "cred-dead")
     assert dead_entry["last_status"] == STATUS_DEAD
@@ -555,7 +555,7 @@ def test_429_rate_limit_still_uses_exhausted_not_dead(tmp_path, monkeypatch):
     assert next_entry is not None
     assert next_entry.id == "cred-2"
 
-    auth_payload = json.loads((tmp_path / "hermes" / "auth.json").read_text())
+    auth_payload = orjson.loads((tmp_path / "hermes" / "auth.json").read_text())
     persisted = auth_payload["credential_pool"]["openai-codex"][0]
     # 429 stays exhausted (transient) — NOT dead.
     assert persisted["last_status"] == STATUS_EXHAUSTED
@@ -610,7 +610,7 @@ def test_generic_401_without_terminal_reason_still_uses_exhausted(tmp_path, monk
         error_context={"message": "Unauthorized"},
     )
 
-    auth_payload = json.loads((tmp_path / "hermes" / "auth.json").read_text())
+    auth_payload = orjson.loads((tmp_path / "hermes" / "auth.json").read_text())
     persisted = auth_payload["credential_pool"]["openai-codex"][0]
     assert persisted["last_status"] == STATUS_EXHAUSTED
     assert persisted["last_error_code"] == 401
@@ -669,7 +669,7 @@ def test_dead_manual_entry_pruned_after_24h(tmp_path, monkeypatch):
     assert selected.id == "cred-ok"
 
     # On-disk pool should have the dead entry removed.
-    auth_payload = json.loads((tmp_path / "hermes" / "auth.json").read_text())
+    auth_payload = orjson.loads((tmp_path / "hermes" / "auth.json").read_text())
     persisted = auth_payload["credential_pool"]["openai-codex"]
     assert len(persisted) == 1
     assert persisted[0]["id"] == "cred-ok"
@@ -726,7 +726,7 @@ def test_dead_manual_entry_kept_within_24h(tmp_path, monkeypatch):
     assert selected.id == "cred-ok"
 
     # On-disk pool should still have BOTH entries — recent dead is preserved.
-    auth_payload = json.loads((tmp_path / "hermes" / "auth.json").read_text())
+    auth_payload = orjson.loads((tmp_path / "hermes" / "auth.json").read_text())
     persisted = auth_payload["credential_pool"]["openai-codex"]
     assert len(persisted) == 2
     dead_entry = next(e for e in persisted if e["id"] == "cred-recent-dead")
@@ -781,7 +781,7 @@ def test_dead_singleton_seeded_entry_not_pruned(tmp_path, monkeypatch):
     assert pool.select() is None
 
     # On-disk: the singleton-seeded DEAD entry is preserved.
-    auth_payload = json.loads((tmp_path / "hermes" / "auth.json").read_text())
+    auth_payload = orjson.loads((tmp_path / "hermes" / "auth.json").read_text())
     persisted = auth_payload["credential_pool"]["openai-codex"]
     assert len(persisted) == 1
     assert persisted[0]["id"] == "cred-seeded-dead"
@@ -822,7 +822,7 @@ def test_load_pool_does_not_persist_env_seeded_secret_value(tmp_path, monkeypatc
 
     auth_text = (tmp_path / "hermes" / "auth.json").read_text()
     assert sentinel not in auth_text
-    persisted = json.loads(auth_text)["credential_pool"]["openrouter"][0]
+    persisted = orjson.loads(auth_text)["credential_pool"]["openrouter"][0]
     assert persisted["source"] == "env:OPENROUTER_API_KEY"
     assert persisted["label"] == "OPENROUTER_API_KEY"
     assert persisted["auth_type"] == "api_key"
@@ -854,7 +854,7 @@ def test_load_pool_persists_bitwarden_origin_metadata_without_secret(tmp_path, m
 
     auth_text = (tmp_path / "hermes" / "auth.json").read_text()
     assert sentinel not in auth_text
-    persisted = json.loads(auth_text)["credential_pool"]["openrouter"][0]
+    persisted = orjson.loads(auth_text)["credential_pool"]["openrouter"][0]
     assert persisted["source"] == "env:OPENROUTER_API_KEY"
     assert persisted["secret_source"] == "bitwarden"
     assert "access_token" not in persisted
@@ -895,7 +895,7 @@ def test_load_pool_sanitizes_legacy_raw_borrowed_entry_when_value_unchanged(tmp_
     assert entry.access_token == sentinel
     auth_text = (tmp_path / "hermes" / "auth.json").read_text()
     assert sentinel not in auth_text
-    persisted = json.loads(auth_text)["credential_pool"]["openrouter"][0]
+    persisted = orjson.loads(auth_text)["credential_pool"]["openrouter"][0]
     assert persisted["id"] == "legacy-env"
     assert "access_token" not in persisted
     assert persisted["secret_fingerprint"].startswith("sha256:")
@@ -932,7 +932,7 @@ def test_pooled_credential_to_dict_strips_borrowed_secret_fields():
     )
 
     payload = credential.to_dict()
-    serialized = json.dumps(payload)
+    serialized = orjson.dumps(payload).decode('utf-8')
 
     assert sentinel not in serialized
     assert "access_token" not in payload
@@ -979,7 +979,7 @@ def test_borrowed_source_variants_strip_secret_fields(source):
     )
 
     payload = credential.to_dict()
-    serialized = json.dumps(payload)
+    serialized = orjson.dumps(payload).decode('utf-8')
 
     assert sentinel not in serialized
     assert "access_token" not in payload
@@ -1019,7 +1019,7 @@ def test_load_pool_prunes_stale_borrowed_custom_config_entry(tmp_path, monkeypat
     assert pool.entries() == []
     auth_text = (tmp_path / "hermes" / "auth.json").read_text()
     assert sentinel not in auth_text
-    assert json.loads(auth_text)["credential_pool"]["custom:foo"] == []
+    assert orjson.loads(auth_text)["credential_pool"]["custom:foo"] == []
 
 
 
@@ -1056,7 +1056,7 @@ def test_write_credential_pool_sanitizes_borrowed_payload_at_disk_boundary(tmp_p
     auth_text = (tmp_path / "hermes" / "auth.json").read_text()
     assert sentinel not in auth_text
     assert manual_secret in auth_text
-    entries = json.loads(auth_text)["credential_pool"]["openrouter"]
+    entries = orjson.loads(auth_text)["credential_pool"]["openrouter"]
     borrowed, manual = entries
     assert borrowed["source"] == "systemd://hermes/openrouter"
     assert "access_token" not in borrowed
@@ -1088,7 +1088,7 @@ def test_write_credential_pool_treats_unowned_oauth_source_as_borrowed(tmp_path,
 
     auth_text = (tmp_path / "hermes" / "auth.json").read_text()
     assert sentinel not in auth_text
-    persisted = json.loads(auth_text)["credential_pool"]["openrouter"][0]
+    persisted = orjson.loads(auth_text)["credential_pool"]["openrouter"][0]
     assert persisted["source"] == "oauth"
     assert "access_token" not in persisted
     assert "refresh_token" not in persisted
@@ -1115,7 +1115,7 @@ def test_write_credential_pool_preserves_known_provider_owned_oauth_state(tmp_pa
         }
     ])
 
-    persisted = json.loads((tmp_path / "hermes" / "auth.json").read_text())["credential_pool"]["nous"][0]
+    persisted = orjson.loads((tmp_path / "hermes" / "auth.json").read_text())["credential_pool"]["nous"][0]
     assert persisted["access_token"] == sentinel
     assert persisted["refresh_token"] == f"refresh-{sentinel}"
     assert persisted["agent_key"] == f"agent-{sentinel}"
@@ -1213,7 +1213,7 @@ def test_load_pool_preserves_env_seeded_entry_when_env_is_missing(tmp_path, monk
     assert len(entries) == 1
     assert entries[0].source == "env:OPENROUTER_API_KEY"
 
-    auth_payload = json.loads((tmp_path / "hermes" / "auth.json").read_text())
+    auth_payload = orjson.loads((tmp_path / "hermes" / "auth.json").read_text())
     persisted = auth_payload["credential_pool"]["openrouter"]
     assert len(persisted) == 1
     assert persisted[0]["source"] == "env:OPENROUTER_API_KEY"
@@ -1253,7 +1253,7 @@ def test_load_pool_missing_env_does_not_overwrite_other_process_seed(tmp_path, m
     assert len(pool.entries()) == 1
     assert pool.entries()[0].source == "env:MINIMAX_API_KEY"
 
-    auth_payload = json.loads((tmp_path / "hermes" / "auth.json").read_text())
+    auth_payload = orjson.loads((tmp_path / "hermes" / "auth.json").read_text())
     persisted = auth_payload["credential_pool"]["minimax"]
     assert len(persisted) == 1
     assert persisted[0]["source"] == "env:MINIMAX_API_KEY"
@@ -1334,7 +1334,7 @@ def test_load_pool_mirrors_nous_invoke_jwt_agent_key_runtime_api_key(tmp_path, m
     assert entry.agent_key == token
     assert entry.runtime_api_key == token
 
-    auth_payload = json.loads((tmp_path / "hermes" / "auth.json").read_text())
+    auth_payload = orjson.loads((tmp_path / "hermes" / "auth.json").read_text())
     pool_entry = auth_payload["credential_pool"]["nous"][0]
     assert pool_entry["agent_key"] == token
     assert pool_entry["agent_key_expires_at"] == expires_at
@@ -1428,7 +1428,7 @@ def test_nous_pool_terminal_refresh_removes_device_code_entry(tmp_path, monkeypa
 
     assert [entry.id for entry in pool.entries()] == ["manual-key"]
 
-    auth_payload = json.loads((tmp_path / "hermes" / "auth.json").read_text())
+    auth_payload = orjson.loads((tmp_path / "hermes" / "auth.json").read_text())
     nous_state = auth_payload["providers"]["nous"]
     assert not nous_state.get("refresh_token")
     assert not nous_state.get("access_token")
@@ -1487,7 +1487,7 @@ def test_load_pool_removes_nous_device_code_when_singleton_quarantined(tmp_path,
     pool = load_pool("nous")
 
     assert [entry.id for entry in pool.entries()] == ["manual-key"]
-    auth_payload = json.loads((tmp_path / "hermes" / "auth.json").read_text())
+    auth_payload = orjson.loads((tmp_path / "hermes" / "auth.json").read_text())
     assert [entry["id"] for entry in auth_payload["credential_pool"]["nous"]] == ["manual-key"]
 
 
@@ -1532,7 +1532,7 @@ def test_load_pool_removes_stale_file_backed_singleton_entry(tmp_path, monkeypat
 
     assert pool.entries() == []
 
-    auth_payload = json.loads((tmp_path / "hermes" / "auth.json").read_text())
+    auth_payload = orjson.loads((tmp_path / "hermes" / "auth.json").read_text())
     assert auth_payload["credential_pool"]["anthropic"] == []
 
 
@@ -1575,7 +1575,7 @@ def test_load_pool_migrates_nous_provider_state_preserves_tls(tmp_path, monkeypa
         "ca_bundle": "/tmp/nous-ca.pem",
     }
 
-    auth_payload = json.loads((tmp_path / "hermes" / "auth.json").read_text())
+    auth_payload = orjson.loads((tmp_path / "hermes" / "auth.json").read_text())
     assert auth_payload["credential_pool"]["nous"][0]["tls"] == {
         "insecure": True,
         "ca_bundle": "/tmp/nous-ca.pem",
@@ -2856,7 +2856,7 @@ def test_xai_oauth_terminal_refresh_clears_auth_json_and_removes_pool_entries(
     assert [entry.id for entry in pool.entries()] == ["manual-key"]
 
     # Auth.json tokens must be cleared.
-    auth_payload = json.loads((tmp_path / "hermes" / "auth.json").read_text())
+    auth_payload = orjson.loads((tmp_path / "hermes" / "auth.json").read_text())
     xai_state = auth_payload["providers"]["xai-oauth"]
     tokens = xai_state.get("tokens", {})
     assert not tokens.get("access_token")
@@ -2900,7 +2900,7 @@ def test_xai_oauth_nonterminal_refresh_does_not_quarantine(tmp_path, monkeypatch
     pool.try_refresh_current()
 
     # Tokens must NOT be cleared from auth.json.
-    auth_payload = json.loads((tmp_path / "hermes" / "auth.json").read_text())
+    auth_payload = orjson.loads((tmp_path / "hermes" / "auth.json").read_text())
     tokens = auth_payload["providers"]["xai-oauth"].get("tokens", {})
     assert tokens.get("access_token") == "old-access-token"
     assert tokens.get("refresh_token") == "old-refresh-token"
@@ -2998,7 +2998,7 @@ def test_codex_oauth_terminal_refresh_clears_auth_json_and_removes_pool_entries(
     assert [entry.id for entry in pool.entries()] == ["manual-key"]
 
     # Auth.json tokens must be cleared.
-    auth_payload = json.loads((tmp_path / "hermes" / "auth.json").read_text())
+    auth_payload = orjson.loads((tmp_path / "hermes" / "auth.json").read_text())
     codex_state = auth_payload["providers"]["openai-codex"]
     tokens = codex_state.get("tokens", {})
     assert not tokens.get("access_token")
@@ -3041,7 +3041,7 @@ def test_codex_oauth_nonterminal_refresh_does_not_quarantine(tmp_path, monkeypat
     pool.try_refresh_current()
 
     # Tokens must NOT be cleared from auth.json.
-    auth_payload = json.loads((tmp_path / "hermes" / "auth.json").read_text())
+    auth_payload = orjson.loads((tmp_path / "hermes" / "auth.json").read_text())
     tokens = auth_payload["providers"]["openai-codex"].get("tokens", {})
     assert tokens.get("access_token") == "old-access-token"
     assert tokens.get("refresh_token") == "old-refresh-token"
@@ -3098,7 +3098,7 @@ def test_persist_preserves_concurrent_disk_only_entry(tmp_path, monkeypatch):
 
     pool.mark_exhausted_and_rotate(status_code=429)
 
-    final = json.loads((tmp_path / "hermes" / "auth.json").read_text())
+    final = orjson.loads((tmp_path / "hermes" / "auth.json").read_text())
     final_ids = [entry["id"] for entry in final["credential_pool"]["anthropic"]]
     assert set(final_ids) == {"cred-A", "cred-B", "cred-C"}
     persisted_a = next(
@@ -3143,7 +3143,7 @@ def test_remove_index_does_not_resurrect_via_disk_merge(tmp_path, monkeypatch):
     pool = load_pool("anthropic")
     pool.remove_index(2)
 
-    final = json.loads((tmp_path / "hermes" / "auth.json").read_text())
+    final = orjson.loads((tmp_path / "hermes" / "auth.json").read_text())
     final_ids = [entry["id"] for entry in final["credential_pool"]["anthropic"]]
     assert final_ids == ["cred-A"]
 

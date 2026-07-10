@@ -103,11 +103,11 @@ The dashboard's `/chat` tab embeds a real terminal via a POSIX PTY (`ptyprocess`
 
 ## How Hermes runs shell commands on Windows
 
-Hermes's terminal tool runs commands through **Windows PowerShell 5.1** (`powershell.exe`), which ships with every Windows 10 and Windows 11 system — no extra install, no download, no Git Bash needed.
+Hermes's terminal tool runs commands through **PowerShell 7 (pwsh)** when available, falling back to **Windows PowerShell 5.1** (`powershell.exe`) — both ship with or are easily installed on every Windows 10 and Windows 11 system. When pwsh is detected, all modern PowerShell syntax (ternary `?:`, null-coalescing `??`, pipeline chains `&&`/`||`, null-conditional `?.`/`?[`) is supported natively without any compatibility layer.
 
-PowerShell 5.1 starts faster than Git Bash, handles Windows paths natively (no `/c/foo` translation), and avoids the entire POSIX-translation overhead. The agent is instructed to use PowerShell syntax (`Get-ChildItem`, `$env:VAR`, `Select-String`, `Get-Content`). If it accidentally uses PowerShell 7+ syntax (`?:`, `??`, `&&`, `||`, `?.`, `?[`), the `pwsh_transform` compatibility layer automatically down-levels it to 5.1-compatible `if/else` blocks.
+If pwsh is not installed, Hermes automatically falls back to Windows PowerShell 5.1 (`powershell.exe`), which ships with every Windows system — no extra install, no download, no Git Bash needed.
 
-Set `HERMES_SHELL_TYPE=powershell` (or leave at the default `auto`) in your `.env` to use PowerShell. `HERMES_SHELL_TYPE=bash` is not supported on Windows.
+Set `HERMES_SHELL_TYPE=pwsh` (to prefer PowerShell 7), `powershell` (to force Windows PowerShell 5.1), or leave at the default `auto` in your `.env`. `HERMES_SHELL_TYPE=bash` is not supported on Windows.
 
 ## UTF-8 console on Windows
 

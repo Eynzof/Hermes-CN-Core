@@ -7,13 +7,13 @@ Add, remove, or reorder entries here — both `hermes setup` and
 
 from __future__ import annotations
 
-import json
+import orjson
 import os
 import urllib.parse
 import urllib.request
 import urllib.error
 import time
-from difflib import get_close_matches
+import rapidfuzz.process as _fuzz_process
 from pathlib import Path
 from typing import Any, NamedTuple, Optional
 
@@ -26,8 +26,8 @@ _HERMES_USER_AGENT = f"hermes-cli/{_HERMES_VERSION}"
 COPILOT_BASE_URL = "https://api.githubcopilot.com"
 COPILOT_MODELS_URL = f"{COPILOT_BASE_URL}/models"
 COPILOT_EDITOR_VERSION = "vscode/1.104.1"
-COPILOT_REASONING_EFFORTS_GPT5 = ["minimal", "low", "medium", "high"]
-COPILOT_REASONING_EFFORTS_O_SERIES = ["low", "medium", "high"]
+COPILOT_REASONING_EFFORTS_GPT5 = ["minimal", "low", "medium", "high", "xhigh", "max"]
+COPILOT_REASONING_EFFORTS_O_SERIES = ["minimal", "low", "medium", "high", "xhigh", "max"]
 
 
 # Fallback OpenRouter snapshot used when the live catalog is unavailable.
@@ -813,8 +813,8 @@ def _read_nous_recommended_disk(base: str) -> dict[str, Any] | None:
     """
     try:
         with open(_nous_recommended_disk_path(), encoding="utf-8") as fh:
-            blob = json.load(fh)
-    except (OSError, json.JSONDecodeError):
+            blob = orjson.loads(fh.read())
+    except (OSError, orjson.JSONDecodeError):
         return None
     if not isinstance(blob, dict):
         return None
@@ -837,16 +837,16 @@ def _write_nous_recommended_disk(base: str, data: dict[str, Any]) -> None:
     try:
         try:
             with open(path, encoding="utf-8") as fh:
-                blob = json.load(fh)
+                blob = orjson.loads(fh.read())
             if not isinstance(blob, dict):
                 blob = {}
-        except (OSError, json.JSONDecodeError):
+        except (OSError, orjson.JSONDecodeError):
             blob = {}
         blob[base] = {"data": data, "ts": time.time()}
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(path.suffix + ".tmp")
         with open(tmp, "w", encoding="utf-8") as fh:
-            json.dump(blob, fh, indent=2)
+            fh.write(orjson.dumps(blob, option=orjson.OPT_INDENT_2).decode('utf-8'))
             fh.write("\n")
         os.replace(tmp, path)
     except OSError as exc:
@@ -895,7 +895,7 @@ def fetch_nous_recommended_models(
             headers={"Accept": "application/json"},
         )
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            data = json.loads(resp.read().decode())
+            data = orjson.loads(resp.read().decode())
         if not isinstance(data, dict):
             data = {}
     except Exception:
@@ -1372,7 +1372,7 @@ def fetch_openrouter_models(
             headers={"Accept": "application/json"},
         )
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            payload = json.loads(resp.read().decode())
+            payload = orjson.loads(resp.read().decode())
     except Exception:
         return list(_openrouter_catalog_cache or fallback)
 
@@ -1493,7 +1493,7 @@ def fetch_models_with_pricing(
     try:
         req = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            payload = json.loads(resp.read().decode())
+            payload = orjson.loads(resp.read().decode())
     except Exception:
         _pricing_cache[cache_key] = {}
         return {}
@@ -1607,7 +1607,7 @@ def _fetch_novita_pricing(
     try:
         req = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            payload = json.loads(resp.read().decode())
+            payload = orjson.loads(resp.read().decode())
     except Exception:
         _pricing_cache[cache_key] = {}
         return {}
@@ -2592,7 +2592,7 @@ def _load_provider_models_cache() -> dict:
         if not path.exists():
             return {}
         with open(path, encoding="utf-8") as f:
-            data = json.load(f)
+            data = orjson.loads(f.read())
         return data if isinstance(data, dict) else {}
     except Exception:
         return {}
@@ -2721,7 +2721,7 @@ def _fetch_anthropic_models(
             headers=h,
         )
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return json.loads(resp.read().decode())
+            return orjson.loads(resp.read().decode())
 
     try:
         try:
@@ -2836,7 +2836,7 @@ def fetch_github_model_catalog(
         req = urllib.request.Request(COPILOT_MODELS_URL, headers=headers)
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
-                data = json.loads(resp.read().decode())
+                data = orjson.loads(resp.read().decode())
                 items = _payload_items(data)
                 models: list[dict[str, Any]] = []
                 seen_ids: set[str] = set()
@@ -2953,7 +2953,7 @@ def _lmstudio_fetch_raw_models(
     request = urllib.request.Request(server_root + "/api/v1/models", headers=headers)
     try:
         with urllib.request.urlopen(request, timeout=timeout) as resp:
-            payload = json.loads(resp.read().decode())
+            payload = orjson.loads(resp.read().decode())
     except urllib.error.HTTPError as exc:
         if exc.code in {401, 403}:
             from hermes_cli.auth import AuthError
@@ -3082,10 +3082,10 @@ def ensure_lmstudio_model_loaded(
         if isinstance(loaded_ctx, int) and loaded_ctx >= target_context_length:
             return loaded_ctx
 
-    body = json.dumps({
+    body = orjson.dumps({
         "model": model,
         "context_length": target_context_length,
-    }).encode()
+    })
     load_headers = dict(headers)
     load_headers["Content-Type"] = "application/json"
     try:
@@ -3257,8 +3257,7 @@ def _should_use_copilot_responses_api(model_id: str) -> bool:
     Chat Completions.  All non-GPT models (Claude, Gemini, etc.) use
     Chat Completions.
     """
-    import re
-
+    from agent.re_compat import re
     match = re.match(r"^gpt-(\d+)", model_id)
     if not match:
         return False
@@ -3511,7 +3510,7 @@ def probe_api_models(
         req = urllib.request.Request(url, headers=headers)
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
-                data = json.loads(resp.read().decode())
+                data = orjson.loads(resp.read().decode())
                 return {
                     "models": [m.get("id", "") for m in data.get("data", [])],
                     "probed_url": url,
@@ -3591,7 +3590,7 @@ def _load_ollama_cloud_cache(*, ignore_ttl: bool = False) -> Optional[dict]:
         if not cache_path.exists():
             return None
         with open(cache_path, encoding="utf-8") as f:
-            data = json.load(f)
+            data = orjson.loads(f.read())
         if not isinstance(data, dict):
             return None
         models = data.get("models")
@@ -3801,20 +3800,20 @@ def validate_requested_model(
                 }
 
             # Auto-correct if the top match is very similar (e.g. typo)
-            auto = get_close_matches(requested_for_lookup, api_models, n=1, cutoff=0.9)
+            auto = _fuzz_process.extract(requested_for_lookup, api_models, limit=1, score_cutoff=90.0)
             if auto:
                 return {
                     "accepted": True,
                     "persist": True,
                     "recognized": True,
-                    "corrected_model": auto[0],
-                    "message": f"Auto-corrected `{requested}` → `{auto[0]}`",
+                    "corrected_model": auto[0][0],
+                    "message": f"Auto-corrected `{requested}` → `{auto[0][0]}`",
                 }
 
-            suggestions = get_close_matches(requested, api_models, n=3, cutoff=0.5)
+            suggestions = _fuzz_process.extract(requested, api_models, limit=3, score_cutoff=50.0)
             suggestion_text = ""
             if suggestions:
-                suggestion_text = "\n  Similar models: " + ", ".join(f"`{s}`" for s in suggestions)
+                suggestion_text = "\n  Similar models: " + ", ".join(f"`{s[0]}`" for s in suggestions)
 
             message = (
                 f"Note: `{requested}` was not found in this custom endpoint's model listing "
@@ -3868,19 +3867,19 @@ def validate_requested_model(
                     "message": None,
                 }
             # Auto-correct if the top match is very similar (e.g. typo)
-            auto = get_close_matches(requested_for_lookup, catalog_models, n=1, cutoff=0.9)
+            auto = _fuzz_process.extract(requested_for_lookup, catalog_models, limit=1, score_cutoff=90.0)
             if auto:
                 return {
                     "accepted": True,
                     "persist": True,
                     "recognized": True,
-                    "corrected_model": auto[0],
-                    "message": f"Auto-corrected `{requested}` → `{auto[0]}`",
+                    "corrected_model": auto[0][0],
+                    "message": f"Auto-corrected `{requested}` → `{auto[0][0]}`",
                 }
-            suggestions = get_close_matches(requested_for_lookup, catalog_models, n=3, cutoff=0.5)
+            suggestions = _fuzz_process.extract(requested_for_lookup, catalog_models, limit=3, score_cutoff=50.0)
             suggestion_text = ""
             if suggestions:
-                suggestion_text = "\n  Similar models: " + ", ".join(f"`{s}`" for s in suggestions)
+                suggestion_text = "\n  Similar models: " + ", ".join(f"`{s[0]}`" for s in suggestions)
             provider_label = "OpenAI Codex" if normalized == "openai-codex" else "xAI Grok OAuth (SuperGrok / Premium+)"
             # Plausibility gate (#45006): the soft-accept (#16172 / #19729) exists
             # for entitlement-gated *hidden* slugs the curated listing hasn't
@@ -3943,9 +3942,9 @@ def validate_requested_model(
                 }
             # Auto-correct close matches (case-insensitive)
             catalog_lower_list = list(catalog_lower.keys())
-            auto = get_close_matches(requested_for_lookup.lower(), catalog_lower_list, n=1, cutoff=0.9)
+            auto = _fuzz_process.extract(requested_for_lookup.lower(), catalog_lower_list, limit=1, score_cutoff=90.0)
             if auto:
-                corrected = catalog_lower[auto[0]]
+                corrected = catalog_lower[auto[0][0]]
                 return {
                     "accepted": True,
                     "persist": True,
@@ -3953,10 +3952,10 @@ def validate_requested_model(
                     "corrected_model": corrected,
                     "message": f"Auto-corrected `{requested}` → `{corrected}`",
                 }
-            suggestions = get_close_matches(requested_for_lookup.lower(), catalog_lower_list, n=3, cutoff=0.5)
+            suggestions = _fuzz_process.extract(requested_for_lookup.lower(), catalog_lower_list, limit=3, score_cutoff=50.0)
             suggestion_text = ""
             if suggestions:
-                suggestion_text = "\n  Similar models: " + ", ".join(f"`{catalog_lower[s]}`" for s in suggestions)
+                suggestion_text = "\n  Similar models: " + ", ".join(f"`{catalog_lower[s[0]]}`" for s in suggestions)
             return {
                 "accepted": True,
                 "persist": True,
@@ -3988,19 +3987,19 @@ def validate_requested_model(
                     "recognized": True,
                     "message": None,
                 }
-            auto = get_close_matches(requested_for_lookup, anthropic_models, n=1, cutoff=0.9)
+            auto = _fuzz_process.extract(requested_for_lookup, anthropic_models, limit=1, score_cutoff=90.0)
             if auto:
                 return {
                     "accepted": True,
                     "persist": True,
                     "recognized": True,
-                    "corrected_model": auto[0],
-                    "message": f"Auto-corrected `{requested}` → `{auto[0]}`",
+                    "corrected_model": auto[0][0],
+                    "message": f"Auto-corrected `{requested}` → `{auto[0][0]}`",
                 }
-            suggestions = get_close_matches(requested, anthropic_models, n=3, cutoff=0.5)
+            suggestions = _fuzz_process.extract(requested, anthropic_models, limit=3, score_cutoff=50.0)
             suggestion_text = ""
             if suggestions:
-                suggestion_text = "\n  Similar models: " + ", ".join(f"`{s}`" for s in suggestions)
+                suggestion_text = "\n  Similar models: " + ", ".join(f"`{s[0]}`" for s in suggestions)
             # Accept anyway — Anthropic sometimes gates newer/preview models
             # (e.g. snapshot IDs, early-access releases) behind accounts
             # even though they aren't listed on /v1/models.
@@ -4029,14 +4028,14 @@ def validate_requested_model(
                     "recognized": True,
                     "message": None,
                 }
-            auto = get_close_matches(requested_for_lookup, api_models, n=1, cutoff=0.9)
+            auto = _fuzz_process.extract(requested_for_lookup, api_models, limit=1, score_cutoff=90.0)
             if auto:
                 return {
                     "accepted": True,
                     "persist": True,
                     "recognized": True,
-                    "corrected_model": auto[0],
-                    "message": f"Auto-corrected `{requested}` → `{auto[0]}`",
+                    "corrected_model": auto[0][0],
+                    "message": f"Auto-corrected `{requested}` → `{auto[0][0]}`",
                 }
         # Probe failed or model not found — accept anyway (proxy likely
         # doesn't implement the Anthropic Models API).
@@ -4081,20 +4080,20 @@ def validate_requested_model(
             # endpoints even though it's not in /models).  Warn but allow.
 
             # Auto-correct if the top match is very similar (e.g. typo)
-            auto = get_close_matches(requested_for_lookup, api_models, n=1, cutoff=0.9)
+            auto = _fuzz_process.extract(requested_for_lookup, api_models, limit=1, score_cutoff=90.0)
             if auto:
                 return {
                     "accepted": True,
                     "persist": True,
                     "recognized": True,
-                    "corrected_model": auto[0],
-                    "message": f"Auto-corrected `{requested}` → `{auto[0]}`",
+                    "corrected_model": auto[0][0],
+                    "message": f"Auto-corrected `{requested}` → `{auto[0][0]}`",
                 }
 
-            suggestions = get_close_matches(requested, api_models, n=3, cutoff=0.5)
+            suggestions = _fuzz_process.extract(requested, api_models, limit=3, score_cutoff=50.0)
             suggestion_text = ""
             if suggestions:
-                suggestion_text = "\n  Similar models: " + ", ".join(f"`{s}`" for s in suggestions)
+                suggestion_text = "\n  Similar models: " + ", ".join(f"`{s[0]}`" for s in suggestions)
 
             # Model not in live /v1/models — check the curated catalog
             # before rejecting.  Providers may omit models from their live
@@ -4145,10 +4144,10 @@ def validate_requested_model(
                 }
             # Not in discovered list — still accept (user may have custom
             # inference profiles or cross-account access), but warn.
-            suggestions = get_close_matches(requested, list(discovered_ids), n=3, cutoff=0.4)
+            suggestions = _fuzz_process.extract(requested, list(discovered_ids), limit=3, score_cutoff=40.0)
             suggestion_text = ""
             if suggestions:
-                suggestion_text = "\n  Similar models: " + ", ".join(f"`{s}`" for s in suggestions)
+                suggestion_text = "\n  Similar models: " + ", ".join(f"`{s[0]}`" for s in suggestions)
             return {
                 "accepted": True,
                 "persist": True,
@@ -4186,11 +4185,11 @@ def validate_requested_model(
                 "message": None,
             }
         catalog_lower_list = list(catalog_lower.keys())
-        auto = get_close_matches(
-            requested_for_lookup.lower(), catalog_lower_list, n=1, cutoff=0.9
+        auto = _fuzz_process.extract(
+            requested_for_lookup.lower(), catalog_lower_list, limit=1, score_cutoff=90.0
         )
         if auto:
-            corrected = catalog_lower[auto[0]]
+            corrected = catalog_lower[auto[0][0]]
             return {
                 "accepted": True,
                 "persist": True,
@@ -4198,13 +4197,13 @@ def validate_requested_model(
                 "corrected_model": corrected,
                 "message": f"Auto-corrected `{requested}` → `{corrected}`",
             }
-        suggestions = get_close_matches(
-            requested_for_lookup.lower(), catalog_lower_list, n=3, cutoff=0.5
+        suggestions = _fuzz_process.extract(
+            requested_for_lookup.lower(), catalog_lower_list, limit=3, score_cutoff=50.0
         )
         suggestion_text = ""
         if suggestions:
             suggestion_text = "\n  Similar models: " + ", ".join(
-                f"`{catalog_lower[s]}`" for s in suggestions
+                f"`{catalog_lower[s[0]]}`" for s in suggestions
             )
         return {
             "accepted": True,

@@ -3,7 +3,7 @@
 
 Refreshes the token if expired, then executes gws with the valid access token.
 """
-import json
+import orjson
 import os
 import subprocess
 import sys
@@ -52,7 +52,7 @@ def refresh_token(token_data: dict) -> dict:
     req = urllib.request.Request(token_data["token_uri"], data=params)
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
-            result = json.loads(resp.read())
+            result = orjson.loads(resp.read())
     except urllib.error.HTTPError as e:
         body = e.read().decode("utf-8", errors="replace")
         print(f"ERROR: Token refresh failed (HTTP {e.code}): {body}", file=sys.stderr)
@@ -69,7 +69,7 @@ def refresh_token(token_data: dict) -> dict:
     ).isoformat()
 
     get_token_path().write_text(
-        json.dumps(_normalize_authorized_user_payload(token_data), indent=2)
+        orjson.dumps(_normalize_authorized_user_payload(token_data), option=orjson.OPT_INDENT_2).decode('utf-8')
     )
     return token_data
 
@@ -81,7 +81,7 @@ def get_valid_token() -> str:
         print("ERROR: No Google token found. Run setup.py --auth-url first.", file=sys.stderr)
         sys.exit(1)
 
-    token_data = json.loads(token_path.read_text())
+    token_data = orjson.loads(token_path.read_text())
 
     expiry = token_data.get("expiry", "")
     if expiry:

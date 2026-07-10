@@ -4,7 +4,7 @@ Tests verify tool schemas, handler dispatch, validation logic, and error
 handling without requiring a running terminal environment.
 """
 
-import json
+import orjson
 import logging
 from unittest.mock import MagicMock, patch
 
@@ -24,7 +24,7 @@ class TestReadFileHandler:
         mock_get.return_value = mock_ops
 
         from tools.file_tools import read_file_tool
-        result = json.loads(read_file_tool("/tmp/test.txt"))
+        result = orjson.loads(read_file_tool("/tmp/test.txt"))
         assert result["content"] == "line1\nline2"
         assert result["total_lines"] == 2
         mock_ops.read_file.assert_called_once_with("/tmp/test.txt", 1, 500)
@@ -60,7 +60,7 @@ class TestReadFileHandler:
         mock_get.side_effect = RuntimeError("terminal not available")
 
         from tools.file_tools import read_file_tool
-        result = json.loads(read_file_tool("/tmp/test.txt"))
+        result = orjson.loads(read_file_tool("/tmp/test.txt"))
         assert "error" in result
         assert "terminal not available" in result["error"]
 
@@ -75,7 +75,7 @@ class TestWriteFileHandler:
         mock_get.return_value = mock_ops
 
         from tools.file_tools import write_file_tool
-        result = json.loads(write_file_tool("/tmp/out.txt", "hello world!\n"))
+        result = orjson.loads(write_file_tool("/tmp/out.txt", "hello world!\n"))
         assert result["status"] == "ok"
         mock_ops.write_file.assert_called_once_with("/tmp/out.txt", "hello world!\n")
 
@@ -85,7 +85,7 @@ class TestWriteFileHandler:
 
         from tools.file_tools import write_file_tool
         with caplog.at_level(logging.DEBUG, logger="tools.file_tools"):
-            result = json.loads(write_file_tool("/tmp/out.txt", "data"))
+            result = orjson.loads(write_file_tool("/tmp/out.txt", "data"))
         assert "error" in result
         assert "read-only" in result["error"]
         assert any("write_file expected denial" in r.getMessage() for r in caplog.records)
@@ -97,7 +97,7 @@ class TestWriteFileHandler:
         from tools.file_tools import write_file_tool
 
         content = " 1|setting: new_value\n 2|other: thing\n"
-        result = json.loads(write_file_tool("/tmp/config.yaml", content))
+        result = orjson.loads(write_file_tool("/tmp/config.yaml", content))
 
         assert "error" in result
         assert "line-number" in result["error"].lower()
@@ -113,7 +113,7 @@ class TestWriteFileHandler:
         mock_get.return_value = mock_ops
 
         from tools.file_tools import write_file_tool
-        result = json.loads(write_file_tool("/tmp/out.txt", "1|literal value\nplain line\n"))
+        result = orjson.loads(write_file_tool("/tmp/out.txt", "1|literal value\nplain line\n"))
 
         assert result["status"] == "ok"
         mock_ops.write_file.assert_called_once()
@@ -124,7 +124,7 @@ class TestWriteFileHandler:
 
         from tools.file_tools import write_file_tool
         with caplog.at_level(logging.ERROR, logger="tools.file_tools"):
-            result = json.loads(write_file_tool("/tmp/out.txt", "data"))
+            result = orjson.loads(write_file_tool("/tmp/out.txt", "data"))
         assert result["error"] == "boom"
         assert any("write_file error" in r.getMessage() for r in caplog.records)
 
@@ -132,7 +132,7 @@ class TestWriteFileHandler:
         """#19096 — handler must reject tool calls where 'content' key is absent."""
         from tools.file_tools import _handle_write_file
 
-        result = json.loads(_handle_write_file({"path": "/tmp/oops.md"}))
+        result = orjson.loads(_handle_write_file({"path": "/tmp/oops.md"}))
         assert "error" in result
         assert "content" in result["error"]
         assert "path" not in result.get("error", "").lower() or "missing" not in result.get("error", "").lower() or True  # just check error present
@@ -141,7 +141,7 @@ class TestWriteFileHandler:
         """#19096 — handler must reject tool calls where 'path' key is absent."""
         from tools.file_tools import _handle_write_file
 
-        result = json.loads(_handle_write_file({"content": "hello"}))
+        result = orjson.loads(_handle_write_file({"content": "hello"}))
         assert "error" in result
 
     def test_explicit_empty_content_is_allowed(self):
@@ -155,14 +155,14 @@ class TestWriteFileHandler:
             mock_ops.write_file.return_value = result_obj
             mock_get.return_value = mock_ops
 
-            result = json.loads(_handle_write_file({"path": "/tmp/empty.txt", "content": ""}))
+            result = orjson.loads(_handle_write_file({"path": "/tmp/empty.txt", "content": ""}))
             assert result["status"] == "ok"
 
     def test_non_string_content_returns_error(self):
         """#19096 — content must be a string, not a dict or list."""
         from tools.file_tools import _handle_write_file
 
-        result = json.loads(_handle_write_file({"path": "/tmp/x.txt", "content": {"nested": "dict"}}))
+        result = orjson.loads(_handle_write_file({"path": "/tmp/x.txt", "content": {"nested": "dict"}}))
         assert "error" in result
         assert "string" in result["error"].lower() or "content" in result["error"].lower()
 
@@ -177,7 +177,7 @@ class TestPatchHandler:
         mock_get.return_value = mock_ops
 
         from tools.file_tools import patch_tool
-        result = json.loads(patch_tool(
+        result = orjson.loads(patch_tool(
             mode="replace", path="/tmp/f.py",
             old_string="foo", new_string="bar"
         ))
@@ -200,13 +200,13 @@ class TestPatchHandler:
     @patch("tools.file_tools._get_file_ops")
     def test_replace_mode_missing_path_errors(self, mock_get):
         from tools.file_tools import patch_tool
-        result = json.loads(patch_tool(mode="replace", path=None, old_string="a", new_string="b"))
+        result = orjson.loads(patch_tool(mode="replace", path=None, old_string="a", new_string="b"))
         assert "error" in result
 
     @patch("tools.file_tools._get_file_ops")
     def test_replace_mode_missing_strings_errors(self, mock_get):
         from tools.file_tools import patch_tool
-        result = json.loads(patch_tool(mode="replace", path="/tmp/f.py", old_string=None, new_string="b"))
+        result = orjson.loads(patch_tool(mode="replace", path="/tmp/f.py", old_string=None, new_string="b"))
         assert "error" in result
 
     @patch("tools.file_tools._get_file_ops")
@@ -218,20 +218,20 @@ class TestPatchHandler:
         mock_get.return_value = mock_ops
 
         from tools.file_tools import patch_tool
-        result = json.loads(patch_tool(mode="patch", patch="*** Begin Patch\n..."))
+        result = orjson.loads(patch_tool(mode="patch", patch="*** Begin Patch\n..."))
         assert result["status"] == "ok"
         mock_ops.patch_v4a.assert_called_once()
 
     @patch("tools.file_tools._get_file_ops")
     def test_patch_mode_missing_content_errors(self, mock_get):
         from tools.file_tools import patch_tool
-        result = json.loads(patch_tool(mode="patch", patch=None))
+        result = orjson.loads(patch_tool(mode="patch", patch=None))
         assert "error" in result
 
     @patch("tools.file_tools._get_file_ops")
     def test_unknown_mode_errors(self, mock_get):
         from tools.file_tools import patch_tool
-        result = json.loads(patch_tool(mode="invalid_mode"))
+        result = orjson.loads(patch_tool(mode="invalid_mode"))
         assert "error" in result
         assert "Unknown mode" in result["error"]
 
@@ -243,7 +243,7 @@ class TestPatchHandler:
         applied, even though the explicit ``path=`` arg is allowed to use
         ``..`` for legitimate cross-worktree edits."""
         from tools.file_tools import patch_tool
-        result = json.loads(patch_tool(
+        result = orjson.loads(patch_tool(
             mode="patch",
             patch=(
                 "*** Begin Patch\n"
@@ -262,7 +262,7 @@ class TestPatchHandler:
     @patch("tools.file_tools._get_file_ops")
     def test_patch_v4a_rejects_traversal_in_add_header(self, mock_get):
         from tools.file_tools import patch_tool
-        result = json.loads(patch_tool(
+        result = orjson.loads(patch_tool(
             mode="patch",
             patch=(
                 "*** Begin Patch\n"
@@ -298,7 +298,7 @@ class TestPatchSensitivePathExtraction:
             "*** Move File: /tmp/work.txt -> /etc/crontab\n"
             "*** End Patch\n"
         )
-        result = json.loads(patch_tool(mode="patch", patch=patch_text))
+        result = orjson.loads(patch_tool(mode="patch", patch=patch_text))
         assert "error" in result
         assert "sensitive" in result["error"].lower()
         mock_get.assert_not_called()
@@ -311,7 +311,7 @@ class TestPatchSensitivePathExtraction:
             "*** Move File: /etc/hosts -> /tmp/leak.txt\n"
             "*** End Patch\n"
         )
-        result = json.loads(patch_tool(mode="patch", patch=patch_text))
+        result = orjson.loads(patch_tool(mode="patch", patch=patch_text))
         assert "error" in result
         assert "sensitive" in result["error"].lower()
         mock_get.assert_not_called()
@@ -333,7 +333,7 @@ class TestPatchSensitivePathExtraction:
             "+new\n"
             "*** End Patch\n"
         )
-        result = json.loads(patch_tool(mode="patch", patch=patch_text))
+        result = orjson.loads(patch_tool(mode="patch", patch=patch_text))
         assert "error" in result
         assert "sensitive" in result["error"].lower()
         mock_get.assert_not_called()
@@ -348,7 +348,7 @@ class TestPatchSensitivePathExtraction:
             "*** Move File: /tmp/work.txt -> ../../../etc/shadow\n"
             "*** End Patch\n"
         )
-        result = json.loads(patch_tool(mode="patch", patch=patch_text))
+        result = orjson.loads(patch_tool(mode="patch", patch=patch_text))
         assert "error" in result
         assert "traversal" in result["error"].lower()
         mock_get.assert_not_called()
@@ -368,7 +368,7 @@ class TestPatchSensitivePathExtraction:
             "*** Move File: /tmp/a.txt -> /tmp/b.txt\n"
             "*** End Patch\n"
         )
-        result = json.loads(patch_tool(mode="patch", patch=patch_text))
+        result = orjson.loads(patch_tool(mode="patch", patch=patch_text))
         assert "error" not in result
         mock_ops.patch_v4a.assert_called_once()
 
@@ -383,7 +383,7 @@ class TestSearchHandler:
         mock_get.return_value = mock_ops
 
         from tools.file_tools import search_tool
-        result = json.loads(search_tool(pattern="TODO", target="content", path="."))
+        result = orjson.loads(search_tool(pattern="TODO", target="content", path="."))
         assert "matches" in result
         mock_ops.search.assert_called_once()
 
@@ -423,7 +423,7 @@ class TestSearchHandler:
         mock_get.side_effect = RuntimeError("no terminal")
 
         from tools.file_tools import search_tool
-        result = json.loads(search_tool(pattern="x"))
+        result = orjson.loads(search_tool(pattern="x"))
         assert "error" in result
 
 
@@ -536,7 +536,7 @@ class TestSensitivePathCheck:
         monkeypatch.setattr("tools.file_tools._hermes_config_resolved_loaded", True)
 
         from tools.file_tools import write_file_tool
-        result = json.loads(write_file_tool(str(fake_config), "approvals:\n  mode: off\n"))
+        result = orjson.loads(write_file_tool(str(fake_config), "approvals:\n  mode: off\n"))
         assert "error" in result
         assert "Hermes config" in result["error"]
 
@@ -546,7 +546,7 @@ class TestSensitivePathCheck:
         monkeypatch.setattr("tools.file_tools._hermes_config_resolved_loaded", True)
 
         from tools.file_tools import write_file_tool
-        result = json.loads(write_file_tool(str(fake_config), "approvals:\n  mode: off\n"))
+        result = orjson.loads(write_file_tool(str(fake_config), "approvals:\n  mode: off\n"))
         assert "error" in result
         assert "Hermes config" in result["error"]
 
@@ -557,7 +557,7 @@ class TestSensitivePathCheck:
         monkeypatch.setattr("tools.file_tools._hermes_config_resolved_loaded", True)
 
         from tools.file_tools import patch_tool
-        result = json.loads(patch_tool(
+        result = orjson.loads(patch_tool(
             mode="replace",
             path=str(fake_config),
             old_string="mode: manual",
@@ -571,7 +571,7 @@ class TestSensitivePathCheck:
         monkeypatch.setattr("tools.file_tools._hermes_config_resolved_loaded", True)
 
         from tools.file_tools import write_file_tool
-        result = json.loads(write_file_tool("/etc/passwd", "evil"))
+        result = orjson.loads(write_file_tool("/etc/passwd", "evil"))
         assert "error" in result
         assert "sensitive system path" in result["error"]
 
@@ -586,7 +586,7 @@ class TestSensitivePathCheck:
         mock_get.return_value = mock_ops
 
         from tools.file_tools import write_file_tool
-        result = json.loads(write_file_tool("/tmp/other.txt", "hello"))
+        result = orjson.loads(write_file_tool("/tmp/other.txt", "hello"))
         assert result["status"] == "ok"
 
 
@@ -844,7 +844,7 @@ class TestSilentFileMisplacementE2E:
             ft._file_ops_cache.pop(task_id, None)
 
         # 3) The next relative write must still land in the project dir.
-        res = json.loads(ft.write_file_tool("report.txt", "hello\n", task_id))
+        res = orjson.loads(ft.write_file_tool("report.txt", "hello\n", task_id))
         assert res.get("resolved_path") == str(project / "report.txt"), res
         assert (project / "report.txt").exists(), "file should be in the user's cwd"
         assert not (config_default / "report.txt").exists(), \

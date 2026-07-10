@@ -10,7 +10,7 @@ Usage:
     python extract_pymupdf.py document.pdf --metadata
 """
 import sys
-import json
+import orjson
 
 def extract_text(path, pages=None):
     import pymupdf
@@ -56,7 +56,7 @@ def extract_images(path, output_dir):
 def show_metadata(path):
     import pymupdf
     doc = pymupdf.open(path)
-    print(json.dumps({
+    print(orjson.dumps({
         "pages": len(doc),
         "title": doc.metadata.get("title", ""),
         "author": doc.metadata.get("author", ""),
@@ -64,7 +64,7 @@ def show_metadata(path):
         "creator": doc.metadata.get("creator", ""),
         "producer": doc.metadata.get("producer", ""),
         "format": doc.metadata.get("format", ""),
-    }, indent=2))
+    }, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
 if __name__ == "__main__":
     args = sys.argv[1:]

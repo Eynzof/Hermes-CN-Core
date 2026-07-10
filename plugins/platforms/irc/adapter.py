@@ -30,7 +30,7 @@ Or via environment variables (overrides config.yaml):
 import asyncio
 import logging
 import os
-import re
+from agent.re_compat import re
 import ssl
 import time
 from typing import Any, Dict, List, Optional

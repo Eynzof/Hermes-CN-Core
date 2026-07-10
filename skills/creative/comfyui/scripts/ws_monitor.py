@@ -28,7 +28,7 @@ Falls back to a clear error message when not installed.
 from __future__ import annotations
 
 import argparse
-import json
+import orjson
 import struct
 import sys
 from pathlib import Path
@@ -84,7 +84,7 @@ def parse_binary_frame(data: bytes) -> dict | None:
         if len(data) < meta_end:
             return None
         try:
-            meta = json.loads(data[8:meta_end].decode("utf-8"))
+            meta = orjson.loads(data[8:meta_end].decode("utf-8"))
         except Exception:
             meta = {"raw": data[8:meta_end][:200].decode("utf-8", "replace")}
         return {
@@ -125,10 +125,10 @@ def main(argv: list[str] | None = None) -> int:
     try:
         import websocket  # type: ignore[import-not-found]
     except ImportError:
-        print(json.dumps({
+        print(orjson.dumps({
             "error": "websocket-client not installed",
             "install": "pip install websocket-client",
-        }))
+        }).decode('utf-8'))
         return 1
 
     api_key = resolve_api_key(args.api_key)
@@ -181,7 +181,7 @@ def main(argv: list[str] | None = None) -> int:
                 continue
 
             try:
-                payload = json.loads(msg)
+                payload = orjson.loads(msg)
             except Exception:
                 continue
             mtype = payload.get("type", "")
@@ -251,7 +251,7 @@ def main(argv: list[str] | None = None) -> int:
                 print(fmt_color(f"[notification] {v}", DIM, color_on=color_on))
             else:
                 # Unknown / lightly-used types: print compactly
-                print(fmt_color(f"[{mtype}] {json.dumps(mdata, default=str)[:200]}", DIM, color_on=color_on))
+                print(fmt_color(f"[{mtype}] {orjson.dumps(mdata, default=str).decode('utf-8')[:200]}", DIM, color_on=color_on))
 
     except KeyboardInterrupt:
         log("Interrupted")

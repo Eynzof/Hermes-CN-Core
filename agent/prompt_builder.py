@@ -4,9 +4,10 @@ All functions are stateless. AIAgent._build_system_prompt() calls these to
 assemble pieces, then combines them with memory and ephemeral prompts.
 """
 
-import json
+import orjson
 import logging
 import os
+import shutil
 import threading
 import contextvars
 from collections import OrderedDict
@@ -918,6 +919,28 @@ _WINDOWS_POWERSHELL_SHELL_HINT = (
     "correct the syntax on your next turn."
 )
 
+_WINDOWS_PWSH_SHELL_HINT = (
+    "Shell: on this Windows host your `terminal` tool runs commands through "
+    "PowerShell 7 (pwsh). Use PowerShell syntax. Key rules:\n"
+    "- Use `$env:VAR` for environment variables, not `$VAR`.\n"
+    "- Use `Get-ChildItem` (or `ls`/`dir`) for listing files.\n"
+    "- Use `Select-String` (or `findstr`) for searching, not `grep`.\n"
+    "- Use `Get-Content` (or `cat`/`type`) to read files.\n"
+    "- PS7+ operators (ternary `?:`, null-coalescing `??`, pipeline chains "
+    "`&&`/`||`, null-conditional `?.`/`?[`) ARE supported natively — no "
+    "compatibility layer needed."
+)
+
+_WINDOWS_BASH_SHELL_HINT = (
+    "Shell: on this Windows host your `terminal` tool runs commands through "
+    "bash (git-bash / MSYS), NOT PowerShell or cmd.exe. Use POSIX shell "
+    "syntax (`ls`, `$HOME`, `&&`, `|`, single-quoted strings) inside terminal "
+    "calls. MSYS-style paths like `/c/Users/<user>/...` work alongside "
+    "native `C:\\Users\\<user>\\...` paths. PowerShell builtins "
+    "(`Get-ChildItem`, `$env:FOO`, `Select-String`) will NOT work — use their "
+    "POSIX equivalents (`ls`, `$FOO`, `grep`)."
+)
+
 
 def _probe_remote_backend(env_type: str) -> str | None:
     """Run a tiny introspection command inside the active terminal backend.
@@ -1070,6 +1093,8 @@ def build_environment_hints() -> str:
     import platform
     import sys
 
+    from platform_utils import windows_release
+
     hints: list[str] = []
 
     backend = (os.getenv("TERMINAL_ENV") or "local").strip().lower()
@@ -1081,7 +1106,12 @@ def build_environment_hints() -> str:
         if is_wsl():
             host_lines.append("Host: WSL (Windows Subsystem for Linux)")
         elif sys.platform == "win32":
-            host_lines.append(f"Host: Windows ({platform.release()})")
+            # ``platform.release()`` builds ``platform.uname()``, which on
+            # Python 3.12+ issues a WMI ``_wmi.exec_query`` (``win32_ver``) —
+            # ~40ms paid every time the system prompt is built at agent init.
+            # ``windows_release()`` derives the same label WMI-free.
+            rel = windows_release()
+            host_lines.append(f"Host: Windows ({rel})" if rel else "Host: Windows")
         elif sys.platform == "darwin":
             mac_ver = platform.mac_ver()[0]
             host_lines.append(f"Host: macOS ({mac_ver or platform.release()})")
@@ -1103,10 +1133,29 @@ def build_environment_hints() -> str:
             )
         hints.append("\n".join(host_lines))
 
-        # Windows-local terminal runs PowerShell, not bash — the model must
-        # know this or it will issue bash syntax and fail.
+        # Windows-local terminal shell hint. The actual shell is still PS5.1
+        # by default; this only controls what the system prompt tells the model.
         if sys.platform == "win32" and not is_wsl():
-            hints.append(_WINDOWS_POWERSHELL_SHELL_HINT)
+            shell = "auto"
+            try:
+                from hermes_cli.config import load_config
+
+                shell = str(
+                    (load_config().get("terminal", {}) or {}).get("shell", "auto")
+                ).strip().lower()
+            except Exception as e:
+                logger.debug("Could not read terminal.shell from config: %s", e)
+
+            if shell == "bash":
+                hints.append(_WINDOWS_BASH_SHELL_HINT)
+            elif shell == "powershell":
+                hints.append(_WINDOWS_POWERSHELL_SHELL_HINT)
+            else:
+                # auto (or any unknown value): preserve existing behavior
+                if shutil.which("pwsh") or shutil.which("pwsh.exe"):
+                    hints.append(_WINDOWS_PWSH_SHELL_HINT)
+                else:
+                    hints.append(_WINDOWS_POWERSHELL_SHELL_HINT)
     else:
         # --- Remote backend block (host info suppressed) ---
         probe = _probe_remote_backend(backend)
@@ -1299,7 +1348,7 @@ def _load_skills_snapshot(skills_dir: Path) -> Optional[dict]:
     if not snapshot_path.exists():
         return None
     try:
-        snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+        snapshot = orjson.loads(snapshot_path.read_text(encoding="utf-8"))
     except Exception:
         return None
     if not isinstance(snapshot, dict):

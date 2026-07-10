@@ -7,8 +7,7 @@ run with EAP temporarily relaxed and then inspect ``$LASTEXITCODE``.
 """
 
 from __future__ import annotations
-
-import re
+from agent.re_compat import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent

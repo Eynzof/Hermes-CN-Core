@@ -13,13 +13,13 @@ Design notes:
 from __future__ import annotations
 
 import asyncio
-import base64
-import hashlib
-import json
+import pybase64 as base64
+import xxhash
+import orjson
 import logging
 import mimetypes
 import os
-import re
+from agent.re_compat import re
 import secrets
 import struct
 import tempfile
@@ -168,7 +168,7 @@ def _safe_id(value: Optional[str], keep: int = 8) -> str:
 
 
 def _json_dumps(payload: Dict[str, Any]) -> str:
-    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    return orjson.dumps(payload).decode('utf-8')
 
 
 def _pkcs7_pad(data: bytes, block_size: int = 16) -> bytes:
@@ -260,7 +260,7 @@ def load_weixin_account(hermes_home: str, account_id: str) -> Optional[Dict[str,
     if not path.exists():
         return None
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        return orjson.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return None
 
@@ -283,7 +283,7 @@ class ContextTokenStore:
         if not path.exists():
             return
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
+            data = orjson.loads(path.read_text(encoding="utf-8"))
         except Exception as exc:
             logger.warning("weixin: failed to restore context tokens for %s: %s", _safe_id(account_id), exc)
             return
@@ -386,7 +386,7 @@ async def _api_post(
             raw = await response.text()
             if not response.ok:
                 raise RuntimeError(f"iLink POST {endpoint} HTTP {response.status}: {raw[:200]}")
-            return json.loads(raw)
+            return orjson.loads(raw)
     return await asyncio.wait_for(_do(), timeout=timeout_ms / 1000)
 
 
@@ -410,7 +410,7 @@ async def _api_get(
             raw = await response.text()
             if not response.ok:
                 raise RuntimeError(f"iLink GET {endpoint} HTTP {response.status}: {raw[:200]}")
-            return json.loads(raw)
+            return orjson.loads(raw)
     return await asyncio.wait_for(_do(), timeout=timeout_ms / 1000)
 
 
@@ -990,7 +990,7 @@ def _load_sync_buf(hermes_home: str, account_id: str) -> str:
     if not path.exists():
         return ""
     try:
-        return json.loads(path.read_text(encoding="utf-8")).get("get_updates_buf", "")
+        return orjson.loads(path.read_text(encoding="utf-8")).get("get_updates_buf", "")
     except Exception:
         return ""
 
@@ -1416,7 +1416,7 @@ class WeixinAdapter(BasePlatformAdapter):
         item_list = message.get("item_list") or []
         text = _extract_text(item_list)
         if text:
-            content_key = f"content:{sender_id}:{hashlib.md5(text.encode()).hexdigest()}"
+            content_key = f"content:{sender_id}:{xxhash.xxh64(text.encode()).hexdigest()}"
             if self._dedup.is_duplicate(content_key):
                 logger.debug("[%s] Content-dedup: skipping duplicate message from %s", self.name, sender_id)
                 return
@@ -2114,7 +2114,7 @@ class WeixinAdapter(BasePlatformAdapter):
         filekey = secrets.token_hex(16)
         aes_key = secrets.token_bytes(16)
         rawsize = len(plaintext)
-        rawfilemd5 = hashlib.md5(plaintext).hexdigest()
+        rawfilemd5 = xxhash.xxh64(plaintext).hexdigest()
         upload_response = await _get_upload_url(
             self._send_session,
             base_url=self._base_url,

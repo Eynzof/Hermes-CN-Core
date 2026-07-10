@@ -3,9 +3,10 @@
 Verifies that _wrap_command_powershell captures warnings from pwsh_transform
 (always-on, run on the raw command — see P-037), execute() attaches them to the
 result dict, and terminal_tool surfaces them in JSON.
+Also verifies that pwsh (PowerShell 7) skips the transform entirely.
 """
 
-import json
+import orjson
 import os
 import sys
 import pytest
@@ -117,6 +118,32 @@ class TestWrapCommandCapturesWarnings:
         # And the transform recorded a down-level warning for the LLM.
         assert env._pwsh_warnings
 
+    def test_pwsh_skips_transform(self):
+        """When shell_type is 'pwsh', pwsh_transform is NOT called."""
+        from tools.environments.local import LocalEnvironment
+
+        with patch(
+            "tools.environments.local.pwsh_transform",
+        ) as mock_transform:
+            env = LocalEnvironment(cwd=r"C:\tmp", timeout=30)
+            env._shell_type = "pwsh"
+            # Use PS7 syntax that would normally be transformed
+            env._wrap_command_powershell("$a ?? $b", r"C:\tmp")
+
+            # Transform must NOT be called for pwsh
+            mock_transform.assert_not_called()
+
+    def test_pwsh_no_warnings(self):
+        """When shell_type is 'pwsh', _pwsh_warnings is empty list."""
+        from tools.environments.local import LocalEnvironment
+
+        env = LocalEnvironment(cwd=r"C:\tmp", timeout=30)
+        env._shell_type = "pwsh"
+        env._wrap_command_powershell("$a ?? $b", r"C:\tmp")
+
+        assert hasattr(env, "_pwsh_warnings")
+        assert env._pwsh_warnings == []
+
 
 # ---------------------------------------------------------------------------
 # execute() attaches warnings to result dict
@@ -150,6 +177,24 @@ class TestExecuteAttachesWarnings:
             assert "pwsh_warnings" in result
             assert result["pwsh_warnings"] == ["Line 2: null-coalescing `??` rewritten"]
 
+    def test_execute_pwsh_no_warnings_in_result(self):
+        """When shell_type is 'pwsh', execute() result does NOT contain pwsh_warnings."""
+        from tools.environments.local import LocalEnvironment
+
+        with patch(
+            "tools.environments.local.subprocess.Popen",
+            _fake_popen_for_powershell("foo"),
+        ), patch(
+            "tools.environments.local.os.path.isdir", return_value=True
+        ):
+            env = LocalEnvironment(cwd=r"C:\tmp", timeout=30)
+            env._shell_path = r"C:\Program Files\PowerShell\7\pwsh.exe"
+            env._shell_type = "pwsh"
+            result = env.execute("$a ?? $b")
+
+            # pwsh should not have warnings
+            assert "pwsh_warnings" not in result
+
 
 # ---------------------------------------------------------------------------
 # terminal_tool surfaces warnings in JSON
@@ -175,7 +220,7 @@ class TestTerminalToolSurfacesWarnings:
         with patch.object(tt, "_create_environment", return_value=fake_env), \
              patch.dict(tt._active_environments, {}, clear=True):
             raw = tt.terminal_tool("echo hi", task_id=task_id)
-        return json.loads(raw)
+        return orjson.loads(raw)
 
     def test_terminal_tool_json_includes_pwsh_warnings(self, tmp_path):
         parsed = self._run_with_fake_env_result(

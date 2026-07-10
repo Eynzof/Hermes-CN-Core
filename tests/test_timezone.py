@@ -155,8 +155,8 @@ class TestCodeExecutionTZ:
         os.environ.pop("HERMES_TIMEZONE", None)
 
     def _mock_handle(self, function_name, function_args, task_id=None, user_task=None):
-        import json as _json
-        return _json.dumps({"error": f"unexpected tool call: {function_name}"})
+        import orjson as _json
+        return _json.dumps({"error": f"unexpected tool call: {function_name}"}).decode('utf-8')
 
     def test_tz_injected_when_configured(self):
         """When HERMES_TIMEZONE is set, child process sees TZ env var.
@@ -165,7 +165,7 @@ class TestCodeExecutionTZ:
         subprocess call so we don't pay 3x the subprocess startup cost
         (each execute_code spawns a real Python subprocess ~3s).
         """
-        import json as _json
+        import orjson as _json
         os.environ["HERMES_TIMEZONE"] = "Asia/Kolkata"
 
         # One subprocess, three things checked:
@@ -190,7 +190,7 @@ class TestCodeExecutionTZ:
 
     def test_tz_not_injected_when_empty(self):
         """When HERMES_TIMEZONE is not set, child process has no TZ."""
-        import json as _json
+        import orjson as _json
         os.environ.pop("HERMES_TIMEZONE", None)
 
         with patch("model_tools.handle_function_call", side_effect=self._mock_handle):

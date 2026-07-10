@@ -1,6 +1,6 @@
 """Tests for gateway/pairing.py — DM pairing security system."""
 
-import json
+import orjson
 import os
 import sys
 import time
@@ -36,7 +36,7 @@ class TestSecureWrite:
         target = tmp_path / "sub" / "dir" / "file.json"
         _secure_write(target, '{"hello": "world"}')
         assert target.exists()
-        assert json.loads(target.read_text()) == {"hello": "world"}
+        assert orjson.loads(target.read_text()) == {"hello": "world"}
 
     @pytest.mark.skipif(
         sys.platform.startswith("win"),
@@ -99,7 +99,7 @@ class TestHashedStorage:
         with patch("gateway.pairing.PAIRING_DIR", tmp_path):
             store = PairingStore()
             code = store.generate_code("telegram", "user1", "Alice")
-            raw = json.loads(
+            raw = orjson.loads(
                 (tmp_path / "telegram-pending.json").read_text(encoding="utf-8")
             )
 
@@ -155,7 +155,7 @@ class TestHashedStorage:
             store.generate_code("telegram", "user0")
             store.generate_code("telegram", "user1")
             store.generate_code("telegram", "user2")
-            raw = json.loads(
+            raw = orjson.loads(
                 (tmp_path / "telegram-pending.json").read_text(encoding="utf-8")
             )
         salts = [entry["salt"] for entry in raw.values()]
@@ -196,7 +196,7 @@ class TestLegacyPendingFileCompat:
             }
         }
         (tmp_path / "telegram-pending.json").write_text(
-            json.dumps(legacy), encoding="utf-8"
+            orjson.dumps(legacy).decode('utf-8'), encoding="utf-8"
         )
 
     def test_approve_code_ignores_legacy_entries(self, tmp_path):
@@ -234,7 +234,7 @@ class TestLegacyPendingFileCompat:
             )
             store = PairingStore()
             store._cleanup_expired("telegram")
-            raw = json.loads(
+            raw = orjson.loads(
                 (tmp_path / "telegram-pending.json").read_text(encoding="utf-8")
             )
         assert raw == {}
@@ -243,16 +243,16 @@ class TestLegacyPendingFileCompat:
         """Non-dict / missing-created_at entries get evicted, not crashed on."""
         with patch("gateway.pairing.PAIRING_DIR", tmp_path):
             (tmp_path / "telegram-pending.json").write_text(
-                json.dumps({
+                orjson.dumps({
                     "broken1": "not a dict",
                     "broken2": {"user_id": "x"},  # no created_at
                     "broken3": {"created_at": "not a number"},
-                }),
+                }).decode('utf-8'),
                 encoding="utf-8",
             )
             store = PairingStore()
             store._cleanup_expired("telegram")
-            raw = json.loads(
+            raw = orjson.loads(
                 (tmp_path / "telegram-pending.json").read_text(encoding="utf-8")
             )
         assert raw == {}
@@ -262,10 +262,10 @@ class TestLegacyPendingFileCompat:
         import time as _time
         with patch("gateway.pairing.PAIRING_DIR", tmp_path):
             (tmp_path / "telegram-pending.json").write_text(
-                json.dumps({
+                orjson.dumps({
                     "broken": {"user_id": "x", "created_at": _time.time(),
                                "salt": "not-hex", "hash": "doesntmatter"},
-                }),
+                }).decode('utf-8'),
                 encoding="utf-8",
             )
             store = PairingStore()
@@ -314,7 +314,7 @@ class TestRateLimiting:
         mapping_dir = tmp_path / "whatsapp" / "session"
         mapping_dir.mkdir(parents=True, exist_ok=True)
         (mapping_dir / "lid-mapping-999999999999999.json").write_text(
-            json.dumps("15551234567@s.whatsapp.net"),
+            orjson.dumps("15551234567@s.whatsapp.net").decode('utf-8'),
             encoding="utf-8",
         )
         monkeypatch.setenv("HERMES_HOME", str(tmp_path))
@@ -423,7 +423,7 @@ class TestApprovalFlow:
         mapping_dir = tmp_path / "whatsapp" / "session"
         mapping_dir.mkdir(parents=True, exist_ok=True)
         (mapping_dir / "lid-mapping-999999999999999.json").write_text(
-            json.dumps("15551234567@s.whatsapp.net"),
+            orjson.dumps("15551234567@s.whatsapp.net").decode('utf-8'),
             encoding="utf-8",
         )
         monkeypatch.setenv("HERMES_HOME", str(tmp_path))
@@ -445,22 +445,19 @@ class TestApprovalFlow:
         mapping_dir = tmp_path / "whatsapp" / "session"
         mapping_dir.mkdir(parents=True, exist_ok=True)
         (mapping_dir / "lid-mapping-999999999999999.json").write_text(
-            json.dumps("15551234567@s.whatsapp.net"),
+            orjson.dumps("15551234567@s.whatsapp.net").decode('utf-8'),
             encoding="utf-8",
         )
         monkeypatch.setenv("HERMES_HOME", str(tmp_path))
 
         approved_path = tmp_path / "whatsapp-approved.json"
         approved_path.write_text(
-            json.dumps(
-                {
+            orjson.dumps({
                     "15551234567@s.whatsapp.net": {
                         "user_name": "Legacy Alice",
                         "approved_at": time.time(),
                     }
-                },
-                indent=2,
-            ),
+                }, option=orjson.OPT_INDENT_2).decode('utf-8'),
             encoding="utf-8",
         )
 

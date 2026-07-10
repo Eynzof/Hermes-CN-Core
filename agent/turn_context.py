@@ -31,6 +31,7 @@ from typing import Any, Dict, List, Optional
 from agent.conversation_compression import conversation_history_after_compression
 from agent.iteration_budget import IterationBudget
 from agent.model_metadata import (
+    IncrementalTokenEstimator,
     estimate_messages_tokens_rough,
     estimate_request_tokens_rough,
 )
@@ -66,6 +67,7 @@ def _should_run_preflight_estimate(
     protect_first_n: int,
     protect_last_n: int,
     threshold_tokens: int,
+    estimator: "Optional[IncrementalTokenEstimator]" = None,
 ) -> bool:
     """Cheap gate for the (expensive) full preflight token estimate.
 
@@ -86,7 +88,7 @@ def _should_run_preflight_estimate(
     """
     if len(messages) > protect_first_n + protect_last_n + 1:
         return True
-    return estimate_messages_tokens_rough(messages) >= threshold_tokens
+    return estimate_messages_tokens_rough(messages, estimator=estimator) >= threshold_tokens
 
 
 @dataclass
@@ -338,16 +340,31 @@ def build_turn_context(
     # Gate the (expensive) full token estimate behind a cheap pre-check.
     # See ``_should_run_preflight_estimate`` for the OR semantics that fix
     # issue #27405 (a few very large messages slipping past the count gate).
+    # Reuse a per-agent incremental estimator so the per-turn preflight scan is
+    # O(new messages) instead of O(entire history): the message dicts carried in
+    # ``conversation_history`` persist across turns, so their char/image counts
+    # are cached and only the turn's new rows are re-measured. The result is
+    # byte-identical to the stateless estimate (see IncrementalTokenEstimator).
+    # Defensive resolution keeps this safe for mock agents / __slots__ agents.
+    _preflight_estimator = getattr(agent, "_preflight_token_estimator", None)
+    if not isinstance(_preflight_estimator, IncrementalTokenEstimator):
+        _preflight_estimator = IncrementalTokenEstimator()
+        try:
+            agent._preflight_token_estimator = _preflight_estimator
+        except Exception:
+            pass
     if agent.compression_enabled and _should_run_preflight_estimate(
         messages,
         agent.context_compressor.protect_first_n,
         agent.context_compressor.protect_last_n,
         agent.context_compressor.threshold_tokens,
+        estimator=_preflight_estimator,
     ):
         _preflight_tokens = estimate_request_tokens_rough(
             messages,
             system_prompt=active_system_prompt or "",
             tools=agent.tools or None,
+            estimator=_preflight_estimator,
         )
         _compressor = agent.context_compressor
         _defer_preflight = getattr(
@@ -412,6 +429,7 @@ def build_turn_context(
                     messages,
                     system_prompt=active_system_prompt or "",
                     tools=agent.tools or None,
+                    estimator=_preflight_estimator,
                 )
                 if not _compression_made_progress(
                     _orig_len, len(messages), _orig_tokens, _preflight_tokens

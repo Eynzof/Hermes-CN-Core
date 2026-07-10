@@ -13,7 +13,7 @@ lives in ``tools.image_generation_tool`` and is exercised by
 
 from __future__ import annotations
 
-import json
+import orjson
 from unittest.mock import MagicMock
 
 
@@ -110,7 +110,7 @@ class TestFalImageGenProviderGenerate:
             captured["prompt"] = prompt
             captured["aspect_ratio"] = aspect_ratio
             captured["kwargs"] = kwargs
-            return json.dumps({"success": True, "image": "https://fake/image.png"})
+            return orjson.dumps({"success": True, "image": "https://fake/image.png"}).decode('utf-8')
 
         monkeypatch.setattr(image_tool, "image_generate_tool", fake_image_generate_tool)
         monkeypatch.setattr(image_tool, "_resolve_fal_model",
@@ -141,7 +141,7 @@ class TestFalImageGenProviderGenerate:
 
         def fake(prompt, aspect_ratio, **kwargs):
             seen_aspect["v"] = aspect_ratio
-            return json.dumps({"success": True, "image": "x"})
+            return orjson.dumps({"success": True, "image": "x"}).decode('utf-8')
 
         monkeypatch.setattr(image_tool, "image_generate_tool", fake)
         monkeypatch.setattr(image_tool, "_resolve_fal_model",
@@ -159,7 +159,7 @@ class TestFalImageGenProviderGenerate:
 
         def fake(prompt, aspect_ratio, **kwargs):
             seen.update(kwargs)
-            return json.dumps({"success": True, "image": "x"})
+            return orjson.dumps({"success": True, "image": "x"}).decode('utf-8')
 
         monkeypatch.setattr(image_tool, "image_generate_tool", fake)
         monkeypatch.setattr(image_tool, "_resolve_fal_model",

@@ -8,7 +8,7 @@ on disk, leaking once per failed call.
 
 from __future__ import annotations
 
-import base64
+import pybase64 as base64
 import os
 import tempfile
 from pathlib import Path

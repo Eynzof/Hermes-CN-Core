@@ -18,7 +18,7 @@ from __future__ import annotations
 import argparse
 import csv
 import datetime as dt
-import json
+import orjson
 import random
 import statistics
 from collections import defaultdict
@@ -198,7 +198,7 @@ def analyze(
         "results": results,
     }
 
-    Path(out_path).write_text(json.dumps(payload, indent=2))
+    Path(out_path).write_text(orjson.dumps(payload, option=orjson.OPT_INDENT_2).decode('utf-8'))
     return payload
 
 

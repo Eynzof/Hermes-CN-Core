@@ -59,10 +59,10 @@ supports.
 
 from __future__ import annotations
 
-import base64
-import json
+import pybase64 as base64
+import orjson
 import logging
-import re
+from agent.re_compat import re
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Sequence, Union
 
@@ -405,7 +405,7 @@ def _build_structured_messages(
         header = f"{header}\n\nSchema name: {schema_name}"
     if json_schema is not None:
         try:
-            schema_text = json.dumps(json_schema, ensure_ascii=False, sort_keys=True)
+            schema_text = orjson.dumps(json_schema, option=orjson.OPT_SORT_KEYS).decode('utf-8')
         except (TypeError, ValueError):
             schema_text = str(json_schema)
         header = f"{header}\n\nJSON schema:\n{schema_text}"
@@ -465,8 +465,8 @@ def _parse_structured_text(
         return None, "text"
 
     try:
-        parsed = json.loads(_strip_code_fences(text))
-    except (json.JSONDecodeError, ValueError):
+        parsed = orjson.loads(_strip_code_fences(text))
+    except (orjson.JSONDecodeError, ValueError):
         return None, "text"
 
     if json_schema is not None:

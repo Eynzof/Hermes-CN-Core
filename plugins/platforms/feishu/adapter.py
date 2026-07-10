@@ -54,11 +54,11 @@ import concurrent.futures
 import hashlib
 import hmac
 import itertools
-import json
+import orjson
 import logging
 import mimetypes
 import os
-import re
+from agent.re_compat import re
 import threading
 import time
 import uuid
@@ -577,14 +577,11 @@ def _coerce_required_int(value: Any, default: int, min_value: int = 0) -> int:
 
 def _build_markdown_post_payload(content: str) -> str:
     rows = _build_markdown_post_rows(content)
-    return json.dumps(
-        {
+    return orjson.dumps({
             "zh_cn": {
                 "content": rows,
             }
-        },
-        ensure_ascii=False,
-    )
+        }).decode('utf-8')
 
 
 def _build_markdown_post_rows(content: str) -> List[List[Dict[str, str]]]:
@@ -904,8 +901,8 @@ def normalize_feishu_message(
 
 def _load_feishu_payload(raw_content: str) -> Dict[str, Any]:
     try:
-        parsed = json.loads(raw_content) if raw_content else {}
-    except json.JSONDecodeError:
+        parsed = orjson.loads(raw_content) if raw_content else {}
+    except orjson.JSONDecodeError:
         return {"text": raw_content}
     return parsed if isinstance(parsed, dict) else {"content": parsed}
 
@@ -1922,7 +1919,7 @@ class FeishuAdapter(BasePlatformAdapter):
                     response = await self._feishu_send_with_retry(
                         chat_id=chat_id,
                         msg_type="text",
-                        payload=json.dumps({"text": _strip_markdown_to_plain_text(chunk)}, ensure_ascii=False),
+                        payload=orjson.dumps({"text": _strip_markdown_to_plain_text(chunk)}).decode('utf-8'),
                         reply_to=reply_to,
                         metadata=metadata,
                     )
@@ -1935,7 +1932,7 @@ class FeishuAdapter(BasePlatformAdapter):
                     response = await self._feishu_send_with_retry(
                         chat_id=chat_id,
                         msg_type="text",
-                        payload=json.dumps({"text": _strip_markdown_to_plain_text(chunk)}, ensure_ascii=False),
+                        payload=orjson.dumps({"text": _strip_markdown_to_plain_text(chunk)}).decode('utf-8'),
                         reply_to=reply_to,
                         metadata=metadata,
                     )
@@ -1969,7 +1966,7 @@ class FeishuAdapter(BasePlatformAdapter):
                 logger.warning("[Feishu] Invalid post update payload rejected by API; falling back to plain text")
                 fallback_body = self._build_update_message_body(
                     msg_type="text",
-                    content=json.dumps({"text": _strip_markdown_to_plain_text(content)}, ensure_ascii=False),
+                    content=orjson.dumps({"text": _strip_markdown_to_plain_text(content)}).decode('utf-8'),
                 )
                 fallback_request = self._build_update_message_request(message_id=message_id, request_body=fallback_body)
                 fallback_response = await self._run_blocking(self._client.im.v1.message.update, fallback_request)
@@ -2030,7 +2027,7 @@ class FeishuAdapter(BasePlatformAdapter):
                 ],
             }
 
-            payload = json.dumps(card, ensure_ascii=False)
+            payload = orjson.dumps(card).decode('utf-8')
             response = await self._feishu_send_with_retry(
                 chat_id=chat_id,
                 msg_type="interactive",
@@ -2095,10 +2092,7 @@ class FeishuAdapter(BasePlatformAdapter):
 
         try:
             prompt_id = next(self._update_prompt_counter)
-            payload = json.dumps(
-                self._build_update_prompt_card(prompt=prompt, default=default, prompt_id=prompt_id),
-                ensure_ascii=False,
-            )
+            payload = orjson.dumps(self._build_update_prompt_card(prompt=prompt, default=default, prompt_id=prompt_id)).decode('utf-8')
             response = await self._feishu_send_with_retry(
                 chat_id=chat_id,
                 msg_type="interactive",
@@ -2270,7 +2264,7 @@ class FeishuAdapter(BasePlatformAdapter):
                 message_response = await self._feishu_send_with_retry(
                     chat_id=chat_id,
                     msg_type="image",
-                    payload=json.dumps({"image_key": image_key}, ensure_ascii=False),
+                    payload=orjson.dumps({"image_key": image_key}).decode('utf-8'),
                     reply_to=reply_to,
                     metadata=metadata,
                 )
@@ -2990,7 +2984,7 @@ class FeishuAdapter(BasePlatformAdapter):
         synthetic_text = f"/card {action_tag}"
         if action_value:
             try:
-                synthetic_text += f" {json.dumps(action_value, ensure_ascii=False)}"
+                synthetic_text += f" {orjson.dumps(action_value).decode('utf-8')}"
             except Exception:
                 pass
 
@@ -3502,8 +3496,8 @@ class FeishuAdapter(BasePlatformAdapter):
             return web.Response(status=413, text="Request body too large")
 
         try:
-            payload = json.loads(body_bytes.decode("utf-8"))
-        except (json.JSONDecodeError, UnicodeDecodeError):
+            payload = orjson.loads(body_bytes.decode("utf-8"))
+        except (orjson.JSONDecodeError, UnicodeDecodeError):
             self._record_webhook_anomaly(remote_ip, "400")
             return web.json_response({"code": 400, "msg": "invalid json"}, status=400)
 
@@ -4149,7 +4143,7 @@ class FeishuAdapter(BasePlatformAdapter):
             content = getattr(getattr(resp, "raw", None), "content", None)
             if not content:
                 return None
-            payload = json.loads(content)
+            payload = orjson.loads(content)
             if payload.get("code") != 0:
                 return None
             bots = (payload.get("data") or {}).get("bots") or {}
@@ -4408,7 +4402,7 @@ class FeishuAdapter(BasePlatformAdapter):
             resp = await self._run_blocking(self._client.request, req)
             content = getattr(getattr(resp, "raw", None), "content", None)
             if content:
-                payload = json.loads(content)
+                payload = orjson.loads(content)
                 parsed = _parse_bot_response(payload) or {}
                 open_id = (parsed.get("bot_open_id") or "").strip()
                 bot_name = (parsed.get("bot_name") or "").strip()
@@ -4460,10 +4454,10 @@ class FeishuAdapter(BasePlatformAdapter):
 
     def _load_seen_message_ids(self) -> None:
         try:
-            payload = json.loads(self._dedup_state_path.read_text(encoding="utf-8"))
+            payload = orjson.loads(self._dedup_state_path.read_text(encoding="utf-8"))
         except FileNotFoundError:
             return
-        except (OSError, json.JSONDecodeError):
+        except (OSError, orjson.JSONDecodeError):
             logger.warning("[Feishu] Failed to load persisted dedup state from %s", self._dedup_state_path, exc_info=True)
             return
         seen_data = payload.get("message_ids", {}) if isinstance(payload, dict) else {}
@@ -4530,11 +4524,11 @@ class FeishuAdapter(BasePlatformAdapter):
         # Force plain text for anything that looks like a markdown table.
         if _MARKDOWN_TABLE_RE.search(content):
             text_payload = {"text": content}
-            return "text", json.dumps(text_payload, ensure_ascii=False)
+            return "text", orjson.dumps(text_payload).decode('utf-8')
         if _MARKDOWN_HINT_RE.search(content):
             return "post", _build_markdown_post_payload(content)
         text_payload = {"text": content}
-        return "text", json.dumps(text_payload, ensure_ascii=False)
+        return "text", orjson.dumps(text_payload).decode('utf-8')
 
     async def _send_uploaded_file_message(
         self,
@@ -4591,7 +4585,7 @@ class FeishuAdapter(BasePlatformAdapter):
                 message_response = await self._feishu_send_with_retry(
                     chat_id=chat_id,
                     msg_type=resolved_message_type,
-                    payload=json.dumps({"file_key": file_key}, ensure_ascii=False),
+                    payload=orjson.dumps({"file_key": file_key}).decode('utf-8'),
                     reply_to=reply_to,
                     metadata=metadata,
                 )
@@ -5003,10 +4997,10 @@ class FeishuAdapter(BasePlatformAdapter):
         return _build_markdown_post_payload(content)
 
     def _build_media_post_payload(self, *, caption: str, media_tag: Dict[str, str]) -> str:
-        payload = json.loads(self._build_post_payload(caption))
+        payload = orjson.loads(self._build_post_payload(caption))
         content = payload.setdefault("zh_cn", {}).setdefault("content", [])
         content.append([media_tag])
-        return json.dumps(payload, ensure_ascii=False)
+        return orjson.dumps(payload).decode('utf-8')
 
     @staticmethod
     def _resolve_outbound_file_routing(
@@ -5060,13 +5054,13 @@ def _post_registration(base_url: str, body: Dict[str, str]) -> dict:
     req = Request(url, data=data, headers={"Content-Type": "application/x-www-form-urlencoded"})
     try:
         with urlopen(req, timeout=_ONBOARD_REQUEST_TIMEOUT_S) as resp:
-            return json.loads(resp.read().decode("utf-8"))
+            return orjson.loads(resp.read().decode("utf-8"))
     except HTTPError as exc:
         body_bytes = exc.read()
         if body_bytes:
             try:
-                return json.loads(body_bytes.decode("utf-8"))
-            except (ValueError, json.JSONDecodeError):
+                return orjson.loads(body_bytes.decode("utf-8"))
+            except (ValueError, orjson.JSONDecodeError):
                 raise exc from None
         raise
 
@@ -5137,7 +5131,7 @@ def _poll_registration(
                 "device_code": device_code,
                 "tp": "ob_app",
             })
-        except (URLError, OSError, json.JSONDecodeError):
+        except (URLError, OSError, orjson.JSONDecodeError):
             time.sleep(interval)
             continue
 
@@ -5256,7 +5250,7 @@ def _probe_bot_sdk(app_id: str, app_secret: str, domain: str) -> Optional[dict]:
         content = getattr(getattr(resp, "raw", None), "content", None)
         if content is None:
             return None
-        return _parse_bot_response(json.loads(content))
+        return _parse_bot_response(orjson.loads(content))
     except Exception as exc:
         logger.debug("[Feishu onboard] SDK probe failed: %s", exc)
         return None
@@ -5266,14 +5260,14 @@ def _probe_bot_http(app_id: str, app_secret: str, domain: str) -> Optional[dict]
     """Fallback probe using raw HTTP (when lark_oapi is not installed)."""
     base_url = _onboard_open_base_url(domain)
     try:
-        token_data = json.dumps({"app_id": app_id, "app_secret": app_secret}).encode("utf-8")
+        token_data = orjson.dumps({"app_id": app_id, "app_secret": app_secret})
         token_req = Request(
             f"{base_url}/open-apis/auth/v3/tenant_access_token/internal",
             data=token_data,
             headers={"Content-Type": "application/json"},
         )
         with urlopen(token_req, timeout=_ONBOARD_REQUEST_TIMEOUT_S) as resp:
-            token_res = json.loads(resp.read().decode("utf-8"))
+            token_res = orjson.loads(resp.read().decode("utf-8"))
 
         access_token = token_res.get("tenant_access_token")
         if not access_token:
@@ -5287,10 +5281,10 @@ def _probe_bot_http(app_id: str, app_secret: str, domain: str) -> Optional[dict]
             },
         )
         with urlopen(bot_req, timeout=_ONBOARD_REQUEST_TIMEOUT_S) as resp:
-            bot_res = json.loads(resp.read().decode("utf-8"))
+            bot_res = orjson.loads(resp.read().decode("utf-8"))
 
         return _parse_bot_response(bot_res)
-    except (URLError, OSError, KeyError, json.JSONDecodeError) as exc:
+    except (URLError, OSError, KeyError, orjson.JSONDecodeError) as exc:
         logger.debug("[Feishu onboard] HTTP probe failed: %s", exc)
         return None
 
@@ -5318,7 +5312,7 @@ def qr_register(
     """
     try:
         return _qr_register_inner(initial_domain=initial_domain, timeout_seconds=timeout_seconds)
-    except (RuntimeError, URLError, OSError, json.JSONDecodeError) as exc:
+    except (RuntimeError, URLError, OSError, orjson.JSONDecodeError) as exc:
         logger.warning("[Feishu onboard] Registration failed: %s", exc)
         return None
 

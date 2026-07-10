@@ -11,7 +11,7 @@ authenticated only at the global root.
 
 from __future__ import annotations
 
-import json
+import orjson
 from pathlib import Path
 
 import pytest
@@ -47,7 +47,7 @@ def profile_env(tmp_path, monkeypatch):
 
 
 def _write(path: Path, payload: dict) -> None:
-    path.write_text(json.dumps(payload, indent=2))
+    path.write_text(orjson.dumps(payload, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
 
 # ---------------------------------------------------------------------------
@@ -441,11 +441,11 @@ def test_write_credential_pool_targets_profile_not_global(profile_env):
     }])
 
     # Global auth.json unchanged.
-    global_data = json.loads((profile_env["global"] / "auth.json").read_text())
+    global_data = orjson.loads((profile_env["global"] / "auth.json").read_text())
     assert global_data["credential_pool"]["openrouter"][0]["id"] == "glob-1"
 
     # Profile auth.json holds the new entry.
-    profile_data = json.loads((profile_env["profile"] / "auth.json").read_text())
+    profile_data = orjson.loads((profile_env["profile"] / "auth.json").read_text())
     assert profile_data["credential_pool"]["openrouter"][0]["id"] == "prof-new"
 
     # Subsequent read returns profile (shadows global).

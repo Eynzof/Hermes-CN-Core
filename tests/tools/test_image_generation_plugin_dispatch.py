@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import json
+import orjson
 import pytest
 
 from agent import image_gen_registry
@@ -45,7 +45,7 @@ class TestPluginDispatch:
         monkeypatch.setattr(registry_module, "get_provider", lambda name: _FakeCodexProvider() if name == "codex" else None)
 
         dispatched = image_generation_tool._dispatch_to_plugin_provider("draw cat", "square")
-        payload = json.loads(dispatched)
+        payload = orjson.loads(dispatched)
 
         assert payload["success"] is True
         assert payload["provider"] == "codex"
@@ -63,7 +63,7 @@ class TestPluginDispatch:
         monkeypatch.setattr(plugins_module, "_ensure_plugins_discovered", lambda: None)
 
         dispatched = image_generation_tool._dispatch_to_plugin_provider("draw cat", "landscape")
-        payload = json.loads(dispatched)
+        payload = orjson.loads(dispatched)
 
         assert payload["success"] is False
         assert payload["error_type"] == "provider_not_registered"
@@ -91,7 +91,7 @@ class TestPluginDispatch:
         monkeypatch.setattr(registry_module, "get_provider", lambda name: provider_state["provider"])
 
         dispatched = image_generation_tool._dispatch_to_plugin_provider("draw hammy", "portrait")
-        payload = json.loads(dispatched)
+        payload = orjson.loads(dispatched)
 
         assert calls == [False, True]
         assert payload["success"] is True

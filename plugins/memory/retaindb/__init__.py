@@ -20,11 +20,11 @@ Config (env vars or hermes config.yaml under retaindb:):
 
 from __future__ import annotations
 
-import json
+import orjson
 import logging
 import os
 import queue
-import re
+from agent.re_compat import re
 import sqlite3
 import threading
 import time
@@ -342,7 +342,7 @@ class _WriteQueue:
         self._thread.start()
         # Replay any rows left from a previous crash
         for row_id, user_id, session_id, msgs_json in self._pending_rows():
-            self._q.put((row_id, user_id, session_id, json.loads(msgs_json)))
+            self._q.put((row_id, user_id, session_id, orjson.loads(msgs_json)))
 
     def _get_conn(self) -> sqlite3.Connection:
         """Return a cached connection for the current thread."""
@@ -371,7 +371,7 @@ class _WriteQueue:
         conn = self._get_conn()
         cur = conn.execute(
             "INSERT INTO pending (user_id, session_id, messages_json, created_at) VALUES (?,?,?,?)",
-            (user_id, session_id, json.dumps(messages, ensure_ascii=False), now),
+            (user_id, session_id, orjson.dumps(messages).decode('utf-8'), now),
         )
         row_id = cur.lastrowid
         conn.commit()
@@ -652,7 +652,7 @@ class RetainDBMemoryProvider(MemoryProvider):
         if not self._client:
             return tool_error("RetainDB not initialized")
         try:
-            return json.dumps(self._dispatch(tool_name, args))
+            return orjson.dumps(self._dispatch(tool_name, args)).decode('utf-8')
         except Exception as exc:
             return tool_error(str(exc))
 

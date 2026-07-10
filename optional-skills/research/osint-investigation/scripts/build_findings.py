@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import argparse
 import csv
-import json
+import orjson
 from collections import defaultdict
 from pathlib import Path
 
@@ -141,7 +141,7 @@ def build_findings(
 
     # 3. Timing-based findings.
     if timing_path and Path(timing_path).exists():
-        timing = json.loads(Path(timing_path).read_text())
+        timing = orjson.loads(Path(timing_path).read_text())
         for r in timing.get("results", []):
             if not r.get("significant"):
                 continue
@@ -190,7 +190,7 @@ def build_findings(
         },
         "findings": findings,
     }
-    Path(out_path).write_text(json.dumps(payload, indent=2))
+    Path(out_path).write_text(orjson.dumps(payload, option=orjson.OPT_INDENT_2).decode('utf-8'))
     return payload
 
 

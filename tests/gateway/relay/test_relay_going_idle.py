@@ -10,7 +10,7 @@ close), and the RelayAdapter emitting going_idle from its existing drain
 from __future__ import annotations
 
 import asyncio
-import json
+import orjson
 
 import pytest
 import pytest_asyncio
@@ -67,7 +67,7 @@ class _IdleAwareServer:
                 for line in str(raw).split("\n"):
                     if not line.strip():
                         continue
-                    frame = json.loads(line)
+                    frame = orjson.loads(line)
                     self.received.append(frame)
                     await self._on_frame(ws, frame)
         except Exception:
@@ -76,12 +76,12 @@ class _IdleAwareServer:
     async def _on_frame(self, ws, frame):
         ftype = frame.get("type")
         if ftype == "hello":
-            await ws.send(json.dumps({"type": "descriptor", "descriptor": DESCRIPTOR}) + "\n")
+            await ws.send(orjson.dumps({"type": "descriptor", "descriptor": DESCRIPTOR}).decode('utf-8') + "\n")
             for f in self._to_push:
-                await ws.send(json.dumps(f) + "\n")
+                await ws.send(orjson.dumps(f).decode('utf-8') + "\n")
         elif ftype == "going_idle":
             self.going_idle_count += 1
-            await ws.send(json.dumps({"type": "going_idle_ack"}) + "\n")
+            await ws.send(orjson.dumps({"type": "going_idle_ack"}).decode('utf-8') + "\n")
         elif ftype == "inbound_ack":
             self.inbound_acks.append(frame.get("bufferId"))
 
@@ -113,7 +113,7 @@ async def test_go_idle_returns_false_on_timeout(server):
     # A server that never acks going_idle -> go_idle returns False (caller closes anyway).
     async def no_ack(ws, frame):
         if frame.get("type") == "hello":
-            await ws.send(json.dumps({"type": "descriptor", "descriptor": DESCRIPTOR}) + "\n")
+            await ws.send(orjson.dumps({"type": "descriptor", "descriptor": DESCRIPTOR}).decode('utf-8') + "\n")
         # deliberately ignore going_idle
 
     server._on_frame = no_ack  # type: ignore[assignment]
@@ -181,9 +181,9 @@ async def test_reconnect_redials_after_unexpected_close():
             for line in str(raw).split("\n"):
                 if not line.strip():
                     continue
-                frame = json.loads(line)
+                frame = orjson.loads(line)
                 if frame.get("type") == "hello":
-                    await ws.send(json.dumps({"type": "descriptor", "descriptor": DESCRIPTOR}) + "\n")
+                    await ws.send(orjson.dumps({"type": "descriptor", "descriptor": DESCRIPTOR}).decode('utf-8') + "\n")
                     if drops["n"] == 0:
                         drops["n"] += 1
                         await ws.close()  # force an unexpected close on the first connection

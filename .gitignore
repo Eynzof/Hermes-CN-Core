@@ -20,6 +20,7 @@ __pycache__/
 .notebooklm-playwright/
 .pip-cache/
 .uv-cache/
+reports/
 compose.hermes.local.yml
 export*
 __pycache__/model_tools.cpython-310.pyc

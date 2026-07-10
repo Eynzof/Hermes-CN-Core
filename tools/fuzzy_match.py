@@ -28,10 +28,12 @@ Usage:
         replace_all=False
     )
 """
-
-import re
+from agent.re_compat import re
 from typing import Tuple, Optional, List, Callable
-from difflib import SequenceMatcher
+import difflib
+import rapidfuzz.fuzz as _fuzz
+
+SequenceMatcher = difflib.SequenceMatcher
 
 UNICODE_MAP = {
     "\u201c": '"', "\u201d": '"',  # smart double quotes
@@ -681,7 +683,7 @@ def _strategy_block_anchor(content: str, pattern: str) -> List[Tuple[int, int]]:
             # Compare normalized middle sections
             content_middle = '\n'.join(norm_content_lines[i+1:i+pattern_line_count-1])
             pattern_middle = '\n'.join(pattern_lines[1:-1])
-            similarity = SequenceMatcher(None, content_middle, pattern_middle).ratio()
+            similarity = _fuzz.ratio(content_middle, pattern_middle) / 100.0
         
         if similarity >= threshold:
             # Calculate positions using ORIGINAL lines to ensure correct character offsets in the file
@@ -714,7 +716,7 @@ def _strategy_context_aware(content: str, pattern: str) -> List[Tuple[int, int]]
         # Calculate line-by-line similarity
         high_similarity_count = 0
         for p_line, c_line in zip(pattern_lines, block_lines):
-            sim = SequenceMatcher(None, p_line.strip(), c_line.strip()).ratio()
+            sim = _fuzz.ratio(p_line.strip(), c_line.strip()) / 100.0
             if sim >= 0.80:
                 high_similarity_count += 1
         
@@ -897,7 +899,7 @@ def find_closest_lines(old_string: str, content: str, context_lines: int = 2, ma
         stripped = line.strip()
         if not stripped:
             continue
-        ratio = SequenceMatcher(None, anchor, stripped).ratio()
+        ratio = _fuzz.ratio(anchor, stripped) / 100.0
         if ratio > 0.3:
             scored.append((ratio, i))
 

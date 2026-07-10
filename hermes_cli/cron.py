@@ -5,7 +5,7 @@ Handles standalone cron management commands like list, create, edit,
 pause/resume/run/remove, status, and tick.
 """
 
-import json
+import orjson
 import sys
 from pathlib import Path
 from typing import Iterable, List, Optional
@@ -45,7 +45,7 @@ def _normalize_skills(single_skill=None, skills: Optional[Iterable[str]] = None)
 def _cron_api(**kwargs):
     from tools.cronjob_tools import cronjob as cronjob_tool
 
-    return json.loads(cronjob_tool(**kwargs))
+    return orjson.loads(cronjob_tool(**kwargs))
 
 
 def _active_cron_provider_name() -> str:

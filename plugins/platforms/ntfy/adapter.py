@@ -45,7 +45,7 @@ by a read token for any real trust boundary.
 """
 
 import asyncio
-import json
+import orjson
 import logging
 import os
 import time
@@ -102,7 +102,7 @@ def _build_auth_header(token: str) -> Dict[str, str]:
     if not token:
         return {}
     if ":" in token:
-        import base64
+        import pybase64 as base64
         encoded = base64.b64encode(token.encode()).decode()
         return {"Authorization": f"Basic {encoded}"}
     return {"Authorization": f"Bearer {token}"}
@@ -277,8 +277,8 @@ class NtfyAdapter(BasePlatformAdapter):
                 if not line:
                     continue
                 try:
-                    event = json.loads(line)
-                except json.JSONDecodeError:
+                    event = orjson.loads(line)
+                except orjson.JSONDecodeError:
                     continue
                 if event.get("event") == "message":
                     await self._on_message(event)

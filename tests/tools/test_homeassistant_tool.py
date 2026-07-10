@@ -4,7 +4,7 @@ Tests real logic: entity filtering, payload building, response parsing,
 handler validation, and availability gating.
 """
 
-import json
+import orjson
 from unittest.mock import patch
 
 import pytest
@@ -188,30 +188,30 @@ class TestParseServiceResponse:
 
 class TestHandlerValidation:
     def test_get_state_missing_entity_id(self):
-        result = json.loads(_handle_get_state({}))
+        result = orjson.loads(_handle_get_state({}))
         assert "error" in result
         assert "entity_id" in result["error"]
 
     def test_get_state_empty_entity_id(self):
-        result = json.loads(_handle_get_state({"entity_id": ""}))
+        result = orjson.loads(_handle_get_state({"entity_id": ""}))
         assert "error" in result
 
     def test_call_service_missing_domain(self):
-        result = json.loads(_handle_call_service({"service": "turn_on"}))
+        result = orjson.loads(_handle_call_service({"service": "turn_on"}))
         assert "error" in result
         assert "domain" in result["error"]
 
     def test_call_service_missing_service(self):
-        result = json.loads(_handle_call_service({"domain": "light"}))
+        result = orjson.loads(_handle_call_service({"domain": "light"}))
         assert "error" in result
         assert "service" in result["error"]
 
     def test_call_service_missing_both(self):
-        result = json.loads(_handle_call_service({}))
+        result = orjson.loads(_handle_call_service({}))
         assert "error" in result
 
     def test_call_service_empty_strings(self):
-        result = json.loads(_handle_call_service({"domain": "", "service": ""}))
+        result = orjson.loads(_handle_call_service({"domain": "", "service": ""}))
         assert "error" in result
 
 
@@ -225,7 +225,7 @@ class TestDomainBlocklist:
 
     @pytest.mark.parametrize("domain", sorted(_BLOCKED_DOMAINS))
     def test_blocked_domain_rejected(self, domain):
-        result = json.loads(_handle_call_service({
+        result = orjson.loads(_handle_call_service({
             "domain": domain, "service": "any_service"
         }))
         assert "error" in result
@@ -235,7 +235,7 @@ class TestDomainBlocklist:
         """Safe domains like 'light' should not be blocked (will fail on network, not blocklist)."""
         # This will try to make a real HTTP call and fail, but the important thing
         # is it does NOT return a "blocked" error
-        result = json.loads(_handle_call_service({
+        result = orjson.loads(_handle_call_service({
             "domain": "light", "service": "turn_on", "entity_id": "light.test"
         }))
         # Should fail with a network/connection error, not a "blocked" error
@@ -282,12 +282,12 @@ class TestEntityIdValidation:
         assert _ENTITY_ID_RE.match("bedroom") is None
 
     def test_get_state_rejects_invalid_entity_id(self):
-        result = json.loads(_handle_get_state({"entity_id": "../../config"}))
+        result = orjson.loads(_handle_get_state({"entity_id": "../../config"}))
         assert "error" in result
         assert "Invalid entity_id" in result["error"]
 
     def test_call_service_rejects_invalid_entity_id(self):
-        result = json.loads(_handle_call_service({
+        result = orjson.loads(_handle_call_service({
             "domain": "light",
             "service": "turn_on",
             "entity_id": "../../../etc/passwd",
@@ -298,7 +298,7 @@ class TestEntityIdValidation:
     def test_call_service_allows_no_entity_id(self):
         """Some services (like scene.turn_on) don't need entity_id."""
         # Will fail on network, but should NOT fail on entity_id validation
-        result = json.loads(_handle_call_service({
+        result = orjson.loads(_handle_call_service({
             "domain": "scene", "service": "turn_on"
         }))
         if "error" in result:
@@ -338,7 +338,7 @@ class TestCallServiceStringData:
 
     def test_invalid_json_string_returns_error(self):
         """Malformed JSON string in data returns a clear error."""
-        result = json.loads(_handle_call_service({
+        result = orjson.loads(_handle_call_service({
             "domain": "light",
             "service": "turn_on",
             "entity_id": "light.bedroom",
@@ -419,7 +419,7 @@ class TestServiceNameValidation:
 
     def test_handler_rejects_traversal_domain(self):
         """_handle_call_service must reject domain with path traversal."""
-        result = json.loads(_handle_call_service({
+        result = orjson.loads(_handle_call_service({
             "domain": "../../api/config",
             "service": "turn_on",
         }))
@@ -428,7 +428,7 @@ class TestServiceNameValidation:
 
     def test_handler_rejects_traversal_service(self):
         """_handle_call_service must reject service with path traversal."""
-        result = json.loads(_handle_call_service({
+        result = orjson.loads(_handle_call_service({
             "domain": "light",
             "service": "../../api/config",
         }))
@@ -437,7 +437,7 @@ class TestServiceNameValidation:
 
     def test_handler_rejects_blocklist_bypass_traversal(self):
         """Blocklist bypass via shell_command/../light must be caught by format validation."""
-        result = json.loads(_handle_call_service({
+        result = orjson.loads(_handle_call_service({
             "domain": "shell_command/../light",
             "service": "turn_on",
         }))

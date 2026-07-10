@@ -5,7 +5,7 @@ gets stuck, gateway restarts, same session gets stuck again), the session
 is auto-suspended on startup so the user gets a clean slate.
 """
 
-import json
+import orjson
 from unittest.mock import MagicMock
 
 import pytest
@@ -28,7 +28,7 @@ class TestStuckLoopDetection:
         runner._increment_restart_failure_counts({"session:a", "session:b"})
         path = home / runner._STUCK_LOOP_FILE
         assert path.exists()
-        counts = json.loads(path.read_text())
+        counts = orjson.loads(path.read_text())
         assert counts["session:a"] == 1
         assert counts["session:b"] == 1
 
@@ -37,14 +37,14 @@ class TestStuckLoopDetection:
         runner._increment_restart_failure_counts({"session:a"})
         runner._increment_restart_failure_counts({"session:a"})
         runner._increment_restart_failure_counts({"session:a"})
-        counts = json.loads((home / runner._STUCK_LOOP_FILE).read_text())
+        counts = orjson.loads((home / runner._STUCK_LOOP_FILE).read_text())
         assert counts["session:a"] == 3
 
     def test_increment_drops_inactive_sessions(self, runner_with_home):
         runner, home = runner_with_home
         runner._increment_restart_failure_counts({"session:a", "session:b"})
         runner._increment_restart_failure_counts({"session:a"})  # b not active
-        counts = json.loads((home / runner._STUCK_LOOP_FILE).read_text())
+        counts = orjson.loads((home / runner._STUCK_LOOP_FILE).read_text())
         assert "session:a" in counts
         assert "session:b" not in counts
 
@@ -84,7 +84,7 @@ class TestStuckLoopDetection:
         runner._clear_restart_failure_count("session:a")
 
         path = home / runner._STUCK_LOOP_FILE
-        counts = json.loads(path.read_text())
+        counts = orjson.loads(path.read_text())
         assert "session:a" not in counts
         assert "session:b" in counts
 

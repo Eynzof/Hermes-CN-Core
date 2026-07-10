@@ -18,7 +18,7 @@ Other modules should import the dataclasses and query functions from here
 rather than parsing the raw JSON themselves.
 """
 
-import json
+import orjson
 import logging
 import os
 import sys
@@ -232,7 +232,7 @@ def _load_disk_cache() -> Dict[str, Any]:
         cache_path = _get_cache_path()
         if cache_path.exists():
             with open(cache_path, encoding="utf-8") as f:
-                return json.load(f)
+                return orjson.loads(f.read())
     except Exception as e:
         logger.debug("Failed to load models.dev disk cache: %s", e)
     return {}
@@ -310,7 +310,7 @@ def _load_bundled_snapshot() -> Dict[str, Any]:
         try:
             if path.is_file():
                 with open(path, encoding="utf-8") as f:
-                    data = json.load(f)
+                    data = orjson.loads(f.read())
                 if isinstance(data, dict) and data:
                     _bundled_snapshot_cache = data
                     logger.debug(
@@ -697,7 +697,7 @@ def list_provider_models(provider: str) -> List[str]:
 
 # Patterns that indicate non-agentic or noise models (TTS, embedding,
 # dated preview snapshots, live/streaming-only, image-only).
-import re
+from agent.re_compat import re
 _NOISE_PATTERNS: re.Pattern = re.compile(
     r"-tts\b|embedding|live-|-(preview|exp)-\d{2,4}[-_]|"
     r"-image\b|-image-preview\b|-customtools\b",

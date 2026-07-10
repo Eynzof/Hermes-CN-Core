@@ -17,8 +17,7 @@ To see available layouts: ls unpacked/ppt/slideLayouts/
 
 Prints the <p:sldId> element to add to presentation.xml.
 """
-
-import re
+from agent.re_compat import re
 import shutil
 import sys
 from pathlib import Path

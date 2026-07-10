@@ -1,5 +1,5 @@
 """Tests for gateway session management."""
-import json
+import orjson
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -753,7 +753,7 @@ class TestWhatsAppSessionKeyConsistency:
         mapping_dir = tmp_home / "whatsapp" / "session"
         mapping_dir.mkdir(parents=True, exist_ok=True)
         (mapping_dir / "lid-mapping-999999999999999.json").write_text(
-            json.dumps("15551234567@s.whatsapp.net"),
+            orjson.dumps("15551234567@s.whatsapp.net").decode('utf-8'),
             encoding="utf-8",
         )
         monkeypatch.setenv("HERMES_HOME", str(tmp_home))
@@ -782,7 +782,7 @@ class TestWhatsAppSessionKeyConsistency:
         mapping_dir = tmp_home / "whatsapp" / "session"
         mapping_dir.mkdir(parents=True, exist_ok=True)
         (mapping_dir / "lid-mapping-999999999999999.json").write_text(
-            json.dumps("15551234567@s.whatsapp.net"),
+            orjson.dumps("15551234567@s.whatsapp.net").decode('utf-8'),
             encoding="utf-8",
         )
         monkeypatch.setenv("HERMES_HOME", str(tmp_home))
@@ -1122,7 +1122,7 @@ class TestWhatsAppIdentifierPublicHelpers:
         mapping_dir = tmp_path / "whatsapp" / "session"
         mapping_dir.mkdir(parents=True, exist_ok=True)
         (mapping_dir / "lid-mapping-999999999999999.json").write_text(
-            json.dumps("15551234567@s.whatsapp.net"),
+            orjson.dumps("15551234567@s.whatsapp.net").decode('utf-8'),
             encoding="utf-8",
         )
         monkeypatch.setenv("HERMES_HOME", str(tmp_path))
@@ -1199,12 +1199,12 @@ class TestEnsureLoadedSkipsInvalidEntries:
     """Regression: one bad sessions.json entry must not block valid entries from loading."""
 
     def test_invalid_entry_skipped_valid_entry_loads(self, tmp_path):
-        import json
+        import orjson
         from gateway.session import SessionStore
         from gateway.config import GatewayConfig
 
         sessions_file = tmp_path / "sessions.json"
-        sessions_file.write_text(json.dumps({
+        sessions_file.write_text(orjson.dumps({
             "bad:key": {
                 "session_key": "bad:key",
                 "session_id": "../../evil",
@@ -1217,7 +1217,7 @@ class TestEnsureLoadedSkipsInvalidEntries:
                 "created_at": "2026-01-01T00:00:00",
                 "updated_at": "2026-01-01T00:00:00",
             },
-        }), encoding="utf-8")
+        }).decode('utf-8'), encoding="utf-8")
 
         store = SessionStore(sessions_dir=tmp_path, config=GatewayConfig())
         store._ensure_loaded()

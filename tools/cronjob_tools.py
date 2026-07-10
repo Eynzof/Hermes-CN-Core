@@ -5,9 +5,9 @@ Expose a single compressed action-oriented tool to avoid schema/context bloat.
 Compatibility wrappers remain for direct Python callers and legacy tests.
 """
 
-import json
+import orjson
 import logging
-import re
+from agent.re_compat import re
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
@@ -746,8 +746,7 @@ def cronjob(
             _local_notice = _local_delivery_notice(job, _normalize_deliver_param(deliver))
             if _local_notice:
                 _create_message = f"{_create_message} {_local_notice}"
-            return json.dumps(
-                {
+            return orjson.dumps({
                     "success": True,
                     "job_id": job["id"],
                     "name": job["name"],
@@ -759,13 +758,11 @@ def cronjob(
                     "next_run_at": job["next_run_at"],
                     "job": _format_job(job),
                     "message": _create_message,
-                },
-                indent=2,
-            )
+                }, option=orjson.OPT_INDENT_2).decode('utf-8')
 
         if normalized == "list":
             jobs = [_format_job(job) for job in list_jobs(include_disabled=include_disabled)]
-            return json.dumps({"success": True, "count": len(jobs), "jobs": jobs}, indent=2)
+            return orjson.dumps({"success": True, "count": len(jobs), "jobs": jobs}, option=orjson.OPT_INDENT_2).decode('utf-8')
 
         if not job_id:
             return tool_error(f"job_id is required for action '{normalized}'", success=False)
@@ -773,8 +770,7 @@ def cronjob(
         try:
             job = resolve_job_ref(job_id)
         except AmbiguousJobReference as exc:
-            return json.dumps(
-                {
+            return orjson.dumps({
                     "success": False,
                     "error": str(exc),
                     "matches": [
@@ -786,14 +782,9 @@ def cronjob(
                         }
                         for m in exc.matches
                     ],
-                },
-                indent=2,
-            )
+                }, option=orjson.OPT_INDENT_2).decode('utf-8')
         if not job:
-            return json.dumps(
-                {"success": False, "error": f"Job with ID or name '{job_id}' not found. Use cronjob(action='list') to inspect jobs."},
-                indent=2,
-            )
+            return orjson.dumps({"success": False, "error": f"Job with ID or name '{job_id}' not found. Use cronjob(action='list') to inspect jobs."}, option=orjson.OPT_INDENT_2).decode('utf-8')
         # Resolve to canonical ID (supports name-based lookup)
         job_id = job["id"]
 
@@ -802,8 +793,7 @@ def cronjob(
             if not removed:
                 return tool_error(f"Failed to remove job '{job_id}'", success=False)
             _notify_provider_jobs_changed_safe()
-            return json.dumps(
-                {
+            return orjson.dumps({
                     "success": True,
                     "message": f"Cron job '{job['name']}' removed.",
                     "removed_job": {
@@ -811,19 +801,17 @@ def cronjob(
                         "name": job["name"],
                         "schedule": job.get("schedule_display"),
                     },
-                },
-                indent=2,
-            )
+                }, option=orjson.OPT_INDENT_2).decode('utf-8')
 
         if normalized == "pause":
             updated = pause_job(job_id, reason=reason)
             _notify_provider_jobs_changed_safe()
-            return json.dumps({"success": True, "job": _format_job(updated)}, indent=2)
+            return orjson.dumps({"success": True, "job": _format_job(updated)}, option=orjson.OPT_INDENT_2).decode('utf-8')
 
         if normalized == "resume":
             updated = resume_job(job_id)
             _notify_provider_jobs_changed_safe()
-            return json.dumps({"success": True, "job": _format_job(updated)}, indent=2)
+            return orjson.dumps({"success": True, "job": _format_job(updated)}, option=orjson.OPT_INDENT_2).decode('utf-8')
 
         if normalized in {"run", "run_now", "trigger"}:
             # Execute the job immediately rather than only scheduling it for the
@@ -842,7 +830,7 @@ def cronjob(
                 )
             elif exec_result.get("error"):
                 result["execution_error"] = exec_result["error"]
-            return json.dumps({"success": True, "job": result}, indent=2)
+            return orjson.dumps({"success": True, "job": result}, option=orjson.OPT_INDENT_2).decode('utf-8')
 
         if normalized == "update":
             updates: Dict[str, Any] = {}
@@ -948,7 +936,7 @@ def cronjob(
                 return tool_error("No updates provided.", success=False)
             updated = update_job(job_id, updates)
             _notify_provider_jobs_changed_safe()
-            return json.dumps({"success": True, "job": _format_job(updated)}, indent=2)
+            return orjson.dumps({"success": True, "job": _format_job(updated)}, option=orjson.OPT_INDENT_2).decode('utf-8')
 
         return tool_error(f"Unknown cron action '{action}'", success=False)
 

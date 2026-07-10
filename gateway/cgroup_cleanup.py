@@ -15,7 +15,7 @@ signal delivery uses a separate code path that still works.
 from __future__ import annotations
 
 import os
-import re
+from agent.re_compat import re
 import signal
 import sys
 from pathlib import Path

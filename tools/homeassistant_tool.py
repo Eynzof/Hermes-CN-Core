@@ -11,10 +11,10 @@ The HA instance URL is read from ``HASS_URL`` (default: http://homeassistant.loc
 """
 
 import asyncio
-import json
+import orjson
 import logging
 import os
-import re
+from agent.re_compat import re
 from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
@@ -227,7 +227,7 @@ def _handle_list_entities(args: dict, **kw) -> str:
     area = args.get("area")
     try:
         result = _run_async(_async_list_entities(domain=domain, area=area))
-        return json.dumps({"result": result})
+        return orjson.dumps({"result": result}).decode('utf-8')
     except Exception as e:
         logger.error("ha_list_entities error: %s", e)
         return tool_error(f"Failed to list entities: {e}")
@@ -242,7 +242,7 @@ def _handle_get_state(args: dict, **kw) -> str:
         return tool_error(f"Invalid entity_id format: {entity_id}")
     try:
         result = _run_async(_async_get_state(entity_id))
-        return json.dumps({"result": result})
+        return orjson.dumps({"result": result}).decode('utf-8')
     except Exception as e:
         logger.error("ha_get_state error: %s", e)
         return tool_error(f"Failed to get state for {entity_id}: {e}")
@@ -264,10 +264,10 @@ def _handle_call_service(args: dict, **kw) -> str:
         return tool_error(f"Invalid service format: {service!r}")
 
     if domain in _BLOCKED_DOMAINS:
-        return json.dumps({
+        return orjson.dumps({
             "error": f"Service domain '{domain}' is blocked for security. "
             f"Blocked domains: {', '.join(sorted(_BLOCKED_DOMAINS))}"
-        })
+        }).decode('utf-8')
 
     entity_id = args.get("entity_id")
     if entity_id and not _ENTITY_ID_RE.match(entity_id):
@@ -276,13 +276,13 @@ def _handle_call_service(args: dict, **kw) -> str:
     data = args.get("data")
     if isinstance(data, str):
         try:
-            data = json.loads(data) if data.strip() else None
-        except json.JSONDecodeError as e:
+            data = orjson.loads(data) if data.strip() else None
+        except orjson.JSONDecodeError as e:
             return tool_error(f"Invalid JSON string in 'data' parameter: {e}")
 
     try:
         result = _run_async(_async_call_service(domain, service, entity_id, data))
-        return json.dumps({"result": result})
+        return orjson.dumps({"result": result}).decode('utf-8')
     except Exception as e:
         logger.error("ha_call_service error: %s", e)
         return tool_error(f"Failed to call {domain}.{service}: {e}")
@@ -331,7 +331,7 @@ def _handle_list_services(args: dict, **kw) -> str:
     domain = args.get("domain")
     try:
         result = _run_async(_async_list_services(domain=domain))
-        return json.dumps({"result": result})
+        return orjson.dumps({"result": result}).decode('utf-8')
     except Exception as e:
         logger.error("ha_list_services error: %s", e)
         return tool_error(f"Failed to list services: {e}")

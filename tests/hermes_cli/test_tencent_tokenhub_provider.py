@@ -1,6 +1,6 @@
 """Tests for Tencent TokenHub provider support (Hy3 Preview)."""
 
-import json
+import orjson
 import os
 
 import pytest
@@ -444,7 +444,7 @@ class TestTencentTokenhubModelCatalogJSON:
         if not os.path.isfile(catalog_path):
             pytest.skip("model-catalog.json not found in workspace")
         with open(catalog_path) as f:
-            data = json.load(f)
+            data = orjson.loads(f.read())
         # Collect all model IDs across all provider lists.
         # providers is a dict keyed by provider name, each value has a "models" list.
         all_ids = set()

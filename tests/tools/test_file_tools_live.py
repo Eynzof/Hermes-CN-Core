@@ -18,6 +18,11 @@ import sys
 from pathlib import Path
 
 
+import sys
+
+if sys.platform == "win32":
+    pytest.skip("Live shell tests require a POSIX/bash environment", allow_module_level=True)
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from tools.environments.local import LocalEnvironment

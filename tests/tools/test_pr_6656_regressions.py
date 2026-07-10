@@ -20,7 +20,7 @@ Three independent fixes that were salvaged together:
 
 from __future__ import annotations
 
-import json
+import orjson
 from pathlib import Path
 from unittest.mock import patch
 
@@ -83,7 +83,7 @@ class TestUninstallPathTraversal:
 
     def _write_lock(self, hub_dir: Path, entries: dict) -> None:
         lock_path = hub_dir / "lock.json"
-        lock_path.write_text(json.dumps({"version": 1, "installed": entries}))
+        lock_path.write_text(orjson.dumps({"version": 1, "installed": entries}).decode('utf-8'))
 
     def test_traversal_via_parent_segments_rejected(self, hub_setup):
         """install_path: "../do-not-delete" must NOT escape SKILLS_DIR."""

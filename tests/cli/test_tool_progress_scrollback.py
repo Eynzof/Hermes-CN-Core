@@ -128,14 +128,14 @@ class TestToolProgressScrollback:
         """When a failed tool's result is forwarded, the stacked line surfaces
         the specific error (e.g. ``[exit 1]`` or ``[File not found: x]``)
         instead of the legacy generic ``[error]`` suffix."""
-        import json
+        import orjson
         cli = _make_cli(tool_progress="all")
         cli._on_tool_progress("tool.started", "terminal", "false", {"command": "false"})
         with patch.object(_cli_mod, "_cprint") as mock_print:
             cli._on_tool_progress(
                 "tool.completed", "terminal", None, None,
                 duration=0.5, is_error=True,
-                result=json.dumps({"output": "", "exit_code": 1}),
+                result=orjson.dumps({"output": "", "exit_code": 1}).decode('utf-8'),
             )
 
         line = mock_print.call_args[0][0]

@@ -8,7 +8,7 @@ CRLF endings while the replacement is LF-only).
 See issue #507 (Roo Code deep-dive, item 2c).
 """
 
-import json
+import orjson
 
 import pytest
 
@@ -72,7 +72,7 @@ class TestPatchCRLFPreservation:
             },
             task_id="crlf_patch_1",
         )
-        d = json.loads(result)
+        d = orjson.loads(result)
         assert not d.get("error"), d
 
         raw = target.read_bytes()
@@ -99,7 +99,7 @@ class TestPatchCRLFPreservation:
             },
             task_id="crlf_patch_2",
         )
-        d = json.loads(result)
+        d = orjson.loads(result)
         assert not d.get("error"), d
 
         raw = target.read_bytes()
@@ -124,7 +124,7 @@ class TestPatchCRLFPreservation:
             },
             task_id="crlf_patch_3",
         )
-        d = json.loads(result)
+        d = orjson.loads(result)
         assert not d.get("error"), d
 
         raw = target.read_bytes()
@@ -153,7 +153,7 @@ class TestWriteFileCRLFPreservation:
             },
             task_id="crlf_write_1",
         )
-        d = json.loads(result)
+        d = orjson.loads(result)
         assert "error" not in d, d
 
         raw = target.read_bytes()
@@ -171,7 +171,7 @@ class TestWriteFileCRLFPreservation:
             {"path": str(target), "content": "a\nb\nc\n"},
             task_id="crlf_write_2",
         )
-        d = json.loads(result)
+        d = orjson.loads(result)
         assert "error" not in d, d
 
         assert target.read_bytes() == b"a\nb\nc\n"
@@ -187,7 +187,7 @@ class TestWriteFileCRLFPreservation:
             {"path": str(target), "content": "X\nY\nZ\n"},
             task_id="crlf_write_3",
         )
-        d = json.loads(result)
+        d = orjson.loads(result)
         assert "error" not in d, d
 
         raw = target.read_bytes()

@@ -47,7 +47,7 @@ All providers return a dict built by :func:`success_response` /
 from __future__ import annotations
 
 import abc
-import base64
+import pybase64 as base64
 import datetime
 import logging
 import uuid

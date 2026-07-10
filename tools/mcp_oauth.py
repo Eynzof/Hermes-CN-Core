@@ -34,10 +34,10 @@ Configuration in config.yaml::
 
 import asyncio
 import contextvars
-import json
+import orjson
 import logging
 import os
-import re
+from agent.re_compat import re
 import secrets
 import socket
 import stat
@@ -196,8 +196,8 @@ def _read_json(path: Path) -> dict | None:
     if not path.exists():
         return None
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as exc:
+        return orjson.loads(path.read_text(encoding="utf-8"))
+    except (orjson.JSONDecodeError, OSError) as exc:
         logger.warning("Failed to read %s: %s", path, exc)
         return None
 
@@ -227,7 +227,7 @@ def _write_json(path: Path, data: dict) -> None:
             stat.S_IRUSR | stat.S_IWUSR,
         )
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            json.dump(data, fh, indent=2, default=str)
+            fh.write(orjson.dumps(data, default=str, option=orjson.OPT_INDENT_2).decode('utf-8'))
             fh.flush()
             os.fsync(fh.fileno())
         os.replace(tmp, path)

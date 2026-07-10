@@ -12,7 +12,7 @@ Covers:
 """
 from __future__ import annotations
 
-import json
+import orjson
 from unittest.mock import MagicMock, patch
 
 
@@ -90,12 +90,12 @@ class TestXAIProviderIsAvailable:
         monkeypatch.delenv("XAI_API_KEY", raising=False)
         monkeypatch.setenv("HERMES_HOME", str(tmp_path))
         auth_path = tmp_path / "auth.json"
-        auth_path.write_text(json.dumps({
+        auth_path.write_text(orjson.dumps({
             "version": 1,
             "providers": {
                 "xai-oauth": {"tokens": {"access_token": "ya29.fake-access-token"}},
             },
-        }))
+        }).decode('utf-8'))
 
         from plugins.web.xai.provider import XAIWebSearchProvider
         assert XAIWebSearchProvider().is_available() is True
@@ -111,10 +111,10 @@ class TestXAIProviderIsAvailable:
         monkeypatch.delenv("XAI_API_KEY", raising=False)
         monkeypatch.setenv("HERMES_HOME", str(tmp_path))
         auth_path = tmp_path / "auth.json"
-        auth_path.write_text(json.dumps({
+        auth_path.write_text(orjson.dumps({
             "version": 1,
             "providers": {"xai-oauth": {"tokens": {"access_token": ""}}},
-        }))
+        }).decode('utf-8'))
 
         from plugins.web.xai.provider import XAIWebSearchProvider
         assert XAIWebSearchProvider().is_available() is False
@@ -147,13 +147,13 @@ class TestXAIProviderIsAvailable:
 
 
 class TestXAIProviderSearchJSONPath:
-    _GROK_JSON = json.dumps({
+    _GROK_JSON = orjson.dumps({
         "results": [
             {"title": "xAI", "url": "https://x.ai", "description": "The company."},
             {"title": "Grok docs", "url": "https://docs.x.ai", "description": "API reference."},
             {"title": "Grokipedia", "url": "https://grokipedia.com", "description": "Wiki."},
         ]
-    })
+    }).decode('utf-8')
 
     def test_happy_path_normalizes_results(self):
         from plugins.web.xai import provider as xai_provider
@@ -201,12 +201,12 @@ class TestXAIProviderSearchJSONPath:
     def test_drops_rows_without_url(self):
         from plugins.web.xai import provider as xai_provider
 
-        bad_json = json.dumps({
+        bad_json = orjson.dumps({
             "results": [
                 {"title": "no url", "description": "skip me"},
                 {"title": "good", "url": "https://ok.com", "description": "keep"},
             ]
-        })
+        }).decode('utf-8')
         with patch.object(xai_provider, "resolve_xai_http_credentials", return_value=_creds()), \
              patch.object(xai_provider, "_load_xai_web_config", return_value={}), \
              patch("httpx.post", return_value=_mock_resp(_responses_payload(bad_json))):
@@ -322,7 +322,7 @@ class TestXAIProviderRequestShape:
             captured["url"] = url
             captured["headers"] = kwargs.get("headers", {})
             captured["json"] = kwargs.get("json", {})
-            return _mock_resp(_responses_payload(json.dumps({"results": []})))
+            return _mock_resp(_responses_payload(orjson.dumps({"results": []}).decode('utf-8')))
 
         with patch.object(xai_provider, "resolve_xai_http_credentials", return_value=_creds("secret-key")), \
              patch.object(xai_provider, "_load_xai_web_config", return_value={}), \
@@ -348,7 +348,7 @@ class TestXAIProviderRequestShape:
 
         def fake_post(url, **kwargs):
             captured["json"] = kwargs.get("json", {})
-            return _mock_resp(_responses_payload(json.dumps({"results": []})))
+            return _mock_resp(_responses_payload(orjson.dumps({"results": []}).decode('utf-8')))
 
         with patch.object(xai_provider, "resolve_xai_http_credentials", return_value=_creds()), \
              patch.object(xai_provider, "_load_xai_web_config", return_value={"model": "grok-4.3-fast"}), \
@@ -364,7 +364,7 @@ class TestXAIProviderRequestShape:
 
         def fake_post(url, **kwargs):
             captured["json"] = kwargs.get("json", {})
-            return _mock_resp(_responses_payload(json.dumps({"results": []})))
+            return _mock_resp(_responses_payload(orjson.dumps({"results": []}).decode('utf-8')))
 
         cfg = {"allowed_domains": ["x.ai", "grokipedia.com"]}
         with patch.object(xai_provider, "resolve_xai_http_credentials", return_value=_creds()), \
@@ -385,7 +385,7 @@ class TestXAIProviderRequestShape:
 
         def fake_post(url, **kwargs):
             captured["json"] = kwargs.get("json", {})
-            return _mock_resp(_responses_payload(json.dumps({"results": []})))
+            return _mock_resp(_responses_payload(orjson.dumps({"results": []}).decode('utf-8')))
 
         cfg = {"excluded_domains": ["spam.com"]}
         with patch.object(xai_provider, "resolve_xai_http_credentials", return_value=_creds()), \
@@ -407,7 +407,7 @@ class TestXAIProviderRequestShape:
 
         def fake_post(url, **kwargs):
             captured["json"] = kwargs.get("json", {})
-            return _mock_resp(_responses_payload(json.dumps({"results": []})))
+            return _mock_resp(_responses_payload(orjson.dumps({"results": []}).decode('utf-8')))
 
         cfg = {"allowed_domains": [f"d{i}.com" for i in range(10)]}
         with patch.object(xai_provider, "resolve_xai_http_credentials", return_value=_creds()), \
@@ -513,7 +513,7 @@ class TestXAIProviderSearchErrors:
             calls["posts"].append(kwargs.get("headers", {}).get("Authorization"))
             if len(calls["posts"]) == 1:
                 raise unauthorized
-            return _mock_resp(_responses_payload(json.dumps({"results": []})))
+            return _mock_resp(_responses_payload(orjson.dumps({"results": []}).decode('utf-8')))
 
         def fake_resolve(*, force_refresh=False):
             if force_refresh:
@@ -752,7 +752,7 @@ class TestXAIProviderOAuthPath:
         def fake_post(url, **kwargs):
             captured["url"] = url
             captured["headers"] = kwargs.get("headers", {})
-            return _mock_resp(_responses_payload(json.dumps({"results": []})))
+            return _mock_resp(_responses_payload(orjson.dumps({"results": []}).decode('utf-8')))
 
         with patch(
             "hermes_cli.runtime_provider.resolve_runtime_provider",

@@ -23,9 +23,9 @@ Methods covered:
 from __future__ import annotations
 
 import copy
-import json
+import orjson
 import logging
-import re
+from agent.re_compat import re
 import time
 from datetime import datetime
 from pathlib import Path
@@ -33,6 +33,17 @@ from typing import Any, Dict, List, Optional
 
 from hermes_cli.timeouts import get_provider_request_timeout
 from agent.prompt_builder import format_steer_marker
+from agent.message_utils import (
+    EMPTY_NAME_SENTINEL,
+    STUB_RESULT_CONTENT,
+    VALID_API_ROLES,
+    get_tool_call_function,  # noqa: F401  # kept for back-compat / external callers
+    get_tool_call_function_and_id,
+    get_tool_call_id,
+    get_tool_call_name,
+    is_blank_name,
+    is_empty_content_droppable,
+)
 from agent.tool_dispatch_helpers import _trajectory_normalize_msg, make_tool_result_message
 from agent.trajectory import convert_scratchpad_to_think
 from agent.credential_pool import STATUS_EXHAUSTED
@@ -145,8 +156,8 @@ def convert_to_trajectory_format(agent, messages: List[Dict[str, Any]], user_que
                     # Parse arguments - should always succeed since we validate during conversation
                     # but keep try-except as safety net
                     try:
-                        arguments = json.loads(tool_call["function"]["arguments"]) if isinstance(tool_call["function"]["arguments"], str) else tool_call["function"]["arguments"]
-                    except json.JSONDecodeError:
+                        arguments = orjson.loads(tool_call["function"]["arguments"]) if isinstance(tool_call["function"]["arguments"], str) else tool_call["function"]["arguments"]
+                    except orjson.JSONDecodeError:
                         # This shouldn't happen since we validate and retry during conversation,
                         # but if it does, log warning and use empty dict
                         logger.warning(f"Unexpected invalid JSON in trajectory conversion: {tool_call['function']['arguments'][:100]}")
@@ -156,7 +167,7 @@ def convert_to_trajectory_format(agent, messages: List[Dict[str, Any]], user_que
                         "name": tool_call["function"]["name"],
                         "arguments": arguments
                     }
-                    content += f"<tool_call>\n{json.dumps(tool_call_json, ensure_ascii=False)}\n</tool_call>\n"
+                    content += f"<tool_call>\n{orjson.dumps(tool_call_json).decode('utf-8')}\n</tool_call>\n"
                 
                 # Ensure every gpt turn has a <think> block (empty if no reasoning)
                 # so the format is consistent for training data
@@ -180,8 +191,8 @@ def convert_to_trajectory_format(agent, messages: List[Dict[str, Any]], user_que
                     tool_content = tool_msg["content"]
                     try:
                         if tool_content.strip().startswith(("{", "[")):
-                            tool_content = json.loads(tool_content)
-                    except (json.JSONDecodeError, AttributeError):
+                            tool_content = orjson.loads(tool_content)
+                    except (orjson.JSONDecodeError, AttributeError):
                         pass  # Keep as string if not valid JSON
                     
                     tool_index = len(tool_responses)
@@ -190,11 +201,11 @@ def convert_to_trajectory_format(agent, messages: List[Dict[str, Any]], user_que
                         if tool_index < len(msg["tool_calls"])
                         else "unknown"
                     )
-                    tool_response += json.dumps({
+                    tool_response += orjson.dumps({
                         "tool_call_id": tool_msg.get("tool_call_id", ""),
                         "name": tool_name,
                         "content": tool_content
-                    }, ensure_ascii=False)
+                    }).decode('utf-8')
                     tool_response += "\n</tool_response>"
                     tool_responses.append(tool_response)
                     j += 1
@@ -268,7 +279,7 @@ def sanitize_tool_call_arguments(
             tool_msg["content"] = marker
             return
         try:
-            existing_text = json.dumps(existing)
+            existing_text = orjson.dumps(existing).decode('utf-8')
         except TypeError:
             existing_text = str(existing)
         tool_msg["content"] = f"{marker}\n{existing_text}"
@@ -304,8 +315,8 @@ def sanitize_tool_call_arguments(
                 continue
 
             try:
-                json.loads(arguments)
-            except json.JSONDecodeError:
+                orjson.loads(arguments)
+            except orjson.JSONDecodeError:
                 tool_call_id = tool_call.get("id")
                 function_name = function.get("name", "?")
                 preview = arguments[:80]
@@ -1423,14 +1434,14 @@ def dump_api_request_debug(
         # output, then hand the resulting payload back to the shared atomic
         # JSON writer so request dumps keep the same write semantics as before.
         from agent.redact import redact_sensitive_text
-        _serialized = json.dumps(dump_payload, ensure_ascii=False, indent=2, default=str)
-        _redacted_payload = json.loads(redact_sensitive_text(_serialized, force=True))
+        _serialized = orjson.dumps(dump_payload, default=str, option=orjson.OPT_INDENT_2).decode('utf-8')
+        _redacted_payload = orjson.loads(redact_sensitive_text(_serialized, force=True))
         atomic_json_write(dump_file, _redacted_payload, default=str)
 
         agent._vprint(f"{agent.log_prefix}🧾 Request debug dump written to: {dump_file}")
 
         if env_var_enabled("HERMES_DUMP_REQUEST_STDOUT"):
-            print(json.dumps(_redacted_payload, ensure_ascii=False, indent=2, default=str))
+            print(orjson.dumps(_redacted_payload, default=str, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
         return dump_file
     except Exception as dump_error:
@@ -2042,7 +2053,7 @@ def invoke_tool(agent, function_name: str, function_args: dict, effective_task_i
         except Exception:
             pass
     if block_message is not None:
-        result = json.dumps({"error": block_message}, ensure_ascii=False)
+        result = orjson.dumps({"error": block_message}).decode('utf-8')
         try:
             from model_tools import _emit_post_tool_call_hook
             _emit_post_tool_call_hook(
@@ -2101,7 +2112,7 @@ def invoke_tool(agent, function_name: str, function_args: dict, effective_task_i
             session_db = agent._get_session_db_for_recall()
             if not session_db:
                 from hermes_state import format_session_db_unavailable
-                return _finish_agent_tool(json.dumps({"success": False, "error": format_session_db_unavailable()}), next_args)
+                return _finish_agent_tool(orjson.dumps({"success": False, "error": format_session_db_unavailable()}).decode('utf-8'), next_args)
             from tools.session_search_tool import session_search as _session_search
             return _finish_agent_tool(
                 _session_search(
@@ -2146,6 +2157,22 @@ def invoke_tool(agent, function_name: str, function_args: dict, effective_task_i
     elif agent._memory_manager and agent._memory_manager.has_tool(function_name):
         def _execute(next_args: dict) -> Any:
             return _finish_agent_tool(agent._memory_manager.handle_tool_call(function_name, next_args), next_args)
+    elif getattr(agent, "_context_engine_tool_names", None) and function_name in agent._context_engine_tool_names:
+        # Context engine tools (context_usage, compact, and engine-specific
+        # tools like lcm_grep) are dispatched through the per-agent context
+        # compressor instance.  This mirrors the memory provider tool pattern
+        # above.
+        def _execute(next_args: dict) -> Any:
+            return _finish_agent_tool(
+                agent.context_compressor.handle_tool_call(
+                    function_name, next_args, messages=messages or []
+                ),
+                next_args,
+            )
+        # Special case: the ``compact`` tool performs actual compression
+        # inline in the sequential path (tool_executor.py).  The concurrent
+        # path only acknowledges the request; the next model turn picks up
+        # the compressed context.
     elif function_name == "clarify":
         def _execute(next_args: dict) -> Any:
             from tools.clarify_tool import clarify_tool as _clarify_tool
@@ -2224,8 +2251,8 @@ def repair_tool_call(agent, tool_name: str) -> str | None:
 
     Returns the repaired name if found in valid_tool_names, else None.
     """
-    import re
-    from difflib import get_close_matches
+    from agent.re_compat import re
+    import rapidfuzz.process as _fuzz_process
 
     if not tool_name:
         return None
@@ -2290,9 +2317,9 @@ def repair_tool_call(agent, tool_name: str) -> str | None:
             return c
 
     # Fuzzy match as last resort.
-    matches = get_close_matches(lowered, agent.valid_tool_names, n=1, cutoff=0.7)
+    matches = _fuzz_process.extract(lowered, agent.valid_tool_names, limit=1, score_cutoff=70.0)
     if matches:
-        return matches[0]
+        return matches[0][0]
 
     return None
 
@@ -2305,81 +2332,113 @@ def sanitize_api_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]
     is present — so orphans from session loading or manual message
     manipulation are always caught.
     """
-    # --- Role allowlist: drop messages with roles the API won't accept ---
-    filtered = []
-    for msg in messages:
+    # --- Single fused pass over the message list ---
+    # Folds what used to be several separate O(n) scans (role allowlist,
+    # empty-name repair, surviving-call-id collection, result-id collection AND
+    # the trailing empty-content filter) into one walk.  Copy-on-first-write:
+    # the input list is neither copied nor replaced until a message actually has
+    # to be dropped, so the common all-valid path allocates no new list here.
+    #
+    # This function runs before *every* LLM request, so it deliberately imports
+    # nothing heavy: the primitives below live in the dependency-free
+    # ``agent.message_utils`` leaf module.  It used to reach them through a lazy
+    # ``import run_agent`` (``_ra()``), which — because ``run_agent`` pulls in the
+    # whole tool tree — made the *first* sanitize call in a process pay the
+    # entire ``run_agent`` import cascade (the conversation-loop flame graph
+    # blamed 44% of the run on this line).  It no longer touches ``run_agent``.
+    #
+    # Empty-name repair rationale: some providers (and partially-streamed
+    # responses) emit a tool_call with id="call_xxx" but function.name="".
+    # Downstream Responses-API adapters silently DROP such function_call items
+    # while still emitting the matching function_call_output, producing the
+    # gateway's HTTP 400 "No tool call found for function call output with
+    # call_id ...". We do NOT drop the call: hermes' own dispatch loop
+    # intentionally keeps an empty-name call paired with a synthesized
+    # anti-priming tool result ("tool name was empty", see #47967) so weak
+    # models self-correct instead of being fed the full tool catalog. Dropping
+    # the call here would (a) orphan that result and strip the anti-priming
+    # signal, and (b) still leave any provider-side orphan. Instead we rename the
+    # blank name to a non-empty sentinel so the call and its result stay PAIRED
+    # — the adapter no longer drops the function_call, so there is no orphaned
+    # output and no 400, while the result content the model needs is preserved.
+    #
+    # Empty-content drop rationale: some providers (MiMo v2.5, strict
+    # OpenAI-compatible gateways) reject assistant/user/function messages whose
+    # `content` is an empty string and which carry no payload — a state context
+    # compression/truncation can leave behind on long sessions (Feishu 3-13h).
+    # Dropping it here (rather than in a separate trailing scan) is exact: the
+    # empty-content filter only removes {assistant,user,function} turns while the
+    # orphan/stub reconciliation below only rewrites {tool} messages, so the two
+    # phases never interact and the fused order yields byte-identical output.
+    surviving_call_ids: set = set()
+    result_call_ids: set = set()
+    filtered = None  # materialized lazily, only when a message must be dropped
+    dropped_empty = 0
+    for _idx, msg in enumerate(messages):
         role = msg.get("role")
-        if role not in _ra().AIAgent._VALID_API_ROLES:
-            _ra().logger.debug(
+        # (a) Drop messages carrying a role the API will not accept.
+        if role not in VALID_API_ROLES:
+            logger.debug(
                 "Pre-call sanitizer: dropping message with invalid role %r",
                 role,
             )
+            if filtered is None:
+                filtered = messages[:_idx]
             continue
-        filtered.append(msg)
-    messages = filtered
-
-    # --- Repair tool_calls whose function.name is empty/missing ---
-    # Some providers (and partially-streamed responses) emit a tool_call with
-    # id="call_xxx" but function.name="". Downstream Responses-API adapters
-    # silently DROP such function_call items while still emitting the matching
-    # function_call_output, producing the gateway's HTTP 400
-    # "No tool call found for function call output with call_id ...".
-    #
-    # We do NOT drop the call: hermes' own dispatch loop intentionally keeps an
-    # empty-name call paired with a synthesized anti-priming tool result
-    # ("tool name was empty", see #47967) so weak models self-correct instead of
-    # being fed the full tool catalog. Dropping the call here would (a) orphan
-    # that result and strip the anti-priming signal, and (b) still leave any
-    # provider-side orphan. Instead, rename the blank name to a non-empty
-    # sentinel so the call and its result stay PAIRED — the adapter no longer
-    # drops the function_call, so there is no orphaned output and no 400, while
-    # the result content the model needs is preserved.
-    _EMPTY_NAME_SENTINEL = "invalid_tool_call"
-    for msg in messages:
-        if msg.get("role") != "assistant":
+        # (b) Drop empty-content assistant/user/function turns with no payload.
+        if is_empty_content_droppable(msg, role):
+            if filtered is None:
+                filtered = messages[:_idx]
+            dropped_empty += 1
             continue
-        tcs = msg.get("tool_calls") or []
-        if not tcs:
-            continue
-        for tc in tcs:
-            if isinstance(tc, dict):
-                fn = tc.get("function")
-                name = fn.get("name") if isinstance(fn, dict) else getattr(fn, "name", None)
-            else:
-                fn = getattr(tc, "function", None)
-                name = getattr(fn, "name", None) if fn else None
-            if isinstance(name, str) and name.strip():
-                continue
-            _ra().logger.warning(
-                "Pre-call sanitizer: repairing tool_call with empty "
-                "function.name -> %r (id=%s)",
-                _EMPTY_NAME_SENTINEL,
-                _ra().AIAgent._get_tool_call_id_static(tc),
-            )
-            if isinstance(fn, dict):
-                fn["name"] = _EMPTY_NAME_SENTINEL
-            elif fn is not None and hasattr(fn, "name"):
-                try:
-                    fn.name = _EMPTY_NAME_SENTINEL
-                except Exception:
-                    pass
-            elif isinstance(tc, dict):
-                tc["function"] = {"name": _EMPTY_NAME_SENTINEL, "arguments": "{}"}
-
-    surviving_call_ids: set = set()
-    for msg in messages:
-        if msg.get("role") == "assistant":
-            for tc in msg.get("tool_calls") or []:
-                cid = _ra().AIAgent._get_tool_call_id_static(tc)
-                if cid:
-                    surviving_call_ids.add(cid)
-
-    result_call_ids: set = set()
-    for msg in messages:
-        if msg.get("role") == "tool":
+        # (c) Assistant: repair blank tool-call names + record surviving ids.
+        if role == "assistant":
+            tcs = msg.get("tool_calls")
+            if tcs:
+                for tc in tcs:
+                    # One fused dispatch for (function, raw_name, call_id) — the
+                    # old code paid two separate isinstance(tc, dict) branches
+                    # per tool_call (get_tool_call_function + get_tool_call_id)
+                    # on every request over the whole history.
+                    fn, name, cid = get_tool_call_function_and_id(tc)
+                    if is_blank_name(name):
+                        logger.warning(
+                            "Pre-call sanitizer: repairing tool_call with empty "
+                            "function.name -> %r (id=%s)",
+                            EMPTY_NAME_SENTINEL,
+                            cid,
+                        )
+                        if isinstance(fn, dict):
+                            fn["name"] = EMPTY_NAME_SENTINEL
+                        elif fn is not None and hasattr(fn, "name"):
+                            try:
+                                fn.name = EMPTY_NAME_SENTINEL
+                            except Exception:
+                                pass
+                        elif isinstance(tc, dict):
+                            tc["function"] = {"name": EMPTY_NAME_SENTINEL, "arguments": "{}"}
+                    if cid:
+                        surviving_call_ids.add(cid)
+        elif role == "tool":
             cid = (msg.get("tool_call_id") or "").strip()
             if cid:
                 result_call_ids.add(cid)
+        if filtered is not None:
+            filtered.append(msg)
+    if filtered is not None:
+        messages = filtered
+    if dropped_empty:
+        logger.debug(
+            "Pre-call sanitizer: removed %d empty-content message(s)",
+            dropped_empty,
+        )
+
+    # Fast exit: with no orphaned results and no missing results there is
+    # nothing left to reconcile, so skip the two set-diff rewrites entirely.
+    # (The overwhelmingly common turn hits this branch and returns without any
+    # further allocation.)
+    if not surviving_call_ids and not result_call_ids:
+        return messages
 
     # 1. Drop tool results with no matching assistant call
     orphaned_results = result_call_ids - surviving_call_ids
@@ -2388,7 +2447,7 @@ def sanitize_api_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]
             m for m in messages
             if not (m.get("role") == "tool" and (m.get("tool_call_id") or "").strip() in orphaned_results)
         ]
-        _ra().logger.debug(
+        logger.debug(
             "Pre-call sanitizer: removed %d orphaned tool result(s)",
             len(orphaned_results),
         )
@@ -2401,55 +2460,18 @@ def sanitize_api_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]
             patched.append(msg)
             if msg.get("role") == "assistant":
                 for tc in msg.get("tool_calls") or []:
-                    cid = _ra().AIAgent._get_tool_call_id_static(tc)
+                    cid = get_tool_call_id(tc)
                     if cid in missing_results:
                         patched.append({
                             "role": "tool",
-                            "name": _ra().AIAgent._get_tool_call_name_static(tc),
-                            "content": "[Result unavailable — see context summary above]",
+                            "name": get_tool_call_name(tc),
+                            "content": STUB_RESULT_CONTENT,
                             "tool_call_id": cid,
                         })
         messages = patched
-        _ra().logger.debug(
+        logger.debug(
             "Pre-call sanitizer: added %d stub tool result(s)",
             len(missing_results),
-        )
-
-    # 3. Drop assistant/user/function messages with empty content and no payload.
-    # Some providers (MiMo v2.5, strict OpenAI-compatible gateways) reject
-    # messages where `content` is an empty string and no `tool_calls` are present.
-    # This can happen after context compression/truncation during long sessions
-    # (e.g. Feishu 3-13h).  Session-meta filtering already catches "session_meta"
-    # role; this catches empty assistant/user messages the compressor may leave.
-    # Assistant messages that still carry reasoning/tool payloads must survive
-    # so codex/DeepSeek reasoning replay and tool-call chains stay intact.
-    empty_content_roles = {"assistant", "user", "function"}
-
-    def _has_assistant_payload(msg: Dict[str, Any]) -> bool:
-        """True if an assistant message still carries API-relevant payload."""
-        if msg.get("tool_calls"):
-            return True
-        if msg.get("codex_reasoning_items"):
-            return True
-        if msg.get("codex_message_items"):
-            return True
-        if msg.get("reasoning_content"):
-            return True
-        return False
-
-    before = len(messages)
-    messages = [
-        m for m in messages
-        if not (
-            m.get("role") in empty_content_roles
-            and m.get("content") == ""
-            and not (m.get("role") == "assistant" and _has_assistant_payload(m))
-        )
-    ]
-    if before != len(messages):
-        _ra().logger.debug(
-            "Pre-call sanitizer: removed %d empty-content message(s)",
-            before - len(messages),
         )
 
     return messages

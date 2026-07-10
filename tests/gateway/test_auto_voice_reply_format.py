@@ -1,6 +1,6 @@
 """Tests for gateway auto-TTS voice reply audio format selection."""
 
-import json
+import orjson
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -27,12 +27,12 @@ class TestAutoVoiceReplyFormat:
             assert output_path.endswith(".ogg")
             Path(output_path).parent.mkdir(parents=True, exist_ok=True)
             Path(output_path).write_bytes(b"fake ogg opus")
-            return json.dumps({
+            return orjson.dumps({
                 "success": True,
                 "file_path": output_path,
                 "provider": "gemini",
                 "voice_compatible": True,
-            })
+            }).decode('utf-8')
 
         with patch("tools.tts_tool.text_to_speech_tool", side_effect=fake_tts):
             await runner._send_voice_reply(event, "hello from auto tts")
@@ -56,12 +56,12 @@ class TestAutoVoiceReplyFormat:
             assert output_path.endswith(".mp3")
             Path(output_path).parent.mkdir(parents=True, exist_ok=True)
             Path(output_path).write_bytes(b"fake mp3")
-            return json.dumps({
+            return orjson.dumps({
                 "success": True,
                 "file_path": output_path,
                 "provider": "gemini",
                 "voice_compatible": False,
-            })
+            }).decode('utf-8')
 
         with patch("tools.tts_tool.text_to_speech_tool", side_effect=fake_tts):
             await runner._send_voice_reply(event, "hello from auto tts")

@@ -1,6 +1,6 @@
 """Tests for plugins/memory/honcho/oauth.py — OAuth grant storage + refresh."""
 
-import json
+import orjson
 from pathlib import Path
 
 import pytest
@@ -24,7 +24,7 @@ def _host_block(refresh="hch-rt-old", expires_at=10_000):
 
 
 def _write(path: Path, raw: dict) -> None:
-    path.write_text(json.dumps(raw), encoding="utf-8")
+    path.write_text(orjson.dumps(raw).decode('utf-8'), encoding="utf-8")
 
 
 class TestTokenDetection:
@@ -110,7 +110,7 @@ class TestEnsureFreshToken:
         assert token == "hch-at-new" and refreshed is True
 
         # Rotated refresh token + new access token + absolute expiry persisted.
-        saved = json.loads(path.read_text())["hosts"]["hermes"]
+        saved = orjson.loads(path.read_text())["hosts"]["hermes"]
         assert saved["apiKey"] == "hch-at-new"
         assert saved["oauth"]["refreshToken"] == "hch-rt-new"
         assert saved["oauth"]["expiresAt"] == 1000 + 3600
@@ -126,7 +126,7 @@ class TestEnsureFreshToken:
         token, refreshed = oauth.ensure_fresh_token(path, "hermes", now=1000)
         # Stale token returned, no crash, file untouched.
         assert token == "hch-at-old" and refreshed is False
-        assert json.loads(path.read_text())["hosts"]["hermes"]["apiKey"] == "hch-at-old"
+        assert orjson.loads(path.read_text())["hosts"]["hermes"]["apiKey"] == "hch-at-old"
 
     def test_double_check_uses_disk_when_already_rotated(self, tmp_path, monkeypatch):
         # Simulates a concurrent thread that rotated the token on disk after our
@@ -217,7 +217,7 @@ class TestInstallGrant:
         )
         assert cred.expires_at == 1000 + 3600
 
-        saved = json.loads(path.read_text())
+        saved = orjson.loads(path.read_text())
         assert saved["apiKey"] == "hch-v3-root"  # untouched
         assert saved["hosts"]["obsidian"] == {"workspace": "obsidian"}  # untouched
         h = saved["hosts"]["hermes"]

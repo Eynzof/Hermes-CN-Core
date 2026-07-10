@@ -13,11 +13,10 @@ This module provides:
 """
 
 import copy
-import json
+import orjson
 import logging
 import os
-import platform
-import re
+from agent.re_compat import re
 import shutil
 import stat
 import subprocess
@@ -30,6 +29,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple, Set
 
 from hermes_cli.secret_prompt import masked_secret_prompt
+from platform_utils import is_windows
 
 logger = logging.getLogger(__name__)
 
@@ -137,7 +137,7 @@ def _warn_config_parse_failure(config_path: Path, exc: Exception) -> None:
     except Exception:
         pass
 
-_IS_WINDOWS = platform.system() == "Windows"
+_IS_WINDOWS = is_windows()
 _ENV_VAR_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 # Env var names that influence how the next subprocess executes —
@@ -227,6 +227,13 @@ _LAST_EXPANDED_CONFIG_BY_PATH: Dict[str, Any] = {}
 # merged_value) — the managed-file signature is folded in so editing the
 # managed-scope config.yaml invalidates the cache (see managed_scope).
 _LOAD_CONFIG_CACHE: Dict[str, Tuple[int, int, int, int, Dict[str, Any]]] = {}
+# Sentinel cache signature for "no user config file AND no managed file". Real
+# signatures are (mtime_ns, size, ...) with non-negative components, so a tuple
+# of -1s can never collide with a real file's stat — the moment a config file
+# appears the computed signature differs and the entry is recomputed. Lets the
+# loader cache the defaults-only result instead of rebuilding it on every call
+# when config.yaml is absent (fresh install / many test envs / early init).
+_NO_FILE_CACHE_SIG: Tuple[int, int, int, int] = (-1, -1, -1, -1)
 # (path, mtime_ns, size) -> cached raw yaml dict. Same pattern as
 # _LOAD_CONFIG_CACHE but for read_raw_config() — used when callers want
 # the user's on-disk values without defaults merged in.
@@ -1090,6 +1097,11 @@ DEFAULT_CONFIG = {
     
     "terminal": {
         "backend": "local",
+        # [CN-fork] Windows shell selection for the system prompt hint only.
+        # auto       - preserve current behavior: detect pwsh, otherwise PS5.1
+        # powershell - PowerShell-family hint (same as auto in this release)
+        # bash       - Git Bash / MSYS hint; avoids the PS5.1 restriction text
+        "shell": "auto",
         "modal_mode": "auto",
         "cwd": ".",  # Use current directory
         "timeout": 180,
@@ -1136,6 +1148,24 @@ DEFAULT_CONFIG = {
         # this off if your rc files misbehave when sourced
         # non-interactively (e.g. one that hard-exits on TTY checks).
         "auto_source_bashrc": True,
+        # [CN-fork P-042] Windows only: reuse ONE long-lived PowerShell process
+        # across terminal commands instead of spawning a fresh powershell.exe
+        # per call.  Warm commands then run in ~1-5ms instead of the ~80-100ms
+        # Windows process-creation + DLL-load cost.  Off by default because a
+        # persistent session carries state (variables, $env: changes, cwd)
+        # between commands rather than isolating each one; turn it on when you
+        # want the speedup and shell-like continuity.  Bridged to the internal
+        # HERMES_PWSH_SESSION_REUSE env var.  No effect off Windows.
+        "powershell_session_reuse": False,
+        # [CN-fork P-042] Windows only: route a handful of trivial, metacharacter-
+        # free builtins (dir/echo/type/copy/move/del/mkdir/rmdir/...) through a
+        # one-shot ``cmd.exe /c`` (~10-20ms spawn) instead of powershell.exe
+        # (~80-100ms).  Off by default and superseded by powershell_session_reuse
+        # (faster AND keeps PowerShell semantics); this is only for deployments
+        # that prefer a stateless spawn model.  Eligibility is strict (no pipes/
+        # redirection/quoting/cwd-mutation) so behaviour matches the PowerShell
+        # path.  Bridged to HERMES_CMD_FAST_PATH.  No effect off Windows.
+        "cmd_fast_path": False,
         "docker_image": "nikolaik/python-nodejs:python3.11-nodejs20",
         "docker_forward_env": [],
         # Explicit environment variables to set inside Docker containers.
@@ -1383,6 +1413,15 @@ DEFAULT_CONFIG = {
                                       # session_search and recoverable, not deleted.
                                       # Default False during rollout; will flip on
                                       # after live validation.
+    },
+
+    # Compact reminder — hints the agent to call ``Compact`` when context usage
+    # exceeds a threshold.  Injected as ephemeral text appended to the user message
+    # (never persisted to session history).  Cooldown steps prevent spamming.
+    "compact_reminder": {
+        "enabled": True,
+        "threshold": 0.70,         # Inject reminder when context is above this ratio
+        "cooldown_steps": 5,       # Minimum steps between injections
     },
 
     # Kanban subsystem (orchestrator workers + dispatcher-driven child tasks).
@@ -1736,6 +1775,8 @@ DEFAULT_CONFIG = {
         "turn_completion_explainer": True,
         "show_cost": False,       # Show $ cost in the status bar (off by default)
         "skin": "default",
+        # UI color mode: "auto" (detect from terminal), "light" (force light), "dark" (force dark)
+        "theme": "auto",
         # UI language for static user-facing messages (approval prompts, a
         # handful of gateway slash-command replies).  Does NOT affect agent
         # responses, log lines, tool outputs, or slash-command descriptions.
@@ -2127,8 +2168,8 @@ DEFAULT_CONFIG = {
                                      # (API, tools, iteration budget), never a delegation
                                      # stopwatch. Set a positive number of seconds
                                      # (floor 30s) to enforce a hard cap.
-        "reasoning_effort": "",  # reasoning effort for subagents: "xhigh", "high", "medium",
-                                 # "low", "minimal", "none" (empty = inherit parent's level)
+        "reasoning_effort": "",  # reasoning effort for subagents: "off", "minimal", "low", "medium",
+                                 # "high", "xhigh", "max" (empty = inherit parent's level)
         "max_concurrent_children": 3,  # unified concurrency cap: max parallel children per batch
                                        # AND max concurrent background (background=true)
                                        # delegation units. New async dispatches beyond the cap
@@ -2714,10 +2755,22 @@ DEFAULT_CONFIG = {
         "force_ipv4": False,
     },
 
-    # Gateway settings — control how messaging platforms (Telegram, Discord,
-    # Slack, etc.) deliver agent-produced files as native attachments.
-    "gateway": {
-        # Seconds the gateway waits for a single messaging platform to finish
+        # Gateway settings — control how messaging platforms (Telegram, Discord,
+        # Slack, etc.) deliver agent-produced files as native attachments.
+        "gateway": {
+            # Diagnostic trace: when true, the TUI/WebSocket gateway writes an
+            # ordered log of emitted event types to
+            # ~/.hermes/logs/tui_gateway_events.log.  Useful for diagnosing
+            # stuck turns without exposing large tool-result payloads.
+            "event_trace": False,
+
+            # Per-turn watchdog.  If a turn stays ``running`` with no gateway
+            # event activity for this many seconds, the gateway emits an error
+            # event, releases the session lock, and interrupts the agent.
+            # ``0`` disables the watchdog.
+            "turn_watchdog_seconds": 600,
+
+            # Seconds the gateway waits for a single messaging platform to finish
         # connecting during startup (and on reconnect). Discord in particular
         # can blow past the old fixed 30s when an account has many slash
         # commands to sync (#19776: 90-173 skills → ~28-31s sync). Raise this
@@ -5709,7 +5762,7 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
         added_curator: List[str] = []
         for k, v in _curator_defaults.items():
             if k not in raw_curator:
-                raw_curator[k] = copy.deepcopy(v)
+                raw_curator[k] = _fast_config_copy(v)
                 added_curator.append(k)
         if added_curator:
             config["curator"] = raw_curator
@@ -5728,7 +5781,7 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
         added_aux: List[str] = []
         for k, v in _aux_curator_defaults.items():
             if k not in raw_aux_curator:
-                raw_aux_curator[k] = copy.deepcopy(v)
+                raw_aux_curator[k] = _fast_config_copy(v)
                 added_aux.append(k)
         if added_aux:
             raw_aux["curator"] = raw_aux_curator
@@ -6116,6 +6169,39 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
     return results
 
 
+def _fast_config_copy(obj):
+    """Deep-copy a JSON-like config tree far faster than ``copy.deepcopy``.
+
+    Config trees are plain data — nested ``dict``/``list`` containers with
+    ``str``/``int``/``float``/``bool``/``None`` leaves, no shared references and
+    no cycles.  ``copy.deepcopy`` pays for machinery this data never needs: a
+    ``memo`` table, ``__deepcopy__``/``__reduce_ex__`` dispatch, and a per-node
+    type-dispatch dict lookup.  This hand-rolled walker skips all of it and
+    shares immutable leaves (exactly what ``copy.deepcopy`` already does for
+    atomics), making it ~5-10x faster with far less allocation and GC churn.
+
+    ``load_config()`` copies the (large) merged config on every cache hit and
+    the agent loop reads config dozens of times per conversation, so this is a
+    measurable agent-init / hot-path win.  Any value that is not a plain JSON
+    type falls back to ``copy.deepcopy`` for correctness (config should never
+    contain such values, but a plugin-injected object must not silently break).
+    """
+    t = type(obj)
+    if t is dict:
+        return {k: _fast_config_copy(v) for k, v in obj.items()}
+    if t is list:
+        return [_fast_config_copy(v) for v in obj]
+    # Immutable scalars: safe to share (matches copy.deepcopy's atomic handling).
+    if t is str or t is int or t is float or t is bool or obj is None:
+        return obj
+    if t is tuple:
+        return tuple(_fast_config_copy(v) for v in obj)
+    # Uncommon / non-JSON value (set, custom object, dict subclass, ...) — defer
+    # to the general implementation so exotic values keep exact deepcopy
+    # semantics (subclass preservation, __deepcopy__ hooks, cycle handling).
+    return copy.deepcopy(obj)
+
+
 def _deep_merge(base: dict, override: dict) -> dict:
     """Recursively merge *override* into *base*, preserving nested defaults.
 
@@ -6159,23 +6245,86 @@ def _strip_dotted_keys(cfg: dict, dotted_keys: set) -> Tuple[dict, set]:
     return cfg, stripped
 
 
+# Pre-compiled once instead of re-parsing the pattern on every string — the
+# ``re`` cache would find it anyway, but a module-level object skips even the
+# cache lookup on the hot path.
+_ENV_REF_RE = re.compile(r"\${([^}]+)}")
+
+
+def _expand_env_ref(match: "re.Match") -> str:
+    return os.environ.get(match.group(1), match.group(0))
+
+
+def _tree_has_env_template(obj) -> bool:
+    """True if any string leaf in *obj* contains a ``${`` env-var template.
+
+    Used to skip the (recursive, full-tree) expansion pass entirely when there
+    is nothing to expand.  Cheap to run over the small user/managed configs;
+    never run over the large merged tree.
+    """
+    if isinstance(obj, str):
+        return "${" in obj
+    if isinstance(obj, dict):
+        return any(_tree_has_env_template(v) for v in obj.values())
+    if isinstance(obj, list):
+        return any(_tree_has_env_template(v) for v in obj)
+    return False
+
+
+_DEFAULT_HAS_ENV_TEMPLATES: Optional[bool] = None
+
+
+def _default_has_env_templates() -> bool:
+    """Whether ``DEFAULT_CONFIG`` itself carries any ``${VAR}`` templates.
+
+    Computed once and memoised.  Today it is ``False`` (defaults are literal),
+    which lets the loader skip env-expansion whenever the user/managed layers
+    add none either.  If a future default introduces a template this flips to
+    ``True`` automatically and the expansion pass (and env-fresh no-file cache
+    suppression) turns back on — no correctness cliff.
+    """
+    global _DEFAULT_HAS_ENV_TEMPLATES
+    if _DEFAULT_HAS_ENV_TEMPLATES is None:
+        _DEFAULT_HAS_ENV_TEMPLATES = _tree_has_env_template(DEFAULT_CONFIG)
+    return _DEFAULT_HAS_ENV_TEMPLATES
+
+
 def _expand_env_vars(obj):
     """Recursively expand ``${VAR}`` references in config values.
 
     Only string values are processed; dict keys, numbers, booleans, and
     None are left untouched.  Unresolved references (variable not in
     ``os.environ``) are kept verbatim so callers can detect them.
+
+    Performance: strings with no ``${`` are returned as-is (no regex, no
+    ``os.environ`` probe), and containers whose children are all unchanged are
+    returned *by identity* rather than rebuilt.  The vast majority of config
+    strings carry no template, so this makes a template-free load essentially
+    free.  Every call site passes a caller-owned tree, so aliasing an unchanged
+    subtree back to the caller is safe.
     """
     if isinstance(obj, str):
-        return re.sub(
-            r"\${([^}]+)}",
-            lambda m: os.environ.get(m.group(1), m.group(0)),
-            obj,
-        )
+        if "${" not in obj:
+            return obj
+        return _ENV_REF_RE.sub(_expand_env_ref, obj)
     if isinstance(obj, dict):
-        return {k: _expand_env_vars(v) for k, v in obj.items()}
+        new = None
+        for k, v in obj.items():
+            nv = _expand_env_vars(v)
+            if nv is not v:
+                if new is None:
+                    new = dict(obj)
+                new[k] = nv
+        return new if new is not None else obj
     if isinstance(obj, list):
-        return [_expand_env_vars(item) for item in obj]
+        new = None
+        for i, v in enumerate(obj):
+            nv = _expand_env_vars(v)
+            if nv is not v:
+                if new is None:
+                    new = list(obj)
+                new[i] = nv
+        return new if new is not None else obj
     return obj
 
 
@@ -6303,7 +6452,7 @@ def _strip_default_values(
 
     def _strip(value: Any, default: Any, path: Tuple[str, ...]) -> Any:
         if path in preserve_keys:
-            return copy.deepcopy(value)
+            return _fast_config_copy(value)
 
         if isinstance(value, dict) and value:
             default_dict = default if isinstance(default, dict) else {}
@@ -6321,7 +6470,7 @@ def _strip_default_values(
         if value == default:
             return None
 
-        return copy.deepcopy(value)
+        return _fast_config_copy(value)
 
     result: Dict[str, Any] = {}
     for key, value in config.items():
@@ -6516,7 +6665,7 @@ def read_raw_config() -> Dict[str, Any]:
         path_key = str(config_path)
         cached = _RAW_CONFIG_CACHE.get(path_key)
         if cached is not None and cached[:2] == cache_key:
-            return copy.deepcopy(cached[2])
+            return _fast_config_copy(cached[2])
 
         try:
             with open(config_path, encoding="utf-8") as f:
@@ -6527,7 +6676,7 @@ def read_raw_config() -> Dict[str, Any]:
 
         if not isinstance(data, dict):
             data = {}
-        _RAW_CONFIG_CACHE[path_key] = (cache_key[0], cache_key[1], copy.deepcopy(data))
+        _RAW_CONFIG_CACHE[path_key] = (cache_key[0], cache_key[1], _fast_config_copy(data))
         return data
 
 
@@ -6632,7 +6781,7 @@ TERMINAL_CONFIG_ENV_MAP = {
 
 def _terminal_env_value(value: Any) -> str:
     if isinstance(value, (list, dict)):
-        return json.dumps(value)
+        return orjson.dumps(value).decode('utf-8')
     return str(value)
 
 
@@ -6689,7 +6838,14 @@ def apply_terminal_config_to_env(
 
 def _load_config_impl(*, want_deepcopy: bool) -> Dict[str, Any]:
     with _CONFIG_LOCK:
-        ensure_hermes_home()
+        # ensure_hermes_home() is deliberately deferred to the cache-miss path
+        # below. It does real filesystem work (mkdir + chmod over ~11 dirs plus
+        # SOUL.md) that profiling showed dominates load_config() — ~85% of the
+        # per-call time on a cache hit. get_config_path() only builds a path
+        # (no I/O) and the stat() below already tolerates a missing home, so a
+        # cache hit needs none of it; the first (miss) load in the process
+        # still creates the structure, preserving the "home exists after
+        # load_config()" side effect every caller has always relied on.
         config_path = get_config_path()
         path_key = str(config_path)
 
@@ -6723,15 +6879,31 @@ def _load_config_impl(*, want_deepcopy: bool) -> Dict[str, Any]:
             )
         elif managed_sig != (0, 0):
             cache_sig = (0, 0, managed_sig[0], managed_sig[1])
+        elif not _default_has_env_templates():
+            # No user file, no managed file, and DEFAULT_CONFIG carries no
+            # ${VAR} templates → the built result depends only on DEFAULT_CONFIG
+            # (env-independent), so caching it indefinitely is correct. Without
+            # this, every load_config() while config.yaml is absent re-ran the
+            # full copy + merge + expand pipeline — the dominant source of
+            # deepcopy churn during agent-init on a fresh/temp HERMES_HOME. If a
+            # default ever gains a template, _default_has_env_templates() flips
+            # and this falls through to the uncached branch, preserving env
+            # freshness.
+            cache_sig = _NO_FILE_CACHE_SIG
         else:
             cache_sig = None
 
         cached = _LOAD_CONFIG_CACHE.get(path_key)
         if cached is not None and cache_sig is not None and cached[:4] == cache_sig:
-            return copy.deepcopy(cached[4]) if want_deepcopy else cached[4]
+            return _fast_config_copy(cached[4]) if want_deepcopy else cached[4]
 
-        config = copy.deepcopy(DEFAULT_CONFIG)
+        # Cache miss (this includes the very first load in the process): create
+        # the home directory structure now, before building / possibly writing.
+        ensure_hermes_home()
 
+        config = _fast_config_copy(DEFAULT_CONFIG)
+
+        user_has_env_templates = False
         if user_sig is not None:
             try:
                 with open(config_path, encoding="utf-8") as f:
@@ -6745,11 +6917,22 @@ def _load_config_impl(*, want_deepcopy: bool) -> Dict[str, Any]:
                     user_config.pop("max_turns", None)
 
                 config = _deep_merge(config, user_config)
+                # Cheap scan of the (small) user config decides whether the
+                # (expensive, full-tree) expansion pass below is needed at all.
+                user_has_env_templates = _tree_has_env_template(user_config)
             except Exception as e:
                 _warn_config_parse_failure(config_path, e)
 
         normalized = _normalize_root_model_keys(_normalize_max_turns_config(config))
-        expanded = _expand_env_vars(normalized)
+        # Expansion is a full-tree walk; only pay for it when a ${VAR} template
+        # can actually be present. DEFAULT_CONFIG has none, so a config whose
+        # user layer adds none needs no expansion pass. When a template IS
+        # present, expand the whole normalized tree exactly as before (after
+        # normalisation) so ordering/precedence semantics are unchanged.
+        if user_has_env_templates or _default_has_env_templates():
+            expanded = _expand_env_vars(normalized)
+        else:
+            expanded = normalized
         # Managed scope wins at the leaf. Applied AFTER user expansion so a user
         # ${VAR} cannot shadow a managed literal: managed values are expanded only
         # against the process environment, never against user-config-defined refs.
@@ -6759,14 +6942,14 @@ def _load_config_impl(*, want_deepcopy: bool) -> Dict[str, Any]:
         if managed_config:
             managed_expanded = _expand_env_vars(managed_config)
             expanded = _deep_merge(expanded, managed_expanded)
-        _LAST_EXPANDED_CONFIG_BY_PATH[path_key] = copy.deepcopy(expanded)
+        _LAST_EXPANDED_CONFIG_BY_PATH[path_key] = _fast_config_copy(expanded)
         if cache_sig is not None:
-            # Cache stores a separate deepcopy so subsequent ``load_config()``
+            # Cache stores a separate copy so subsequent ``load_config()``
             # (deepcopy=True) callers can mutate freely without affecting the
             # cached value, and ``load_config_readonly()`` (deepcopy=False)
             # callers all see the same stable cached object. The cached tuple is
             # (user_mtime, user_size, managed_mtime, managed_size, value).
-            cached_copy = copy.deepcopy(expanded)
+            cached_copy = _fast_config_copy(expanded)
             _LOAD_CONFIG_CACHE[path_key] = (*cache_sig, cached_copy)
             # On the readonly path return the same cached object subsequent
             # calls will see — keeps "two readonly calls return the same
@@ -6885,7 +7068,7 @@ def save_config(
 
         managed_keys = managed_scope.managed_config_keys()
         if managed_keys:
-            config, _stripped = _strip_dotted_keys(copy.deepcopy(config), managed_keys)
+            config, _stripped = _strip_dotted_keys(_fast_config_copy(config), managed_keys)
             if _stripped:
                 print(
                     f"Note: {len(_stripped)} managed setting(s) were not saved "
@@ -6956,7 +7139,7 @@ def save_config(
             extra_content="".join(parts) if parts else None,
         )
         _secure_file(config_path)
-        _LAST_EXPANDED_CONFIG_BY_PATH[str(config_path)] = copy.deepcopy(current_normalized)
+        _LAST_EXPANDED_CONFIG_BY_PATH[str(config_path)] = _fast_config_copy(current_normalized)
 
 
 def _parse_env_value(raw_value: str) -> str:

@@ -1,4 +1,4 @@
-import json
+import orjson
 import os
 import subprocess
 import sys
@@ -304,7 +304,7 @@ def test_write_json_serializes_concurrent_writes(monkeypatch):
     lines = "".join(out.parts).splitlines()
 
     assert len(lines) == 8
-    assert {json.loads(line)["seq"] for line in lines} == set(range(8))
+    assert {orjson.loads(line)["seq"] for line in lines} == set(range(8))
 
 
 def test_write_json_returns_false_on_broken_pipe(monkeypatch):
@@ -857,7 +857,7 @@ def test_history_to_messages_preserves_tool_calls_for_resume_display():
                     "id": "call_1",
                     "function": {
                         "name": "search_files",
-                        "arguments": json.dumps({"pattern": "resume"}),
+                        "arguments": orjson.dumps({"pattern": "resume"}).decode('utf-8'),
                     },
                 }
             ],
@@ -1283,7 +1283,7 @@ def test_persist_live_session_runtime_preserves_resume_metadata(monkeypatch):
             return {"model_config": '{"_branched_from":"root"}'}
 
         def update_session_meta(self, session_id, model_config_json, model=None):
-            updates["meta"] = (session_id, json.loads(model_config_json), model)
+            updates["meta"] = (session_id, orjson.loads(model_config_json), model)
 
     agent = types.SimpleNamespace(
         model="gpt-5.4",
@@ -6489,7 +6489,7 @@ def test_verification_status_returns_recorded_evidence(tmp_path):
     project = tmp_path / "project"
     project.mkdir()
     (project / "package.json").write_text(
-        json.dumps({"scripts": {"test": "vitest"}}),
+        orjson.dumps({"scripts": {"test": "vitest"}}).decode('utf-8'),
         encoding="utf-8",
     )
     (project / "pnpm-lock.yaml").write_text("", encoding="utf-8")
@@ -7686,7 +7686,7 @@ def test_session_save_writes_under_hermes_home_with_system_prompt(monkeypatch, t
     assert saved_file.parent == saved_dir
     assert saved_file.exists()
 
-    payload = json.loads(saved_file.read_text())
+    payload = orjson.loads(saved_file.read_text())
     assert payload["model"] == "hermes-test"
     assert payload["session_id"] == "20260101_120000_abc123"
     assert payload["session_start"] == "2026-01-01T12:00:00"
@@ -7884,8 +7884,7 @@ def test_image_attach_bytes_rejects_invalid_base64(monkeypatch, tmp_path):
 
 
 def test_image_attach_bytes_rejects_oversize(monkeypatch, tmp_path):
-    import base64 as _b64
-
+    import pybase64 as _b64
     _attach_bytes_cli(monkeypatch)
     monkeypatch.setattr(server, "_hermes_home", tmp_path)
     monkeypatch.setattr(server, "_ATTACH_BYTES_MAX_BYTES", 10)
@@ -7943,8 +7942,7 @@ def test_pdf_attach_requires_poppler(monkeypatch, tmp_path):
 
 
 def test_pdf_attach_rejects_non_pdf_bytes(monkeypatch, tmp_path):
-    import base64 as _b64
-
+    import pybase64 as _b64
     _attach_bytes_cli(monkeypatch)
     monkeypatch.setattr(server, "_hermes_home", tmp_path)
     monkeypatch.setattr("shutil.which", lambda _name: "/usr/bin/pdftoppm")
@@ -7976,8 +7974,7 @@ def test_pdf_attach_requires_path_or_bytes(monkeypatch, tmp_path):
 
 
 def test_decode_attach_base64_helper():
-    import base64 as _b64
-
+    import pybase64 as _b64
     raw = _b64.b64encode(b"hello").decode("ascii")
     assert server._decode_attach_base64(raw, mime_prefix="image/") == b"hello"
     assert (

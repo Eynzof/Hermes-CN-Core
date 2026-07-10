@@ -12,7 +12,7 @@ See issue #33778 for the original Windows session-loss bug report.
 """
 
 import asyncio
-import json
+import orjson
 import os
 import threading
 import time
@@ -38,7 +38,7 @@ def _write_self_marker(marker, *, stale: bool = False):
         "stopper_pid": os.getpid(),
         "written_at": written_at,
     }
-    marker.write_text(json.dumps(record), encoding="utf-8")
+    marker.write_text(orjson.dumps(record).decode('utf-8'), encoding="utf-8")
 
 
 class _FakeRunner:
@@ -308,7 +308,7 @@ def test_watcher_does_not_fire_for_foreign_pid_marker(tmp_path, monkeypatch):
         "stopper_pid": os.getpid() + 1,
         "written_at": status_mod._utc_now_iso(),
     }
-    marker.write_text(json.dumps(record), encoding="utf-8")
+    marker.write_text(orjson.dumps(record).decode('utf-8'), encoding="utf-8")
 
     monkeypatch.setattr(status_mod, "_get_planned_stop_marker_path", lambda: marker)
 

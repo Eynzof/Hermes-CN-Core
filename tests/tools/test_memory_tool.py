@@ -1,6 +1,6 @@
 """Tests for tools/memory_tool.py — MemoryStore, security scanning, and tool dispatcher."""
 
-import json
+import orjson
 import pytest
 from pathlib import Path
 
@@ -527,20 +527,20 @@ class TestMemoryStoreSnapshot:
 
 class TestMemoryToolDispatcher:
     def test_no_store_returns_error(self):
-        result = json.loads(memory_tool(action="add", content="test"))
+        result = orjson.loads(memory_tool(action="add", content="test"))
         assert result["success"] is False
         assert "not available" in result["error"]
 
     def test_invalid_target(self, store):
-        result = json.loads(memory_tool(action="add", target="invalid", content="x", store=store))
+        result = orjson.loads(memory_tool(action="add", target="invalid", content="x", store=store))
         assert result["success"] is False
 
     def test_unknown_action(self, store):
-        result = json.loads(memory_tool(action="unknown", store=store))
+        result = orjson.loads(memory_tool(action="unknown", store=store))
         assert result["success"] is False
 
     def test_add_via_tool(self, store):
-        result = json.loads(memory_tool(action="add", target="memory", content="via tool", store=store))
+        result = orjson.loads(memory_tool(action="add", target="memory", content="via tool", store=store))
         assert result["success"] is True
 
     def test_replace_requires_old_text(self, store):
@@ -549,7 +549,7 @@ class TestMemoryToolDispatcher:
         # reissue with old_text set. (issues #43412, #49466)
         store.add("memory", "fact A")
         store.add("memory", "fact B")
-        result = json.loads(memory_tool(action="replace", content="new", store=store))
+        result = orjson.loads(memory_tool(action="replace", content="new", store=store))
         assert result["success"] is False
         assert "old_text" in result["error"]
         assert result["current_entries"] == ["fact A", "fact B"]
@@ -557,7 +557,7 @@ class TestMemoryToolDispatcher:
 
     def test_remove_requires_old_text(self, store):
         store.add("memory", "fact A")
-        result = json.loads(memory_tool(action="remove", store=store))
+        result = orjson.loads(memory_tool(action="remove", store=store))
         assert result["success"] is False
         assert "old_text" in result["error"]
         assert result["current_entries"] == ["fact A"]
@@ -567,7 +567,7 @@ class TestMemoryToolDispatcher:
         # When old_text IS present but content is missing, keep the original
         # content-specific error (don't route through the old_text recovery path).
         store.add("memory", "fact A")
-        result = json.loads(memory_tool(action="replace", old_text="fact A", store=store))
+        result = orjson.loads(memory_tool(action="replace", old_text="fact A", store=store))
         assert result["success"] is False
         assert "content is required" in result["error"]
         assert "current_entries" not in result
@@ -579,7 +579,7 @@ class TestMemoryBatch:
     def test_batch_add_and_remove_atomic(self, store):
         store.add("memory", "stale one")
         store.add("memory", "stale two")
-        result = json.loads(memory_tool(
+        result = orjson.loads(memory_tool(
             target="memory",
             operations=[
                 {"action": "remove", "old_text": "stale one"},
@@ -602,10 +602,10 @@ class TestMemoryBatch:
         store.add("memory", "y" * 240)  # ~485 chars, near the 500 limit
         big_add = {"action": "add", "content": "z" * 200}
         # single add overflows
-        single = json.loads(memory_tool(action="add", target="memory", content="z" * 200, store=store))
+        single = orjson.loads(memory_tool(action="add", target="memory", content="z" * 200, store=store))
         assert single["success"] is False
         # batch that removes one big entry + adds succeeds atomically
-        result = json.loads(memory_tool(
+        result = orjson.loads(memory_tool(
             target="memory",
             operations=[{"action": "remove", "old_text": "x" * 240}, big_add],
             store=store,
@@ -615,7 +615,7 @@ class TestMemoryBatch:
 
     def test_batch_all_or_nothing_on_bad_op(self, store):
         store.add("memory", "keep me")
-        result = json.loads(memory_tool(
+        result = orjson.loads(memory_tool(
             target="memory",
             operations=[
                 {"action": "add", "content": "should not persist"},
@@ -630,7 +630,7 @@ class TestMemoryBatch:
         assert "current_entries" in result
 
     def test_batch_final_budget_overflow_rejected(self, store):
-        result = json.loads(memory_tool(
+        result = orjson.loads(memory_tool(
             target="memory",
             operations=[{"action": "add", "content": "q" * 600}],
             store=store,
@@ -641,7 +641,7 @@ class TestMemoryBatch:
 
     def test_batch_duplicate_add_is_noop_not_failure(self, store):
         store.add("memory", "already here")
-        result = json.loads(memory_tool(
+        result = orjson.loads(memory_tool(
             target="memory",
             operations=[
                 {"action": "add", "content": "already here"},
@@ -654,7 +654,7 @@ class TestMemoryBatch:
         assert "brand new" in store.memory_entries
 
     def test_batch_injection_blocked_rejects_whole_batch(self, store):
-        result = json.loads(memory_tool(
+        result = orjson.loads(memory_tool(
             target="memory",
             operations=[
                 {"action": "add", "content": "legit fact"},

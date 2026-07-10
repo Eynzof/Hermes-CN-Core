@@ -61,15 +61,15 @@ a single plugin-form module that requires zero core edits:
 from __future__ import annotations
 
 import asyncio
-import base64
+import pybase64 as base64
 import enum
 import hashlib
 import hmac
-import json
+import orjson
 import logging
 import mimetypes
 import os
-import re
+from agent.re_compat import re
 import secrets
 import tempfile
 import time
@@ -586,9 +586,7 @@ def build_postback_button_message(
                 {
                     "type": "postback",
                     "label": button_label[:20] or "Get answer",
-                    "data": json.dumps(
-                        {"action": "show_response", "request_id": request_id}
-                    ),
+                    "data": orjson.dumps({"action": "show_response", "request_id": request_id}).decode('utf-8'),
                     "displayText": button_label[:300] or "Get answer",
                 }
             ],
@@ -881,8 +879,8 @@ class LineAdapter(BasePlatformAdapter):
             return web.Response(status=401, text="invalid signature")
 
         try:
-            payload = json.loads(body.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError):
+            payload = orjson.loads(body.decode("utf-8"))
+        except (UnicodeDecodeError, orjson.JSONDecodeError):
             return web.Response(status=400, text="bad json")
 
         events = payload.get("events", []) or []
@@ -1002,8 +1000,8 @@ class LineAdapter(BasePlatformAdapter):
         chat_id, _ = _resolve_chat(source)
 
         try:
-            parsed = json.loads(data)
-        except (TypeError, json.JSONDecodeError):
+            parsed = orjson.loads(data)
+        except (TypeError, orjson.JSONDecodeError):
             return
 
         if parsed.get("action") != "show_response":

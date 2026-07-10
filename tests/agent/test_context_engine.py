@@ -1,6 +1,6 @@
 """Tests for the ContextEngine ABC and plugin slot."""
 
-import json
+import orjson
 import pytest
 from typing import Any, Dict, List
 
@@ -59,7 +59,7 @@ class StubEngine(ContextEngine):
 
     def handle_tool_call(self, name: str, args: Dict[str, Any]) -> str:
         self._tools_called.append(name)
-        return json.dumps({"ok": True, "tool": name})
+        return orjson.dumps({"ok": True, "tool": name}).decode('utf-8')
 
 
 # ---------------------------------------------------------------------------
@@ -108,7 +108,7 @@ class TestDefaults:
     def test_default_handle_tool_call_returns_error(self):
         engine = StubEngine()
         result = ContextEngine.handle_tool_call(engine, "unknown", {})
-        data = json.loads(result)
+        data = orjson.loads(result)
         assert "error" in data
 
     def test_default_get_status(self):
@@ -172,7 +172,7 @@ class TestStubEngine:
     def test_handle_tool_call(self):
         engine = StubEngine()
         result = engine.handle_tool_call("stub_search", {})
-        assert json.loads(result)["ok"] is True
+        assert orjson.loads(result)["ok"] is True
         assert "stub_search" in engine._tools_called
 
     def test_update_from_response(self):
@@ -409,7 +409,7 @@ class TestInitAgentDoesNotMutatePluginSingleton:
         drive here, so this pins the exact line so a future revert to direct
         assignment fails CI. Regression for #42449."""
         import inspect
-        import re
+        from agent.re_compat import re
         import agent.agent_init as _ai
 
         src = inspect.getsource(_ai)
@@ -429,3 +429,66 @@ class TestInitAgentDoesNotMutatePluginSingleton:
         assert not re.search(
             r"_selected_engine\s*=\s*_candidate\b", src
         ), "found the #42449 bug-shape alias `_selected_engine = _candidate`"
+
+
+class TestGetUsageStatus:
+    """Test ``get_usage_status()`` — added as part of the ContextUsage tool."""
+
+    def test_returns_zero_state_before_any_llm_call(self):
+        engine = StubEngine()
+        status = engine.get_usage_status()
+        assert status["used_tokens"] == 0
+        assert status["usage_percent"] == 0.0
+        assert status["max_context_tokens"] == 200000
+        assert status["threshold_tokens"] == 100000
+        assert status["compression_count"] == 0
+
+    def test_returns_usage_after_prompt(self):
+        engine = StubEngine()
+        engine.update_from_response({"prompt_tokens": 50000})
+        status = engine.get_usage_status()
+        assert status["used_tokens"] == 50000
+        assert 24.9 < status["usage_percent"] < 25.1  # 50000/200000 = 25%
+        assert status["max_context_tokens"] == 200000
+
+    def test_usage_percent_capped_at_100(self):
+        engine = StubEngine()
+        engine.update_from_response({"prompt_tokens": 500000})  # exceeds context
+        status = engine.get_usage_status()
+        assert status["usage_percent"] == 100.0
+
+    def test_usage_after_compression(self):
+        engine = StubEngine()
+        engine.compression_count = 3
+        engine.update_from_response({"prompt_tokens": 30000})
+        status = engine.get_usage_status()
+        assert status["compression_count"] == 3
+        assert status["used_tokens"] == 30000
+
+    def test_returns_json_serializable(self):
+        import orjson
+        engine = StubEngine()
+        engine.update_from_response({"prompt_tokens": 1000})
+        status = engine.get_usage_status()
+        dumped = orjson.dumps(status).decode('utf-8')
+        loaded = orjson.loads(dumped)
+        assert loaded["used_tokens"] == 1000
+
+    def test_delegates_to_get_status_consistently(self):
+        """get_status() should use get_usage_status() internally so fields match."""
+        engine = StubEngine()
+        engine.update_from_response({"prompt_tokens": 75000})
+        usage = engine.get_usage_status()
+        status = engine.get_status()
+        assert status["usage_percent"] == usage["usage_percent"]
+        assert status["threshold_tokens"] == usage["threshold_tokens"]
+        assert status["compression_count"] == usage["compression_count"]
+        assert status["context_length"] == usage["max_context_tokens"]
+
+    def test_handles_post_compression_sentinel(self):
+        """After compression, last_prompt_tokens is -1; get_usage_status clamps to 0."""
+        engine = StubEngine()
+        engine.last_prompt_tokens = -1
+        status = engine.get_usage_status()
+        assert status["used_tokens"] == 0
+        assert status["usage_percent"] == 0.0

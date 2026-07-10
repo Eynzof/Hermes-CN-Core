@@ -1,7 +1,7 @@
 """Tests for BasePlatformAdapter topic-aware session handling."""
 
 import asyncio
-import json
+import orjson
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -287,7 +287,7 @@ class TestTelegramAutoTtsCaptionDelivery:
 
         with patch("tools.tts_tool.check_tts_requirements", return_value=True), patch(
             "tools.tts_tool.text_to_speech_tool",
-            return_value=json.dumps({"file_path": str(tts_path)}),
+            return_value=orjson.dumps({"file_path": str(tts_path)}).decode('utf-8'),
         ):
             await adapter._process_message_background(event, build_session_key(event.source))
 
@@ -310,7 +310,7 @@ class TestTelegramAutoTtsCaptionDelivery:
 
         with patch("tools.tts_tool.check_tts_requirements", return_value=True), patch(
             "tools.tts_tool.text_to_speech_tool",
-            return_value=json.dumps({"file_path": str(tts_path)}),
+            return_value=orjson.dumps({"file_path": str(tts_path)}).decode('utf-8'),
         ):
             await adapter._process_message_background(event, build_session_key(event.source))
 
@@ -339,7 +339,7 @@ class TestTelegramAutoTtsCaptionDelivery:
 
         with patch("tools.tts_tool.check_tts_requirements", return_value=True), patch(
             "tools.tts_tool.text_to_speech_tool",
-            return_value=json.dumps({"file_path": str(tts_path)}),
+            return_value=orjson.dumps({"file_path": str(tts_path)}).decode('utf-8'),
         ):
             await adapter._process_message_background(event, build_session_key(event.source))
 

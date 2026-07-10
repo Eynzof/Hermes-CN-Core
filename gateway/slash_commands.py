@@ -17,11 +17,11 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
-import hashlib
+import xxhash
 import inspect
 import logging
 import os
-import re
+from agent.re_compat import re
 import shlex
 import sys
 import time
@@ -379,7 +379,7 @@ class GatewaySlashCommandsMixin:
         completes / blocks / auto-blocks / crashes without having to poll.
         """
         import asyncio
-        import re
+        from agent.re_compat import re
         import shlex
         from hermes_cli.kanban import run_slash
 
@@ -641,7 +641,7 @@ class GatewaySlashCommandsMixin:
     def _redact_matrix_session_key(session_key: str) -> str:
         """Return a stable Matrix session-key fingerprint for shared room status."""
         text = str(session_key or "")
-        digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
+        digest = xxhash.xxh64(text.encode("utf-8")).hexdigest()[:12]
         return f"sha256:{digest}"
 
     def _gateway_session_origin_for_id(self, session_id: str) -> Optional[SessionSource]:
@@ -4423,7 +4423,7 @@ class GatewaySlashCommandsMixin:
         can notify the user when the update finishes.
         """
         from gateway.run import _hermes_home, _resolve_hermes_bin
-        import json
+        import orjson
         import shutil
         import subprocess
         from datetime import datetime
@@ -4472,7 +4472,7 @@ class GatewaySlashCommandsMixin:
         if event.message_id:
             pending["message_id"] = event.message_id
         _tmp_pending = pending_path.with_suffix(".tmp")
-        _tmp_pending.write_text(json.dumps(pending))
+        _tmp_pending.write_text(orjson.dumps(pending).decode('utf-8'))
         _tmp_pending.replace(pending_path)
         exit_code_path.unlink(missing_ok=True)
 

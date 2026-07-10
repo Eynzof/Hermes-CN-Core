@@ -8,7 +8,7 @@ sibling platform-plugin tests on the same xdist worker.
 from __future__ import annotations
 
 import asyncio
-import json
+import orjson
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -221,7 +221,7 @@ async def test_send_dm():
 
     result = await adapter.send("contact-42", "Hello, SimpleX!")
     mock_ws.send.assert_called_once()
-    payload = json.loads(mock_ws.send.call_args[0][0])
+    payload = orjson.loads(mock_ws.send.call_args[0][0])
     assert payload["cmd"] == "@contact-42 Hello, SimpleX!"
     assert payload["corrId"].startswith(_CORR_PREFIX)
     assert result.success is True
@@ -245,9 +245,9 @@ async def test_send_group():
     adapter._ws = mock_ws
 
     result = await adapter.send("group:grp-99", "Hello, group!")
-    payload = json.loads(mock_ws.send.call_args[0][0])
+    payload = orjson.loads(mock_ws.send.call_args[0][0])
     assert payload["cmd"].startswith("/_send #grp-99 json ")
-    msg_content = json.loads(payload["cmd"].split(" json ", 1)[1])[0][
+    msg_content = orjson.loads(payload["cmd"].split(" json ", 1)[1])[0][
         "msgContent"
     ]
     assert msg_content == {"type": "text", "text": "Hello, group!"}
@@ -336,7 +336,7 @@ async def test_standalone_send_defaults_to_local_daemon(monkeypatch):
             return None
 
         async def send(self, payload):
-            sent_payloads.append(json.loads(payload))
+            sent_payloads.append(orjson.loads(payload))
 
     def fake_connect(url, **kwargs):
         assert url == "ws://127.0.0.1:5225"

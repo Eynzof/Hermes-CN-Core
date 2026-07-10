@@ -9,7 +9,7 @@ turn halts.
 from __future__ import annotations
 
 import hashlib
-import json
+import orjson
 from dataclasses import dataclass, field
 from typing import Any, Mapping
 
@@ -177,13 +177,7 @@ def canonical_tool_args(args: Mapping[str, Any]) -> str:
     """Return sorted compact JSON for parsed tool arguments."""
     if not isinstance(args, Mapping):
         raise TypeError(f"tool args must be a mapping, got {type(args).__name__}")
-    return json.dumps(
-        args,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-        default=str,
-    )
+    return orjson.dumps(args, default=str, option=orjson.OPT_SORT_KEYS).decode('utf-8')
 
 
 def classify_tool_failure(tool_name: str, result: str | None) -> tuple[bool, str]:
@@ -382,13 +376,10 @@ class ToolCallGuardrailController:
 
 def toolguard_synthetic_result(decision: ToolGuardrailDecision) -> str:
     """Build a synthetic role=tool content string for a blocked tool call."""
-    return json.dumps(
-        {
+    return orjson.dumps({
             "error": decision.message,
             "guardrail": decision.to_metadata(),
-        },
-        ensure_ascii=False,
-    )
+        }).decode('utf-8')
 
 
 def append_toolguard_guidance(result: str, decision: ToolGuardrailDecision) -> str:
@@ -431,13 +422,7 @@ def _result_hash(result: str | None) -> str:
     parsed = safe_json_loads(result or "")
     if parsed is not None:
         try:
-            canonical = json.dumps(
-                parsed,
-                ensure_ascii=False,
-                sort_keys=True,
-                separators=(",", ":"),
-                default=str,
-            )
+            canonical = orjson.dumps(parsed, default=str, option=orjson.OPT_SORT_KEYS).decode('utf-8')
         except TypeError:
             canonical = str(parsed)
     else:

@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import argparse
 import os
-import re
+from agent.re_compat import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -322,6 +322,67 @@ FOOTGUNS: list[Footgun] = [
             "    loop.add_signal_handler(sig, handler, sig)\n"
             "except NotImplementedError:\n"
             "    pass  # Windows asyncio doesn't support signal handlers"
+        ),
+    ),
+    Footgun(
+        name="subprocess shell=True without creationflags",
+        pattern=re.compile(
+            r"subprocess\.(?:run|Popen|call|check_output|check_call)\s*\("
+            r"[^)]*shell\s*=\s*True"
+        ),
+        message=(
+            "subprocess call with shell=True on Windows spawns a visible "
+            "console window and re-tokenizes the command string through "
+            "cmd.exe, which breaks paths containing spaces.  Either add "
+            "creationflags=windows_hide_flags() or convert to list argv "
+            "to avoid both the window flash and the 'X not recognized' error."
+        ),
+        fix=(
+            "Add creationflags=windows_hide_flags() (from "
+            "hermes_cli._subprocess_compat) when shell=True is required, "
+            "or replace with a list argv to eliminate shell=True entirely."
+        ),
+        # Post-filter: skip if creationflags already present
+        post_filter=lambda m, line: "creationflags" not in line,
+    ),
+    Footgun(
+        name="subprocess capture_output=True without creationflags",
+        pattern=re.compile(
+            r"subprocess\.(?:run|Popen)\s*\("
+            r"[^)]*capture_output\s*=\s*True"
+        ),
+        message=(
+            "subprocess call with capture_output=True on Windows may still "
+            "flash a console window unless creationflags=windows_hide_flags() "
+            "is set.  capture_output=True alone does NOT suppress the window. "
+            "See https://bugs.python.org/issue41536."
+        ),
+        fix=(
+            "Add creationflags=windows_hide_flags() from "
+            "hermes_cli._subprocess_compat or use the wrapper at "
+            "hermes_cli._subprocess_compat.run()."
+        ),
+        # Post-filter: skip if creationflags already present
+        post_filter=lambda m, line: "creationflags" not in line,
+    ),
+    Footgun(
+        name="cmd.exe /c start with unquoted multi-word command",
+        pattern=re.compile(
+            r"cmd\.exe['\"],?\s*['\"]/c['\"],?\s*['\"]start['\"]"
+            r"[^)]*['\"](?!['\"])(?!hermes)\w+\s+\w+",
+            re.IGNORECASE,
+        ),
+        message=(
+            "cmd.exe /c start '' <unquoted_command> re-tokenizes the "
+            "command string through cmd.exe's parser, breaking paths or "
+            "names containing spaces.  Pass argv as a list with title "
+            "quoted separately, and use 'hermes' as the command prefix "
+            "instead of the bare profile name."
+        ),
+        fix=(
+            "Replace with list argv: "
+            "['cmd.exe', '/c', 'start', 'Window Title', 'hermes', 'setup', "
+            "'--profile', name]"
         ),
     ),
 ]

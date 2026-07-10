@@ -13,8 +13,8 @@ calls ``build_system_prompt_parts`` / inspects ``agent.tools`` offline.
 
 from __future__ import annotations
 
-import json
-import re
+import orjson
+from agent.re_compat import re
 from typing import Any, Dict, List, Tuple
 
 # The skills index is wrapped in this tag pair inside the stable tier.
@@ -89,7 +89,7 @@ def compute_prompt_breakdown(platform: str = "cli") -> Dict[str, Any]:
 
     # Tool-schema JSON — the other half of the fixed per-call payload.
     tools = getattr(agent, "tools", None) or []
-    tools_json = json.dumps(tools, ensure_ascii=False)
+    tools_json = orjson.dumps(tools).decode('utf-8')
 
     sections: List[Tuple[str, int, int]] = [
         ("stable (identity/guidance/skills)", len(stable), _bytes(stable)),
@@ -148,6 +148,6 @@ def cmd_prompt_size(args: Any) -> None:
         print(f"Could not compute prompt-size breakdown: {e}")
         return
     if as_json:
-        print(json.dumps(data, ensure_ascii=False, indent=2))
+        print(orjson.dumps(data, option=orjson.OPT_INDENT_2).decode('utf-8'))
     else:
         print(render_breakdown(data))

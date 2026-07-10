@@ -4,7 +4,7 @@ The manager consolidates the eight scattered MCP-OAuth call sites into a
 single object with disk-mtime watch, dedup'd 401 handling, and a provider
 cache. See `tools/mcp_oauth_manager.py` for design rationale.
 """
-import json
+import orjson
 import os
 import time
 from unittest.mock import MagicMock
@@ -65,10 +65,10 @@ def test_manager_remove_evicts_cache(tmp_path, monkeypatch):
     # Pre-seed tokens on disk
     token_dir = tmp_path / "mcp-tokens"
     token_dir.mkdir(parents=True)
-    (token_dir / "srv.json").write_text(json.dumps({
+    (token_dir / "srv.json").write_text(orjson.dumps({
         "access_token": "TOK",
         "token_type": "Bearer",
-    }))
+    }).decode('utf-8'))
 
     mgr = MCPOAuthManager()
     p1 = mgr.get_or_build_provider("srv", "https://example.com/mcp", None)
@@ -107,10 +107,10 @@ async def test_disk_watch_invalidates_on_mtime_change(tmp_path, monkeypatch):
     token_dir = tmp_path / "mcp-tokens"
     token_dir.mkdir(parents=True)
     tokens_file = token_dir / "srv.json"
-    tokens_file.write_text(json.dumps({
+    tokens_file.write_text(orjson.dumps({
         "access_token": "OLD",
         "token_type": "Bearer",
-    }))
+    }).decode('utf-8'))
 
     mgr = MCPOAuthManager()
     provider = mgr.get_or_build_provider("srv", "https://example.com/mcp", None)

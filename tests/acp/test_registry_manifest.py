@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import json
-import re
+import orjson
+from agent.re_compat import re
 import tomllib
 from pathlib import Path
 import xml.etree.ElementTree as ET
@@ -16,7 +16,7 @@ ALLOWED_DISTRIBUTIONS = {"binary", "npx", "uvx"}
 
 
 def _manifest() -> dict:
-    return json.loads(MANIFEST.read_text(encoding="utf-8"))
+    return orjson.loads(MANIFEST.read_text(encoding="utf-8"))
 
 
 def _pyproject_version() -> str:

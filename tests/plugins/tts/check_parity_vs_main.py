@@ -39,7 +39,7 @@ of the worktree directory, or falls back to a sibling
 
 from __future__ import annotations
 
-import json
+import orjson
 import subprocess
 import sys
 from pathlib import Path
@@ -71,7 +71,7 @@ assert (PR_DIR / "tools" / "tts_tool.py").exists(), (
 # that would require audio synthesis; instead we ask the resolution
 # layer what it WOULD do.
 SUBPROCESS_SCRIPT = r"""
-import json, os, sys, tempfile
+import orjson, os, sys, tempfile
 sys.path.insert(0, sys.argv[1])
 
 # Isolated HERMES_HOME so the config write is hermetic.
@@ -85,7 +85,7 @@ for k in (
 ):
     os.environ.pop(k, None)
 
-scenario_env = json.loads(sys.argv[2])
+scenario_env = orjson.loads(sys.argv[2])
 os.environ.update(scenario_env)
 
 config_yaml = sys.argv[3]
@@ -166,7 +166,7 @@ shape = {
     "voice_compat": bool(voice_compat),
     "error_present": error_text is not None,
 }
-print(json.dumps(shape))
+print(orjson.dumps(shape).decode('utf-8'))
 """
 
 
@@ -224,7 +224,7 @@ def _run_scenario(repo_path: Path, label: str, config_yaml: str, env: dict, plug
             "-c",
             SUBPROCESS_SCRIPT,
             str(repo_path),
-            json.dumps(env),
+            orjson.dumps(env).decode('utf-8'),
             config_yaml,
             plugin_register,
         ],
@@ -239,7 +239,7 @@ def _run_scenario(repo_path: Path, label: str, config_yaml: str, env: dict, plug
             "stderr": out.stderr[-500:],
         }
     try:
-        return json.loads(out.stdout.strip().splitlines()[-1])
+        return orjson.loads(out.stdout.strip().splitlines()[-1])
     except Exception as exc:
         return {"error": f"could not parse output: {exc}", "stdout": out.stdout}
 

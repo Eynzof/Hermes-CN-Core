@@ -7,7 +7,7 @@ normal text/binary handling.
 
 from __future__ import annotations
 
-import json
+import orjson
 import posixpath
 import zipfile
 from pathlib import Path
@@ -61,8 +61,8 @@ def _source_text(source) -> str:
 def _extract_notebook(path: str) -> str:
     try:
         with open(path, encoding="utf-8", errors="replace") as fh:
-            nb = json.load(fh)
-    except (OSError, ValueError, json.JSONDecodeError) as exc:
+            nb = orjson.loads(fh.read())
+    except (OSError, ValueError, orjson.JSONDecodeError) as exc:
         raise ExtractionError(f"Not a valid notebook: {exc}") from exc
     if not isinstance(nb, dict):
         raise ExtractionError("Notebook root is not an object")

@@ -8,7 +8,7 @@ Backup and import commands for hermes CLI.
 HERMES_HOME root.
 """
 
-import json
+import orjson
 import logging
 import os
 import shutil
@@ -877,7 +877,7 @@ def create_quick_snapshot(
         "files": manifest,
     }
     with open(snap_dir / "manifest.json", "w", encoding="utf-8") as f:
-        json.dump(meta, f, indent=2)
+        f.write(orjson.dumps(meta, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
     # Auto-prune. Defaults preserve historical manual /snapshot behavior; callers
     # with known high-churn safety snapshots (for example pre-update) can pass a
@@ -905,8 +905,8 @@ def list_quick_snapshots(
         if manifest_path.exists():
             try:
                 with open(manifest_path, encoding="utf-8") as f:
-                    results.append(json.load(f))
-            except (json.JSONDecodeError, OSError):
+                    results.append(orjson.loads(f.read()))
+            except (orjson.JSONDecodeError, OSError):
                 results.append({"id": d.name, "file_count": 0, "total_size": 0})
         if len(results) >= limit:
             break
@@ -949,7 +949,7 @@ def restore_quick_snapshot(
         return False
 
     with open(manifest_path, encoding="utf-8") as f:
-        meta = json.load(f)
+        meta = orjson.loads(f.read())
 
     restored = 0
     for rel in meta.get("files", {}):
@@ -1011,8 +1011,8 @@ def _count_cron_jobs(path: Path) -> Optional[int]:
         return None
     try:
         with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-    except (OSError, json.JSONDecodeError):
+            data = orjson.loads(f.read())
+    except (OSError, orjson.JSONDecodeError):
         return None
     if isinstance(data, dict):
         jobs = data.get("jobs", [])

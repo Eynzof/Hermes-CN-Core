@@ -6,9 +6,9 @@ and thread participation tracking.
 """
 
 import asyncio
-import json
+import orjson
 import logging
-import re
+from agent.re_compat import re
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict
@@ -234,7 +234,7 @@ class ThreadParticipationTracker:
         path = self._state_path()
         if path.exists():
             try:
-                data = json.loads(path.read_text(encoding="utf-8"))
+                data = orjson.loads(path.read_text(encoding="utf-8"))
                 if isinstance(data, list):
                     return [str(thread_id) for thread_id in data]
             except Exception:

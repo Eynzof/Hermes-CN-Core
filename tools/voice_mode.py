@@ -12,7 +12,7 @@ Dependencies (optional):
 import logging
 import os
 import platform
-import re
+from agent.re_compat import re
 import shutil
 import subprocess
 import sys
@@ -389,7 +389,11 @@ class TermuxAudioRecorder:
             "-c", str(CHANNELS),
         ]
         try:
-            subprocess.run(command, capture_output=True, text=True, timeout=15, check=True, stdin=subprocess.DEVNULL)
+            _vk = {}
+            if sys.platform == "win32":
+                from hermes_cli._subprocess_compat import windows_hide_flags
+                _vk["creationflags"] = windows_hide_flags()
+            subprocess.run(command, capture_output=True, text=True, timeout=15, check=True, stdin=subprocess.DEVNULL, **_vk)  # windows-footgun: ok — creationflags in _vk
         except subprocess.CalledProcessError as e:
             details = (e.stderr or e.stdout or str(e)).strip()
             raise RuntimeError(f"Termux microphone start failed: {details}") from e
@@ -406,7 +410,11 @@ class TermuxAudioRecorder:
         mic_cmd = _termux_microphone_command()
         if not mic_cmd:
             return
-        subprocess.run([mic_cmd, "-q"], capture_output=True, text=True, timeout=15, check=False, stdin=subprocess.DEVNULL)
+        _vk2 = {}
+        if sys.platform == "win32":
+            from hermes_cli._subprocess_compat import windows_hide_flags
+            _vk2["creationflags"] = windows_hide_flags()
+        subprocess.run([mic_cmd, "-q"], capture_output=True, text=True, timeout=15, check=False, stdin=subprocess.DEVNULL, **_vk2)  # windows-footgun: ok — creationflags in _vk2
 
     def stop(self) -> Optional[str]:
         with self._lock:

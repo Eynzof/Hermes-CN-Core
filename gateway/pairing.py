@@ -19,7 +19,7 @@ Storage: ~/.hermes/pairing/
 """
 
 import hashlib
-import json
+import orjson
 import os
 import secrets
 import tempfile
@@ -212,13 +212,13 @@ class PairingStore:
     def _load_json(self, path: Path) -> dict:
         if path.exists():
             try:
-                return json.loads(path.read_text(encoding="utf-8"))
-            except (json.JSONDecodeError, OSError):
+                return orjson.loads(path.read_text(encoding="utf-8"))
+            except (orjson.JSONDecodeError, OSError):
                 return {}
         return {}
 
     def _save_json(self, path: Path, data: dict) -> None:
-        _secure_write(path, json.dumps(data, indent=2, ensure_ascii=False))
+        _secure_write(path, orjson.dumps(data, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
     def _normalize_user_id(self, platform: str, user_id: str) -> str:
         """Normalize platform-specific user IDs before persisting them."""

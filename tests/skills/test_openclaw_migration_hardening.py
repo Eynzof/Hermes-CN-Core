@@ -10,7 +10,7 @@ Covers the changes in the "claw migrate hardening" PR:
 from __future__ import annotations
 
 import importlib.util
-import json
+import orjson
 import subprocess
 import sys
 from pathlib import Path
@@ -142,7 +142,7 @@ def test_write_report_redacts_api_keys_on_disk(tmp_path):
         ],
     }
     mod.write_report(tmp_path, report)
-    persisted = json.loads((tmp_path / "report.json").read_text())
+    persisted = orjson.loads((tmp_path / "report.json").read_text())
     # The raw secret must not appear anywhere in the persisted JSON.
     assert "sk-or-v1-1234567890abcdef" not in (tmp_path / "report.json").read_text()
     assert persisted["items"][0]["details"]["OPENROUTER_API_KEY"] == mod.REDACTED_MIGRATION_VALUE
@@ -308,7 +308,7 @@ def test_json_mode_emits_structured_report(tmp_path):
     source = tmp_path / "openclaw"
     source.mkdir()
     (source / "openclaw.json").write_text(
-        json.dumps({"agents": {"defaults": {"model": "openrouter/anthropic/claude-sonnet-4"}}}),
+        orjson.dumps({"agents": {"defaults": {"model": "openrouter/anthropic/claude-sonnet-4"}}}).decode('utf-8'),
         encoding="utf-8",
     )
     target = tmp_path / "hermes"
@@ -327,7 +327,7 @@ def test_json_mode_emits_structured_report(tmp_path):
         timeout=30,
     )
     assert result.returncode == 0, result.stderr
-    payload = json.loads(result.stdout)
+    payload = orjson.loads(result.stdout)
     assert "summary" in payload
     assert "warnings" in payload
     assert "next_steps" in payload

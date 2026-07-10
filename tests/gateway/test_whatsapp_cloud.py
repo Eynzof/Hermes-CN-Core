@@ -12,7 +12,7 @@ exercised with synthetic ``Request`` objects.
 
 from __future__ import annotations
 
-import json
+import orjson
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -114,7 +114,7 @@ def _mock_httpx_response(status_code: int, json_body: dict):
     resp = MagicMock()
     resp.status_code = status_code
     resp.json = MagicMock(return_value=json_body)
-    resp.text = json.dumps(json_body)
+    resp.text = orjson.dumps(json_body).decode('utf-8')
     return resp
 
 
@@ -566,7 +566,7 @@ class TestWebhookReplay:
     async def test_duplicate_wamid_not_redispatched(self):
         adapter = _make_adapter(app_secret="key")
         adapter.handle_message = AsyncMock()
-        body = json.dumps(_SAMPLE_INBOUND_TEXT_PAYLOAD).encode("utf-8")
+        body = orjson.dumps(_SAMPLE_INBOUND_TEXT_PAYLOAD)
         sig = _sign("key", body)
 
         # First delivery
@@ -612,7 +612,7 @@ class TestWebhookDispatch:
             captured.append(event)
 
         adapter.handle_message = _capture
-        body = json.dumps(_SAMPLE_INBOUND_TEXT_PAYLOAD).encode("utf-8")
+        body = orjson.dumps(_SAMPLE_INBOUND_TEXT_PAYLOAD)
         sig = _sign("key", body)
         request = _post_request(body, {"X-Hub-Signature-256": sig})
 
@@ -635,7 +635,7 @@ class TestWebhookDispatch:
         adapter = _make_adapter(app_secret="key")
         adapter._dm_policy = "disabled"  # block all DMs
         adapter.handle_message = AsyncMock()
-        body = json.dumps(_SAMPLE_INBOUND_TEXT_PAYLOAD).encode("utf-8")
+        body = orjson.dumps(_SAMPLE_INBOUND_TEXT_PAYLOAD)
         sig = _sign("key", body)
 
         response = await adapter._handle_webhook(
@@ -653,7 +653,7 @@ class TestWebhookDispatch:
         retries don't multiply the bug into a 7-day storm."""
         adapter = _make_adapter(app_secret="key")
         adapter.handle_message = AsyncMock(side_effect=RuntimeError("boom"))
-        body = json.dumps(_SAMPLE_INBOUND_TEXT_PAYLOAD).encode("utf-8")
+        body = orjson.dumps(_SAMPLE_INBOUND_TEXT_PAYLOAD)
         sig = _sign("key", body)
 
         response = await adapter._handle_webhook(
@@ -680,7 +680,7 @@ class TestWebhookDispatch:
                 }
             ],
         }
-        body = json.dumps(payload).encode("utf-8")
+        body = orjson.dumps(payload)
         sig = _sign("key", body)
 
         response = await adapter._handle_webhook(
@@ -694,7 +694,7 @@ class TestWebhookDispatch:
         adapter = _make_adapter(app_secret="key")
         adapter.handle_message = AsyncMock()
         payload = {"object": "page", "entry": []}
-        body = json.dumps(payload).encode("utf-8")
+        body = orjson.dumps(payload)
         sig = _sign("key", body)
 
         response = await adapter._handle_webhook(
@@ -747,7 +747,7 @@ class TestWebhookDispatch:
                 }
             ],
         }
-        body = json.dumps(payload).encode("utf-8")
+        body = orjson.dumps(payload)
         sig = _sign("key", body)
 
         response = await adapter._handle_webhook(
@@ -768,12 +768,12 @@ class TestWebhookDispatch:
 
         adapter.handle_message = _capture
 
-        payload_with_ctx = json.loads(
-            json.dumps(_SAMPLE_INBOUND_TEXT_PAYLOAD)
+        payload_with_ctx = orjson.loads(
+            orjson.dumps(_SAMPLE_INBOUND_TEXT_PAYLOAD).decode('utf-8')
         )  # deep copy
         msg = payload_with_ctx["entry"][0]["changes"][0]["value"]["messages"][0]
         msg["context"] = {"id": "wamid.our_outbound", "from": "15551797781"}
-        body = json.dumps(payload_with_ctx).encode("utf-8")
+        body = orjson.dumps(payload_with_ctx)
         sig = _sign("key", body)
 
         await adapter._handle_webhook(
@@ -811,7 +811,7 @@ class TestHealth:
         response = await adapter._handle_health(request)
 
         # web.json_response stores the dict on .text as JSON
-        body = json.loads(response.text)
+        body = orjson.loads(response.text)
         assert body["status"] == "ok"
         assert body["platform"] == "whatsapp_cloud"
         assert body["phone_number_id"] == "555"
@@ -831,7 +831,7 @@ class TestHealth:
         request = MagicMock()
 
         response = await adapter._handle_health(request)
-        body = json.loads(response.text)
+        body = orjson.loads(response.text)
         assert body["verify_token_configured"] is False
         assert body["app_secret_configured"] is False
 
@@ -893,7 +893,7 @@ def _mock_upload_response(media_id: str = "media_abc123"):
     resp = MagicMock()
     resp.status_code = 200
     resp.json = MagicMock(return_value={"id": media_id})
-    resp.text = json.dumps({"id": media_id})
+    resp.text = orjson.dumps({"id": media_id}).decode('utf-8')
     return resp
 
 
@@ -902,7 +902,7 @@ def _mock_message_response(wamid: str = "wamid.outbound1"):
     resp = MagicMock()
     resp.status_code = 200
     resp.json = MagicMock(return_value={"messages": [{"id": wamid}]})
-    resp.text = json.dumps({"messages": [{"id": wamid}]})
+    resp.text = orjson.dumps({"messages": [{"id": wamid}]}).decode('utf-8')
     return resp
 
 
@@ -1372,7 +1372,7 @@ class TestInboundMediaDispatch:
                 }],
             }],
         }
-        body = json.dumps(payload).encode("utf-8")
+        body = orjson.dumps(payload)
         sig = _sign("key", body)
 
         with _patch.object(wac, "_INBOUND_MEDIA_CACHE", tmp_path):
@@ -1440,7 +1440,7 @@ class TestInboundMediaDispatch:
                 }],
             }],
         }
-        body = json.dumps(payload).encode("utf-8")
+        body = orjson.dumps(payload)
         sig = _sign("key", body)
 
         with _patch.object(wac, "_INBOUND_MEDIA_CACHE", tmp_path):
@@ -1493,7 +1493,7 @@ class TestInboundMediaDispatch:
                 }],
             }],
         }
-        body = json.dumps(payload).encode("utf-8")
+        body = orjson.dumps(payload)
         sig = _sign("key", body)
 
         with _patch.object(wac, "_INBOUND_MEDIA_CACHE", tmp_path):

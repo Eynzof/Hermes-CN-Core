@@ -13,7 +13,7 @@ Tests cover:
 """
 
 import asyncio
-import json
+import orjson
 import os
 import stat
 import time
@@ -1333,7 +1333,7 @@ class TestChatCompletionsEndpoint:
                 assert '"label":' in body
                 # The progress marker must NOT appear inside any
                 # chat.completion.chunk delta.content field.
-                import json as _json
+                import orjson as _json
                 for line in body.splitlines():
                     if line.startswith("data: ") and line.strip() != "data: [DONE]":
                         try:
@@ -1409,7 +1409,7 @@ class TestChatCompletionsEndpoint:
         SSE line, with stable ``toolCallId`` and ``status``.
         """
         import asyncio
-        import json as _json
+        import orjson as _json
 
         app = _create_app(adapter)
         async with TestClient(TestServer(app)) as cli:
@@ -2021,7 +2021,7 @@ class TestResponsesEndpoint:
                 assert resp.status == 200
                 data = await resp.json()
 
-        output_json = json.dumps(data["output"])
+        output_json = orjson.dumps(data["output"]).decode('utf-8')
         assert "call_new" in output_json
         assert "call_old" not in output_json
         assert "old.txt" not in output_json
@@ -2202,7 +2202,7 @@ class TestResponsesEndpoint:
 
             assert resp.status == 200
             data = await resp.json()
-            body = json.dumps(data)
+            body = orjson.dumps(data).decode('utf-8')
             assert raw_secret not in body
             assert "OPENAI_API_KEY=" in body
             assert data["output"][0]["content"][0]["text"] != f"provider auth failed OPENAI_API_KEY={raw_secret}"
@@ -2407,8 +2407,8 @@ class TestResponsesStreaming:
                 for line in body.splitlines():
                     if line.startswith("data: "):
                         try:
-                            payload = json.loads(line[len("data: "):])
-                        except json.JSONDecodeError:
+                            payload = orjson.loads(line[len("data: "):])
+                        except orjson.JSONDecodeError:
                             continue
                         if payload.get("type") == "response.completed":
                             response_id = payload["response"]["id"]
@@ -2474,8 +2474,8 @@ class TestResponsesStreaming:
         for line in body.splitlines():
             if line.startswith("data: "):
                 try:
-                    payload = json.loads(line[len("data: "):])
-                except json.JSONDecodeError:
+                    payload = orjson.loads(line[len("data: "):])
+                except orjson.JSONDecodeError:
                     continue
                 if payload.get("type") == "response.completed":
                     response_id = payload["response"]["id"]
@@ -3133,7 +3133,7 @@ class TestChatCompletionsAgentIncomplete:
 
             assert resp.status == 502
             data = await resp.json()
-            body = json.dumps(data)
+            body = orjson.dumps(data).decode('utf-8')
             assert raw_secret not in body
             assert raw_secret not in resp.headers.get("X-Hermes-Error", "")
             assert "OPENAI_API_KEY=" in body
@@ -3901,7 +3901,7 @@ class TestModelRoutesModelsEndpoint:
             assert alias_entry["root"] == "openai/gpt-5"
             assert alias_entry["parent"] == adapter._model_name
             # per-route api_key must never leak through the discovery endpoint
-            assert "sk-route-secret" not in json.dumps(data)
+            assert "sk-route-secret" not in orjson.dumps(data).decode('utf-8')
 
 
 class TestModelRoutesHandlers:

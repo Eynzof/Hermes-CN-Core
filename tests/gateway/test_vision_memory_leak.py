@@ -10,7 +10,7 @@ provider boundary, not in this shared gateway path.
 """
 
 import asyncio
-import json
+import orjson
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -34,10 +34,10 @@ def _run(coro):
 class TestEnrichMessageWithVision:
     def test_clean_description_passes_through(self, gateway_runner):
         """Vision output without leaked memory is embedded unchanged."""
-        fake_result = json.dumps({
+        fake_result = orjson.dumps({
             "success": True,
             "analysis": "A photograph of a sunset over the ocean.",
-        })
+        }).decode('utf-8')
         with patch("tools.vision_tools.vision_analyze_tool", new=AsyncMock(return_value=fake_result)):
             out = _run(gateway_runner._enrich_message_with_vision("caption", ["/tmp/img.jpg"]))
         assert "sunset over the ocean" in out
@@ -52,7 +52,7 @@ class TestEnrichMessageWithVision:
             "</memory-context>\n"
             "A photograph of a cat."
         )
-        fake_result = json.dumps({"success": True, "analysis": leaked})
+        fake_result = orjson.dumps({"success": True, "analysis": leaked}).decode('utf-8')
         with patch("tools.vision_tools.vision_analyze_tool", new=AsyncMock(return_value=fake_result)):
             out = _run(gateway_runner._enrich_message_with_vision("caption", ["/tmp/img.jpg"]))
         assert "photograph of a cat" in out
@@ -72,7 +72,7 @@ class TestEnrichMessageWithVision:
             "</memory-context>\n"
             "A photograph of a dog."
         )
-        fake_result = json.dumps({"success": True, "analysis": leaked})
+        fake_result = orjson.dumps({"success": True, "analysis": leaked}).decode('utf-8')
         with patch("tools.vision_tools.vision_analyze_tool", new=AsyncMock(return_value=fake_result)):
             out = _run(gateway_runner._enrich_message_with_vision("caption", ["/tmp/img.jpg"]))
         assert "photograph of a dog" in out

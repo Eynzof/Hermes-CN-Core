@@ -28,9 +28,9 @@ No meet.google.com URL → exits non-zero. Any URL that doesn't start with
 
 from __future__ import annotations
 
-import json
+import orjson
 import os
-import re
+from agent.re_compat import re
 import signal
 import sys
 import threading
@@ -164,7 +164,7 @@ class _BotState:
             "leaveReason": self.leave_reason,
         }
         tmp = self.status_path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        tmp.write_text(orjson.dumps(data, option=orjson.OPT_INDENT_2).decode('utf-8'), encoding="utf-8")
         tmp.replace(self.status_path)
 
     def set(self, **kwargs) -> None:
@@ -432,8 +432,7 @@ def _mac_audio_device_index(device_name: str) -> str:
         return "0"
     # ffmpeg prints the table on stderr. Lines look like:
     #   [AVFoundation indev @ 0x...] [0] BlackHole 2ch
-    import re as _re
-
+    from agent.re_compat import re as _re
     needle = device_name.strip().lower()
     for line in (out.stderr or "").splitlines():
         m = _re.search(r"\[(\d+)\]\s+(.+)$", line)

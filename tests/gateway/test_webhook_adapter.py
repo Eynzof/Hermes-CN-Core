@@ -15,10 +15,10 @@ Covers:
 """
 
 import asyncio
-import base64
+import pybase64 as base64
 import hashlib
 import hmac
-import json
+import orjson
 import time
 from collections import deque
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -920,7 +920,7 @@ class TestRawTemplateToken:
         result = adapter._render_prompt(
             "Payload: {__raw__}", payload, "push", "test"
         )
-        expected_json = json.dumps(payload, indent=2)
+        expected_json = orjson.dumps(payload, option=orjson.OPT_INDENT_2).decode('utf-8')
         assert result == f"Payload: {expected_json}"
 
     def test_raw_truncated_at_4000_chars(self):

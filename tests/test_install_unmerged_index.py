@@ -12,8 +12,7 @@ before stashing (#4735); both installer scripts must do the same.
 """
 
 from __future__ import annotations
-
-import re
+from agent.re_compat import re
 import shutil
 import subprocess
 from pathlib import Path

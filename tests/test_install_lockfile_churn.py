@@ -11,8 +11,7 @@ and ``package-lock.json`` changed together.
 """
 
 from __future__ import annotations
-
-import re
+from agent.re_compat import re
 import shutil
 import subprocess
 from pathlib import Path

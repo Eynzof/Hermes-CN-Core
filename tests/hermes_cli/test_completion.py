@@ -2,7 +2,7 @@
 
 import argparse
 import os
-import re
+from agent.re_compat import re
 import shutil
 import subprocess
 import tempfile

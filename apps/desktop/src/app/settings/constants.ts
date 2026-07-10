@@ -226,7 +226,7 @@ export const ENUM_OPTIONS: Record<string, string[]> = {
   'approvals.mode': ['manual', 'smart', 'off'],
   'code_execution.mode': ['project', 'strict'],
   'context.engine': ['compressor', 'default', 'custom'],
-  'delegation.reasoning_effort': ['', 'minimal', 'low', 'medium', 'high', 'xhigh'],
+  'delegation.reasoning_effort': ['', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
   'memory.provider': ['', 'builtin', 'hindsight', 'honcho'],
   // Terminal execution backends — kept in sync with the dispatch ladder in
   // tools/terminal_tool.py::_create_environment (local/docker/singularity/

@@ -4,7 +4,7 @@ Provides ``feishu_doc_read`` for reading document content as plain text.
 Uses the same lazy-import + BaseRequest pattern as feishu_comment.py.
 """
 
-import json
+import orjson
 import logging
 import threading
 
@@ -103,10 +103,10 @@ def _handle_feishu_doc_read(args: dict, **kwargs) -> str:
     raw = getattr(response, "raw", None)
     if raw and hasattr(raw, "content"):
         try:
-            body = json.loads(raw.content)
+            body = orjson.loads(raw.content)
             content = body.get("data", {}).get("content", "")
             return tool_result(success=True, content=content)
-        except (json.JSONDecodeError, AttributeError):
+        except (orjson.JSONDecodeError, AttributeError):
             pass
 
     # Fallback: try response.data

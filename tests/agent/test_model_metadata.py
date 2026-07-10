@@ -20,9 +20,11 @@ from agent.model_metadata import (
     CONTEXT_PROBE_TIERS,
     DEFAULT_CONTEXT_LENGTHS,
     DEFAULT_FALLBACK_CONTEXT,
+    IncrementalTokenEstimator,
     _strip_provider_prefix,
     estimate_tokens_rough,
     estimate_messages_tokens_rough,
+    estimate_request_tokens_rough,
     get_model_context_length,
     get_next_probe_tier,
     get_cached_context_length,
@@ -118,6 +120,98 @@ class TestEstimateMessagesTokensRough:
         ]}
         result = estimate_messages_tokens_rough([msg])
         assert result < 5000
+
+
+class TestIncrementalTokenEstimator:
+    """The incremental estimator is a drop-in, value-identical replacement for
+    the stateless ``estimate_messages_tokens_rough`` — it just caches the
+    unchanged prefix of a growing conversation. Every test here asserts the
+    *equivalence invariant* (same value as the stateless path), never a frozen
+    token count, so these are behaviour contracts and not change-detectors.
+    """
+
+    def test_matches_stateless_on_empty(self):
+        est = IncrementalTokenEstimator()
+        assert est.estimate([]) == estimate_messages_tokens_rough([]) == 0
+
+    def test_matches_stateless_single_call(self):
+        est = IncrementalTokenEstimator()
+        msgs = [
+            {"role": "user", "content": "hello"},
+            {"role": "assistant", "content": "hi there"},
+        ]
+        assert est.estimate(msgs) == estimate_messages_tokens_rough(msgs)
+
+    def test_incremental_token_counting(self):
+        """After 10 appended turns the incremental estimate matches a full
+        stateless rescan at *every* step (the same list object grows in place,
+        exercising the cached-prefix fast path)."""
+        est = IncrementalTokenEstimator()
+        conv = [{"role": "system", "content": "You are a helpful assistant."}]
+        for i in range(10):
+            conv.append({"role": "user", "content": f"Question {i}: " + "x" * (i * 40)})
+            conv.append({"role": "assistant", "content": f"Answer {i}: " + "y" * (i * 90)})
+            assert est.estimate(conv) == estimate_messages_tokens_rough(conv)
+
+    def test_cache_tracks_live_messages_only(self):
+        """Messages that drop out of the list evict their cached contribution,
+        so the cache never outgrows the live conversation."""
+        est = IncrementalTokenEstimator()
+        conv = [{"role": "user", "content": f"m{i}"} for i in range(20)]
+        est.estimate(conv)
+        assert len(est._cache) == 20
+        est.estimate(conv[:5])
+        assert len(est._cache) == 5
+        est.estimate([])
+        assert len(est._cache) == 0
+
+    def test_replaced_message_is_recomputed(self):
+        """Swapping a message for a longer one at the same index recomputes it;
+        the identity guard prevents a stale cached value from being reused."""
+        est = IncrementalTokenEstimator()
+        conv = [{"role": "user", "content": "short"}]
+        v1 = est.estimate(conv)
+        conv[0] = {"role": "user", "content": "a considerably longer message body here"}
+        v2 = est.estimate(conv)
+        assert v2 == estimate_messages_tokens_rough(conv)
+        assert v2 > v1
+
+    def test_matches_stateless_with_images(self):
+        est = IncrementalTokenEstimator()
+        msgs = [
+            {"role": "user", "content": [
+                {"type": "text", "text": "describe"},
+                {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAAA"}},
+            ]},
+            {"role": "assistant", "content": "a picture of a cat"},
+        ]
+        assert est.estimate(msgs) == estimate_messages_tokens_rough(msgs)
+
+    def test_invalidate_forces_recompute(self):
+        est = IncrementalTokenEstimator()
+        conv = [{"role": "user", "content": "hello"}]
+        assert est.estimate(conv) == estimate_messages_tokens_rough(conv)
+        est.invalidate()
+        assert len(est._cache) == 0
+        assert est.estimate(conv) == estimate_messages_tokens_rough(conv)
+
+    def test_estimate_messages_estimator_param_equivalence(self):
+        conv = [{"role": "user", "content": "hello world"}]
+        est = IncrementalTokenEstimator()
+        assert (estimate_messages_tokens_rough(conv, estimator=est)
+                == estimate_messages_tokens_rough(conv))
+
+    def test_request_estimate_with_estimator_matches_plain(self):
+        conv = [
+            {"role": "user", "content": "u" * 300},
+            {"role": "assistant", "content": "a" * 600},
+        ]
+        est = IncrementalTokenEstimator()
+        plain = estimate_request_tokens_rough(conv, system_prompt="sys prompt", tools=[{"t": 1}])
+        cached = estimate_request_tokens_rough(
+            conv, system_prompt="sys prompt", tools=[{"t": 1}], estimator=est
+        )
+        assert plain == cached
 
 
 # =========================================================================

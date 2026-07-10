@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
+from agent.re_compat import re
 import threading
 from dataclasses import dataclass, field
 from typing import Any, Optional

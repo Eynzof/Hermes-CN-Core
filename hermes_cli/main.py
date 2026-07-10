@@ -256,7 +256,7 @@ if _try_termux_ultrafast_version():
 
 import argparse
 import hashlib
-import json
+import orjson
 import shlex
 import shutil
 import stat
@@ -434,8 +434,7 @@ def _apply_profile_override() -> None:
     # Mirrors hermes_cli.profiles._PROFILE_ID_RE so we never call
     # resolve_profile_env() with a value it must reject + sys.exit on.
     if profile_name is not None and consume == 2:
-        import re as _re
-
+        from agent.re_compat import re as _re
         if not _re.match(r"^[a-z0-9][a-z0-9_-]{0,63}$", profile_name):
             profile_name = None
             consume = 0
@@ -853,9 +852,9 @@ def _has_any_provider_configured() -> bool:
     auth_file = get_hermes_home() / "auth.json"
     if auth_file.exists():
         try:
-            import json
+            import orjson
 
-            auth = json.loads(auth_file.read_text())
+            auth = orjson.loads(auth_file.read_text())
             active = auth.get("active_provider")
             if active:
                 status = get_auth_status(active)
@@ -1164,7 +1163,11 @@ def _probe_container(cmd: list, backend: str, via_sudo: bool = False):
     all other exceptions propagate naturally.
     """
     try:
-        return subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        _subprocess_kwargs = {}
+        if sys.platform == "win32":
+            from hermes_cli._subprocess_compat import windows_hide_flags
+            _subprocess_kwargs["creationflags"] = windows_hide_flags()
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=15, **_subprocess_kwargs)  # windows-footgun: ok — creationflags in _subprocess_kwargs
     except subprocess.TimeoutExpired:
         label = f"sudo {backend}" if via_sudo else backend
         print(
@@ -1312,7 +1315,7 @@ def _read_tui_active_session_file(path: Optional[str]) -> Optional[str]:
     if not path:
         return None
     try:
-        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        data = orjson.loads(Path(path).read_text(encoding="utf-8"))
         sid = str(data.get("session_id") or "").strip()
         return sid or None
     except Exception:
@@ -1498,9 +1501,9 @@ def _tui_need_npm_install(root: Path) -> bool:
     # can bump the root lockfile timestamp even when installed deps already
     # match. Fall back to mtime when either file is unparseable.
     try:
-        wanted = json.loads(lock.read_text(encoding="utf-8")).get("packages") or {}
-        installed = json.loads(marker.read_text(encoding="utf-8")).get("packages") or {}
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        wanted = orjson.loads(lock.read_text(encoding="utf-8")).get("packages") or {}
+        installed = orjson.loads(marker.read_text(encoding="utf-8")).get("packages") or {}
+    except (OSError, UnicodeDecodeError, orjson.JSONDecodeError):
         return lock.stat().st_mtime > marker.stat().st_mtime
 
     def comparable(pkg: dict) -> dict:
@@ -1615,6 +1618,10 @@ def _ensure_tui_node() -> None:
 
     hermes_home = os.environ.get("HERMES_HOME") or str(Path.home() / ".hermes")
     try:
+        _subprocess_kwargs = {}
+        if sys.platform == "win32":
+            from hermes_cli._subprocess_compat import windows_hide_flags
+            _subprocess_kwargs["creationflags"] = windows_hide_flags()
         # Helper writes logs to stderr; we ask bash to print `command -v node`
         # on stdout once ensure_node succeeds. Subshell PATH edits don't leak
         # back into Python, so the stdout capture is the bridge.
@@ -1630,6 +1637,7 @@ def _ensure_tui_node() -> None:
             encoding="utf-8",
             errors="replace",
             check=False,
+            **_subprocess_kwargs,
         )
     except (OSError, subprocess.SubprocessError):
         return
@@ -1673,12 +1681,17 @@ def _restore_tui_workspace(tui_dir: Path) -> bool:
     if not git or not (tui_dir.parent / ".git").exists():
         return False
     try:
+        _subprocess_kwargs = {}
+        if sys.platform == "win32":
+            from hermes_cli._subprocess_compat import windows_hide_flags
+            _subprocess_kwargs["creationflags"] = windows_hide_flags()
         subprocess.run(
             [git, "restore", "--", tui_dir.name],
             cwd=str(tui_dir.parent),
             capture_output=True,
             text=True,
             check=False,
+            **_subprocess_kwargs,
         )
     except OSError:
         return False
@@ -2020,6 +2033,14 @@ def _launch_tui(
         apply_terminal_config_to_env(env=env)
     except Exception:
         logger.debug("Failed to apply terminal config bridge for TUI launch", exc_info=True)
+    # Bridge display.theme → HERMES_TUI_THEME env var so the TUI (Ink) picks it up
+    try:
+        from hermes_cli.config import load_config_readonly
+        _theme = load_config_readonly().get("display", {}).get("theme", "auto")
+        if _theme and _theme != "auto":
+            env["HERMES_TUI_THEME"] = _theme
+    except Exception:
+        pass
     active_session_fd, active_session_file = tempfile.mkstemp(
         prefix="hermes-tui-active-session-", suffix=".json"
     )
@@ -3702,8 +3723,7 @@ def _auto_provider_name(base_url: str) -> str:
     "RunPod (xyz.runpod.io)".  Used as the default when prompting the
     user for a display name during custom endpoint setup.
     """
-    import re
-
+    from agent.re_compat import re
     clean = base_url.replace("https://", "").replace("http://", "").rstrip("/")
     clean = re.sub(r"/v1/?$", "", clean)
     name = clean.split("/")[0]
@@ -3908,22 +3928,28 @@ def _prompt_reasoning_effort_selection(efforts, current_effort=""):
             str(effort).strip().lower() for effort in efforts if str(effort).strip()
         )
     )
-    canonical_order = ("minimal", "low", "medium", "high", "xhigh")
+    canonical_order = ("off", "minimal", "low", "medium", "high", "xhigh", "max")
     ordered = [effort for effort in canonical_order if effort in deduped]
     ordered.extend(effort for effort in deduped if effort not in canonical_order)
     if not ordered:
         return None
 
     def _label(effort):
-        if effort == current_effort:
-            return f"{effort}  ← currently in use"
-        return effort
+        if effort == "off":
+            label = "off (disable reasoning)"
+        else:
+            label = effort
+        if effort == current_effort or (current_effort == "none" and effort == "off"):
+            return f"{label}  ← currently in use"
+        return label
 
-    disable_label = "Disable reasoning"
     skip_label = "Skip (keep current)"
+    has_off = "off" in ordered
 
-    if current_effort == "none":
-        default_idx = len(ordered)
+    if current_effort == "none" and has_off:
+        default_idx = ordered.index("off")
+    elif current_effort == "none":
+        default_idx = len(ordered)  # disable option past end
     elif current_effort in ordered:
         default_idx = ordered.index(current_effort)
     elif "medium" in ordered:
@@ -3935,7 +3961,8 @@ def _prompt_reasoning_effort_selection(efforts, current_effort=""):
         from hermes_cli.curses_ui import curses_radiolist
 
         choices = [_label(effort) for effort in ordered]
-        choices.append(disable_label)
+        if not has_off:
+            choices.append("Disable reasoning")
         choices.append(skip_label)
         idx = curses_radiolist(
             "Select reasoning effort:",
@@ -3947,7 +3974,12 @@ def _prompt_reasoning_effort_selection(efforts, current_effort=""):
             return None
         print()
         if idx < len(ordered):
-            return ordered[idx]
+            chosen = ordered[idx]
+            return "none" if chosen == "off" else chosen
+        if has_off:
+            # idx == len(ordered) → skip
+            return None
+        # idx == len(ordered) → disable, idx == len(ordered)+1 → skip
         if idx == len(ordered):
             return "none"
         return None
@@ -3958,23 +3990,33 @@ def _prompt_reasoning_effort_selection(efforts, current_effort=""):
     for i, effort in enumerate(ordered, 1):
         print(f"  {i}. {_label(effort)}")
     n = len(ordered)
-    print(f"  {n + 1}. {disable_label}")
-    print(f"  {n + 2}. {skip_label}")
+    if has_off:
+        print(f"  {n + 1}. {skip_label}")
+        n_choices = n + 1
+    else:
+        print(f"  {n + 1}. Disable reasoning")
+        print(f"  {n + 2}. {skip_label}")
+        n_choices = n + 2
     print()
 
     while True:
         try:
-            choice = input(f"Choice [1-{n + 2}] (default: keep current): ").strip()
+            choice = input(f"Choice [1-{n_choices}] (default: keep current): ").strip()
             if not choice:
                 return None
             idx = int(choice)
             if 1 <= idx <= n:
-                return ordered[idx - 1]
-            if idx == n + 1:
-                return "none"
-            if idx == n + 2:
-                return None
-            print(f"Please enter 1-{n + 2}")
+                chosen = ordered[idx - 1]
+                return "none" if chosen == "off" else chosen
+            if has_off:
+                if idx == n + 1:
+                    return None  # skip
+            else:
+                if idx == n + 1:
+                    return "none"  # disable
+                if idx == n + 2:
+                    return None  # skip
+            print(f"Please enter 1-{n_choices}")
         except ValueError:
             print("Please enter a number")
         except (KeyboardInterrupt, EOFError):
@@ -4401,7 +4443,7 @@ def cmd_uninstall(args):
     if getattr(args, "gui_summary", False):
         from hermes_cli.gui_uninstall import gui_install_summary
 
-        print(json.dumps(gui_install_summary()))
+        print(orjson.dumps(gui_install_summary()).decode('utf-8'))
         return
 
     # GUI-only uninstall. The desktop app shells out to this non-interactively
@@ -4535,7 +4577,7 @@ def _gateway_prompt(prompt_text: str, default: str = "", timeout: float = 300.0)
     config migration) are forwarded to the messenger instead of being silently
     skipped.
     """
-    import json as _json
+    import orjson as _json
     import uuid as _uuid
     from hermes_constants import get_hermes_home
 
@@ -4552,7 +4594,7 @@ def _gateway_prompt(prompt_text: str, default: str = "", timeout: float = 300.0)
         "id": str(_uuid.uuid4()),
     }
     tmp = prompt_path.with_suffix(".tmp")
-    tmp.write_text(_json.dumps(payload))
+    tmp.write_text(_json.dumps(payload).decode('utf-8'))
     tmp.replace(prompt_path)
 
     # Poll for response
@@ -4734,8 +4776,7 @@ def _nixos_build_env() -> dict[str, str] | None:
     Returns an env dict suitable for ``subprocess.run(env=...)`` or
     ``None`` when we are not on NixOS or python3 is already on PATH.
     """
-    import re
-
+    from agent.re_compat import re
     try:
         os_release = Path("/etc/os-release").read_text(encoding="utf-8")
     except OSError:
@@ -5060,8 +5101,8 @@ def _desktop_build_needed(desktop_dir: Path, project_root: Path, *, source_mode:
         return True
 
     try:
-        stamp_data = json.loads(stamp_file.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError, KeyError):
+        stamp_data = orjson.loads(stamp_file.read_text(encoding="utf-8"))
+    except (OSError, orjson.JSONDecodeError, KeyError):
         return True
 
     # If the mode changed (source vs packaged), force a rebuild
@@ -5088,7 +5129,7 @@ def _write_desktop_build_stamp(project_root: Path, *, source_mode: bool) -> None
             "sourceMode": source_mode,
             "builtAt": datetime.now(timezone.utc).isoformat(),
         }
-        stamp_file.write_text(json.dumps(stamp_data, indent=2) + "\n", encoding="utf-8")
+        stamp_file.write_text(orjson.dumps(stamp_data, option=orjson.OPT_INDENT_2).decode('utf-8') + "\n", encoding="utf-8")
     except Exception as exc:
         # Never let stamp-writing block or fail a build
         logger.debug("Failed to write desktop build stamp: %s", exc)
@@ -6427,7 +6468,11 @@ def _stash_local_changes_if_needed(git_cmd: list[str], cwd: Path) -> Optional[st
     )
     if unmerged.stdout.strip():
         print("→ Clearing unmerged index entries from a previous conflict...")
-        subprocess.run(git_cmd + ["reset"], cwd=cwd, capture_output=True)
+        _gk = {}
+        if sys.platform == "win32":
+            from hermes_cli._subprocess_compat import windows_hide_flags
+            _gk["creationflags"] = windows_hide_flags()
+        subprocess.run(git_cmd + ["reset"], cwd=cwd, capture_output=True, **_gk)  # windows-footgun: ok — creationflags in _gk
 
     from datetime import datetime, timezone
 
@@ -13128,11 +13173,11 @@ def main():
                 from tools.computer_use.permissions import request_permissions_grant
                 sys.exit(request_permissions_grant())
             if perms_action == "status":
-                import json as _json
+                import orjson as _json
                 from tools.computer_use.permissions import computer_use_status
                 st = computer_use_status()
                 if bool(getattr(args, "json", False)):
-                    print(_json.dumps(st, indent=2, sort_keys=True))
+                    print(_json.dumps(st, option=orjson.OPT_INDENT_2 | orjson.OPT_SORT_KEYS).decode('utf-8'))
                     sys.exit(0 if st["ready"] else 1)
                 if not st["platform_supported"]:
                     print(f"Computer Use is not supported on {st['platform']}.")
@@ -13266,7 +13311,7 @@ def main():
             return False
 
     def cmd_sessions(args):
-        import json as _json
+        import orjson as _json
 
         action = args.sessions_action
 
@@ -13366,7 +13411,7 @@ def main():
                 if not data:
                     print(f"Session '{args.session_id}' not found.")
                     return
-                line = _json.dumps(data, ensure_ascii=False) + "\n"
+                line = _json.dumps(data).decode('utf-8') + "\n"
                 if args.output == "-":
 
                     sys.stdout.write(line)
@@ -13379,11 +13424,11 @@ def main():
                 if args.output == "-":
 
                     for s in sessions:
-                        sys.stdout.write(_json.dumps(s, ensure_ascii=False) + "\n")
+                        sys.stdout.write(_json.dumps(s).decode('utf-8') + "\n")
                 else:
                     with open(args.output, "w", encoding="utf-8") as f:
                         for s in sessions:
-                            f.write(_json.dumps(s, ensure_ascii=False) + "\n")
+                            f.write(_json.dumps(s).decode('utf-8') + "\n")
                     print(f"Exported {len(sessions)} sessions to {args.output}")
 
         elif action == "delete":

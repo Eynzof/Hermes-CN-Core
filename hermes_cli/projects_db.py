@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import contextlib
 import os
-import re
+from agent.re_compat import re
 import secrets
 import sqlite3
 import time

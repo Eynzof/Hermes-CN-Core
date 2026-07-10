@@ -1,6 +1,6 @@
 """Tests for tools/clarify_tool.py - Interactive clarifying questions."""
 
-import json
+import orjson
 from typing import List, Optional
 
 
@@ -23,7 +23,7 @@ class TestClarifyToolBasics:
             assert choices is None
             return "blue"
 
-        result = json.loads(clarify_tool("What color?", callback=mock_callback))
+        result = orjson.loads(clarify_tool("What color?", callback=mock_callback))
         assert result["question"] == "What color?"
         assert result["choices_offered"] is None
         assert result["user_response"] == "blue"
@@ -35,7 +35,7 @@ class TestClarifyToolBasics:
             assert choices == ["1", "2", "3"]
             return "2"
 
-        result = json.loads(clarify_tool(
+        result = orjson.loads(clarify_tool(
             "Pick a number",
             choices=["1", "2", "3"],
             callback=mock_callback
@@ -46,18 +46,18 @@ class TestClarifyToolBasics:
 
     def test_empty_question_returns_error(self):
         """Should return error for empty question."""
-        result = json.loads(clarify_tool("", callback=lambda q, c: "ignored"))
+        result = orjson.loads(clarify_tool("", callback=lambda q, c: "ignored"))
         assert "error" in result
         assert "required" in result["error"].lower()
 
     def test_whitespace_only_question_returns_error(self):
         """Should return error for whitespace-only question."""
-        result = json.loads(clarify_tool("   \n\t  ", callback=lambda q, c: "ignored"))
+        result = orjson.loads(clarify_tool("   \n\t  ", callback=lambda q, c: "ignored"))
         assert "error" in result
 
     def test_no_callback_returns_error(self):
         """Should return error when no callback is provided."""
-        result = json.loads(clarify_tool("What do you want?"))
+        result = orjson.loads(clarify_tool("What do you want?"))
         assert "error" in result
         assert "not available" in result["error"].lower()
 
@@ -104,7 +104,7 @@ class TestClarifyToolChoicesValidation:
 
     def test_invalid_choices_type_returns_error(self):
         """Non-list choices should return error."""
-        result = json.loads(clarify_tool(
+        result = orjson.loads(clarify_tool(
             "Question?",
             choices="not a list",  # type: ignore
             callback=lambda q, c: "ignored"
@@ -132,7 +132,7 @@ class TestClarifyToolCallbackHandling:
         def failing_callback(question: str, choices: Optional[List[str]]) -> str:
             raise RuntimeError("User cancelled")
 
-        result = json.loads(clarify_tool("Question?", callback=failing_callback))
+        result = orjson.loads(clarify_tool("Question?", callback=failing_callback))
         assert "error" in result
         assert "Failed to get user input" in result["error"]
         assert "User cancelled" in result["error"]
@@ -153,7 +153,7 @@ class TestClarifyToolCallbackHandling:
         def mock_callback(question: str, choices: Optional[List[str]]) -> str:
             return "  response with spaces  \n"
 
-        result = json.loads(clarify_tool("Q?", callback=mock_callback))
+        result = orjson.loads(clarify_tool("Q?", callback=mock_callback))
         assert result["user_response"] == "response with spaces"
 
 
@@ -208,7 +208,7 @@ class TestClarifyDictChoices:
             seen.extend(choices or [])
             return choices[0]
 
-        result = json.loads(clarify_tool(
+        result = orjson.loads(clarify_tool(
             "Pick a layout",
             choices=[
                 {"choice": "Tight", "description": "Tight, covers all 3 points"},

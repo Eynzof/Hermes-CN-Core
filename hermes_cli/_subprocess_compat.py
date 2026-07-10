@@ -38,6 +38,8 @@ __all__ = [
     "windows_detach_flags_without_breakaway",
     "windows_hide_flags",
     "windows_detach_popen_kwargs",
+    "run",
+    "Popen",
 ]
 
 
@@ -232,3 +234,46 @@ def windows_detach_popen_kwargs() -> dict:
     if IS_WINDOWS:
         return {"creationflags": windows_detach_flags()}
     return {"start_new_session": True}
+
+
+# -----------------------------------------------------------------------------
+# Safe subprocess wrappers — auto-inject CREATE_NO_WINDOW on Windows
+# -----------------------------------------------------------------------------
+
+
+def run(*args, **kwargs):
+    """Wrapper around ``subprocess.run`` that auto-injects
+    ``creationflags=windows_hide_flags()`` on Windows when *creationflags*
+    has not already been set explicitly.
+
+    All other arguments pass through unchanged.
+
+    Usage pattern — drop-in replacement for ``subprocess.run``:
+
+    .. code-block:: python
+
+        from hermes_cli._subprocess_compat import run
+        r = run(cmd, capture_output=True, text=True, timeout=15)
+    """
+    if IS_WINDOWS and "creationflags" not in kwargs:
+        kwargs["creationflags"] = windows_hide_flags()
+    return subprocess.run(*args, **kwargs)
+
+
+def Popen(*args, **kwargs):
+    """Wrapper around ``subprocess.Popen`` that auto-injects
+    ``creationflags=windows_hide_flags()`` on Windows when *creationflags*
+    has not already been set explicitly.
+
+    All other arguments pass through unchanged.
+
+    Usage pattern — drop-in replacement for ``subprocess.Popen``:
+
+    .. code-block:: python
+
+        from hermes_cli._subprocess_compat import Popen
+        p = Popen(cmd, stdout=subprocess.PIPE)
+    """
+    if IS_WINDOWS and "creationflags" not in kwargs:
+        kwargs["creationflags"] = windows_hide_flags()
+    return subprocess.Popen(*args, **kwargs)

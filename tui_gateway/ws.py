@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
-import json
+import orjson
 import logging
 import socket
 import threading
@@ -115,7 +115,7 @@ class WSTransport:
         if self._closed:
             return False
 
-        line = json.dumps(obj, ensure_ascii=False)
+        line = orjson.dumps(obj).decode('utf-8')
 
         try:
             on_loop = asyncio.get_running_loop() is self._loop
@@ -217,7 +217,7 @@ class WSTransport:
             self._pending_tokens = []
         if pending:
             await self._safe_send_many(pending)
-        await self._safe_send(json.dumps(obj, ensure_ascii=False))
+        await self._safe_send(orjson.dumps(obj).decode('utf-8'))
         return not self._closed
 
     async def _safe_send(self, line: str) -> None:
@@ -353,8 +353,8 @@ async def handle_ws(ws: Any) -> None:
             messages += 1
 
             try:
-                req = json.loads(line)
-            except json.JSONDecodeError as exc:
+                req = orjson.loads(line)
+            except orjson.JSONDecodeError as exc:
                 parse_errors += 1
                 _log.warning(
                     "ws parse error peer=%s index=%d error=%s payload=%r",

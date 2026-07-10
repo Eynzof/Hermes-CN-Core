@@ -1,6 +1,6 @@
 """Tests for is_provider_explicitly_configured()."""
 
-import json
+import orjson
 import pytest
 
 
@@ -14,7 +14,7 @@ def _write_config(tmp_path, config: dict) -> None:
 def _write_auth_store(tmp_path, payload: dict) -> None:
     hermes_home = tmp_path / "hermes"
     hermes_home.mkdir(parents=True, exist_ok=True)
-    (hermes_home / "auth.json").write_text(json.dumps(payload, indent=2))
+    (hermes_home / "auth.json").write_text(orjson.dumps(payload, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
 
 @pytest.fixture(autouse=True)

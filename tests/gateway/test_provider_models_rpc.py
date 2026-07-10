@@ -11,7 +11,11 @@ list and tolerates an empty api_key.
 import httpx
 import pytest
 
-from tui_gateway.server import _fetch_provider_model_ids, handle_request
+from tui_gateway.server import (
+    _build_anthropic_probe_url_candidates,
+    _fetch_provider_model_ids,
+    handle_request,
+)
 
 
 class _FakeResponse:
@@ -185,3 +189,135 @@ def test_probe_still_samples_five_and_counts_full(monkeypatch):
     assert result["ok"] is True
     assert result["model_count"] == 9
     assert result["sample_models"] == ids[:5]
+
+
+# ---------------------------------------------------------------------------
+# api_mode="anthropic_messages" — P-046. Claude Code relays speak the
+# Anthropic protocol: bare-host base URLs (the SDK appends /v1/messages) and
+# x-api-key auth. The OpenAI-style probe misreported valid keys there.
+# ---------------------------------------------------------------------------
+
+
+def test_anthropic_candidates_bare_host():
+    assert _build_anthropic_probe_url_candidates("https://www.packyapi.com") == [
+        "https://www.packyapi.com/v1/models",
+    ]
+
+
+def test_anthropic_candidates_nested_path_falls_back_to_host_root():
+    assert _build_anthropic_probe_url_candidates(
+        "https://api.aicodemirror.com/api/claudecode"
+    ) == [
+        "https://api.aicodemirror.com/api/claudecode/v1/models",
+        "https://api.aicodemirror.com/v1/models",
+    ]
+
+
+def test_anthropic_candidates_v1_suffix_not_doubled():
+    assert _build_anthropic_probe_url_candidates("https://relay.example/v1") == [
+        "https://relay.example/v1/models",
+    ]
+
+
+def test_anthropic_mode_sends_native_auth_headers(monkeypatch):
+    """anthropic_messages probes with x-api-key + anthropic-version, no Bearer."""
+    seen = {}
+
+    def fake_get(url, **kw):
+        seen["url"] = url
+        seen["headers"] = kw.get("headers")
+        return _FakeResponse(200, _models_payload("claude-sonnet-5"))
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    result = _fetch_provider_model_ids(
+        "https://www.packyapi.com", "sk-relay", 5.0, api_mode="anthropic_messages"
+    )
+
+    assert result["ok"] is True
+    assert seen["url"] == "https://www.packyapi.com/v1/models"
+    assert seen["headers"] == {
+        "x-api-key": "sk-relay",
+        "anthropic-version": "2023-06-01",
+    }
+
+
+def test_anthropic_mode_empty_key_sends_no_headers(monkeypatch):
+    seen = {}
+
+    def fake_get(url, **kw):
+        seen["headers"] = kw.get("headers")
+        return _FakeResponse(200, _models_payload("m"))
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    result = _fetch_provider_model_ids(
+        "https://relay.example", "", 5.0, api_mode="anthropic_messages"
+    )
+    assert result["ok"] is True
+    assert seen["headers"] == {}
+
+
+def test_probe_rpc_forwards_api_mode(monkeypatch):
+    seen = {}
+
+    def fake_get(url, **kw):
+        seen["url"] = url
+        seen["headers"] = kw.get("headers")
+        return _FakeResponse(200, _models_payload("claude-opus-4-8"))
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    resp = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "provider.probe",
+            "params": {
+                "provider": "packycode",
+                "base_url": "https://www.packyapi.com",
+                "api_key": "sk-relay",
+                "api_mode": "anthropic_messages",
+            },
+        }
+    )
+    assert resp["result"]["ok"] is True
+    assert seen["headers"]["x-api-key"] == "sk-relay"
+    assert "Authorization" not in seen["headers"]
+
+
+def test_models_rpc_forwards_api_mode(monkeypatch):
+    seen = {}
+
+    def fake_get(url, **kw):
+        seen["headers"] = kw.get("headers")
+        return _FakeResponse(200, _models_payload("claude-opus-4-8", "claude-sonnet-5"))
+
+    resp = _call_models(
+        monkeypatch,
+        fake_get,
+        provider="packycode",
+        base_url="https://www.packyapi.com",
+        api_key="sk-relay",
+        api_mode="anthropic_messages",
+    )
+    assert resp["result"]["models"] == ["claude-opus-4-8", "claude-sonnet-5"]
+    assert seen["headers"]["anthropic-version"] == "2023-06-01"
+
+
+def test_unknown_api_mode_falls_back_to_openai_style(monkeypatch):
+    """A stale/unknown api_mode must not change existing OpenAI-style behavior."""
+    seen = {}
+
+    def fake_get(url, **kw):
+        seen["url"] = url
+        seen["headers"] = kw.get("headers")
+        return _FakeResponse(200, _models_payload("m1"))
+
+    _call_models(
+        monkeypatch,
+        fake_get,
+        provider="custom:ollama",
+        base_url="http://192.168.31.11:11434/v1",
+        api_key="secret",
+        api_mode="codex_responses",
+    )
+    assert seen["headers"] == {"Authorization": "Bearer secret"}
+    assert seen["url"] == "http://192.168.31.11:11434/v1/models"

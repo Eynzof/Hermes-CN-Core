@@ -789,6 +789,11 @@ _SCHEMA_OVERRIDES: Dict[str, Dict[str, Any]] = {
         "description": "CLI visual theme",
         "options": ["default", "ares", "mono", "slate"],
     },
+    "display.theme": {
+        "type": "select",
+        "description": "UI color mode (auto = detect from terminal)",
+        "options": ["auto", "light", "dark"],
+    },
     "dashboard.theme": {
         "type": "select",
         "description": "Web dashboard visual theme",

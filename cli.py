@@ -2156,6 +2156,21 @@ def _detect_light_mode() -> bool:
     global _LIGHT_MODE_CACHE
     if _LIGHT_MODE_CACHE is not None:
         return _LIGHT_MODE_CACHE
+
+    # 0. Check config display.theme for explicit override before any terminal detection
+    try:
+        from hermes_cli.config import load_config_readonly
+        cfg = load_config_readonly()
+        theme = cfg.get("display", {}).get("theme", "auto")
+        if theme == "light":
+            _LIGHT_MODE_CACHE = True
+            return True
+        if theme == "dark":
+            _LIGHT_MODE_CACHE = False
+            return False
+    except Exception:
+        pass  # fall through to auto-detection
+
     result = False
     try:
         # 1. Explicit env override

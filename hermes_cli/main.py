@@ -2033,6 +2033,14 @@ def _launch_tui(
         apply_terminal_config_to_env(env=env)
     except Exception:
         logger.debug("Failed to apply terminal config bridge for TUI launch", exc_info=True)
+    # Bridge display.theme → HERMES_TUI_THEME env var so the TUI (Ink) picks it up
+    try:
+        from hermes_cli.config import load_config_readonly
+        _theme = load_config_readonly().get("display", {}).get("theme", "auto")
+        if _theme and _theme != "auto":
+            env["HERMES_TUI_THEME"] = _theme
+    except Exception:
+        pass
     active_session_fd, active_session_file = tempfile.mkstemp(
         prefix="hermes-tui-active-session-", suffix=".json"
     )

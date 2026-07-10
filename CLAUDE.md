@@ -12,10 +12,13 @@ Dashboard APIs consumed by [`Hermes-CN-Desktop`](https://github.com/Eynzof/Herme
 "clean reimplementation," assume "downstream patches on top of upstream." (`README.md` is the Chinese version;
 `README.en.md` is English. Some maintenance docs such as `MAINTAINING.md` still use the older `hermes-agent-cn` name.)
 
-- **Every fork-specific behavioral change is tracked in [`FORK_NOTES.md`](./FORK_NOTES.md) as `P-NNN`** (currently through P-040). Read it
+- **Every fork-specific behavioral change is tracked in [`FORK_NOTES.md`](./FORK_NOTES.md) as `P-NNN`** (currently through P-045). Read it
   before touching `hermes_cli/web_server.py`, `tui_gateway/`, or `hermes_cli/config.py`'s `OPTIONAL_ENV_VARS` —
   those files carry deliberate divergence from upstream. New behavioral patches use a `[CN-fork] P-NNN` commit
   prefix and must be added to the FORK_NOTES table.
+- **`apps/desktop/` is upstream's official desktop app — this fork carries ZERO modifications to it.** The CN
+  desktop lives in the separate `Hermes-CN-Desktop` repo; on every upstream sync, `apps/desktop/` is taken
+  wholesale from `upstream/main` (fork-side changes there, if any appear, are dropped).
 - **Branch model (see [`MAINTAINING.md`](./MAINTAINING.md)):** `origin/main` is the stable fork branch;
   `upstream/main` is read-only. **Never merge `upstream/main` directly into `main`** — sync via
   `./scripts/sync-upstream.sh`, which creates a `chore/sync-*` branch for a PR. Fork patches go on `cn/P-xxx-*`

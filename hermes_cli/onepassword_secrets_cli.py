@@ -403,12 +403,17 @@ def _yn(b: bool) -> str:
 
 
 def _op_version(binary: Path) -> str:
+    _win_kwargs = {}
+    if os.name == "nt":
+        from hermes_cli._subprocess_compat import windows_hide_flags
+        _win_kwargs["creationflags"] = windows_hide_flags()
     try:
         res = subprocess.run(
             [str(binary), "--version"],
             capture_output=True,
             text=True,
             timeout=5,
+            **_win_kwargs,
         )
         if res.returncode == 0:
             return (res.stdout or res.stderr).strip().splitlines()[0]
@@ -422,8 +427,18 @@ def _op_whoami(binary: Path, account: str) -> Optional[str]:
     cmd = [str(binary), "whoami"]
     if account:
         cmd += ["--account", account]
+    _win_kwargs = {}
+    if os.name == "nt":
+        from hermes_cli._subprocess_compat import windows_hide_flags
+        _win_kwargs["creationflags"] = windows_hide_flags()
     try:
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        res = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            **_win_kwargs,
+        )
     except (OSError, subprocess.TimeoutExpired):
         return None
     if res.returncode != 0:

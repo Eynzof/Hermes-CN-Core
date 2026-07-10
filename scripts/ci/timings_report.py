@@ -19,7 +19,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import orjson
 import json
 import os
 import sys
@@ -809,7 +808,7 @@ def main():
     # Collect or load timings
     if args.from_json:
         with open(args.from_json, encoding="utf-8") as f:
-            timings = orjson.loads(f.read())
+            timings = json.loads(f.read())
     else:
         token = expect_env("GITHUB_TOKEN")
         repo = expect_env("GITHUB_REPOSITORY")
@@ -832,14 +831,14 @@ def main():
 
     # Save JSON
     with open(args.json_out, "w", encoding="utf-8") as f:
-        f.write(orjson.dumps(timings, option=orjson.OPT_INDENT_2).decode('utf-8'))
+        f.write(json.dumps(timings, indent=2, ensure_ascii=False))
     print(f"Saved timings to {args.json_out} ({len(timings.get('jobs', []))} jobs)")
 
     # Load baseline
     baseline = None
     if os.path.exists(args.baseline):
         with open(args.baseline, encoding="utf-8") as f:
-            baseline = orjson.loads(f.read())
+            baseline = json.loads(f.read())
         print(f"Loaded baseline from {args.baseline}")
     else:
         print(f"No baseline file at {args.baseline} — generating current-only report")

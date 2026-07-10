@@ -13,7 +13,7 @@ Sidebar is updated to nest all per-skill pages under Skills → Bundled / Option
 """
 
 from __future__ import annotations
-from agent.re_compat import re
+import re
 from collections import defaultdict
 from pathlib import Path
 from typing import Any

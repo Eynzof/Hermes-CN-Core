@@ -19,7 +19,7 @@ it is syntactically valid Python (the only thing reproducible off-Windows).
 from __future__ import annotations
 
 import argparse
-from agent.re_compat import re
+import re
 import sys
 
 _TEMPLATE = """\

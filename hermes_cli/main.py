@@ -11942,13 +11942,38 @@ def cmd_dashboard(args):
     # The in-browser Chat tab (the embedded TUI over PTY/WebSocket) is always
     # available — the desktop app and the dashboard's own Chat tab both rely on
     # the `/api/ws` + `/api/pty` sockets, so there is no reason to gate them.
-    start_server(
-        host=args.host,
-        port=args.port,
-        open_browser=not args.no_open,
-        allow_public=getattr(args, "insecure", False),
-        initial_profile=getattr(args, "open_profile", "") or "",
-    )
+
+    # Coordinate with other Hermes instances (desktop-managed dashboards,
+    # gateways, proxies) before binding. We claim the dashboard port plus the
+    # well-known associated ports so a CLI dashboard and a desktop dashboard
+    # never silently collide on the same HERMES_HOME.
+    from hermes_cli.port_lock import claim_port_set
+
+    _dashboard_port = int(args.port)
+    _well_known_ports = [8644, 8645]
+    if _dashboard_port > 0:
+        _well_known_ports.insert(0, _dashboard_port)
+    _port_locks = claim_port_set(_well_known_ports)
+    if _port_locks is None:
+        print(
+            f"Error: port {_dashboard_port} (or associated webhook/proxy ports) "
+            f"is already claimed by another Hermes instance.\n"
+            f"Stop the other instance, or use `--port 0` to let the OS assign a free port.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    try:
+        start_server(
+            host=args.host,
+            port=args.port,
+            open_browser=not args.no_open,
+            allow_public=getattr(args, "insecure", False),
+            initial_profile=getattr(args, "open_profile", "") or "",
+        )
+    finally:
+        for _pl in _port_locks:
+            _pl.release()
 
 
 def cmd_dashboard_register(args):

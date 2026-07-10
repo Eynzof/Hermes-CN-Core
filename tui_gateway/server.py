@@ -12,6 +12,11 @@ import queue
 import subprocess
 import sys
 import threading
+# Captured at import so background babysitter threads (turn watchdog) stay
+# REAL threads even when tests monkeypatch ``threading.Thread`` with an
+# inline-execution stub to make worker submission synchronous — inlining
+# the watchdog loop would spin its 10s cancel-wait on the caller thread.
+_REAL_THREAD = threading.Thread
 import time
 import uuid
 from datetime import datetime
@@ -5264,7 +5269,7 @@ def _start_turn_watchdog(sid: str, session: dict) -> Callable[[], None]:
                 pass
             return
 
-    thread = threading.Thread(
+    thread = _REAL_THREAD(
         target=_watch, daemon=True, name=f"turn-watchdog-{sid}"
     )
     thread.start()

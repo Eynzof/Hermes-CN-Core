@@ -18,6 +18,7 @@ import ast
 import xxhash
 import importlib
 import orjson
+import json
 import logging
 import os
 import sys

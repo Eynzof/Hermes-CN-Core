@@ -175,4 +175,6 @@ class TestApiServerAdapterToolset:
             mock_agent_cls.assert_called_once()
             call_kwargs = mock_agent_cls.call_args
             toolsets = call_kwargs.kwargs.get("enabled_toolsets")
-            assert sorted(toolsets) == ["terminal", "web"]
+            # [CN-fork] context_engine is a first-class default toolset on
+            # every platform (dev-fix); an explicit non-empty selection keeps it.
+            assert sorted(toolsets) == ["context_engine", "terminal", "web"]

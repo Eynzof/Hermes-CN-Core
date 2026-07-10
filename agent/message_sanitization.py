@@ -15,6 +15,7 @@ re-exports from ``run_agent`` remain in place so existing imports
 from __future__ import annotations
 
 import orjson
+import json
 import logging
 from agent.re_compat import re
 from typing import Any
@@ -150,7 +151,7 @@ def _escape_invalid_chars_in_json_strings(raw: str) -> str:
     else.
 
     Ported from #12093 — complements the other repair passes in
-    ``_repair_tool_call_arguments`` when ``orjson.loads(strict=False)`` is
+    ``_repair_tool_call_arguments`` when ``json.loads(strict=False)`` is
     not enough (e.g. llama.cpp backends that emit literal apostrophes or
     tabs alongside other malformations).
     """
@@ -209,8 +210,8 @@ def _repair_tool_call_arguments(raw_args: str, tool_name: str = "?") -> str:
     # result into wire-valid JSON without any string surgery. This is
     # the most common local-model repair case (#12068).
     try:
-        parsed = orjson.loads(raw_stripped, strict=False)
-        reserialised = orjson.dumps(parsed).decode('utf-8')
+        parsed = json.loads(raw_stripped, strict=False)
+        reserialised = json.dumps(parsed)
         if reserialised != raw_stripped:
             logger.warning(
                 "Repaired unescaped control chars in tool_call arguments for %s",

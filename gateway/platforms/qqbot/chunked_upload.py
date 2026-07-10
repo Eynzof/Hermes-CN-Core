@@ -35,7 +35,7 @@ from __future__ import annotations
 
 import asyncio
 import functools
-import xxhash
+import hashlib
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -366,7 +366,7 @@ class ChunkedUploader:
         data = await asyncio.get_running_loop().run_in_executor(
             None, _read_file_chunk, file_path, offset, length
         )
-        md5_hex = xxhash.xxh64(data).hexdigest()
+        md5_hex = hashlib.md5(data).hexdigest()
 
         logger.debug(
             "[%s] Part %d/%d: uploading %s (offset=%d md5=%s)",
@@ -558,9 +558,9 @@ def _read_file_chunk(file_path: str, offset: int, length: int) -> bytes:
 
 def _compute_file_hashes(file_path: str, file_size: int) -> Dict[str, str]:
     """Compute md5, sha1, and md5_10m in a single pass."""
-    md5 = xxhash.xxh64()
-    sha1 = xxhash.xxh64()
-    md5_10m = xxhash.xxh64()
+    md5 = hashlib.md5()
+    sha1 = hashlib.sha1()
+    md5_10m = hashlib.md5()
 
     need_10m = file_size > _MD5_10M_SIZE
     bytes_read = 0

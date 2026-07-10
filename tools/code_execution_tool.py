@@ -31,6 +31,7 @@ Remote execution additionally requires Python 3 in the terminal backend.
 import pybase64 as base64
 import functools
 import orjson
+import json
 import logging
 import os
 from platform_utils import is_windows
@@ -311,9 +312,9 @@ _COMMON_HELPERS = '''\
 
 def json_parse(text: str):
     """Parse JSON tolerant of control characters (strict=False).
-    Use this instead of orjson.loads() when parsing output from terminal()
+    Use this instead of json.loads() when parsing output from terminal()
     or web_extract() that may contain raw tabs/newlines in strings."""
-    return orjson.loads(text, strict=False)
+    return json.loads(text, strict=False)
 
 
 def shell_quote(s: str) -> str:
@@ -345,7 +346,7 @@ def retry(fn, max_attempts=3, delay=2):
 
 _UDS_TRANSPORT_HEADER = '''\
 """Auto-generated Hermes tools RPC stubs."""
-import orjson, os, socket, shlex, threading, time
+import json, os, socket, shlex, threading, time
 
 _sock = None
 # The RPC server handles a single client connection serially and has no
@@ -382,11 +383,11 @@ def _connect():
 
 def _call(tool_name, args):
     """Send a tool call to the parent process and return the parsed result."""
-    request = orjson.dumps({
+    request = json.dumps({
         "tool": tool_name,
         "args": args,
         "token": os.environ.get("HERMES_RPC_TOKEN", ""),
-    }).decode('utf-8') + "\\n"
+    }) + "\\n"
     with _call_lock:
         conn = _connect()
         conn.sendall(request.encode())
@@ -399,11 +400,11 @@ def _call(tool_name, args):
             if buf.endswith(b"\\n"):
                 break
     raw = buf.decode().strip()
-    result = orjson.loads(raw)
+    result = json.loads(raw)
     if isinstance(result, str):
         try:
-            return orjson.loads(result)
-        except (orjson.JSONDecodeError, TypeError):
+            return json.loads(result)
+        except (json.JSONDecodeError, TypeError):
             return result
     return result
 
@@ -413,7 +414,7 @@ def _call(tool_name, args):
 
 _FILE_TRANSPORT_HEADER = '''\
 """Auto-generated Hermes tools RPC stubs (file-based transport)."""
-import orjson, os, shlex, tempfile, threading, time
+import json, os, shlex, tempfile, threading, time
 
 _RPC_DIR = os.environ.get("HERMES_RPC_DIR") or os.path.join(tempfile.gettempdir(), "hermes_rpc")
 _seq = 0
@@ -439,12 +440,12 @@ def _call(tool_name, args):
     # non-ASCII chars in tool args when encoding them as JSON.
     tmp = req_file + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
-        f.write(orjson.dumps({
+        f.write(json.dumps({
             "tool": tool_name,
             "args": args,
             "seq": seq,
             "token": os.environ.get("HERMES_RPC_TOKEN", ""),
-        }).decode('utf-8'))
+        }))
     os.rename(tmp, req_file)
 
     # Wait for response with adaptive polling
@@ -465,11 +466,11 @@ def _call(tool_name, args):
     except OSError:
         pass
 
-    result = orjson.loads(raw)
+    result = json.loads(raw)
     if isinstance(result, str):
         try:
-            return orjson.loads(result)
-        except (orjson.JSONDecodeError, TypeError):
+            return json.loads(result)
+        except (json.JSONDecodeError, TypeError):
             return result
     return result
 
@@ -684,6 +685,7 @@ def _get_or_create_env(task_id: str):
                 "container_persistent": config.get("container_persistent", True),
                 "docker_volumes": config.get("docker_volumes", []),
                 "docker_run_as_host_user": config.get("docker_run_as_host_user", False),
+                "docker_network": config.get("docker_network", True),
             }
 
         ssh_config = None
@@ -1165,6 +1167,16 @@ def execute_code(
             "duration_seconds": 0,
         }).decode('utf-8')
 
+    # Clean interrupt slate for a user-approved script before EITHER dispatch
+    # path spawns it: drop a stale bit that landed on this thread during the
+    # blocking approval-wait so it can't kill the just-approved run on the first
+    # poll (local _wait_for_process loop, or remote/ssh env.execute which routes
+    # through the same poll loop).  A genuine post-clear interrupt re-sets the
+    # bit and is still caught downstream.
+    if _guard.get("user_approved"):
+        from tools.interrupt import clear_current_thread_interrupt
+        clear_current_thread_interrupt()
+
     if env_type != "local":
         return _execute_remote(code, task_id, enabled_tools)
 
@@ -1339,7 +1351,7 @@ def execute_code(
             stderr=subprocess.PIPE,
             stdin=subprocess.DEVNULL,
             start_new_session=True,
-            creationflags=subprocess.CREATE_NO_WINDOW if _IS_WINDOWS else 0,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0) if _IS_WINDOWS else 0,
         )
 
         # --- Poll loop: watch for exit, timeout, and interrupt ---
@@ -1683,7 +1695,7 @@ def _is_usable_python(python_path: str) -> bool:
              "import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)"],
             timeout=5,
             capture_output=True,
-            creationflags=subprocess.CREATE_NO_WINDOW if _IS_WINDOWS else 0,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0) if _IS_WINDOWS else 0,
             stdin=subprocess.DEVNULL,
         )
         return result.returncode == 0

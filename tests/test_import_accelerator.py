@@ -229,6 +229,16 @@ machinery.PathFinder.find_spec = staticmethod(_counting)
 
 assert ia.install() is True
 
+# Editable installs (pip/uv `-e .`) register a setuptools ``__editable__``
+# MetaPathFinder that resolves first-party modules regardless of sys.path —
+# exactly what this proof must exclude. Strip those finders so both the
+# bypass step and the control run without editable-install interference.
+sys.meta_path[:] = [
+    f for f in sys.meta_path
+    if "editable" not in (getattr(f, "__module__", "") or "").lower()
+    and "editable" not in type(f).__name__.lower()
+]
+
 root = ia._repo_root()
 
 # 1) Strip the repo root (and relative cwd entries) from sys.path entirely, so

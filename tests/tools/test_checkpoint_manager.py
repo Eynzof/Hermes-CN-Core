@@ -1,6 +1,7 @@
 """Tests for tools/checkpoint_manager.py — CheckpointManager (v2 single-store)."""
 
 import orjson
+import json
 import logging
 import os
 import subprocess

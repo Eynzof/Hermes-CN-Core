@@ -127,19 +127,15 @@ class TestReCompat:
     reason="regex module not installed — using stdlib re fallback",
 )
 class TestRegexSpecificFeatures:
-    """Tests for regex-specific features beyond stdlib re."""
+    """The shim defaults to stdlib ``re``: the third-party ``regex`` engine is
+    NOT a perfect drop-in (e.g. the gateway provider-error shape pattern
+    matches under stdlib re but not under ``regex``), so the accelerated
+    engine is opt-in via HERMES_ENABLE_REGEX_REPLACEMENT=1."""
 
-    def test_regex_module_loaded(self):
-        """Verify that 'regex' is actually being used, not stdlib re."""
+    def test_stdlib_re_is_default(self):
+        """Without the opt-in env var the shim must expose stdlib re."""
+        import re as stdlib_re
         import agent.re_compat
-        assert hasattr(agent.re_compat.re, 'regex'), (
-            "regex module should have 'regex' attribute"
+        assert agent.re_compat.re is stdlib_re, (
+            "re_compat must default to stdlib re; the regex engine is opt-in"
         )
-
-    def test_regex_search_with_fuzzy(self):
-        """Fuzzy matching (regex-specific feature)."""
-        pass  # Fuzzy matching syntax varies; smoke test only
-
-    def test_regex_unicode(self):
-        """Test unicode category matching which is faster in regex."""
-        assert re.search(r"\p{L}+", "héllo wörld") is not None

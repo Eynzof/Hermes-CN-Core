@@ -19,6 +19,7 @@ format) lives there.
 from __future__ import annotations
 
 import orjson
+import json
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -268,7 +269,7 @@ def _print_run_result(result: Dict[str, Any]) -> None:
 
     parsed = result.get("parsed")
     if parsed:
-        print(f"      parsed (Hermes wire shape): {orjson.dumps(parsed).decode('utf-8')}")
+        print(f"      parsed (Hermes wire shape): {json.dumps(parsed)}")
     else:
         print("      parsed: <none — hook contributed nothing to the dispatcher>")
 

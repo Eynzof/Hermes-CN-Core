@@ -94,7 +94,7 @@ def main():
         if "disabled" in error_msg.lower():
             print(orjson.dumps({"error": "Transcripts are disabled for this video."}).decode('utf-8'))
         elif "no transcript" in error_msg.lower():
-            print(orjson.dumps({"error": f"No transcript found. Try specifying a language with --language."}).decode('utf-8'))
+            print(orjson.dumps({"error": "No transcript found. Try specifying a language with --language."}).decode('utf-8'))
         else:
             print(orjson.dumps({"error": error_msg}).decode('utf-8'))
         sys.exit(1)

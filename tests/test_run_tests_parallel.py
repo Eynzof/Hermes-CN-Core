@@ -118,12 +118,12 @@ def test_grandchild_leak_is_killed_by_runner(tmp_path: Path) -> None:
             # handoff, then walk away — don't close the pipe (would
             # signal EOF and let the child see SIGPIPE on next write).
             first_line = child.stdout.readline().decode().strip()
-            HANDOFF.write_text(orjson.dumps({{
+            HANDOFF.write_text(json.dumps({{
                 "pid": child.pid,
                 "diag": first_line,
                 "test_pid": os.getpid(),
                 "test_pgid": os.getpgid(0),
-            }}).decode('utf-8'))
+            }}))
             assert child.pid > 0
     """).strip()
     probe.write_text(probe_src + "\n")

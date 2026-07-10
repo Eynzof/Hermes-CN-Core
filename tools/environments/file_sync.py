@@ -6,8 +6,8 @@ and Daytona.  Docker and Singularity use bind mounts (live host FS
 view) and don't need this.
 """
 
-import xxhash
 import logging
+import hashlib
 import os
 import posixpath
 import shlex
@@ -114,9 +114,9 @@ def unique_parent_dirs(files: list[tuple[str, str]]) -> list[str]:
     return sorted({posixpath.dirname(remote) for _, remote in files})
 
 
-def _xxh64_file(path: str) -> str:
-    """Return hex XXH64 digest of a file."""
-    h = xxhash.xxh64()
+def _sha256_file(path: str) -> str:
+    """Return hex SHA-256 digest of a file."""
+    h = hashlib.sha256()
     with open(path, "rb") as f:
         for chunk in iter(lambda: f.read(65536), b""):
             h.update(chunk)
@@ -220,7 +220,7 @@ class FileSyncManager:
 
             # --- Commit (all succeeded) ---
             for host_path, remote_path in to_upload:
-                self._pushed_hashes[remote_path] = _xxh64_file(host_path)
+                self._pushed_hashes[remote_path] = _sha256_file(host_path)
 
             for p in to_delete:
                 new_files.pop(p, None)
@@ -302,7 +302,17 @@ class FileSyncManager:
             if on_main_thread and original_handler is not None:
                 signal.signal(signal.SIGINT, original_handler)
                 if deferred_sigint:
-                    os.kill(os.getpid(), signal.SIGINT)
+                    # Re-deliver the deferred Ctrl+C to the just-restored
+                    # handler. ``os.kill(os.getpid(), signal.SIGINT)`` is NOT a
+                    # graceful signal on Windows: os.kill only treats
+                    # CTRL_C_EVENT(0)/CTRL_BREAK_EVENT(1) as console events; any
+                    # other value (SIGINT == 2) routes to TerminateProcess(sig),
+                    # hard-killing the CLI (exit code 2) instead of raising
+                    # KeyboardInterrupt — so a Ctrl+C during a remote-backend
+                    # sync-back would kill the whole session on Windows.
+                    # ``signal.raise_signal`` (3.8+) invokes the handler via C
+                    # ``raise()`` on every platform.
+                    signal.raise_signal(signal.SIGINT)
 
     def _sync_back_locked(self, lock_path: Path) -> None:
         """Sync-back under file lock (serializes concurrent gateways)."""

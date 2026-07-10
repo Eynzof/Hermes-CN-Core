@@ -19,6 +19,7 @@ any future refactor of that predicate must preserve the invariant:
 from __future__ import annotations
 
 import orjson
+import json
 
 
 def _mirror_agent_predicate(err: BaseException) -> bool:

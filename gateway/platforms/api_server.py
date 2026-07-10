@@ -34,7 +34,7 @@ Requires:
 import asyncio
 import hashlib
 import hmac
-import orjson
+import json
 import logging
 import os
 import socket as _socket
@@ -54,9 +54,11 @@ except ImportError:
 
 from gateway.config import Platform, PlatformConfig
 from gateway.platforms.base import (
+    MEDIA_TAG_CLEANUP_RE,
     BasePlatformAdapter,
     SendResult,
     is_network_accessible,
+    validate_media_delivery_path,
 )
 from agent.redact import redact_sensitive_text
 
@@ -454,8 +456,8 @@ class ResponseStore:
         )
         self._conn.commit()
         try:
-            return orjson.loads(row[0])
-        except (orjson.JSONDecodeError, TypeError):
+            return json.loads(row[0])
+        except (json.JSONDecodeError, TypeError):
             logger.warning(
                 "Corrupted JSON in response store for id=%s, evicting entry",
                 response_id,
@@ -471,7 +473,7 @@ class ResponseStore:
         """Store a response, evicting the oldest if at capacity."""
         self._conn.execute(
             "INSERT OR REPLACE INTO responses (response_id, data, accessed_at) VALUES (?, ?, ?)",
-            (response_id, orjson.dumps(data, default=str).decode('utf-8'), time.time()),
+            (response_id, json.dumps(data, default=str), time.time()),
         )
         # Evict oldest entries beyond max_size
         count = self._conn.execute("SELECT COUNT(*) FROM responses").fetchone()[0]
@@ -581,9 +583,6 @@ _MEDIA_MIME = {
     ".webp": "image/webp",
     ".bmp": "image/bmp",
 }
-_MEDIA_TAG_RE = re.compile(
-    r"[`\"']?MEDIA:\s*(`[^`\n]+`|\"[^\"\n]+\"|'[^'\n]+'|\S+)[`\"']?"
-)
 _MEDIA_DATA_URL_MAX_BYTES = 5 * 1024 * 1024  # skip images larger than 5MB
 
 
@@ -594,17 +593,34 @@ def _resolve_media_to_data_urls(text: str) -> str:
     ``MEDIA:`` tags referencing images on the server are useless to them.
     Inline small local images as markdown data URLs; non-image or unreadable
     paths are left untouched.
+
+    Uses the same anchored ``MEDIA_TAG_CLEANUP_RE`` matcher and
+    ``validate_media_delivery_path`` safety check every other platform
+    adapter's media delivery already goes through (gateway/platforms/base.py)
+    — an absolute-path anchor plus a known-extension requirement, and a
+    resolved-path check against the credential/system-path denylist. The
+    prior pattern here matched any bare token after ``MEDIA:`` (including a
+    relative/traversal path like ``../../etc/passwd.png``) and read the file
+    directly with no denylist, so any image-suffixed, readable file the
+    process could see was base64-exfiltrated to the API caller if its path
+    merely appeared in the model's own final reply text.
     """
     if not text or "MEDIA:" not in text:
         return text
     import pybase64 as base64
     def _to_data_url(path_str: str) -> Optional[str]:
-        p = Path(path_str.strip().strip("`\"'")).expanduser()
+        # validate_media_delivery_path() strips wrapping quotes/backticks
+        # and trailing punctuation internally, same as MEDIA_TAG_CLEANUP_RE's
+        # other callers (extract_media / _strip_media_tag_directives) rely on.
+        safe_path = validate_media_delivery_path(path_str)
+        if not safe_path:
+            return None
+        p = Path(safe_path)
         suffix = p.suffix.lower()
         if suffix not in _MEDIA_IMG_EXT:
             return None
         try:
-            if not p.is_file() or p.stat().st_size > _MEDIA_DATA_URL_MAX_BYTES:
+            if p.stat().st_size > _MEDIA_DATA_URL_MAX_BYTES:
                 return None
             b64 = base64.b64encode(p.read_bytes()).decode()
         except OSError:
@@ -612,10 +628,10 @@ def _resolve_media_to_data_urls(text: str) -> str:
         return f"![image](data:{_MEDIA_MIME[suffix]};base64,{b64})"
 
     def _repl(m: "re.Match[str]") -> str:
-        return _to_data_url(m.group(1)) or m.group(0)
+        return _to_data_url(m.group("path")) or m.group(0)
 
     try:
-        return _MEDIA_TAG_RE.sub(_repl, text)
+        return MEDIA_TAG_CLEANUP_RE.sub(_repl, text)
     except Exception:
         return text
 
@@ -652,7 +668,16 @@ if AIOHTTP_AVAILABLE:
                         return web.json_response(_openai_error("Request body too large.", code="body_too_large"), status=413)
                 except ValueError:
                     return web.json_response(_openai_error("Invalid Content-Length header.", code="invalid_content_length"), status=400)
-        return await handler(request)
+        try:
+            return await handler(request)
+        except web.HTTPRequestEntityTooLarge:
+            # aiohttp's client_max_size tripped mid-read (chunked bodies carry
+            # no Content-Length) — return a proper 413 instead of letting the
+            # handler's broad JSON except turn it into 400 "Invalid JSON".
+            return web.json_response(
+                _openai_error("Request body too large.", code="body_too_large"),
+                status=413,
+            )
 else:
     body_limit_middleware = None  # type: ignore[assignment]
 
@@ -2022,7 +2047,7 @@ class APIServerAdapter(BasePlatformAdapter):
                 if item is None:
                     break
                 name, payload = item
-                data = orjson.dumps(payload).decode('utf-8')
+                data = json.dumps(payload)
                 await response.write(f"event: {name}\ndata: {data}\n\n".encode("utf-8"))
                 last_write = time.monotonic()
         except (asyncio.CancelledError, ConnectionResetError):
@@ -2046,7 +2071,7 @@ class APIServerAdapter(BasePlatformAdapter):
         # Parse request body
         try:
             body = await request.json()
-        except (orjson.JSONDecodeError, Exception):
+        except (json.JSONDecodeError, Exception):
             return web.json_response(_openai_error("Invalid JSON in request body"), status=400)
 
         messages = body.get("messages")
@@ -2416,7 +2441,7 @@ class APIServerAdapter(BasePlatformAdapter):
                 "created": created, "model": model,
                 "choices": [{"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}],
             }
-            await response.write(f"data: {orjson.dumps(role_chunk).decode('utf-8')}\n\n".encode())
+            await response.write(f"data: {json.dumps(role_chunk)}\n\n".encode())
             last_activity = time.monotonic()
 
             # Helper — route a queue item to the correct SSE event.
@@ -2431,7 +2456,7 @@ class APIServerAdapter(BasePlatformAdapter):
                 #16588 for the ``toolCallId``/``status`` lifecycle fields.
                 """
                 if isinstance(item, tuple) and len(item) == 2 and item[0] == "__tool_progress__":
-                    event_data = orjson.dumps(item[1]).decode('utf-8')
+                    event_data = json.dumps(item[1])
                     await response.write(
                         f"event: hermes.tool.progress\ndata: {event_data}\n\n".encode()
                     )
@@ -2441,7 +2466,7 @@ class APIServerAdapter(BasePlatformAdapter):
                         "created": created, "model": model,
                         "choices": [{"index": 0, "delta": {"content": item}, "finish_reason": None}],
                     }
-                    await response.write(f"data: {orjson.dumps(content_chunk).decode('utf-8')}\n\n".encode())
+                    await response.write(f"data: {json.dumps(content_chunk)}\n\n".encode())
                 return time.monotonic()
 
             # Stream content chunks as they arrive from the agent
@@ -2534,7 +2559,7 @@ class APIServerAdapter(BasePlatformAdapter):
                     "error": err_msg,
                     "error_code": "output_truncated" if finish_reason == "length" else "agent_error",
                 }
-            await response.write(f"data: {orjson.dumps(finish_chunk).decode('utf-8')}\n\n".encode())
+            await response.write(f"data: {json.dumps(finish_chunk)}\n\n".encode())
             await response.write(b"data: [DONE]\n\n")
         except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, OSError):
             # Client disconnected mid-stream.  Interrupt the agent so it
@@ -2565,7 +2590,7 @@ class APIServerAdapter(BasePlatformAdapter):
                     "created": created, "model": model,
                     "choices": [{"index": 0, "delta": {}, "finish_reason": "error"}],
                 }
-                await response.write(f"data: {orjson.dumps(error_chunk).decode('utf-8')}\n\n".encode())
+                await response.write(f"data: {json.dumps(error_chunk)}\n\n".encode())
                 await response.write(b"data: [DONE]\n\n")
             except Exception:
                 pass
@@ -2663,7 +2688,7 @@ class APIServerAdapter(BasePlatformAdapter):
             if "sequence_number" not in data:
                 data["sequence_number"] = sequence_number
             sequence_number += 1
-            payload = f"event: {event_type}\ndata: {orjson.dumps(data).decode('utf-8')}\n\n"
+            payload = f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
             await response.write(payload.encode())
 
         def _envelope(status: str) -> Dict[str, Any]:
@@ -2792,7 +2817,7 @@ class APIServerAdapter(BasePlatformAdapter):
                 call_id = payload.get("tool_call_id") or f"call_{response_id[5:]}_{call_counter}"
                 args = payload.get("arguments", {})
                 if isinstance(args, dict):
-                    arguments_str = orjson.dumps(args).decode('utf-8')
+                    arguments_str = json.dumps(args)
                 else:
                     arguments_str = str(args)
                 item = {
@@ -2858,7 +2883,7 @@ class APIServerAdapter(BasePlatformAdapter):
                 })
 
                 # function_call_output added (result)
-                result_str = result if isinstance(result, str) else orjson.dumps(result).decode('utf-8')
+                result_str = result if isinstance(result, str) else json.dumps(result)
                 output_parts = [{"type": "input_text", "text": result_str}]
                 output_item = {
                     "id": f"fco_{uuid.uuid4().hex[:24]}",
@@ -3033,12 +3058,12 @@ class APIServerAdapter(BasePlatformAdapter):
             for _item in final_items:
                 if _item.get("type") == "function_call":
                     try:
-                        _args = orjson.loads(_item.get("arguments", "{}")) if isinstance(_item.get("arguments"), str) else _item.get("arguments", {})
+                        _args = json.loads(_item.get("arguments", "{}")) if isinstance(_item.get("arguments"), str) else _item.get("arguments", {})
                         if isinstance(_args, dict):
                             for _k in ("content", "query", "pattern", "old_string", "new_string"):
                                 if isinstance(_args.get(_k), str) and len(_args[_k]) > 500:
                                     _args[_k] = "[" + str(len(_args[_k])) + " chars — truncated for response.completed]"
-                            _item["arguments"] = orjson.dumps(_args).decode('utf-8')
+                            _item["arguments"] = json.dumps(_args)
                     except Exception:
                         pass
                 elif _item.get("type") == "function_call_output":
@@ -3187,7 +3212,7 @@ class APIServerAdapter(BasePlatformAdapter):
         # Parse request body
         try:
             body = await request.json()
-        except (orjson.JSONDecodeError, Exception):
+        except (json.JSONDecodeError, Exception):
             return web.json_response(
                 {"error": {"message": "Invalid JSON in request body", "type": "invalid_request_error"}},
                 status=400,
@@ -4504,7 +4529,7 @@ class APIServerAdapter(BasePlatformAdapter):
                     # Run finished — send final SSE comment and close
                     await response.write(b": stream closed\n\n")
                     break
-                payload = f"data: {orjson.dumps(event).decode('utf-8')}\n\n"
+                payload = f"data: {json.dumps(event)}\n\n"
                 await response.write(payload.encode())
         except Exception as exc:
             logger.debug("[api_server] SSE stream error for run %s: %s", run_id, exc)

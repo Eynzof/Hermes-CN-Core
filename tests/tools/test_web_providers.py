@@ -9,6 +9,7 @@ Covers:
 from __future__ import annotations
 
 import orjson
+import json
 from typing import Any, Dict, List
 
 import pytest

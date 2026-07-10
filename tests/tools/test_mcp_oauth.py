@@ -1,6 +1,7 @@
 """Tests for tools/mcp_oauth.py — OAuth 2.1 PKCE support for MCP servers."""
 
 import orjson
+import json
 import os
 import stat
 import sys

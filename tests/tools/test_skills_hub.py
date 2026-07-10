@@ -1,6 +1,7 @@
 """Tests for tools/skills_hub.py — source adapters, lock file, taps, dedup logic."""
 
 import orjson
+import json
 import time
 from typing import List, Optional
 from unittest.mock import patch, MagicMock

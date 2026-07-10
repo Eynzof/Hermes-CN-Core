@@ -2,6 +2,7 @@
 
 import importlib
 import orjson
+import json
 from unittest.mock import patch
 
 import pytest

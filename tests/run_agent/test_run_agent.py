@@ -9,6 +9,7 @@ import ast
 import inspect
 import io
 import orjson
+import json
 import logging
 from agent.re_compat import re
 import uuid

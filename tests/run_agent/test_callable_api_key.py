@@ -26,6 +26,7 @@ Covered:
 from __future__ import annotations
 
 import orjson
+import json
 from typing import cast
 from unittest.mock import MagicMock
 

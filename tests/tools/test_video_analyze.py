@@ -2,6 +2,7 @@
 
 import asyncio
 import orjson
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 

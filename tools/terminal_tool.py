@@ -34,6 +34,7 @@ Usage:
 import functools
 import importlib.util
 import orjson
+import json
 import logging
 import os
 import platform
@@ -2914,7 +2915,7 @@ def check_terminal_requirements() -> bool:
                 return False
             _dk = {}
             if sys.platform == "win32":
-                _dk["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
+                _dk["creationflags"] = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | getattr(subprocess, "CREATE_NO_WINDOW", 0)
             result = subprocess.run([docker, "version"], capture_output=True, timeout=5, stdin=subprocess.DEVNULL, **_dk)  # windows-footgun: ok — creationflags in _dk
             return result.returncode == 0
 
@@ -2923,7 +2924,7 @@ def check_terminal_requirements() -> bool:
             if executable:
                 _tk = {}
                 if sys.platform == "win32":
-                    _tk["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
+                    _tk["creationflags"] = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | getattr(subprocess, "CREATE_NO_WINDOW", 0)
                 result = subprocess.run([executable, "--version"], capture_output=True, timeout=5, stdin=subprocess.DEVNULL, **_tk)  # windows-footgun: ok — creationflags in _tk
                 return result.returncode == 0
             return False

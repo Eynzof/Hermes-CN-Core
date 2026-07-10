@@ -591,21 +591,17 @@ async def auth_logout(request: Request):
 
 @router.get("/api/auth/me", name="auth_me")
 async def api_auth_me(request: Request):
-    """Return the verified session as JSON. Returns ``{"user": null}``
-    when no authentication is present (caller is anonymous) so the SPA
-    can distinguish "not logged in" from an actual error."""
+    """Return the verified session as JSON. Auth-required (gate enforces)."""
     sess = getattr(request.state, "session", None)
     if sess is None:
-        return {"user": None}
+        raise HTTPException(status_code=401, detail="Unauthorized")
     return {
-        "user": {
-            "user_id": sess.user_id,
-            "email": sess.email,
-            "display_name": sess.display_name,
-            "org_id": sess.org_id,
-            "provider": sess.provider,
-            "expires_at": sess.expires_at,
-        },
+        "user_id": sess.user_id,
+        "email": sess.email,
+        "display_name": sess.display_name,
+        "org_id": sess.org_id,
+        "provider": sess.provider,
+        "expires_at": sess.expires_at,
     }
 
 

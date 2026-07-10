@@ -1,6 +1,7 @@
 """Tests for tools/memory_tool.py — MemoryStore, security scanning, and tool dispatcher."""
 
 import orjson
+import json
 import pytest
 from pathlib import Path
 

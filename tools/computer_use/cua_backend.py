@@ -39,6 +39,7 @@ import asyncio
 import pybase64 as base64
 import concurrent.futures
 import orjson
+import json
 import logging
 import os
 from agent.re_compat import re

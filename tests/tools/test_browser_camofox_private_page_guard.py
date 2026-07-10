@@ -9,6 +9,7 @@ private/internal page the terminal itself can't reach.
 """
 
 import orjson
+import json
 
 import pytest
 

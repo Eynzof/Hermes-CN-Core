@@ -1,6 +1,7 @@
 """Tests for gateway/pairing.py — DM pairing security system."""
 
 import orjson
+import json
 import os
 import sys
 import time

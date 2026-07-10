@@ -1,5 +1,6 @@
 """Tests for Mattermost platform adapter."""
 import orjson
+import json
 import os
 import time
 import pytest

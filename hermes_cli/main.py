@@ -13888,7 +13888,7 @@ def main():
             return False
 
     def cmd_sessions(args):
-        import orjson as _json
+        import json as _json
 
         action = args.sessions_action
 

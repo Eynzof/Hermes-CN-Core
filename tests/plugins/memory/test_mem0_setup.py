@@ -1,6 +1,7 @@
 """Tests for Mem0 setup wizard — flag parsing, config building, validation."""
 
 import orjson
+import json
 import sys
 import types
 import pytest

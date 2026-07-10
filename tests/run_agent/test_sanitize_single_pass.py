@@ -114,6 +114,48 @@ def _multi_pass_reference(messages):
         if not (m.get("role") in ecr and m.get("content") == ""
                 and not (m.get("role") == "assistant" and _payload(m)))
     ]
+
+    # Normalize empty/malformed ``tool_calls`` arrays on assistant messages
+    # (#58755): drop the key on a shallow copy. Mirrors the fused pass's (b2)
+    # step; ordering never matters for id collection since an empty/non-list
+    # value contributes no call ids.
+    normalized = []
+    for m in messages:
+        if (m.get("role") == "assistant" and "tool_calls" in m
+                and not (isinstance(m["tool_calls"], list) and m["tool_calls"])):
+            m = {k: v for k, v in m.items() if k != "tool_calls"}
+        normalized.append(m)
+    messages = normalized
+
+    # Deduplicate tool_call_ids (#58327): collapse duplicate tool_calls within
+    # assistant messages, drop later tool results reusing a seen id. Mirrors
+    # the fused pass's terminal step 3.
+    seen_a, seen_r = set(), set()
+    deduped = []
+    for m in messages:
+        role = m.get("role")
+        if role == "assistant" and m.get("tool_calls"):
+            kept = []
+            for tc in m.get("tool_calls") or []:
+                cid = _get_id(tc)
+                if cid and cid in seen_a:
+                    continue
+                if cid:
+                    seen_a.add(cid)
+                kept.append(tc)
+            if len(kept) != len(m.get("tool_calls") or []):
+                m = {**m, "tool_calls": kept}
+            deduped.append(m)
+        elif role == "tool":
+            cid = (m.get("tool_call_id") or "").strip()
+            if cid and cid in seen_r:
+                continue
+            if cid:
+                seen_r.add(cid)
+            deduped.append(m)
+        else:
+            deduped.append(m)
+    messages = deduped
     return messages
 
 

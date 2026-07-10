@@ -16,6 +16,7 @@ Key design decisions:
 
 import asyncio
 import orjson
+import json
 import logging
 import random
 from agent.re_compat import re

@@ -125,7 +125,7 @@ class TestWeComConnect:
 
 class TestWeComQrScan:
     @patch("plugins.platforms.wecom.adapter.time")
-    @patch("plugins.platforms.wecom.adapter.json.loads")
+    @patch("plugins.platforms.wecom.adapter.orjson.loads")
     @patch("plugins.platforms.wecom.adapter.logger")
     @patch("urllib.request.urlopen")
     @patch("urllib.request.Request")

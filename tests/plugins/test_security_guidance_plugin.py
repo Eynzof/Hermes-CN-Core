@@ -17,6 +17,7 @@ Covers ``plugins/security-guidance/``:
 """
 
 import importlib.util
+import json
 import sys
 import types
 from pathlib import Path

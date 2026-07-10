@@ -83,7 +83,6 @@ def test_gated_status_is_public(gated_app):
     "/api/model/info",
     "/api/dashboard/themes",
     "/api/dashboard/plugins",
-    "/api/auth/me",
 ])
 def test_other_public_api_paths_are_public_under_gate(gated_app, path):
     """The remaining ``PUBLIC_API_PATHS`` entries must also bypass the
@@ -117,23 +116,17 @@ def test_gated_html_redirects_to_login(gated_app):
     # page remains the fallback (multiple/zero providers, or loop-guard trip).
     assert r.headers["location"].startswith("/auth/login?provider=stub")
 
-def test_api_auth_me_returns_user_null_when_unauthenticated(gated_app):
-    # No cookies — should return 200 with {"user": null}, not 401.
+def test_api_auth_me_returns_401_when_unauthenticated(gated_app):
+    # No cookies — the gate rejects with 401 (upstream contract; the SPA
+    # AuthWidget treats 401 as "not logged in / gate not engaged").
     r = gated_app.get("/api/auth/me")
-    assert r.status_code == 200, (
-        '/api/auth/me should 200 with {"user": null} when unauthenticated, '
-        f"got {r.status_code}: {r.text}"
-    )
-    assert r.json() == {"user": None}
+    assert r.status_code == 401
 
 
 def test_api_auth_me_requires_auth(gated_app):
-    """Legacy: /api/auth/me is now a public endpoint that returns
-    {"user": null} when unauthenticated instead of 401."""
-    # No cookies.
+    """/api/auth/me is auth-required: no cookies → 401."""
     r = gated_app.get("/api/auth/me")
-    assert r.status_code == 200
-    assert r.json() == {"user": None}
+    assert r.status_code == 401
 
 
 def test_gated_login_html_is_public_and_lists_providers(gated_app):
@@ -423,12 +416,12 @@ def test_api_auth_me_returns_session_after_login(gated_app):
     r = gated_app.get("/api/auth/me")
     assert r.status_code == 200
     body = r.json()
-    assert body["user"]["user_id"] == "stub-user-1"
-    assert body["user"]["email"] == "stub@example.test"
-    assert body["user"]["display_name"] == "Stub User"
-    assert body["user"]["provider"] == "stub"
-    assert body["user"]["org_id"] == "stub-org-1"
-    assert "expires_at" in body["user"]
+    assert body["user_id"] == "stub-user-1"
+    assert body["email"] == "stub@example.test"
+    assert body["display_name"] == "Stub User"
+    assert body["provider"] == "stub"
+    assert body["org_id"] == "stub-org-1"
+    assert "expires_at" in body
 
 
 

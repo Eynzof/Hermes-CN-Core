@@ -10,7 +10,7 @@ runtime-scoped dashboard never attaches to a gateway process started by a
 different, user-installed Hermes executable.
 """
 
-import xxhash
+import hashlib
 import orjson
 import os
 import shlex
@@ -151,7 +151,7 @@ def terminate_pid(pid: int, *, force: bool = False) -> None:
 
 
 def _scope_hash(identity: str) -> str:
-    return xxhash.xxh64(identity.encode("utf-8")).hexdigest()[:16]
+    return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16]
 
 
 def _get_scope_lock_path(scope: str, identity: str) -> Path:

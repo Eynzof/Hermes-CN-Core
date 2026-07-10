@@ -13,6 +13,7 @@ import asyncio
 from collections import deque
 from datetime import datetime, timezone
 import hmac
+import json
 import orjson
 import logging
 import os
@@ -160,7 +161,7 @@ def _content_string(value: Any) -> Optional[tuple[str, bool]]:
         text = value
     else:
         try:
-            text = orjson.dumps(value, option=orjson.OPT_SORT_KEYS).decode('utf-8')
+            text = json.dumps(value, sort_keys=True)
         except Exception:
             return None
     if not text:

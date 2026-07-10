@@ -8,6 +8,7 @@ Tests cover:
 """
 
 import orjson
+import json
 import os
 import sys
 import textwrap
@@ -203,7 +204,7 @@ class TestRunJobScript:
         script.write_text(textwrap.dedent("""\
             import json
             data = {"new_prs": [{"number": 42, "title": "Fix bug"}]}
-            print(orjson.dumps(data, option=orjson.OPT_INDENT_2).decode('utf-8'))
+            print(json.dumps(data, indent=2))
         """))
 
         success, output = _run_job_script(str(script))

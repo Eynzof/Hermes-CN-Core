@@ -24,6 +24,7 @@ mirrors the pattern used in tests/hermes_cli/test_config_drift.py.
 """
 
 import ast
+import json
 import inspect
 
 

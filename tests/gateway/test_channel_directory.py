@@ -1,6 +1,7 @@
 """Tests for gateway/channel_directory.py — channel resolution and display."""
 
 import asyncio
+import json
 import orjson
 import os
 import threading

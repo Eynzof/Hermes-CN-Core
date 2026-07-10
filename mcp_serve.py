@@ -30,6 +30,7 @@ MCP client config (e.g. claude_desktop_config.json):
 from __future__ import annotations
 
 import orjson
+import json
 import logging
 import os
 from agent.re_compat import re

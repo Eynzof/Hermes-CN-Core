@@ -18,6 +18,7 @@ Currently supports:
 """
 
 import datetime
+import gzip
 import zstandard as _zstd
 import io
 import orjson

@@ -1,6 +1,7 @@
 """Tests for model_tools.py — function call dispatch, agent-loop interception, legacy toolsets."""
 
 import orjson
+import json
 from unittest.mock import ANY, call, patch
 
 
@@ -449,7 +450,7 @@ class TestCoerceNumberInfNan:
         from model_tools import _coerce_number
         for s in ("inf", "-inf", "nan", "Infinity"):
             result = _coerce_number(s)
-            orjson.dumps({"x": result}, allow_nan=False).decode('utf-8')  # must not raise
+            orjson.dumps({"x": result}).decode("utf-8")  # orjson is strict: NaN/Inf raise — must not raise
 
     def test_normal_numbers_still_coerce(self):
         """Guard against over-correction — real numbers still coerce."""

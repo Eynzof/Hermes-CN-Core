@@ -15,6 +15,7 @@ Used by hermes_cli/skills_hub.py for CLI commands and the /skills slash command.
 
 import xxhash as _xxhash
 import orjson
+import hashlib
 import json
 import logging
 import os
@@ -3573,7 +3574,7 @@ def uninstall_skill(skill_name: str) -> Tuple[bool, str]:
 
 def bundle_content_hash(bundle: SkillBundle) -> str:
     """Compute a deterministic hash for an in-memory skill bundle."""
-    h = _xxhash.xxh64()
+    h = hashlib.sha256()
     for rel_path in sorted(bundle.files):
         # Include the path so swapping file contents between two paths
         # changes the hash (avoids filename-swap evading update detection).

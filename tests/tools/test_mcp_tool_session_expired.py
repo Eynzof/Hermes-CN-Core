@@ -11,6 +11,7 @@ tool error with no recovery path, so every subsequent call on the
 affected MCP server failed until the gateway was manually restarted.
 """
 import orjson
+import json
 import threading
 from unittest.mock import MagicMock
 

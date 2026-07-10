@@ -17,6 +17,7 @@ the conftest module docstring.
 from __future__ import annotations
 
 import subprocess
+import json
 import time
 
 import pytest

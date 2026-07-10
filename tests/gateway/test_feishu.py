@@ -2299,7 +2299,7 @@ class TestAdapterBehavior(unittest.TestCase):
         self.assertEqual(captured["upload_request"].request_body.file_type, "pdf")
         self.assertEqual(
             captured["message_request"].request_body.content,
-            '{"file_key": "file_123"}',
+            '{"file_key":"file_123"}',
         )
 
     @patch.dict(os.environ, {}, clear=True)
@@ -2351,8 +2351,8 @@ class TestAdapterBehavior(unittest.TestCase):
 
         self.assertTrue(result.success)
         self.assertEqual(captured["message_request"].request_body.msg_type, "post")
-        self.assertIn('"tag": "media"', captured["message_request"].request_body.content)
-        self.assertIn('"file_key": "file_123"', captured["message_request"].request_body.content)
+        self.assertIn('"tag":"media"', captured["message_request"].request_body.content)
+        self.assertIn('"file_key":"file_123"', captured["message_request"].request_body.content)
         self.assertIn("报告请看", captured["message_request"].request_body.content)
 
     @patch.dict(os.environ, {}, clear=True)
@@ -2406,7 +2406,7 @@ class TestAdapterBehavior(unittest.TestCase):
         self.assertEqual(captured["upload_request"].request_body.image_type, "message")
         self.assertEqual(
             captured["message_request"].request_body.content,
-            '{"image_key": "img_123"}',
+            '{"image_key":"img_123"}',
         )
 
     @patch.dict(os.environ, {}, clear=True)
@@ -2458,8 +2458,8 @@ class TestAdapterBehavior(unittest.TestCase):
 
         self.assertTrue(result.success)
         self.assertEqual(captured["message_request"].request_body.msg_type, "post")
-        self.assertIn('"tag": "img"', captured["message_request"].request_body.content)
-        self.assertIn('"image_key": "img_123"', captured["message_request"].request_body.content)
+        self.assertIn('"tag":"img"', captured["message_request"].request_body.content)
+        self.assertIn('"image_key":"img_123"', captured["message_request"].request_body.content)
         self.assertIn("截图说明", captured["message_request"].request_body.content)
 
     @patch.dict(os.environ, {}, clear=True)
@@ -2511,7 +2511,7 @@ class TestAdapterBehavior(unittest.TestCase):
         self.assertTrue(result.success)
         self.assertEqual(captured["upload_request"].request_body.file_type, "mp4")
         self.assertEqual(captured["message_request"].request_body.msg_type, "media")
-        self.assertEqual(captured["message_request"].request_body.content, '{"file_key": "file_video_123"}')
+        self.assertEqual(captured["message_request"].request_body.content, '{"file_key":"file_video_123"}')
 
     @patch.dict(os.environ, {}, clear=True)
     def test_send_voice_uploads_opus_and_sends_audio_message(self):
@@ -2562,7 +2562,7 @@ class TestAdapterBehavior(unittest.TestCase):
         self.assertTrue(result.success)
         self.assertEqual(captured["upload_request"].request_body.file_type, "opus")
         self.assertEqual(captured["message_request"].request_body.msg_type, "audio")
-        self.assertEqual(captured["message_request"].request_body.content, '{"file_key": "file_audio_123"}')
+        self.assertEqual(captured["message_request"].request_body.content, '{"file_key":"file_audio_123"}')
 
     @patch.dict(os.environ, {}, clear=True)
     def test_build_post_payload_extracts_title_and_links(self):

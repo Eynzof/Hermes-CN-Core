@@ -33,6 +33,7 @@ Usage:
 
 import functools
 import importlib.util
+import json
 import orjson
 import logging
 import os

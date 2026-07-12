@@ -765,6 +765,59 @@ def _resolve_shell() -> tuple[str, str]:
     raise RuntimeError("No usable shell found.")
 
 
+def _build_powershell_background_script(
+    command: str,
+    cwd: str,
+    shell_type: str,
+    cwd_file: str | None = None,
+) -> str:
+    """Build a PowerShell wrapper suitable for detached background processes.
+
+    Mirrors ``LocalEnvironment._wrap_command_powershell`` but omits the stdout
+    CWD marker (background output goes to the process-registry buffer) and only
+    persists the final CWD to *cwd_file* when one is provided.
+
+    Args:
+        command: Raw user command (will be down-levelled for PS5.1 unless
+            *shell_type* is ``pwsh``).
+        cwd: Working directory to switch to before running *command*.
+        shell_type: ``pwsh`` or ``powershell``.
+        cwd_file: Optional path to write the final working directory to.
+            When provided, the wrapper writes ``(Get-Location).Path`` to this
+            file so ``LocalEnvironment._update_cwd`` can pick it up.
+
+    Returns:
+        A multi-line PowerShell script ready for ``-Command``.
+    """
+    if shell_type != "pwsh":
+        command, _ = pwsh_transform(command)
+
+    escaped = command.replace("'", "''")
+    quoted_cwd = cwd.replace("'", "''")
+
+    parts = [
+        # Force UTF-8 output encoding for stdout/stderr.
+        "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8",
+        "$OutputEncoding=[System.Text.Encoding]::UTF8",
+        "[Console]::TreatControlCAsInput=$true",
+        "$ErrorActionPreference = 'Continue'",
+        f"Set-Location -LiteralPath '{quoted_cwd}' -ErrorAction SilentlyContinue",
+        f"if ($?) {{ Set-Location -LiteralPath '{quoted_cwd}' }} else {{ exit 126 }}",
+        # Run the command and flush PowerShell's formatting pipeline.
+        f"Invoke-Expression '{escaped}' | Out-String -Width 4096 | Write-Output",
+        "$hermes_ec = $LASTEXITCODE",
+    ]
+
+    if cwd_file:
+        quoted_cwd_file = cwd_file.replace("'", "''")
+        parts.append(
+            f"(Get-Location).Path | Out-File -Encoding utf8 -FilePath '{quoted_cwd_file}'"
+        )
+
+    parts.append("exit $hermes_ec")
+    return "\n".join(parts)
+
+
 # POSIX-sh-family shells that understand the ``[shell, "-lic", "set +m; …"]``
 # invocation spawn_local uses. $SHELL values outside this set (fish, csh/tcsh,
 # nushell, elvish, xonsh, …) would error on that syntax, so _find_shell falls
@@ -795,16 +848,18 @@ def _find_shell() -> str:
     redirected stdin.
 
     Only POSIX-sh-family shells are honoured: ``spawn_local`` invokes the
-    shell as ``[shell, "-lic", "set +m; <cmd>"]``, and that ``-lic`` bundle +
+    shell as ``[shell, \"-lic\", \"set +m; <cmd>\"]``, and that ``-lic`` bundle +
     ``set +m`` job-control syntax is NOT understood by fish, csh/tcsh,
     nushell, elvish, xonsh, etc.  Returning such a ``$SHELL`` would trade the
     bash-3.2 swallow for a parse error on every background command, so for any
     non-allowlisted shell we fall back to ``_find_bash_posix`` (the prior
     behaviour).
 
-    On Windows (PowerShell-only in this fork, per P-019) this falls through to
-    ``_find_bash_posix``; background spawning on Windows does not use ``$SHELL``.
+    On Windows, ``process_registry.spawn_local`` uses ``_resolve_shell``
+    (PowerShell 7 / Windows PowerShell 5.1) instead of this function, so this
+    function is intentionally POSIX-only on Windows.
     """
+
     if not _IS_WINDOWS:
         user_shell = os.environ.get("SHELL")
         if (

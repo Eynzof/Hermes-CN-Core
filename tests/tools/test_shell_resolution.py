@@ -159,3 +159,42 @@ class TestResolveShell:
         with mock.patch("shutil.which", return_value=str(bash_exe)):
             with mock.patch.dict(os.environ, {}, clear=True):
                 assert _resolve_shell() == ("bash", str(bash_exe))
+
+
+class TestBuildPowershellBackgroundScript:
+    """_build_powershell_background_script produces a runnable PowerShell wrapper."""
+
+    def test_includes_command_cwd_and_cwd_file(self):
+        from tools.environments.local import _build_powershell_background_script
+
+        script = _build_powershell_background_script(
+            command="echo hello",
+            cwd="D:\\test",
+            shell_type="pwsh",
+            cwd_file="D:/tmp/cwd.txt",
+        )
+        assert "Invoke-Expression 'echo hello'" in script
+        assert "Set-Location -LiteralPath 'D:\\test'" in script
+        assert "D:/tmp/cwd.txt" in script
+        assert "exit $hermes_ec" in script
+
+    def test_omits_cwd_file_when_not_provided(self):
+        from tools.environments.local import _build_powershell_background_script
+
+        script = _build_powershell_background_script(
+            command="echo hello",
+            cwd="D:\\test",
+            shell_type="powershell",
+        )
+        assert "Out-File" not in script
+        assert "exit $hermes_ec" in script
+
+    def test_escapes_single_quotes(self):
+        from tools.environments.local import _build_powershell_background_script
+
+        script = _build_powershell_background_script(
+            command="echo 'hello'",
+            cwd="D:\\test",
+            shell_type="pwsh",
+        )
+        assert "Invoke-Expression 'echo ''hello'''" in script

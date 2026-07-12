@@ -1097,10 +1097,13 @@ DEFAULT_CONFIG = {
     
     "terminal": {
         "backend": "local",
-        # [CN-fork] Windows shell selection for the system prompt hint only.
-        # auto       - preserve current behavior: detect pwsh, otherwise PS5.1
-        # powershell - PowerShell-family hint (same as auto in this release)
-        # bash       - Git Bash / MSYS hint; avoids the PS5.1 restriction text
+        # [CN-fork] Shell selection for local terminal execution.
+        # On Windows this controls both foreground and background terminal
+        # processes and is bridged to HERMES_SHELL_TYPE.
+        # auto       - detect pwsh, otherwise fall back to Windows PowerShell 5.1
+        # powershell - force Windows PowerShell 5.1
+        # pwsh       - force PowerShell 7 (falls back to 5.1 if not installed)
+        # bash       - Git Bash / MSYS; ignored/error on Windows
         "shell": "auto",
         "modal_mode": "auto",
         "cwd": ".",  # Use current directory
@@ -6750,6 +6753,7 @@ def write_platform_config_field(
 
 TERMINAL_CONFIG_ENV_MAP = {
     "backend": "TERMINAL_ENV",
+    "shell": "HERMES_SHELL_TYPE",
     "modal_mode": "TERMINAL_MODAL_MODE",
     "cwd": "TERMINAL_CWD",
     "timeout": "TERMINAL_TIMEOUT",

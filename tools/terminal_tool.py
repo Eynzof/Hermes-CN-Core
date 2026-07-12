@@ -42,6 +42,7 @@ import time
 import threading
 import atexit
 import shutil
+import uuid
 import subprocess
 from pathlib import Path
 from typing import Optional, Dict, Any, List
@@ -2442,6 +2443,13 @@ def terminal_tool(
             )
             try:
                 if env_type == "local":
+                    cwd_file = None
+                    if hasattr(env, "get_temp_dir"):
+                        try:
+                            temp_dir = env.get_temp_dir().rstrip("/") or "/"
+                            cwd_file = f"{temp_dir}/hermes-bg-cwd-{uuid.uuid4().hex[:12]}.txt"
+                        except Exception:
+                            pass
                     proc_session = process_registry.spawn_local(
                         command=command,
                         cwd=effective_cwd,
@@ -2449,6 +2457,7 @@ def terminal_tool(
                         session_key=session_key,
                         env_vars=env.env if hasattr(env, 'env') else None,
                         use_pty=effective_pty,
+                        cwd_file=cwd_file,
                     )
                 else:
                     proc_session = process_registry.spawn_via_env(

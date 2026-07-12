@@ -35,7 +35,7 @@ _DEP_CHECKS = {
         or _has_system_browser()
         or _has_hermes_agent_browser()
     ),
-    "ripgrep": lambda: shutil.which("rg") is not None and _has_ripgrepy(),
+    "ripgrep": lambda: _find_rg() is not None and _has_ripgrepy(),
     "ffmpeg": lambda: shutil.which("ffmpeg") is not None,
 }
 
@@ -64,6 +64,45 @@ def _has_ripgrepy() -> bool:
         return True
     except Exception:
         return False
+
+
+def _find_rg() -> str | None:
+    """Return a usable rg executable path.
+
+    On Windows, prefer the Hermes-managed copy in $HERMES_HOME/bin/rg.exe so
+    a broken system shim/symlink is never selected.  On all platforms, verify
+    that the candidate actually runs `rg --version` successfully.
+    """
+    from hermes_constants import get_hermes_home
+
+    if _IS_WINDOWS:
+        managed = get_hermes_home() / "bin" / "rg.exe"
+        if managed.exists():
+            try:
+                subprocess.run(
+                    [str(managed), "--version"],
+                    capture_output=True,
+                    check=True,
+                    timeout=5,
+                )
+                return str(managed)
+            except Exception:
+                pass
+
+    path_rg = shutil.which("rg")
+    if path_rg:
+        try:
+            subprocess.run(
+                [path_rg, "--version"],
+                capture_output=True,
+                check=True,
+                timeout=5,
+            )
+            return path_rg
+        except Exception:
+            pass
+
+    return None
 
 
 def _has_hermes_agent_browser() -> bool:

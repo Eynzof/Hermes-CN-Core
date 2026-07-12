@@ -151,6 +151,11 @@ $NodeVersion = "22"
 # new stage does NOT bump this -- drivers iterate the manifest dynamically.
 $InstallStageProtocolVersion = 1
 
+# Hermes-managed ripgrep binary.  We keep a known-good copy here so a broken
+# system shim/symlink cannot brick the installer or runtime search.
+$script:ManagedRgDir = Join-Path $HermesHome "bin"
+$script:ManagedRg    = Join-Path $script:ManagedRgDir "rg.exe"
+
 # ============================================================================
 # Helper functions
 
@@ -1014,19 +1019,130 @@ function Update-ProcessPathForPackages {
     $env:Path = [string]::Join(';', $ordered)
 }
 
+function Test-Ripgrep {
+    <#
+    .SYNOPSIS
+    Verify that an rg executable is actually runnable.
+
+    Returns $true only if the binary exists and `rg --version` produces output.
+    This catches broken symlinks, missing winget alias targets, and other
+    cases where Get-Command finds a path but the file is not usable.
+    #>
+    param([string]$Path = "")
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        $cmd = Get-Command rg -ErrorAction SilentlyContinue
+        if (-not $cmd) { return $false }
+        $Path = $cmd.Path
+    }
+    if (-not (Test-Path $Path)) { return $false }
+    try {
+        $ver = & $Path --version 2>$null | Select-Object -First 1
+        return [bool]$ver
+    } catch {
+        return $false
+    }
+}
+
+function Test-Ffmpeg {
+    <#
+    .SYNOPSIS
+    Verify that ffmpeg is available and runnable.
+    #>
+    $cmd = Get-Command ffmpeg -ErrorAction SilentlyContinue
+    if (-not $cmd) { return $false }
+    if (-not (Test-Path $cmd.Path)) { return $false }
+    try {
+        $ver = & $cmd.Path -version 2>$null | Select-Object -First 1
+        return [bool]$ver
+    } catch {
+        return $false
+    }
+}
+
+function Install-ManagedRipgrep {
+    <#
+    .SYNOPSIS
+    Download a known-good ripgrep binary into $HERMES_HOME\bin\rg.exe.
+
+    Mirrors the existing managed-uv pattern.  The binary is placed at the
+    front of the process PATH and persisted to User PATH so it overrides any
+    broken system shim in this shell and in future shells.
+    #>
+    if ((Test-Path $script:ManagedRg) -and (Test-Ripgrep $script:ManagedRg)) {
+        Write-Success "Managed ripgrep already usable"
+        return
+    }
+
+    New-Item -ItemType Directory -Path $script:ManagedRgDir -Force | Out-Null
+
+    $arch = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") {
+        "aarch64-pc-windows-msvc"
+    } else {
+        "x86_64-pc-windows-msvc"
+    }
+
+    $rgVersion = "14.1.1"
+    $zipName   = "ripgrep-$rgVersion-$arch.zip"
+    $assetUrl  = "https://github.com/BurntSushi/ripgrep/releases/download/$rgVersion/$zipName"
+    $zipPath   = Join-Path $env:TEMP $zipName
+
+    try {
+        Invoke-WebRequest -Uri $assetUrl -OutFile $zipPath -UseBasicParsing
+        $extractDir = Join-Path $env:TEMP "ripgrep-$rgVersion"
+        if (Test-Path $extractDir) {
+            Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
+        $rgSource = Join-Path $extractDir "ripgrep-$rgVersion-$arch\rg.exe"
+        if (-not (Test-Path $rgSource)) {
+            throw "Expected rg.exe at $rgSource but it was not found after extraction"
+        }
+        Copy-Item -Path $rgSource -Destination $script:ManagedRg -Force
+    } finally {
+        Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
+        Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    if (-not (Test-Ripgrep $script:ManagedRg)) {
+        throw "Managed ripgrep installed at $script:ManagedRg but cannot run"
+    }
+    Write-Success "Managed ripgrep installed"
+
+    # Current process: put managed rg first so it overrides any broken shim.
+    Update-ProcessPathForPackages
+    $env:Path = "$($script:ManagedRgDir);$env:Path"
+
+    # Persist to User PATH so fresh shells also prefer the managed binary.
+    $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    $items = if ($userPath) { $userPath -split ";" } else { @() }
+    if ($items -notcontains $script:ManagedRgDir) {
+        [Environment]::SetEnvironmentVariable(
+            "Path",
+            "$($script:ManagedRgDir);$userPath",
+            "User"
+        )
+    }
+}
+
 function Install-SystemPackages {
-    $script:HasRipgrep = $false
-    $script:HasFfmpeg = $false
-    $needRipgrep = $false
-    $needFfmpeg = $false
+    $script:HasRipgrep = Test-Ripgrep
+    $script:HasFfmpeg  = Test-Ffmpeg
+    $needRipgrep = -not $script:HasRipgrep
+    $needFfmpeg  = -not $script:HasFfmpeg
 
     Write-Info "Checking ripgrep (fast file search)..."
-    if (Get-Command rg -ErrorAction SilentlyContinue) {
+    if ($script:HasRipgrep) {
         $version = rg --version | Select-Object -First 1
         Write-Success "$version found"
-        $script:HasRipgrep = $true
     } else {
-        $needRipgrep = $true
+        Write-Warn "ripgrep missing or broken; installing managed copy..."
+        $badRg = Get-Command rg -ErrorAction SilentlyContinue
+        if ($badRg) {
+            try { Remove-Item $badRg.Path -Force -ErrorAction SilentlyContinue } catch {}
+        }
+        Install-ManagedRipgrep
+        $script:HasRipgrep = $true
+        $needRipgrep = $false
     }
 
     Write-Info "Checking ffmpeg (TTS voice messages)..."
@@ -3352,7 +3468,7 @@ function Invoke-EnsureMode {
                 }
             }
             "ripgrep" {
-                Write-Info "ripgrep: install manually on Windows (scoop install ripgrep)"
+                Install-ManagedRipgrep
             }
             "ffmpeg" {
                 Write-Info "ffmpeg: install manually on Windows (scoop install ffmpeg)"

@@ -12961,7 +12961,7 @@ def _resolve_profile_dir(name: str) -> Path:
 def _profile_setup_command(name: str) -> str:
     """Return the shell command used to configure a profile in the CLI."""
     _resolve_profile_dir(name)
-    return "hermes setup" if name == "default" else f"{name} setup"
+    return "hermes setup" if name == "default" else f"hermes setup --profile {name}"
 
 
 def _write_profile_model(profile_dir: Path, provider: str, model: str) -> None:
@@ -13266,13 +13266,13 @@ async def open_profile_terminal_endpoint(name: str):
         command = _profile_setup_command(name)
 
         if sys.platform.startswith("win"):
-            # ``start ""`` — the empty first (quoted) token is the window
-            # title, so the command itself is never mistaken for one.
-            # creationflags suppresses the parent console flash
-            # ([CN-fork] issue #90).
+            # Use list argv to avoid cmd.exe re-tokenization of paths
+            # with spaces. creationflags suppresses parent console flash
+            # ([CN-fork] issue #90, #378).
             from hermes_cli._subprocess_compat import windows_hide_flags
             subprocess.Popen(
-                ["cmd.exe", "/c", "start", "", command],
+                ["cmd.exe", "/c", "start", "Hermes Profile Setup",
+                 "hermes", "setup", "--profile", name],
                 creationflags=windows_hide_flags(),
             )
         elif sys.platform == "darwin":

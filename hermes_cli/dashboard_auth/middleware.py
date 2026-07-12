@@ -150,6 +150,8 @@ def _auto_sso_response(request: Request) -> Response | None:
       * exactly ONE interactive provider is registered — with two or more we
         can't pick for the user, so the ``/login`` chooser must render; with
         zero there's nothing to redirect to;
+      * that provider is OAuth-style, not a password form provider. Password
+        providers must render ``/login`` so the user can enter credentials;
       * the one-shot loop-guard marker is ABSENT. Its presence means we
         already bounced to the portal once and came back still
         unauthenticated (no portal session) — auto-redirecting again would
@@ -185,6 +187,9 @@ def _auto_sso_response(request: Request) -> Response | None:
     from hermes_cli.dashboard_auth.prefix import prefix_from_request
 
     provider = providers[0]
+    if getattr(provider, "supports_password", False):
+        return None
+
     prefix = prefix_from_request(request)
     next_param = _safe_next_target(request)
     from urllib.parse import quote
@@ -247,24 +252,6 @@ def _safe_next_target(request: Request) -> str:
     return quote(target, safe="")
 
 
-def _attach_session_if_valid(request: Request, access_token: str) -> None:
-    """Try to verify *access_token* through registered providers and, if
-    valid, attach the resulting :class:`Session` to ``request.state.session``.
-
-    Silently ignores missing/invalid tokens — the caller should handle the
-    unauthenticated case (e.g. by returning ``{"user": null}``).
-    Provider-level errors (unreachable IDP) are logged but not propagated.
-    """
-    for provider in list_session_providers():
-        try:
-            session = provider.verify_session(access_token=access_token)
-        except ProviderError:
-            continue
-        if session is not None:
-            request.state.session = session
-            return
-
-
 async def gated_auth_middleware(
     request: Request,
     call_next: Callable[[Request], Awaitable[Response]],
@@ -286,13 +273,6 @@ async def gated_auth_middleware(
 
     path = request.url.path
     if _path_is_public(path):
-        # For /api/auth/me, still try to verify the session cookie so the
-        # handler can return authenticated user data. Missing/invalid cookies
-        # don't block — the handler returns ``{"user": None}`` gracefully.
-        if path == "/api/auth/me":
-            at, _rt = read_session_cookies(request)
-            if at:
-                _attach_session_if_valid(request, at)
         return await call_next(request)
 
     at, _rt = read_session_cookies(request)
@@ -483,4 +463,3 @@ def _attempt_refresh(request: Request, *, refresh_token):
         if new_session is not None:
             return new_session, provider.name
     return None
-

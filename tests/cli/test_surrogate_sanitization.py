@@ -6,6 +6,7 @@ editors like Google Docs, OR from byte-level reasoning models (xiaomi/mimo,
 kimi, glm) emitting lone halves in reasoning output.
 """
 import orjson
+import json
 import pytest
 from unittest.mock import MagicMock, patch
 
@@ -45,14 +46,14 @@ class TestSanitizeSurrogates:
         """Sanitized text must survive json.dumps + utf-8 encoding."""
         dirty = "data \udce2\udcb0 from clipboard"
         clean = _sanitize_surrogates(dirty)
-        serialized = orjson.dumps({"content": clean}).decode('utf-8')
+        serialized = json.dumps({"content": clean}, ensure_ascii=False)
         # Must not raise UnicodeEncodeError
         serialized.encode("utf-8")
 
     def test_original_surrogates_fail_encoding(self):
         """Confirm the original bug: surrogates crash utf-8 encoding."""
         dirty = "data \udce2 from clipboard"
-        serialized = orjson.dumps({"content": dirty}).decode('utf-8')
+        serialized = json.dumps({"content": dirty}, ensure_ascii=False)
         with pytest.raises(UnicodeEncodeError):
             serialized.encode("utf-8")
 

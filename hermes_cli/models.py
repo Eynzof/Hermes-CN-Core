@@ -13,7 +13,7 @@ import urllib.parse
 import urllib.request
 import urllib.error
 import time
-import rapidfuzz.process as _fuzz_process
+from difflib import get_close_matches
 from pathlib import Path
 from typing import Any, NamedTuple, Optional
 
@@ -40,6 +40,12 @@ OPENROUTER_MODELS: list[tuple[str, str]] = [
     ("anthropic/claude-sonnet-5",              ""),
     ("anthropic/claude-haiku-4.5",             ""),
     # OpenAI
+    ("openai/gpt-5.6-sol",                     ""),
+    ("openai/gpt-5.6-sol-pro",                 ""),
+    ("openai/gpt-5.6-terra",                   ""),
+    ("openai/gpt-5.6-terra-pro",               ""),
+    ("openai/gpt-5.6-luna",                    ""),
+    ("openai/gpt-5.6-luna-pro",                ""),
     ("openai/gpt-5.5",                         ""),
     ("openai/gpt-5.5-pro",                     ""),
     ("openai/gpt-5.4-mini",                    ""),
@@ -48,7 +54,7 @@ OPENROUTER_MODELS: list[tuple[str, str]] = [
     ("google/gemini-3.1-pro-preview",          ""),
     ("google/gemini-3.5-flash",                ""),
     # xAI
-    ("x-ai/grok-4.3",                          ""),
+    ("x-ai/grok-4.5",                          ""),
     # DeepSeek
     ("deepseek/deepseek-v4-pro",               ""),
     ("deepseek/deepseek-v4-flash",             ""),
@@ -67,7 +73,7 @@ OPENROUTER_MODELS: list[tuple[str, str]] = [
     # Xiaomi
     ("xiaomi/mimo-v2.5-pro",                   ""),
     # Tencent
-    ("tencent/hy3-preview",                    ""),
+    ("tencent/hy3",                            ""),
     # StepFun
     ("stepfun/step-3.7-flash",                 ""),
     # NVIDIA
@@ -78,9 +84,8 @@ OPENROUTER_MODELS: list[tuple[str, str]] = [
     ("openrouter/pareto-code",                 "auto-routes to cheapest coder meeting openrouter.min_coding_score"),
     # Free tier
     ("openrouter/elephant-alpha",              "free"),
-    ("openrouter/owl-alpha",                   "free"),
     ("poolside/laguna-m.1:free",               "free"),
-    ("tencent/hy3-preview:free",               "free"),
+    ("tencent/hy3:free",                       "free"),
     ("nvidia/nemotron-3-super-120b-a12b:free", "free"),
     ("nvidia/nemotron-3-ultra-550b-a55b:free", "free"),
     ("inclusionai/ring-2.6-1t:free",           "free"),
@@ -114,6 +119,7 @@ def _codex_curated_models() -> list[str]:
 #  grok-4-1-fast{,-reasoning,-non-reasoning}, grok-code-fast-1 → grok-4.3).
 _XAI_STATIC_FALLBACK: list[str] = [
     "grok-build-0.1",
+    "grok-4.5",
     "grok-4.3",
     "grok-4.20-0309-reasoning",
     "grok-4.20-0309-non-reasoning",
@@ -122,6 +128,7 @@ _XAI_STATIC_FALLBACK: list[str] = [
 
 # Callable via xAI OAuth but omitted from models.dev and /v1/models listings.
 _XAI_CURATED_EXTRAS: list[str] = [
+    "grok-4.5",  # GA 2026-07 — kept until the models.dev disk cache refreshes
     "grok-composer-2.5-fast",
 ]
 
@@ -184,6 +191,12 @@ _PROVIDER_MODELS: dict[str, list[str]] = {
         "anthropic/claude-sonnet-5",
         "anthropic/claude-haiku-4.5",
         # OpenAI
+        "openai/gpt-5.6-sol",
+        "openai/gpt-5.6-sol-pro",
+        "openai/gpt-5.6-terra",
+        "openai/gpt-5.6-terra-pro",
+        "openai/gpt-5.6-luna",
+        "openai/gpt-5.6-luna-pro",
         "openai/gpt-5.5",
         "openai/gpt-5.5-pro",
         "openai/gpt-5.4-mini",
@@ -192,7 +205,7 @@ _PROVIDER_MODELS: dict[str, list[str]] = {
         "google/gemini-3.1-pro-preview",
         "google/gemini-3.5-flash",
         # xAI
-        "x-ai/grok-4.3",
+        "x-ai/grok-4.5",
         # DeepSeek
         "deepseek/deepseek-v4-pro",
         "deepseek/deepseek-v4-flash",
@@ -211,7 +224,7 @@ _PROVIDER_MODELS: dict[str, list[str]] = {
         # Xiaomi
         "xiaomi/mimo-v2.5-pro",
         # Tencent
-        "tencent/hy3-preview",
+        "tencent/hy3",
         # StepFun
         "stepfun/step-3.7-flash",
         # NVIDIA
@@ -232,6 +245,12 @@ _PROVIDER_MODELS: dict[str, list[str]] = {
         "gpt-4o-mini",
     ],
     "openai-api": [
+        "gpt-5.6-sol",
+        "gpt-5.6-sol-pro",
+        "gpt-5.6-terra",
+        "gpt-5.6-terra-pro",
+        "gpt-5.6-luna",
+        "gpt-5.6-luna-pro",
         "gpt-5.5",
         "gpt-5.5-pro",
         "gpt-5.4",
@@ -415,14 +434,18 @@ _PROVIDER_MODELS: dict[str, list[str]] = {
         "gemini-3.5-flash",
         "gemini-3.1-pro",
         "gemini-3-flash",
+        "minimax-m3",
         "minimax-m2.7",
         "minimax-m2.5",
         "minimax-m3-free",
+        "glm-5.2",
         "glm-5.1",
         "glm-5",
+        "kimi-k2.7-code",
         "deepseek-v4-pro",
         "deepseek-v4-flash",
         "deepseek-v4-flash-free",
+        "qwen3.7-plus",
         "qwen3.6-plus",
         "qwen3.6-plus-free",
         "qwen3.5-plus",
@@ -433,17 +456,23 @@ _PROVIDER_MODELS: dict[str, list[str]] = {
         "nemotron-3-ultra-free",
     ],
     "opencode-go": [
+        "kimi-k2.7-code",
         "kimi-k2.6",
         "kimi-k2.5",
+        "glm-5.2",
         "glm-5.1",
         "glm-5",
         "mimo-v2.5-pro",
         "mimo-v2.5",
         "mimo-v2-pro",
         "mimo-v2-omni",
+        "minimax-m3",
         "minimax-m2.7",
         "minimax-m2.5",
+        "deepseek-v4-pro",
+        "deepseek-v4-flash",
         "qwen3.7-max",
+        "qwen3.7-plus",
         "qwen3.6-plus",
         "qwen3.5-plus",
     ],
@@ -2773,7 +2802,7 @@ def _payload_items(payload: Any) -> list[dict[str, Any]]:
     return []
 
 
-def copilot_default_headers() -> dict[str, str]:
+def copilot_default_headers(*, is_agent_turn: bool = True) -> dict[str, str]:
     """Standard headers for Copilot API requests.
 
     Includes Openai-Intent and x-initiator headers that opencode and the
@@ -2781,13 +2810,13 @@ def copilot_default_headers() -> dict[str, str]:
     """
     try:
         from hermes_cli.copilot_auth import copilot_request_headers
-        return copilot_request_headers(is_agent_turn=True)
+        return copilot_request_headers(is_agent_turn=is_agent_turn)
     except ImportError:
         return {
             "Editor-Version": COPILOT_EDITOR_VERSION,
             "User-Agent": "HermesAgent/1.0",
             "Openai-Intent": "conversation-edits",
-            "x-initiator": "agent",
+            "x-initiator": "agent" if is_agent_turn else "user",
         }
 
 
@@ -3372,12 +3401,14 @@ def opencode_model_api_mode(provider_id: Optional[str], model_id: Optional[str])
 
     - GPT-5 / Codex models on Zen use ``/v1/responses``
     - Claude models on Zen use ``/v1/messages``
-    - MiniMax models on Go use ``/v1/messages``
-    - GLM / Kimi on Go use ``/v1/chat/completions``
-    - Other Zen models (Gemini, GLM, Kimi, MiniMax, Qwen, etc.) use
+    - MiniMax and Qwen models on Go use ``/v1/messages``
+    - GLM / Kimi / DeepSeek / MiMo on Go use ``/v1/chat/completions``
+    - Qwen models on Zen use ``/v1/messages``
+    - Other Zen models (Gemini, GLM, Kimi, MiniMax, DeepSeek, etc.) use
       ``/v1/chat/completions``
 
-    This follows the published OpenCode docs for Zen and Go endpoints.
+    This follows the published OpenCode docs for Zen and Go endpoints
+    (https://opencode.ai/docs/zen/ and https://opencode.ai/docs/go/).
     """
     provider = normalize_provider(provider_id)
     normalized = normalize_opencode_model_id(provider_id, model_id).lower()
@@ -3387,7 +3418,9 @@ def opencode_model_api_mode(provider_id: Optional[str], model_id: Optional[str])
     if provider == "opencode-go":
         if normalized.startswith("minimax-"):
             return "anthropic_messages"
-        if normalized.startswith("qwen3.7-max"):
+        if normalized.startswith("qwen"):
+            # All Qwen models on Go (qwen3.7-max, qwen3.7-plus, qwen3.6-plus)
+            # are served via /v1/messages per the published Go endpoint table.
             return "anthropic_messages"
         return "chat_completions"
 
@@ -3396,9 +3429,59 @@ def opencode_model_api_mode(provider_id: Optional[str], model_id: Optional[str])
             return "anthropic_messages"
         if normalized.startswith("gpt-"):
             return "codex_responses"
+        if normalized.startswith("qwen"):
+            # Qwen models on Zen moved to /v1/messages per the published
+            # Zen endpoint table.
+            return "anthropic_messages"
         return "chat_completions"
 
     return "chat_completions"
+
+
+def normalize_opencode_base_url(
+    provider_id: Optional[str], api_mode: Optional[str], base_url: Optional[str]
+) -> str:
+    """Normalize an OpenCode Zen / Go base URL for the target API mode.
+
+    OpenCode's OpenAI-compatible endpoints live under ``/v1`` (the OpenAI SDK
+    appends ``/chat/completions`` or ``/responses``), while the Anthropic SDK
+    appends its own ``/v1/messages`` — so anthropic_messages needs the ``/v1``
+    suffix stripped.
+
+    Crucially this must be SYMMETRIC.  The stripped URL gets persisted to
+    config (``model.base_url``) by the TUI/desktop and gateway after switching
+    into an anthropic-routed model (e.g. minimax-m2.7 on Go).  A later switch
+    to a chat_completions model (glm, deepseek, kimi) then inherited the
+    stripped URL and POSTed to ``https://opencode.ai/zen/go/chat/completions``
+    — a 404 (the marketing site).  Re-append ``/v1`` for non-anthropic modes
+    so previously-stripped URLs heal themselves.
+
+    Only opencode.ai-hosted URLs are re-suffixed; custom proxy overrides via
+    ``OPENCODE_*_BASE_URL`` are left alone unless they already carry ``/v1``.
+    """
+    url = str(base_url or "").strip().rstrip("/")
+    if not url:
+        return url
+    provider = normalize_provider(provider_id)
+    if provider not in {"opencode-zen", "opencode-go"}:
+        return url
+
+    import re as _re
+
+    if api_mode == "anthropic_messages":
+        return _re.sub(r"/v1$", "", url)
+
+    # chat_completions / codex_responses: ensure the /v1 suffix is present on
+    # official opencode.ai hosts (heals a persisted anthropic-stripped URL).
+    if url.endswith("/v1"):
+        return url
+    try:
+        host = urllib.parse.urlparse(url).netloc.lower()
+    except Exception:
+        host = ""
+    if host == "opencode.ai" or host.endswith(".opencode.ai"):
+        return url + "/v1"
+    return url
 
 
 def github_model_reasoning_efforts(
@@ -3800,20 +3883,20 @@ def validate_requested_model(
                 }
 
             # Auto-correct if the top match is very similar (e.g. typo)
-            auto = _fuzz_process.extract(requested_for_lookup, api_models, limit=1, score_cutoff=90.0)
+            auto = get_close_matches(requested_for_lookup, api_models, n=1, cutoff=0.9)
             if auto:
                 return {
                     "accepted": True,
                     "persist": True,
                     "recognized": True,
-                    "corrected_model": auto[0][0],
-                    "message": f"Auto-corrected `{requested}` → `{auto[0][0]}`",
+                    "corrected_model": auto[0],
+                    "message": f"Auto-corrected `{requested}` → `{auto[0]}`",
                 }
 
-            suggestions = _fuzz_process.extract(requested, api_models, limit=3, score_cutoff=50.0)
+            suggestions = get_close_matches(requested, api_models, n=3, cutoff=0.5)
             suggestion_text = ""
             if suggestions:
-                suggestion_text = "\n  Similar models: " + ", ".join(f"`{s[0]}`" for s in suggestions)
+                suggestion_text = "\n  Similar models: " + ", ".join(f"`{s}`" for s in suggestions)
 
             message = (
                 f"Note: `{requested}` was not found in this custom endpoint's model listing "
@@ -3867,19 +3950,19 @@ def validate_requested_model(
                     "message": None,
                 }
             # Auto-correct if the top match is very similar (e.g. typo)
-            auto = _fuzz_process.extract(requested_for_lookup, catalog_models, limit=1, score_cutoff=90.0)
+            auto = get_close_matches(requested_for_lookup, catalog_models, n=1, cutoff=0.9)
             if auto:
                 return {
                     "accepted": True,
                     "persist": True,
                     "recognized": True,
-                    "corrected_model": auto[0][0],
-                    "message": f"Auto-corrected `{requested}` → `{auto[0][0]}`",
+                    "corrected_model": auto[0],
+                    "message": f"Auto-corrected `{requested}` → `{auto[0]}`",
                 }
-            suggestions = _fuzz_process.extract(requested_for_lookup, catalog_models, limit=3, score_cutoff=50.0)
+            suggestions = get_close_matches(requested_for_lookup, catalog_models, n=3, cutoff=0.5)
             suggestion_text = ""
             if suggestions:
-                suggestion_text = "\n  Similar models: " + ", ".join(f"`{s[0]}`" for s in suggestions)
+                suggestion_text = "\n  Similar models: " + ", ".join(f"`{s}`" for s in suggestions)
             provider_label = "OpenAI Codex" if normalized == "openai-codex" else "xAI Grok OAuth (SuperGrok / Premium+)"
             # Plausibility gate (#45006): the soft-accept (#16172 / #19729) exists
             # for entitlement-gated *hidden* slugs the curated listing hasn't
@@ -3942,9 +4025,9 @@ def validate_requested_model(
                 }
             # Auto-correct close matches (case-insensitive)
             catalog_lower_list = list(catalog_lower.keys())
-            auto = _fuzz_process.extract(requested_for_lookup.lower(), catalog_lower_list, limit=1, score_cutoff=90.0)
+            auto = get_close_matches(requested_for_lookup.lower(), catalog_lower_list, n=1, cutoff=0.9)
             if auto:
-                corrected = catalog_lower[auto[0][0]]
+                corrected = catalog_lower[auto[0]]
                 return {
                     "accepted": True,
                     "persist": True,
@@ -3952,10 +4035,10 @@ def validate_requested_model(
                     "corrected_model": corrected,
                     "message": f"Auto-corrected `{requested}` → `{corrected}`",
                 }
-            suggestions = _fuzz_process.extract(requested_for_lookup.lower(), catalog_lower_list, limit=3, score_cutoff=50.0)
+            suggestions = get_close_matches(requested_for_lookup.lower(), catalog_lower_list, n=3, cutoff=0.5)
             suggestion_text = ""
             if suggestions:
-                suggestion_text = "\n  Similar models: " + ", ".join(f"`{catalog_lower[s[0]]}`" for s in suggestions)
+                suggestion_text = "\n  Similar models: " + ", ".join(f"`{catalog_lower[s]}`" for s in suggestions)
             return {
                 "accepted": True,
                 "persist": True,
@@ -3987,19 +4070,19 @@ def validate_requested_model(
                     "recognized": True,
                     "message": None,
                 }
-            auto = _fuzz_process.extract(requested_for_lookup, anthropic_models, limit=1, score_cutoff=90.0)
+            auto = get_close_matches(requested_for_lookup, anthropic_models, n=1, cutoff=0.9)
             if auto:
                 return {
                     "accepted": True,
                     "persist": True,
                     "recognized": True,
-                    "corrected_model": auto[0][0],
-                    "message": f"Auto-corrected `{requested}` → `{auto[0][0]}`",
+                    "corrected_model": auto[0],
+                    "message": f"Auto-corrected `{requested}` → `{auto[0]}`",
                 }
-            suggestions = _fuzz_process.extract(requested, anthropic_models, limit=3, score_cutoff=50.0)
+            suggestions = get_close_matches(requested, anthropic_models, n=3, cutoff=0.5)
             suggestion_text = ""
             if suggestions:
-                suggestion_text = "\n  Similar models: " + ", ".join(f"`{s[0]}`" for s in suggestions)
+                suggestion_text = "\n  Similar models: " + ", ".join(f"`{s}`" for s in suggestions)
             # Accept anyway — Anthropic sometimes gates newer/preview models
             # (e.g. snapshot IDs, early-access releases) behind accounts
             # even though they aren't listed on /v1/models.
@@ -4028,14 +4111,14 @@ def validate_requested_model(
                     "recognized": True,
                     "message": None,
                 }
-            auto = _fuzz_process.extract(requested_for_lookup, api_models, limit=1, score_cutoff=90.0)
+            auto = get_close_matches(requested_for_lookup, api_models, n=1, cutoff=0.9)
             if auto:
                 return {
                     "accepted": True,
                     "persist": True,
                     "recognized": True,
-                    "corrected_model": auto[0][0],
-                    "message": f"Auto-corrected `{requested}` → `{auto[0][0]}`",
+                    "corrected_model": auto[0],
+                    "message": f"Auto-corrected `{requested}` → `{auto[0]}`",
                 }
         # Probe failed or model not found — accept anyway (proxy likely
         # doesn't implement the Anthropic Models API).
@@ -4080,20 +4163,20 @@ def validate_requested_model(
             # endpoints even though it's not in /models).  Warn but allow.
 
             # Auto-correct if the top match is very similar (e.g. typo)
-            auto = _fuzz_process.extract(requested_for_lookup, api_models, limit=1, score_cutoff=90.0)
+            auto = get_close_matches(requested_for_lookup, api_models, n=1, cutoff=0.9)
             if auto:
                 return {
                     "accepted": True,
                     "persist": True,
                     "recognized": True,
-                    "corrected_model": auto[0][0],
-                    "message": f"Auto-corrected `{requested}` → `{auto[0][0]}`",
+                    "corrected_model": auto[0],
+                    "message": f"Auto-corrected `{requested}` → `{auto[0]}`",
                 }
 
-            suggestions = _fuzz_process.extract(requested, api_models, limit=3, score_cutoff=50.0)
+            suggestions = get_close_matches(requested, api_models, n=3, cutoff=0.5)
             suggestion_text = ""
             if suggestions:
-                suggestion_text = "\n  Similar models: " + ", ".join(f"`{s[0]}`" for s in suggestions)
+                suggestion_text = "\n  Similar models: " + ", ".join(f"`{s}`" for s in suggestions)
 
             # Model not in live /v1/models — check the curated catalog
             # before rejecting.  Providers may omit models from their live
@@ -4144,10 +4227,10 @@ def validate_requested_model(
                 }
             # Not in discovered list — still accept (user may have custom
             # inference profiles or cross-account access), but warn.
-            suggestions = _fuzz_process.extract(requested, list(discovered_ids), limit=3, score_cutoff=40.0)
+            suggestions = get_close_matches(requested, list(discovered_ids), n=3, cutoff=0.4)
             suggestion_text = ""
             if suggestions:
-                suggestion_text = "\n  Similar models: " + ", ".join(f"`{s[0]}`" for s in suggestions)
+                suggestion_text = "\n  Similar models: " + ", ".join(f"`{s}`" for s in suggestions)
             return {
                 "accepted": True,
                 "persist": True,
@@ -4185,11 +4268,11 @@ def validate_requested_model(
                 "message": None,
             }
         catalog_lower_list = list(catalog_lower.keys())
-        auto = _fuzz_process.extract(
-            requested_for_lookup.lower(), catalog_lower_list, limit=1, score_cutoff=90.0
+        auto = get_close_matches(
+            requested_for_lookup.lower(), catalog_lower_list, n=1, cutoff=0.9
         )
         if auto:
-            corrected = catalog_lower[auto[0][0]]
+            corrected = catalog_lower[auto[0]]
             return {
                 "accepted": True,
                 "persist": True,
@@ -4197,13 +4280,13 @@ def validate_requested_model(
                 "corrected_model": corrected,
                 "message": f"Auto-corrected `{requested}` → `{corrected}`",
             }
-        suggestions = _fuzz_process.extract(
-            requested_for_lookup.lower(), catalog_lower_list, limit=3, score_cutoff=50.0
+        suggestions = get_close_matches(
+            requested_for_lookup.lower(), catalog_lower_list, n=3, cutoff=0.5
         )
         suggestion_text = ""
         if suggestions:
             suggestion_text = "\n  Similar models: " + ", ".join(
-                f"`{catalog_lower[s[0]]}`" for s in suggestions
+                f"`{catalog_lower[s]}`" for s in suggestions
             )
         return {
             "accepted": True,

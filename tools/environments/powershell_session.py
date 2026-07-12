@@ -58,7 +58,7 @@ def _hide_flags() -> int:
     if not _IS_WINDOWS:
         return 0
     try:
-        return subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
+        return getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | getattr(subprocess, "CREATE_NO_WINDOW", 0)
     except Exception:
         return 0
 

@@ -19,7 +19,7 @@ config yet, or a tool crashed).
 from __future__ import annotations
 
 import argparse
-import orjson
+import json
 import os
 import sys
 from collections import Counter
@@ -30,8 +30,8 @@ def _load_json(path: Path | None) -> list[dict]:
     if path is None or not path.exists() or path.stat().st_size == 0:
         return []
     try:
-        data = orjson.loads(path.read_text())
-    except orjson.JSONDecodeError as exc:
+        data = json.loads(path.read_text())
+    except json.JSONDecodeError as exc:
         print(f"warning: could not parse {path}: {exc}", file=sys.stderr)
         return []
     if not isinstance(data, list):

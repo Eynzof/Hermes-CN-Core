@@ -83,9 +83,8 @@ export function PersistentTerminal({ onAddSelectionToChat }: PersistentTerminalP
 
     let prev: Rect | null = null
     let frame = 0
-    let stableFrames = 0
 
-    const measure = (): boolean => {
+    const tick = () => {
       const r = slot.getBoundingClientRect()
       // floor top/left + ceil right/bottom: overlay always covers the slot's
       // full pixel footprint, so half-pixel rects can't leak page bg through.
@@ -93,71 +92,21 @@ export function PersistentTerminal({ onAddSelectionToChat }: PersistentTerminalP
       const left = Math.floor(r.left)
       const next: Rect = { top, left, width: Math.ceil(r.right) - left, height: Math.ceil(r.bottom) - top }
 
-      if (sameRect(prev, next)) {
-        return false
-      }
+      if (!sameRect(prev, next)) {
+        prev = next
+        setRect(next)
 
-      prev = next
-      setRect(next)
-
-      if (next.width > 0 && next.height > 0) {
-        setReady(true)
-      }
-
-      return true
-    }
-
-    // Track the slot through a transition, then STOP. The old implementation
-    // re-ran getBoundingClientRect() every frame forever, which forces a layout
-    // flush ~60×/sec for the whole app lifetime — a constant main-thread tax
-    // that amplifies any other jank into a perceptible freeze on slower/Windows
-    // machines. Instead, re-measure each frame only until the rect has held
-    // steady for a few frames, then idle until the next resize/scroll/layout
-    // change re-arms the burst.
-    const settle = () => {
-      stableFrames = 0
-
-      if (frame) {
-        return
-      }
-
-      const step = () => {
-        stableFrames = measure() ? 0 : stableFrames + 1
-
-        if (stableFrames >= 3) {
-          frame = 0
-
-          return
+        if (next.width > 0 && next.height > 0) {
+          setReady(true)
         }
-
-        frame = requestAnimationFrame(step)
       }
 
-      frame = requestAnimationFrame(step)
+      frame = requestAnimationFrame(tick)
     }
 
-    measure()
-    settle()
+    tick()
 
-    // Re-arm the burst on the events that can move/resize the slot. A plain
-    // ResizeObserver alone misses position-only shifts (a sibling pane resizing
-    // moves the slot without changing its size), so pair it with window resize
-    // and capture-phase scroll.
-    const reArm = () => settle()
-    const resizeObserver = new ResizeObserver(reArm)
-    resizeObserver.observe(slot)
-    window.addEventListener('resize', reArm)
-    window.addEventListener('scroll', reArm, { capture: true, passive: true })
-
-    return () => {
-      if (frame) {
-        cancelAnimationFrame(frame)
-      }
-
-      resizeObserver.disconnect()
-      window.removeEventListener('resize', reArm)
-      window.removeEventListener('scroll', reArm, { capture: true })
-    }
+    return () => cancelAnimationFrame(frame)
   }, [slot])
 
   const visible = Boolean(rect && rect.width > 0 && rect.height > 0)

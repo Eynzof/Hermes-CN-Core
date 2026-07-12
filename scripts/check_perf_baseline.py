@@ -26,7 +26,7 @@ def parse_args():
 
 
 def load_baseline(path: str) -> dict:
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         return orjson.loads(f.read())
 
 
@@ -34,7 +34,7 @@ def collect_timings(raw_dir: str) -> dict:
     timing_files = glob.glob(os.path.join(raw_dir, "*.json"))
     summaries = {}
     for tf in timing_files:
-        with open(tf) as f:
+        with open(tf, encoding="utf-8") as f:
             data = orjson.loads(f.read())
         summary = data.get("summary", {})
         for section, metrics in summary.items():

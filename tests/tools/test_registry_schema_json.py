@@ -11,6 +11,7 @@ isolated from whatever the process has already discovered.
 """
 
 import orjson
+import json
 
 from tools.registry import ToolRegistry
 

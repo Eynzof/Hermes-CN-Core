@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import argparse
 import os
-from agent.re_compat import re
+import re
 import subprocess
 import sys
 from dataclasses import dataclass

@@ -701,7 +701,7 @@ def _find_pwsh() -> str | None:
             reg_path, _ = winreg.QueryValueEx(key, "")
             if reg_path and os.path.isfile(reg_path):
                 return reg_path
-    except (OSError, FileNotFoundError):
+    except (OSError, FileNotFoundError, ImportError):
         pass
 
     # Strategy 4: LocalAppData (Microsoft Store / winget install)
@@ -1294,7 +1294,7 @@ class LocalEnvironment(BaseEnvironment):
                 )
             self.cwd = safe_cwd
 
-        _popen_kwargs = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW} if _IS_WINDOWS else {}
+        _popen_kwargs = {"creationflags": getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | getattr(subprocess, "CREATE_NO_WINDOW", 0)} if _IS_WINDOWS else {}
 
         proc = subprocess.Popen(
             args,
@@ -1568,7 +1568,7 @@ class LocalEnvironment(BaseEnvironment):
 
         refresh_env_from_registry()
         run_env = _make_run_env(self.env)
-        popen_kwargs = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW} if _IS_WINDOWS else {}
+        popen_kwargs = {"creationflags": getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | getattr(subprocess, "CREATE_NO_WINDOW", 0)} if _IS_WINDOWS else {}
         # Eligibility guarantees no shell metacharacters, so the command is safe
         # to hand to cmd.exe as a single verbatim command line (no injection
         # surface) — building it ourselves avoids subprocess.list2cmdline
@@ -1763,7 +1763,7 @@ class LocalEnvironment(BaseEnvironment):
 
         _popen_cwd = self.cwd
 
-        _popen_kwargs = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW} if _IS_WINDOWS else {}
+        _popen_kwargs = {"creationflags": getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | getattr(subprocess, "CREATE_NO_WINDOW", 0)} if _IS_WINDOWS else {}
 
         proc = subprocess.Popen(
             args,

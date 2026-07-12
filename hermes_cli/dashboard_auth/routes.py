@@ -192,6 +192,14 @@ async def auth_login(request: Request, provider: str, next: str = ""):
             status_code=404,
             detail=f"Provider does not support interactive login: {provider!r}",
         )
+    if getattr(p, "supports_password", False):
+        from urllib.parse import quote
+
+        safe_next = _validate_post_login_target(next)
+        login_url = f"{_prefix(request)}/login"
+        if safe_next:
+            login_url = f"{login_url}?next={quote(safe_next, safe='')}"
+        return RedirectResponse(url=login_url, status_code=302)
 
     try:
         ls = p.start_login(redirect_uri=_redirect_uri(request))
@@ -583,21 +591,17 @@ async def auth_logout(request: Request):
 
 @router.get("/api/auth/me", name="auth_me")
 async def api_auth_me(request: Request):
-    """Return the verified session as JSON. Returns ``{"user": null}``
-    when no authentication is present (caller is anonymous) so the SPA
-    can distinguish "not logged in" from an actual error."""
+    """Return the verified session as JSON. Auth-required (gate enforces)."""
     sess = getattr(request.state, "session", None)
     if sess is None:
-        return {"user": None}
+        raise HTTPException(status_code=401, detail="Unauthorized")
     return {
-        "user": {
-            "user_id": sess.user_id,
-            "email": sess.email,
-            "display_name": sess.display_name,
-            "org_id": sess.org_id,
-            "provider": sess.provider,
-            "expires_at": sess.expires_at,
-        },
+        "user_id": sess.user_id,
+        "email": sess.email,
+        "display_name": sess.display_name,
+        "org_id": sess.org_id,
+        "provider": sess.provider,
+        "expires_at": sess.expires_at,
     }
 
 
@@ -612,7 +616,8 @@ async def api_auth_ws_ticket(request: Request):
 
     Browsers cannot set ``Authorization`` on a WebSocket upgrade, so in
     gated mode the SPA POSTs this endpoint to get a ``?ticket=`` value to
-    append to ``/api/pty``, ``/api/ws``, ``/api/pub``, or ``/api/events``.
+    append to ``/api/pty``, ``/api/console``, ``/api/ws``, ``/api/pub``, or
+    ``/api/events``.
 
     The ticket has a 30-second TTL and is single-use. Calling this endpoint
     multiple times in quick succession (e.g. one ticket per WS) is the

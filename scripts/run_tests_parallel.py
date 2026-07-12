@@ -40,7 +40,7 @@ Exit code: 0 if every file's pytest exited 0; 1 otherwise.
 from __future__ import annotations
 
 import argparse
-import orjson
+import json
 import os
 import subprocess
 import sys
@@ -327,7 +327,7 @@ def _parse_pytest_summary(output: str) -> dict[str, int]:
     Returns a dict with keys ``passed``, ``failed``, ``skipped``, ``errors``,
     ``xfailed``, ``xpassed`` (only keys found in the output are present).
     """
-    from agent.re_compat import re
+    import re
     result: dict[str, int] = {}
     # Walk backwards from the end — the summary line is always near the tail.
     for line in reversed(output.splitlines()):
@@ -461,9 +461,9 @@ def _print_inline_failure(
     print(f"  ╔╍ Failed: {rel} ╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍", flush=True)
     for line in tail.splitlines():
         print(f"  ║ {line}", flush=True)
-    print(f"  ║", flush=True)
+    print("  ║", flush=True)
     print(f"  ║  Repro: {repro}", flush=True)
-    print(f"  ╚╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍", flush=True)
+    print("  ╚╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍", flush=True)
     print(flush=True)
 
 
@@ -478,8 +478,8 @@ def _load_durations(repo_root: Path) -> dict[str, float]:
     if not path.is_file():
         return {}
     try:
-        return orjson.loads(path.read_text())
-    except (orjson.JSONDecodeError, OSError) as e:
+        return json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError) as e:
         print("[ERROR] Failed to load json durations file! {e}")
         return {}
 
@@ -500,7 +500,7 @@ def _save_durations(
         key = _format_file(f, repo_root)
         data[key] = round(t, 3)
     path = repo_root / _DURATIONS_FILE
-    path.write_text(orjson.dumps(data, option=orjson.OPT_INDENT_2 | orjson.OPT_SORT_KEYS).decode('utf-8') + "\n")
+    path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
 
 
 def _compute_lpt_slices(
@@ -766,7 +766,7 @@ def main() -> int:
         files = _discover_files(roots)
 
     if not files:
-        print(f"No test files to run", file=sys.stderr)
+        print("No test files to run", file=sys.stderr)
         return 1
 
     # --generate-slices: compute LPT distribution and emit JSON, then exit.
@@ -785,7 +785,7 @@ def main() -> int:
             ]
         }
         # Print to stdout so the CI step can capture it with $().
-        print(orjson.dumps(matrix).decode('utf-8'))
+        print(json.dumps(matrix, ensure_ascii=False))
         return 0
 
     # Count individual tests per file
@@ -913,14 +913,14 @@ def main() -> int:
         fast = sum(1 for t in times if t < 1.0)
         fast_2s = sum(1 for t in times if t < 2.0)
         print()
-        print(f"=== Per-file subprocess time distribution ===")
+        print("=== Per-file subprocess time distribution ===")
         print(f"  Files:   {len(times)}")
         print(f"  Total subprocess CPU-wall: {total_subproc:.1f}s  (runner wall: {elapsed:.1f}s, parallelism: {args.jobs}x)")
         print(f"  P50: {p50:.2f}s  P90: {p90:.2f}s  P95: {p95:.2f}s  P99: {p99:.2f}s  Max: {max_t:.2f}s")
         print(f"  <1s: {fast} files ({fast/len(times)*100:.0f}%)  <2s: {fast_2s} files ({fast_2s/len(times)*100:.0f}%)")
         # Top 10 slowest files — likely the ones dragging the run.
         slowest = sorted(file_times, key=lambda x: x[1], reverse=True)[:10]
-        print(f"  Top 10 slowest:")
+        print("  Top 10 slowest:")
         for f, t in slowest:
             print(f"    {t:>6.2f}s  {_format_file(f, repo_root)}")
 

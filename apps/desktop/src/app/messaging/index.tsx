@@ -5,25 +5,26 @@ import { PageLoader } from '@/components/page-loader'
 import { StatusDot, type StatusTone } from '@/components/status-dot'
 import { Button } from '@/components/ui/button'
 import { DisclosureCaret } from '@/components/ui/disclosure-caret'
+import { ErrorBanner } from '@/components/ui/error-state'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import {
   getMessagingPlatforms,
-  type MessagingConflictDetail,
   type MessagingEnvVarInfo,
   type MessagingPlatformInfo,
-  restartGateway,
   updateMessagingPlatform
 } from '@/hermes'
 import { type Translations, useI18n } from '@/i18n'
 import { openExternalLink } from '@/lib/external-link'
-import { AlertTriangle, ExternalLink, Save, Trash2 } from '@/lib/icons'
+import { ExternalLink, Save, Trash2 } from '@/lib/icons'
+import { normalize } from '@/lib/text'
 import { cn } from '@/lib/utils'
 import { notify, notifyError } from '@/store/notifications'
 import { runGatewayRestart } from '@/store/system-actions'
 
 import { useRefreshHotkey } from '../hooks/use-refresh-hotkey'
 import { useRouteEnumParam } from '../hooks/use-route-enum-param'
+import { DetailColumn, ListColumn, MasterDetail } from '../master-detail'
 import { PageSearchShell } from '../page-search-shell'
 import { CREDENTIAL_CONTROL_CLASS } from '../settings/credential-key-ui'
 import { ListRow } from '../settings/primitives'
@@ -173,7 +174,7 @@ export function MessagingView({ setStatusbarItemGroup: _setStatusbarItemGroup, .
       return []
     }
 
-    const q = query.trim().toLowerCase()
+    const q = normalize(query)
 
     if (!q) {
       return platforms
@@ -268,14 +269,15 @@ export function MessagingView({ setStatusbarItemGroup: _setStatusbarItemGroup, .
       {...props}
       onSearchChange={setQuery}
       searchHidden={(platforms?.length ?? 0) === 0}
+      searchHints={platforms?.slice(0, 5).map(platform => t.common.tryHint(platform.name.toLowerCase()))}
       searchPlaceholder={m.search}
       searchValue={query}
     >
       {!platforms ? (
         <PageLoader label={m.loading} />
       ) : (
-        <div className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[14rem_minmax(0,1fr)]">
-          <aside className="min-h-0 overflow-y-auto p-2">
+        <MasterDetail>
+          <ListColumn>
             <ul className="space-y-1">
               {visiblePlatforms.map(platform => (
                 <li key={platform.id}>
@@ -287,9 +289,21 @@ export function MessagingView({ setStatusbarItemGroup: _setStatusbarItemGroup, .
                 </li>
               ))}
             </ul>
-          </aside>
+          </ListColumn>
 
-          <main className="min-h-0 overflow-hidden">
+          <DetailColumn
+            actionBar={
+              selected && (
+                <PlatformActionBar
+                  hasEdits={Object.keys(trimEdits(edits[selected.id] || {})).length > 0}
+                  onSave={() => void handleSave(selected)}
+                  onToggle={enabled => void handleToggle(selected, enabled)}
+                  platform={selected}
+                  saving={saving}
+                />
+              )
+            }
+          >
             {selected && (
               <PlatformDetail
                 edits={edits[selected.id] || {}}
@@ -303,15 +317,12 @@ export function MessagingView({ setStatusbarItemGroup: _setStatusbarItemGroup, .
                     }
                   }))
                 }
-                onRefresh={() => void refreshPlatforms()}
-                onSave={() => void handleSave(selected)}
-                onToggle={enabled => void handleToggle(selected, enabled)}
                 platform={selected}
                 saving={saving}
               />
             )}
-          </main>
-        </div>
+          </DetailColumn>
+        </MasterDetail>
       )}
     </PageSearchShell>
   )
@@ -329,10 +340,8 @@ function PlatformRow({
   return (
     <button
       className={cn(
-        'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors',
-        active
-          ? 'bg-(--ui-row-active-background) text-foreground'
-          : 'text-(--ui-text-secondary) hover:bg-(--ui-row-hover-background) hover:text-foreground'
+        'row-hover flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:text-foreground',
+        active ? 'bg-(--ui-row-active-background) text-foreground' : 'text-(--ui-text-secondary)'
       )}
       onClick={onSelect}
       type="button"
@@ -350,18 +359,12 @@ function PlatformDetail({
   edits,
   onClear,
   onEdit,
-  onRefresh,
-  onSave,
-  onToggle,
   platform,
   saving
 }: {
   edits: Record<string, string>
   onClear: (key: string) => void
   onEdit: (key: string, value: string) => void
-  onRefresh: () => void
-  onSave: () => void
-  onToggle: (enabled: boolean) => void
   platform: MessagingPlatformInfo
   saving: string | null
 }) {
@@ -369,167 +372,169 @@ function PlatformDetail({
   const m = t.messaging
   const [showAdvanced, setShowAdvanced] = useState(false)
 
-  const hasEdits = Object.keys(trimEdits(edits)).length > 0
   const requiredFields = platform.env_vars.filter(field => field.required)
   const optionalFields = platform.env_vars.filter(field => !field.required && !fieldCopy(field, m).advanced)
   const advancedFields = platform.env_vars.filter(field => !field.required && fieldCopy(field, m).advanced)
   const hiddenCount = advancedFields.length
+
+  return (
+    <>
+      <header className="flex items-start gap-3">
+        <PlatformAvatar platformId={platform.id} platformName={platform.name} />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="min-w-0 truncate text-[0.9375rem] font-semibold tracking-tight">{platform.name}</h3>
+            <StatePill tone={stateTone(platform)}>{stateLabel(platform.state, m)}</StatePill>
+            {/* Resting states earn no pill — only actionable ones. */}
+            {!platform.configured && <SetupPill active={false}>{m.needsSetup}</SetupPill>}
+            {!platform.gateway_running && <SetupPill active={false}>{m.gatewayStopped}</SetupPill>}
+          </div>
+          <p className="mt-1 text-[length:var(--conversation-caption-font-size)] leading-(--conversation-caption-line-height) text-(--ui-text-tertiary)">
+            {platform.description}
+          </p>
+          <PlatformHint platform={platform} />
+        </div>
+      </header>
+
+      {platform.error_message && <ErrorBanner>{platform.error_message}</ErrorBanner>}
+
+      <section>
+        <SectionTitle>{m.getCredentials}</SectionTitle>
+        <p className="mt-1 text-[length:var(--conversation-caption-font-size)] leading-(--conversation-caption-line-height) text-(--ui-text-tertiary)">
+          {introCopy(platform, m)}
+        </p>
+        {platform.docs_url && (
+          <div className="mt-3">
+            <Button asChild size="sm" variant="textStrong">
+              <a
+                href={platform.docs_url}
+                onClick={event => {
+                  // Route through the validated external opener instead of
+                  // letting Electron resolve the anchor. A packaged build's
+                  // empty/relative href resolves to the app's own
+                  // index.html file path, which shell.openPath then fails to
+                  // open ("file not found"). Plugin platforms (Teams, etc.)
+                  // ship no docs_url, so this guard + handler keeps the
+                  // button from ever pointing at a local bundle path.
+                  event.preventDefault()
+                  openExternalLink(platform.docs_url)
+                }}
+                rel="noreferrer"
+                target="_blank"
+              >
+                {m.openSetupGuide}
+                <ExternalLink className="size-3.5" />
+              </a>
+            </Button>
+          </div>
+        )}
+      </section>
+
+      <section>
+        <SectionTitle>{m.required}</SectionTitle>
+        <div className="mt-3 grid gap-1">
+          {requiredFields.length > 0 ? (
+            requiredFields.map(field => (
+              <MessagingField
+                edits={edits}
+                field={field}
+                key={field.key}
+                onClear={onClear}
+                onEdit={onEdit}
+                saving={saving}
+              />
+            ))
+          ) : (
+            <p className="text-[length:var(--conversation-caption-font-size)] leading-(--conversation-caption-line-height) text-(--ui-text-tertiary)">
+              {m.noTokenNeeded}
+            </p>
+          )}
+        </div>
+      </section>
+
+      {optionalFields.length > 0 && (
+        <section>
+          <SectionTitle>{m.recommended}</SectionTitle>
+          <div className="mt-3 grid gap-1">
+            {optionalFields.map(field => (
+              <MessagingField
+                edits={edits}
+                field={field}
+                key={field.key}
+                onClear={onClear}
+                onEdit={onEdit}
+                saving={saving}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {hiddenCount > 0 && (
+        <section>
+          <button
+            className="flex w-full items-center justify-between gap-2 py-0.5 text-left text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground transition-colors hover:text-foreground"
+            onClick={() => setShowAdvanced(value => !value)}
+            type="button"
+          >
+            <span>{m.advanced(hiddenCount)}</span>
+            <DisclosureCaret open={showAdvanced} size="0.875rem" />
+          </button>
+          {showAdvanced && (
+            <div className="mt-3 grid gap-1">
+              {advancedFields.map(field => (
+                <MessagingField
+                  edits={edits}
+                  field={field}
+                  key={field.key}
+                  onClear={onClear}
+                  onEdit={onEdit}
+                  saving={saving}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+    </>
+  )
+}
+
+function PlatformActionBar({
+  hasEdits,
+  onSave,
+  onToggle,
+  platform,
+  saving
+}: {
+  hasEdits: boolean
+  onSave: () => void
+  onToggle: (enabled: boolean) => void
+  platform: MessagingPlatformInfo
+  saving: string | null
+}) {
+  const { t } = useI18n()
+  const m = t.messaging
   const isSavingEnv = saving === `env:${platform.id}`
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-2xl space-y-5 px-5 py-4">
-          <header className="flex items-start gap-3">
-            <PlatformAvatar platformId={platform.id} platformName={platform.name} />
-            <div className="min-w-0 flex-1">
-              <h3 className="text-[0.9375rem] font-semibold tracking-tight">{platform.name}</h3>
-              <p className="mt-1 text-[length:var(--conversation-caption-font-size)] leading-(--conversation-caption-line-height) text-(--ui-text-tertiary)">
-                {platform.description}
-              </p>
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <StatePill tone={stateTone(platform)}>{stateLabel(platform.state, m)}</StatePill>
-                <SetupPill active={platform.configured}>
-                  {platform.configured ? m.credentialsSet : m.needsSetup}
-                </SetupPill>
-                {!platform.gateway_running && <SetupPill active={false}>{m.gatewayStopped}</SetupPill>}
-              </div>
-              <PlatformHint platform={platform} />
-            </div>
-          </header>
+    <>
+      <Switch
+        aria-label={platform.enabled ? m.disableAria(platform.name) : m.enableAria(platform.name)}
+        checked={platform.enabled}
+        disabled={saving === `enabled:${platform.id}`}
+        onCheckedChange={onToggle}
+        size="xs"
+      />
 
-          {isGatewayConflict(platform.error_code) ? (
-            <GatewayConflictNotice m={m} onRefresh={onRefresh} platform={platform} />
-          ) : (
-            platform.error_message && (
-              <div className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-[length:var(--conversation-caption-font-size)] leading-(--conversation-caption-line-height) text-destructive">
-                <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-                <span>{platform.error_message}</span>
-              </div>
-            )
-          )}
-
-          <section>
-            <SectionTitle>{m.getCredentials}</SectionTitle>
-            <p className="mt-1 text-[length:var(--conversation-caption-font-size)] leading-(--conversation-caption-line-height) text-(--ui-text-tertiary)">
-              {introCopy(platform, m)}
-            </p>
-            {platform.docs_url && (
-              <div className="mt-3">
-                <Button asChild size="sm" variant="textStrong">
-                  <a
-                    href={platform.docs_url}
-                    onClick={event => {
-                      // Route through the validated external opener instead of
-                      // letting Electron resolve the anchor. A packaged build's
-                      // empty/relative href resolves to the app's own
-                      // index.html file path, which shell.openPath then fails to
-                      // open ("file not found"). Plugin platforms (Teams, etc.)
-                      // ship no docs_url, so this guard + handler keeps the
-                      // button from ever pointing at a local bundle path.
-                      event.preventDefault()
-                      openExternalLink(platform.docs_url)
-                    }}
-                    rel="noreferrer"
-                    target="_blank"
-                  >
-                    {m.openSetupGuide}
-                    <ExternalLink className="size-3.5" />
-                  </a>
-                </Button>
-              </div>
-            )}
-          </section>
-
-          <section>
-            <SectionTitle>{m.required}</SectionTitle>
-            <div className="mt-3 grid gap-1">
-              {requiredFields.length > 0 ? (
-                requiredFields.map(field => (
-                  <MessagingField
-                    edits={edits}
-                    field={field}
-                    key={field.key}
-                    onClear={onClear}
-                    onEdit={onEdit}
-                    saving={saving}
-                  />
-                ))
-              ) : (
-                <p className="text-[length:var(--conversation-caption-font-size)] leading-(--conversation-caption-line-height) text-(--ui-text-tertiary)">
-                  {m.noTokenNeeded}
-                </p>
-              )}
-            </div>
-          </section>
-
-          {optionalFields.length > 0 && (
-            <section>
-              <SectionTitle>{m.recommended}</SectionTitle>
-              <div className="mt-3 grid gap-1">
-                {optionalFields.map(field => (
-                  <MessagingField
-                    edits={edits}
-                    field={field}
-                    key={field.key}
-                    onClear={onClear}
-                    onEdit={onEdit}
-                    saving={saving}
-                  />
-                ))}
-              </div>
-            </section>
-          )}
-
-          {hiddenCount > 0 && (
-            <section>
-              <button
-                className="flex w-full items-center justify-between gap-2 py-0.5 text-left text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground transition-colors hover:text-foreground"
-                onClick={() => setShowAdvanced(value => !value)}
-                type="button"
-              >
-                <span>{m.advanced(hiddenCount)}</span>
-                <DisclosureCaret open={showAdvanced} size="0.875rem" />
-              </button>
-              {showAdvanced && (
-                <div className="mt-3 grid gap-1">
-                  {advancedFields.map(field => (
-                    <MessagingField
-                      edits={edits}
-                      field={field}
-                      key={field.key}
-                      onClear={onClear}
-                      onEdit={onEdit}
-                      saving={saving}
-                    />
-                  ))}
-                </div>
-              )}
-            </section>
-          )}
-        </div>
+      <div className="ml-auto flex items-center gap-2">
+        {hasEdits && <span className="text-xs text-muted-foreground">{m.unsavedChanges}</span>}
+        <Button disabled={!hasEdits || isSavingEnv} onClick={onSave} size="sm">
+          <Save />
+          {isSavingEnv ? m.saving : m.saveChanges}
+        </Button>
       </div>
-
-      <footer className="bg-(--ui-chat-surface-background) px-5 py-2.5">
-        <div className="mx-auto flex max-w-2xl flex-wrap items-center gap-2">
-          <Switch
-            aria-label={platform.enabled ? m.disableAria(platform.name) : m.enableAria(platform.name)}
-            checked={platform.enabled}
-            disabled={saving === `enabled:${platform.id}`}
-            onCheckedChange={onToggle}
-            size="xs"
-          />
-
-          <div className="ml-auto flex items-center gap-2">
-            {hasEdits && <span className="text-xs text-muted-foreground">{m.unsavedChanges}</span>}
-            <Button disabled={!hasEdits || isSavingEnv} onClick={onSave} size="sm">
-              <Save />
-              {isSavingEnv ? m.saving : m.saveChanges}
-            </Button>
-          </div>
-        </div>
-      </footer>
-    </div>
+    </>
   )
 }
 
@@ -636,80 +641,6 @@ function MessagingField({
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return <h4 className="text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{children}</h4>
-}
-
-// A `gateway_conflict_*` error_code means another Hermes Agent (a foreign
-// Windows service, or a second/WSL install over the shared loopback) is
-// blocking the desktop from starting the gateway with the params just saved
-// (issue #168). These get a richer prompt than a plain error string.
-function isGatewayConflict(errorCode: null | string | undefined): boolean {
-  return typeof errorCode === 'string' && errorCode.startsWith('gateway_conflict_')
-}
-
-function GatewayConflictNotice({
-  m,
-  onRefresh,
-  platform
-}: {
-  m: Translations['messaging']
-  onRefresh: () => void
-  platform: MessagingPlatformInfo
-}) {
-  const [busy, setBusy] = useState(false)
-  const [showHelp, setShowHelp] = useState(false)
-  const detail: MessagingConflictDetail = platform.error_detail || {}
-  const canTakeover = detail.can_takeover === true
-  const isPort = detail.kind === 'port'
-
-  const body = isPort ? m.conflictPortBody : m.conflictServiceBody
-  const helpSteps = isPort ? m.conflictHelpPort : m.conflictHelpService
-
-  async function handleTakeover() {
-    setBusy(true)
-    try {
-      await restartGateway(true)
-      notify({ kind: 'success', title: m.takeoverStarted, message: m.restartToReconnect })
-    } catch (err) {
-      notifyError(err, m.takeoverFailed)
-    } finally {
-      setBusy(false)
-      onRefresh()
-    }
-  }
-
-  return (
-    <div className="space-y-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-3 text-[length:var(--conversation-caption-font-size)] leading-(--conversation-caption-line-height)">
-      <div className="flex items-start gap-2 text-amber-700 dark:text-amber-400">
-        <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-        <div className="min-w-0 space-y-1">
-          <p className="font-semibold">{m.conflictTitle}</p>
-          <p className="text-(--ui-text-secondary)">{body}</p>
-          {platform.error_message && (
-            <p className="break-words text-[0.66rem] text-(--ui-text-tertiary)">{platform.error_message}</p>
-          )}
-        </div>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
-        <Button disabled={!canTakeover || busy} onClick={() => void handleTakeover()} size="sm" variant="textStrong">
-          {busy ? m.takingOver : m.forceTakeover}
-        </Button>
-        <Button onClick={() => setShowHelp(value => !value)} size="sm" variant="text">
-          {m.howToStopOthers}
-        </Button>
-      </div>
-
-      {!canTakeover && <p className="text-[0.66rem] text-(--ui-text-tertiary)">{m.conflictTakeoverUnavailable}</p>}
-
-      {showHelp && (
-        <ul className="ml-4 list-disc space-y-1 text-(--ui-text-secondary)">
-          {helpSteps.map(step => (
-            <li key={step}>{step}</li>
-          ))}
-        </ul>
-      )}
-    </div>
-  )
 }
 
 function PlatformHint({ platform }: { platform: MessagingPlatformInfo }) {

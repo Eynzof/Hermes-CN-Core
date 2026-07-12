@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import mimetypes
 
+import hermes_cli.web_server  # noqa: F401  — performs the add_type registration at import
+
 
 def test_js_mime_type_registered():
     """Verify that ``.js`` files map to ``application/javascript``."""

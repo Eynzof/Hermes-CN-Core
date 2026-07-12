@@ -74,8 +74,7 @@ def format_date(ts: Optional[float]) -> str:
         return "unknown"
     try:
         dt = datetime.fromtimestamp(float(ts), tz=timezone.utc)
-        day = dt.strftime("%d")
-        return dt.strftime(f"{day.lstrip('0')} %b %Y")
+        return f"{dt.day} {dt.strftime('%b %Y')}"
     except (ValueError, OSError, OverflowError):
         return "unknown"
 
@@ -257,8 +256,7 @@ def _period_key(ts: float, granularity: str) -> tuple[int, ...]:
 def _period_label(ts: float, granularity: str) -> str:
     dt = datetime.fromtimestamp(ts, tz=timezone.utc)
     if granularity == "day":
-        day = dt.strftime("%d")
-        return dt.strftime(f"{day.lstrip('0')} %b")
+        return f"{dt.day} {dt.strftime('%b')}"
     if granularity == "month":
         return dt.strftime("%b %Y")
     return dt.strftime("%Y")

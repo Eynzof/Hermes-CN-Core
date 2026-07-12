@@ -18,7 +18,7 @@ contains pre-baked JSON dumps, we read those (preserves behaviour from before
 the unified index existed).
 """
 
-import orjson
+import json
 import os
 from collections import Counter
 from datetime import datetime, timezone
@@ -354,8 +354,8 @@ def extract_unified_index_skills():
 
     try:
         with open(UNIFIED_INDEX_PATH, encoding="utf-8") as f:
-            data = orjson.loads(f.read())
-    except (orjson.JSONDecodeError, OSError) as e:
+            data = json.loads(f.read())
+    except (json.JSONDecodeError, OSError) as e:
         print(f"[extract-skills] Failed to read unified index: {e}")
         return None, None
 
@@ -455,8 +455,8 @@ def extract_legacy_cache_skills():
         filepath = os.path.join(LEGACY_INDEX_CACHE_DIR, filename)
         try:
             with open(filepath, encoding="utf-8") as f:
-                data = orjson.loads(f.read())
-        except (orjson.JSONDecodeError, OSError):
+                data = json.loads(f.read())
+        except (json.JSONDecodeError, OSError):
             continue
 
         stem = filename.replace(".json", "")
@@ -649,7 +649,7 @@ def main():
     with open(OUTPUT, "w", encoding="utf-8") as f:
         # Minified — file is served over the wire, not read by humans.
         # At 50k+ skills the indented version was ~30% larger.
-        f.write(orjson.dumps(all_skills).decode('utf-8'))
+        f.write(json.dumps(all_skills, ensure_ascii=False))
 
     # Sidecar meta file so the page can render a "Last refreshed" badge
     # without changing the shape of skills.json.
@@ -665,7 +665,7 @@ def main():
     if index_meta:
         meta.update(index_meta)
     with open(META_OUTPUT, "w", encoding="utf-8") as f:
-        f.write(orjson.dumps(meta).decode('utf-8'))
+        f.write(json.dumps(meta, ensure_ascii=False))
 
     print(f"Extracted {len(all_skills)} skills to {OUTPUT}")
     print(f"  {len(local)} local ({sum(1 for s in local if s['source'] == 'built-in')} built-in, "

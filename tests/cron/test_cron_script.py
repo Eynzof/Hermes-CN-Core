@@ -8,9 +8,11 @@ Tests cover:
 """
 
 import orjson
+import json
 import os
 import sys
 import textwrap
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -84,6 +86,19 @@ class TestJobScriptField:
 
         updated = update_job(job["id"], {"script": None})
         assert updated.get("script") is None
+
+
+def test_cronjob_tool_rejects_stale_past_one_shot(cron_env, monkeypatch):
+    from tools.cronjob_tools import cronjob
+
+    now = datetime(2026, 3, 18, 4, 30, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr("cron.jobs._hermes_now", lambda: now)
+    stale = (now - timedelta(minutes=5)).isoformat()
+
+    result = json.loads(cronjob(action="create", prompt="Too late", schedule=stale))
+
+    assert result["success"] is False
+    assert "past and cannot be scheduled" in result["error"]
 
 
 class TestRunJobScript:
@@ -189,7 +204,7 @@ class TestRunJobScript:
         script.write_text(textwrap.dedent("""\
             import json
             data = {"new_prs": [{"number": 42, "title": "Fix bug"}]}
-            print(orjson.dumps(data, option=orjson.OPT_INDENT_2).decode('utf-8'))
+            print(json.dumps(data, indent=2))
         """))
 
         success, output = _run_job_script(str(script))

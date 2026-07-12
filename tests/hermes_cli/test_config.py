@@ -1987,3 +1987,30 @@ class TestCodexAppServerAutoConfig:
             assert raw["compression"]["codex_app_server_auto"] == "hermes"
 
 
+
+
+class TestTerminalConfigEnvBridge:
+    """terminal.* config keys are bridged to the env vars terminal tools read."""
+
+    def test_terminal_shell_bridges_to_hermes_shell_type(self, monkeypatch):
+        from hermes_cli.config import (
+            apply_terminal_config_to_env,
+            TERMINAL_CONFIG_ENV_MAP,
+        )
+
+        assert TERMINAL_CONFIG_ENV_MAP["shell"] == "HERMES_SHELL_TYPE"
+
+        monkeypatch.setattr(
+            "hermes_cli.config.read_raw_config",
+            lambda: {"terminal": {"shell": "pwsh"}},
+        )
+        env = {}
+        result = apply_terminal_config_to_env(
+            env=env,
+            config={"terminal": {"shell": "pwsh"}},
+            override=True,
+        )
+        assert result["HERMES_SHELL_TYPE"] == "pwsh"
+
+    def test_terminal_shell_default_in_default_config(self):
+        assert DEFAULT_CONFIG["terminal"]["shell"] == "auto"

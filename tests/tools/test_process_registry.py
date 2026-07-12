@@ -2029,3 +2029,120 @@ class TestHandleProcessRedaction:
         monkeypatch.setattr(pr, "process_registry", reg)
         out = orjson.loads(pr._handle_process({"action": "log", "session_id": sess.id}))
         assert "zzzopaque1234567890abcdef" in out["output"]
+
+
+# =========================================================================
+# Spawn shell selection
+# =========================================================================
+
+class TestSpawnLocalShellSelection:
+    """Regression tests for background terminal shell parity on Windows."""
+
+    def test_spawn_local_windows_uses_resolve_shell(self, monkeypatch, registry):
+        """On Windows, non-PTY background spawn uses PowerShell via _resolve_shell."""
+        monkeypatch.setattr("tools.process_registry._IS_WINDOWS", True)
+        monkeypatch.setattr(
+            "tools.process_registry._resolve_shell",
+            lambda: ("pwsh", r"C:\Program Files\PowerShell\7\pwsh.exe"),
+        )
+        monkeypatch.setattr(
+            "tools.process_registry._resolve_safe_cwd",
+            lambda cwd: cwd,
+        )
+
+        captured = {}
+
+        def fake_popen(cmd, **kwargs):
+            captured["cmd"] = cmd
+            captured["kwargs"] = kwargs
+            proc = MagicMock()
+            proc.pid = 12345
+            proc.stdout = iter([])
+            proc.stdin = MagicMock()
+            proc.poll.return_value = None
+            return proc
+
+        fake_thread = MagicMock()
+        with patch("subprocess.Popen", side_effect=fake_popen), \
+             patch("threading.Thread", return_value=fake_thread), \
+             patch.object(registry, "_write_checkpoint"):
+            session = registry.spawn_local(
+                "echo hello",
+                cwd=r"D:\test",
+                cwd_file="D:/tmp/hermes-cwd.txt",
+            )
+
+        assert session.pid == 12345
+        assert captured["cmd"][0] == r"C:\Program Files\PowerShell\7\pwsh.exe"
+        assert "-NoProfile" in captured["cmd"]
+        assert "-NonInteractive" in captured["cmd"]
+        assert "-ExecutionPolicy" in captured["cmd"]
+        assert "Bypass" in captured["cmd"]
+        assert "-Command" in captured["cmd"]
+        ps_script = captured["cmd"][captured["cmd"].index("-Command") + 1]
+        assert "Invoke-Expression 'echo hello'" in ps_script
+        assert "Set-Location -LiteralPath 'D:\\test'" in ps_script
+        assert "D:/tmp/hermes-cwd.txt" in ps_script
+        assert captured["kwargs"]["env"]["PYTHONUNBUFFERED"] == "1"
+
+    def test_spawn_local_windows_pty_uses_powershell(self, monkeypatch, registry):
+        """On Windows, PTY background spawn uses PowerShell via winpty."""
+        monkeypatch.setattr("tools.process_registry._IS_WINDOWS", True)
+        monkeypatch.setattr(
+            "tools.process_registry._resolve_shell",
+            lambda: ("pwsh", r"C:\Program Files\PowerShell\7\pwsh.exe"),
+        )
+
+        captured = {}
+
+        def fake_spawn_windows_pty_local(*args, **kwargs):
+            captured["kwargs"] = kwargs
+            fake_pty = MagicMock()
+            fake_pty.pid = 99999
+            return fake_pty
+
+        monkeypatch.setattr(
+            registry,
+            "_spawn_windows_pty_local",
+            fake_spawn_windows_pty_local,
+        )
+
+        fake_thread = MagicMock()
+        with patch("threading.Thread", return_value=fake_thread), \
+             patch.object(registry, "_write_checkpoint"):
+            session = registry.spawn_local(
+                "python",
+                cwd=r"D:\test",
+                use_pty=True,
+            )
+
+        assert session.pid == 99999
+        assert captured["kwargs"]["shell_type"] == "pwsh"
+        assert captured["kwargs"]["shell_path"] == r"C:\Program Files\PowerShell\7\pwsh.exe"
+        assert captured["kwargs"]["command"] == "python"
+
+    def test_spawn_local_posix_unchanged(self, monkeypatch, registry):
+        """On POSIX, background spawn keeps using _find_shell + -lic."""
+        monkeypatch.setattr("tools.process_registry._IS_WINDOWS", False)
+        monkeypatch.setattr("tools.process_registry._find_shell", lambda: "/bin/zsh")
+
+        captured = {}
+
+        def fake_popen(cmd, **kwargs):
+            captured["cmd"] = cmd
+            captured["kwargs"] = kwargs
+            proc = MagicMock()
+            proc.pid = 11111
+            proc.stdout = iter([])
+            proc.stdin = MagicMock()
+            proc.poll.return_value = None
+            return proc
+
+        fake_thread = MagicMock()
+        with patch("subprocess.Popen", side_effect=fake_popen), \
+             patch("threading.Thread", return_value=fake_thread), \
+             patch.object(registry, "_write_checkpoint"):
+            registry.spawn_local("echo hi", cwd="/tmp")
+
+        assert captured["cmd"] == ["/bin/zsh", "-lic", "set +m; echo hi"]
+        assert captured["kwargs"]["env"]["PYTHONUNBUFFERED"] == "1"

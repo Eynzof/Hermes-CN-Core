@@ -204,7 +204,7 @@ while [[ $# -gt 0 ]]; do
             echo "  small and ensures the command is on PATH for all shells."
             echo "  Existing installs at \$HERMES_HOME/hermes-agent are preserved in-place."
             echo "  --ensure DEPS  Install only specified deps (comma-separated)"
-            echo "                   Supported: node, browser, ripgrep, ffmpeg"
+            echo "                   Supported: node, browser, ripgrep, ffmpeg, coreutils (macOS only)"
             echo "                   Does NOT clone repo or create venv"
             echo "  --postinstall  Run post-install setup only (for pip users)"
             echo "                   Installs optional deps + runs hermes setup"
@@ -1102,7 +1102,19 @@ install_system_packages() {
 
     # ── macOS: brew ──
     if [ "$OS" = "macos" ]; then
-        if command -v brew &> /dev/null; then
+        # On macOS, add coreutils to the brew install list if not already present
+        if command -v gcat &>/dev/null || command -v cat &>/dev/null; then
+            :  # coreutils already available
+        else
+            log_info "Checking GNU coreutils (POSIX CLI tools)..."
+            # On macOS, the system cat is BSD-based; GNU coreutils provides
+            # gcat, gcp, etc. with a 'g' prefix via Homebrew.
+            if command -v brew &>/dev/null; then
+                pkgs+=("coreutils")
+            fi
+        fi
+        
+        if command -v brew &>/dev/null; then
             log_info "Installing ${pkgs[*]} via Homebrew..."
             if brew install "${pkgs[@]}"; then
                 [ "$need_ripgrep" = true ] && HAS_RIPGREP=true && log_success "ripgrep installed"
@@ -2619,6 +2631,11 @@ ensure_mode() {
                     HAS_RIPGREP=true
                     install_system_packages
                 fi
+                ;;
+            coreutils)
+                # On Linux/macOS, coreutils is provided by the system;
+                # on macOS we can also install GNU coreutils via brew.
+                log_info "Coreutils are provided by the system on Linux/macOS."
                 ;;
             *)
                 log_warn "Unknown dependency: $dep"

@@ -80,7 +80,7 @@ For native Windows testing, the repository also includes the PowerShell installe
 iex (irm https://raw.githubusercontent.com/Eynzof/Hermes-CN-Core/main/scripts/install.ps1)
 ```
 
-The installer handles uv, Python 3.11, Node.js, ripgrep, ffmpeg, and a portable Git Bash. If Git is already installed, it uses the existing installation; otherwise it downloads an isolated MinGit under `%LOCALAPPDATA%\hermes\git` without requiring administrator permission.
+The installer handles uv, Python 3.11, Node.js, ripgrep, ffmpeg, and a portable Git Bash. On Windows, the installer also installs Microsoft Coreutils (providing POSIX CLI tools like `cat`, `cp`, `mv`, `ls`, `sort`, `wc`) for cross-platform script and skill compatibility. If Git is already installed, it uses the existing installation; otherwise it downloads an isolated MinGit under `%LOCALAPPDATA%\hermes\git` without requiring administrator permission.
 
 > **Android / Termux:** The tested manual path is documented in the [Termux guide](https://hermes-agent.nousresearch.com/docs/getting-started/termux). On Termux, Hermes installs a curated `.[termux]` extra because the full `.[all]` extra currently pulls Android-incompatible voice dependencies.
 >

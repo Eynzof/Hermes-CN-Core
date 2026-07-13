@@ -37,6 +37,7 @@ _DEP_CHECKS = {
     ),
     "ripgrep": lambda: _find_rg() is not None and _has_ripgrepy(),
     "ffmpeg": lambda: shutil.which("ffmpeg") is not None,
+    "coreutils": lambda: _check_coreutils(),
 }
 
 _DEP_DESCRIPTIONS = {
@@ -44,6 +45,7 @@ _DEP_DESCRIPTIONS = {
     "browser": "Browser engine (Chromium, for web browsing tools)",
     "ripgrep": "ripgrep + ripgrepy (fast file search)",
     "ffmpeg": "ffmpeg (TTS voice messages)",
+    "coreutils": "Microsoft Coreutils (POSIX CLI tools on Windows)",
 }
 
 
@@ -117,6 +119,25 @@ def _has_hermes_agent_browser() -> bool:
         (home / "node" / "bin" / "agent-browser").is_file()
         or (home / "node_modules" / ".bin" / "agent-browser").is_file()
     )
+
+
+def _check_coreutils() -> bool:
+    """Check if coreutils (cat.exe) is available.
+
+    On Windows, checks the Hermes-managed install directory first,
+    then falls back to PATH. On Linux/macOS, cat is always present
+    as part of the system coreutils package; also accept gcat
+    (macOS with GNU coreutils via Homebrew).
+    """
+    if _IS_WINDOWS:
+        from hermes_constants import get_hermes_home
+        managed_cat = get_hermes_home() / "coreutils" / "bin" / "cat.exe"
+        if managed_cat.exists():
+            return True
+        return shutil.which("cat.exe") is not None
+    # Linux/macOS: system cat is always available; also check for
+    # GNU coreutils prefix (gcat) on macOS via Homebrew.
+    return shutil.which("cat") is not None or shutil.which("gcat") is not None
 
 
 def _find_install_script(

@@ -3848,64 +3848,47 @@ def browser_get_images(task_id: Optional[str] = None) -> str:
         from tools.browser_camofox import camofox_get_images
         return camofox_get_images(task_id)
 
-    effective_task_id = _last_session_key(task_id or "default")
+    # Use _browser_eval() instead of raw _run_browser_command("eval", ...) because
+    # the former prefers the CDP Supervisor path (persistent WebSocket) over the
+    # agent-browser CLI subprocess path. The CLI subprocess path has multi-line JS
+    # issues ("SyntaxError: Unexpected end of input") and is slower.
+    #
+    # The JS returns JSON.stringify(...) so the result is a JSON string we parse.
+    js_code = (
+        "JSON.stringify("
+        "[...document.images].map(img=>({src:img.src,alt:img.alt||'',"
+        "width:img.naturalWidth,height:img.naturalHeight}))"
+        ".filter(img=>img.src&&!img.src.startsWith('data:'))"
+        ")"
+    )
+    eval_result = _browser_eval(js_code, task_id)
+    parsed_eval = orjson.loads(eval_result)
 
-    # Use eval to run JavaScript that extracts images
-    js_code = """JSON.stringify(
-        [...document.images].map(img => ({
-            src: img.src,
-            alt: img.alt || '',
-            width: img.naturalWidth,
-            height: img.naturalHeight
-        })).filter(img => img.src && !img.src.startsWith('data:'))
-    )"""
+    if not parsed_eval.get("success"):
+        return eval_result  # _browser_eval already formats errors
 
-    result = _run_browser_command(effective_task_id, "eval", [js_code])
+    raw_result = parsed_eval.get("result", "[]")
 
-    if result.get("success"):
-        # ── Private-network guard (sibling of snapshot/vision/eval guards) ──
-        if _eval_ssrf_guard_active(effective_task_id):
-            _blocked_url = _current_page_private_url(effective_task_id)
-            if _blocked_url:
-                return orjson.dumps({
-                    "success": False,
-                    "error": (
-                        "Blocked: page URL targets a private or internal address "
-                        f"({_blocked_url}). This may have been caused by a "
-                        "JavaScript navigation via browser_console."
-                    ),
-                }).decode('utf-8')
+    try:
+        if isinstance(raw_result, str):
+            images = orjson.loads(raw_result)
+        else:
+            images = raw_result
 
-        data = result.get("data", {})
-        raw_result = data.get("result", "[]")
-
-        try:
-            # Parse the JSON string returned by JavaScript
-            if isinstance(raw_result, str):
-                images = orjson.loads(raw_result)
-            else:
-                images = raw_result
-
-            response = {
-                "success": True,
-                "images": _redact_browser_output(images),
-                "count": len(images)
-            }
-            return orjson.dumps(_copy_fallback_warning(response, result)).decode('utf-8')
-        except orjson.JSONDecodeError:
-            response = {
-                "success": True,
-                "images": [],
-                "count": 0,
-                "warning": "Could not parse image data"
-            }
-            return orjson.dumps(_copy_fallback_warning(response, result)).decode('utf-8')
-    else:
         response = {
-            "success": False,
-            "error": result.get("error", "Failed to get images")
+            "success": True,
+            "images": _redact_browser_output(images),
+            "count": len(images)
         }
-        return orjson.dumps(_copy_fallback_warning(response, result)).decode('utf-8')
+        return orjson.dumps(response).decode('utf-8')
+    except orjson.JSONDecodeError:
+        response = {
+            "success": True,
+            "images": [],
+            "count": 0,
+            "warning": "Could not parse image data"
+        }
+        return orjson.dumps(response).decode('utf-8')
 
 
 def browser_vision(question: str, annotate: bool = False, task_id: Optional[str] = None) -> Union[str, Dict[str, Any]]:

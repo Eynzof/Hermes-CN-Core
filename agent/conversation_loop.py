@@ -4143,7 +4143,14 @@ def run_conversation(
                                 _retry_after = min(float(_ra_raw), 600)
                             except (TypeError, ValueError):
                                 pass
-                wait_time = _retry_after if _retry_after else jittered_backoff(retry_count, base_delay=2.0, max_delay=60.0)
+                if is_rate_limited and not _retry_after:
+                    # 429 rate limit: short exponential backoff 1s → 2s → 4s → 4s (capped)
+                    # so the provider gets a brief breather before the next attempt.
+                    wait_time = jittered_backoff(retry_count, base_delay=1.0, max_delay=4.0)
+                elif _retry_after:
+                    wait_time = _retry_after
+                else:
+                    wait_time = jittered_backoff(retry_count, base_delay=2.0, max_delay=60.0)
                 _backoff_policy = None
                 if (is_rate_limited or _is_zai_coding_overload) and not _retry_after:
                     wait_time, _backoff_policy = adaptive_rate_limit_backoff(

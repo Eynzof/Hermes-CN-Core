@@ -114,12 +114,12 @@ def _detect_host_cpus() -> int:
 
     Prefers ``os.sched_getaffinity`` (the CPUs this process may actually run
     on — respects container/cpuset pinning) and falls back to
-    ``os.cpu_count()``. Returns at least 1.
+    ``os.process_cpu_count()``. Returns at least 1.
     """
     try:
         return max(1, len(os.sched_getaffinity(0)))  # type: ignore[attr-defined]
     except (AttributeError, OSError):
-        return max(1, os.cpu_count() or 1)
+        return max(1, os.process_cpu_count() or 1)
 
 
 def _resolve_vision_cpu_workers() -> int:

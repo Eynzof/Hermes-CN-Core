@@ -19,7 +19,7 @@ import threading
 _REAL_THREAD = threading.Thread
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -8488,7 +8488,7 @@ def _(rid, params: dict) -> dict:
     started_at = params.get("started_at")
     finished_at = params.get("finished_at") or time.time()
     label = str(params.get("label") or "")
-    ts = datetime.utcfromtimestamp(float(finished_at)).strftime("%Y%m%dT%H%M%S")
+    ts = datetime.fromtimestamp(float(finished_at), tz=timezone.utc).strftime("%Y%m%dT%H%M%S")
     fname = f"{ts}.json"
     d = _spawn_tree_session_dir(session_id or "default")
     path = d / fname

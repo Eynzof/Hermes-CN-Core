@@ -236,6 +236,7 @@ class TestUtilities:
         monkeypatch.setenv("SSH_CLIENT", "1.2.3.4 1234 22")
         assert _can_open_browser() is False
 
+    @pytest.mark.skipif(sys.platform == 'win32', reason="os.uname not available on Windows")
     def test_can_open_browser_false_without_display(self, monkeypatch):
         monkeypatch.delenv("SSH_CLIENT", raising=False)
         monkeypatch.delenv("SSH_TTY", raising=False)

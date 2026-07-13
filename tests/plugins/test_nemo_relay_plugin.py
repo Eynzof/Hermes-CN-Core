@@ -465,11 +465,11 @@ enabled = true
 
 [components.config.atof]
 enabled = true
-output_directory = "{atof_dir}"
+output_directory = "{atof_dir.as_posix()}"
 
 [components.config.atif]
 enabled = true
-output_directory = "{atif_dir}"
+output_directory = "{atif_dir.as_posix()}"
 """,
         encoding="utf-8",
     )

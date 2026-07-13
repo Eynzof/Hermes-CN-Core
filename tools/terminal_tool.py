@@ -71,7 +71,6 @@ from tools.interrupt import is_interrupted, _interrupt_event  # noqa: F401 — r
 _PWSH_CONSOLE_INIT = (
     "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8;"
     "$OutputEncoding=[System.Text.Encoding]::UTF8;"
-    "[Console]::TreatControlCAsInput=$true;"
 )
 
 

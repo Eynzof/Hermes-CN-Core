@@ -72,7 +72,6 @@ _EOF = object()
 _INIT_SCRIPT = (
     "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; "
     "$OutputEncoding=[System.Text.Encoding]::UTF8; "
-    "[Console]::TreatControlCAsInput=$true; "
     "$ErrorActionPreference='Continue'; "
     "$ProgressPreference='SilentlyContinue'"
 )

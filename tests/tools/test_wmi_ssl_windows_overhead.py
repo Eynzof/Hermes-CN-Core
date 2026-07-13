@@ -127,7 +127,7 @@ def test_agent_init_path_triggers_no_wmi():
     """
     probe = textwrap.dedent(
         r"""
-        import _wmi, json
+        import _wmi, json, orjson
         calls = []
         _orig = _wmi.exec_query
         def traced(q):

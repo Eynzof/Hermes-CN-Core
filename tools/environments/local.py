@@ -799,7 +799,6 @@ def _build_powershell_background_script(
         # Force UTF-8 output encoding for stdout/stderr.
         "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8",
         "$OutputEncoding=[System.Text.Encoding]::UTF8",
-        "[Console]::TreatControlCAsInput=$true",
         "$ErrorActionPreference = 'Continue'",
         f"Set-Location -LiteralPath '{quoted_cwd}' -ErrorAction SilentlyContinue",
         f"if ($?) {{ Set-Location -LiteralPath '{quoted_cwd}' }} else {{ exit 126 }}",
@@ -1357,7 +1356,6 @@ class LocalEnvironment(BaseEnvironment):
             # Force UTF-8 output encoding for stdout/stderr.
             "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8",
             "$OutputEncoding=[System.Text.Encoding]::UTF8",
-            "[Console]::TreatControlCAsInput=$true",
             # Suppress errors, cd to target
             "$ErrorActionPreference = 'Continue'",
             f"Set-Location -LiteralPath '{quoted_cwd}' -ErrorAction SilentlyContinue",

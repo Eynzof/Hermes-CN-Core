@@ -41,7 +41,6 @@ def ps_with_utf8(command: str) -> str:
     preamble = (
         "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8;"
         "$OutputEncoding=[System.Text.Encoding]::UTF8;"
-        "[Console]::TreatControlCAsInput=$true;"
     )
     if command.startswith(preamble):
         return command

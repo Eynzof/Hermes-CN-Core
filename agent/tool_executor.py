@@ -1326,6 +1326,41 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                     spinner.stop(cute_msg)
                 elif agent._should_emit_quiet_tool_messages():
                     agent._vprint(f"  {cute_msg}")
+        elif function_name == "agent_swarm":
+            description_preview = (function_args.get("description") or "")[:30]
+            items = function_args.get("items", [])
+            resume_ids = function_args.get("resume_agent_ids", {})
+            if items:
+                spinner_label = f"🐝 swarm: {len(items)} subagents · {description_preview}"
+            elif resume_ids:
+                spinner_label = f"🐝 swarm: resuming {len(resume_ids)} subagents"
+            else:
+                spinner_label = "🐝 agent swarm"
+            spinner = None
+            if agent._should_emit_quiet_tool_messages() and agent._should_start_quiet_spinner():
+                face = random.choice(KawaiiSpinner.get_waiting_faces())
+                spinner = KawaiiSpinner(f"{face} {spinner_label}", spinner_type='dots', print_fn=agent._print_fn)
+                spinner.start()
+            _swarm_result = None
+            try:
+                def _execute(next_args: dict) -> Any:
+                    return agent._dispatch_agent_swarm(next_args)
+                function_result, function_args = _run_agent_tool_execution_middleware(
+                    agent,
+                    function_name=function_name,
+                    function_args=function_args,
+                    effective_task_id=effective_task_id,
+                    tool_call_id=getattr(tool_call, "id", "") or "",
+                    execute=_execute,
+                )
+                _swarm_result = function_result
+            finally:
+                tool_duration = time.time() - tool_start_time
+                cute_msg = _get_cute_tool_message_impl('agent_swarm', function_args, tool_duration, result=_swarm_result)
+                if spinner:
+                    spinner.stop(cute_msg)
+                elif agent._should_emit_quiet_tool_messages():
+                    agent._vprint(f"  {cute_msg}")
         elif agent._context_engine_tool_names and function_name in agent._context_engine_tool_names:
             # Context engine tools (context_usage, compact, lcm_grep, etc.)
             spinner = None

@@ -156,6 +156,12 @@ $InstallStageProtocolVersion = 1
 $script:ManagedRgDir = Join-Path $HermesHome "bin"
 $script:ManagedRg    = Join-Path $script:ManagedRgDir "rg.exe"
 
+# Hermes-managed Coreutils directory.  Used on Windows to provide POSIX CLI tools
+# (cat, cp, mv, ls, sort, wc, whoami, id, ...) that are commonly referenced in
+# shell scripts and skills.  Managed by install_coreutils.py.
+$script:ManagedCoreutilsDir = Join-Path $HermesHome "coreutils"
+$script:ManagedCat          = Join-Path $script:ManagedCoreutilsDir "bin\cat.exe"
+
 # ============================================================================
 # Helper functions
 
@@ -1124,9 +1130,125 @@ function Install-ManagedRipgrep {
     }
 }
 
+function Test-Coreutils {
+    <#
+    .SYNOPSIS
+    Verify that Microsoft Coreutils (cat.exe) is available and runnable.
+    
+    Checks the managed install directory first, then falls back to PATH.
+    Returns $true only if the binary exists and runs.
+    #>
+    param([string]$Path = "")
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        # Check managed install first
+        if (Test-Path $script:ManagedCat) {
+            $Path = $script:ManagedCat
+        } else {
+            $cmd = Get-Command cat.exe -ErrorAction SilentlyContinue
+            if (-not $cmd) { return $false }
+            $Path = $cmd.Path
+        }
+    }
+    if (-not (Test-Path $Path)) { return $false }
+    try {
+        $ver = & $Path --version 2>$null | Select-Object -First 1
+        if ($ver -match "coreutils" -or $ver) { return $true }
+        return $false
+    } catch {
+        return $false
+    }
+}
+
+function Install-Coreutils {
+    <#
+    .SYNOPSIS
+    Install Microsoft Coreutils on Windows to provide POSIX CLI tools.
+    
+    Strategy (in priority order):
+      1. WinGet (official Microsoft channel)
+      2. Fallback: invoke scripts/install_coreutils.py (GitHub direct download)
+    
+    Mirrors the Install-ManagedRipgrep pattern but delegates to the Python
+    script for the actual installation since Coreutils is a suite of tools.
+    #>
+    if (Test-Coreutils) {
+        Write-Success "Coreutils already available"
+        return
+    }
+    
+    if ($env:OS -ne "Windows_NT") {
+        Write-Info "Coreutils installation is Windows-only; skipping."
+        return
+    }
+    
+    # Try winget first (most common, official Microsoft channel)
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+        Write-Info "Installing Coreutils via WinGet..."
+        try {
+            $output = winget install --exact --id Microsoft.Coreutils --source winget --silent `
+                --accept-package-agreements --accept-source-agreements 2>&1
+            $code = $LASTEXITCODE
+            if ($code -eq -1978335189) {
+                # Already-installed/no-upgrade; retry with --force
+                $output = winget install --exact --id Microsoft.Coreutils --source winget --silent --force `
+                    --accept-package-agreements --accept-source-agreements 2>&1
+            }
+        } catch {
+            Write-Warn "WinGet install attempt failed: $_"
+        }
+        Update-ProcessPathForPackages
+        if (Test-Coreutils) {
+            Write-Success "Coreutils installed via WinGet"
+            $script:HasCoreutils = $true
+            return
+        }
+    }
+    
+    # Fallback: use the Python script for managed download
+    $pythonExe = if (Test-Path "$InstallDir\venv\Scripts\python.exe") {
+        "$InstallDir\venv\Scripts\python.exe"
+    } else {
+        Get-Command python -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source
+    }
+    $coreutilsScript = Join-Path $InstallDir "scripts\install_coreutils.py"
+    if (-not (Test-Path $coreutilsScript)) {
+        # Try relative to the script's own location
+        $coreutilsScript = Join-Path $PSScriptRoot "install_coreutils.py"
+    }
+    if ($pythonExe -and (Test-Path $coreutilsScript)) {
+        Write-Info "Installing Coreutils via managed Python script..."
+        try {
+            $env:HERMES_HOME = $HermesHome
+            & $pythonExe $coreutilsScript --dir $script:ManagedCoreutilsDir --ensure 2>&1 | Out-String | Write-Host
+            # Refresh process PATH
+            $env:Path = [Environment]::GetEnvironmentVariable("Path", "User") + ";" + [Environment]::GetEnvironmentVariable("Path", "Machine")
+            # Add managed coreutils dir to PATH if not already there
+            $coreutilsBin = Join-Path $script:ManagedCoreutilsDir "bin"
+            if ((Test-Path $coreutilsBin) -and ($env:Path -notlike "*$coreutilsBin*")) {
+                $env:Path = "$coreutilsBin;$env:Path"
+            }
+            if (Test-Coreutils) {
+                Write-Success "Coreutils installed via managed Python script"
+                $script:HasCoreutils = $true
+                return
+            }
+        } catch {
+            Write-Warn "Managed Coreutils install failed: $_"
+        }
+    }
+    
+    # Still missing: show manual hint
+    if (-not (Test-Coreutils)) {
+        Write-Warn "Coreutils not installed (POSIX CLI tools will be unavailable on Windows)"
+        Write-Info "  Install manually: winget install Microsoft.Coreutils"
+        Write-Info "  Or download from: https://github.com/microsoft/coreutils/releases"
+    }
+}
+
 function Install-SystemPackages {
     $script:HasRipgrep = Test-Ripgrep
     $script:HasFfmpeg  = Test-Ffmpeg
+    $script:HasCoreutils = Test-Coreutils
     $needRipgrep = -not $script:HasRipgrep
     $needFfmpeg  = -not $script:HasFfmpeg
 
@@ -1151,6 +1273,14 @@ function Install-SystemPackages {
         $script:HasFfmpeg = $true
     } else {
         $needFfmpeg = $true
+    }
+
+    # Coreutils (Windows-only POSIX CLI tools)
+    if ($env:OS -eq "Windows_NT") {
+        Write-Info "Checking Microsoft Coreutils (POSIX CLI tools)..."
+        if (-not $script:HasCoreutils) {
+            Install-Coreutils
+        }
     }
 
     if (-not $needRipgrep -and -not $needFfmpeg) { return }
@@ -3205,6 +3335,12 @@ function Write-Completion {
         Write-Host "  winget install BurntSushi.ripgrep.MSVC" -ForegroundColor Yellow
         Write-Host ""
     }
+    
+    if (-not $HasCoreutils -and ($env:OS -eq "Windows_NT")) {
+        Write-Host "Note: Microsoft Coreutils was not installed. For POSIX CLI tools (cat, cp, mv, ls):" -ForegroundColor Yellow
+        Write-Host "  winget install Microsoft.Coreutils" -ForegroundColor Yellow
+        Write-Host ""
+    }
 }
 
 # ============================================================================
@@ -3285,7 +3421,7 @@ $InstallStages = @(
     @{ Name = "python";           Title = "Verifying Python $PythonVersion";      Category = "prereqs";      NeedsUserInput = $false; Worker = "Stage-Python" }
     @{ Name = "git";              Title = "Installing Git";                       Category = "prereqs";      NeedsUserInput = $false; Worker = "Stage-Git" }
     @{ Name = "node";             Title = "Detecting Node.js";                    Category = "prereqs";      NeedsUserInput = $false; Worker = "Stage-Node" }
-    @{ Name = "system-packages";  Title = "Installing ripgrep and ffmpeg";        Category = "prereqs";      NeedsUserInput = $false; Worker = "Stage-SystemPackages" }
+    @{ Name = "system-packages";  Title = "Installing ripgrep, ffmpeg, and Coreutils";        Category = "prereqs";      NeedsUserInput = $false; Worker = "Stage-SystemPackages" }
     @{ Name = "repository";       Title = "Cloning Hermes repository";            Category = "install";      NeedsUserInput = $false; Worker = "Stage-Repository" }
     @{ Name = "venv";             Title = "Creating Python virtual environment";  Category = "install";      NeedsUserInput = $false; Worker = "Stage-Venv" }
     @{ Name = "dependencies";     Title = "Installing Python dependencies";       Category = "install";      NeedsUserInput = $false; Worker = "Stage-Dependencies" }
@@ -3472,6 +3608,9 @@ function Invoke-EnsureMode {
             }
             "ffmpeg" {
                 Write-Info "ffmpeg: install manually on Windows (scoop install ffmpeg)"
+            }
+            "coreutils" {
+                Install-Coreutils
             }
             default {
                 Write-Err "Unknown dependency: $dep"

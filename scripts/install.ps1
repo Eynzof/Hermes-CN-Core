@@ -1224,11 +1224,11 @@ function Install-Coreutils {
             # NativeCommandError and trigger a terminating exception under
             # $ErrorActionPreference = "Stop".  Check $LASTEXITCODE for real
             # failures.  Same pattern as Test-Python and Install-Uv.
-            $prevEAP = $ErrorActionPreference
-            $ErrorActionPreference = "Continue"
-            & $pythonExe $coreutilsScript --dir $script:ManagedCoreutilsDir --ensure
-            $pythonExit = $LASTEXITCODE
-            $ErrorActionPreference = $prevEAP
+            \$prevEAP = \$ErrorActionPreference
+            \$ErrorActionPreference = "Continue"
+            & \$pythonExe \$coreutilsScript --dir \$script:ManagedCoreutilsDir --ensure
+            \$pythonExit = \$LASTEXITCODE
+            \$ErrorActionPreference = \$prevEAP
             # Refresh process PATH
             $env:Path = [Environment]::GetEnvironmentVariable("Path", "User") + ";" + [Environment]::GetEnvironmentVariable("Path", "Machine")
             # Add managed coreutils dir to PATH if not already there

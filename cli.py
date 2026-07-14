@@ -8356,7 +8356,7 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin):
         flipped back to False, and process_command() takes the idle
         fallback — delivering the steer as a next-turn message instead of
         injecting it mid-run.  Dispatching inline on the UI thread calls
-        agent.steer() directly, which is thread-safe (uses _pending_steer_lock).
+        agent.steer() directly, which is thread-safe (uses the ReminderRegistry).
         """
         if not text or has_images or not _looks_like_slash_command(text):
             return False
@@ -13591,7 +13591,7 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin):
                 # steer until after the agent loop finishes (process_loop is
                 # blocked inside self.chat()), which turns /steer into a
                 # post-run next-turn message — defeating mid-run injection.
-                # agent.steer() is thread-safe (holds _pending_steer_lock).
+                # agent.steer() is thread-safe (uses the ReminderRegistry).
                 if self._should_handle_steer_command_inline(text, has_images=has_images):
                     self.process_command(text)
                     event.app.current_buffer.reset(append_to_history=True)

@@ -182,7 +182,6 @@ def _codex_gpt55_autoraise_notice_seen(autoraise: Dict[str, Any]) -> bool:
     """
     try:
         current = _codex_gpt55_autoraise_notice_state(autoraise)
-        ).strip() == current
         return (
             _codex_gpt55_autoraise_notice_marker().read_text(encoding="utf-8").strip()
             == current

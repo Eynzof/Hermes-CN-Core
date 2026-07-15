@@ -640,6 +640,16 @@ class AIAgent:
                 pass_session_id=pass_session_id,
             )
 
+        # Swarm mode for parallel subagent execution
+        self.swarm_mode = None  # Initialized lazily on first use
+
+    def _init_swarm_mode(self):
+        """Lazy-init swarm mode to keep constructor fast."""
+        if self.swarm_mode is None:
+            from agent.swarm_mode import SwarmMode
+            self.swarm_mode = SwarmMode()
+        return self.swarm_mode
+
     def _get_session_db_for_recall(self):
         """Return a SessionDB for recall, lazily creating it if an entrypoint forgot.
 
@@ -6037,6 +6047,23 @@ class AIAgent:
         """
         tool_calls = assistant_message.tool_calls
 
+        # ── Exclusive-deny: agent_swarm must be the only tool call ──
+        tool_names = [tc.function.name for tc in tool_calls]
+        if "agent_swarm" in tool_names and len(tool_names) > 1:
+            import orjson
+            error_msg = (
+                "AgentSwarm must be the only tool call in a response. "
+                "If multiple AgentSwarm calls are needed, issue them sequentially. "
+                "Do not combine AgentSwarm with other tools."
+            )
+            for tc in tool_calls:
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": orjson.dumps({"error": error_msg}).decode("utf-8"),
+                })
+            return
+
         # Allow _vprint during tool execution even with stream consumers
         self._executing_tools = True
         try:
@@ -6081,6 +6108,22 @@ class AIAgent:
             max_iterations=function_args.get("max_iterations"),
             role=function_args.get("role"),
             background=(not _is_subagent),
+            parent_agent=self,
+        )
+
+    def _dispatch_agent_swarm(self, function_args: dict) -> str:
+        """Single call site for agent_swarm dispatch.
+
+        All invocation paths (sequential, concurrent, inline) converge here
+        so new AGENT_SWARM_SCHEMA fields only need to be added once.
+        """
+        from tools.agent_swarm import agent_swarm_handler
+        return agent_swarm_handler(
+            description=function_args.get("description"),
+            prompt_template=function_args.get("prompt_template"),
+            items=function_args.get("items"),
+            resume_agent_ids=function_args.get("resume_agent_ids"),
+            subagent_type=function_args.get("subagent_type"),
             parent_agent=self,
         )
 

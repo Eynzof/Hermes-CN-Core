@@ -2393,6 +2393,20 @@ DEFAULT_CONFIG = {
         # without human review (cron pipelines, batch automation, etc.).
         "subagent_auto_approve": False,
     },
+
+    # Swarm — parallel subagent execution with template-based spawning.
+    # See tools/agent_swarm.py, tools/swarm_scheduler.py.
+    "swarm": {
+        "enabled": True,
+        "max_subagents": 128,
+        "initial_burst": 5,
+        "throttle_interval_ms": 700,
+        "max_concurrency": 3,
+        "retry_base_ms": 3000,
+        "recovery_ms": 180000,
+        "subagent_type": "coder",
+    },
+
     # Ephemeral prefill messages file — JSON list of {role, content} dicts
     # injected at the start of every API call for few-shot priming.
     # Never saved to sessions, logs, or trajectories.

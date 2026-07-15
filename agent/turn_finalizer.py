@@ -541,4 +541,14 @@ def finalize_turn(
     if _registry is not None:
         _registry.on_turn_end(agent)
 
+    # ── Swarm mode auto-exit ──────────────────────────────────────────
+    # TASK and TOOL triggers auto-exit after every turn so the mode doesn't
+    # persist unintentionally. MANUAL mode requires explicit /swarm off.
+    if getattr(agent, "swarm_mode", None) is not None:
+        try:
+            if agent.swarm_mode.should_auto_exit:
+                agent.swarm_mode.exit()
+        except Exception:
+            pass  # Best-effort; never break turn finalization
+
     return result

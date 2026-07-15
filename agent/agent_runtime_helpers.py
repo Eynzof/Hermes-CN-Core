@@ -82,6 +82,7 @@ AGENT_RUNTIME_POST_HOOK_TOOL_NAMES = frozenset({
     "clarify",
     "read_terminal",
     "delegate_task",
+    "agent_swarm",
 })
 
 

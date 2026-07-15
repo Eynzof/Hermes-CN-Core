@@ -33,7 +33,18 @@ class ReminderRegistry:
         self._user_providers.append(provider)
 
     def get_reminders(self, agent: Any, api_call_count: int) -> List[Reminder]:
-        """Collect all reminders, system first, then user.
+        """Collect ALL reminders (system + user).
+
+        .. deprecated::
+           Use :meth:`get_system_reminders` or :meth:`get_user_reminders`
+           instead when you only need one category.
+        """
+        return self.get_system_reminders(agent, api_call_count) + self.get_user_reminders(
+            agent, api_call_count
+        )
+
+    def get_system_reminders(self, agent: Any, api_call_count: int) -> List[Reminder]:
+        """Collect only system reminders.
 
         Exceptions from individual providers are isolated so one broken
         provider cannot crash the API call.
@@ -48,6 +59,15 @@ class ReminderRegistry:
                     type(provider).__name__,
                     exc_info=True,
                 )
+        return reminders
+
+    def get_user_reminders(self, agent: Any, api_call_count: int) -> List[Reminder]:
+        """Collect only user reminders (e.g. /steer).
+
+        Exceptions from individual providers are isolated so one broken
+        provider cannot crash the API call.
+        """
+        reminders: List[Reminder] = []
         for provider in self._user_providers:
             try:
                 reminders.extend(provider.get_reminders(agent, api_call_count))
@@ -58,6 +78,17 @@ class ReminderRegistry:
                     exc_info=True,
                 )
         return reminders
+
+    def has_pending_steer(self) -> bool:
+        """Check if any SteerUserReminderProvider has pending items."""
+        for provider in self._user_providers:
+            if isinstance(provider, SteerUserReminderProvider):
+                if hasattr(provider, "has_pending"):
+                    if provider.has_pending():
+                        return True
+                elif bool(provider):
+                    return True
+        return False
 
     def steer(self, text: str) -> bool:
         """Convenience: push text to the first SteerUserReminderProvider.

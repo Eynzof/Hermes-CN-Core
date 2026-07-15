@@ -90,6 +90,11 @@ class SteerUserReminderProvider(UserReminderProvider):
             )
         ]
 
+    def has_pending(self) -> bool:
+        """Check if there is pending steer text without clearing the queue."""
+        with self._lock:
+            return bool(self._items)
+
     def peek(self) -> Optional[str]:
         """Read pending steer text without clearing the queue."""
         with self._lock:

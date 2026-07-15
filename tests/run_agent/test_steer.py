@@ -37,16 +37,45 @@ def _inject_user_copy(
     user_message: Dict[str, Any],
     api_call_count: int = 1,
 ) -> str:
-    """Mimic the user-message injection block in conversation_loop.py."""
+    """Mimic the user-message injection block in conversation_loop.py.
+
+    Only system reminders are injected — steer is injected into tool
+    results instead (see :func:`_inject_steer_into_tool_results`).
+    """
     injections: List[str] = []
     registry = getattr(agent, "_reminder_registry", None)
     if registry is not None:
-        for reminder in registry.get_reminders(agent, api_call_count):
+        for reminder in registry.get_system_reminders(agent, api_call_count):
             injections.append(f"[{reminder.type}] {reminder.content}")
     base = user_message.get("content", "")
     if isinstance(base, str) and injections:
         return base + "\n\n" + "\n\n".join(injections)
     return base
+
+
+def _inject_steer_into_tool_results(
+    agent: AIAgent,
+    messages: List[Dict[str, Any]],
+    api_call_count: int = 1,
+) -> None:
+    """Mimic the post-tool-execution steer injection in conversation_loop.py."""
+    registry = getattr(agent, "_reminder_registry", None)
+    if registry is not None and registry.has_pending_steer():
+        # Only drain steer if there's a tool result message to inject into.
+        # If no tool results exist (text-only response), steer stays pending
+        # and is caught by turn_finalizer.py's drain_user_reminders() as
+        # result["pending_steer"].
+        _last_tool_msg = None
+        for msg in reversed(messages):
+            if msg.get("role") == "tool":
+                _last_tool_msg = msg
+                break
+        if _last_tool_msg is None:
+            return  # No tool result — leave steer in the queue
+        for reminder in registry.get_user_reminders(agent, api_call_count):
+            steer_text = f"[{reminder.type}] {reminder.content}"
+            if isinstance(_last_tool_msg.get("content"), str):
+                _last_tool_msg["content"] += f"\n\n{steer_text}"
 
 
 class TestSteerAcceptance:
@@ -97,23 +126,25 @@ class TestSteerDrain:
 
 
 class TestSteerUserMessageInjection:
-    def test_steer_appears_in_user_message_copy(self):
+    def test_steer_no_longer_appears_in_user_message_copy(self):
+        """Steer is now injected into tool results, not the user message."""
         agent = _bare_agent()
         agent.steer("please also check auth.log")
         user_msg = {"role": "user", "content": "what's in /var/log?"}
         api_content = _inject_user_copy(agent, user_msg, api_call_count=1)
         assert "what's in /var/log?" in api_content
-        assert "[steer] please also check auth.log" in api_content
-        assert agent._steer_provider.peek() is None
+        assert "[steer]" not in api_content
+        # Steer is still pending because it wasn't drained by user message
+        assert agent._steer_provider.peek() == "please also check auth.log"
 
-    def test_steer_lands_before_tool_output(self):
-        """The steer is appended to the user message, not after tool results."""
+    def test_steer_no_longer_lands_in_user_message(self):
+        """Steer is no longer appended to the user message."""
         agent = _bare_agent()
         agent.steer("focus on error handling")
         user_msg = {"role": "user", "content": "run the tests"}
         api_content = _inject_user_copy(agent, user_msg, api_call_count=1)
-        # It should appear as a user-side label, not inside a tool result.
-        assert "[steer] focus on error handling" in api_content
+        assert api_content == "run the tests"
+        assert agent._steer_provider.peek() == "focus on error handling"
 
     def test_no_injection_when_no_steer_pending(self):
         agent = _bare_agent()
@@ -130,7 +161,44 @@ class TestSteerUserMessageInjection:
         assert user_msg["content"] == "original request"
 
 
-class TestSteerToolResultInjectionNoOp:
+class TestSteerToolResultInjection:
+    def test_steer_is_injected_into_tool_results(self):
+        """Steer is now injected into the last tool result message after
+        tool execution, so the LLM sees it on the very next API call."""
+        agent = _bare_agent()
+        agent.steer("please check auth.log")
+        messages = [
+            {"role": "assistant", "tool_calls": [{"id": "a"}]},
+            {"role": "tool", "content": "output", "tool_call_id": "a"},
+        ]
+        _inject_steer_into_tool_results(agent, messages, api_call_count=1)
+        assert "[steer] please check auth.log" in messages[-1]["content"]
+        assert agent._steer_provider.peek() is None
+
+    def test_steer_appended_to_last_tool_result(self):
+        """When multiple tool results exist, steer is appended to the LAST one."""
+        agent = _bare_agent()
+        agent.steer("update summary")
+        messages = [
+            {"role": "assistant", "tool_calls": [{"id": "a"}, {"id": "b"}]},
+            {"role": "tool", "content": "file content", "tool_call_id": "a"},
+            {"role": "tool", "content": "search results", "tool_call_id": "b"},
+        ]
+        _inject_steer_into_tool_results(agent, messages, api_call_count=1)
+        assert messages[-1]["content"] == "search results\n\n[steer] update summary"
+        # Earlier tool result is unchanged
+        assert messages[-2]["content"] == "file content"
+
+    def test_no_injection_when_no_tool_results(self):
+        """If there are no tool result messages, steer stays pending."""
+        agent = _bare_agent()
+        agent.steer("hello")
+        messages = [
+            {"role": "assistant", "content": "text response"},
+        ]
+        _inject_steer_into_tool_results(agent, messages, api_call_count=1)
+        assert agent._steer_provider.peek() == "hello"
+
     def test_apply_pending_steer_to_tool_results_is_no_op(self):
         """The old tool-result injection path is deprecated and does nothing."""
         agent = _bare_agent()
@@ -184,24 +252,30 @@ class TestSteerClearedOnInterrupt:
         assert agent._steer_provider.peek() is None
 
 
-class TestSteerApiCallTimeDrain:
+class TestSteerToolResultDrain:
     """Steers sent during an API call are delivered on the very next API call
-    via the user-message injection path."""
+    via the tool-result injection path."""
 
-    def test_steer_before_first_api_call_lands_in_user_copy(self):
+    def test_steer_before_first_tool_call_lands_in_tool_result(self):
         agent = _bare_agent()
-        user_msg = {"role": "user", "content": "do something"}
         agent.steer("early steer")
-        api_content = _inject_user_copy(agent, user_msg, api_call_count=1)
-        assert "[steer] early steer" in api_content
+        messages = [
+            {"role": "assistant", "tool_calls": [{"id": "a"}]},
+            {"role": "tool", "content": "tool output", "tool_call_id": "a"},
+        ]
+        _inject_steer_into_tool_results(agent, messages, api_call_count=1)
+        assert "[steer] early steer" in messages[-1]["content"]
         assert agent._steer_provider.peek() is None
 
-    def test_steer_between_calls_lands_in_user_copy(self):
+    def test_steer_between_calls_lands_in_tool_result(self):
         agent = _bare_agent()
-        user_msg = {"role": "user", "content": "do something"}
         agent.steer("change approach")
-        api_content = _inject_user_copy(agent, user_msg, api_call_count=2)
-        assert "[steer] change approach" in api_content
+        messages = [
+            {"role": "assistant", "tool_calls": [{"id": "a"}]},
+            {"role": "tool", "content": "tool output", "tool_call_id": "a"},
+        ]
+        _inject_steer_into_tool_results(agent, messages, api_call_count=2)
+        assert "[steer] change approach" in messages[-1]["content"]
 
 
 class TestSteerChannelNote:

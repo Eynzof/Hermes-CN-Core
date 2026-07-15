@@ -787,11 +787,13 @@ def run_conversation(
                         _injections.append(_fenced)
                 if _plugin_user_context:
                     _injections.append(_plugin_user_context)
-                # Collect ephemeral reminders (system reminders + user steers).
-                # They all target the current turn's user message copy.
+                # Collect ephemeral system reminders (compact reminder etc.).
+                # User steers are injected into tool results after execution so
+                # they reach the LLM on the very next API call instead of waiting
+                # for the next turn's user message.
                 _registry = getattr(agent, "_reminder_registry", None)
                 if _registry is not None:
-                    for _reminder in _registry.get_reminders(agent, api_call_count):
+                    for _reminder in _registry.get_system_reminders(agent, api_call_count):
                         _injections.append(f"[{_reminder.type}] {_reminder.content}")
                 if _injections:
                     _base = api_msg.get("content", "")
@@ -5313,6 +5315,32 @@ def run_conversation(
                 agent._execute_tool_calls(
                     assistant_message, messages, effective_task_id, api_call_count
                 )
+
+                # Inject pending user steer into the last tool result message
+                # so it reaches the LLM on the very next API call instead of
+                # waiting for the next turn's user message injection point.
+                _inject_registry = getattr(agent, "_reminder_registry", None)
+                if _inject_registry is not None and _inject_registry.has_pending_steer():
+                    # Only drain if there is a tool result to inject into.
+                    # If no tool results exist (text-only response), steer stays
+                    # pending and is caught by turn_finalizer.py's
+                    # drain_user_reminders() as result["pending_steer"].
+                    _inject_last_tool_msg = None
+                    for _inject_msg in reversed(messages):
+                        if _inject_msg.get("role") == "tool":
+                            _inject_last_tool_msg = _inject_msg
+                            break
+                    if _inject_last_tool_msg is not None:
+                        for _inject_reminder in _inject_registry.get_user_reminders(
+                            agent, api_call_count
+                        ):
+                            _inject_steer_text = (
+                                f"[{_inject_reminder.type}] {_inject_reminder.content}"
+                            )
+                            if isinstance(_inject_last_tool_msg.get("content"), str):
+                                _inject_last_tool_msg["content"] += (
+                                    f"\n\n{_inject_steer_text}"
+                                )
 
                 # Dedup tracker: end this API call step.
                 # Captures the tool calls made and advances the consecutive streak.

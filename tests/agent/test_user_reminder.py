@@ -96,6 +96,24 @@ class TestSteerUserReminderProvider:
         assert reminders[0].target == "user_message"
         assert reminders[0].metadata.get("source") == "user"
 
+    def test_has_pending_returns_true_when_items_exist(self):
+        p = SteerUserReminderProvider()
+        assert p.has_pending() is False
+        p.push("hello")
+        assert p.has_pending() is True
+
+    def test_has_pending_returns_false_after_drain(self):
+        p = SteerUserReminderProvider()
+        p.push("hello")
+        p.get_reminders(None, 1)
+        assert p.has_pending() is False
+
+    def test_has_pending_does_not_clear_queue(self):
+        p = SteerUserReminderProvider()
+        p.push("hello")
+        assert p.has_pending() is True
+        assert p.peek() == "hello"
+
     def test_get_reminders_clears_queue(self):
         p = SteerUserReminderProvider()
         p.push("hello")

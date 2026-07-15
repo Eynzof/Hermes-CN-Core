@@ -196,7 +196,7 @@ def _system_content(api_kwargs: Dict[str, Any]) -> str:
     ],
 )
 class TestSteerBackends:
-    def test_steer_injected_into_user_message_copy(
+    def test_steer_injected_into_tool_results(
         self, monkeypatch, provider: str, api_mode: str, model: str
     ):
         agent = _make_agent(monkeypatch, provider, api_mode, model)
@@ -223,10 +223,36 @@ class TestSteerBackends:
         first_user = _find_message(first_kwargs["messages"], "user")
         assert "[steer]" not in str(first_user.get("content", ""))
 
-        # Second call's user message copy contains the steer.
+        # Second call — steer is in the tool result, NOT the user message.
         second_user = _find_message(second_kwargs["messages"], "user")
-        second_user_content = str(second_user.get("content", ""))
-        assert "[steer] focus on error handling" in second_user_content
+        second_user_content_str = str(second_user.get("content", ""))
+        assert "[steer]" not in second_user_content_str
+        # The original user text is preserved (may be wrapped as a list of
+        # content parts for certain providers like Anthropic).
+        assert "run tool t" in second_user_content_str
+
+        # Second call — steer is injected into the last tool result message.
+        # For OpenAI-compatible backends, tool results have role="tool".
+        # For Anthropic, tool results are converted to role="user" with
+        # content blocks of type "tool_result" — search for steer text
+        # in those blocks too.
+        _found_steer = False
+        for _m in second_kwargs["messages"]:
+            if isinstance(_m, dict):
+                _content = _m.get("content", "")
+                if isinstance(_content, str) and "[steer] focus on error handling" in _content:
+                    _found_steer = True
+                    break
+                if isinstance(_content, list):
+                    for _block in _content:
+                        if isinstance(_block, dict) and _block.get("type") == "tool_result":
+                            _block_text = str(_block.get("text", "") or _block.get("content", ""))
+                            if "[steer] focus on error handling" in _block_text:
+                                _found_steer = True
+                                break
+                if _found_steer:
+                    break
+        assert _found_steer, "[steer] not found in any tool result message"
 
         # The persisted messages list keeps the original user text.
         persisted_user = _find_message(result["messages"], "user")

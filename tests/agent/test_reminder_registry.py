@@ -96,6 +96,31 @@ class TestReminderRegistry:
         # Should not raise
         registry.clear_user_reminders()
 
+    def test_has_pending_steer_returns_false_when_empty(self):
+        registry = ReminderRegistry()
+        assert registry.has_pending_steer() is False
+
+    def test_has_pending_steer_returns_true_when_items_exist(self):
+        registry = ReminderRegistry()
+        steer = SteerUserReminderProvider()
+        registry.register_user_provider(steer)
+        assert registry.has_pending_steer() is False
+        registry.steer("hello")
+        assert registry.has_pending_steer() is True
+
+    def test_has_pending_steer_returns_false_after_drain(self):
+        registry = ReminderRegistry()
+        steer = SteerUserReminderProvider()
+        registry.register_user_provider(steer)
+        registry.steer("hello")
+        registry.drain_user_reminders(None)
+        assert registry.has_pending_steer() is False
+
+    def test_has_pending_steer_false_when_no_steer_provider(self):
+        registry = ReminderRegistry()
+        registry.register_user_provider(_UserProvider([]))
+        assert registry.has_pending_steer() is False
+
     def test_drain_user_reminders_joins_and_clears_providers(self):
         registry = ReminderRegistry()
         steer = SteerUserReminderProvider()

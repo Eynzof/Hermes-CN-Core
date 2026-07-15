@@ -202,10 +202,17 @@ def _pid_alive(pid: Any, process_start_time: Any = None) -> bool:
         return False
     expected_start = _optional_float(process_start_time)
     if expected_start is None:
-        return True
+        # No recorded start time — cannot verify this PID belongs to the
+        # original process.  Only trust our own PID to avoid permanent
+        # false-positive blocking of new sessions after a crash.
+        return pid_int == os.getpid()
     current_start = _process_start_time(pid_int)
     if current_start is None:
-        return True
+        # Cannot read current start time — cannot verify the PID.  Only
+        # trust our own PID; otherwise a stale lease from a crashed process
+        # whose PID was reused will never be pruned and will permanently
+        # block new sessions once max_concurrent_sessions is configured.
+        return pid_int == os.getpid()
     return abs(current_start - expected_start) < 0.001
 
 

@@ -260,7 +260,7 @@ class CLICommandsMixin:
 
     def _handle_agents_command(self):
         """Handle /agents — show background processes and agent status."""
-        from cli import _cprint
+        from cli import _DIM, _RST, _cprint
         from tools.process_registry import format_uptime_short, process_registry
 
         processes = process_registry.list_sessions()
@@ -308,7 +308,7 @@ class CLICommandsMixin:
         import shlex
         from contextlib import redirect_stdout
 
-        from cli import _cprint
+        from cli import _DIM, _RST, _cprint
         from hermes_cli.journey import register_cli
 
         parser = argparse.ArgumentParser(prog="/journey", add_help=False)
@@ -1756,10 +1756,25 @@ class CLICommandsMixin:
         - ``/swarm off`` — disable swarm mode.
         - ``/swarm <prompt>`` — enable swarm mode for a single task turn.
         """
-        from cli import _cprint
+        from cli import _DIM, _RST, _cprint
 
         parts = cmd.strip().split(maxsplit=1)
         arg = parts[1].strip().lower() if len(parts) > 1 else ""
+
+        # Initialize agent if needed (mirrors the pattern in chat() at cli.py:12131-12147)
+        if self.agent is None:
+            if not self._ensure_runtime_credentials():
+                _cprint("  (>_<) Failed to resolve runtime credentials. Check your API configuration.")
+                return
+            turn_route = self._resolve_turn_agent_config("")
+            _cprint(f"{_DIM}Initializing agent...{_RST}")
+            if not self._init_agent(
+                model_override=turn_route["model"],
+                runtime_override=turn_route["runtime"],
+                request_overrides=turn_route.get("request_overrides"),
+            ):
+                _cprint("  (>_<) Agent initialization failed.")
+                return
 
         # Ensure the agent has swarm_mode initialized
         if not hasattr(self.agent, "_init_swarm_mode"):

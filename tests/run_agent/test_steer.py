@@ -73,7 +73,7 @@ def _inject_steer_into_tool_results(
         if _last_tool_msg is None:
             return  # No tool result — leave steer in the queue
         for reminder in registry.get_user_reminders(agent, api_call_count):
-            steer_text = f"[{reminder.type}] {reminder.content}"
+            steer_text = f"User injection prompt: {reminder.content}"
             if isinstance(_last_tool_msg.get("content"), str):
                 _last_tool_msg["content"] += f"\n\n{steer_text}"
 
@@ -172,7 +172,7 @@ class TestSteerToolResultInjection:
             {"role": "tool", "content": "output", "tool_call_id": "a"},
         ]
         _inject_steer_into_tool_results(agent, messages, api_call_count=1)
-        assert "[steer] please check auth.log" in messages[-1]["content"]
+        assert "User injection prompt: please check auth.log" in messages[-1]["content"]
         assert agent._steer_provider.peek() is None
 
     def test_steer_appended_to_last_tool_result(self):
@@ -185,7 +185,7 @@ class TestSteerToolResultInjection:
             {"role": "tool", "content": "search results", "tool_call_id": "b"},
         ]
         _inject_steer_into_tool_results(agent, messages, api_call_count=1)
-        assert messages[-1]["content"] == "search results\n\n[steer] update summary"
+        assert messages[-1]["content"] == "search results\n\nUser injection prompt: update summary"
         # Earlier tool result is unchanged
         assert messages[-2]["content"] == "file content"
 
@@ -264,7 +264,7 @@ class TestSteerToolResultDrain:
             {"role": "tool", "content": "tool output", "tool_call_id": "a"},
         ]
         _inject_steer_into_tool_results(agent, messages, api_call_count=1)
-        assert "[steer] early steer" in messages[-1]["content"]
+        assert "User injection prompt: early steer" in messages[-1]["content"]
         assert agent._steer_provider.peek() is None
 
     def test_steer_between_calls_lands_in_tool_result(self):
@@ -275,12 +275,12 @@ class TestSteerToolResultDrain:
             {"role": "tool", "content": "tool output", "tool_call_id": "a"},
         ]
         _inject_steer_into_tool_results(agent, messages, api_call_count=2)
-        assert "[steer] change approach" in messages[-1]["content"]
+        assert "User injection prompt: change approach" in messages[-1]["content"]
 
 
 class TestSteerChannelNote:
     def test_system_prompt_note_describes_user_message_injection(self):
-        assert "[steer]" in STEER_CHANNEL_NOTE
+        assert "injection prompt" in STEER_CHANNEL_NOTE
         assert "user message" in STEER_CHANNEL_NOTE.lower()
 
     def test_system_prompt_note_no_longer_references_old_marker(self):

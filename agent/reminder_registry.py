@@ -1,8 +1,8 @@
 """Unified registry for ephemeral reminder providers.
 
 Both system reminders (e.g. compact reminders) and out-of-band user steers
-are collected here and injected into the current turn's user message copy
-at API-call time.
+(prefix: ``User injection prompt:``) are collected here and injected into the
+current turn's user/tool message copy at API-call time.
 """
 
 from __future__ import annotations

@@ -1,7 +1,7 @@
 """Base abstractions for ephemeral reminders injected at API-call time.
 
 Reminders are short-lived guidance notes (system hints, out-of-band user
-steers, etc.) that are appended to the *current turn's user message copy*
+steers, etc.) that are injected into the *current turn's user/tool message copy*
 before it is sent to the model. They are never persisted to the message
 history, so the upstream prompt-cache prefix stays stable.
 """

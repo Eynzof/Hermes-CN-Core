@@ -5335,7 +5335,7 @@ def run_conversation(
                             agent, api_call_count
                         ):
                             _inject_steer_text = (
-                                f"[{_inject_reminder.type}] {_inject_reminder.content}"
+                                f"User injection prompt: {_inject_reminder.content}"
                             )
                             if isinstance(_inject_last_tool_msg.get("content"), str):
                                 _inject_last_tool_msg["content"] += (

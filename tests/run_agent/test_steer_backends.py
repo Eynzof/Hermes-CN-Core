@@ -3,7 +3,7 @@
 For each backend, we run a two-iteration tool-call conversation and assert:
   * A steer sent during the first API call appears in the user message copy
     of the second request.
-  * The steer is labeled with ``[steer]``.
+  * The steer is labeled with ``User injection prompt:``.
   * No synthetic ``role: user`` message is inserted mid-turn.
   * The persisted ``messages`` list is unchanged (only the api copy is augmented).
   * The system prompt is byte-identical across iterations.
@@ -240,19 +240,19 @@ class TestSteerBackends:
         for _m in second_kwargs["messages"]:
             if isinstance(_m, dict):
                 _content = _m.get("content", "")
-                if isinstance(_content, str) and "[steer] focus on error handling" in _content:
+                if isinstance(_content, str) and "User injection prompt: focus on error handling" in _content:
                     _found_steer = True
                     break
                 if isinstance(_content, list):
                     for _block in _content:
                         if isinstance(_block, dict) and _block.get("type") == "tool_result":
                             _block_text = str(_block.get("text", "") or _block.get("content", ""))
-                            if "[steer] focus on error handling" in _block_text:
+                            if "User injection prompt: focus on error handling" in _block_text:
                                 _found_steer = True
                                 break
                 if _found_steer:
                     break
-        assert _found_steer, "[steer] not found in any tool result message"
+        assert _found_steer, "User injection prompt: not found in any tool result message"
 
         # The persisted messages list keeps the original user text.
         persisted_user = _find_message(result["messages"], "user")

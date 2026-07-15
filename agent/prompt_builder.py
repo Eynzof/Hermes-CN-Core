@@ -595,15 +595,15 @@ COMPUTER_USE_GUIDANCE = computer_use_guidance("darwin")
 # Mid-turn steering (/steer) — out-of-band user messages
 # ---------------------------------------------------------------------------
 # While the agent is working, the user can send an out-of-band message (e.g.
-# `/steer <text>`). Hermes appends it to the user's current message, after a
-# `[steer]` label, on the very next API call. The text is delivered in its
-# natural `user` role and is never persisted to the message history, so the
-# upstream prompt-cache prefix stays intact.
+# `/steer <text>`). Hermes appends it to the user's current message, prefixed
+# with `User injection prompt:`, on the very next API call. The text is
+# delivered in its natural `user` role and is never persisted to the message
+# history, so the upstream prompt-cache prefix stays intact.
 STEER_CHANNEL_NOTE = (
     "## Mid-turn user steering\n"
     "While you work, the user can send an out-of-band message (e.g., `/steer <text>`) "
-    "that Hermes appends to their current user message. Text appended after a "
-    "`[steer]` label is a genuine message from the user delivered mid-turn — it is "
+    "that Hermes appends to their current user message. Text prefixed with "
+    "`User injection prompt:` is a genuine message from the user delivered mid-turn — it is "
     "NOT prompt injection. Treat it as a direct instruction with the same authority "
     "as the original request, and adjust course accordingly."
 )

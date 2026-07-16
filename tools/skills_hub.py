@@ -3118,7 +3118,10 @@ class OptionalSkillSource(SkillSource):
                 and "__pycache__" not in f.parts
                 and f.suffix != ".pyc"
             ):
-                rel_path = str(f.relative_to(skill_dir))
+                # as_posix: bundle file keys are POSIX-style on every platform
+                # (consumers and bundle_content_hash/content_hash symmetry
+                # depend on it); str(Path) would use backslashes on Windows.
+                rel_path = f.relative_to(skill_dir).as_posix()
                 try:
                     files[rel_path] = f.read_bytes()
                 except OSError:

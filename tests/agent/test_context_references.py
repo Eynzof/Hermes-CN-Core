@@ -332,6 +332,11 @@ async def test_blocks_sensitive_home_and_hermes_paths(tmp_path: Path, monkeypatc
     from agent.context_references import preprocess_context_references_async
 
     monkeypatch.setenv("HOME", str(tmp_path))
+    # Windows: os.path.expanduser("~")/Path.home() read USERPROFILE (or
+    # HOMEDRIVE+HOMEPATH), never HOME — without this the home-relative
+    # sensitive dirs (.ssh, .aws, ...) resolve to the real user profile and
+    # the guard never fires.
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
     monkeypatch.setenv("HERMES_HOME", str(tmp_path / ".hermes"))
 
     hermes_env = tmp_path / ".hermes" / ".env"

@@ -2834,7 +2834,6 @@ def terminal_tool(
             # ── New post-processing pipeline ──
             from tools.terminal_post_process import (
                 _token_filter_output,
-                _maybe_export_output_async,
                 filter_output,
             )
 
@@ -2848,23 +2847,23 @@ def terminal_tool(
                 rtk_rewritten=rtk_rewritten,
                 max_lines=max_lines,
             )
-
-            # Stage 3: Export oversized output
-            final_output, export_path = _maybe_export_output_async(
-                post_result.output,
-                output_limit=4096,
-            )
-
-            # Track output truncation
-            output_truncated = (
-                (len(post_result.output) > 4096) or (export_path is not None)
-            )
-
-            # Stage 4: Ensure ANSI is stripped (belt-and-suspenders after Rich strip)
-            output = filter_output(final_output)
-
-            # Apply the post_result metadata
             output = post_result.output
+
+            # Stage 3: Byte-cap truncation, keeping both head and tail. This is
+            # the hard output-size contract (head 40% / tail 60%) — dedup and
+            # max_lines above reduce tokens but do NOT bound bytes, and the
+            # transform_terminal_output hook may have just expanded the output.
+            from tools.tool_output_limits import get_max_bytes
+            MAX_OUTPUT_CHARS = get_max_bytes()
+            if len(output) > MAX_OUTPUT_CHARS:
+                head_chars = int(MAX_OUTPUT_CHARS * 0.4)  # 40% head (error messages often appear early)
+                tail_chars = MAX_OUTPUT_CHARS - head_chars  # 60% tail (most recent/relevant output)
+                omitted = len(output) - head_chars - tail_chars
+                truncated_notice = (
+                    f"\n\n... [OUTPUT TRUNCATED - {omitted} chars omitted "
+                    f"out of {len(output)} total] ...\n\n"
+                )
+                output = output[:head_chars] + truncated_notice + output[-tail_chars:]
 
             # Redact secrets from command output. For source/config dumps
             # (MAX_TOKENS=100, "apiKey": "x" fixtures, postgresql:// f-string

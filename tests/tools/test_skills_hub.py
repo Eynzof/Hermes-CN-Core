@@ -1165,7 +1165,9 @@ class TestCheckForSkillUpdates:
         skill_dir.mkdir()
         (skill_dir / "SKILL.md").write_text("same content")
         (skill_dir / "references").mkdir()
-        (skill_dir / "references" / "checklist.md").write_text("- [ ] security\n")
+        # write_bytes: on Windows write_text translates \n -> \r\n, which
+        # would make the on-disk bytes differ from the in-memory bundle.
+        (skill_dir / "references" / "checklist.md").write_bytes(b"- [ ] security\n")
 
         assert bundle_content_hash(bundle) == content_hash(skill_dir)
 
@@ -1228,7 +1230,9 @@ class TestCheckForSkillUpdates:
         skill_dir.mkdir()
         (skill_dir / "SKILL.md").write_bytes(b"# Demo Skill\n")
         (skill_dir / "references").mkdir()
-        (skill_dir / "references" / "checklist.md").write_text("- [ ] security\n")
+        # write_bytes: on Windows write_text translates \n -> \r\n, which
+        # would make the on-disk bytes differ from the in-memory bundle.
+        (skill_dir / "references" / "checklist.md").write_bytes(b"- [ ] security\n")
 
         assert bundle_content_hash(bundle) == content_hash(skill_dir)
 
@@ -1850,8 +1854,10 @@ class TestOptionalSkillSourceBinaryAssets:
         (skill_dir / "assets" / "neutts-cli" / "samples" / "jo.wav").write_bytes(
             wav_bytes
         )
-        (skill_dir / "assets" / "neutts-cli" / "samples" / "jo.txt").write_text(
-            "hello\n", encoding="utf-8"
+        # write_bytes: write_text would translate \n -> \r\n on Windows and
+        # the byte-exact assertions below would fail.
+        (skill_dir / "assets" / "neutts-cli" / "samples" / "jo.txt").write_bytes(
+            b"hello\n"
         )
         pycache_dir = skill_dir / "assets" / "neutts-cli" / "src" / "neutts_cli" / "__pycache__"
         pycache_dir.mkdir(parents=True)

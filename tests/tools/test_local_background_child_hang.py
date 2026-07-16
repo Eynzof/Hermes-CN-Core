@@ -11,11 +11,22 @@ The fix switches ``_drain()`` to select()-based non-blocking reads and
 stops draining shortly after bash exits even if the pipe hasn't EOF'd.
 """
 import subprocess
+import sys
 import time
 
 import pytest
 
 from tools.environments.local import LocalEnvironment
+
+# The mechanism under test is POSIX-only: fork()-inherited pipe fds, bash
+# job control (``&`` / ``disown`` / ``setsid``), ``pkill`` cleanup, and
+# ``python3``/``/dev/null`` in the commands themselves.  On Windows the
+# local backend is PowerShell — none of these primitives exist, so every
+# test here fails on syntax/ tooling, not on the drain behavior.
+pytestmark = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="POSIX fork/pipe-inheritance mechanism; requires bash tooling",
+)
 
 
 def _pkill(pattern: str) -> None:

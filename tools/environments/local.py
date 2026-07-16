@@ -803,7 +803,10 @@ def _build_powershell_background_script(
         f"Set-Location -LiteralPath '{quoted_cwd}' -ErrorAction SilentlyContinue",
         f"if ($?) {{ Set-Location -LiteralPath '{quoted_cwd}' }} else {{ exit 126 }}",
         # Run the command and flush PowerShell's formatting pipeline.
-        f"Invoke-Expression '{escaped}' | Out-String -Width 4096 | Write-Output",
+        # ``-Stream`` emits each object's rendered text as it arrives instead
+        # of accumulating everything until the pipeline completes — without
+        # it, output produced before a timeout kill is lost entirely.
+        f"Invoke-Expression '{escaped}' | Out-String -Width 4096 -Stream | Write-Output",
         "$hermes_ec = $LASTEXITCODE",
     ]
 
@@ -1366,8 +1369,11 @@ class LocalEnvironment(BaseEnvironment):
             # mixed statements like ``Get-Location; Test-Path ...`` can return
             # an empty stdout when followed by ``exit`` in non-interactive
             # PowerShell hosts.  Use a wide string formatter so long paths are
-            # not ellipsized by the default table formatter.
-            f"Invoke-Expression '{escaped}' | Out-String -Width 4096 | Write-Output",
+            # not ellipsized by the default table formatter.  ``-Stream``
+            # emits each object's rendered text as it arrives instead of
+            # accumulating everything until the pipeline completes — without
+            # it, output produced before a timeout kill is lost entirely.
+            f"Invoke-Expression '{escaped}' | Out-String -Width 4096 -Stream | Write-Output",
             "$hermes_ec = $LASTEXITCODE",
             # Write CWD to temp file
             f"(Get-Location).Path | Out-File -Encoding utf8 -FilePath '{quoted_cwd_file}'",
@@ -1407,7 +1413,9 @@ class LocalEnvironment(BaseEnvironment):
         parts = [
             "$ErrorActionPreference = 'Continue'",
             f"Set-Location -LiteralPath '{quoted_cwd}' -ErrorAction SilentlyContinue",
-            f"Invoke-Expression '{escaped}' | Out-String -Width 4096 | Write-Output",
+            # ``-Stream``: keep partial output alive when the command is
+            # killed mid-pipeline (timeout / interrupt).
+            f"Invoke-Expression '{escaped}' | Out-String -Width 4096 -Stream | Write-Output",
             f"(Get-Location).Path | Out-File -Encoding utf8 -FilePath '{quoted_cwd_file}'",
         ]
         return "\n".join(parts)

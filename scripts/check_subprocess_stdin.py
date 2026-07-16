@@ -146,7 +146,10 @@ def main() -> int:
             continue
 
         for py_file in dirpath.rglob("*.py"):
-            rel = str(py_file.relative_to(repo_root))
+            # Normalize to POSIX separators — KNOWN_SAFE uses forward slashes,
+            # and ``str(Path)`` uses backslashes on Windows, which silently
+            # defeated the skip list and reported false positives there.
+            rel = py_file.relative_to(repo_root).as_posix()
 
             # Skip known-safe files.
             if rel in KNOWN_SAFE:

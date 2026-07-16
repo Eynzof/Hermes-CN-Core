@@ -1653,13 +1653,16 @@ class SlashCommandCompleter(Completer):
 
         files: list[str] = []
         # Try ripgrepy first (fast, respects .gitignore), then fd, then find.
+        from hermes_cli.dep_ensure import _find_rg
+        rg_path = _find_rg()
         rg_methods = []
         try:
             from ripgrepy import Ripgrepy, RipGrepNotFound
-            rg_methods = [
-                lambda c: Ripgrepy("", c).files().sortr("modified"),
-                lambda c: Ripgrepy("", c).files(),
-            ]
+            if rg_path:
+                rg_methods = [
+                    lambda c: Ripgrepy("", c, rg_path=rg_path).files().sortr("modified"),
+                    lambda c: Ripgrepy("", c, rg_path=rg_path).files(),
+                ]
         except ImportError:
             pass
         for rg_builder in rg_methods:

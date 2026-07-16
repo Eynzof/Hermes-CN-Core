@@ -2118,6 +2118,8 @@ def terminal_tool(
     pty: bool = False,
     notify_on_complete: bool = False,
     watch_patterns: Optional[List[str]] = None,
+    token_kill: bool = True,
+    max_lines: Optional[int] = None,
 ) -> str:
     """
     Execute a command in the configured terminal environment.
@@ -2133,6 +2135,8 @@ def terminal_tool(
         pty: If True, use pseudo-terminal for interactive CLI tools (local backend only)
         notify_on_complete: If True and background=True, you'll be notified exactly once when the process exits. The right choice for almost every long task. MUTUALLY EXCLUSIVE with watch_patterns.
         watch_patterns: List of strings to watch for in background output. HARD rate limit: 1 notification per 15s per process. After 3 strike windows in a row, watch_patterns is disabled and the session is auto-promoted to notify_on_complete. Use ONLY for rare, one-shot mid-process signals on long-lived processes (server readiness, migration-done markers). NEVER use in loops/batch jobs — error patterns there will hit the strike limit and get disabled. MUTUALLY EXCLUSIVE with notify_on_complete — set one, not both.
+        token_kill: When True (default), known commands are rewritten to use the rtk binary which collapses repeated output lines to save tokens. Set False to preserve raw command output.
+        max_lines: Maximum number of output lines to return. When set, keeps the first floor(max_lines/2) and last ceil(max_lines/2)-1 lines with an omitted-lines marker between them. When unset, all lines are returned (subject to the byte cap).
 
     Returns:
         str: JSON string with output, exit_code, and error fields
@@ -2149,6 +2153,12 @@ def terminal_tool(
         
         # Force run after user confirmation
         # Note: force parameter is internal only, not exposed to model API
+        
+        # With token_kill disabled
+        >>> result = terminal_tool(command="git log", token_kill=False)
+        
+        # With max_lines limit
+        >>> result = terminal_tool(command="dmesg", max_lines=100)
     """
     try:
         if not isinstance(command, str):
@@ -2740,7 +2750,17 @@ def terminal_tool(
                         "timeout": effective_timeout,
                         "cwd": command_cwd,
                     }
-                    result = env.execute(command, **execute_kwargs)
+                    # Apply token_kill command rewriting before execution
+                    exec_command = command
+                    rtk_rewritten = False
+                    if token_kill:
+                        from tools.rtk_provision import _rtk_available
+                        if _rtk_available():
+                            from tools.terminal_command_rewrite import _maybe_rewrite_shell_command_with_rtk
+                            exec_command, rtk_rewritten = _maybe_rewrite_shell_command_with_rtk(
+                                command, token_kill=True
+                            )
+                    result = env.execute(exec_command, **execute_kwargs)
                 except Exception as e:
                     error_str = str(e).lower()
                     if "timeout" in error_str:
@@ -2810,24 +2830,41 @@ def terminal_tool(
                         break
             except Exception:
                 pass
-            
-            # Truncate output if too long, keeping both head and tail
-            from tools.tool_output_limits import get_max_bytes
-            MAX_OUTPUT_CHARS = get_max_bytes()
-            if len(output) > MAX_OUTPUT_CHARS:
-                head_chars = int(MAX_OUTPUT_CHARS * 0.4)  # 40% head (error messages often appear early)
-                tail_chars = MAX_OUTPUT_CHARS - head_chars  # 60% tail (most recent/relevant output)
-                omitted = len(output) - head_chars - tail_chars
-                truncated_notice = (
-                    f"\n\n... [OUTPUT TRUNCATED - {omitted} chars omitted "
-                    f"out of {len(output)} total] ...\n\n"
-                )
-                output = output[:head_chars] + truncated_notice + output[-tail_chars:]
 
-            # Strip ANSI escape sequences so the model never sees terminal
-            # formatting — prevents it from copying escapes into file writes.
-            from tools.ansi_strip import strip_ansi
-            output = strip_ansi(output)
+            # ── New post-processing pipeline ──
+            from tools.terminal_post_process import (
+                _token_filter_output,
+                _maybe_export_output_async,
+                filter_output,
+            )
+
+            # Stage 1: Raw output filtering (ANSI + line ending normalization)
+            output = filter_output(output)
+
+            # Stage 2: Token filter pipeline (dedup + line truncation + original save)
+            post_result = _token_filter_output(
+                output,
+                token_kill=token_kill,
+                rtk_rewritten=rtk_rewritten,
+                max_lines=max_lines,
+            )
+
+            # Stage 3: Export oversized output
+            final_output, export_path = _maybe_export_output_async(
+                post_result.output,
+                output_limit=4096,
+            )
+
+            # Track output truncation
+            output_truncated = (
+                (len(post_result.output) > 4096) or (export_path is not None)
+            )
+
+            # Stage 4: Ensure ANSI is stripped (belt-and-suspenders after Rich strip)
+            output = filter_output(final_output)
+
+            # Apply the post_result metadata
+            output = post_result.output
 
             # Redact secrets from command output. For source/config dumps
             # (MAX_TOKENS=100, "apiKey": "x" fixtures, postgresql:// f-string
@@ -3113,6 +3150,16 @@ TERMINAL_SCHEMA = {
                 "type": "array",
                 "items": {"type": "string"},
                 "description": "Strings to watch for in background process output. HARD RATE LIMIT: at most 1 notification per 15 seconds per process — matches arriving inside the cooldown are dropped. After 3 consecutive 15-second windows with dropped matches, watch_patterns is automatically disabled for that process and promoted to notify_on_complete behavior (one notification on exit, no more mid-process spam). USE ONLY for truly rare, one-shot mid-process signals on LONG-LIVED processes that will never exit on their own — e.g. ['Application startup complete'] on a server so you know when to hit its endpoint, or ['migration done'] on a daemon. DO NOT use for: (1) end-of-run markers like 'DONE'/'PASS' — use notify_on_complete instead; (2) error patterns like 'ERROR'/'Traceback' in loops or multi-item batch jobs — they fire on every iteration and you'll hit the strike limit fast; (3) anything you'd ever combine with notify_on_complete. When in doubt, choose notify_on_complete. MUTUALLY EXCLUSIVE with notify_on_complete — set one, not both."
+            },
+            "token_kill": {
+                "type": "boolean",
+                "description": "When true (default), known commands are rewritten to use the rtk binary which collapses repeated lines to save tokens. Set false to preserve raw command output.",
+                "default": True
+            },
+            "max_lines": {
+                "type": "integer",
+                "description": "Maximum number of output lines to return. When set, keeps the first floor(max_lines/2) and last ceil(max_lines/2)-1 lines with an omitted-lines marker between them. When unset, all lines are returned (subject to the byte cap).",
+                "minimum": 10
             }
         },
         "required": ["command"]
@@ -3131,6 +3178,8 @@ def _handle_terminal(args, **kw):
         pty=args.get("pty", False),
         notify_on_complete=args.get("notify_on_complete", False),
         watch_patterns=args.get("watch_patterns"),
+        token_kill=args.get("token_kill", True),
+        max_lines=args.get("max_lines"),
     )
 
 

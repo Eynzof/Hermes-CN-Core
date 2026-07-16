@@ -2281,6 +2281,7 @@ class TestGetProjectFilesRipgrepy:
                 cmd, 0, stdout=f"{tmp_path / 'src' / 'main.py'}\n"
             )
         monkeypatch.setattr(subprocess, "run", fake_run)
+        monkeypatch.setattr("hermes_cli.dep_ensure._find_rg", lambda: "rg")
 
         with patch("hermes_cli.commands.os.getcwd", return_value=str(tmp_path)):
             files = completer._get_project_files()

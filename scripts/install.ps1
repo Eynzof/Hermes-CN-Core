@@ -151,15 +151,21 @@ $NodeVersion = "22"
 # new stage does NOT bump this -- drivers iterate the manifest dynamically.
 $InstallStageProtocolVersion = 1
 
-# Hermes-managed ripgrep binary.  We keep a known-good copy here so a broken
-# system shim/symlink cannot brick the installer or runtime search.
-$script:ManagedRgDir = Join-Path $HermesHome "bin"
-$script:ManagedRg    = Join-Path $script:ManagedRgDir "rg.exe"
+# Hermes-managed external tools directory.  We keep known-good copies here so
+# broken system shims/symlinks on PATH cannot brick the installer or runtime.
+$script:ManagedToolsDir = Join-Path $HermesHome "tools"
+
+# Hermes-managed ripgrep binary.
+$script:ManagedRg = Join-Path $script:ManagedToolsDir "rg.exe"
+
+# Hermes-managed rtk (reasoning toolkit) binary.  Used to collapse repeated
+# command output lines, reducing token consumption.
+$script:ManagedRtk = Join-Path $script:ManagedToolsDir "rtk.exe"
 
 # Hermes-managed Coreutils directory.  Used on Windows to provide POSIX CLI tools
 # (cat, cp, mv, ls, sort, wc, whoami, id, ...) that are commonly referenced in
 # shell scripts and skills.  Managed by install_coreutils.py.
-$script:ManagedCoreutilsDir = Join-Path $HermesHome "coreutils"
+$script:ManagedCoreutilsDir = Join-Path $script:ManagedToolsDir "coreutils"
 $script:ManagedCat          = Join-Path $script:ManagedCoreutilsDir "bin\cat.exe"
 
 # ============================================================================
@@ -1079,7 +1085,7 @@ function Install-ManagedRipgrep {
         return
     }
 
-    New-Item -ItemType Directory -Path $script:ManagedRgDir -Force | Out-Null
+    New-Item -ItemType Directory -Path $script:ManagedToolsDir -Force | Out-Null
 
     $arch = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") {
         "aarch64-pc-windows-msvc"
@@ -1116,15 +1122,96 @@ function Install-ManagedRipgrep {
 
     # Current process: put managed rg first so it overrides any broken shim.
     Update-ProcessPathForPackages
-    $env:Path = "$($script:ManagedRgDir);$env:Path"
+    $env:Path = "$($script:ManagedToolsDir);$env:Path"
 
     # Persist to User PATH so fresh shells also prefer the managed binary.
     $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
     $items = if ($userPath) { $userPath -split ";" } else { @() }
-    if ($items -notcontains $script:ManagedRgDir) {
+    if ($items -notcontains $script:ManagedToolsDir) {
         [Environment]::SetEnvironmentVariable(
             "Path",
-            "$($script:ManagedRgDir);$userPath",
+            "$($script:ManagedToolsDir);$userPath",
+            "User"
+        )
+    }
+}
+
+function Test-RtkBinary {
+    <#
+    .SYNOPSIS
+    Verify that rtk.exe is available and runnable.
+    #>
+    param([string]$Path = $script:ManagedRtk)
+    if (-not (Test-Path $Path)) { return $false }
+    try {
+        $ver = & $Path --version 2>&1 | Select-Object -First 1
+        return ($LASTEXITCODE -eq 0) -and ($ver -match 'rtk')
+    } catch {
+        return $false
+    }
+}
+
+function Install-ManagedRtk {
+    <#
+    .SYNOPSIS
+    Download a known-good rtk binary into $HERMES_HOME\bin\rtk.exe.
+
+    Mirrors the Install-ManagedRipgrep pattern.  The binary is placed at the
+    front of the process PATH and persisted to User PATH so it overrides any
+    broken system shim in this shell and in future shells.
+    #>
+    if ((Test-Path $script:ManagedRtk) -and (Test-RtkBinary $script:ManagedRtk)) {
+        Write-Success "Managed rtk already usable"
+        return
+    }
+
+    New-Item -ItemType Directory -Path $script:ManagedToolsDir -Force | Out-Null
+
+    # Architecture detection (same as ripgrep)
+    if ([Environment]::Is64BitOperatingSystem) {
+        $arch = "x86_64-pc-windows-msvc"
+    } else {
+        $arch = "aarch64-pc-windows-msvc"
+    }
+
+    $rtkVersion = "0.43.0"
+    $zipName   = "rtk-$rtkVersion-$arch.zip"
+    $assetUrl  = "https://github.com/rtk-ai/rtk/releases/download/v$rtkVersion/$zipName"
+    $zipPath   = Join-Path $env:TEMP $zipName
+
+    try {
+        Invoke-WebRequest -Uri $assetUrl -OutFile $zipPath -UseBasicParsing
+        $extractDir = Join-Path $env:TEMP "rtk-$rtkVersion"
+        if (Test-Path $extractDir) {
+            Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
+        $rtkSource = Join-Path $extractDir "rtk-$rtkVersion-$arch\rtk.exe"
+        if (-not (Test-Path $rtkSource)) {
+            throw "Expected rtk.exe at $rtkSource but it was not found after extraction"
+        }
+        Copy-Item -Path $rtkSource -Destination $script:ManagedRtk -Force
+    } finally {
+        Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
+        Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    if (-not (Test-RtkBinary $script:ManagedRtk)) {
+        throw "Managed rtk installed at $script:ManagedRtk but cannot run"
+    }
+    Write-Success "Managed rtk installed"
+
+    # Current process: put managed rtk first so it overrides any broken shim.
+    Update-ProcessPathForPackages
+    $env:Path = "$($script:ManagedToolsDir);$env:Path"
+
+    # Persist to User PATH so fresh shells also prefer the managed binary.
+    $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    $items = if ($userPath) { $userPath -split ";" } else { @() }
+    if ($items -notcontains $script:ManagedToolsDir) {
+        [Environment]::SetEnvironmentVariable(
+            "Path",
+            "$($script:ManagedToolsDir);$userPath",
             "User"
         )
     }
@@ -1290,6 +1377,16 @@ function Install-SystemPackages {
         if (-not $script:HasCoreutils) {
             Install-Coreutils
         }
+    }
+
+    Write-Info "Checking rtk (reasoning toolkit, for token-kill)..."
+    $script:HasRtk = Test-RtkBinary
+    if ($script:HasRtk) {
+        Write-Success "rtk found"
+    } else {
+        Write-Warn "rtk missing; installing managed copy..."
+        Install-ManagedRtk
+        $script:HasRtk = $true
     }
 
     if (-not $needRipgrep -and -not $needFfmpeg) { return }
@@ -3620,6 +3717,9 @@ function Invoke-EnsureMode {
             }
             "coreutils" {
                 Install-Coreutils
+            }
+            "rtk" {
+                Install-ManagedRtk
             }
             default {
                 Write-Err "Unknown dependency: $dep"

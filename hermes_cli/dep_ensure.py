@@ -23,7 +23,8 @@ import sys
 from pathlib import Path
 
 from tools.environments.windows_env import refresh_env_from_registry
-from hermes_constants import agent_browser_runnable
+from tools.rtk_provision import _find_rtk
+from hermes_constants import agent_browser_runnable, get_managed_tools_dir
 from tools.environments.local import hermes_subprocess_env
 
 _IS_WINDOWS = is_windows()
@@ -36,6 +37,7 @@ _DEP_CHECKS = {
         or _has_hermes_agent_browser()
     ),
     "ripgrep": lambda: _find_rg() is not None and _has_ripgrepy(),
+    "rtk": lambda: _find_rtk() is not None,
     "ffmpeg": lambda: shutil.which("ffmpeg") is not None,
     "coreutils": lambda: _check_coreutils(),
 }
@@ -44,6 +46,7 @@ _DEP_DESCRIPTIONS = {
     "node": "Node.js (required for browser tools and TUI)",
     "browser": "Browser engine (Chromium, for web browsing tools)",
     "ripgrep": "ripgrep + ripgrepy (fast file search)",
+    "rtk": "rtk reasoning toolkit (token reduction for terminal output)",
     "ffmpeg": "ffmpeg (TTS voice messages)",
     "coreutils": "Microsoft Coreutils (POSIX CLI tools on Windows)",
 }
@@ -71,25 +74,41 @@ def _has_ripgrepy() -> bool:
 def _find_rg() -> str | None:
     """Return a usable rg executable path.
 
-    On Windows, prefer the Hermes-managed copy in $HERMES_HOME/bin/rg.exe so
-    a broken system shim/symlink is never selected.  On all platforms, verify
-    that the candidate actually runs `rg --version` successfully.
+    Prefer the Hermes-managed copy in ``get_managed_tools_dir()`` so a broken
+    global PATH shim/symlink is never selected.  On all platforms, verify that
+    the candidate actually runs ``rg --version`` successfully.  The managed
+    directory is checked first; only when it is missing or unusable do we fall
+    back to PATH.
     """
+    binary_name = "rg.exe" if _IS_WINDOWS else "rg"
+    managed = get_managed_tools_dir() / binary_name
+    if managed.exists():
+        try:
+            subprocess.run(
+                [str(managed), "--version"],
+                capture_output=True,
+                check=True,
+                timeout=5,
+            )
+            return str(managed)
+        except Exception:
+            pass
+
+    # Legacy fallback: older installs kept rg in HERMES_HOME/bin.
     from hermes_constants import get_hermes_home
 
-    if _IS_WINDOWS:
-        managed = get_hermes_home() / "bin" / "rg.exe"
-        if managed.exists():
-            try:
-                subprocess.run(
-                    [str(managed), "--version"],
-                    capture_output=True,
-                    check=True,
-                    timeout=5,
-                )
-                return str(managed)
-            except Exception:
-                pass
+    legacy = get_hermes_home() / "bin" / binary_name
+    if legacy.exists() and legacy != managed:
+        try:
+            subprocess.run(
+                [str(legacy), "--version"],
+                capture_output=True,
+                check=True,
+                timeout=5,
+            )
+            return str(legacy)
+        except Exception:
+            pass
 
     path_rg = shutil.which("rg")
     if path_rg:
@@ -130,9 +149,14 @@ def _check_coreutils() -> bool:
     (macOS with GNU coreutils via Homebrew).
     """
     if _IS_WINDOWS:
-        from hermes_constants import get_hermes_home
-        managed_cat = get_hermes_home() / "coreutils" / "bin" / "cat.exe"
+        managed_cat = get_managed_tools_dir() / "coreutils" / "bin" / "cat.exe"
         if managed_cat.exists():
+            return True
+        # Legacy fallback for existing installs.
+        from hermes_constants import get_hermes_home
+
+        legacy_cat = get_hermes_home() / "coreutils" / "bin" / "cat.exe"
+        if legacy_cat.exists():
             return True
         return shutil.which("cat.exe") is not None
     # Linux/macOS: system cat is always available; also check for

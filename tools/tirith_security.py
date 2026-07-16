@@ -35,7 +35,7 @@ import threading
 import time
 import urllib.request
 
-from hermes_constants import get_hermes_home
+from hermes_constants import get_hermes_home, get_managed_tools_dir
 
 logger = logging.getLogger(__name__)
 
@@ -236,8 +236,19 @@ def _clear_install_failed():
         pass
 
 
+def _hermes_tools_dir() -> str:
+    """Return the Hermes-managed external tools directory, creating it if needed."""
+    d = str(get_managed_tools_dir())
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
 def _hermes_bin_dir() -> str:
-    """Return $HERMES_HOME/bin, creating it if needed."""
+    """Return $HERMES_HOME/bin, creating it if needed.
+
+    Deprecated: new installs keep external binaries in ``get_managed_tools_dir``.
+    This helper remains for backward compatibility with existing installs.
+    """
     d = os.path.join(_get_hermes_home(), "bin")
     os.makedirs(d, exist_ok=True)
     return d
@@ -459,7 +470,7 @@ def _install_tirith(*, log_failures: bool = True) -> tuple[str | None, str]:
             if src is None:
                 return None, reason
 
-        dest = os.path.join(_hermes_bin_dir(), "tirith")
+        dest = os.path.join(_hermes_tools_dir(), "tirith")
         try:
             shutil.move(src, dest)
         except OSError:
@@ -498,9 +509,10 @@ def _resolve_tirith_path(configured_path: str) -> str:
     auto-download a different binary.
 
     For the default "tirith":
-    1. PATH lookup via shutil.which
-    2. $HERMES_HOME/bin/tirith (previously auto-installed)
-    3. Auto-install from GitHub releases → $HERMES_HOME/bin/tirith
+    1. $HERMES_HOME/tools/tirith (managed copy)
+    2. PATH lookup via shutil.which
+    3. $HERMES_HOME/bin/tirith (legacy managed copy)
+    4. Auto-install from GitHub releases → $HERMES_HOME/tools/tirith
 
     Failed installs are cached for the process lifetime (and persisted to
     disk for 24h) to avoid repeated network attempts.
@@ -542,6 +554,13 @@ def _resolve_tirith_path(configured_path: str) -> str:
     # Default "tirith" — always re-run cheap local checks so a manual
     # install is picked up even after a previous network failure (P2 fix:
     # long-lived gateway/CLI recovers without restart).
+    hermes_tools = os.path.join(_hermes_tools_dir(), "tirith")
+    if os.path.isfile(hermes_tools) and os.access(hermes_tools, os.X_OK):
+        _resolved_path = hermes_tools
+        _install_failure_reason = ""
+        _clear_install_failed()
+        return hermes_tools
+
     found = shutil.which("tirith")
     if found:
         _resolved_path = found
@@ -607,6 +626,12 @@ def _background_install(*, log_failures: bool = True):
             return
 
         # Re-check local paths (may have been installed by another process)
+        hermes_tools = os.path.join(_hermes_tools_dir(), "tirith")
+        if os.path.isfile(hermes_tools) and os.access(hermes_tools, os.X_OK):
+            _resolved_path = hermes_tools
+            _install_failure_reason = ""
+            return
+
         found = shutil.which("tirith")
         if found:
             _resolved_path = found
@@ -676,6 +701,13 @@ def ensure_installed(*, log_failures: bool = True):
         return None
 
     # Default "tirith" — quick local checks first (no network)
+    hermes_tools = os.path.join(_hermes_tools_dir(), "tirith")
+    if os.path.isfile(hermes_tools) and os.access(hermes_tools, os.X_OK):
+        _resolved_path = hermes_tools
+        _install_failure_reason = ""
+        _clear_install_failed()
+        return hermes_tools
+
     found = shutil.which("tirith")
     if found:
         _resolved_path = found

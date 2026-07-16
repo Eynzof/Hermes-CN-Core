@@ -445,6 +445,7 @@ class TestRgFilesRipgrepy:
             captured_cmd.append(cmd)
             return subprocess.CompletedProcess(cmd, 0, stdout="")
         monkeypatch.setattr(subprocess, "run", capture_run)
+        monkeypatch.setattr("hermes_cli.dep_ensure._find_rg", lambda: "rg")
         cwd = tmp_path / "project"
         cwd.mkdir()
         search_path = cwd / "src"

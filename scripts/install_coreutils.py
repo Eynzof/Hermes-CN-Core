@@ -9,7 +9,7 @@ Strategy (in priority order):
 2. Direct download from GitHub latest release
 
 Hermes-CN-Core aware:
-- Default install directory: ``%HERMES_HOME%\\coreutils`` (or ``%LOCALAPPDATA%\\hermes\\coreutils``)
+- Default install directory: ``%HERMES_HOME%\\tools\\coreutils`` (legacy ``%HERMES_HOME%\\coreutils`` is still accepted)
 - Supports ``--ensure`` for ``dep_ensure.py`` compatibility
 
 Usage:
@@ -50,7 +50,9 @@ def _get_install_base() -> Path:
     return base
 
 
-INSTALL_DIR = _get_install_base() / "coreutils"
+# Canonical managed location is <HERMES_HOME>/tools/coreutils.  Legacy installs
+# used <HERMES_HOME>/coreutils directly; _coreutils_found checks both.
+INSTALL_DIR = _get_install_base() / "tools" / "coreutils"
 """Default install directory for the portable extraction strategy."""
 
 
@@ -451,7 +453,7 @@ def install_coreutils(
     Parameters
     ----------
     install_dir:
-        Target directory.  Defaults to ``<HERMES_HOME>/coreutils``.
+        Target directory.  Defaults to ``<HERMES_HOME>/tools/coreutils``.
     add_to_path:
         Whether to append the ``bin`` folder to the user PATH.
     timeout:

@@ -168,7 +168,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         -h|--help)
-            echo "Hermes Agent Installer"
+            echo "                   Supported: node, browser, ripgrep, ffmpeg, coreutils (macOS only), rtk"Hermes Agent Installer"
             echo ""
             echo "Usage: install.sh [OPTIONS]"
             echo ""
@@ -204,7 +204,7 @@ while [[ $# -gt 0 ]]; do
             echo "  small and ensures the command is on PATH for all shells."
             echo "  Existing installs at \$HERMES_HOME/hermes-agent are preserved in-place."
             echo "  --ensure DEPS  Install only specified deps (comma-separated)"
-            echo "                   Supported: node, browser, ripgrep, ffmpeg, coreutils (macOS only)"
+            echo "                   Supported: node, browser, ripgrep, ffmpeg, coreutils (macOS only), rtk"
             echo "                   Does NOT clone repo or create venv"
             echo "  --postinstall  Run post-install setup only (for pip users)"
             echo "                   Installs optional deps + runs hermes setup"
@@ -237,6 +237,11 @@ if [ "$ISOLATED_LAYOUT" = true ]; then
 fi
 
 export HERMES_HOME
+
+# Hermes-managed external tools directory.  Downloaded binaries (ripgrep, rtk,
+# coreutils, ...) live here so broken global PATH copies cannot brick runtime.
+MANAGED_TOOLS_DIR="${HERMES_HOME}/tools"
+export MANAGED_TOOLS_DIR
 
 # Keep Playwright browser binaries under Hermes data by default so local browser
 # tooling follows the same profile/custom-root isolation as the rest of Hermes.
@@ -1037,6 +1042,7 @@ install_system_packages() {
     # Detect what's missing
     HAS_RIPGREP=false
     HAS_FFMPEG=false
+    HAS_RTK=false
     local need_ripgrep=false
     local need_ffmpeg=false
 
@@ -1055,6 +1061,27 @@ install_system_packages() {
         HAS_FFMPEG=true
     else
         need_ffmpeg=true
+    fi
+
+    log_info "Checking rtk (reasoning toolkit, for token-kill)..."
+    if [ -x "${MANAGED_TOOLS_DIR}/rtk" ]; then
+        log_success "rtk found in ${MANAGED_TOOLS_DIR}"
+        HAS_RTK=true
+    elif command -v rtk &> /dev/null; then
+        log_success "$(rtk --version 2>/dev/null || echo rtk) found"
+        HAS_RTK=true
+    elif [ -x "${HERMES_HOME}/bin/rtk" ]; then
+        export PATH="${HERMES_HOME}/bin:$PATH"
+        log_success "rtk found in ${HERMES_HOME}/bin"
+        HAS_RTK=true
+    else
+        log_info "rtk not found; downloading..."
+        if _install_rtk_direct; then
+            HAS_RTK=true
+        else
+            log_warn "rtk not installed (token-kill will be unavailable)"
+            log_info "Install manually from: https://github.com/rtk-ai/rtk/releases"
+        fi
     fi
 
     # Termux always needs the Android build toolchain for the tested pip path,
@@ -1206,6 +1233,14 @@ install_system_packages() {
         fi
     fi
 
+    # ── Fallback for ripgrep: direct GitHub download to managed tools dir ──
+    if [ "$need_ripgrep" = true ] && [ "$HAS_RIPGREP" = false ]; then
+        log_info "Trying direct download of ripgrep to ${MANAGED_TOOLS_DIR}..."
+        if _install_ripgrep_direct; then
+            HAS_RIPGREP=true
+        fi
+    fi
+
     # ── Show manual instructions for anything still missing ──
     if [ "$HAS_RIPGREP" = false ] && [ "$need_ripgrep" = true ]; then
         log_warn "ripgrep not installed (file search will use grep fallback)"
@@ -1215,6 +1250,99 @@ install_system_packages() {
         log_warn "ffmpeg not installed (TTS voice messages will be limited)"
         show_manual_install_hint "ffmpeg"
     fi
+}
+
+# ── Hermes-managed external tools (ripgrep, rtk, ...) ──
+RIPGREP_VERSION="14.1.1"
+RTK_VERSION="0.43.0"
+
+_install_ripgrep_direct() {
+    local arch_suffix
+    case "$(uname -m)" in
+        x86_64|amd64) arch_suffix="x86_64" ;;
+        aarch64|arm64) arch_suffix="aarch64" ;;
+        *) log_warn "Unsupported architecture for ripgrep"; return 1 ;;
+    esac
+
+    local os_suffix
+    case "$(uname -s)" in
+        Darwin) os_suffix="apple-darwin" ;;
+        Linux)  os_suffix="unknown-linux-gnu" ;;
+        *) log_warn "Unsupported OS for ripgrep"; return 1 ;;
+    esac
+
+    local arch="${arch_suffix}-${os_suffix}"
+    local tarball="ripgrep-${RIPGREP_VERSION}-${arch}.tar.gz"
+    local url="https://github.com/BurntSushi/ripgrep/releases/download/${RIPGREP_VERSION}/${tarball}"
+    local tmpdir
+    tmpdir=$(mktemp -d) || return 1
+    local dest="${MANAGED_TOOLS_DIR}"
+    mkdir -p "$dest"
+
+    log_info "Downloading ripgrep ${RIPGREP_VERSION}..."
+    if curl -fsSL "$url" -o "${tmpdir}/${tarball}"; then
+        tar -xzf "${tmpdir}/${tarball}" -C "$tmpdir"
+        local binary="${tmpdir}/ripgrep-${RIPGREP_VERSION}-${arch}/rg"
+        if [ -f "$binary" ]; then
+            cp "$binary" "${dest}/rg"
+            chmod +x "${dest}/rg"
+            rm -rf "$tmpdir"
+            if "${dest}/rg" --version >/dev/null 2>&1; then
+                log_success "ripgrep ${RIPGREP_VERSION} installed to ${dest}/rg"
+                return 0
+            fi
+        else
+            log_warn "Could not find rg binary in extracted tarball"
+        fi
+    fi
+    rm -rf "$tmpdir"
+    return 1
+}
+
+_install_rtk_direct() {
+    local arch_suffix
+    case "$(uname -m)" in
+        x86_64|amd64) arch_suffix="x86_64" ;;
+        aarch64|arm64) arch_suffix="aarch64" ;;
+        *) log_warn "Unsupported architecture for rtk"; return 1 ;;
+    esac
+
+    local os_suffix
+    case "$(uname -s)" in
+        Darwin) os_suffix="apple-darwin" ;;
+        Linux)  os_suffix="unknown-linux-gnu" ;;
+        *) log_warn "Unsupported OS for rtk"; return 1 ;;
+    esac
+
+    local arch="${arch_suffix}-${os_suffix}"
+    local tarball="rtk-${RTK_VERSION}-${arch}.tar.gz"
+    local url="https://github.com/rtk-ai/rtk/releases/download/v${RTK_VERSION}/${tarball}"
+    local tmpdir
+    tmpdir=$(mktemp -d) || return 1
+    local dest="${MANAGED_TOOLS_DIR}"
+    mkdir -p "$dest"
+
+    log_info "Downloading rtk ${RTK_VERSION}..."
+    if curl -fsSL "$url" -o "${tmpdir}/${tarball}"; then
+        tar -xzf "${tmpdir}/${tarball}" -C "$tmpdir"
+        if [ -f "${tmpdir}/rtk-${RTK_VERSION}-${arch}/rtk" ]; then
+            cp "${tmpdir}/rtk-${RTK_VERSION}-${arch}/rtk" "${dest}/rtk"
+        elif [ -f "${tmpdir}/rtk" ]; then
+            cp "${tmpdir}/rtk" "${dest}/rtk"
+        else
+            log_warn "Could not find rtk binary in extracted tarball"
+            rm -rf "$tmpdir"
+            return 1
+        fi
+        chmod +x "${dest}/rtk"
+        rm -rf "$tmpdir"
+        if "${dest}/rtk" --version >/dev/null 2>&1; then
+            log_success "rtk ${RTK_VERSION} installed to ${dest}/rtk"
+            return 0
+        fi
+    fi
+    rm -rf "$tmpdir"
+    return 1
 }
 
 show_manual_install_hint() {
@@ -2619,10 +2747,8 @@ ensure_mode() {
                 fi
                 ;;
             ripgrep)
-                if ! command -v rg &>/dev/null; then
-                    HAS_RIPGREP=false
-                    HAS_FFMPEG=true
-                    install_system_packages
+                if [ ! -x "${MANAGED_TOOLS_DIR}/rg" ] && ! command -v rg &>/dev/null && [ ! -x "${HERMES_HOME}/bin/rg" ]; then
+                    _install_ripgrep_direct || log_warn "ripgrep could not be installed"
                 fi
                 ;;
             ffmpeg)
@@ -2630,6 +2756,11 @@ ensure_mode() {
                     HAS_FFMPEG=false
                     HAS_RIPGREP=true
                     install_system_packages
+                fi
+                ;;
+            rtk)
+                if [ ! -x "${MANAGED_TOOLS_DIR}/rtk" ] && [ ! -x "${HERMES_HOME}/bin/rtk" ] && ! command -v rtk &> /dev/null; then
+                    _install_rtk_direct || log_warn "rtk could not be installed"
                 fi
                 ;;
             coreutils)

@@ -23,6 +23,7 @@ These tests drive the real methods through the real local terminal backend.
 
 import os
 import shutil
+import sys
 
 import pytest
 
@@ -61,8 +62,9 @@ def partial_error_tree(tmp_path):
 
 
 # Run every test once per available backend method.
-_METHODS = ["_search_with_grep"]
-if shutil.which("rg"):
+from hermes_cli.dep_ensure import _find_rg
+_METHODS = ["_search_with_grep"] if sys.platform != "win32" else []
+if _find_rg():
     _METHODS.append("_search_with_rg")
 
 
@@ -111,6 +113,8 @@ class TestSearchErrorGuard:
 
     def test_files_only_excludes_diagnostics(self, method, partial_error_tree):
         # files_only mode must not list a diagnostic line as a fake file path.
+        if sys.platform == "win32":
+            pytest.skip("chmod-based unreadable file tests do not work on Windows NTFS")
         res = _search(_ops(partial_error_tree), method, "needle",
                       partial_error_tree, output_mode="files_only")
         assert res.error is None

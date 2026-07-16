@@ -1,4 +1,5 @@
 import subprocess
+from pathlib import Path
 from subprocess import CompletedProcess
 from unittest.mock import patch
 
@@ -201,12 +202,12 @@ def _completed(*args, **kwargs):
 
 def test_find_rg_prefers_managed_on_windows(tmp_path):
     """On Windows, _find_rg returns the managed rg.exe when it runs."""
-    managed = tmp_path / "bin" / "rg.exe"
+    managed = tmp_path / "tools" / "rg.exe"
     managed.parent.mkdir(parents=True)
     managed.write_text("fake")
     from hermes_cli.dep_ensure import _find_rg
     with patch("hermes_cli.dep_ensure._IS_WINDOWS", True), \
-         patch("hermes_constants.get_hermes_home", return_value=tmp_path), \
+         patch("hermes_cli.dep_ensure.get_managed_tools_dir", return_value=managed.parent), \
          patch("hermes_cli.dep_ensure.subprocess.run", side_effect=_completed) as mock_run, \
          patch("hermes_cli.dep_ensure.shutil.which", return_value=None):
         result = _find_rg()
@@ -216,9 +217,26 @@ def test_find_rg_prefers_managed_on_windows(tmp_path):
         assert args[0] == str(managed)
 
 
+def test_find_rg_prefers_managed_on_posix(tmp_path):
+    """On POSIX, _find_rg returns the managed rg when it runs."""
+    managed = tmp_path / "tools" / "rg"
+    managed.parent.mkdir(parents=True)
+    managed.write_text("fake")
+    from hermes_cli.dep_ensure import _find_rg
+    with patch("hermes_cli.dep_ensure._IS_WINDOWS", False), \
+         patch("hermes_cli.dep_ensure.get_managed_tools_dir", return_value=managed.parent), \
+         patch("hermes_cli.dep_ensure.subprocess.run", side_effect=_completed) as mock_run, \
+         patch("hermes_cli.dep_ensure.shutil.which", return_value="/usr/bin/rg"):
+        result = _find_rg()
+        assert result == str(managed)
+        mock_run.assert_called_once()
+        args = mock_run.call_args[0][0]
+        assert args[0] == str(managed)
+
+
 def test_find_rg_falls_back_to_path_when_managed_broken(tmp_path):
-    """When managed rg.exe is broken, _find_rg falls back to PATH rg."""
-    managed = tmp_path / "bin" / "rg.exe"
+    """When managed rg is broken, _find_rg falls back to PATH rg."""
+    managed = tmp_path / "tools" / "rg.exe"
     managed.parent.mkdir(parents=True)
     managed.write_text("fake")
     from hermes_cli.dep_ensure import _find_rg
@@ -229,7 +247,7 @@ def test_find_rg_falls_back_to_path_when_managed_broken(tmp_path):
         return _completed(cmd)
 
     with patch("hermes_cli.dep_ensure._IS_WINDOWS", True), \
-         patch("hermes_constants.get_hermes_home", return_value=tmp_path), \
+         patch("hermes_cli.dep_ensure.get_managed_tools_dir", return_value=managed.parent), \
          patch("hermes_cli.dep_ensure.subprocess.run", side_effect=_run_side_effect) as mock_run, \
          patch("hermes_cli.dep_ensure.shutil.which", return_value="C:\\Program Files\\rg.exe"):
         result = _find_rg()
@@ -239,36 +257,39 @@ def test_find_rg_falls_back_to_path_when_managed_broken(tmp_path):
 
 def test_find_rg_returns_none_when_all_broken(tmp_path):
     """_find_rg returns None when both managed and PATH rg are unusable."""
-    managed = tmp_path / "bin" / "rg.exe"
+    managed = tmp_path / "tools" / "rg.exe"
     managed.parent.mkdir(parents=True)
     managed.write_text("fake")
     from hermes_cli.dep_ensure import _find_rg
     with patch("hermes_cli.dep_ensure._IS_WINDOWS", True), \
-         patch("hermes_constants.get_hermes_home", return_value=tmp_path), \
+         patch("hermes_cli.dep_ensure.get_managed_tools_dir", return_value=managed.parent), \
          patch("hermes_cli.dep_ensure.subprocess.run", side_effect=subprocess.CalledProcessError(1, "rg")), \
          patch("hermes_cli.dep_ensure.shutil.which", return_value="C:\\bad\\rg.exe"):
         assert _find_rg() is None
 
 
-def test_find_rg_skips_managed_path_on_posix():
-    """On POSIX, _find_rg checks PATH rg only (no managed rg.exe lookup)."""
+def test_find_rg_falls_back_to_legacy_bin(tmp_path):
+    """_find_rg falls back to the legacy HERMES_HOME/bin location."""
+    legacy = tmp_path / "bin" / "rg"
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text("fake")
     from hermes_cli.dep_ensure import _find_rg
     with patch("hermes_cli.dep_ensure._IS_WINDOWS", False), \
-         patch("hermes_cli.dep_ensure.shutil.which", return_value="/usr/bin/rg") as mock_which, \
+         patch("hermes_cli.dep_ensure.get_managed_tools_dir", return_value=tmp_path / "tools"), \
+         patch("hermes_constants.get_hermes_home", return_value=tmp_path), \
          patch("hermes_cli.dep_ensure.subprocess.run", side_effect=_completed) as mock_run, \
-         patch("hermes_constants.get_hermes_home") as mock_home:
+         patch("hermes_cli.dep_ensure.shutil.which", return_value=None):
         result = _find_rg()
-        assert result == "/usr/bin/rg"
-        mock_which.assert_called_once_with("rg")
-        mock_home.assert_not_called()
+        assert result == str(legacy)
         args = mock_run.call_args[0][0]
-        assert args[0] == "/usr/bin/rg"
+        assert args[0] == str(legacy)
 
 
 def test_find_rg_verifies_path_candidate_runs():
     """_find_rg returns None when PATH rg exists but cannot run --version."""
     from hermes_cli.dep_ensure import _find_rg
     with patch("hermes_cli.dep_ensure._IS_WINDOWS", False), \
+         patch("hermes_cli.dep_ensure.get_managed_tools_dir", return_value=Path("/nonexistent/tools")), \
          patch("hermes_cli.dep_ensure.shutil.which", return_value="/broken/rg"), \
          patch("hermes_cli.dep_ensure.subprocess.run", side_effect=subprocess.CalledProcessError(127, "rg")):
         assert _find_rg() is None

@@ -987,6 +987,29 @@ def get_env_path() -> Path:
     return get_hermes_home() / ".env"
 
 
+def get_managed_tools_dir() -> Path:
+    """Return the Hermes-managed external tools directory.
+
+    External binaries that Hermes downloads itself (ripgrep, rtk, coreutils,
+    tirith, ...) live here so a broken global PATH copy cannot brick search,
+    terminal post-processing, or security checks.  The canonical location is
+    ``<HERMES_HOME>/tools``; the legacy ``<HERMES_HOME>/bin`` directory is
+    still accepted as a fallback so existing installs keep working without
+    migration.
+
+    Callers should treat the returned directory as the first place to look for
+    a managed binary.  Install scripts download new binaries into this path.
+    """
+    home = get_hermes_home()
+    tools_dir = home / "tools"
+    legacy_bin = home / "bin"
+    # If the legacy bin dir already has content and the new tools dir does not,
+    # keep using it for backward compatibility.  Otherwise prefer tools/.
+    if legacy_bin.exists() and not tools_dir.exists():
+        return legacy_bin
+    return tools_dir
+
+
 # ─── Network Preferences ─────────────────────────────────────────────────────
 
 

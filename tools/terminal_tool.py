@@ -2760,6 +2760,8 @@ def terminal_tool(
                             exec_command, rtk_rewritten = _maybe_rewrite_shell_command_with_rtk(
                                 command, token_kill=True
                             )
+                            if rtk_rewritten:
+                                logger.info("Rewrote command with rtk: %r -> %r", command, exec_command)
                     result = env.execute(exec_command, **execute_kwargs)
                 except Exception as e:
                     error_str = str(e).lower()
@@ -2885,6 +2887,7 @@ def terminal_tool(
                 "output": output,
                 "exit_code": returncode,
                 "error": None,
+                "command": exec_command,
             }
             try:
                 from agent.verification_evidence import record_terminal_result

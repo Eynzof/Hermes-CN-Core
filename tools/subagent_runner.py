@@ -25,19 +25,65 @@ def build_and_run_subagent(
     ``agent_swarm``.  Delegates to ``tools.delegate_tool`` internals for
     the actual agent construction and execution.
 
+    .. note::
+
+        Like ``delegate_task``, this function resolves delegation credentials
+        (``delegation.base_url`` / ``delegation.provider`` from config) via
+        ``_resolve_delegation_credentials()`` and passes the resolved values
+        as overrides to ``_build_child_agent()``.  This ensures subagents
+        spawned by ``agent_swarm`` use the same provider routing as
+        ``delegate_task`` subagents, fixing the bug where agent_swarm silently
+        ignored ``delegation.*`` config keys (subagents would inherit the
+        parent's OpenAI endpoint and key, causing 401 errors when the parent
+        uses a custom base URL with a non-OpenAI key).
+
     Returns the structured result dict from ``_run_single_child``.
     """
     # Lazy import to avoid circular dependencies and keep startup fast
     from tools.delegate_tool import (
         _build_child_agent,
+        _load_config,
+        _resolve_delegation_credentials,
         _run_child_turn,
     )
 
+    # Resolve delegation credentials the same way delegate_task does.
+    # When delegation.base_url or delegation.provider is configured, the
+    # child uses those overrides; otherwise returns None values so the
+    # child inherits from the parent agent.
+    cfg = _load_config()
+    try:
+        creds = _resolve_delegation_credentials(cfg, parent_agent)
+    except ValueError:
+        # If credential resolution fails, log and fall through — child
+        # will inherit parent credentials, which is the safe default.
+        logger = __import__("logging").getLogger(__name__)
+        logger.warning(
+            "agent_swarm: delegation credential resolution failed, "
+            "falling back to parent credential inheritance",
+            exc_info=True,
+        )
+        creds = {
+            "model": None,
+            "provider": None,
+            "base_url": None,
+            "api_key": None,
+            "api_mode": None,
+        }
+
     child = _build_child_agent(
+        task_index=-1,       # swarm doesn't use sequential task indices
         goal=goal,
         context=context,
-        parent_agent=parent_agent,
+        toolsets=None,       # inherit all tools from parent
+        model=creds["model"],
         max_iterations=max_iterations,
+        task_count=1,
+        parent_agent=parent_agent,
+        override_provider=creds["provider"],
+        override_base_url=creds["base_url"],
+        override_api_key=creds["api_key"],
+        override_api_mode=creds["api_mode"],
         role=role,
     )
 
@@ -96,11 +142,19 @@ def resume_subagent(
 
         from tools.delegate_tool import _build_child_agent, _run_child_turn
 
+        # Note: session_id and existing_history are resume-specific params
+        # not supported by the current _build_child_agent signature.
+        # The resume feature (Phase 4) will require extending _build_child_agent.
         child = _build_child_agent(
+            task_index=-1,
             goal=prompt,
+            context=None,
+            toolsets=None,
+            model=None,
+            max_iterations=50,
+            task_count=1,
             parent_agent=parent_agent,
-            session_id=session_id,
-            existing_history=history,
+            role="leaf",
         )
 
         result = _run_child_turn(child, prompt, abort_signal)

@@ -1144,8 +1144,10 @@ function Test-RtkBinary {
     param([string]$Path = $script:ManagedRtk)
     if (-not (Test-Path $Path)) { return $false }
     try {
-        $ver = & $Path --version 2>&1 | Select-Object -First 1
-        return ($LASTEXITCODE -eq 0) -and ($ver -match 'rtk')
+        $verOutput = & $Path --version 2>&1
+        $exitCode = $LASTEXITCODE
+        $ver = $verOutput | Select-Object -First 1
+        return ($exitCode -eq 0) -and ($ver -match 'rtk')
     } catch {
         return $false
     }
@@ -1175,18 +1177,18 @@ function Install-ManagedRtk {
     }
 
     $rtkVersion = "0.43.0"
-    $zipName   = "rtk-$rtkVersion-$arch.zip"
+    $zipName   = "rtk-$arch.zip"
     $assetUrl  = "https://github.com/rtk-ai/rtk/releases/download/v$rtkVersion/$zipName"
     $zipPath   = Join-Path $env:TEMP $zipName
+    $extractDir = Join-Path $env:TEMP "rtk-$rtkVersion"
 
-	    try {
-	        Invoke-WebRequest -Uri $assetUrl -OutFile $zipPath -UseBasicParsing
-	        $extractDir = Join-Path $env:TEMP "rtk-$rtkVersion"
+		    try {
+		        Invoke-WebRequest -Uri $assetUrl -OutFile $zipPath -UseBasicParsing
 	        if (Test-Path $extractDir) {
 	            Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
 	        }
 	        Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
-	        $rtkSource = Join-Path $extractDir "rtk-$rtkVersion-$arch\rtk.exe"
+	        $rtkSource = Join-Path $extractDir "rtk.exe"
 	        if (-not (Test-Path $rtkSource)) {
 	            Write-Warn "Could not find rtk binary in extracted tarball"
 	            return

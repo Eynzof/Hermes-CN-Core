@@ -1,4 +1,5 @@
 import asyncio
+import json
 import threading
 import time
 
@@ -162,3 +163,56 @@ def test_ws_write_loop_stall_does_not_latch_transport(monkeypatch):
         loop.call_soon_threadsafe(loop.stop)
         thread.join(timeout=2)
         loop.close()
+
+
+def test_ws_coalesced_tokens_cannot_be_overtaken_by_completion():
+    """A timer-flushed token batch and a completion batch may overlap.
+
+    ``send_text`` is an await point, so two independent batch coroutines used
+    to interleave and put message.complete ahead of older message.delta frames.
+    Hold the first send open to make that race deterministic.
+    """
+
+    async def run():
+        sent = []
+        first_send_started = asyncio.Event()
+        release_first_send = asyncio.Event()
+        completion_sent = asyncio.Event()
+
+        class FakeWS:
+            async def send_text(self, line):
+                params = json.loads(line)["params"]
+                event_type = params["type"]
+                label = params.get("text", event_type)
+                if label == "delta-1" and not first_send_started.is_set():
+                    first_send_started.set()
+                    await release_first_send.wait()
+                sent.append(label)
+                if event_type == "message.complete":
+                    completion_sent.set()
+
+        loop = asyncio.get_running_loop()
+        transport = ws_mod.WSTransport(FakeWS(), loop, peer="ordering-test")
+
+        complete = {"params": {"type": "message.complete"}}
+
+        transport.write({"params": {"type": "message.delta", "text": "delta-1"}})
+        transport.write({"params": {"type": "message.delta", "text": "delta-2"}})
+        transport._flush_tokens()
+        await first_send_started.wait()
+
+        transport.write({"params": {"type": "message.delta", "text": "delta-3"}})
+        transport.write(complete)
+        await asyncio.sleep(0)
+        release_first_send.set()
+        await asyncio.wait_for(completion_sent.wait(), timeout=1)
+
+        transport.close()
+        assert sent == [
+            "delta-1",
+            "delta-2",
+            "delta-3",
+            "message.complete",
+        ]
+
+    asyncio.run(run())

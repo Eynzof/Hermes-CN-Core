@@ -282,7 +282,20 @@ def _token_filter_output(
     original_output = output
 
     # Stage 1: Determine active filters
-    apply_dedup = token_kill and not rtk_rewritten
+    # When token_kill is enabled:
+    # - If rtk was already used (rtk_rewritten=True), no Python dedup needed.
+    # - If rtk is installed but didn't match known commands, Python dedup runs.
+    # - If rtk is NOT installed, skip ALL dedup (rtk unavailable -> no fallback).
+    if token_kill:
+        if rtk_rewritten:
+            apply_dedup = False
+        else:
+            # Only apply Python dedup if rtk is actually available
+            # (i.e., it exists but the command wasn't in the known list).
+            from tools.rtk_provision import _rtk_available
+            apply_dedup = _rtk_available()
+    else:
+        apply_dedup = False
     has_filter = apply_dedup or (max_lines is not None)
 
     # Stage 2: ANSI stripping — already done by caller's filter_output()

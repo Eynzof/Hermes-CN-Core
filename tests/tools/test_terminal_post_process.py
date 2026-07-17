@@ -16,6 +16,7 @@ import os
 import shutil
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -168,6 +169,19 @@ class TestTokenFilterOutput:
             rtk_rewritten=True,
             max_lines=None,
         )
+        assert result.output == text
+        assert result.dedup_applied is False
+
+    def test_no_dedup_when_rtk_not_available(self):
+        """When rtk is not installed, skip ALL dedup even if token_kill is on."""
+        text = "a\nb\nb\nb\nb\nc"
+        with patch("tools.rtk_provision._rtk_available", return_value=False):
+            result = _token_filter_output(
+                text,
+                token_kill=True,
+                rtk_rewritten=False,
+                max_lines=None,
+            )
         assert result.output == text
         assert result.dedup_applied is False
 

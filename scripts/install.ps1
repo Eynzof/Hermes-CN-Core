@@ -1179,43 +1179,48 @@ function Install-ManagedRtk {
     $assetUrl  = "https://github.com/rtk-ai/rtk/releases/download/v$rtkVersion/$zipName"
     $zipPath   = Join-Path $env:TEMP $zipName
 
-    try {
-        Invoke-WebRequest -Uri $assetUrl -OutFile $zipPath -UseBasicParsing
-        $extractDir = Join-Path $env:TEMP "rtk-$rtkVersion"
-        if (Test-Path $extractDir) {
-            Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
-        }
-        Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
-        $rtkSource = Join-Path $extractDir "rtk-$rtkVersion-$arch\rtk.exe"
-        if (-not (Test-Path $rtkSource)) {
-            throw "Expected rtk.exe at $rtkSource but it was not found after extraction"
-        }
-        Copy-Item -Path $rtkSource -Destination $script:ManagedRtk -Force
-    } finally {
-        Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
-        Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
-    }
-
-    if (-not (Test-RtkBinary $script:ManagedRtk)) {
-        throw "Managed rtk installed at $script:ManagedRtk but cannot run"
-    }
-    Write-Success "Managed rtk installed"
-
-    # Current process: put managed rtk first so it overrides any broken shim.
-    Update-ProcessPathForPackages
-    $env:Path = "$($script:ManagedToolsDir);$env:Path"
-
-    # Persist to User PATH so fresh shells also prefer the managed binary.
-    $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
-    $items = if ($userPath) { $userPath -split ";" } else { @() }
-    if ($items -notcontains $script:ManagedToolsDir) {
-        [Environment]::SetEnvironmentVariable(
-            "Path",
-            "$($script:ManagedToolsDir);$userPath",
-            "User"
-        )
-    }
-}
+	    try {
+	        Invoke-WebRequest -Uri $assetUrl -OutFile $zipPath -UseBasicParsing
+	        $extractDir = Join-Path $env:TEMP "rtk-$rtkVersion"
+	        if (Test-Path $extractDir) {
+	            Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+	        }
+	        Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
+	        $rtkSource = Join-Path $extractDir "rtk-$rtkVersion-$arch\rtk.exe"
+	        if (-not (Test-Path $rtkSource)) {
+	            Write-Warn "Could not find rtk binary in extracted tarball"
+	            return
+	        }
+	        Copy-Item -Path $rtkSource -Destination $script:ManagedRtk -Force
+	    } catch {
+	        Write-Warn "Failed to download or extract rtk: $_"
+	        return
+	    } finally {
+	        Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
+	        Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+	    }
+	
+	    if (-not (Test-RtkBinary $script:ManagedRtk)) {
+	        Write-Warn "Could not verify installed rtk binary"
+	        return
+	    }
+	    Write-Success "Managed rtk installed"
+	
+	    # Current process: put managed rtk first so it overrides any broken shim.
+	    Update-ProcessPathForPackages
+	    $env:Path = "$($script:ManagedToolsDir);$env:Path"
+	
+	    # Persist to User PATH so fresh shells also prefer the managed binary.
+	    $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+	    $items = if ($userPath) { $userPath -split ";" } else { @() }
+	    if ($items -notcontains $script:ManagedToolsDir) {
+	        [Environment]::SetEnvironmentVariable(
+	            "Path",
+	            "$($script:ManagedToolsDir);$userPath",
+	            "User"
+	        )
+	    }
+	}
 
 function Test-Coreutils {
     <#
@@ -1379,14 +1384,17 @@ function Install-SystemPackages {
         }
     }
 
-    Write-Info "Checking rtk (reasoning toolkit, for token-kill)..."
+    Write-Info "Checking rtk (CLI proxy, for token-kill)..."
     $script:HasRtk = Test-RtkBinary
     if ($script:HasRtk) {
         Write-Success "rtk found"
     } else {
         Write-Warn "rtk missing; installing managed copy..."
         Install-ManagedRtk
-        $script:HasRtk = $true
+        $script:HasRtk = Test-RtkBinary
+        if (-not $script:HasRtk) {
+            Write-Warn "rtk not installed (token-kill will be unavailable)"
+        }
     }
 
     if (-not $needRipgrep -and -not $needFfmpeg) { return }
@@ -3720,6 +3728,9 @@ function Invoke-EnsureMode {
             }
             "rtk" {
                 Install-ManagedRtk
+                if (-not (Test-RtkBinary)) {
+                    Write-Warn "rtk could not be installed (token-kill will be unavailable)"
+                }
             }
             default {
                 Write-Err "Unknown dependency: $dep"

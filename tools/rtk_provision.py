@@ -1,4 +1,4 @@
-"""Runtime detection and path resolution for the rtk (reasoning toolkit) binary.
+"""Runtime detection and path resolution for the rtk (CLI proxy) binary.
 
 Mirrors the ``_find_rg()`` pattern from ``hermes_cli/dep_ensure.py``. The
 ``rtk`` binary is a command-line tool that natively collapses repeated output

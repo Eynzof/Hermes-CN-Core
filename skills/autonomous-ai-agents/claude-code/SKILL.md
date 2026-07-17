@@ -1,7 +1,7 @@
 ---
 name: claude-code
 description: "Delegate coding to Claude Code CLI (features, PRs)."
-version: 2.2.0
+version: 2.3.0
 author: Hermes Agent + Teknium
 license: MIT
 platforms: [linux, macos, windows]
@@ -46,6 +46,25 @@ terminal(command="claude -p 'Add error handling to all API calls in src/' --allo
 - Any task where you don't need multi-turn conversation
 
 **Print mode skips ALL interactive dialogs** — no workspace trust prompt, no permission confirmations. This makes it ideal for automation.
+
+### Hermes background + streaming (preferred for non-trivial print tasks)
+
+For anything beyond a trivial one-liner (expected to run >30s), run print mode in the
+Hermes background with streaming JSON. Hermes — and its desktop UI — can then watch
+progress live and parse the structured result instead of blocking on a silent
+foreground call:
+
+```
+terminal(command="claude -p '<task>' --output-format stream-json --verbose --include-partial-messages --max-turns 10", workdir="/path/to/project", background=true, notify_on_complete=true)
+# Returns a session_id. Monitor with:
+process(action="poll", session_id="<id>")   # running / exited
+process(action="log", session_id="<id>")    # stream-json lines so far
+# The final line is the {"type":"result"} object — session_id, num_turns,
+# total_cost_usd, subtype. Keep session_id for --resume follow-ups.
+```
+
+Short tasks (<30s) can stay foreground — prefer `--output-format json` there so the
+single result object is still machine-parseable.
 
 ### Mode 2: Interactive PTY via tmux — Multi-Turn Sessions
 
@@ -743,3 +762,5 @@ Use `/context` in interactive mode to see a colored grid of context usage. Key t
 8. **Report results to user** — after completion, summarize what Claude did and what changed
 9. **Don't kill slow sessions** — Claude may be doing multi-step work; check progress instead
 10. **Use `--allowedTools`** — restrict capabilities to what the task actually needs
+11. **Prefer structured output** — `--output-format json` for short foreground runs, `--output-format stream-json --verbose --include-partial-messages` with `background=true, notify_on_complete=true` for longer ones; Hermes parses both and its desktop UI renders the live delegation timeline from the stream
+12. **Keep the returned `session_id`** — it is the handle for `--resume` follow-ups; report it alongside your summary

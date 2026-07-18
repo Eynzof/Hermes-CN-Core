@@ -1333,59 +1333,7 @@ class PluginManager:
 
     def _discover_and_load_inner(self) -> None:
         """The actual discovery sweep — see :meth:`discover_and_load`."""
-        manifests: List[PluginManifest] = []
-
-        # 1. Bundled plugins (<repo>/plugins/<name>/)
-        #
-        # Repo-shipped plugins live next to hermes_cli/. Two layouts are
-        # supported (see ``_scan_directory`` for details):
-        #
-        #   - flat: ``plugins/disk-cleanup/plugin.yaml`` (standalone)
-        #   - category: ``plugins/image_gen/openai/plugin.yaml`` (backend)
-        #
-        # ``memory/``, ``context_engine/``, and ``model-providers/`` are
-        # skipped at the top level — they have their own discovery systems
-        # (plugins/memory/__init__.py, providers/__init__.py). ``platforms/``
-        # is a category holding platform adapters (scanned one level deeper
-        # below).
-        repo_plugins = get_bundled_plugins_dir()
-        logger.debug("Scanning bundled plugins: %s", repo_plugins)
-        bundled = self._scan_directory(
-            repo_plugins,
-            source="bundled",
-            skip_names={"memory", "context_engine", "platforms", "model-providers"},
-        )
-        logger.debug("  bundled (top-level): %d manifest(s)", len(bundled))
-        manifests.extend(bundled)
-        bundled_platforms = self._scan_directory(
-            repo_plugins / "platforms", source="bundled"
-        )
-        logger.debug("  bundled/platforms: %d manifest(s)", len(bundled_platforms))
-        manifests.extend(bundled_platforms)
-
-        # 2. User plugins (~/.hermes/plugins/)
-        user_dir = get_hermes_home() / "plugins"
-        logger.debug("Scanning user plugins: %s", user_dir)
-        user_manifests = self._scan_directory(user_dir, source="user")
-        logger.debug("  user: %d manifest(s)", len(user_manifests))
-        manifests.extend(user_manifests)
-
-        # 3. Project plugins (./.hermes/plugins/)
-        if _env_enabled("HERMES_ENABLE_PROJECT_PLUGINS"):
-            project_dir = Path.cwd() / ".hermes" / "plugins"
-            logger.debug("Scanning project plugins: %s", project_dir)
-            project_manifests = self._scan_directory(project_dir, source="project")
-            logger.debug("  project: %d manifest(s)", len(project_manifests))
-            manifests.extend(project_manifests)
-        else:
-            logger.debug(
-                "Project plugins disabled (set HERMES_ENABLE_PROJECT_PLUGINS=1 to enable)"
-            )
-
-        # 4. Pip / entry-point plugins
-        ep_manifests = self._scan_entry_points()
-        logger.debug("  entrypoints: %d manifest(s)", len(ep_manifests))
-        manifests.extend(ep_manifests)
+        manifests = self.scan_manifests(include_managed=False)
 
         # Load each manifest (skip user-disabled plugins).
         # Later sources override earlier ones on key collision — user
@@ -1491,6 +1439,69 @@ class PluginManager:
                 len(self._plugins),
                 sum(1 for p in self._plugins.values() if p.enabled),
             )
+
+    def scan_manifests(
+        self,
+        *,
+        include_managed: bool = True,
+        user_dir: Optional[Path] = None,
+    ) -> List[PluginManifest]:
+        """Return deduplicated plugin metadata without importing plugin code.
+
+        This is the canonical source scan used by both runtime discovery and
+        dashboard inventory.  ``include_managed=False`` mirrors the runtime
+        loader: bundled memory and model-provider plugins stay with their own
+        discovery systems, while bundled platform adapters remain visible to
+        the deferred platform loader.  Inventory callers use the default so
+        provider-managed manifests are listed as read-only entries.
+
+        Later sources override earlier ones on canonical key collisions.
+        Project plugins are included only when the existing
+        ``HERMES_ENABLE_PROJECT_PLUGINS`` gate is enabled.
+        """
+        manifests: List[PluginManifest] = []
+        repo_plugins = get_bundled_plugins_dir()
+
+        logger.debug("Scanning bundled plugins: %s", repo_plugins)
+        if include_managed:
+            bundled = self._scan_directory(repo_plugins, source="bundled")
+        else:
+            bundled = self._scan_directory(
+                repo_plugins,
+                source="bundled",
+                skip_names={"memory", "context_engine", "platforms", "model-providers"},
+            )
+            bundled.extend(
+                self._scan_directory(repo_plugins / "platforms", source="bundled")
+            )
+        logger.debug("  bundled: %d manifest(s)", len(bundled))
+        manifests.extend(bundled)
+
+        resolved_user_dir = user_dir or (get_hermes_home() / "plugins")
+        logger.debug("Scanning user plugins: %s", resolved_user_dir)
+        user_manifests = self._scan_directory(resolved_user_dir, source="user")
+        logger.debug("  user: %d manifest(s)", len(user_manifests))
+        manifests.extend(user_manifests)
+
+        if _env_enabled("HERMES_ENABLE_PROJECT_PLUGINS"):
+            project_dir = Path.cwd() / ".hermes" / "plugins"
+            logger.debug("Scanning project plugins: %s", project_dir)
+            project_manifests = self._scan_directory(project_dir, source="project")
+            logger.debug("  project: %d manifest(s)", len(project_manifests))
+            manifests.extend(project_manifests)
+        else:
+            logger.debug(
+                "Project plugins disabled (set HERMES_ENABLE_PROJECT_PLUGINS=1 to enable)"
+            )
+
+        ep_manifests = self._scan_entry_points()
+        logger.debug("  entrypoints: %d manifest(s)", len(ep_manifests))
+        manifests.extend(ep_manifests)
+
+        winners: Dict[str, PluginManifest] = {}
+        for manifest in manifests:
+            winners[manifest.key or manifest.name] = manifest
+        return list(winners.values())
 
     # -----------------------------------------------------------------------
     # Directory scanning
@@ -1649,14 +1660,24 @@ class PluginManager:
                 "Parsed manifest: key=%s name=%s kind=%s source=%s path=%s",
                 key, name, kind, source, plugin_dir,
             )
+            provides_tools = data.get("provides_tools", [])
+            if not isinstance(provides_tools, list):
+                provides_tools = []
+            provides_hooks = data.get("provides_hooks", data.get("hooks", []))
+            if not isinstance(provides_hooks, list):
+                provides_hooks = []
+            requires_env = data.get("requires_env", [])
+            if not isinstance(requires_env, list):
+                requires_env = []
+
             return PluginManifest(
-                name=name,
+                name=str(name),
                 version=str(data.get("version", "")),
-                description=data.get("description", ""),
-                author=data.get("author", ""),
-                requires_env=data.get("requires_env", []),
-                provides_tools=data.get("provides_tools", []),
-                provides_hooks=data.get("provides_hooks", []),
+                description=str(data.get("description", "") or ""),
+                author=str(data.get("author", "") or ""),
+                requires_env=requires_env,
+                provides_tools=[str(item) for item in provides_tools if isinstance(item, str)],
+                provides_hooks=[str(item) for item in provides_hooks if isinstance(item, str)],
                 source=source,
                 path=str(plugin_dir),
                 kind=kind,
@@ -1686,8 +1707,12 @@ class PluginManager:
                 group_eps = [ep for ep in eps if ep.group == ENTRY_POINTS_GROUP]
 
             for ep in group_eps:
+                dist = getattr(ep, "dist", None)
+                metadata = getattr(dist, "metadata", None)
                 manifest = PluginManifest(
                     name=ep.name,
+                    version=str(getattr(dist, "version", "") or ""),
+                    description=str(metadata.get("Summary", "") or "") if metadata else "",
                     source="entrypoint",
                     path=ep.value,
                     key=ep.name,
@@ -2044,6 +2069,22 @@ class PluginManager:
 # ---------------------------------------------------------------------------
 
 _plugin_manager: Optional[PluginManager] = None
+
+
+def scan_plugin_manifests(
+    *,
+    include_managed: bool = True,
+    user_dir: Optional[Path] = None,
+) -> List[PluginManifest]:
+    """Scan plugin manifests without importing or registering plugin code.
+
+    A fresh manager is intentional: inventory reads must not mutate the
+    process-global runtime registry or mark discovery as completed.
+    """
+    return PluginManager().scan_manifests(
+        include_managed=include_managed,
+        user_dir=user_dir,
+    )
 
 
 def get_plugin_manager() -> PluginManager:

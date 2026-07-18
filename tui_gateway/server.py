@@ -11507,6 +11507,32 @@ def _(rid, params: dict) -> dict:
     )
 
 
+@method("groupchat.info")
+def _(rid, params: dict) -> dict:
+    room_id = str(params.get("room_id") or "")
+    with _group_rooms_lock:
+        room = _group_rooms.get(room_id)
+    if room is None:
+        return _err(rid, 4404, f"group room not found: {room_id}")
+    return _ok(
+        rid,
+        {
+            "room_id": room.room_id,
+            "title": room.name,
+            "members": [
+                {
+                    "profile": m.profile,
+                    "name": m.name,
+                    "description": m.description,
+                    "avatar": m.avatar,
+                    "agent_id": m.agent_id,
+                }
+                for m in room.members
+            ],
+        },
+    )
+
+
 def _extract_group_reply(result) -> tuple[str, str]:
     """Pull (text, status) out of a run_conversation result for the room."""
     if not isinstance(result, dict):
@@ -11551,7 +11577,13 @@ def _(rid, params: dict) -> dict:
     room.append(make_user_message(text, timestamp=time.time()))
 
     targets = resolve_mention_targets(room.members, text, USER_SENDER_ID)
+    if not targets and "@" not in text:
+        # P-052: a plain message with no @mention addresses the whole room —
+        # everyone replies. Friendlier than studio's "message lands but nobody
+        # answers"; @-ing a specific member still narrows it to that member.
+        targets = list(room.members)
     if not targets:
+        # An @ was typed but matched no member (e.g. a wrong name) — tell the client.
         _emit("groupchat.no_targets", room_id, {"text": text})
         return _ok(rid, {"room_id": room_id, "replied": []})
 

@@ -106,11 +106,23 @@ def test_submit_routes_only_to_mentioned_member(stub_profiles, captured_events, 
     assert completes[0]["status"] == "complete"
 
 
-def test_submit_no_mention_emits_no_targets(stub_profiles, captured_events, monkeypatch):
+def test_submit_no_mention_defaults_to_all(stub_profiles, captured_events, monkeypatch):
+    # P-052 UX: a plain message with no @ addresses the whole room (everyone
+    # replies), instead of studio's "message lands but nobody answers".
+    room_id = _create(["alice", "bob"])["result"]["room_id"]
+    monkeypatch.setattr(server, "_make_agent", lambda sid, key, **kw: _FakeAgent("hi"))
+
+    res = server._methods["groupchat.submit"]("rid", {"room_id": room_id, "text": "大家好呀，没点名"})
+    assert set(res["result"]["replied"]) == {"alice", "bob"}
+    assert not any(ev == "groupchat.no_targets" for ev, _s, _p in captured_events)
+
+
+def test_submit_unmatched_mention_emits_no_targets(stub_profiles, captured_events, monkeypatch):
+    # An @ that matches no member is a real "no targets" (user typed a wrong name).
     room_id = _create(["alice", "bob"])["result"]["room_id"]
     monkeypatch.setattr(server, "_make_agent", lambda sid, key, **kw: _FakeAgent("x"))
 
-    res = server._methods["groupchat.submit"]("rid", {"room_id": room_id, "text": "随便说说，没点名"})
+    res = server._methods["groupchat.submit"]("rid", {"room_id": room_id, "text": "@nobody 在吗"})
     assert res["result"]["replied"] == []
     assert any(ev == "groupchat.no_targets" for ev, _s, _p in captured_events)
     assert not any(ev == "message.start" for ev, _s, _p in captured_events)
@@ -157,6 +169,15 @@ def test_web_server_serves_transcript_with_sender(stub_profiles, monkeypatch):
     # A per-member sub-session id or a regular session must NOT be served as a room.
     assert _group_chat_room_messages(f"{room_id}:alice") is None
     assert _group_chat_room_messages("regular_session_id") is None
+
+
+def test_info_returns_room_members(stub_profiles):
+    room_id = _create(["alice", "bob"], title="研究室")["result"]["room_id"]
+    info = server._methods["groupchat.info"]("rid", {"room_id": room_id})
+    assert info["result"]["room_id"] == room_id
+    assert info["result"]["title"] == "研究室"
+    assert [m["name"] for m in info["result"]["members"]] == ["alice", "bob"]
+    assert "error" in server._methods["groupchat.info"]("rid", {"room_id": "gc_missing"})
 
 
 if __name__ == "__main__":  # pragma: no cover

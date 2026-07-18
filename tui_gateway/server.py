@@ -11426,6 +11426,180 @@ def _(rid, params: dict) -> dict:
         return _err(rid, 5027, str(e))
 
 
+# ── Multi-agent group chat (CN fork P-052) ─────────────────────────────────
+# In-memory group-chat rooms: the shared multi-party transcript lives here and
+# each @mentioned member replies *serially* with its own profile-backed
+# AIAgent. MVP — not persisted across restarts; no agent-to-agent relay, no
+# parallelism, no context compression. See agent/groupchat_loop.py and
+# FORK_NOTES.md P-052.
+#
+# groupchat.submit runs synchronously on the request thread so _emit() routes
+# message.* events over the current websocket transport (write_json's context
+# fallback), which also keeps the HERMES_HOME ContextVar override — required to
+# build/run each member off its own profile — race-free without a background
+# thread.
+_group_rooms: dict = {}
+_group_rooms_lock = threading.Lock()
+
+
+def _group_member_from_profile(profile_name: str):
+    """Build a GroupMember from an on-disk profile, or None if it doesn't exist."""
+    from agent.groupchat_loop import GroupMember
+    from hermes_cli import profiles as profiles_mod
+
+    canon = profiles_mod.normalize_profile_name(profile_name)
+    if not profiles_mod.profile_exists(canon):
+        return None
+    description = ""
+    try:
+        meta = profiles_mod.read_profile_meta(profiles_mod.get_profile_dir(canon))
+        description = str((meta or {}).get("description") or "")
+    except Exception:
+        description = ""
+    return GroupMember(profile=canon, name=canon, description=description)
+
+
+@method("groupchat.create")
+def _(rid, params: dict) -> dict:
+    from agent.groupchat_loop import GroupRoom
+
+    raw_members = params.get("members") or []
+    title = str(params.get("title") or "").strip() or "群聊"
+    if not isinstance(raw_members, list) or not raw_members:
+        return _err(rid, 4400, "groupchat requires at least one member profile")
+
+    members = []
+    seen_names = set()
+    for entry in raw_members:
+        name = str(entry or "").strip()
+        if not name:
+            continue
+        member = _group_member_from_profile(name)
+        if member is None:
+            return _err(rid, 4404, f"profile not found: {name}")
+        if member.name in seen_names:
+            continue
+        seen_names.add(member.name)
+        members.append(member)
+    if not members:
+        return _err(rid, 4400, "no valid member profiles")
+
+    room_id = f"gc_{uuid.uuid4().hex[:8]}"
+    room = GroupRoom(room_id=room_id, name=title, members=members)
+    with _group_rooms_lock:
+        _group_rooms[room_id] = room
+
+    return _ok(
+        rid,
+        {
+            "room_id": room_id,
+            "title": title,
+            "members": [
+                {
+                    "profile": m.profile,
+                    "name": m.name,
+                    "description": m.description,
+                    "agent_id": m.agent_id,
+                }
+                for m in members
+            ],
+        },
+    )
+
+
+def _extract_group_reply(result) -> tuple[str, str]:
+    """Pull (text, status) out of a run_conversation result for the room."""
+    if not isinstance(result, dict):
+        return str(result), "complete"
+    raw = result.get("final_response") or ""
+    if result.get("interrupted"):
+        status = "interrupted"
+    elif result.get("error"):
+        status = "error"
+    else:
+        status = "complete"
+    if (not raw) and result.get("error"):
+        raw = f"Error: {result.get('error')}"
+    return raw, status
+
+
+@method("groupchat.submit")
+def _(rid, params: dict) -> dict:
+    from agent.groupchat_loop import (
+        USER_SENDER_ID,
+        make_agent_message,
+        make_user_message,
+        prepare_member_turn,
+        resolve_mention_targets,
+    )
+    from hermes_cli import profiles as profiles_mod
+
+    room_id = str(params.get("room_id") or "")
+    text = str(params.get("text") or "")
+    with _group_rooms_lock:
+        room = _group_rooms.get(room_id)
+    if room is None:
+        return _err(rid, 4404, f"group room not found: {room_id}")
+    if not text.strip():
+        return _err(rid, 4400, "empty message")
+
+    # Snapshot the transcript BEFORE the user message. Every mentioned member
+    # replies to the same trigger with an identical "independent view" — it does
+    # not see this turn's other members' replies. Replies still land in the
+    # shared transcript and are broadcast to the room.
+    prior = list(room.transcript)
+    room.append(make_user_message(text, timestamp=time.time()))
+
+    targets = resolve_mention_targets(room.members, text, USER_SENDER_ID)
+    if not targets:
+        _emit("groupchat.no_targets", room_id, {"text": text})
+        return _ok(rid, {"room_id": room_id, "replied": []})
+
+    replied: list[str] = []
+    for target in targets:
+        sender_payload = {
+            "sender_agent_id": target.agent_id,
+            "sender_name": target.name,
+            "sender_avatar": target.avatar or "",
+        }
+        _emit("message.start", room_id, dict(sender_payload))
+        token = None
+        try:
+            token = set_hermes_home_override(str(profiles_mod.get_profile_dir(target.profile)))
+            history, current, system_message = prepare_member_turn(
+                target, prior, text, room.name, room.members
+            )
+            member_key = f"{room_id}:{target.profile}"
+            agent = _make_agent(room_id, member_key, session_id=member_key)
+
+            def _stream(delta, _sp=sender_payload):
+                if delta is None:
+                    return
+                _emit("message.delta", room_id, {"text": delta, **_sp})
+
+            result = agent.run_conversation(
+                current,
+                system_message=system_message,
+                conversation_history=history,
+                stream_callback=_stream,
+            )
+            raw, status = _extract_group_reply(result)
+            _emit("message.complete", room_id, {"text": raw, "status": status, **sender_payload})
+            room.append(make_agent_message(target, raw, timestamp=time.time()))
+            replied.append(target.name)
+        except Exception as exc:  # noqa: BLE001 — surface any member failure to the room
+            _emit(
+                "message.complete",
+                room_id,
+                {"text": f"Error: {exc}", "status": "error", **sender_payload},
+            )
+        finally:
+            if token is not None:
+                reset_hermes_home_override(token)
+
+    return _ok(rid, {"room_id": room_id, "replied": replied})
+
+
 @method("prompt.background")
 def _(rid, params: dict) -> dict:
     session, err = _sess(params, rid)

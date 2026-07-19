@@ -217,7 +217,7 @@ def _load_migration_module(script_path: Path):
         return None
     mod = importlib.util.module_from_spec(spec)
     # Register in sys.modules so @dataclass can resolve the module
-    # (Python 3.11+ requires this for dynamically loaded modules)
+    # (Python 3.14+ requires this for dynamically loaded modules)
     sys.modules[spec.name] = mod
     try:
         spec.loader.exec_module(mod)

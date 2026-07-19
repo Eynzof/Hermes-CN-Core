@@ -1444,7 +1444,7 @@ def _rmtree_with_retry(profile_dir: Path, onexc_handler) -> None:
     last_exc: OSError | None = None
     for attempt in range(attempts):
         try:
-            # ``onexc`` was added in 3.12; fall back to ``onerror`` on 3.11.
+            # ``onexc`` was added in 3.12; both APIs work on 3.14.
             try:
                 shutil.rmtree(profile_dir, onexc=onexc_handler)
             except TypeError:
@@ -1568,7 +1568,7 @@ def delete_profile(name: str, yes: bool = False) -> Path:
 
             # Normalise the two callback signatures:
             #   onexc(func, path, exc_instance)   — 3.12+
-            #   onerror(func, path, exc_info_tuple) — 3.11
+            #   onerror(func, path, exc_info_tuple) — 3.11 (our minimum is 3.14, onexc always works)
             if isinstance(exc, tuple):
                 exc = exc[1]  # exc_info → actual exception object
 

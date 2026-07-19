@@ -58,7 +58,7 @@ else
     INSTALL_DIR=""
     INSTALL_DIR_EXPLICIT=false
 fi
-PYTHON_VERSION="3.11"
+PYTHON_VERSION="3.14"
 NODE_VERSION="22"
 
 # FHS-style root install layout (set by resolve_install_layout when applicable):
@@ -1709,7 +1709,7 @@ install_deps() {
     local _BROKEN_EXTRAS=()  # populate when an extra becomes unresolvable
 
     # Parse [project.optional-dependencies].all from pyproject.toml.
-    # tomllib is stdlib on Python 3.11+ which uv's bootstrap guarantees.
+    # tomllib is stdlib on Python 3.14+ which uv's bootstrap guarantees.
     # Falls back to a hand list if parse fails — defensive only.
     local _ALL_EXTRAS_CSV
     _ALL_EXTRAS_CSV="$(

@@ -80,7 +80,7 @@ For native Windows testing, the repository also includes the PowerShell installe
 iex (irm https://raw.githubusercontent.com/Eynzof/Hermes-CN-Core/main/scripts/install.ps1)
 ```
 
-The installer handles uv, Python 3.11, Node.js, ripgrep, ffmpeg, and a portable Git Bash. On Windows, the installer also installs Microsoft Coreutils (providing POSIX CLI tools like `cat`, `cp`, `mv`, `ls`, `sort`, `wc`) for cross-platform script and skill compatibility. If Git is already installed, it uses the existing installation; otherwise it downloads an isolated MinGit under `%LOCALAPPDATA%\hermes\git` without requiring administrator permission.
+The installer handles uv, Python 3.14, Node.js, ripgrep, ffmpeg, and a portable MinGit (for `git` VCS operations). On Windows, PowerShell is the default shell for running commands (PowerShell 7+ preferred, with automatic fallback to Windows PowerShell 5.1). Git Bash is available as an optional shell — set `terminal.shell: bash` in config.yaml if you have Git for Windows pre-installed. The installer also installs Microsoft Coreutils (providing POSIX CLI tools like `cat`, `cp`, `mv`, `ls`, `sort`, `wc`) for cross-platform script and skill compatibility.
 
 > **Android / Termux:** The tested manual path is documented in the [Termux guide](https://hermes-agent.nousresearch.com/docs/getting-started/termux). On Termux, Hermes installs a curated `.[termux]` extra because the full `.[all]` extra currently pulls Android-incompatible voice dependencies.
 >
@@ -160,7 +160,7 @@ pip install -e ".[all,dev]"
 If you use `uv`, this is also supported:
 
 ```bash
-uv venv --python 3.11
+uv venv --python 3.14
 source .venv/bin/activate
 uv pip install -e ".[all,dev]"
 ```

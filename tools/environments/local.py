@@ -46,6 +46,7 @@ def _windows_to_msys_path(cwd: str) -> str:
     """Translate a native Windows path (``C:\\Users\\x``) to Git Bash /
     MSYS form (``/c/Users/x``) so ``builtin cd`` resolves it reliably.
 
+    Used when ``shell:bash`` is explicitly configured (Git Bash / MSYS).
     No-ops on non-Windows hosts or for paths that aren't drive-qualified
     native Windows paths. Returns the input unchanged when no translation
     applies.
@@ -728,7 +729,8 @@ def _resolve_shell() -> tuple[str, str]:
     Env overrides:
       ``HERMES_SHELL_TYPE`` — ``"powershell"``, ``"pwsh"``, ``"bash"``,
       or ``"auto"`` (default: ``"auto"`` on Windows, ``"bash"`` otherwise).
-      ``HERMES_SHELL_TYPE=bash`` on Windows raises a RuntimeError.
+      ``HERMES_SHELL_TYPE=bash`` on Windows finds pre-installed Git Bash
+      via ``_find_bash_posix()`` (no auto-install).
 
     Returns ``(shell_type, shell_path)`` where *shell_type* is
     ``"pwsh"``, ``"powershell"``, or ``"bash"``.
@@ -746,14 +748,19 @@ def _resolve_shell() -> tuple[str, str]:
             logger.info("Selected shell: powershell at %s", ps_path)
             return ("powershell", ps_path)
         if shell_type == "bash":
+            bash_path = _find_bash_posix()
+            if bash_path:
+                logger.info("Selected shell: bash at %s", bash_path)
+                return ("bash", bash_path)
             raise RuntimeError(
-                "Git Bash is no longer supported on Windows. "
-                "Set HERMES_SHELL_TYPE=pwsh/powershell (or leave as auto) "
-                "to use PowerShell."
+                "Git Bash is not found on this system. "
+                "Set HERMES_SHELL_TYPE=auto/pwsh/powershell to use PowerShell, "
+                "or install Git Bash manually from https://git-scm.com/download/win."
             )
         raise RuntimeError(
             f"Unknown HERMES_SHELL_TYPE={shell_type!r} on Windows. "
-            "Supported values: 'auto' (default → pwsh/powershell), 'pwsh', 'powershell'."
+            "Supported values: 'auto' (default → pwsh/powershell), 'pwsh', "
+            "'powershell', 'bash' (requires pre-installed Git Bash)."
         )
 
     # Non-Windows: always bash
@@ -1011,6 +1018,7 @@ def _append_missing_sane_path_entries(existing_path: str) -> str:
 def _apply_windows_msys_bash_env_defaults(env: dict) -> None:
     """Disable MSYS argument path conversion for Git Bash subprocesses.
 
+    Applies when ``shell:bash`` is explicitly configured on Windows.
     Git Bash rewrites arguments that look like Unix paths (``/FO``, ``/TN``,
     ``/Create``) into ``C:/.../git/FO``-style paths, which breaks native
     Windows commands such as ``tasklist``, ``schtasks``, and ``wmic``.  Hermes

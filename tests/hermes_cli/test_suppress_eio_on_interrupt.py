@@ -178,7 +178,7 @@ class TestSignalHandlerLoggingRace:
         """logger.debug raising KeyError(10) must not escape — KeyboardInterrupt wins.
 
         This is the exact failure signature from the #13710 regression: the
-        CPython 3.11 ``Logger._cache[level]`` race surfaces as KeyError on
+        CPython 3.14 ``Logger._cache[level]`` race surfaces as KeyError on
         the integer level value, and previously propagated out of the
         signal handler before the ``raise KeyboardInterrupt()`` could fire.
         """

@@ -423,7 +423,7 @@ class TestWindowsWmicEncoding:
 
     def test_wmic_returns_none_stdout_does_not_crash(self, monkeypatch):
         """If subprocess.run returns successfully but stdout is None — which
-        is what Python 3.11 leaves behind when the reader thread silently
+        is what Python 3.14 leaves behind when the reader thread silently
         crashed on UnicodeDecodeError before this fix landed — detection
         must short-circuit instead of raising AttributeError on
         ``None.split('\\n')`` and aborting `hermes update` (#17049)."""

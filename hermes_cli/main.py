@@ -7781,7 +7781,7 @@ def _install_python_dependencies_with_optional_fallback(
 def _load_console_script_names() -> list[str]:
     """Return ``[project.scripts]`` entry-point names from pyproject.toml."""
     try:
-        import tomllib  # Python 3.11+
+        import tomllib  # Python 3.14+
     except ImportError:  # pragma: no cover
         return []
 
@@ -7887,8 +7887,8 @@ def _verify_core_dependencies_installed(
     that caused it, instead of hours later in a downstream subprocess.
     """
     try:
-        import tomllib  # Python 3.11+
-    except ImportError:  # pragma: no cover — Python < 3.11 unsupported but be safe
+        import tomllib  # Python 3.14+
+    except ImportError:  # pragma: no cover — Python < 3.14 unsupported but be safe
         return
 
     pyproject = PROJECT_ROOT / "pyproject.toml"
@@ -12919,7 +12919,7 @@ def cmd_claw(args):
 
 def main():
     """Main entry point for hermes CLI."""
-    # Cosmetic: make the process show up as 'hermes' instead of 'python3.11'
+    # Cosmetic: make the process show up as 'hermes' instead of 'python3.14'
     # in ps/top/htop.  Non-fatal — just a nicer UX.
     _set_process_title()
 
@@ -14730,7 +14730,7 @@ def main():
     _processed_argv = _coalesce_session_name_args(sys.argv[1:])
 
     # ── Defensive subparser routing (bpo-9338 workaround) ───────────
-    # On some Python versions (notably <3.11), argparse fails to route
+    # On some Python versions (notably <3.14), argparse fails to route
     # subcommand tokens when the parent parser has nargs='?' optional
     # arguments (--continue).  The symptom: "unrecognized arguments: model"
     # even though 'model' is a registered subcommand.

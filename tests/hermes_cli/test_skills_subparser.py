@@ -4,9 +4,9 @@ import argparse
 
 
 def test_no_duplicate_skills_subparser():
-    """Ensure 'skills' subparser is only registered once to avoid Python 3.11+ crash.
+    """Ensure 'skills' subparser is only registered once to avoid Python 3.14+ crash.
 
-    Python 3.11 changed argparse to raise an exception on duplicate subparser
+    Python 3.14 changed argparse to raise an exception on duplicate subparser
     names instead of silently overwriting (see CPython #94331).
 
     This test will fail with:

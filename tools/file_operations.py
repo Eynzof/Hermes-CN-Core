@@ -922,11 +922,11 @@ def _lint_yaml_inproc(content: str) -> tuple[bool, str]:
 
 
 def _lint_toml_inproc(content: str) -> tuple[bool, str]:
-    """In-process TOML syntax check (stdlib tomllib, Python 3.11+)."""
+    """In-process TOML syntax check (stdlib tomllib, Python 3.14+)."""
     try:
         import tomllib as _toml
     except ImportError:
-        # Pre-3.11 fallback via tomli, if installed.
+        # Fallback via tomli for any environment that lacks tomllib (pre-3.11).
         try:
             import tomli as _toml  # type: ignore[no-redef]
         except ImportError:

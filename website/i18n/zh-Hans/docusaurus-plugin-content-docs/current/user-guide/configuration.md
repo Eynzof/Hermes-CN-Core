@@ -91,9 +91,9 @@ terminal:
   cwd: "."          # Gateway/cron 工作目录（CLI 始终使用启动目录）
   timeout: 180      # 每条命令的超时时间（秒）
   env_passthrough: []  # 转发到沙箱执行的环境变量名（terminal + execute_code）
-  singularity_image: "docker://nikolaik/python-nodejs:python3.11-nodejs20"  # Singularity 后端的容器镜像
-  modal_image: "nikolaik/python-nodejs:python3.11-nodejs20"                 # Modal 后端的容器镜像
-  daytona_image: "nikolaik/python-nodejs:python3.11-nodejs20"               # Daytona 后端的容器镜像
+  singularity_image: "docker://nikolaik/python-nodejs:python3.14-nodejs20"  # Singularity 后端的容器镜像
+  modal_image: "nikolaik/python-nodejs:python3.14-nodejs20"                 # Modal 后端的容器镜像
+  daytona_image: "nikolaik/python-nodejs:python3.14-nodejs20"               # Daytona 后端的容器镜像
 ```
 
 对于 Modal 和 Daytona 等云沙箱，`container_persistent: true` 表示 Hermes 将尝试在沙箱重建后保留文件系统状态。这并不保证相同的活跃沙箱、PID 空间或后台进程之后仍在运行。
@@ -131,7 +131,7 @@ Agent 拥有与您的用户账户相同的文件系统访问权限。使用 `her
 ```yaml
 terminal:
   backend: docker
-  docker_image: "nikolaik/python-nodejs:python3.11-nodejs20"
+  docker_image: "nikolaik/python-nodejs:python3.14-nodejs20"
   docker_mount_cwd_to_workspace: false  # 将启动目录挂载到 /workspace
   docker_run_as_host_user: false   # 参见下方"以宿主用户身份运行容器"
   docker_forward_env:              # 转发到容器的环境变量
@@ -238,7 +238,7 @@ terminal:
 ```yaml
 terminal:
   backend: singularity
-  singularity_image: "docker://nikolaik/python-nodejs:python3.11-nodejs20"
+  singularity_image: "docker://nikolaik/python-nodejs:python3.14-nodejs20"
   container_cpu: 1                 # CPU 核心数
   container_memory: 5120           # MB
   container_persistent: true       # 可写覆盖层跨会话持久化

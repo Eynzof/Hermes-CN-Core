@@ -40,7 +40,7 @@ This file is the orientation layer + fork specifics; AGENTS.md is the detail.
 
 ```bash
 # Dev install (editable, all extras)
-pip install -e ".[all,dev]"        # or: uv pip install -e ".[all,dev]"  (Python 3.11–3.13)
+pip install -e ".[all,dev]"        # or: uv pip install -e ".[all,dev]"  (Python 3.14)
 
 # Tests — ALWAYS use the wrapper, not raw pytest. It enforces CI parity
 # (unset API keys, TZ=UTC, C.UTF-8, per-file subprocess isolation).

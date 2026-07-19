@@ -524,7 +524,7 @@ hermes dump [--show-keys]
 --- hermes dump ---
 version:          0.8.0 (2026.4.8) [af4abd2f]
 os:               Linux 6.14.0-37-generic x86_64
-python:           3.11.14
+python:           3.14.3
 openai_sdk:       2.24.0
 profile:          default
 hermes_home:      ~/.hermes

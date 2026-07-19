@@ -83,7 +83,7 @@ delegate_task(tasks=[
 ```python
 delegate_task(
     goal="Review src/auth/ for security issues and fix any found",
-    context="""Project at /home/user/webapp. Python 3.11, Flask, PyJWT, bcrypt.
+    context="""Project at /home/user/webapp. Python 3.14, Flask, PyJWT, bcrypt.
     Auth files: src/auth/login.py, src/auth/jwt.py, src/auth/middleware.py
     Test command: pytest tests/auth/ -v
     Focus on: SQL injection, JWT validation, password hashing, session management.

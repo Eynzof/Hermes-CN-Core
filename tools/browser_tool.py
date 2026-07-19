@@ -1111,7 +1111,7 @@ def _run_chrome_fallback_command(
             if os.name == "nt":
                 # CREATE_NO_WINDOW → don't attach a console (cmd.exe would
                 # otherwise briefly allocate one for the .cmd shim).
-                # Do NOT add CREATE_NEW_PROCESS_GROUP: on Python 3.11 Windows
+                # Do NOT add CREATE_NEW_PROCESS_GROUP: on Python 3.14 Windows
                 # it interacts with asyncio's ProactorEventLoop such that the
                 # subprocess creation cancels the running loop task, which
                 # surfaces as KeyboardInterrupt in app.run() and tears down
@@ -2458,7 +2458,7 @@ def _run_browser_command(
             if os.name == "nt":
                 # See matching block at the other Popen site — CREATE_NO_WINDOW
                 # only, NO CREATE_NEW_PROCESS_GROUP (cancels asyncio loop task
-                # on Python 3.11 Windows → KeyboardInterrupt in CLI MainThread).
+                # on Python 3.14 Windows → KeyboardInterrupt in CLI MainThread).
                 _popen_extra["creationflags"] = windows_hide_flags()
                 _popen_extra["close_fds"] = True
                 _si = subprocess.STARTUPINFO()

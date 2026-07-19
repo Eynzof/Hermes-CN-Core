@@ -400,11 +400,11 @@ def load_cli_config() -> Dict[str, Any]:
             "cwd": ".",  # "." is resolved to os.getcwd() at runtime
             "home_mode": "auto",
             "lifetime_seconds": 300,
-            "docker_image": "nikolaik/python-nodejs:python3.11-nodejs20",
+            "docker_image": "nikolaik/python-nodejs:python3.14-nodejs20",
             "docker_forward_env": [],
-            "singularity_image": "docker://nikolaik/python-nodejs:python3.11-nodejs20",
-            "modal_image": "nikolaik/python-nodejs:python3.11-nodejs20",
-            "daytona_image": "nikolaik/python-nodejs:python3.11-nodejs20",
+            "singularity_image": "docker://nikolaik/python-nodejs:python3.14-nodejs20",
+            "modal_image": "nikolaik/python-nodejs:python3.14-nodejs20",
+            "daytona_image": "nikolaik/python-nodejs:python3.14-nodejs20",
             "docker_volumes": [],  # host:container volume mounts for Docker backend
             "docker_mount_cwd_to_workspace": False,  # explicit opt-in only; default off for sandbox isolation
         },

@@ -4,9 +4,9 @@
 // test pattern (see windows-child-process.test.ts). They pin the two Windows
 // resolution bugs that caused desktop reinstall loops:
 //   1. findOnPath() tried the empty extension FIRST, so an extensionless
-//      Git-Bash `hermes` shim shadowed the real hermes.cmd/hermes.exe; the
-//      shim then failed the --version probe and the desktop fell through to a
-//      spurious bootstrap/repair.
+//      Git-Bash `hermes` shim (relevant when shell:bash is configured) shadowed
+//      the real hermes.cmd/hermes.exe; the shim then failed the --version probe
+//      and the desktop fell through to a spurious bootstrap/repair.
 //   2. handOffWindowsBootstrapRecovery() chose --update vs the destructive
 //      --repair by checking ONLY venv\Scripts\hermes.exe (the console-script
 //      shim, written at the END of venv setup and absent in interrupted

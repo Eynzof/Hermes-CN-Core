@@ -1,7 +1,8 @@
 """Tests for the refactored shell-resolution logic in ``tools/environments/local.py``.
 
 Covers ``_find_bash_posix()``, ``_find_powershell()``, and ``_resolve_shell()``
-after the complete Git-Bash-to-PowerShell migration on Windows.
+after the migration to PowerShell as the default shell on Windows.
+Git Bash is still available as an optional explicit shell (``shell:bash``).
 """
 
 import contextlib
@@ -30,7 +31,7 @@ def _whitelist_fs(*allowed_paths):
 
 
 class TestFindBashPosix:
-    """_find_bash_posix() only runs on non-Windows; there is no bash discovery on Windows."""
+    """_find_bash_posix() finds bash on non-Windows or optionally on Windows (shell:bash)."""
 
     def test_non_windows_returns_bash_or_fallback(self, monkeypatch):
         monkeypatch.setattr("tools.environments.local._IS_WINDOWS", False)
@@ -85,7 +86,9 @@ class TestFindPwsh:
 
 
 class TestResolveShell:
-    """_resolve_shell() on Windows prefers pwsh, falls back to powershell."""
+    """_resolve_shell() on Windows prefers pwsh, falls back to powershell.
+    When HERMES_SHELL_TYPE=bash, resolves to pre-installed Git Bash (no auto-download).
+    """
 
     def test_windows_auto_pwsh_available_returns_pwsh(self, monkeypatch):
         monkeypatch.setattr("tools.environments.local._IS_WINDOWS", True)
@@ -130,12 +133,23 @@ class TestResolveShell:
                 with mock.patch("tools.environments.local._find_powershell", return_value=ps_path):
                     assert _resolve_shell() == ("powershell", ps_path)
 
-    def test_windows_bash_raises_runtime_error(self, monkeypatch):
+    def test_windows_bash_found_returns_bash(self, monkeypatch):
+        """HERMES_SHELL_TYPE=bash returns bash when a pre-installed bash is found."""
+        monkeypatch.setattr("tools.environments.local._IS_WINDOWS", True)
+        bash_path = r"C:\Program Files\Git\bin\bash.exe"
+        env = {"HERMES_SHELL_TYPE": "bash"}
+        with mock.patch.dict(os.environ, env, clear=True):
+            with mock.patch("tools.environments.local._find_bash_posix", return_value=bash_path):
+                assert _resolve_shell() == ("bash", bash_path)
+
+    def test_windows_bash_not_found_raises_helpful_error(self, monkeypatch):
+        """HERMES_SHELL_TYPE=bash raises a helpful error when bash is not installed."""
         monkeypatch.setattr("tools.environments.local._IS_WINDOWS", True)
         env = {"HERMES_SHELL_TYPE": "bash"}
         with mock.patch.dict(os.environ, env, clear=True):
-            with pytest.raises(RuntimeError, match="Git Bash is no longer supported"):
-                _resolve_shell()
+            with mock.patch("tools.environments.local._find_bash_posix", return_value=None):
+                with pytest.raises(RuntimeError, match="Git Bash is not found"):
+                    _resolve_shell()
 
     def test_windows_unknown_shell_type_raises(self, monkeypatch):
         monkeypatch.setattr("tools.environments.local._IS_WINDOWS", True)

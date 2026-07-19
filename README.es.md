@@ -50,7 +50,7 @@ Ejecuta esto en PowerShell:
 iex (irm https://hermes-agent.nousresearch.com/install.ps1)
 ```
 
-El instalador se encarga de todo: uv, Python 3.11, Node.js, ripgrep, ffmpeg, **y un Git Bash portátil** (MinGit, descomprimido en `%LOCALAPPDATA%\hermes\git` — no requiere administrador, completamente aislado de cualquier instalación de Git del sistema). Hermes usa este Git Bash incluido para ejecutar comandos de shell.
+El instalador se encarga de todo: uv, Python 3.14, Node.js, ripgrep, ffmpeg. En Windows, el shell predeterminado para ejecutar comandos es **PowerShell** (PowerShell 7+ preferido, con retroceso automático a Windows PowerShell 5.1). Git Bash está disponible como shell opcional — configure `terminal.shell: bash` en config.yaml si tiene Git for Windows preinstalado. No se descarga Git Bash automáticamente.
 
 Si ya tienes Git instalado, el instalador lo detecta y lo usa en su lugar. De lo contrario, una descarga de ~45MB de MinGit es todo lo que necesitas — no tocará ni interferirá con ningún Git del sistema.
 
@@ -195,7 +195,7 @@ Ruta manual (equivalente a lo anterior):
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
-uv venv .venv --python 3.11
+uv venv .venv --python 3.14
 source .venv/bin/activate
 uv pip install -e ".[all,dev]"
 scripts/run_tests.sh

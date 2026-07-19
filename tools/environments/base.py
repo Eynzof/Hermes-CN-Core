@@ -389,7 +389,7 @@ class BaseEnvironment(ABC):
         # mid-write, and mv would then publish a torn file (the corruption is
         # only narrowed, not closed).  ``$BASHPID`` is the actual subshell PID
         # and is genuinely unique per writer, which closes the race.  The
-        # static path is shlex-quoted (Windows/Git-Bash drive letters, spaces)
+        # static path is shlex-quoted (Windows/Git-Bash drive letters, spaces; relevant when shell:bash is configured)
         # with ``$BASHPID`` left outside the quotes so it still expands.
         _snap_tmp = shlex.quote(self._snapshot_path + ".tmp.") + "$BASHPID"
         bootstrap = (

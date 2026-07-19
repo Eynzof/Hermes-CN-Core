@@ -1278,7 +1278,7 @@ DEFAULT_CONFIG = {
         # auto       - detect pwsh, otherwise fall back to Windows PowerShell 5.1
         # powershell - force Windows PowerShell 5.1
         # pwsh       - force PowerShell 7 (falls back to 5.1 if not installed)
-        # bash       - Git Bash / MSYS; ignored/error on Windows
+        # bash       - Git Bash / MSYS; optional on Windows (user must have Git Bash pre-installed; no auto-download)
         "shell": "auto",
         "modal_mode": "auto",
         "cwd": ".",  # Use current directory
@@ -1344,7 +1344,7 @@ DEFAULT_CONFIG = {
         # redirection/quoting/cwd-mutation) so behaviour matches the PowerShell
         # path.  Bridged to HERMES_CMD_FAST_PATH.  No effect off Windows.
         "cmd_fast_path": False,
-        "docker_image": "nikolaik/python-nodejs:python3.11-nodejs20",
+        "docker_image": "nikolaik/python-nodejs:python3.14-nodejs20",
         "docker_forward_env": [],
         # Explicit environment variables to set inside Docker containers.
         # Unlike docker_forward_env (which reads values from the host process),
@@ -1352,9 +1352,9 @@ DEFAULT_CONFIG = {
         # runs as a systemd service without access to the user's shell environment.
         # Example: {"SSH_AUTH_SOCK": "/run/user/1000/ssh-agent.sock"}
         "docker_env": {},
-        "singularity_image": "docker://nikolaik/python-nodejs:python3.11-nodejs20",
-        "modal_image": "nikolaik/python-nodejs:python3.11-nodejs20",
-        "daytona_image": "nikolaik/python-nodejs:python3.11-nodejs20",
+        "singularity_image": "docker://nikolaik/python-nodejs:python3.14-nodejs20",
+        "modal_image": "nikolaik/python-nodejs:python3.14-nodejs20",
+        "daytona_image": "nikolaik/python-nodejs:python3.14-nodejs20",
         # Container resource limits (docker, singularity, modal, daytona — ignored for local/ssh)
         "container_cpu": 1,
         "container_memory": 5120,  # MB (default 5GB)
@@ -8503,21 +8503,21 @@ def show_config():
 
     if terminal.get("backend") == "docker":
         print(
-            f"  Docker image: {terminal.get('docker_image', 'nikolaik/python-nodejs:python3.11-nodejs20')}"
+            f"  Docker image: {terminal.get('docker_image', 'nikolaik/python-nodejs:python3.14-nodejs20')}"
         )
     elif terminal.get("backend") == "singularity":
         print(
-            f"  Image:        {terminal.get('singularity_image', 'docker://nikolaik/python-nodejs:python3.11-nodejs20')}"
+            f"  Image:        {terminal.get('singularity_image', 'docker://nikolaik/python-nodejs:python3.14-nodejs20')}"
         )
     elif terminal.get("backend") == "modal":
         print(
-            f"  Modal image:  {terminal.get('modal_image', 'nikolaik/python-nodejs:python3.11-nodejs20')}"
+            f"  Modal image:  {terminal.get('modal_image', 'nikolaik/python-nodejs:python3.14-nodejs20')}"
         )
         modal_token = get_env_value("MODAL_TOKEN_ID")
         print(f"  Modal token:  {'configured' if modal_token else '(not set)'}")
     elif terminal.get("backend") == "daytona":
         print(
-            f"  Daytona image: {terminal.get('daytona_image', 'nikolaik/python-nodejs:python3.11-nodejs20')}"
+            f"  Daytona image: {terminal.get('daytona_image', 'nikolaik/python-nodejs:python3.14-nodejs20')}"
         )
         daytona_key = get_env_value("DAYTONA_API_KEY")
         print(f"  API key:      {'configured' if daytona_key else '(not set)'}")

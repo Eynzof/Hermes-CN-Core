@@ -1639,7 +1639,7 @@ class TestEnvironmentProbeIntegration:
         from tools import env_probe
         env_probe._reset_cache_for_tests()
         monkeypatch.setattr(env_probe, "_python_version_of",
-                            lambda b: {"python3": "3.11.15"}.get(b))
+                            lambda b: {"python3": "3.14.3"}.get(b))
         monkeypatch.setattr(env_probe, "_has_pip_module", lambda b: False)
         monkeypatch.setattr(env_probe, "_detect_pep668", lambda b: True)
         monkeypatch.setattr(env_probe, "_pip_python_version", lambda: "3.12")
@@ -1649,7 +1649,7 @@ class TestEnvironmentProbeIntegration:
         agent = self._make_agent(environment_probe=True)
         prompt = agent._build_system_prompt()
         assert "Python toolchain:" in prompt
-        assert "3.11.15" in prompt
+        assert "3.14.3" in prompt
 
     def test_probe_silent_on_clean_env(self, monkeypatch):
         """Clean environment → probe emits nothing → no line in prompt."""

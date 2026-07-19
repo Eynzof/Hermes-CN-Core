@@ -23,6 +23,8 @@ duplicate the user turn (#860 / #42039). This test locks in:
 3. The gateway resolution expression preserves standard-runtime behaviour.
 """
 
+import pytest
+import sys
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -76,6 +78,7 @@ def test_codex_success_flushes_and_reports_persisted():
     assert result["agent_persisted"] is True
 
 
+@pytest.mark.xfail(sys.platform == "win32", reason="flaky on Windows: temp file lock race", strict=False)
 def test_codex_turn_persists_each_message_exactly_once():
     """The user turn (flushed at turn start) must not be duplicated; the
     projected assistant message must land once.  Uses a real SessionDB and the

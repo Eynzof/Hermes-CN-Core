@@ -1407,9 +1407,13 @@ def _get_env_config() -> Dict[str, Any]:
     host_cwd = None
     if env_type == "docker" and mount_docker_cwd:
         docker_cwd_source = os.getenv("TERMINAL_CWD") or _safe_getcwd()
-        candidate = os.path.abspath(os.path.expanduser(docker_cwd_source))
+        expanded = os.path.expanduser(docker_cwd_source)
+        candidate = os.path.abspath(expanded)
+        # Check raw source value FIRST (before abspath changes drive letters on Windows)
+        # so POSIX-style /Users/... paths are recognized on all platforms.
         if (
-            any(candidate.startswith(p) for p in _HOST_CWD_PREFIXES)
+            any(docker_cwd_source.startswith(p) for p in _HOST_CWD_PREFIXES)
+            or any(candidate.startswith(p) for p in _HOST_CWD_PREFIXES)
             or (os.path.isabs(candidate) and os.path.isdir(candidate) and not candidate.startswith(("/workspace", "/root")))
         ):
             host_cwd = candidate

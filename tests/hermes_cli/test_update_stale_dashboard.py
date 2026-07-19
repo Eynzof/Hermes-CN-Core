@@ -64,24 +64,53 @@ def _ps_line(pid: int, cmd: str) -> str:
     return f"{pid:>7} {cmd}"
 
 
-def _ps_runner(stdout: str):
-    """Build a subprocess.run side_effect that only stubs ps -A calls.
+def _wmic_lines(pairs: list[tuple[int, str]]) -> str:
+    """Format process data as ``wmic process get ... /FORMAT:LIST`` output.
 
-    Any other subprocess.run invocation (e.g. taskkill on Windows) is
-    handed back as a successful no-op.  This lets tests exercise the real
-    scan path without having to re-stub every unrelated subprocess call
-    made later in ``_kill_stale_dashboard_processes``.
+    Returns CommandLine/ProcessId pairs in the format wmic emits.
+    """
+    lines: list[str] = []
+    for pid, cmd in pairs:
+        lines.append(f"CommandLine={cmd}")
+        lines.append(f"ProcessId={pid}")
+        lines.append("")  # blank line between records
+    return "\n".join(lines)
+
+
+def _any_proc_runner(ps_stdout: str = "", wmic_stdout: str = ""):
+    """Build a subprocess.run side_effect that stubs ``ps`` or ``wmic``.
+
+    Returns *ps_stdout* for ``ps`` invocations (POSIX), *wmic_stdout* for
+    ``wmic`` invocations (Windows), and a benign no-op for everything else.
     """
     def _side_effect(args, *a, **kw):
-        if isinstance(args, (list, tuple)) and args and args[0] == "ps":
-            return MagicMock(returncode=0, stdout=stdout, stderr="")
-        # Any other subprocess.run (e.g. taskkill) — benign success stub.
+        if isinstance(args, (list, tuple)) and args:
+            first = args[0] if isinstance(args[0], str) else ""
+            if first == "ps":
+                return MagicMock(returncode=0, stdout=ps_stdout, stderr="")
+            if first == "wmic":
+                return MagicMock(returncode=0, stdout=wmic_stdout, stderr="")
         return MagicMock(returncode=0, stdout="", stderr="")
     return _side_effect
 
 
+def _ps_runner(stdout: str):
+    """Build a subprocess.run side_effect that stubs ps -A calls.
+
+    Any other subprocess.run invocation (e.g. taskkill on Windows) is
+    handed back as a successful no-op.
+    """
+    return _any_proc_runner(ps_stdout=stdout)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="uses ps which is not on Windows")
+@pytest.mark.skipif(sys.platform == "win32", reason="uses ps; wmic tests in TestWindowsWmicEncoding")
 class TestFindStaleDashboardPids:
-    """Unit tests for the ps/wmic-based detection step."""
+    """Unit tests for the ps-based detection step.
+
+    On Windows the detection uses ``wmic`` with a different output format;
+    those tests live in ``TestWindowsWmicEncoding`` below.
+    """
 
     def test_no_matches_returns_empty(self):
         with patch("subprocess.run") as mock_run:

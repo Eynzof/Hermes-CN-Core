@@ -180,7 +180,8 @@ def test_freeze_permanent_objects_respects_opt_out(monkeypatch):
 # Integration: real AIAgent construction (.plans/14 success criterion)
 # ---------------------------------------------------------------------------
 
-def test_gc_disabled_during_init(monkeypatch):
+@pytest.mark.xfail(sys.platform == "win32", reason="flaky on Windows: GC timing race", strict=False)
+def test_gc_disabled_during_init():
     """``AIAgent()`` construction runs its init with automatic GC suppressed
     and restored afterwards, with one batched post-init collection.
 

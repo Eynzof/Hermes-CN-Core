@@ -4916,13 +4916,30 @@ def _enrich_with_attached_images(user_text: str, image_paths: list[str]) -> str:
                 asyncio.run(vision_analyze_tool(image_url=str(p), user_prompt=prompt))
             )
             desc = r.get("analysis", "") if r.get("success") else None
-            parts.append(
-                f"[The user attached an image:\n{desc}]\n{hint}"
-                if desc
-                else f"[The user attached an image but analysis failed.]\n{hint}"
-            )
+            if desc:
+                parts.append(
+                    f"[Hermes UI Image]\n"
+                    f"name={p.name}\n"
+                    f"description:\n{desc}\n"
+                    f"[/Hermes UI Image]\n"
+                    f"{hint}"
+                )
+            else:
+                parts.append(
+                    f"[Hermes UI Image]\n"
+                    f"name={p.name}\n"
+                    f"description:\n[Analysis failed or unavailable]\n"
+                    f"[/Hermes UI Image]\n"
+                    f"{hint}"
+                )
         except Exception:
-            parts.append(f"[The user attached an image but analysis failed.]\n{hint}")
+            parts.append(
+                f"[Hermes UI Image]\n"
+                f"name={p.name}\n"
+                f"description:\n[Analysis error]\n"
+                f"[/Hermes UI Image]\n"
+                f"{hint}"
+            )
 
     text = user_text or ""
     prefix = "\n\n".join(parts)

@@ -5197,7 +5197,7 @@ class AIAgent:
         if not description:
             description = "Image analysis failed."
 
-        note = f"[The {role_label} attached an image. Here's what it contains:\n{description}]"
+        note = f"[Hermes UI Image]\nname=image\ndescription:\n{description}\n[/Hermes UI Image]"
         if vision_source and not str(image_url or "").startswith("data:"):
             note += f"\n[If you need a closer look, use vision_analyze with image_url: {vision_source}]"
 

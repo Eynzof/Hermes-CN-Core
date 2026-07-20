@@ -6464,7 +6464,10 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin):
                 if result.get("success"):
                     description = result.get("analysis", "")
                     enriched_parts.append(
-                        f"[The user attached an image. Here's what it contains:\n{description}]\n"
+                        f"[Hermes UI Image]\n"
+                        f"name={img_path.name}\n"
+                        f"description:\n{description}\n"
+                        f"[/Hermes UI Image]\n"
                         f"[If you need a closer look, use vision_analyze with "
                         f"image_url: {img_path}]"
                     )
@@ -6472,16 +6475,22 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin):
                         _cprint(f"  {_DIM}✓ image analyzed{_RST}")
                 else:
                     enriched_parts.append(
-                        f"[The user attached an image but it couldn't be analyzed. "
-                        f"You can try examining it with vision_analyze using "
+                        f"[Hermes UI Image]\n"
+                        f"name={img_path.name}\n"
+                        f"description:\n[Analysis failed or unavailable]\n"
+                        f"[/Hermes UI Image]\n"
+                        f"[If you need a closer look, use vision_analyze with "
                         f"image_url: {img_path}]"
                     )
                     if announce:
                         _cprint(f"  {_DIM}⚠ vision analysis failed — path included for retry{_RST}")
             except Exception as e:
                 enriched_parts.append(
-                    f"[The user attached an image but analysis failed ({e}). "
-                    f"You can try examining it with vision_analyze using "
+                    f"[Hermes UI Image]\n"
+                    f"name={img_path.name}\n"
+                    f"description:\n[Analysis error: {e}]\n"
+                    f"[/Hermes UI Image]\n"
+                    f"[If you need a closer look, use vision_analyze with "
                     f"image_url: {img_path}]"
                 )
                 if announce:

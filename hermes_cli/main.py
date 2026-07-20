@@ -12053,12 +12053,23 @@ def cmd_dashboard(args):
     except Exception:
         _launch_profile = "default"
 
+    # Fix C: If HERMES_HOME already points to a profiles/<name> dir,
+    # the Desktop has already routed us correctly — skip re-exec.
+    _hermes_home_in_profile = (
+        os.environ.get("HERMES_HOME", "")
+        and Path(os.environ["HERMES_HOME"]).parent.name == "profiles"
+    )
+
     if (
         _launch_profile not in ("default", "custom")
         and not getattr(args, "isolated", False)
         and not getattr(args, "open_profile", "")
         # Desktop pool backends are intentionally per-profile.
         and os.environ.get("HERMES_DESKTOP") != "1"
+        # Fix B: Defense-in-depth — catch Desktop spawn sites that forget HERMES_DESKTOP
+        and os.environ.get("HERMES_DESKTOP_MANAGED") != "1"
+        # Fix C: If HERMES_HOME is already in a profile dir, we're correctly routed
+        and not _hermes_home_in_profile
     ):
         url = f"http://{args.host or '127.0.0.1'}:{args.port}/?profile={_launch_profile}"
         if _dashboard_listening(args.host, args.port):

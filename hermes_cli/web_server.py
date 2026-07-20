@@ -10020,6 +10020,38 @@ async def get_session_latest_descendant(
     finally:
         db.close()
 
+_METADATA_MODEL_SWITCH_PREFIXES = (
+    "[System: The active model for this chat has changed to",
+    "[Note: model was just switched",
+)
+
+_IMAGE_METADATA_RE = re.compile(
+    r"^\[The user attached an image[\s\S]*?\]\n?"
+    r"\[(?:If you need a closer look, use |You can examine it with )"
+    r"vision_analyze (?:with |using )?image_url: [^\]\n]+\]",
+    re.MULTILINE,
+)
+
+
+def _normalize_message_content(content: str | None) -> str | None:
+    """Strip internal metadata prefixes from persisted message content.
+
+    Returns None for metadata-only messages (to be dropped entirely),
+    or the original/clean content for normal messages.
+    """
+    if not content:
+        return content
+    stripped = content.strip()
+    # Check for model-switch markers
+    for prefix in _METADATA_MODEL_SWITCH_PREFIXES:
+        if stripped.startswith(prefix):
+            return None  # drop entirely
+    # Check for image pre-analysis metadata
+    if _IMAGE_METADATA_RE.match(stripped):
+        return None  # drop entirely
+    return content
+
+
 @app.get("/api/sessions/{session_id}/messages")
 async def get_session_messages(
     session_id: str,
@@ -10036,6 +10068,16 @@ async def get_session_messages(
         # Clamp limit to prevent abuse (max 500 per page)
         _limit = min(limit, 500) if limit is not None else None
         messages = db.get_messages(sid, limit=_limit, offset=offset)
+        # Normalize out internal metadata markers
+        _normalized = []
+        for msg in messages:
+            if msg.get("role") == "user" and msg.get("content"):
+                content = _normalize_message_content(msg["content"])
+                if content is None:
+                    continue  # drop metadata-only messages
+                msg["content"] = content
+            _normalized.append(msg)
+        messages = _normalized
         return {
             "session_id": sid,
             "messages": messages,

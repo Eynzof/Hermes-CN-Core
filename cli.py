@@ -8973,9 +8973,13 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin):
                             # has all API keys in os.environ.
                             from tools.environments.local import _sanitize_subprocess_env
                             sanitized_env = _sanitize_subprocess_env(os.environ.copy())
+                            _subprocess_kwargs = {}
+                            if sys.platform == "win32":
+                                from hermes_cli._subprocess_compat import windows_hide_flags
+                                _subprocess_kwargs["creationflags"] = windows_hide_flags()
                             result = subprocess.run(
                                 exec_cmd, shell=True, capture_output=True,
-                                text=True, timeout=30, env=sanitized_env
+                                text=True, timeout=30, env=sanitized_env, **_subprocess_kwargs
                             )
                             output = result.stdout.strip() or result.stderr.strip()
                             if output:

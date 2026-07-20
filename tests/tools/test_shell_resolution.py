@@ -84,6 +84,86 @@ class TestFindPwsh:
                 with mock.patch.dict(os.environ, {}, clear=True):
                     assert _find_pwsh() is None
 
+    # --- WindowsApps stub filtering (fix #20/N2) ---
+
+    def test_windowsapps_path_skipped_in_strategy1(self, monkeypatch):
+        """Strategy 1 skips WindowsApps paths and falls through."""
+        monkeypatch.setattr("tools.environments.local._IS_WINDOWS", True)
+        windowsapps_path = (
+            r"C:\Users\test\AppData\Local\Microsoft\WindowsApps\pwsh.exe"
+        )
+        real_path = r"C:\Program Files\PowerShell\7\pwsh.exe"
+
+        # shutil.which returns the WindowsApps stub first
+        with mock.patch("shutil.which", return_value=windowsapps_path):
+            # Strategy 2 (Program Files) has the real binary
+            with mock.patch(
+                "os.path.isfile",
+                side_effect=lambda p: p == real_path,
+            ):
+                with mock.patch.dict(
+                    os.environ,
+                    {"ProgramFiles": r"C:\Program Files"},
+                    clear=True,
+                ):
+                    result = _find_pwsh()
+                    # Must return the real binary, not the stub
+                    assert result == real_path, f"expected {real_path}, got {result}"
+
+    def test_windowsapps_path_is_last_resort_size_check(self, monkeypatch):
+        """Strategy 4 validates file size > 10KB to skip stubs."""
+        monkeypatch.setattr("tools.environments.local._IS_WINDOWS", True)
+        windowsapps_path = (
+            r"C:\Users\test\AppData\Local\Microsoft\WindowsApps\pwsh.exe"
+        )
+        with mock.patch("shutil.which", return_value=None):
+            # Only the WindowsApps path exists on "disk"
+            with mock.patch(
+                "os.path.isfile",
+                side_effect=lambda p: p == windowsapps_path,
+            ):
+                with mock.patch(
+                    "os.path.getsize", return_value=512
+                ):  # stub-sized file
+                    with mock.patch.dict(
+                        os.environ,
+                        {
+                            "LOCALAPPDATA": (
+                                r"C:\Users\test\AppData\Local"
+                            )
+                        },
+                        clear=True,
+                    ):
+                        # Too small (< 10KB) -> skip
+                        assert _find_pwsh() is None
+
+    def test_windowsapps_path_accepted_when_large_enough(self, monkeypatch):
+        """Strategy 4 accepts WindowsApps binaries larger than 10KB."""
+        monkeypatch.setattr("tools.environments.local._IS_WINDOWS", True)
+        windowsapps_path = (
+            r"C:\Users\test\AppData\Local\Microsoft\WindowsApps\pwsh.exe"
+        )
+        with mock.patch("shutil.which", return_value=None):
+            # Only the WindowsApps path exists on "disk"
+            with mock.patch(
+                "os.path.isfile",
+                side_effect=lambda p: p == windowsapps_path,
+            ):
+                with mock.patch(
+                    "os.path.getsize", return_value=50000
+                ):  # real binary size
+                    with mock.patch.dict(
+                        os.environ,
+                        {
+                            "LOCALAPPDATA": (
+                                r"C:\Users\test\AppData\Local"
+                            )
+                        },
+                        clear=True,
+                    ):
+                        result = _find_pwsh()
+                        assert result == windowsapps_path
+
 
 class TestResolveShell:
     """_resolve_shell() on Windows prefers pwsh, falls back to powershell.
@@ -212,3 +292,41 @@ class TestBuildPowershellBackgroundScript:
             shell_type="pwsh",
         )
         assert "Invoke-Expression 'echo ''hello'''" in script
+
+    # --- try/catch wrapping (fix N1) ---
+
+    def test_try_catch_wraps_invoke_expression(self):
+        from tools.environments.local import _build_powershell_background_script
+
+        script = _build_powershell_background_script(
+            command="echo hello",
+            cwd="D:\test",
+            shell_type="pwsh",
+        )
+        assert "try { Invoke-Expression" in script
+        assert "catch {" in script
+
+    # --- $PSNativeCommandArgumentPassing (fix #6) ---
+
+    def test_native_command_argument_passing_set(self):
+        from tools.environments.local import _build_powershell_background_script
+
+        script = _build_powershell_background_script(
+            command="echo hello",
+            cwd="D:\test",
+            shell_type="pwsh",
+        )
+        assert "$PSNativeCommandArgumentPassing = 'Windows'" in script
+
+    # --- $Error.Count check (fix #11/F7) ---
+
+    def test_error_count_check_present(self):
+        from tools.environments.local import _build_powershell_background_script
+
+        script = _build_powershell_background_script(
+            command="echo hello",
+            cwd="D:\test",
+            shell_type="pwsh",
+        )
+        assert "$Error.Count" in script
+        assert "$hermes_ec = $LASTEXITCODE" in script

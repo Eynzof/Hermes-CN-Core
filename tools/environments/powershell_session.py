@@ -72,6 +72,8 @@ _EOF = object()
 _INIT_SCRIPT = (
     "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; "
     "$OutputEncoding=[System.Text.Encoding]::UTF8; "
+    "if (Get-Command -Name pwsh -ErrorAction SilentlyContinue) "
+    "{ $PSNativeCommandArgumentPassing = 'Windows' }; "
     "$ErrorActionPreference='Continue'; "
     "$ProgressPreference='SilentlyContinue'"
 )
@@ -87,12 +89,23 @@ class PSResult:
     timed_out: bool = False
     interrupted: bool = False
     session_died: bool = False
+    error_count: int = 0
 
     @property
     def success(self) -> bool:
         return self.returncode == 0 and not (
             self.timed_out or self.interrupted or self.session_died
         )
+
+    @property
+    def has_non_terminating_errors(self) -> bool:
+        """True when non-terminating errors were accumulated in ``$Error``.
+
+        A command may have produced ``$Error.Count > 0`` while still exiting
+        with code 0 (e.g. ``Get-ChildItem`` on a non-existent path).  Callers
+        that want strict error detection can check this flag.
+        """
+        return self.error_count > 0
 
 
 def combine_commands(commands: list[str], separator: str = "; ") -> str:
@@ -194,7 +207,7 @@ class PowerShellSession:
         self._seq += 1
         marker = f"{self._marker_base}{self._seq}__"
         self._write_line(
-            f"Write-Output ('{marker}0|'+(Get-Location).Path+'{marker}')"
+            f"Write-Output ('{marker}0|'+(Get-Location).Path+'|0{marker}')"
         )
         self._read_until_marker(marker, self._start_timeout, check_interrupt=False)
         logger.info("PowerShell session started (pid=%s)", self._proc.pid)
@@ -314,13 +327,15 @@ class PowerShellSession:
                 f"$__hs=[Text.Encoding]::UTF8.GetString("
                 f"[Convert]::FromBase64String('{payload}'));"
                 f"$global:LASTEXITCODE=$null;"
+                f"$__hermes_ecnt=0;"  # reset error count before command
                 f"try{{Invoke-Expression $__hs}}"
                 f"catch{{$_|Out-String -Width 4096|Write-Output}};"
                 f"$__hec=$LASTEXITCODE;"
                 f"if($null -eq $__hec){{$__hec=0}};"
+                f"$__hermes_ecnt=$Error.Count;"
                 f"Write-Output '';"
                 f"Write-Output ('{marker}'+[string]$__hec+'|'"
-                f"+(Get-Location).Path+'{marker}')"
+                f"+(Get-Location).Path+'|'+[string]$__hermes_ecnt+'{marker}')"
             )
             try:
                 self._write_line(line)
@@ -432,17 +447,27 @@ class PowerShellSession:
             if idx != -1:
                 last = line.rfind(marker)
                 middle = line[idx + len(marker) : last]
-                ec_str, _, cwd = middle.partition("|")
+                # Format: ``{code}|{cwd}|{error_count}``
+                _parts = middle.split("|", 2)
+                ec_str = _parts[0] if len(_parts) > 0 else ""
+                cwd = _parts[1] if len(_parts) > 1 else ""
+                error_count_str = _parts[2] if len(_parts) > 2 else "0"
                 try:
                     ec = int(ec_str)
                 except ValueError:
                     ec = 0
+                try:
+                    error_count = int(error_count_str)
+                except ValueError:
+                    error_count = 0
                 if cwd:
                     self._cwd = cwd
                 # Drop the single blank line we inject before the marker.
                 if out_lines and out_lines[-1] == "":
                     out_lines.pop()
-                return PSResult("\n".join(out_lines), ec, self._cwd)
+                return PSResult(
+                    "\n".join(out_lines), ec, self._cwd, error_count=error_count
+                )
 
             out_lines.append(line)
 

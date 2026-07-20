@@ -56,6 +56,23 @@ class TestPSResult:
     def test_session_died_is_failure(self):
         assert PSResult("", 1, session_died=True).success is False
 
+    # --- error_count (N3 fix) ---
+
+    def test_error_count_defaults_to_zero(self):
+        assert PSResult("out", 0).error_count == 0
+
+    def test_has_non_terminating_errors_true(self):
+        assert PSResult("out", 0, error_count=3).has_non_terminating_errors is True
+
+    def test_has_non_terminating_errors_false_when_zero(self):
+        assert PSResult("out", 0, error_count=0).has_non_terminating_errors is False
+
+    def test_has_non_terminating_errors_with_exit_code_0(self):
+        # A cmdlet can exit 0 but still have $Error.Count > 0
+        r = PSResult("out", 0, error_count=2)
+        assert r.success is True  # exit code 0 means success
+        assert r.has_non_terminating_errors is True  # but errors accumulated
+
 
 # --------------------------------------------------------------------------
 # Live-session tests (Windows / PowerShell only)
@@ -138,6 +155,14 @@ class TestLiveSession:
         with PowerShellSession(shell_path=_PS_PATH, cwd=str(tmp_path)) as s:
             assert s.run("Write-Output ctx").output.strip() == "ctx"
         assert not s.is_alive()
+
+    def test_error_count_tracked_in_marker(self, ps_session):
+        # A cmdlet that produces a non-terminating error should have error_count > 0
+        r = ps_session.run("Get-ChildItem -Path 'C:/IDontExist_XYZ_123' -ErrorAction SilentlyContinue")
+        # The command should succeed (exit 0) but accumulate an error
+        assert r.returncode == 0
+        # The marker should have tracked $Error.Count
+        assert r.error_count > 0, f"expected >0, got {r.error_count}"
 
 
 @live

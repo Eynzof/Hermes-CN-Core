@@ -680,9 +680,13 @@ def _find_pwsh() -> str | None:
 
     Returns the full path to pwsh.exe, or None if not found.
     """
-    # Strategy 1: PATH search
+    # Strategy 1: PATH search — skip Windows App Execution Aliases (stubs)
+    # that live under ``%LOCALAPPDATA%\Microsoft\WindowsApps``.  These stubs
+    # are reparse points that can fail in non-interactive / service contexts
+    # (``CreateProcessAsUserW`` error 1312).  Prefer real PE binaries from
+    # subsequent strategies.
     path = shutil.which("pwsh") or shutil.which("pwsh.exe")
-    if path:
+    if path and "WindowsApps" not in path:
         return path
 
     # Strategy 2: Common install location via %%ProgramFiles%%
@@ -705,13 +709,16 @@ def _find_pwsh() -> str | None:
     except (OSError, FileNotFoundError, ImportError):
         pass
 
-    # Strategy 4: LocalAppData (Microsoft Store / winget install)
+    # Strategy 4: LocalAppData (Microsoft Store / winget install) — last resort.
+    # Verify the file is a real PE binary (size > 10KB, starts with "MZ")
+    # because Windows Store stubs are near-empty reparse points that behave
+    # differently under service-managed processes.
     local_app_data = os.environ.get("LOCALAPPDATA", "")
     if local_app_data:
         candidate = os.path.join(
             local_app_data, "Microsoft", "WindowsApps", "pwsh.exe"
         )
-        if os.path.isfile(candidate):
+        if os.path.isfile(candidate) and os.path.getsize(candidate) > 10240:
             return candidate
 
     return None
@@ -806,6 +813,9 @@ def _build_powershell_background_script(
         # Force UTF-8 output encoding for stdout/stderr.
         "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8",
         "$OutputEncoding=[System.Text.Encoding]::UTF8",
+        # Set native command argument passing to Windows (backward-compat) mode.
+        # PS 7.3+ defaults to 'Standard' which can break legacy tools.
+        "if (Get-Command -Name pwsh -ErrorAction SilentlyContinue) { $PSNativeCommandArgumentPassing = 'Windows' }",
         "$ErrorActionPreference = 'Continue'",
         f"Set-Location -LiteralPath '{quoted_cwd}' -ErrorAction SilentlyContinue",
         f"if ($?) {{ Set-Location -LiteralPath '{quoted_cwd}' }} else {{ exit 126 }}",
@@ -813,8 +823,12 @@ def _build_powershell_background_script(
         # ``-Stream`` emits each object's rendered text as it arrives instead
         # of accumulating everything until the pipeline completes — without
         # it, output produced before a timeout kill is lost entirely.
-        f"Invoke-Expression '{escaped}' | Out-String -Width 4096 -Stream | Write-Output",
-        "$hermes_ec = $LASTEXITCODE",
+        # ``try/catch`` protects against malformed user commands so the exit
+        # code and cwd file are always written.  Parity with spawn path.
+        f"try {{ Invoke-Expression '{escaped}' | Out-String -Width 4096 -Stream | Write-Output }} catch {{ $_ | Out-String -Width 4096 -Stream | Write-Output }}",
+        # ``$Error.Count`` catches non-terminating errors that don't set
+        # ``$LASTEXITCODE`` (e.g. ``Get-ChildItem`` on a missing path).
+        "$hermes_ec = $LASTEXITCODE; if ($null -eq $hermes_ec -and $Error.Count -gt 0) { $hermes_ec = 1 }",
     ]
 
     if cwd_file:
@@ -1285,7 +1299,16 @@ class LocalEnvironment(BaseEnvironment):
         from tools.environments.windows_env import ps_with_utf8
         cmd_string = ps_with_utf8(cmd_string)
 
-        args = [self._shell_path, "-NoP", "-Exec", "Bypass", "-NoL", "-C", cmd_string]
+        _PS_MAX_CMDLINE = 30000
+        _tmp_ps1 = None
+        if len(cmd_string) > _PS_MAX_CMDLINE:
+            fd, tmp_path = tempfile.mkstemp(suffix=".ps1", prefix="hermes_cmd_")
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(cmd_string)
+            _tmp_ps1 = tmp_path
+            args = [self._shell_path, "-NoP", "-NonI", "-Exec", "Bypass", "-NoL", "-File", tmp_path]
+        else:
+            args = [self._shell_path, "-NoP", "-NonI", "-Exec", "Bypass", "-NoL", "-C", cmd_string]
         run_env = _make_run_env(self.env)
         safe_cwd = _resolve_safe_cwd(self.cwd)
         if safe_cwd != self.cwd:
@@ -1321,6 +1344,11 @@ class LocalEnvironment(BaseEnvironment):
 
         if stdin_data is not None:
             _pipe_stdin(proc, stdin_data)
+
+        if _tmp_ps1 is not None:
+            # Attach the temp-file path so ``_wait_for_process``
+            # (or the caller) can remove it after the child exits.
+            proc._hermes_tmp_ps1 = _tmp_ps1
 
         return proc
 
@@ -1367,7 +1395,10 @@ class LocalEnvironment(BaseEnvironment):
             # Force UTF-8 output encoding for stdout/stderr.
             "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8",
             "$OutputEncoding=[System.Text.Encoding]::UTF8",
-            # Suppress errors, cd to target
+            # Set native command argument passing to Windows (backward-compat)
+            # mode.  PS 7.3+ defaults to 'Standard' which can break legacy tools
+            # that rely on the old argument passing behaviour.
+            "if (Get-Command -Name pwsh -ErrorAction SilentlyContinue) { $PSNativeCommandArgumentPassing = 'Windows' }",
             "$ErrorActionPreference = 'Continue'",
             f"Set-Location -LiteralPath '{quoted_cwd}' -ErrorAction SilentlyContinue",
             f"if ($?) {{ Set-Location -LiteralPath '{quoted_cwd}' }} else {{ exit 126 }}",
@@ -1381,8 +1412,13 @@ class LocalEnvironment(BaseEnvironment):
             # emits each object's rendered text as it arrives instead of
             # accumulating everything until the pipeline completes — without
             # it, output produced before a timeout kill is lost entirely.
-            f"Invoke-Expression '{escaped}' | Out-String -Width 4096 -Stream | Write-Output",
-            "$hermes_ec = $LASTEXITCODE",
+            # ``try/catch`` protects the session from malformed user commands
+            # (unbalanced quotes, parse errors) so the CWD marker and exit code
+            # are always emitted.  Parity with ``PowerShellSession.run_script``.
+            f"try {{ Invoke-Expression '{escaped}' | Out-String -Width 4096 -Stream | Write-Output }} catch {{ $_ | Out-String -Width 4096 -Stream | Write-Output }}",
+            # ``$Error.Count`` catches non-terminating errors that don't set
+            # ``$LASTEXITCODE`` (e.g. ``Get-ChildItem`` on a missing path).
+            "$hermes_ec = $LASTEXITCODE; if ($null -eq $hermes_ec -and $Error.Count -gt 0) { $hermes_ec = 1 }",
             # Write CWD to temp file
             f"(Get-Location).Path | Out-File -Encoding utf8 -FilePath '{quoted_cwd_file}'",
             # Emit CWD marker
@@ -1419,6 +1455,9 @@ class LocalEnvironment(BaseEnvironment):
         quoted_cwd = cwd.replace("'", "''")
         quoted_cwd_file = self._cwd_file.replace("'", "''")
         parts = [
+            # Set native command argument passing to Windows (backward-compat) mode.
+            # PS 7.3+ defaults to 'Standard' which can break legacy tools.
+            "if (Get-Command -Name pwsh -ErrorAction SilentlyContinue) { $PSNativeCommandArgumentPassing = 'Windows' }",
             "$ErrorActionPreference = 'Continue'",
             f"Set-Location -LiteralPath '{quoted_cwd}' -ErrorAction SilentlyContinue",
             # ``-Stream``: keep partial output alive when the command is

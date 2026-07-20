@@ -6088,7 +6088,12 @@ async def update_config(body: ConfigUpdate, profile: Optional[str] = None):
             # frontend can only overwrite what it explicitly sends.
             existing = read_raw_config()
             incoming = _denormalize_config_from_web(body.config)
-            save_config(_deep_merge(existing, incoming))
+            # The frontend sends the complete ``providers`` mapping; if a
+            # provider was deleted, it is absent from ``incoming`` but would
+            # survive ``_deep_merge`` (which only iterates *override* keys).
+            # Mark ``providers`` as a replace-key so missing entries are
+            # treated as deletions (Bug 1 fix).
+            save_config(_deep_merge(existing, incoming, replace_keys={"providers"}))
         return {"ok": True}
     except HTTPException:
         raise

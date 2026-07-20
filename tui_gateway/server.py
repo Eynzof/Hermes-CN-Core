@@ -9264,10 +9264,15 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
                 # delta must not become a ``message.delta {text: null}`` event.
                 if delta is None:
                     return
+                # Guard against empty-string deltas that otherwise create
+                # empty assistant message blocks (Bug 2: 重复发送3条空消息).
+                delta_str = str(delta) if not isinstance(delta, str) else delta
+                if not delta_str.strip():
+                    return
                 with session["history_lock"]:
-                    _append_inflight_delta(session, delta)
-                payload = {"text": delta}
-                if streamer and (r := streamer.feed(delta)) is not None:
+                    _append_inflight_delta(session, delta_str)
+                payload = {"text": delta_str}
+                if streamer and (r := streamer.feed(delta_str)) is not None:
                     payload["rendered"] = r
                 _emit("message.delta", sid, payload)
 

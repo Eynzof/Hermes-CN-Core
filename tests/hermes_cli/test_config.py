@@ -393,6 +393,50 @@ class TestEmptyConfigSections:
         assert merged["scalar"] is None
         assert merged["section"] == {"a": 1}
 
+    def test_deep_merge_cannot_delete_keys(self):
+        """Reproduce Bug 1: _deep_merge does not remove keys absent from override.
+
+        When the frontend deletes a custom provider, it sends a config with the
+        provider removed from providers{} and provider_order[].  But _deep_merge
+        only iterates the *override* dict — keys present in base but absent from
+        override are silently kept.  The deleted provider reappears on reload.
+        """
+        from hermes_cli.config import _deep_merge
+
+        base = {
+            "providers": {
+                "deepseek": {"base_url": "...", "api_key": "sk-xxx"},
+                "custom:mer3y": {
+                    "base_url": "https://api.mer3y.xyz/v1",
+                    "api_key": "sk-yyy",
+                },
+            },
+            "desktop": {
+                "models": {"provider_order": ["deepseek", "custom:mer3y"]},
+            },
+        }
+        # Simulate what the frontend sends after deleting custom:mer3y
+        override = {
+            "providers": {
+                "deepseek": {"base_url": "...", "api_key": "sk-xxx"},
+                # custom:mer3y intentionally absent — user deleted it
+            },
+            "desktop": {
+                "models": {"provider_order": ["deepseek"]},
+            },
+        }
+
+        result = _deep_merge(base, override, replace_keys={"providers"})
+
+        # With replace_keys={"providers"}, the providers dict is fully
+        # replaced — custom:mer3y must be absent (Bug 1 fix).
+        assert "custom:mer3y" not in result["providers"], (
+            "BUG: _deep_merge does not delete keys absent from override. "
+            f"providers keys: {list(result['providers'].keys())}"
+        )
+        # Also verify provider_order is updated
+        assert result["desktop"]["models"]["provider_order"] == ["deepseek"]
+
 
 class TestSaveAndLoadRoundtrip:
     @staticmethod

@@ -6627,8 +6627,7 @@ def _fast_config_copy(obj):
     # semantics (subclass preservation, __deepcopy__ hooks, cycle handling).
     return copy.deepcopy(obj)
 
-
-def _deep_merge(base: dict, override: dict) -> dict:
+def _deep_merge(base: dict, override: dict, replace_keys: set = None) -> dict:
     """Recursively merge *override* into *base*, preserving nested defaults.
 
     Keys in *override* take precedence. If both values are dicts the merge
@@ -6640,18 +6639,32 @@ def _deep_merge(base: dict, override: dict) -> dict:
     default dict with ``None`` and crash every downstream consumer that
     expects a mapping (#58277). A ``None`` override of a dict default is
     ignored — same as the key being absent.
+
+    *replace_keys* — an optional set of top-level keys whose dict values
+    should be replaced outright rather than deep-merged.  Keys in *base* that
+    are absent from *override* at a replace-key path are deleted, allowing
+    the frontend to signal provider deletions (Bug 1 fix).
     """
     result = base.copy()
     for key, value in override.items():
         if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-            result[key] = _deep_merge(result[key], value)
+            # Determine if this key should be fully replaced
+            full_replace = replace_keys and key in replace_keys
+            if full_replace:
+                result[key] = value
+            else:
+                result[key] = _deep_merge(result[key], value, replace_keys)
         elif key in result and isinstance(result[key], dict) and value is None:
             continue
         else:
             result[key] = value
+    # Remove from result any replace_keys that are absent from override
+    # (they were copied from base.copy() but the caller wants full replacement).
+    if replace_keys:
+        for key in list(result.keys()):
+            if key in replace_keys and key not in override:
+                del result[key]
     return result
-
-
 def _strip_dotted_keys(cfg: dict, dotted_keys: set) -> Tuple[dict, set]:
     """Remove the given dotted leaf keys from a nested config dict.
 

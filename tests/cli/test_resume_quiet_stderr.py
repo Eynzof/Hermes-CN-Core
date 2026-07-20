@@ -63,7 +63,8 @@ class TestResumeQuietStderr:
         db.get_session.return_value = None
         cli = _make_cli(quiet=False, db=db)
 
-        with patch("cli._prepare_deferred_agent_startup"):
+        with patch("cli._prepare_deferred_agent_startup"), \
+             patch("cli._cprint", side_effect=lambda text: print(text)):
             result = cli._init_agent()
 
         captured = capsys.readouterr()

@@ -112,13 +112,21 @@ def test_coding_context_git_hides_git_windows(monkeypatch):
 
 
 def test_context_reference_git_and_rg_hide_windows(monkeypatch):
+    import pytest
+
     from agent import context_references
+    from hermes_cli.dep_ensure import _find_rg
+
+    if _find_rg() is None:
+        pytest.skip("ripgrep not available on this machine")
 
     captured = []
 
     def fake_run(cmd, **kwargs):
         captured.append((cmd, kwargs))
-        if cmd[0] == "rg":
+        # _rg_files resolves rg to a full path via _find_rg() + Ripgrepy
+        # (dad37cf79), so match on the --files flag, not cmd[0] == "rg".
+        if "--files" in cmd:
             return _Completed(stdout="src/main.py\n")
         return _Completed(stdout="diff --git a/src/main.py b/src/main.py\n")
 
@@ -147,7 +155,7 @@ def test_context_reference_git_and_rg_hide_windows(monkeypatch):
     ]
 
     git_calls = _spawns(captured, "diff")
-    rg_calls = _spawns(captured, "rg")
+    rg_calls = _spawns(captured, "--files")
     assert len(git_calls) == 1 and len(rg_calls) == 1, captured
     assert git_calls[0][1].get("creationflags") == _CREATE_NO_WINDOW
     assert rg_calls[0][1].get("creationflags") == _CREATE_NO_WINDOW
@@ -254,6 +262,9 @@ def test_gateway_force_kill_hides_taskkill_window(monkeypatch):
             {
                 "capture_output": True,
                 "text": True,
+                # taskkill prints in the OEM/ANSI codepage (GBK on zh-CN
+                # Windows) — strict decoding would kill the reader thread.
+                "errors": "replace",
                 "timeout": 10,
                 "creationflags": _CREATE_NO_WINDOW,
             },

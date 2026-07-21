@@ -509,6 +509,13 @@ class CopilotACPClient:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
+                # The Copilot CLI (Node) writes UTF-8. text=True alone decodes
+                # with the locale encoding — cp936/GBK on zh-CN Windows — and
+                # one non-GBK byte raises UnicodeDecodeError inside the reader
+                # threads, silently killing them. Pin UTF-8; never let a bad
+                # byte kill the readers.
+                encoding="utf-8",
+                errors="replace",
                 bufsize=1,
                 cwd=self._acp_cwd,
                 env=_build_subprocess_env(),

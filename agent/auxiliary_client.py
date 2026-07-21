@@ -6176,12 +6176,49 @@ def _effective_aux_timeout(task: str, timeout: Optional[float]) -> float:
 
 
 def _get_task_extra_body(task: str) -> Dict[str, Any]:
-    """Read auxiliary.<task>.extra_body and return a shallow copy when valid."""
+    """Read auxiliary.<task>.extra_body and return a shallow copy when valid.
+
+    Also folds in ``auxiliary.<task>.reasoning_effort`` as an
+    ``extra_body.reasoning`` config dict ({"enabled": ..., "effort": ...})
+    when set. An explicit ``extra_body.reasoning`` in config wins over the
+    ``reasoning_effort`` shorthand (it is the more specific wire control).
+    Downstream, each wire already translates ``extra_body.reasoning``:
+    chat.completions passes it through, the Codex Responses adapter maps it
+    to top-level ``reasoning``/``include``, and the Anthropic auxiliary
+    client maps it to ``build_anthropic_kwargs(reasoning_config=...)``.
+
+    MoA tasks are excluded by design: reasoning depth for MoA is a per-slot
+    setting in the MoA preset (``moa.presets.<name>.reference_models[].
+    reasoning_effort`` / ``aggregator.reasoning_effort``), not an
+    auxiliary-task knob — an ensemble-wide value would override the
+    per-slot ones.
+    """
     task_config = _get_auxiliary_task_config(task)
     raw = task_config.get("extra_body")
-    if isinstance(raw, dict):
-        return dict(raw)
-    return {}
+    result = dict(raw) if isinstance(raw, dict) else {}
+    if "reasoning" not in result:
+        effort = task_config.get("reasoning_effort")
+        if effort is not None and effort != "":
+            if task in ("moa_reference", "moa_aggregator"):
+                logger.warning(
+                    "auxiliary.%s.reasoning_effort is not supported — MoA "
+                    "reasoning depth is per-slot: set reasoning_effort on the "
+                    "preset's reference_models entries / aggregator instead "
+                    "(moa.presets.<name>...). Ignoring.",
+                    task,
+                )
+                return result
+            from hermes_constants import parse_reasoning_effort
+            parsed = parse_reasoning_effort(effort)
+            if parsed is not None:
+                result["reasoning"] = parsed
+            else:
+                logger.warning(
+                    "auxiliary.%s.reasoning_effort %r is not a valid level "
+                    "(none, minimal, low, medium, high, xhigh, max, ultra) — ignoring",
+                    task, effort,
+                )
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -6299,6 +6336,7 @@ def _build_call_kwargs(
     tools: Optional[list] = None,
     timeout: float = 30.0,
     extra_body: Optional[dict] = None,
+    reasoning_config: Optional[dict] = None,
     base_url: Optional[str] = None,
 ) -> dict:
     """Build kwargs for .chat.completions.create() with model/provider adjustments."""
@@ -6382,8 +6420,56 @@ def _build_call_kwargs(
             _deduped.append(_t)
         kwargs["tools"] = _deduped
 
-    # Provider-specific extra_body
+    # Build provider-aware reasoning kwargs through the same profile hooks used
+    # by the standard chat-completions transport. Some providers require
+    # top-level controls (Kimi/custom ``reasoning_effort``), others use nested
+    # body fields (Gemini ``thinking_config``), and OpenRouter/Nous use
+    # ``extra_body.reasoning``. Profiles are the source of truth for those wire
+    # shapes. Providers without a reasoning-aware profile retain the generic
+    # ``extra_body.reasoning`` fallback used by Codex-compatible adapters.
+    profile_body: Dict[str, Any] = {}
+    profile_reasoning_extra: Dict[str, Any] = {}
+    profile_top_level: Dict[str, Any] = {}
+    profile_handles_reasoning = False
+    try:
+        from providers import get_provider_profile
+        profile = get_provider_profile(str(provider or "").strip().lower())
+        if profile is not None:
+            profile_body = profile.build_extra_body(
+                model=model,
+                base_url=effective_base,
+                reasoning_config=reasoning_config,
+            ) or {}
+            profile_reasoning_extra, profile_top_level = (
+                profile.build_api_kwargs_extras(
+                    reasoning_config=reasoning_config,
+                    supports_reasoning=reasoning_config is not None,
+                    model=model,
+                    base_url=effective_base,
+                )
+            )
+            profile_reasoning_extra = profile_reasoning_extra or {}
+            profile_top_level = profile_top_level or {}
+    except Exception as exc:
+        logger.debug(
+            "_build_call_kwargs: provider profile projection failed for %s: %s",
+            provider,
+            exc,
+        )
+
+    kwargs.update(profile_top_level)
     merged_extra = dict(extra_body or {})
+    merged_extra.update(profile_body)
+    merged_extra.update(profile_reasoning_extra)
+    if (
+        reasoning_config
+        and isinstance(reasoning_config, dict)
+    ):
+        if reasoning_config.get("enabled") is False:
+            merged_extra["reasoning"] = {"enabled": False}
+        else:
+            effort = reasoning_config.get("effort") or "medium"
+            merged_extra["reasoning"] = {"enabled": True, "effort": effort}
     if provider == "nous":
         merged_extra.setdefault("tags", []).extend(_nous_portal_tags())
     if merged_extra:

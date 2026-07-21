@@ -302,6 +302,44 @@ class TestDefaultContextLengths:
                     f"{model_id}: expected {expected_ctx}, got {actual}"
                 )
 
+    def test_kimi_k3_context_length_is_1mi(self):
+        """``kimi-k3`` must resolve to 1,048,576 via DEFAULT_CONTEXT_LENGTHS.
+
+        Longest-key-first substring matching ensures ``kimi-k3`` (1,048,576)
+        wins over the generic ``kimi`` (262,144) entry.
+        """
+        from agent.model_metadata import DEFAULT_CONTEXT_LENGTHS, get_model_context_length
+        from unittest.mock import patch as mock_patch
+
+        assert DEFAULT_CONTEXT_LENGTHS["kimi-k3"] == 1_048_576
+        assert DEFAULT_CONTEXT_LENGTHS["kimi"] == 262_144
+
+        with mock_patch("agent.model_metadata.fetch_model_metadata", return_value={}), \
+             mock_patch("agent.model_metadata.fetch_endpoint_model_metadata", return_value={}), \
+             mock_patch("agent.model_metadata.get_cached_context_length", return_value=None), \
+             mock_patch("agent.models_dev.lookup_models_dev_context", return_value=None):
+            assert get_model_context_length("kimi-k3") == 1_048_576
+            assert get_model_context_length("kimi/kimi-k3") == 1_048_576
+            assert get_model_context_length("moonshotai/kimi-k3") == 1_048_576
+            # Generic kimi must NOT resolve to the k3 value
+            assert get_model_context_length("kimi-k2.6") == 262_144
+
+    def test_solar_reasoning_model_gets_default_context(self):
+        """Upstage Solar models without a static context-length entry fall
+        through to a reasonable default (neither 0 nor the probe minimum).
+        """
+        from agent.model_metadata import get_model_context_length, DEFAULT_FALLBACK_CONTEXT
+        from unittest.mock import patch as mock_patch
+
+        with mock_patch("agent.model_metadata.fetch_model_metadata", return_value={}), \
+             mock_patch("agent.model_metadata.fetch_endpoint_model_metadata", return_value={}), \
+             mock_patch("agent.model_metadata.get_cached_context_length", return_value=None), \
+             mock_patch("agent.models_dev.lookup_models_dev_context", return_value=None):
+            ctx = get_model_context_length("solar-pro3")
+            assert ctx is not None and ctx > 0
+            # Should get the 256K probe tier default, not 0
+            assert ctx >= 256_000
+
     def test_xai_oauth_grok_build_uses_xai_models_dev_context(self):
         """xAI OAuth should share the xAI provider metadata path.
 

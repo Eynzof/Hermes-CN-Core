@@ -120,7 +120,48 @@ _REFERENCE_SYSTEM_PROMPT = (
 
 
 def _slot_label(slot: dict[str, str]) -> str:
-    return f"{slot.get('provider', '').strip()}:{slot.get('model', '').strip()}"
+    label = f"{slot.get('provider', '').strip()}:{slot.get('model', '').strip()}"
+    effort = str(slot.get("reasoning_effort") or "").strip()
+    if effort:
+        label += f"[reasoning={effort}]"
+    return label
+
+
+def _slot_reasoning_config(slot: dict[str, Any]) -> dict[str, Any] | None:
+    """Translate optional per-MoA-slot reasoning_effort into runtime config."""
+    effort = slot.get("reasoning_effort")
+    if effort:
+        from hermes_constants import parse_reasoning_effort
+        return parse_reasoning_effort(effort)
+    return None
+
+
+def _aggregator_reasoning_config(aggregator: dict[str, Any]) -> dict[str, Any] | None:
+    """Resolve the aggregator's reasoning config: slot => per-model override => global.
+
+    Unlike reference slots which resolve reasoning_effort only from their
+    slot dict, the aggregator (the "acting model" of the MoA) has its
+    reasoning_effort determined by the same chokepoint
+    (``resolve_reasoning_config``) that governs the main loop. This ensures
+    per-model overrides (``agent.reasoning_overrides``) and the global
+    ``agent.reasoning_effort`` apply to the aggregator just as they would
+    if the model were selected directly, not only the slot's inline value.
+    """
+    cfg = _slot_reasoning_config(aggregator)
+    if cfg is not None:
+        return cfg
+    # Fall back to the shared chokepoint — uses agent.reasoning_overrides
+    # then agent.reasoning_effort.
+    try:
+        from hermes_constants import resolve_reasoning_config
+        from hermes_cli.config import load_config
+        return resolve_reasoning_config(
+            load_config(),
+            model=aggregator.get("model", ""),
+        )
+    except Exception:
+        pass
+    return None
 
 
 def _slot_runtime(slot: dict[str, str]) -> dict[str, Any]:
@@ -275,6 +316,7 @@ def _run_reference(
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens,
+            reasoning_config=_slot_reasoning_config(slot),
             **runtime,
         )
         usage = CanonicalUsage()
@@ -638,6 +680,7 @@ def aggregate_moa_context(
             messages=agg_messages,
             temperature=aggregator_temperature,
             max_tokens=max_tokens,
+            reasoning_config=_aggregator_reasoning_config(aggregator),
             **agg_runtime,
         )
         synthesis = _extract_text(response)
@@ -1017,6 +1060,7 @@ class MoAChatCompletions:
             max_tokens=agg_kwargs.get("max_tokens"),
             tools=agg_kwargs.get("tools"),
             extra_body=agg_kwargs.get("extra_body"),
+            reasoning_config=_aggregator_reasoning_config(aggregator),
             **stream_kwargs,
             **_slot_runtime(aggregator),
         )

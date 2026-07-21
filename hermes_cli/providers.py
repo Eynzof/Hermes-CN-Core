@@ -185,6 +185,23 @@ HERMES_OVERLAYS: Dict[str, HermesOverlay] = {
         transport="openai_chat",
         base_url_env_var="TOKENHUB_BASE_URL",
     ),
+    "fireworks": HermesOverlay(
+        transport="openai_chat",
+        extra_env_vars=("FIREWORKS_API_KEY",),
+        base_url_override="https://api.fireworks.ai/inference/v1",
+    ),
+    "deepinfra": HermesOverlay(
+        transport="openai_chat",
+        extra_env_vars=("DEEPINFRA_API_KEY",),
+        base_url_override="https://api.deepinfra.com/v1/openai",
+        base_url_env_var="DEEPINFRA_BASE_URL",
+    ),
+    "upstage": HermesOverlay(
+        transport="openai_chat",
+        extra_env_vars=("UPSTAGE_API_KEY",),
+        base_url_override="https://api.upstage.ai/v1",
+        base_url_env_var="UPSTAGE_BASE_URL",
+    ),
     "arcee": HermesOverlay(
         transport="openai_chat",
         base_url_override="https://api.arcee.ai/api/v1",
@@ -274,6 +291,18 @@ ALIASES: Dict[str, str] = {
 
     # minimax-cn
     "minimax-china": "minimax-cn",
+
+    # fireworks-ai
+    "fireworks-ai": "fireworks",
+    "fw": "fireworks",
+
+    # deepinfra
+    "deep-infra": "deepinfra",
+    "deepinfra-ai": "deepinfra",
+
+    # upstage
+    "solar": "upstage",
+    "upstage-ai": "upstage",
     "minimax_cn": "minimax-cn",
 
     # anthropic
@@ -373,6 +402,9 @@ _LABEL_OVERRIDES: Dict[str, str] = {
     "bedrock": "AWS Bedrock",
     "ollama-cloud": "Ollama Cloud",
     "xai-oauth": "xAI Grok OAuth (SuperGrok / Premium+)",
+    "fireworks": "Fireworks AI",
+    "deepinfra": "DeepInfra",
+    "upstage": "Upstage Solar",
 }
 
 

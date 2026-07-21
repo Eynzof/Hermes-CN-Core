@@ -260,9 +260,9 @@ _TOOL_STUBS = {
     ),
     "terminal": (
         "terminal",
-        "command: str, timeout: int = None, workdir: str = None",
+        "command: str, timeout: int = None, workdir: str = None, token_kill: bool = True, max_lines: int = None",
         '"""Run a shell command (foreground only). Returns dict with "output" and "exit_code"."""',
-        '{"command": command, "timeout": timeout, "workdir": workdir}',
+        '{"command": command, "timeout": timeout, "workdir": workdir, "token_kill": token_kill, "max_lines": max_lines}',
     ),
 }
 

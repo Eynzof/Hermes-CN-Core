@@ -1665,7 +1665,7 @@ function findSystemPython() {
   //      miss real Python 3.13 installs (user-reported case).
   //
   // We also restrict ourselves to Python 3.14. All project deps now publish
-  // 3.14 wheels, and the fork's `requires-python` is >=3.14 (P-047).
+  // 3.14 wheels, and the fork's `requires-python` is >=3.14 (P-048).
   //
   // Strategy: probe in three passes, in order from most-precise to
   // least-precise, and ONLY use PATH lookup as a last resort after

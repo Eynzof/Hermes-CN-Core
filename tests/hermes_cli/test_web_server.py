@@ -3829,7 +3829,7 @@ class TestNewEndpoints:
         resp = self.client.get("/api/profiles/coder/setup-command")
 
         assert resp.status_code == 200
-        assert resp.json()["command"] == "coder setup"
+        assert resp.json()["command"] == "hermes setup --profile coder"
 
     def test_profile_setup_command_uses_hermes_for_default_profile(self):
         from hermes_constants import get_hermes_home
@@ -4058,7 +4058,7 @@ class TestNewEndpoints:
         assert resp.status_code == 200
         assert calls
         assert calls[0][0] == "osascript"
-        assert "coder setup" in " ".join(calls[0])
+        assert "hermes setup --profile coder" in " ".join(calls[0])
 
     def test_profile_open_terminal_uses_windows_cmd(self, monkeypatch):
         from hermes_constants import get_hermes_home
@@ -4073,8 +4073,16 @@ class TestNewEndpoints:
 
         assert resp.status_code == 200
         assert calls
-        assert calls[0][:4] == ["cmd.exe", "/c", "start", ""]
-        assert calls[0][-1] == "coder setup"
+        assert calls[0] == [
+            "cmd.exe",
+            "/c",
+            "start",
+            "Hermes Profile Setup",
+            "hermes",
+            "setup",
+            "--profile",
+            "coder",
+        ]
 
     def test_profiles_create_rejects_invalid_name(self):
         resp = self.client.post("/api/profiles", json={"name": "Has Spaces"})

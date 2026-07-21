@@ -87,7 +87,7 @@ jobs:
         # `uv venv` step is needed.
         uses: ./.github/actions/retry
         with:
-          command: uv sync --locked --python 3.11 --extra all --extra dev
+          command: uv sync --locked --python 3.14 --extra all --extra dev
 
       - name: Minimize uv cache
         # Optimized for CI: prunes pre-built wheels that are cheap to
@@ -197,7 +197,7 @@ jobs:
         # `uv venv` step is needed.
         uses: ./.github/actions/retry
         with:
-          command: uv sync --locked --python 3.11 --extra all --extra dev
+          command: uv sync --locked --python 3.14 --extra all --extra dev
 
       - name: Minimize uv cache
         # Optimized for CI: prunes pre-built wheels that are cheap to

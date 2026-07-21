@@ -153,12 +153,13 @@ class TestTokenFilterOutput:
 
     def test_dedup_applied_when_token_kill_and_not_rtk_rewritten(self):
         text = "a\nb\nb\nb\nb\nc"
-        result = _token_filter_output(
-            text,
-            token_kill=True,
-            rtk_rewritten=False,
-            max_lines=None,
-        )
+        with patch("tools.rtk_provision._rtk_available", return_value=True):
+            result = _token_filter_output(
+                text,
+                token_kill=True,
+                rtk_rewritten=False,
+                max_lines=None,
+            )
         assert result.dedup_applied is True or "  (4 repeats)" in result.output
 
     def test_no_dedup_when_rtk_rewritten(self):

@@ -1,7 +1,7 @@
 ---
 name: codex
 description: "Delegate coding to OpenAI Codex CLI (features, PRs)."
-version: 1.0.0
+version: 1.1.0
 author: Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]
@@ -52,8 +52,11 @@ terminal(command="cd $(mktemp -d) && git init && codex exec 'Build a snake game 
 ## Background Mode (Long Tasks)
 
 ```
-# Start in background with PTY
-terminal(command="codex exec --full-auto 'Refactor the auth module'", workdir="~/project", background=true, pty=true)
+# Start in background with PTY. --json emits machine-readable JSONL events
+# (recent Codex CLI versions) that Hermes' desktop UI renders as a live
+# delegation timeline; if your codex rejects the flag (check
+# `codex exec --help`), drop it — behaviour is otherwise identical.
+terminal(command="codex exec --json --full-auto 'Refactor the auth module'", workdir="~/project", background=true, pty=true, notify_on_complete=true)
 # Returns session_id
 
 # Monitor progress
@@ -144,6 +147,6 @@ terminal(command="gh pr comment 86 --body '<review>'", workdir="~/project")
 2. **Git repo required** — Codex won't run outside a git directory. Use `mktemp -d && git init` for scratch
 3. **Use `exec` for one-shots** — `codex exec "prompt"` runs and exits cleanly
 4. **`--full-auto` for building** — auto-approves changes within the sandbox
-5. **Background for long tasks** — use `background=true` and monitor with `process` tool
+5. **Background for long tasks** — use `background=true, notify_on_complete=true` and monitor with `process` tool; add `--json` when supported so progress is machine-readable
 6. **Don't interfere** — monitor with `poll`/`log`, be patient with long-running tasks
 7. **Parallel is fine** — run multiple Codex processes at once for batch work

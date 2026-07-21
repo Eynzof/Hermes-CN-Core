@@ -1986,7 +1986,7 @@ def execute_tool_calls_sequential(
         # in the UI always have a corresponding detailed entry on disk.
         _is_error_result, _ = _detect_tool_failure(function_name, function_result)
         # The agent-runtime tools above (todo, session_search, memory,
-        # context-engine, memory-manager, clarify, delegate_task) are
+        # context-engine, memory-manager, clarify, delegate_task, agent_swarm) are
         # dispatched inline — they never reach handle_function_call, so the
         # executor is the one that has to fire post_tool_call. For
         # registry-dispatched tools the else-branch above invoked

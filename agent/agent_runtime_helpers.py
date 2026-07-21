@@ -2506,6 +2506,13 @@ def invoke_tool(
                 agent._dispatch_delegate_task(next_args), next_args
             )
 
+    elif function_name == "agent_swarm":
+
+        def _execute(next_args: dict) -> Any:
+            return _finish_agent_tool(
+                agent._dispatch_agent_swarm(next_args), next_args
+            )
+
     else:
 
         def _execute(next_args: dict) -> Any:

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import copy
 import sys
+import threading
 import types
 from types import SimpleNamespace
 from typing import Any, Dict, List
@@ -201,19 +202,34 @@ class TestSteerBackends:
     ):
         agent = _make_agent(monkeypatch, provider, api_mode, model)
 
-        def steer_in_thread():
-            # Wait until the first API call is definitely in flight.
-            while len(agent._captured_calls) < 1:
-                pass
-            agent.steer("focus on error handling")
+        api_started = threading.Event()
+        steer_submitted = threading.Event()
+        steer_results: List[bool] = []
+        original_api_call = agent._interruptible_api_call
 
-        steer_thread = __import__("threading").Thread(target=steer_in_thread)
+        def coordinated_api_call(api_kwargs: dict):
+            if agent._response_index == 0:
+                api_started.set()
+                assert steer_submitted.wait(timeout=5), "steer was not submitted"
+            return original_api_call(api_kwargs)
+
+        agent._interruptible_api_call = coordinated_api_call
+
+        def steer_in_thread():
+            assert api_started.wait(timeout=5), "first API call did not start"
+            try:
+                steer_results.append(agent.steer("focus on error handling"))
+            finally:
+                steer_submitted.set()
+
+        steer_thread = threading.Thread(target=steer_in_thread)
         steer_thread.start()
         result = agent.run_conversation("run tool t")
         steer_thread.join(timeout=5)
 
         assert result is not None
         assert "final_response" in result
+        assert steer_results == [True]
 
         # Two API calls: tool-call request and final response request.
         assert len(agent._captured_calls) == 2

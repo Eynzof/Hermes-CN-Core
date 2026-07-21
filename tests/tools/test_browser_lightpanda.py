@@ -443,11 +443,14 @@ class TestLightpandaFallbackWarning:
         import tools.browser_tool as bt
 
         result = bt._annotate_lightpanda_fallback(
-            {"success": True, "data": {"result": "[]"}},
+            {"success": True, "result": "[]"},
             "Lightpanda 'eval' failed (timeout); retried with Chrome.",
         )
         bt._last_active_session_key["warn-images"] = "warn-images"
-        with patch("tools.browser_tool._run_browser_command", return_value=result):
+        with patch(
+            "tools.browser_tool._browser_eval",
+            return_value=orjson.dumps(result).decode("utf-8"),
+        ):
             response = orjson.loads(bt.browser_get_images(task_id="warn-images"))
 
         assert response["success"] is True

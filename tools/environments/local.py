@@ -1,6 +1,7 @@
 """Local execution environment — spawn-per-call with session snapshot."""
 
 import logging
+import ntpath
 import os
 from platform_utils import is_windows
 from agent.re_compat import re
@@ -691,7 +692,7 @@ def _find_pwsh() -> str | None:
 
     # Strategy 2: Common install location via %%ProgramFiles%%
     program_files = os.environ.get("ProgramFiles", r"C:\Program Files")
-    candidate = os.path.join(program_files, "PowerShell", "7", "pwsh.exe")
+    candidate = ntpath.join(program_files, "PowerShell", "7", "pwsh.exe")
     if os.path.isfile(candidate):
         return candidate
 
@@ -715,7 +716,7 @@ def _find_pwsh() -> str | None:
     # differently under service-managed processes.
     local_app_data = os.environ.get("LOCALAPPDATA", "")
     if local_app_data:
-        candidate = os.path.join(
+        candidate = ntpath.join(
             local_app_data, "Microsoft", "WindowsApps", "pwsh.exe"
         )
         if os.path.isfile(candidate) and os.path.getsize(candidate) > 10240:

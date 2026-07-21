@@ -31,6 +31,8 @@ import urllib.parse
 import winreg
 from pathlib import Path
 
+from hermes_cli._subprocess_compat import windows_hide_flags
+
 # ============================================================
 # Global configuration
 # ============================================================
@@ -66,7 +68,13 @@ def _is_windows() -> bool:
 
 def _run(cmd: list[str], timeout: int = 300) -> subprocess.CompletedProcess[str]:
     """Run a subprocess and return the result (stdout/stderr captured as text)."""
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    return subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        creationflags=windows_hide_flags(),
+    )
 
 
 def _get_github_token() -> str | None:
@@ -88,7 +96,7 @@ def _download_file(url: str, dest: Path) -> None:
     req.add_header("User-Agent", "hermes-installer")
 
     with urllib.request.urlopen(req, timeout=120) as resp:
-        with open(str(dest), "wb") as f:
+        with open(str(dest), "wb") as f:  # windows-footgun: ok -- binary mode
             total_size = int(resp.headers.get("Content-Length", 0))
             downloaded = 0
             while True:

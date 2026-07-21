@@ -3880,7 +3880,9 @@ def browser_get_images(task_id: Optional[str] = None) -> str:
             "images": _redact_browser_output(images),
             "count": len(images)
         }
-        return orjson.dumps(response).decode('utf-8')
+        return orjson.dumps(
+            _copy_fallback_warning(response, parsed_eval)
+        ).decode('utf-8')
     except orjson.JSONDecodeError:
         response = {
             "success": True,
@@ -3888,7 +3890,9 @@ def browser_get_images(task_id: Optional[str] = None) -> str:
             "count": 0,
             "warning": "Could not parse image data"
         }
-        return orjson.dumps(response).decode('utf-8')
+        return orjson.dumps(
+            _copy_fallback_warning(response, parsed_eval)
+        ).decode('utf-8')
 
 
 def browser_vision(question: str, annotate: bool = False, task_id: Optional[str] = None) -> Union[str, Dict[str, Any]]:

@@ -33,7 +33,7 @@ from hermes_cli.env_loader import load_hermes_dotenv
 from utils import is_truthy_value
 from tools.environments.local import hermes_subprocess_env
 from agent.replay_cleanup import sanitize_replay_history
-from tui_gateway import git_probe
+from tui_gateway import cli_delegation, git_probe
 from tui_gateway.transport import (
     StdioTransport,
     Transport,
@@ -3739,6 +3739,12 @@ def _on_tool_start(sid: str, tool_call_id: str, name: str, args: dict):
         # tool.complete is the source of truth for todos (full list from the
         # tool result). args.todos here may be a partial merge update.
         _emit("tool.start", sid, payload)
+        # P-047: terminal 命令若是一次 Claude Code / Codex 委派，追发
+        # delegation.cli.started（delegation_id == tool_id，桌面端据此升级同卡）。
+        try:
+            cli_delegation.tracker.handle_tool_start(sid, tool_call_id, name, args)
+        except Exception:
+            pass
 
 
 def _on_tool_complete(sid: str, tool_call_id: str, name: str, args: dict, result: str):
@@ -3786,6 +3792,15 @@ def _on_tool_complete(sid: str, tool_call_id: str, name: str, args: dict, result
         pass
     if _tool_progress_enabled(sid) or payload.get("inline_diff"):
         _emit("tool.complete", sid, payload)
+    # P-047: 已跟踪的 CLI 委派在此收尾——前台直接终态（解析 result 里的
+    # session_id/num_turns/cost），后台绑定 process session 交给 watcher 推流。
+    if _tool_progress_enabled(sid):
+        try:
+            cli_delegation.tracker.handle_tool_complete(
+                sid, tool_call_id, name, payload.get("result")
+            )
+        except Exception:
+            pass
 
 
 def _on_tool_progress(
@@ -9079,6 +9094,11 @@ def _wire_agent_terminal_output() -> None:
     safe."""
     from tools.process_registry import process_registry
 
+    # P-047: 委派 tracker 与 gateway 装配（幂等；emit 注入避免循环依赖）。
+    cli_delegation.tracker.configure(
+        emit=_emit, is_alive=lambda sid: sid in _sessions
+    )
+
     has_output_sink = getattr(process_registry, "on_output", None) is not None
     has_close_sink = getattr(process_registry, "on_close", None) is not None
     if has_output_sink and has_close_sink:
@@ -9100,6 +9120,12 @@ def _wire_agent_terminal_output() -> None:
             _owner_sid_for_process(session),
             {"process_id": session.id, "chunk": chunk},
         )
+        # P-047: 同一 sink 的第二个消费者——后台 CLI 委派的输出喂给 tracker
+        # 缓冲，由 watcher 线程合并成 delegation.cli.output（不动单槽位设计）。
+        try:
+            cli_delegation.tracker.on_chunk(session, chunk)
+        except Exception:
+            pass
 
     def _emit_agent_terminal_close(session, process_id):
         # session may be None (process already finished/pruned) — the tab can

@@ -133,7 +133,7 @@ def _pid_is_running(pid: int) -> bool:
             return True  # be conservative: assume alive if we can't tell
     else:
         try:
-            os.kill(pid, 0)
+            os.kill(pid, 0)  # windows-footgun: ok -- guarded by the POSIX branch
             return True
         except ProcessLookupError:
             return False

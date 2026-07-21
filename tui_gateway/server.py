@@ -19,7 +19,7 @@ import threading
 _REAL_THREAD = threading.Thread
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -376,6 +376,15 @@ class _SlashWorker:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            # The worker inherits PYTHONIOENCODING=utf-8 (hermes_cli/__init__.py
+            # setdefault), so its stdio is UTF-8. text=True alone decodes with
+            # the locale encoding — cp936/GBK on zh-CN Windows — and a single
+            # non-GBK byte (e.g. 0xa0 inside a UTF-8 kawaii face) raises
+            # UnicodeDecodeError inside the daemon drain threads, silently
+            # killing them ([gateway-crash] thread ... (_drain_stderr)). Pin
+            # UTF-8 and never let a bad byte kill the drains.
+            encoding="utf-8",
+            errors="replace",
             bufsize=1,
             cwd=os.getcwd(),
             env=env,
@@ -4931,13 +4940,30 @@ def _enrich_with_attached_images(user_text: str, image_paths: list[str]) -> str:
                 asyncio.run(vision_analyze_tool(image_url=str(p), user_prompt=prompt))
             )
             desc = r.get("analysis", "") if r.get("success") else None
-            parts.append(
-                f"[The user attached an image:\n{desc}]\n{hint}"
-                if desc
-                else f"[The user attached an image but analysis failed.]\n{hint}"
-            )
+            if desc:
+                parts.append(
+                    f"[Hermes UI Image]\n"
+                    f"name={p.name}\n"
+                    f"description:\n{desc}\n"
+                    f"[/Hermes UI Image]\n"
+                    f"{hint}"
+                )
+            else:
+                parts.append(
+                    f"[Hermes UI Image]\n"
+                    f"name={p.name}\n"
+                    f"description:\n[Analysis failed or unavailable]\n"
+                    f"[/Hermes UI Image]\n"
+                    f"{hint}"
+                )
         except Exception:
-            parts.append(f"[The user attached an image but analysis failed.]\n{hint}")
+            parts.append(
+                f"[Hermes UI Image]\n"
+                f"name={p.name}\n"
+                f"description:\n[Analysis error]\n"
+                f"[/Hermes UI Image]\n"
+                f"{hint}"
+            )
 
     text = user_text or ""
     prefix = "\n\n".join(parts)
@@ -8503,7 +8529,7 @@ def _(rid, params: dict) -> dict:
     started_at = params.get("started_at")
     finished_at = params.get("finished_at") or time.time()
     label = str(params.get("label") or "")
-    ts = datetime.utcfromtimestamp(float(finished_at)).strftime("%Y%m%dT%H%M%S")
+    ts = datetime.fromtimestamp(float(finished_at), tz=timezone.utc).strftime("%Y%m%dT%H%M%S")
     fname = f"{ts}.json"
     d = _spawn_tree_session_dir(session_id or "default")
     path = d / fname
@@ -9273,10 +9299,15 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
                 # delta must not become a ``message.delta {text: null}`` event.
                 if delta is None:
                     return
+                # Guard against empty-string deltas that otherwise create
+                # empty assistant message blocks (Bug 2: 重复发送3条空消息).
+                delta_str = str(delta) if not isinstance(delta, str) else delta
+                if not delta_str.strip():
+                    return
                 with session["history_lock"]:
-                    _append_inflight_delta(session, delta)
-                payload = {"text": delta}
-                if streamer and (r := streamer.feed(delta)) is not None:
+                    _append_inflight_delta(session, delta_str)
+                payload = {"text": delta_str}
+                if streamer and (r := streamer.feed(delta_str)) is not None:
                     payload["rendered"] = r
                 _emit("message.delta", sid, payload)
 

@@ -45,6 +45,11 @@ _WRITE_FILE_PATH_KEY = "path"
 _TERMINAL_PATH_REGEX = re.compile(r"(?:^|\s)(/[^\s'\"`]+|\~/[^\s'\"`]+)")
 
 
+def _is_windows_abs_path(p: str) -> bool:
+    """Check if *p* looks like a Windows absolute path (e.g. ``C:\\...``)."""
+    return len(p) >= 3 and p[1] == ":" and p[2] in ("/", "\\")
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -114,9 +119,21 @@ def _extract_paths_from_terminal(args: Dict[str, Any], result: str) -> Set[str]:
                     paths.add(tok)
         except ValueError:
             pass
+        # Also scan raw command for Windows-style absolute paths (e.g. C:\...)
+        # shlex.split with posix=True strips backslashes, so we need a
+        # separate pass for Windows paths.
+        try:
+            for tok in shlex.split(cmd, posix=False):
+                if _is_windows_abs_path(tok):
+                    paths.add(tok)
+        except ValueError:
+            pass
     # Only scan the result text if it's a reasonable size (avoid 50KB dumps).
     if isinstance(result, str) and len(result) < 4096:
         for match in _TERMINAL_PATH_REGEX.findall(result):
+            paths.add(match)
+        # Also scan result for Windows absolute paths
+        for match in re.findall(r"[A-Za-z]:[\\/][^\s'\"`]+", result):
             paths.add(match)
     return paths
 

@@ -9,7 +9,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from agent.compact_reminder import CompactReminderProvider
-from agent.system_reminder import SystemReminder
+from agent.reminder_base import Reminder
+from agent.system_reminder import SystemReminder, SystemReminderProvider
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────
@@ -83,6 +84,15 @@ class TestReminderContent:
         agent = make_fake_agent(85.0)
         result = provider.get_reminders(agent, 1)
         assert result[0].type == "compact_reminder"
+
+    def test_reminder_is_a_reminder(self, provider):
+        agent = make_fake_agent(85.0)
+        result = provider.get_reminders(agent, 1)
+        assert isinstance(result[0], Reminder)
+        assert result[0].target == "user_message"
+
+    def test_provider_is_a_system_provider(self):
+        assert isinstance(CompactReminderProvider(), SystemReminderProvider)
 
 
 # ── Throttling — cooldown steps ───────────────────────────────────────

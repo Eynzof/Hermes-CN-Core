@@ -11,6 +11,7 @@ from __future__ import annotations
 import contextlib
 import os
 import shutil
+import pytest
 import sys
 import tempfile
 from pathlib import Path
@@ -499,9 +500,11 @@ def test_cdp_launch_command_has_debug_flags():
     cmd = cdp.launch_command("/usr/bin/chrome", port=9333, profile=Path("/tmp/prof"))
     assert cmd[0] == "/usr/bin/chrome"
     assert "--remote-debugging-port=9333" in cmd
-    assert "--user-data-dir=/tmp/prof" in cmd
+    # Path object normalizes separators per-platform: /tmp/prof on POSIX, \tmp\prof on Windows
+    expected_user_data_dir = f"--user-data-dir={Path('/tmp/prof')}"
+    assert expected_user_data_dir in cmd
     assert "--no-first-run" in cmd
-
+    assert "--no-default-browser-check" in cmd
 
 def test_cdp_default_profile_uses_hermes_home():
     prev = os.environ.get("HERMES_HOME")
@@ -534,6 +537,7 @@ def test_cdp_endpoint_status_parses_live_and_handles_down():
         cdp._http_get = orig
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX-only: /bin/sh concept")
 def test_cdp_find_browser_override():
     assert cdp.find_browser("/bin/sh") == "/bin/sh"                       # explicit path that exists
     assert cdp.find_browser("definitely-not-a-real-browser-xyz") is None  # bogus -> None (no crash)

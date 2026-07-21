@@ -1321,7 +1321,14 @@ def get_cute_tool_message(
             return _wrap(f"┊ 📄 fetch     {_trunc(domain, 35)}{extra}  {dur}")
         return _wrap(f"┊ 📄 fetch     pages  {dur}")
     if tool_name == "terminal":
-        return _wrap(f"┊ 💻 $         {_trunc(build_tool_preview(tool_name, args) or args.get('command', ''), 42)}  {dur}")
+        # Use the actual executed command from result (may include rtk prefix)
+        result_cmd = None
+        if result:
+            parsed = safe_json_loads(result)
+            if isinstance(parsed, dict) and parsed.get("command"):
+                result_cmd = parsed["command"]
+        display_cmd = result_cmd or args.get("command", "")
+        return _wrap(f"┊ 💻 $         {_trunc(build_tool_preview(tool_name, args) or display_cmd, 42)}  {dur}")
     if tool_name == "process":
         action = args.get("action", "?")
         sid = args.get("session_id", "")[:12]

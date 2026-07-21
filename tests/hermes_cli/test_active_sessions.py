@@ -142,6 +142,7 @@ def test_transfer_active_session_reanchors_existing_lease(tmp_path, monkeypatch)
 
 def test_pid_alive_uses_safe_pid_exists_without_signalling(monkeypatch):
     checked: list[int] = []
+    import gateway.status  # ensure module is loaded before monkeypatch
 
     monkeypatch.setattr(
         active_sessions.os,
@@ -152,6 +153,8 @@ def test_pid_alive_uses_safe_pid_exists_without_signalling(monkeypatch):
         "gateway.status._pid_exists",
         lambda pid: checked.append(int(pid)) or True,
     )
+    # _pid_alive returns pid == os.getpid() when process_start_time is None.
+    monkeypatch.setattr(active_sessions.os, "getpid", lambda: 12345)
 
     assert active_sessions._pid_alive(12345) is True
     assert checked == [12345]

@@ -159,6 +159,7 @@ def test_background_command_prefers_live_env_cwd_over_init_time_cwd(monkeypatch)
         "session_key": task_id,
         "env_vars": {},
         "use_pty": False,
+        "cwd_file": None,
     }]
 
 

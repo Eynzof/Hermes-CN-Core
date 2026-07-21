@@ -23,7 +23,7 @@ import pathlib
 import pytest
 
 try:
-    import tomllib  # Python 3.11+
+    import tomllib  # Python 3.14+
 except ImportError:  # pragma: no cover — 3.10 and earlier
     import tomli as tomllib  # type: ignore
 

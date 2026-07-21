@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from unittest.mock import patch
 
@@ -74,6 +75,8 @@ class TestCollectQueryImages:
         home = tmp_path / "home"
         img = _make_image(home / "storage" / "shared" / "Pictures" / "cat.png")
         monkeypatch.setenv("HOME", str(home))
+        if os.name == "nt":
+            monkeypatch.setenv("USERPROFILE", str(home))
 
         message, images = _collect_query_images("describe this", "~/storage/shared/Pictures/cat.png")
 

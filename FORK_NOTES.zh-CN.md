@@ -55,6 +55,56 @@
 | **P-046** | `tui_gateway/server.py`、`tests/gateway/test_provider_models_rpc.py` | `provider.probe` / `provider.models` 新增可选 `api_mode` 参数：`"anthropic_messages"` 时共享的 `_fetch_provider_model_ids` 切换到 Anthropic 协议——URL 候选镜像 SDK 自动追加 `/v1/messages` 的规则（裸域名 → `{base}/v1/models`，嵌套路径回退 host 根），鉴权改用 `x-api-key` + `anthropic-version`（对齐 `hermes_cli.models.probe_api_models`）而非 `Authorization: Bearer`；未知/缺省 `api_mode` 行为逐字节不变。 | CN 桌面端供应商目录新增了一批 Anthropic 协议的 Claude Code 中转站（PackyCode、AICodeMirror 等）与 MiniMax `/anthropic` 端点；它们的「测试连接」走 OpenAI 风格探测（Bearer + `/models` 启发式），严格的 Anthropic 网关会拒绝——有效密钥被误报为鉴权失败。 | 或可上游（P-011/P-036 的姊妹） |
 | **P-047** | `tui_gateway/cli_delegation.py`（新增）、`tui_gateway/server.py`、`skills/autonomous-ai-agents/claude-code/SKILL.md`、`skills/autonomous-ai-agents/codex/SKILL.md`、`tests/tui_gateway/test_cli_delegation_classifier.py`（新增）、`tests/tui_gateway/test_cli_delegation_events.py`（新增）、`tests/tui_gateway/test_cli_delegation_stream.py`（新增） | 新增三个 gateway 事件——`delegation.cli.started` / `delegation.cli.output` / `delegation.cli.completed`——识别经 `terminal` 工具委派给外部编码代理 CLI 的调用（Claude Code `claude -p …` / Codex `codex exec …`）。纯函数命令分类器逐层剥壳 `cd X &&`、env 前缀、`timeout`、`bash -lc`、管道，排除 tmux/ssh 与运维调用（`--version`、`claude mcp`、`codex login`），提取 mode/prompt/workdir/flags。`delegation_id == tool_call_id`，客户端据此把既有工具卡「升级」而非双渲染。后台委派在既有 `process_registry.on_output` sink 里加第二个消费者，watcher 线程 500ms 合并冲刷实时输出（ANSI 剥离、`redact_sensitive_text(force=True)`、单次 4KB / 每委派 256KB 上限），进程退出映射为 `completed/failed/killed/lost`，并解析 Claude `--output-format json\|stream-json` / Codex `--json` 结果（`session_id`、`num_turns`、`total_cost_usd`）。技能升版（claude-code 2.3.0、codex 1.1.0）引导委派走 `background=true` + 结构化输出。显式非目标：tmux 交互式委派不跟踪；`process submit` 输入不回显。 | CN 桌面端要可视化 hermes 对 Claude Code / Codex 的多 Agent 委派（"我的代理的子代理现在在干什么"）。技能把所有委派都汇入 `terminal` 工具且没有任何结构化标记，UI 只能对 80 字符截断预览做模式匹配——前台调用完成前更是零输出。gateway 是唯一能统一分类、关联并推流的收口点。 | CN 桌面端驱动，但事件本身与客户端无关；待上游桌面端有委派视图后或可上游。分类器 fixture 与 Hermes-CN-Desktop `web/src/lib/cli-delegation.test.ts` 字面镜像——改一处必改两处。 |
 
+| **P-048** | `pyproject.toml`、`uv.lock`、`FORK_NOTES.md` | **要求 Python ≥3.14** — 将 `requires-python` 从 `>=3.11,<3.14` 更新为 `>=3.14`。上调 `pywinpty` 上限至 `<4`（v3.0.5 包含 cp314 wheels）；`uv lock` 升级 `pywin32` v311→v312（包含 cp314 wheels）。修复下游测试/代码不兼容：(1) Python 3.14 的 tomllib 拒绝 TOML 基础字符串中未转义的 `\U`/`\T` 等——修复 nemo_relay 测试使用 `.as_posix()` 生成正斜杠 Windows 路径；(2) `shlex.split(cmd, posix=True)` 在 Windows 上吃掉反斜杠——在 disk-cleanup 插件路径提取中增加 `posix=False` 通道；(3) Windows 上 `os.path.expanduser` 读取 `USERPROFILE` 而非 `HOME`——修复波浪号展开测试；(4) `signal.SIGKILL` / `socket.AF_UNIX` / `os.uname` 在 Windows 上不存在——添加 `pytest.mark.skipif` 标记；(5) 子进程探测字符串缺少 `orjson`——添加 import。`uv sync` + `uv build` 已在 Windows Python 3.14.3 上通过验证。相关测试文件 274 通过、6 跳过。 | Python 3.11/3.12/3.13 已在本 fork 达到生命周期终点；上游仍支持 ≥3.11。tomllib 反斜杠问题是 py3.14+ 的严格性变更；shlex 吃反斜杠问题在旧 Python 上也存在但被 Git-Bash 掩盖（P-019 已移除）。 | `requires-python` 调整属 fork 策略，不与上游兼容。各单项 bug 修复（TOML f-string、shlex posix 标志、USERPROFILE 回退）属通用改进，应单独上游化。 |
+| **P-049** | `tools/terminal_post_process.py`（新增）、`tools/terminal_command_rewrite.py`（新增）、`tools/rtk_provision.py`（新增）、`tools/terminal_tool.py`、`hermes_constants.py`、`hermes_cli/dep_ensure.py`、`scripts/install.ps1`、`scripts/install.sh`、`scripts/install_coreutils.py`、`tests/tools/test_terminal_post_process.py`（新增）、`tools/file_operations.py`、`tools/tirith_security.py`、`hermes_cli/commands.py`、`tests/tools/test_file_operations.py`、`tests/tools/test_search_error_guard.py`、`tests/tools/test_search_hidden_dirs.py`、`tests/tools/test_tirith_security.py` | **终端输出后处理管线 + rtk (reasoning toolkit) 集成。** (1) 新增 `terminal_post_process.py`：多阶段管线——ANSI 剥离 + `
+`→`
+` 归一化、重复行去重（单行+多行块模式、可配阈值）、基于行数的头/尾截断加折叠标记、超长输出导出到会话文件、YAML 风格元数据块组装。(2) 新增 `rtk_provision.py`：`rtk` 二进制的运行时检测与路径解析（仿 `_find_rg()` 模式），依次查找 managed tools 目录 → 旧版 `$HERMES_HOME/bin` → PATH，带 `functools.lru_cache`。(3) 新增 `terminal_command_rewrite.py`：Shell 命令感知的重写，为已知的高输出命令（`git`、`cargo`、`npm`、`ls`、`grep`、`cat`、`python`、`docker`、PowerShell cmdlet 等）前置 `rtk`，正确解析 `;`/`&&`/`||`/`|` 分割，尊重引号和 subshell。(4) `terminal_tool.py` 新增 `token_kill`（默认 True）和 `max_lines` 参数；执行前可重写命令通过 rtk，执行后走完整后处理管线（替换了旧的内联 ANSI 剥离 + 字符级截断）。(5) `hermes_constants.py`：新增 `get_managed_tools_dir()` 返回 `<HERMES_HOME>/tools`（兼容旧版 `<HERMES_HOME>/bin` 兜底）。(6) `dep_ensure.py`：将 `rtk` 加入 `_DEP_CHECKS`/`_DEP_DESCRIPTIONS`；重构 `_find_rg()` 和 coreutils 检查使用 `get_managed_tools_dir()` 加旧版兜底。(7) `file_operations.py`/`commands.py`：使用 `_find_rg()` 而非裸 `shutil.which("rg")`，优先使用托管副本。(8) `tirith_security.py`：将自动安装目标从旧版 `$HERMES_HOME/bin/tirith` 迁移到 `get_managed_tools_dir()`，保留向后兼容的 PATH 兜底。(9) `scripts/install.ps1`/`install.sh`：增加 rtk 下载和 `hermes doctor` 检查。(10) `scripts/install_coreutils.py`：使用 `get_managed_tools_dir()` 获取管理工具路径。 | 旧的终端输出处理仅仅是一段 inline ANSI 剥离 + 硬编码的 40%/60% 字符级截断，没有去重、没有行级截断、模型也无法控制输出行数。像 `git log`、`cargo test`、`docker ps`、`npm install` 这样的命令可能产生成千上万行重复输出——模型为每一行重复内容买单。rtk 是一个外部 CLI，能在数据到达 agent 之前原生折叠重复行；后处理管线在 rtk 不可用或禁用时提供第二道防线（去重 + 行截断）。新的 `max_lines` 参数让模型可以指定行数（头+尾加折叠标记），比旧的字节级截断更直观。`get_managed_tools_dir()` 的整合把外部二进制移到了 `<HERMES_HOME>/tools/`（从通用的 `bin/` 迁出），避免污染 PATH 且更易管理。 | 建议上游（通用终端输出品质改进；去重/截断/导出管线是纯 Python 无外部依赖；managed-tools-dir 模式是通用维护改进）。 |
+
+| **P-050** | `tools/environments/local.py`、`agent/prompt_builder.py`、`hermes_cli/config.py`、`hermes_cli/gateway.py`、`tools/environments/base.py`、`scripts/keystroke_diagnostic.py`、`apps/desktop/electron/main.ts`、`apps/desktop/electron/windows-hermes-resolution.test.ts`、`tests/tools/test_shell_resolution.py`、README 文件、网站文档、`skills/autonomous-ai-agents/hermes-agent/SKILL.md`、`FORK_NOTES.md` | **允许 `HERMES_SHELL_TYPE=bash` 作为可选的显式 Windows shell（需预装 Git Bash，不自助下载）。** Phase 2.2：`_resolve_shell()` 现在通过 `_find_bash_posix()` 查找预装 bash 而非直接抛 `RuntimeError`。Phase 2.1：保留 `_WINDOWS_BASH_SHELL_HINT` 与 `bash` 分发分支；`_WINDOWS_POWERSHELL_SHELL_HINT` 更新为提示用户可自由使用 PS7+ 语法（`pwsh_transform` 会自动降级）。Phase 1：`findGitBash()` 简化（移除 PortableGit 自助下载候选）；预检改为按配置 shell 有条件检查 bash（`shell:bash`）或 PowerShell（默认）。Phase 3：测试更新——`test_windows_bash_found_returns_bash` 和 `test_windows_bash_not_found_raises_helpful_error` 替代了旧的 `test_windows_bash_raises_runtime_error`。Phase 4：所有 README 和网站文档更新为将 PowerShell 描述为默认 shell，Git Bash 作为可选的显式 opt-in。 | P-019 使 PowerShell 5.1 成为 Windows 上唯一受支持的 shell，并禁止了 `HERMES_SHELL_TYPE=bash`。本 fork 的用户可能仍为 VCS 操作安装了 Git for Windows，且某些工作流合法需要 POSIX shell 语法。重新允许 bash 作为显式 opt-in（不自动下载）恢复了灵活性，同时不会重新引入自动安装的复杂性或 PortableGit 下载。 | 建议上游（用户选择权；无自动下载风险） |
+
+### P-049：终端输出后处理管线 + rtk (reasoning toolkit) 集成
+**现象。** `git log`、`cargo test`、`npm install`、`docker ps` 或 `ls -R` 等终端命令会输出数千行重复内容——重复的错误行、进度条、状态行——而模型为每一行重复内容支付 token，浪费上下文和 API 预算。旧的管线只是一段内联的 ANSI 剥离 + 硬编码的 40%/60% 字符级头尾截断，完全没有去重功能。也没有 `max_lines` 参数，模型只能通过字节上限控制输出大小。
+
+**改动内容。**
+
+1. **`tools/terminal_post_process.py`（新增）。** 多阶段输出后处理管线：
+   - **阶段 1 — `filter_output()`：** 剥离 ANSI 转义序列（Rich 版更彻底），归一化 `\r\n`→`\n` / 孤立的 `\r`→`\n`。
+   - **阶段 2 — `_save_original_output()`：** 在破坏性过滤前，将已过滤但未去重的原始输出保存到 `~/.hermes/sessions/<uuid>/terminal_output_original.txt`。
+   - **阶段 3 — `_dedup_output()`：** 单行去重（首次出现加注 `"  (N repeats)"`）和多行块去重（贪婪检测连续重复的线块，最多 3 行，例如重复的 `Downloading 45%`→`Downloading 100%` 进度序列）。可配 `_DEFAULT_DEDUP_THRESHOLD=3`。
+   - **阶段 4 — `_truncate_lines()`：** 基于行数的头/尾截断，插入 `[... N lines omitted ...]` 折叠标记。保留前 `floor(max_lines/2)` 和后 `ceil(max_lines/2)-1` 行。
+   - **阶段 5 — `_token_filter_output()`：** 将上述阶段组合为单一管线，返回结构化 `TerminalOutputResult`，附带元数据标志（`dedup_applied`、`lines_truncated`、`original_path` 等）。当 `rtk` 已处理过去重时跳过去重。
+   - **阶段 6 — `_maybe_export_output_async()`：** 输出超过 `_DEFAULT_EXPORT_CHARS`（4096）时导出到 `~/.hermes/sessions/<uuid>/terminal_output_exported.txt`，返回替换消息。
+   - **阶段 7 — `_build_session_output_block()`：** 组装 YAML 风格元数据块（task_id、status、exit_code、elapsed_seconds、output、截断标志）供工具结果使用。
+
+2. **`tools/rtk_provision.py`（新增）。** `rtk` 二进制的运行时检测与路径解析——完全仿照 `_find_rg()` 模式：
+   - 优先级：托管 `<HERMES_HOME>/tools/rtk` → 旧版 `<HERMES_HOME>/bin/rtk` → `PATH` 通过 `shutil.which`。
+   - 每个候选都运行 `rtk --version` 验证可用性。
+   - 通过 `functools.lru_cache` 进程级缓存。
+
+3. **`tools/terminal_command_rewrite.py`（新增）。** Shell 命令感知的重写：
+   - 维护 `_RTK_KNOWN_COMMANDS`（git、cargo、pytest、npm、pnpm、yarn、docker、kubectl、ls、grep、rg、find、cat、head、tail、python、pip、go、rustc、make、cmake、curl、wget、ps、df、du、netstat、ss、systemctl、journalctl，以及 PowerShell cmdlet 如 Get-ChildItem、Get-Content、Select-String 等）。
+   - `_rewrite_shell_segment()`：找到第一个真正的可执行 token（跳过环境变量 `KEY=VALUE` 赋值和 `sudo`），若匹配已知命令列表则前置 `rtk`。
+   - `_split_shell_segments()`：正确解析 `;`/`&&`/`||`/`|` 分割，尊重引号、转义和 `$(...)` subshell。
+   - 尊重 `RTK_DISABLED=1` 前缀和已经以 `rtk` 开头的命令。
+
+4. **`tools/terminal_tool.py`** — 集成：
+   - 新增参数：`token_kill: bool = True`（默认开启）和 `max_lines: Optional[int] = None`。
+   - 执行前：当 `token_kill=True` 且 `rtk` 可用时，通过 `_maybe_rewrite_shell_command_with_rtk()` 重写命令；`rtk_rewritten` 标志传给后处理，让去重知道 rtk 已处理。
+   - 执行后：旧的内联 ANSI 剥离 + 字符级截断完全被新管线取代（`filter_output` → `_token_filter_output` → `_maybe_export_output_async` → ANSI 双层保护）。
+   - 新参数 schema 已加入 `TERMINAL_SCHEMA`。
+
+5. **`hermes_constants.py`** — 新增 `get_managed_tools_dir()`：返回 `<HERMES_HOME>/tools`，对现有安装保留旧版 `<HERMES_HOME>/bin` 兜底。
+
+6. **`hermes_cli/dep_ensure.py`** — 将 `rtk` 加入 `_DEP_CHECKS`/`_DEP_DESCRIPTIONS`；重构 `_find_rg()` 和 coreutils 检查使用新的 `get_managed_tools_dir()` 加旧版兜底（此前硬编码为 `<HERMES_HOME>/bin`）。
+
+7. **安装脚本**（`scripts/install.ps1`、`scripts/install.sh`）：增加从 GitHub releases（`rtk-ai/rtk`，版本 0.43.0）下载 `rtk` 二进制，安装到 managed tools 目录，以及 `hermes doctor` 检查。
+
+8. **伴生改动**（使用新的 `get_managed_tools_dir()` / `_find_rg()` from dep_ensure）：`tools/file_operations.py`（搜索使用 `_find_rg()`）、`tools/tirith_security.py`（自动安装目标迁移到 managed tools 目录）、`hermes_cli/commands.py`（ripgrepy 路径解析）、`scripts/install_coreutils.py`（管理工具路径）。
+
+**测试。** `tests/tools/test_terminal_post_process.py`（新增，约 295 行）覆盖：ANSI 剥离、CR/LF 归一化、单行和块去重（低于阈值、高于阈值、空、单行）、行截断（低于限制、无操作、折叠标记、空、小 max_lines）、完整管线集成（直通、去重开关、rtk_rewritten 跳过、行截断、原始保存、返回类型）、超长导出（低于/超过/恰好等于限制）、原始保存到临时文件、元数据块组装（完整+最小）。现有 terminal/file/search/tirith 测试已更新以覆盖 managed-tools-dir 解析。Ruff 检查通过。
+
+**是否可上游？** 可以——去重/截断/导出管线是纯 Python 无外部依赖；managed-tools-dir 模式（`get_managed_tools_dir()`）是一个通用的维护改进，整合了 Hermes 发现自身下载的二进制文件的方式。rtk 集成（命令重写 + 二进制检测）依赖第三方 CLI（`rtk-ai/rtk`），可作为可选增强提交上游。
+
 ## 发布和维护支撑
 
 这些不是运行时行为补丁，但属于 fork 维护能力：

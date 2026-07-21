@@ -439,7 +439,11 @@ def test_migrator_can_rename_conflicting_imported_skill(tmp_path: Path):
     assert renamed_skill.exists()
     assert existing_skill.joinpath("SKILL.md").read_text(encoding="utf-8").endswith("existing\n")
     imported_items = [item for item in report["items"] if item["kind"] == "skill" and item["status"] == "migrated"]
-    assert any(item["details"].get("renamed_from", "").endswith("/demo-skill") for item in imported_items)
+    # Cross-platform: renamed_from path may use \ or / depending on platform
+    assert any(
+        Path(item["details"].get("renamed_from", "")).name == "demo-skill"
+        for item in imported_items
+    )
 
 
 def test_migrator_can_overwrite_conflicting_imported_skill_with_backup(tmp_path: Path):
@@ -812,7 +816,7 @@ def test_cron_store_is_archived_without_config_cron_section(tmp_path: Path):
 
     cron_items = [item for item in report["items"] if item["kind"] == "cron-jobs"]
     archived_store = next(
-        (item for item in cron_items if item["destination"] and item["destination"].endswith("archive/cron-store")),
+        (item for item in cron_items if item["destination"] and "archive" in Path(item["destination"]).parts),
         None,
     )
     assert archived_store is not None
@@ -854,7 +858,7 @@ def test_skill_installs_cleanly_under_skills_guard():
 def test_rebrand_text_replaces_openclaw_variants():
     mod = load_module()
     # Mixed-case / capitalized matches → capital-H ``Hermes``.
-    assert mod.rebrand_text("OpenClaw prefers Python 3.11") == "Hermes prefers Python 3.11"
+    assert mod.rebrand_text("OpenClaw prefers Python 3.14") == "Hermes prefers Python 3.14"
     assert mod.rebrand_text("I told Open Claw to use dark mode") == "I told Hermes to use dark mode"
     assert mod.rebrand_text("Open-Claw config is great") == "Hermes config is great"
     assert mod.rebrand_text("OPENCLAW uses tools well") == "Hermes uses tools well"
@@ -913,7 +917,7 @@ def test_migrate_memory_rebrands_entries(tmp_path):
     workspace.mkdir()
     memory_md = workspace / "MEMORY.md"
     memory_md.write_text(
-        "# Memory\n\n- OpenClaw should use Python 3.11\n- ClawdBot prefers dark mode\n",
+        "# Memory\n\n- OpenClaw should use Python 3.14\n- ClawdBot prefers dark mode\n",
         encoding="utf-8",
     )
 

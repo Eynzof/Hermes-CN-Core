@@ -162,7 +162,7 @@ description: "Hermes 内置工具权威参考，按工具集分组"
 | 工具 | 描述 | 所需环境 |
 |------|------|----------|
 | `process` | 管理通过 `terminal(background=true)` 启动的后台进程。操作：`list`（显示所有）、`poll`（检查状态 + 新输出）、`log`（带分页的完整输出）、`wait`（阻塞直到完成或超时）、`kill`（终止）、`write`（发送…） | — |
-| `terminal` | 在 Linux 环境中执行 shell 命令。文件系统在调用之间持久化。对长时间运行的服务器设置 `background=true`。设置 `notify_on_complete=true`（配合 `background=true`）可在进程完成时自动收到通知——无需轮询。**不要**使用 `cat`/`head`/`tail`——使用 `read_file`。**不要**使用 `grep`/`rg`/`find`——使用 `search_files`。 | — |
+| `terminal` | 在 Linux 环境中执行 shell 命令。文件系统在调用之间持久化。对长时间运行的服务器设置 `background=true`。设置 `notify_on_complete=true`（配合 `background=true`）可在进程完成时自动收到通知——无需轮询。**不要**使用 `cat`/`head`/`tail`——使用 `read_file`。**不要**使用 `grep`/`rg`/`find`——使用 `search_files`。当 `token_kill=true` 时，结果中包含 `"command"` 字段，显示实际执行的命令（如果被重写则带有 `rtk` 前缀）。 | — |
 
 ## `todo` 工具集
 

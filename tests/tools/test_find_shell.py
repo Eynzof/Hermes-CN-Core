@@ -16,6 +16,7 @@ import pytest
 from tools.environments.local import _find_bash_posix, _find_shell
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX-only: $SHELL preference")
 class TestFindShellPrefersUserShell:
     """_find_shell should prefer $SHELL over bash on POSIX."""
 

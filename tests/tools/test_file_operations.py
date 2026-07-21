@@ -3,10 +3,62 @@
 import os
 from agent.re_compat import re
 import pytest
+import ripgrepy
 import subprocess
 import tools.file_operations
 from pathlib import Path
 from unittest.mock import MagicMock
+
+
+class FakeRipgrepy:
+    """Drop-in replacement for ripgrepy.Ripgrepy that skips binary probing."""
+
+    def __init__(self, regex_pattern, path, rg_path="rg"):
+        self.regex_pattern = regex_pattern
+        self.path = path
+        self.command = [rg_path or "rg"]
+
+    def files(self):
+        self.command.append("--files")
+        return self
+
+    def glob(self, pattern):
+        self.command.extend(["--glob", pattern])
+        return self
+
+    def sortr(self, value):
+        self.command.append(f"--sortr={value}")
+        return self
+
+    def line_number(self):
+        self.command.append("--line-number")
+        return self
+
+    def no_heading(self):
+        self.command.append("--no-heading")
+        return self
+
+    def with_filename(self):
+        self.command.append("--with-filename")
+        return self
+
+    def context(self, n):
+        self.command.extend(["--context", str(n)])
+        return self
+
+    def files_with_matches(self):
+        self.command.append("--files-with-matches")
+        return self
+
+    def count_matches(self):
+        self.command.append("--count-matches")
+        return self
+
+
+@pytest.fixture
+def fake_ripgrepy(monkeypatch):
+    monkeypatch.setattr(ripgrepy, "Ripgrepy", FakeRipgrepy)
+
 
 from tools.file_operations import (
     _is_write_denied,
@@ -1051,8 +1103,11 @@ class TestIsLocalEnv:
 # =========================================================================
 
 
+@pytest.mark.usefixtures("fake_ripgrepy")
 class TestSearchFilesRgRipgrepy:
     """Tests for _search_files_rg_ripgrepy on local backends."""
+
+    _RG_PATH = "/usr/bin/rg"
 
     @staticmethod
     def _make_local_ops():
@@ -1075,7 +1130,7 @@ class TestSearchFilesRgRipgrepy:
 
         monkeypatch.setattr(subprocess, "run", fake_run)
 
-        result = ops._search_files_rg_ripgrepy("foo.py", str(tmp_path), 50, 0)
+        result = ops._search_files_rg_ripgrepy("foo.py", str(tmp_path), 50, 0, self._RG_PATH)
 
         assert result.error is None
         assert "--glob" in captured_cmds[0]
@@ -1093,7 +1148,7 @@ class TestSearchFilesRgRipgrepy:
 
         monkeypatch.setattr(subprocess, "run", fake_run)
 
-        ops._search_files_rg_ripgrepy("src/foo.py", str(tmp_path), 50, 0)
+        ops._search_files_rg_ripgrepy("src/foo.py", str(tmp_path), 50, 0, self._RG_PATH)
 
         assert "--glob" in captured_cmds[0]
         assert "src/foo.py" in captured_cmds[0]
@@ -1110,9 +1165,9 @@ class TestSearchFilesRgRipgrepy:
 
         monkeypatch.setattr(subprocess, "run", fake_run)
 
-        ops._search_files_rg_ripgrepy("test.py", str(tmp_path), 50, 0)
+        ops._search_files_rg_ripgrepy("test.py", str(tmp_path), 50, 0, self._RG_PATH)
 
-        assert "--sortr" in captured_cmds[0]
+        assert any("--sortr" in arg for arg in captured_cmds[0])
 
     def test_fallbacks_to_shell_on_error(self, tmp_path, monkeypatch):
         """On subprocess error, falls back to _search_files_rg_shell."""
@@ -1127,7 +1182,7 @@ class TestSearchFilesRgRipgrepy:
         monkeypatch.setattr(ops, "_search_files_rg_shell",
                            lambda p, pa, l, o: SearchResult(files=["fallback.py"], total_count=1))
 
-        result = ops._search_files_rg_ripgrepy("test.py", str(tmp_path), 50, 0)
+        result = ops._search_files_rg_ripgrepy("test.py", str(tmp_path), 50, 0, self._RG_PATH)
         assert result.files == ["fallback.py"]
 
     def test_results_sliced_with_offset_and_limit(self, tmp_path, monkeypatch):
@@ -1140,7 +1195,7 @@ class TestSearchFilesRgRipgrepy:
 
         monkeypatch.setattr(subprocess, "run", fake_run)
 
-        result = ops._search_files_rg_ripgrepy("file_*.py", str(tmp_path), 3, 2)
+        result = ops._search_files_rg_ripgrepy("file_*.py", str(tmp_path), 3, 2, self._RG_PATH)
         assert result.files == ["file_2.py", "file_3.py", "file_4.py"]
         assert result.total_count == 10
         assert result.truncated is True
@@ -1151,8 +1206,11 @@ class TestSearchFilesRgRipgrepy:
 # =========================================================================
 
 
+@pytest.mark.usefixtures("fake_ripgrepy")
 class TestSearchWithRgRipgrepy:
     """Tests for _search_with_rg_ripgrepy on local backends."""
+
+    _RG_PATH = "/usr/bin/rg"
 
     @staticmethod
     def _make_local_ops():
@@ -1174,7 +1232,7 @@ class TestSearchWithRgRipgrepy:
 
         monkeypatch.setattr(subprocess, "run", fake_run)
 
-        result = ops._search_with_rg_ripgrepy("hello", str(tmp_path), None, 50, 0, "content", 0)
+        result = ops._search_with_rg_ripgrepy("hello", str(tmp_path), None, 50, 0, "content", 0, self._RG_PATH)
 
         assert result.error is None
         assert len(result.matches) == 1
@@ -1195,7 +1253,7 @@ class TestSearchWithRgRipgrepy:
 
         monkeypatch.setattr(subprocess, "run", fake_run)
 
-        result = ops._search_with_rg_ripgrepy("pattern", str(tmp_path), None, 50, 0, "files_only", 0)
+        result = ops._search_with_rg_ripgrepy("pattern", str(tmp_path), None, 50, 0, "files_only", 0, self._RG_PATH)
 
         assert "--files-with-matches" in captured_cmds[0]
         assert result.files == ["src/a.py", "src/b.py"]
@@ -1211,7 +1269,7 @@ class TestSearchWithRgRipgrepy:
 
         monkeypatch.setattr(subprocess, "run", fake_run)
 
-        result = ops._search_with_rg_ripgrepy("pattern", str(tmp_path), None, 50, 0, "count", 0)
+        result = ops._search_with_rg_ripgrepy("pattern", str(tmp_path), None, 50, 0, "count", 0, self._RG_PATH)
 
         assert "--count-matches" in captured_cmds[0]
         assert result.counts == {"src/a.py": 5}
@@ -1227,7 +1285,7 @@ class TestSearchWithRgRipgrepy:
 
         monkeypatch.setattr(subprocess, "run", fake_run)
 
-        ops._search_with_rg_ripgrepy("pattern", str(tmp_path), "*.py", 50, 0, "content", 0)
+        ops._search_with_rg_ripgrepy("pattern", str(tmp_path), "*.py", 50, 0, "content", 0, self._RG_PATH)
 
         assert "--glob" in captured_cmds[0]
         assert "*.py" in captured_cmds[0]
@@ -1243,7 +1301,7 @@ class TestSearchWithRgRipgrepy:
 
         monkeypatch.setattr(subprocess, "run", fake_run)
 
-        ops._search_with_rg_ripgrepy("pattern", str(tmp_path), None, 50, 0, "content", 3)
+        ops._search_with_rg_ripgrepy("pattern", str(tmp_path), None, 50, 0, "content", 3, self._RG_PATH)
 
         assert "--context" in captured_cmds[0]
         assert "3" in captured_cmds[0]
@@ -1257,7 +1315,7 @@ class TestSearchWithRgRipgrepy:
 
         monkeypatch.setattr(subprocess, "run", fake_run)
 
-        result = ops._search_with_rg_ripgrepy("pattern", str(tmp_path), None, 50, 0, "content", 0)
+        result = ops._search_with_rg_ripgrepy("pattern", str(tmp_path), None, 50, 0, "content", 0, self._RG_PATH)
 
         assert result.error is None
         assert len(result.matches) == 1
@@ -1272,7 +1330,7 @@ class TestSearchWithRgRipgrepy:
 
         monkeypatch.setattr(subprocess, "run", fake_run)
 
-        result = ops._search_with_rg_ripgrepy("pattern", str(tmp_path), None, 50, 0, "content", 0)
+        result = ops._search_with_rg_ripgrepy("pattern", str(tmp_path), None, 50, 0, "content", 0, self._RG_PATH)
 
         assert result.error is not None
         assert "Search failed" in result.error
@@ -1286,7 +1344,7 @@ class TestSearchWithRgRipgrepy:
 
         monkeypatch.setattr(subprocess, "run", fake_run)
 
-        result = ops._search_with_rg_ripgrepy("zxzxzx_nonexistent", str(tmp_path), None, 50, 0, "content", 0)
+        result = ops._search_with_rg_ripgrepy("zxzxzx_nonexistent", str(tmp_path), None, 50, 0, "content", 0, self._RG_PATH)
 
         assert result.error is None
         assert result.total_count == 0
@@ -1303,7 +1361,7 @@ class TestSearchWithRgRipgrepy:
                            lambda p, pa, fg, l, o, om, c: SearchResult(
                                files=["fallback.py"], total_count=1))
 
-        result = ops._search_with_rg_ripgrepy("test", str(tmp_path), None, 50, 0, "files_only", 0)
+        result = ops._search_with_rg_ripgrepy("test", str(tmp_path), None, 50, 0, "files_only", 0, self._RG_PATH)
         assert result.files == ["fallback.py"]
 
 
@@ -1330,7 +1388,7 @@ class TestRgDispatchToRipgrepy:
 
         called = {"ripgrepy": False, "shell": False}
         monkeypatch.setattr(ops, "_search_files_rg_ripgrepy",
-                           lambda p, pa, l, o: called.update({"ripgrepy": True}) or SearchResult())
+                           lambda p, pa, l, o, rp: called.update({"ripgrepy": True}) or SearchResult())
         monkeypatch.setattr(ops, "_search_files_rg_shell",
                            lambda p, pa, l, o: called.update({"shell": True}) or SearchResult())
 
@@ -1347,7 +1405,7 @@ class TestRgDispatchToRipgrepy:
 
         called = {"ripgrepy": False, "shell": False}
         monkeypatch.setattr(ops, "_search_files_rg_ripgrepy",
-                           lambda p, pa, l, o: called.update({"ripgrepy": True}) or SearchResult())
+                           lambda p, pa, l, o, rp: called.update({"ripgrepy": True}) or SearchResult())
         monkeypatch.setattr(ops, "_search_files_rg_shell",
                            lambda p, pa, l, o: called.update({"shell": True}) or SearchResult())
 
@@ -1362,7 +1420,7 @@ class TestRgDispatchToRipgrepy:
 
         called = {"ripgrepy": False, "shell": False}
         monkeypatch.setattr(ops, "_search_with_rg_ripgrepy",
-                           lambda p, pa, fg, l, o, om, c: called.update({"ripgrepy": True}) or SearchResult())
+                           lambda p, pa, fg, l, o, om, c, rp: called.update({"ripgrepy": True}) or SearchResult())
         monkeypatch.setattr(ops, "_search_with_rg_shell",
                            lambda p, pa, fg, l, o, om, c: called.update({"shell": True}) or SearchResult())
 
@@ -1379,7 +1437,7 @@ class TestRgDispatchToRipgrepy:
 
         called = {"ripgrepy": False, "shell": False}
         monkeypatch.setattr(ops, "_search_with_rg_ripgrepy",
-                           lambda p, pa, fg, l, o, om, c: called.update({"ripgrepy": True}) or SearchResult())
+                           lambda p, pa, fg, l, o, om, c, rp: called.update({"ripgrepy": True}) or SearchResult())
         monkeypatch.setattr(ops, "_search_with_rg_shell",
                            lambda p, pa, fg, l, o, om, c: called.update({"shell": True}) or SearchResult())
 

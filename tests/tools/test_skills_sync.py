@@ -172,7 +172,8 @@ class TestComputeRelativeDest:
         bundled = Path("/repo/skills")
         skill_dir = Path("/repo/skills/mlops/axolotl")
         dest = _compute_relative_dest(skill_dir, bundled)
-        assert str(dest).endswith("mlops/axolotl")
+        # as_posix: str(Path) uses backslashes on Windows.
+        assert dest.as_posix().endswith("mlops/axolotl")
 
     def test_flat_skill(self):
         bundled = Path("/repo/skills")

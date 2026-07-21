@@ -66,7 +66,7 @@ _IMAGE_EXT_PATTERN = "|".join(e.lstrip(".") for e in _IMAGE_EXTS)
 # extract_local_files() uses: anchors to ``~/`` or ``/``, ignores matches inside
 # URLs (the ``(?<![/:\w.])`` lookbehind), and case-insensitive on the extension.
 _LOCAL_IMAGE_PATH_RE = re.compile(
-    r"(?<![/:\w.])(?:~/|/)(?:[\w.\-]+/)*[\w.\-]+\.(?:" + _IMAGE_EXT_PATTERN + r")\b",
+    r"(?<![/:\w.])(?:~[\\/]|[\\/]|[A-Za-z]:[\\/])(?:[\w.\\-]+[\\/])*[\w.\\-]+\.(?:" + _IMAGE_EXT_PATTERN + r")\b",
     re.IGNORECASE,
 )
 
@@ -119,7 +119,7 @@ def extract_image_refs(text: str) -> Tuple[List[str], List[str]]:
         if _in_code(match.start()):
             continue
         raw = match.group(0)
-        expanded = os.path.expanduser(raw)
+        expanded = os.path.normpath(os.path.expanduser(raw))
         try:
             if not os.path.isfile(expanded):
                 continue

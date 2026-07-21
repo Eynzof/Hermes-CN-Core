@@ -30,7 +30,7 @@ def test_create_environment_passes_docker_network_toggle(monkeypatch):
 
     env = terminal_tool._create_environment(
         env_type="docker",
-        image="python:3.11",
+        image="python:3.14",
         cwd="/workspace",
         timeout=60,
         container_config={"docker_network": False},
@@ -58,7 +58,7 @@ def test_docker_environment_adds_network_none_when_disabled(monkeypatch):
     monkeypatch.setattr(docker_env.DockerEnvironment, "_storage_opt_supported", lambda self: False)
 
     env = docker_env.DockerEnvironment(
-        image="python:3.11",
+        image="python:3.14",
         cwd="/workspace",
         timeout=60,
         task_id="network-none-test",
@@ -142,7 +142,7 @@ def _reuse_guard_harness(monkeypatch, *, existing_mode: str, network: bool):
     monkeypatch.setattr(docker_env.DockerEnvironment, "_storage_opt_supported", lambda self: False)
 
     docker_env.DockerEnvironment(
-        image="python:3.11",
+        image="python:3.14",
         cwd="/workspace",
         timeout=60,
         task_id="reuse-guard-test",

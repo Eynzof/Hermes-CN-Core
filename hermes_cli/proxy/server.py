@@ -26,6 +26,7 @@ except ImportError:
     AIOHTTP_AVAILABLE = False
 
 from hermes_cli.proxy.adapters.base import UpstreamAdapter, UpstreamCredential
+from hermes_cli.port_lock import try_claim_port
 
 logger = logging.getLogger(__name__)
 
@@ -260,35 +261,46 @@ async def run_server(
             "pip install 'hermes-agent[messaging]' or `pip install aiohttp`."
         )
 
-    app = create_app(adapter)
-    runner = web.AppRunner(app, access_log=None)
-    await runner.setup()
-    site = web.TCPSite(runner, host=host, port=port)
-    await site.start()
+    # Coordinate with other Hermes instances via the shared lock file.
+    port_lock = try_claim_port(port)
+    if port_lock is None:
+        raise RuntimeError(
+            f"proxy: port {port} is already claimed by another Hermes instance. "
+            f"Choose a different port with `hermes proxy start --port <port>`."
+        )
 
-    logger.info(
-        "proxy: listening on http://%s:%d/v1 -> %s",
-        host, port, adapter.display_name,
-    )
-
-    stop_event = shutdown_event or asyncio.Event()
-
-    # Wire signal handlers when we own the loop's lifetime.
-    if shutdown_event is None:
-        loop = asyncio.get_running_loop()
-        for sig in (signal.SIGINT, signal.SIGTERM):
-            try:
-                loop.add_signal_handler(sig, stop_event.set)  # windows-footgun: ok
-            except NotImplementedError:
-                # Windows / restricted environments — Ctrl+C will still
-                # raise KeyboardInterrupt and unwind us.
-                pass
-
+    runner = None
     try:
+        app = create_app(adapter)
+        runner = web.AppRunner(app, access_log=None)
+        await runner.setup()
+        site = web.TCPSite(runner, host=host, port=port)
+        await site.start()
+
+        logger.info(
+            "proxy: listening on http://%s:%d/v1 -> %s",
+            host, port, adapter.display_name,
+        )
+
+        stop_event = shutdown_event or asyncio.Event()
+
+        # Wire signal handlers when we own the loop's lifetime.
+        if shutdown_event is None:
+            loop = asyncio.get_running_loop()
+            for sig in (signal.SIGINT, signal.SIGTERM):
+                try:
+                    loop.add_signal_handler(sig, stop_event.set)  # windows-footgun: ok
+                except NotImplementedError:
+                    # Windows / restricted environments — Ctrl+C will still
+                    # raise KeyboardInterrupt and unwind us.
+                    pass
+
         await stop_event.wait()
     finally:
         logger.info("proxy: shutting down")
-        await runner.cleanup()
+        if runner is not None:
+            await runner.cleanup()
+        port_lock.release()
 
 
 __all__ = [

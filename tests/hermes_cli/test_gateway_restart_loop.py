@@ -353,7 +353,9 @@ class TestTerminalToolGatewayLifecycleGuard:
         self._patch_env(monkeypatch, _FakeEnv(), inside_gateway=True)
         monkeypatch.setattr(tt, "_check_all_guards", lambda cmd, env, **kwargs: {"approved": True})
 
-        result = orjson.loads(tt.terminal_tool(command="systemctl status nginx"))
+        result = orjson.loads(
+            tt.terminal_tool(command="systemctl status nginx", token_kill=False)
+        )
 
         assert result["exit_code"] == 0
         assert calls == ["systemctl status nginx"]
@@ -373,7 +375,11 @@ class TestTerminalToolGatewayLifecycleGuard:
         self._patch_env(monkeypatch, _FakeEnv(), inside_gateway=False)
         monkeypatch.setattr(tt, "_check_all_guards", lambda cmd, env, **kwargs: {"approved": True})
 
-        result = orjson.loads(tt.terminal_tool(command="systemctl restart hermes-gateway"))
+        result = orjson.loads(
+            tt.terminal_tool(
+                command="systemctl restart hermes-gateway", token_kill=False
+            )
+        )
 
         # Outside the gateway the lifecycle guard doesn't block — the normal
         # approval flow handles it (here mocked as approved).

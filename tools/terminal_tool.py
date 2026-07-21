@@ -33,6 +33,7 @@ Usage:
 
 import functools
 import importlib.util
+import json
 import orjson
 import json
 import logging
@@ -43,6 +44,7 @@ import time
 import threading
 import atexit
 import shutil
+import uuid
 import subprocess
 from pathlib import Path
 from typing import Optional, Dict, Any, List
@@ -69,7 +71,6 @@ from tools.interrupt import is_interrupted, _interrupt_event  # noqa: F401 — r
 _PWSH_CONSOLE_INIT = (
     "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8;"
     "$OutputEncoding=[System.Text.Encoding]::UTF8;"
-    "[Console]::TreatControlCAsInput=$true;"
 )
 
 
@@ -1355,7 +1356,7 @@ def _is_unusable_container_cwd(cwd: str) -> bool:
 def _get_env_config() -> Dict[str, Any]:
     """Get terminal environment configuration from environment variables."""
     # Default image with Python and Node.js for maximum compatibility
-    default_image = "nikolaik/python-nodejs:python3.11-nodejs20"
+    default_image = "nikolaik/python-nodejs:python3.14-nodejs20"
     env_type = os.getenv("TERMINAL_ENV", "local")
     
     mount_docker_cwd = os.getenv("TERMINAL_DOCKER_MOUNT_CWD_TO_WORKSPACE", "false").lower() in {"true", "1", "yes"}
@@ -1406,9 +1407,13 @@ def _get_env_config() -> Dict[str, Any]:
     host_cwd = None
     if env_type == "docker" and mount_docker_cwd:
         docker_cwd_source = os.getenv("TERMINAL_CWD") or _safe_getcwd()
-        candidate = os.path.abspath(os.path.expanduser(docker_cwd_source))
+        expanded = os.path.expanduser(docker_cwd_source)
+        candidate = os.path.abspath(expanded)
+        # Check raw source value FIRST (before abspath changes drive letters on Windows)
+        # so POSIX-style /Users/... paths are recognized on all platforms.
         if (
-            any(candidate.startswith(p) for p in _HOST_CWD_PREFIXES)
+            any(docker_cwd_source.startswith(p) for p in _HOST_CWD_PREFIXES)
+            or any(candidate.startswith(p) for p in _HOST_CWD_PREFIXES)
             or (os.path.isabs(candidate) and os.path.isdir(candidate) and not candidate.startswith(("/workspace", "/root")))
         ):
             host_cwd = candidate
@@ -2117,6 +2122,8 @@ def terminal_tool(
     pty: bool = False,
     notify_on_complete: bool = False,
     watch_patterns: Optional[List[str]] = None,
+    token_kill: bool = True,
+    max_lines: Optional[int] = None,
 ) -> str:
     """
     Execute a command in the configured terminal environment.
@@ -2132,6 +2139,8 @@ def terminal_tool(
         pty: If True, use pseudo-terminal for interactive CLI tools (local backend only)
         notify_on_complete: If True and background=True, you'll be notified exactly once when the process exits. The right choice for almost every long task. MUTUALLY EXCLUSIVE with watch_patterns.
         watch_patterns: List of strings to watch for in background output. HARD rate limit: 1 notification per 15s per process. After 3 strike windows in a row, watch_patterns is disabled and the session is auto-promoted to notify_on_complete. Use ONLY for rare, one-shot mid-process signals on long-lived processes (server readiness, migration-done markers). NEVER use in loops/batch jobs — error patterns there will hit the strike limit and get disabled. MUTUALLY EXCLUSIVE with notify_on_complete — set one, not both.
+        token_kill: When True (default), known commands are rewritten to use the rtk binary which collapses repeated output lines to save tokens. Set False to preserve raw command output.
+        max_lines: Maximum number of output lines to return. When set, keeps the first floor(max_lines/2) and last ceil(max_lines/2)-1 lines with an omitted-lines marker between them. When unset, all lines are returned (subject to the byte cap).
 
     Returns:
         str: JSON string with output, exit_code, and error fields
@@ -2148,6 +2157,12 @@ def terminal_tool(
         
         # Force run after user confirmation
         # Note: force parameter is internal only, not exposed to model API
+        
+        # With token_kill disabled
+        >>> result = terminal_tool(command="git log", token_kill=False)
+        
+        # With max_lines limit
+        >>> result = terminal_tool(command="dmesg", max_lines=100)
     """
     try:
         if not isinstance(command, str):
@@ -2469,6 +2484,13 @@ def terminal_tool(
             )
             try:
                 if env_type == "local":
+                    cwd_file = None
+                    if hasattr(env, "get_temp_dir"):
+                        try:
+                            temp_dir = env.get_temp_dir().rstrip("/") or "/"
+                            cwd_file = f"{temp_dir}/hermes-bg-cwd-{uuid.uuid4().hex[:12]}.txt"
+                        except Exception:
+                            pass
                     proc_session = process_registry.spawn_local(
                         command=command,
                         cwd=effective_cwd,
@@ -2476,6 +2498,7 @@ def terminal_tool(
                         session_key=session_key,
                         env_vars=env.env if hasattr(env, 'env') else None,
                         use_pty=effective_pty,
+                        cwd_file=cwd_file,
                     )
                 else:
                     proc_session = process_registry.spawn_via_env(
@@ -2731,7 +2754,19 @@ def terminal_tool(
                         "timeout": effective_timeout,
                         "cwd": command_cwd,
                     }
-                    result = env.execute(command, **execute_kwargs)
+                    # Apply token_kill command rewriting before execution
+                    exec_command = command
+                    rtk_rewritten = False
+                    if token_kill:
+                        from tools.rtk_provision import _rtk_available
+                        if _rtk_available():
+                            from tools.terminal_command_rewrite import _maybe_rewrite_shell_command_with_rtk
+                            exec_command, rtk_rewritten = _maybe_rewrite_shell_command_with_rtk(
+                                command, token_kill=True
+                            )
+                            if rtk_rewritten:
+                                logger.info("Rewrote command with rtk: %r -> %r", command, exec_command)
+                    result = env.execute(exec_command, **execute_kwargs)
                 except Exception as e:
                     error_str = str(e).lower()
                     if "timeout" in error_str:
@@ -2801,8 +2836,29 @@ def terminal_tool(
                         break
             except Exception:
                 pass
-            
-            # Truncate output if too long, keeping both head and tail
+
+            # ── New post-processing pipeline ──
+            from tools.terminal_post_process import (
+                _token_filter_output,
+                filter_output,
+            )
+
+            # Stage 1: Raw output filtering (ANSI + line ending normalization)
+            output = filter_output(output)
+
+            # Stage 2: Token filter pipeline (dedup + line truncation + original save)
+            post_result = _token_filter_output(
+                output,
+                token_kill=token_kill,
+                rtk_rewritten=rtk_rewritten,
+                max_lines=max_lines,
+            )
+            output = post_result.output
+
+            # Stage 3: Byte-cap truncation, keeping both head and tail. This is
+            # the hard output-size contract (head 40% / tail 60%) — dedup and
+            # max_lines above reduce tokens but do NOT bound bytes, and the
+            # transform_terminal_output hook may have just expanded the output.
             from tools.tool_output_limits import get_max_bytes
             MAX_OUTPUT_CHARS = get_max_bytes()
             if len(output) > MAX_OUTPUT_CHARS:
@@ -2814,11 +2870,6 @@ def terminal_tool(
                     f"out of {len(output)} total] ...\n\n"
                 )
                 output = output[:head_chars] + truncated_notice + output[-tail_chars:]
-
-            # Strip ANSI escape sequences so the model never sees terminal
-            # formatting — prevents it from copying escapes into file writes.
-            from tools.ansi_strip import strip_ansi
-            output = strip_ansi(output)
 
             # Redact secrets from command output. For source/config dumps
             # (MAX_TOKENS=100, "apiKey": "x" fixtures, postgresql:// f-string
@@ -2840,6 +2891,7 @@ def terminal_tool(
                 "output": output,
                 "exit_code": returncode,
                 "error": None,
+                "command": exec_command,
             }
             try:
                 from agent.verification_evidence import record_terminal_result
@@ -3044,7 +3096,7 @@ if __name__ == "__main__":
     print("  result = terminal_tool(command='python server.py', background=True)")
 
     print("\nEnvironment Variables:")
-    default_img = "nikolaik/python-nodejs:python3.11-nodejs20"
+    default_img = "nikolaik/python-nodejs:python3.14-nodejs20"
     print(
         "  TERMINAL_ENV: "
         f"{os.getenv('TERMINAL_ENV', 'local')} "
@@ -3104,6 +3156,16 @@ TERMINAL_SCHEMA = {
                 "type": "array",
                 "items": {"type": "string"},
                 "description": "Strings to watch for in background process output. HARD RATE LIMIT: at most 1 notification per 15 seconds per process — matches arriving inside the cooldown are dropped. After 3 consecutive 15-second windows with dropped matches, watch_patterns is automatically disabled for that process and promoted to notify_on_complete behavior (one notification on exit, no more mid-process spam). USE ONLY for truly rare, one-shot mid-process signals on LONG-LIVED processes that will never exit on their own — e.g. ['Application startup complete'] on a server so you know when to hit its endpoint, or ['migration done'] on a daemon. DO NOT use for: (1) end-of-run markers like 'DONE'/'PASS' — use notify_on_complete instead; (2) error patterns like 'ERROR'/'Traceback' in loops or multi-item batch jobs — they fire on every iteration and you'll hit the strike limit fast; (3) anything you'd ever combine with notify_on_complete. When in doubt, choose notify_on_complete. MUTUALLY EXCLUSIVE with notify_on_complete — set one, not both."
+            },
+            "token_kill": {
+                "type": "boolean",
+                "description": "When true (default), known commands are rewritten to use the rtk binary which collapses repeated lines to save tokens. Set false to preserve raw command output.",
+                "default": True
+            },
+            "max_lines": {
+                "type": "integer",
+                "description": "Maximum number of output lines to return. When set, keeps the first floor(max_lines/2) and last ceil(max_lines/2)-1 lines with an omitted-lines marker between them. When unset, all lines are returned (subject to the byte cap).",
+                "minimum": 10
             }
         },
         "required": ["command"]
@@ -3122,6 +3184,8 @@ def _handle_terminal(args, **kw):
         pty=args.get("pty", False),
         notify_on_complete=args.get("notify_on_complete", False),
         watch_patterns=args.get("watch_patterns"),
+        token_kill=args.get("token_kill", True),
+        max_lines=args.get("max_lines"),
     )
 
 

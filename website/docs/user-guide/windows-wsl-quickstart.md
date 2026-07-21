@@ -28,7 +28,7 @@ A Chinese-language walkthrough of the minimum install path is maintained on this
 
 ## Why WSL2 (vs. native Windows)
 
-The native Windows install runs in Windows directly: your Windows terminal (PowerShell, Windows Terminal, etc.), Windows filesystem paths (`C:\Users\…`), and Windows processes.  Hermes uses Git Bash to run shell commands, which is how Claude Code and other agents handle Windows today — it sidesteps the POSIX-vs-Windows gap without a full rewrite.
+The native Windows install runs in Windows directly: your Windows terminal (PowerShell, Windows Terminal, etc.), Windows filesystem paths (`C:\Users\…`), and Windows processes.  Hermes uses **PowerShell** as the default shell (pwsh 7.x preferred, with automatic fallback to Windows PowerShell 5.1) to run commands. Git Bash is available as an optional shell — set `terminal.shell: bash` in config.yaml if you have Git for Windows installed.
 
 WSL2 runs a real Linux kernel in a lightweight VM, so Hermes inside it is essentially identical to running on Ubuntu.  That's valuable when you want a real POSIX environment: `fork`, `/tmp`, UNIX sockets, signal semantics, PTY-backed terminals, shells like `bash`/`zsh`, and tools like `rg`, `git`, `ffmpeg` that behave the way they do on Linux.
 

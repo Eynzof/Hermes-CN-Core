@@ -46,6 +46,9 @@ from __future__ import annotations
 
 import orjson
 import logging
+import os
+import sys
+import sysconfig
 import time
 import urllib.error
 import urllib.request
@@ -113,7 +116,13 @@ def _cache_path() -> Path:
 
 def _fetch_manifest(url: str, timeout: float) -> dict[str, Any] | None:
     """HTTP GET the manifest URL and return a parsed dict, or None on failure."""
-    try:
+    proxy_env = os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY")
+
+    def _do_fetch(use_proxy: bool = True) -> dict[str, Any]:
+        if use_proxy:
+            opener = urllib.request.build_opener()
+        else:
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
         req = urllib.request.Request(
             url,
             headers={
@@ -121,9 +130,29 @@ def _fetch_manifest(url: str, timeout: float) -> dict[str, Any] | None:
                 "User-Agent": _HERMES_USER_AGENT,
             },
         )
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            data = orjson.loads(resp.read().decode())
-    except (urllib.error.URLError, TimeoutError, orjson.JSONDecodeError, OSError) as exc:
+        with opener.open(req, timeout=timeout) as resp:
+            return orjson.loads(resp.read().decode())
+
+    try:
+        data = _do_fetch(use_proxy=True)
+    except urllib.error.URLError as exc:
+        reason = getattr(exc.reason, "winerror", None) or getattr(exc.reason, "errno", None)
+        if proxy_env and reason in (10061, 111, 61):  # ECONNREFUSED on Windows/Linux/macOS
+            logger.warning(
+                "model catalog fetch failed because the configured proxy %s refused the connection; "
+                "trying a direct fetch. If the direct fetch succeeds, consider unsetting "
+                "HTTP_PROXY/HTTPS_PROXY or checking the proxy.",
+                proxy_env,
+            )
+            try:
+                data = _do_fetch(use_proxy=False)
+            except Exception as direct_exc:  # pragma: no cover — defensive
+                logger.info("model catalog direct fetch also failed (%s): %s", url, direct_exc)
+                return None
+        else:
+            logger.info("model catalog fetch failed (%s): %s", url, exc)
+            return None
+    except (TimeoutError, orjson.JSONDecodeError, OSError) as exc:
         logger.info("model catalog fetch failed (%s): %s", url, exc)
         return None
     except Exception as exc:  # pragma: no cover — defensive
@@ -193,6 +222,63 @@ def _write_disk_cache(data: dict[str, Any]) -> None:
         logger.info("model catalog cache write failed: %s", exc)
 
 
+def _bundled_catalog_candidates() -> list[Path]:
+    """Return possible paths to a bundled model-catalog.json.
+
+    Resolution mirrors hermes_constants._get_packaged_data_dir while also
+    supporting a source checkout and PyInstaller-like frozen executables.
+    """
+    candidates: list[Path] = []
+    rel = Path("website") / "static" / "api" / "model-catalog.json"
+
+    # Source checkout / editable install
+    candidates.append(Path(__file__).parent.parent / rel)
+
+    # setuptools data_files locations
+    for scheme in ("data", "purelib", "platlib"):
+        raw = sysconfig.get_path(scheme)
+        if raw:
+            candidates.append(Path(raw) / rel)
+
+    # PyInstaller / frozen executable sibling
+    exe_dir = Path(sys.executable).parent
+    candidates.append(exe_dir / "model-catalog.json")
+    candidates.append(exe_dir / "data" / "model-catalog.json")
+    candidates.append(exe_dir / "_internal" / rel)
+
+    # Desktop-managed runtime: catalog shipped next to HERMES_HOME
+    try:
+        from hermes_constants import get_hermes_home
+        home = get_hermes_home()
+        candidates.append(home.parent / "model-catalog.json")
+        candidates.append(home.parent / "data" / "model-catalog.json")
+    except Exception:
+        pass
+
+    return candidates
+
+
+def _seed_cache_from_bundled() -> bool:
+    """Seed the disk cache from a bundled catalog if one exists.
+
+    Returns True when a valid bundled manifest was written to disk.
+    """
+    for src in _bundled_catalog_candidates():
+        try:
+            with open(src, encoding="utf-8") as fh:
+                data = orjson.loads(fh.read())
+        except (OSError, orjson.JSONDecodeError):
+            continue
+        if not _validate_manifest(data):
+            logger.debug("bundled model catalog at %s failed validation", src)
+            continue
+        _write_disk_cache(data)
+        reset_cache()
+        logger.info("seeded model catalog cache from bundled copy at %s", src)
+        return True
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -232,7 +318,12 @@ def get_catalog(*, force_refresh: bool = False) -> dict[str, Any]:
         _catalog_cache_source_mtime = disk_mtime
         return disk_data
 
-    # Need to (re)fetch. If it fails, fall back to any stale disk copy.
+    # Need to (re)fetch. Seed from a bundled copy first so offline/fresh
+    # installs still have a fallback, then try the network.
+    if disk_data is None:
+        _seed_cache_from_bundled()
+        disk_data, disk_mtime = _read_disk_cache()
+
     fetched = _fetch_manifest(cfg["url"], DEFAULT_FETCH_TIMEOUT)
     if fetched is not None:
         _write_disk_cache(fetched)

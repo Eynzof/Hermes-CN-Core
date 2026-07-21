@@ -136,7 +136,8 @@ class TestFetchFailure:
     def test_network_failure_returns_empty_when_no_cache(self, isolated_home):
         from hermes_cli import model_catalog
         with patch.object(model_catalog, "_fetch_manifest", return_value=None):
-            result = model_catalog.get_catalog(force_refresh=True)
+            with patch.object(model_catalog, "_seed_cache_from_bundled", return_value=False):
+                result = model_catalog.get_catalog(force_refresh=True)
         assert result == {}
 
     def test_network_failure_falls_back_to_disk_cache(self, isolated_home):
@@ -199,7 +200,8 @@ class TestCatalogUrl:
         from hermes_cli import model_catalog
 
         with patch.object(model_catalog, "_fetch_manifest", return_value=None) as fetch:
-            result = model_catalog.get_catalog(force_refresh=True)
+            with patch.object(model_catalog, "_seed_cache_from_bundled", return_value=False):
+                result = model_catalog.get_catalog(force_refresh=True)
 
         assert result == {}
         assert fetch.call_count == 1
@@ -229,12 +231,14 @@ class TestCuratedAccessors:
     def test_openrouter_returns_none_when_catalog_empty(self, isolated_home):
         from hermes_cli import model_catalog
         with patch.object(model_catalog, "_fetch_manifest", return_value=None):
-            assert model_catalog.get_curated_openrouter_models() is None
+            with patch.object(model_catalog, "_seed_cache_from_bundled", return_value=False):
+                assert model_catalog.get_curated_openrouter_models() is None
 
     def test_nous_returns_none_when_catalog_empty(self, isolated_home):
         from hermes_cli import model_catalog
         with patch.object(model_catalog, "_fetch_manifest", return_value=None):
-            assert model_catalog.get_curated_nous_models() is None
+            with patch.object(model_catalog, "_seed_cache_from_bundled", return_value=False):
+                assert model_catalog.get_curated_nous_models() is None
 
 
 class TestDisabled:
@@ -302,7 +306,8 @@ class TestIntegrationWithModelsModule:
         from hermes_cli.models import get_curated_nous_model_ids, _PROVIDER_MODELS
 
         with patch.object(model_catalog, "_fetch_manifest", return_value=None):
-            result = get_curated_nous_model_ids()
+            with patch.object(model_catalog, "_seed_cache_from_bundled", return_value=False):
+                result = get_curated_nous_model_ids()
 
         assert result == list(_PROVIDER_MODELS["nous"])
 

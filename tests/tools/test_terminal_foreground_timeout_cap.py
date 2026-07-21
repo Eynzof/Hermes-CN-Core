@@ -85,8 +85,13 @@ class TestForegroundTimeoutCap:
             mock_env = MagicMock()
             mock_env.execute.return_value = {"output": "usage", "returncode": 0}
 
+            # token_kill rewrites known commands through rtk when the binary is
+            # installed on the host (e.g. "pnpm dev --help" -> "rtk pnpm dev
+            # --help"). This test asserts the guard's pass-through of the raw
+            # command, so disable rtk detection for hermetic behavior.
             with patch("tools.terminal_tool._active_environments", {"default": mock_env}), \
                  patch("tools.terminal_tool._last_activity", {"default": 0}), \
+                 patch("tools.rtk_provision._rtk_available", return_value=False), \
                  patch("tools.terminal_tool._check_all_guards", return_value={"approved": True}):
                 result = orjson.loads(terminal_tool(command="pnpm dev --help"))
 

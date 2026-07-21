@@ -1,6 +1,7 @@
 """Local execution environment — spawn-per-call with session snapshot."""
 
 import logging
+import ntpath
 import os
 from platform_utils import is_windows
 from agent.re_compat import re
@@ -46,6 +47,7 @@ def _windows_to_msys_path(cwd: str) -> str:
     """Translate a native Windows path (``C:\\Users\\x``) to Git Bash /
     MSYS form (``/c/Users/x``) so ``builtin cd`` resolves it reliably.
 
+    Used when ``shell:bash`` is explicitly configured (Git Bash / MSYS).
     No-ops on non-Windows hosts or for paths that aren't drive-qualified
     native Windows paths. Returns the input unchanged when no translation
     applies.
@@ -679,14 +681,18 @@ def _find_pwsh() -> str | None:
 
     Returns the full path to pwsh.exe, or None if not found.
     """
-    # Strategy 1: PATH search
+    # Strategy 1: PATH search — skip Windows App Execution Aliases (stubs)
+    # that live under ``%LOCALAPPDATA%\Microsoft\WindowsApps``.  These stubs
+    # are reparse points that can fail in non-interactive / service contexts
+    # (``CreateProcessAsUserW`` error 1312).  Prefer real PE binaries from
+    # subsequent strategies.
     path = shutil.which("pwsh") or shutil.which("pwsh.exe")
-    if path:
+    if path and "WindowsApps" not in path:
         return path
 
     # Strategy 2: Common install location via %%ProgramFiles%%
     program_files = os.environ.get("ProgramFiles", r"C:\Program Files")
-    candidate = os.path.join(program_files, "PowerShell", "7", "pwsh.exe")
+    candidate = ntpath.join(program_files, "PowerShell", "7", "pwsh.exe")
     if os.path.isfile(candidate):
         return candidate
 
@@ -704,13 +710,16 @@ def _find_pwsh() -> str | None:
     except (OSError, FileNotFoundError, ImportError):
         pass
 
-    # Strategy 4: LocalAppData (Microsoft Store / winget install)
+    # Strategy 4: LocalAppData (Microsoft Store / winget install) — last resort.
+    # Verify the file is a real PE binary (size > 10KB, starts with "MZ")
+    # because Windows Store stubs are near-empty reparse points that behave
+    # differently under service-managed processes.
     local_app_data = os.environ.get("LOCALAPPDATA", "")
     if local_app_data:
-        candidate = os.path.join(
+        candidate = ntpath.join(
             local_app_data, "Microsoft", "WindowsApps", "pwsh.exe"
         )
-        if os.path.isfile(candidate):
+        if os.path.isfile(candidate) and os.path.getsize(candidate) > 10240:
             return candidate
 
     return None
@@ -728,7 +737,8 @@ def _resolve_shell() -> tuple[str, str]:
     Env overrides:
       ``HERMES_SHELL_TYPE`` — ``"powershell"``, ``"pwsh"``, ``"bash"``,
       or ``"auto"`` (default: ``"auto"`` on Windows, ``"bash"`` otherwise).
-      ``HERMES_SHELL_TYPE=bash`` on Windows raises a RuntimeError.
+      ``HERMES_SHELL_TYPE=bash`` on Windows finds pre-installed Git Bash
+      via ``_find_bash_posix()`` (no auto-install).
 
     Returns ``(shell_type, shell_path)`` where *shell_type* is
     ``"pwsh"``, ``"powershell"``, or ``"bash"``.
@@ -746,14 +756,19 @@ def _resolve_shell() -> tuple[str, str]:
             logger.info("Selected shell: powershell at %s", ps_path)
             return ("powershell", ps_path)
         if shell_type == "bash":
+            bash_path = _find_bash_posix()
+            if bash_path:
+                logger.info("Selected shell: bash at %s", bash_path)
+                return ("bash", bash_path)
             raise RuntimeError(
-                "Git Bash is no longer supported on Windows. "
-                "Set HERMES_SHELL_TYPE=pwsh/powershell (or leave as auto) "
-                "to use PowerShell."
+                "Git Bash is not found on this system. "
+                "Set HERMES_SHELL_TYPE=auto/pwsh/powershell to use PowerShell, "
+                "or install Git Bash manually from https://git-scm.com/download/win."
             )
         raise RuntimeError(
             f"Unknown HERMES_SHELL_TYPE={shell_type!r} on Windows. "
-            "Supported values: 'auto' (default → pwsh/powershell), 'pwsh', 'powershell'."
+            "Supported values: 'auto' (default → pwsh/powershell), 'pwsh', "
+            "'powershell', 'bash' (requires pre-installed Git Bash)."
         )
 
     # Non-Windows: always bash
@@ -763,6 +778,68 @@ def _resolve_shell() -> tuple[str, str]:
         return ("bash", bash_path)
 
     raise RuntimeError("No usable shell found.")
+
+
+def _build_powershell_background_script(
+    command: str,
+    cwd: str,
+    shell_type: str,
+    cwd_file: str | None = None,
+) -> str:
+    """Build a PowerShell wrapper suitable for detached background processes.
+
+    Mirrors ``LocalEnvironment._wrap_command_powershell`` but omits the stdout
+    CWD marker (background output goes to the process-registry buffer) and only
+    persists the final CWD to *cwd_file* when one is provided.
+
+    Args:
+        command: Raw user command (will be down-levelled for PS5.1 unless
+            *shell_type* is ``pwsh``).
+        cwd: Working directory to switch to before running *command*.
+        shell_type: ``pwsh`` or ``powershell``.
+        cwd_file: Optional path to write the final working directory to.
+            When provided, the wrapper writes ``(Get-Location).Path`` to this
+            file so ``LocalEnvironment._update_cwd`` can pick it up.
+
+    Returns:
+        A multi-line PowerShell script ready for ``-Command``.
+    """
+    if shell_type != "pwsh":
+        command, _ = pwsh_transform(command)
+
+    escaped = command.replace("'", "''")
+    quoted_cwd = cwd.replace("'", "''")
+
+    parts = [
+        # Force UTF-8 output encoding for stdout/stderr.
+        "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8",
+        "$OutputEncoding=[System.Text.Encoding]::UTF8",
+        # Set native command argument passing to Windows (backward-compat) mode.
+        # PS 7.3+ defaults to 'Standard' which can break legacy tools.
+        "if (Get-Command -Name pwsh -ErrorAction SilentlyContinue) { $PSNativeCommandArgumentPassing = 'Windows' }",
+        "$ErrorActionPreference = 'Continue'",
+        f"Set-Location -LiteralPath '{quoted_cwd}' -ErrorAction SilentlyContinue",
+        f"if ($?) {{ Set-Location -LiteralPath '{quoted_cwd}' }} else {{ exit 126 }}",
+        # Run the command and flush PowerShell's formatting pipeline.
+        # ``-Stream`` emits each object's rendered text as it arrives instead
+        # of accumulating everything until the pipeline completes — without
+        # it, output produced before a timeout kill is lost entirely.
+        # ``try/catch`` protects against malformed user commands so the exit
+        # code and cwd file are always written.  Parity with spawn path.
+        f"try {{ Invoke-Expression '{escaped}' | Out-String -Width 4096 -Stream | Write-Output }} catch {{ $_ | Out-String -Width 4096 -Stream | Write-Output }}",
+        # ``$Error.Count`` catches non-terminating errors that don't set
+        # ``$LASTEXITCODE`` (e.g. ``Get-ChildItem`` on a missing path).
+        "$hermes_ec = $LASTEXITCODE; if ($null -eq $hermes_ec -and $Error.Count -gt 0) { $hermes_ec = 1 }",
+    ]
+
+    if cwd_file:
+        quoted_cwd_file = cwd_file.replace("'", "''")
+        parts.append(
+            f"(Get-Location).Path | Out-File -Encoding utf8 -FilePath '{quoted_cwd_file}'"
+        )
+
+    parts.append("exit $hermes_ec")
+    return "\n".join(parts)
 
 
 # POSIX-sh-family shells that understand the ``[shell, "-lic", "set +m; …"]``
@@ -795,16 +872,18 @@ def _find_shell() -> str:
     redirected stdin.
 
     Only POSIX-sh-family shells are honoured: ``spawn_local`` invokes the
-    shell as ``[shell, "-lic", "set +m; <cmd>"]``, and that ``-lic`` bundle +
+    shell as ``[shell, \"-lic\", \"set +m; <cmd>\"]``, and that ``-lic`` bundle +
     ``set +m`` job-control syntax is NOT understood by fish, csh/tcsh,
     nushell, elvish, xonsh, etc.  Returning such a ``$SHELL`` would trade the
     bash-3.2 swallow for a parse error on every background command, so for any
     non-allowlisted shell we fall back to ``_find_bash_posix`` (the prior
     behaviour).
 
-    On Windows (PowerShell-only in this fork, per P-019) this falls through to
-    ``_find_bash_posix``; background spawning on Windows does not use ``$SHELL``.
+    On Windows, ``process_registry.spawn_local`` uses ``_resolve_shell``
+    (PowerShell 7 / Windows PowerShell 5.1) instead of this function, so this
+    function is intentionally POSIX-only on Windows.
     """
+
     if not _IS_WINDOWS:
         user_shell = os.environ.get("SHELL")
         if (
@@ -954,6 +1033,7 @@ def _append_missing_sane_path_entries(existing_path: str) -> str:
 def _apply_windows_msys_bash_env_defaults(env: dict) -> None:
     """Disable MSYS argument path conversion for Git Bash subprocesses.
 
+    Applies when ``shell:bash`` is explicitly configured on Windows.
     Git Bash rewrites arguments that look like Unix paths (``/FO``, ``/TN``,
     ``/Create``) into ``C:/.../git/FO``-style paths, which breaks native
     Windows commands such as ``tasklist``, ``schtasks``, and ``wmic``.  Hermes
@@ -1220,7 +1300,16 @@ class LocalEnvironment(BaseEnvironment):
         from tools.environments.windows_env import ps_with_utf8
         cmd_string = ps_with_utf8(cmd_string)
 
-        args = [self._shell_path, "-NoP", "-Exec", "Bypass", "-NoL", "-C", cmd_string]
+        _PS_MAX_CMDLINE = 30000
+        _tmp_ps1 = None
+        if len(cmd_string) > _PS_MAX_CMDLINE:
+            fd, tmp_path = tempfile.mkstemp(suffix=".ps1", prefix="hermes_cmd_")
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(cmd_string)
+            _tmp_ps1 = tmp_path
+            args = [self._shell_path, "-NoP", "-NonI", "-Exec", "Bypass", "-NoL", "-File", tmp_path]
+        else:
+            args = [self._shell_path, "-NoP", "-NonI", "-Exec", "Bypass", "-NoL", "-C", cmd_string]
         run_env = _make_run_env(self.env)
         safe_cwd = _resolve_safe_cwd(self.cwd)
         if safe_cwd != self.cwd:
@@ -1256,6 +1345,11 @@ class LocalEnvironment(BaseEnvironment):
 
         if stdin_data is not None:
             _pipe_stdin(proc, stdin_data)
+
+        if _tmp_ps1 is not None:
+            # Attach the temp-file path so ``_wait_for_process``
+            # (or the caller) can remove it after the child exits.
+            proc._hermes_tmp_ps1 = _tmp_ps1
 
         return proc
 
@@ -1302,8 +1396,10 @@ class LocalEnvironment(BaseEnvironment):
             # Force UTF-8 output encoding for stdout/stderr.
             "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8",
             "$OutputEncoding=[System.Text.Encoding]::UTF8",
-            "[Console]::TreatControlCAsInput=$true",
-            # Suppress errors, cd to target
+            # Set native command argument passing to Windows (backward-compat)
+            # mode.  PS 7.3+ defaults to 'Standard' which can break legacy tools
+            # that rely on the old argument passing behaviour.
+            "if (Get-Command -Name pwsh -ErrorAction SilentlyContinue) { $PSNativeCommandArgumentPassing = 'Windows' }",
             "$ErrorActionPreference = 'Continue'",
             f"Set-Location -LiteralPath '{quoted_cwd}' -ErrorAction SilentlyContinue",
             f"if ($?) {{ Set-Location -LiteralPath '{quoted_cwd}' }} else {{ exit 126 }}",
@@ -1313,9 +1409,17 @@ class LocalEnvironment(BaseEnvironment):
             # mixed statements like ``Get-Location; Test-Path ...`` can return
             # an empty stdout when followed by ``exit`` in non-interactive
             # PowerShell hosts.  Use a wide string formatter so long paths are
-            # not ellipsized by the default table formatter.
-            f"Invoke-Expression '{escaped}' | Out-String -Width 4096 | Write-Output",
-            "$hermes_ec = $LASTEXITCODE",
+            # not ellipsized by the default table formatter.  ``-Stream``
+            # emits each object's rendered text as it arrives instead of
+            # accumulating everything until the pipeline completes — without
+            # it, output produced before a timeout kill is lost entirely.
+            # ``try/catch`` protects the session from malformed user commands
+            # (unbalanced quotes, parse errors) so the CWD marker and exit code
+            # are always emitted.  Parity with ``PowerShellSession.run_script``.
+            f"try {{ Invoke-Expression '{escaped}' | Out-String -Width 4096 -Stream | Write-Output }} catch {{ $_ | Out-String -Width 4096 -Stream | Write-Output }}",
+            # ``$Error.Count`` catches non-terminating errors that don't set
+            # ``$LASTEXITCODE`` (e.g. ``Get-ChildItem`` on a missing path).
+            "$hermes_ec = $LASTEXITCODE; if ($null -eq $hermes_ec -and $Error.Count -gt 0) { $hermes_ec = 1 }",
             # Write CWD to temp file
             f"(Get-Location).Path | Out-File -Encoding utf8 -FilePath '{quoted_cwd_file}'",
             # Emit CWD marker
@@ -1352,9 +1456,14 @@ class LocalEnvironment(BaseEnvironment):
         quoted_cwd = cwd.replace("'", "''")
         quoted_cwd_file = self._cwd_file.replace("'", "''")
         parts = [
+            # Set native command argument passing to Windows (backward-compat) mode.
+            # PS 7.3+ defaults to 'Standard' which can break legacy tools.
+            "if (Get-Command -Name pwsh -ErrorAction SilentlyContinue) { $PSNativeCommandArgumentPassing = 'Windows' }",
             "$ErrorActionPreference = 'Continue'",
             f"Set-Location -LiteralPath '{quoted_cwd}' -ErrorAction SilentlyContinue",
-            f"Invoke-Expression '{escaped}' | Out-String -Width 4096 | Write-Output",
+            # ``-Stream``: keep partial output alive when the command is
+            # killed mid-pipeline (timeout / interrupt).
+            f"Invoke-Expression '{escaped}' | Out-String -Width 4096 -Stream | Write-Output",
             f"(Get-Location).Path | Out-File -Encoding utf8 -FilePath '{quoted_cwd_file}'",
         ]
         return "\n".join(parts)

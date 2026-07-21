@@ -2159,6 +2159,21 @@ def _get_pre_tool_call_directive_details(
             message=fmt.format(tool_name=tool_name),
         )
 
+    # ── Swarm mode auto-approve ────────────────────────────────────
+    # When swarm mode is active, agent_swarm calls are auto-approved
+    # so the model can spawn parallel subagents without human gate.
+    if tool_name == "agent_swarm":
+        try:
+            from agent.swarm_mode import SwarmMode
+            # Check if any active agent has swarm mode enabled.
+            # The SwarmMode uses contextvars so we can't check globally;
+            # instead, look for a contextvar-backed instance.
+            _swarm = getattr(SwarmMode, "_active_trigger", None)
+            if _swarm is not None and _swarm.get() is not None:
+                return _PreToolCallDirective()  # auto-approve (no block)
+        except Exception:
+            pass
+
     hook_results = invoke_hook(
         "pre_tool_call",
         tool_name=tool_name,

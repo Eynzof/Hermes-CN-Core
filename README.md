@@ -79,7 +79,7 @@ pip install "git+https://github.com/Eynzof/Hermes-CN-Core.git"
 iex (irm https://raw.githubusercontent.com/Eynzof/Hermes-CN-Core/main/scripts/install.ps1)
 ```
 
-安装器会处理 uv、Python 3.11、Node.js、ripgrep、ffmpeg，以及仓库克隆、虚拟环境和 `hermes` 命令的配置。Hermes 不再依赖 Git Bash 作为 shell——原生 Windows 直接使用 PowerShell。Git 仍用于仓库操作：如果系统里已经安装 Git，安装器会直接使用现有 Git；否则会把隔离的 PortableGit 下载到 `%LOCALAPPDATA%\hermes\git`，不需要管理员权限，也不会污染系统 Git。
+安装器会处理 uv、Python 3.14、Node.js、ripgrep、ffmpeg，以及仓库克隆、虚拟环境和 `hermes` 命令的配置。在 Windows 上，默认 shell 是 **PowerShell**（优先使用 pwsh 7.x，自动回退到 Windows PowerShell 5.1）。如果你已安装 Git for Windows，可在 config.yaml 中设置 `terminal.shell: bash` 使用 Git Bash 作为可选 shell。安装器还会安装 Microsoft Coreutils（提供 `cat`、`cp`、`mv`、`ls` 等 POSIX 命令行工具），确保跨平台脚本和技能能够正常工作。Git 仍用于仓库操作：如果系统里已经安装 Git，安装器会直接使用现有 Git；否则会把隔离的 PortableGit 下载到 `%LOCALAPPDATA%\hermes\git`，不需要管理员权限，也不会污染系统 Git。
 
 > **Android / Termux：** 已验证的手动安装路径见 [Termux guide](https://hermes-agent.nousresearch.com/docs/getting-started/termux)。在 Termux 上，Hermes 会安装裁剪后的 `.[termux]` extra，因为完整的 `.[all]` extra 目前会拉取 Android 不兼容的语音依赖。
 >
@@ -158,7 +158,7 @@ pip install -e ".[all,dev]"
 如果你使用 `uv`，也可以这样安装：
 
 ```bash
-uv venv --python 3.11source .venv/bin/activate
+uv venv --python 3.14source .venv/bin/activate
 uv pip install -e ".[all,dev]"
 ```
 

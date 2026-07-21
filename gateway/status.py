@@ -134,6 +134,10 @@ def terminate_pid(pid: int, *, force: bool = False) -> None:
                 ["taskkill", "/PID", str(pid), "/T", "/F"],
                 capture_output=True,
                 text=True,
+                # taskkill prints in the OEM/ANSI codepage (e.g. GBK on
+                # zh-CN Windows) — strict decoding kills the stdout reader
+                # thread and silently drops the result text.
+                errors="replace",
                 timeout=10,
                 creationflags=windows_hide_flags(),
             )
@@ -390,9 +394,13 @@ def _command_line_belongs_to_profile(command: str, profile_home: Path) -> bool:
     explicit ``HERMES_HOME=<path>``) on its argv; the default/root gateway runs
     bare with no profile flag.
     """
-    command_lc = command.lower()
+    command_lc = command.lower().replace("\\", "/")
     profile_name = _profile_name_for_home(profile_home)
-    home_lc = str(profile_home).lower()
+    # Normalize separators on both sides: ``str(Path)`` uses backslashes on
+    # Windows, but a live cmdline may carry the home path either way
+    # (POSIX-style from a container/MSYS launcher or native). The substring
+    # containment check below must not depend on which form the launcher used.
+    home_lc = str(profile_home).lower().replace("\\", "/")
 
     if profile_name is not None and profile_name != "default":
         profile_lc = profile_name.lower()

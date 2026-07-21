@@ -59,6 +59,7 @@ from agent.i18n import t
 from hermes_cli._subprocess_compat import windows_hide_flags
 from hermes_cli.config import cfg_get
 from hermes_cli.fallback_config import get_fallback_chain
+from hermes_cli.port_lock import try_claim_port
 
 # --- Agent cache tuning ---------------------------------------------------
 # Bounds the per-session AIAgent cache to prevent unbounded growth in
@@ -3362,6 +3363,8 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                 platform.value if platform is not None else "adapter",
                 e,
             )
+        finally:
+            self._release_adapter_port_lock(adapter)
 
     async def _bounded_adapter_teardown(
         self, adapter, platform, *, profile: Optional[str] = None
@@ -3416,6 +3419,8 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                 "✗ %s disconnect error after %.2fs%s: %s",
                 platform.value, time.monotonic() - started_at, suffix, e,
             )
+        finally:
+            self._release_adapter_port_lock(adapter)
 
     def _adapter_disconnect_timeout_secs(self) -> float:
         """Return the per-adapter disconnect timeout used during shutdown."""
@@ -3447,6 +3452,40 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                 return max(0.0, timeout)
         return _PLATFORM_CONNECT_TIMEOUT_SECS_DEFAULT
 
+    def _claim_adapter_port_lock(self, adapter, platform) -> None:
+        """Reserve the adapter's listening port before it binds.
+
+        Adapters that bind a local TCP port (webhook, api_server,
+        msgraph_webhook, etc.) expose ``self._port``. We claim it via the
+        shared lock file so multiple gateway / desktop / CLI instances sharing
+        the same HERMES_HOME cannot collide. The lock is released during
+        teardown. If the adapter already claimed its own port internally,
+        ``try_claim_port`` returns a no-op handle for the same process.
+        """
+        port = getattr(adapter, "_port", None)
+        if not isinstance(port, int) or port <= 0:
+            return
+        lock = try_claim_port(port)
+        if lock is None:
+            logger.error(
+                "%s adapter port %d is already claimed by another Hermes instance; "
+                "configure a different port or stop the other instance.",
+                platform.value if platform is not None else "adapter",
+                port,
+            )
+            return
+        adapter._hermes_port_lock = lock
+
+    def _release_adapter_port_lock(self, adapter) -> None:
+        """Release any port lock held on behalf of an adapter."""
+        lock = getattr(adapter, "_hermes_port_lock", None)
+        if lock is not None:
+            try:
+                lock.release()
+            except Exception:
+                pass
+            adapter._hermes_port_lock = None
+
     async def _connect_adapter_with_timeout(
         self, adapter, platform, *, is_reconnect: bool = False
     ) -> bool:
@@ -3458,6 +3497,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
         (preserve the queue so messages sent during the outage are delivered
         rather than silently dropped — #46621).
         """
+        self._claim_adapter_port_lock(adapter, platform)
         timeout = self._platform_connect_timeout_secs()
         if timeout <= 0:
             return await adapter.connect(is_reconnect=is_reconnect)

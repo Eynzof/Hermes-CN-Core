@@ -167,7 +167,11 @@ def test_skill_config_raw_cache_invalidates_on_config_edit(tmp_path, monkeypatch
 
     config_path.write_text("skills:\n  disabled: [new-skill]\n", encoding="utf-8")
     import os
-    os.utime(config_path, None)
+    # Windows quantizes file mtimes to the ~15.6ms system tick, so a rewrite
+    # within the same tick keeps the old timestamp and the mtime-keyed cache
+    # flakily fails to invalidate. Bump the mtime explicitly into the future.
+    _st = config_path.stat()
+    os.utime(config_path, (_st.st_atime, _st.st_mtime + 5))
 
     assert get_disabled_skill_names() == {"new-skill"}
 

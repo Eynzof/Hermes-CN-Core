@@ -88,9 +88,8 @@ class TestUnifiedDashboardRouting:
         assert env.get("HERMES_HOME") == str(get_default_hermes_root())
 
     def test_reexec_pins_docker_machine_root(self, main_mod, monkeypatch):
-        """In the Docker layout (HERMES_HOME=/opt/data, profiles under
-        /opt/data/profiles/<name>) the reroute must pin the child to the
-        machine root /opt/data — NOT drop HERMES_HOME.
+        """In the Docker layout (HERMES_HOME=/opt/data), the reroute must
+        preserve the machine root /opt/data — NOT drop HERMES_HOME.
 
         Dropping it makes the child fall back to $HOME/.hermes
         (= /opt/data/.hermes), an empty auto-seeded home, so the dashboard
@@ -98,7 +97,7 @@ class TestUnifiedDashboardRouting:
         missing (which also misfires the Docker update-button guard).
         Regression test for the support report.
         """
-        monkeypatch.setenv("HERMES_HOME", "/opt/data/profiles/oracle")
+        monkeypatch.setenv("HERMES_HOME", "/opt/data")
         monkeypatch.setattr(
             "hermes_cli.profiles.get_active_profile_name", lambda: "oracle"
         )
@@ -116,10 +115,31 @@ class TestUnifiedDashboardRouting:
 
         assert len(execs) == 1
         _exe, _argv, env = execs[0]
-        # get_default_hermes_root() strips the trailing profiles/<name>, so the
-        # child binds /opt/data — where the real default/oracle/saga profiles
-        # and the .install_method stamp actually live.
+        # The child binds /opt/data — where the real default/oracle/saga
+        # profiles and the .install_method stamp actually live.
         assert env.get("HERMES_HOME") == "/opt/data"
+
+    def test_profile_home_skips_machine_dashboard_reroute(self, main_mod, monkeypatch):
+        """A process already pinned to profiles/<name> is a routed backend."""
+        monkeypatch.setenv("HERMES_HOME", "/opt/data/profiles/oracle")
+        monkeypatch.setattr(
+            "hermes_cli.profiles.get_active_profile_name", lambda: "oracle"
+        )
+        listening_calls = []
+        monkeypatch.setattr(
+            main_mod,
+            "_dashboard_listening",
+            lambda host, port: listening_calls.append(1) or False,
+        )
+        execs = []
+        monkeypatch.setattr(main_mod.os, "execvpe", lambda *a, **k: execs.append(a))
+        monkeypatch.setitem(sys.modules, "fastapi", None)
+
+        with pytest.raises((SystemExit, AttributeError, ImportError, TypeError)):
+            main_mod.cmd_dashboard(_args())
+
+        assert listening_calls == []
+        assert execs == []
 
     def test_desktop_profile_backend_skips_machine_dashboard_reroute(self, main_mod, monkeypatch):
         """A desktop-spawned named-profile backend (HERMES_DESKTOP=1) must NOT

@@ -2750,7 +2750,7 @@ class MCPServerTask:
                 # Task was cancelled (shutdown, gateway restart, explicit
                 # task.cancel()). Don't treat this as a connection failure —
                 # CancelledError inherits from BaseException (not Exception)
-                # in Python 3.11+, so the broad ``except Exception`` below
+                # in Python 3.14+, so the broad ``except Exception`` below
                 # would NOT catch it; we'd silently exit the reconnect loop
                 # and the MCP server would stay dead until Hermes is fully
                 # restarted. Re-raise so the task's cancellation propagates

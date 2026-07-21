@@ -12,7 +12,7 @@ Dashboard APIs consumed by [`Hermes-CN-Desktop`](https://github.com/Eynzof/Herme
 "clean reimplementation," assume "downstream patches on top of upstream." (`README.md` is the Chinese version;
 `README.en.md` is English. Some maintenance docs such as `MAINTAINING.md` still use the older `hermes-agent-cn` name.)
 
-- **Every fork-specific behavioral change is tracked in [`FORK_NOTES.md`](./FORK_NOTES.md) as `P-NNN`** (currently through P-047). Read it
+- **Every fork-specific behavioral change is tracked in [`FORK_NOTES.md`](./FORK_NOTES.md) as `P-NNN`** (currently through P-050). Read it
   before touching `hermes_cli/web_server.py`, `tui_gateway/`, or `hermes_cli/config.py`'s `OPTIONAL_ENV_VARS` —
   those files carry deliberate divergence from upstream. New behavioral patches use a `[CN-fork] P-NNN` commit
   prefix and must be added to the FORK_NOTES table.
@@ -40,7 +40,7 @@ This file is the orientation layer + fork specifics; AGENTS.md is the detail.
 
 ```bash
 # Dev install (editable, all extras)
-pip install -e ".[all,dev]"        # or: uv pip install -e ".[all,dev]"  (Python 3.11–3.13)
+pip install -e ".[all,dev]"        # or: uv pip install -e ".[all,dev]"  (Python 3.14)
 
 # Tests — ALWAYS use the wrapper, not raw pytest. It enforces CI parity
 # (unset API keys, TZ=UTC, C.UTF-8, per-file subprocess isolation).

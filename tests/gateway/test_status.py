@@ -723,8 +723,8 @@ class TestTerminatePid:
         calls = []
         monkeypatch.setattr(status, "_IS_WINDOWS", True)
 
-        def fake_run(cmd, capture_output=False, text=False, timeout=None, creationflags=0):
-            calls.append((cmd, capture_output, text, timeout, creationflags))
+        def fake_run(cmd, capture_output=False, text=False, timeout=None, creationflags=0, errors=None):
+            calls.append((cmd, capture_output, text, timeout, creationflags, errors))
             return SimpleNamespace(returncode=0, stdout="", stderr="")
 
         monkeypatch.setattr(status.subprocess, "run", fake_run)
@@ -735,10 +735,12 @@ class TestTerminatePid:
         # pythonw.exe backend doesn't flash a conhost window on force-kill.
         # windows_hide_flags() is 0 on the POSIX test host (a valid no-op
         # creationflags value); on real Windows it is CREATE_NO_WINDOW.
+        # errors="replace" keeps localized taskkill output (e.g. GBK on
+        # zh-CN Windows) from killing the stdout reader thread.
         from hermes_cli._subprocess_compat import windows_hide_flags
 
         assert calls == [
-            (["taskkill", "/PID", "123", "/T", "/F"], True, True, 10, windows_hide_flags())
+            (["taskkill", "/PID", "123", "/T", "/F"], True, True, 10, windows_hide_flags(), "replace")
         ]
 
     def test_force_falls_back_to_sigterm_when_taskkill_missing(self, monkeypatch):

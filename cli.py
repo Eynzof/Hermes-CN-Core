@@ -400,11 +400,11 @@ def load_cli_config() -> Dict[str, Any]:
             "cwd": ".",  # "." is resolved to os.getcwd() at runtime
             "home_mode": "auto",
             "lifetime_seconds": 300,
-            "docker_image": "nikolaik/python-nodejs:python3.11-nodejs20",
+            "docker_image": "nikolaik/python-nodejs:python3.14-nodejs20",
             "docker_forward_env": [],
-            "singularity_image": "docker://nikolaik/python-nodejs:python3.11-nodejs20",
-            "modal_image": "nikolaik/python-nodejs:python3.11-nodejs20",
-            "daytona_image": "nikolaik/python-nodejs:python3.11-nodejs20",
+            "singularity_image": "docker://nikolaik/python-nodejs:python3.14-nodejs20",
+            "modal_image": "nikolaik/python-nodejs:python3.14-nodejs20",
+            "daytona_image": "nikolaik/python-nodejs:python3.14-nodejs20",
             "docker_volumes": [],  # host:container volume mounts for Docker backend
             "docker_mount_cwd_to_workspace": False,  # explicit opt-in only; default off for sandbox isolation
         },
@@ -2788,8 +2788,9 @@ def _termux_example_image_path(filename: str = "cat.png") -> str:
     ]
     for root in candidates:
         if os.path.isdir(root):
-            return os.path.join(root, "Pictures", filename)
-    return os.path.join("~/storage/shared", "Pictures", filename)
+            # Use forward slashes — Termux paths are always POSIX.
+            return f"{root}/Pictures/{filename}"
+    return f"{os.path.expanduser('~/storage/shared')}/Pictures/{filename}"
 
 
 def _split_path_input(raw: str) -> tuple[str, str]:
@@ -2860,6 +2861,11 @@ def _resolve_attachment_path(raw_path: str) -> Path | None:
                 expanded = unquote(parsed.path or "")
                 if parsed.netloc and os.name == "nt":
                     expanded = f"//{parsed.netloc}{expanded}"
+                # On Windows file:///C:/... gives path=/C:/... which Path
+                # interprets as relative. Strip the leading slash before the
+                # drive letter so Path can resolve it as an absolute path.
+                if os.name == "nt" and len(expanded) >= 3 and expanded[0] == "/" and expanded[2] == ":":
+                    expanded = expanded[1:]
         except Exception:
             expanded = token
     expanded = os.path.expandvars(os.path.expanduser(expanded))
@@ -6464,7 +6470,10 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin):
                 if result.get("success"):
                     description = result.get("analysis", "")
                     enriched_parts.append(
-                        f"[The user attached an image. Here's what it contains:\n{description}]\n"
+                        f"[Hermes UI Image]\n"
+                        f"name={img_path.name}\n"
+                        f"description:\n{description}\n"
+                        f"[/Hermes UI Image]\n"
                         f"[If you need a closer look, use vision_analyze with "
                         f"image_url: {img_path}]"
                     )
@@ -6472,16 +6481,22 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin):
                         _cprint(f"  {_DIM}✓ image analyzed{_RST}")
                 else:
                     enriched_parts.append(
-                        f"[The user attached an image but it couldn't be analyzed. "
-                        f"You can try examining it with vision_analyze using "
+                        f"[Hermes UI Image]\n"
+                        f"name={img_path.name}\n"
+                        f"description:\n[Analysis failed or unavailable]\n"
+                        f"[/Hermes UI Image]\n"
+                        f"[If you need a closer look, use vision_analyze with "
                         f"image_url: {img_path}]"
                     )
                     if announce:
                         _cprint(f"  {_DIM}⚠ vision analysis failed — path included for retry{_RST}")
             except Exception as e:
                 enriched_parts.append(
-                    f"[The user attached an image but analysis failed ({e}). "
-                    f"You can try examining it with vision_analyze using "
+                    f"[Hermes UI Image]\n"
+                    f"name={img_path.name}\n"
+                    f"description:\n[Analysis error: {e}]\n"
+                    f"[/Hermes UI Image]\n"
+                    f"[If you need a closer look, use vision_analyze with "
                     f"image_url: {img_path}]"
                 )
                 if announce:
@@ -8356,7 +8371,7 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin):
         flipped back to False, and process_command() takes the idle
         fallback — delivering the steer as a next-turn message instead of
         injecting it mid-run.  Dispatching inline on the UI thread calls
-        agent.steer() directly, which is thread-safe (uses _pending_steer_lock).
+        agent.steer() directly, which is thread-safe (uses the ReminderRegistry).
         """
         if not text or has_images or not _looks_like_slash_command(text):
             return False
@@ -8860,6 +8875,8 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin):
             self._handle_journey_command(cmd_original)
         elif canonical == "background":
             self._handle_background_command(cmd_original)
+        elif canonical == "swarm":
+            self._handle_swarm_command(cmd_original)
         elif canonical == "queue":
             # Extract prompt after "/queue " or "/q "
             parts = cmd_original.split(None, 1)
@@ -8889,7 +8906,7 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin):
                     _cprint(f"  Steer failed: {exc}")
                 else:
                     if accepted:
-                        _cprint(f"  ⏩ Steer queued — arrives after the next tool call: {payload[:80]}{'...' if len(payload) > 80 else ''}")
+                        _cprint(f"  ⏩ Steer queued — arrives on next LLM response: {payload[:80]}{'...' if len(payload) > 80 else ''}")
                     else:
                         _cprint("  Steer rejected (empty payload).")
             else:
@@ -8962,9 +8979,13 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin):
                             # has all API keys in os.environ.
                             from tools.environments.local import _sanitize_subprocess_env
                             sanitized_env = _sanitize_subprocess_env(os.environ.copy())
+                            _subprocess_kwargs = {}
+                            if sys.platform == "win32":
+                                from hermes_cli._subprocess_compat import windows_hide_flags
+                                _subprocess_kwargs["creationflags"] = windows_hide_flags()
                             result = subprocess.run(
                                 exec_cmd, shell=True, capture_output=True,
-                                text=True, timeout=30, env=sanitized_env
+                                text=True, timeout=30, env=sanitized_env, **_subprocess_kwargs
                             )
                             output = result.stdout.strip() or result.stderr.strip()
                             if output:
@@ -13591,7 +13612,7 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin):
                 # steer until after the agent loop finishes (process_loop is
                 # blocked inside self.chat()), which turns /steer into a
                 # post-run next-turn message — defeating mid-run injection.
-                # agent.steer() is thread-safe (holds _pending_steer_lock).
+                # agent.steer() is thread-safe (uses the ReminderRegistry).
                 if self._should_handle_steer_command_inline(text, has_images=has_images):
                     self.process_command(text)
                     event.app.current_buffer.reset(append_to_history=True)

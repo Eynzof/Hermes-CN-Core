@@ -7781,7 +7781,7 @@ def _install_python_dependencies_with_optional_fallback(
 def _load_console_script_names() -> list[str]:
     """Return ``[project.scripts]`` entry-point names from pyproject.toml."""
     try:
-        import tomllib  # Python 3.11+
+        import tomllib  # Python 3.14+
     except ImportError:  # pragma: no cover
         return []
 
@@ -7887,8 +7887,8 @@ def _verify_core_dependencies_installed(
     that caused it, instead of hours later in a downstream subprocess.
     """
     try:
-        import tomllib  # Python 3.11+
-    except ImportError:  # pragma: no cover — Python < 3.11 unsupported but be safe
+        import tomllib  # Python 3.14+
+    except ImportError:  # pragma: no cover — Python < 3.14 unsupported but be safe
         return
 
     pyproject = PROJECT_ROOT / "pyproject.toml"
@@ -12053,12 +12053,23 @@ def cmd_dashboard(args):
     except Exception:
         _launch_profile = "default"
 
+    # Fix C: If HERMES_HOME already points to a profiles/<name> dir,
+    # the Desktop has already routed us correctly — skip re-exec.
+    _hermes_home_in_profile = (
+        os.environ.get("HERMES_HOME", "")
+        and Path(os.environ["HERMES_HOME"]).parent.name == "profiles"
+    )
+
     if (
         _launch_profile not in ("default", "custom")
         and not getattr(args, "isolated", False)
         and not getattr(args, "open_profile", "")
         # Desktop pool backends are intentionally per-profile.
         and os.environ.get("HERMES_DESKTOP") != "1"
+        # Fix B: Defense-in-depth — catch Desktop spawn sites that forget HERMES_DESKTOP
+        and os.environ.get("HERMES_DESKTOP_MANAGED") != "1"
+        # Fix C: If HERMES_HOME is already in a profile dir, we're correctly routed
+        and not _hermes_home_in_profile
     ):
         url = f"http://{args.host or '127.0.0.1'}:{args.port}/?profile={_launch_profile}"
         if _dashboard_listening(args.host, args.port):
@@ -12293,14 +12304,39 @@ def cmd_dashboard(args):
     # The in-browser Chat tab (the embedded TUI over PTY/WebSocket) is always
     # available — the desktop app and the dashboard's own Chat tab both rely on
     # the `/api/ws` + `/api/pty` sockets, so there is no reason to gate them.
-    start_server(
-        host=args.host,
-        port=args.port,
-        open_browser=not args.no_open,
-        allow_public=getattr(args, "insecure", False),
-        initial_profile=getattr(args, "open_profile", "") or "",
-        headless=_headless_backend,
-    )
+
+    # Coordinate with other Hermes instances (desktop-managed dashboards,
+    # gateways, proxies) before binding. We claim the dashboard port plus the
+    # well-known associated ports so a CLI dashboard and a desktop dashboard
+    # never silently collide on the same HERMES_HOME.
+    from hermes_cli.port_lock import claim_port_set
+
+    _dashboard_port = int(args.port)
+    _well_known_ports = [8644, 8645]
+    if _dashboard_port > 0:
+        _well_known_ports.insert(0, _dashboard_port)
+    _port_locks = claim_port_set(_well_known_ports)
+    if _port_locks is None:
+        print(
+            f"Error: port {_dashboard_port} (or associated webhook/proxy ports) "
+            f"is already claimed by another Hermes instance.\n"
+            f"Stop the other instance, or use `--port 0` to let the OS assign a free port.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    try:
+        start_server(
+            host=args.host,
+            port=args.port,
+            open_browser=not args.no_open,
+            allow_public=getattr(args, "insecure", False),
+            initial_profile=getattr(args, "open_profile", "") or "",
+            headless=_headless_backend,
+        )
+    finally:
+        for _pl in _port_locks:
+            _pl.release()
 
 
 def cmd_dashboard_register(args):
@@ -12894,7 +12930,7 @@ def cmd_claw(args):
 
 def main():
     """Main entry point for hermes CLI."""
-    # Cosmetic: make the process show up as 'hermes' instead of 'python3.11'
+    # Cosmetic: make the process show up as 'hermes' instead of 'python3.14'
     # in ps/top/htop.  Non-fatal — just a nicer UX.
     _set_process_title()
 
@@ -14705,7 +14741,7 @@ def main():
     _processed_argv = _coalesce_session_name_args(sys.argv[1:])
 
     # ── Defensive subparser routing (bpo-9338 workaround) ───────────
-    # On some Python versions (notably <3.11), argparse fails to route
+    # On some Python versions (notably <3.14), argparse fails to route
     # subcommand tokens when the parent parser has nargs='?' optional
     # arguments (--continue).  The symptom: "unrecognized arguments: model"
     # even though 'model' is a registered subcommand.

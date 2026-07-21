@@ -260,7 +260,7 @@ class CLICommandsMixin:
 
     def _handle_agents_command(self):
         """Handle /agents — show background processes and agent status."""
-        from cli import _cprint
+        from cli import _DIM, _RST, _cprint
         from tools.process_registry import format_uptime_short, process_registry
 
         processes = process_registry.list_sessions()
@@ -308,7 +308,7 @@ class CLICommandsMixin:
         import shlex
         from contextlib import redirect_stdout
 
-        from cli import _cprint
+        from cli import _DIM, _RST, _cprint
         from hermes_cli.journey import register_cli
 
         parser = argparse.ArgumentParser(prog="/journey", add_help=False)
@@ -1748,6 +1748,68 @@ class CLICommandsMixin:
         thread = threading.Thread(target=run_background, daemon=True, name=f"bg-task-{task_id}")
         self._background_tasks[task_id] = thread
         thread.start()
+
+    def _handle_swarm_command(self, cmd: str):
+        """Handle /swarm [on|off|<prompt>] — toggle swarm mode.
+
+        - ``/swarm on`` — enable swarm mode (persists across turns).
+        - ``/swarm off`` — disable swarm mode.
+        - ``/swarm <prompt>`` — enable swarm mode for a single task turn.
+        """
+        from cli import _DIM, _RST, _cprint
+
+        parts = cmd.strip().split(maxsplit=1)
+        arg = parts[1].strip().lower() if len(parts) > 1 else ""
+
+        # Initialize agent if needed (mirrors the pattern in chat() at cli.py:12131-12147)
+        if self.agent is None:
+            if not self._ensure_runtime_credentials():
+                _cprint("  (>_<) Failed to resolve runtime credentials. Check your API configuration.")
+                return
+            turn_route = self._resolve_turn_agent_config("")
+            _cprint(f"{_DIM}Initializing agent...{_RST}")
+            if not self._init_agent(
+                model_override=turn_route["model"],
+                runtime_override=turn_route["runtime"],
+                request_overrides=turn_route.get("request_overrides"),
+            ):
+                _cprint("  (>_<) Agent initialization failed.")
+                return
+
+        # Ensure the agent has swarm_mode initialized
+        if not hasattr(self.agent, "_init_swarm_mode"):
+            _cprint("  (>_<) Swarm mode requires an active agent session.")
+            return
+
+        swarm = self.agent._init_swarm_mode()
+
+        if arg == "on":
+            from agent.swarm_mode import SwarmTrigger
+            swarm.enter(SwarmTrigger.MANUAL)
+            _cprint("  🐝 Swarm mode enabled. Use agent_swarm to spawn parallel subagents.")
+            _cprint("  Use /swarm off to disable.")
+
+        elif arg == "off":
+            swarm.exit()
+            _cprint("  🐝 Swarm mode disabled.")
+
+        elif arg:
+            # /swarm <prompt> — task mode, auto-exits after one turn
+            from agent.swarm_mode import SwarmTrigger
+            swarm.enter(SwarmTrigger.TASK)
+            _cprint(f"  🐝 Swarm mode active for: {arg[:60]}{'...' if len(arg) > 60 else ''}")
+            _cprint("  The model will decompose this into parallel subagents.")
+            # Set pending seed so the text falls through to the agent
+            self._pending_agent_seed = arg
+
+        else:
+            # Toggle: show current status
+            if swarm.is_active:
+                _cprint(f"  🐝 Swarm mode is ON (trigger: {swarm.trigger_name()})")
+                _cprint("  Use /swarm off to disable.")
+            else:
+                _cprint("  🐝 Swarm mode is OFF.")
+                _cprint("  Usage: /swarm on | off | <prompt>")
 
     def _handle_bundles_command(self, cmd: str) -> None:
         """In-session ``/bundles`` — show installed skill bundles.

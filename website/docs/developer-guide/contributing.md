@@ -34,7 +34,7 @@ We value contributions in this order:
 | Requirement | Notes |
 |-------------|-------|
 | **Git** | With the `git-lfs` extension installed |
-| **Python 3.11–3.13** | uv will install it if missing |
+| **Python 3.14** | uv will install it if missing |
 | **uv** | Fast Python package manager ([install](https://docs.astral.sh/uv/)) |
 | **Node.js 20+** | Optional — needed for browser tools and WhatsApp bridge (matches root `package.json` engines) |
 
@@ -84,8 +84,8 @@ tree means no relative path from the workspace resolves to it.
 git clone https://github.com/NousResearch/hermes-agent.git
 cd hermes-agent
 
-# Create venv with Python 3.11, OUTSIDE the source tree
-uv venv ~/.hermes/venvs/hermes-dev --python 3.11
+# Create venv with Python 3.14, OUTSIDE the source tree
+uv venv ~/.hermes/venvs/hermes-dev --python 3.14
 export VIRTUAL_ENV="$HOME/.hermes/venvs/hermes-dev"
 export PATH="$VIRTUAL_ENV/bin:$PATH"
 

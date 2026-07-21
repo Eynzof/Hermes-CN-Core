@@ -350,7 +350,7 @@ _HARDLINE_SYSTEM_DIRS = (
 
 # `rm` plus its flag group, shared by the three rm hardline rules. Kept as a
 # plain concatenation (not an f-string) so the regex backslashes never live
-# inside an f-string replacement field — unsupported on the Python 3.11 floor.
+# inside an f-string replacement field — unsupported on the Python 3.14 floor.
 #
 # Anchored to _CMDPOS (start of line, after a command separator ; && || |,
 # after a subshell opener $(/backtick, or after sudo/env/exec wrappers) so the

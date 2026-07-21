@@ -138,7 +138,7 @@ foreach ($tmpVar in @('TEMP', 'TMP')) {
 
 $RepoUrlSsh = "git@github.com:NousResearch/hermes-agent.git"
 $RepoUrlHttps = "https://github.com/NousResearch/hermes-agent.git"
-$PythonVersion = "3.11"
+$PythonVersion = "3.14"
 # Minor versions the installer accepts when the requested $PythonVersion isn't
 # available, in preference order.  uv discovers both uv-managed and system
 # interpreters, so this list also matches a pre-existing system Python.  Single
@@ -150,6 +150,23 @@ $NodeVersion = "22"
 # manifest schema, stage-name set semantics, or stdout JSON shape.  Adding a
 # new stage does NOT bump this -- drivers iterate the manifest dynamically.
 $InstallStageProtocolVersion = 1
+
+# Hermes-managed external tools directory.  We keep known-good copies here so
+# broken system shims/symlinks on PATH cannot brick the installer or runtime.
+$script:ManagedToolsDir = Join-Path $HermesHome "tools"
+
+# Hermes-managed ripgrep binary.
+$script:ManagedRg = Join-Path $script:ManagedToolsDir "rg.exe"
+
+# Hermes-managed rtk (reasoning toolkit) binary.  Used to collapse repeated
+# command output lines, reducing token consumption.
+$script:ManagedRtk = Join-Path $script:ManagedToolsDir "rtk.exe"
+
+# Hermes-managed Coreutils directory.  Used on Windows to provide POSIX CLI tools
+# (cat, cp, mv, ls, sort, wc, whoami, id, ...) that are commonly referenced in
+# shell scripts and skills.  Managed by install_coreutils.py.
+$script:ManagedCoreutilsDir = Join-Path $script:ManagedToolsDir "coreutils"
+$script:ManagedCat          = Join-Path $script:ManagedCoreutilsDir "bin\cat.exe"
 
 # ============================================================================
 # Helper functions
@@ -699,9 +716,9 @@ function Test-Python {
     }
 
     Write-Err "Failed to install Python $PythonVersion"
-    Write-Info "Install Python 3.11 manually, then re-run this script:"
+    Write-Info "Install Python 3.14 manually, then re-run this script:"
     Write-Info "  https://www.python.org/downloads/"
-    Write-Info "  Or: winget install Python.Python.3.11"
+    Write-Info "  Or: winget install Python.Python.3.14"
     return $false
 }
 
@@ -1014,19 +1031,343 @@ function Update-ProcessPathForPackages {
     $env:Path = [string]::Join(';', $ordered)
 }
 
+function Test-Ripgrep {
+    <#
+    .SYNOPSIS
+    Verify that an rg executable is actually runnable.
+
+    Returns $true only if the binary exists and `rg --version` produces output.
+    This catches broken symlinks, missing winget alias targets, and other
+    cases where Get-Command finds a path but the file is not usable.
+    #>
+    param([string]$Path = "")
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        $cmd = Get-Command rg -ErrorAction SilentlyContinue
+        if (-not $cmd) { return $false }
+        $Path = $cmd.Path
+    }
+    if (-not (Test-Path $Path)) { return $false }
+    try {
+        $ver = & $Path --version 2>$null | Select-Object -First 1
+        return [bool]$ver
+    } catch {
+        return $false
+    }
+}
+
+function Test-Ffmpeg {
+    <#
+    .SYNOPSIS
+    Verify that ffmpeg is available and runnable.
+    #>
+    $cmd = Get-Command ffmpeg -ErrorAction SilentlyContinue
+    if (-not $cmd) { return $false }
+    if (-not (Test-Path $cmd.Path)) { return $false }
+    try {
+        $ver = & $cmd.Path -version 2>$null | Select-Object -First 1
+        return [bool]$ver
+    } catch {
+        return $false
+    }
+}
+
+function Install-ManagedRipgrep {
+    <#
+    .SYNOPSIS
+    Download a known-good ripgrep binary into $HERMES_HOME\bin\rg.exe.
+
+    Mirrors the existing managed-uv pattern.  The binary is placed at the
+    front of the process PATH and persisted to User PATH so it overrides any
+    broken system shim in this shell and in future shells.
+    #>
+    if ((Test-Path $script:ManagedRg) -and (Test-Ripgrep $script:ManagedRg)) {
+        Write-Success "Managed ripgrep already usable"
+        return
+    }
+
+    New-Item -ItemType Directory -Path $script:ManagedToolsDir -Force | Out-Null
+
+    $arch = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") {
+        "aarch64-pc-windows-msvc"
+    } else {
+        "x86_64-pc-windows-msvc"
+    }
+
+    $rgVersion = "14.1.1"
+    $zipName   = "ripgrep-$rgVersion-$arch.zip"
+    $assetUrl  = "https://github.com/BurntSushi/ripgrep/releases/download/$rgVersion/$zipName"
+    $zipPath   = Join-Path $env:TEMP $zipName
+
+    try {
+        Invoke-WebRequest -Uri $assetUrl -OutFile $zipPath -UseBasicParsing
+        $extractDir = Join-Path $env:TEMP "ripgrep-$rgVersion"
+        if (Test-Path $extractDir) {
+            Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
+        $rgSource = Join-Path $extractDir "ripgrep-$rgVersion-$arch\rg.exe"
+        if (-not (Test-Path $rgSource)) {
+            throw "Expected rg.exe at $rgSource but it was not found after extraction"
+        }
+        Copy-Item -Path $rgSource -Destination $script:ManagedRg -Force
+    } finally {
+        Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
+        Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    if (-not (Test-Ripgrep $script:ManagedRg)) {
+        throw "Managed ripgrep installed at $script:ManagedRg but cannot run"
+    }
+    Write-Success "Managed ripgrep installed"
+
+    # Current process: put managed rg first so it overrides any broken shim.
+    Update-ProcessPathForPackages
+    $env:Path = "$($script:ManagedToolsDir);$env:Path"
+
+    # Persist to User PATH so fresh shells also prefer the managed binary.
+    $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    $items = if ($userPath) { $userPath -split ";" } else { @() }
+    if ($items -notcontains $script:ManagedToolsDir) {
+        [Environment]::SetEnvironmentVariable(
+            "Path",
+            "$($script:ManagedToolsDir);$userPath",
+            "User"
+        )
+    }
+}
+
+function Test-RtkBinary {
+    <#
+    .SYNOPSIS
+    Verify that rtk.exe is available and runnable.
+    #>
+    param([string]$Path = $script:ManagedRtk)
+    if (-not (Test-Path $Path)) { return $false }
+    try {
+        $verOutput = & $Path --version 2>&1
+        $exitCode = $LASTEXITCODE
+        $ver = $verOutput | Select-Object -First 1
+        return ($exitCode -eq 0) -and ($ver -match 'rtk')
+    } catch {
+        return $false
+    }
+}
+
+function Install-ManagedRtk {
+    <#
+    .SYNOPSIS
+    Download a known-good rtk binary into $HERMES_HOME\bin\rtk.exe.
+
+    Mirrors the Install-ManagedRipgrep pattern.  The binary is placed at the
+    front of the process PATH and persisted to User PATH so it overrides any
+    broken system shim in this shell and in future shells.
+    #>
+    if ((Test-Path $script:ManagedRtk) -and (Test-RtkBinary $script:ManagedRtk)) {
+        Write-Success "Managed rtk already usable"
+        return
+    }
+
+    New-Item -ItemType Directory -Path $script:ManagedToolsDir -Force | Out-Null
+
+    # Architecture detection (same as ripgrep)
+    if ([Environment]::Is64BitOperatingSystem) {
+        $arch = "x86_64-pc-windows-msvc"
+    } else {
+        $arch = "aarch64-pc-windows-msvc"
+    }
+
+    $rtkVersion = "0.43.0"
+    $zipName   = "rtk-$arch.zip"
+    $assetUrl  = "https://github.com/rtk-ai/rtk/releases/download/v$rtkVersion/$zipName"
+    $zipPath   = Join-Path $env:TEMP $zipName
+    $extractDir = Join-Path $env:TEMP "rtk-$rtkVersion"
+
+		    try {
+		        Invoke-WebRequest -Uri $assetUrl -OutFile $zipPath -UseBasicParsing
+	        if (Test-Path $extractDir) {
+	            Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+	        }
+	        Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
+	        $rtkSource = Join-Path $extractDir "rtk.exe"
+	        if (-not (Test-Path $rtkSource)) {
+	            Write-Warn "Could not find rtk binary in extracted tarball"
+	            return
+	        }
+	        Copy-Item -Path $rtkSource -Destination $script:ManagedRtk -Force
+	    } catch {
+	        Write-Warn "Failed to download or extract rtk: $_"
+	        return
+	    } finally {
+	        Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
+	        Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+	    }
+	
+	    if (-not (Test-RtkBinary $script:ManagedRtk)) {
+	        Write-Warn "Could not verify installed rtk binary"
+	        return
+	    }
+	    Write-Success "Managed rtk installed"
+	
+	    # Current process: put managed rtk first so it overrides any broken shim.
+	    Update-ProcessPathForPackages
+	    $env:Path = "$($script:ManagedToolsDir);$env:Path"
+	
+	    # Persist to User PATH so fresh shells also prefer the managed binary.
+	    $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+	    $items = if ($userPath) { $userPath -split ";" } else { @() }
+	    if ($items -notcontains $script:ManagedToolsDir) {
+	        [Environment]::SetEnvironmentVariable(
+	            "Path",
+	            "$($script:ManagedToolsDir);$userPath",
+	            "User"
+	        )
+	    }
+	}
+
+function Test-Coreutils {
+    <#
+    .SYNOPSIS
+    Verify that Microsoft Coreutils (cat.exe) is available and runnable.
+    
+    Checks the managed install directory first, then falls back to PATH.
+    Returns $true only if the binary exists and runs.
+    #>
+    param([string]$Path = "")
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        # Check managed install first
+        if (Test-Path $script:ManagedCat) {
+            $Path = $script:ManagedCat
+        } else {
+            $cmd = Get-Command cat.exe -ErrorAction SilentlyContinue
+            if (-not $cmd) { return $false }
+            $Path = $cmd.Path
+        }
+    }
+    if (-not (Test-Path $Path)) { return $false }
+    try {
+        $ver = & $Path --version 2>$null | Select-Object -First 1
+        if ($ver -match "coreutils" -or $ver) { return $true }
+        return $false
+    } catch {
+        return $false
+    }
+}
+
+function Install-Coreutils {
+    <#
+    .SYNOPSIS
+    Install Microsoft Coreutils on Windows to provide POSIX CLI tools.
+    
+    Strategy (in priority order):
+      1. WinGet (official Microsoft channel)
+      2. Fallback: invoke scripts/install_coreutils.py (GitHub direct download)
+    
+    Mirrors the Install-ManagedRipgrep pattern but delegates to the Python
+    script for the actual installation since Coreutils is a suite of tools.
+    #>
+    if (Test-Coreutils) {
+        Write-Success "Coreutils already available"
+        return
+    }
+    
+    if ($env:OS -ne "Windows_NT") {
+        Write-Info "Coreutils installation is Windows-only; skipping."
+        return
+    }
+    
+    # Try winget first (most common, official Microsoft channel)
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+        Write-Info "Installing Coreutils via WinGet..."
+        try {
+            $output = winget install --exact --id Microsoft.Coreutils --source winget --silent `
+                --accept-package-agreements --accept-source-agreements 2>&1
+            $code = $LASTEXITCODE
+            if ($code -eq -1978335189) {
+                # Already-installed/no-upgrade; retry with --force
+                $output = winget install --exact --id Microsoft.Coreutils --source winget --silent --force `
+                    --accept-package-agreements --accept-source-agreements 2>&1
+            }
+        } catch {
+            Write-Warn "WinGet install attempt failed: $_"
+        }
+        Update-ProcessPathForPackages
+        if (Test-Coreutils) {
+            Write-Success "Coreutils installed via WinGet"
+            $script:HasCoreutils = $true
+            return
+        }
+    }
+    
+    # Fallback: use the Python script for managed download
+    $pythonExe = if (Test-Path "$InstallDir\venv\Scripts\python.exe") {
+        "$InstallDir\venv\Scripts\python.exe"
+    } else {
+        Get-Command python -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source
+    }
+    $coreutilsScript = Join-Path $InstallDir "scripts\install_coreutils.py"
+    if (-not (Test-Path $coreutilsScript)) {
+        # Try relative to the script's own location
+        $coreutilsScript = Join-Path $PSScriptRoot "install_coreutils.py"
+    }
+    if ($pythonExe -and (Test-Path $coreutilsScript)) {
+        Write-Info "Installing Coreutils via managed Python script..."
+        try {
+            $env:HERMES_HOME = $HermesHome
+            # Use relaxed EAP so stderr from the Python script (e.g. progress
+            # messages when not on Windows) doesn't get wrapped as
+            # NativeCommandError and trigger a terminating exception under
+            # $ErrorActionPreference = "Stop".  Check $LASTEXITCODE for real
+            # failures.  Same pattern as Test-Python and Install-Uv.
+            \$prevEAP = \$ErrorActionPreference
+            \$ErrorActionPreference = "Continue"
+            & \$pythonExe \$coreutilsScript --dir \$script:ManagedCoreutilsDir --ensure
+            \$pythonExit = \$LASTEXITCODE
+            \$ErrorActionPreference = \$prevEAP
+            # Refresh process PATH
+            $env:Path = [Environment]::GetEnvironmentVariable("Path", "User") + ";" + [Environment]::GetEnvironmentVariable("Path", "Machine")
+            # Add managed coreutils dir to PATH if not already there
+            $coreutilsBin = Join-Path $script:ManagedCoreutilsDir "bin"
+            if ((Test-Path $coreutilsBin) -and ($env:Path -notlike "*$coreutilsBin*")) {
+                $env:Path = "$coreutilsBin;$env:Path"
+            }
+            if (Test-Coreutils) {
+                Write-Success "Coreutils installed via managed Python script"
+                $script:HasCoreutils = $true
+                return
+            }
+        } catch {
+            Write-Warn "Managed Coreutils install failed: $_"
+        }
+    }
+    
+    # Still missing: show manual hint
+    if (-not (Test-Coreutils)) {
+        Write-Warn "Coreutils not installed (POSIX CLI tools will be unavailable on Windows)"
+        Write-Info "  Install manually: winget install Microsoft.Coreutils"
+        Write-Info "  Or download from: https://github.com/microsoft/coreutils/releases"
+    }
+}
+
 function Install-SystemPackages {
-    $script:HasRipgrep = $false
-    $script:HasFfmpeg = $false
-    $needRipgrep = $false
-    $needFfmpeg = $false
+    $script:HasRipgrep = Test-Ripgrep
+    $script:HasFfmpeg  = Test-Ffmpeg
+    $script:HasCoreutils = Test-Coreutils
+    $needRipgrep = -not $script:HasRipgrep
+    $needFfmpeg  = -not $script:HasFfmpeg
 
     Write-Info "Checking ripgrep (fast file search)..."
-    if (Get-Command rg -ErrorAction SilentlyContinue) {
+    if ($script:HasRipgrep) {
         $version = rg --version | Select-Object -First 1
         Write-Success "$version found"
-        $script:HasRipgrep = $true
     } else {
-        $needRipgrep = $true
+        Write-Warn "ripgrep missing or broken; installing managed copy..."
+        $badRg = Get-Command rg -ErrorAction SilentlyContinue
+        if ($badRg) {
+            try { Remove-Item $badRg.Path -Force -ErrorAction SilentlyContinue } catch {}
+        }
+        Install-ManagedRipgrep
+        $script:HasRipgrep = $true
+        $needRipgrep = $false
     }
 
     Write-Info "Checking ffmpeg (TTS voice messages)..."
@@ -1035,6 +1376,27 @@ function Install-SystemPackages {
         $script:HasFfmpeg = $true
     } else {
         $needFfmpeg = $true
+    }
+
+    # Coreutils (Windows-only POSIX CLI tools)
+    if ($env:OS -eq "Windows_NT") {
+        Write-Info "Checking Microsoft Coreutils (POSIX CLI tools)..."
+        if (-not $script:HasCoreutils) {
+            Install-Coreutils
+        }
+    }
+
+    Write-Info "Checking rtk (CLI proxy, for token-kill)..."
+    $script:HasRtk = Test-RtkBinary
+    if ($script:HasRtk) {
+        Write-Success "rtk found"
+    } else {
+        Write-Warn "rtk missing; installing managed copy..."
+        Install-ManagedRtk
+        $script:HasRtk = Test-RtkBinary
+        if (-not $script:HasRtk) {
+            Write-Warn "rtk not installed (token-kill will be unavailable)"
+        }
     }
 
     if (-not $needRipgrep -and -not $needFfmpeg) { return }
@@ -1791,7 +2153,7 @@ function Install-Dependencies {
     $brokenExtras = @()
 
     # Parse [project.optional-dependencies].all from pyproject.toml.
-    # tomllib is stdlib on Python 3.11+ which the bootstrap guarantees.
+    # tomllib is stdlib on Python 3.14+ which the bootstrap guarantees.
     $pythonExeForParse = if (-not $NoVenv) { "$InstallDir\venv\Scripts\python.exe" } else { (& $UvCmd python find $PythonVersion) }
     $allExtras = @()
     if (Test-Path $pythonExeForParse) {
@@ -3089,6 +3451,12 @@ function Write-Completion {
         Write-Host "  winget install BurntSushi.ripgrep.MSVC" -ForegroundColor Yellow
         Write-Host ""
     }
+    
+    if (-not $HasCoreutils -and ($env:OS -eq "Windows_NT")) {
+        Write-Host "Note: Microsoft Coreutils was not installed. For POSIX CLI tools (cat, cp, mv, ls):" -ForegroundColor Yellow
+        Write-Host "  winget install Microsoft.Coreutils" -ForegroundColor Yellow
+        Write-Host ""
+    }
 }
 
 # ============================================================================
@@ -3169,7 +3537,7 @@ $InstallStages = @(
     @{ Name = "python";           Title = "Verifying Python $PythonVersion";      Category = "prereqs";      NeedsUserInput = $false; Worker = "Stage-Python" }
     @{ Name = "git";              Title = "Installing Git";                       Category = "prereqs";      NeedsUserInput = $false; Worker = "Stage-Git" }
     @{ Name = "node";             Title = "Detecting Node.js";                    Category = "prereqs";      NeedsUserInput = $false; Worker = "Stage-Node" }
-    @{ Name = "system-packages";  Title = "Installing ripgrep and ffmpeg";        Category = "prereqs";      NeedsUserInput = $false; Worker = "Stage-SystemPackages" }
+    @{ Name = "system-packages";  Title = "Installing ripgrep, ffmpeg, and Coreutils";        Category = "prereqs";      NeedsUserInput = $false; Worker = "Stage-SystemPackages" }
     @{ Name = "repository";       Title = "Cloning Hermes repository";            Category = "install";      NeedsUserInput = $false; Worker = "Stage-Repository" }
     @{ Name = "venv";             Title = "Creating Python virtual environment";  Category = "install";      NeedsUserInput = $false; Worker = "Stage-Venv" }
     @{ Name = "dependencies";     Title = "Installing Python dependencies";       Category = "install";      NeedsUserInput = $false; Worker = "Stage-Dependencies" }
@@ -3352,10 +3720,19 @@ function Invoke-EnsureMode {
                 }
             }
             "ripgrep" {
-                Write-Info "ripgrep: install manually on Windows (scoop install ripgrep)"
+                Install-ManagedRipgrep
             }
             "ffmpeg" {
                 Write-Info "ffmpeg: install manually on Windows (scoop install ffmpeg)"
+            }
+            "coreutils" {
+                Install-Coreutils
+            }
+            "rtk" {
+                Install-ManagedRtk
+                if (-not (Test-RtkBinary)) {
+                    Write-Warn "rtk could not be installed (token-kill will be unavailable)"
+                }
             }
             default {
                 Write-Err "Unknown dependency: $dep"

@@ -1818,10 +1818,11 @@ def resolve_provider(
     except ImportError:
         pass  # boto3 not installed — skip Bedrock auto-detection
 
+    home = get_hermes_home()
     raise AuthError(
         "No inference provider configured. Run 'hermes model' to choose a "
         "provider and model, or set an API key (OPENROUTER_API_KEY, "
-        "OPENAI_API_KEY, etc.) in ~/.hermes/.env.",
+        f"OPENAI_API_KEY, etc.) in {home / '.env'}.",
         code="no_provider_configured",
     )
 

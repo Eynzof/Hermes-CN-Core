@@ -58,6 +58,7 @@ from gateway.platforms.base import (
     MessageType,
     SendResult,
 )
+from hermes_cli.port_lock import try_claim_port
 from gateway.platforms.webhook_filters import (
     DEFAULT_SCRIPT_TIMEOUT_SECONDS,
     WebhookRouteProcessor,
@@ -124,6 +125,7 @@ class WebhookAdapter(BasePlatformAdapter):
         self._dynamic_routes_mtime: float = 0.0
         self._routes: Dict[str, dict] = dict(self._static_routes)
         self._runner = None
+        self._port_lock = None
         # Routes already warned about legacy V1 body-only signatures
         # (once-per-route so a busy sender doesn't spam the log).
         self._v1_signature_warned: set[str] = set()
@@ -236,6 +238,17 @@ class WebhookAdapter(BasePlatformAdapter):
         except (ConnectionRefusedError, OSError):
             pass  # port is free
 
+        # Coordinate with other Hermes instances via the shared lock file.
+        # The lock must be held for the lifetime of the listener.
+        self._port_lock = try_claim_port(self._port)
+        if self._port_lock is None:
+            logger.error(
+                '[webhook] Port %d is already claimed by another Hermes instance. '
+                'Set a different port in config.yaml: platforms.webhook.port',
+                self._port,
+            )
+            return False
+
         self._runner = web.AppRunner(app)
         await self._runner.setup()
         site = web.TCPSite(self._runner, self._host, self._port)
@@ -255,6 +268,9 @@ class WebhookAdapter(BasePlatformAdapter):
         if self._runner:
             await self._runner.cleanup()
             self._runner = None
+        if self._port_lock is not None:
+            self._port_lock.release()
+            self._port_lock = None
         self._mark_disconnected()
         logger.info("[webhook] Disconnected")
 

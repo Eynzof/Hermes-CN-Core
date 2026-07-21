@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pybase64 as base64
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -537,8 +538,9 @@ class TestExtractImageRefs:
         assert urls == []
 
     def test_finds_home_relative_path(self, tmp_path: Path, monkeypatch):
-        # Simulate ~/foo.png by pointing HOME at tmp_path and creating the file
-        monkeypatch.setenv("HOME", str(tmp_path))
+        # Simulate ~/foo.png by pointing HOME/USERPROFILE at tmp_path
+        home_var = "USERPROFILE" if sys.platform == "win32" else "HOME"
+        monkeypatch.setenv(home_var, str(tmp_path))
         img = tmp_path / "foo.png"
         img.write_bytes(_png_bytes())
         paths, urls = extract_image_refs("see ~/foo.png please")

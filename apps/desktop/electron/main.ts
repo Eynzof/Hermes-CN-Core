@@ -1412,7 +1412,8 @@ function findOnPath(command) {
   // On Windows, try PATHEXT extensions BEFORE the bare (empty-extension) name.
   // A real command must resolve via its .exe/.cmd (Windows command-resolution
   // semantics consult PATHEXT); an extensionless file — e.g. a Git-Bash
-  // shell-script shim named `hermes` — must not shadow `hermes.cmd`/`hermes.exe`.
+  // shell-script shim named `hermes` (relevant when shell:bash is configured) —
+  // must not shadow `hermes.cmd`/`hermes.exe`.
   // The empty entry is kept LAST so callers that already include the extension
   // (py.exe, pwsh.exe, powershell.exe) still resolve.
   const extensions = IS_WINDOWS
@@ -1663,14 +1664,8 @@ function findSystemPython() {
   //      that didn't check the launcher option, so PATH-only checks
   //      miss real Python 3.13 installs (user-reported case).
   //
-  // We also restrict ourselves to Python 3.11–3.13. 3.14 is the latest
-  // CPython but several Hermes deps (notably pywinpty's Rust-built
-  // windows_x86_64_msvc crate) don't yet publish 3.14 wheels, and
-  // `pip install -e .` falls back to source-build, which fails without
-  // a Rust toolchain. install.ps1 sidesteps this by pinning to 3.11
-  // via uv; until we add the same uv-managed Python pathway here, the
-  // simplest fix is to refuse 3.14 detection and let the NSIS prereq
-  // page offer to install 3.11 alongside.
+  // We also restrict ourselves to Python 3.14. All project deps now publish
+  // 3.14 wheels, and the fork's `requires-python` is >=3.14 (P-048).
   //
   // Strategy: probe in three passes, in order from most-precise to
   // least-precise, and ONLY use PATH lookup as a last resort after
@@ -1679,19 +1674,18 @@ function findSystemPython() {
   //  Pass 1: PEP 514 registry — every standards-compliant Python
   //          installer registers itself at SOFTWARE\Python\PythonCore.
   //          The MS Store stub does NOT register here, so a hit means
-  //          a real Python install. Versions are explicit so we
-  //          inherently filter 3.14 out.
+  //          a real Python install. Version is explicit so we
+  //          inherently filter other versions out.
   //  Pass 2: Filesystem probe of standard install locations
   //          (Program Files, LocalAppData\Programs\Python). Same
   //          version filtering by directory name.
   //  Pass 3: PATH lookup of `py.exe` (the launcher itself never
   //          triggers the Store) — but call it with a version flag so
-  //          we resolve to a SPECIFIC supported version, not whatever
-  //          py.exe's default is (which on a 3.14-only box would be
-  //          3.14).
+  //          we resolve to a SPECIFIC version, not whatever
+  //          py.exe's default is.
 
-  const SUPPORTED_VERSIONS = ['3.11', '3.12', '3.13']
-  const SUPPORTED_VERSIONS_NO_DOT = ['311', '312', '313']
+  const SUPPORTED_VERSIONS = ['3.14']
+  const SUPPORTED_VERSIONS_NO_DOT = ['314']
 
   // Pass 1: registry. Use `reg query` since main process doesn't have
   // a reliable in-process registry API across all electron versions.
@@ -1774,17 +1768,17 @@ function findSystemPython() {
   // We deliberately do NOT fall back to plain `python.exe` on PATH.
   // Without a way to verify the version safely (running `python -V`
   // risks the Microsoft Store popup), accepting whatever's there
-  // could land us on 3.14 and trigger the Rust-build-from-source
-  // failure. Better to return null and let the NSIS prereq page
-  // offer to install a known-good 3.11 via winget.
+  // could land us on the wrong version.
+  // Better to return null and let the NSIS prereq page
+  // offer to install a known-good 3.14 via winget.
   return null
 }
 
-// findGitBash — locate bash.exe on Windows. Hermes' terminal tool requires
-// bash (POSIX shell), and on Windows that's almost always Git for Windows'
-// bundled Git Bash. We check the same set of locations tools/environments/
-// local.py:_find_bash() checks at runtime, so a positive result here means
-// the agent will be able to start a terminal too.
+// findGitBash — locate bash.exe on Windows. When the user has explicitly
+// configured shell:bash, Hermes uses Git for Windows' bundled Git Bash.
+// This function detects a pre-existing bash installation — no auto-download.
+// We check standard Git-for-Windows install locations, then fall back to
+// PATH search. PowerShell is the default shell on Windows.
 //
 // On non-Windows hosts bash is part of the OS and this just returns the
 // first bash on PATH.
@@ -1793,21 +1787,14 @@ function findGitBash() {
     return findOnPath('bash')
   }
 
-  // install.ps1 drops PortableGit at %LOCALAPPDATA%\hermes\git\... — checked
-  // first so users who installed via install.ps1 are detected before we
-  // start probing system-wide locations.
+  // Standard Git for Windows install locations (pre-existing install only,
+  // no auto-download via PortableGit).
+  const candidates = [
+    path.join(process.env['ProgramFiles'] || 'C:\\Program Files', 'Git', 'bin', 'bash.exe'),
+    path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Git', 'bin', 'bash.exe'),
+  ]
+
   const localAppData = process.env.LOCALAPPDATA || ''
-  const candidates = []
-
-  if (localAppData) {
-    candidates.push(path.join(localAppData, 'hermes', 'git', 'bin', 'bash.exe'))
-    candidates.push(path.join(localAppData, 'hermes', 'git', 'usr', 'bin', 'bash.exe'))
-  }
-
-  // Standard Git for Windows install locations.
-  candidates.push(path.join(process.env['ProgramFiles'] || 'C:\\Program Files', 'Git', 'bin', 'bash.exe'))
-  candidates.push(path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Git', 'bin', 'bash.exe'))
-
   if (localAppData) {
     candidates.push(path.join(localAppData, 'Programs', 'Git', 'bin', 'bash.exe'))
   }
@@ -1898,8 +1885,10 @@ function makeDashboardReadyFile() {
 // resolveGitBinary — locate git.exe on Windows. A fresh installer-driven
 // install only has PortableGit under %LOCALAPPDATA%\hermes\git (never on
 // PATH), so a bare spawn('git') ENOENTs and self-update checks fail with
-// "Couldn't check for updates". Mirror findGitBash: PortableGit first, then
-// standard Git-for-Windows locations, then PATH. Cached after first probe.
+// "Couldn't check for updates". Git Bash is still available as an optional
+// shell when explicitly configured (shell:bash), but git binary resolution
+// for VCS operations is separate from shell resolution.
+// Standard Git-for-Windows locations first, then PATH. Cached after first probe.
 let _gitBinaryCache = null
 
 function resolveGitBinary() {
@@ -3629,19 +3618,40 @@ async function ensureRuntime(backend) {
     )
   }
 
-  // On Windows, preflight Git Bash. Hermes' terminal tool calls bash.exe
-  // directly (tools/environments/local.py); without it the agent can't run
-  // terminal commands. install.ps1's Stage-Git puts PortableGit at
-  // %LOCALAPPDATA%\hermes\git\, which findGitBash() picks up, so for any
-  // user who completed the bootstrap this is a no-op. For users who got
-  // here via an external `hermes` on PATH, this check still helps.
-  if (IS_WINDOWS && !findGitBash()) {
-    throw new Error(
-      'Git for Windows is required for Hermes on Windows (provides Git Bash, ' +
-        "which the agent's terminal tool uses). Install it from " +
-        'https://git-scm.com/download/win or run `winget install -e --id Git.Git`, ' +
-        'then relaunch Hermes.'
-    )
+  // On Windows, preflight the configured shell. When the user has set
+  // shell:bash, verify Git Bash is installed (no auto-download). Otherwise
+  // (auto/pwsh/powershell), check that PowerShell is available — it ships
+  // with every Windows 10/11 system so the check is confirmatory.
+  if (IS_WINDOWS) {
+    const configShell = (process.env.HERMES_SHELL_TYPE || 'auto').toLowerCase().trim()
+    const useBash = configShell === 'bash'
+
+    if (useBash) {
+      if (!findGitBash()) {
+        throw new Error(
+          'You have configured shell:bash, but Git for Windows (Git Bash) was not found. ' +
+            'Install it from https://git-scm.com/download/win and ensure it is on your PATH, ' +
+            'then relaunch Hermes. Alternatively, set shell to "auto", "pwsh", or "powershell" ' +
+            'to use PowerShell (the default shell on Windows).'
+        )
+      }
+    } else {
+      // Verify at least one PowerShell is available (ships with every Windows system).
+      const hasPowerShell =
+        findOnPath('pwsh.exe') ||
+        findOnPath('pwsh') ||
+        (() => {
+          const systemRoot = process.env.SystemRoot || process.env.windir || 'C:\\Windows'
+          return isExecutableFile(path.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'))
+        })()
+      if (!hasPowerShell) {
+        throw new Error(
+          'PowerShell is required for Hermes on Windows but was not found. ' +
+            'Windows PowerShell 5.1 ships with every Windows 10/11 system. ' +
+            'If you have explicitly removed it, please re-enable Windows PowerShell.'
+        )
+      }
+    }
   }
 
   const venvPython = getVenvPython(VENV_ROOT)

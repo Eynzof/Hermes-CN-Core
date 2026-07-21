@@ -603,6 +603,7 @@ def build_welcome_banner(console: "Console", model: str, cwd: str,
     from model_tools import check_tool_availability, TOOLSET_REQUIREMENTS
     from rich.panel import Panel
     from rich.table import Table
+    from rich.text import Text as _RichText
     if get_toolset_for_tool is None:
         from model_tools import get_toolset_for_tool
 
@@ -919,7 +920,20 @@ def build_welcome_banner(console: "Console", model: str, cwd: str,
     release_info = get_latest_release_tag()
     if release_info:
         _tag, _url = release_info
-        title_markup = f"[bold {title_color}][link={_url}]{version_label}[/link][/]"
+        # Build a Text object with manual OSC-8 hyperlink wrapping.
+        # Rich's built-in [link=...] markup is suppressed on Windows
+        # because legacy_windows=True prevents Style.render() from
+        # emitting the \x1b]8;... escape sequence. By constructing the
+        # title as a Text object with raw escape codes in unstyled
+        # segments, we bypass that limitation entirely.
+        osc8_open = f"\x1b]8;id=0;{_url}\x1b\\"
+        osc8_close = "\x1b]8;;\x1b\\"
+        inner = _RichText.from_markup(f"[bold {title_color}]{version_label}[/]")
+        title_markup = _RichText.assemble(
+            (osc8_open, ""),
+            inner,
+            (osc8_close, ""),
+        )
     else:
         title_markup = f"[bold {title_color}]{version_label}[/]"
     outer_panel = Panel(

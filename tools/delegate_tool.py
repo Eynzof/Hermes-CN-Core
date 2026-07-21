@@ -1024,11 +1024,16 @@ def _inherit_parent_base_url(parent_agent, fallback_base_url: Optional[str]) -> 
             and kwargs_url != surface_url
             and kwargs_url.startswith(("http://", "https://"))
         ):
+            logger.warning(
+                "_inherit_parent_base_url: overriding fallback URL %r -> %r "
+                "from parent._client_kwargs (stale agent.base_url)",
+                fallback_base_url, kwargs_url,
+            )
             return kwargs_url
 
     client = getattr(parent_agent, "client", None)
     if client is not None:
-        # OpenAI SDK exposes ``base_url`` as an ``httpx.URL``, not ``str`` —
+        # OpenAI SDK exposes ``base_url`` as an ``httpx.URL``, not ``str`` --
         # coerce so the comparison works regardless of the client's type.
         live_url = _normalized_runtime_url(getattr(client, "base_url", ""))
         if (
@@ -1036,10 +1041,14 @@ def _inherit_parent_base_url(parent_agent, fallback_base_url: Optional[str]) -> 
             and live_url != surface_url
             and live_url.startswith(("http://", "https://"))
         ):
+            logger.warning(
+                "_inherit_parent_base_url: overriding fallback URL %r -> %r "
+                "from parent.client.base_url (stale agent.base_url)",
+                fallback_base_url, live_url,
+            )
             return live_url
 
     return fallback_base_url or None
-
 
 def _build_child_agent(
     task_index: int,
@@ -1322,6 +1331,7 @@ def _build_child_agent(
         thinking_callback=child_thinking_cb,
         session_db=getattr(parent_agent, "_session_db", None),
         parent_session_id=getattr(parent_agent, "session_id", None),
+        credential_pool=getattr(parent_agent, "_credential_pool", None),
         providers_allowed=child_providers_allowed,
         providers_ignored=child_providers_ignored,
         providers_order=child_providers_order,
@@ -1714,6 +1724,31 @@ def _apply_summary_budget(results: List[Dict[str, Any]], parent_agent) -> None:
             cap,
             spill_path or "none",
         )
+
+
+def _run_child_turn(
+    child,
+    goal: str,
+    abort_signal: Optional[threading.Event] = None,
+) -> Dict[str, Any]:
+    """Run a pre-built child agent for one turn.
+
+    Thin wrapper around ``_run_single_child`` that provides the simpler
+    calling convention expected by ``tools.subagent_runner`` (the shared
+    runner for both ``delegate_task`` and ``agent_swarm``).
+
+    ``_run_single_child`` needs a ``task_index`` and ``parent_agent``;
+    we derive ``parent_agent`` from the child's attribute (set during
+    ``_build_child_agent``) and use ``-1`` for the task index since the
+    swarm path doesn't use sequential task numbering.
+    """
+    parent_agent = getattr(child, "_parent_agent", None)
+    return _run_single_child(
+        task_index=-1,
+        goal=goal,
+        child=child,
+        parent_agent=parent_agent,
+    )
 
 
 def _run_single_child(

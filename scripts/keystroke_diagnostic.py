@@ -9,7 +9,7 @@ Usage:
     # POSIX
     python scripts/keystroke_diagnostic.py
 
-    # Windows (PowerShell / git-bash / cmd)
+    # Windows (PowerShell / cmd / git-bash)
     python scripts\\keystroke_diagnostic.py
 
 Press the key combinations you care about. Each keystroke prints the

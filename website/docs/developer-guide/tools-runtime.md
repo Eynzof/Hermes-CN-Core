@@ -203,6 +203,73 @@ The terminal tool integrates a dangerous-command approval system defined in `too
 
 5. **Permanent allowlist** — the "allow permanently" option writes the pattern to `config.yaml`'s `command_allowlist`, persisting across sessions.
 
+## rtk CLI Proxy Integration
+
+[rtk](https://github.com/rtk-ai/rtk) is a **high-performance CLI proxy** that
+filters and compresses command output before it reaches the LLM context. It
+is a command wrapper — it intercepts shell commands (e.g. `git status` →
+`rtk git status`), runs them, and applies smart filtering, grouping,
+truncation, and deduplication to reduce token consumption by 60-90%. It is
+written in Rust as a single binary.
+
+### How it integrates
+
+Known commands (git, cargo, pytest, npm, etc.) are transparently prepended
+with `rtk` before execution via `tools/terminal_command_rewrite.py`.
+
+The flow is:
+
+1. **`tools/terminal_tool.py`** checks `_rtk_available()` from
+   `tools/rtk_provision.py`. If available, it calls
+   `_maybe_rewrite_shell_command_with_rtk()`.
+2. **`tools/terminal_command_rewrite.py`** checks if the command is in its
+   known list (git, cargo, pytest, npm, pip, etc.) and rewrites it with
+   `rtk` prefix. Returns `(rewritten_command, True)` or `(original, False)`.
+3. **`tools/terminal_post_process.py`** — if rtk already handled dedup
+   (`rtk_rewritten=True`), Python-level dedup is skipped. If rtk is
+   installed but the command wasn't rewritten, Python dedup runs as
+   fallback. If rtk is **not installed at all**, all dedup is skipped.
+
+### Detection (`tools/rtk_provision.py`)
+
+`_rtk_available()` is cached via `@functools.lru_cache` for the process
+lifetime. The detection order is:
+
+1. Managed copy in `get_managed_tools_dir()` (Hermes-downloaded)
+2. Legacy copy in `$HERMES_HOME/bin`
+3. System `PATH` via `shutil.which`
+
+Each candidate is verified by running `rtk --version`.
+
+### Graceful degradation
+
+rtk download is **optional** — failure does not crash the installer:
+
+- **Windows (`install.ps1`):** `Install-ManagedRtk()` catches all errors,
+  logs a warning via `Write-Warn`, and returns without throwing. The caller
+  (`Install-SystemPackages()`) re-checks `Test-RtkBinary` and warns if rtk
+  is unavailable. `Invoke-EnsureMode()` follows the same pattern.
+- **Linux/macOS (`install.sh`):** Already handles this — `_install_rtk_direct`
+  returns 1 on failure, caller logs a warning and continues.
+- **Runtime:** When rtk is not installed, `_token_filter_output()` skips all
+  dedup and returns the origin output (after ANSI stripping and line-ending
+  normalization). Line truncation and byte-cap features still work.
+
+### Chinese mirror requirement
+
+The `rtk` binary is downloaded from GitHub Releases
+(`github.com/rtk-ai/rtk`). For Chinese users, the download URL in
+`Install-ManagedRtk()` (install.ps1) and `_install_rtk_direct` (install.sh)
+**must be mirrored** to a China-accessible source (e.g., CDN, Gitee
+releases, or internal artifact registry) to avoid network failures caused
+by GitHub access restrictions.
+
+Key files to update:
+
+- `scripts/install.ps1` — `$assetUrl` in `Install-ManagedRtk()` (line ~1179)
+- `scripts/install.sh` — download URL in `_install_rtk_direct`
+- `tools/rtk_provision.py` — `RTK_VERSION` constant (for reference)
+
 ## Terminal/runtime environments
 
 The terminal system supports multiple backends:

@@ -191,9 +191,9 @@ def _get_parent_pid(pid: int) -> int | None:
         pass
     except Exception:
         return None
-    # Fallback: shell out to ps (POSIX only).  Git Bash installs ``ps.exe`` on
-    # Windows; running it from the windowless desktop/gateway backend flashes a
-    # console, and psutil above is the authoritative Windows path anyway.
+    # Fallback: shell out to ps (POSIX only).  ``ps.exe`` may exist from various
+    # sources on Windows; running it from the windowless desktop/gateway backend
+    # flashes a console, and psutil above is the authoritative Windows path anyway.
     if is_windows():
         return None
     if not shutil.which("ps"):
@@ -2586,7 +2586,7 @@ def _remap_path_for_user(path: str, target_home_dir: str) -> str:
 
     Note: this function intentionally does NOT resolve symlinks. A venv's
     ``bin/python`` is typically a symlink to the base interpreter (e.g. a
-    uv-managed CPython at ``~/.local/share/uv/python/.../python3.11``);
+    uv-managed CPython at ``~/.local/share/uv/python/.../python3.14``);
     resolving that symlink swaps the unit's ``ExecStart`` to a bare Python
     that has none of the venv's site-packages, so the service crashes on
     the first ``import``. Keep the symlinked path so the venv activates

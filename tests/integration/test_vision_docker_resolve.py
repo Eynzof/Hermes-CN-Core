@@ -67,7 +67,7 @@ def docker_backend(request, monkeypatch):
 
     task_id = f"vision-docker-resolve-{request.node.name}"
     env = docker_env.DockerEnvironment(
-        image="python:3.11-slim",
+        image="python:3.14-slim",
         cwd="/workspace",
         timeout=120,
         task_id=task_id,

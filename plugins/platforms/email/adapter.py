@@ -17,11 +17,9 @@ Environment variables:
 
 import asyncio
 import email as email_lib
-import imaplib
 import logging
 import os
 from agent.re_compat import re
-import smtplib
 import socket
 import ssl
 import uuid
@@ -33,6 +31,27 @@ from email.utils import formatdate
 from email import encoders
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+
+def _check_dependencies() -> None:
+    """Verify that the Python stdlib modules required by this plugin are available.
+
+    The packaged desktop runtime may not include imaplib/smtplib.  Failing
+    early with a clear message lets the plugin loader mark the plugin as
+    unavailable instead of surfacing a raw ``No module named 'imaplib'``.
+    """
+    missing = []
+    for mod in ("imaplib", "smtplib"):
+        try:
+            __import__(mod)
+        except ImportError:
+            missing.append(mod)
+    if missing:
+        raise RuntimeError(
+            "The email-platform plugin requires the Python standard library modules "
+            f"{', '.join(missing)}, which are not available in this runtime."
+        )
+
 
 from gateway.platforms.base import (
     BasePlatformAdapter,
@@ -66,6 +85,49 @@ MAX_MESSAGE_LENGTH = 50_000
 
 SMTP_CONNECT_TIMEOUT = 30
 
+# Lazily-populated IPv4-only SMTP subclasses.  Kept at module level so tests
+# can patch them and so the top-level import does not fail when the packaged
+# runtime omits smtplib.
+_IPv4SMTP: Any = None
+_IPv4SMTP_SSL: Any = None
+
+
+def _ensure_smtp_classes() -> None:
+    """Define ``_IPv4SMTP`` and ``_IPv4SMTP_SSL`` on first use.
+
+    Each class is defined independently so tests can patch one without the
+    other being overwritten.
+    """
+    global _IPv4SMTP, _IPv4SMTP_SSL
+    if _IPv4SMTP is None or _IPv4SMTP_SSL is None:
+        import smtplib
+
+        if _IPv4SMTP is None:
+            class _IPv4SMTPClass(smtplib.SMTP):
+                def _get_socket(self, host, port, timeout):  # type: ignore[override]
+                    return _create_ipv4_connection(
+                        host,
+                        port,
+                        timeout,
+                        source_address=self.source_address,
+                    )
+            _IPv4SMTP = _IPv4SMTPClass
+
+        if _IPv4SMTP_SSL is None:
+            class _IPv4SMTP_SSLClass(smtplib.SMTP_SSL):
+                def _get_socket(self, host, port, timeout):  # type: ignore[override]
+                    raw_sock = _create_ipv4_connection(
+                        host,
+                        port,
+                        timeout,
+                        source_address=self.source_address,
+                    )
+                    return self.context.wrap_socket(
+                        raw_sock,
+                        server_hostname=getattr(self, "_host", host),
+                    )
+            _IPv4SMTP_SSL = _IPv4SMTP_SSLClass
+
 
 def _create_ipv4_connection(
     host: str,
@@ -97,29 +159,6 @@ def _create_ipv4_connection(
         raise last_error
     raise OSError(f"No IPv4 address found for {host}:{port}")
 
-
-class _IPv4SMTP(smtplib.SMTP):
-    def _get_socket(self, host, port, timeout):  # type: ignore[override]
-        return _create_ipv4_connection(
-            host,
-            port,
-            timeout,
-            source_address=self.source_address,
-        )
-
-
-class _IPv4SMTP_SSL(smtplib.SMTP_SSL):
-    def _get_socket(self, host, port, timeout):  # type: ignore[override]
-        raw_sock = _create_ipv4_connection(
-            host,
-            port,
-            timeout,
-            source_address=self.source_address,
-        )
-        return self.context.wrap_socket(
-            raw_sock,
-            server_hostname=getattr(self, "_host", host),
-        )
 
 # Supported image extensions for inline detection
 _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
@@ -506,7 +545,7 @@ class EmailAdapter(BasePlatformAdapter):
             # Fallback: just clear old entries if sort fails
             self._seen_uids = set(list(self._seen_uids)[-self._seen_uids_max // 2:])
 
-    def _connect_smtp(self) -> smtplib.SMTP:
+    def _connect_smtp(self) -> "smtplib.SMTP":
         """Create an SMTP connection, selecting the correct protocol for the port.
 
         Port 465 uses implicit TLS (``SMTP_SSL``).  All other ports use
@@ -521,11 +560,15 @@ class EmailAdapter(BasePlatformAdapter):
         Returns a connected SMTP object with TLS established — callers
         can proceed directly to ``login()``.
         """
+        import smtplib
+
+        _ensure_smtp_classes()
+
         ctx = ssl.create_default_context()
         host = self._smtp_host
         port = self._smtp_port
 
-        def _connect(*, ipv4_only: bool = False) -> smtplib.SMTP:
+        def _connect(*, ipv4_only: bool = False) -> "smtplib.SMTP":
             """Attempt one SMTP connection."""
             smtp_cls = _IPv4SMTP if ipv4_only else smtplib.SMTP
             smtp_ssl_cls = _IPv4SMTP_SSL if ipv4_only else smtplib.SMTP_SSL
@@ -581,6 +624,8 @@ class EmailAdapter(BasePlatformAdapter):
             return False
 
         try:
+            import imaplib
+
             # Test IMAP connection
             imap = imaplib.IMAP4_SSL(self._imap_host, self._imap_port, timeout=30)
             imap.login(self._address, self._password)
@@ -649,6 +694,8 @@ class EmailAdapter(BasePlatformAdapter):
 
     def _fetch_new_messages(self) -> List[Dict[str, Any]]:
         """Fetch new (unseen) messages from IMAP. Runs in executor thread."""
+        import imaplib
+
         results = []
         try:
             imap = imaplib.IMAP4_SSL(self._imap_host, self._imap_port, timeout=30)
@@ -1254,6 +1301,7 @@ def _build_adapter(config):
 
 def register(ctx) -> None:
     """Plugin entry point — called by the Hermes plugin system."""
+    _check_dependencies()
     ctx.register_platform(
         name="email",
         label="Email",

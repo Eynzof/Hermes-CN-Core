@@ -430,7 +430,7 @@ async def test_polling_conflict_reschedule_uses_running_loop(monkeypatch):
     retry ceiling, the handler reschedules itself via loop.create_task. The
     old code used the deprecated asyncio.get_event_loop(), which raises
     "RuntimeError: There is no current event loop in thread 'MainThread'" on
-    Python 3.11+ when no loop is attached to the thread (as happens when PTB
+    Python 3.14+ when no loop is attached to the thread (as happens when PTB
     dispatches this error callback). That left the gateway alive but silent
     and drove the --replace crash loop. The fix uses get_running_loop(), which
     is always valid inside a coroutine. Force get_event_loop() to raise so a

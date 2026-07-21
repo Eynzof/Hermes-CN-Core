@@ -41,7 +41,13 @@ import time
 import uuid
 
 _IS_WINDOWS = is_windows()
-from tools.environments.local import _find_shell, _resolve_safe_cwd, _sanitize_subprocess_env
+from tools.environments.local import (
+    _build_powershell_background_script,
+    _find_shell,
+    _resolve_safe_cwd,
+    _resolve_shell,
+    _sanitize_subprocess_env,
+)
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -678,6 +684,111 @@ class ProcessRegistry:
                 logger.debug("Could not resolve environment temp dir: %s", exc)
         return "/tmp"
 
+    def _spawn_posix_local(
+        self,
+        session: ProcessSession,
+        command: str,
+        env_vars: dict,
+    ) -> subprocess.Popen:
+        """POSIX background spawn using the user's login shell."""
+        user_shell = _find_shell()
+        bg_env = _sanitize_subprocess_env(os.environ, env_vars)
+        bg_env["PYTHONUNBUFFERED"] = "1"
+        proc = subprocess.Popen(
+            [user_shell, "-lic", f"set +m; {command}"],
+            text=True,
+            cwd=session.cwd,
+            env=bg_env,
+            encoding="utf-8",
+            errors="replace",
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        return proc
+
+    def _spawn_windows_powershell_local(
+        self,
+        session: ProcessSession,
+        command: str,
+        shell_type: str,
+        shell_path: str,
+        env_vars: dict,
+        cwd_file: str | None = None,
+    ) -> subprocess.Popen:
+        """Windows non-PTY background spawn using PowerShell."""
+        ps_script = _build_powershell_background_script(
+            command=command,
+            cwd=session.cwd,
+            shell_type=shell_type,
+            cwd_file=cwd_file,
+        )
+        bg_env = _sanitize_subprocess_env(os.environ, env_vars)
+        bg_env["PYTHONUNBUFFERED"] = "1"
+        _popen_kwargs = {
+            "creationflags": getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+            | getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        }
+        proc = subprocess.Popen(
+            [
+                shell_path,
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                ps_script,
+            ],
+            text=True,
+            cwd=session.cwd,
+            env=bg_env,
+            encoding="utf-8",
+            errors="replace",
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,
+            **_popen_kwargs,
+        )
+        return proc
+
+    def _spawn_windows_pty_local(
+        self,
+        session: ProcessSession,
+        command: str,
+        shell_type: str,
+        shell_path: str,
+        env_vars: dict,
+        cwd_file: str | None = None,
+    ):
+        """Windows PTY background spawn using PowerShell via winpty."""
+        from winpty import PtyProcess as _PtyProcessCls
+
+        ps_script = _build_powershell_background_script(
+            command=command,
+            cwd=session.cwd,
+            shell_type=shell_type,
+            cwd_file=cwd_file,
+        )
+        pty_env = _sanitize_subprocess_env(os.environ, env_vars)
+        pty_env["PYTHONUNBUFFERED"] = "1"
+        pty_proc = _PtyProcessCls.spawn(
+            [
+                shell_path,
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                ps_script,
+            ],
+            cwd=session.cwd,
+            env=pty_env,
+            dimensions=(30, 120),
+        )
+        return pty_proc
+
     def spawn_local(
         self,
         command: str,
@@ -686,6 +797,7 @@ class ProcessRegistry:
         session_key: str = "",
         env_vars: dict = None,
         use_pty: bool = False,
+        cwd_file: str | None = None,
     ) -> ProcessSession:
         """
         Spawn a background process locally.
@@ -696,6 +808,10 @@ class ProcessRegistry:
             use_pty: If True, use a pseudo-terminal via ptyprocess for interactive
                      CLI tools (Codex, Claude Code, Python REPL). Falls back to
                      subprocess.Popen if ptyprocess is not installed.
+            cwd_file: Optional path to write the final working directory to
+                      (PowerShell background path). When provided, the wrapper
+                      writes ``(Get-Location).Path`` to this file so subsequent
+                      foreground commands can pick up CWD changes.
         """
         session = ProcessSession(
             id=f"proc_{uuid.uuid4().hex[:12]}",
@@ -706,22 +822,36 @@ class ProcessRegistry:
             started_at=time.time(),
         )
 
+        if _IS_WINDOWS:
+            shell_type, shell_path = _resolve_shell()
+        else:
+            shell_type = shell_path = None
+
         if use_pty:
             # Try PTY mode for interactive CLI tools
             try:
                 if _IS_WINDOWS:
-                    from winpty import PtyProcess as _PtyProcessCls
+                    pty_proc = self._spawn_windows_pty_local(
+                        session=session,
+                        command=command,
+                        shell_type=shell_type,
+                        shell_path=shell_path,
+                        env_vars=env_vars,
+                        cwd_file=cwd_file,
+                    )
                 else:
                     from ptyprocess import PtyProcess as _PtyProcessCls
-                user_shell = _find_shell()
-                pty_env = _sanitize_subprocess_env(os.environ, env_vars)
-                pty_env["PYTHONUNBUFFERED"] = "1"
-                pty_proc = _PtyProcessCls.spawn(
-                    [user_shell, "-lic", f"set +m; {command}"],
-                    cwd=session.cwd,
-                    env=pty_env,
-                    dimensions=(30, 120),
-                )
+
+                    user_shell = _find_shell()
+                    pty_env = _sanitize_subprocess_env(os.environ, env_vars)
+                    pty_env["PYTHONUNBUFFERED"] = "1"
+                    pty_proc = _PtyProcessCls.spawn(
+                        [user_shell, "-lic", f"set +m; {command}"],
+                        cwd=session.cwd,
+                        env=pty_env,
+                        dimensions=(30, 120),
+                    )
+
                 session.pid = pty_proc.pid
                 session.host_start_time = self._safe_host_start_time(session.pid)
                 # Store the pty handle on the session for read/write
@@ -750,29 +880,21 @@ class ProcessRegistry:
                 logger.warning("PTY spawn failed (%s), falling back to pipe mode", e)
 
         # Standard Popen path (non-PTY or PTY fallback)
-        # Use the user's login shell for consistency with LocalEnvironment --
-        # ensures rc files are sourced and user tools are available.
-        user_shell = _find_shell()
-        # Force unbuffered output for Python scripts so progress is visible
-        # during background execution (libraries like tqdm/datasets buffer when
-        # stdout is a pipe, hiding output from process(action="poll")).
-        bg_env = _sanitize_subprocess_env(os.environ, env_vars)
-        bg_env["PYTHONUNBUFFERED"] = "1"
-        _popen_kwargs = {"creationflags": getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | getattr(subprocess, "CREATE_NO_WINDOW", 0)} if _IS_WINDOWS else {}
-
-        proc = subprocess.Popen(
-            [user_shell, "-lic", f"set +m; {command}"],
-            text=True,
-            cwd=session.cwd,
-            env=bg_env,
-            encoding="utf-8",
-            errors="replace",
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            stdin=subprocess.DEVNULL,
-            start_new_session=True,
-            **_popen_kwargs,
-        )
+        if _IS_WINDOWS:
+            proc = self._spawn_windows_powershell_local(
+                session=session,
+                command=command,
+                shell_type=shell_type,
+                shell_path=shell_path,
+                env_vars=env_vars,
+                cwd_file=cwd_file,
+            )
+        else:
+            proc = self._spawn_posix_local(
+                session=session,
+                command=command,
+                env_vars=env_vars,
+            )
 
         session.process = proc
         session.pid = proc.pid

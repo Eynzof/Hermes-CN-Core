@@ -1,6 +1,7 @@
 """Tests for cmd_update — branch fallback when remote branch doesn't exist."""
 
 import subprocess
+import sys
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -246,7 +247,14 @@ class TestCmdUpdateBranchFallback:
         ), patch.object(hm, "_sync_with_upstream_if_needed") as sync_mock:
             cmd_update(mock_args)
 
-        sync_mock.assert_called_once_with(["git"], PROJECT_ROOT)
+        # On Windows the update flow prefixes every git invocation with the
+        # loose-object atomicity workaround (``git -c
+        # windows.appendAtomically=false``), so the exact command list is
+        # platform-dependent.
+        expected_git = ["git"]
+        if sys.platform == "win32":
+            expected_git = ["git", "-c", "windows.appendAtomically=false"]
+        sync_mock.assert_called_once_with(expected_git, PROJECT_ROOT)
         captured = capsys.readouterr()
         assert "Already up to date!" in captured.out
 
@@ -266,7 +274,12 @@ class TestCmdUpdateBranchFallback:
         # Mock it so the test doesn't actually shell out to ``tsc``.
         import subprocess as _subprocess
         build_ok = _subprocess.CompletedProcess([], 0, stdout="", stderr="")
+        # cmd_update resolves npm via hermes_constants.find_node_executable
+        # (managed node / HERMES_NODE / PATH), not shutil.which — without
+        # this patch the real host npm path is used and the assertions on
+        # "/usr/bin/npm" below see no calls.
         with patch.object(hm, "_is_termux_env", return_value=False), \
+             patch("hermes_constants.find_node_executable", side_effect=lambda name: f"/usr/bin/{name}"), \
              patch.object(hm, "_run_with_idle_timeout", return_value=build_ok) as mock_idle:
             cmd_update(mock_args)
 

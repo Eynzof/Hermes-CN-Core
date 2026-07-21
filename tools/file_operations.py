@@ -922,11 +922,11 @@ def _lint_yaml_inproc(content: str) -> tuple[bool, str]:
 
 
 def _lint_toml_inproc(content: str) -> tuple[bool, str]:
-    """In-process TOML syntax check (stdlib tomllib, Python 3.11+)."""
+    """In-process TOML syntax check (stdlib tomllib, Python 3.14+)."""
     try:
         import tomllib as _toml
     except ImportError:
-        # Pre-3.11 fallback via tomli, if installed.
+        # Fallback via tomli for any environment that lacks tomllib (pre-3.11).
         try:
             import tomli as _toml  # type: ignore[no-redef]
         except ImportError:
@@ -2610,7 +2610,8 @@ class ShellFileOperations(FileOperations):
         # on PATH, otherwise a portable in-process Python walk. This is the path
         # that makes search work on a stock Windows install (GitHub #334).
         if self._is_local_env():
-            if shutil.which("rg"):
+            from hermes_cli.dep_ensure import _find_rg
+            if _find_rg():
                 return self._search_files_rg(search_pattern, path, limit, offset)
             return self._search_files_python(
                 search_pattern, path, limit, offset, has_hidden_path_ancestor
@@ -2693,12 +2694,14 @@ class ShellFileOperations(FileOperations):
 
         Prefers ripgrepy on local backends; falls back to shell rg for remotes.
         """
-        if self._is_local_env() and shutil.which("rg"):
-            return self._search_files_rg_ripgrepy(pattern, path, limit, offset)
+        from hermes_cli.dep_ensure import _find_rg
+        rg_path = _find_rg()
+        if self._is_local_env() and rg_path:
+            return self._search_files_rg_ripgrepy(pattern, path, limit, offset, rg_path)
         return self._search_files_rg_shell(pattern, path, limit, offset)
 
     def _search_files_rg_ripgrepy(self, pattern: str, path: str, limit: int,
-                                   offset: int) -> SearchResult:
+                                   offset: int, rg_path: str) -> SearchResult:
         """Search for files using ripgrepy's command builder (local only).
 
         ripgrepy always appends ``(pattern, path)`` in ``run()``, which is
@@ -2716,7 +2719,7 @@ class ShellFileOperations(FileOperations):
 
         try:
             # Dummy pattern for init; --files ignores the pattern anyway.
-            rg = Ripgrepy(".", path)
+            rg = Ripgrepy(".", path, rg_path=rg_path)
         except RipGrepNotFound:
             return self._search_files_rg_shell(pattern, path, limit, offset)
 
@@ -2740,7 +2743,7 @@ class ShellFileOperations(FileOperations):
 
         if proc.returncode != 0:
             # --sortr may have failed on older rg; retry without it.
-            rg_unsorted = Ripgrepy(".", path)
+            rg_unsorted = Ripgrepy(".", path, rg_path=rg_path)
             rg_unsorted.files().glob(glob_pattern)
             cmd_unsorted = rg_unsorted.command + [path]
             try:
@@ -2828,7 +2831,8 @@ class ShellFileOperations(FileOperations):
         # Python scan — so content search works on a stock Windows install
         # without ripgrep/grep (GitHub #334).
         if self._is_local_env():
-            if shutil.which("rg"):
+            from hermes_cli.dep_ensure import _find_rg
+            if _find_rg():
                 result = self._search_with_rg(pattern, path, file_glob, limit, offset,
                                               output_mode, context)
             else:
@@ -2855,9 +2859,11 @@ class ShellFileOperations(FileOperations):
     def _search_with_rg(self, pattern: str, path: str, file_glob: Optional[str],
                         limit: int, offset: int, output_mode: str, context: int) -> SearchResult:
         """Search using ripgrep — prefers ripgrepy on local backends."""
-        if self._is_local_env() and shutil.which("rg"):
+        from hermes_cli.dep_ensure import _find_rg
+        rg_path = _find_rg()
+        if self._is_local_env() and rg_path:
             return self._search_with_rg_ripgrepy(
-                pattern, path, file_glob, limit, offset, output_mode, context
+                pattern, path, file_glob, limit, offset, output_mode, context, rg_path
             )
         return self._search_with_rg_shell(
             pattern, path, file_glob, limit, offset, output_mode, context
@@ -2865,7 +2871,7 @@ class ShellFileOperations(FileOperations):
 
     def _search_with_rg_ripgrepy(self, pattern: str, path: str, file_glob: Optional[str],
                                   limit: int, offset: int, output_mode: str,
-                                  context: int) -> SearchResult:
+                                  context: int, rg_path: str) -> SearchResult:
         """Search using ripgrepy (local backends only).
 
         We build the command via ripgrepy's chainable API but execute via
@@ -2877,7 +2883,7 @@ class ShellFileOperations(FileOperations):
         from ripgrepy import Ripgrepy, RipGrepNotFound
 
         try:
-            rg = Ripgrepy(pattern, path)
+            rg = Ripgrepy(pattern, path, rg_path=rg_path)
         except RipGrepNotFound:
             return self._search_with_rg_shell(
                 pattern, path, file_glob, limit, offset, output_mode, context

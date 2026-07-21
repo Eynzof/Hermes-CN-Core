@@ -1767,14 +1767,19 @@ class TestBuildSafeEnv:
         with patch.dict("os.environ", fake_env, clear=True):
             result = _build_safe_env(None)
 
-        assert result["ProgramFiles"] == r"C:\Program Files"
-        assert result["ProgramData"] == r"C:\ProgramData"
-        assert result["ProgramW6432"] == r"C:\Program Files"
-        assert result["LOCALAPPDATA"].endswith("Local")
-        assert result["APPDATA"].endswith("Roaming")
-        assert result["USERPROFILE"] == r"C:\Users\alice"
-        assert "GITHUB_TOKEN" not in result
-        assert "OPENAI_API_KEY" not in result
+        # On Windows, os.environ uppercases variable names on write (env var
+        # names are case-insensitive there), so _build_safe_env can only ever
+        # see/return the uppercased form. Compare case-insensitively so the
+        # test reflects real Windows behavior and still passes on POSIX.
+        folded = {key.upper(): value for key, value in result.items()}
+        assert folded["PROGRAMFILES"] == r"C:\Program Files"
+        assert folded["PROGRAMDATA"] == r"C:\ProgramData"
+        assert folded["PROGRAMW6432"] == r"C:\Program Files"
+        assert folded["LOCALAPPDATA"].endswith("Local")
+        assert folded["APPDATA"].endswith("Roaming")
+        assert folded["USERPROFILE"] == r"C:\Users\alice"
+        assert "GITHUB_TOKEN" not in folded
+        assert "OPENAI_API_KEY" not in folded
 
 
 # ---------------------------------------------------------------------------

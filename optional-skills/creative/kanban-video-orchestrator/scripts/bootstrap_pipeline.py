@@ -185,7 +185,7 @@ def render_brief(plan: dict) -> str:
         "ALT_NOTES_1": (plan["deliverables"][1].get("notes", "")
                          if len(plan["deliverables"]) > 1 else ""),
         "API_KEYS_REQUIRED": ", ".join(plan.get("api_keys_required", [])) or "none",
-        "EXT_DEPS": extra.get("ext_deps", "ffmpeg, Python 3.11+"),
+        "EXT_DEPS": extra.get("ext_deps", "ffmpeg, Python 3.14+"),
         "SOURCE_ASSETS": extra.get("source_assets", "_(none)_"),
     }
     out = tmpl

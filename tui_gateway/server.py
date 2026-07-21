@@ -376,6 +376,15 @@ class _SlashWorker:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            # The worker inherits PYTHONIOENCODING=utf-8 (hermes_cli/__init__.py
+            # setdefault), so its stdio is UTF-8. text=True alone decodes with
+            # the locale encoding — cp936/GBK on zh-CN Windows — and a single
+            # non-GBK byte (e.g. 0xa0 inside a UTF-8 kawaii face) raises
+            # UnicodeDecodeError inside the daemon drain threads, silently
+            # killing them ([gateway-crash] thread ... (_drain_stderr)). Pin
+            # UTF-8 and never let a bad byte kill the drains.
+            encoding="utf-8",
+            errors="replace",
             bufsize=1,
             cwd=os.getcwd(),
             env=env,

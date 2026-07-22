@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-07-09T18:38:59Z",
+  "updated_at": "2026-07-22T14:24:05Z",
   "metadata": {
     "source": "Hermes-CN-Core repo",
     "docs": "https://github.com/Eynzof/Hermes-CN-Core/blob/main/website/docs/reference/model-catalog.md"
@@ -103,6 +103,10 @@
         {
           "id": "qwen/qwen3.6-35b-a3b",
           "description": ""
+        },
+        {
+          "id": "moonshotai/kimi-k3",
+          "description": "recommended"
         },
         {
           "id": "moonshotai/kimi-k2.6",
@@ -245,6 +249,9 @@
         },
         {
           "id": "qwen/qwen3.6-35b-a3b"
+        },
+        {
+          "id": "moonshotai/kimi-k3"
         },
         {
           "id": "moonshotai/kimi-k2.6"

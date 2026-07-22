@@ -127,6 +127,16 @@ def patch_startup_side_effects(monkeypatch, tmp_path):
     monkeypatch.setattr("hermes_cli.plugins.discover_plugins", lambda: None)
     monkeypatch.setattr("agent.shell_hooks.register_from_config", lambda *args, **kwargs: None)
     monkeypatch.setattr("tools.process_registry.process_registry.recover_from_checkpoint", lambda: 0)
+    # stop() intentionally lazy-imports every cleanup subsystem. Import and
+    # neutralize those unrelated integrations before wait_for() starts so this
+    # race test's bounded deadline measures startup/teardown coordination,
+    # not cold module discovery (which varies significantly by platform).
+    monkeypatch.setattr("tools.process_registry.process_registry.kill_all", lambda: [])
+    monkeypatch.setattr("cron.scheduler.mark_running_jobs_interrupted", lambda *_a, **_kw: [])
+    monkeypatch.setattr("tools.async_delegation.interrupt_all", lambda **_kw: 0)
+    monkeypatch.setattr("tools.terminal_tool.cleanup_all_environments", lambda: None)
+    monkeypatch.setattr("tools.browser_tool.cleanup_all_browsers", lambda: None)
+    monkeypatch.setattr("agent.auxiliary_client.shutdown_cached_clients", lambda: None)
 
 
 @pytest.mark.asyncio
@@ -167,7 +177,9 @@ async def test_startup_aborts_when_restart_begins_during_platform_connect(tmp_pa
     telegram.disconnect = disconnect_and_release
     runner._create_adapter = MagicMock(side_effect=[telegram, slack])
 
-    result = await asyncio.wait_for(runner.start(), timeout=2)
+    # This path executes the complete gateway stop pipeline. Keep a bounded
+    # deadlock guard, but allow cold platform/cleanup imports on slower hosts.
+    result = await asyncio.wait_for(runner.start(), timeout=10)
 
     assert result is True
     assert telegram.disconnected is True

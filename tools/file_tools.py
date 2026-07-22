@@ -607,7 +607,17 @@ _SENSITIVE_PATH_PREFIXES = (
     "/etc/", "/boot/", "/usr/lib/systemd/",
     "/private/etc/", "/private/var/",
 )
-_SENSITIVE_EXACT_PATHS = {"/var/run/docker.sock", "/run/docker.sock"}
+# macOS resolves its per-user temporary directory below /private/var/folders.
+# Keep the rest of /private/var protected while allowing normal workspace and
+# test writes under that OS-managed temporary tree.
+_WRITABLE_SYSTEM_TEMP_PREFIXES = (
+    "/private/var/folders/",
+)
+_SENSITIVE_EXACT_PATHS = {
+    "/var/run/docker.sock",
+    "/run/docker.sock",
+    "/private/var/run/docker.sock",
+}
 
 _hermes_config_resolved: str | None = None
 _hermes_config_resolved_loaded = False
@@ -637,19 +647,9 @@ def _check_sensitive_path(filepath: str, task_id: str = "default") -> str | None
     except (OSError, ValueError):
         resolved = filepath
     normalized = os.path.normpath(_expand_tilde(filepath))
-    _err = (
-        f"Refusing to write to sensitive system path: {filepath}\n"
-        "Use the terminal tool with sudo if you need to modify system files."
-    )
-    for prefix in _SENSITIVE_PATH_PREFIXES:
-        if resolved.startswith(prefix) or normalized.startswith(prefix):
-            return _err
-    if resolved in _SENSITIVE_EXACT_PATHS or normalized in _SENSITIVE_EXACT_PATHS:
-        return _err
-    # Prevent agents from modifying the Hermes config file directly.
-    # approvals.mode and other security settings live here; a malicious or
-    # prompt-injected agent could silently disable exec approval by writing to
-    # this file.
+    # Check the exact Hermes config path before generic system prefixes so
+    # callers get the actionable config-specific error even when a profile is
+    # rooted below a protected location.
     hermes_config = _get_hermes_config_resolved()
     if hermes_config and (resolved == hermes_config or normalized == hermes_config):
         return (
@@ -657,6 +657,17 @@ def _check_sensitive_path(filepath: str, task_id: str = "default") -> str | None
             "Agent cannot modify security-sensitive configuration. "
             "Edit ~/.hermes/config.yaml directly or use 'hermes config' instead."
         )
+    _err = (
+        f"Refusing to write to sensitive system path: {filepath}\n"
+        "Use the terminal tool with sudo if you need to modify system files."
+    )
+    for candidate in (resolved, normalized):
+        if any(candidate.startswith(prefix) for prefix in _WRITABLE_SYSTEM_TEMP_PREFIXES):
+            continue
+        if any(candidate.startswith(prefix) for prefix in _SENSITIVE_PATH_PREFIXES):
+            return _err
+    if resolved in _SENSITIVE_EXACT_PATHS or normalized in _SENSITIVE_EXACT_PATHS:
+        return _err
     return None
 
 

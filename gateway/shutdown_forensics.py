@@ -241,6 +241,35 @@ def spawn_async_diagnostic(
     )
 
     try:
+        timeout_value = max(float(timeout_seconds), 0.1)
+    except (TypeError, ValueError):
+        timeout_value = 5.0
+
+    # GNU ``timeout`` is not available on a stock macOS installation. Use a
+    # detached bash watchdog instead: job control gives the diagnostic its own
+    # process group, so the watchdog can terminate the whole ps/pstree pipeline
+    # without depending on a platform-specific utility.
+    wrapped_script = (
+        "set -m\n"
+        "(\n"
+        f"{script}\n"
+        ") &\n"
+        "diagnostic_pid=$!\n"
+        "(\n"
+        f"  sleep {timeout_value:.3f}\n"
+        "  kill -TERM -- \"-$diagnostic_pid\" 2>/dev/null || true\n"
+        "  sleep 0.5\n"
+        "  kill -KILL -- \"-$diagnostic_pid\" 2>/dev/null || true\n"
+        ") &\n"
+        "watchdog_pid=$!\n"
+        "wait \"$diagnostic_pid\"\n"
+        "diagnostic_status=$?\n"
+        "kill \"$watchdog_pid\" 2>/dev/null || true\n"
+        "wait \"$watchdog_pid\" 2>/dev/null || true\n"
+        "exit \"$diagnostic_status\"\n"
+    )
+
+    try:
         # Open the log file in append mode and let the subprocess inherit.
         # We use os.O_APPEND so concurrent diagnostics from rapid signals
         # don't trample each other.
@@ -255,7 +284,7 @@ def spawn_async_diagnostic(
         # start_new_session, a SIGKILL on our cgroup takes the diag down
         # before it can flush.
         proc = subprocess.Popen(
-            ["timeout", f"{timeout_seconds:.0f}", "bash", "-c", script],
+            ["bash", "-c", wrapped_script],
             stdout=fd,
             stderr=subprocess.STDOUT,
             stdin=subprocess.DEVNULL,

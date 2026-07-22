@@ -1531,6 +1531,11 @@ class TestGatewayServiceDetection:
         assert gateway_cli._is_service_running() is False
 
 class TestGatewaySystemServiceRouting:
+    @pytest.fixture(autouse=True)
+    def _bypass_user_systemd_preflight(self, monkeypatch):
+        """These routing tests simulate systemd independently of host D-Bus."""
+        monkeypatch.setattr(gateway_cli, "_preflight_user_systemd", lambda **kw: None)
+
     def test_systemd_restart_gracefully_restarts_running_service_and_waits(self, monkeypatch, capsys):
         calls = []
 

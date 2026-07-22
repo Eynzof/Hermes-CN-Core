@@ -382,16 +382,14 @@ class BaseEnvironment(ABC):
         # source() either sees the old complete snapshot or the new complete
         # one — never a partial/truncated file.
         #
-        # The temp name MUST be unique per concurrent writer.  ``$$`` is the
-        # bash PID, but in ``&``-launched subshells (how concurrent terminal
-        # calls run) ``$$`` stays the *parent* shell's PID — so two concurrent
-        # writers would pick the SAME temp name, clobber each other's temp
-        # mid-write, and mv would then publish a torn file (the corruption is
-        # only narrowed, not closed).  ``$BASHPID`` is the actual subshell PID
-        # and is genuinely unique per writer, which closes the race.  The
-        # static path is shlex-quoted (Windows/Git-Bash drive letters, spaces; relevant when shell:bash is configured)
-        # with ``$BASHPID`` left outside the quotes so it still expands.
-        _snap_tmp = shlex.quote(self._snapshot_path + ".tmp.") + "$BASHPID"
+        # The temp name MUST be unique per concurrent writer. Generate the
+        # suffix in Python because stock macOS Bash 3.2 does not expose
+        # ``$BASHPID``; an empty suffix makes every background writer collide.
+        # A UUID is shell-independent and each _wrap_command call gets its own
+        # path. Quote the complete path for spaces and Git-Bash drive letters.
+        _snap_tmp = shlex.quote(
+            f"{self._snapshot_path}.tmp.{uuid.uuid4().hex}"
+        )
         bootstrap = (
             f"umask 077\n"
             f"export -p > {_snap_tmp}\n"
@@ -473,11 +471,12 @@ class BaseEnvironment(ABC):
         # Use atomic file replacement for env snapshot updates (issue #38249).
         # Assemble into a per-writer-unique temp file, then mv to atomically
         # replace the snapshot so concurrent source() calls never read a
-        # truncated/half-written file.  ``$BASHPID`` (not ``$$``) is the actual
-        # subshell PID — unique per concurrent ``&``-launched writer — so two
-        # writers never share a temp name and clobber each other before the mv.
-        # Static path shlex-quoted (Windows/spaces); ``$BASHPID`` left to expand.
-        _snap_tmp = shlex.quote(self._snapshot_path + ".tmp.") + "$BASHPID"
+        # truncated/half-written file. Generate a UUID in Python rather than
+        # relying on ``$BASHPID``: the variable is absent in stock macOS Bash
+        # 3.2, which otherwise collapses every writer onto the same temp path.
+        _snap_tmp = shlex.quote(
+            f"{self._snapshot_path}.tmp.{uuid.uuid4().hex}"
+        )
 
         parts = []
 

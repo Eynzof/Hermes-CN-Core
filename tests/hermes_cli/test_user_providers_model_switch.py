@@ -10,6 +10,26 @@ from hermes_cli.model_switch import list_authenticated_providers, switch_model
 from hermes_cli import runtime_provider as rp
 
 
+@pytest.fixture(autouse=True)
+def _disable_remote_nous_catalog(monkeypatch):
+    """User-provider tests must not depend on the user's network or cache."""
+    from hermes_cli.auth import PROVIDER_REGISTRY
+
+    class EmptyPool:
+        def has_credentials(self):
+            return False
+
+    for config in PROVIDER_REGISTRY.values():
+        for env_var in getattr(config, "api_key_env_vars", ()):
+            monkeypatch.delenv(env_var, raising=False)
+    monkeypatch.setattr("hermes_cli.auth._load_auth_store", lambda: {})
+    monkeypatch.setattr("agent.credential_pool.load_pool", lambda *args, **kwargs: EmptyPool())
+    monkeypatch.setattr("hermes_cli.models.get_curated_nous_model_ids", lambda: [])
+    monkeypatch.setattr("hermes_cli.models.fetch_api_models", lambda *args, **kwargs: [])
+    monkeypatch.setattr("hermes_cli.models.fetch_ollama_cloud_models", lambda: [])
+    monkeypatch.setattr("hermes_cli.models.fetch_lmstudio_models", lambda *args, **kwargs: [])
+
+
 # =============================================================================
 # Tests for list_authenticated_providers including full models list
 # =============================================================================
@@ -1235,6 +1255,14 @@ def test_current_custom_model_is_surfaced_in_builtin_provider_row(monkeypatch):
     monkeypatch.setattr("agent.models_dev.fetch_models_dev", lambda: {})
     monkeypatch.setattr("hermes_cli.providers.HERMES_OVERLAYS", {})
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test")
+    monkeypatch.setattr(
+        "agent.credential_pool.load_pool",
+        lambda slug: type(
+            "Pool",
+            (),
+            {"has_credentials": lambda self: slug == "openrouter"},
+        )(),
+    )
     # Pin a small curated catalog so the assertion is deterministic.
     monkeypatch.setattr(
         "hermes_cli.models.cached_provider_model_ids",
@@ -1264,6 +1292,14 @@ def test_current_custom_model_not_leaked_into_other_provider_rows(monkeypatch):
     monkeypatch.setattr("hermes_cli.providers.HERMES_OVERLAYS", {})
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test")
     monkeypatch.setenv("NOUS_API_KEY", "sk-test")
+    monkeypatch.setattr(
+        "agent.credential_pool.load_pool",
+        lambda slug: type(
+            "Pool",
+            (),
+            {"has_credentials": lambda self: slug in {"openrouter", "nous"}},
+        )(),
+    )
     monkeypatch.setattr(
         "hermes_cli.models.cached_provider_model_ids",
         lambda slug, **kw: ["curated/one"],

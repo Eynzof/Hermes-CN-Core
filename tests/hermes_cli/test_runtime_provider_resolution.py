@@ -8,6 +8,11 @@ import pytest
 from hermes_cli import runtime_provider as rp
 
 
+class _EmptyPool:
+    def has_credentials(self):
+        return False
+
+
 def _fake_invoke_jwt(ttl_seconds=3600):
     header = base64.urlsafe_b64encode(b'{"alg":"none","typ":"JWT"}').decode().rstrip("=")
     payload = base64.urlsafe_b64encode(
@@ -260,6 +265,7 @@ def test_resolve_runtime_provider_codex(monkeypatch):
 
 def test_resolve_runtime_provider_qwen_oauth(monkeypatch):
     monkeypatch.setattr(rp, "resolve_provider", lambda *a, **k: "qwen-oauth")
+    monkeypatch.setattr(rp, "load_pool", lambda provider: _EmptyPool())
     monkeypatch.setattr(
         rp,
         "resolve_qwen_runtime_credentials",
@@ -320,6 +326,7 @@ def test_qwen_oauth_auto_fallthrough_on_auth_failure(monkeypatch):
     from hermes_cli.auth import AuthError
 
     monkeypatch.setattr(rp, "resolve_provider", lambda *a, **k: "qwen-oauth")
+    monkeypatch.setattr(rp, "load_pool", lambda provider: _EmptyPool())
     monkeypatch.setattr(
         rp,
         "resolve_qwen_runtime_credentials",

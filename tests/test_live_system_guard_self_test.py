@@ -18,6 +18,7 @@ the guard? Add a test here too.
 from __future__ import annotations
 
 import os
+import shutil
 import sys
 import signal
 import subprocess
@@ -30,6 +31,7 @@ if sys.platform == "win32":
 # A guaranteed-foreign PID: PID 1 (init).  Owned by root, not us, and
 # always exists. A sane guard refuses to signal it.
 FOREIGN_PID = 1
+TRUE_EXE = shutil.which("true")
 
 
 # ──────────────────── kill primitives ─────────────────────────
@@ -216,6 +218,7 @@ def test_systemctl_status_passes_through():
         capture_output=True,
         text=True,
         check=False,
+        executable=TRUE_EXE,
     )
     assert r is not None  # Did not raise — the guard let it through.
 
@@ -226,6 +229,7 @@ def test_systemctl_show_passes_through():
         capture_output=True,
         text=True,
         check=False,
+        executable=TRUE_EXE,
     )
     assert r is not None
 
@@ -236,6 +240,7 @@ def test_systemctl_list_units_passes_through():
         capture_output=True,
         text=True,
         check=False,
+        executable=TRUE_EXE,
     )
     assert r is not None
 
@@ -251,6 +256,7 @@ def test_systemctl_unrelated_unit_passes_through():
         capture_output=True,
         text=True,
         check=False,
+        executable=TRUE_EXE,
     )
     assert r is not None
 

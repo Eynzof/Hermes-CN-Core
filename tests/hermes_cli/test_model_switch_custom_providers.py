@@ -6,6 +6,8 @@ only looked at `providers:`.
 """
 
 import hermes_cli.providers as providers_mod
+import pytest
+
 from hermes_cli.model_switch import list_authenticated_providers, switch_model
 from hermes_cli.providers import resolve_provider_full
 
@@ -16,6 +18,26 @@ _MOCK_VALIDATION = {
     "recognized": True,
     "message": None,
 }
+
+
+@pytest.fixture(autouse=True)
+def _disable_remote_nous_catalog(monkeypatch):
+    """Custom-provider tests must not depend on the user's network or cache."""
+    from hermes_cli.auth import PROVIDER_REGISTRY
+
+    class EmptyPool:
+        def has_credentials(self):
+            return False
+
+    for config in PROVIDER_REGISTRY.values():
+        for env_var in getattr(config, "api_key_env_vars", ()):
+            monkeypatch.delenv(env_var, raising=False)
+    monkeypatch.setattr("hermes_cli.auth._load_auth_store", lambda: {})
+    monkeypatch.setattr("agent.credential_pool.load_pool", lambda *args, **kwargs: EmptyPool())
+    monkeypatch.setattr("hermes_cli.models.get_curated_nous_model_ids", lambda: [])
+    monkeypatch.setattr("hermes_cli.models.fetch_api_models", lambda *args, **kwargs: [])
+    monkeypatch.setattr("hermes_cli.models.fetch_ollama_cloud_models", lambda: [])
+    monkeypatch.setattr("hermes_cli.models.fetch_lmstudio_models", lambda *args, **kwargs: [])
 
 
 def test_list_authenticated_providers_includes_custom_providers(monkeypatch):

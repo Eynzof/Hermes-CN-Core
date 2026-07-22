@@ -454,7 +454,12 @@ DEFAULT_CONTEXT_LENGTHS = {
     "grok-3": 131072,           # grok-3, grok-3-mini, grok-3-fast, grok-3-mini-fast
     "grok-2": 131072,           # grok-2, grok-2-1212, grok-2-latest
     "grok": 131072,             # catch-all (grok-beta, unknown grok-*)
-    # Kimi
+    # Kimi — K3 ships with a 1 Mi context window (1,048,576; verified against
+    # models.dev and OpenRouter live metadata, matching the endpoint-scoped
+    # override in _endpoint_scoped_context_length). Longest-key-first substring
+    # matching ensures "kimi-k3" resolves to 1M while older/unknown Kimi models
+    # still hit the generic 256K fallback.
+    "kimi-k3": 1_048_576,
     "kimi": 262144,
     # Tencent — Hy3 Preview (Hunyuan) with 256K context window.
     # OpenRouter live metadata reports 262144 (256 × 1024); align the
@@ -674,6 +679,35 @@ def _skip_persistent_context_cache(base_url: str, provider: str) -> bool:
     can reload the model with a different context_length at any time.
    """
     return provider == "lmstudio"
+
+
+def _endpoint_scoped_context_length(model: str, base_url: str) -> Optional[int]:
+    """Return metadata confirmed only for the Kimi Coding endpoint.
+
+    Kimi Coding serves K3 under the bare slug ``k3``, but users may also
+    configure or select the public-facing aliases ``kimi-k3`` and
+    ``kimi-k3-cot``. Only canonical ``https://api.kimi.com/coding`` endpoints
+    (legacy Moonshot keys do not serve K3) get the 1 Mi context window.
+    """
+    normalized = _normalize_base_url(base_url)
+    try:
+        parsed = urlparse(normalized)
+        port = parsed.port
+    except ValueError:
+        return None
+    if (
+        parsed.scheme.lower() == "https"
+        and (parsed.hostname or "").lower() == "api.kimi.com"
+        and port in (None, 443)
+        and parsed.username is None
+        and parsed.password is None
+        and parsed.path.rstrip("/") in {"/coding", "/coding/v1"}
+        and not parsed.query
+        and not parsed.fragment
+        and model.strip().lower() in {"k3", "kimi-k3", "kimi-k3-cot"}
+    ):
+        return 1_048_576
+    return None
 
 
 def _maybe_cache_local_context_length(

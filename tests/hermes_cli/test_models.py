@@ -979,3 +979,25 @@ class TestCodexSoftAcceptPlausibilityGate:
         r = validate_requested_model("gpt-5.5", "openai-codex")
         assert r["accepted"] is True
         assert r["recognized"] is True
+
+
+class TestKimiK3ContextLengthInvariant:
+    """Every model in the kimi-coding/kimi-coding-cn/moonshot curated
+    lists that starts with ``kimi-k3`` must have a context-length entry
+    in ``agent/model_metadata.py``."""
+
+    def test_kimi_k3_has_context_length_in_metadata(self):
+        from hermes_cli.models import _PROVIDER_MODELS
+        from agent.model_metadata import DEFAULT_CONTEXT_LENGTHS
+
+        for list_name in ("kimi-coding", "kimi-coding-cn", "moonshot"):
+            models = _PROVIDER_MODELS.get(list_name, [])
+            for model_id in models:
+                if model_id.startswith("kimi-k3"):
+                    assert model_id in DEFAULT_CONTEXT_LENGTHS, (
+                        f"{model_id} in {list_name} but missing from "
+                        "DEFAULT_CONTEXT_LENGTHS"
+                    )
+                    assert DEFAULT_CONTEXT_LENGTHS[model_id] == 1_048_576, (
+                        f"{model_id} context length should be 1,048,576"
+                    )

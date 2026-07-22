@@ -77,6 +77,9 @@ def _build_agent_with_db(db: SessionDB, session_id: str):
     compressor._last_aux_model_failure_model = None
     compressor._last_aux_model_failure_error = None
     agent.context_compressor = compressor
+    # Locking is the behavior under test. Skip the unrelated lazy auxiliary
+    # provider probe so both worker threads reach the lock deterministically.
+    agent._compression_feasibility_checked = True
     # These tests cover the ROTATION fallback path (forking, child sessions,
     # lock contention) — pin in_place=False so they keep exercising it
     # regardless of the global default (which flipped to True in #38763).
@@ -128,6 +131,8 @@ def test_concurrent_compression_does_not_fork_session(tmp_path: Path) -> None:
     t_b.start()
     t_a.join(timeout=10)
     t_b.join(timeout=10)
+    assert not t_a.is_alive()
+    assert not t_b.is_alive()
 
     # The invariant Damien's incident is about: the parent must NEVER end up
     # with two (or more) children — that is the transcript fork. The lock
@@ -171,6 +176,26 @@ def test_concurrent_compression_does_not_fork_session(tmp_path: Path) -> None:
     assert db.get_compression_lock_holder(parent_sid) is None, (
         "Compression lock leaked: still held after both paths completed."
     )
+
+
+def test_stale_compressor_skips_parent_that_already_rotated(tmp_path: Path) -> None:
+    """A delayed old-session snapshot must not create a sibling continuation."""
+    db = SessionDB(db_path=tmp_path / "state.db")
+    parent_sid = "STALE_PARENT_TEST"
+    db.create_session(parent_sid, source="discord")
+
+    winner = _build_agent_with_db(db, parent_sid)
+    stale = _build_agent_with_db(db, parent_sid)
+    messages = [{"role": "user", "content": f"m{i}"} for i in range(20)]
+
+    winner._compress_context(messages, "sys", approx_tokens=120_000)
+    returned, _ = stale._compress_context(messages, "sys", approx_tokens=120_000)
+
+    assert _count_children(db, parent_sid) == 1
+    assert stale.session_id == parent_sid
+    assert returned is messages
+    stale.context_compressor.compress.assert_not_called()
+    assert db.get_compression_lock_holder(parent_sid) is None
 
 
 def test_skipped_compression_returns_messages_unchanged(tmp_path: Path) -> None:
@@ -253,8 +278,10 @@ def test_lock_refresh_keeps_owner_live_past_initial_ttl(tmp_path: Path, monkeypa
     agent_a = _build_agent_with_db(db, parent_sid)
     agent_a._compression_lock_ttl_seconds = 1.0
     agent_a._compression_lock_refresh_interval = 0.25
+    compress_started = threading.Event()
 
     def _slow_compress(*_a, **_kw):
+        compress_started.set()
         time.sleep(2.0)
         return [
             {"role": "user", "content": "[CONTEXT COMPACTION] summary"},
@@ -269,9 +296,7 @@ def test_lock_refresh_keeps_owner_live_past_initial_ttl(tmp_path: Path, monkeypa
 
     t_a = threading.Thread(target=run, args=(agent_a,), name="refresh_owner")
     t_a.start()
-    deadline = time.time() + 2.0
-    while db.get_compression_lock_holder(parent_sid) is None and time.time() < deadline:
-        time.sleep(0.05)
+    assert compress_started.wait(timeout=10)
     assert db.get_compression_lock_holder(parent_sid) is not None
     time.sleep(1.2)
     assert db.try_acquire_compression_lock(

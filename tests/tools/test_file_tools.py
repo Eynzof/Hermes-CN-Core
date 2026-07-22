@@ -4,13 +4,28 @@ Tests verify tool schemas, handler dispatch, validation logic, and error
 handling without requiring a running terminal environment.
 """
 
+import os
 import orjson
 import logging
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from tools.file_tools import (
     PATCH_SCHEMA,
 )
+
+
+@pytest.fixture(autouse=True)
+def _reset_read_tracker():
+    """Each test models a fresh conversation's file-read state."""
+    from tools.file_tools import _read_tracker, _read_tracker_lock
+
+    with _read_tracker_lock:
+        _read_tracker.clear()
+    yield
+    with _read_tracker_lock:
+        _read_tracker.clear()
 
 
 class TestReadFileHandler:
@@ -77,7 +92,9 @@ class TestWriteFileHandler:
         from tools.file_tools import write_file_tool
         result = orjson.loads(write_file_tool("/tmp/out.txt", "hello world!\n"))
         assert result["status"] == "ok"
-        mock_ops.write_file.assert_called_once_with("/tmp/out.txt", "hello world!\n")
+        mock_ops.write_file.assert_called_once_with(
+            os.path.realpath("/tmp/out.txt"), "hello world!\n"
+        )
 
     @patch("tools.file_tools._get_file_ops")
     def test_permission_error_returns_error_json_without_error_log(self, mock_get, caplog):
@@ -182,7 +199,9 @@ class TestPatchHandler:
             old_string="foo", new_string="bar"
         ))
         assert result["status"] == "ok"
-        mock_ops.patch_replace.assert_called_once_with("/tmp/f.py", "foo", "bar", False)
+        mock_ops.patch_replace.assert_called_once_with(
+            os.path.realpath("/tmp/f.py"), "foo", "bar", False
+        )
 
     @patch("tools.file_tools._get_file_ops")
     def test_replace_mode_replace_all_flag(self, mock_get):
@@ -195,7 +214,9 @@ class TestPatchHandler:
         from tools.file_tools import patch_tool
         patch_tool(mode="replace", path="/tmp/f.py",
                    old_string="x", new_string="y", replace_all=True)
-        mock_ops.patch_replace.assert_called_once_with("/tmp/f.py", "x", "y", True)
+        mock_ops.patch_replace.assert_called_once_with(
+            os.path.realpath("/tmp/f.py"), "x", "y", True
+        )
 
     @patch("tools.file_tools._get_file_ops")
     def test_replace_mode_missing_path_errors(self, mock_get):

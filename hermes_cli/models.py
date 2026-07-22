@@ -63,6 +63,7 @@ OPENROUTER_MODELS: list[tuple[str, str]] = [
     ("qwen/qwen3.7-plus",                      ""),
     ("qwen/qwen3.6-35b-a3b",                   ""),
     # MoonshotAI
+    ("moonshotai/kimi-k3",                     "recommended"),
     ("moonshotai/kimi-k2.6",                   "recommended"),
     ("moonshotai/kimi-k2.7-code",              ""),
     # MiniMax
@@ -214,6 +215,7 @@ _PROVIDER_MODELS: dict[str, list[str]] = {
         "qwen/qwen3.7-plus",
         "qwen/qwen3.6-35b-a3b",
         # MoonshotAI
+        "moonshotai/kimi-k3",
         "moonshotai/kimi-k2.6",
         "moonshotai/kimi-k2.7-code",
         # MiniMax
@@ -314,6 +316,7 @@ _PROVIDER_MODELS: dict[str, list[str]] = {
         "minimaxai/minimax-m3",
     ],
     "kimi-coding": [
+        "kimi-k3",
         "kimi-k2.7-code",
         "kimi-k2.6",
         "kimi-k2.5",
@@ -325,6 +328,7 @@ _PROVIDER_MODELS: dict[str, list[str]] = {
         "kimi-k2-0905-preview",
     ],
     "kimi-coding-cn": [
+        "kimi-k3",
         "kimi-k2.6",
         "kimi-k2.5",
         "kimi-k2-thinking",
@@ -336,6 +340,7 @@ _PROVIDER_MODELS: dict[str, list[str]] = {
         "step-3.5-flash-2603",
     ],
     "moonshot": [
+        "kimi-k3",
         "kimi-k2.6",
         "kimi-k2.5",
         "kimi-k2-thinking",
@@ -457,6 +462,7 @@ _PROVIDER_MODELS: dict[str, list[str]] = {
         "nemotron-3-ultra-free",
     ],
     "opencode-go": [
+        "kimi-k3",
         "kimi-k2.7-code",
         "kimi-k2.6",
         "kimi-k2.5",
@@ -1253,9 +1259,15 @@ _PROVIDER_ALIASES = {
     "zen": "opencode-zen",
     "go": "opencode-go",
     "opencode-go-sub": "opencode-go",
+    "fireworks-ai": "fireworks",
+    "fw": "fireworks",
     "kilo": "kilocode",
     "kilo-code": "kilocode",
     "kilo-gateway": "kilocode",
+    "deep-infra": "deepinfra",
+    "deepinfra-ai": "deepinfra",
+    "solar": "upstage",
+    "upstage-ai": "upstage",
     "dashscope": "alibaba",
     "aliyun": "alibaba",
     "qwen": "alibaba",

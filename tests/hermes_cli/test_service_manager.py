@@ -473,6 +473,37 @@ def test_seed_supervise_skeleton_creates_expected_layout(tmp_path) -> None:
     assert stat.S_IMODE(control.stat().st_mode) == 0o660
 
 
+def test_seed_supervise_skeleton_restores_mode_after_chown_fallback(
+    tmp_path, monkeypatch
+) -> None:
+    """A denied image-UID chown must not lose event/'s setgid bit."""
+    import os
+    import stat
+
+    from hermes_cli.service_manager import _seed_supervise_skeleton
+
+    real_chown = os.chown
+    calls: list[tuple[int, int]] = []
+
+    def _chown(path, uid, gid):
+        calls.append((uid, gid))
+        if (uid, gid) == (10000, 10000):
+            raise PermissionError
+        real_chown(path, uid, gid)
+
+    monkeypatch.setattr(os, "chown", _chown)
+    svc_dir = tmp_path / "gateway-fallback"
+    svc_dir.mkdir()
+
+    _seed_supervise_skeleton(svc_dir)
+
+    event = svc_dir / "event"
+    assert (10000, 10000) in calls
+    assert (-1, os.getgid()) in calls
+    assert event.stat().st_gid == os.getgid()
+    assert stat.S_IMODE(event.stat().st_mode) == 0o3730
+
+
 def test_seed_supervise_skeleton_handles_log_subservice(tmp_path) -> None:
     """When a log/ subdir exists, its supervise tree also gets seeded.
 

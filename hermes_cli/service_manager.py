@@ -483,8 +483,12 @@ def _seed_supervise_skeleton(svc_dir: Path) -> None:
     import os
 
     def _set_hermes_ownership_and_mode(path: Path, mode: int) -> None:
+        chown = getattr(os, "chown", None)
+        if chown is None:
+            path.chmod(mode)
+            return
         try:
-            os.chown(path, _HERMES_UID, _HERMES_GID)
+            chown(path, _HERMES_UID, _HERMES_GID)
         except PermissionError:
             # An unprivileged hermes process cannot chown to the image UID/GID
             # when this helper is exercised outside the container.  It can,
@@ -492,10 +496,12 @@ def _seed_supervise_skeleton(svc_dir: Path) -> None:
             # matters on BSD/macOS, where a newly-created entry inherits its
             # parent's group: chmod would otherwise silently drop setgid when
             # the caller is not a member of that inherited group.
-            try:
-                os.chown(path, -1, os.getgid())
-            except PermissionError:
-                pass
+            getgid = getattr(os, "getgid", None)
+            if getgid is not None:
+                try:
+                    chown(path, -1, getgid())
+                except PermissionError:
+                    pass
 
         # chown may clear setuid/setgid bits, so the requested mode must always
         # be the final metadata operation.

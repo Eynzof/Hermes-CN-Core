@@ -69,7 +69,7 @@ def _macos_has_image() -> bool:
     try:
         info = subprocess.run(
             ["osascript", "-e", "clipboard info"],
-            capture_output=True, text=True, timeout=3,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=3,
         )
         return "«class PNGf»" in info.stdout or "«class TIFF»" in info.stdout
     except Exception:
@@ -111,7 +111,7 @@ def _macos_osascript(dest: Path) -> bool:
     try:
         r = subprocess.run(
             ["osascript", "-e", script],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=5,
         )
         if r.returncode == 0 and "fail" not in r.stdout and dest.exists() and dest.stat().st_size > 0:
             return True
@@ -345,7 +345,7 @@ def _wayland_has_image() -> bool:
     try:
         r = subprocess.run(
             ["wl-paste", "--list-types"],
-            capture_output=True, text=True, timeout=3,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=3,
         )
         return r.returncode == 0 and any(
             t.startswith("image/") for t in r.stdout.splitlines()
@@ -363,7 +363,7 @@ def _wayland_save(dest: Path) -> bool:
         # Check available MIME types
         types_r = subprocess.run(
             ["wl-paste", "--list-types"],
-            capture_output=True, text=True, timeout=3,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=3,
         )
         if types_r.returncode != 0:
             return False
@@ -465,7 +465,7 @@ def _xclip_has_image() -> bool:
     try:
         r = subprocess.run(
             ["xclip", "-selection", "clipboard", "-t", "TARGETS", "-o"],
-            capture_output=True, text=True, timeout=3,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=3,
         )
         return r.returncode == 0 and "image/png" in r.stdout
     except FileNotFoundError:
@@ -481,7 +481,7 @@ def _xclip_save(dest: Path) -> bool:
     try:
         targets = subprocess.run(
             ["xclip", "-selection", "clipboard", "-t", "TARGETS", "-o"],
-            capture_output=True, text=True, timeout=3,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=3,
         )
         if "image/png" not in targets.stdout:
             return False

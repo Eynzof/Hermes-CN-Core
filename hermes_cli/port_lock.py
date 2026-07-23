@@ -125,7 +125,7 @@ def _pid_is_running(pid: int) -> bool:
             output = subprocess.check_output(
                 ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
                 stderr=subprocess.DEVNULL,
-                text=True,
+                text=True, errors="replace",
                 timeout=5,
             )
             return str(pid) in output

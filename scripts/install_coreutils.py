@@ -71,7 +71,7 @@ def _run(cmd: list[str], timeout: int = 300) -> subprocess.CompletedProcess[str]
     return subprocess.run(
         cmd,
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8", errors="replace",
         timeout=timeout,
         creationflags=windows_hide_flags(),
     )

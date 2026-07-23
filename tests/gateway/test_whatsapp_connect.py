@@ -590,7 +590,9 @@ class TestHttpSessionLifecycle:
         mock_run.assert_called_once_with(
             ["taskkill", "/PID", "12345", "/T"],
             capture_output=True,
+            # taskkill prints in the OEM/ANSI codepage — locale decode + replace.
             text=True,
+            errors="replace",
             timeout=10,
         )
         mock_proc.terminate.assert_not_called()

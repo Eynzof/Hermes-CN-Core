@@ -2179,11 +2179,15 @@ export interface AutomationBlueprint {
   appUrl: string;
 }
 
+export type SkillProvenance = "bundled" | "hub" | "agent";
+
 export interface SkillInfo {
   name: string;
   description: string;
-  category: string;
+  category: string | null;
   enabled: boolean;
+  provenance: SkillProvenance;
+  usage: number;
 }
 
 export interface SkillContent {

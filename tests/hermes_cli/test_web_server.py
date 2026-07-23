@@ -4296,6 +4296,39 @@ class TestNewEndpoints:
             },
         ]
 
+    def test_skills_list_reports_canonical_provenance_priority(self, monkeypatch):
+        import tools.skill_usage as skill_usage
+        import tools.skills_tool as skills_tool
+
+        names = ["bundled-skill", "hub-skill", "agent-skill"]
+        monkeypatch.setattr(
+            skills_tool,
+            "_find_all_skills",
+            lambda *, skip_disabled=False: [
+                {"name": name, "description": name, "category": "demo"}
+                for name in names
+            ],
+        )
+        monkeypatch.setattr(
+            skill_usage,
+            "_read_bundled_manifest_names",
+            lambda: {"bundled-skill", "hub-skill"},
+        )
+        monkeypatch.setattr(skill_usage, "_read_hub_installed_names", lambda: {"hub-skill"})
+        monkeypatch.setattr(skill_usage, "load_usage", lambda: {})
+
+        resp = self.client.get("/api/skills")
+
+        assert resp.status_code == 200
+        assert {
+            skill["name"]: skill["provenance"]
+            for skill in resp.json()
+        } == {
+            "bundled-skill": "bundled",
+            "hub-skill": "hub",
+            "agent-skill": "agent",
+        }
+
     def test_toolsets_list(self):
         resp = self.client.get("/api/tools/toolsets")
         assert resp.status_code == 200

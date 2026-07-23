@@ -1882,10 +1882,11 @@ function findGitBash() {
   // no auto-download via PortableGit).
   const candidates = [
     path.join(process.env['ProgramFiles'] || 'C:\\Program Files', 'Git', 'bin', 'bash.exe'),
-    path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Git', 'bin', 'bash.exe'),
+    path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Git', 'bin', 'bash.exe')
   ]
 
   const localAppData = process.env.LOCALAPPDATA || ''
+
   if (localAppData) {
     candidates.push(path.join(localAppData, 'Programs', 'Git', 'bin', 'bash.exe'))
   }
@@ -3729,8 +3730,10 @@ async function ensureRuntime(backend) {
         findOnPath('pwsh') ||
         (() => {
           const systemRoot = process.env.SystemRoot || process.env.windir || 'C:\\Windows'
+
           return isExecutableFile(path.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'))
         })()
+
       if (!hasPowerShell) {
         throw new Error(
           'PowerShell is required for Hermes on Windows but was not found. ' +

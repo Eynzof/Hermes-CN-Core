@@ -11376,6 +11376,59 @@ def _normalize_message_content(content: str | None) -> str | None:
     return content
 
 
+def _group_chat_room_messages(session_id: str):
+    """[CN-fork] P-052: return a live group-chat room's transcript as message
+    rows (with sender attribution), or None if it isn't a group room.
+
+    Group rooms live in the gateway process (``tui_gateway.server._group_rooms``),
+    not the session DB. Reading the DB for a ``gc_`` id hits per-member
+    sub-sessions (``gc_<id>:<profile>``) that carry no sender, which is why
+    persisted group messages lost their member identity on reload. Serving the
+    in-memory transcript keeps every message tagged with its sender.
+    """
+    if not session_id.startswith("gc_") or ":" in session_id:
+        return None
+    try:
+        from tui_gateway import server as _gw_server
+
+        room = _gw_server._group_rooms.get(session_id)
+    except Exception:
+        return None
+    if room is None:
+        return None
+    rows = []
+    for index, message in enumerate(room.transcript):
+        row = {
+            "id": index + 1,
+            "session_id": session_id,
+            "role": str(message.get("role") or "user"),
+            "content": message.get("content") or "",
+            "timestamp": message.get("timestamp") or 0,
+            "sender_agent_id": message.get("sender_id") or "",
+            "sender_name": message.get("sender_name") or "",
+            "sender_avatar": message.get("avatar") or "",
+            "group_status": message.get("status") or "complete",
+        }
+        for key in (
+            "message_id",
+            "chain_id",
+            "root_message_id",
+            "parent_message_id",
+        ):
+            source_key = "id" if key == "message_id" else key
+            value = str(message.get(source_key) or "")
+            if value:
+                row[key] = value
+        mention_depth = message.get("mention_depth")
+        if isinstance(mention_depth, int):
+            row["mention_depth"] = mention_depth
+        route_kind = str(message.get("route_kind") or "")
+        if route_kind in {"user", "relay"}:
+            row["route_kind"] = route_kind
+        rows.append(row)
+    return rows
+
+
 @app.get("/api/sessions/{session_id}/messages")
 async def get_session_messages(
     session_id: str,
@@ -11383,6 +11436,14 @@ async def get_session_messages(
     limit: Optional[int] = None,
     offset: int = 0,
 ):
+    gc_rows = _group_chat_room_messages(session_id)
+    if gc_rows is not None:
+        return {
+            "session_id": session_id,
+            "messages": gc_rows,
+            "pagination": {"limit": limit, "offset": offset, "returned": len(gc_rows)},
+        }
+
     def _read():
         db = _open_session_db_for_profile(profile)
         try:

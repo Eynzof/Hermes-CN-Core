@@ -1120,6 +1120,23 @@ DEFAULT_CONFIG = {
     # sessions (no live client) so accumulated agents don't pile up under memory
     # pressure. Reopening one re-resumes it from disk. 0/null disables.
     "max_live_sessions": 16,
+    # Desktop multi-agent room orchestration. This policy is pinned when a room
+    # is created so its per-member system prompts stay byte-stable for the room
+    # lifetime. Existing rooms are not mutated by config changes.
+    "group_chat": {
+        "auto_relay": {
+            "enabled": True,
+            # Only explicit addresses at the beginning of a completed agent
+            # reply schedule another member. Incidental prose mentions do not.
+            "require_leading_mention": True,
+            # Agent-authored broadcast can multiply model calls exponentially;
+            # keep it off unless an operator explicitly accepts that cost.
+            "allow_agent_all": False,
+            "max_depth": 4,
+            "max_turns": 8,
+            "max_chain_seconds": 300,
+        }
+    },
     "agent": {
         "max_turns": 90,
         # Inactivity timeout for gateway agent execution (seconds).

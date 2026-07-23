@@ -26,6 +26,42 @@ def _args(**kw):
     return types.SimpleNamespace(**defaults)
 
 
+def _stub_dashboard_start_dependencies(main_mod, monkeypatch):
+    """Let cmd_dashboard reach the port-lock/start_server boundary."""
+    monkeypatch.setattr(
+        "hermes_cli.profiles.get_active_profile_name",
+        lambda: "default",
+    )
+    monkeypatch.delenv("HERMES_WEB_DIST", raising=False)
+    monkeypatch.setattr(main_mod, "_sync_bundled_skills_quietly", lambda: None)
+    monkeypatch.setattr(main_mod, "_build_web_ui", lambda *_a, **_k: True)
+    monkeypatch.setitem(sys.modules, "fastapi", types.SimpleNamespace())
+    monkeypatch.setitem(sys.modules, "uvicorn", types.SimpleNamespace())
+    monkeypatch.setitem(
+        sys.modules,
+        "hermes_logging",
+        types.SimpleNamespace(setup_logging=lambda **_k: None),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "hermes_cli.plugins",
+        types.SimpleNamespace(discover_plugins=lambda: None),
+    )
+    monkeypatch.setattr(
+        "hermes_cli.mcp_startup.start_background_mcp_discovery",
+        lambda **_kwargs: None,
+    )
+    starts = []
+    monkeypatch.setitem(
+        sys.modules,
+        "hermes_cli.web_server",
+        types.SimpleNamespace(
+            start_server=lambda **kwargs: starts.append(kwargs),
+        ),
+    )
+    return starts
+
+
 class TestUnifiedDashboardRouting:
     def test_profile_launch_attaches_to_running_dashboard(self, main_mod, monkeypatch):
         monkeypatch.setattr(
@@ -252,3 +288,59 @@ class TestUnifiedDashboardRouting:
                 "thread_name": "dashboard-mcp-discovery",
             }
         ]
+
+    def test_managed_dashboard_skips_duplicate_child_port_claim(
+        self,
+        main_mod,
+        monkeypatch,
+    ):
+        """Desktop owns the lock set; its Core child must not reject itself."""
+        starts = _stub_dashboard_start_dependencies(main_mod, monkeypatch)
+        monkeypatch.setenv("HERMES_DESKTOP_MANAGED", "1")
+
+        import hermes_cli.port_lock as port_lock_mod
+
+        monkeypatch.setattr(
+            port_lock_mod,
+            "claim_port_set",
+            lambda _ports: pytest.fail(
+                "managed Core child must not re-claim Desktop-owned ports"
+            ),
+        )
+
+        main_mod.cmd_dashboard(_args(port=9120))
+
+        assert len(starts) == 1
+        assert starts[0]["port"] == 9120
+
+    def test_standalone_dashboard_still_claims_and_releases_ports(
+        self,
+        main_mod,
+        monkeypatch,
+    ):
+        """Skipping the duplicate child lock must not weaken standalone CLI."""
+        starts = _stub_dashboard_start_dependencies(main_mod, monkeypatch)
+        monkeypatch.delenv("HERMES_DESKTOP_MANAGED", raising=False)
+        claimed = []
+        released = []
+
+        class FakeLock:
+            def __init__(self, port):
+                self.port = port
+
+            def release(self):
+                released.append(self.port)
+
+        import hermes_cli.port_lock as port_lock_mod
+
+        def claim_port_set(ports):
+            claimed.append(list(ports))
+            return [FakeLock(port) for port in ports]
+
+        monkeypatch.setattr(port_lock_mod, "claim_port_set", claim_port_set)
+
+        main_mod.cmd_dashboard(_args(port=9119))
+
+        assert len(starts) == 1
+        assert claimed == [[9119, 8644, 8645]]
+        assert released == [9119, 8644, 8645]

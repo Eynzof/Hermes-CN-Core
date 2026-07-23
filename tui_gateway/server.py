@@ -311,6 +311,10 @@ _LONG_HANDLERS = frozenset(
         "session.compress",
         "session.list",
         "session.resume",
+        # A group turn may span several profile-backed member calls. Keep it off
+        # the WS reader so groupchat.interrupt and approval responses remain
+        # responsive while the bounded relay chain is running.
+        "groupchat.submit",
         "shell.exec",
         "skills.manage",
         "slash.exec",
@@ -11424,6 +11428,401 @@ def _(rid, params: dict) -> dict:
         )
     except Exception as e:
         return _err(rid, 5027, str(e))
+
+
+# ── Multi-agent group chat (CN fork P-052) ─────────────────────────────────
+# In-memory group-chat rooms: the shared multi-party transcript lives here and
+# each @mentioned member replies *serially* with its own profile-backed AIAgent.
+# Completed agent replies may start a bounded next wave by leading with
+# ``@member``. Rooms are still not persisted across Core restarts and do not yet
+# compress context. See agent/groupchat_{loop,orchestrator}.py and P-052.
+#
+# groupchat.submit is a long handler. dispatch() copies the bound transport
+# ContextVar into its pool worker, so all message/chain events stay pinned to the
+# initiating websocket while the reader remains free for groupchat.interrupt.
+_group_rooms: dict = {}
+_group_rooms_lock = threading.Lock()
+_group_room_run_locks: dict[str, threading.Lock] = {}
+_group_chain_controls: dict[str, Any] = {}
+
+
+def _load_group_chat_relay_config():
+    """Load config.yaml policy with bounded read-site defaults."""
+    from agent.groupchat_loop import GroupChatRelayConfig
+
+    root = _load_cfg()
+    group_chat = root.get("group_chat") if isinstance(root, dict) else {}
+    if not isinstance(group_chat, dict):
+        group_chat = {}
+    relay = group_chat.get("auto_relay")
+    if not isinstance(relay, dict):
+        relay = {}
+
+    def bounded_int(key: str, default: int, minimum: int, maximum: int) -> int:
+        try:
+            value = int(relay.get(key, default))
+        except (TypeError, ValueError):
+            return default
+        return max(minimum, min(maximum, value))
+
+    try:
+        max_seconds = float(relay.get("max_chain_seconds", 300))
+    except (TypeError, ValueError):
+        max_seconds = 300.0
+
+    return GroupChatRelayConfig(
+        enabled=is_truthy_value(relay.get("enabled"), default=True),
+        require_leading_mention=is_truthy_value(
+            relay.get("require_leading_mention"),
+            default=True,
+        ),
+        allow_agent_all=is_truthy_value(
+            relay.get("allow_agent_all"),
+            default=False,
+        ),
+        max_depth=bounded_int("max_depth", 4, 1, 10),
+        max_turns=bounded_int("max_turns", 8, 1, 64),
+        max_chain_seconds=max(10.0, min(3600.0, max_seconds)),
+    )
+
+
+def _group_chat_relay_payload(config) -> dict[str, Any]:
+    return {
+        "enabled": config.enabled,
+        "require_leading_mention": config.require_leading_mention,
+        "allow_agent_all": config.allow_agent_all,
+        "max_depth": config.max_depth,
+        "max_turns": config.max_turns,
+        "max_chain_seconds": config.max_chain_seconds,
+    }
+
+
+def _interrupt_group_agent_async(agent: Any) -> None:
+    """Interrupt a group member without blocking the websocket reader."""
+
+    def interrupt() -> None:
+        try:
+            if callable(getattr(agent, "interrupt", None)):
+                agent.interrupt("群聊接力已停止")
+        except Exception:
+            logger.debug("Failed to interrupt group-chat agent", exc_info=True)
+
+    _REAL_THREAD(
+        target=interrupt,
+        daemon=True,
+        name="groupchat-interrupt",
+    ).start()
+
+
+def _group_member_from_profile(profile_name: str):
+    """Build a GroupMember from an on-disk profile, or None if it doesn't exist."""
+    from agent.groupchat_loop import GroupMember
+    from hermes_cli import profiles as profiles_mod
+
+    canon = profiles_mod.normalize_profile_name(profile_name)
+    if not profiles_mod.profile_exists(canon):
+        return None
+    description = ""
+    try:
+        meta = profiles_mod.read_profile_meta(profiles_mod.get_profile_dir(canon))
+        description = str((meta or {}).get("description") or "")
+    except Exception:
+        description = ""
+    return GroupMember(profile=canon, name=canon, description=description)
+
+
+@method("groupchat.create")
+def _(rid, params: dict) -> dict:
+    from agent.groupchat_loop import GroupRoom
+
+    raw_members = params.get("members") or []
+    title = str(params.get("title") or "").strip() or "群聊"
+    if not isinstance(raw_members, list) or not raw_members:
+        return _err(rid, 4400, "groupchat requires at least one member profile")
+
+    members = []
+    seen_names = set()
+    for entry in raw_members:
+        name = str(entry or "").strip()
+        if not name:
+            continue
+        member = _group_member_from_profile(name)
+        if member is None:
+            return _err(rid, 4404, f"profile not found: {name}")
+        if member.name in seen_names:
+            continue
+        seen_names.add(member.name)
+        members.append(member)
+    if not members:
+        return _err(rid, 4400, "no valid member profiles")
+
+    room_id = f"gc_{uuid.uuid4().hex[:8]}"
+    room = GroupRoom(
+        room_id=room_id,
+        name=title,
+        members=members,
+        relay_config=_load_group_chat_relay_config(),
+    )
+    with _group_rooms_lock:
+        _group_rooms[room_id] = room
+        _group_room_run_locks[room_id] = threading.Lock()
+
+    return _ok(
+        rid,
+        {
+            "room_id": room_id,
+            "title": title,
+            "members": [
+                {
+                    "profile": m.profile,
+                    "name": m.name,
+                    "description": m.description,
+                    "agent_id": m.agent_id,
+                }
+                for m in members
+            ],
+            "relay": _group_chat_relay_payload(room.relay_config),
+        },
+    )
+
+
+@method("groupchat.info")
+def _(rid, params: dict) -> dict:
+    room_id = str(params.get("room_id") or "")
+    with _group_rooms_lock:
+        room = _group_rooms.get(room_id)
+        active_control = _group_chain_controls.get(room_id)
+    if room is None:
+        return _err(rid, 4404, f"group room not found: {room_id}")
+    return _ok(
+        rid,
+        {
+            "room_id": room.room_id,
+            "title": room.name,
+            "members": [
+                {
+                    "profile": m.profile,
+                    "name": m.name,
+                    "description": m.description,
+                    "avatar": m.avatar,
+                    "agent_id": m.agent_id,
+                }
+                for m in room.members
+            ],
+            "relay": _group_chat_relay_payload(room.relay_config),
+            "active_chain_id": (
+                active_control.chain_id if active_control is not None else None
+            ),
+        },
+    )
+
+
+def _extract_group_reply(result) -> tuple[str, str]:
+    """Pull (text, status) out of a run_conversation result for the room."""
+    if not isinstance(result, dict):
+        return str(result), "complete"
+    raw = result.get("final_response") or ""
+    if result.get("interrupted"):
+        status = "interrupted"
+    elif result.get("error"):
+        status = "error"
+    else:
+        status = "complete"
+    if (not raw) and result.get("error"):
+        raw = f"Error: {result.get('error')}"
+    return raw, status
+
+
+def _run_group_chat_member(room_id, room, dispatch, control):
+    """Run one profile-backed member and emit a sender-tagged message stream."""
+    from agent.groupchat_loop import prepare_member_turn
+    from agent.groupchat_orchestrator import GroupTurnResult
+    from hermes_cli import profiles as profiles_mod
+
+    target = dispatch.target
+    chain_payload = {
+        "message_id": dispatch.response_message_id,
+        "chain_id": dispatch.chain_id,
+        "root_message_id": dispatch.root_message_id,
+        "parent_message_id": dispatch.parent_message_id,
+        "mention_depth": dispatch.mention_depth,
+        "route_kind": dispatch.route_kind,
+        "dispatch_turn": dispatch.turn_number,
+    }
+    sender_payload = {
+        "sender_agent_id": target.agent_id,
+        "sender_name": target.name,
+        "sender_avatar": target.avatar or "",
+        **chain_payload,
+    }
+    _emit("message.start", room_id, dict(sender_payload))
+
+    token = None
+    interrupt_callback = None
+    try:
+        token = set_hermes_home_override(
+            str(profiles_mod.get_profile_dir(target.profile))
+        )
+        trigger = dispatch.trigger_message
+        history, current, system_message = prepare_member_turn(
+            target,
+            dispatch.prior_messages,
+            str(trigger.get("content") or ""),
+            room.name,
+            room.members,
+            trigger_sender_id=str(trigger.get("sender_id") or ""),
+            trigger_sender_name=str(trigger.get("sender_name") or "unknown"),
+            relay_config=room.relay_config,
+        )
+        member_key = f"{room_id}:{target.profile}"
+        agent = _make_agent(room_id, member_key, session_id=member_key)
+        interrupt_callback = lambda: _interrupt_group_agent_async(agent)
+        control.set_active_interrupt(interrupt_callback)
+
+        def _stream(delta, _sp=sender_payload):
+            if delta is None or control.stop_requested:
+                return
+            _emit("message.delta", room_id, {"text": delta, **_sp})
+
+        result = agent.run_conversation(
+            current,
+            system_message=system_message,
+            conversation_history=history,
+            stream_callback=_stream,
+        )
+        raw, status = _extract_group_reply(result)
+        if control.stop_requested and status == "complete":
+            status = "interrupted"
+        _emit(
+            "message.complete",
+            room_id,
+            {"text": raw, "status": status, **sender_payload},
+        )
+        return GroupTurnResult(content=raw, status=status)
+    except Exception as exc:  # noqa: BLE001 — isolate one member failure
+        text = f"Error: {exc}"
+        _emit(
+            "message.complete",
+            room_id,
+            {"text": text, "status": "error", **sender_payload},
+        )
+        return GroupTurnResult(content=text, status="error")
+    finally:
+        if interrupt_callback is not None:
+            control.clear_active_interrupt(interrupt_callback)
+        if token is not None:
+            reset_hermes_home_override(token)
+
+
+@method("groupchat.submit")
+def _(rid, params: dict) -> dict:
+    from agent.groupchat_orchestrator import (
+        GroupChatChainControl,
+        run_group_chat_chain,
+    )
+
+    room_id = str(params.get("room_id") or "")
+    text = str(params.get("text") or "")
+    with _group_rooms_lock:
+        room = _group_rooms.get(room_id)
+        room_run_lock = _group_room_run_locks.get(room_id)
+    if room is None:
+        return _err(rid, 4404, f"group room not found: {room_id}")
+    if not text.strip():
+        return _err(rid, 4400, "empty message")
+    if room_run_lock is None:
+        with _group_rooms_lock:
+            room_run_lock = _group_room_run_locks.setdefault(
+                room_id,
+                threading.Lock(),
+            )
+    if not room_run_lock.acquire(blocking=False):
+        return _err(rid, 4409, "group chat room busy")
+
+    control = GroupChatChainControl()
+    with _group_rooms_lock:
+        _group_chain_controls[room_id] = control
+
+    stop_messages = {
+        "interrupted": "群聊接力已由用户停止。",
+        "max_depth": "群聊接力已达到最大深度，后续点名未再执行。",
+        "max_turns": "群聊接力已达到最大自动回合数。",
+        "max_chain_seconds": "群聊接力已达到最长运行时间。",
+    }
+
+    def on_chain_event(name: str, payload: dict[str, Any]) -> None:
+        if name == "chain_stopped":
+            payload = {
+                **payload,
+                "message": stop_messages.get(
+                    str(payload.get("stop_reason") or ""),
+                    "群聊接力已停止。",
+                ),
+            }
+        _emit(f"groupchat.{name}", room_id, payload)
+
+    try:
+        result = run_group_chat_chain(
+            room,
+            text,
+            lambda dispatch, chain_control: _run_group_chat_member(
+                room_id,
+                room,
+                dispatch,
+                chain_control,
+            ),
+            control,
+            on_chain_event,
+            sender_name=str(params.get("sender_name") or "用户"),
+        )
+        return _ok(
+            rid,
+            {
+                "room_id": room_id,
+                "chain_id": result.chain_id,
+                "root_message_id": result.root_message_id,
+                "status": result.status,
+                "stop_reason": result.stop_reason,
+                "turns": result.turns,
+                "replied": result.replied,
+            },
+        )
+    finally:
+        with _group_rooms_lock:
+            if _group_chain_controls.get(room_id) is control:
+                _group_chain_controls.pop(room_id, None)
+        room_run_lock.release()
+
+
+@method("groupchat.interrupt")
+def _(rid, params: dict) -> dict:
+    room_id = str(params.get("room_id") or "")
+    requested_chain_id = str(params.get("chain_id") or "")
+    with _group_rooms_lock:
+        room = _group_rooms.get(room_id)
+        control = _group_chain_controls.get(room_id)
+    if room is None:
+        return _err(rid, 4404, f"group room not found: {room_id}")
+    if control is None:
+        return _ok(rid, {"room_id": room_id, "status": "idle"})
+    if requested_chain_id and requested_chain_id != control.chain_id:
+        return _ok(
+            rid,
+            {
+                "room_id": room_id,
+                "chain_id": control.chain_id,
+                "status": "stale_chain",
+            },
+        )
+    requested = control.request_stop("interrupted")
+    return _ok(
+        rid,
+        {
+            "room_id": room_id,
+            "chain_id": control.chain_id,
+            "status": "interrupting" if requested else "already_stopping",
+        },
+    )
 
 
 @method("prompt.background")

@@ -237,13 +237,13 @@ def generate_report(args) -> str:
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=5,
         )
         if result.returncode == 0:
             git_branch = result.stdout.strip()
         result = subprocess.run(
             ["git", "rev-parse", "--short", "HEAD"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=5,
         )
         if result.returncode == 0:
             git_sha = result.stdout.strip()

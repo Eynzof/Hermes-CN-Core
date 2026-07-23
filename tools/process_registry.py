@@ -598,7 +598,7 @@ class ProcessRegistry:
                 subprocess.run(
                     ["taskkill", "/PID", str(pid), "/T", "/F"],
                     capture_output=True,
-                    text=True,
+                    text=True, errors="replace",
                     timeout=10,
                     creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | getattr(subprocess, "CREATE_NO_WINDOW", 0),
                     stdin=subprocess.DEVNULL,

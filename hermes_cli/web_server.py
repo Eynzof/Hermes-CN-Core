@@ -1648,6 +1648,8 @@ def _fs_git_branch(cwd: str) -> str:
         run_kwargs: Dict[str, Any] = {
             "capture_output": True,
             "text": True,
+            "encoding": "utf-8",
+            "errors": "replace",
             "timeout": 2,
             "check": False,
         }
@@ -3704,7 +3706,7 @@ def _recent_upstream_commits(n: int = 20) -> List[Dict[str, Any]]:
                 f"-n{int(n)}",
             ],
             capture_output=True,
-            text=True,
+            text=True, encoding="utf-8", errors="replace",
             timeout=5,
         )
         if out.returncode != 0:
@@ -4682,7 +4684,7 @@ def _run_setup_command(
         executable="/bin/bash" if shell else None,
         env=_memory_provider_setup_env(),
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8", errors="replace",
         timeout=timeout,
         check=False,
     )
@@ -7283,7 +7285,7 @@ def _ensure_whatsapp_bridge_dependencies(bridge_dir: Path) -> None:
             [npm, "install", "--silent"],
             cwd=str(bridge_dir),
             capture_output=True,
-            text=True,
+            text=True, encoding="utf-8", errors="replace",
             timeout=timeout,
             env=with_hermes_node_path(),
             creationflags=windows_hide_flags(),

@@ -259,7 +259,7 @@ def _run_one_file(
         cwd=repo_root,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        text=True,
+        text=True, encoding="utf-8", errors="replace",
         # skipping writing bytecode because we're running a bunch of parallel python processes on the same code
         env={**os.environ, 'PYTHONDONTWRITEBYTECODE': '1'},
         # POSIX: place the child at the head of its own process group so

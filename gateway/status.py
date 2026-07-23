@@ -223,7 +223,7 @@ def _read_process_cmdline(pid: int) -> Optional[str]:
             result = subprocess.run(
                 ["ps", "-p", str(pid), "-o", "command="],
                 capture_output=True,
-                text=True,
+                text=True, encoding="utf-8", errors="replace",
                 timeout=5,
             )
             if result.returncode == 0 and result.stdout.strip():
@@ -715,7 +715,7 @@ def _pid_exists(pid: int) -> bool:
                 r = subprocess.run(
                     ["ps", "-o", "state=", "-p", str(int(pid))],
                     capture_output=True,
-                    text=True,
+                    text=True, encoding="utf-8", errors="replace",
                     timeout=5,
                 )
                 if r.returncode == 0 and r.stdout.strip().startswith("Z"):

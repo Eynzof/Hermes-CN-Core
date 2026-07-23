@@ -28,6 +28,7 @@ guarantee.
 from __future__ import annotations
 
 import shutil
+import subprocess
 import sys
 from typing import Sequence
 
@@ -254,6 +255,15 @@ def run(*args, **kwargs):
 
         from hermes_cli._subprocess_compat import run
         r = run(cmd, capture_output=True, text=True, timeout=15)
+
+    Note: text-mode pipes decode with the locale codec unless *encoding*
+    is pinned (GBK/cp936 on zh-CN Windows).  Callers reading output from
+    modern cross-platform tools (git, python, node, uv, docker, gh, …),
+    which write UTF-8 regardless of the ANSI codepage, should pass
+    ``encoding="utf-8", errors="replace"`` so a single non-locale byte
+    can never kill the subprocess ``_readerthread`` with a
+    ``UnicodeDecodeError`` (which surfaces only as a threading.excepthook
+    printout and silently returns ``stdout=None``).
     """
     if IS_WINDOWS and "creationflags" not in kwargs:
         kwargs["creationflags"] = windows_hide_flags()

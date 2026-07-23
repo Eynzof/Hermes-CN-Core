@@ -13,12 +13,14 @@ extracted functions reach back through the ``run_agent`` module via
 from __future__ import annotations
 
 import concurrent.futures
+import json
 import orjson
 import logging
 import os
 import random
 import threading
 import time
+from pathlib import Path
 from typing import Any, Optional
 
 from agent.display import (
@@ -36,6 +38,7 @@ from agent.tool_dispatch_helpers import (
     _is_multimodal_tool_result,
     _multimodal_text_summary,
     _append_subdir_hint_to_multimodal,
+    _plan_tool_batch_segments,
     make_tool_result_message,
 )
 from tools.terminal_tool import (
@@ -75,6 +78,25 @@ _MAX_TOOL_WORKERS = 8
 # Keep this above the stock auxiliary.web_extract timeout (360s) so the batch
 # guard does not preempt a slow-but-valid summarization attempt.
 _DEFAULT_CONCURRENT_TOOL_TIMEOUT_S = 420.0
+
+
+def _parse_tool_arguments(raw_arguments: Any) -> tuple[dict, Optional[str]]:
+    """Parse model-emitted arguments without repairing or coercing them."""
+    try:
+        arguments = json.loads(raw_arguments)
+    except (json.JSONDecodeError, TypeError):
+        arguments = None
+    if isinstance(arguments, dict):
+        return arguments, None
+    return {}, json.dumps(
+        {
+            "error": "Invalid tool arguments",
+            "message": (
+                "Tool arguments must be a valid JSON object; tool was not executed."
+            ),
+        },
+        ensure_ascii=False,
+    )
 
 
 def _resolve_concurrent_tool_timeout() -> float | None:
@@ -316,11 +338,17 @@ def execute_tool_calls_concurrent(
     messages: list,
     effective_task_id: str,
     api_call_count: int = 0,
+    *,
+    finalize: bool = True,
 ) -> None:
     """Execute multiple tool calls concurrently using a thread pool.
 
     Results are collected in the original tool-call order and appended to
     messages so the API sees them in the expected sequence.
+
+    ``finalize=False`` skips the end-of-batch aggregate budget enforcement
+    and /steer injection — used when this call is one segment of a larger
+    mixed batch and the segmented dispatcher owns the turn-end work.
     """
     tool_calls = assistant_message.tool_calls
     num_tools = len(tool_calls)
@@ -352,7 +380,24 @@ def execute_tool_calls_concurrent(
     for tool_call in tool_calls:
         function_name = tool_call.function.name
 
-        # Reset nudge counters
+        function_args, malformed_args_result = _parse_tool_arguments(
+            tool_call.function.arguments
+        )
+
+        if malformed_args_result is not None:
+            parsed_calls.append(
+                (
+                    tool_call,
+                    function_name,
+                    function_args,
+                    [],
+                    malformed_args_result,
+                    False,
+                )
+            )
+            continue
+
+        # Reset nudge counters only for a structurally valid invocation.
         if function_name == "memory":
             agent._turns_since_memory = 0
         elif function_name == "skill_manage":
@@ -933,6 +978,7 @@ def execute_tool_calls_concurrent(
         # deadline snapshot (timed_out_indices, taken from not_done) and this
         # loop. Prefer that real result over a fabricated timeout message — the
         # tool genuinely succeeded, just slightly late.
+        effect_disposition = None
         if i in timed_out_indices and r is None:
             suffix = (
                 f"{timeout_s:.1f}s"
@@ -940,6 +986,7 @@ def execute_tool_calls_concurrent(
                 else "the configured timeout"
             )
             function_result = f"Error executing tool '{name}': timed out after {suffix}"
+            effect_disposition = "unknown"
             _emit_terminal_post_tool_call(
                 agent,
                 function_name=name,
@@ -1115,20 +1162,50 @@ def execute_tool_calls_concurrent(
         _tool_content = agent._tool_result_content_for_active_model(
             name, function_result
         )
-        messages.append(make_tool_result_message(name, _tool_content, tc.id))
+        tool_message = make_tool_result_message(
+            name,
+            _tool_content,
+            tc.id,
+            effect_disposition=effect_disposition,
+        )
+        messages.append(tool_message)
+        risk_metadata = tool_message.get("_tool_output_risk")
+        if (
+            risk_metadata is not None
+            and risk_metadata.get("risk") != "low"
+            and agent.tool_progress_callback
+        ):
+            try:
+                agent.tool_progress_callback(
+                    "tool.output_risk",
+                    name,
+                    None,
+                    None,
+                    tool_call_id=tc.id,
+                    risk_metadata=risk_metadata,
+                )
+            except Exception as cb_err:
+                logging.debug("Tool output risk callback error: %s", cb_err)
         _flush_session_db_after_tool_progress(
             agent,
             messages,
             stage=f"tool result {name}",
         )
 
+        # Drain pending user steers between collected results so they reach the
+        # model on the earliest possible follow-up request.
+        agent._apply_pending_steer_to_tool_results(messages, 1)
+
     # ── Per-turn aggregate budget enforcement ─────────────────────────
     num_tools = len(parsed_calls)
-    if num_tools > 0:
+    if finalize and num_tools > 0:
         turn_tool_msgs = messages[-num_tools:]
         enforce_turn_budget(
             turn_tool_msgs, env=get_active_env(effective_task_id), config=_tool_budget
         )
+
+    if finalize and num_tools > 0:
+        agent._apply_pending_steer_to_tool_results(messages, num_tools)
 
 
 def execute_tool_calls_sequential(
@@ -1137,8 +1214,14 @@ def execute_tool_calls_sequential(
     messages: list,
     effective_task_id: str,
     api_call_count: int = 0,
+    *,
+    finalize: bool = True,
 ) -> None:
-    """Execute tool calls sequentially (original behavior). Used for single calls or interactive tools."""
+    """Execute tool calls sequentially (original behavior).
+
+    ``finalize=False`` leaves whole-turn budget and steer handling to the
+    segmented dispatcher.
+    """
     # Resolve the context-scaled tool-output budget once per turn.
     _tool_budget = _budget_for_agent(agent)
     for i, tool_call in enumerate(assistant_message.tool_calls, 1):
@@ -1170,13 +1253,24 @@ def execute_tool_calls_sequential(
 
         function_name = tool_call.function.name
 
-        try:
-            function_args = orjson.loads(tool_call.function.arguments)
-        except orjson.JSONDecodeError as e:
-            logger.warning(f"Unexpected JSON error after validation: {e}")
-            function_args = {}
-        if not isinstance(function_args, dict):
-            function_args = {}
+        function_args, malformed_args_result = _parse_tool_arguments(
+            tool_call.function.arguments
+        )
+        if malformed_args_result is not None:
+            messages.append(
+                make_tool_result_message(
+                    function_name,
+                    malformed_args_result,
+                    tool_call.id,
+                )
+            )
+            _flush_session_db_after_tool_progress(
+                agent,
+                messages,
+                stage=f"invalid tool arguments {function_name}",
+            )
+            agent._apply_pending_steer_to_tool_results(messages, 1)
+            continue
 
         # Tool Search unwrap — see execute_tool_calls_concurrent for full
         # rationale, including the scope gate (the unwrap dispatches the
@@ -2180,15 +2274,74 @@ def execute_tool_calls_sequential(
 
     # ── Per-turn aggregate budget enforcement ─────────────────────────
     num_tools_seq = len(assistant_message.tool_calls)
-    if num_tools_seq > 0:
+    if finalize and num_tools_seq > 0:
         enforce_turn_budget(
             messages[-num_tools_seq:],
             env=get_active_env(effective_task_id),
             config=_tool_budget,
         )
 
+    if finalize and num_tools_seq > 0:
+        agent._apply_pending_steer_to_tool_results(messages, num_tools_seq)
+
+
+def execute_tool_calls_segmented(agent, assistant_message, messages: list, effective_task_id: str, api_call_count: int = 0, segments=None) -> None:
+    """Execute a mixed tool-call batch as ordered parallel/sequential segments.
+
+    ``segments`` is the ``(kind, calls)`` plan from
+    ``_plan_tool_batch_segments``: maximal contiguous runs of parallel-safe
+    calls execute on the concurrent path, barrier calls on the sequential
+    path, strictly in the model's original call order. Because segments are
+    contiguous, every tool result is still appended one-per-call in emission
+    order and no call ever starts before an earlier barrier finishes —
+    identical ordering and side-effect boundaries to fully-sequential
+    execution, with I/O parallelism recovered inside the safe runs.
+
+    Turn-end work (aggregate budget enforcement + /steer injection) is done
+    once here for the WHOLE batch; the per-segment executor calls run with
+    ``finalize=False`` so a multi-segment turn cannot multiply the budget or
+    truncate a steer marker.
+
+    Interrupt semantics: each segment executor already checks
+    ``agent._interrupt_requested`` up front and appends a cancelled/skipped
+    result per call, so an interrupt during segment *k* drains segments
+    *k+1..n* without executing them while preserving one result per
+    tool_call_id.
+    """
+    from types import SimpleNamespace
+
+    if segments is None:
+        _active_env = get_active_env(effective_task_id)
+        _exec_cwd = Path(_active_env.cwd) if _active_env is not None and _active_env.cwd else None
+        segments = _plan_tool_batch_segments(assistant_message.tool_calls, execution_cwd=_exec_cwd)
+
+    for kind, calls in segments:
+        segment_message = SimpleNamespace(tool_calls=list(calls))
+        if kind == "parallel":
+            execute_tool_calls_concurrent(
+                agent, segment_message, messages, effective_task_id, api_call_count,
+                finalize=False,
+            )
+        else:
+            execute_tool_calls_sequential(
+                agent, segment_message, messages, effective_task_id, api_call_count,
+                finalize=False,
+            )
+
+    # ── Whole-turn finalize (budget + /steer) ─────────────────────────
+    total_tools = len(assistant_message.tool_calls)
+    if total_tools > 0:
+        _tool_budget = _budget_for_agent(agent)
+        enforce_turn_budget(
+            messages[-total_tools:],
+            env=get_active_env(effective_task_id),
+            config=_tool_budget,
+        )
+        agent._apply_pending_steer_to_tool_results(messages, total_tools)
+
 
 __all__ = [
     "execute_tool_calls_concurrent",
     "execute_tool_calls_sequential",
+    "execute_tool_calls_segmented",
 ]

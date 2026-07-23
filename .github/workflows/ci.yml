@@ -106,6 +106,8 @@ jobs:
     needs: detect
     if: needs.detect.outputs.python == 'true'
     uses: ./.github/workflows/contributor-check.yml
+    with:
+      upstream_sync: ${{ startsWith(github.head_ref, 'chore/sync-upstream-') }}
     secrets: inherit
 
   uv-lockfile:

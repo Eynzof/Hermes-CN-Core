@@ -9,6 +9,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+
 import { test } from 'vitest'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -66,9 +67,5 @@ test('unwrapWindowsVenvHermesCommand delegates to the probe-before-trust resolve
     /resolveVenvHermesCommand\(command, backendArgs, \{/,
     'unwrap must delegate to the resolver that rejects a broken or partial venv'
   )
-  assert.match(
-    body,
-    /canImportHermesCli,/,
-    'unwrap must inject the real runtime import probe into the resolver'
-  )
+  assert.match(body, /canImportHermesCli,/, 'unwrap must inject the real runtime import probe into the resolver')
 })

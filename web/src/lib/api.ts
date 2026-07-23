@@ -2464,10 +2464,20 @@ export interface PluginManifestResponse {
 
 export interface HubAgentPluginRow {
   name: string;
+  key?: string;
+  kind?: "standalone" | "backend" | "exclusive" | "platform" | "model-provider";
+  author?: string;
   version: string;
   description: string;
   source: string;
   runtime_status: "disabled" | "enabled" | "inactive";
+  config_status?: "enabled" | "disabled" | "not-enabled" | "auto" | "provider-managed";
+  effective_status?: "enabled" | "disabled" | "inactive" | "auto-active" | "provider-managed";
+  can_toggle?: boolean;
+  provides_tools?: string[];
+  provides_hooks?: string[];
+  requires_env?: string[];
+  missing_env?: string[];
   has_dashboard_manifest: boolean;
   dashboard_manifest: PluginManifestResponse | null;
   path: string;

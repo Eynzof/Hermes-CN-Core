@@ -17071,17 +17071,54 @@ def _strip_dashboard_manifest(p: Dict[str, Any]) -> Dict[str, Any]:
     return {k: v for k, v in p.items() if not k.startswith("_")}
 
 
+def _plugin_required_env_names(items: Any) -> List[str]:
+    """Normalize string/dict ``requires_env`` manifest entries."""
+    if not isinstance(items, list):
+        return []
+    names: List[str] = []
+    for item in items:
+        if isinstance(item, str):
+            name = item.strip()
+        elif isinstance(item, dict):
+            name = str(item.get("name") or "").strip()
+        else:
+            name = ""
+        if name and name not in names:
+            names.append(name)
+    return names
+
+
+def _plugin_inventory_status(
+    manifest: Any,
+    enabled_set: set,
+    disabled_set: set,
+) -> tuple[str, str, bool]:
+    """Return ``(config_status, effective_status, can_toggle)``."""
+    key = manifest.key or manifest.name
+    aliases = {key, manifest.name, key.split("/")[-1]}
+    provider_managed = manifest.kind in {"exclusive", "model-provider"}
+
+    if aliases & disabled_set:
+        return "disabled", "disabled", not provider_managed
+    if provider_managed:
+        return "provider-managed", "provider-managed", False
+    if aliases & enabled_set:
+        return "enabled", "enabled", True
+    if manifest.source == "bundled" and manifest.kind in {"backend", "platform"}:
+        return "auto", "auto-active", True
+    return "not-enabled", "inactive", True
+
+
 def _merged_plugins_hub() -> Dict[str, Any]:
     """Agent discovery + dashboard manifests + optional provider picker metadata."""
     from hermes_cli.plugins_cmd import (
-        _discover_all_plugins,
         _get_current_context_engine,
         _get_current_memory_provider,
         _discover_context_engines,
         _get_disabled_set,
         _get_enabled_set,
-        _read_manifest as _read_plugin_manifest_at,
     )
+    from hermes_cli.plugins import scan_plugin_manifests
 
     dashboard_list = _get_dashboard_plugins()
     dash_by_name = {str(p["name"]): p for p in dashboard_list}
@@ -17096,66 +17133,84 @@ def _merged_plugins_hub() -> Dict[str, Any]:
     plugins_root_resolved = (get_hermes_home() / "plugins").resolve()
     rows: List[Dict[str, Any]] = []
 
-    for name, version, description, source, dir_str, key in _discover_all_plugins():
-        # Both the path-derived key (nested category plugins) and the bare
-        # manifest name count for enabled/disabled state, matching the runtime
-        # loader's back-compat lookup.
-        aliases = {name}
-        if key:
-            aliases.add(key)
-        if aliases & disabled_set:
-            runtime_status = "disabled"
-        elif aliases & enabled_set:
-            runtime_status = "enabled"
-        else:
-            runtime_status = "inactive"
-
-        dir_path = Path(dir_str)
-        dm = dash_by_name.get(name)
-        has_dash_manifest = dm is not None or (dir_path / "dashboard" / "manifest.json").exists()
-
-        under_user_tree = False
-        try:
-            dir_path.resolve().relative_to(plugins_root_resolved)
-            under_user_tree = True
-        except ValueError:
-            pass
-
-        can_remove_update = (
-            source in {"user", "git"} and under_user_tree and Path(dir_str).is_dir()
+    manifests = scan_plugin_manifests(
+        include_managed=True,
+        user_dir=get_hermes_home() / "plugins",
+    )
+    for manifest in manifests:
+        name = manifest.name
+        key = manifest.key or name
+        config_status, effective_status, can_toggle = _plugin_inventory_status(
+            manifest,
+            enabled_set,
+            disabled_set,
+        )
+        runtime_status = (
+            "disabled"
+            if effective_status == "disabled"
+            else "inactive"
+            if effective_status == "inactive"
+            else "enabled"
         )
 
-        # Check if this plugin provides tools that require auth
-        auth_required = False
-        auth_command = ""
-        manifest_data = _read_plugin_manifest_at(dir_path)
-        provides_tools = manifest_data.get("provides_tools") or []
-        if provides_tools:
+        dir_str = manifest.path or ""
+        dir_path = Path(dir_str) if dir_str else None
+        dm = dash_by_name.get(name)
+        has_dash_manifest = dm is not None or bool(
+            dir_path and (dir_path / "dashboard" / "manifest.json").exists()
+        )
+
+        under_user_tree = False
+        if dir_path is not None:
             try:
-                from tools.registry import registry
-                for tname in provides_tools:
-                    entry = registry.get_entry(tname)
-                    if entry and entry.check_fn and not entry.check_fn():
-                        auth_required = True
-                        auth_command = f"hermes auth {name}"
-                        break
-            except Exception:
+                dir_path.resolve().relative_to(plugins_root_resolved)
+                under_user_tree = True
+            except (OSError, ValueError):
                 pass
+
+        can_remove_update = (
+            manifest.source == "user"
+            and under_user_tree
+            and dir_path is not None
+            and dir_path.is_dir()
+        )
+        source = (
+            "git"
+            if can_remove_update and dir_path is not None and (dir_path / ".git").exists()
+            else manifest.source
+        )
+
+        requires_env = _plugin_required_env_names(manifest.requires_env)
+        missing_env = [env_name for env_name in requires_env if not os.getenv(env_name)]
+        auth_required = bool(missing_env)
+        auth_command = f"hermes auth {name}" if auth_required else ""
 
         rows.append({
             "name": name,
-            "version": version or "",
-            "description": description or "",
+            "key": key,
+            "kind": manifest.kind,
+            "version": manifest.version or "",
+            "description": manifest.description or "",
+            "author": manifest.author or "",
             "source": source,
             "runtime_status": runtime_status,
+            "config_status": config_status,
+            "effective_status": effective_status,
+            "can_toggle": can_toggle,
+            "provides_tools": list(manifest.provides_tools),
+            "provides_hooks": list(manifest.provides_hooks),
+            "requires_env": requires_env,
+            "missing_env": missing_env,
             "has_dashboard_manifest": has_dash_manifest,
             "dashboard_manifest": _strip_dashboard_manifest(dm) if dm else None,
             "path": dir_str,
             "can_remove": can_remove_update,
-            "can_update_git": can_remove_update and (Path(dir_str) / ".git").exists(),
+            "can_update_git": can_remove_update and bool(
+                dir_path and (dir_path / ".git").exists()
+            ),
             "auth_required": auth_required,
             "auth_command": auth_command,
-            "user_hidden": name in hidden_plugins,
+            "user_hidden": name in hidden_plugins or key in hidden_plugins,
         })
 
     agent_names = {r["name"] for r in rows}

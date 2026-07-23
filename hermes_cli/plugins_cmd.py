@@ -791,6 +791,32 @@ def _resolve_plugin_key_and_source(name: str) -> Optional[tuple]:
     return None
 
 
+def _resolve_plugin_manifest(name: str):
+    """Resolve a name/key/unique leaf to canonical metadata without imports."""
+    from hermes_cli.plugins import scan_plugin_manifests
+
+    manifests = scan_plugin_manifests(
+        include_managed=True,
+        user_dir=_plugins_dir(),
+    )
+    for manifest in manifests:
+        key = manifest.key or manifest.name
+        if name == key or name == manifest.name:
+            return manifest
+    leaf_matches = [
+        manifest
+        for manifest in manifests
+        if name == (manifest.key or manifest.name).split("/")[-1]
+    ]
+    return leaf_matches[0] if len(leaf_matches) == 1 else None
+
+
+def _plugin_config_aliases(manifest) -> set[str]:
+    """Return every legacy identifier that can gate one plugin."""
+    key = manifest.key or manifest.name
+    return {key, manifest.name, key.split("/")[-1]}
+
+
 def _set_plugin_entry_flag(plugin_id: str, key: str, value: bool) -> None:
     """Write ``plugins.entries.<plugin_id>.<key> = value`` into config.yaml."""
     from hermes_cli.config import load_config, save_config
@@ -1018,25 +1044,30 @@ def _discover_all_plugins() -> list:
     """Return a list of (name, version, description, source, dir_path, key) for
     every plugin the loader can see — user + bundled + project + entry point.
 
-    Matches the ordering/dedup of ``PluginManager.discover_and_load``:
-    bundled first, then user, then project, then entry points. Later sources
-    override earlier ones on key collision.
+    Delegates to the metadata-only canonical scanner used by
+    ``PluginManager`` so CLI and Dashboard status cannot drift from runtime
+    discovery.  No plugin module is imported by this path.
     """
-    seen: dict = {}  # key -> (name, version, description, source, path, key)
+    from hermes_cli.plugins import scan_plugin_manifests
 
-    # Bundled (<repo>/plugins/<name>/), excluding memory/ and context_engine/
-    from hermes_cli.plugins import get_bundled_plugins_dir
-    repo_plugins = get_bundled_plugins_dir()
-    for base, source, skip in (
-        (repo_plugins, "bundled", {"memory", "context_engine"}),
-        (_plugins_dir(), "user", set()),
+    entries = []
+    for manifest in scan_plugin_manifests(
+        include_managed=True,
+        user_dir=_plugins_dir(),
     ):
-        _scan_level(base, source, skip, "", 0, seen)
-
-    # Entry-point plugins (installed as Python packages; no plugin directory).
-    for name, version, description, path in _discover_entrypoint_plugins():
-        seen[name] = (name, version, description, "entrypoint", path, name)
-    return list(seen.values())
+        source = manifest.source
+        path: Path | str = manifest.path or ""
+        if source == "user" and manifest.path and (Path(manifest.path) / ".git").exists():
+            source = "git"
+        entries.append((
+            manifest.name,
+            manifest.version,
+            manifest.description,
+            source,
+            path,
+            manifest.key or manifest.name,
+        ))
+    return entries
 
 
 def _discover_entrypoint_plugins() -> list[tuple[str, str, str, str]]:
@@ -1868,34 +1899,41 @@ def _toggle_plugin_toolset(name: str, *, enable: bool) -> None:
 def dashboard_set_agent_plugin_enabled(name: str, *, enabled: bool) -> dict[str, Any]:
     """Enable or disable a plugin in ``config.yaml`` (runtime allow/deny lists).
 
-    For plugins that provide tools (toolsets), also toggles the toolset in
-    ``platform_toolsets`` so the agent actually sees the tools in sessions.
+    The dashboard always persists the canonical path-derived key and removes
+    stale bare-name/manifest-name aliases.  It deliberately does not rescan or
+    import the plugin in this process; the new state applies to new sessions.
     """
-    if not _plugin_exists(name):
+    manifest = _resolve_plugin_manifest(name)
+    if manifest is None:
         return {"ok": False, "error": f"Plugin '{name}' is not installed or bundled."}
+
+    key = manifest.key or manifest.name
+    if manifest.kind in {"exclusive", "model-provider"}:
+        return {
+            "ok": False,
+            "error": f"Plugin '{key}' is managed by its provider settings.",
+        }
 
     en = _get_enabled_set()
     dis = _get_disabled_set()
+    aliases = _plugin_config_aliases(manifest)
 
     if enabled:
-        if name in en and name not in dis:
-            return {"ok": True, "name": name, "unchanged": True}
-        en.add(name)
-        dis.discard(name)
+        unchanged = key in en and not (aliases & dis) and not ((aliases - {key}) & en)
+        en.difference_update(aliases)
+        en.add(key)
+        dis.difference_update(aliases)
         _save_enabled_set(en)
         _save_disabled_set(dis)
-        _toggle_plugin_toolset(name, enable=True)
-        return {"ok": True, "name": name, "unchanged": False}
+        return {"ok": True, "name": key, "unchanged": unchanged}
 
-    if name not in en and name in dis:
-        return {"ok": True, "name": name, "unchanged": True}
-
-    en.discard(name)
-    dis.add(name)
+    unchanged = not (aliases & en) and key in dis and not ((aliases - {key}) & dis)
+    en.difference_update(aliases)
+    dis.difference_update(aliases)
+    dis.add(key)
     _save_enabled_set(en)
     _save_disabled_set(dis)
-    _toggle_plugin_toolset(name, enable=False)
-    return {"ok": True, "name": name, "unchanged": False}
+    return {"ok": True, "name": key, "unchanged": unchanged}
 
 
 def _user_installed_plugin_dir(name: str) -> Optional[Path]:
@@ -1910,17 +1948,24 @@ def _user_installed_plugin_dir(name: str) -> Optional[Path]:
 
 def dashboard_update_user_plugin(name: str) -> dict[str, Any]:
     """``git pull`` inside ``~/.hermes/plugins/<name>``."""
-    target = _user_installed_plugin_dir(name)
-    if target is None:
+    manifest = _resolve_plugin_manifest(name)
+    key = (manifest.key or manifest.name) if manifest is not None else name
+    target = Path(manifest.path) if manifest is not None and manifest.path else None
+    plugins_root = _plugins_dir().resolve()
+    try:
+        under_user_tree = target is not None and target.resolve().is_relative_to(plugins_root)
+    except (OSError, ValueError):
+        under_user_tree = False
+    if manifest is None or manifest.source != "user" or not under_user_tree or not target.is_dir():
         return {
             "ok": False,
-            "error": f"Plugin '{name}' was not found under {_plugins_dir()}.",
+            "error": f"Plugin '{key}' was not found under {_plugins_dir()}.",
         }
 
     if not (target / ".git").exists():
         return {
             "ok": False,
-            "error": f"Plugin '{name}' is not a git checkout; cannot pull updates.",
+            "error": f"Plugin '{key}' is not a git checkout; cannot pull updates.",
         }
 
     ok, msg = _git_pull_plugin_dir(target)
@@ -1931,7 +1976,7 @@ def dashboard_update_user_plugin(name: str) -> dict[str, Any]:
 
     _copy_example_files(target, Console())
     unchanged = "Already up to date" in msg
-    return {"ok": True, "name": name, "output": msg, "unchanged": unchanged}
+    return {"ok": True, "name": key, "output": msg, "unchanged": unchanged}
 
 
 def _git_pull_plugin_dir(target: Path) -> tuple[bool, str]:
@@ -1957,22 +2002,59 @@ def _git_pull_plugin_dir(target: Path) -> tuple[bool, str]:
     return True, result.stdout.strip()
 
 
+def _remove_plugin_config_references(manifest) -> None:
+    """Remove allow/deny/entry state for an uninstalled plugin."""
+    from hermes_cli.config import load_config, save_config
+
+    config = load_config()
+    plugins_cfg = config.get("plugins")
+    if not isinstance(plugins_cfg, dict):
+        return
+
+    aliases = _plugin_config_aliases(manifest)
+    changed = False
+    for field in ("enabled", "disabled"):
+        raw = plugins_cfg.get(field)
+        if not isinstance(raw, list):
+            continue
+        cleaned = [item for item in raw if item not in aliases]
+        if cleaned != raw:
+            plugins_cfg[field] = cleaned
+            changed = True
+
+    entries = plugins_cfg.get("entries")
+    if isinstance(entries, dict):
+        for alias in aliases:
+            if alias in entries:
+                entries.pop(alias, None)
+                changed = True
+
+    if changed:
+        save_config(config)
+
+
 def dashboard_remove_user_plugin(name: str) -> dict[str, Any]:
     """Delete a plugin tree under ``~/.hermes/plugins/`` only."""
     plugins_dir = _plugins_dir()
-    for n, _ver, _d, src, _path, _key in _discover_all_plugins():
-        if n == name and src == "bundled":
-            return {"ok": False, "error": "Bundled plugins cannot be removed from the dashboard."}
+    manifest = _resolve_plugin_manifest(name)
+    key = (manifest.key or manifest.name) if manifest is not None else name
+    if manifest is not None and manifest.source == "bundled":
+        return {"ok": False, "error": "Bundled plugins cannot be removed from the dashboard."}
 
-    target = _user_installed_plugin_dir(name)
-    if target is None:
+    target = Path(manifest.path) if manifest is not None and manifest.path else None
+    try:
+        under_user_tree = target is not None and target.resolve().is_relative_to(plugins_dir.resolve())
+    except (OSError, ValueError):
+        under_user_tree = False
+    if manifest is None or manifest.source != "user" or not under_user_tree or not target.is_dir():
         return {
             "ok": False,
-            "error": f"Plugin '{name}' was not found under {plugins_dir}.",
+            "error": f"Plugin '{key}' was not found under {plugins_dir}.",
         }
 
     shutil.rmtree(target)
-    return {"ok": True, "name": name}
+    _remove_plugin_config_references(manifest)
+    return {"ok": True, "name": key}
 
 
 def plugins_command(args) -> None:

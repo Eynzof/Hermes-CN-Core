@@ -97,11 +97,12 @@ class TestProviderModelIdsPreferred:
         assert "claude-opus-4-7" in out
         assert "kimi-k2.6" in out
 
-    def test_kimi_coding_offline_catalog_includes_k2_7_code(self):
-        """Native Kimi users must see the newest Code model without live catalog help."""
+    def test_kimi_coding_offline_catalog_includes_k3(self):
+        """Native Kimi users must see the newest models without live catalog help."""
         assert "kimi-coding" not in _MODELS_DEV_PREFERRED
         with patch("agent.models_dev.list_agentic_models", return_value=[]):
             out = provider_model_ids("kimi-coding")
+        assert "kimi-k3" in out
         assert "kimi-k2.7-code" in out
 
     def test_kimi_coding_live_catalog_does_not_hide_curated_k3(self):

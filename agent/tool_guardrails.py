@@ -9,6 +9,7 @@ turn halts.
 from __future__ import annotations
 
 import hashlib
+import json
 import orjson
 from dataclasses import dataclass, field
 from typing import Any, Mapping
@@ -177,7 +178,20 @@ def canonical_tool_args(args: Mapping[str, Any]) -> str:
     """Return sorted compact JSON for parsed tool arguments."""
     if not isinstance(args, Mapping):
         raise TypeError(f"tool args must be a mapping, got {type(args).__name__}")
-    return orjson.dumps(args, default=str, option=orjson.OPT_SORT_KEYS).decode('utf-8')
+    try:
+        return orjson.dumps(args, default=str, option=orjson.OPT_SORT_KEYS).decode(
+            "utf-8"
+        )
+    except TypeError:
+        # Scraped text can contain unpaired UTF-16 surrogates. Canonicalising
+        # guardrail state must not abort the conversation loop in that case.
+        return json.dumps(
+            args,
+            ensure_ascii=True,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        )
 
 
 def classify_tool_failure(tool_name: str, result: str | None) -> tuple[bool, str]:
@@ -457,4 +471,8 @@ def _positive_int(value: Any, default: int) -> int:
 
 
 def _sha256(value: str) -> str:
-    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+    # surrogatepass: tool results scraped from the web can carry unpaired
+    # UTF-16 surrogates (e.g. half of a mathematical-bold pair); a strict
+    # encode raises and takes down the whole conversation loop. The hash only
+    # needs deterministic bytes, not valid UTF-8.
+    return hashlib.sha256(value.encode("utf-8", "surrogatepass")).hexdigest()

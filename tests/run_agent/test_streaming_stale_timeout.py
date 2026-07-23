@@ -137,6 +137,18 @@ def _make_streaming_agent():
         return 1
 
     agent._force_close_tcp_sockets = _force_close
+    # v0.19 streams through a request-local Anthropic client so the watchdog
+    # can abort sockets without closing the shared SDK client from a stranger
+    # thread.  Reuse the fake stream owner here while preserving that contract.
+    agent._create_request_anthropic_client = (
+        lambda *, reason: agent._anthropic_client
+    )
+    agent._abort_request_anthropic_client = (
+        lambda client, *, reason: _force_close(client)
+    )
+    agent._close_request_anthropic_client = (
+        lambda client, *, reason: client.close()
+    )
     agent._rebuild_anthropic_client = lambda: None
     agent._try_refresh_anthropic_client_credentials = lambda: True
     agent._touch_activity = lambda *a, **k: None

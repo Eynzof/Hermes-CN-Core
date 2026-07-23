@@ -219,7 +219,7 @@ class TestResolveShell:
         bash_path = r"C:\Program Files\Git\bin\bash.exe"
         env = {"HERMES_SHELL_TYPE": "bash"}
         with mock.patch.dict(os.environ, env, clear=True):
-            with mock.patch("tools.environments.local._find_bash_posix", return_value=bash_path):
+            with mock.patch("tools.environments.local._find_bash", return_value=bash_path):
                 assert _resolve_shell() == ("bash", bash_path)
 
     def test_windows_bash_not_found_raises_helpful_error(self, monkeypatch):
@@ -227,7 +227,7 @@ class TestResolveShell:
         monkeypatch.setattr("tools.environments.local._IS_WINDOWS", True)
         env = {"HERMES_SHELL_TYPE": "bash"}
         with mock.patch.dict(os.environ, env, clear=True):
-            with mock.patch("tools.environments.local._find_bash_posix", return_value=None):
+            with mock.patch("tools.environments.local._find_bash", return_value=None):
                 with pytest.raises(RuntimeError, match="Git Bash is not found"):
                     _resolve_shell()
 

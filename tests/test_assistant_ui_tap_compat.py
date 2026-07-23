@@ -85,13 +85,21 @@ def _lock_packages() -> dict:
 
 
 def _hoisted_tap_version(packages: dict) -> str:
-    entry = packages.get(f"node_modules/{TAP}")
-    assert entry is not None, (
-        "package-lock.json has no hoisted node_modules/@assistant-ui/tap "
-        "entry — the @assistant-ui cluster should resolve a single shared "
-        "tap version."
+    entries = {
+        key: meta["version"]
+        for key, meta in packages.items()
+        if key.endswith(f"node_modules/{TAP}")
+    }
+    assert entries, (
+        "package-lock.json has no @assistant-ui/tap entry — the "
+        "@assistant-ui cluster should resolve one shared tap version."
     )
-    return entry["version"]
+    versions = set(entries.values())
+    assert len(versions) == 1, (
+        "package-lock.json resolves multiple @assistant-ui/tap versions: "
+        f"{entries}"
+    )
+    return next(iter(versions))
 
 
 def test_assistant_ui_cluster_agrees_on_one_tap() -> None:

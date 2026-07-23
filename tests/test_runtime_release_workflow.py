@@ -8,10 +8,13 @@ that contract so a backend can't silently drop out of the build again — the
 failure mode behind issue #16 (MCP) and the 飞书/钉钉/企微/微信 desktop reports.
 """
 
+import re
 import sys
 from pathlib import Path
 
 import pytest
+from packaging.specifiers import SpecifierSet
+from packaging.version import Version
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -53,6 +56,28 @@ def test_runtime_workflow_installs_cn_desktop_extra():
     cn-desktop is the single source of truth for "what the desktop ships".
     """
     assert 'pip install -e ".[cn-desktop]"' in _workflow_text()
+
+
+def test_runtime_workflow_python_satisfies_project_requirement():
+    """The release builder must run a Python accepted by pyproject.toml."""
+    if tomllib is None:  # pragma: no cover
+        pytest.skip("tomllib unavailable")
+
+    project = tomllib.loads(
+        (_repo_root() / "pyproject.toml").read_text(encoding="utf-8")
+    )["project"]
+    match = re.search(
+        r"python-version:\s*[\"']([^\"']+)[\"']",
+        _workflow_text(),
+    )
+
+    assert match, "release-runtime.yml must configure actions/setup-python"
+    workflow_python = Version(match.group(1))
+    requires_python = SpecifierSet(project["requires-python"])
+    assert workflow_python in requires_python, (
+        f"release-runtime.yml uses Python {workflow_python}, which does not "
+        f"satisfy pyproject.toml requires-python {requires_python}"
+    )
 
 
 def test_cn_desktop_extra_bundles_every_desktop_backend():

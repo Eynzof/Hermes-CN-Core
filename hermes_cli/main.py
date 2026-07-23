@@ -12867,18 +12867,24 @@ def cmd_dashboard(args):
     from hermes_cli.port_lock import claim_port_set
 
     _dashboard_port = int(args.port)
-    _well_known_ports = [8644, 8645]
-    if _dashboard_port > 0:
-        _well_known_ports.insert(0, _dashboard_port)
-    _port_locks = claim_port_set(_well_known_ports)
-    if _port_locks is None:
-        print(
-            f"Error: port {_dashboard_port} (or associated webhook/proxy ports) "
-            f"is already claimed by another Hermes instance.\n"
-            f"Stop the other instance, or use `--port 0` to let the OS assign a free port.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+    _port_locks = []
+    # The Desktop parent already owns this coordinated lock set until the
+    # managed child exits. Re-claiming it here makes one healthy process tree
+    # reject itself before binding. Standalone CLI dashboards still own and
+    # enforce the Core-side locks.
+    if os.getenv("HERMES_DESKTOP_MANAGED") != "1":
+        _well_known_ports = [8644, 8645]
+        if _dashboard_port > 0:
+            _well_known_ports.insert(0, _dashboard_port)
+        _port_locks = claim_port_set(_well_known_ports)
+        if _port_locks is None:
+            print(
+                f"Error: port {_dashboard_port} (or associated webhook/proxy ports) "
+                f"is already claimed by another Hermes instance.\n"
+                f"Stop the other instance, or use `--port 0` to let the OS assign a free port.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
 
     try:
         start_server(

@@ -1,4 +1,4 @@
-"""Multi-agent group chat orchestration — CN fork P-052.
+"""Multi-agent group chat decision logic — CN fork P-052.
 
 Ports hermes-studio's group-chat *decision logic* into the Core agent runtime
 so several profiles can converse in a single shared transcript:
@@ -11,17 +11,18 @@ so several profiles can converse in a single shared transcript:
   that only understands user/assistant turns (ported from
   studio ``context-projection.ts``).
 - instruction building — the per-agent system prompt (identity + role + room
-  roster + group rules), ported from studio ``context-engine/prompt.ts``.
+  roster + bounded hand-off rules).
+- relay routing — only an explicit leading ``@member`` in a completed agent
+  reply may schedule the next wave. Incidental mentions in prose never do.
 
-This module holds the *pure* pieces (no I/O, no LLM). The turn orchestrator
-that builds one ``AIAgent`` per mentioned member and drives
-``run_conversation`` lives alongside these helpers and is wired into the
+This module holds the *pure* pieces (no I/O, no LLM). The bounded wave
+orchestrator lives in ``agent/groupchat_orchestrator.py`` and is wired into the
 gateway via ``tui_gateway/server.py`` (``groupchat.*`` methods).
 
-MVP scope (see plan): user @mentions route to named members which reply
-*serially* into the shared transcript. Agent-to-agent relay, parallel fan-out,
-context compression, interrupt/freshness guards and cross-restart persistence
-are deliberately out of scope for the first cut.
+The current CN implementation remains deterministic and serial. Initial user
+targets share one pre-turn snapshot; a completed wave is visible to the next
+relay wave. Parallel fan-out, context compression and cross-restart persistence
+remain separate follow-ups.
 """
 
 from __future__ import annotations
@@ -55,6 +56,22 @@ class GroupMember:
     def __post_init__(self) -> None:
         if not self.agent_id:
             self.agent_id = self.profile
+
+
+@dataclass(frozen=True)
+class GroupChatRelayConfig:
+    """Room-pinned automatic hand-off policy.
+
+    Pinning this at room creation keeps every member's system prompt byte-stable
+    for the room lifetime even if ``config.yaml`` changes mid-conversation.
+    """
+
+    enabled: bool = True
+    require_leading_mention: bool = True
+    allow_agent_all: bool = False
+    max_depth: int = 4
+    max_turns: int = 8
+    max_chain_seconds: float = 300.0
 
 
 # ── Mention routing (ported from studio mention-routing.ts) ────────────────
@@ -145,6 +162,98 @@ def resolve_mention_targets(
     """
     candidates = [m for m in members if not _is_sender(m, sender_id)]
     if is_all_agents_mentioned(content):
+        return candidates
+    return [m for m in candidates if is_agent_mentioned(content, m.name)]
+
+
+_LEADING_MENTION_SEPARATORS = set(",，:：;；")
+
+
+def _leading_mention_names(
+    content: str,
+    members: list[GroupMember],
+    sender_id: str = "",
+) -> list[str]:
+    """Return consecutive known mention names at the start of ``content``.
+
+    Leading whitespace is allowed. After the first mention, whitespace and
+    common list/address punctuation may separate more mentions. An unknown
+    leading handle ends parsing, so ``@ghost @Bob`` cannot accidentally route
+    to Bob. Some models echo the projection label despite being instructed not
+    to (for example ``[Alice]: @Bob ...``); the exact current sender's label is
+    tolerated, while a foreign or unknown label is not.
+    """
+
+    text = str(content or "")
+    sender = next(
+        (member for member in members if _is_sender(member, sender_id)),
+        None,
+    )
+    if sender is not None:
+        own_prefix = re.compile(
+            rf"^\s*\[\s*{re.escape(sender.name)}\s*\]\s*[:：]\s*",
+            re.IGNORECASE,
+        )
+        text = own_prefix.sub("", text, count=1)
+    names = [m.name for m in members]
+    candidates = sorted(
+        [*names, ALL_AGENTS_MENTION],
+        key=len,
+        reverse=True,
+    )
+    lowered = text.lower()
+    cursor = 0
+    found: list[str] = []
+
+    while cursor < len(text) and text[cursor].isspace():
+        cursor += 1
+
+    while cursor < len(text) and text[cursor] == "@":
+        matched: str | None = None
+        end = cursor
+        for name in candidates:
+            candidate_end = cursor + len(name) + 1
+            if lowered.startswith(f"@{name.lower()}", cursor) and _is_after_boundary(
+                _char_at(text, candidate_end)
+            ):
+                matched = name
+                end = candidate_end
+                break
+        if matched is None:
+            break
+        found.append(matched)
+        cursor = end
+        while cursor < len(text) and (
+            text[cursor].isspace() or text[cursor] in _LEADING_MENTION_SEPARATORS
+        ):
+            cursor += 1
+
+    return found
+
+
+def resolve_agent_relay_targets(
+    members: list[GroupMember],
+    content: str,
+    sender_id: str,
+    config: GroupChatRelayConfig,
+) -> list[GroupMember]:
+    """Resolve targets from a completed agent reply under the room policy."""
+
+    if not config.enabled:
+        return []
+
+    candidates = [m for m in members if not _is_sender(m, sender_id)]
+    if config.require_leading_mention:
+        mentioned_names = _leading_mention_names(content, members, sender_id)
+        mentioned_lower = {name.lower() for name in mentioned_names}
+        if (
+            config.allow_agent_all
+            and ALL_AGENTS_MENTION in mentioned_lower
+        ):
+            return candidates
+        return [m for m in candidates if m.name.lower() in mentioned_lower]
+
+    if config.allow_agent_all and is_all_agents_mentioned(content):
         return candidates
     return [m for m in candidates if is_agent_mentioned(content, m.name)]
 
@@ -288,13 +397,10 @@ def build_agent_instructions(
     room_name: str,
     agent_description: str,
     members: list[GroupMember],
+    relay_config: GroupChatRelayConfig | None = None,
 ) -> str:
-    """Build the per-agent group-chat system prompt (Chinese).
-
-    MVP note: the studio prompt's agent-to-agent relay rules are omitted here
-    because the MVP does not route agent replies onward; keeping them would
-    invite the model to ``@`` teammates that never get triggered.
-    """
+    """Build the per-agent group-chat system prompt (Chinese)."""
+    relay = relay_config or GroupChatRelayConfig()
     seen: dict[str, GroupMember] = {}
     for m in members:
         existing = seen.get(m.name)
@@ -312,7 +418,7 @@ def build_agent_instructions(
 
     role_description = agent_description.strip() or _DEFAULT_ROLE_DESCRIPTION
 
-    return f"""你是"{agent_name}"，群聊房间"{room_name}"中的 AI 助手。
+    base = f"""你是"{agent_name}"，群聊房间"{room_name}"中的 AI 助手。
 
 你的角色：{role_description}
 
@@ -328,8 +434,20 @@ def build_agent_instructions(
 - 历史消息里的"[发送者]: ..."只是系统添加的归属标记，用来帮助你理解谁说了这句话；不要在你的回复中复述或模仿这种方括号前缀。
 - 回复时使用自然语言即可；如果需要点名某人，只使用 @名字，不要输出"[{agent_name}]:"这类格式。
 - 回复最新一条提及你的消息。
-- 如果只是回答提问，直接回答即可。
+- 如果只是回答提问，直接回答即可。"""
+
+    if relay.enabled:
+        base += """
+- 群聊支持 Agent 之间自动接力。只有把 @成员 写在回复开头，系统才会把本条消息交给对方；正文中偶然提到成员不会触发接力。
+- 如果用户明确要求你叫、让、请某个成员执行任务，不要自己代办，也不要声称无法联系对方；请在回复开头直接写 @名字，并清楚说明要对方执行什么。
+- 不要使用 @all 发起 Agent 接力；如需协作，请明确点名真正需要行动的成员。
+- 不要为了活跃气氛、征求补充或礼貌而 @ 其他成员。只有确实需要对方执行动作、提供信息或确认决策时才接力。
+- 问题已经解决、达成共识或对方只是陈述时，不要再 @任何人，直接结束回复，避免无意义循环。"""
+    else:
+        base += """
 - 自行判断对话是否已经结束——如果问题已解决、达成共识、或对方只是陈述不需要回复，则直接结束回复，避免产生无意义的循环对话。"""
+
+    return base
 
 
 # ── Room state + turn preparation ──────────────────────────────────────────
@@ -354,6 +472,7 @@ class GroupRoom:
     name: str
     members: list[GroupMember] = field(default_factory=list)
     transcript: list[dict[str, Any]] = field(default_factory=list)
+    relay_config: GroupChatRelayConfig = field(default_factory=GroupChatRelayConfig)
 
     def member_by_name(self, name: str) -> GroupMember | None:
         lowered = name.strip().lower()
@@ -368,27 +487,63 @@ class GroupRoom:
 
 
 def make_user_message(
-    content: str, sender_name: str = "用户", timestamp: float = 0.0
+    content: str,
+    sender_name: str = "用户",
+    timestamp: float = 0.0,
+    *,
+    message_id: str = "",
+    chain_id: str = "",
 ) -> dict[str, Any]:
-    return {
+    message = {
         "role": "user",
         "sender_id": USER_SENDER_ID,
         "sender_name": sender_name,
         "content": content,
         "timestamp": timestamp,
+        "status": "complete",
+        "mention_depth": 0,
     }
+    if message_id:
+        message["id"] = message_id
+    if chain_id:
+        message["chain_id"] = chain_id
+        message["root_message_id"] = message_id
+    return message
 
 
 def make_agent_message(
-    member: GroupMember, content: str, timestamp: float = 0.0
+    member: GroupMember,
+    content: str,
+    timestamp: float = 0.0,
+    *,
+    message_id: str = "",
+    chain_id: str = "",
+    root_message_id: str = "",
+    parent_message_id: str = "",
+    mention_depth: int = 1,
+    status: str = "complete",
+    route_kind: str = "user",
 ) -> dict[str, Any]:
-    return {
+    message = {
         "role": "assistant",
         "sender_id": member.agent_id,
         "sender_name": member.name,
+        "avatar": member.avatar,
         "content": content,
         "timestamp": timestamp,
+        "status": status,
+        "mention_depth": mention_depth,
+        "route_kind": route_kind,
     }
+    if message_id:
+        message["id"] = message_id
+    if chain_id:
+        message["chain_id"] = chain_id
+    if root_message_id:
+        message["root_message_id"] = root_message_id
+    if parent_message_id:
+        message["parent_message_id"] = parent_message_id
+    return message
 
 
 def prepare_member_turn(
@@ -397,6 +552,10 @@ def prepare_member_turn(
     trigger_content: str,
     room_name: str,
     members: list[GroupMember],
+    *,
+    trigger_sender_id: str = USER_SENDER_ID,
+    trigger_sender_name: str = "用户",
+    relay_config: GroupChatRelayConfig | None = None,
 ) -> tuple[list[dict[str, str]], str, str]:
     """Build the inputs for one member's turn.
 
@@ -415,7 +574,13 @@ def prepare_member_turn(
     """
     history = build_projected_history(prior_messages, target)
     current = strip_mention_routing_tokens(str(trigger_content or ""), target.name)
+    if trigger_sender_id and trigger_sender_id != USER_SENDER_ID:
+        current = f"[{trigger_sender_name or 'unknown'}]: {current}"
     system_message = build_agent_instructions(
-        target.name, room_name, target.description, members
+        target.name,
+        room_name,
+        target.description,
+        members,
+        relay_config=relay_config,
     )
     return history, current, system_message

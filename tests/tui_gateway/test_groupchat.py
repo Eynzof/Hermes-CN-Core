@@ -1,13 +1,13 @@
 """Integration tests for the groupchat.* gateway methods (CN fork P-052).
 
-Drives the orchestration with a fake agent (no real LLM, no HERMES_HOME switch)
-and captures emitted events, asserting @mention routing + per-member sender
-attribution on the message.* stream. Complements the pure-function coverage in
-tests/agent/test_groupchat_loop.py.
+Drives the orchestration with fake agents (no real LLM, no HERMES_HOME switch)
+and captures emitted events, asserting user routing, bounded agent relay,
+interrupt behavior and per-member sender attribution.
 """
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
 import pytest
@@ -35,6 +35,29 @@ class _FakeAgent:
             "final_response": self._reply,
             "messages": [],
             "interrupted": False,
+            "error": None,
+        }
+
+
+class _BlockingFakeAgent:
+    """Waits until groupchat.interrupt calls interrupt()."""
+
+    def __init__(self):
+        self.started = threading.Event()
+        self.released = threading.Event()
+        self.interrupted = False
+
+    def interrupt(self, _message=None):
+        self.interrupted = True
+        self.released.set()
+
+    def run_conversation(self, *_args, **_kwargs):
+        self.started.set()
+        assert self.released.wait(timeout=5)
+        return {
+            "final_response": "partial",
+            "messages": [],
+            "interrupted": self.interrupted,
             "error": None,
         }
 
@@ -104,6 +127,9 @@ def test_submit_routes_only_to_mentioned_member(stub_profiles, captured_events, 
     assert completes[0]["sender_name"] == "alice"
     assert completes[0]["text"] == "我是 alice 的回复"
     assert completes[0]["status"] == "complete"
+    assert starts[0]["chain_id"] == completes[0]["chain_id"]
+    assert completes[0]["mention_depth"] == 1
+    assert completes[0]["route_kind"] == "user"
 
 
 def test_submit_no_mention_defaults_to_all(stub_profiles, captured_events, monkeypatch):
@@ -142,6 +168,136 @@ def test_submit_all_routes_to_every_member_and_accumulates(stub_profiles, captur
     assert {m["sender_name"] for m in room.transcript[1:]} == {"alice", "bob"}
 
 
+def test_submit_routes_completed_agent_leading_mention_to_next_member(
+    stub_profiles,
+    captured_events,
+    monkeypatch,
+):
+    room_id = _create(["alice", "bob", "carol"])["result"]["room_id"]
+    replies = {
+        "alice": "@bob 请审查",
+        "bob": "@carol 请综合",
+        "carol": "最终结论",
+    }
+    calls = []
+
+    def make_agent(_sid, key, **_kwargs):
+        profile = key.rsplit(":", 1)[-1]
+        calls.append(profile)
+        return _FakeAgent(replies[profile])
+
+    monkeypatch.setattr(server, "_make_agent", make_agent)
+    res = server._methods["groupchat.submit"](
+        "rid",
+        {"room_id": room_id, "text": "@alice 提出方案"},
+    )
+
+    assert calls == ["alice", "bob", "carol"]
+    assert res["result"]["replied"] == ["alice", "bob", "carol"]
+    assert res["result"]["turns"] == 3
+    room = server._group_rooms[room_id]
+    assert [m["sender_name"] for m in room.transcript] == [
+        "用户",
+        "alice",
+        "bob",
+        "carol",
+    ]
+    assert [m["mention_depth"] for m in room.transcript] == [0, 1, 2, 3]
+    assert any(ev == "groupchat.chain_started" for ev, _s, _p in captured_events)
+    assert any(ev == "groupchat.chain_complete" for ev, _s, _p in captured_events)
+
+
+def test_submit_does_not_route_incidental_agent_mention(
+    stub_profiles,
+    captured_events,
+    monkeypatch,
+):
+    room_id = _create(["alice", "bob"])["result"]["room_id"]
+    calls = []
+
+    def make_agent(_sid, key, **_kwargs):
+        calls.append(key.rsplit(":", 1)[-1])
+        return _FakeAgent("我赞同 @bob 的观点")
+
+    monkeypatch.setattr(server, "_make_agent", make_agent)
+    res = server._methods["groupchat.submit"](
+        "rid",
+        {"room_id": room_id, "text": "@alice 回答"},
+    )
+
+    assert calls == ["alice"]
+    assert res["result"]["stop_reason"] == "complete"
+
+
+def test_submit_blocks_agent_authored_all_by_default(
+    stub_profiles,
+    captured_events,
+    monkeypatch,
+):
+    room_id = _create(["alice", "bob", "carol"])["result"]["room_id"]
+    calls = []
+
+    def make_agent(_sid, key, **_kwargs):
+        calls.append(key.rsplit(":", 1)[-1])
+        return _FakeAgent("@all 请继续")
+
+    monkeypatch.setattr(server, "_make_agent", make_agent)
+    res = server._methods["groupchat.submit"](
+        "rid",
+        {"room_id": room_id, "text": "@alice 开始"},
+    )
+
+    assert calls == ["alice"]
+    assert res["result"]["turns"] == 1
+
+
+def test_groupchat_interrupt_stops_active_member_and_remaining_wave(
+    stub_profiles,
+    captured_events,
+    monkeypatch,
+):
+    room_id = _create(["alice", "bob"])["result"]["room_id"]
+    blocking = _BlockingFakeAgent()
+    calls = []
+
+    def make_agent(_sid, key, **_kwargs):
+        calls.append(key.rsplit(":", 1)[-1])
+        return blocking
+
+    monkeypatch.setattr(server, "_make_agent", make_agent)
+    result_holder = {}
+
+    worker = threading.Thread(
+        target=lambda: result_holder.setdefault(
+            "response",
+            server._methods["groupchat.submit"](
+                "submit-rid",
+                {"room_id": room_id, "text": "@alice @bob 开始"},
+            ),
+        ),
+        daemon=True,
+    )
+    worker.start()
+    assert blocking.started.wait(timeout=5)
+
+    interrupted = server._methods["groupchat.interrupt"](
+        "interrupt-rid",
+        {"room_id": room_id},
+    )
+    assert interrupted["result"]["status"] == "interrupting"
+    worker.join(timeout=5)
+
+    assert not worker.is_alive()
+    assert calls == ["alice"]
+    assert blocking.interrupted is True
+    assert result_holder["response"]["result"]["stop_reason"] == "interrupted"
+    assert any(ev == "groupchat.chain_stopped" for ev, _s, _p in captured_events)
+
+
+def test_groupchat_submit_is_a_long_handler():
+    assert "groupchat.submit" in server._LONG_HANDLERS
+
+
 def test_submit_unknown_room_errors(stub_profiles):
     res = server._methods["groupchat.submit"]("rid", {"room_id": "gc_missing", "text": "@alice hi"})
     assert "error" in res
@@ -165,6 +321,11 @@ def test_web_server_serves_transcript_with_sender(stub_profiles, monkeypatch):
     assert rows[1]["sender_agent_id"] == "alice"
     assert rows[1]["content"] == "hi from alice"
     assert rows[1]["timestamp"]  # non-zero, set from time.time()
+    assert rows[0]["chain_id"] == rows[1]["chain_id"]
+    assert rows[0]["message_id"] == rows[0]["root_message_id"]
+    assert "route_kind" not in rows[0]
+    assert rows[1]["route_kind"] == "user"
+    assert rows[1]["mention_depth"] == 1
 
     # A per-member sub-session id or a regular session must NOT be served as a room.
     assert _group_chat_room_messages(f"{room_id}:alice") is None

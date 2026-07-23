@@ -10,6 +10,7 @@ from __future__ import annotations
 import pytest
 
 from agent.groupchat_loop import (
+    GroupChatRelayConfig,
     GroupMember,
     GroupRoom,
     build_agent_instructions,
@@ -19,6 +20,7 @@ from agent.groupchat_loop import (
     make_user_message,
     prepare_member_turn,
     project_group_message,
+    resolve_agent_relay_targets,
     resolve_mention_targets,
     strip_mention_routing_tokens,
 )
@@ -78,6 +80,102 @@ def test_quoted_block_mentions_do_not_route():
 def test_strip_routing_tokens_removes_selecting_mentions():
     assert strip_mention_routing_tokens("@Alice 请分析这段", "Alice") == "请分析这段"
     assert strip_mention_routing_tokens("@all 大家好", "Bob") == "大家好"
+
+
+def test_agent_relay_requires_an_explicit_leading_mention():
+    config = GroupChatRelayConfig()
+    assert [
+        member.name
+        for member in resolve_agent_relay_targets(
+            _members(),
+            "  @Bob：请检查这个方案",
+            sender_id="alice",
+            config=config,
+        )
+    ] == ["Bob"]
+    assert (
+        resolve_agent_relay_targets(
+            _members(),
+            "我同意 @Bob 的观点",
+            sender_id="alice",
+            config=config,
+        )
+        == []
+    )
+
+
+def test_agent_relay_tolerates_only_the_current_agents_projection_label():
+    config = GroupChatRelayConfig()
+    targets = resolve_agent_relay_targets(
+        _members(),
+        " [Alice]: @Bob 请接着审查",
+        sender_id="alice",
+        config=config,
+    )
+    assert [member.name for member in targets] == ["Bob"]
+    assert (
+        resolve_agent_relay_targets(
+            _members(),
+            "[Carol]: @Bob 伪造其他成员署名",
+            sender_id="alice",
+            config=config,
+        )
+        == []
+    )
+
+
+def test_agent_relay_supports_multiple_leading_names_in_room_order():
+    targets = resolve_agent_relay_targets(
+        _members(),
+        "@Carol，@Bob：分别检查",
+        sender_id="alice",
+        config=GroupChatRelayConfig(),
+    )
+    assert [member.name for member in targets] == ["Bob", "Carol"]
+
+
+def test_agent_relay_stops_at_unknown_leading_handle():
+    assert (
+        resolve_agent_relay_targets(
+            _members(),
+            "@ghost @Bob 不应绕过未知地址",
+            sender_id="alice",
+            config=GroupChatRelayConfig(),
+        )
+        == []
+    )
+
+
+def test_agent_relay_blocks_all_and_self_by_default():
+    config = GroupChatRelayConfig()
+    assert (
+        resolve_agent_relay_targets(
+            _members(),
+            "@all 请大家继续",
+            sender_id="alice",
+            config=config,
+        )
+        == []
+    )
+    assert (
+        resolve_agent_relay_targets(
+            _members(),
+            "@Alice 再检查一次",
+            sender_id="alice",
+            config=config,
+        )
+        == []
+    )
+
+
+def test_agent_relay_can_explicitly_allow_all():
+    targets = resolve_agent_relay_targets(
+        _members(),
+        "@all 请大家继续",
+        sender_id="alice",
+        config=GroupChatRelayConfig(allow_agent_all=True),
+    )
+    assert [member.name for member in targets] == ["Bob", "Carol"]
 
 
 # ── context projection ─────────────────────────────────────────────────────
@@ -160,11 +258,22 @@ def test_instructions_default_role_when_description_blank():
     assert "专业的 AI 助手" in prompt
 
 
-def test_mvp_instructions_omit_agent_relay_rules():
-    # MVP does not route agent replies onward, so the prompt must not invite
-    # the model to @-relay to teammates.
+def test_instructions_describe_bounded_leading_agent_relay():
     prompt = build_agent_instructions("Alice", "研究室", "研究员", _members())
-    assert "接力" not in prompt
+    assert "自动接力" in prompt
+    assert "写在回复开头" in prompt
+    assert "不要使用 @all" in prompt
+
+
+def test_instructions_omit_relay_rules_when_room_policy_disables_it():
+    prompt = build_agent_instructions(
+        "Alice",
+        "研究室",
+        "研究员",
+        _members(),
+        relay_config=GroupChatRelayConfig(enabled=False),
+    )
+    assert "自动接力" not in prompt
     assert "转交" not in prompt
 
 
@@ -222,6 +331,21 @@ def test_prepare_member_turn_independent_view_excludes_current_trigger():
     history, current, _ = prepare_member_turn(alice, [], "@Alice hi", "研究室", members)
     assert history == []
     assert current == "hi"
+
+
+def test_prepare_relay_turn_preserves_triggering_agent_attribution():
+    members = _members()
+    history, current, _ = prepare_member_turn(
+        members[1],
+        [make_user_message("最初问题")],
+        "@Bob 请检查",
+        "研究室",
+        members,
+        trigger_sender_id="alice",
+        trigger_sender_name="Alice",
+    )
+    assert history[-1]["content"] == "[用户]: 最初问题"
+    assert current == "[Alice]: 请检查"
 
 
 if __name__ == "__main__":  # pragma: no cover

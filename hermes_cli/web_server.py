@@ -11398,7 +11398,7 @@ def _group_chat_room_messages(session_id: str):
         return None
     rows = []
     for index, message in enumerate(room.transcript):
-        rows.append({
+        row = {
             "id": index + 1,
             "session_id": session_id,
             "role": str(message.get("role") or "user"),
@@ -11407,7 +11407,25 @@ def _group_chat_room_messages(session_id: str):
             "sender_agent_id": message.get("sender_id") or "",
             "sender_name": message.get("sender_name") or "",
             "sender_avatar": message.get("avatar") or "",
-        })
+            "group_status": message.get("status") or "complete",
+        }
+        for key in (
+            "message_id",
+            "chain_id",
+            "root_message_id",
+            "parent_message_id",
+        ):
+            source_key = "id" if key == "message_id" else key
+            value = str(message.get(source_key) or "")
+            if value:
+                row[key] = value
+        mention_depth = message.get("mention_depth")
+        if isinstance(mention_depth, int):
+            row["mention_depth"] = mention_depth
+        route_kind = str(message.get("route_kind") or "")
+        if route_kind in {"user", "relay"}:
+            row["route_kind"] = route_kind
+        rows.append(row)
     return rows
 
 

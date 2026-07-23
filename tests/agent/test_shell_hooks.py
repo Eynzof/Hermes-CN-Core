@@ -11,6 +11,8 @@ from __future__ import annotations
 import orjson
 from pathlib import Path
 
+import sys
+
 import pytest
 
 from agent import shell_hooks
@@ -257,6 +259,7 @@ class TestMatcher:
 # ── End-to-end subprocess behaviour ───────────────────────────────────────
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: .sh scripts can't run on Windows")
 class TestCallbackSubprocess:
     def test_timeout_returns_none(self, tmp_path):
         # Script that sleeps forever; we set a 1s timeout.
@@ -679,6 +682,7 @@ class TestAllowlistConcurrency:
         assert "No space" in msg
         assert "re-prompt" in msg
 
+    @pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: .sh scripts can't run on Windows")
     def test_script_is_executable_handles_interpreter_prefix(self, tmp_path):
         """For ``python3 hook.py`` and similar the interpreter reads
         the script, so X_OK on the script itself is not required —

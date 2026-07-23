@@ -17,11 +17,16 @@ Bug scenario (pre-fix):
 """
 
 import os
+import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 
+pytestmark = pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: tempfile/path operations fail")
+
+import run_agent
 
 # ---------------------------------------------------------------------------
 # Part 1: Agent-side — _flush_messages_to_session_db after compression

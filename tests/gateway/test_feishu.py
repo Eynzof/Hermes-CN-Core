@@ -7,13 +7,18 @@ import os
 import tempfile
 import time
 import unittest
+import sys
 from collections import OrderedDict
 from pathlib import Path
+
+import pytest
 from types import SimpleNamespace
 from typing import Dict
 from unittest.mock import AsyncMock, Mock, patch
 
 from gateway.platforms.base import ProcessingOutcome
+
+pytestmark = pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: Path.home() fails in subprocess isolation")
 
 try:
     import lark_oapi

@@ -4,6 +4,7 @@ Run with: python -m pytest tests/test_interrupt.py -v
 """
 
 import queue
+import sys
 import threading
 import time
 import pytest
@@ -197,6 +198,7 @@ class TestMessageCombining:
 class TestSIGKILLEscalation:
     """Test that SIGTERM-resistant processes get SIGKILL'd."""
 
+    @pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: SIGTERM handling differs")
     @pytest.mark.skipif(
         not __import__("shutil").which("bash"),
         reason="Requires bash"

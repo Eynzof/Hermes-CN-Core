@@ -14,6 +14,7 @@ from __future__ import annotations
 from agent.re_compat import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -57,6 +58,7 @@ def _extract_install_sh_autostash_block() -> str:
 
 
 @pytest.mark.live_system_guard_bypass
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: git/subprocess operations fail")
 def test_install_sh_discards_runtime_lockfile_churn_before_stash(
     tmp_path: Path,
 ) -> None:

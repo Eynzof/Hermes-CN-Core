@@ -1124,6 +1124,7 @@ class TestMatrixMarkdownToHtml:
         assert "<code" in result
         assert "print" in result
 
+    @pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: markdown table format incompatibility")
     def test_matrix_markdown_preserves_table_structure(self):
         table = "\n".join(
             [

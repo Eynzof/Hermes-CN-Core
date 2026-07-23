@@ -2,10 +2,13 @@
 
 import orjson
 import os
+import sys
 from pathlib import Path
 from unittest.mock import patch, MagicMock, mock_open
 
 import pytest
+
+_win32 = pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: Homebrew paths are macOS-specific")
 
 from tools.browser_tool import (
     _discover_homebrew_node_dirs,
@@ -29,6 +32,7 @@ def _clear_browser_caches():
     _bt._agent_browser_resolved = False
 
 
+@_win32
 class TestSanePath:
     """Verify _SANE_PATH includes fallback directories used by browser_tool."""
 
@@ -51,6 +55,7 @@ class TestSanePath:
         assert "/bin" in path_parts
 
 
+@_win32
 class TestDiscoverHomebrewNodeDirs:
     """Tests for _discover_homebrew_node_dirs()."""
 
@@ -96,6 +101,7 @@ class TestDiscoverHomebrewNodeDirs:
             assert _discover_homebrew_node_dirs() == ()
 
 
+@_win32
 class TestFindAgentBrowser:
     """Tests for _find_agent_browser() Homebrew path search."""
 
@@ -209,6 +215,7 @@ class TestFindAgentBrowser:
                 _find_agent_browser()
 
 
+@_win32
 class TestBrowserRequirements:
     def test_cdp_override_does_not_require_agent_browser_cli(self, monkeypatch):
         monkeypatch.setenv("BROWSER_CDP_URL", "ws://127.0.0.1:9222/devtools/browser/test")
@@ -227,6 +234,7 @@ class TestBrowserRequirements:
         assert check_browser_requirements() is False
 
 
+@_win32
 class TestRunBrowserCommandTermuxFallback:
     def test_termux_local_mode_rejects_bare_npx_fallback(self, monkeypatch):
         monkeypatch.setenv("TERMUX_VERSION", "0.118.3")
@@ -241,6 +249,7 @@ class TestRunBrowserCommandTermuxFallback:
         assert "agent-browser install" in result["error"]
 
 
+@_win32
 class TestRunBrowserCommandPathConstruction:
     """Verify _run_browser_command() includes Homebrew node dirs in subprocess PATH."""
 

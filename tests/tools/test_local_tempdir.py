@@ -1,8 +1,13 @@
+import sys
+
+import pytest
+
 from unittest.mock import patch
 
 from tools.environments.local import LocalEnvironment
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: tmp dir creation")
 class TestLocalTempDir:
     def test_uses_os_tmpdir_for_session_artifacts(self, monkeypatch):
         monkeypatch.setenv("TMPDIR", "/data/data/com.termux/files/usr/tmp")

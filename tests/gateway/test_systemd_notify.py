@@ -11,6 +11,8 @@ import uuid
 
 import pytest
 
+pytestmark = pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: AF_UNIX and systemd not available")
+
 
 def test_notify_without_notify_socket_is_a_noop(monkeypatch):
     monkeypatch.delenv("NOTIFY_SOCKET", raising=False)

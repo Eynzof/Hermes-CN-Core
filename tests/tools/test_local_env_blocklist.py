@@ -465,6 +465,7 @@ class TestBlocklistCoverage:
         assert extras.issubset(_HERMES_PROVIDER_ENV_BLOCKLIST)
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: Unix PATH semantics with `os.pathsep` being `;` on Windows")
 class TestSanePathIncludesHomebrew:
     """Verify _SANE_PATH includes macOS Homebrew directories."""
 
@@ -578,6 +579,7 @@ class TestSanePathIncludesHomebrew:
         assert "PATH" not in result
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: Unix PATH semantics with `os.pathsep` being `;` on Windows")
 class TestHermesBinDirOnPath:
     """The hermes install dir is reachable in the terminal subshell PATH.
 

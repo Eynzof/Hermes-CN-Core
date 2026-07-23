@@ -1,6 +1,7 @@
 """Tests for tools.environments.docker.find_docker — Docker CLI discovery."""
 
 import os
+import sys
 from unittest.mock import patch
 
 import pytest
@@ -58,6 +59,7 @@ class TestFindDocker:
             result = docker_mod.find_docker()
         assert result == str(fake_binary)
 
+    @pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: Unix permissions")
     def test_env_var_override_ignored_if_not_executable(self, tmp_path):
         """Non-executable HERMES_DOCKER_BINARY falls through to normal discovery."""
         fake_binary = tmp_path / "podman"

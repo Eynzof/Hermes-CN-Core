@@ -9,6 +9,7 @@ hermes_cli/profiles.py::_count_skills) plus the disabled-set, with a short
 TTL bounding in-place SKILL.md edit staleness.
 """
 
+import sys
 import time
 
 import pytest
@@ -91,6 +92,7 @@ def test_disabled_set_change_invalidates(tmp_path, monkeypatch):
     assert names == ["skill-one"], "disabled-set change must invalidate the cache"
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: Windows filesystem mtime resolution")
 def test_ttl_expiry_forces_rescan(tmp_path, monkeypatch):
     """In-place SKILL.md edits are invisible to any directory signature;
     the TTL bounds that staleness."""

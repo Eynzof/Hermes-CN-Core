@@ -9,6 +9,8 @@ import time
 
 import pytest
 
+_win32 = pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: real binary behavior differs on Windows")
+
 from tools.approval import detect_dangerous_command, detect_hardline_command
 
 
@@ -16,7 +18,7 @@ from tools.approval import detect_dangerous_command, detect_hardline_command
     ("argv", "stdin", "expected_returncode", "expected_output"),
     [
         (["rg", "--", "--pre"], "ordinary text\n", 1, ""),
-        (["sort", "--", "--compress-program"], "", 2, ""),
+        pytest.param(["sort", "--", "--compress-program"], "", 2, "", marks=_win32),
         (["rg", "--pre-glob", "--pre", "needle"], "needle\n", 0, "needle\n"),
     ],
 )
@@ -36,8 +38,8 @@ def test_real_read_tool_binaries_confirm_option_ownership(
 @pytest.mark.parametrize(
     ("tool", "args", "stdin", "needs_tty"),
     [
-        ("rg", ["--pre", "-payload-marker", "needle", "{input}"], None, False),
-        ("rg", ["--hostname-bin=-payload-marker", "needle", "{input}"], None, False),
+        pytest.param("rg", ["--pre", "-payload-marker", "needle", "{input}"], None, False, marks=_win32),
+        pytest.param("rg", ["--hostname-bin=-payload-marker", "needle", "{input}"], None, False, marks=_win32),
         ("sort", ["--buffer-size=1K", "--compress-program", "-payload-marker"], "{bulk}", False),
         ("ag", ["--pager=-payload-marker", "needle", "{input}"], None, True),
         ("man", ["--pager", "-payload-marker", "ls"], None, True),

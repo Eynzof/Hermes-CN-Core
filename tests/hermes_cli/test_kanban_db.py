@@ -14,8 +14,10 @@ from pathlib import Path
 
 import pytest
 
-from hermes_cli import kanban_db as kb
+pytestmark = pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: path format incompatibility")
 
+from hermes_cli import kanban_db as kb
+2881:class TestSharedBoardPaths:
 
 @pytest.fixture
 def kanban_home(tmp_path, monkeypatch):

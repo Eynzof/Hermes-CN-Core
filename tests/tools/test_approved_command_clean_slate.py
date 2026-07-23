@@ -18,6 +18,7 @@ during a retry backoff) must still SIGINT the command (exit 130); non-approved
 commands keep current interrupt behavior.
 """
 import json
+import sys
 import threading
 import time
 
@@ -143,6 +144,7 @@ def test_approved_note_enriched_not_misleading_on_interrupt(monkeypatch, tmp_pat
     set_interrupt(False, thread_id=t.ident)
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: Unix signal 130")
 def test_natural_exit_130_not_mislabeled_as_interrupt(monkeypatch):
     """A command that legitimately exits 130 on its own (no interrupt) must NOT
     get its approval note rewritten to '...then interrupted.'."""

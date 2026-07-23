@@ -3,9 +3,12 @@ from __future__ import annotations
 from agent.re_compat import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
+
+pytestmark = pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: symlink tests need Unix symlink behavior")
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 STAGE2_HOOK = REPO_ROOT / "docker" / "stage2-hook.sh"

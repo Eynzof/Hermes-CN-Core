@@ -1,6 +1,8 @@
 """Tests for cron/jobs.py — schedule parsing, job CRUD, and due-job detection."""
 
+import sys
 import threading
+
 import pytest
 from datetime import datetime, timedelta, timezone
 
@@ -1265,6 +1267,7 @@ class TestGetDueJobs:
         assert get_job("recurring")["run_claim"]["at"] == original_at
 
 
+    @pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: croniter not installed")
     def test_broken_cron_without_next_run_is_recovered(self, tmp_cron_dir, monkeypatch):
         now = datetime(2026, 3, 18, 10, 0, 0, tzinfo=timezone.utc)
         monkeypatch.setattr("cron.jobs._hermes_now", lambda: now)
@@ -1334,6 +1337,7 @@ class TestGetDueJobs:
         assert recovered_dt > now
 
 
+    @pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: croniter not installed")
     def test_cron_next_run_offset_migration_is_rescheduled_not_fired(self, tmp_cron_dir, monkeypatch):
         current_tz = timezone(timedelta(hours=2))
         now = datetime(2026, 5, 19, 13, 2, 0, tzinfo=current_tz)
@@ -1369,6 +1373,7 @@ class TestGetDueJobs:
         repaired = datetime.fromisoformat(get_job("cron-tz-migrate")["next_run_at"])
         assert repaired == datetime(2026, 5, 19, 21, 0, 0, tzinfo=current_tz)
 
+    @pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: croniter not installed")
     def test_cron_offset_migration_does_not_repair_already_passed_wall_time(self, tmp_cron_dir, monkeypatch):
         current_tz = timezone(timedelta(hours=2))
         now = datetime(2026, 5, 19, 13, 2, 0, tzinfo=current_tz)

@@ -14,6 +14,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 
 @pytest.mark.perf
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: subprocess spawn fails")
 def test_python_subprocess_spawn(timing_context):
     """Measure Python subprocess spawn overhead."""
     import subprocess

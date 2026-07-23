@@ -1620,6 +1620,7 @@ class TestCuaDriverSessionReconnect:
         assert cli_calls == [("get_window_state", {"pid": 1, "window_id": 2})]
         assert result["images"] == ["B64PNG"]
 
+    @pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: cua-driver CLI not available")
     def test_cli_fallback_reads_screenshot_from_file(self, tmp_path):
         """_call_tool_via_cli must base64-read a screenshot written to disk
         (screenshot_out_file path) when no inline base64 is present."""

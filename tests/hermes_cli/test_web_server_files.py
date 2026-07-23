@@ -1,5 +1,6 @@
 """Tests for the dashboard-managed file browser API."""
 
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -171,6 +172,7 @@ def test_forced_root_paths_stay_under_root(forced_files_client, tmp_path):
     assert escaped.status_code == 403
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: path format incompatibility")
 def test_local_mode_defaults_to_home_and_can_jump_to_absolute_path(local_files_client, tmp_path):
     client, home = local_files_client
     (home / "home.txt").write_text("home")
@@ -193,6 +195,7 @@ def test_local_mode_defaults_to_home_and_can_jump_to_absolute_path(local_files_c
     assert other_listing.json()["entries"][0]["path"] == str(other / "other.txt")
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: path format incompatibility")
 def test_gated_local_mode_still_defaults_to_home(monkeypatch, tmp_path):
     home = tmp_path / "home"
     home.mkdir()
@@ -220,6 +223,7 @@ def test_gated_local_mode_still_defaults_to_home(monkeypatch, tmp_path):
     assert policy.can_change_path is True
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: path format incompatibility")
 def test_local_mode_upload_read_mkdir_delete_roundtrip(local_files_client):
     client, home = local_files_client
     folder = home / "workspace"

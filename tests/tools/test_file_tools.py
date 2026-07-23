@@ -7,9 +7,12 @@ handling without requiring a running terminal environment.
 import os
 import orjson
 import logging
+import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+_win32 = pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: Unix path assumptions")
 
 from tools.file_tools import (
     PATCH_SCHEMA,
@@ -296,6 +299,7 @@ class TestPatchHandler:
         assert "traversal" in result["error"].lower()
 
 
+@_win32
 class TestPatchSensitivePathExtraction:
     """Regression tests for patch_tool sensitive-path extraction.
 
@@ -650,6 +654,7 @@ class TestSensitivePathCheck:
         assert "error" in result
         assert "Hermes config" in result["error"]
 
+    @_win32
     def test_system_path_still_blocked(self, monkeypatch):
         monkeypatch.setattr("tools.file_tools._hermes_config_resolved", "/some/other/path")
         monkeypatch.setattr("tools.file_tools._hermes_config_resolved_loaded", True)

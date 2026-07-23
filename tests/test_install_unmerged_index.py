@@ -15,6 +15,7 @@ from __future__ import annotations
 from agent.re_compat import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -84,6 +85,7 @@ def _make_unmerged_repo(repo: Path) -> None:
 
 
 @pytest.mark.live_system_guard_bypass  # runs against a dedicated throwaway repo
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: git operations fail")
 def test_install_sh_clears_unmerged_index_then_stashes(tmp_path: Path) -> None:
     repo = tmp_path / "hermes-agent"
     repo.mkdir()

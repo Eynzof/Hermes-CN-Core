@@ -9,6 +9,8 @@ from unittest.mock import patch
 
 import pytest
 
+pytestmark = pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: Modal/Browserbase managed services")
+
 from hermes_cli.nous_account import NousPortalAccountInfo
 
 

@@ -7,6 +7,8 @@ Tests cover:
 - Path resolution (absolute, relative to HERMES_HOME/scripts/)
 """
 
+import sys
+import pytest
 import orjson
 import json
 import os
@@ -250,6 +252,7 @@ class TestRunJobScript:
         assert captured["kwargs"]["encoding"] == "utf-8"
         assert captured["kwargs"]["errors"] == "replace"
 
+    @pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: encoding is always set on Windows")
     def test_non_windows_script_preserves_default_text_decoding(self, cron_env, monkeypatch):
         from cron import scheduler as sched_mod
         from cron.scheduler import _run_job_script

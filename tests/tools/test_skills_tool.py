@@ -2,6 +2,7 @@
 
 import orjson
 import os
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -424,6 +425,7 @@ class TestSkillView:
         assert f"Run {skill_dir}/scripts/do.sh in session-123" in result["content"]
         assert "${HERMES_SKILL_DIR}" not in result["content"]
 
+    @pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: inline shell output encoding")
     def test_skill_view_applies_inline_shell_when_enabled(self, tmp_path):
         with (
             patch("tools.skills_tool.SKILLS_DIR", tmp_path),

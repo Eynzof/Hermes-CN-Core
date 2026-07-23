@@ -4,9 +4,12 @@ Based on PR #1085 by ismoilh (salvaged).
 """
 
 import os
+import sys
 from pathlib import Path
 
 import pytest
+
+_win32 = pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: Unix path assumptions")
 
 from tools.file_operations import _is_write_denied
 
@@ -269,6 +272,7 @@ class TestSafeRootDenialMessageIntegration:
         assert inside.read_text() == "content"
 
 
+@_win32
 class TestCheckSensitivePathMacOSBypass:
     """Verify _check_sensitive_path blocks /private/etc paths (issue #8734)."""
 
@@ -329,6 +333,7 @@ class TestAtomicWrite:
         assert target.read_text() == "v2 content"
         assert os.stat(target).st_ino != ino_before
 
+    @_win32
     def test_overwrite_preserves_mode(self, ops, tmp_path: Path):
         target = tmp_path / "perms.txt"
         target.write_text("old")
@@ -337,6 +342,7 @@ class TestAtomicWrite:
         assert res.error is None, res.error
         assert (os.stat(target).st_mode & 0o777) == 0o640
 
+    @_win32
     def test_failed_write_leaves_original_intact(self, ops, tmp_path: Path):
         # A read-only parent directory means the temp file can't be created,
         # so the write fails BEFORE any rename. The original must survive

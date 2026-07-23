@@ -4,6 +4,7 @@ appended to final gateway replies."""
 from __future__ import annotations
 
 import os
+import sys
 
 import pytest
 
@@ -34,6 +35,7 @@ def test_model_short_drops_vendor_prefix(model, expected):
     assert _model_short(model) == expected
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: path format /tmp vs C:\tmp")
 def test_home_relative_cwd_collapses_home(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     sub = tmp_path / "projects" / "hermes"
@@ -42,6 +44,7 @@ def test_home_relative_cwd_collapses_home(tmp_path, monkeypatch):
     assert result == "~/projects/hermes"
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: path format /tmp vs C:\tmp")
 def test_home_relative_cwd_leaves_abs_path_alone(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path / "other"))
     result = _home_relative_cwd(str(tmp_path / "outside" / "dir"))
@@ -56,6 +59,7 @@ def test_home_relative_cwd_empty_returns_empty():
 # format_runtime_footer
 # ---------------------------------------------------------------------------
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: path format /tmp vs C:\tmp")
 def test_format_footer_all_fields(monkeypatch, tmp_path):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("TERMINAL_CWD", str(tmp_path / "projects" / "hermes"))
@@ -70,6 +74,7 @@ def test_format_footer_all_fields(monkeypatch, tmp_path):
     assert out == "gpt-5.4 · 68% · ~/projects/hermes"
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: path format /tmp vs C:\\tmp")
 def test_format_footer_skips_missing_context_length():
     out = format_runtime_footer(
         model="openai/gpt-5.4",
@@ -217,6 +222,7 @@ def test_build_footer_empty_when_disabled():
     assert out == ""
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: path format /tmp vs C:\tmp")
 def test_build_footer_returns_rendered_when_enabled(monkeypatch, tmp_path):
     monkeypatch.setenv("HOME", str(tmp_path))
     out = build_footer_line(

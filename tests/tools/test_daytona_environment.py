@@ -1,5 +1,6 @@
 """Unit tests for the Daytona cloud sandbox environment backend."""
 
+import sys
 import threading
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -420,6 +421,7 @@ class TestEnsureSandboxReady:
 # ---------------------------------------------------------------------------
 
 class TestSyncSafety:
+    @pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: SSH/Unix path")
     def test_single_upload_quotes_parent_path(self, make_env, tmp_path):
         """A remote path with shell metacharacters must be quoted, not injected."""
         env = make_env()

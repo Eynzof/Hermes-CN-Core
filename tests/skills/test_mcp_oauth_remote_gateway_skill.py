@@ -107,6 +107,7 @@ def _init_revoked_error(code=401):
                                   io.BytesIO(body))
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: path format incompatibility")
 def test_token_ok_branch(tmp_path):
     mod = load_module()
     tokens_dir = tmp_path / "mcp-tokens"

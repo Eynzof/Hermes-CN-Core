@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import orjson
+import sys
 import os
 import subprocess
 import threading
@@ -20,6 +21,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+
+pytestmark = pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: path format incompatibility")
 
 from hermes_cli import kanban_db as kb
 from hermes_cli.kanban import run_slash

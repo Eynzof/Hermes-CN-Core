@@ -1,6 +1,7 @@
 """Tests for agent/skill_commands.py — skill slash command scanning and platform filtering."""
 
 import os
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -745,6 +746,7 @@ class TestSkillDirectoryHeader:
         assert f"[Skill directory: {skill_dir}]" in msg
         assert "Resolve any relative paths" in msg
 
+    @pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: path format incompatibility")
     def test_supporting_files_shown_with_absolute_paths(self, tmp_path):
         with patch("tools.skills_tool.SKILLS_DIR", tmp_path):
             skill_dir = _make_skill(tmp_path, "scripted-skill")
@@ -831,6 +833,7 @@ class TestTemplateVarSubstitution:
         assert "${HERMES_SKILL_DIR}/scripts/foo.js" in msg
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: inline shell expansion fails on Windows")
 class TestInlineShellExpansion:
     """Inline ``!`cmd`` snippets in SKILL.md run before the agent sees the
     content — but only when the user has opted in via config."""

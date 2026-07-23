@@ -2,12 +2,15 @@
 
 import io
 import os
+import sys
 import tarfile
 import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+_win32 = pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: SSH/rsync")
 
 from tools.environments.file_sync import FileSyncManager, _FORCE_SYNC_ENV, iter_sync_files
 
@@ -296,6 +299,7 @@ class TestEdgeCases:
 
 
 class TestSyncBackSecurity:
+    @_win32
     def test_sync_back_does_not_overwrite_uploaded_credential_files(self, tmp_path, monkeypatch):
         credential = tmp_path / "token.json"
         credential.write_text("host-token", encoding="utf-8")

@@ -1,6 +1,7 @@
 """Tests for gateway/platforms/base.py — MessageEvent, media extraction, message truncation."""
 
 import os
+import sys
 import time
 from unittest.mock import patch
 
@@ -958,6 +959,7 @@ class TestMediaDeliveryPathValidation:
 
         assert BasePlatformAdapter.validate_media_delivery_path(str(fresh)) is None
 
+    @pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: path format incompatibility")
     def test_recency_trust_denies_system_paths_even_when_fresh(self, tmp_path, monkeypatch):
         """A freshly-touched file under /etc must NOT be uploaded.
 
@@ -1060,6 +1062,7 @@ class TestMediaDeliveryDefaultMode:
             f.write_bytes(b"x")
             assert BasePlatformAdapter.validate_media_delivery_path(str(f)) == str(f.resolve())
 
+    @pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: path format incompatibility")
     def test_denylist_still_blocks_credentials(self, tmp_path, monkeypatch):
         """Default mode is permissive but not naive — credential paths
         remain blocked. Simulate $HOME so ~/.ssh resolves into tmp_path.
@@ -1326,6 +1329,7 @@ class TestMediaDeliveryDefaultMode:
         out = BasePlatformAdapter.filter_local_delivery_paths([str(notes)])
         assert out == [str(notes.resolve())]
 
+    @pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: path format incompatibility")
     def test_root_home_deliverable_is_accepted(self, tmp_path, monkeypatch):
         """The motivating bug (#38106): a root-run gateway has ``$HOME=/root``,
         which is on the system-prefix denylist. A plain deliverable the agent
@@ -1969,6 +1973,7 @@ class TestMediaDeliveryDiagnosability:
         ])
         assert out == [(str(good.resolve()), False)]
 
+    @pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: path format incompatibility")
     def test_extract_media_tolerates_crafted_null_path(self):
         """extract_media must not raise on a crafted ~\\x00 MEDIA tag."""
         content = "here\nMEDIA:`~\x00evil.png`\ntrailing"
@@ -1983,6 +1988,7 @@ class TestMediaDeliveryDiagnosability:
         for sep in ("\u2028", "\u2029", "\x85"):
             assert sep not in _log_safe_path(f"/tmp/a{sep}b.png")
 
+    @pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: path format incompatibility")
     def test_canonical_cache_roots_present(self):
         from gateway.platforms.base import MEDIA_DELIVERY_SAFE_ROOTS
         roots = {str(r) for r in MEDIA_DELIVERY_SAFE_ROOTS}

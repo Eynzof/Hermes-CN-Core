@@ -16,6 +16,7 @@ from agent.re_compat import re
 import shlex
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -63,6 +64,7 @@ def _run_guard(install_dir: Path) -> None:
     assert res.returncode == 0, res.stderr
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: git operations fail")
 def test_install_sh_guard_moves_commitless_checkout_aside(tmp_path: Path) -> None:
     install_dir = tmp_path / "hermes-agent"
     install_dir.mkdir()
@@ -85,6 +87,7 @@ def test_install_sh_guard_moves_commitless_checkout_aside(tmp_path: Path) -> Non
     assert (backups[0] / "leftover.txt").read_text() == "partial download"
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: git operations fail")
 def test_install_sh_guard_keeps_repo_with_commits(tmp_path: Path) -> None:
     install_dir = tmp_path / "hermes-agent"
     install_dir.mkdir()
@@ -101,6 +104,7 @@ def test_install_sh_guard_keeps_repo_with_commits(tmp_path: Path) -> None:
     )
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: git operations fail")
 def test_install_sh_guard_ignores_non_repo_dir(tmp_path: Path) -> None:
     install_dir = tmp_path / "hermes-agent"
     install_dir.mkdir()

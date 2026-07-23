@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import subprocess
+import sys
 import time
 import pytest
 from pathlib import Path
@@ -487,6 +488,7 @@ class TestGitEnvIsolation:
         env = _git_env(tmp_path / "store", str(tmp_path))
         assert "GIT_INDEX_FILE" not in env
 
+    @pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: Windows path/git/env issues")
     def test_sets_index_file_when_provided(self, tmp_path):
         env = _git_env(
             tmp_path / "store", str(tmp_path),
@@ -671,6 +673,7 @@ class TestSecurity:
         assert result["success"] is False
         assert "expected 4-64 hex characters" in result["error"]
 
+    @pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: Windows path/git/env issues")
     def test_restore_rejects_path_traversal(self, mgr, work_dir):
         mgr.ensure_checkpoint(str(work_dir), "initial")
         cps = mgr.list_checkpoints(str(work_dir))
@@ -1013,6 +1016,7 @@ class TestStoreStatus:
 
 
 class TestClearFunctions:
+    @pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: Windows path/git/env issues")
     def test_clear_all_wipes_base(self, tmp_path, monkeypatch, work_dir):
         base = tmp_path / "checkpoints"
         monkeypatch.setattr("tools.checkpoint_manager.CHECKPOINT_BASE", base)

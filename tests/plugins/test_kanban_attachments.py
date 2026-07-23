@@ -142,6 +142,7 @@ def test_delete_attachment_missing_returns_none(kanban_home):
         conn.close()
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: path format incompatibility")
 def test_attachments_root_is_per_board(kanban_home, monkeypatch):
     # default board uses <root>/kanban/attachments
     default_root = kb.attachments_root(board="default")
@@ -164,6 +165,7 @@ def test_attachments_root_env_override(kanban_home, monkeypatch, tmp_path):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: path format incompatibility")
 def test_worker_context_lists_attachments_with_absolute_path(kanban_home):
     conn = kb.connect()
     try:

@@ -13,7 +13,10 @@ Covers:
 """
 
 import os
+import sys
 import unittest
+
+import pytest
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
@@ -56,6 +59,7 @@ class TestConfigEnvOverrides(unittest.TestCase):
         self.assertEqual(home.chat_id, "user@test.com")
 
     @patch.dict(os.environ, {}, clear=True)
+    @pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: Path.home() fails")
     def test_email_not_loaded_without_env(self):
         from gateway.config import GatewayConfig, Platform, _apply_env_overrides
         config = GatewayConfig()

@@ -14,6 +14,7 @@ died.  See commit message for full context.
 import os
 import signal
 import subprocess
+import sys
 import threading
 import time
 from types import SimpleNamespace
@@ -65,6 +66,7 @@ def _wait_for_pgid_exit(pgid: int, timeout: float = 60.0) -> bool:
     return not _pgid_still_alive(pgid)
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: os.getpgid not on Windows")
 def test_kill_process_uses_cached_pgid_if_wrapper_already_exited(monkeypatch):
     """If the shell wrapper exits before cleanup, still kill its process group.
 
@@ -123,6 +125,7 @@ def test_kill_process_uses_windows_tree_kill(monkeypatch):
     assert killed == []
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: os.getpgid not on Windows")
 def test_wait_for_process_kills_subprocess_on_keyboardinterrupt():
     """When KeyboardInterrupt arrives mid-poll, the subprocess group must be
     killed before the exception is re-raised."""

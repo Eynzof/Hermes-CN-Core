@@ -2,6 +2,7 @@
 
 import os
 from agent.re_compat import re
+import sys
 import pytest
 import ripgrepy
 import subprocess
@@ -548,6 +549,7 @@ class TestShellFileOpsHelpers:
             "C:/Users/alice/notes.txt"
         ) == "'/c/Users/alice/notes.txt'"
 
+    @pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: asserts bash path format `/c/Users/...` vs Windows `2>$null`")
     def test_read_file_uses_bash_safe_windows_paths(self, mock_env, monkeypatch):
         import tools.environments.local as local_mod
 

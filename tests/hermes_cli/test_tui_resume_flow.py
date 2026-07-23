@@ -5,8 +5,9 @@ import subprocess
 import sys
 import textwrap
 import types
-
 import pytest
+
+pytestmark = pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: path/subprocess operations fail")
 
 
 def _args(**overrides):

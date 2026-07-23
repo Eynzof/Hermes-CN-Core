@@ -1,4 +1,5 @@
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -114,6 +115,7 @@ def test_commit_with_nothing_staged_commits_all_changes(client, repo):
     assert client.get("/api/git/status", params={"path": str(repo)}).json()["changed"] == 0
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: git operations fail")
 def test_worktrees_and_branch_lifecycle(client, repo):
     worktrees = client.get("/api/git/worktrees", params={"path": str(repo)}).json()["worktrees"]
     assert any(tree["isMain"] and tree["path"] == str(repo) for tree in worktrees)

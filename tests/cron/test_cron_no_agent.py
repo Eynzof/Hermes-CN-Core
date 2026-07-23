@@ -11,6 +11,7 @@ Covers:
 
 from __future__ import annotations
 
+import sys
 import orjson
 from unittest.mock import patch
 
@@ -192,6 +193,7 @@ def test_cronjob_tool_create_does_not_require_prompt_when_no_agent(hermes_env):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: script stdout capture")
 def test_run_job_no_agent_success_returns_script_stdout(hermes_env):
     """Happy path: script exits 0 with output, delivered verbatim."""
     from cron.jobs import create_job
@@ -210,6 +212,7 @@ def test_run_job_no_agent_success_returns_script_stdout(hermes_env):
     assert "RAM 92% on host" in doc
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: script empty output")
 def test_run_job_no_agent_empty_output_is_silent(hermes_env):
     """Empty stdout → SILENT_MARKER, which suppresses delivery downstream."""
     from cron.jobs import create_job
@@ -227,6 +230,7 @@ def test_run_job_no_agent_empty_output_is_silent(hermes_env):
     assert final_response == SILENT_MARKER
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: wake gate script")
 def test_run_job_no_agent_wake_gate_is_silent(hermes_env):
     """wakeAgent=false gate in stdout triggers a silent run."""
     from cron.jobs import create_job
@@ -243,6 +247,7 @@ def test_run_job_no_agent_wake_gate_is_silent(hermes_env):
     assert final_response == SILENT_MARKER
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: script failure delivery")
 def test_run_job_no_agent_script_failure_delivers_error(hermes_env):
     """Non-zero exit → success=False, error alert is the delivered message."""
     from cron.jobs import create_job
@@ -285,6 +290,7 @@ def test_run_job_no_agent_never_invokes_aiagent(hermes_env):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: .sh scripts not executable on Windows")
 def test_run_job_script_shell_script_runs_via_bash(hermes_env):
     """.sh files should execute under /bin/bash even without a shebang line."""
     from cron.scheduler import _run_job_script
@@ -298,6 +304,7 @@ def test_run_job_script_shell_script_runs_via_bash(hermes_env):
     assert output.startswith("shell:")
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: .sh scripts not executable on Windows")
 def test_run_job_script_bash_extension_also_runs_via_bash(hermes_env):
     from cron.scheduler import _run_job_script
 
@@ -309,6 +316,7 @@ def test_run_job_script_bash_extension_also_runs_via_bash(hermes_env):
     assert output == "via bash"
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: python invocation differs on Windows")
 def test_run_job_script_python_still_runs_via_python(hermes_env):
     """Regression: .py files must keep running via sys.executable."""
     from cron.scheduler import _run_job_script

@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 import textwrap
 from pathlib import Path
+
+import pytest
 
 
 _PATCHER = Path("plugins/platforms/photon/sidecar/patch-spectrum-mixed-attachments.mjs")
@@ -198,6 +201,7 @@ def test_spectrum_patch_rewrites_the_imessage_mapper(tmp_path: Path) -> None:
     assert chunk.read_text(encoding="utf-8") == patched
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: subprocess/path format fails")
 def test_spectrum_patch_preserves_text_at_runtime(tmp_path: Path) -> None:
     """Execute the patched mappers and assert mixed bubbles become groups whose
     first child is the typed text, while text-free bubbles keep their exact

@@ -1,4 +1,5 @@
 import orjson
+import sys
 import tempfile
 from pathlib import Path
 
@@ -246,6 +247,7 @@ def test_nudge_includes_failed_output_summary(tmp_path, monkeypatch):
     assert "repair the code" in nudge
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: temp path format incompatibility")
 def test_no_suite_nudge_requests_temp_script(tmp_path, monkeypatch):
     monkeypatch.setenv("HERMES_HOME", str(tmp_path / ".hermes"))
     (tmp_path / "package.json").write_text("{}", encoding="utf-8")

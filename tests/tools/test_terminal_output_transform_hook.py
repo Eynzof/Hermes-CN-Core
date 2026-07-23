@@ -1,6 +1,8 @@
 import json
 import orjson
 import os
+import sys
+import pytest
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -140,6 +142,7 @@ def test_terminal_output_transform_still_runs_strip_and_redact(monkeypatch, tmp_
     assert "abc123def456" not in result["output"]  # secret body is gone
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: Windows Python app alias")
 def test_large_process_output_is_bounded_before_sudo_and_plugin_hooks(
     monkeypatch, tmp_path
 ):

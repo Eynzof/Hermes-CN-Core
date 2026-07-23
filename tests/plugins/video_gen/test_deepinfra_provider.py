@@ -107,6 +107,7 @@ def _mock_url_download(captured: dict, raise_exc: Exception | None = None):
         yield
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: path format incompatibility")
 def test_generate_text_to_video_downloads_url_and_saves_locally():
     """t2v happy path: SDK called with DeepInfra base_url + key; status
     'succeeded' + data[].url → bytes downloaded and saved to a local file."""

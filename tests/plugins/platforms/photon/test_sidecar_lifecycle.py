@@ -60,6 +60,7 @@ def _capture_kills(monkeypatch: pytest.MonkeyPatch) -> List[Tuple[int, int]]:
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: signal/subprocess operations fail")
 async def test_reap_noop_when_port_free(monkeypatch: pytest.MonkeyPatch) -> None:
     adapter = _make_adapter(monkeypatch)
 
@@ -75,6 +76,7 @@ async def test_reap_noop_when_port_free(monkeypatch: pytest.MonkeyPatch) -> None
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: signal/subprocess operations fail")
 async def test_reap_kills_verified_orphan(monkeypatch: pytest.MonkeyPatch) -> None:
     adapter = _make_adapter(monkeypatch)
     monkeypatch.setattr(photon_adapter.httpx, "AsyncClient", _ProbeClient)
@@ -90,6 +92,7 @@ async def test_reap_kills_verified_orphan(monkeypatch: pytest.MonkeyPatch) -> No
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: signal/subprocess operations fail")
 async def test_reap_escalates_to_sigkill(monkeypatch: pytest.MonkeyPatch) -> None:
     adapter = _make_adapter(monkeypatch)
     monkeypatch.setattr(photon_adapter.httpx, "AsyncClient", _ProbeClient)

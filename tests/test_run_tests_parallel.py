@@ -30,6 +30,7 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: subprocess/parallel test runner fails")
 
 # Both tests share the same handoff file: the leaker writes here, the
 # verifier reads here. We park it in $TMPDIR with a unique-per-run name

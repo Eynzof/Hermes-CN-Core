@@ -1,6 +1,7 @@
 import asyncio
 import os
 import sys
+import pytest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -92,6 +93,7 @@ def test_format_connect_error_unwraps_exception_group():
     assert "missing executable 'node'" in message
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: Windows path resolution differs")
 def test_run_stdio_uses_resolved_command_and_prepended_path(tmp_path):
     node_bin = tmp_path / "node" / "bin"
     node_bin.mkdir(parents=True)

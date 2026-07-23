@@ -1,4 +1,5 @@
 import os
+import sys
 
 import pytest
 
@@ -24,6 +25,7 @@ def oauth_file(monkeypatch, tmp_path):
     return target
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: file permission model differs")
 def test_dashboard_oauth_write_uses_owner_only_permissions(oauth_file):
     old_umask = os.umask(0o022)
     try:

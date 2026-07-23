@@ -379,6 +379,7 @@ class TestBackendSelection:
             assert _get_backend() == "firecrawl"
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: parallel-web dependency not installed")
 class TestParallelClientConfig:
     """Test suite for Parallel client initialization."""
 

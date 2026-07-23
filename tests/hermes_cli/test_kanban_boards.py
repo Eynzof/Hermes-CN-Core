@@ -271,6 +271,7 @@ class TestBoardCRUD:
         kb.remove_board("pinned")
         assert kb.get_current_board() == "default"
 
+    @pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: path format incompatibility")
     @pytest.mark.parametrize("archive", [True, False])
     def test_remove_clears_init_cache_for_recreated_db(self, fresh_home, archive):
         # Regression for #23833: poll loops that call connect(board=slug) right

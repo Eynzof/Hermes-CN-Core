@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
+import sys
 
 import pytest
 import yaml
@@ -33,6 +34,7 @@ def test_load_gateway_config_bridges_stt_enabled_from_config_yaml(tmp_path, monk
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: path format /tmp vs C:\tmp")
 async def test_enrich_message_with_transcription_surfaces_path_when_stt_disabled():
     from gateway.run import GatewayRunner
 
@@ -60,6 +62,7 @@ async def test_enrich_message_with_transcription_surfaces_path_when_stt_disabled
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: path format /tmp vs C:\tmp")
 async def test_enrich_message_with_transcription_omits_duration_on_probe_failure():
     from gateway.run import GatewayRunner
 

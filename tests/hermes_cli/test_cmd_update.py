@@ -8,6 +8,8 @@ from unittest.mock import patch
 
 import pytest
 
+pytestmark = pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: git/subprocess operations fail")
+
 from hermes_cli.main import cmd_update, PROJECT_ROOT
 
 

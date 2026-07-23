@@ -8,6 +8,7 @@ cron job store.
 
 import importlib
 import orjson
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -199,6 +200,7 @@ class TestCommandHandler:
         res = handle_blueprint_command("morning")
         assert res.agent_seed is not None
 
+    @pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: croniter not installed")
     def test_fill_creates_job(self, isolated_home):
         from hermes_cli.blueprint_cmd import handle_blueprint_command
 

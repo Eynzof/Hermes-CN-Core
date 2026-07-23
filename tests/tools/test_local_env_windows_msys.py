@@ -20,6 +20,8 @@ on the real OS.
 
 import os
 import shutil
+import sys
+import pytest
 from unittest.mock import patch
 
 from tools.environments.base import BaseEnvironment
@@ -383,6 +385,7 @@ class TestWindowsMsysPathconvDefaults:
 # write_file error / terminal exit 127 when login bash is broken)
 # ---------------------------------------------------------------------------
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: path separator `/` vs `\` mismatch on Windows")
 class TestGitBashCoreutilsOnPath:
     def _fake_isdir(self, existing):
         existing = {e.replace("\\", "/") for e in existing}

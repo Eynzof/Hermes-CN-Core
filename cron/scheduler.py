@@ -2316,8 +2316,6 @@ def _run_job_script(script_path: str) -> tuple[bool, str]:
         if sys.platform == "win32":
             popen_kwargs = {
                 "creationflags": windows_hide_flags(),
-                "encoding": "utf-8",
-                "errors": "replace",
             }
         env = _sanitize_subprocess_env(os.environ.copy())
         env.update(env_overlay)

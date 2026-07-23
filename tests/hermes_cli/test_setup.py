@@ -141,6 +141,7 @@ def test_setup_custom_providers_synced(tmp_path, monkeypatch):
     assert reloaded.get("custom_providers") == [{"name": "Local", "base_url": "http://localhost:8080/v1"}]
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: systemctl not available")
 def test_setup_gateway_skips_service_install_when_systemctl_missing(monkeypatch, capsys):
     env = {
         "TELEGRAM_BOT_TOKEN": "",
@@ -185,6 +186,7 @@ def test_setup_gateway_skips_service_install_when_systemctl_missing(monkeypatch,
     assert "hermes gateway" in out
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: systemctl not available")
 def test_setup_gateway_in_container_shows_docker_guidance(monkeypatch, capsys):
     """setup_gateway() in a Docker container shows Docker-specific restart instructions."""
     env = {

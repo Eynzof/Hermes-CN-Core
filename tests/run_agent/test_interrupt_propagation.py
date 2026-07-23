@@ -4,10 +4,13 @@ Reproduces the CLI scenario: user sends a message while delegate_task is
 running, main thread calls parent.interrupt(), child should stop.
 """
 
+import sys
 import threading
 import time
 import unittest
 from unittest.mock import MagicMock
+
+import pytest
 
 from tools.interrupt import set_interrupt, is_interrupted
 
@@ -72,6 +75,7 @@ class TestInterruptPropagationToChild(unittest.TestCase):
         assert child._interrupt_requested is False
         assert is_interrupted() is False
 
+    @pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: threading/signal operations fail")
     def test_interrupt_during_child_api_call_detected(self):
         """Interrupt set during _interruptible_api_call is detected within 0.5s."""
         child = self._make_bare_agent()

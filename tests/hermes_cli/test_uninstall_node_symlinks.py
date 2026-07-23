@@ -7,6 +7,7 @@ only when they still resolve into the Hermes-managed node dir.
 """
 
 import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -35,6 +36,7 @@ def _make_hermes_node(hermes_home: Path) -> Path:
     return node_bin
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: symlink operations unsupported")
 def test_removes_symlinks_pointing_into_hermes_node(fake_home):
     hermes_home = fake_home / ".hermes"
     node_bin = _make_hermes_node(hermes_home)
@@ -51,6 +53,7 @@ def test_removes_symlinks_pointing_into_hermes_node(fake_home):
         assert not (local_bin / name).is_symlink()
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: symlink operations unsupported")
 def test_leaves_unrelated_symlinks_untouched(fake_home):
     """A node symlink the user repointed at nvm must survive uninstall."""
     hermes_home = fake_home / ".hermes"
@@ -70,6 +73,7 @@ def test_leaves_unrelated_symlinks_untouched(fake_home):
     assert (local_bin / "node").resolve() == (nvm_bin / "node").resolve()
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: symlink operations unsupported")
 def test_leaves_real_binaries_untouched(fake_home):
     """A real (non-symlink) binary in ~/.local/bin is never deleted."""
     hermes_home = fake_home / ".hermes"
@@ -95,6 +99,7 @@ def test_handles_missing_local_bin(fake_home):
     assert uninstall.remove_node_symlinks(hermes_home) == []
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: symlink operations unsupported")
 def test_removes_dangling_symlink_into_hermes_node(fake_home):
     """A link into the Hermes node dir is removed even if the target file is
     already gone (dangling) \u2014 the link still shadows PATH."""

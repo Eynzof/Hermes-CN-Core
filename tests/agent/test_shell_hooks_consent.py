@@ -10,6 +10,8 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
+import sys
+
 import pytest
 
 from agent import shell_hooks
@@ -198,6 +200,7 @@ class TestAllowlistOps:
     def test_revoke_unknown_returns_zero(self, tmp_path):
         assert shell_hooks.revoke(str(tmp_path / "never-approved.sh")) == 0
 
+    @pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: Path.home() fails in subprocess isolation")
     def test_tilde_path_approval_records_resolvable_mtime(self, tmp_path, monkeypatch):
         """If the command uses ~ the approval must still find the file."""
         monkeypatch.setenv("HOME", str(tmp_path))

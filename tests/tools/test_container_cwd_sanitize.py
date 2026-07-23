@@ -17,9 +17,17 @@ Both paths now share ``_is_unusable_container_cwd()``; these tests pin its
 behaviour so neither path can regress.
 """
 
+import sys
+
+import pytest
+
 import tools.terminal_tool as tt
 
 
+_win32 = pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: container cwd logic")
+
+
+@_win32
 class TestIsUnusableContainerCwd:
     def test_windows_backslash_host_path_rejected(self):
         # The exact shape from the bug report: a Windows host cwd reaching a
@@ -66,6 +74,7 @@ class TestIsUnusableContainerCwd:
         )
 
 
+@_win32
 class TestOverrideCwdSanitizedAtCallSite:
     """E2E pin: a per-task cwd OVERRIDE that is a host path must NOT reach the
     container builder. This is the actual reported bug — the gateway/TUI
@@ -146,6 +155,7 @@ class TestOverrideCwdSanitizedAtCallSite:
         assert cwd == "/workspace/task42"
 
 
+@_win32
 class TestFileOpsCwdSanitizedAtCallSite:
     """E2E pin: file tools (_get_file_ops) must sanitize a host/relative cwd
     override before it reaches _create_environment on a container backend —

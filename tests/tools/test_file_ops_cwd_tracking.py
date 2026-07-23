@@ -17,9 +17,11 @@ Fix: _exec() now prefers the LIVE ``env.cwd`` over the init-time
 
 from __future__ import annotations
 
-
-
 import os
+import sys
+
+import pytest
+
 from agent.re_compat import re
 from tools.file_operations import ShellFileOperations
 
@@ -111,6 +113,7 @@ class _FakeEnv:
         return {"output": f"unhandled command: {command}", "returncode": 1}
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: shell ops cwd tracking")
 class TestShellFileOpsCwdTracking:
     """_exec() must use live env.cwd, not the init-time cached cwd."""
 

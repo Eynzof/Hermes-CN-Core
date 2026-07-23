@@ -42,6 +42,10 @@ on:
         default: stable
         type: choice
         options: [stable, beta, canary]
+      min_app_version:
+        description: "Desktop floor (minAppVersion) signed into the v3 manifest; empty = workflow default"
+        required: false
+        default: ""
 
 permissions:
   contents: write  # needed to create the Release + upload assets
@@ -60,6 +64,14 @@ jobs:
       # work without a host Node install. Bump as new 22.x LTS patches ship.
       # See FORK_NOTES P-032.
       NODE_RUNTIME_VERSION: "22.12.0"
+      # Desktop ↔ runtime compatibility floor (minAppVersion) signed into
+      # every schema-v3 manifest. Bump when the runtime starts depending on
+      # newer desktop capabilities; workflow_dispatch can override per run.
+      # History: 0.7.0 = first desktop that accepts v3 manifests (v2/v3 dual
+      # reader + forced-upgrade gate). Do NOT ship v3 manifests to a stable
+      # channel before desktop 0.7.0 has rolled out — older desktops fail the
+      # schema check and stop receiving runtime updates until upgraded.
+      RUNTIME_MIN_APP_VERSION_DEFAULT: "0.7.0"
     strategy:
       fail-fast: false
       matrix:
@@ -118,11 +130,19 @@ jobs:
             exit 1
           fi
 
+          # minAppVersion: dispatch input wins, else the workflow default.
+          # Signed into the v3 manifest, so the signer re-validates format.
+          MIN_APP="${{ github.event.inputs.min_app_version }}"
+          if [[ -z "$MIN_APP" ]]; then
+            MIN_APP="$RUNTIME_MIN_APP_VERSION_DEFAULT"
+          fi
+
           echo "runtime_version=$RUNTIME_VERSION" >> "$GITHUB_OUTPUT"
           echo "kernel_version=$KERNEL_VERSION" >> "$GITHUB_OUTPUT"
           echo "runtime_flavor=$RUNTIME_FLAVOR" >> "$GITHUB_OUTPUT"
           echo "runtime_revision=$RUNTIME_REVISION" >> "$GITHUB_OUTPUT"
           echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
+          echo "min_app_version=$MIN_APP" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-python@v5
         with:
@@ -541,6 +561,7 @@ jobs:
             --artifact-path "out/$NAME.zip" \
             --source-repo "${GITHUB_REPOSITORY}" \
             --source-commit "${GITHUB_SHA}" \
+            --min-app-version "${{ steps.meta.outputs.min_app_version }}" \
             --output "out/${{ steps.meta.outputs.channel }}-${{ matrix.platform }}-${{ matrix.arch }}.json"
 
       - name: Upload artifacts

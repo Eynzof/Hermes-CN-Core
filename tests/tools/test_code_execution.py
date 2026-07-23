@@ -105,7 +105,8 @@ class TestHermesToolsGeneration(unittest.TestCase):
     def test_rpc_infrastructure_present(self):
         src = generate_hermes_tools_module(["terminal"])
         self.assertIn("HERMES_RPC_SOCKET", src)
-        self.assertIn("AF_UNIX", src)
+        if hasattr(socket, "AF_UNIX"):
+            self.assertIn("AF_UNIX", src)
         self.assertIn("def _connect(", src)
         self.assertIn("def _call(", src)
 
@@ -1007,6 +1008,7 @@ for i in range(15000):
             self.assertIn("total", output)
 
 
+@unittest.skipIf(not hasattr(socket, "AF_UNIX"), "AF_UNIX not available on Windows")
 class TestRpcTokenAuthorization(unittest.TestCase):
     """The per-session RPC token must gate socket dispatch (fail-closed).
 

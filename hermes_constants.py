@@ -612,7 +612,7 @@ def agent_browser_runnable(path: str | None) -> bool:
     if not path:
         return False
     # The npx fallback is a two-token command string, not a filesystem path.
-    if " " in path and path.split()[0].endswith("npx"):
+    if " " in path and (path.split()[0].endswith("npx") or path.split()[0].endswith("npx.cmd") or path.split()[0].endswith("npx.exe")):
         return True
     # exists() follows symlinks — a dangling link returns False here, so we
     # never even spawn a subprocess for the broken-link case.

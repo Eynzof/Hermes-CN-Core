@@ -24,7 +24,8 @@ def fresh_constants(monkeypatch, tmp_path):
     import importlib
     import hermes_constants
     importlib.reload(hermes_constants)
-    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    # Ensure get_hermes_home() returns tmp_path/.hermes regardless of platform
+    monkeypatch.setattr(hermes_constants, "_get_platform_default_hermes_home", lambda: tmp_path / ".hermes")
     monkeypatch.delenv("HERMES_HOME", raising=False)
     return hermes_constants
 

@@ -628,8 +628,10 @@ class TestAgentBrowserRunnable:
     def test_npx_fallback_form_accepted(self):
         # The "npx agent-browser" command form is not a real file; npx resolves
         # the package at run time, so the validator trusts it without stat.
+        import sys
         assert agent_browser_runnable("npx agent-browser") is True
-        assert agent_browser_runnable("/usr/local/bin/npx agent-browser") is True
+        npx_path = "npx.cmd" if sys.platform == "win32" else "/usr/local/bin/npx"
+        assert agent_browser_runnable(f"{npx_path} agent-browser") is True
 
     def test_version_probe_uses_windows_hide_flags(self, tmp_path, monkeypatch):
         good = self._stub(tmp_path, "agent-browser", "#!/bin/sh\necho hi\n")

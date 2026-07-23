@@ -13,11 +13,19 @@ before writing through the redirect, so the shim is created as a regular file
 in ``command_link_dir`` and the venv entry point is left intact.
 """
 
-from __future__ import annotations
-from agent.re_compat import re
+import sys
+import shutil
+import re
 import stat
 import subprocess
 from pathlib import Path
+
+import pytest
+
+pytestmark = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="install.sh is a POSIX-only script; use install.ps1 on Windows",
+)
 
 
 

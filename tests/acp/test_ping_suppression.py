@@ -1,12 +1,8 @@
-"""Tests for acp_adapter.entry._BenignProbeMethodFilter.
-
-Covers both the isolated filter logic and the full end-to-end path where a
-client sends a bare JSON-RPC ``ping`` request over stdio and the acp runtime
-surfaces the resulting ``RequestError`` via ``logging.exception("Background
-task failed", ...)``.
-"""
+"""Tests for acp_adapter.entry._BenignProbeMethodFilter."""
 
 from __future__ import annotations
+
+import sys
 
 import asyncio
 import orjson
@@ -118,6 +114,7 @@ class _FakeAgent:
         pass
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows asyncio proactor does not support this test pattern")
 @pytest.mark.asyncio
 async def test_bare_ping_request_produces_proper_response_and_no_stderr_noise(
     caplog: pytest.LogCaptureFixture,

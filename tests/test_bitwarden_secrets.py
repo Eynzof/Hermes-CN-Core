@@ -93,8 +93,11 @@ def test_platform_asset_name(system, machine, libc_text, expected):
 
 def _make_fake_zip(binary_bytes: bytes) -> bytes:
     buf = io.BytesIO()
+    import sys as _sys
+    # On Windows the binary inside the zip is bws.exe
+    member_name = "bws.exe" if _sys.platform == "win32" else "bws"
     with zipfile.ZipFile(buf, "w") as zf:
-        zf.writestr("bws", binary_bytes)
+        zf.writestr(member_name, binary_bytes)
     return buf.getvalue()
 
 
@@ -208,8 +211,9 @@ def test_install_bws_happy_path(hermes_home, monkeypatch):
     path = bw.install_bws()
     assert path.exists()
     assert path.read_bytes() == fake_binary
-    # Executable bit set
-    assert path.stat().st_mode & stat.S_IXUSR
+    # Executable bit set (not applicable on Windows)
+    if sys.platform != "win32":
+        assert path.stat().st_mode & stat.S_IXUSR
 
 
 def test_install_bws_checksum_mismatch(hermes_home, monkeypatch):
@@ -695,7 +699,8 @@ def test_disk_cache_written_after_first_fetch(monkeypatch, tmp_path):
     assert cache_path.exists()
     # Mode must be 0600 — disk cache contains plaintext secret values
     mode = os.stat(cache_path).st_mode & 0o777
-    assert mode == 0o600, f"expected 0o600, got 0o{mode:o}"
+    if sys.platform != "win32":
+        assert mode == 0o600, f"expected 0o600, got 0o{mode:o}"
 
     # File contents: key (fingerprint not raw token), secrets dict, fetched_at
     payload_disk = orjson.loads(cache_path.read_text())

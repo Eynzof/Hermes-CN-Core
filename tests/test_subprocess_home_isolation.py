@@ -129,8 +129,8 @@ class TestGetSubprocessHome:
         assert home_a is not None
         assert home_b is not None
         assert home_a != home_b
-        assert home_a.endswith("alpha/home")
-        assert home_b.endswith("beta/home")
+        assert home_a.endswith("alpha" + os.sep + "home")
+        assert home_b.endswith("beta" + os.sep + "home")
 
     def test_context_override_is_thread_local(self, tmp_path, monkeypatch):
         root = tmp_path / "root"

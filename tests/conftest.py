@@ -26,6 +26,9 @@ from pathlib import Path
 
 import pytest
 
+# Make pytest-asyncio plugin available to all test files
+pytest_plugins = ("pytest_asyncio",)
+
 # Ensure project root is importable
 PROJECT_ROOT = Path(__file__).parent.parent
 if str(PROJECT_ROOT) not in sys.path:

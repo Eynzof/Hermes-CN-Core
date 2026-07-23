@@ -11372,15 +11372,19 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin):
                 pass
 
             # Track consecutive no-speech cycles to avoid infinite restart loops.
+            _stop_continuous = False
             if not submitted:
                 self._no_speech_count = getattr(self, '_no_speech_count', 0) + 1
                 if self._no_speech_count >= 3:
                     self._voice_continuous = False
                     self._no_speech_count = 0
                     _cprint(f"{_DIM}No speech detected 3 times, continuous mode stopped.{_RST}")
-                    return
+                    _stop_continuous = True
             else:
                 self._no_speech_count = 0
+
+            if _stop_continuous:
+                return
 
             # If no transcript was submitted but continuous mode is active,
             # restart recording so the user can keep talking.

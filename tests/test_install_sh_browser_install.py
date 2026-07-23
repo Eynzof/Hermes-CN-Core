@@ -6,6 +6,9 @@ unsupported distribution.
 """
 
 from pathlib import Path
+import shutil
+
+import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -231,8 +234,17 @@ echo "FINAL_RC=$?"
         return {"runs": runs, "final_rc": final_rc, "stderr": proc.stderr}
     finally:
         Path(runlog).unlink(missing_ok=True)
+import sys
+
+# Behavioral tests below run install.sh helpers in bash — POSIX-only.
+# Text-analysis tests above work on any platform.
+_skip_behavioral_on_windows = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="install.sh behavioral tests require POSIX environment",
+)
 
 
+@_skip_behavioral_on_windows
 def test_override_retry_fires_on_ubuntu_26() -> None:
     """Ubuntu 26.04 (too new) → native fails → retry with ubuntu24.04 override."""
     r = _run_install_fn("ubuntu", "26.04", native_fails=True)
@@ -242,6 +254,7 @@ def test_override_retry_fires_on_ubuntu_26() -> None:
     assert r["final_rc"] == 0
 
 
+@_skip_behavioral_on_windows
 def test_override_retry_does_not_fire_on_supported_ubuntu() -> None:
     """Ubuntu 24.04 is recognized by Playwright → a failure is surfaced, no override."""
     r = _run_install_fn("ubuntu", "24.04", native_fails=True)
@@ -250,6 +263,7 @@ def test_override_retry_does_not_fire_on_supported_ubuntu() -> None:
     assert r["final_rc"] == 1
 
 
+@_skip_behavioral_on_windows
 def test_override_retry_does_not_fire_on_fedora() -> None:
     """Non-apt distro never triggers the override retry, even on failure."""
     r = _run_install_fn("fedora", "42", native_fails=True)
@@ -257,6 +271,7 @@ def test_override_retry_does_not_fire_on_fedora() -> None:
     assert r["final_rc"] == 1
 
 
+@_skip_behavioral_on_windows
 def test_override_retry_fires_on_debian_14() -> None:
     """Debian 14 (> 13) is the too-new apt case → retry with override."""
     r = _run_install_fn("debian", "14", native_fails=True)
@@ -265,6 +280,7 @@ def test_override_retry_fires_on_debian_14() -> None:
     assert r["final_rc"] == 0
 
 
+@_skip_behavioral_on_windows
 def test_no_retry_when_native_succeeds_on_ubuntu_26() -> None:
     """Even on Ubuntu 26.04, a successful native install is never retried."""
     r = _run_install_fn("ubuntu", "26.04", native_fails=False)
@@ -273,6 +289,7 @@ def test_no_retry_when_native_succeeds_on_ubuntu_26() -> None:
     assert r["final_rc"] == 0
 
 
+@_skip_behavioral_on_windows
 def test_operator_override_respected_no_second_run() -> None:
     """An operator-pinned override applies to attempt 1; no second run on failure."""
     r = _run_install_fn("ubuntu", "26.04", native_fails=True,
@@ -283,6 +300,7 @@ def test_operator_override_respected_no_second_run() -> None:
     assert r["final_rc"] == 0
 
 
+@_skip_behavioral_on_windows
 def test_override_retry_skipped_on_unsupported_arch() -> None:
     """Ubuntu 26.04 on an arch with no Playwright build → no fallback retry."""
     r = _run_install_fn("ubuntu", "26.04", native_fails=True, arch="riscv64")

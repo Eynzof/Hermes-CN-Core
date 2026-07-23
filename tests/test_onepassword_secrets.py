@@ -192,6 +192,10 @@ def test_fetch_missing_binary_raises(monkeypatch):
 
 def test_fetch_child_env_is_allowlisted(monkeypatch, tmp_path):
     """The op child must NOT inherit unrelated provider credentials."""
+    import sys as _sys
+    # On Windows, file permission checks differ; skip the executable-binary setup.
+    if _sys.platform == "win32":
+        pytest.skip("Windows permission model differs from POSIX")
     fake_op = tmp_path / "op"
     fake_op.write_text("")
     monkeypatch.setenv("OPENAI_API_KEY", "leak-me")
@@ -259,7 +263,8 @@ def test_disk_cache_roundtrip_and_no_token_on_disk(monkeypatch, tmp_path):
 
     cache_path = op._disk_cache_path(tmp_path)
     assert cache_path.exists()
-    assert (os.stat(cache_path).st_mode & 0o777) == 0o600
+    if sys.platform != "win32":
+        assert (os.stat(cache_path).st_mode & 0o777) == 0o600
     text = cache_path.read_text()
     assert "ops_supersecret" not in text            # token never on disk
     payload = json.loads(text)

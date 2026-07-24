@@ -183,7 +183,7 @@ def _load_sessions_index_from_json() -> dict:
     if not sessions_file.exists():
         return {}
     try:
-        with open(sessions_file, "r", encoding="utf-8") as f:
+        with open(sessions_file, "r", encoding="utf-8", errors="replace") as f:
             data = orjson.loads(f.read())
         # Drop documentation/metadata sentinels (keys starting with "_", e.g.
         # the "_README" note the gateway writes into the index). They are not
@@ -208,7 +208,7 @@ def _load_channel_directory() -> dict:
     if not directory_file.exists():
         return {}
     try:
-        with open(directory_file, "r", encoding="utf-8") as f:
+        with open(directory_file, "r", encoding="utf-8", errors="replace") as f:
             return orjson.loads(f.read())
     except Exception as e:
         logger.debug("Failed to load channel_directory.json: %s", e)

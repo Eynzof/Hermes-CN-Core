@@ -115,7 +115,7 @@ def test_json_log_drops_only_nudge_keeps_candidate(tmp_path, monkeypatch):
 
     log_file = agent.logs_dir / "session_sess_json.json"
     assert log_file.exists()
-    data = orjson.loads(log_file.read_text(encoding="utf-8"))
+    data = orjson.loads(log_file.read_text(encoding="utf-8", errors="replace"))
     contents = [m.get("content") for m in data["messages"]]
     # The assistant candidate persists — it is real content.
     assert "premature done" in contents

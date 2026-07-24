@@ -42,7 +42,7 @@ def _doc_text() -> str:
         f"Contract doc missing at {_CONTRACT_DOC}. It is the formal cross-repo "
         f"interface (Phase 1, Task 1.5) and must ship with the relay adapter."
     )
-    return _CONTRACT_DOC.read_text(encoding="utf-8")
+    return _CONTRACT_DOC.read_text(encoding="utf-8", errors="replace")
 
 
 def _parse_descriptor_table(text: str) -> dict[str, bool]:

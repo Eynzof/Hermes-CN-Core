@@ -53,10 +53,10 @@ def test_atomic_replace_preserves_symlink(tmp_path: Path) -> None:
     returned = atomic_replace(tmp, link)
 
     assert link.is_symlink(), "symlink must not be replaced with a regular file"
-    assert real.read_text(encoding="utf-8") == "updated\n"
+    assert real.read_text(encoding="utf-8", errors="replace") == "updated\n"
     assert Path(returned) == real
     # Follow the symlink — same content.
-    assert link.read_text(encoding="utf-8") == "updated\n"
+    assert link.read_text(encoding="utf-8", errors="replace") == "updated\n"
 
 
 def test_atomic_replace_regular_file(tmp_path: Path) -> None:
@@ -67,7 +67,7 @@ def test_atomic_replace_regular_file(tmp_path: Path) -> None:
     returned = atomic_replace(tmp, target)
 
     assert Path(returned) == target
-    assert target.read_text(encoding="utf-8") == "fresh\n"
+    assert target.read_text(encoding="utf-8", errors="replace") == "fresh\n"
     assert not target.is_symlink()
 
 
@@ -79,7 +79,7 @@ def test_atomic_replace_first_time_create(tmp_path: Path) -> None:
     returned = atomic_replace(tmp, target)
 
     assert Path(returned) == target
-    assert target.read_text(encoding="utf-8") == "brand new\n"
+    assert target.read_text(encoding="utf-8", errors="replace") == "brand new\n"
 
 
 def test_atomic_replace_accepts_pathlike_and_str(tmp_path: Path) -> None:
@@ -89,12 +89,12 @@ def test_atomic_replace_accepts_pathlike_and_str(tmp_path: Path) -> None:
     # str inputs
     tmp1 = _write_tmp(tmp_path, "1")
     atomic_replace(str(tmp1), str(target))
-    assert target.read_text(encoding="utf-8") == "1"
+    assert target.read_text(encoding="utf-8", errors="replace") == "1"
 
     # Path inputs
     tmp2 = _write_tmp(tmp_path, "2")
     atomic_replace(tmp2, target)
-    assert target.read_text(encoding="utf-8") == "2"
+    assert target.read_text(encoding="utf-8", errors="replace") == "2"
 
 
 # ─── atomic_json_write / atomic_yaml_write wiring ──────────────────────────
@@ -109,7 +109,7 @@ def test_atomic_json_write_preserves_symlink(tmp_path: Path) -> None:
     atomic_json_write(link, {"hello": "world"})
 
     assert link.is_symlink()
-    loaded = orjson.loads(real.read_text(encoding="utf-8"))
+    loaded = orjson.loads(real.read_text(encoding="utf-8", errors="replace"))
     assert loaded == {"hello": "world"}
 
 
@@ -122,7 +122,7 @@ def test_atomic_yaml_write_preserves_symlink(tmp_path: Path) -> None:
     atomic_yaml_write(link, {"model": {"provider": "openrouter"}})
 
     assert link.is_symlink()
-    data = yaml.safe_load(real.read_text(encoding="utf-8"))
+    data = yaml.safe_load(real.read_text(encoding="utf-8", errors="replace"))
     assert data == {"model": {"provider": "openrouter"}}
 
 
@@ -214,7 +214,7 @@ def test_atomic_roundtrip_yaml_update_restores_owner(
     atomic_roundtrip_yaml_update(target, "model.provider", "nvidia")
 
     assert chown_calls == [(target, 345, 678)]
-    assert yaml.safe_load(target.read_text(encoding="utf-8"))["model"]["provider"] == "nvidia"
+    assert yaml.safe_load(target.read_text(encoding="utf-8", errors="replace"))["model"]["provider"] == "nvidia"
 
 
 # ─── Broken-symlink edge case ─────────────────────────────────────────────
@@ -236,7 +236,7 @@ def test_atomic_replace_broken_symlink_creates_target(tmp_path: Path) -> None:
 
     assert link.is_symlink(), "symlink must be preserved"
     assert missing.exists(), "real target should now exist"
-    assert missing.read_text(encoding="utf-8") == "created-through-link\n"
+    assert missing.read_text(encoding="utf-8", errors="replace") == "created-through-link\n"
 
 
 # ─── EXDEV / EBUSY copy fallback ───────────────────────────────────────────
@@ -256,7 +256,7 @@ def test_atomic_replace_copy_fallback(
     monkeypatch.setattr("utils.os.replace", fail_replace)
 
     assert Path(atomic_replace(tmp, target)) == target
-    assert target.read_text(encoding="utf-8") == "new\n"
+    assert target.read_text(encoding="utf-8", errors="replace") == "new\n"
     assert not tmp.exists()
 
 
@@ -276,7 +276,7 @@ def test_atomic_replace_copy_fallback_preserves_symlink(
 
     assert Path(atomic_replace(tmp, link)) == real
     assert link.is_symlink()
-    assert real.read_text(encoding="utf-8") == "new\n"
+    assert real.read_text(encoding="utf-8", errors="replace") == "new\n"
     assert not tmp.exists()
 
 
@@ -298,7 +298,7 @@ def test_atomic_replace_copy_fallback_preserves_metadata(
     monkeypatch.setattr("utils.os.replace", fail_replace)
 
     atomic_replace(tmp, target)
-    assert target.read_text(encoding="utf-8") == "new\n"
+    assert target.read_text(encoding="utf-8", errors="replace") == "new\n"
     assert target.stat().st_mode & 0o777 == 0o644
 
 
@@ -317,7 +317,7 @@ def test_atomic_replace_other_oserror_propagates(
     with pytest.raises(OSError) as excinfo:
         atomic_replace(tmp, target)
     assert excinfo.value.errno == errno.EACCES
-    assert target.read_text(encoding="utf-8") == "old\n"
+    assert target.read_text(encoding="utf-8", errors="replace") == "old\n"
     assert tmp.exists()
 
 
@@ -343,7 +343,7 @@ def test_atomic_replace_real_cross_device(tmp_path: Path) -> None:
 
         assert Path(atomic_replace(tmp, link)) == real
         assert link.is_symlink()
-        assert real.read_text(encoding="utf-8") == "new\n"
+        assert real.read_text(encoding="utf-8", errors="replace") == "new\n"
         assert not tmp.exists()
     finally:
         _shutil.rmtree(other_fs_dir, ignore_errors=True)

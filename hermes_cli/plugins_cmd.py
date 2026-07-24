@@ -268,7 +268,7 @@ def _read_manifest(plugin_dir: Path) -> dict:
     try:
         import yaml
 
-        with open(manifest_file, encoding="utf-8") as f:
+        with open(manifest_file, encoding="utf-8", errors="replace") as f:
             return yaml.safe_load(f) or {}
     except Exception as e:
         logger.warning("Failed to read plugin.yaml in %s: %s", plugin_dir, e)
@@ -399,7 +399,7 @@ def _display_after_install(plugin_dir: Path, identifier: str) -> None:
     after_install = plugin_dir / "after-install.md"
 
     if after_install.exists():
-        content = after_install.read_text(encoding="utf-8")
+        content = after_install.read_text(encoding="utf-8", errors="replace")
         md = Markdown(content)
         console.print()
         console.print(Panel(md, border_style="green", expand=False))
@@ -995,7 +995,7 @@ def _read_manifest_info(d: Path, prefix: str):
     description = ""
     if yaml:
         try:
-            with open(manifest_file, encoding="utf-8") as f:
+            with open(manifest_file, encoding="utf-8", errors="replace") as f:
                 manifest = yaml.safe_load(f) or {}
             name = manifest.get("name", d.name)
             version = manifest.get("version", "")

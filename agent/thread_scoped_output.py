@@ -130,7 +130,7 @@ def thread_scoped_silence() -> Iterator[None]:
     thread's body instead of ``contextlib.redirect_stdout(devnull)`` when the
     process is multi-threaded and another thread must keep its console output.
     """
-    sink = open(os.devnull, "w", encoding="utf-8")
+    sink = open(os.devnull, "w", encoding="utf-8", errors="replace")
     ident = threading.get_ident()
     out_proxy = _ensure_installed("stdout", sink)
     err_proxy = _ensure_installed("stderr", sink)

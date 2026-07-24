@@ -99,7 +99,7 @@ def _load_auth() -> Dict[str, Any]:
     if not path.exists():
         return {}
     try:
-        with path.open("r", encoding="utf-8") as fh:
+        with path.open("r", encoding="utf-8", errors="replace") as fh:
             return orjson.loads(fh.read()) or {}
     except (OSError, orjson.JSONDecodeError) as e:
         logger.warning("photon: could not read %s: %s", path, e)
@@ -110,7 +110,7 @@ def _save_auth(data: Dict[str, Any]) -> None:
     path = _auth_json_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".json.tmp")
-    with tmp.open("w", encoding="utf-8") as fh:
+    with tmp.open("w", encoding="utf-8", errors="replace") as fh:
         fh.write(orjson.dumps(data, option=orjson.OPT_INDENT_2 | orjson.OPT_SORT_KEYS).decode('utf-8'))
     try:
         os.chmod(tmp, 0o600)

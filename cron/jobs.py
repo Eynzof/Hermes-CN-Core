@@ -817,7 +817,7 @@ def _atomic_write_epoch(path: Path) -> None:
     ensure_dirs()
     fd, tmp_path = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp", prefix=".hb_")
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
+        with os.fdopen(fd, "w", encoding="utf-8", errors="replace") as f:
             f.write(str(time.time()))
             f.flush()
             os.fsync(f.fileno())
@@ -855,7 +855,7 @@ def record_ticker_heartbeat(success: bool = False) -> None:
 
 def _epoch_file_age(path: Path) -> Optional[float]:
     try:
-        raw = path.read_text(encoding="utf-8").strip()
+        raw = path.read_text(encoding="utf-8", errors="replace").strip()
         return max(0.0, time.time() - float(raw))
     except Exception:
         return None

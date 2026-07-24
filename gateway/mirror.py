@@ -136,7 +136,7 @@ def _find_session_id(
         return None
 
     try:
-        with open(_SESSIONS_INDEX, encoding="utf-8") as f:
+        with open(_SESSIONS_INDEX, encoding="utf-8", errors="replace") as f:
             data = orjson.loads(f.read())
     except Exception:
         return None

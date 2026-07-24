@@ -1396,7 +1396,7 @@ class TestDoctorStaleMaxIterationsDrift:
         assert "HERMES_MAX_ITERATIONS=90" in out
         assert "shadows" in out
         # Warn-only must NOT mutate .env.
-        assert "HERMES_MAX_ITERATIONS=90" in (hermes_home / ".env").read_text(encoding="utf-8")
+        assert "HERMES_MAX_ITERATIONS=90" in (hermes_home / ".env").read_text(encoding="utf-8", errors="replace")
 
     def test_fix_removes_ghost(self, monkeypatch, tmp_path):
         out, hermes_home = self._run_config_section(
@@ -1404,7 +1404,7 @@ class TestDoctorStaleMaxIterationsDrift:
             os_environ_value=400,
         )
         assert "Removed stale HERMES_MAX_ITERATIONS" in out
-        env_after = (hermes_home / ".env").read_text(encoding="utf-8")
+        env_after = (hermes_home / ".env").read_text(encoding="utf-8", errors="replace")
         assert "HERMES_MAX_ITERATIONS" not in env_after
         assert "OPENAI_API_KEY=sk-test" in env_after  # other keys preserved
 

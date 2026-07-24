@@ -1594,7 +1594,7 @@ class PluginManager:
             if yaml is None:
                 logger.warning("PyYAML not installed – cannot load %s", manifest_file)
                 return None
-            data = fast_safe_load(manifest_file.read_text(encoding="utf-8")) or {}
+            data = fast_safe_load(manifest_file.read_text(encoding="utf-8", errors="replace")) or {}
 
             name = data.get("name", plugin_dir.name)
             key = f"{prefix}/{plugin_dir.name}" if prefix else name

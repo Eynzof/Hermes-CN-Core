@@ -106,7 +106,7 @@ def _read_manifest() -> Dict[str, str]:
         return {}
     try:
         result = {}
-        for line in MANIFEST_FILE.read_text(encoding="utf-8").splitlines():
+        for line in MANIFEST_FILE.read_text(encoding="utf-8", errors="replace").splitlines():
             line = line.strip()
             if not line:
                 continue
@@ -139,7 +139,7 @@ def _read_suppressed_names() -> set:
             return set()
         names = set()
         try:
-            for line in path.read_text(encoding="utf-8").splitlines():
+            for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
                 line = line.strip()
                 if line and not line.startswith("#"):
                     names.add(line)

@@ -57,7 +57,7 @@ class TestSystemdServiceRefresh:
 
         gateway_cli.systemd_install()
 
-        assert unit_path.read_text(encoding="utf-8") == "new unit\n"
+        assert unit_path.read_text(encoding="utf-8", errors="replace") == "new unit\n"
         assert calls[:2] == [
             ["systemctl", "--user", "daemon-reload"],
             ["systemctl", "--user", "enable", gateway_cli.get_service_name()],
@@ -84,7 +84,7 @@ class TestSystemdServiceRefresh:
 
         gateway_cli.systemd_start()
 
-        assert unit_path.read_text(encoding="utf-8") == "new unit\n"
+        assert unit_path.read_text(encoding="utf-8", errors="replace") == "new unit\n"
         assert calls[:2] == [
             ["systemctl", "--user", "daemon-reload"],
             ["systemctl", "--user", "start", gateway_cli.get_service_name()],
@@ -118,7 +118,7 @@ class TestSystemdServiceRefresh:
 
         gateway_cli.systemd_restart()
 
-        assert unit_path.read_text(encoding="utf-8") == "new unit\n"
+        assert unit_path.read_text(encoding="utf-8", errors="replace") == "new unit\n"
         assert calls[:5] == [
             ["systemctl", "--user", "daemon-reload"],
             ["systemctl", "--user", "show", gateway_cli.get_service_name(), "--no-pager", "--property", "ActiveState,SubState,Result,ExecMainStatus,MainPID"],
@@ -241,7 +241,7 @@ class TestSystemdServiceRefresh:
 
         gateway_cli.run_gateway()
 
-        assert unit_path.read_text(encoding="utf-8") == "new unit\n"
+        assert unit_path.read_text(encoding="utf-8", errors="replace") == "new unit\n"
         assert ["systemctl", "--user", "daemon-reload"] in calls
 
     def test_refresh_refuses_to_bake_pytest_tmpdir_into_real_user_unit(
@@ -292,7 +292,7 @@ class TestSystemdServiceRefresh:
 
         assert result is False, "refresh should refuse to write a polluted unit"
         assert (
-            unit_path.read_text(encoding="utf-8") == "old unit\n"
+            unit_path.read_text(encoding="utf-8", errors="replace") == "old unit\n"
         ), "installed unit must be left untouched"
         assert not any(
             "daemon-reload" in str(c) for c in ran
@@ -338,7 +338,7 @@ class TestSystemdServiceRefresh:
 
         assert result is False, "refresh should refuse to write a temp-home unit"
         assert (
-            unit_path.read_text(encoding="utf-8") == "old unit\n"
+            unit_path.read_text(encoding="utf-8", errors="replace") == "old unit\n"
         ), "installed unit must be left untouched"
         assert not any(
             "daemon-reload" in str(c) for c in ran
@@ -680,7 +680,7 @@ class TestLaunchdServiceRecovery:
 
         label = gateway_cli.get_launchd_label()
         domain = gateway_cli._launchd_domain()
-        assert "--replace" in plist_path.read_text(encoding="utf-8")
+        assert "--replace" in plist_path.read_text(encoding="utf-8", errors="replace")
         # The calls list includes launchctl print probes from _launchd_domain()
         # before the bootout/bootstrap calls. Filter to only bootout/bootstrap.
         service_calls = [c for c in calls if "bootout" in c or "bootstrap" in c]
@@ -732,7 +732,7 @@ class TestLaunchdServiceRecovery:
 
         assert result is True
         # The new plist was written.
-        assert "--replace" in plist_path.read_text(encoding="utf-8")
+        assert "--replace" in plist_path.read_text(encoding="utf-8", errors="replace")
         # No DIRECT bootout/bootstrap ran (those would kill us mid-sequence).
         assert not [c for c in run_calls if "bootout" in c or "bootstrap" in c]
         # Exactly one detached helper was spawned, in a new session, and it
@@ -2091,7 +2091,7 @@ class TestSystemUnitRefreshSyncsHermesHome:
         # Simulate sudo without inherited HERMES_HOME (falls back to root).
         monkeypatch.setenv("HERMES_HOME", str(root_hermes))
         assert gateway_cli.refresh_systemd_unit_if_needed(system=True) is False
-        assert unit_path.read_text(encoding="utf-8") == good_unit
+        assert unit_path.read_text(encoding="utf-8", errors="replace") == good_unit
         assert os.environ["HERMES_HOME"] == str(alice_hermes)
         assert gateway_cli.systemd_unit_is_current(system=True) is True
 

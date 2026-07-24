@@ -266,7 +266,7 @@ def test_concurrent_dispatch_no_contention(timing_context, tmp_path):
 
     # Correctness: every write landed.
     for p in files:
-        assert Path(p).read_text(encoding="utf-8") == "updated\n"
+        assert Path(p).read_text(encoding="utf-8", errors="replace") == "updated\n"
 
 
 # ─────────────────────────────────────────────────────────────────────────────

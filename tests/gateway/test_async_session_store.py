@@ -58,7 +58,7 @@ def test_gateway_async_code_uses_one_awaited_session_store_boundary() -> None:
     root = Path(__file__).resolve().parents[2]
     violations: list[str] = []
     for rel in ("gateway/run.py", "gateway/slash_commands.py"):
-        tree = ast.parse((root / rel).read_text(encoding="utf-8"))
+        tree = ast.parse((root / rel).read_text(encoding="utf-8", errors="replace"))
         parents = {
             child: parent
             for parent in ast.walk(tree)
@@ -109,7 +109,7 @@ def test_gateway_async_code_uses_one_awaited_session_store_boundary() -> None:
 
 def test_every_async_compression_check_is_awaited() -> None:
     root = Path(__file__).resolve().parents[2]
-    tree = ast.parse((root / "gateway/run.py").read_text(encoding="utf-8"))
+    tree = ast.parse((root / "gateway/run.py").read_text(encoding="utf-8", errors="replace"))
     parents = {
         child: parent
         for parent in ast.walk(tree)

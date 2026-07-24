@@ -992,7 +992,7 @@ def test_reset_config_provider_uses_atomic_yaml_write(tmp_path, monkeypatch):
         }
     }
     config_path.write_text(yaml.safe_dump(original, sort_keys=False), encoding="utf-8")
-    original_text = config_path.read_text(encoding="utf-8")
+    original_text = config_path.read_text(encoding="utf-8", errors="replace")
 
     from hermes_cli.auth import _reset_config_provider
 
@@ -1008,7 +1008,7 @@ def test_reset_config_provider_uses_atomic_yaml_write(tmp_path, monkeypatch):
             _reset_config_provider()
 
     assert mock_write.call_count == 1
-    assert config_path.read_text(encoding="utf-8") == original_text
+    assert config_path.read_text(encoding="utf-8", errors="replace") == original_text
 
 
 def test_auth_list_does_not_call_mutating_select(monkeypatch, capsys):

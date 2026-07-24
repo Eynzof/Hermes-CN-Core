@@ -159,7 +159,7 @@ def expand_whatsapp_aliases(identifier: str) -> Set[str]:
                 continue
             try:
                 mapped = normalize_whatsapp_identifier(
-                    orjson.loads(mapping_path.read_text(encoding="utf-8"))
+                    orjson.loads(mapping_path.read_text(encoding="utf-8", errors="replace"))
                 )
             except (OSError, orjson.JSONDecodeError) as exc:
                 logger.debug("whatsapp_identity: failed to read %s: %s", mapping_path, exc)

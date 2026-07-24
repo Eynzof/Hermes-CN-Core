@@ -292,7 +292,7 @@ class RealtimeSpeaker:
             return
         self.processed_path.parent.mkdir(parents=True, exist_ok=True)
         record = {"id": entry.get("id"), "text": entry.get("text", ""), "result": result}
-        with open(self.processed_path, "a", encoding="utf-8") as fp:
+        with open(self.processed_path, "a", encoding="utf-8", errors="replace") as fp:
             fp.write(orjson.dumps(record).decode('utf-8') + "\n")
 
     # ── main loop ────────────────────────────────────────────────────────

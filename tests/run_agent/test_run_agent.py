@@ -852,7 +852,7 @@ class TestSaveSessionLogRedactsSecrets:
         ]
         agent._save_session_log(messages)
 
-        snapshot = (tmp_path / f"session_{agent.session_id}.json").read_text(encoding="utf-8")
+        snapshot = (tmp_path / f"session_{agent.session_id}.json").read_text(encoding="utf-8", errors="replace")
         assert "sk-proj-abc123def456ghi789jkl012mno" not in snapshot
 
     def test_redacts_api_key_in_user_message(self, agent, tmp_path):
@@ -863,7 +863,7 @@ class TestSaveSessionLogRedactsSecrets:
         ]
         agent._save_session_log(messages)
 
-        snapshot = (tmp_path / f"session_{agent.session_id}.json").read_text(encoding="utf-8")
+        snapshot = (tmp_path / f"session_{agent.session_id}.json").read_text(encoding="utf-8", errors="replace")
         assert "sk-ant-api03-abc123def456ghi789jkl012mno" not in snapshot
 
     def test_redacts_system_prompt_credentials(self, agent, tmp_path):
@@ -872,7 +872,7 @@ class TestSaveSessionLogRedactsSecrets:
         agent._cached_system_prompt = "Use key sk-proj-realkey1234567890123456 for API calls"
         agent._save_session_log([{"role": "user", "content": "test"}])
 
-        snapshot = (tmp_path / f"session_{agent.session_id}.json").read_text(encoding="utf-8")
+        snapshot = (tmp_path / f"session_{agent.session_id}.json").read_text(encoding="utf-8", errors="replace")
         assert "sk-proj-realkey1234567890123456" not in snapshot
 
     def test_redacts_list_type_multimodal_content(self, agent, tmp_path):
@@ -890,7 +890,7 @@ class TestSaveSessionLogRedactsSecrets:
         ]
         agent._save_session_log(messages)
 
-        snapshot_text = (tmp_path / f"session_{agent.session_id}.json").read_text(encoding="utf-8")
+        snapshot_text = (tmp_path / f"session_{agent.session_id}.json").read_text(encoding="utf-8", errors="replace")
         snapshot = orjson.loads(snapshot_text)
         parts = snapshot["messages"][0]["content"]
         assert "gsk_abc123def456ghi789jkl012mno" not in parts[0]["text"]

@@ -32,7 +32,7 @@ _INSTALL_PS1 = Path(__file__).resolve().parents[1] / "scripts" / "install.ps1"
 
 @pytest.fixture(scope="module")
 def source() -> str:
-    return _INSTALL_PS1.read_text(encoding="utf-8")
+    return _INSTALL_PS1.read_text(encoding="utf-8", errors="replace")
 
 
 def _function_body(source: str, name: str) -> str:

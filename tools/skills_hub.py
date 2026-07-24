@@ -433,7 +433,7 @@ class GitHubAuth:
             key_file = Path(key_path)
             if not key_file.exists():
                 return None
-            private_key = key_file.read_text(encoding="utf-8")
+            private_key = key_file.read_text(encoding="utf-8", errors="replace")
 
             now = int(time.time())
             payload = {
@@ -3290,7 +3290,7 @@ class OptionalSkillSource(SkillSource):
             parent = skill_md.parent
 
             try:
-                content = skill_md.read_text(encoding="utf-8")
+                content = skill_md.read_text(encoding="utf-8", errors="replace")
             except (OSError, UnicodeDecodeError):
                 continue
 

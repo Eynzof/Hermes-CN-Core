@@ -179,7 +179,7 @@ def test_record_is_idempotent() -> None:
     _record_codex_gpt55_autoraise_notice(AUTORAISE)
     _record_codex_gpt55_autoraise_notice(AUTORAISE)
     assert (
-        _codex_gpt55_autoraise_notice_marker().read_text(encoding="utf-8")
+        _codex_gpt55_autoraise_notice_marker().read_text(encoding="utf-8", errors="replace")
         == "gpt-5.5:50:85"
     )
 

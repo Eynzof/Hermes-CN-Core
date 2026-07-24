@@ -21,7 +21,7 @@ def template_path(name: str) -> Path:
 
 
 def render(template_name: str, fields: dict) -> str:
-    text = template_path(template_name).read_text(encoding="utf-8")
+    text = template_path(template_name).read_text(encoding="utf-8", errors="replace")
     return text.format_map(_SafeDict(fields))
 
 

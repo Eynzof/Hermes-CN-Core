@@ -351,7 +351,7 @@ class TestSessionKeyContext:
 
     def test_gateway_runner_binds_session_key_to_context_before_agent_run(self):
         run_py = Path(__file__).resolve().parents[2] / "gateway" / "run.py"
-        module = ast.parse(run_py.read_text(encoding="utf-8"))
+        module = ast.parse(run_py.read_text(encoding="utf-8", errors="replace"))
 
         run_sync = None
         for node in ast.walk(module):

@@ -107,7 +107,7 @@ def _run_validation(
 
 def _condense_xml(xml_file: Path) -> None:
     try:
-        with open(xml_file, encoding="utf-8") as f:
+        with open(xml_file, encoding="utf-8", errors="replace") as f:
             dom = defusedxml.minidom.parse(f)
 
         for element in dom.getElementsByTagName("*"):

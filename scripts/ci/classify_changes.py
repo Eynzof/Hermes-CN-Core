@@ -122,7 +122,7 @@ def main() -> int:
     lanes = classify(sys.stdin.read().splitlines())
     out = "\n".join(f"{k}={str(v).lower()}" for k, v in lanes.items())
     if dest := os.environ.get("GITHUB_OUTPUT"):
-        with open(dest, "a", encoding="utf-8") as fh:
+        with open(dest, "a", encoding="utf-8", errors="replace") as fh:
             fh.write(out + "\n")
     print(out)  # echo for local runs + CI step logs
     return 0

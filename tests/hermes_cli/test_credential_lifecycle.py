@@ -54,7 +54,7 @@ def _write_auth(home, pool):
 
 
 def _read_auth(home):
-    return json.loads(home.joinpath("auth.json").read_text(encoding="utf-8"))
+    return json.loads(home.joinpath("auth.json").read_text(encoding="utf-8", errors="replace"))
 
 
 def _zai_pool_fixture():
@@ -160,7 +160,7 @@ def test_delete_clears_provider_models_cache(hermes_home):
     )
     assert resp.status_code == 200
     if cache_path.exists():
-        cache = json.loads(cache_path.read_text(encoding="utf-8"))
+        cache = json.loads(cache_path.read_text(encoding="utf-8", errors="replace"))
         assert "zai" not in cache
 
 
@@ -240,7 +240,7 @@ def test_update_rotates_config_yaml_model_mirror(hermes_home):
     assert resp.status_code == 200
     assert "model.api_key" in resp.json().get("config_updates", [])
 
-    cfg_text = hermes_home.joinpath("config.yaml").read_text(encoding="utf-8")
+    cfg_text = hermes_home.joinpath("config.yaml").read_text(encoding="utf-8", errors="replace")
     assert old not in cfg_text, "stale old key left in config.yaml (#62269)"
     assert new in cfg_text, "config.yaml mirror not rotated to the new key"
 
@@ -265,7 +265,7 @@ def test_update_rotates_custom_provider_mirror(hermes_home):
         "/api/env", json={"key": "OPENAI_API_KEY", "value": new}, headers=HEADERS
     )
     assert resp.status_code == 200
-    cfg_text = hermes_home.joinpath("config.yaml").read_text(encoding="utf-8")
+    cfg_text = hermes_home.joinpath("config.yaml").read_text(encoding="utf-8", errors="replace")
     assert old not in cfg_text
     assert new in cfg_text
 
@@ -283,7 +283,7 @@ def test_update_leaves_unrelated_config_keys_alone(hermes_home):
         headers=HEADERS,
     )
     assert resp.status_code == 200
-    cfg_text = hermes_home.joinpath("config.yaml").read_text(encoding="utf-8")
+    cfg_text = hermes_home.joinpath("config.yaml").read_text(encoding="utf-8", errors="replace")
     assert unrelated in cfg_text, "unrelated inline key must be preserved"
 
 
@@ -297,7 +297,7 @@ def test_delete_scrubs_config_yaml_mirror(hermes_home):
     )
     assert resp.status_code == 200
     assert "model.api_key" in resp.json()["config_scrubbed"]
-    cfg_text = hermes_home.joinpath("config.yaml").read_text(encoding="utf-8")
+    cfg_text = hermes_home.joinpath("config.yaml").read_text(encoding="utf-8", errors="replace")
     assert old not in cfg_text
 
 

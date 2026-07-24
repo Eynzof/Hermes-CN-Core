@@ -130,7 +130,7 @@ def _write_watchdog_dump(
         "snapshot": snapshot or {},
     }
     try:
-        with open(dump_path, "a", encoding="utf-8") as fh:
+        with open(dump_path, "a", encoding="utf-8", errors="replace") as fh:
             fh.write(json.dumps(header, default=str) + "\n")
             fh.write("--- faulthandler dump (all threads) ---\n")
             fh.flush()

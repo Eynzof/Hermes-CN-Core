@@ -367,7 +367,7 @@ class TestGenerateCommandTts:
         assert out.exists()
         # The command copied the input text file over to output, so it
         # contains the original UTF-8 text.
-        assert out.read_text(encoding="utf-8") == "hello world"
+        assert out.read_text(encoding="utf-8", errors="replace") == "hello world"
 
     def test_empty_command_raises(self, tmp_path):
         with pytest.raises(ValueError, match="is not configured"):

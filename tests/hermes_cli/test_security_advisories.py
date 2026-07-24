@@ -210,7 +210,7 @@ class TestBannerCache:
         # than 24h ago — should re-banner.
         cache_path = adv._banner_cache_path()
         assert cache_path is not None
-        old_lines = cache_path.read_text(encoding="utf-8").splitlines()
+        old_lines = cache_path.read_text(encoding="utf-8", errors="replace").splitlines()
         backdated = []
         for line in old_lines:
             parts = line.split(None, 1)

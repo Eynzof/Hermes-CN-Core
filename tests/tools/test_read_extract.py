@@ -30,7 +30,7 @@ from tools.file_tools import read_file_tool
 
 def _write_notebook(path, cells, nbformat=4):
     nb = {"cells": cells, "metadata": {}, "nbformat": nbformat, "nbformat_minor": 5}
-    with open(path, "w", encoding="utf-8") as fh:
+    with open(path, "w", encoding="utf-8", errors="replace") as fh:
         fh.write(orjson.dumps(nb).decode('utf-8'))
 
 

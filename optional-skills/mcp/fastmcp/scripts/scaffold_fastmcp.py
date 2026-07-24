@@ -22,7 +22,7 @@ def render_template(template_name: str, server_name: str) -> str:
     if not template_path.exists():
         available = ", ".join(list_templates())
         raise SystemExit(f"Unknown template '{template_name}'. Available: {available}")
-    return template_path.read_text(encoding="utf-8").replace(PLACEHOLDER, server_name)
+    return template_path.read_text(encoding="utf-8", errors="replace").replace(PLACEHOLDER, server_name)
 
 
 def main() -> int:

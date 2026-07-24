@@ -140,7 +140,7 @@ class HolographicMemoryProvider(MemoryProvider):
                     existing = yaml.safe_load(f) or {}
             existing.setdefault("plugins", {})
             existing["plugins"]["hermes-memory-store"] = values
-            with open(config_path, "w", encoding="utf-8") as f:
+            with open(config_path, "w", encoding="utf-8", errors="replace") as f:
                 yaml.dump(existing, f, default_flow_style=False)
         except Exception:
             pass

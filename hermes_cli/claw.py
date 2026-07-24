@@ -86,7 +86,7 @@ def _detect_openclaw_processes() -> list[str]:
             for exe in ("openclaw.exe", "clawd.exe"):
                 result = subprocess.run(
                     ["tasklist", "/FI", f"IMAGENAME eq {exe}"],
-                    capture_output=True, text=True, errors="replace", timeout=5,
+                    capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=5,
                     **_win_kwargs,
                 )
                 if exe in result.stdout.lower():

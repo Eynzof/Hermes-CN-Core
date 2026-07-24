@@ -200,7 +200,7 @@ def _read_disk_cache() -> tuple[dict[str, Any] | None, float]:
     except (OSError, FileNotFoundError):
         return (None, 0.0)
     try:
-        with open(path, encoding="utf-8") as fh:
+        with open(path, encoding="utf-8", errors="replace") as fh:
             data = orjson.loads(fh.read())
     except (OSError, orjson.JSONDecodeError):
         return (None, 0.0)
@@ -214,7 +214,7 @@ def _write_disk_cache(data: dict[str, Any]) -> None:
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(path.suffix + ".tmp")
-        with open(tmp, "w", encoding="utf-8") as fh:
+        with open(tmp, "w", encoding="utf-8", errors="replace") as fh:
             fh.write(orjson.dumps(data, option=orjson.OPT_INDENT_2).decode('utf-8'))
             fh.write("\n")
         atomic_replace(tmp, path)
@@ -265,7 +265,7 @@ def _seed_cache_from_bundled() -> bool:
     """
     for src in _bundled_catalog_candidates():
         try:
-            with open(src, encoding="utf-8") as fh:
+            with open(src, encoding="utf-8", errors="replace") as fh:
                 data = orjson.loads(fh.read())
         except (OSError, orjson.JSONDecodeError):
             continue
@@ -465,7 +465,7 @@ def seed_cache_from_checkout(project_root: "Path | str") -> bool:
     """
     src = Path(project_root) / "website" / "static" / "api" / "model-catalog.json"
     try:
-        with open(src, encoding="utf-8") as fh:
+        with open(src, encoding="utf-8", errors="replace") as fh:
             data = orjson.loads(fh.read())
     except (OSError, orjson.JSONDecodeError) as exc:
         logger.debug("model catalog seed from checkout skipped (%s): %s", src, exc)

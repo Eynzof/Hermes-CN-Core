@@ -20,7 +20,7 @@ def merge_runs(input_dir: str) -> tuple[int, str]:
         return 0, f"Error: {doc_xml} not found"
 
     try:
-        dom = defusedxml.minidom.parseString(doc_xml.read_text(encoding="utf-8"))
+        dom = defusedxml.minidom.parseString(doc_xml.read_text(encoding="utf-8", errors="replace"))
         root = dom.documentElement
 
         _remove_elements(root, "proofErr")

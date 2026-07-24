@@ -83,7 +83,7 @@ def audit_log(event: AuditEvent, **fields: Any) -> None:
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         with _write_lock:
-            with open(path, "a", encoding="utf-8") as f:
+            with open(path, "a", encoding="utf-8", errors="replace") as f:
                 f.write(line)
     except Exception as e:
         _log.warning("dashboard-auth audit log write failed: %s", e)

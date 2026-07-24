@@ -2903,7 +2903,7 @@ def _profile_platform_ports(profile_home: Path, runtime: Optional[dict]) -> Dict
 
     blocks: Dict[str, dict] = {}
     try:
-        with open(profile_home / "config.yaml", encoding="utf-8") as f:
+        with open(profile_home / "config.yaml", encoding="utf-8", errors="replace") as f:
             cfg = yaml.safe_load(f) or {}
         gateway_cfg = cfg.get("gateway") if isinstance(cfg.get("gateway"), dict) else {}
         # gateway.platforms first, top-level platforms second — later wins,
@@ -5122,7 +5122,7 @@ def _read_flat_json(provider: ProviderConfigSchema) -> Dict[str, Any]:
     if not path.exists():
         return {}
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8", errors="replace"))
     except Exception:
         _log.warning("Failed to read memory provider config from %s", path, exc_info=True)
         return {}
@@ -5174,7 +5174,7 @@ def _honcho_read_sources() -> tuple[Dict[str, Any], str, Dict[str, Any]]:
     raw: Dict[str, Any] = {}
     if path.exists():
         try:
-            loaded = json.loads(path.read_text(encoding="utf-8"))
+            loaded = json.loads(path.read_text(encoding="utf-8", errors="replace"))
             raw = loaded if isinstance(loaded, dict) else {}
         except Exception:
             _log.warning("Failed to read Honcho config from %s", path, exc_info=True)
@@ -5284,7 +5284,7 @@ def _write_provider_honcho(provider: ProviderConfigSchema, values: Dict[str, str
         cfg: Dict[str, Any] = {}
         if path.exists():
             try:
-                loaded = json.loads(path.read_text(encoding="utf-8"))
+                loaded = json.loads(path.read_text(encoding="utf-8", errors="replace"))
                 cfg = loaded if isinstance(loaded, dict) else {}
             except Exception:
                 _log.warning("Failed to read Honcho config from %s", path, exc_info=True)
@@ -5782,7 +5782,7 @@ def _read_json_file(path: Path) -> Dict[str, Any]:
     if not path.exists():
         return {}
     try:
-        data = orjson.loads(path.read_text(encoding="utf-8"))
+        data = orjson.loads(path.read_text(encoding="utf-8", errors="replace"))
     except Exception:
         _log.debug("Failed to read JSON config from %s", path, exc_info=True)
         return {}
@@ -8415,7 +8415,7 @@ def _whatsapp_phone_from_identifier(value: Any) -> str | None:
 def _whatsapp_linked_account_from_session(session_path: Path) -> tuple[str | None, str | None, str | None]:
     creds_path = session_path / "creds.json"
     try:
-        payload = json.loads(creds_path.read_text(encoding="utf-8"))
+        payload = json.loads(creds_path.read_text(encoding="utf-8", errors="replace"))
     except Exception:
         return None, None, None
 
@@ -15002,7 +15002,7 @@ async def get_profile_soul(name: str):
     soul_path = _resolve_profile_dir(name) / "SOUL.md"
     if soul_path.exists():
         try:
-            return {"content": soul_path.read_text(encoding="utf-8"), "exists": True}
+            return {"content": soul_path.read_text(encoding="utf-8", errors="replace"), "exists": True}
         except OSError as e:
             raise HTTPException(status_code=500, detail=f"Could not read SOUL.md: {e}")
     return {"content": "", "exists": False}
@@ -15317,7 +15317,7 @@ async def get_skill_content(name: str, profile: Optional[str] = None):
         if not skill_md.exists():
             raise HTTPException(status_code=404, detail=f"Skill '{name}' has no SKILL.md.")
         try:
-            content = skill_md.read_text(encoding="utf-8")
+            content = skill_md.read_text(encoding="utf-8", errors="replace")
         except OSError as exc:
             raise HTTPException(status_code=500, detail=str(exc)) from exc
         return {"name": name, "content": content, "path": str(skill_md)}
@@ -16101,6 +16101,8 @@ def _probe_docker_backend() -> tuple:
             ["docker", "info", "--format", "{{.ServerVersion}}"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=2,
         )
         if proc.returncode == 0:
@@ -16339,7 +16341,7 @@ async def get_config_raw(profile: Optional[str] = None):
         path = get_config_path()
     if not path.exists():
         return {"yaml": "", "path": str(path)}
-    return {"yaml": path.read_text(encoding="utf-8"), "path": str(path)}
+    return {"yaml": path.read_text(encoding="utf-8", errors="replace"), "path": str(path)}
 
 
 @app.put("/api/config/raw")
@@ -17440,7 +17442,7 @@ def _active_session_file_for_channel(app: "FastAPI", channel: str) -> Path:
 
 def _read_active_session_file(path: Path) -> Optional[str]:
     try:
-        data = orjson.loads(path.read_text(encoding="utf-8"))
+        data = orjson.loads(path.read_text(encoding="utf-8", errors="replace"))
     except (OSError, orjson.JSONDecodeError):
         return None
 
@@ -18636,7 +18638,7 @@ def mount_spa(application: FastAPI):
         ``__HERMES_AUTH_REQUIRED__`` flag lets the SPA pick the right
         auth scheme for /api/pty and /api/ws (ticket vs token).
         """
-        html = _index_path.read_text(encoding="utf-8")
+        html = _index_path.read_text(encoding="utf-8", errors="replace")
         chat_js = "true" if _DASHBOARD_EMBEDDED_CHAT_ENABLED else "false"
         gated = bool(getattr(app.state, "auth_required", False))
         gated_js = "true" if gated else "false"
@@ -18696,7 +18698,7 @@ def mount_spa(application: FastAPI):
         ):
             return JSONResponse({"error": "not found"}, status_code=404)
         prefix = _normalise_prefix(request.headers.get("x-forwarded-prefix"))
-        css = css_path.read_text(encoding="utf-8")
+        css = css_path.read_text(encoding="utf-8", errors="replace")
         if prefix:
             for asset_dir in ("/fonts/", "/fonts-terminal/", "/ds-assets/", "/assets/"):
                 css = css.replace(f"url({asset_dir}", f"url({prefix}{asset_dir}")
@@ -18981,7 +18983,7 @@ def _discover_user_themes() -> list:
     result = []
     for f in sorted(themes_dir.glob("*.yaml")):
         try:
-            data = yaml.safe_load(f.read_text(encoding="utf-8"))
+            data = yaml.safe_load(f.read_text(encoding="utf-8", errors="replace"))
         except Exception:
             continue
         normalised = _normalise_theme_definition(data)
@@ -19167,7 +19169,7 @@ def _discover_dashboard_plugins() -> list:
             if not manifest_file.exists():
                 continue
             try:
-                data = orjson.loads(manifest_file.read_text(encoding="utf-8"))
+                data = orjson.loads(manifest_file.read_text(encoding="utf-8", errors="replace"))
                 name = data.get("name", child.name)
                 if name in seen_names:
                     continue

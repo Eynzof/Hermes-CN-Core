@@ -80,7 +80,7 @@ def _lock_packages() -> dict:
     lock_path = REPO_ROOT / "package-lock.json"
     if not lock_path.exists():
         pytest.skip("package-lock.json not materialized in this CI shard")
-    with lock_path.open("r", encoding="utf-8") as fh:
+    with lock_path.open("r", encoding="utf-8", errors="replace") as fh:
         return orjson.loads(fh.read()).get("packages", {})
 
 

@@ -44,7 +44,7 @@ def record(chat_id, message_id, text: Optional[str]) -> None:
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         try:
-            with open(path, "r", encoding="utf-8") as fh:
+            with open(path, "r", encoding="utf-8", errors="replace") as fh:
                 data = orjson.loads(fh.read())
             if not isinstance(data, dict):
                 data = {}
@@ -61,7 +61,7 @@ def record(chat_id, message_id, text: Optional[str]) -> None:
             )[: len(data) - _MAX_ENTRIES]:
                 data.pop(k, None)
         tmp = f"{path}.tmp.{os.getpid()}"
-        with open(tmp, "w", encoding="utf-8") as fh:
+        with open(tmp, "w", encoding="utf-8", errors="replace") as fh:
             fh.write(orjson.dumps(data).decode('utf-8'))
         os.replace(tmp, path)  # atomic; tolerates concurrent writers racing
     except Exception:

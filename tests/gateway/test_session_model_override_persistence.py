@@ -66,7 +66,7 @@ def store_factory(tmp_path, monkeypatch):
 
 
 def _sessions_json(tmp_path) -> str:
-    return (tmp_path / "sessions.json").read_text(encoding="utf-8")
+    return (tmp_path / "sessions.json").read_text(encoding="utf-8", errors="replace")
 
 
 def test_override_persists_and_survives_restart(store_factory, tmp_path):

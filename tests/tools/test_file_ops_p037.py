@@ -74,7 +74,7 @@ class TestPatchReplaceUsesInProcessReads:
         win_local_ops.write_file(str(p), "alpha\nbeta\ngamma\n")
         res = win_local_ops.patch_replace(str(p), "beta", "BETA")
         assert res.error is None
-        assert p.read_text(encoding="utf-8") == "alpha\nBETA\ngamma\n"
+        assert p.read_text(encoding="utf-8", errors="replace") == "alpha\nBETA\ngamma\n"
 
     def test_patch_replace_does_not_shell_out_for_reads(self, win_local_ops, tmp_path, monkeypatch):
         """Reads must go through _prim_read_all, never a raw ``cat … 2>/dev/null``

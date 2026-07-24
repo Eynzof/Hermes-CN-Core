@@ -75,7 +75,7 @@ class TestProviderPersistsAfterModelSave:
         from hermes_cli.auth import _update_config_for_provider
 
         config_path = config_home / "config.yaml"
-        original_text = config_path.read_text(encoding="utf-8")
+        original_text = config_path.read_text(encoding="utf-8", errors="replace")
 
         def _boom(path, data, **kwargs):
             assert path == config_path
@@ -94,7 +94,7 @@ class TestProviderPersistsAfterModelSave:
                 )
 
         assert mock_write.call_count == 1
-        assert config_path.read_text(encoding="utf-8") == original_text
+        assert config_path.read_text(encoding="utf-8", errors="replace") == original_text
 
     def test_api_key_provider_saved_when_model_was_string(self, config_home, monkeypatch):
         """_model_flow_api_key_provider must persist the provider even when

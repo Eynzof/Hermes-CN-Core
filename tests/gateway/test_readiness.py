@@ -56,7 +56,7 @@ def test_collect_runtime_readiness_degrades_on_invalid_config_and_stopped_gatewa
     assert result["checks"]["model"]["status"] == "degraded"
     assert result["checks"]["gateway"]["status"] == "degraded"
     # Readiness is diagnostic data, not an exception or a destructive repair.
-    assert (home / "config.yaml").read_text(encoding="utf-8") == "model: [unterminated"
+    assert (home / "config.yaml").read_text(encoding="utf-8", errors="replace") == "model: [unterminated"
 
 
 def test_collect_runtime_readiness_marks_corrupt_state_db_degraded(tmp_path, monkeypatch):

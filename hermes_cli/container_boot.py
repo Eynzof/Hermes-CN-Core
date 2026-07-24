@@ -537,7 +537,7 @@ def _write_reconcile_log(
         log.warning("could not rotate %s: %s", log_path, exc)
 
     ts = time.strftime("%Y-%m-%dT%H:%M:%S%z")
-    with log_path.open("a", encoding="utf-8") as f:
+    with log_path.open("a", encoding="utf-8", errors="replace") as f:
         for a in actions:
             f.write(
                 f"{ts} profile={a.profile} prior_state={a.prior_state} "

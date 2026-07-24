@@ -713,7 +713,7 @@ class TestExternalDriftGuard:
         block = "\n\n## Vendor Master\n" + "x" * 800
         block += "\n\n## Standing Orders\n" + "y" * 800
         block += "\n\n## Pin Board\n" + "z" * 800
-        existing = path.read_text(encoding="utf-8") if path.exists() else ""
+        existing = path.read_text(encoding="utf-8", errors="replace") if path.exists() else ""
         path.write_text(existing + block, encoding="utf-8")
         return path
 
@@ -747,7 +747,7 @@ class TestExternalDriftGuard:
         # under the char limit (500 chars in test fixture).
         path = store._path_for("memory")
         path.write_text(
-            path.read_text(encoding="utf-8") + "\nextra content no delimiter",
+            path.read_text(encoding="utf-8", errors="replace") + "\nextra content no delimiter",
             encoding="utf-8",
         )
 
@@ -755,7 +755,7 @@ class TestExternalDriftGuard:
 
         assert result["success"] is True
         # The new entry is appended — existing drift content is preserved.
-        updated = path.read_text(encoding="utf-8")
+        updated = path.read_text(encoding="utf-8", errors="replace")
         assert "New entry under drift." in updated
         assert "extra content no delimiter" in updated
 

@@ -1463,7 +1463,7 @@ def _bridge_max_turns_from_config(home: "Path") -> None:
         return
     try:
         import yaml as _yaml
-        with open(config_path, encoding="utf-8") as f:
+        with open(config_path, encoding="utf-8", errors="replace") as f:
             cfg = _yaml.safe_load(f) or {}
         from hermes_cli.config import _expand_env_vars
         cfg = _expand_env_vars(cfg)
@@ -1621,7 +1621,7 @@ _config_path = _hermes_home / 'config.yaml'
 if _config_path.exists():
     try:
         import yaml as _yaml
-        with open(_config_path, encoding="utf-8") as _f:
+        with open(_config_path, encoding="utf-8", errors="replace") as _f:
             _cfg = _yaml.safe_load(_f) or {}
         # Expand ${ENV_VAR} references before bridging to env vars.
         from hermes_cli.config import _expand_env_vars
@@ -2163,7 +2163,7 @@ def _try_resolve_fallback_provider() -> dict | None:
         cfg_path = _hermes_home / "config.yaml"
         if not cfg_path.exists():
             return None
-        with open(cfg_path, encoding="utf-8") as _f:
+        with open(cfg_path, encoding="utf-8", errors="replace") as _f:
             cfg = _y.safe_load(_f) or {}
         fb_list = get_fallback_chain(cfg)
         if not fb_list:
@@ -5128,7 +5128,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
             logger.warning("Prefill messages file not found: %s", path)
             return []
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, "r", encoding="utf-8", errors="replace") as f:
                 data = orjson.loads(f.read())
             if not isinstance(data, list):
                 logger.warning("Prefill messages file must contain a JSON array: %s", path)
@@ -5453,7 +5453,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
             import yaml as _y
             cfg_path = _hermes_home / "config.yaml"
             if cfg_path.exists():
-                with open(cfg_path, encoding="utf-8") as _f:
+                with open(cfg_path, encoding="utf-8", errors="replace") as _f:
                     cfg = _y.safe_load(_f) or {}
                 return cfg.get("provider_routing", {}) or {}
         except Exception:
@@ -5472,7 +5472,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
             import yaml as _y
             cfg_path = _hermes_home / "config.yaml"
             if cfg_path.exists():
-                with open(cfg_path, encoding="utf-8") as _f:
+                with open(cfg_path, encoding="utf-8", errors="replace") as _f:
                     cfg = _y.safe_load(_f) or {}
                 fb = get_fallback_chain(cfg)
                 if fb:
@@ -5501,7 +5501,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
             if not cfg_path.exists():
                 self._fallback_model = None
                 return self._fallback_model
-            with open(cfg_path, encoding="utf-8") as _f:
+            with open(cfg_path, encoding="utf-8", errors="replace") as _f:
                 cfg = _y.safe_load(_f) or {}
         except Exception:
             # Transient failure — keep last known-good chain.
@@ -23317,7 +23317,7 @@ def main():
     config = None
     if args.config:
         import yaml
-        with open(args.config, encoding="utf-8") as f:
+        with open(args.config, encoding="utf-8", errors="replace") as f:
             data = yaml.safe_load(f) or {}
             config = GatewayConfig.from_dict(data)
 

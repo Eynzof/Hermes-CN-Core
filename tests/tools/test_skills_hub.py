@@ -1916,7 +1916,7 @@ class TestQuarantineBundleBinaryAssets:
 
             q_path = quarantine_bundle(bundle)
 
-        assert (q_path / "SKILL.md").read_text(encoding="utf-8").startswith("---")
+        assert (q_path / "SKILL.md").read_text(encoding="utf-8", errors="replace").startswith("---")
         assert (q_path / "assets" / "neutts-cli" / "samples" / "jo.wav").read_bytes() == b"RIFF\x00\x01fakewav"
 
     def test_quarantine_bundle_rejects_traversal_file_paths(self, tmp_path):

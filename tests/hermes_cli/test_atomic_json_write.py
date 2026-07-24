@@ -18,7 +18,7 @@ class TestAtomicJsonWrite:
         data = {"key": "value", "nested": {"a": 1}}
         atomic_json_write(target, data)
 
-        result = orjson.loads(target.read_text(encoding="utf-8"))
+        result = orjson.loads(target.read_text(encoding="utf-8", errors="replace"))
         assert result == data
 
     def test_creates_parent_directories(self, tmp_path):
@@ -82,7 +82,7 @@ class TestAtomicJsonWrite:
 
         tmp_files = [f for f in tmp_path.iterdir() if ".tmp" in f.name]
         assert len(tmp_files) == 0
-        assert orjson.loads(target.read_text(encoding="utf-8")) == original
+        assert orjson.loads(target.read_text(encoding="utf-8", errors="replace")) == original
 
     def test_accepts_string_path(self, tmp_path):
         target = str(tmp_path / "string_path.json")
@@ -121,7 +121,7 @@ class TestAtomicJsonWrite:
         target = tmp_path / "custom_default.json"
         atomic_json_write(target, {"value": CustomValue()}, default=str)
 
-        result = orjson.loads(target.read_text(encoding="utf-8"))
+        result = orjson.loads(target.read_text(encoding="utf-8", errors="replace"))
         assert result == {"value": "custom-value"}
 
     def test_unicode_content(self, tmp_path):
@@ -129,7 +129,7 @@ class TestAtomicJsonWrite:
         data = {"emoji": "🎉", "japanese": "日本語"}
         atomic_json_write(target, data)
 
-        result = orjson.loads(target.read_text(encoding="utf-8"))
+        result = orjson.loads(target.read_text(encoding="utf-8", errors="replace"))
         assert result["emoji"] == "🎉"
         assert result["japanese"] == "日本語"
 
@@ -151,7 +151,7 @@ class TestAtomicJsonWrite:
         with patch.object(utils, "os", fake_os):
             atomic_json_write(target, {"api_key": "secret"}, mode=0o600)
 
-        assert orjson.loads(target.read_text(encoding="utf-8")) == {"api_key": "secret"}
+        assert orjson.loads(target.read_text(encoding="utf-8", errors="replace")) == {"api_key": "secret"}
 
     def test_mode_applied_when_supported(self, tmp_path):
         import stat as stat_mod

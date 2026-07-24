@@ -103,7 +103,7 @@ class TestSkillCreate:
         assert resp.json()["success"] is True
         skill_md = isolated_profiles["default"] / "skills" / "my-new-skill" / "SKILL.md"
         assert skill_md.exists()
-        assert "Do the thing." in skill_md.read_text(encoding="utf-8")
+        assert "Do the thing." in skill_md.read_text(encoding="utf-8", errors="replace")
 
     def test_create_with_category(self, client, isolated_profiles):
         resp = client.post(
@@ -178,7 +178,7 @@ class TestSkillUpdate:
         skill_md = (
             isolated_profiles["default"] / "skills" / "dashboard-skill" / "SKILL.md"
         )
-        assert "Do the NEW thing." in skill_md.read_text(encoding="utf-8")
+        assert "Do the NEW thing." in skill_md.read_text(encoding="utf-8", errors="replace")
 
     def test_update_unknown_skill_404(self, client, isolated_profiles):
         resp = client.put(

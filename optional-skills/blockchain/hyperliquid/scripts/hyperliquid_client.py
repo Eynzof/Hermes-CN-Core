@@ -66,7 +66,7 @@ def _load_dotenv_values() -> Dict[str, str]:
     values: Dict[str, str] = {}
     for env_path in _dotenv_paths():
         try:
-            lines = env_path.read_text(encoding="utf-8").splitlines()
+            lines = env_path.read_text(encoding="utf-8", errors="replace").splitlines()
         except UnicodeDecodeError:
             lines = env_path.read_text(encoding="latin-1").splitlines()
 

@@ -362,7 +362,7 @@ def test_snapshot_includes_cron_jobs(backup_env):
     assert snap is not None
     assert (snap / cb.CRON_JOBS_FILENAME).exists()
 
-    mf = orjson.loads((snap / "manifest.json").read_text(encoding="utf-8"))
+    mf = orjson.loads((snap / "manifest.json").read_text(encoding="utf-8", errors="replace"))
     assert mf["cron_jobs"]["backed_up"] is True
     assert mf["cron_jobs"]["jobs_count"] == 2
 
@@ -377,7 +377,7 @@ def test_snapshot_without_cron_jobs_file_still_succeeds(backup_env):
     assert snap is not None
     assert not (snap / cb.CRON_JOBS_FILENAME).exists()
 
-    mf = orjson.loads((snap / "manifest.json").read_text(encoding="utf-8"))
+    mf = orjson.loads((snap / "manifest.json").read_text(encoding="utf-8", errors="replace"))
     assert mf["cron_jobs"]["backed_up"] is False
     assert "cron/jobs.json" in mf["cron_jobs"]["reason"]
 
@@ -395,7 +395,7 @@ def test_snapshot_cron_jobs_malformed_json_still_captured(backup_env):
     # Raw file was copied even though we couldn't parse it
     assert (snap / cb.CRON_JOBS_FILENAME).read_text() == "{oh no"
 
-    mf = orjson.loads((snap / "manifest.json").read_text(encoding="utf-8"))
+    mf = orjson.loads((snap / "manifest.json").read_text(encoding="utf-8", errors="replace"))
     assert mf["cron_jobs"]["backed_up"] is True
     assert mf["cron_jobs"]["jobs_count"] == 0
     assert "parse_warning" in mf["cron_jobs"]
@@ -415,7 +415,7 @@ def test_snapshot_cron_jobs_utf8_bom_counted_and_backup_bomless(backup_env):
     snap = cb.snapshot_skills(reason="test")
     assert snap is not None
 
-    mf = json.loads((snap / "manifest.json").read_text(encoding="utf-8"))
+    mf = json.loads((snap / "manifest.json").read_text(encoding="utf-8", errors="replace"))
     assert mf["cron_jobs"]["backed_up"] is True
     assert mf["cron_jobs"]["jobs_count"] == 2
     assert "parse_warning" not in mf["cron_jobs"]

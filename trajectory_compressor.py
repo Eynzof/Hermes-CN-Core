@@ -125,7 +125,7 @@ class CompressionConfig:
     @classmethod
     def from_yaml(cls, yaml_path: str) -> "CompressionConfig":
         """Load configuration from YAML file."""
-        with open(yaml_path, 'r', encoding="utf-8") as f:
+        with open(yaml_path, 'r', encoding="utf-8", errors="replace") as f:
             data = yaml.safe_load(f) or {}
 
         config = cls()
@@ -1240,7 +1240,7 @@ Write only the summary, starting with "[CONTEXT SUMMARY]:" prefix."""
         # Save metrics
         if self.config.metrics_enabled:
             metrics_path = output_dir / self.config.metrics_output_file
-            with open(metrics_path, 'w', encoding="utf-8") as f:
+            with open(metrics_path, 'w', encoding="utf-8", errors="replace") as f:
                 f.write(orjson.dumps(self.aggregate_metrics.to_dict(), option=orjson.OPT_INDENT_2).decode('utf-8'))
             console.print(f"\n💾 Metrics saved to {metrics_path}")
     

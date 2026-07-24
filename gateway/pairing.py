@@ -165,7 +165,7 @@ def _sync_allowlist_remove(platform: str, user_id: str) -> None:
 def _load_json_file(path: Path) -> dict:
     if path.exists():
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
+            data = json.loads(path.read_text(encoding="utf-8", errors="replace"))
             return data if isinstance(data, dict) else {}
         except (json.JSONDecodeError, OSError):
             return {}
@@ -216,7 +216,7 @@ def _secure_write(path: Path, data: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_path = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
+        with os.fdopen(fd, "w", encoding="utf-8", errors="replace") as f:
             f.write(data)
             f.flush()
             os.fsync(f.fileno())
@@ -285,7 +285,7 @@ class PairingStore:
     def _load_json(self, path: Path) -> dict:
         if path.exists():
             try:
-                return orjson.loads(path.read_text(encoding="utf-8"))
+                return orjson.loads(path.read_text(encoding="utf-8", errors="replace"))
             except PermissionError as e:
                 # Surface this loudly: a 0600 file owned by a different user
                 # (classic Docker symptom: `docker exec` runs as root and writes

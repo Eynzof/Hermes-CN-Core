@@ -115,13 +115,13 @@ def read_json(path: Path, default: Any = None) -> Any:
     if ap.exists():
         return json.loads(crypto.decrypt(ap.read_bytes()).decode("utf-8"))
     if path.exists():
-        return json.loads(path.read_text(encoding="utf-8"))
+        return json.loads(path.read_text(encoding="utf-8", errors="replace"))
     return default
 
 
 def append_jsonl(path: Path, record: dict) -> Path:
     ensure_dir(path.parent)
-    with path.open("a", encoding="utf-8") as fh:
+    with path.open("a", encoding="utf-8", errors="replace") as fh:
         fh.write(json.dumps(record, ensure_ascii=False) + "\n")
     _secure(path, 0o600)
     return path
@@ -131,7 +131,7 @@ def read_jsonl(path: Path) -> list[dict]:
     if not path.exists():
         return []
     out: list[dict] = []
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
         line = line.strip()
         if line:
             out.append(json.loads(line))

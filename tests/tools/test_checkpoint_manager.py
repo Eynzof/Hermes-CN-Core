@@ -641,7 +641,7 @@ class TestTouchProjectMalformedMeta:
         _touch_project(store, workdir)
 
         # Metadata file should now be a valid dict with last_touch updated
-        data = orjson.loads(meta_path.read_text(encoding="utf-8"))
+        data = orjson.loads(meta_path.read_text(encoding="utf-8", errors="replace"))
         assert isinstance(data, dict)
         assert "last_touch" in data
         assert "workdir" in data

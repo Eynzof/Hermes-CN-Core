@@ -12,7 +12,7 @@ for prof_file, out_name in [
     ps.print_stats(30)
 
     lines = s.getvalue().split("\n")
-    with open(f"reports/perf/attachments/{out_name}", "w", encoding="utf-8") as f:
+    with open(f"reports/perf/attachments/{out_name}", "w", encoding="utf-8", errors="replace") as f:
         f.write('<?xml version="1.0" encoding="UTF-8"?>\n')
         f.write('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 800" width="1000" height="800">\n')
         f.write('<rect width="1000" height="800" fill="#1a1a2e" rx="8"/>\n')

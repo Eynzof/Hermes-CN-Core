@@ -54,7 +54,7 @@ def _module_registers_tools(module_path: Path) -> bool:
     top-level ``registry.register()`` call to exist.
     """
     try:
-        source = module_path.read_text(encoding="utf-8")
+        source = module_path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return False
 
@@ -176,7 +176,7 @@ def build_tool_index(tools_dir: Optional[Path] = None) -> dict:
         if path.name in _SKIP_TOOL_FILES:
             continue
         try:
-            source = path.read_text(encoding="utf-8")
+            source = path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
         if "registry.register" not in source:
@@ -277,7 +277,7 @@ def load_or_build_tool_index(tools_dir: Optional[Path] = None) -> dict:
     cache_file = _tool_index_cache_file() if fingerprint else None
     if cache_file is not None:
         try:
-            cached = orjson.loads(cache_file.read_text(encoding="utf-8"))
+            cached = orjson.loads(cache_file.read_text(encoding="utf-8", errors="replace"))
             if (
                 cached.get("fingerprint") == fingerprint
                 and isinstance(cached.get("index"), dict)

@@ -1011,7 +1011,7 @@ class SlackAdapter(BasePlatformAdapter):
         tokens_file = get_hermes_home() / "slack_tokens.json"
         if tokens_file.exists():
             try:
-                saved = orjson.loads(tokens_file.read_text(encoding="utf-8"))
+                saved = orjson.loads(tokens_file.read_text(encoding="utf-8", errors="replace"))
                 for team_id, entry in saved.items():
                     tok = entry.get("token", "") if isinstance(entry, dict) else ""
                     if tok and tok not in bot_tokens:

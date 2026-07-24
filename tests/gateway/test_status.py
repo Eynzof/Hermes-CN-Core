@@ -790,7 +790,7 @@ class TestScopedLocks:
             (fd, 1, 1, status._WINDOWS_LOCK_OFFSET),
             (fd, 2, 1, status._WINDOWS_LOCK_OFFSET),
         ]
-        assert lock_path.read_text(encoding="utf-8") == "\n"
+        assert lock_path.read_text(encoding="utf-8", errors="replace") == "\n"
 
     def test_acquire_scoped_lock_rejects_live_other_process(self, tmp_path, monkeypatch):
         monkeypatch.setenv("HERMES_GATEWAY_LOCK_DIR", str(tmp_path / "locks"))
@@ -1708,7 +1708,7 @@ class TestRespawnStormBreaker:
 
         log_path = status._get_starts_log_path()
         assert log_path.exists()
-        for line in log_path.read_text(encoding="utf-8").splitlines():
+        for line in log_path.read_text(encoding="utf-8", errors="replace").splitlines():
             line = line.strip()
             if not line:
                 continue

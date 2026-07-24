@@ -144,7 +144,7 @@ class TestHashedStorage:
             store = PairingStore()
             code = store.generate_code("telegram", "user1", "Alice")
             raw = orjson.loads(
-                (tmp_path / "telegram-pending.json").read_text(encoding="utf-8")
+                (tmp_path / "telegram-pending.json").read_text(encoding="utf-8", errors="replace")
             )
 
         assert len(raw) == 1
@@ -171,7 +171,7 @@ class TestHashedStorage:
         with patch("gateway.pairing.PAIRING_DIR", tmp_path):
             store = PairingStore()
             code = store.generate_code("telegram", "user1")
-            raw_text = (tmp_path / "telegram-pending.json").read_text(encoding="utf-8")
+            raw_text = (tmp_path / "telegram-pending.json").read_text(encoding="utf-8", errors="replace")
         assert code not in raw_text
 
     def test_valid_code_verifies_against_hash(self, tmp_path):
@@ -200,7 +200,7 @@ class TestHashedStorage:
             store.generate_code("telegram", "user1")
             store.generate_code("telegram", "user2")
             raw = orjson.loads(
-                (tmp_path / "telegram-pending.json").read_text(encoding="utf-8")
+                (tmp_path / "telegram-pending.json").read_text(encoding="utf-8", errors="replace")
             )
         salts = [entry["salt"] for entry in raw.values()]
         assert len(set(salts)) == 3  # all unique
@@ -279,7 +279,7 @@ class TestLegacyPendingFileCompat:
             store = PairingStore()
             store._cleanup_expired("telegram")
             raw = orjson.loads(
-                (tmp_path / "telegram-pending.json").read_text(encoding="utf-8")
+                (tmp_path / "telegram-pending.json").read_text(encoding="utf-8", errors="replace")
             )
         assert raw == {}
 
@@ -297,7 +297,7 @@ class TestLegacyPendingFileCompat:
             store = PairingStore()
             store._cleanup_expired("telegram")
             raw = orjson.loads(
-                (tmp_path / "telegram-pending.json").read_text(encoding="utf-8")
+                (tmp_path / "telegram-pending.json").read_text(encoding="utf-8", errors="replace")
             )
         assert raw == {}
 

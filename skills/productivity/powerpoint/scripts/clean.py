@@ -36,7 +36,7 @@ def get_slides_in_sldidlst(unpacked_dir: Path) -> set[str]:
         if "slide" in rel_type and target.startswith("slides/"):
             rid_to_slide[rid] = target.replace("slides/", "")
 
-    pres_content = pres_path.read_text(encoding="utf-8")
+    pres_content = pres_path.read_text(encoding="utf-8", errors="replace")
     referenced_rids = set(re.findall(r'<p:sldId[^>]*r:id="([^"]+)"', pres_content))
 
     return {rid_to_slide[rid] for rid in referenced_rids if rid in rid_to_slide}

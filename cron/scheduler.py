@@ -632,7 +632,7 @@ def _lock_holder_alive(lock_file) -> bool:
     from a live process (which would double-execute one-shot jobs).
     """
     try:
-        content = lock_file.read_text(encoding="utf-8").strip()
+        content = lock_file.read_text(encoding="utf-8", errors="replace").strip()
     except OSError:
         return True
     if not content:
@@ -2173,7 +2173,7 @@ def _get_script_timeout() -> int:
 def _read_windows_pyvenv_cfg(venv_dir: Path) -> dict[str, str]:
     cfg_path = venv_dir / "pyvenv.cfg"
     try:
-        lines = cfg_path.read_text(encoding="utf-8").splitlines()
+        lines = cfg_path.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
         return {}
 
@@ -2527,7 +2527,7 @@ def _build_job_prompt(job: dict, prerun_script: Optional[tuple] = None) -> str:
                 )
                 if not output_files:
                     continue  # silent skip — no output yet
-                latest_output = output_files[0].read_text(encoding="utf-8").strip()
+                latest_output = output_files[0].read_text(encoding="utf-8", errors="replace").strip()
                 # Truncate to 8K characters to avoid prompt bloat
                 _MAX_CONTEXT_CHARS = 8000
                 if len(latest_output) > _MAX_CONTEXT_CHARS:
@@ -3175,7 +3175,7 @@ def run_job(
             import yaml
             _cfg_path = str(_get_hermes_home() / "config.yaml")
             if os.path.exists(_cfg_path):
-                with open(_cfg_path, encoding="utf-8") as _f:
+                with open(_cfg_path, encoding="utf-8", errors="replace") as _f:
                     _cfg = yaml.safe_load(_f) or {}
                 # Managed scope: a scheduled job must honor administrator-pinned
                 # model / reasoning / toolsets / provider_routing too. This loader
@@ -3244,7 +3244,7 @@ def run_job(
                 pfpath = _get_hermes_home() / pfpath
             if pfpath.exists():
                 try:
-                    with open(pfpath, "r", encoding="utf-8") as _pf:
+                    with open(pfpath, "r", encoding="utf-8", errors="replace") as _pf:
                         prefill_messages = orjson.loads(_pf.read())
                     if not isinstance(prefill_messages, list):
                         prefill_messages = None

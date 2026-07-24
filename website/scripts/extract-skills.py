@@ -260,7 +260,7 @@ def extract_local_skills():
                 continue
 
             skill_path = os.path.join(root, "SKILL.md")
-            with open(skill_path, encoding="utf-8") as f:
+            with open(skill_path, encoding="utf-8", errors="replace") as f:
                 content = f.read()
 
             if not content.startswith("---"):
@@ -353,7 +353,7 @@ def extract_unified_index_skills():
         return None, None
 
     try:
-        with open(UNIFIED_INDEX_PATH, encoding="utf-8") as f:
+        with open(UNIFIED_INDEX_PATH, encoding="utf-8", errors="replace") as f:
             data = json.loads(f.read())
     except (json.JSONDecodeError, OSError) as e:
         print(f"[extract-skills] Failed to read unified index: {e}")
@@ -454,7 +454,7 @@ def extract_legacy_cache_skills():
 
         filepath = os.path.join(LEGACY_INDEX_CACHE_DIR, filename)
         try:
-            with open(filepath, encoding="utf-8") as f:
+            with open(filepath, encoding="utf-8", errors="replace") as f:
                 data = json.loads(f.read())
         except (json.JSONDecodeError, OSError):
             continue

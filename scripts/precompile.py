@@ -103,7 +103,7 @@ def _pyproject_targets() -> "list[str] | None":
     except Exception:
         return None
     try:
-        data = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        data = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8", errors="replace"))
     except (OSError, ValueError):
         return None
     targets = (
@@ -247,7 +247,7 @@ def precompile_if_needed(
         fingerprint = source_fingerprint(paths)
         if not force and stamp is not None and stamp.exists():
             try:
-                if stamp.read_text(encoding="utf-8").strip() == fingerprint:
+                if stamp.read_text(encoding="utf-8", errors="replace").strip() == fingerprint:
                     return "skipped"
             except OSError:
                 pass

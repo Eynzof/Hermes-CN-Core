@@ -24,7 +24,7 @@ def _resolve_install_layout_body() -> str:
     return between the marker and the export — both of which would leave the
     export unreachable while a less-strict assertion still passed.
     """
-    text = INSTALL_SH.read_text(encoding="utf-8")
+    text = INSTALL_SH.read_text(encoding="utf-8", errors="replace")
     head, _, rest = text.partition("resolve_install_layout() {\n")
     assert rest, "Could not find resolve_install_layout() in scripts/install.sh"
     body, _, _ = rest.partition("\n}\n")
@@ -33,7 +33,7 @@ def _resolve_install_layout_body() -> str:
 
 
 def test_root_fhs_layout_exports_world_readable_uv_python_dirs() -> None:
-    text = INSTALL_SH.read_text(encoding="utf-8")
+    text = INSTALL_SH.read_text(encoding="utf-8", errors="replace")
 
     assert 'export UV_PYTHON_INSTALL_DIR="${UV_PYTHON_INSTALL_DIR:-/usr/local/share/uv/python}"' in text
     assert 'export UV_PYTHON_BIN_DIR="${UV_PYTHON_BIN_DIR:-/usr/local/share/uv/bin}"' in text

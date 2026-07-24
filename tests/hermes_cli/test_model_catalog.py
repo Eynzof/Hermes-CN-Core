@@ -546,7 +546,7 @@ class TestManifestMatchesInRepoLists:
         spec.loader.exec_module(mod)
         expected = mod.build_catalog()
 
-        with open(manifest_path, encoding="utf-8") as fh:
+        with open(manifest_path, encoding="utf-8", errors="replace") as fh:
             actual = orjson.loads(fh.read())
 
         assert self._strip_volatile(actual) == self._strip_volatile(expected), (

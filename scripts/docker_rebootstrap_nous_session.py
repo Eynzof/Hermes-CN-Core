@@ -161,7 +161,7 @@ def reseed_if_terminal(auth_path: str, seed_raw: str) -> str:
         return "no_auth_file"
 
     try:
-        with open(auth_path, "r", encoding="utf-8") as fh:
+        with open(auth_path, "r", encoding="utf-8", errors="replace") as fh:
             store = json.load(fh)
     except (OSError, ValueError):
         # Corrupt/unreadable auth.json: do NOT overwrite blindly. A separate
@@ -188,7 +188,7 @@ def reseed_if_terminal(auth_path: str, seed_raw: str) -> str:
     providers["nous"] = seed_nous
 
     tmp_path = f"{auth_path}.rebootstrap.tmp"
-    with open(tmp_path, "w", encoding="utf-8") as fh:
+    with open(tmp_path, "w", encoding="utf-8", errors="replace") as fh:
         json.dump(store, fh)
     os.replace(tmp_path, auth_path)
     try:

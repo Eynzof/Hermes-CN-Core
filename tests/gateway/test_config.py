@@ -506,7 +506,7 @@ class TestLoadGatewayConfig:
         hermes_home = tmp_path / ".hermes"
         hermes_home.mkdir()
         (hermes_home / "config.yaml").write_text(
-            template.read_text(encoding="utf-8"), encoding="utf-8"
+            template.read_text(encoding="utf-8", errors="replace"), encoding="utf-8"
         )
         monkeypatch.setenv("HERMES_HOME", str(hermes_home))
 

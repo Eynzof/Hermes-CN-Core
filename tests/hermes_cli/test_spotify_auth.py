@@ -126,7 +126,7 @@ def test_spotify_logout_does_not_reset_model_provider(
     assert "Logged out of Spotify." in output
     assert "Model provider configuration was unchanged." in output
     assert auth_mod.get_provider_auth_state("spotify") is None
-    assert config_path.read_text(encoding="utf-8") == (
+    assert config_path.read_text(encoding="utf-8", errors="replace") == (
         "model:\n"
         "  default: gemini-3-flash\n"
         "  provider: custom:local\n"

@@ -93,7 +93,7 @@ async def test_write_tool_log_writes_and_rotates_handler(tmp_path, monkeypatch):
         handler.flush()
         handler.close()
 
-    content = (log_dir / "tool_calls.log").read_text(encoding="utf-8")
+    content = (log_dir / "tool_calls.log").read_text(encoding="utf-8", errors="replace")
     assert "terminal" in content
     assert "read_file" in content
     assert content.count("\n") == 2

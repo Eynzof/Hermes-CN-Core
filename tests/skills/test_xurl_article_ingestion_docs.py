@@ -16,8 +16,8 @@ DOC_MD = (
 
 
 def test_xurl_article_ingestion_uses_raw_api_mode():
-    skill_text = SKILL_MD.read_text(encoding="utf-8")
-    docs_text = DOC_MD.read_text(encoding="utf-8")
+    skill_text = SKILL_MD.read_text(encoding="utf-8", errors="replace")
+    docs_text = DOC_MD.read_text(encoding="utf-8", errors="replace")
 
     for text in (skill_text, docs_text):
         assert "For X Articles, use raw API mode" in text

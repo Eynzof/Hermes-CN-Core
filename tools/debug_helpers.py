@@ -82,7 +82,7 @@ class DebugSession:
                 "total_calls": len(self._calls),
                 "tool_calls": self._calls,
             }
-            with open(filepath, "w", encoding="utf-8") as f:
+            with open(filepath, "w", encoding="utf-8", errors="replace") as f:
                 f.write(orjson.dumps(payload, option=orjson.OPT_INDENT_2).decode('utf-8'))
             logger.debug("%s debug log saved: %s", self.tool_name, filepath)
         except Exception as e:

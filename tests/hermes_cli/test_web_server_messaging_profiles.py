@@ -153,7 +153,7 @@ class TestProfileScopedMessagingWrites:
 
         worker_env = (
             isolated_profiles["worker_alpha"] / ".env"
-        ).read_text(encoding="utf-8")
+        ).read_text(encoding="utf-8", errors="replace")
         assert f"TELEGRAM_BOT_TOKEN={_VALID_WORKER_BOT_TOKEN}" in worker_env
 
         # The dashboard's own .env must stay untouched — this was the bug.
@@ -184,7 +184,7 @@ class TestProfileScopedMessagingWrites:
         assert resp.status_code == 200
         worker_env = (
             isolated_profiles["worker_alpha"] / ".env"
-        ).read_text(encoding="utf-8")
+        ).read_text(encoding="utf-8", errors="replace")
         assert f"TELEGRAM_BOT_TOKEN={_VALID_BODY_BOT_TOKEN}" in worker_env
 
     def test_scoped_read_after_scoped_write_round_trips(
@@ -222,7 +222,7 @@ class TestProfileScopedMessagingWrites:
         assert resp.status_code == 200
         worker_env = (
             isolated_profiles["worker_alpha"] / ".env"
-        ).read_text(encoding="utf-8")
+        ).read_text(encoding="utf-8", errors="replace")
         assert _VALID_WORKER_BOT_TOKEN not in worker_env
         root_env = (isolated_profiles["default"] / ".env").read_text(
             encoding="utf-8"
@@ -282,8 +282,8 @@ class TestMultiplexPortBindingGuard:
     ):
         _enable_multiplex(isolated_profiles["default"])
         worker_home = isolated_profiles["worker_alpha"]
-        env_before = (worker_home / ".env").read_text(encoding="utf-8")
-        cfg_before = (worker_home / "config.yaml").read_text(encoding="utf-8")
+        env_before = (worker_home / ".env").read_text(encoding="utf-8", errors="replace")
+        cfg_before = (worker_home / "config.yaml").read_text(encoding="utf-8", errors="replace")
 
         catalog = client.get(
             "/api/messaging/platforms", params={"profile": "worker_alpha"}
@@ -298,8 +298,8 @@ class TestMultiplexPortBindingGuard:
         )
 
         assert resp.status_code == 409
-        assert (worker_home / ".env").read_text(encoding="utf-8") == env_before
-        assert (worker_home / "config.yaml").read_text(encoding="utf-8") == cfg_before
+        assert (worker_home / ".env").read_text(encoding="utf-8", errors="replace") == env_before
+        assert (worker_home / "config.yaml").read_text(encoding="utf-8", errors="replace") == cfg_before
 
     def test_default_profile_still_allowed_with_multiplex_on(
         self, client, isolated_profiles

@@ -261,7 +261,7 @@ def load_weixin_account(hermes_home: str, account_id: str) -> Optional[Dict[str,
     if not path.exists():
         return None
     try:
-        return orjson.loads(path.read_text(encoding="utf-8"))
+        return orjson.loads(path.read_text(encoding="utf-8", errors="replace"))
     except Exception:
         return None
 
@@ -284,7 +284,7 @@ class ContextTokenStore:
         if not path.exists():
             return
         try:
-            data = orjson.loads(path.read_text(encoding="utf-8"))
+            data = orjson.loads(path.read_text(encoding="utf-8", errors="replace"))
         except Exception as exc:
             logger.warning("weixin: failed to restore context tokens for %s: %s", _safe_id(account_id), exc)
             return
@@ -991,7 +991,7 @@ def _load_sync_buf(hermes_home: str, account_id: str) -> str:
     if not path.exists():
         return ""
     try:
-        return orjson.loads(path.read_text(encoding="utf-8")).get("get_updates_buf", "")
+        return orjson.loads(path.read_text(encoding="utf-8", errors="replace")).get("get_updates_buf", "")
     except Exception:
         return ""
 

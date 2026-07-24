@@ -162,7 +162,7 @@ def test_run_agent_concurrent_executor_wraps_submit_with_copy_context():
     for mod in (run_agent, tool_executor_module):
         src_path = inspect.getsourcefile(mod)
         assert src_path is not None
-        sources.append((src_path, open(src_path, encoding="utf-8").read()))
+        sources.append((src_path, open(src_path, encoding="utf-8", errors="replace").read()))
 
     submit_calls_in_agent: list[ast.Call] = []
     for _src_path, src_text in sources:

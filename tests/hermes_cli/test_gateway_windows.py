@@ -143,7 +143,7 @@ def test_write_task_script_anchors_cmd_cd_at_hermes_home(monkeypatch, tmp_path):
     monkeypatch.setattr(gateway_windows, "get_task_script_path", lambda: script_path)
 
     written = gateway_windows._write_task_script()
-    content = script_path.read_text(encoding="utf-8")
+    content = script_path.read_text(encoding="utf-8", errors="replace")
 
     assert written == script_path
     assert f"cd /d {gateway_windows._quote_cmd_script_arg(str(hermes_home.resolve()))}" in content

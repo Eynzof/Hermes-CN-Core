@@ -473,7 +473,7 @@ class TestParseFrontmatterBOM:
         # and confirm the frontmatter survives the round trip.
         f = tmp_path / "SKILL.md"
         f.write_text(self.SKILL, encoding="utf-8-sig")
-        raw = f.read_text(encoding="utf-8")
+        raw = f.read_text(encoding="utf-8", errors="replace")
         assert raw.startswith("\ufeff")  # BOM really is present on disk
         fm, _ = parse_frontmatter(raw)
         assert fm["name"] == "my-skill"

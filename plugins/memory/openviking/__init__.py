@@ -939,7 +939,7 @@ def _precreate_secret_file(path: Path) -> None:
 def _write_env_vars(env_path: Path, env_writes: dict, remove_keys: tuple[str, ...] = ()) -> None:
     env_path.parent.mkdir(parents=True, exist_ok=True)
     remove_set = set(remove_keys) - set(env_writes)
-    existing_lines = env_path.read_text(encoding="utf-8").splitlines() if env_path.exists() else []
+    existing_lines = env_path.read_text(encoding="utf-8", errors="replace").splitlines() if env_path.exists() else []
     updated_keys = set()
     new_lines = []
     for line in existing_lines:

@@ -114,7 +114,7 @@ def _node_detail(node_id: str) -> dict[str, Any]:
         "kind": "skill",
         "id": node_id,
         "label": node_id,
-        "content": skill_md.read_text(encoding="utf-8"),
+        "content": skill_md.read_text(encoding="utf-8", errors="replace"),
     }
 
 

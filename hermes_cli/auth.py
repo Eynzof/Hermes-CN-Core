@@ -1045,7 +1045,7 @@ def _file_lock(
     if msvcrt and (not lock_path.exists() or lock_path.stat().st_size == 0):
         lock_path.write_text(" ", encoding="utf-8")
 
-    with lock_path.open("r+" if msvcrt else "a+", encoding="utf-8") as lock_file:
+    with lock_path.open("r+" if msvcrt else "a+", encoding="utf-8", errors="replace") as lock_file:
         deadline = time.monotonic() + max(1.0, timeout_seconds)
         while True:
             try:
@@ -1175,7 +1175,7 @@ def _save_auth_store(auth_store: Dict[str, Any], target_path: Optional[Path] = N
             os.O_WRONLY | os.O_CREAT | os.O_EXCL,
             stat.S_IRUSR | stat.S_IWUSR,
         )
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        with os.fdopen(fd, "w", encoding="utf-8", errors="replace") as handle:
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
@@ -2315,7 +2315,7 @@ def _read_qwen_cli_tokens() -> Dict[str, Any]:
             code="qwen_auth_missing",
         )
     try:
-        data = orjson.loads(auth_path.read_text(encoding="utf-8"))
+        data = orjson.loads(auth_path.read_text(encoding="utf-8", errors="replace"))
     except Exception as exc:
         raise AuthError(
             f"Failed to read Qwen CLI credentials from {auth_path}: {exc}",
@@ -2348,7 +2348,7 @@ def _save_qwen_cli_tokens(tokens: Dict[str, Any]) -> Path:
         stat.S_IRUSR | stat.S_IWUSR,
     )
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        with os.fdopen(fd, "w", encoding="utf-8", errors="replace") as fh:
             fh.write(orjson.dumps(tokens, option=orjson.OPT_INDENT_2 | orjson.OPT_SORT_KEYS).decode('utf-8') + "\n")
             fh.flush()
             os.fsync(fh.fileno())
@@ -4889,7 +4889,7 @@ def _write_shared_nous_state(state: Dict[str, Any]) -> None:
                 stat.S_IRUSR | stat.S_IWUSR,
             )
             try:
-                with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                with os.fdopen(fd, "w", encoding="utf-8", errors="replace") as fh:
                     fh.write(orjson.dumps(shared, option=orjson.OPT_INDENT_2 | orjson.OPT_SORT_KEYS).decode('utf-8'))
                     fh.flush()
                     os.fsync(fh.fileno())

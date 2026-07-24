@@ -208,7 +208,7 @@ def test_background_and_main_agent_paths_call_refresh():
 
     source = (
         Path(__file__).resolve().parent.parent.parent / "gateway" / "run.py"
-    ).read_text(encoding="utf-8")
+    ).read_text(encoding="utf-8", errors="replace")
     assert "fallback_model=self._refresh_fallback_model()" in source
     assert source.count("fallback_model=self._refresh_fallback_model()") >= 2
     # The cached-agent reuse path (the load-bearing fix for a long-lived

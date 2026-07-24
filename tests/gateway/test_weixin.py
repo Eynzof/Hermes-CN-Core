@@ -264,7 +264,7 @@ class TestWeixinStatePersistence:
         else:
             raise AssertionError("expected save_weixin_account to propagate replace failure")
 
-        assert orjson.loads(account_path.read_text(encoding="utf-8")) == original
+        assert orjson.loads(account_path.read_text(encoding="utf-8", errors="replace")) == original
 
     def test_context_token_persist_preserves_existing_file_on_replace_failure(self, tmp_path, monkeypatch):
         token_path = tmp_path / "weixin" / "accounts" / "acct.context-tokens.json"
@@ -280,7 +280,7 @@ class TestWeixinStatePersistence:
         with patch.object(weixin.logger, "warning") as warning_mock:
             store.set("acct", "user-b", "new-token")
 
-        assert orjson.loads(token_path.read_text(encoding="utf-8")) == {"user-a": "old-token"}
+        assert orjson.loads(token_path.read_text(encoding="utf-8", errors="replace")) == {"user-a": "old-token"}
         warning_mock.assert_called_once()
 
     def test_save_sync_buf_preserves_existing_file_on_replace_failure(self, tmp_path, monkeypatch):
@@ -300,7 +300,7 @@ class TestWeixinStatePersistence:
         else:
             raise AssertionError("expected _save_sync_buf to propagate replace failure")
 
-        assert orjson.loads(sync_path.read_text(encoding="utf-8")) == {"get_updates_buf": "old-sync"}
+        assert orjson.loads(sync_path.read_text(encoding="utf-8", errors="replace")) == {"get_updates_buf": "old-sync"}
 
 
 class TestWeixinQrLogin:

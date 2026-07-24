@@ -100,7 +100,7 @@ def _log_signal(signum: int, frame) -> None:
     name = _signal_names.get(signum, f"signal {signum}")
     try:
         os.makedirs(os.path.dirname(_CRASH_LOG), exist_ok=True)
-        with open(_CRASH_LOG, "a", encoding="utf-8") as f:
+        with open(_CRASH_LOG, "a", encoding="utf-8", errors="replace") as f:
             f.write(
                 f"\n=== {name} received · {time.strftime('%Y-%m-%d %H:%M:%S')} ===\n"
             )
@@ -196,7 +196,7 @@ def _log_exit(reason: str) -> None:
     """
     try:
         os.makedirs(os.path.dirname(_CRASH_LOG), exist_ok=True)
-        with open(_CRASH_LOG, "a", encoding="utf-8") as f:
+        with open(_CRASH_LOG, "a", encoding="utf-8", errors="replace") as f:
             f.write(
                 f"\n=== gateway exit · {time.strftime('%Y-%m-%d %H:%M:%S')} "
                 f"· reason={reason} ===\n"

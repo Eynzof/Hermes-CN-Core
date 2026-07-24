@@ -893,7 +893,7 @@ class HonchoSessionManager:
             filepath = memory_path / filename
             if not filepath.exists():
                 continue
-            content = filepath.read_text(encoding="utf-8").strip()
+            content = filepath.read_text(encoding="utf-8", errors="replace").strip()
             if not content:
                 continue
 

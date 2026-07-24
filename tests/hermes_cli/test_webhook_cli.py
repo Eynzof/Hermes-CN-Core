@@ -179,7 +179,7 @@ class TestPersistence:
 
         path = _subscriptions_path()
         assert stat.S_IMODE(path.stat().st_mode) == 0o600
-        assert "TOPSECRET" in path.read_text(encoding="utf-8")
+        assert "TOPSECRET" in path.read_text(encoding="utf-8", errors="replace")
 
     @pytest.mark.skipif(os.name == "nt", reason="POSIX mode bits are platform-specific")
     def test_save_narrows_existing_broad_secret_file_mode(self):
@@ -192,7 +192,7 @@ class TestPersistence:
         _save_subscriptions({"demo": {"secret": "FRESH", "prompt": "x"}})
 
         assert stat.S_IMODE(path.stat().st_mode) == 0o600
-        assert "FRESH" in path.read_text(encoding="utf-8")
+        assert "FRESH" in path.read_text(encoding="utf-8", errors="replace")
 
 
 class TestWebhookEnabledGate:

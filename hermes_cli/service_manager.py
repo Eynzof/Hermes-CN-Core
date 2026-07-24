@@ -150,7 +150,7 @@ def _s6_running() -> bool:
     init, or an unrelated process named ``s6-svscan``).
     """
     try:
-        comm = Path("/proc/1/comm").read_text(encoding="utf-8").strip()
+        comm = Path("/proc/1/comm").read_text(encoding="utf-8", errors="replace").strip()
     except OSError:
         return False
     if comm != "s6-svscan":

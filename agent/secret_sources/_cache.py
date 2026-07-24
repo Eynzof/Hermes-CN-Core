@@ -135,7 +135,7 @@ class DiskCache(Generic[K]):
             return None
         path = self.path(home_path)
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, "r", encoding="utf-8", errors="replace") as f:
                 payload = json.load(f)
         except (OSError, json.JSONDecodeError):
             return None
@@ -192,7 +192,7 @@ class DiskCache(Generic[K]):
                 prefix=self._tmp_prefix, suffix=".tmp", dir=str(cache_dir)
             )
             try:
-                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                with os.fdopen(fd, "w", encoding="utf-8", errors="replace") as f:
                     json.dump(payload, f)
                 os.chmod(tmp, 0o600)
                 os.replace(tmp, path)

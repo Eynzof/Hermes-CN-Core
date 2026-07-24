@@ -52,7 +52,7 @@ def test_sessions_export_md_writes_single_session(monkeypatch, tmp_path, capsys)
     output = capsys.readouterr().out
     files = list(tmp_path.glob("*.md"))
     assert len(files) == 1
-    text = files[0].read_text(encoding="utf-8")
+    text = files[0].read_text(encoding="utf-8", errors="replace")
     assert "# Export CLI Test" in text
     assert "hello" in text
     assert captured == {
@@ -288,7 +288,7 @@ def test_sessions_export_md_bulk_writes_manifest(monkeypatch, tmp_path, capsys):
     assert len(list(tmp_path.glob("*.md"))) == 2
     manifest = tmp_path / "manifest.jsonl"
     assert manifest.exists()
-    lines = manifest.read_text(encoding="utf-8").splitlines()
+    lines = manifest.read_text(encoding="utf-8", errors="replace").splitlines()
     assert len(lines) == 2
     assert "Exported 2 session(s)" in capsys.readouterr().out
 
@@ -460,7 +460,7 @@ def test_sessions_export_jsonl_honors_filters(monkeypatch, tmp_path, capsys):
 
     main_mod.main()
 
-    lines = out.read_text(encoding="utf-8").splitlines()
+    lines = out.read_text(encoding="utf-8", errors="replace").splitlines()
     assert len(lines) == 1
     assert json.loads(lines[0])["id"] == "s1"
     assert "Exported 1 sessions" in capsys.readouterr().out
@@ -501,7 +501,7 @@ def test_sessions_export_redact_scrubs_secrets(monkeypatch, tmp_path):
 
     main_mod.main()
 
-    text = next(tmp_path.glob("*.md")).read_text(encoding="utf-8")
+    text = next(tmp_path.glob("*.md")).read_text(encoding="utf-8", errors="replace")
     assert secret not in text
     assert "api key:" in text
 
@@ -545,7 +545,7 @@ def test_sessions_export_trace_writes_claude_jsonl(monkeypatch, tmp_path, capsys
     main_mod.main()
 
     assert "Exported 1 session trace" in capsys.readouterr().out
-    lines = [json.loads(line) for line in out.read_text(encoding="utf-8").splitlines()]
+    lines = [json.loads(line) for line in out.read_text(encoding="utf-8", errors="replace").splitlines()]
     assert {rec["type"] for rec in lines} == {"user", "assistant"}
     assert all("uuid" in rec for rec in lines)
     assert captured["conv"] == "s1"

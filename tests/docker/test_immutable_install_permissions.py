@@ -30,7 +30,7 @@ def test_hermes_user_cannot_modify_install_but_can_write_data(built_image: str) 
 
         install_file = Path("/opt/hermes/agent/message_sanitization.py")
         try:
-            with install_file.open("a", encoding="utf-8") as handle:
+            with install_file.open("a", encoding="utf-8", errors="replace") as handle:
                 handle.write("\n# unexpected hosted mutation\n")
         except PermissionError:
             pass
@@ -41,7 +41,7 @@ def test_hermes_user_cannot_modify_install_but_can_write_data(built_image: str) 
         skill_dir.mkdir(parents=True, exist_ok=True)
         skill_file = skill_dir / "SKILL.md"
         skill_file.write_text("# Permission smoke\n", encoding="utf-8")
-        if skill_file.read_text(encoding="utf-8") != "# Permission smoke\n":
+        if skill_file.read_text(encoding="utf-8", errors="replace") != "# Permission smoke\n":
             raise SystemExit("data write verification failed")
         PY
         """

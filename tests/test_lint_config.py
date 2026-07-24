@@ -78,7 +78,7 @@ class TestLintWorkflow:
     def test_workflow_has_blocking_ruff_step(self):
         """The workflow must run a blocking ``ruff check .`` step
         (one without --exit-zero) so violations fail the job."""
-        content = self.WORKFLOW_PATH.read_text(encoding="utf-8")
+        content = self.WORKFLOW_PATH.read_text(encoding="utf-8", errors="replace")
         # Look for the blocking step's named line + its command.  We want
         # at least one ``ruff check .`` that does NOT have ``--exit-zero``
         # nearby.
@@ -105,7 +105,7 @@ class TestLintWorkflow:
         """Workflow file must parse as valid YAML (can't ship a broken
         CI config to main)."""
         import yaml
-        content = self.WORKFLOW_PATH.read_text(encoding="utf-8")
+        content = self.WORKFLOW_PATH.read_text(encoding="utf-8", errors="replace")
         try:
             parsed = yaml.safe_load(content)
         except yaml.YAMLError as exc:

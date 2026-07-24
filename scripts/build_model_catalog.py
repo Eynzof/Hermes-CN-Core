@@ -104,7 +104,7 @@ def build_catalog() -> dict:
 def main() -> int:
     catalog = build_catalog()
     os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
-    with open(OUTPUT_PATH, "w", encoding="utf-8") as fh:
+    with open(OUTPUT_PATH, "w", encoding="utf-8", errors="replace") as fh:
         fh.write(orjson.dumps(catalog, option=orjson.OPT_INDENT_2).decode('utf-8'))
         fh.write("\n")
 

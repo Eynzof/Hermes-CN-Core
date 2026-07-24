@@ -308,7 +308,7 @@ class _RawCallVisitor:
 
 
 def _scan(rel_path: str) -> _RawCallVisitor:
-    source = (_repo_root() / rel_path).read_text(encoding="utf-8")
+    source = (_repo_root() / rel_path).read_text(encoding="utf-8", errors="replace")
     return _RawCallVisitor(ast.parse(source))
 
 

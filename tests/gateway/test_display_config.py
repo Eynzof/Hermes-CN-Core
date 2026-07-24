@@ -365,7 +365,7 @@ class TestConfigMigration:
 
         result = cfg_mod.migrate_config(interactive=False, quiet=True)
         # Re-read config
-        updated = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        updated = yaml.safe_load(config_path.read_text(encoding="utf-8", errors="replace"))
         platforms = updated.get("display", {}).get("platforms", {})
         assert platforms.get("signal", {}).get("tool_progress") == "off"
         assert platforms.get("telegram", {}).get("tool_progress") == "all"
@@ -390,7 +390,7 @@ class TestConfigMigration:
         importlib.reload(cfg_mod)
 
         cfg_mod.migrate_config(interactive=False, quiet=True)
-        updated = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        updated = yaml.safe_load(config_path.read_text(encoding="utf-8", errors="replace"))
         # Existing "verbose" should NOT be overwritten by legacy "off"
         assert updated["display"]["platforms"]["telegram"]["tool_progress"] == "verbose"
 

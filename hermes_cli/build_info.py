@@ -43,7 +43,7 @@ def get_build_sha(short: int = 8) -> Optional[str]:
     try:
         if not _BUILD_SHA_FILE.is_file():
             return None
-        sha = _BUILD_SHA_FILE.read_text(encoding="utf-8").strip()
+        sha = _BUILD_SHA_FILE.read_text(encoding="utf-8", errors="replace").strip()
     except Exception:
         return None
     if not sha:

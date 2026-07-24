@@ -341,7 +341,7 @@ def _write_private_json(path: Path, data: Any) -> None:
             os.O_WRONLY | os.O_CREAT | os.O_EXCL,
             stat.S_IRUSR | stat.S_IWUSR,
         )
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        with os.fdopen(fd, "w", encoding="utf-8", errors="replace") as fh:
             fh.write(orjson.dumps(data, option=orjson.OPT_INDENT_2).decode('utf-8'))
             fh.flush()
             os.fsync(fh.fileno())

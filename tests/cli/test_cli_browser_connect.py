@@ -274,7 +274,7 @@ class TestChromeDebugLaunch:
 
             def __init__(self, stderr_path):
                 # Simulate the browser writing to the redirected stderr file.
-                with open(stderr_path, "w", encoding="utf-8") as fh:
+                with open(stderr_path, "w", encoding="utf-8", errors="replace") as fh:
                     fh.write("error while loading shared libraries: libnspr4.so\n")
 
             def poll(self):

@@ -352,7 +352,7 @@ def _load_prefill_messages(file_path: str) -> List[Dict[str, Any]]:
         logger.warning("Prefill messages file not found: %s", path)
         return []
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
             data = orjson.loads(f.read())
         if not isinstance(data, list):
             logger.warning("Prefill messages file must contain a JSON array: %s", path)
@@ -561,7 +561,7 @@ def load_cli_config() -> Dict[str, Any]:
     # Load from file if exists
     if config_path.exists():
         try:
-            with open(config_path, "r", encoding="utf-8") as f:
+            with open(config_path, "r", encoding="utf-8", errors="replace") as f:
                 from hermes_cli.config import _normalize_root_model_keys
 
                 file_config = _normalize_root_model_keys(fast_safe_load(f) or {})
@@ -5665,7 +5665,7 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin, CLIBillingMixin):
             # the paste file may be deleted between check and read, causing
             # the input to be silently dropped (#17666).
             try:
-                return path.read_text(encoding="utf-8")
+                return path.read_text(encoding="utf-8", errors="replace")
             except (OSError, IOError):
                 logger.warning("Paste file gone or unreadable, returning placeholder: %s", path)
                 return match.group(0)
@@ -10221,7 +10221,7 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin, CLIBillingMixin):
         # File changed — check whether mcp_servers section changed
         self._config_mtime = mtime
         try:
-            with open(cfg_path, encoding="utf-8") as f:
+            with open(cfg_path, encoding="utf-8", errors="replace") as f:
                 new_cfg = _yaml.safe_load(f) or {}
         except Exception:
             return

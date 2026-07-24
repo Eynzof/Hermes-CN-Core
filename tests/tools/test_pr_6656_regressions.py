@@ -257,7 +257,7 @@ class TestListPendingLock:
         in ``with self._lock:``. If anyone unwraps it again, the TOCTOU
         bug returns."""
         import gateway.pairing as _pairing_mod
-        source = Path(_pairing_mod.__file__).read_text(encoding="utf-8")
+        source = Path(_pairing_mod.__file__).read_text(encoding="utf-8", errors="replace")
         # Find the list_pending function body and assert the lock
         # context manager appears inside it. We grep the function
         # source rather than runtime-introspect because the racy

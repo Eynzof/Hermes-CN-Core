@@ -72,7 +72,7 @@ class TestAtomicYamlWriteUsesIndentDumper:
         path = tmp_path / "config.yaml"
         atomic_yaml_write(path, data)
 
-        content = path.read_text(encoding="utf-8")
+        content = path.read_text(encoding="utf-8", errors="replace")
         assert "  - " in content, \
             f"Expected 2-indent list in file, got:\n{content}"
 
@@ -82,7 +82,7 @@ class TestAtomicYamlWriteUsesIndentDumper:
         path = tmp_path / "config.yaml"
         atomic_yaml_write(path, data)
 
-        content = path.read_text(encoding="utf-8")
+        content = path.read_text(encoding="utf-8", errors="replace")
         assert "Tëst Näme" in content
 
     def test_atomic_yaml_write_is_atomic(self, tmp_path):
@@ -92,7 +92,7 @@ class TestAtomicYamlWriteUsesIndentDumper:
         atomic_yaml_write(path, data)
 
         assert path.exists()
-        assert path.read_text(encoding="utf-8").strip().endswith("value")
+        assert path.read_text(encoding="utf-8", errors="replace").strip().endswith("value")
         # No leftover temp files
         temp_files = list(tmp_path.glob(".config_*.tmp"))
         assert len(temp_files) == 0
@@ -115,6 +115,6 @@ class TestRoundtripConsistency:
 
         from ruamel.yaml import YAML
         yaml_rt = YAML(typ="rt")
-        loaded = yaml_rt.load(path.read_text(encoding="utf-8"))
+        loaded = yaml_rt.load(path.read_text(encoding="utf-8", errors="replace"))
         assert loaded["custom_providers"][0]["name"] == "Provider A"
         assert loaded["fallback_providers"] == ["backup1", "backup2"]

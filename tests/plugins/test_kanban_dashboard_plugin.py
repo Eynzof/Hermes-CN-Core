@@ -243,7 +243,7 @@ def test_new_board_dialog_collects_project_directory():
         / "dashboard"
         / "dist"
         / "index.js"
-    ).read_text(encoding="utf-8")
+    ).read_text(encoding="utf-8", errors="replace")
 
     assert 'const [projectDirectory, setProjectDirectory] = useState("");' in bundle
     assert "Project directory" in bundle
@@ -260,7 +260,7 @@ def test_dashboard_workspace_picker_explains_persistence_contract():
         / "dashboard"
         / "dist"
         / "index.js"
-    ).read_text(encoding="utf-8")
+    ).read_text(encoding="utf-8", errors="replace")
 
     assert "Temporary — deleted on completion" in bundle
     assert "Git worktree — preserved" in bundle

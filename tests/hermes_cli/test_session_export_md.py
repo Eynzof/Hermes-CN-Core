@@ -128,7 +128,7 @@ def test_verify_export_file_checks_count_and_sha(tmp_path):
     assert ok is True
     assert reason == "ok"
 
-    path.write_text(path.read_text(encoding="utf-8").replace("Hello", "Tampered"), encoding="utf-8")
+    path.write_text(path.read_text(encoding="utf-8", errors="replace").replace("Hello", "Tampered"), encoding="utf-8")
     ok, reason = verify_export_file(path, session)
     assert ok is False
     assert "sha256" in reason
@@ -139,7 +139,7 @@ def test_append_manifest_entry_writes_jsonl_with_sha(tmp_path):
     path = write_session_markdown(session, tmp_path)
     manifest = append_manifest_entry(tmp_path, session, path, fmt="md")
 
-    text = manifest.read_text(encoding="utf-8")
+    text = manifest.read_text(encoding="utf-8", errors="replace")
     assert '"session_id": "20260706_123456_abcd1234"' in text
     assert '"path":' in text
     assert '"sha256":' in text

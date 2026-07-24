@@ -227,7 +227,7 @@ class SubdirectoryHintTracker:
             except OSError:
                 continue
             try:
-                content = hint_path.read_text(encoding="utf-8").strip()
+                content = hint_path.read_text(encoding="utf-8", errors="replace").strip()
                 if not content:
                     continue
                 # Same security scan as startup context loading

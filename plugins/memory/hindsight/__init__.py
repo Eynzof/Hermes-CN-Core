@@ -360,7 +360,7 @@ def _load_config() -> dict:
     profile_path = get_hermes_home() / "hindsight" / "config.json"
     if profile_path.exists():
         try:
-            return orjson.loads(profile_path.read_text(encoding="utf-8"))
+            return orjson.loads(profile_path.read_text(encoding="utf-8", errors="replace"))
         except Exception:
             pass
 
@@ -368,7 +368,7 @@ def _load_config() -> dict:
     legacy_path = Path.home() / ".hindsight" / "config.json"
     if legacy_path.exists():
         try:
-            return orjson.loads(legacy_path.read_text(encoding="utf-8"))
+            return orjson.loads(legacy_path.read_text(encoding="utf-8", errors="replace"))
         except Exception:
             pass
 
@@ -496,7 +496,7 @@ def _load_simple_env(path) -> dict[str, str]:
         return {}
 
     values: dict[str, str] = {}
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, value = line.split("=", 1)
@@ -944,7 +944,7 @@ class HindsightMemoryProvider(MemoryProvider):
             materialized_config = dict(provider_config)
             config_path = Path(hermes_home) / "hindsight" / "config.json"
             try:
-                materialized_config = orjson.loads(config_path.read_text(encoding="utf-8"))
+                materialized_config = orjson.loads(config_path.read_text(encoding="utf-8", errors="replace"))
             except Exception:
                 pass
 

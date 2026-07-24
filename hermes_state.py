@@ -2256,7 +2256,7 @@ class SessionDB:
         sessions_file = get_hermes_home() / "sessions" / "sessions.json"
         if not sessions_file.exists():
             return
-        with open(sessions_file, "r", encoding="utf-8") as f:
+        with open(sessions_file, "r", encoding="utf-8", errors="replace") as f:
             data = json.load(f)
         if not isinstance(data, dict):
             return

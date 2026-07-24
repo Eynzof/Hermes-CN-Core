@@ -103,7 +103,7 @@ def load_state() -> Dict[str, Any]:
     if not path.exists():
         return _default_state()
     try:
-        data = orjson.loads(path.read_text(encoding="utf-8"))
+        data = orjson.loads(path.read_text(encoding="utf-8", errors="replace"))
         if isinstance(data, dict):
             base = _default_state()
             base.update({k: v for k, v in data.items() if k in base or k.startswith("_")})
@@ -1949,7 +1949,7 @@ def _run_llm_review(prompt: str) -> Dict[str, Any]:
         # terminal. The background-thread runner also hides it; this
         # belt-and-suspenders path matters when a caller invokes
         # run_curator_review(synchronous=True) from the CLI.
-        with open(os.devnull, "w", encoding="utf-8") as _devnull, \
+        with open(os.devnull, "w", encoding="utf-8", errors="replace") as _devnull, \
              contextlib.redirect_stdout(_devnull), \
              contextlib.redirect_stderr(_devnull):
             conv_result = review_agent.run_conversation(user_message=prompt)

@@ -349,8 +349,8 @@ class TestSyncBackSecurity:
         mgr.sync(force=True)
         mgr.sync_back(hermes_home=tmp_path)
 
-        assert credential.read_text(encoding="utf-8") == "host-token"
-        assert skill.read_text(encoding="utf-8") == "remote-skill"
+        assert credential.read_text(encoding="utf-8", errors="replace") == "host-token"
+        assert skill.read_text(encoding="utf-8", errors="replace") == "remote-skill"
 
 
 class TestBulkUpload:

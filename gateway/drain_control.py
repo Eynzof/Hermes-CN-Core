@@ -102,7 +102,7 @@ def current_instantiation_epoch() -> str:
     try:
         boot_id = (
             Path("/proc/sys/kernel/random/boot_id")
-            .read_text(encoding="utf-8")
+            .read_text(encoding="utf-8", errors="replace")
             .strip()
         )
     except OSError:
@@ -115,7 +115,7 @@ def current_instantiation_epoch() -> str:
         # index into the whitespace-delimited tail. starttime is field 22
         # (1-indexed); after the comm the tail starts at field 3, so it is the
         # tail's index 19.
-        stat = Path("/proc/1/stat").read_text(encoding="utf-8")
+        stat = Path("/proc/1/stat").read_text(encoding="utf-8", errors="replace")
         tail = stat.rsplit(")", 1)[1].split()
         pid1_start = tail[19]
     except (OSError, IndexError):
@@ -260,7 +260,7 @@ def read_drain_request(*, home: Optional[Path] = None) -> Optional[dict[str, Any
     """
     path = drain_request_path(home)
     try:
-        raw = path.read_text(encoding="utf-8")
+        raw = path.read_text(encoding="utf-8", errors="replace")
     except FileNotFoundError:
         return None
     except OSError as e:

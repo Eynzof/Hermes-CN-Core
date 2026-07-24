@@ -131,7 +131,7 @@ def test_production_code_contains_hydration_block():
     from pathlib import Path
     repo = Path(__file__).resolve().parents[2]
     turn_src = "".join(
-        (repo / "agent" / name).read_text(encoding="utf-8")
+        (repo / "agent" / name).read_text(encoding="utf-8", errors="replace")
         for name in ("conversation_loop.py", "turn_context.py")
     )
     # Anchor on the unique comment + the modulo line.

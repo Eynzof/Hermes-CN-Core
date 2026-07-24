@@ -207,7 +207,7 @@ class HostSupervisor:
     def reconcile_startup_orphan(self) -> str:
         """Terminate a stale registered host, guarding against PID reuse."""
         try:
-            data = json.loads(self.registry_path.read_text(encoding="utf-8"))
+            data = json.loads(self.registry_path.read_text(encoding="utf-8", errors="replace"))
         except FileNotFoundError:
             return "none"
         except Exception:
@@ -326,6 +326,8 @@ class HostSupervisor:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             bufsize=1,
             start_new_session=True,
         )

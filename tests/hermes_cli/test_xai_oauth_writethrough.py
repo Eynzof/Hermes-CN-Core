@@ -26,7 +26,7 @@ def _write_store(path, store):
 
 
 def _read_store(path):
-    return orjson.loads(path.read_text(encoding="utf-8"))
+    return orjson.loads(path.read_text(encoding="utf-8", errors="replace"))
 
 
 @pytest.fixture

@@ -141,7 +141,7 @@ def test_migrator_copies_skill_and_merges_allowlist(tmp_path: Path):
 
     imported_skill = target / "skills" / mod.SKILL_CATEGORY_DIRNAME / "demo-skill" / "SKILL.md"
     assert imported_skill.exists()
-    assert "/home/test/**" in (target / "config.yaml").read_text(encoding="utf-8")
+    assert "/home/test/**" in (target / "config.yaml").read_text(encoding="utf-8", errors="replace")
     assert report["summary"]["migrated"] >= 2
 
 
@@ -175,7 +175,7 @@ def test_migrator_optionally_imports_supported_secrets_and_messaging_settings(tm
     )
     migrator.migrate()
 
-    env_text = (target / ".env").read_text(encoding="utf-8")
+    env_text = (target / ".env").read_text(encoding="utf-8", errors="replace")
     assert "MESSAGING_CWD=/tmp/openclaw-workspace" in env_text
     assert "TELEGRAM_ALLOWED_USERS=111,222" in env_text
     assert "TELEGRAM_BOT_TOKEN=123:abc" in env_text
@@ -210,7 +210,7 @@ def test_messaging_cwd_skipped_when_inside_source(tmp_path: Path):
 
     env_path = target / ".env"
     if env_path.exists():
-        assert "MESSAGING_CWD" not in env_path.read_text(encoding="utf-8")
+        assert "MESSAGING_CWD" not in env_path.read_text(encoding="utf-8", errors="replace")
 
 
 def test_migrator_can_execute_only_selected_categories(tmp_path: Path):
@@ -321,7 +321,7 @@ def test_source_candidate_finds_files_in_custom_workspace(tmp_path: Path):
 
     # MEMORY.md should have been found and migrated
     assert (target / "memories" / "MEMORY.md").exists()
-    mem_content = (target / "memories" / "MEMORY.md").read_text(encoding="utf-8")
+    mem_content = (target / "memories" / "MEMORY.md").read_text(encoding="utf-8", errors="replace")
     assert "custom workspace entry" in mem_content
 
     # Skills should have been found and migrated
@@ -368,7 +368,7 @@ def test_source_candidate_prefers_standard_workspace_over_custom(tmp_path: Path)
     migrator.migrate()
 
     # Standard workspace location should have been preferred
-    content = (target / "SOUL.md").read_text(encoding="utf-8")
+    content = (target / "SOUL.md").read_text(encoding="utf-8", errors="replace")
     assert "Standard soul" in content
 
 
@@ -399,7 +399,7 @@ def test_migrator_exports_full_overflow_entries(tmp_path: Path):
     memory_item = next(item for item in report["items"] if item["kind"] == "memory")
     overflow_file = Path(memory_item["details"]["overflow_file"])
     assert overflow_file.exists()
-    text = overflow_file.read_text(encoding="utf-8")
+    text = overflow_file.read_text(encoding="utf-8", errors="replace")
     assert "alpha" in text or "beta" in text or "gamma" in text
 
 
@@ -437,7 +437,7 @@ def test_migrator_can_rename_conflicting_imported_skill(tmp_path: Path):
 
     renamed_skill = target / "skills" / mod.SKILL_CATEGORY_DIRNAME / "demo-skill-imported" / "SKILL.md"
     assert renamed_skill.exists()
-    assert existing_skill.joinpath("SKILL.md").read_text(encoding="utf-8").endswith("existing\n")
+    assert existing_skill.joinpath("SKILL.md").read_text(encoding="utf-8", errors="replace").endswith("existing\n")
     imported_items = [item for item in report["items"] if item["kind"] == "skill" and item["status"] == "migrated"]
     # Cross-platform: renamed_from path may use \ or / depending on platform
     assert any(
@@ -478,7 +478,7 @@ def test_migrator_can_overwrite_conflicting_imported_skill_with_backup(tmp_path:
     )
     report = migrator.migrate()
 
-    assert existing_skill.joinpath("SKILL.md").read_text(encoding="utf-8").endswith("fresh\n")
+    assert existing_skill.joinpath("SKILL.md").read_text(encoding="utf-8", errors="replace").endswith("fresh\n")
     backup_items = [item for item in report["items"] if item["kind"] == "skill" and item["status"] == "migrated"]
     assert any(item["details"].get("backup") for item in backup_items)
 
@@ -509,7 +509,7 @@ def test_discord_settings_migrated(tmp_path: Path):
         selected_options={"discord-settings"},
     )
     report = migrator.migrate()
-    env_text = (target / ".env").read_text(encoding="utf-8")
+    env_text = (target / ".env").read_text(encoding="utf-8", errors="replace")
     assert "DISCORD_BOT_TOKEN=discord-bot-token-123" in env_text
     assert "DISCORD_ALLOWED_USERS=111222333,444555666" in env_text
 
@@ -541,7 +541,7 @@ def test_slack_settings_migrated(tmp_path: Path):
         selected_options={"slack-settings"},
     )
     report = migrator.migrate()
-    env_text = (target / ".env").read_text(encoding="utf-8")
+    env_text = (target / ".env").read_text(encoding="utf-8", errors="replace")
     assert "SLACK_BOT_TOKEN=xoxb-slack-bot" in env_text
     assert "SLACK_APP_TOKEN=xapp-slack-app" in env_text
     assert "SLACK_ALLOWED_USERS=U111,U222" in env_text
@@ -574,7 +574,7 @@ def test_signal_settings_migrated(tmp_path: Path):
         selected_options={"signal-settings"},
     )
     report = migrator.migrate()
-    env_text = (target / ".env").read_text(encoding="utf-8")
+    env_text = (target / ".env").read_text(encoding="utf-8", errors="replace")
     assert "SIGNAL_ACCOUNT=+15551234567" in env_text
     assert "SIGNAL_HTTP_URL=http://localhost:8080" in env_text
     assert "SIGNAL_ALLOWED_USERS=+15559876543" in env_text
@@ -603,7 +603,7 @@ def test_model_config_migrated(tmp_path: Path):
         selected_options={"model-config"},
     )
     report = migrator.migrate()
-    config_text = (target / "config.yaml").read_text(encoding="utf-8")
+    config_text = (target / "config.yaml").read_text(encoding="utf-8", errors="replace")
     assert "anthropic/claude-sonnet-4" in config_text
 
 
@@ -629,7 +629,7 @@ def test_model_config_object_format(tmp_path: Path):
         selected_options={"model-config"},
     )
     report = migrator.migrate()
-    config_text = (target / "config.yaml").read_text(encoding="utf-8")
+    config_text = (target / "config.yaml").read_text(encoding="utf-8", errors="replace")
     assert "openai/gpt-4o" in config_text
 
 
@@ -663,7 +663,7 @@ def test_tts_config_migrated(tmp_path: Path):
         selected_options={"tts-config"},
     )
     report = migrator.migrate()
-    config_text = (target / "config.yaml").read_text(encoding="utf-8")
+    config_text = (target / "config.yaml").read_text(encoding="utf-8", errors="replace")
     assert "elevenlabs" in config_text
     assert "custom-voice-id" in config_text
 
@@ -718,7 +718,7 @@ def test_daily_memory_merged(tmp_path: Path):
     report = migrator.migrate()
     mem_path = target / "memories" / "MEMORY.md"
     assert mem_path.exists()
-    content = mem_path.read_text(encoding="utf-8")
+    content = mem_path.read_text(encoding="utf-8", errors="replace")
     assert "dark mode" in content
     assert "migration project" in content
 
@@ -754,7 +754,7 @@ def test_provider_keys_require_migrate_secrets_flag(tmp_path: Path):
     report = migrator.migrate()
     env_path = target / ".env"
     if env_path.exists():
-        assert "sk-or-test-key" not in env_path.read_text(encoding="utf-8")
+        assert "sk-or-test-key" not in env_path.read_text(encoding="utf-8", errors="replace")
 
     # With --migrate-secrets: should import
     migrator2 = mod.Migrator(
@@ -763,7 +763,7 @@ def test_provider_keys_require_migrate_secrets_flag(tmp_path: Path):
         selected_options={"provider-keys"},
     )
     report2 = migrator2.migrate()
-    env_text = (target / ".env").read_text(encoding="utf-8")
+    env_text = (target / ".env").read_text(encoding="utf-8", errors="replace")
     assert "OPENROUTER_API_KEY=sk-or-test-key" in env_text
 
 
@@ -822,7 +822,7 @@ def test_cron_store_is_archived_without_config_cron_section(tmp_path: Path):
     assert archived_store is not None
     assert Path(archived_store["destination"]).joinpath("jobs.json").exists()
 
-    notes_text = (output_dir / "MIGRATION_NOTES.md").read_text(encoding="utf-8")
+    notes_text = (output_dir / "MIGRATION_NOTES.md").read_text(encoding="utf-8", errors="replace")
     assert "Run `hermes cron` to recreate scheduled tasks" in notes_text
     assert "archive/cron-config.json" not in notes_text
 
@@ -937,7 +937,7 @@ def test_migrate_memory_rebrands_entries(tmp_path):
     )
     migrator.migrate()
 
-    result = (target_root / "memories" / "MEMORY.md").read_text(encoding="utf-8")
+    result = (target_root / "memories" / "MEMORY.md").read_text(encoding="utf-8", errors="replace")
     assert "OpenClaw" not in result
     assert "ClawdBot" not in result
     assert "Hermes" in result
@@ -967,7 +967,7 @@ def test_migrate_soul_rebrands_content(tmp_path):
     )
     migrator.migrate()
 
-    result = (target_root / "SOUL.md").read_text(encoding="utf-8")
+    result = (target_root / "SOUL.md").read_text(encoding="utf-8", errors="replace")
     assert "OpenClaw" not in result
     assert "You are Hermes" in result
 
@@ -1000,7 +1000,7 @@ def _run_model_migration(tmp_path: Path, openclaw_json: dict) -> dict:
     cfg_path = target / "config.yaml"
     if not cfg_path.exists():
         return {}
-    return yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+    return yaml.safe_load(cfg_path.read_text(encoding="utf-8", errors="replace")) or {}
 
 
 def _extract_model(parsed: dict) -> str | None:

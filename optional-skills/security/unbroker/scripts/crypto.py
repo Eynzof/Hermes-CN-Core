@@ -33,7 +33,7 @@ def encryption_setting() -> str:
     if not cfg.exists():
         return "none"
     try:
-        return (json.loads(cfg.read_text(encoding="utf-8")) or {}).get("encryption", "none")
+        return (json.loads(cfg.read_text(encoding="utf-8", errors="replace")) or {}).get("encryption", "none")
     except (ValueError, OSError):
         return "none"
 
@@ -64,7 +64,7 @@ def ensure_identity() -> Path:
 def recipient() -> str:
     """The age public key (recipient) for the identity, parsed from its header."""
     p = ensure_identity()
-    for line in p.read_text(encoding="utf-8").splitlines():
+    for line in p.read_text(encoding="utf-8", errors="replace").splitlines():
         s = line.strip()
         if s.lower().startswith("# public key:"):
             return s.split(":", 1)[1].strip()

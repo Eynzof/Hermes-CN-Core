@@ -234,7 +234,7 @@ def run_oneshot(
     # We'll print the final response to the real stdout at the end.
     real_stdout = sys.stdout
     real_stderr = sys.stderr
-    devnull = open(os.devnull, "w", encoding="utf-8")
+    devnull = open(os.devnull, "w", encoding="utf-8", errors="replace")
 
     response: Optional[str] = None
     result: dict = {}

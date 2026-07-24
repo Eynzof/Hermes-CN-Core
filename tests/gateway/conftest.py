@@ -358,7 +358,7 @@ def _run_adapter_antipattern_scan() -> list[str]:
         if path.name in {"_plugin_adapter_loader.py", "conftest.py"}:
             continue
         try:
-            source = path.read_text(encoding="utf-8")
+            source = path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
         # Fast string pre-filter: skip files that can't possibly violate.
@@ -445,7 +445,7 @@ def pytest_configure(config):
 
     with lock:
         if cache_file.exists():
-            cached = cache_file.read_text(encoding="utf-8")
+            cached = cache_file.read_text(encoding="utf-8", errors="replace")
             if cached == "clean":
                 return
             raise pytest.UsageError(cached)

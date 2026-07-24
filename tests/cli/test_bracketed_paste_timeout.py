@@ -26,7 +26,7 @@ def _load_production_patch_helper():
     to production code while avoiding unrelated import side effects.  If the
     production helper is removed, this test fails.
     """
-    source = CLI_PATH.read_text(encoding="utf-8")
+    source = CLI_PATH.read_text(encoding="utf-8", errors="replace")
     tree = ast.parse(source)
     helper_node = next(
         (

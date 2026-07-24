@@ -412,8 +412,8 @@ def test_persist_dm_topic_thread_id_preserves_config_on_write_failure(tmp_path):
          patch("yaml.dump", side_effect=fail_dump):
         adapter._persist_dm_topic_thread_id(111, "General", 999)
 
-    assert config_file.read_text(encoding="utf-8") == original_text
-    result = yaml.safe_load(config_file.read_text(encoding="utf-8"))
+    assert config_file.read_text(encoding="utf-8", errors="replace") == original_text
+    result = yaml.safe_load(config_file.read_text(encoding="utf-8", errors="replace"))
     topics = result["platforms"]["telegram"]["extra"]["dm_topics"][0]["topics"]
     assert "thread_id" not in topics[0]
 

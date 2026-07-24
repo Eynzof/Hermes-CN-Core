@@ -42,7 +42,7 @@ def _load() -> dict:
     if not CARDS_FILE.exists():
         return _empty_store()
     try:
-        with open(CARDS_FILE, "r", encoding="utf-8") as f:
+        with open(CARDS_FILE, "r", encoding="utf-8", errors="replace") as f:
             data = orjson.loads(f.read())
         if not isinstance(data, dict) or "cards" not in data:
             return _empty_store()
@@ -55,7 +55,7 @@ def _save(data: dict) -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=DATA_DIR, suffix=".tmp")
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
+        with os.fdopen(fd, "w", encoding="utf-8", errors="replace") as f:
             f.write(orjson.dumps(data, option=orjson.OPT_INDENT_2).decode('utf-8'))
             f.write("\n")
         os.replace(tmp, CARDS_FILE)
@@ -223,7 +223,7 @@ def cmd_stats(args: argparse.Namespace) -> None:
 def cmd_export(args: argparse.Namespace) -> None:
     data = _load()
     output_path = Path(args.output).expanduser()
-    with open(output_path, "w", newline="", encoding="utf-8") as f:
+    with open(output_path, "w", newline="", encoding="utf-8", errors="replace") as f:
         writer = csv.writer(f, lineterminator="\n")
         for card in data["cards"]:
             writer.writerow([card["question"], card["answer"], card["collection"]])
@@ -240,7 +240,7 @@ def cmd_import(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     created = 0
-    with open(file_path, "r", encoding="utf-8") as f:
+    with open(file_path, "r", encoding="utf-8", errors="replace") as f:
         reader = csv.reader(f)
         for row in reader:
             if len(row) < 2:

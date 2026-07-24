@@ -33,7 +33,7 @@ def _distribution_name(requirement: str) -> str:
 
 
 def _packages_find_include():
-    data = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    data = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8", errors="replace"))
     return data["tool"]["setuptools"]["packages"]["find"]["include"]
 
 
@@ -90,7 +90,7 @@ def test_packaging_declared_as_core_dependency():
     be a declared core dependency so it installs everywhere and the
     update-repair step (``_verify_core_dependencies_installed``) guards it.
     """
-    data = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    data = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8", errors="replace"))
     core = data["project"]["dependencies"]
     names = {_distribution_name(dep) for dep in core}
     assert "packaging" in names, (
@@ -101,7 +101,7 @@ def test_packaging_declared_as_core_dependency():
 
 
 def test_faster_whisper_is_not_a_base_dependency():
-    data = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    data = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8", errors="replace"))
     deps = data["project"]["dependencies"]
 
     assert not any(dep.startswith("faster-whisper") for dep in deps)
@@ -111,7 +111,7 @@ def test_faster_whisper_is_not_a_base_dependency():
 
 
 def test_manifest_includes_bundled_skills():
-    manifest = (REPO_ROOT / "MANIFEST.in").read_text(encoding="utf-8")
+    manifest = (REPO_ROOT / "MANIFEST.in").read_text(encoding="utf-8", errors="replace")
 
     assert "graft skills" in manifest
     assert "graft optional-skills" in manifest
@@ -141,7 +141,7 @@ def test_bundled_plugin_manifests_ship_in_both_wheel_and_sdist():
 
     # Wheel channel: package-data must declare a glob that matches plugin
     # manifests anywhere under the plugins package.
-    data = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    data = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8", errors="replace"))
     plugins_pkg_data = data["tool"]["setuptools"]["package-data"].get("plugins", [])
     assert any(
         g.endswith("plugin.yaml") or g.endswith("plugin.yml")
@@ -150,7 +150,7 @@ def test_bundled_plugin_manifests_ship_in_both_wheel_and_sdist():
 
     # Sdist channel: MANIFEST.in must recursively include the manifests so
     # downstream packagers building from the sdist also get them.
-    manifest = (REPO_ROOT / "MANIFEST.in").read_text(encoding="utf-8")
+    manifest = (REPO_ROOT / "MANIFEST.in").read_text(encoding="utf-8", errors="replace")
     assert "recursive-include plugins" in manifest and "plugin.yaml" in manifest, (
         "MANIFEST.in must recursive-include plugins plugin.yaml/plugin.yml (sdist)"
     )
@@ -186,7 +186,7 @@ def test_starlette_pinned_above_cve_2026_48710_floor_in_pyproject():
     ``>=0.40.0`` from fastapi) or pins a pre-1.0.1 version fails here instead of
     shipping a Host-header auth-bypass to dashboard / MCP-HTTP users.
     """
-    data = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    data = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8", errors="replace"))
     extras = data["project"]["optional-dependencies"]
 
     found = {}
@@ -220,7 +220,7 @@ def test_locked_starlette_is_not_vulnerable_to_cve_2026_48710():
     resolved version is >= the CVE-2026-48710 fix floor so a stale-lock
     regression can't ship a vulnerable Starlette to users.
     """
-    lock = (REPO_ROOT / "uv.lock").read_text(encoding="utf-8")
+    lock = (REPO_ROOT / "uv.lock").read_text(encoding="utf-8", errors="replace")
     versions = []
     in_starlette = False
     for line in lock.splitlines():
@@ -250,14 +250,14 @@ def test_locale_catalogs_ship_in_both_wheel_and_sdist():
     (sdist). Without both, sealed installs drop the catalogs and gateway/CLI
     commands surface raw i18n keys like `gateway.reset.header_default`.
     """
-    data = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    data = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8", errors="replace"))
     data_files = data["tool"]["setuptools"].get("data-files", {})
     assert data_files.get("locales") == ["locales/*.yaml"], (
         "pyproject [tool.setuptools.data-files] must declare "
         'locales = ["locales/*.yaml"] so the wheel ships i18n catalogs'
     )
 
-    manifest = (REPO_ROOT / "MANIFEST.in").read_text(encoding="utf-8")
+    manifest = (REPO_ROOT / "MANIFEST.in").read_text(encoding="utf-8", errors="replace")
     assert "graft locales" in manifest, (
         "MANIFEST.in must `graft locales` so the sdist ships i18n catalogs"
     )
@@ -309,7 +309,7 @@ def _pins_from_specs(specs):
 
 
 def _pyproject_pinned_specs():
-    data = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    data = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8", errors="replace"))
     specs = list(data["project"].get("dependencies", []))
     for extra in data["project"].get("optional-dependencies", {}).values():
         specs.extend(extra)
@@ -322,7 +322,7 @@ def _lazy_deps_pinned_specs():
     Parsing rather than importing keeps this test free of
     tools/lazy_deps.py's runtime imports and side effects.
     """
-    src = (REPO_ROOT / "tools" / "lazy_deps.py").read_text(encoding="utf-8")
+    src = (REPO_ROOT / "tools" / "lazy_deps.py").read_text(encoding="utf-8", errors="replace")
     tree = ast.parse(src)
     specs: list[str] = []
     for node in ast.walk(tree):
@@ -384,7 +384,7 @@ def _lazy_deps_by_feature():
     Same parse-don't-import rationale as _lazy_deps_pinned_specs, but keeps the
     feature -> specs grouping so per-feature coverage can be asserted.
     """
-    src = (REPO_ROOT / "tools" / "lazy_deps.py").read_text(encoding="utf-8")
+    src = (REPO_ROOT / "tools" / "lazy_deps.py").read_text(encoding="utf-8", errors="replace")
     tree = ast.parse(src)
     for node in ast.walk(tree):
         targets = (

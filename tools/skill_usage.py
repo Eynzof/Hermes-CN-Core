@@ -189,7 +189,7 @@ def _read_bundled_manifest_names() -> Set[str]:
         return set()
     names: Set[str] = set()
     try:
-        for line in manifest.read_text(encoding="utf-8").splitlines():
+        for line in manifest.read_text(encoding="utf-8", errors="replace").splitlines():
             line = line.strip()
             if not line:
                 continue
@@ -210,7 +210,7 @@ def _read_hub_installed_names() -> Set[str]:
     if not lock_path.exists():
         return set()
     try:
-        data = orjson.loads(lock_path.read_text(encoding="utf-8"))
+        data = orjson.loads(lock_path.read_text(encoding="utf-8", errors="replace"))
         if isinstance(data, dict):
             installed = data.get("installed") or {}
             if isinstance(installed, dict):
@@ -276,7 +276,7 @@ def read_suppressed_names() -> Set[str]:
         return set()
     names: Set[str] = set()
     try:
-        for line in path.read_text(encoding="utf-8").splitlines():
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
             line = line.strip()
             if line and not line.startswith("#"):
                 names.add(line)
@@ -503,7 +503,7 @@ def load_usage() -> Dict[str, Dict[str, Any]]:
     if not path.exists():
         return {}
     try:
-        data = orjson.loads(path.read_text(encoding="utf-8"))
+        data = orjson.loads(path.read_text(encoding="utf-8", errors="replace"))
     except (OSError, orjson.JSONDecodeError) as e:
         logger.debug("Failed to read %s: %s", path, e)
         return {}

@@ -186,8 +186,8 @@ def test_profile_call_cannot_retarget_ticker_store_mid_write(
         assert ticker_future.result(timeout=5) is True
         assert profile_future.result(timeout=5) is True
 
-    default_saved = json.loads(default_file.read_text(encoding="utf-8"))["jobs"]
-    worker_saved = json.loads(worker_file.read_text(encoding="utf-8"))["jobs"]
+    default_saved = json.loads(default_file.read_text(encoding="utf-8", errors="replace"))["jobs"]
+    worker_saved = json.loads(worker_file.read_text(encoding="utf-8", errors="replace"))["jobs"]
     assert [job["id"] for job in worker_saved] == ["worker-job"]
     assert [job["id"] for job in default_saved] == ["default-job"]
     assert default_saved[0]["next_run_at"] == "2026-07-10T00:00:00+00:00"

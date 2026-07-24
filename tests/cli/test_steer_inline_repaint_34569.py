@@ -28,7 +28,7 @@ from pathlib import Path
 def _load_handle_enter_node() -> ast.FunctionDef:
     """Extract the ``handle_enter`` nested function node from cli.py."""
     cli_path = Path(__file__).resolve().parents[2] / "cli.py"
-    tree = ast.parse(cli_path.read_text(encoding="utf-8"))
+    tree = ast.parse(cli_path.read_text(encoding="utf-8", errors="replace"))
 
     target = None
     for node in ast.walk(tree):

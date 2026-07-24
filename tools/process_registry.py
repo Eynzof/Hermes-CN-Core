@@ -2047,7 +2047,7 @@ class ProcessRegistry:
             return 0
 
         try:
-            entries = orjson.loads(CHECKPOINT_PATH.read_text(encoding="utf-8"))
+            entries = orjson.loads(CHECKPOINT_PATH.read_text(encoding="utf-8", errors="replace"))
         except Exception:
             return 0
 

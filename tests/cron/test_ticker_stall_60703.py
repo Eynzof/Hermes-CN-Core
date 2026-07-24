@@ -51,7 +51,7 @@ def _hold_jobs_flock(path: Path, release: threading.Event, held: threading.Event
     flock locks are per-open-file-description, so a second open() in the SAME
     process contends exactly like another process would.
     """
-    fd = open(path, "a+", encoding="utf-8")
+    fd = open(path, "a+", encoding="utf-8", errors="replace")
     try:
         fcntl.flock(fd, fcntl.LOCK_EX)
         held.set()

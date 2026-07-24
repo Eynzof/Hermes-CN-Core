@@ -49,7 +49,7 @@ def _read_active() -> Optional[Dict[str, Any]]:
     if not p.is_file():
         return None
     try:
-        return orjson.loads(p.read_text(encoding="utf-8"))
+        return orjson.loads(p.read_text(encoding="utf-8", errors="replace"))
     except Exception:
         return None
 
@@ -200,7 +200,7 @@ def status() -> Dict[str, Any]:
     bot_status: Dict[str, Any] = {}
     if status_path.is_file():
         try:
-            bot_status = orjson.loads(status_path.read_text(encoding="utf-8"))
+            bot_status = orjson.loads(status_path.read_text(encoding="utf-8", errors="replace"))
         except Exception:
             pass
 
@@ -275,7 +275,7 @@ def enqueue_say(text: str) -> Dict[str, Any]:
 
     queue_path = out_dir / "say_queue.jsonl"
     entry = {"id": uuid.uuid4().hex[:12], "text": text}
-    with queue_path.open("a", encoding="utf-8") as f:
+    with queue_path.open("a", encoding="utf-8", errors="replace") as f:
         f.write(orjson.dumps(entry).decode('utf-8') + "\n")
     return {
         "ok": True,

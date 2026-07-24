@@ -708,7 +708,7 @@ def migrate(
     # append the new one.
     if target.exists():
         try:
-            existing = target.read_text(encoding="utf-8")
+            existing = target.read_text(encoding="utf-8", errors="replace")
         except Exception as exc:
             report.errors.append(f"could not read {target}: {exc}")
             return report
@@ -740,7 +740,7 @@ def migrate(
         )
         tmp_path = Path(tmp_path_str)
         try:
-            with os.fdopen(tmp_fd, "w", encoding="utf-8") as fh:
+            with os.fdopen(tmp_fd, "w", encoding="utf-8", errors="replace") as fh:
                 fh.write(new_text)
             tmp_path.replace(target)
         except Exception:

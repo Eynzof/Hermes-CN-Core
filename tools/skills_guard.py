@@ -725,7 +725,7 @@ def scan_skill_cached(
     source_identity = hashlib.sha256(f"{source}\0{source_url}".encode("utf-8")).hexdigest()[:16]
     cache_file = cache_root / f"{bundle_hash.split(':', 1)[1]}-{source_identity}.json"
     try:
-        cached = json.loads(cache_file.read_text(encoding="utf-8"))
+        cached = json.loads(cache_file.read_text(encoding="utf-8", errors="replace"))
     except (OSError, json.JSONDecodeError):
         cached = None
     if (isinstance(cached, dict)
@@ -1066,7 +1066,7 @@ def _load_skill_ignore(skill_dir: Path):
         ig = skill_dir / name
         try:
             if ig.is_file():
-                for raw in ig.read_text(encoding="utf-8").splitlines():
+                for raw in ig.read_text(encoding="utf-8", errors="replace").splitlines():
                     line = raw.strip()
                     if not line or line.startswith("#"):
                         continue

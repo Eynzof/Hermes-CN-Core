@@ -157,7 +157,7 @@ def blueprint_spec_for_installed(skill_name: str) -> Optional[BlueprintSpec]:
     candidates = list(base.glob(f"**/{skill_name}/SKILL.md"))
     for path in candidates:
         try:
-            text = path.read_text(encoding="utf-8")
+            text = path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
         spec = parse_blueprint(text)

@@ -37,7 +37,7 @@ from tools.delegation_live_log import (
 def test_writer_precreates_file_with_header():
     w = LiveTranscriptWriter("deleg_test1", 0, "do the thing", context="some ctx")
     assert w.path is not None and w.path.exists()
-    text = w.path.read_text(encoding="utf-8")
+    text = w.path.read_text(encoding="utf-8", errors="replace")
     assert "Hermes subagent live transcript" in text
     assert "delegation: deleg_test1" in text
     assert "goal: do the thing" in text
@@ -56,7 +56,7 @@ def test_writer_event_lines_append_in_order_and_flush_immediately():
     w.tool_result("terminal", result="file1\nfile2", duration=1.234, is_error=False)
     w.thinking("hmm, next step")
     # No close() needed: every event is flushed on write.
-    lines = w.path.read_text(encoding="utf-8").splitlines()
+    lines = w.path.read_text(encoding="utf-8", errors="replace").splitlines()
     body = [ln for ln in lines if "|" in ln and not ln.startswith("=")]
     joined = "\n".join(body)
     assert "assistant" in joined and "I'll inspect the repo first." in joined
@@ -72,7 +72,7 @@ def test_writer_truncates_long_text_with_elision_note():
     w = LiveTranscriptWriter("deleg_trunc", 0, "g")
     w.assistant_text("x" * 5000)
     w.tool_result("web_search", result="y" * 5000)
-    text = w.path.read_text(encoding="utf-8")
+    text = w.path.read_text(encoding="utf-8", errors="replace")
     assert "…(+" in text  # elision marker present
     # No line carries the full 5000 chars
     assert all(len(ln) < 1200 for ln in text.splitlines())
@@ -80,9 +80,9 @@ def test_writer_truncates_long_text_with_elision_note():
 
 def test_writer_collapses_newlines_to_single_line_events():
     w = LiveTranscriptWriter("deleg_nl", 0, "g")
-    before = len(w.path.read_text(encoding="utf-8").splitlines())
+    before = len(w.path.read_text(encoding="utf-8", errors="replace").splitlines())
     w.assistant_text("line1\nline2\n\nline3")
-    after = w.path.read_text(encoding="utf-8").splitlines()
+    after = w.path.read_text(encoding="utf-8", errors="replace").splitlines()
     assert len(after) == before + 1
     assert "line1 line2 line3" in after[-1]
 
@@ -119,14 +119,14 @@ def test_stream_deltas_buffer_and_flush_as_one_line():
     w.add_stream_delta("world, ")
     w.add_stream_delta("streaming.")
     # Not yet flushed
-    assert "Hello world" not in w.path.read_text(encoding="utf-8")
+    assert "Hello world" not in w.path.read_text(encoding="utf-8", errors="replace")
     w.flush_stream()
-    text = w.path.read_text(encoding="utf-8")
+    text = w.path.read_text(encoding="utf-8", errors="replace")
     assert "Hello world, streaming." in text
     # tool_start also flushes pending stream text first
     w.add_stream_delta("more text")
     w.tool_start("read_file", "foo.py")
-    text = w.path.read_text(encoding="utf-8")
+    text = w.path.read_text(encoding="utf-8", errors="replace")
     assert text.index("more text") < text.index("-> read_file")
 
 
@@ -147,7 +147,7 @@ def test_observe_maps_child_callback_events_to_lines():
     w.observe("subagent.text", preview="streamed in parts")
     w.observe("subagent.complete", preview="short", status="completed",
               duration_seconds=3.2, summary="did the thing")
-    text = w.path.read_text(encoding="utf-8")
+    text = w.path.read_text(encoding="utf-8", errors="replace")
     assert "kick off the goal" in text
     assert "first line of thinking" in text
     assert "deep reasoning text" in text
@@ -162,14 +162,14 @@ def test_observe_marks_tool_errors():
     w = LiveTranscriptWriter("deleg_err", 0, "g")
     w.observe("tool.completed", "web_search", None, None,
               is_error=True, result="Error: boom")
-    assert "web_search ERROR" in w.path.read_text(encoding="utf-8")
+    assert "web_search ERROR" in w.path.read_text(encoding="utf-8", errors="replace")
 
 
 def test_finalize_records_budget_exhaustion_and_errors():
     w = LiveTranscriptWriter("deleg_final", 0, "g")
     w.finalize({"status": "failed", "exit_reason": "max_iterations",
                 "error": "Subagent did not produce a response."})
-    text = w.path.read_text(encoding="utf-8")
+    text = w.path.read_text(encoding="utf-8", errors="replace")
     assert "end status=failed" in text
     assert "exit_reason=max_iterations" in text
     assert "iteration budget exhausted" in text
@@ -190,7 +190,7 @@ def test_wrap_progress_callback_tees_and_preserves_inner():
     cb("tool.started", "terminal", "echo hi", None)
     cb("_thinking", "pondering")
     assert seen == [("tool.started", "terminal"), ("_thinking", "pondering")]
-    text = w.path.read_text(encoding="utf-8")
+    text = w.path.read_text(encoding="utf-8", errors="replace")
     assert "-> terminal(echo hi)" in text and "pondering" in text
     # _flush contract preserved
     cb._flush()
@@ -202,7 +202,7 @@ def test_wrap_progress_callback_with_no_inner_still_records():
     cb = wrap_progress_callback(None, w)
     cb("tool.started", "read_file", "a.py", None)
     cb._flush()  # must not raise
-    assert "-> read_file(a.py)" in w.path.read_text(encoding="utf-8")
+    assert "-> read_file(a.py)" in w.path.read_text(encoding="utf-8", errors="replace")
 
 
 def test_wrap_progress_callback_writer_failure_does_not_block_inner():
@@ -237,7 +237,7 @@ def test_create_live_transcripts_precreates_paths_and_manifest():
     assert manifest["tasks"][0]["status"] == "running"
     assert manifest["tasks"][1]["log"] == paths[1]
     # Per-task context beats shared context in the kickoff line.
-    assert "ctx B" in Path(paths[1]).read_text(encoding="utf-8")
+    assert "ctx B" in Path(paths[1]).read_text(encoding="utf-8", errors="replace")
 
 
 def test_update_manifest_statuses():
@@ -331,10 +331,10 @@ def test_delegate_task_sync_result_includes_live_transcripts(monkeypatch):
     assert len(out["live_transcripts"]) == 1
     p = Path(out["live_transcripts"][0])
     assert p.exists()
-    assert "sync goal" in p.read_text(encoding="utf-8")
+    assert "sync goal" in p.read_text(encoding="utf-8", errors="replace")
     # Per-task entries carry their own path + a terminal marker was written.
     assert out["results"][0]["live_transcript"] == str(p)
-    assert "end status=completed" in p.read_text(encoding="utf-8")
+    assert "end status=completed" in p.read_text(encoding="utf-8", errors="replace")
 
 
 def test_delegate_task_background_dispatch_includes_live_transcripts(monkeypatch):
@@ -369,7 +369,7 @@ def test_delegate_task_background_dispatch_includes_live_transcripts(monkeypatch
         # Pre-created at dispatch time — tail -f attaches immediately,
         # while the child is still running behind the gate.
         assert live.exists()
-        assert "bg goal" in live.read_text(encoding="utf-8")
+        assert "bg goal" in live.read_text(encoding="utf-8", errors="replace")
         assert "live_transcripts_hint" in out
         # The dir name matches the returned delegation handle.
         assert live.parent.name == out["delegation_id"]
@@ -417,7 +417,7 @@ def test_batch_dispatch_creates_one_log_per_task(monkeypatch):
     parents = {Path(p).parent for p in out["live_transcripts"]}
     assert len(parents) == 1
     for p, goal in zip(out["live_transcripts"], ("alpha", "beta")):
-        assert goal in Path(p).read_text(encoding="utf-8")
+        assert goal in Path(p).read_text(encoding="utf-8", errors="replace")
 
 
 def test_child_progress_events_land_in_live_log(monkeypatch):
@@ -449,7 +449,7 @@ def test_child_progress_events_land_in_live_log(monkeypatch):
     monkeypatch.setattr(dt, "_resolve_delegation_credentials", lambda *a, **k: _CREDS)
 
     out = json.loads(dt.delegate_task(goal="observable goal", parent_agent=parent))
-    text = Path(out["live_transcripts"][0]).read_text(encoding="utf-8")
+    text = Path(out["live_transcripts"][0]).read_text(encoding="utf-8", errors="replace")
     assert "planning the work" in text
     assert "-> terminal(echo hi)" in text
     assert "terminal ok 0.2s: hi" in text
@@ -506,7 +506,7 @@ def test_tool_args_are_redacted_before_hitting_disk():
         f'curl -H "Authorization: Bearer {_BEARER}" https://api.internal',
         None,
     )
-    body = w.path.read_text(encoding="utf-8")
+    body = w.path.read_text(encoding="utf-8", errors="replace")
     assert _BEARER not in body
     assert "terminal" in body, "redaction must not gut the operational detail"
 
@@ -521,7 +521,7 @@ def test_tool_results_are_redacted_before_hitting_disk():
         result=f"OPENAI_API_KEY={_ENV_KEY}\nAWS_SECRET_ACCESS_KEY={_AWS}",
         duration=0.4,
     )
-    body = w.path.read_text(encoding="utf-8")
+    body = w.path.read_text(encoding="utf-8", errors="replace")
     assert _ENV_KEY not in body
     assert _AWS not in body
     assert "OPENAI_API_KEY" in body, "key NAMES stay — only the values are masked"
@@ -531,13 +531,13 @@ def test_streamed_assistant_text_is_redacted():
     w = LiveTranscriptWriter("deleg_redact_stream", 0, "g")
     w.observe("subagent.text", None, f"the key is {_ENV_KEY}")
     w.flush_stream()
-    assert _ENV_KEY not in w.path.read_text(encoding="utf-8")
+    assert _ENV_KEY not in w.path.read_text(encoding="utf-8", errors="replace")
 
 
 def test_goal_header_is_redacted():
     """The header bypasses event(); a pasted key in the goal must not survive."""
     w = LiveTranscriptWriter("deleg_redact_goal", 0, f"deploy using {_BEARER}")
-    body = w.path.read_text(encoding="utf-8")
+    body = w.path.read_text(encoding="utf-8", errors="replace")
     assert _BEARER not in body
     assert "deploy using" in body
 
@@ -576,7 +576,7 @@ def test_no_file_in_the_dispatch_directory_carries_the_raw_key():
     assert "manifest.json" in written
     assert any(name.endswith(".log") for name in written)
     for path in directory.iterdir():
-        assert _BEARER not in path.read_text(encoding="utf-8"), (
+        assert _BEARER not in path.read_text(encoding="utf-8", errors="replace"), (
             f"{path.name} leaked the credential"
         )
 
@@ -584,7 +584,7 @@ def test_no_file_in_the_dispatch_directory_carries_the_raw_key():
 def test_thinking_text_is_redacted():
     w = LiveTranscriptWriter("deleg_redact_think", 0, "g")
     w.observe("_thinking", f"I should use {_ENV_KEY} here")
-    assert _ENV_KEY not in w.path.read_text(encoding="utf-8")
+    assert _ENV_KEY not in w.path.read_text(encoding="utf-8", errors="replace")
 
 
 def test_redaction_covers_every_helper_via_the_event_chokepoint():
@@ -596,7 +596,7 @@ def test_redaction_covers_every_helper_via_the_event_chokepoint():
     w.tool_result("terminal", result=f"d {_ENV_KEY}")
     w.marker(f"e {_ENV_KEY}")
     w.finalize({"status": "error", "error": f"f {_ENV_KEY}"})
-    body = w.path.read_text(encoding="utf-8")
+    body = w.path.read_text(encoding="utf-8", errors="replace")
     assert _ENV_KEY not in body, "a write path escaped the redactor"
 
 
@@ -605,7 +605,7 @@ def test_benign_transcript_content_is_untouched():
     w = LiveTranscriptWriter("deleg_redact_benign", 0, "refactor the parser")
     w.observe("tool.started", "read_file", "src/parser.py", None)
     w.observe("tool.completed", "read_file", None, None, result="def parse(x): ...", duration=1.5)
-    body = w.path.read_text(encoding="utf-8")
+    body = w.path.read_text(encoding="utf-8", errors="replace")
     assert "src/parser.py" in body
     assert "def parse(x)" in body
     assert "refactor the parser" in body

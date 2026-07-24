@@ -122,7 +122,7 @@ class TestReasoningCommand:
 
         result = await runner._handle_reasoning_command(_make_event("/reasoning low --global"))
 
-        saved = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        saved = yaml.safe_load(config_path.read_text(encoding="utf-8", errors="replace"))
         assert saved["agent"]["reasoning_effort"] == "low"
         assert runner._reasoning_config == {"enabled": True, "effort": "low"}
         assert "takes effect on next message" in result
@@ -142,7 +142,7 @@ class TestReasoningCommand:
 
         result = await runner._handle_reasoning_command(event)
 
-        saved = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        saved = yaml.safe_load(config_path.read_text(encoding="utf-8", errors="replace"))
         assert saved["agent"]["reasoning_effort"] == "medium"
         assert runner._session_reasoning_overrides[session_key] == {"enabled": True, "effort": "high"}
         assert runner._reasoning_config == {"enabled": True, "effort": "high"}
@@ -187,7 +187,7 @@ class TestReasoningCommand:
 
         result = await runner._handle_reasoning_command(event)
 
-        saved = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        saved = yaml.safe_load(config_path.read_text(encoding="utf-8", errors="replace"))
         assert saved["agent"]["reasoning_effort"] == "low"
         assert session_key not in runner._session_reasoning_overrides
         assert "saved to config" in result
@@ -208,7 +208,7 @@ class TestReasoningCommand:
 
         result = await runner._handle_reasoning_command(event)
 
-        saved = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        saved = yaml.safe_load(config_path.read_text(encoding="utf-8", errors="replace"))
         assert saved["agent"]["reasoning_effort"] == "medium"
         assert session_key not in runner._session_reasoning_overrides
         assert "cleared" in result

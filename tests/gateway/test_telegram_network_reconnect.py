@@ -962,7 +962,7 @@ def _calls_shared_network_classifier(node):
 
 
 def test_polling_error_callback_uses_shared_network_classifier():
-    source = Path(TelegramAdapter.connect.__code__.co_filename).read_text(encoding="utf-8")
+    source = Path(TelegramAdapter.connect.__code__.co_filename).read_text(encoding="utf-8", errors="replace")
     tree = ast.parse(source)
     callbacks = [
         node
@@ -975,7 +975,7 @@ def test_polling_error_callback_uses_shared_network_classifier():
 
 
 def test_connect_initialize_retry_uses_shared_network_classifier():
-    source = Path(TelegramAdapter.connect.__code__.co_filename).read_text(encoding="utf-8")
+    source = Path(TelegramAdapter.connect.__code__.co_filename).read_text(encoding="utf-8", errors="replace")
     tree = ast.parse(source)
     connect = next(
         node

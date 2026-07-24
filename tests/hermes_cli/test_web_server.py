@@ -550,7 +550,7 @@ class TestWebServerEndpoints:
         assert load_env()["HINDSIGHT_API_KEY"] == "hs-declared-key"
 
         config_path = get_hermes_home() / "hindsight" / "config.json"
-        provider_config = json.loads(config_path.read_text(encoding="utf-8"))
+        provider_config = json.loads(config_path.read_text(encoding="utf-8", errors="replace"))
         assert provider_config["mode"] == "local_external"
         assert provider_config["api_url"] == "http://localhost:8888"
         assert "api_key" not in provider_config
@@ -727,7 +727,7 @@ class TestWebServerEndpoints:
         assert load_env()["HINDSIGHT_API_KEY"] == "hs-test-key"
 
         config_path = get_hermes_home() / "hindsight" / "config.json"
-        provider_config = orjson.loads(config_path.read_text(encoding="utf-8"))
+        provider_config = orjson.loads(config_path.read_text(encoding="utf-8", errors="replace"))
         assert provider_config["mode"] == "local_external"
         assert provider_config["api_url"] == "http://localhost:8888"
         assert provider_config["bank_id"] == "ben-bank"
@@ -1031,7 +1031,7 @@ class TestWebServerEndpoints:
         assert load_config()["memory"]["provider"] == "honcho"
         assert load_env()["HONCHO_API_KEY"] == "hch-test-key"
 
-        cfg = json.loads((get_hermes_home() / "honcho.json").read_text(encoding="utf-8"))
+        cfg = json.loads((get_hermes_home() / "honcho.json").read_text(encoding="utf-8", errors="replace"))
         # baseUrl is root-scoped; the rest live in the active host block.
         assert cfg["baseUrl"] == "https://honcho.example.dev"
         assert cfg["hosts"]["hermes"]["workspace"] == "myws"
@@ -1055,7 +1055,7 @@ class TestWebServerEndpoints:
             json={"values": {"workspace": ""}},
         )
 
-        cfg = json.loads((get_hermes_home() / "honcho.json").read_text(encoding="utf-8"))
+        cfg = json.loads((get_hermes_home() / "honcho.json").read_text(encoding="utf-8", errors="replace"))
         assert "workspace" not in cfg.get("hosts", {}).get("hermes", {})
 
     def test_put_honcho_partial_save_preserves_other_keys(self, monkeypatch, tmp_path):
@@ -1072,7 +1072,7 @@ class TestWebServerEndpoints:
             json={"values": {"peerName": "eri"}},
         )
 
-        host = json.loads((get_hermes_home() / "honcho.json").read_text(encoding="utf-8"))["hosts"]["hermes"]
+        host = json.loads((get_hermes_home() / "honcho.json").read_text(encoding="utf-8", errors="replace"))["hosts"]["hermes"]
         assert host["workspace"] == "myws"
         assert host["peerName"] == "eri"
 
@@ -1116,7 +1116,7 @@ class TestWebServerEndpoints:
             json={"values": {"saveMessages": "false", "dialecticDynamic": "true"}},
         )
 
-        host = json.loads((get_hermes_home() / "honcho.json").read_text(encoding="utf-8"))["hosts"]["hermes"]
+        host = json.loads((get_hermes_home() / "honcho.json").read_text(encoding="utf-8", errors="replace"))["hosts"]["hermes"]
         # Native JSON bools, not the strings "false"/"true" (which read truthy).
         assert host["saveMessages"] is False
         assert host["dialecticDynamic"] is True
@@ -1135,7 +1135,7 @@ class TestWebServerEndpoints:
             json={"values": {"dialecticMaxChars": "1200", "timeout": "2.5"}},
         )
 
-        cfg = json.loads((get_hermes_home() / "honcho.json").read_text(encoding="utf-8"))
+        cfg = json.loads((get_hermes_home() / "honcho.json").read_text(encoding="utf-8", errors="replace"))
         assert cfg["hosts"]["hermes"]["dialecticMaxChars"] == 1200
         assert isinstance(cfg["hosts"]["hermes"]["dialecticMaxChars"], int)
         # timeout is root-scoped and keeps its fractional part.
@@ -1154,7 +1154,7 @@ class TestWebServerEndpoints:
             json={"values": {"userPeerAliases": '{"telegram_1": "eri"}'}},
         )
 
-        host = json.loads((get_hermes_home() / "honcho.json").read_text(encoding="utf-8"))["hosts"]["hermes"]
+        host = json.loads((get_hermes_home() / "honcho.json").read_text(encoding="utf-8", errors="replace"))["hosts"]["hermes"]
         assert host["userPeerAliases"] == {"telegram_1": "eri"}
 
         fields = self._provider_field_map(self.client.get("/api/memory/providers/honcho/config?surface=declared").json())
@@ -1179,7 +1179,7 @@ class TestWebServerEndpoints:
 
         assert resp.status_code == 200
         assert not (get_hermes_home() / "honcho.json").exists()
-        cfg = json.loads(global_path.read_text(encoding="utf-8"))
+        cfg = json.loads(global_path.read_text(encoding="utf-8", errors="replace"))
         assert cfg["baseUrl"] == "https://kept.example"
         assert cfg["hosts"]["hermes"] == {"workspace": "kept", "peerName": "eri"}
 
@@ -1196,7 +1196,7 @@ class TestWebServerEndpoints:
         )
 
         assert resp.status_code == 200
-        hosts = json.loads(path.read_text(encoding="utf-8"))["hosts"]
+        hosts = json.loads(path.read_text(encoding="utf-8", errors="replace"))["hosts"]
         assert set(hosts) == {"hermes.work"}
         assert hosts["hermes.work"] == {"workspace": "w", "peerName": "eri", "sessionStrategy": "per-repo"}
 
@@ -1214,7 +1214,7 @@ class TestWebServerEndpoints:
         )
 
         assert resp.status_code == 200
-        cfg = json.loads(path.read_text(encoding="utf-8"))
+        cfg = json.loads(path.read_text(encoding="utf-8", errors="replace"))
         # The OAuth grant owns the JSON slot; the manual key lands in the env store.
         assert cfg["hosts"]["hermes"]["apiKey"] == "hch-at-oauth-token"
         assert load_env()["HONCHO_API_KEY"] == "manual-key"
@@ -1230,7 +1230,7 @@ class TestWebServerEndpoints:
         )
 
         assert resp.status_code == 200
-        assert json.loads(path.read_text(encoding="utf-8"))["hosts"]["hermes"]["workspace"] == "myws"
+        assert json.loads(path.read_text(encoding="utf-8", errors="replace"))["hosts"]["hermes"]["workspace"] == "myws"
 
     def test_memory_provider_config_honors_profile_param(self, monkeypatch, tmp_path):
         # A ?profile= save must land in that profile's config, not the serving
@@ -1255,11 +1255,11 @@ class TestWebServerEndpoints:
         )
 
         assert resp.status_code == 200
-        worker_hosts = json.loads(worker_cfg.read_text(encoding="utf-8"))["hosts"]
+        worker_hosts = json.loads(worker_cfg.read_text(encoding="utf-8", errors="replace"))["hosts"]
         host_block = next(iter(worker_hosts.values()))
         assert host_block["peerName"] == "eri"
         # The serving process's own config is untouched.
-        own = json.loads((get_hermes_home() / "honcho.json").read_text(encoding="utf-8"))
+        own = json.loads((get_hermes_home() / "honcho.json").read_text(encoding="utf-8", errors="replace"))
         assert "peerName" not in json.dumps(own)
 
         fields = self._provider_field_map(
@@ -5101,7 +5101,7 @@ class TestNewEndpoints:
         cloned_root = get_hermes_home() / "profiles" / "cloned"
         cloned_skill = cloned_root / "skills" / "custom" / "new-skill" / "SKILL.md"
         assert cloned_skill.exists()
-        cloned_config = yaml.safe_load((cloned_root / "config.yaml").read_text(encoding="utf-8"))
+        cloned_config = yaml.safe_load((cloned_root / "config.yaml").read_text(encoding="utf-8", errors="replace"))
         assert cloned_config["_config_version"] == DEFAULT_CONFIG["_config_version"]
         profiles = {p["name"]: p for p in self.client.get("/api/profiles").json()["profiles"]}
         assert profiles["cloned"]["skill_count"] == 1
@@ -5149,8 +5149,8 @@ class TestNewEndpoints:
 
         assert resp.status_code == 200
         target_dir = get_hermes_home() / "profiles" / "full-copy"
-        assert (target_dir / "config.yaml").read_text(encoding="utf-8") == "model:\n  provider: source-only\n"
-        assert (target_dir / "workspace" / "artifact.txt").read_text(encoding="utf-8") == "copied"
+        assert (target_dir / "config.yaml").read_text(encoding="utf-8", errors="replace") == "model:\n  provider: source-only\n"
+        assert (target_dir / "workspace" / "artifact.txt").read_text(encoding="utf-8", errors="replace") == "copied"
 
     def test_profiles_create_without_clone_seeds_bundled_skills(self, monkeypatch):
         from hermes_constants import get_hermes_home
@@ -5309,7 +5309,7 @@ class TestNewEndpoints:
 
         root = get_hermes_home()
         profile_dir = root / "profiles" / "builder-auth"
-        config_text = (profile_dir / "config.yaml").read_text(encoding="utf-8")
+        config_text = (profile_dir / "config.yaml").read_text(encoding="utf-8", errors="replace")
         config = yaml.safe_load(config_text)
         servers = config["mcp_servers"]
 
@@ -5335,7 +5335,7 @@ class TestNewEndpoints:
         }
 
         assert secret not in config_text
-        profile_env = (profile_dir / ".env").read_text(encoding="utf-8")
+        profile_env = (profile_dir / ".env").read_text(encoding="utf-8", errors="replace")
         assert f"MCP_BEARER_SERVER_API_KEY={secret}" in profile_env
         assert "Bearer Bearer" not in profile_env
         assert not (root / ".env").exists()
@@ -5484,7 +5484,7 @@ class TestNewEndpoints:
 
         import yaml
         cfg_path = get_hermes_home() / "profiles" / "model-prof" / "config.yaml"
-        cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
+        cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8", errors="replace"))
         assert cfg["model"]["provider"] == "openrouter"
         assert cfg["model"]["default"] == "anthropic/claude-sonnet-4.6"
 

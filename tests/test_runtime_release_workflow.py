@@ -28,13 +28,13 @@ def _repo_root() -> Path:
 
 def _workflow_text() -> str:
     workflow = _repo_root() / ".github" / "workflows" / "release-runtime.yml"
-    return workflow.read_text(encoding="utf-8")
+    return workflow.read_text(encoding="utf-8", errors="replace")
 
 
 def _cn_desktop_extra() -> list[str]:
     if tomllib is None:  # pragma: no cover
         pytest.skip("tomllib unavailable")
-    data = tomllib.loads((_repo_root() / "pyproject.toml").read_text(encoding="utf-8"))
+    data = tomllib.loads((_repo_root() / "pyproject.toml").read_text(encoding="utf-8", errors="replace"))
     return data["project"]["optional-dependencies"]["cn-desktop"]
 
 
@@ -64,7 +64,7 @@ def test_runtime_workflow_python_satisfies_project_requirement():
         pytest.skip("tomllib unavailable")
 
     project = tomllib.loads(
-        (_repo_root() / "pyproject.toml").read_text(encoding="utf-8")
+        (_repo_root() / "pyproject.toml").read_text(encoding="utf-8", errors="replace")
     )["project"]
     match = re.search(
         r"python-version:\s*[\"']([^\"']+)[\"']",
@@ -203,13 +203,13 @@ def test_runtime_workflow_bundles_openviking_provider_without_server_sdk():
     """
     workflow = _workflow_text()
     extra = _cn_desktop_extra()
-    pyproject = (_repo_root() / "pyproject.toml").read_text(encoding="utf-8")
+    pyproject = (_repo_root() / "pyproject.toml").read_text(encoding="utf-8", errors="replace")
     provider = (
         _repo_root() / "plugins" / "memory" / "openviking" / "__init__.py"
-    ).read_text(encoding="utf-8")
+    ).read_text(encoding="utf-8", errors="replace")
     manifest = (
         _repo_root() / "plugins" / "memory" / "openviking" / "plugin.yaml"
-    ).read_text(encoding="utf-8")
+    ).read_text(encoding="utf-8", errors="replace")
 
     assert "name: openviking" in manifest
     assert "pip_dependencies:" in manifest

@@ -72,7 +72,7 @@ class EvidenceStore:
         }
         if os.path.exists(filepath):
             try:
-                with open(filepath, "r", encoding="utf-8") as f:
+                with open(filepath, "r", encoding="utf-8", errors="replace") as f:
                     self.data = orjson.loads(f.read())
             except (orjson.JSONDecodeError, IOError) as e:
                 print(f"Error loading evidence store '{filepath}': {e}", file=sys.stderr)
@@ -81,7 +81,7 @@ class EvidenceStore:
 
     def _save(self):
         self.data["metadata"]["last_updated"] = _now_iso()
-        with open(self.filepath, "w", encoding="utf-8") as f:
+        with open(self.filepath, "w", encoding="utf-8", errors="replace") as f:
             f.write(orjson.dumps(self.data, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
     def _next_id(self) -> str:

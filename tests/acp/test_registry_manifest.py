@@ -16,11 +16,11 @@ ALLOWED_DISTRIBUTIONS = {"binary", "npx", "uvx"}
 
 
 def _manifest() -> dict:
-    return orjson.loads(MANIFEST.read_text(encoding="utf-8"))
+    return orjson.loads(MANIFEST.read_text(encoding="utf-8", errors="replace"))
 
 
 def _pyproject_version() -> str:
-    data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8", errors="replace"))
     return data["project"]["version"]
 
 
@@ -67,7 +67,7 @@ def test_agent_json_pins_uvx_package_to_pyproject_version():
 
 
 def test_icon_svg_is_16x16_current_color():
-    root = ET.fromstring(ICON.read_text(encoding="utf-8"))
+    root = ET.fromstring(ICON.read_text(encoding="utf-8", errors="replace"))
 
     assert root.attrib["viewBox"] == "0 0 16 16"
     assert root.attrib["width"] == "16"
@@ -75,7 +75,7 @@ def test_icon_svg_is_16x16_current_color():
 
 
 def test_icon_svg_has_no_hardcoded_colors_or_gradients():
-    text = ICON.read_text(encoding="utf-8")
+    text = ICON.read_text(encoding="utf-8", errors="replace")
 
     assert "linearGradient" not in text
     assert "radialGradient" not in text

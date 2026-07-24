@@ -29,7 +29,7 @@ def _parse_frontmatter(content: str) -> dict:
 
 class TestGoogleWorkspaceCredentialFiles:
     def test_required_credential_files_present_in_skill_md(self):
-        content = SKILL_MD.read_text(encoding="utf-8")
+        content = SKILL_MD.read_text(encoding="utf-8", errors="replace")
         fm = _parse_frontmatter(content)
         entries = fm.get("required_credential_files")
         assert entries, "required_credential_files missing from google-workspace SKILL.md"
@@ -56,7 +56,7 @@ class TestGoogleWorkspaceCredentialFiles:
 
         clear_credential_files()
         try:
-            content = SKILL_MD.read_text(encoding="utf-8")
+            content = SKILL_MD.read_text(encoding="utf-8", errors="replace")
             fm = _parse_frontmatter(content)
             entries = fm.get("required_credential_files", [])
 
@@ -85,7 +85,7 @@ class TestGoogleWorkspaceCredentialFiles:
 
         clear_credential_files()
         try:
-            content = SKILL_MD.read_text(encoding="utf-8")
+            content = SKILL_MD.read_text(encoding="utf-8", errors="replace")
             fm = _parse_frontmatter(content)
             entries = fm.get("required_credential_files", [])
 

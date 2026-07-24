@@ -267,7 +267,7 @@ def _expand_file_reference(
         # so it can read/convert/view the file itself.
         return None, _binary_reference_block(ref, path)
 
-    text = path.read_text(encoding="utf-8")
+    text = path.read_text(encoding="utf-8", errors="replace")
     if ref.line_start is not None:
         lines = text.splitlines()
         start_idx = max(ref.line_start - 1, 0)
@@ -585,7 +585,7 @@ def _file_metadata(path: Path) -> str:
     if _is_binary_file(path):
         return f"{path.stat().st_size} bytes"
     try:
-        line_count = path.read_text(encoding="utf-8").count("\n") + 1
+        line_count = path.read_text(encoding="utf-8", errors="replace").count("\n") + 1
     except Exception:
         return f"{path.stat().st_size} bytes"
     return f"{line_count} lines"

@@ -76,4 +76,4 @@ def test_write_file_tool_preserves_existing_session_snapshot(fake_homes):
     result = json.loads(ft.write_file_tool(str(target), "tampered"))
 
     assert "error" in result
-    assert target.read_text(encoding="utf-8") == "original transcript"
+    assert target.read_text(encoding="utf-8", errors="replace") == "original transcript"

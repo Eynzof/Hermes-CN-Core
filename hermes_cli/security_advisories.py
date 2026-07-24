@@ -340,7 +340,7 @@ def _read_banner_cache() -> dict[str, float]:
         return {}
     out: dict[str, float] = {}
     try:
-        for line in p.read_text(encoding="utf-8").splitlines():
+        for line in p.read_text(encoding="utf-8", errors="replace").splitlines():
             line = line.strip()
             if not line:
                 continue

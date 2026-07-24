@@ -44,7 +44,7 @@ class NodeRegistry:
         if not self.path.is_file():
             return {"nodes": {}}
         try:
-            data = orjson.loads(self.path.read_text(encoding="utf-8"))
+            data = orjson.loads(self.path.read_text(encoding="utf-8", errors="replace"))
         except (OSError, orjson.JSONDecodeError):
             return {"nodes": {}}
         if not isinstance(data, dict) or not isinstance(data.get("nodes"), dict):

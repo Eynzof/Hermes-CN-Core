@@ -67,7 +67,7 @@ def test_remove_export_prefixed_token(hermes_home):
         "set) so the delete path must recognise them too (#40041)"
     )
 
-    env_text = hermes_home.joinpath(".env").read_text(encoding="utf-8")
+    env_text = hermes_home.joinpath(".env").read_text(encoding="utf-8", errors="replace")
     assert OLD_PAT not in env_text
 
     from hermes_cli.config import load_env
@@ -84,7 +84,7 @@ def test_update_export_prefixed_token_does_not_duplicate(hermes_home):
     )
     assert resp.status_code == 200
 
-    env_text = hermes_home.joinpath(".env").read_text(encoding="utf-8")
+    env_text = hermes_home.joinpath(".env").read_text(encoding="utf-8", errors="replace")
     assert OLD_PAT not in env_text, "old exported token line must be replaced"
     assert env_text.count("GITHUB_TOKEN") == 1, (
         "save must not append a duplicate GITHUB_TOKEN line alongside the "
@@ -103,7 +103,7 @@ def test_plain_line_save_and_remove_still_work(hermes_home):
     save_env_value("GITHUB_TOKEN", OLD_PAT)
     assert load_env()["GITHUB_TOKEN"] == OLD_PAT
     save_env_value("GITHUB_TOKEN", NEW_PAT)
-    env_text = hermes_home.joinpath(".env").read_text(encoding="utf-8")
+    env_text = hermes_home.joinpath(".env").read_text(encoding="utf-8", errors="replace")
     assert env_text.count("GITHUB_TOKEN") == 1
     assert remove_env_value("GITHUB_TOKEN") is True
     assert "GITHUB_TOKEN" not in load_env()
@@ -120,6 +120,6 @@ def test_export_line_with_comment_untouched(hermes_home):
         "DELETE", "/api/env", json={"key": "GITHUB_TOKEN"}, headers=HEADERS
     )
     assert resp.status_code == 404
-    env_text = hermes_home.joinpath(".env").read_text(encoding="utf-8")
+    env_text = hermes_home.joinpath(".env").read_text(encoding="utf-8", errors="replace")
     assert "# export GITHUB_TOKEN=" in env_text
     assert "OTHER_KEY=value" in env_text

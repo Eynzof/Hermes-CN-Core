@@ -270,7 +270,7 @@ class MemoryStore:
             yield
             return
 
-        fd = open(lock_path, "a+", encoding="utf-8")
+        fd = open(lock_path, "a+", encoding="utf-8", errors="replace")
         try:
             if fcntl:
                 fcntl.flock(fd, fcntl.LOCK_EX)
@@ -710,7 +710,7 @@ class MemoryStore:
         if not path.exists():
             return []
         try:
-            raw = path.read_text(encoding="utf-8")
+            raw = path.read_text(encoding="utf-8", errors="replace")
         except (OSError, IOError):
             return []
 
@@ -750,7 +750,7 @@ class MemoryStore:
         if not path.exists():
             return None
         try:
-            raw = path.read_text(encoding="utf-8")
+            raw = path.read_text(encoding="utf-8", errors="replace")
         except (OSError, IOError):
             return None
         if not raw.strip():
@@ -793,7 +793,7 @@ class MemoryStore:
                 dir=str(path.parent), suffix=".tmp", prefix=".mem_"
             )
             try:
-                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                with os.fdopen(fd, "w", encoding="utf-8", errors="replace") as f:
                     f.write(content)
                     f.flush()
                     os.fsync(f.fileno())

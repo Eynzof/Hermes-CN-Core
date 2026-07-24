@@ -387,7 +387,7 @@ def get_latest_baseline() -> Optional[Dict]:
     baselines = sorted(BASELINES_DIR.glob("*.json"))
     if not baselines:
         return None
-    return orjson.loads(baselines[-1].read_text(encoding="utf-8"))
+    return orjson.loads(baselines[-1].read_text(encoding="utf-8", errors="replace"))
 
 
 def save_baseline(test_name: str, summary: Dict):

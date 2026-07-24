@@ -62,7 +62,7 @@ def test_relay_package_imports_no_platform_crypto():
     """No module in gateway/relay imports a platform-crypto / verification module."""
     offenders: list[str] = []
     for path in _relay_py_files():
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"), filename=str(path))
         for node in ast.walk(tree):
             mods: list[str] = []
             if isinstance(node, ast.Import):
@@ -96,7 +96,7 @@ def test_relay_package_calls_no_signature_verification():
     for path in _relay_py_files():
         if path.name in _CHANNEL_AUTH_FILES:
             continue
-        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        for lineno, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
             # Skip comments / docstrings-as-prose: only flag code-like usage.
             stripped = line.strip()
             if stripped.startswith("#"):
@@ -122,7 +122,7 @@ def test_channel_auth_uses_only_stdlib_crypto_not_platform_modules():
     """
     auth_py = _RELAY_PKG / "auth.py"
     assert auth_py.is_file(), "gateway/relay/auth.py (channel authenticator) is missing"
-    tree = ast.parse(auth_py.read_text(encoding="utf-8"), filename=str(auth_py))
+    tree = ast.parse(auth_py.read_text(encoding="utf-8", errors="replace"), filename=str(auth_py))
     imported: list[str] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):

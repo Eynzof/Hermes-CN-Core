@@ -173,7 +173,7 @@ async def test_handle_fast_command_global_flag_persists_config(monkeypatch, tmp_
     assert "FAST" in response
     assert runner._service_tier == "priority"
 
-    saved = yaml.safe_load((tmp_path / "config.yaml").read_text(encoding="utf-8"))
+    saved = yaml.safe_load((tmp_path / "config.yaml").read_text(encoding="utf-8", errors="replace"))
     assert saved["agent"]["service_tier"] == "fast"
     # Global write supersedes the session override.
     assert not runner._session_service_tier_overrides

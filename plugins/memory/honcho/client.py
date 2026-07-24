@@ -82,7 +82,7 @@ def resolve_active_host() -> str:
         try:
             path = resolve_config_path()
             if path.exists():
-                raw = json.loads(path.read_text(encoding="utf-8"))
+                raw = json.loads(path.read_text(encoding="utf-8", errors="replace"))
                 default_host = str(raw.get("defaultHost", "")).strip()
                 if default_host:
                     return default_host
@@ -502,7 +502,7 @@ class HonchoClientConfig:
             return cls.from_env(host=resolved_host)
 
         try:
-            raw = orjson.loads(path.read_text(encoding="utf-8"))
+            raw = orjson.loads(path.read_text(encoding="utf-8", errors="replace"))
         except (orjson.JSONDecodeError, OSError) as e:
             logger.warning("Failed to read %s: %s, falling back to env", path, e)
             return cls.from_env(host=resolved_host)
@@ -895,7 +895,7 @@ def _honcho_json_timeout() -> float | None:
 
         timeout = None
         if mtime_ns != -1:
-            raw = json.loads(path.read_text(encoding="utf-8"))
+            raw = json.loads(path.read_text(encoding="utf-8", errors="replace"))
             host_block = _host_block(raw, resolve_active_host())
             timeout = _resolve_optional_float(
                 host_block.get("timeout"),

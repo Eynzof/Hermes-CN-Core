@@ -1448,7 +1448,7 @@ def _load_skills_snapshot(skills_dir: Path) -> Optional[dict]:
     if not snapshot_path.exists():
         return None
     try:
-        snapshot = orjson.loads(snapshot_path.read_text(encoding="utf-8"))
+        snapshot = orjson.loads(snapshot_path.read_text(encoding="utf-8", errors="replace"))
     except Exception:
         return None
     if not isinstance(snapshot, dict):
@@ -1521,7 +1521,7 @@ def _parse_skill_file(skill_file: Path) -> tuple[bool, dict, str]:
     (True, {}, "") to err on the side of showing the skill.
     """
     try:
-        raw = skill_file.read_text(encoding="utf-8")
+        raw = skill_file.read_text(encoding="utf-8", errors="replace")
         frontmatter, _ = parse_frontmatter(raw)
 
         if not skill_matches_platform(frontmatter):
@@ -1701,7 +1701,7 @@ def build_skills_system_prompt(
         # Read category-level DESCRIPTION.md files
         for desc_file in iter_skill_index_files(skills_dir, "DESCRIPTION.md"):
             try:
-                content = desc_file.read_text(encoding="utf-8")
+                content = desc_file.read_text(encoding="utf-8", errors="replace")
                 fm, _ = parse_frontmatter(content)
                 cat_desc = fm.get("description")
                 if not cat_desc:
@@ -1760,7 +1760,7 @@ def build_skills_system_prompt(
         # External category descriptions
         for desc_file in iter_skill_index_files(ext_dir, "DESCRIPTION.md"):
             try:
-                content = desc_file.read_text(encoding="utf-8")
+                content = desc_file.read_text(encoding="utf-8", errors="replace")
                 fm, _ = parse_frontmatter(content)
                 cat_desc = fm.get("description")
                 if not cat_desc:
@@ -1989,7 +1989,7 @@ def load_soul_md(context_length: Optional[int] = None) -> Optional[str]:
     if not soul_path.exists():
         return None
     try:
-        content = soul_path.read_text(encoding="utf-8").strip()
+        content = soul_path.read_text(encoding="utf-8", errors="replace").strip()
         if not content:
             return None
         content = _scan_context_content(content, "SOUL.md")
@@ -2011,7 +2011,7 @@ def _load_hermes_md(cwd_path: Path, context_length: Optional[int] = None) -> str
     if not hermes_md_path:
         return ""
     try:
-        content = hermes_md_path.read_text(encoding="utf-8").strip()
+        content = hermes_md_path.read_text(encoding="utf-8", errors="replace").strip()
         if not content:
             return ""
         content = _strip_yaml_frontmatter(content)
@@ -2039,7 +2039,7 @@ def _load_agents_md(cwd_path: Path, context_length: Optional[int] = None) -> str
         candidate = cwd_path / name
         if candidate.exists():
             try:
-                content = candidate.read_text(encoding="utf-8").strip()
+                content = candidate.read_text(encoding="utf-8", errors="replace").strip()
                 if content:
                     content = _scan_context_content(content, name)
                     result = f"## {name}\n\n{content}"
@@ -2060,7 +2060,7 @@ def _load_claude_md(cwd_path: Path, context_length: Optional[int] = None) -> str
         candidate = cwd_path / name
         if candidate.exists():
             try:
-                content = candidate.read_text(encoding="utf-8").strip()
+                content = candidate.read_text(encoding="utf-8", errors="replace").strip()
                 if content:
                     content = _scan_context_content(content, name)
                     result = f"## {name}\n\n{content}"
@@ -2081,7 +2081,7 @@ def _load_cursorrules(cwd_path: Path, context_length: Optional[int] = None) -> s
     cursorrules_file = cwd_path / ".cursorrules"
     if cursorrules_file.exists():
         try:
-            content = cursorrules_file.read_text(encoding="utf-8").strip()
+            content = cursorrules_file.read_text(encoding="utf-8", errors="replace").strip()
             if content:
                 content = _scan_context_content(content, ".cursorrules")
                 cursorrules_content += f"## .cursorrules\n\n{content}\n\n"
@@ -2093,7 +2093,7 @@ def _load_cursorrules(cwd_path: Path, context_length: Optional[int] = None) -> s
         mdc_files = sorted(cursor_rules_dir.glob("*.mdc"))
         for mdc_file in mdc_files:
             try:
-                content = mdc_file.read_text(encoding="utf-8").strip()
+                content = mdc_file.read_text(encoding="utf-8", errors="replace").strip()
                 if content:
                     content = _scan_context_content(
                         content, f".cursor/rules/{mdc_file.name}"

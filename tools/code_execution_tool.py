@@ -514,7 +514,7 @@ def _call(tool_name, args):
         time.sleep(poll_interval)
         poll_interval = min(poll_interval * 1.2, 0.25)  # Back off to 250ms
 
-    with open(res_file, encoding="utf-8") as f:
+    with open(res_file, encoding="utf-8", errors="replace") as f:
         raw = f.read()
 
     # Clean up response file

@@ -77,7 +77,7 @@ def _merge_phrase_mapping(catalog: dict[str, list[str]], section: Mapping[str, A
 
 def _merge_phrase_file(catalog: dict[str, list[str]], path: Path, *, inherited_mode: str | None = None) -> None:
     try:
-        loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
+        loaded = yaml.safe_load(path.read_text(encoding="utf-8", errors="replace"))
     except Exception:
         return
     if isinstance(loaded, Mapping):

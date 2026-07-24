@@ -314,7 +314,7 @@ def test_crc_verification(win_local_ops, tmp_path, monkeypatch):
     assert r.exit_code == 1
     assert "verification failed" in r.stdout.lower()
     # Corrupt swap was refused → the original bytes survive intact.
-    assert target.read_text(encoding="utf-8") == "ORIGINAL"
+    assert target.read_text(encoding="utf-8", errors="replace") == "ORIGINAL"
     # No leftover temp files beside the target.
     assert not any(p.name.startswith(".hermes-tmp.") for p in tmp_path.iterdir())
 
@@ -329,13 +329,13 @@ def test_crc_verification(win_local_ops, tmp_path, monkeypatch):
     r = win_local_ops._local_atomic_write(str(target), "NEWDATA!")
     assert r.exit_code == 1
     assert "verification failed" in r.stdout.lower()
-    assert target.read_text(encoding="utf-8") == "ORIGINAL"
+    assert target.read_text(encoding="utf-8", errors="replace") == "ORIGINAL"
 
     # ---- toggle OFF: the (still-lying) CRC helper is never consulted ----
     monkeypatch.setattr(fops_mod, "_WRITE_VERIFY_CRC", False)
     r = win_local_ops._local_atomic_write(str(target), "NEWDATA!")
     assert r.exit_code == 0
-    assert target.read_text(encoding="utf-8") == "NEWDATA!"
+    assert target.read_text(encoding="utf-8", errors="replace") == "NEWDATA!"
 
 
 def test_crc_verification_resolver(monkeypatch):
@@ -403,7 +403,7 @@ class TestMarkAsTemporary:
         attrs = ctypes.windll.kernel32.GetFileAttributesW(str(p))
         assert not (attrs & _FILE_ATTRIBUTE_TEMPORARY)
         # Contents untouched by attribute juggling.
-        assert p.read_text(encoding="utf-8") == "data"
+        assert p.read_text(encoding="utf-8", errors="replace") == "data"
 
     def test_missing_file_when_clearing_returns_false(self, monkeypatch, tmp_path):
         """Clearing the bit on a non-existent path is a graceful False."""
@@ -431,7 +431,7 @@ def test_mark_temp_files_write_path(tmp_path, monkeypatch):
     p = tmp_path / "marked.txt"
     res = ops.write_file(str(p), "temp-hint content")
     assert res.error is None
-    assert p.read_text(encoding="utf-8") == "temp-hint content"
+    assert p.read_text(encoding="utf-8", errors="replace") == "temp-hint content"
     # No leftover staging temp files.
     assert not any(x.name.startswith(".hermes-tmp.") for x in tmp_path.iterdir())
 

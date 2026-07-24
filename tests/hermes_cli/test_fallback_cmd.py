@@ -29,7 +29,7 @@ def _write_config(home: Path, data: dict) -> None:
 
 def _read_config(home: Path) -> dict:
     config_path = home / ".hermes" / "config.yaml"
-    return yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    return yaml.safe_load(config_path.read_text(encoding="utf-8", errors="replace")) or {}
 
 
 # ---------------------------------------------------------------------------

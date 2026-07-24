@@ -2419,7 +2419,7 @@ class CLICommandsMixin:
         )
         fd, path = tempfile.mkstemp(suffix=".md", prefix="hermes_prompt_")
         try:
-            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            with os.fdopen(fd, "w", encoding="utf-8", errors="replace") as fh:
                 fh.write(header)
                 if initial_text:
                     fh.write(initial_text)
@@ -2438,7 +2438,7 @@ class CLICommandsMixin:
                     shell=True,
                     **_kw,
                 )
-            with open(path, "r", encoding="utf-8") as fh:
+            with open(path, "r", encoding="utf-8", errors="replace") as fh:
                 raw = fh.read()
         finally:
             try:

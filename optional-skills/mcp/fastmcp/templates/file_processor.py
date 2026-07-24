@@ -12,7 +12,7 @@ mcp = FastMCP("__SERVER_NAME__")
 def _read_text(path: str) -> str:
     file_path = Path(path).expanduser()
     try:
-        return file_path.read_text(encoding="utf-8")
+        return file_path.read_text(encoding="utf-8", errors="replace")
     except FileNotFoundError as exc:
         raise ValueError(f"File not found: {file_path}") from exc
     except UnicodeDecodeError as exc:

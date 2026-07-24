@@ -974,7 +974,7 @@ def _read_claude_code_credentials_from_file() -> Optional[Dict[str, Any]]:
     if not cred_path.exists():
         return None
     try:
-        data = orjson.loads(cred_path.read_text(encoding="utf-8"))
+        data = orjson.loads(cred_path.read_text(encoding="utf-8", errors="replace"))
     except (orjson.JSONDecodeError, OSError, IOError) as e:
         logger.debug("Failed to read ~/.claude/.credentials.json: %s", e)
         return None
@@ -1184,7 +1184,7 @@ def _write_claude_code_credentials(
         # Read existing file to preserve other fields
         existing = {}
         if cred_path.exists():
-            existing = orjson.loads(cred_path.read_text(encoding="utf-8"))
+            existing = orjson.loads(cred_path.read_text(encoding="utf-8", errors="replace"))
 
         oauth_data: Dict[str, Any] = {
             "accessToken": access_token,
@@ -1581,7 +1581,7 @@ def read_hermes_oauth_credentials() -> Optional[Dict[str, Any]]:
     oauth_file = _get_hermes_oauth_file()
     if oauth_file.exists():
         try:
-            data = orjson.loads(oauth_file.read_text(encoding="utf-8"))
+            data = orjson.loads(oauth_file.read_text(encoding="utf-8", errors="replace"))
             if data.get("accessToken"):
                 return data
         except (orjson.JSONDecodeError, OSError, IOError) as e:

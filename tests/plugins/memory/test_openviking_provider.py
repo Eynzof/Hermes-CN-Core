@@ -293,8 +293,8 @@ def test_link_ovcli_profile_removes_stale_inline_config(tmp_path):
         "use_ovcli_config": True,
         "ovcli_config_path": str(ovcli_path),
     }
-    assert "OPENVIKING_ENDPOINT" not in env_path.read_text(encoding="utf-8")
-    assert "OTHER_KEY=keep" in env_path.read_text(encoding="utf-8")
+    assert "OPENVIKING_ENDPOINT" not in env_path.read_text(encoding="utf-8", errors="replace")
+    assert "OTHER_KEY=keep" in env_path.read_text(encoding="utf-8", errors="replace")
 
 
 def test_post_setup_existing_profile_picker_validates_and_links_saved_profile(tmp_path, monkeypatch):
@@ -348,7 +348,7 @@ def test_post_setup_existing_profile_picker_validates_and_links_saved_profile(tm
         "use_ovcli_config": True,
         "ovcli_config_path": str(saved_path),
     }
-    env_text = env_path.read_text(encoding="utf-8")
+    env_text = env_path.read_text(encoding="utf-8", errors="replace")
     assert "OPENVIKING_" not in env_text
     assert "OTHER_KEY=keep" in env_text
 
@@ -381,7 +381,7 @@ def test_post_setup_create_remote_user_profile_can_mirror_to_openviking_store(tm
 
     mirrored_path = tmp_path / ".openviking" / "ovcli.conf.VPS"
     assert mirrored_path.exists()
-    assert orjson.loads(mirrored_path.read_text(encoding="utf-8")) == {
+    assert orjson.loads(mirrored_path.read_text(encoding="utf-8", errors="replace")) == {
         "url": "https://openviking.example",
         "api_key": "user-secret",
         "actor_peer_id": "hermes",
@@ -393,7 +393,7 @@ def test_post_setup_create_remote_user_profile_can_mirror_to_openviking_store(tm
     }
     env_path = hermes_home / ".env"
     if env_path.exists():
-        assert "OPENVIKING_" not in env_path.read_text(encoding="utf-8")
+        assert "OPENVIKING_" not in env_path.read_text(encoding="utf-8", errors="replace")
 
 
 def test_post_setup_create_remote_user_can_keep_hermes_only(tmp_path, monkeypatch):
@@ -422,7 +422,7 @@ def test_post_setup_create_remote_user_can_keep_hermes_only(tmp_path, monkeypatc
 
     assert config["memory"]["provider"] == "openviking"
     assert config["memory"]["openviking"] == {"use_ovcli_config": False}
-    env_text = (hermes_home / ".env").read_text(encoding="utf-8")
+    env_text = (hermes_home / ".env").read_text(encoding="utf-8", errors="replace")
     assert "OPENVIKING_ENDPOINT=https://openviking.example" in env_text
     assert "OPENVIKING_API_KEY=user-secret" in env_text
     assert "OPENVIKING_AGENT=agent" in env_text
@@ -478,7 +478,7 @@ def test_post_setup_create_openviking_service_validates_after_api_key(tmp_path, 
         },
         True,
     )]
-    env_text = (hermes_home / ".env").read_text(encoding="utf-8")
+    env_text = (hermes_home / ".env").read_text(encoding="utf-8", errors="replace")
     assert "OPENVIKING_ENDPOINT=https://api.vikingdb.cn-beijing.volces.com/openviking" in env_text
     assert "OPENVIKING_API_KEY=service-secret" in env_text
     assert "OPENVIKING_AGENT=agent" in env_text
@@ -552,7 +552,7 @@ def test_post_setup_user_key_path_can_route_detected_root_key_to_root_setup(tmp_
     OpenVikingMemoryProvider().post_setup(str(hermes_home), config)
 
     assert prompt_events.count("Hermes peer ID in OpenViking") == 1
-    env_text = (hermes_home / ".env").read_text(encoding="utf-8")
+    env_text = (hermes_home / ".env").read_text(encoding="utf-8", errors="replace")
     assert "OPENVIKING_API_KEY=root-secret" in env_text
     assert "OPENVIKING_ACCOUNT=acct" in env_text
     assert "OPENVIKING_USER=alice" in env_text
@@ -591,7 +591,7 @@ def test_post_setup_root_key_path_can_route_detected_user_key_to_user_setup(tmp_
 
     OpenVikingMemoryProvider().post_setup(str(hermes_home), config)
 
-    env_text = (hermes_home / ".env").read_text(encoding="utf-8")
+    env_text = (hermes_home / ".env").read_text(encoding="utf-8", errors="replace")
     assert "OPENVIKING_API_KEY=user-secret" in env_text
     assert "OPENVIKING_AGENT=agent" in env_text
     assert "OPENVIKING_ACCOUNT" not in env_text
@@ -1102,7 +1102,7 @@ def test_post_setup_local_server_down_can_offer_autostart(tmp_path, monkeypatch)
 
     assert started == ["http://localhost:1933"]
     assert reachability_calls == ["http://localhost:1933"]
-    env_text = (hermes_home / ".env").read_text(encoding="utf-8")
+    env_text = (hermes_home / ".env").read_text(encoding="utf-8", errors="replace")
     assert "OPENVIKING_ENDPOINT=http://localhost:1933" in env_text
     assert "OPENVIKING_API_KEY" not in env_text
 
@@ -1135,7 +1135,7 @@ def test_post_setup_invalid_env_profile_can_create_new_config(tmp_path, monkeypa
 
     OpenVikingMemoryProvider().post_setup(str(hermes_home), config)
 
-    assert ovcli_path.read_text(encoding="utf-8") == "{"
+    assert ovcli_path.read_text(encoding="utf-8", errors="replace") == "{"
     assert config["memory"]["openviking"] == {"use_ovcli_config": False}
 
 

@@ -1464,7 +1464,7 @@ class TestFetchModelMetadata:
             fetch_model_metadata(force_refresh=True)
 
         assert cache_path.exists()
-        assert "live/model" in cache_path.read_text(encoding="utf-8")
+        assert "live/model" in cache_path.read_text(encoding="utf-8", errors="replace")
 
     def test_network_failure_falls_back_to_stale_disk_cache(self, tmp_path, monkeypatch):
         self._reset_cache()

@@ -71,7 +71,7 @@ def _dict_has_text_without_errors(d: ast.Dict) -> bool:
 
 
 def _violations(path: Path) -> list[str]:
-    src = path.read_text(encoding="utf-8")
+    src = path.read_text(encoding="utf-8", errors="replace")
     try:
         tree = ast.parse(src)
     except SyntaxError:

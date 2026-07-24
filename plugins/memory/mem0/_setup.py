@@ -218,7 +218,7 @@ def _save_mem0_json(hermes_home: str, data: dict) -> None:
     existing = {}
     if config_path.exists():
         try:
-            existing = orjson.loads(config_path.read_text(encoding="utf-8"))
+            existing = orjson.loads(config_path.read_text(encoding="utf-8", errors="replace"))
         except Exception:
             pass
     existing.update(data)

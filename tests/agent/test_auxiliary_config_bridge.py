@@ -210,7 +210,7 @@ class TestGatewayBridgeCodeParity:
         # Path.read_text() defaults to the system locale — which is cp1252
         # on most Western Windows installs and crashes as soon as the file
         # contains any non-ASCII byte (e.g. an em-dash in a comment).
-        content = gateway_path.read_text(encoding="utf-8")
+        content = gateway_path.read_text(encoding="utf-8", errors="replace")
         # Dynamic env-var derivation present
         assert 'f"AUXILIARY_{_upper}_PROVIDER"' in content
         assert 'f"AUXILIARY_{_upper}_MODEL"' in content
@@ -229,7 +229,7 @@ class TestGatewayBridgeCodeParity:
         gateway_path = Path(__file__).parent.parent.parent / "gateway" / "run.py"
         # See note in test_gateway_has_auxiliary_bridge — pin UTF-8 so the
         # test runs on Windows where the default locale is cp1252.
-        content = gateway_path.read_text(encoding="utf-8")
+        content = gateway_path.read_text(encoding="utf-8", errors="replace")
         assert "CONTEXT_COMPRESSION_PROVIDER" not in content
         assert "CONTEXT_COMPRESSION_MODEL" not in content
 
@@ -314,7 +314,7 @@ class TestCLIDefaultsHaveAuxiliaryKeys:
         import cli as _cli_mod
         # See note in test_gateway_has_auxiliary_bridge — pin UTF-8 so the
         # test runs on Windows where the default locale is cp1252.
-        source = Path(_cli_mod.__file__).read_text(encoding="utf-8")
+        source = Path(_cli_mod.__file__).read_text(encoding="utf-8", errors="replace")
         assert "auxiliary_config = defaults.get(\"auxiliary\"" in source
         assert "AUXILIARY_VISION_PROVIDER" in source
         assert "AUXILIARY_VISION_MODEL" in source

@@ -239,7 +239,7 @@ def test_server_ensure_token_generates_and_persists(tmp_path):
     t2 = s2.ensure_token()
     assert t1 == t2
 
-    data = orjson.loads(p.read_text(encoding="utf-8"))
+    data = orjson.loads(p.read_text(encoding="utf-8", errors="replace"))
     assert data["token"] == t1
     assert "generated_at" in data
 
@@ -397,7 +397,7 @@ def test_server_handle_request_say_enqueues_when_active(tmp_path, monkeypatch):
     assert resp["type"] == "response"
     assert resp["payload"]["ok"] is True
     assert resp["payload"]["enqueued"] is True
-    q = (out / "say_queue.jsonl").read_text(encoding="utf-8").strip().splitlines()
+    q = (out / "say_queue.jsonl").read_text(encoding="utf-8", errors="replace").strip().splitlines()
     assert len(q) == 1
     assert orjson.loads(q[0])["text"] == "hello"
 

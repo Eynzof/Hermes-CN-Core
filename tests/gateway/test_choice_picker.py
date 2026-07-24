@@ -164,7 +164,7 @@ class TestReasoningChoicePicker:
         await on_choice(event.source.chat_id, "show")
 
         assert runner._show_reasoning is True
-        saved = yaml.safe_load((tmp_path / "config.yaml").read_text(encoding="utf-8"))
+        saved = yaml.safe_load((tmp_path / "config.yaml").read_text(encoding="utf-8", errors="replace"))
         assert saved["display"]["platforms"]["telegram"]["show_reasoning"] is True
 
 
@@ -217,7 +217,7 @@ class TestFastChoicePicker:
         await on_choice(event.source.chat_id, "fast")
 
         assert runner._service_tier == "priority"
-        saved = yaml.safe_load((tmp_path / "config.yaml").read_text(encoding="utf-8"))
+        saved = yaml.safe_load((tmp_path / "config.yaml").read_text(encoding="utf-8", errors="replace"))
         assert saved["agent"]["service_tier"] == "fast"
 
     @pytest.mark.asyncio

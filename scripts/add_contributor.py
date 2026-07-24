@@ -31,7 +31,7 @@ _LOGIN_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$")
 def read_mapping_file(path: Path) -> str | None:
     """Return the login from a mapping file (first non-comment line)."""
     try:
-        for line in path.read_text(encoding="utf-8").splitlines():
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
             line = line.strip()
             if line and not line.startswith("#"):
                 return line

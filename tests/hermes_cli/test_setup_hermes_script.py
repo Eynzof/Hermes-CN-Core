@@ -12,7 +12,7 @@ def test_setup_hermes_script_is_valid_shell():
 
 
 def test_setup_hermes_script_has_termux_path():
-    content = SETUP_SCRIPT.read_text(encoding="utf-8")
+    content = SETUP_SCRIPT.read_text(encoding="utf-8", errors="replace")
 
     assert "is_termux()" in content
     assert ".[termux]" in content

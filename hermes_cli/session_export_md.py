@@ -201,7 +201,7 @@ def verify_export_file(path: Path | str, session: dict[str, Any]) -> tuple[bool,
     p = Path(path)
     if not p.exists():
         return False, "file missing"
-    text = p.read_text(encoding="utf-8")
+    text = p.read_text(encoding="utf-8", errors="replace")
     match = _SHA_LINE_RE.search(text)
     if not match:
         return False, "sha256 marker missing"
@@ -274,6 +274,6 @@ def append_manifest_entry(output_dir: Path | str, session: dict[str, Any], path:
         "exported_at": time.time(),
     }
     manifest = out_dir / "manifest.jsonl"
-    with manifest.open("a", encoding="utf-8") as fh:
+    with manifest.open("a", encoding="utf-8", errors="replace") as fh:
         fh.write(json.dumps(entry, ensure_ascii=False, sort_keys=True) + "\n")
     return manifest

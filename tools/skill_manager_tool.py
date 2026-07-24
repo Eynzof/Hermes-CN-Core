@@ -903,7 +903,7 @@ def _edit_skill(name: str, content: str) -> Dict[str, Any]:
         return read_guard
 
     # Back up original content for rollback
-    original_content = skill_md.read_text(encoding="utf-8") if skill_md.exists() else None
+    original_content = skill_md.read_text(encoding="utf-8", errors="replace") if skill_md.exists() else None
     _atomic_write_text(skill_md, content)
 
     # Security scan — roll back on block
@@ -982,7 +982,7 @@ def _patch_skill(
     if read_guard:
         return read_guard
 
-    content = target.read_text(encoding="utf-8")
+    content = target.read_text(encoding="utf-8", errors="replace")
 
     # Use the same fuzzy matching engine as the file patch tool.
     # This handles whitespace normalization, indentation differences,
@@ -1192,7 +1192,7 @@ def _write_file(name: str, file_path: str, file_content: str) -> Dict[str, Any]:
             return read_guard
     target.parent.mkdir(parents=True, exist_ok=True)
     # Back up for rollback
-    original_content = target.read_text(encoding="utf-8") if target.exists() else None
+    original_content = target.read_text(encoding="utf-8", errors="replace") if target.exists() else None
     _atomic_write_text(target, file_content)
 
     # Security scan — roll back on block

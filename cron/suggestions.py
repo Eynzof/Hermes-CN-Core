@@ -77,7 +77,7 @@ def _load_raw() -> Dict[str, Any]:
     if not SUGGESTIONS_FILE.exists():
         return {"suggestions": []}
     try:
-        with open(SUGGESTIONS_FILE, "r", encoding="utf-8") as f:
+        with open(SUGGESTIONS_FILE, "r", encoding="utf-8", errors="replace") as f:
             data = orjson.loads(f.read())
     except (orjson.JSONDecodeError, OSError) as e:
         logger.warning("suggestions.json unreadable (%s); starting empty", e)
@@ -94,7 +94,7 @@ def _save_raw(suggestions: List[Dict[str, Any]]) -> None:
     _ensure_dir()
     fd, tmp_path = tempfile.mkstemp(dir=str(SUGGESTIONS_FILE.parent), suffix=".tmp", prefix=".sugg_")
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
+        with os.fdopen(fd, "w", encoding="utf-8", errors="replace") as f:
             f.write(orjson.dumps({"suggestions": suggestions, "updated_at": _hermes_now().isoformat()}, option=orjson.OPT_INDENT_2).decode('utf-8'))
             f.flush()
             os.fsync(f.fileno())

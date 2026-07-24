@@ -210,7 +210,7 @@ def test_io_methods_comparison(timing_context, tmp_path, windows_only):
     # Python in-process
     with timing_context.measure("python_inproc_read"):
         for _ in range(20):
-            content = test_file.read_text(encoding="utf-8")
+            content = test_file.read_text(encoding="utf-8", errors="replace")
 
     # PowerShell Get-Content
     with timing_context.measure("powershell_get_content"):

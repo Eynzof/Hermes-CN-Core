@@ -57,7 +57,7 @@ def test_write_file_rejection_does_not_mutate_existing_file(tmp_path):
 
     assert "error" in result
     assert "Edit approval denied" in result["error"]
-    assert target.read_text(encoding="utf-8") == "before\n"
+    assert target.read_text(encoding="utf-8", errors="replace") == "before\n"
 
 
 def test_write_file_approval_mutates_and_request_includes_diff(tmp_path):
@@ -80,7 +80,7 @@ def test_write_file_approval_mutates_and_request_includes_diff(tmp_path):
     )
 
     assert result.get("bytes_written") == target.stat().st_size
-    assert target.read_text(encoding="utf-8") == "after\n"
+    assert target.read_text(encoding="utf-8", errors="replace") == "after\n"
     assert len(proposals) == 1
     proposal = proposals[0]
     assert proposal.tool_name == "write_file"
@@ -104,7 +104,7 @@ def test_write_file_new_file_request_has_empty_old_text(tmp_path):
     )
 
     assert result.get("bytes_written") == target.stat().st_size
-    assert target.read_text(encoding="utf-8") == "created\n"
+    assert target.read_text(encoding="utf-8", errors="replace") == "created\n"
     assert proposals[0].old_text is None
     assert proposals[0].new_text == "created\n"
 
@@ -128,7 +128,7 @@ def test_requester_exception_denies_and_does_not_mutate(tmp_path):
 
     assert "error" in result
     assert "Edit approval denied" in result["error"]
-    assert target.read_text(encoding="utf-8") == "before\n"
+    assert target.read_text(encoding="utf-8", errors="replace") == "before\n"
 
 
 def test_patch_replace_rejection_does_not_mutate(tmp_path):
@@ -152,7 +152,7 @@ def test_patch_replace_rejection_does_not_mutate(tmp_path):
 
     assert "error" in result
     assert "Edit approval denied" in result["error"]
-    assert target.read_text(encoding="utf-8") == "alpha\nbeta\n"
+    assert target.read_text(encoding="utf-8", errors="replace") == "alpha\nbeta\n"
 
 
 def test_patch_v4a_rejection_does_not_mutate(tmp_path):
@@ -182,7 +182,7 @@ def test_patch_v4a_rejection_does_not_mutate(tmp_path):
 
     assert "error" in result
     assert "Edit approval denied" in result["error"]
-    assert target.read_text(encoding="utf-8") == "alpha\nbeta\n"
+    assert target.read_text(encoding="utf-8", errors="replace") == "alpha\nbeta\n"
 
 
 def test_patch_v4a_approval_request_includes_patch_targets(tmp_path):
@@ -238,7 +238,7 @@ def test_patch_replace_approval_request_includes_full_file_diff(tmp_path):
     )
 
     assert result.get("success") is True
-    assert target.read_text(encoding="utf-8") == "alpha\ngamma\n"
+    assert target.read_text(encoding="utf-8", errors="replace") == "alpha\ngamma\n"
     assert proposals[0].tool_name == "patch"
     assert proposals[0].old_text == "alpha\nbeta\n"
     assert proposals[0].new_text == "alpha\ngamma\n"

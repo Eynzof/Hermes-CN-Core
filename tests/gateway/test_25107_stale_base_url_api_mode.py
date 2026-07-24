@@ -132,7 +132,7 @@ async def test_typed_switch_to_custom_clears_stale_base_url_and_api_mode(tmp_pat
     )
 
     assert result is not None
-    written = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
+    written = yaml.safe_load(cfg_path.read_text(encoding="utf-8", errors="replace"))
     assert written["model"]["default"] == "local-llama"
     assert "base_url" not in written["model"], (
         "stale base_url from the old custom endpoint must be cleared"
@@ -160,7 +160,7 @@ async def test_typed_switch_to_custom_persists_resolved_base_url_and_api_mode(tm
     )
 
     assert result is not None
-    written = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
+    written = yaml.safe_load(cfg_path.read_text(encoding="utf-8", errors="replace"))
     assert written["model"]["base_url"] == "https://new-endpoint.example/v1"
     assert written["model"]["api_mode"] == "anthropic_messages"
 
@@ -189,6 +189,6 @@ async def test_picker_tap_to_custom_clears_stale_base_url_and_api_mode(tmp_path,
     confirmation = await _drive_picker(_make_runner(adapter), _make_event("/model --global"))
 
     assert confirmation is not None
-    written = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
+    written = yaml.safe_load(cfg_path.read_text(encoding="utf-8", errors="replace"))
     assert "base_url" not in written["model"]
     assert "api_mode" not in written["model"]

@@ -90,7 +90,7 @@ class _MtimeCache:
             return self._data
 
         try:
-            with open(self._path, "r", encoding="utf-8") as f:
+            with open(self._path, "r", encoding="utf-8", errors="replace") as f:
                 data = orjson.loads(f.read())
             if not isinstance(data, dict):
                 data = {}
@@ -235,7 +235,7 @@ def _load_pairing_approved() -> set:
 def _save_pairing(data: dict) -> None:
     PAIRING_FILE.parent.mkdir(parents=True, exist_ok=True)
     tmp = PAIRING_FILE.with_suffix(".tmp")
-    with open(tmp, "w", encoding="utf-8") as f:
+    with open(tmp, "w", encoding="utf-8", errors="replace") as f:
         f.write(orjson.dumps(data, option=orjson.OPT_INDENT_2).decode('utf-8'))
     tmp.replace(PAIRING_FILE)
     # Invalidate cache so next load picks up change

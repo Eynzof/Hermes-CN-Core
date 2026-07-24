@@ -215,7 +215,7 @@ def _cmd_test(args) -> None:
 
     if getattr(args, "payload_file", None):
         try:
-            custom = orjson.loads(Path(args.payload_file).read_text(encoding="utf-8"))
+            custom = orjson.loads(Path(args.payload_file).read_text(encoding="utf-8", errors="replace"))
             if isinstance(custom, dict):
                 payload.update(custom)
             else:

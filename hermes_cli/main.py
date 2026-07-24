@@ -248,7 +248,7 @@ def _config_default_interface_early() -> str:
         if os.path.exists(cfg_path):
             import yaml as _yaml_iface
 
-            with open(cfg_path, encoding="utf-8") as _f:
+            with open(cfg_path, encoding="utf-8", errors="replace") as _f:
                 raw = _yaml_iface.load(
                     _f, Loader=getattr(_yaml_iface, "CSafeLoader", None) or _yaml_iface.SafeLoader
                 ) or {}
@@ -347,7 +347,7 @@ def _read_openai_version_fast() -> str | None:
             base = os.getcwd()
         version_file = os.path.join(base, "openai", "_version.py")
         try:
-            with open(version_file, encoding="utf-8") as handle:
+            with open(version_file, encoding="utf-8", errors="replace") as handle:
                 for line in handle:
                     stripped = line.strip()
                     if not stripped.startswith("__version__"):
@@ -668,7 +668,7 @@ try:
 
     _cfg_path = get_hermes_home() / "config.yaml"
     if _cfg_path.exists():
-        with open(_cfg_path, encoding="utf-8") as _f:
+        with open(_cfg_path, encoding="utf-8", errors="replace") as _f:
             _early_cfg_raw = _yaml_early.load(
                 _f, Loader=getattr(_yaml_early, "CSafeLoader", None) or _yaml_early.SafeLoader
             ) or {}
@@ -859,7 +859,7 @@ def _termux_bundled_skills_sync_needed() -> bool:
         return True
     try:
         stamp = _termux_bundled_skills_stamp_path()
-        return stamp.read_text(encoding="utf-8").strip() != _termux_bundled_skills_fingerprint()
+        return stamp.read_text(encoding="utf-8", errors="replace").strip() != _termux_bundled_skills_fingerprint()
     except OSError:
         return True
 
@@ -961,7 +961,7 @@ def _has_any_provider_configured() -> bool:
     env_file = get_env_path()
     if env_file.exists():
         try:
-            for line in env_file.read_text(encoding="utf-8").splitlines():
+            for line in env_file.read_text(encoding="utf-8", errors="replace").splitlines():
                 line = line.strip()
                 if line.startswith("#") or "=" not in line:
                     continue
@@ -1452,7 +1452,7 @@ def _read_tui_active_session_file(path: Optional[str]) -> Optional[str]:
     if not path:
         return None
     try:
-        data = orjson.loads(Path(path).read_text(encoding="utf-8"))
+        data = orjson.loads(Path(path).read_text(encoding="utf-8", errors="replace"))
         sid = str(data.get("session_id") or "").strip()
         return sid or None
     except Exception:
@@ -1638,8 +1638,8 @@ def _tui_need_npm_install(root: Path) -> bool:
     # can bump the root lockfile timestamp even when installed deps already
     # match. Fall back to mtime when either file is unparseable.
     try:
-        wanted = orjson.loads(lock.read_text(encoding="utf-8")).get("packages") or {}
-        installed = orjson.loads(marker.read_text(encoding="utf-8")).get("packages") or {}
+        wanted = orjson.loads(lock.read_text(encoding="utf-8", errors="replace")).get("packages") or {}
+        installed = orjson.loads(marker.read_text(encoding="utf-8", errors="replace")).get("packages") or {}
     except (OSError, UnicodeDecodeError, orjson.JSONDecodeError):
         return lock.stat().st_mtime > marker.stat().st_mtime
 
@@ -2099,7 +2099,7 @@ def _read_cgroup_memory_limit() -> Optional[int]:
     )
     for path in candidates:
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, "r", encoding="utf-8", errors="replace") as f:
                 raw = f.read().strip()
         except (OSError, ValueError):
             continue
@@ -5014,7 +5014,7 @@ def _nixos_build_env() -> dict[str, str] | None:
     """
     from agent.re_compat import re
     try:
-        os_release = Path("/etc/os-release").read_text(encoding="utf-8")
+        os_release = Path("/etc/os-release").read_text(encoding="utf-8", errors="replace")
     except OSError:
         return None
     if not re.search(r"^ID=nixos$", os_release, re.M):
@@ -5301,7 +5301,7 @@ def _compute_desktop_content_hash(project_root: Path) -> str:
     gitignore = project_root / ".gitignore"
     lines: list[str] = []
     if gitignore.is_file():
-        lines = gitignore.read_text(encoding="utf-8").splitlines()
+        lines = gitignore.read_text(encoding="utf-8", errors="replace").splitlines()
     spec = PathSpec.from_lines("gitignore", lines)
 
     # Root workspace config
@@ -5356,7 +5356,7 @@ def _desktop_build_needed(desktop_dir: Path, project_root: Path, *, source_mode:
         return True
 
     try:
-        stamp_data = orjson.loads(stamp_file.read_text(encoding="utf-8"))
+        stamp_data = orjson.loads(stamp_file.read_text(encoding="utf-8", errors="replace"))
     except (OSError, orjson.JSONDecodeError, KeyError):
         return True
 
@@ -5779,7 +5779,7 @@ def _desktop_linux_needs_no_sandbox() -> bool:
     if hasattr(os, "geteuid") and os.geteuid() == 0:
         return False
     try:
-        with open("/proc/sys/kernel/apparmor_restrict_unprivileged_userns", encoding="utf-8") as f:
+        with open("/proc/sys/kernel/apparmor_restrict_unprivileged_userns", encoding="utf-8", errors="replace") as f:
             return f.read().strip() == "1"
     except OSError:
         return False
@@ -8424,7 +8424,7 @@ def _npm_manifest_paths() -> tuple[Path, ...]:
     root_pkg = PROJECT_ROOT / "package.json"
     paths = [PROJECT_ROOT / "package-lock.json", root_pkg]
     try:
-        workspaces = json.loads(root_pkg.read_text(encoding="utf-8")).get(
+        workspaces = json.loads(root_pkg.read_text(encoding="utf-8", errors="replace")).get(
             "workspaces", []
         )
         if isinstance(workspaces, dict):  # legacy {"packages": [...]} form
@@ -8470,7 +8470,7 @@ def _npm_lockfile_changed(hermes_root: Path) -> bool:
         cache_file = hermes_root / f".npm_lock_hash_{cache_key}"
         if not cache_file.exists():
             return True
-        return cache_file.read_text(encoding="utf-8").strip() != current
+        return cache_file.read_text(encoding="utf-8", errors="replace").strip() != current
     except OSError:
         return True
 
@@ -9134,7 +9134,7 @@ def _ensure_fhs_path_guard() -> None:
         if already_guarded:
             continue
         try:
-            with cfg.open("a", encoding="utf-8") as f:
+            with cfg.open("a", encoding="utf-8", errors="replace") as f:
                 f.write("\n" + path_comment + "\n" + path_line + "\n")
         except OSError as e:
             print(f"  ⚠ Could not update {cfg}: {e}")

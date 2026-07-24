@@ -457,7 +457,7 @@ def _load_secrets_config(home_path: Path) -> dict:
     except ImportError:
         return {}
     try:
-        with open(config_path, "r", encoding="utf-8") as f:
+        with open(config_path, "r", encoding="utf-8", errors="replace") as f:
             data = fast_safe_load(f) or {}
     except Exception:  # noqa: BLE001
         return {}

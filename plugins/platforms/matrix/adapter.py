@@ -608,7 +608,7 @@ def _write_matrix_recovery_key_output_file(recovery_key: str) -> Optional[Path]:
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
     fd = os.open(path, flags, 0o600)
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        with os.fdopen(fd, "w", encoding="utf-8", errors="replace") as fh:
             fh.write(recovery_key)
             fh.write("\n")
     except Exception:

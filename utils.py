@@ -178,7 +178,7 @@ def atomic_json_write(
             # here is safe — mkstemp already created the temp file as 0o600, and
             # the post-replace os.chmod below applies the final mode durably.
             os.fchmod(fd, mode)
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
+        with os.fdopen(fd, "w", encoding="utf-8", errors="replace") as f:
             json.dump(data, f, indent=indent, **dump_kwargs)
             f.flush()
             os.fsync(f.fileno())
@@ -253,7 +253,7 @@ def atomic_yaml_write(
         suffix=".tmp",
     )
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
+        with os.fdopen(fd, "w", encoding="utf-8", errors="replace") as f:
             # allow_unicode=True writes emoji/kaomoji (e.g. personalities, skin
             # cursors) as real UTF-8 instead of fragile escape sequences. Without
             # it, PyYAML emits astral-plane chars as `\UXXXXXXXX` (8-digit) escapes
@@ -313,7 +313,7 @@ def atomic_roundtrip_yaml_update(
     yaml_rt.indent(mapping=2, sequence=4, offset=2)
 
     if path.exists():
-        with path.open("r", encoding="utf-8") as f:
+        with path.open("r", encoding="utf-8", errors="replace") as f:
             config = yaml_rt.load(f) or CommentedMap()
     else:
         config = CommentedMap()
@@ -339,7 +339,7 @@ def atomic_roundtrip_yaml_update(
         suffix=".tmp",
     )
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
+        with os.fdopen(fd, "w", encoding="utf-8", errors="replace") as f:
             yaml_rt.dump(config, f)
             f.flush()
             os.fsync(f.fileno())

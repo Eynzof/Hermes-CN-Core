@@ -884,7 +884,7 @@ def _write_nous_recommended_disk(base: str, data: dict[str, Any]) -> None:
     path = _nous_recommended_disk_path()
     try:
         try:
-            with open(path, encoding="utf-8") as fh:
+            with open(path, encoding="utf-8", errors="replace") as fh:
                 blob = orjson.loads(fh.read())
             if not isinstance(blob, dict):
                 blob = {}
@@ -2784,7 +2784,7 @@ def _load_provider_models_cache() -> dict:
         path = _provider_models_cache_path()
         if not path.exists():
             return {}
-        with open(path, encoding="utf-8") as f:
+        with open(path, encoding="utf-8", errors="replace") as f:
             data = orjson.loads(f.read())
         return data if isinstance(data, dict) else {}
     except Exception:
@@ -4108,7 +4108,7 @@ def _load_ollama_cloud_cache(*, ignore_ttl: bool = False) -> Optional[dict]:
         cache_path = _ollama_cloud_cache_path()
         if not cache_path.exists():
             return None
-        with open(cache_path, encoding="utf-8") as f:
+        with open(cache_path, encoding="utf-8", errors="replace") as f:
             data = orjson.loads(f.read())
         if not isinstance(data, dict):
             return None

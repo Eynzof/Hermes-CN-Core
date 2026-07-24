@@ -716,7 +716,7 @@ def test_post_setup_writes_config_and_prints_summary(monkeypatch, tmp_path, caps
 
     assert config["memory"]["provider"] == "supermemory"
     assert saved["memory"]["provider"] == "supermemory"
-    env_text = (tmp_path / ".env").read_text(encoding="utf-8")
+    env_text = (tmp_path / ".env").read_text(encoding="utf-8", errors="replace")
     assert "SUPERMEMORY_API_KEY=new-api-key" in env_text
 
     out = capsys.readouterr().out

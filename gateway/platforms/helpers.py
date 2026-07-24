@@ -250,7 +250,7 @@ class ThreadParticipationTracker:
         path = self._state_path()
         if path.exists():
             try:
-                data = orjson.loads(path.read_text(encoding="utf-8"))
+                data = orjson.loads(path.read_text(encoding="utf-8", errors="replace"))
                 if isinstance(data, list):
                     return [str(thread_id) for thread_id in data]
             except Exception:

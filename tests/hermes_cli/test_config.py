@@ -64,14 +64,14 @@ class TestEnsureHermesHome:
             ensure_hermes_home()
             soul_path = tmp_path / "SOUL.md"
             assert soul_path.exists()
-            assert soul_path.read_text(encoding="utf-8").strip() != ""
+            assert soul_path.read_text(encoding="utf-8", errors="replace").strip() != ""
 
     def test_does_not_overwrite_existing_soul_md(self, tmp_path):
         with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
             soul_path = tmp_path / "SOUL.md"
             soul_path.write_text("custom soul", encoding="utf-8")
             ensure_hermes_home()
-            assert soul_path.read_text(encoding="utf-8") == "custom soul"
+            assert soul_path.read_text(encoding="utf-8", errors="replace") == "custom soul"
 
     def test_upgrades_legacy_template_soul_md(self, tmp_path):
         # Older installers seeded a comment-only scaffold that shadowed the
@@ -83,7 +83,7 @@ class TestEnsureHermesHome:
             soul_path = tmp_path / "SOUL.md"
             soul_path.write_text(_LEGACY_TEMPLATE_SOULS[0] + "\n", encoding="utf-8")
             ensure_hermes_home()
-            assert soul_path.read_text(encoding="utf-8") == DEFAULT_SOUL_MD
+            assert soul_path.read_text(encoding="utf-8", errors="replace") == DEFAULT_SOUL_MD
 
     def test_preserves_legacy_template_with_user_persona(self, tmp_path):
         # If the user typed a persona alongside the scaffold, the content no
@@ -95,7 +95,7 @@ class TestEnsureHermesHome:
             soul_path = tmp_path / "SOUL.md"
             soul_path.write_text(mixed, encoding="utf-8")
             ensure_hermes_home()
-            assert soul_path.read_text(encoding="utf-8") == mixed
+            assert soul_path.read_text(encoding="utf-8", errors="replace") == mixed
 
     def test_existing_named_profile_still_bootstraps_subdirs(self, tmp_path):
         profile_home = tmp_path / ".hermes" / "profiles" / "coder"
@@ -476,7 +476,7 @@ class TestSaveAndLoadRoundtrip:
                 with pytest.raises(RuntimeError, match="Refusing to overwrite"):
                     save_config({"model": "test/replacement"})
 
-        assert config_path.read_text(encoding="utf-8") == original
+        assert config_path.read_text(encoding="utf-8", errors="replace") == original
 
     def test_config_set_refuses_to_overwrite_unreadable_existing_config(self, tmp_path):
         config_path = tmp_path / "config.yaml"
@@ -488,7 +488,7 @@ class TestSaveAndLoadRoundtrip:
                 with pytest.raises(RuntimeError, match="Refusing to overwrite"):
                     set_config_value("model.provider", "openai")
 
-        assert config_path.read_text(encoding="utf-8") == original
+        assert config_path.read_text(encoding="utf-8", errors="replace") == original
 
     def test_atomic_config_write_refuses_unreadable_existing_config(self, tmp_path):
         """The shared chokepoint every sibling write site routes through must
@@ -505,7 +505,7 @@ class TestSaveAndLoadRoundtrip:
             with pytest.raises(RuntimeError, match="Refusing to overwrite"):
                 atomic_config_write(config_path, {"model": {"provider": "openai"}})
 
-        assert config_path.read_text(encoding="utf-8") == original
+        assert config_path.read_text(encoding="utf-8", errors="replace") == original
 
     def test_atomic_config_write_creates_new_file(self, tmp_path):
         """A genuinely absent config.yaml must still be created — the guard
@@ -516,7 +516,7 @@ class TestSaveAndLoadRoundtrip:
         assert not config_path.exists()
         atomic_config_write(config_path, {"model": {"provider": "openrouter"}})
         assert config_path.exists()
-        assert "openrouter" in config_path.read_text(encoding="utf-8")
+        assert "openrouter" in config_path.read_text(encoding="utf-8", errors="replace")
 
     def test_save_config_normalizes_legacy_root_level_max_turns(self, tmp_path):
         with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
@@ -549,7 +549,7 @@ class TestSaveAndLoadRoundtrip:
                 raw=True,
             )
 
-            saved = yaml.safe_load((tmp_path / "config.yaml").read_text(encoding="utf-8"))
+            saved = yaml.safe_load((tmp_path / "config.yaml").read_text(encoding="utf-8", errors="replace"))
             assert saved["model"] == "test/custom-model"
             assert saved["platforms"]["email"]["unauthorized_dm_behavior"] == "pair"
 
@@ -618,7 +618,7 @@ class TestSaveEnvValueSecure:
             token = "sk-ant-oat01-abc#xyz#more"
             save_env_value("ANTHROPIC_TOKEN", token)
 
-            content = (tmp_path / ".env").read_text(encoding="utf-8")
+            content = (tmp_path / ".env").read_text(encoding="utf-8", errors="replace")
             assert f'ANTHROPIC_TOKEN="{token}"' in content
 
             parsed = dotenv_values(str(tmp_path / ".env"))
@@ -633,7 +633,7 @@ class TestSaveEnvValueSecure:
             token = 'abc"def\\ghi#jkl'
             save_env_value("ANTHROPIC_TOKEN", token)
 
-            content = (tmp_path / ".env").read_text(encoding="utf-8")
+            content = (tmp_path / ".env").read_text(encoding="utf-8", errors="replace")
             assert 'ANTHROPIC_TOKEN="abc\\"def\\\\ghi#jkl"' in content
 
             parsed = dotenv_values(str(tmp_path / ".env"))
@@ -650,7 +650,7 @@ class TestSaveEnvValueSecure:
             token = 'abc"def\\ghi#jkl'
             save_env_value("ANTHROPIC_TOKEN", token)
 
-            content = (tmp_path / ".env").read_text(encoding="utf-8")
+            content = (tmp_path / ".env").read_text(encoding="utf-8", errors="replace")
             assert content.count("ANTHROPIC_TOKEN=") == 1
             assert 'ANTHROPIC_TOKEN="abc\\"def\\\\ghi#jkl"' in content
 
@@ -674,7 +674,7 @@ class TestSaveEnvValueSecure:
             save_env_value("TERMINAL_SSH_KEY", path)
 
             env_path = tmp_path / ".env"
-            content = env_path.read_text(encoding="utf-8")
+            content = env_path.read_text(encoding="utf-8", errors="replace")
             assert f'TERMINAL_SSH_KEY="{path}"' in content
 
             parsed = dotenv_values(str(env_path))
@@ -709,7 +709,7 @@ class TestSaveEnvValueSecure:
             save_env_value("TABBY_KEY", value)
 
             env_path = tmp_path / ".env"
-            content = env_path.read_text(encoding="utf-8")
+            content = env_path.read_text(encoding="utf-8", errors="replace")
             assert f'TABBY_KEY="{value}"' in content
 
             parsed = dotenv_values(str(env_path))
@@ -738,9 +738,9 @@ class TestSaveEnvValueSecure:
         with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}, clear=False):
             os.environ.pop("TERMINAL_SSH_KEY", None)
             save_env_value("TERMINAL_SSH_KEY", path)
-            first = (tmp_path / ".env").read_text(encoding="utf-8")
+            first = (tmp_path / ".env").read_text(encoding="utf-8", errors="replace")
             save_env_value("TERMINAL_SSH_KEY", path)
-            second = (tmp_path / ".env").read_text(encoding="utf-8")
+            second = (tmp_path / ".env").read_text(encoding="utf-8", errors="replace")
 
             assert first == second
             assert first.count('TERMINAL_SSH_KEY="') == 1
@@ -755,13 +755,13 @@ class TestSaveEnvValueSecure:
         with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}, clear=False):
             os.environ.pop("TERMINAL_SSH_KEY", None)
             save_env_value("TERMINAL_SSH_KEY", path)
-            first = (tmp_path / ".env").read_text(encoding="utf-8")
+            first = (tmp_path / ".env").read_text(encoding="utf-8", errors="replace")
 
             # Real read-back boundary (what setup uses via get_env_value/dotenv).
             read_back = dotenv_values(str(tmp_path / ".env"))["TERMINAL_SSH_KEY"]
             assert read_back == path
             save_env_value("TERMINAL_SSH_KEY", read_back)
-            second = (tmp_path / ".env").read_text(encoding="utf-8")
+            second = (tmp_path / ".env").read_text(encoding="utf-8", errors="replace")
 
             assert first == second
             assert f'TERMINAL_SSH_KEY="{path}"' in second
@@ -779,7 +779,7 @@ class TestSaveEnvValueSecure:
             os.environ.pop("MULTI_KEY", None)
             save_env_value("MULTI_KEY", raw)
 
-            content = (tmp_path / ".env").read_text(encoding="utf-8")
+            content = (tmp_path / ".env").read_text(encoding="utf-8", errors="replace")
             # Single KEY= line, no embedded raw newlines in the value payload.
             lines = [ln for ln in content.splitlines() if ln.startswith("MULTI_KEY=")]
             assert len(lines) == 1
@@ -804,7 +804,7 @@ class TestSaveEnvValueSecure:
             os.environ.pop("KEEP_SIMPLE", None)
             save_env_value("NEW_KEY", "bar-simple")
 
-            content = env_path.read_text(encoding="utf-8")
+            content = env_path.read_text(encoding="utf-8", errors="replace")
             # Newly written simple value is unquoted.
             assert "NEW_KEY=bar-simple\n" in content
             assert 'NEW_KEY="' not in content
@@ -828,7 +828,7 @@ class TestSaveEnvValueSecure:
             os.environ.pop("PLAIN", None)
             save_env_value("PLAIN", "ok2")
 
-            content = env_path.read_text(encoding="utf-8")
+            content = env_path.read_text(encoding="utf-8", errors="replace")
             # Legacy spaced line not re-serialized by this write.
             assert (
                 "TERMINAL_SSH_KEY=/Users/me/Application Support/key\n" in content
@@ -848,9 +848,9 @@ class TestSaveEnvValueSecure:
         with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}, clear=False):
             os.environ.pop("TERMINAL_SSH_KEY", None)
             save_env_value("TERMINAL_SSH_KEY", raw)
-            first = (tmp_path / ".env").read_text(encoding="utf-8")
+            first = (tmp_path / ".env").read_text(encoding="utf-8", errors="replace")
             save_env_value("TERMINAL_SSH_KEY", raw)
-            second = (tmp_path / ".env").read_text(encoding="utf-8")
+            second = (tmp_path / ".env").read_text(encoding="utf-8", errors="replace")
             assert first == second
             # One outer wrap layer only (escaped inner quotes, not nested wraps).
             line = [
@@ -981,7 +981,7 @@ class TestSaveConfigAtomicity:
 
             # Read raw YAML to verify it's valid and correct
             config_path = tmp_path / "config.yaml"
-            with open(config_path, encoding="utf-8") as f:
+            with open(config_path, encoding="utf-8", errors="replace") as f:
                 raw = yaml.safe_load(f)
             assert raw["model"] == "test/atomic-model"
             assert raw["agent"]["max_turns"] == 77
@@ -1344,7 +1344,7 @@ class TestCustomProviderCompatibility:
 
         with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
             migrate_config(interactive=False, quiet=True)
-            raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            raw = yaml.safe_load(config_path.read_text(encoding="utf-8", errors="replace"))
 
         from hermes_cli.config import DEFAULT_CONFIG
         assert raw["_config_version"] == DEFAULT_CONFIG["_config_version"]
@@ -1396,7 +1396,7 @@ class TestCustomProviderCompatibility:
 
         with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
             migrate_config(interactive=False, quiet=True)
-            raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            raw = yaml.safe_load(config_path.read_text(encoding="utf-8", errors="replace"))
             compatible = get_compatible_custom_providers(raw)
 
         assert "custom_providers" not in raw
@@ -1569,7 +1569,7 @@ class TestModelCatalogConfigMigration:
 
         with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
             migrate_config(interactive=False, quiet=True)
-            raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            raw = yaml.safe_load(config_path.read_text(encoding="utf-8", errors="replace"))
 
         assert raw["_config_version"] == DEFAULT_CONFIG["_config_version"]
         assert (
@@ -1596,7 +1596,7 @@ class TestModelCatalogConfigMigration:
 
         with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
             migrate_config(interactive=False, quiet=True)
-            raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            raw = yaml.safe_load(config_path.read_text(encoding="utf-8", errors="replace"))
 
         assert raw["_config_version"] == DEFAULT_CONFIG["_config_version"]
         assert raw["model_catalog"]["url"] == "https://catalog.example.com/model-catalog.json"
@@ -1617,7 +1617,7 @@ class TestInterimAssistantMessageConfig:
 
         with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
             migrate_config(interactive=False, quiet=True)
-            raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            raw = yaml.safe_load(config_path.read_text(encoding="utf-8", errors="replace"))
             loaded = load_config()
 
         from hermes_cli.config import DEFAULT_CONFIG
@@ -1655,7 +1655,7 @@ class TestDiscordChannelPromptsConfig:
 
         with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
             migrate_config(interactive=False, quiet=True)
-            raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            raw = yaml.safe_load(config_path.read_text(encoding="utf-8", errors="replace"))
 
         from hermes_cli.config import DEFAULT_CONFIG
         assert raw["_config_version"] == DEFAULT_CONFIG["_config_version"]
@@ -1688,7 +1688,7 @@ class TestDiscordChannelPromptsConfig:
 
         with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
             migrate_config(interactive=False, quiet=True)
-            raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            raw = yaml.safe_load(config_path.read_text(encoding="utf-8", errors="replace"))
 
         # custom_providers migrated to providers dict (by design, v11->v12)
         assert "custom_providers" not in raw
@@ -1937,7 +1937,7 @@ class TestMigrationWriteInvariant:
         )
         with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
             migrate_config(interactive=False, quiet=True)
-            raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            raw = yaml.safe_load(config_path.read_text(encoding="utf-8", errors="replace"))
             loaded = load_config()
 
         assert raw["_config_version"] == latest
@@ -1988,7 +1988,7 @@ feishu:
                 },
                 merge_existing=True,
             )
-            raw = yaml.safe_load((tmp_path / "config.yaml").read_text(encoding="utf-8"))
+            raw = yaml.safe_load((tmp_path / "config.yaml").read_text(encoding="utf-8", errors="replace"))
 
         assert raw["platforms"]["feishu"]["extra"]["app_id"] == "cli_xxx"
         assert raw["feishu"]["require_mention"] is True
@@ -2007,7 +2007,7 @@ platforms:
         (tmp_path / "config.yaml").write_text(body, encoding="utf-8")
         with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
             save_config({"model": {"default": "other-model", "provider": "openrouter"}})
-            raw = yaml.safe_load((tmp_path / "config.yaml").read_text(encoding="utf-8"))
+            raw = yaml.safe_load((tmp_path / "config.yaml").read_text(encoding="utf-8", errors="replace"))
 
         assert raw["model"]["default"] == "other-model"
         assert "platforms" not in raw
@@ -2034,7 +2034,7 @@ platforms:
             config.setdefault("agent", {})["verify_on_stop"] = False
             config["_config_version"] = 32
             _persist_migration(config)
-            raw = yaml.safe_load((tmp_path / "config.yaml").read_text(encoding="utf-8"))
+            raw = yaml.safe_load((tmp_path / "config.yaml").read_text(encoding="utf-8", errors="replace"))
 
         assert raw["platforms"]["feishu"]["extra"]["app_id"] == "cli_xxx"
         assert raw["agent"]["verify_on_stop"] is False
@@ -2061,7 +2061,7 @@ feishu:
         (tmp_path / "config.yaml").write_text(body, encoding="utf-8")
         with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
             migrate_config(interactive=False, quiet=True)
-            raw = yaml.safe_load((tmp_path / "config.yaml").read_text(encoding="utf-8"))
+            raw = yaml.safe_load((tmp_path / "config.yaml").read_text(encoding="utf-8", errors="replace"))
 
         assert raw["platforms"]["feishu"]["extra"]["app_id"] == "cli_xxx"
         assert raw["feishu"]["require_mention"] is True
@@ -2223,7 +2223,7 @@ class TestConfigNormalizationDoesNotOverwriteUserValues:
 
         with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
             save_config(load_config())
-            raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            raw = yaml.safe_load(config_path.read_text(encoding="utf-8", errors="replace"))
 
         assert "max_turns" not in raw.get("agent", {})
         assert raw["memory"]["user_char_limit"] == 2200
@@ -2243,7 +2243,7 @@ class TestConfigNormalizationDoesNotOverwriteUserValues:
 
         with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
             save_config(load_config())
-            raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            raw = yaml.safe_load(config_path.read_text(encoding="utf-8", errors="replace"))
 
         assert raw["approvals"]["mode"] == "manual"
         assert raw["memory"]["user_char_limit"] == 2200
@@ -2257,7 +2257,7 @@ class TestConfigNormalizationDoesNotOverwriteUserValues:
 
         with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
             save_config(load_config())
-            raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            raw = yaml.safe_load(config_path.read_text(encoding="utf-8", errors="replace"))
 
         assert raw["_config_version"] == DEFAULT_CONFIG["_config_version"]
         assert raw["memory"]["user_char_limit"] == 2200
@@ -2277,7 +2277,7 @@ class TestConfigNormalizationDoesNotOverwriteUserValues:
 
         with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
             save_config(load_config())
-            raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            raw = yaml.safe_load(config_path.read_text(encoding="utf-8", errors="replace"))
 
         assert raw == {"_config_version": DEFAULT_CONFIG["_config_version"]}
 
@@ -2292,7 +2292,7 @@ class TestConfigNormalizationDoesNotOverwriteUserValues:
             config = load_config()
             config.setdefault("agent", {})["max_turns"] = DEFAULT_CONFIG["agent"]["max_turns"]
             save_config(config, preserve_keys={("agent", "max_turns")})
-            raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            raw = yaml.safe_load(config_path.read_text(encoding="utf-8", errors="replace"))
 
         assert raw["_config_version"] == DEFAULT_CONFIG["_config_version"]
         assert raw["agent"]["max_turns"] == DEFAULT_CONFIG["agent"]["max_turns"]

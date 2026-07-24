@@ -2050,7 +2050,7 @@ class TestLateEnvRepointScopesStore:
         new_file = new_home.resolve() / "cron" / "jobs.json"
         assert new_file.is_file()
         # ...and the import-time file is byte-identical to the sentinel.
-        assert old_file.read_text(encoding="utf-8") == sentinel
+        assert old_file.read_text(encoding="utf-8", errors="replace") == sentinel
 
 
 # =========================================================================

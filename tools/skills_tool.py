@@ -744,7 +744,7 @@ def _find_all_skills(*, skip_disabled: bool = False) -> List[Dict[str, Any]]:
             skill_dir = skill_md.parent
 
             try:
-                content = skill_md.read_text(encoding="utf-8")[:4000]
+                content = skill_md.read_text(encoding="utf-8", errors="replace")[:4000]
                 frontmatter, body = _parse_frontmatter(content)
 
                 if not skill_matches_platform(frontmatter):
@@ -888,7 +888,7 @@ def _serve_plugin_skill(
             }).decode('utf-8')
 
     try:
-        content = skill_md.read_text(encoding="utf-8")
+        content = skill_md.read_text(encoding="utf-8", errors="replace")
     except Exception as e:
         return orjson.dumps({"success": False, "error": f"Failed to read skill '{namespace}:{bare}': {e}"}).decode('utf-8')
 
@@ -1145,7 +1145,7 @@ def skill_view(
                     _record(found_skill_md.parent, found_skill_md)
                     continue
                 try:
-                    fm_content = found_skill_md.read_text(encoding="utf-8")
+                    fm_content = found_skill_md.read_text(encoding="utf-8", errors="replace")
                     fm, _ = _parse_frontmatter(fm_content)
                 except Exception:
                     fm = {}
@@ -1200,7 +1200,7 @@ def skill_view(
 
         # Read the file once — reused for platform check and main content below
         try:
-            content = skill_md.read_text(encoding="utf-8")
+            content = skill_md.read_text(encoding="utf-8", errors="replace")
         except Exception as e:
             return orjson.dumps({
                     "success": False,
@@ -1327,7 +1327,7 @@ def skill_view(
 
             # Read the file content
             try:
-                content = target_file.read_text(encoding="utf-8")
+                content = target_file.read_text(encoding="utf-8", errors="replace")
             except UnicodeDecodeError:
                 # Binary file - return info about it instead
                 return orjson.dumps({

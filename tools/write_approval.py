@@ -159,7 +159,7 @@ def list_pending(subsystem: str) -> List[Dict[str, Any]]:
     records: List[Dict[str, Any]] = []
     for p in d.glob("*.json"):
         try:
-            records.append(orjson.loads(p.read_text(encoding="utf-8")))
+            records.append(orjson.loads(p.read_text(encoding="utf-8", errors="replace")))
         except Exception:
             logger.warning("Skipping unreadable pending record: %s", p)
     records.sort(key=lambda r: r.get("created_at", 0))
@@ -172,7 +172,7 @@ def get_pending(subsystem: str, pending_id: str) -> Optional[Dict[str, Any]]:
     if not path.exists():
         return None
     try:
-        return orjson.loads(path.read_text(encoding="utf-8"))
+        return orjson.loads(path.read_text(encoding="utf-8", errors="replace"))
     except Exception:
         return None
 
@@ -464,7 +464,7 @@ def skill_pending_diff(record: Dict[str, Any]) -> str:
                 p = base / "SKILL.md"
             try:
                 if p.exists():
-                    current = p.read_text(encoding="utf-8")
+                    current = p.read_text(encoding="utf-8", errors="replace")
             except Exception:
                 current = ""
 

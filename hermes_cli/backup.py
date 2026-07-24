@@ -927,7 +927,7 @@ def create_quick_snapshot(
         "total_size": sum(manifest.values()),
         "files": manifest,
     }
-    with open(snap_dir / "manifest.json", "w", encoding="utf-8") as f:
+    with open(snap_dir / "manifest.json", "w", encoding="utf-8", errors="replace") as f:
         f.write(orjson.dumps(meta, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
     # Auto-prune. Defaults preserve historical manual /snapshot behavior; callers
@@ -955,7 +955,7 @@ def list_quick_snapshots(
         manifest_path = d / "manifest.json"
         if manifest_path.exists():
             try:
-                with open(manifest_path, encoding="utf-8") as f:
+                with open(manifest_path, encoding="utf-8", errors="replace") as f:
                     results.append(orjson.loads(f.read()))
             except (orjson.JSONDecodeError, OSError):
                 results.append({"id": d.name, "file_count": 0, "total_size": 0})
@@ -999,7 +999,7 @@ def restore_quick_snapshot(
     if not manifest_path.exists():
         return False
 
-    with open(manifest_path, encoding="utf-8") as f:
+    with open(manifest_path, encoding="utf-8", errors="replace") as f:
         meta = orjson.loads(f.read())
 
     restored = 0

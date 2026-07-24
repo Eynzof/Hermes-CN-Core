@@ -30,7 +30,7 @@ def _load_cache() -> dict:
     """Load the sticker cache from disk."""
     if CACHE_PATH.exists():
         try:
-            return orjson.loads(CACHE_PATH.read_text(encoding="utf-8"))
+            return orjson.loads(CACHE_PATH.read_text(encoding="utf-8", errors="replace"))
         except (orjson.JSONDecodeError, OSError):
             return {}
     return {}
@@ -43,7 +43,7 @@ def _save_cache(cache: dict) -> None:
         dir=str(CACHE_PATH.parent), suffix=".tmp"
     )
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
+        with os.fdopen(fd, "w", encoding="utf-8", errors="replace") as f:
             f.write(orjson.dumps(cache, option=orjson.OPT_INDENT_2).decode('utf-8'))
             f.flush()
             os.fsync(f.fileno())

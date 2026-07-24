@@ -252,7 +252,7 @@ def rewrite_relative_links(body: str, meta: dict[str, Any]) -> str:
 
 
 def parse_skill_md(path: Path) -> dict[str, Any]:
-    text = path.read_text(encoding="utf-8")
+    text = path.read_text(encoding="utf-8", errors="replace")
     if not text.startswith("---"):
         raise ValueError(f"{path}: no frontmatter")
     parts = text.split("---", 2)
@@ -695,7 +695,7 @@ def write_sidebar(entries):
     skills_subtree = "\n".join(_render_sidebar_item(skills_top, 8)) + "\n"
 
     sidebar_path = REPO / "website" / "sidebars.ts"
-    text = sidebar_path.read_text(encoding="utf-8")
+    text = sidebar_path.read_text(encoding="utf-8", errors="replace")
     # Replace the existing Skills block.
     pattern = re.compile(
         r"        \{\n"

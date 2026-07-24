@@ -768,7 +768,7 @@ def _read_logging_config():
         from utils import fast_safe_load
         config_path = get_config_path()
         if config_path.exists():
-            with open(config_path, "r", encoding="utf-8") as f:
+            with open(config_path, "r", encoding="utf-8", errors="replace") as f:
                 cfg = fast_safe_load(f) or {}
             # Managed scope: an administrator can pin logging.* too. Overlay via
             # the shared helper (fail-open) since this reads config.yaml directly.

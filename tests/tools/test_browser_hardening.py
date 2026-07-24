@@ -267,7 +267,7 @@ class TestTruncateSnapshot:
         assert m, f"no stored-path pointer in truncation note: {result[-300:]}"
         stored = Path(m.group(1))
         assert stored.exists()
-        content = stored.read_text(encoding="utf-8")
+        content = stored.read_text(encoding="utf-8", errors="replace")
         # The full snapshot is in the file — including refs beyond the cut.
         assert '[ref=e499]' in content
 
@@ -293,7 +293,7 @@ class TestTruncateSnapshot:
         )
         stored = _store_full_snapshot(snapshot)
         assert stored is not None
-        content = Path(stored).read_text(encoding="utf-8")
+        content = Path(stored).read_text(encoding="utf-8", errors="replace")
         assert "STOREDSNAPSHOTSECRET" not in content
 
     def test_extract_relevant_content_appends_stored_pointer(self):

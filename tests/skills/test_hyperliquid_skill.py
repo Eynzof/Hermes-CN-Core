@@ -310,7 +310,7 @@ def test_main_export_json_writes_expected_contract(tmp_path, capsys):
 
     stdout = capsys.readouterr().out
     rendered = orjson.loads(stdout)
-    saved = orjson.loads(output_path.read_text(encoding="utf-8"))
+    saved = orjson.loads(output_path.read_text(encoding="utf-8", errors="replace"))
 
     assert exit_code == 0
     assert rendered["output_path"] == str(output_path)
@@ -350,7 +350,7 @@ def test_main_export_json_skips_funding_for_spot(tmp_path, capsys):
 
     stdout = capsys.readouterr().out
     rendered = orjson.loads(stdout)
-    saved = orjson.loads(output_path.read_text(encoding="utf-8"))
+    saved = orjson.loads(output_path.read_text(encoding="utf-8", errors="replace"))
 
     assert exit_code == 0
     assert rendered["summary"]["funding_count"] == 0

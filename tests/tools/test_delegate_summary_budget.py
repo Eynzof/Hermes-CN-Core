@@ -60,7 +60,7 @@ def test_batch_overflow_trimmed_and_spilled_losslessly(monkeypatch):
             path = r.get("summary_full_path")
             assert path and os.path.exists(path)
             # The spill file holds the FULL original text — nothing is lost.
-            with open(path, encoding="utf-8") as fh:
+            with open(path, encoding="utf-8", errors="replace") as fh:
                 assert fh.read() == big
             # The footer points the parent at the full version with an offset.
             assert "read_file" in r["summary"]

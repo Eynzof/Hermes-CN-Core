@@ -43,7 +43,7 @@ def test_read_file_small(timing_context, temp_test_files):
     p = temp_test_files["small"]
     with timing_context.measure("read_small"):
         for _ in range(10):
-            content = p.read_text(encoding="utf-8")
+            content = p.read_text(encoding="utf-8", errors="replace")
     total_ms = timing_context.summary().get("read_small", {}).get("total_ms", 0)
     avg_ms = total_ms / 10
     print(f"\n  Read 1KB x10: {total_ms:.1f}ms (avg {avg_ms:.1f}ms)")
@@ -56,7 +56,7 @@ def test_read_file_medium(timing_context, temp_test_files):
     p = temp_test_files["medium"]
     with timing_context.measure("read_medium"):
         for _ in range(5):
-            content = p.read_text(encoding="utf-8")
+            content = p.read_text(encoding="utf-8", errors="replace")
     total_ms = timing_context.summary().get("read_medium", {}).get("total_ms", 0)
     avg_ms = total_ms / 5
     print(f"\n  Read 100KB x5: {total_ms:.1f}ms (avg {avg_ms:.1f}ms)")
@@ -68,7 +68,7 @@ def test_read_file_large(timing_context, temp_test_files):
     """Measure reading a large (1MB) file."""
     p = temp_test_files["large"]
     with timing_context.measure("read_large"):
-        content = p.read_text(encoding="utf-8")
+        content = p.read_text(encoding="utf-8", errors="replace")
     total_ms = timing_context.summary().get("read_large", {}).get("total_ms", 0)
     print(f"\n  Read 1MB: {total_ms:.1f}ms")
     assert total_ms < 1000, f"Read 1MB took {total_ms:.1f}ms (expected < 1000ms)"
@@ -103,7 +103,7 @@ def test_search_files_timing(timing_context, temp_test_files):
     with timing_context.measure("search_by_content"):
         for _ in range(10):
             for f in py_dir.glob("*.py"):
-                content = f.read_text(encoding="utf-8")
+                content = f.read_text(encoding="utf-8", errors="replace")
                 if "hello" in content:
                     _ = True
 
@@ -130,7 +130,7 @@ def test_patch_file_timing(timing_context, tmp_path):
     with timing_context.measure("patch_apply"):
         for _ in range(10):
             # Simulate patch: read, apply diff, write
-            cur = tf.read_text(encoding="utf-8")
+            cur = tf.read_text(encoding="utf-8", errors="replace")
             # Simple simulated apply
             tf.write_text(new_content, encoding="utf-8")
 
@@ -152,7 +152,7 @@ def test_count_lines_timing(timing_context, tmp_path):
     for name, path in files.items():
         with timing_context.measure(f"count_lines_{name}"):
             for _ in range(10):
-                text = path.read_text(encoding="utf-8")
+                text = path.read_text(encoding="utf-8", errors="replace")
                 line_count = len(text.splitlines())
 
     summary = timing_context.summary()

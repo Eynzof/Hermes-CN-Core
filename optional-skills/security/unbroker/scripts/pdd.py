@@ -302,7 +302,7 @@ def cmd_cdp(args) -> None:
 
 def cmd_intake(args) -> None:
     if args.json:
-        data = json.loads(Path(args.json).read_text(encoding="utf-8"))
+        data = json.loads(Path(args.json).read_text(encoding="utf-8", errors="replace"))
         identity = data["identity"]
         consent = data.get("consent", {})
         residency = data.get("residency_jurisdiction", "US")

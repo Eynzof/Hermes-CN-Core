@@ -274,7 +274,7 @@ class TestEntryPointsImportBootstrap:
         full_path = repo_root / path
         assert full_path.exists(), f"entry point missing: {full_path}"
 
-        source = full_path.read_text(encoding="utf-8")
+        source = full_path.read_text(encoding="utf-8", errors="replace")
 
         # Find the first non-comment, non-blank line that starts with
         # 'import ' or 'from ', or a Try block whose body is the import.

@@ -100,7 +100,7 @@ def _load_config() -> dict:
     config_path = get_hermes_home() / "mem0.json"
     if config_path.exists():
         try:
-            file_cfg = orjson.loads(config_path.read_text(encoding="utf-8"))
+            file_cfg = orjson.loads(config_path.read_text(encoding="utf-8", errors="replace"))
             config.update({k: v for k, v in file_cfg.items()
                            if v is not None and v != ""})
         except Exception:

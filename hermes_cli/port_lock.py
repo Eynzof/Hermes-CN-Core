@@ -69,7 +69,7 @@ def _lock_file_path(port: int, hermes_home: str | Path | None = None) -> Path:
 def _read_lock_owner(path: Path) -> Optional[int]:
     """Read the PID written into a lock file, if any."""
     try:
-        text = path.read_text(encoding="utf-8").strip()
+        text = path.read_text(encoding="utf-8", errors="replace").strip()
         if not text:
             return None
         first = text.splitlines()[0].strip()
@@ -125,7 +125,7 @@ def _pid_is_running(pid: int) -> bool:
             output = subprocess.check_output(
                 ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
                 stderr=subprocess.DEVNULL,
-                text=True, errors="replace",
+                text=True, encoding="utf-8", errors="replace",
                 timeout=5,
             )
             return str(pid) in output

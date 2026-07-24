@@ -406,7 +406,7 @@ def check_alias_collision(name: str) -> Optional[str]:
     try:
         result = subprocess.run(
             ["where" if is_windows else "which", canon],
-            capture_output=True, text=True, errors="replace", timeout=5,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=5,
         )
         if result.returncode == 0:
             existing_path = result.stdout.strip().splitlines()[0]
@@ -664,7 +664,7 @@ def _read_distribution_meta(profile_dir: Path) -> tuple:
         return None, None, None
     try:
         import yaml
-        with open(mf_path, "r", encoding="utf-8") as f:
+        with open(mf_path, "r", encoding="utf-8", errors="replace") as f:
             data = yaml.safe_load(f) or {}
         if not isinstance(data, dict):
             return None, None, None
@@ -684,7 +684,7 @@ def _read_config_model(profile_dir: Path) -> tuple:
         return None, None
     try:
         import yaml
-        with open(config_path, "r", encoding="utf-8") as f:
+        with open(config_path, "r", encoding="utf-8", errors="replace") as f:
             cfg = yaml.safe_load(f) or {}
         model_cfg = cfg.get("model", {})
         if isinstance(model_cfg, str):
@@ -825,7 +825,7 @@ def read_profile_meta(profile_dir: Path) -> dict:
         return {"description": "", "description_auto": False}
     try:
         import yaml
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
             data = yaml.safe_load(f) or {}
     except Exception:
         return {"description": "", "description_auto": False}
@@ -856,7 +856,7 @@ def write_profile_meta(
     existing: dict = {}
     if path.is_file():
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, "r", encoding="utf-8", errors="replace") as f:
                 loaded = yaml.safe_load(f) or {}
             if isinstance(loaded, dict):
                 existing = loaded
@@ -2110,7 +2110,7 @@ def _migrate_honcho_profile_host(old_name: str, new_name: str, new_dir: Path) ->
         seen.add(resolved)
 
         try:
-            raw = orjson.loads(path.read_text(encoding="utf-8"))
+            raw = orjson.loads(path.read_text(encoding="utf-8", errors="replace"))
         except (OSError, orjson.JSONDecodeError):
             continue
 

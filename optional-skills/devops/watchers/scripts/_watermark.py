@@ -55,7 +55,7 @@ class Watermark:
         wm = cls(name, max_seen=max_seen)
         if wm._path.exists():
             try:
-                wm._data = orjson.loads(wm._path.read_text(encoding="utf-8"))
+                wm._data = orjson.loads(wm._path.read_text(encoding="utf-8", errors="replace"))
                 wm._data.setdefault("seen_ids", [])
                 wm._data["first_run"] = False
             except (OSError, orjson.JSONDecodeError):

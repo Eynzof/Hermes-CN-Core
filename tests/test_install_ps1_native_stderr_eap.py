@@ -15,7 +15,7 @@ INSTALL_PS1 = REPO_ROOT / "scripts" / "install.ps1"
 
 
 def _install_ps1() -> str:
-    return INSTALL_PS1.read_text(encoding="utf-8")
+    return INSTALL_PS1.read_text(encoding="utf-8", errors="replace")
 
 
 def _assert_relaxed_call(text: str, command_pattern: str) -> None:

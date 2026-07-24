@@ -210,7 +210,7 @@ def _exchange_refresh_token(cred: OAuthCredential, *, now: float) -> OAuthCreden
 
 def _read_config(path: Path) -> dict[str, Any]:
     try:
-        return orjson.loads(path.read_text(encoding="utf-8"))
+        return orjson.loads(path.read_text(encoding="utf-8", errors="replace"))
     except (OSError, orjson.JSONDecodeError):
         return {}
 
@@ -222,7 +222,7 @@ def _atomic_write_config(path: Path, raw: dict[str, Any]) -> None:
     text = orjson.dumps(raw, option=orjson.OPT_INDENT_2).decode('utf-8') + "\n"
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        with os.fdopen(fd, "w", encoding="utf-8", errors="replace") as fh:
             fh.write(text)
     except Exception:
         tmp.unlink(missing_ok=True)

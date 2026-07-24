@@ -37,7 +37,7 @@ def test_write_loop_heartbeat_atomic_json(tmp_path, monkeypatch):
     path = write_loop_heartbeat(pid=4242, start_time=100.5, home=tmp_path)
     assert path == tmp_path / "state" / "gateway.heartbeat"
     assert path.is_file()
-    data = json.loads(path.read_text(encoding="utf-8"))
+    data = json.loads(path.read_text(encoding="utf-8", errors="replace"))
     assert data["pid"] == 4242
     assert data["start_time"] == 100.5
     assert "updated_at" in data
@@ -95,7 +95,7 @@ def test_arm_shutdown_watchdog_fires_with_dump_and_exit(tmp_path):
     assert exit_codes == [9]
     assert snapshot_calls == [1]
     assert dump.is_file()
-    text = dump.read_text(encoding="utf-8")
+    text = dump.read_text(encoding="utf-8", errors="replace")
     assert "shutdown_watchdog_fired" in text
     assert "faulthandler dump" in text
     assert get_shutdown_watchdog_dump_path(tmp_path).name == "gateway-shutdown-watchdog.log"
@@ -118,14 +118,14 @@ async def test_loop_heartbeat_rewrites_until_cancelled(tmp_path):
                 break
             await asyncio.sleep(0.02)
         assert path.is_file()
-        first = path.read_text(encoding="utf-8")
+        first = path.read_text(encoding="utf-8", errors="replace")
         assert json.loads(first)["start_time"] == 12.0
 
         # Poll until a refresh lands (monotonic / updated_at change).
         second = first
         for _ in range(100):
             await asyncio.sleep(0.03)
-            second = path.read_text(encoding="utf-8")
+            second = path.read_text(encoding="utf-8", errors="replace")
             if second != first:
                 break
         assert second != first

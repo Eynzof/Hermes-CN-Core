@@ -144,7 +144,7 @@ def nous_rate_limit_remaining() -> Optional[float]:
     """
     path = _state_path()
     try:
-        with open(path, encoding="utf-8") as f:
+        with open(path, encoding="utf-8", errors="replace") as f:
             state = orjson.loads(f.read())
         reset_at = state.get("reset_at", 0)
         remaining = reset_at - time.time()

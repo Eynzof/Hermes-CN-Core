@@ -83,7 +83,7 @@ class _FakeEnv:
             path = cat_match.group(1).strip().strip("'\"")
             abs_path = self._resolve(path, cwd)
             try:
-                with open(abs_path, "r", encoding="utf-8") as fh:
+                with open(abs_path, "r", encoding="utf-8", errors="replace") as fh:
                     return {"output": fh.read(), "returncode": 0}
             except Exception:
                 return {"output": "", "returncode": 1}
@@ -202,7 +202,7 @@ class TestShellFileOpsCwdTracking:
                 path = command.strip()[4:].strip().strip("'\"")
                 abs_path = os.path.join(cwd or ".", path) if not os.path.isabs(path) else path
                 try:
-                    with open(abs_path, "r", encoding="utf-8") as fh:
+                    with open(abs_path, "r", encoding="utf-8", errors="replace") as fh:
                         return {"output": fh.read(), "returncode": 0}
                 except Exception:
                     return {"output": "", "returncode": 1}

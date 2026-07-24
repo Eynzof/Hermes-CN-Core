@@ -14,7 +14,7 @@ _PATCHER = Path("plugins/platforms/photon/sidecar/patch-spectrum-mixed-attachmen
 
 def test_sidecar_applies_spectrum_patch_before_importing_sdk() -> None:
     """Existing installs should self-heal at runtime, not only during npm postinstall."""
-    index = Path("plugins/platforms/photon/sidecar/index.mjs").read_text(encoding="utf-8")
+    index = Path("plugins/platforms/photon/sidecar/index.mjs").read_text(encoding="utf-8", errors="replace")
     assert "import { patchSpectrumTs }" in index
     assert "patchSpectrumTs();" in index
     assert index.index("patchSpectrumTs();") < index.index('await import("spectrum-ts")')
@@ -22,7 +22,7 @@ def test_sidecar_applies_spectrum_patch_before_importing_sdk() -> None:
 
 def test_sidecar_healthz_reports_stream_health() -> None:
     """Local process health must include upstream stream health."""
-    index = Path("plugins/platforms/photon/sidecar/index.mjs").read_text(encoding="utf-8")
+    index = Path("plugins/platforms/photon/sidecar/index.mjs").read_text(encoding="utf-8", errors="replace")
     assert "function streamHealthSnapshot()" in index
     assert 'return ok(res, { stream: streamHealthSnapshot() });' in index
     assert "STREAM_INTERRUPTED_DEGRADE_COUNT" in index
@@ -38,7 +38,7 @@ def test_sidecar_intercepts_both_console_channels() -> None:
     only console.error would miss every interrupt burst (the primary silent-
     inbound symptom), so both channels must be intercepted.
     """
-    index = Path("plugins/platforms/photon/sidecar/index.mjs").read_text(encoding="utf-8")
+    index = Path("plugins/platforms/photon/sidecar/index.mjs").read_text(encoding="utf-8", errors="replace")
     assert "function classifyStreamLog(" in index
     assert "console.error = (...args) =>" in index
     assert "console.log = (...args) =>" in index
@@ -48,7 +48,7 @@ def test_sidecar_intercepts_both_console_channels() -> None:
 
 def test_sidecar_labels_catchup_internal_errors_as_upstream_photon() -> None:
     """Photon cloud stream failures should not look like local auth problems."""
-    index = Path("plugins/platforms/photon/sidecar/index.mjs").read_text(encoding="utf-8")
+    index = Path("plugins/platforms/photon/sidecar/index.mjs").read_text(encoding="utf-8", errors="replace")
     assert "function inboundStreamErrorMessage" in index
     assert "EventService/CatchUpEvents" in index
     assert "this is upstream of Hermes" in index
@@ -177,7 +177,7 @@ def test_spectrum_patch_rewrites_the_imessage_mapper(tmp_path: Path) -> None:
     )
     assert result.returncode == 0, result.stderr
 
-    patched = chunk.read_text(encoding="utf-8")
+    patched = chunk.read_text(encoding="utf-8", errors="replace")
     assert "Preserve mixed text + attachment iMessage payloads" in patched
     # Single-attachment bubbles wrap the text + attachment in a group...
     assert "content: asProviderGroup([textMsg, msg2])" in patched  # rebuild
@@ -198,7 +198,7 @@ def test_spectrum_patch_rewrites_the_imessage_mapper(tmp_path: Path) -> None:
         check=False,
     )
     assert again.returncode == 0, again.stderr
-    assert chunk.read_text(encoding="utf-8") == patched
+    assert chunk.read_text(encoding="utf-8", errors="replace") == patched
 
 
 @pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: subprocess/path format fails")

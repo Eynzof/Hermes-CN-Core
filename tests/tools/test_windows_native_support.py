@@ -302,7 +302,7 @@ class TestSigkillFallback:
         """Source-level check that our modules use the safe fallback."""
         rel = module_path.replace(".", "/") + ".py"
         root = Path(__file__).resolve().parents[2]
-        source = (root / rel).read_text(encoding="utf-8")
+        source = (root / rel).read_text(encoding="utf-8", errors="replace")
         assert line_pattern in source, (
             f"{rel} must use the getattr fallback pattern on its SIGKILL site"
         )
@@ -419,7 +419,7 @@ class TestTzdataDependencyDeclared:
 
     def test_pyproject_declares_tzdata_for_win32(self):
         root = Path(__file__).resolve().parents[2]
-        source = (root / "pyproject.toml").read_text(encoding="utf-8")
+        source = (root / "pyproject.toml").read_text(encoding="utf-8", errors="replace")
         # The dependency line should be conditional on sys_platform == 'win32'
         # and should NOT be in the core dependencies for Linux/macOS. We do
         # not care about the exact pinned version (which is bumped over time)
@@ -448,7 +448,7 @@ class TestReadmeNoLongerSaysWindowsUnsupported:
 
     def test_readme_does_not_say_not_supported(self):
         root = Path(__file__).resolve().parents[2]
-        source = (root / "README.md").read_text(encoding="utf-8")
+        source = (root / "README.md").read_text(encoding="utf-8", errors="replace")
         # Previous string (removed in this PR): "Native Windows is not supported"
         assert "Native Windows is not supported" not in source, (
             "README.md still says native Windows is not supported — update the "
@@ -457,7 +457,7 @@ class TestReadmeNoLongerSaysWindowsUnsupported:
 
     def test_readme_mentions_powershell_installer(self):
         root = Path(__file__).resolve().parents[2]
-        source = (root / "README.md").read_text(encoding="utf-8")
+        source = (root / "README.md").read_text(encoding="utf-8", errors="replace")
         assert "install.ps1" in source, (
             "README.md must point at scripts/install.ps1 for Windows users"
         )
@@ -473,7 +473,7 @@ class TestWebServerPtyBridgeGuard:
 
     def test_import_guard_present_in_source(self):
         root = Path(__file__).resolve().parents[2]
-        source = (root / "hermes_cli" / "web_server.py").read_text(encoding="utf-8")
+        source = (root / "hermes_cli" / "web_server.py").read_text(encoding="utf-8", errors="replace")
         assert "_PTY_BRIDGE_AVAILABLE" in source
         assert "except ImportError" in source, (
             "web_server.py must wrap the pty_bridge import in try/except ImportError"
@@ -482,7 +482,7 @@ class TestWebServerPtyBridgeGuard:
     def test_pty_handler_checks_availability_flag(self):
         """The /api/pty handler must short-circuit when the bridge is unavailable."""
         root = Path(__file__).resolve().parents[2]
-        source = (root / "hermes_cli" / "web_server.py").read_text(encoding="utf-8")
+        source = (root / "hermes_cli" / "web_server.py").read_text(encoding="utf-8", errors="replace")
         assert "if not _PTY_BRIDGE_AVAILABLE" in source, (
             "/api/pty handler must return a friendly error when PTY is unavailable"
         )
@@ -502,7 +502,7 @@ class TestEntryPointsConfigureStdio:
     )
     def test_entry_point_calls_configure_stdio(self, relpath):
         root = Path(__file__).resolve().parents[2]
-        source = (root / relpath).read_text(encoding="utf-8")
+        source = (root / relpath).read_text(encoding="utf-8", errors="replace")
         assert "configure_windows_stdio" in source, (
             f"{relpath} must call hermes_cli.stdio.configure_windows_stdio() "
             "early in startup so Windows consoles render Unicode without crashing"
@@ -642,7 +642,7 @@ class TestTuiGatewayEntrySignalGuards:
 
     def test_source_guards_each_signal_installation(self):
         root = Path(__file__).resolve().parents[2]
-        source = (root / "tui_gateway" / "entry.py").read_text(encoding="utf-8")
+        source = (root / "tui_gateway" / "entry.py").read_text(encoding="utf-8", errors="replace")
         # Every signal.signal(...) at module scope must be preceded by a
         # hasattr check.  We look at the text: no bare "signal.signal("
         # call should appear outside a function body without a guard.
@@ -673,7 +673,7 @@ class TestKanbanWaitpidWindowsGuard:
 
     def test_source_gates_waitpid_loop(self):
         root = Path(__file__).resolve().parents[2]
-        source = (root / "hermes_cli" / "kanban_db.py").read_text(encoding="utf-8")
+        source = (root / "hermes_cli" / "kanban_db.py").read_text(encoding="utf-8", errors="replace")
         # Find the waitpid call and confirm it's inside a POSIX gate.
         idx = source.find("os.waitpid(-1, os.WNOHANG)")
         assert idx > 0, "waitpid call must exist"
@@ -710,7 +710,7 @@ class TestCodeExecutionTransportTcpFallback:
 
     def test_generated_client_handles_tcp_endpoint(self):
         root = Path(__file__).resolve().parents[2]
-        source = (root / "tools" / "code_execution_tool.py").read_text(encoding="utf-8")
+        source = (root / "tools" / "code_execution_tool.py").read_text(encoding="utf-8", errors="replace")
         # _UDS_TRANSPORT_HEADER body must parse both transports.
         assert 'endpoint.startswith("tcp://")' in source, (
             "generated sandbox client must accept tcp:// endpoints for Windows"
@@ -721,7 +721,7 @@ class TestCodeExecutionTransportTcpFallback:
 
     def test_server_side_branches_on_use_tcp_rpc(self):
         root = Path(__file__).resolve().parents[2]
-        source = (root / "tools" / "code_execution_tool.py").read_text(encoding="utf-8")
+        source = (root / "tools" / "code_execution_tool.py").read_text(encoding="utf-8", errors="replace")
         assert "_use_tcp_rpc = _IS_WINDOWS" in source
         assert 'rpc_endpoint = f"tcp://{_host}:{_port}"' in source
 
@@ -738,7 +738,7 @@ class TestCronSchedulerBashResolution:
 
     def test_source_uses_shutil_which_for_bash(self):
         root = Path(__file__).resolve().parents[2]
-        source = (root / "cron" / "scheduler.py").read_text(encoding="utf-8")
+        source = (root / "cron" / "scheduler.py").read_text(encoding="utf-8", errors="replace")
         # The old hardcoded path should be gone as the sole bash source.
         # It may still appear as a POSIX fallback after shutil.which(), so
         # we check for the shutil.which call near the .sh/.bash branch.
@@ -748,7 +748,7 @@ class TestCronSchedulerBashResolution:
 
     def test_error_message_when_bash_missing(self):
         root = Path(__file__).resolve().parents[2]
-        source = (root / "cron" / "scheduler.py").read_text(encoding="utf-8")
+        source = (root / "cron" / "scheduler.py").read_text(encoding="utf-8", errors="replace")
         # The graceful-failure message must mention "bash not found" so
         # users without bash see an actionable error instead of a
         # WinError 2 traceback.
@@ -782,7 +782,7 @@ class TestNpmBareSpawnsResolved:
         to the bare name only as a last resort behind a variable).
         """
         root = Path(__file__).resolve().parents[2]
-        source = (root / relpath).read_text(encoding="utf-8")
+        source = (root / relpath).read_text(encoding="utf-8", errors="replace")
         # The forbidden literal: a subprocess invocation that names npm
         # or npx as a bare string inside an argv list.
         forbidden_patterns = [
@@ -838,7 +838,7 @@ class TestLocalEnvironmentWindowsTempDir:
 
     def test_source_has_windows_branch_using_hermes_home(self):
         root = Path(__file__).resolve().parents[2]
-        source = (root / "tools" / "environments" / "local.py").read_text(encoding="utf-8")
+        source = (root / "tools" / "environments" / "local.py").read_text(encoding="utf-8", errors="replace")
         assert "if _IS_WINDOWS:" in source
         assert "get_hermes_home" in source
         assert 'cache_dir = get_hermes_home() / "cache" / "terminal"' in source
@@ -900,7 +900,7 @@ class TestWorktreeSymlinkFallback:
 
     def test_source_has_symlink_fallback(self):
         root = Path(__file__).resolve().parents[2]
-        source = (root / "cli.py").read_text(encoding="utf-8")
+        source = (root / "cli.py").read_text(encoding="utf-8", errors="replace")
         # Look for the try/except that handles OSError around os.symlink
         # with a shutil.copytree fallback.
         assert "os.symlink(str(src_resolved), str(dst))" in source
@@ -921,7 +921,7 @@ class TestGatewayDetachedWatcherWindowsFlags:
 
     def test_hermes_cli_gateway_uses_compat_kwargs(self):
         root = Path(__file__).resolve().parents[2]
-        source = (root / "hermes_cli" / "gateway.py").read_text(encoding="utf-8")
+        source = (root / "hermes_cli" / "gateway.py").read_text(encoding="utf-8", errors="replace")
         assert "windows_detach_popen_kwargs" in source, (
             "hermes_cli/gateway.py must use the platform-aware detach helper"
         )
@@ -932,7 +932,7 @@ class TestGatewayDetachedWatcherWindowsFlags:
 
     def test_gateway_run_update_has_windows_branch(self):
         root = Path(__file__).resolve().parents[2]
-        source = (root / "gateway" / "run.py").read_text(encoding="utf-8")
+        source = (root / "gateway" / "run.py").read_text(encoding="utf-8", errors="replace")
         # Both the /restart and /update paths must have sys.platform=='win32' branches.
         assert 'if sys.platform == "win32":' in source
         # Windows branch uses windows_detach_popen_kwargs
@@ -952,7 +952,7 @@ class TestGatewayDetachedWatcherWindowsFlags:
         ensures a future refactor of the dedent block doesn't silently drop it.
         """
         root = Path(__file__).resolve().parents[2]
-        text = (root / "hermes_cli" / "gateway.py").read_text(encoding="utf-8")
+        text = (root / "hermes_cli" / "gateway.py").read_text(encoding="utf-8", errors="replace")
         marker = "watcher = textwrap.dedent("
         idx = text.find(marker)
         assert idx != -1, "watcher block not found in gateway.py"
@@ -993,7 +993,7 @@ class TestGatewayDetachedWatcherWindowsFlags:
         is the regression guard.
         """
         root = Path(__file__).resolve().parents[2]
-        text = (root / "hermes_cli" / "gateway.py").read_text(encoding="utf-8")
+        text = (root / "hermes_cli" / "gateway.py").read_text(encoding="utf-8", errors="replace")
         assert "windows_detach_flags_without_breakaway" in text, (
             "launch_detached_profile_gateway_restart must import "
             "windows_detach_flags_without_breakaway so it can retry a "
@@ -1033,7 +1033,7 @@ class TestGatewayDetachedWatcherWindowsFlags:
         the inlined respawn ``Popen``.
         """
         root = Path(__file__).resolve().parents[2]
-        text = (root / "hermes_cli" / "gateway.py").read_text(encoding="utf-8")
+        text = (root / "hermes_cli" / "gateway.py").read_text(encoding="utf-8", errors="replace")
         assert "windowless_gateway_restart_spec" in text, (
             "_spawn_gateway_restart_watcher must rewrite the respawn argv via "
             "gateway_windows.windowless_gateway_restart_spec so the gateway "

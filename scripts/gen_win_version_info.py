@@ -94,7 +94,7 @@ def main(argv: list[str]) -> int:
     args = parser.parse_args(argv)
 
     if args.check:
-        with open(args.check, encoding="utf-8") as fh:
+        with open(args.check, encoding="utf-8", errors="replace") as fh:
             source = fh.read()
         compile(source, args.check, "exec")  # raises SyntaxError if malformed
         print(f"{args.check}: OK")
@@ -103,7 +103,7 @@ def main(argv: list[str]) -> int:
     text = render(args.kernel_version, args.runtime_version)
     # Fail loudly here rather than at PyInstaller time if the template ever drifts.
     compile(text, args.output, "exec")
-    with open(args.output, "w", encoding="utf-8") as fh:
+    with open(args.output, "w", encoding="utf-8", errors="replace") as fh:
         fh.write(text)
     print(f"Wrote {args.output} (filevers={_vers_tuple(args.kernel_version)})")
     return 0

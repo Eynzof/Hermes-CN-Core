@@ -353,7 +353,7 @@ def _load_raw_config() -> Dict[str, Any]:
             return cached
 
     try:
-        parsed = yaml_load(config_path.read_text(encoding="utf-8"))
+        parsed = yaml_load(config_path.read_text(encoding="utf-8", errors="replace"))
     except Exception as e:
         logger.debug("Could not read skill config %s: %s", config_path, e)
         return {}
@@ -711,7 +711,7 @@ def discover_all_skill_config_vars() -> List[Dict[str, Any]]:
             continue
         for skill_file in iter_skill_index_files(skills_dir, "SKILL.md"):
             try:
-                raw = skill_file.read_text(encoding="utf-8")
+                raw = skill_file.read_text(encoding="utf-8", errors="replace")
                 frontmatter, _ = parse_frontmatter(raw)
             except Exception:
                 continue

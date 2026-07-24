@@ -143,7 +143,7 @@ class TestCallSiteWiring:
     def _read_auth_source(self):
         import hermes_cli.auth as _auth_mod
         from pathlib import Path
-        return Path(_auth_mod.__file__).read_text(encoding="utf-8")
+        return Path(_auth_mod.__file__).read_text(encoding="utf-8", errors="replace")
 
     def test_no_unvalidated_inference_base_url_assignments_remain(self):
         """No remaining ``_optional_base_url(...inference_base_url...)`` reads
@@ -181,7 +181,7 @@ class TestCallSiteWiring:
         boundary."""
         from pathlib import Path
         import hermes_cli.proxy.adapters.nous_portal as _nous_adapter
-        source = Path(_nous_adapter.__file__).read_text(encoding="utf-8")
+        source = Path(_nous_adapter.__file__).read_text(encoding="utf-8", errors="replace")
         assert "_validate_nous_inference_url_from_network" in source
 
 
@@ -203,7 +203,7 @@ class TestEnvOverrideNotGated:
         validator."""
         import hermes_cli.auth as _auth_mod
         from pathlib import Path
-        source = Path(_auth_mod.__file__).read_text(encoding="utf-8")
+        source = Path(_auth_mod.__file__).read_text(encoding="utf-8", errors="replace")
         # Find the env-override read line.
         for line in source.splitlines():
             if "NOUS_INFERENCE_BASE_URL" in line and "os.getenv" in line:
@@ -451,7 +451,7 @@ class TestProxyAdapterEnvOverride:
         from pathlib import Path
         import hermes_cli.proxy.adapters.nous_portal as _nous_adapter
 
-        source = Path(_nous_adapter.__file__).read_text(encoding="utf-8")
+        source = Path(_nous_adapter.__file__).read_text(encoding="utf-8", errors="replace")
         assert "_nous_inference_env_override()" in source, (
             "proxy adapter must layer the env override on top of the network "
             "validator, else a staging override is rejected at the forward boundary"

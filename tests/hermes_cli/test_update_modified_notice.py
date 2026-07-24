@@ -24,7 +24,7 @@ _HINT_RE = re.compile(r"hermes skills list-modified")
 
 
 def _source_lines() -> list[str]:
-    return Path(main_mod.__file__).read_text(encoding="utf-8").splitlines()
+    return Path(main_mod.__file__).read_text(encoding="utf-8", errors="replace").splitlines()
 
 
 def test_every_user_modified_notice_points_at_list_modified():

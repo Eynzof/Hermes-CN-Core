@@ -1136,7 +1136,7 @@ class SessionStore:
         sessions_file = self.sessions_dir / "sessions.json"
         if sessions_file.exists():
             try:
-                with open(sessions_file, "r", encoding="utf-8") as f:
+                with open(sessions_file, "r", encoding="utf-8", errors="replace") as f:
                     data = orjson.loads(f.read())
                 imported = 0
                 for key, entry_data in data.items():
@@ -1339,7 +1339,7 @@ class SessionStore:
             dir=str(self.sessions_dir), suffix=".tmp", prefix=".sessions_"
         )
         try:
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
+            with os.fdopen(fd, "w", encoding="utf-8", errors="replace") as f:
                 f.write(orjson.dumps(data, option=orjson.OPT_INDENT_2).decode('utf-8'))
                 f.flush()
                 os.fsync(f.fileno())

@@ -26,7 +26,7 @@ def simplify_redlines(input_dir: str) -> tuple[int, str]:
         return 0, f"Error: {doc_xml} not found"
 
     try:
-        dom = defusedxml.minidom.parseString(doc_xml.read_text(encoding="utf-8"))
+        dom = defusedxml.minidom.parseString(doc_xml.read_text(encoding="utf-8", errors="replace"))
         root = dom.documentElement
 
         merge_count = 0

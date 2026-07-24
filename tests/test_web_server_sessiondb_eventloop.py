@@ -29,7 +29,7 @@ def _call_name(call: ast.Call) -> str | None:
 
 
 def test_sessiondb_handlers_open_connections_inside_executor_helpers():
-    tree = ast.parse(Path(web_server.__file__).read_text(encoding="utf-8"))
+    tree = ast.parse(Path(web_server.__file__).read_text(encoding="utf-8", errors="replace"))
     handlers = {
         node.name: node
         for node in tree.body

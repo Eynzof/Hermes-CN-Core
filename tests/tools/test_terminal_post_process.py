@@ -258,7 +258,7 @@ class TestSaveOriginalOutput:
         if path_str is not None:
             path = Path(path_str)
             assert path.exists()
-            assert path.read_text(encoding="utf-8") == "test content"
+            assert path.read_text(encoding="utf-8", errors="replace") == "test content"
             # Clean up parent dir
             shutil.rmtree(path.parent, ignore_errors=True)
         else:

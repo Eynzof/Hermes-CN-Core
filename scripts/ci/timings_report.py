@@ -920,7 +920,7 @@ def main():
 
     # Collect or load timings
     if args.from_json:
-        with open(args.from_json, encoding="utf-8") as f:
+        with open(args.from_json, encoding="utf-8", errors="replace") as f:
             timings = json.loads(f.read())
     else:
         repo = expect_env("GITHUB_REPOSITORY")
@@ -940,23 +940,23 @@ def main():
             # Emit a degraded summary + placeholder artifact and exit 0.
             msg = f"CI timing data unavailable this run: {e}"
             print(msg, file=sys.stderr)
-            with open(args.summary_out, "a", encoding="utf-8") as f:
+            with open(args.summary_out, "a", encoding="utf-8", errors="replace") as f:
                 f.write(f"\n> ⚠️ {msg}\n")
-            with open(args.output, "w", encoding="utf-8") as f:
+            with open(args.output, "w", encoding="utf-8", errors="replace") as f:
                 f.write(f"<html><body><p>{escape(msg)}</p></body></html>\n")
             # No JSON on purpose: an empty timings file must never be cached
             # as the main baseline.
             sys.exit(0)
 
     # Save JSON
-    with open(args.json_out, "w", encoding="utf-8") as f:
+    with open(args.json_out, "w", encoding="utf-8", errors="replace") as f:
         f.write(json.dumps(timings, indent=2, ensure_ascii=False))
     print(f"Saved timings to {args.json_out} ({len(timings.get('jobs', []))} jobs)")
 
     # Load baseline
     baseline = None
     if os.path.exists(args.baseline):
-        with open(args.baseline, encoding="utf-8") as f:
+        with open(args.baseline, encoding="utf-8", errors="replace") as f:
             baseline = json.loads(f.read())
         print(f"Loaded baseline from {args.baseline}")
     else:
@@ -964,13 +964,13 @@ def main():
 
     # Generate HTML
     html = generate_html(timings, baseline)
-    with open(args.output, "w", encoding="utf-8") as f:
+    with open(args.output, "w", encoding="utf-8", errors="replace") as f:
         f.write(html)
     print(f"Generated HTML report: {args.output}")
 
     # Write summary
     summary = generate_summary(timings, baseline)
-    with open(args.summary_out, "a", encoding="utf-8") as f:
+    with open(args.summary_out, "a", encoding="utf-8", errors="replace") as f:
         f.write(summary)
         print(f"Wrote summary to {args.summary_out}")
 

@@ -92,7 +92,7 @@ class TestSaveConfigValueAtomic:
         from cli import save_config_value
         save_config_value("display.skin", "mono")
 
-        text = config_env.read_text(encoding="utf-8")
+        text = config_env.read_text(encoding="utf-8", errors="replace")
         result = yaml.safe_load(text)
         assert result["display"]["skin"] == "mono"
         assert "# user selected model" in text
@@ -112,7 +112,7 @@ class TestSaveConfigValueAtomic:
         from cli import save_config_value
         save_config_value("display.skin", "mono")
 
-        text = config_env.read_text(encoding="utf-8")
+        text = config_env.read_text(encoding="utf-8", errors="replace")
         result = yaml.safe_load(text)
         assert result["agent"]["system_prompt"] == "你好，保持中文输出"
         assert "你好，保持中文输出" in text

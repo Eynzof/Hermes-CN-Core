@@ -1202,7 +1202,7 @@ def load_gateway_config() -> GatewayConfig:
     gateway_json_path = _home / "gateway.json"
     if gateway_json_path.exists():
         try:
-            with open(gateway_json_path, "r", encoding="utf-8") as f:
+            with open(gateway_json_path, "r", encoding="utf-8", errors="replace") as f:
                 gw_data = orjson.loads(f.read()) or {}
             logger.info(
                 "Loaded legacy %s — consider moving settings to config.yaml",
@@ -1216,7 +1216,7 @@ def load_gateway_config() -> GatewayConfig:
         import yaml
         config_yaml_path = _home / "config.yaml"
         if config_yaml_path.exists():
-            with open(config_yaml_path, encoding="utf-8") as f:
+            with open(config_yaml_path, encoding="utf-8", errors="replace") as f:
                 yaml_cfg = yaml.safe_load(f) or {}
 
             # Managed scope: overlay administrator-pinned values so the gateway

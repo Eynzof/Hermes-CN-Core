@@ -132,7 +132,7 @@ class _BotState:
         ts = time.strftime("%H:%M:%S", time.localtime(self.last_caption_at))
         line = f"[{ts}] {speaker}: {text}\n"
         # Atomic-ish append — good enough for a single-writer.
-        with self.transcript_path.open("a", encoding="utf-8") as f:
+        with self.transcript_path.open("a", encoding="utf-8", errors="replace") as f:
             f.write(line)
         self._flush()
 

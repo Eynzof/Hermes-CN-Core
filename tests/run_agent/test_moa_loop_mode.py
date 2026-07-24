@@ -984,7 +984,7 @@ moa:
 
     trace_file = home / "moa-traces" / "sess-xyz.jsonl"
     assert trace_file.exists(), "trace file not written"
-    lines = trace_file.read_text(encoding="utf-8").strip().splitlines()
+    lines = trace_file.read_text(encoding="utf-8", errors="replace").strip().splitlines()
     assert len(lines) == 1
     rec = orjson.loads(lines[0])
 

@@ -237,7 +237,7 @@ def test_sessions_export_cli_prompt_only_markdown_file(monkeypatch, capsys, tmp_
     main_mod.main()
 
     assert f"Exported 2 prompts to {output_path}" in capsys.readouterr().out
-    content = output_path.read_text(encoding="utf-8")
+    content = output_path.read_text(encoding="utf-8", errors="replace")
     assert "# User prompts for session sess-123" in content
     assert "Why is login broken?" in content
     assert "I will inspect the auth middleware." not in content

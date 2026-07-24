@@ -14,7 +14,7 @@ LOCALES_DIR = Path(__file__).resolve().parents[2] / "locales"
 
 
 def _load_raw(lang: str) -> dict:
-    with (LOCALES_DIR / f"{lang}.yaml").open("r", encoding="utf-8") as f:
+    with (LOCALES_DIR / f"{lang}.yaml").open("r", encoding="utf-8", errors="replace") as f:
         return yaml.safe_load(f)
 
 

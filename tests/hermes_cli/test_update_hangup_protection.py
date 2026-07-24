@@ -221,7 +221,7 @@ class TestInstallHangupProtection:
 
             log_path = tmp_path / "logs" / "update.log"
             assert log_path.exists()
-            contents = log_path.read_text(encoding="utf-8")
+            contents = log_path.read_text(encoding="utf-8", errors="replace")
             assert "checking mirror" in contents
             assert "hermes update started" in contents
         finally:

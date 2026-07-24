@@ -122,6 +122,8 @@ def _git_show(ref: str, path: str, repo_root: str) -> str | None:
         ["git", "show", f"{ref}:{path}"],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         cwd=repo_root,
     )
     return proc.stdout if proc.returncode == 0 else None
@@ -132,6 +134,8 @@ def _tracked_lockfiles(ref: str, repo_root: str) -> set[str]:
         ["git", "ls-tree", "-r", "--name-only", ref],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         cwd=repo_root,
         check=True,
     )

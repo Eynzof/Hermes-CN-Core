@@ -263,7 +263,7 @@ def test_append_log_record_single_write_lines(tmp_path):
     for thread in threads:
         thread.join()
 
-    lines = path.read_text(encoding="utf-8").splitlines()
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     assert len(lines) == 32
     assert sorted(line.split("-", 2)[1] for line in lines) == [f"{i:03d}" for i in range(32)]
     assert all(line.endswith("x" * 2000) for line in lines)

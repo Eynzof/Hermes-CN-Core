@@ -40,7 +40,7 @@ def parse_date(raw: str) -> dt.date | None:
 
 
 def _read(path: str) -> list[dict[str, str]]:
-    with open(path, newline="", encoding="utf-8") as fh:
+    with open(path, newline="", encoding="utf-8", errors="replace") as fh:
         return list(csv.DictReader(fh))
 
 

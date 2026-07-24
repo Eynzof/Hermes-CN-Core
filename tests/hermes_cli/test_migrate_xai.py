@@ -60,7 +60,7 @@ def _parse(path: Path) -> dict:
     """Load with ruamel for assertion convenience."""
     from ruamel.yaml import YAML
     yaml = YAML(typ="rt")
-    with path.open("r", encoding="utf-8") as fh:
+    with path.open("r", encoding="utf-8", errors="replace") as fh:
         return yaml.load(fh)
 
 
@@ -76,13 +76,13 @@ class TestNoOpPaths:
         assert result.config_changed is False
         assert result.backup_path is None
         # File untouched
-        assert "grok-4.3" in clean_config.read_text(encoding="utf-8")
+        assert "grok-4.3" in clean_config.read_text(encoding="utf-8", errors="replace")
 
     def test_empty_issues_list_is_noop(self, trap_config: Path):
-        original = trap_config.read_text(encoding="utf-8")
+        original = trap_config.read_text(encoding="utf-8", errors="replace")
         result = apply_migration(trap_config, issues=[])
         assert result.config_changed is False
-        assert trap_config.read_text(encoding="utf-8") == original
+        assert trap_config.read_text(encoding="utf-8", errors="replace") == original
 
     def test_missing_file_raises(self, tmp_path: Path):
         with pytest.raises(FileNotFoundError):
@@ -151,20 +151,20 @@ class TestRoundTripPreservation:
     def test_preserves_top_of_file_comment(self, trap_config: Path):
         issues = find_retired_xai_refs(_parse(trap_config))
         apply_migration(trap_config, issues)
-        text = trap_config.read_text(encoding="utf-8")
+        text = trap_config.read_text(encoding="utf-8", errors="replace")
         assert "# Hermes config (sample)" in text
 
     def test_preserves_inline_comments_on_unmodified_lines(self, trap_config: Path):
         issues = find_retired_xai_refs(_parse(trap_config))
         apply_migration(trap_config, issues)
-        text = trap_config.read_text(encoding="utf-8")
+        text = trap_config.read_text(encoding="utf-8", errors="replace")
         assert "# the main model" in text
         assert "# not affected" in text
 
     def test_preserves_top_level_key_order(self, trap_config: Path):
         issues = find_retired_xai_refs(_parse(trap_config))
         apply_migration(trap_config, issues)
-        text = trap_config.read_text(encoding="utf-8")
+        text = trap_config.read_text(encoding="utf-8", errors="replace")
         order = [
             text.index("principal:"),
             text.index("auxiliary:"),
@@ -181,11 +181,11 @@ class TestRoundTripPreservation:
 class TestBackup:
     def test_backup_is_written_by_default(self, trap_config: Path):
         issues = find_retired_xai_refs(_parse(trap_config))
-        original = trap_config.read_text(encoding="utf-8")
+        original = trap_config.read_text(encoding="utf-8", errors="replace")
         result = apply_migration(trap_config, issues)
         assert result.backup_path is not None
         assert result.backup_path.exists()
-        assert result.backup_path.read_text(encoding="utf-8") == original
+        assert result.backup_path.read_text(encoding="utf-8", errors="replace") == original
 
     def test_backup_filename_prefixed(self, trap_config: Path):
         issues = find_retired_xai_refs(_parse(trap_config))

@@ -148,7 +148,7 @@ def _load_model_metadata_disk_cache() -> Dict[str, Dict[str, Any]]:
     """Load processed OpenRouter metadata cache from disk."""
     try:
         cache_path = _get_model_metadata_cache_path()
-        with cache_path.open("r", encoding="utf-8") as f:
+        with cache_path.open("r", encoding="utf-8", errors="replace") as f:
             data = orjson.loads(f.read())
         if not isinstance(data, dict):
             return {}
@@ -1320,7 +1320,7 @@ def _load_context_cache() -> Dict[str, int]:
     if not path.exists():
         return {}
     try:
-        with open(path, encoding="utf-8") as f:
+        with open(path, encoding="utf-8", errors="replace") as f:
             data = yaml.safe_load(f) or {}
         return data.get("context_lengths") or {}
     except Exception as e:
@@ -1352,7 +1352,7 @@ def save_context_length(model: str, base_url: str, length: int) -> None:
     path = _get_context_cache_path()
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
+        with open(path, "w", encoding="utf-8", errors="replace") as f:
             yaml.dump({"context_lengths": cache}, f, default_flow_style=False)
         logger.info("Cached context length %s -> %s tokens", key, f"{length:,}")
     except Exception as e:
@@ -1401,7 +1401,7 @@ def _invalidate_cached_context_length(model: str, base_url: str) -> None:
     path = _get_context_cache_path()
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
+        with open(path, "w", encoding="utf-8", errors="replace") as f:
             yaml.dump({"context_lengths": cache}, f, default_flow_style=False)
     except Exception as e:
         logger.debug("Failed to invalidate context length cache entry %s: %s", key, e)

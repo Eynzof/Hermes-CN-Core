@@ -53,14 +53,14 @@ def test_memory_label_is_first_line(home):
 
 def test_delete_memory_rewrites_file(home):
     assert lm.delete_node("memory:memory:0")["ok"]
-    remaining = (home / "memories" / "MEMORY.md").read_text(encoding="utf-8")
+    remaining = (home / "memories" / "MEMORY.md").read_text(encoding="utf-8", errors="replace")
     assert "alpha note" not in remaining
     assert "beta note" in remaining
 
 
 def test_edit_memory_replaces_chunk(home):
     assert lm.edit_node("memory:profile:2", "rewritten profile")["ok"]
-    assert (home / "memories" / "USER.md").read_text(encoding="utf-8").strip() == "rewritten profile"
+    assert (home / "memories" / "USER.md").read_text(encoding="utf-8", errors="replace").strip() == "rewritten profile"
 
 
 def test_edit_memory_empty_is_rejected(home):
@@ -107,7 +107,7 @@ def test_edit_skill_rewrites_and_validates(home):
     assert not bad["ok"]
     good = lm.edit_node("my-skill", _SKILL.replace("A test skill.", "Updated desc."))
     assert good["ok"]
-    assert "Updated desc." in (home / "skills" / "my-skill" / "SKILL.md").read_text(encoding="utf-8")
+    assert "Updated desc." in (home / "skills" / "my-skill" / "SKILL.md").read_text(encoding="utf-8", errors="replace")
 
 
 def test_missing_skill_detail(home):
@@ -125,4 +125,4 @@ def test_memory_writes_match_memory_tool_format(home):
     entries = MemoryStore._read_file(path)
 
     assert entries == ["alpha rewritten", "beta note"]
-    assert path.read_text(encoding="utf-8") == ENTRY_DELIMITER.join(entries)
+    assert path.read_text(encoding="utf-8", errors="replace") == ENTRY_DELIMITER.join(entries)

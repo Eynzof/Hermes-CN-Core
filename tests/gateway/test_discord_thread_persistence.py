@@ -78,7 +78,7 @@ class TestDiscordThreadPersistence:
         with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
             adapter._threads.mark("newest")
 
-        saved = orjson.loads(state_file.read_text(encoding="utf-8"))
+        saved = orjson.loads(state_file.read_text(encoding="utf-8", errors="replace"))
         assert saved == ["1", "2", "3", "4", "newest"]
         assert "newest" in adapter._threads
 

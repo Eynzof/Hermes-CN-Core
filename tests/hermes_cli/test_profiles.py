@@ -179,7 +179,7 @@ class TestCreateProfile:
         profile_dir = create_profile("coder", no_alias=True)
         env_path = profile_dir / ".env"
         assert env_path.exists()
-        content = env_path.read_text(encoding="utf-8")
+        content = env_path.read_text(encoding="utf-8", errors="replace")
         # Placeholder only — no credentials leak in from anywhere.
         assert all(
             line.startswith("#") or not line.strip()
@@ -547,7 +547,7 @@ class TestBackfillProfileEnvs:
         backfilled = backfill_profile_envs(quiet=True)
 
         assert backfilled == ["noroot"]
-        content = (p / ".env").read_text(encoding="utf-8")
+        content = (p / ".env").read_text(encoding="utf-8", errors="replace")
         assert all(
             line.startswith("#") or not line.strip()
             for line in content.splitlines()
@@ -971,7 +971,7 @@ class TestWrapperScriptSecurity:
         with pytest.raises(ValueError, match="Invalid alias name"):
             create_wrapper_script("../../.bashrc", target="coder")
         # The traversal target was not touched.
-        assert sentinel.read_text(encoding="utf-8") == "keep"
+        assert sentinel.read_text(encoding="utf-8", errors="replace") == "keep"
 
     def test_create_wrapper_rejects_absolute_path(self, profile_env, tmp_path):
         target = tmp_path / "abs-wrapper"
@@ -983,7 +983,7 @@ class TestWrapperScriptSecurity:
         sentinel = profile_env / ".bashrc"
         sentinel.write_text("keep", encoding="utf-8")
         assert remove_wrapper_script("../../.bashrc") is False
-        assert sentinel.read_text(encoding="utf-8") == "keep"
+        assert sentinel.read_text(encoding="utf-8", errors="replace") == "keep"
 
     def test_legit_alias_stays_inside_wrapper_dir(self, profile_env, monkeypatch):
         monkeypatch.setattr("sys.platform", "darwin")

@@ -161,7 +161,7 @@ class LiveTranscriptWriter:
             with self._lock:
                 # Append mode per write: no held handle, survives child crash,
                 # and the close() acts as the flush.
-                with open(self.path, "a", encoding="utf-8") as fh:
+                with open(self.path, "a", encoding="utf-8", errors="replace") as fh:
                     fh.write(line)
         except Exception as exc:
             self._ok = False
@@ -386,7 +386,7 @@ def update_manifest_statuses(delegation_id: Optional[str],
         return
     try:
         mp = _manifest_path(delegation_id)
-        manifest = json.loads(mp.read_text(encoding="utf-8"))
+        manifest = json.loads(mp.read_text(encoding="utf-8", errors="replace"))
         by_index = {r.get("task_index"): r for r in results if isinstance(r, dict)}
         for task in manifest.get("tasks", []):
             r = by_index.get(task.get("index"))

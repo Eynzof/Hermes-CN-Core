@@ -926,7 +926,7 @@ def _load_plugins_config(path: str) -> dict[str, Any] | None:
     if not path:
         return None
     try:
-        return tomllib.loads(Path(path).read_text(encoding="utf-8"))
+        return tomllib.loads(Path(path).read_text(encoding="utf-8", errors="replace"))
     except Exception as exc:
         logger.debug("NeMo Relay plugins.toml load failed: %s", exc, exc_info=True)
         return None

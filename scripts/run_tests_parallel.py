@@ -116,7 +116,7 @@ def _approximately_count_tests(
     results = {}
 
     for path in files:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
             contents = f.read()
         results[path] = contents.count("def test_")
 

@@ -448,7 +448,7 @@ def get_current_board() -> str:
     try:
         f = current_board_path()
         if f.exists():
-            val = f.read_text(encoding="utf-8").strip()
+            val = f.read_text(encoding="utf-8", errors="replace").strip()
             if val:
                 try:
                     normed = _normalize_board_slug(val)
@@ -655,7 +655,7 @@ def read_board_metadata(board: Optional[str] = None) -> dict:
     try:
         p = board_metadata_path(slug)
         if p.exists():
-            raw = orjson.loads(p.read_text(encoding="utf-8"))
+            raw = orjson.loads(p.read_text(encoding="utf-8", errors="replace"))
             if isinstance(raw, dict):
                 # Never let the metadata file claim a different slug than
                 # its directory — trust the filesystem.

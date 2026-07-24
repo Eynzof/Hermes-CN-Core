@@ -162,7 +162,7 @@ async def test_typed_model_expensive_cancel_keeps_current_model(tmp_path, monkey
     assert "cancelled" in reply.lower()
     assert runner._session_model_overrides == {}
     # --global must not have persisted the cancelled switch.
-    written = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
+    written = yaml.safe_load(cfg_path.read_text(encoding="utf-8", errors="replace"))
     assert written["model"]["default"] == "old-model"
 
 

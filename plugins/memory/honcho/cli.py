@@ -264,7 +264,7 @@ def _read_config() -> dict:
     path = _config_path()
     if path.exists():
         try:
-            return orjson.loads(path.read_text(encoding="utf-8"))
+            return orjson.loads(path.read_text(encoding="utf-8", errors="replace"))
         except Exception:
             pass
     return {}
@@ -1474,7 +1474,7 @@ def cmd_identity(args) -> None:
         print(f"  File not found: {p}\n")
         return
 
-    content = p.read_text(encoding="utf-8").strip()
+    content = p.read_text(encoding="utf-8", errors="replace").strip()
     if not content:
         print(f"  File is empty: {p}\n")
         return
@@ -1654,7 +1654,7 @@ def cmd_migrate(args) -> None:
                     session_key = hcfg.resolve_session_name()
                     mgr.get_or_create(session_key)
                     for f in agent_files:
-                        content = f.read_text(encoding="utf-8").strip()
+                        content = f.read_text(encoding="utf-8", errors="replace").strip()
                         if content:
                             ok = mgr.seed_ai_identity(session_key, content, source=f.name)
                             status = "seeded" if ok else "failed"

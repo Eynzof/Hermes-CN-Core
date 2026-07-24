@@ -498,7 +498,7 @@ class TestRaftConfig:
 
         interactive_setup()
 
-        assert (tmp_path / ".env").read_text(encoding="utf-8") == "RAFT_PROFILE=dev-profile\n"
+        assert (tmp_path / ".env").read_text(encoding="utf-8", errors="replace") == "RAFT_PROFILE=dev-profile\n"
         assert os.environ["RAFT_PROFILE"] == "dev-profile"
         out = capsys.readouterr().out
         assert "Raft configuration saved" in out
@@ -515,7 +515,7 @@ class TestRaftConfig:
 
         interactive_setup()
 
-        assert env_path.read_text(encoding="utf-8") == "RAFT_PROFILE=existing\n"
+        assert env_path.read_text(encoding="utf-8", errors="replace") == "RAFT_PROFILE=existing\n"
         assert os.environ["RAFT_PROFILE"] == "existing"
         assert "Keeping RAFT_PROFILE=existing" in capsys.readouterr().out
 

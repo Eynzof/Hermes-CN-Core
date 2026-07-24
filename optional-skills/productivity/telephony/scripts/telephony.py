@@ -93,7 +93,7 @@ def _load_root_config() -> dict[str, Any]:
     except Exception:
         return {}
     try:
-        with path.open("r", encoding="utf-8") as handle:
+        with path.open("r", encoding="utf-8", errors="replace") as handle:
             data = yaml.safe_load(handle) or {}
         return data if isinstance(data, dict) else {}
     except Exception:
@@ -119,7 +119,7 @@ def _load_dotenv_values(path: Path | None = None) -> dict[str, str]:
     if not env_file.exists():
         return {}
     values: dict[str, str] = {}
-    for raw_line in env_file.read_text(encoding="utf-8").splitlines():
+    for raw_line in env_file.read_text(encoding="utf-8", errors="replace").splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
@@ -147,7 +147,7 @@ def _load_state(path: Path | None = None) -> dict[str, Any]:
     if not state_file.exists():
         return {"version": STATE_VERSION}
     try:
-        data = orjson.loads(state_file.read_text(encoding="utf-8"))
+        data = orjson.loads(state_file.read_text(encoding="utf-8", errors="replace"))
         if isinstance(data, dict):
             data.setdefault("version", STATE_VERSION)
             return data
@@ -174,7 +174,7 @@ def _upsert_env_file(updates: dict[str, str], env_path: Path | None = None) -> P
     path = env_path or _env_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():
-        lines = path.read_text(encoding="utf-8").splitlines()
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     else:
         lines = []
 

@@ -188,7 +188,7 @@ async def test_picker_tap_global_flag_persists(tmp_path, monkeypatch, seed_model
 
     assert confirmation is not None
     assert "gpt-5.5" in confirmation
-    written = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
+    written = yaml.safe_load(cfg_path.read_text(encoding="utf-8", errors="replace"))
     assert isinstance(written["model"], dict), (
         "model: should be coerced to a dict, got %r" % (written["model"],)
     )
@@ -222,7 +222,7 @@ async def test_picker_tap_is_session_scoped_by_default(tmp_path, monkeypatch):
         for ov in runner._session_model_overrides.values()
     )
     # But config.yaml is untouched — session-scoped by default.
-    written = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
+    written = yaml.safe_load(cfg_path.read_text(encoding="utf-8", errors="replace"))
     assert written["model"]["default"] == "old-model"
     assert written["model"]["provider"] == "openrouter"
 
@@ -249,7 +249,7 @@ async def test_picker_tap_session_flag_does_not_persist(tmp_path, monkeypatch):
         for ov in runner._session_model_overrides.values()
     )
     # But config.yaml is untouched — the override is in-memory only.
-    written = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
+    written = yaml.safe_load(cfg_path.read_text(encoding="utf-8", errors="replace"))
     assert written["model"]["default"] == "old-model"
     assert written["model"]["provider"] == "openai-codex"
 

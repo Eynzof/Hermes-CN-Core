@@ -38,7 +38,7 @@ SEVERITY_ORDER = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
 
 
 def _read_cross_links(path: str) -> list[dict[str, str]]:
-    with open(path, newline="", encoding="utf-8") as fh:
+    with open(path, newline="", encoding="utf-8", errors="replace") as fh:
         return list(csv.DictReader(fh))
 
 

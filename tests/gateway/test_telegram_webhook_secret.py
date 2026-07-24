@@ -31,7 +31,7 @@ class TestTelegramWebhookSecretRequired:
 
     def _get_source(self) -> str:
         path = Path(_repo) / "plugins" / "platforms" / "telegram" / "adapter.py"
-        return path.read_text(encoding="utf-8")
+        return path.read_text(encoding="utf-8", errors="replace")
 
     def test_webhook_branch_checks_secret(self):
         """The webhook-mode branch of connect() must read

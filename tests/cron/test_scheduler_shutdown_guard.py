@@ -113,7 +113,7 @@ class TestSourceGuardrail:
 
         return (
             Path(__file__).resolve().parents[2] / "cron" / "scheduler.py"
-        ).read_text(encoding="utf-8")
+        ).read_text(encoding="utf-8", errors="replace")
 
     def test_helper_defined(self, source):
         assert "def _interpreter_shutting_down(" in source

@@ -62,7 +62,7 @@ class NodeServer:
             return self._token
         if self.token_path.is_file():
             try:
-                data = orjson.loads(self.token_path.read_text(encoding="utf-8"))
+                data = orjson.loads(self.token_path.read_text(encoding="utf-8", errors="replace"))
                 tok = data.get("token")
                 if isinstance(tok, str) and tok:
                     self._token = tok
@@ -153,7 +153,7 @@ class NodeServer:
                     queue = Path(active["out_dir"]) / "say_queue.jsonl"
                     try:
                         queue.parent.mkdir(parents=True, exist_ok=True)
-                        with queue.open("a", encoding="utf-8") as fh:
+                        with queue.open("a", encoding="utf-8", errors="replace") as fh:
                             fh.write(orjson.dumps({"text": text, "ts": time.time()}).decode('utf-8') + "\n")
                         enqueued = True
                     except OSError:

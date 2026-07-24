@@ -127,7 +127,7 @@ def test_save_qwen_cli_tokens_roundtrip(qwen_env):
     tokens = _make_qwen_tokens(access_token="saved-token")
     saved_path = _save_qwen_cli_tokens(tokens)
     assert saved_path.exists()
-    loaded = orjson.loads(saved_path.read_text(encoding="utf-8"))
+    loaded = orjson.loads(saved_path.read_text(encoding="utf-8", errors="replace"))
     assert loaded["access_token"] == "saved-token"
 
 
@@ -313,7 +313,7 @@ def test_refresh_qwen_cli_tokens_saves_to_disk(qwen_env):
     # Verify it was persisted
     creds_path = qwen_env / ".qwen" / "oauth_creds.json"
     assert creds_path.exists()
-    saved = orjson.loads(creds_path.read_text(encoding="utf-8"))
+    saved = orjson.loads(creds_path.read_text(encoding="utf-8", errors="replace"))
     assert saved["access_token"] == "disk-check"
 
 

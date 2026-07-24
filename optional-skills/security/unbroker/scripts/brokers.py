@@ -22,7 +22,7 @@ def _load_curated(directory: Path | None = None) -> list[dict]:
     for fp in sorted(directory.glob("*.json")):
         if fp.name.startswith("_"):
             continue
-        out.append(json.loads(fp.read_text(encoding="utf-8")))
+        out.append(json.loads(fp.read_text(encoding="utf-8", errors="replace")))
     return out
 
 

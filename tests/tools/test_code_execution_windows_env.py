@@ -453,7 +453,7 @@ class TestSandboxWritesUtf8:
         """Both ``hermes_tools.py`` and ``script.py`` writes in
         ``_execute_local`` must pass ``encoding="utf-8"``."""
         import tools.code_execution_tool as cet
-        src = open(cet.__file__, encoding="utf-8").read()
+        src = open(cet.__file__, encoding="utf-8", errors="replace").read()
 
         # There should be no ``open(path, "w")`` without encoding= for
         # the two staging files.  Grep-style check: find every write of
@@ -510,7 +510,7 @@ class TestSandboxWritesUtf8:
 
         try:
             # Re-read and parse exactly like the child Python would.
-            with open(tmp_path, encoding="utf-8") as fh:
+            with open(tmp_path, encoding="utf-8", errors="replace") as fh:
                 round_tripped = fh.read()
             assert round_tripped == stub, "UTF-8 round-trip corrupted the stub"
             ast.parse(round_tripped)  # must not raise SyntaxError
@@ -556,7 +556,7 @@ class TestSandboxWritesUtf8:
                 return
 
             # Read back as UTF-8 (what Python does on import).
-            with open(tmp_path, encoding="utf-8") as fh:
+            with open(tmp_path, encoding="utf-8", errors="replace") as fh:
                 try:
                     fh.read()
                     # If this succeeds on Windows, the platform default is
@@ -605,7 +605,7 @@ class TestChildStdioIsUtf8:
         """Source-level check: the Popen call site must set
         PYTHONIOENCODING=utf-8 in child_env."""
         import tools.code_execution_tool as cet
-        src = open(cet.__file__, encoding="utf-8").read()
+        src = open(cet.__file__, encoding="utf-8", errors="replace").read()
         assert 'child_env["PYTHONIOENCODING"] = "utf-8"' in src, (
             "PYTHONIOENCODING=utf-8 missing from child env — Windows "
             "scripts that print non-ASCII will crash with "
@@ -616,7 +616,7 @@ class TestChildStdioIsUtf8:
         """Source-level check: PYTHONUTF8=1 must be set too — it makes
         open()'s default encoding UTF-8 in user-written file I/O."""
         import tools.code_execution_tool as cet
-        src = open(cet.__file__, encoding="utf-8").read()
+        src = open(cet.__file__, encoding="utf-8", errors="replace").read()
         assert 'child_env["PYTHONUTF8"] = "1"' in src, (
             "PYTHONUTF8=1 missing from child env — user scripts that "
             "call open(path, 'w') without encoding= will produce "

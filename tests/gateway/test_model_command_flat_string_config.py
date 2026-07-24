@@ -96,7 +96,7 @@ async def test_model_global_persists_when_config_has_flat_string_model(tmp_path,
     assert "gpt-5.5" in result
 
     # The persist block must have rewritten config.yaml as a nested dict.
-    written = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
+    written = yaml.safe_load(cfg_path.read_text(encoding="utf-8", errors="replace"))
     assert isinstance(written["model"], dict), (
         "model: should be coerced to a dict, got %r" % (written["model"],)
     )
@@ -131,7 +131,7 @@ async def test_model_global_persists_when_config_has_missing_model(tmp_path, mon
     )
 
     assert result is not None
-    written = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
+    written = yaml.safe_load(cfg_path.read_text(encoding="utf-8", errors="replace"))
     assert isinstance(written["model"], dict)
     assert written["model"]["default"] == "gpt-5.5"
     assert written["model"]["provider"] == "openrouter"
@@ -153,7 +153,7 @@ async def test_model_global_persists_when_config_has_proper_dict_model(tmp_path,
     )
 
     assert result is not None
-    written = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
+    written = yaml.safe_load(cfg_path.read_text(encoding="utf-8", errors="replace"))
     assert written["model"]["default"] == "gpt-5.5"
     assert written["model"]["provider"] == "openrouter"
 
@@ -177,7 +177,7 @@ async def test_model_no_flag_is_session_scoped_by_default(tmp_path, monkeypatch)
 
     assert result is not None
     assert "gpt-5.5" in result
-    written = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
+    written = yaml.safe_load(cfg_path.read_text(encoding="utf-8", errors="replace"))
     assert written["model"]["default"] == "old-model"
 
 
@@ -196,6 +196,6 @@ async def test_model_session_flag_does_not_persist(tmp_path, monkeypatch):
 
     assert result is not None
     assert "gpt-5.5" in result
-    written = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
+    written = yaml.safe_load(cfg_path.read_text(encoding="utf-8", errors="replace"))
     # Config untouched — the session override is in-memory only.
     assert written["model"]["default"] == "old-model"

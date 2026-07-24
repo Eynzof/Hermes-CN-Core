@@ -774,7 +774,7 @@ def test_systemd_install_system_scope_skips_linger_and_uses_systemctl(monkeypatc
 
     out = capsys.readouterr().out
     assert unit_path.exists()
-    assert unit_path.read_text(encoding="utf-8") == "scope=True user=alice\n"
+    assert unit_path.read_text(encoding="utf-8", errors="replace") == "scope=True user=alice\n"
     assert [cmd for cmd, _ in calls] == [
         ["systemctl", "daemon-reload"],
         ["systemctl", "enable", gateway.get_service_name()],

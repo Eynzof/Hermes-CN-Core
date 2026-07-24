@@ -71,7 +71,7 @@ def _iter_blocklist_file_rules(path: Path) -> List[str]:
     rather than raising — a bad file path should not disable all web tools.
     """
     try:
-        raw = path.read_text(encoding="utf-8")
+        raw = path.read_text(encoding="utf-8", errors="replace")
     except FileNotFoundError:
         logger.warning("Shared blocklist file not found (skipping): %s", path)
         return []
@@ -102,7 +102,7 @@ def _load_policy_config(config_path: Optional[Path] = None) -> Dict[str, Any]:
         return dict(_DEFAULT_WEBSITE_BLOCKLIST)
 
     try:
-        with open(config_path, encoding="utf-8") as f:
+        with open(config_path, encoding="utf-8", errors="replace") as f:
             config = yaml.safe_load(f) or {}
     except yaml.YAMLError as exc:
         raise WebsitePolicyError(f"Invalid config YAML at {config_path}: {exc}") from exc

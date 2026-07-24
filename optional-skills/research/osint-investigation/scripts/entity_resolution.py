@@ -40,7 +40,7 @@ CONFIDENCE = {
 
 def _read_csv(path: str, name_col: str) -> list[dict[str, str]]:
     rows = []
-    with open(path, newline="", encoding="utf-8") as fh:
+    with open(path, newline="", encoding="utf-8", errors="replace") as fh:
         reader = csv.DictReader(fh)
         if name_col not in (reader.fieldnames or []):
             raise SystemExit(
@@ -171,7 +171,7 @@ def resolve(
         "overlap_ratio",
         "shared_tokens",
     ]
-    with open(out_path, "w", newline="", encoding="utf-8") as fh:
+    with open(out_path, "w", newline="", encoding="utf-8", errors="replace") as fh:
         writer = csv.DictWriter(fh, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(out_rows)

@@ -393,7 +393,7 @@ class TestTeamsInteractiveSetup:
 
         _teams_mod.interactive_setup()
 
-        env_text = (hermes_home / ".env").read_text(encoding="utf-8")
+        env_text = (hermes_home / ".env").read_text(encoding="utf-8", errors="replace")
         assert "TEAMS_CLIENT_ID=client-id" in env_text
         assert "TEAMS_TENANT_ID=tenant-id" in env_text
 

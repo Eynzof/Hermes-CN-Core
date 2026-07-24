@@ -52,7 +52,7 @@ def test_load_jobs_small(timing_context, tmp_path):
             with timing_context.measure("load_jobs_small"):
                 for _ in range(100):
                     # Direct JSON parsing for perf measurement
-                    data = orjson.loads(jobs_file.read_text(encoding="utf-8"))
+                    data = orjson.loads(jobs_file.read_text(encoding="utf-8", errors="replace"))
                     _ = data["jobs"]
 
     total_ms = timing_context.summary().get("load_jobs_small", {}).get("total_ms", 0)

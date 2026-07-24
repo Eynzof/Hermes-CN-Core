@@ -158,7 +158,7 @@ class TestDevicePathBlocking(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             target_path = os.path.join(tmpdir, "regular.txt")
             link_path = os.path.join(tmpdir, "regular-link")
-            with open(target_path, "w", encoding="utf-8") as handle:
+            with open(target_path, "w", encoding="utf-8", errors="replace") as handle:
                 handle.write("safe\n")
             try:
                 os.symlink(target_path, link_path)

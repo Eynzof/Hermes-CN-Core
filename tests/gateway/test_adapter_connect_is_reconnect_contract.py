@@ -130,7 +130,7 @@ def test_adapter_connect_accepts_is_reconnect(adapter_file: Path):
     relied on by ``GatewayRunner._call_adapter_connect``. Violating it
     silently disables the affected platform after its first reconnect.
     """
-    source = adapter_file.read_text(encoding="utf-8")
+    source = adapter_file.read_text(encoding="utf-8", errors="replace")
     try:
         tree = ast.parse(source, filename=str(adapter_file))
     except SyntaxError as exc:

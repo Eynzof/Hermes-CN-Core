@@ -22,7 +22,7 @@ INSTALL_PS1 = REPO_ROOT / "scripts" / "install.ps1"
 
 
 def test_install_ps1_compiles_web_server_source_after_web_deps_probe() -> None:
-    text = INSTALL_PS1.read_text(encoding="utf-8")
+    text = INSTALL_PS1.read_text(encoding="utf-8", errors="replace")
 
     probe = re.search(
         r'import fastapi, uvicorn[\s\S]{0,1200}?-m py_compile "\$InstallDir\\hermes_cli\\web_server\.py"',
@@ -36,7 +36,7 @@ def test_install_ps1_compiles_web_server_source_after_web_deps_probe() -> None:
 
 
 def test_install_ps1_fails_stage_when_web_server_syntax_probe_fails() -> None:
-    text = INSTALL_PS1.read_text(encoding="utf-8")
+    text = INSTALL_PS1.read_text(encoding="utf-8", errors="replace")
 
     assert "if ($LASTEXITCODE -eq 0) { $webServerSyntaxOk = $true }" in text
     assert "if (-not $webServerSyntaxOk) {" in text

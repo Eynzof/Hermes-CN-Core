@@ -48,7 +48,7 @@ def _eprint(*args: Any) -> None:
 def _load_items(input_file: Optional[str]) -> List[Dict[str, Any]]:
     raw = ""
     if input_file:
-        with open(input_file, encoding="utf-8") as f:
+        with open(input_file, encoding="utf-8", errors="replace") as f:
             raw = f.read()
     else:
         raw = sys.stdin.read()

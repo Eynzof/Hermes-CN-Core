@@ -144,7 +144,7 @@ class _FileLock:
 
 def _read_entries(path: Path) -> list[dict[str, Any]]:
     try:
-        with open(path, "r", encoding="utf-8") as fh:
+        with open(path, "r", encoding="utf-8", errors="replace") as fh:
             data = orjson.loads(fh.read())
     except FileNotFoundError:
         return []
@@ -160,7 +160,7 @@ def _read_entries(path: Path) -> list[dict[str, Any]]:
 def _write_entries(path: Path, entries: list[dict[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f"{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
-    with open(tmp, "w", encoding="utf-8") as fh:
+    with open(tmp, "w", encoding="utf-8", errors="replace") as fh:
         fh.write(orjson.dumps({"entries": entries}, option=orjson.OPT_SORT_KEYS).decode('utf-8'))
     os.replace(tmp, path)
 

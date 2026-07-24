@@ -330,7 +330,7 @@ class ToolResultStore:
     def _read_from_disk(path: Optional[Path]) -> Any:
         if path is None:
             return None
-        envelope = orjson.loads(Path(path).read_text(encoding="utf-8"))
+        envelope = orjson.loads(Path(path).read_text(encoding="utf-8", errors="replace"))
         kind = envelope.get("kind")
         payload = envelope.get("payload")
         if kind == "bytes":

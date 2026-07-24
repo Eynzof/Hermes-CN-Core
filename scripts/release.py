@@ -2026,7 +2026,7 @@ def _load_contributor_dir(directory: "Path | None" = None) -> dict:
         if not path.is_file() or path.name.startswith("."):
             continue
         try:
-            for line in path.read_text(encoding="utf-8").splitlines():
+            for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
                 line = line.strip()
                 if line and not line.startswith("#"):
                     mapping[path.name] = line.lstrip("@")
@@ -2144,7 +2144,7 @@ def update_version_files(semver: str, calver_date: str):
     # from this field, so it must track pyproject to avoid drift.
     desktop_pkg = REPO_ROOT / "apps" / "desktop" / "package.json"
     if desktop_pkg.exists():
-        pkg_text = desktop_pkg.read_text(encoding="utf-8")
+        pkg_text = desktop_pkg.read_text(encoding="utf-8", errors="replace")
         pkg_text = re.sub(
             r'("version"\s*:\s*)"[^"]+"',
             rf'\g<1>"{semver}"',
@@ -2166,7 +2166,7 @@ def _update_acp_registry_versions(semver: str) -> None:
     the ACP Registry assets.
     """
     if ACP_REGISTRY_MANIFEST.exists():
-        manifest = orjson.loads(ACP_REGISTRY_MANIFEST.read_text(encoding="utf-8"))
+        manifest = orjson.loads(ACP_REGISTRY_MANIFEST.read_text(encoding="utf-8", errors="replace"))
         manifest["version"] = semver
         uvx = manifest.get("distribution", {}).get("uvx", {})
         if "package" in uvx:

@@ -372,7 +372,7 @@ class TestAtomicWrite:
         tricky = "q 'single' \"double\" $VAR `cmd` \\back\nünïcödé 日本語\n"
         res = ops.write_file(str(target), tricky)
         assert res.error is None, res.error
-        assert target.read_text(encoding="utf-8") == tricky
+        assert target.read_text(encoding="utf-8", errors="replace") == tricky
 
     def test_patch_routes_through_atomic_write(self, ops, tmp_path: Path):
         target = tmp_path / "edit.py"

@@ -203,7 +203,7 @@ def apply_migration(
 
     yaml = YAML(typ="rt")
     yaml.preserve_quotes = True
-    with config_path.open("r", encoding="utf-8") as fh:
+    with config_path.open("r", encoding="utf-8", errors="replace") as fh:
         doc = yaml.load(fh)
 
     if doc is None:
@@ -245,7 +245,7 @@ def apply_migration(
     from hermes_cli.config import require_readable_config_before_write
 
     require_readable_config_before_write(config_path)
-    with config_path.open("w", encoding="utf-8") as fh:
+    with config_path.open("w", encoding="utf-8", errors="replace") as fh:
         yaml.dump(doc, fh)
 
     return ApplyResult(

@@ -33,7 +33,7 @@ def main() -> int:
     if not isinstance(data, dict) or not data:
         print("error: unexpected models.dev payload (not a non-empty dict)", file=sys.stderr)
         return 1
-    with open(DEST, "w", encoding="utf-8") as f:
+    with open(DEST, "w", encoding="utf-8", errors="replace") as f:
         f.write(orjson.dumps(data, option=orjson.OPT_SORT_KEYS).decode('utf-8'))
     total_models = sum(
         len(p.get("models", {})) for p in data.values() if isinstance(p, dict)

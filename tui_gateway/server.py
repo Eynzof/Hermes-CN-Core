@@ -1216,7 +1216,7 @@ def _profile_configured_cwd(profile_home: Path | None) -> str | None:
         p = Path(profile_home) / "config.yaml"
         if not p.exists():
             return None
-        with open(p, encoding="utf-8") as f:
+        with open(p, encoding="utf-8", errors="replace") as f:
             data = yaml.safe_load(f) or {}
         return _configured_cwd_from_cfg(data)
     except Exception:
@@ -2315,7 +2315,7 @@ def _load_cfg() -> dict:
             if _cfg_cache is not None and _cfg_mtime == mtime and _cfg_path == p:
                 return _apply_managed(copy.deepcopy(_cfg_cache))
         if p.exists():
-            with open(p, encoding="utf-8") as f:
+            with open(p, encoding="utf-8", errors="replace") as f:
                 data = yaml.safe_load(f) or {}
         else:
             data = {}
@@ -9472,7 +9472,7 @@ _SPAWN_TREE_INDEX = "_index.jsonl"
 
 def _append_spawn_tree_index(session_dir, entry: dict) -> None:
     try:
-        with (session_dir / _SPAWN_TREE_INDEX).open("a", encoding="utf-8") as f:
+        with (session_dir / _SPAWN_TREE_INDEX).open("a", encoding="utf-8", errors="replace") as f:
             f.write(orjson.dumps(entry).decode('utf-8') + "\n")
     except OSError as exc:
         # Index is a cache — losing a line just means list() falls back
@@ -9486,7 +9486,7 @@ def _read_spawn_tree_index(session_dir) -> list[dict]:
         return []
     out: list[dict] = []
     try:
-        with index_path.open("r", encoding="utf-8") as f:
+        with index_path.open("r", encoding="utf-8", errors="replace") as f:
             for line in f:
                 line = line.strip()
                 if not line:
@@ -9573,7 +9573,7 @@ def _(rid, params: dict) -> dict:
             try:
                 stat = p.stat()
                 try:
-                    raw = orjson.loads(p.read_text(encoding="utf-8"))
+                    raw = orjson.loads(p.read_text(encoding="utf-8", errors="replace"))
                 except Exception:
                     raw = {}
                 subagents = raw.get("subagents") or []
@@ -9611,7 +9611,7 @@ def _(rid, params: dict) -> dict:
         return _err(rid, 4030, f"path outside spawn-trees root: {exc}")
 
     try:
-        payload = orjson.loads(resolved.read_text(encoding="utf-8"))
+        payload = orjson.loads(resolved.read_text(encoding="utf-8", errors="replace"))
     except (OSError, orjson.JSONDecodeError) as exc:
         return _err(rid, 5000, f"spawn_tree.load failed: {exc}")
 

@@ -334,7 +334,7 @@ def _read_pyproject_version() -> str | None:
     """
     pyproject = PROJECT_ROOT / "pyproject.toml"
     try:
-        text = pyproject.read_text(encoding="utf-8")
+        text = pyproject.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return None
     in_project = False
@@ -817,7 +817,7 @@ def run_doctor(args):
         # written as UTF-8 everywhere in the codebase, while Path.read_text()
         # defaults to the system locale — which crashes on non-UTF-8 Windows
         # locales (e.g. GBK) as soon as the file contains any non-ASCII byte.
-        content = env_path.read_text(encoding="utf-8")
+        content = env_path.read_text(encoding="utf-8", errors="replace")
         if _has_provider_env_config(content):
             check_ok("API key or custom endpoint configured")
         else:
@@ -855,7 +855,7 @@ def run_doctor(args):
         # Validate model.provider and model.default values
         try:
             import yaml as _yaml
-            cfg = _yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+            cfg = _yaml.safe_load(config_path.read_text(encoding="utf-8", errors="replace")) or {}
             model_section = cfg.get("model") or {}
             provider_raw = (model_section.get("provider") or "").strip()
             provider = provider_raw.lower()
@@ -1088,7 +1088,7 @@ def run_doctor(args):
         # Detect stale root-level model keys (known bug source — PR #4329)
         try:
             import yaml
-            with open(config_path, encoding="utf-8") as f:
+            with open(config_path, encoding="utf-8", errors="replace") as f:
                 raw_config = yaml.safe_load(f) or {}
             stale_root_keys = [k for k in ("provider", "base_url") if k in raw_config and isinstance(raw_config[k], str)]
             if stale_root_keys:
@@ -1136,7 +1136,7 @@ def run_doctor(args):
         try:
             import yaml
             from hermes_cli.config import load_env, remove_env_value
-            with open(config_path, encoding="utf-8") as f:
+            with open(config_path, encoding="utf-8", errors="replace") as f:
                 raw_config = yaml.safe_load(f) or {}
             agent_cfg = raw_config.get("agent")
             cfg_max_turns = (
@@ -1187,7 +1187,7 @@ def run_doctor(args):
             import yaml as _yaml_depr
             from hermes_cli.config import load_env as _load_env_depr
 
-            with open(config_path, encoding="utf-8") as _f_depr:
+            with open(config_path, encoding="utf-8", errors="replace") as _f_depr:
                 _raw_for_depr = _yaml_depr.safe_load(_f_depr) or {}
             # Prefer the on-disk .env so bridged process env (e.g. TERMINAL_CWD
             # from terminal.cwd) does not false-positive.
@@ -1338,7 +1338,7 @@ def run_doctor(args):
     # Check for SOUL.md persona file
     soul_path = hermes_home / "SOUL.md"
     if soul_path.exists():
-        content = soul_path.read_text(encoding="utf-8").strip()
+        content = soul_path.read_text(encoding="utf-8", errors="replace").strip()
         # Check if it's just the template comments (no real content)
         lines = [l for l in content.splitlines() if l.strip() and not l.strip().startswith(("<!--", "-->", "#"))]
         if lines:
@@ -1365,12 +1365,12 @@ def run_doctor(args):
         memory_file = memories_dir / "MEMORY.md"
         user_file = memories_dir / "USER.md"
         if memory_file.exists():
-            size = len(memory_file.read_text(encoding="utf-8").strip())
+            size = len(memory_file.read_text(encoding="utf-8", errors="replace").strip())
             check_ok(f"MEMORY.md exists ({size} chars)")
         else:
             check_info("MEMORY.md not created yet (will be created when the agent first writes a memory)")
         if user_file.exists():
-            size = len(user_file.read_text(encoding="utf-8").strip())
+            size = len(user_file.read_text(encoding="utf-8", errors="replace").strip())
             check_ok(f"USER.md exists ({size} chars)")
         else:
             check_info("USER.md not created yet (will be created when the agent first writes a memory)")
@@ -2421,7 +2421,7 @@ def run_doctor(args):
         import yaml as _yaml
         _mem_cfg_path = HERMES_HOME / "config.yaml"
         if _mem_cfg_path.exists():
-            with open(_mem_cfg_path, encoding="utf-8") as _f:
+            with open(_mem_cfg_path, encoding="utf-8", errors="replace") as _f:
                 _raw_cfg = _yaml.safe_load(_f) or {}
             try:
                 from hermes_cli import managed_scope

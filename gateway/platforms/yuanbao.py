@@ -1667,7 +1667,7 @@ class AutoSetHomeMiddleware(InboundMiddleware):
                     config_path = _home / "config.yaml"
                     user_config: dict = {}
                     if config_path.exists():
-                        with open(config_path, encoding="utf-8") as f:
+                        with open(config_path, encoding="utf-8", errors="replace") as f:
                             user_config = yaml.safe_load(f) or {}
                     user_config["YUANBAO_HOME_CHANNEL"] = ctx.chat_id
                     atomic_config_write(config_path, user_config)

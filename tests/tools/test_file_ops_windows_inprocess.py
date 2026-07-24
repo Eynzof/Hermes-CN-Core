@@ -44,13 +44,13 @@ class TestWindowsInProcessWrite:
         p.write_text("old-old-old", encoding="utf-8")
         res = win_local_ops.write_file(str(p), "new")
         assert res.error is None
-        assert p.read_text(encoding="utf-8") == "new"
+        assert p.read_text(encoding="utf-8", errors="replace") == "new"
 
     def test_write_creates_parent_dirs(self, win_local_ops, tmp_path):
         p = tmp_path / "a" / "b" / "c.txt"
         res = win_local_ops.write_file(str(p), "deep")
         assert res.error is None
-        assert p.read_text(encoding="utf-8") == "deep"
+        assert p.read_text(encoding="utf-8", errors="replace") == "deep"
 
     def test_failed_write_is_not_silent_success(self, win_local_ops, tmp_path, monkeypatch):
         """#54 core: when the underlying write fails, write_file must surface an

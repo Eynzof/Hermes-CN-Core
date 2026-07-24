@@ -492,7 +492,7 @@ def _register_project(store: Path, working_dir: str) -> None:
                   "created_at": now, "last_touch": now}
     if meta_path.exists():
         try:
-            existing = orjson.loads(meta_path.read_text(encoding="utf-8"))
+            existing = orjson.loads(meta_path.read_text(encoding="utf-8", errors="replace"))
             if isinstance(existing, dict):
                 meta["created_at"] = existing.get("created_at", now)
         except (OSError, ValueError):
@@ -512,7 +512,7 @@ def _touch_project(store: Path, working_dir: str) -> None:
         _register_project(store, working_dir)
         return
     try:
-        meta = orjson.loads(meta_path.read_text(encoding="utf-8"))
+        meta = orjson.loads(meta_path.read_text(encoding="utf-8", errors="replace"))
     except (OSError, ValueError):
         meta = {}
     if not isinstance(meta, dict):
@@ -535,7 +535,7 @@ def _list_projects(store: Path) -> List[Dict]:
     for meta_path in projects_dir.glob("*.json"):
         dir_hash = meta_path.stem
         try:
-            meta = orjson.loads(meta_path.read_text(encoding="utf-8"))
+            meta = orjson.loads(meta_path.read_text(encoding="utf-8", errors="replace"))
         except (OSError, ValueError):
             continue
         if not isinstance(meta, dict):
@@ -1336,7 +1336,7 @@ def prune_checkpoints(
             wd_marker = child / "HERMES_WORKDIR"
             if wd_marker.exists():
                 try:
-                    workdir = wd_marker.read_text(encoding="utf-8").strip()
+                    workdir = wd_marker.read_text(encoding="utf-8", errors="replace").strip()
                 except (OSError, UnicodeDecodeError):
                     workdir = None
             if workdir is None or not Path(workdir).exists():
@@ -1526,7 +1526,7 @@ def maybe_auto_prune_checkpoints(
         now = time.time()
         if marker.exists():
             try:
-                last_ts = float(marker.read_text(encoding="utf-8").strip())
+                last_ts = float(marker.read_text(encoding="utf-8", errors="replace").strip())
                 if now - last_ts < min_interval_hours * 3600:
                     out["skipped"] = True
                     return out

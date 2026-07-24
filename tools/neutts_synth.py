@@ -69,7 +69,7 @@ def main():
         print(f"Error: reference text not found: {ref_text_path}", file=sys.stderr)
         sys.exit(1)
 
-    ref_text = ref_text_path.read_text(encoding="utf-8").strip()
+    ref_text = ref_text_path.read_text(encoding="utf-8", errors="replace").strip()
 
     # Import and run NeuTTS
     try:

@@ -261,7 +261,7 @@ def read_manifest(profile_dir: Path) -> Optional[DistributionManifest]:
     if not mf_path.is_file():
         return None
     try:
-        data = _load_yaml(mf_path.read_text(encoding="utf-8"))
+        data = _load_yaml(mf_path.read_text(encoding="utf-8", errors="replace"))
     except Exception as exc:
         raise DistributionError(f"Failed to parse {mf_path}: {exc}") from exc
     return DistributionManifest.from_dict(data or {})

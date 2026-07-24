@@ -1835,7 +1835,7 @@ class TestSetupFilesSlashCommand:
 class TestUserOAuthHelper:
     @staticmethod
     def _assert_private_json_file(path, expected):
-        assert orjson.loads(path.read_text(encoding="utf-8")) == expected
+        assert orjson.loads(path.read_text(encoding="utf-8", errors="replace")) == expected
         assert list(path.parent.glob(f"{path.stem}.tmp.*")) == []
         if os.name != "nt":
             assert (path.stat().st_mode & 0o777) == 0o600

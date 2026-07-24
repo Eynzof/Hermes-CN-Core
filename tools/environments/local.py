@@ -1069,6 +1069,8 @@ def _mandatory_aslr_enabled() -> "bool | None":
             ],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=10,
             creationflags=windows_hide_flags(),
         )
@@ -1135,6 +1137,8 @@ def _bash_starts(bash: str) -> bool:
             [bash, "--noprofile", "--norc", "-c", _BASH_EXTERNAL_PROGRAM_PROBE],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=15,
             creationflags=windows_hide_flags() if _IS_WINDOWS else 0,
         )
@@ -2349,7 +2353,7 @@ class LocalEnvironment(BaseEnvironment):
         before validating with ``os.path.isdir``.
         """
         try:
-            with open(self._cwd_file, encoding="utf-8") as f:
+            with open(self._cwd_file, encoding="utf-8", errors="replace") as f:
                 cwd_path = f.read().strip()
             if _IS_WINDOWS and self._shell_type not in ("powershell", "pwsh"):
                 cwd_path = _msys_to_windows_path(cwd_path)

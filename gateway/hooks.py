@@ -104,7 +104,7 @@ class HookRegistry:
                 continue
 
             try:
-                manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
+                manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8", errors="replace"))
                 if not manifest or not isinstance(manifest, dict):
                     print(f"[hooks] Skipping {hook_dir.name}: invalid HOOK.yaml", flush=True)
                     continue

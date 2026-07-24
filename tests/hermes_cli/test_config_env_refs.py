@@ -8,7 +8,7 @@ def _write_config(tmp_path, body: str):
 
 
 def _read_config(tmp_path) -> str:
-    return (tmp_path / "config.yaml").read_text(encoding="utf-8")
+    return (tmp_path / "config.yaml").read_text(encoding="utf-8", errors="replace")
 
 
 def test_save_config_preserves_env_refs_on_unrelated_change(monkeypatch, tmp_path):

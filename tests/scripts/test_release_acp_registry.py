@@ -60,7 +60,7 @@ def test_update_acp_registry_versions_bumps_manifest_and_pin(monkeypatch, tmp_pa
     module._update_acp_registry_versions("0.14.0")
 
     manifest = orjson.loads(
-        (tmp_path / "acp_registry" / "agent.json").read_text(encoding="utf-8")
+        (tmp_path / "acp_registry" / "agent.json").read_text(encoding="utf-8", errors="replace")
     )
     assert manifest["version"] == "0.14.0"
     assert manifest["distribution"]["uvx"]["package"] == "hermes-agent[acp]==0.14.0"
@@ -100,11 +100,11 @@ def test_update_version_files_bumps_manifest_alongside_pyproject(
 
     module.update_version_files("0.14.0", "2026-05-21")
 
-    pyproject_text = (tmp_path / "pyproject.toml").read_text(encoding="utf-8")
+    pyproject_text = (tmp_path / "pyproject.toml").read_text(encoding="utf-8", errors="replace")
     assert 'version = "0.14.0"' in pyproject_text
 
     manifest = orjson.loads(
-        (tmp_path / "acp_registry" / "agent.json").read_text(encoding="utf-8")
+        (tmp_path / "acp_registry" / "agent.json").read_text(encoding="utf-8", errors="replace")
     )
     assert manifest["version"] == "0.14.0"
     assert manifest["distribution"]["uvx"]["package"] == "hermes-agent[acp]==0.14.0"

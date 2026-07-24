@@ -719,7 +719,7 @@ def _derive_venv_pythonw(python_exe: str) -> str:
 def _read_pyvenv_cfg(venv_dir: Path) -> dict[str, str]:
     cfg_path = venv_dir / "pyvenv.cfg"
     try:
-        lines = cfg_path.read_text(encoding="utf-8").splitlines()
+        lines = cfg_path.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
         return {}
     parsed: dict[str, str] = {}
@@ -1333,7 +1333,7 @@ def _print_deep_probes() -> None:
     pid_value: int | None = None
     if pid_exists:
         try:
-            data = orjson.loads(pid_path.read_text(encoding="utf-8"))
+            data = orjson.loads(pid_path.read_text(encoding="utf-8", errors="replace"))
             pid_value = int(data.get("pid")) if data.get("pid") is not None else None
             print(f"  [1] {_mark(True):4s}  PID file present: {pid_path} (pid={pid_value})")
         except Exception as exc:
@@ -1381,7 +1381,7 @@ def _print_deep_probes() -> None:
     # [5] runtime status file
     if state_path.exists():
         try:
-            state_data = orjson.loads(state_path.read_text(encoding="utf-8"))
+            state_data = orjson.loads(state_path.read_text(encoding="utf-8", errors="replace"))
             gateway_state = state_data.get("gateway_state")
             updated_at = state_data.get("updated_at")
             age_str = ""

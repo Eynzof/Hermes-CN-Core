@@ -48,7 +48,7 @@ def _signal_name(sig: Any) -> str:
 def _read_proc_field(pid: int, key: str) -> Optional[str]:
     """Read a single field from /proc/<pid>/status.  Linux only; None elsewhere."""
     try:
-        with open(f"/proc/{pid}/status", encoding="utf-8") as fh:
+        with open(f"/proc/{pid}/status", encoding="utf-8", errors="replace") as fh:
             for line in fh:
                 if line.startswith(key + ":"):
                     return line.split(":", 1)[1].strip()
@@ -173,7 +173,7 @@ def snapshot_shutdown_context(received_signal: Any = None) -> Dict[str, Any]:
             takeover_path = Path(hermes_home_str) / ".gateway-takeover.json"
             if takeover_path.exists():
                 try:
-                    raw = takeover_path.read_text(encoding="utf-8")
+                    raw = takeover_path.read_text(encoding="utf-8", errors="replace")
                     ctx["takeover_marker"] = raw[:300]
                     ctx["takeover_marker_for_self"] = (
                         f'"target_pid": {pid}' in raw
@@ -184,7 +184,7 @@ def snapshot_shutdown_context(received_signal: Any = None) -> Dict[str, Any]:
             planned_stop_path = Path(hermes_home_str) / ".gateway-planned-stop.json"
             if planned_stop_path.exists():
                 try:
-                    raw = planned_stop_path.read_text(encoding="utf-8")
+                    raw = planned_stop_path.read_text(encoding="utf-8", errors="replace")
                     ctx["planned_stop_marker"] = raw[:300]
                 except OSError:
                     pass
@@ -373,7 +373,7 @@ def check_systemd_timing_alignment(drain_timeout: float) -> Optional[Dict[str, A
     unit_name: Optional[str] = None
     try:
         # /proc/self/cgroup gives us "0::/user.slice/.../hermes-gateway.service"
-        with open("/proc/self/cgroup", encoding="utf-8") as fh:
+        with open("/proc/self/cgroup", encoding="utf-8", errors="replace") as fh:
             for line in fh:
                 # systemd cgroup line ends with the unit name
                 if ".service" in line:

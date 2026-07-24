@@ -112,7 +112,7 @@ def main():
         print(f"Error: File not found: {file_path}")
         sys.exit(1)
 
-    with open(file_path, "r", encoding="utf-8") as f:
+    with open(file_path, "r", encoding="utf-8", errors="replace") as f:
         content = f.read()
 
     # Basic validation: should be valid JSON with an "elements" key

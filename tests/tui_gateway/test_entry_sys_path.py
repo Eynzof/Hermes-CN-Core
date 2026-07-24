@@ -20,7 +20,7 @@ import hermes_bootstrap
 def _entry_source() -> str:
     here = pathlib.Path(__file__).resolve()
     repo_root = here.parent.parent.parent  # tests/tui_gateway/ -> repo root
-    return (repo_root / "tui_gateway" / "entry.py").read_text(encoding="utf-8")
+    return (repo_root / "tui_gateway" / "entry.py").read_text(encoding="utf-8", errors="replace")
 
 
 def test_entry_calls_shared_harden_guard_before_heavy_imports():

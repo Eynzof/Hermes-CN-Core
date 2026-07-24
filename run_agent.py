@@ -2925,7 +2925,7 @@ class AIAgent:
             # partial history and would otherwise clobber the full JSON log.
             if log_file.exists():
                 try:
-                    existing = orjson.loads(log_file.read_text(encoding="utf-8"))
+                    existing = orjson.loads(log_file.read_text(encoding="utf-8", errors="replace"))
                     existing_count = existing.get(
                         "message_count", len(existing.get("messages", []))
                     )
@@ -7128,7 +7128,7 @@ def main(
         }
 
         try:
-            with open(sample_filename, "w", encoding="utf-8") as f:
+            with open(sample_filename, "w", encoding="utf-8", errors="replace") as f:
                 # Pretty-print JSON with indent for readability
                 f.write(orjson.dumps(entry, option=orjson.OPT_INDENT_2).decode("utf-8"))
             print(f"\n💾 Sample trajectory saved to: {sample_filename}")

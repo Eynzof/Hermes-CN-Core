@@ -120,7 +120,7 @@ def _load_bundle_file(path: Path) -> Optional[Dict[str, Any]]:
     shouldn't take down slash command discovery.
     """
     try:
-        raw = path.read_text(encoding="utf-8")
+        raw = path.read_text(encoding="utf-8", errors="replace")
     except OSError as exc:
         logger.warning("Could not read bundle %s: %s", path, exc)
         return None

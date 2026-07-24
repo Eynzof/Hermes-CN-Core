@@ -333,7 +333,7 @@ def _needs_chromium_sandbox_bypass() -> bool:
         return True
     userns_restrict = "/proc/sys/kernel/apparmor_restrict_unprivileged_userns"
     try:
-        with open(userns_restrict, encoding="utf-8") as f:
+        with open(userns_restrict, encoding="utf-8", errors="replace") as f:
             if f.read().strip() == "1":
                 return True
     except OSError:
@@ -346,7 +346,7 @@ def _read_command_output_files(stdout_path: str, stderr_path: str) -> tuple[str,
     stdout = stderr = ""
     for path, slot in ((stdout_path, "stdout"), (stderr_path, "stderr")):
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, "r", encoding="utf-8", errors="replace") as f:
                 text = f.read().strip()
         except OSError:
             continue
@@ -1181,7 +1181,7 @@ def _run_chrome_fallback_command(
             proc.wait()
             return {"success": False, "error": f"Chrome fallback '{cmd}' timed out"}
         try:
-            with open(stdout_path, "r", encoding="utf-8") as f:
+            with open(stdout_path, "r", encoding="utf-8", errors="replace") as f:
                 stdout = f.read().strip()
             if stdout:
                 return orjson.loads(stdout.split("\n")[-1])
@@ -1747,7 +1747,7 @@ def _reap_orphaned_browser_sessions():
         owner_alive: Optional[bool] = None  # None = owner_pid missing/unreadable
         if os.path.isfile(owner_pid_file):
             try:
-                owner_pid = int(Path(owner_pid_file).read_text(encoding="utf-8").strip())
+                owner_pid = int(Path(owner_pid_file).read_text(encoding="utf-8", errors="replace").strip())
                 # ``os.kill(pid, 0)`` is NOT a no-op on Windows (bpo-14484).
                 # Use the cross-platform existence check.
                 from gateway.status import _pid_exists
@@ -1773,7 +1773,7 @@ def _reap_orphaned_browser_sessions():
             continue
 
         try:
-            daemon_pid = int(Path(pid_file).read_text(encoding="utf-8").strip())
+            daemon_pid = int(Path(pid_file).read_text(encoding="utf-8", errors="replace").strip())
         except (ValueError, OSError):
             shutil.rmtree(socket_dir, ignore_errors=True)
             continue
@@ -2542,9 +2542,9 @@ def _run_browser_command(
             }
             # Fall through to fallback check below
         else:
-            with open(stdout_path, "r", encoding="utf-8") as f:
+            with open(stdout_path, "r", encoding="utf-8", errors="replace") as f:
                 stdout = f.read()
-            with open(stderr_path, "r", encoding="utf-8") as f:
+            with open(stderr_path, "r", encoding="utf-8", errors="replace") as f:
                 stderr = f.read()
             returncode = proc.returncode
 
@@ -4499,7 +4499,7 @@ def _cleanup_single_browser_session(task_id: str) -> None:
                 if os.path.isfile(pid_file):
                     try:
                         from tools.process_registry import ProcessRegistry
-                        daemon_pid = int(Path(pid_file).read_text(encoding="utf-8").strip())
+                        daemon_pid = int(Path(pid_file).read_text(encoding="utf-8", errors="replace").strip())
                         ProcessRegistry._terminate_host_pid(daemon_pid)
                         logger.debug("Killed daemon pid %s for %s", daemon_pid, session_name)
                     except (ProcessLookupError, ValueError, PermissionError, OSError):

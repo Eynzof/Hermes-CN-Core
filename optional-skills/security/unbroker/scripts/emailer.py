@@ -149,7 +149,7 @@ def _respect_rate_limit(min_interval: float, sleep, now, state_path=None) -> Non
     p = state_path or _rate_limit_path()
     last = 0.0
     try:
-        last = float(json.loads(p.read_text(encoding="utf-8")).get("last", 0.0))
+        last = float(json.loads(p.read_text(encoding="utf-8", errors="replace")).get("last", 0.0))
     except (OSError, ValueError, TypeError):
         last = 0.0
     wait = min_interval - (now() - last)

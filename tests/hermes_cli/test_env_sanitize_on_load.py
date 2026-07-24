@@ -78,7 +78,7 @@ def test_env_loader_sanitizes_before_dotenv():
 
     try:
         _sanitize_env_file_if_needed(env_path)
-        with open(env_path, encoding="utf-8") as f:
+        with open(env_path, encoding="utf-8", errors="replace") as f:
             lines = f.readlines()
         # Should be split into two separate lines
         assert len(lines) == 2, f"Expected 2 lines, got {len(lines)}: {lines}"

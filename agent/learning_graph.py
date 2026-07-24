@@ -89,7 +89,7 @@ def _load_usage() -> dict[str, dict[str, Any]]:
     except Exception:
         path = get_hermes_home() / "skills" / ".usage.json"
         try:
-            return orjson.loads(path.read_text(encoding="utf-8"))
+            return orjson.loads(path.read_text(encoding="utf-8", errors="replace"))
         except Exception:
             return {}
 
@@ -130,7 +130,7 @@ def build_skill_nodes(skill_roots: list[tuple[str, Path]]) -> dict[str, SkillNod
         if any(p in {".archive", ".hub", "node_modules", ".git"} for p in skill_md.parts):
             continue
         try:
-            fm = _frontmatter(skill_md.read_text(encoding="utf-8")[:4000])
+            fm = _frontmatter(skill_md.read_text(encoding="utf-8", errors="replace")[:4000])
         except OSError:
             continue
         name = str(fm.get("name") or skill_md.parent.name).strip()
@@ -201,7 +201,7 @@ def _memory_cards() -> list[dict[str, Any]]:
     for fname, source in (("MEMORY.md", "memory"), ("USER.md", "profile")):
         path = base / fname
         try:
-            text = path.read_text(encoding="utf-8").strip()
+            text = path.read_text(encoding="utf-8", errors="replace").strip()
             file_ts = _to_int_ts(path.stat().st_mtime)
         except OSError:
             continue

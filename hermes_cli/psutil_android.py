@@ -87,7 +87,7 @@ def prepare_patched_psutil_sdist(archive: Path, destination: Path) -> Path:
             f"psutil sdist did not contain {common_py.relative_to(src_root)!s}"
         )
     try:
-        content = common_py.read_text(encoding="utf-8")
+        content = common_py.read_text(encoding="utf-8", errors="replace")
     except OSError as exc:
         raise PsutilAndroidInstallError(
             f"Failed to read {common_py.relative_to(src_root)!s}"

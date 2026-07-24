@@ -132,7 +132,7 @@ def _scrub_config_yaml_mirrors(old_value: str, new_value: str | None) -> List[st
     if not config_path.exists():
         return []
     try:
-        with open(config_path, encoding="utf-8") as f:
+        with open(config_path, encoding="utf-8", errors="replace") as f:
             user_config = fast_safe_load(f) or {}
     except Exception:
         return []

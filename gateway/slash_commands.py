@@ -1716,7 +1716,7 @@ class GatewaySlashCommandsMixin:
                         if persist_global:
                             try:
                                 if config_path.exists():
-                                    with open(config_path, encoding="utf-8") as f:
+                                    with open(config_path, encoding="utf-8", errors="replace") as f:
                                         _persist_cfg = yaml.safe_load(f) or {}
                                 else:
                                     _persist_cfg = {}
@@ -2014,7 +2014,7 @@ class GatewaySlashCommandsMixin:
             if persist_global:
                 try:
                     if config_path.exists():
-                        with open(config_path, encoding="utf-8") as f:
+                        with open(config_path, encoding="utf-8", errors="replace") as f:
                             cfg = yaml.safe_load(f) or {}
                     else:
                         cfg = {}
@@ -2680,7 +2680,7 @@ class GatewaySlashCommandsMixin:
             import yaml as _y
             _cfg_path = _hermes_home / "config.yaml"
             if _cfg_path.exists():
-                with open(_cfg_path, encoding="utf-8") as _f:
+                with open(_cfg_path, encoding="utf-8", errors="replace") as _f:
                     _data = _y.safe_load(_f) or {}
                 cp_cfg = _data.get("checkpoints", {})
                 if isinstance(cp_cfg, bool):
@@ -2775,7 +2775,7 @@ class GatewaySlashCommandsMixin:
         try:
             user_config = {}
             if config_path.exists():
-                with open(config_path, encoding="utf-8") as f:
+                with open(config_path, encoding="utf-8", errors="replace") as f:
                     user_config = yaml.safe_load(f) or {}
             keys = key_path.split(".")
             current = user_config
@@ -3028,7 +3028,7 @@ class GatewaySlashCommandsMixin:
             import yaml
             user_config = {}
             if config_path.exists():
-                with open(config_path, encoding="utf-8") as f:
+                with open(config_path, encoding="utf-8", errors="replace") as f:
                     user_config = yaml.safe_load(f) or {}
             user_config.setdefault("memory", {})["write_approval"] = bool(enabled)
             atomic_config_write(config_path, user_config)
@@ -3084,7 +3084,7 @@ class GatewaySlashCommandsMixin:
             import yaml
             user_config = {}
             if config_path.exists():
-                with open(config_path, encoding="utf-8") as f:
+                with open(config_path, encoding="utf-8", errors="replace") as f:
                     user_config = yaml.safe_load(f) or {}
             user_config.setdefault("skills", {})["write_approval"] = bool(enabled)
             atomic_config_write(config_path, user_config)

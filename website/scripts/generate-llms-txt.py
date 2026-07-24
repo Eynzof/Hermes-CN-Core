@@ -164,7 +164,7 @@ TITLE_RE = re.compile(r"^title:\s*[\"'](.+?)[\"']\s*$", re.MULTILINE)
 
 def read_frontmatter(path: Path) -> tuple[dict[str, str], str]:
     """Return ({title, description}, body-markdown) for a doc file."""
-    text = path.read_text(encoding="utf-8")
+    text = path.read_text(encoding="utf-8", errors="replace")
     m = FRONTMATTER_RE.match(text)
     meta: dict[str, str] = {}
     body = text

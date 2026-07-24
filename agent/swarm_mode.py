@@ -86,7 +86,7 @@ class SwarmMode:
             _here = os.path.dirname(__file__)
             _path = os.path.join(_here, "swarm-mode-enter-reminder.md")
             if os.path.exists(_path):
-                with open(_path, "r", encoding="utf-8") as f:
+                with open(_path, "r", encoding="utf-8", errors="replace") as f:
                     return f.read().strip()
         except Exception:
             pass
@@ -99,7 +99,7 @@ class SwarmMode:
             _here = os.path.dirname(__file__)
             _path = os.path.join(_here, "swarm-mode-exit-reminder.md")
             if os.path.exists(_path):
-                with open(_path, "r", encoding="utf-8") as f:
+                with open(_path, "r", encoding="utf-8", errors="replace") as f:
                     return f.read().strip()
         except Exception:
             pass

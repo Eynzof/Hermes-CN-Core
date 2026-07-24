@@ -15,7 +15,7 @@ REPO_ROOT = Path(__file__).parent.resolve()
 def _source_tree_is_writable() -> bool:
     probe = REPO_ROOT / ".setuptools-write-probe"
     try:
-        with probe.open("w", encoding="utf-8") as handle:
+        with probe.open("w", encoding="utf-8", errors="replace") as handle:
             handle.write("")
         probe.unlink()
     except OSError:

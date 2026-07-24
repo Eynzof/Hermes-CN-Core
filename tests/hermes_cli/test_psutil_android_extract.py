@@ -111,7 +111,7 @@ def test_install_psutil_android_script_uses_patched_tree(tmp_path, monkeypatch, 
 
     def fake_subprocess_run(cmd: list[str]):
         src_root = Path(cmd[-1])
-        patched = (src_root / "psutil" / "_common.py").read_text(encoding="utf-8")
+        patched = (src_root / "psutil" / "_common.py").read_text(encoding="utf-8", errors="replace")
         assert REPLACEMENT in patched
         return type("RunResult", (), {"returncode": 0})()
 

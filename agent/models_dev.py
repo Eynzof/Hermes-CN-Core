@@ -231,7 +231,7 @@ def _load_disk_cache() -> Dict[str, Any]:
     try:
         cache_path = _get_cache_path()
         if cache_path.exists():
-            with open(cache_path, encoding="utf-8") as f:
+            with open(cache_path, encoding="utf-8", errors="replace") as f:
                 return orjson.loads(f.read())
     except Exception as e:
         logger.debug("Failed to load models.dev disk cache: %s", e)
@@ -309,7 +309,7 @@ def _load_bundled_snapshot() -> Dict[str, Any]:
     for path in _bundled_snapshot_candidates():
         try:
             if path.is_file():
-                with open(path, encoding="utf-8") as f:
+                with open(path, encoding="utf-8", errors="replace") as f:
                     data = orjson.loads(f.read())
                 if isinstance(data, dict) and data:
                     _bundled_snapshot_cache = data

@@ -20,7 +20,7 @@ external code that imports those names from ``tools.web_tools``.
 
 from __future__ import annotations
 
-from plugins.web.firecrawl.provider import FirecrawlWebSearchProvider
+from .provider import FirecrawlWebSearchProvider
 
 
 def register(ctx) -> None:

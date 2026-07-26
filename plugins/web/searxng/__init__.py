@@ -7,7 +7,7 @@ Search-only — pair with an extract provider (firecrawl/tavily/exa) for
 
 from __future__ import annotations
 
-from plugins.web.searxng.provider import SearXNGWebSearchProvider
+from .provider import SearXNGWebSearchProvider
 
 
 def register(ctx) -> None:

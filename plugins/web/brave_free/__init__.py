@@ -6,7 +6,7 @@ provider class, ``__init__.py::register(ctx)`` registers an instance.
 
 from __future__ import annotations
 
-from plugins.web.brave_free.provider import BraveFreeWebSearchProvider
+from .provider import BraveFreeWebSearchProvider
 
 
 def register(ctx) -> None:

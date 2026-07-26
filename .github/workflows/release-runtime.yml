@@ -148,10 +148,24 @@ jobs:
           # Build tooling
           pip install pyinstaller==6.* cryptography
 
-      - name: Set up Node.js (build TUI bundle)
+      - name: Set up Node.js (build web dashboard + TUI bundle)
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
+
+      - name: Install Node.js workspace deps
+        shell: bash
+        run: npm ci
+
+      - name: Build web dashboard
+        shell: bash
+        run: |
+          # The desktop runtime serves the dashboard/API bundle from
+          # hermes_cli/web_dist. Build it before PyInstaller so collect-data
+          # includes the actual SPA instead of shipping an empty backend-only
+          # runtime (issue #116).
+          npm --workspace web run build
+          test -f hermes_cli/web_dist/index.html || { echo "::error::hermes_cli/web_dist/index.html not built" >&2; exit 1; }
 
       - name: Build embedded TUI bundle
         shell: bash
@@ -162,8 +176,8 @@ jobs:
           # runtime payload below so the frozen runtime launches it without a
           # ui-tui/ source checkout. Mirrors the PyPI wheel pipeline
           # (upload_to_pypi.yml). See FORK_NOTES P-032.
-          cd ui-tui && npm ci && npm run build
-          test -f dist/entry.js || { echo "::error::ui-tui/dist/entry.js not built" >&2; exit 1; }
+          npm --workspace ui-tui run build
+          test -f ui-tui/dist/entry.js || { echo "::error::ui-tui/dist/entry.js not built" >&2; exit 1; }
 
       - name: Verify platform backends importable (build env)
         shell: bash
@@ -178,7 +192,8 @@ jobs:
           for m in ("mcp", "lark_oapi", "dingtalk_stream", "alibabacloud_dingtalk",
                     "alibabacloud_tea_openapi", "alibabacloud_tea_util",
                     "aiohttp", "qrcode", "defusedxml", "certifi", "typer",
-                    "hindsight_client", "hindsight_client_api", "aiohttp_retry"):
+                    "hindsight_client", "hindsight_client_api", "aiohttp_retry",
+                    "ddgs", "exa_py", "firecrawl", "parallel"):
               try:
                   importlib.import_module(m)
               except Exception as e:
@@ -198,6 +213,24 @@ jobs:
           import plugins.platforms.wecom.adapter as wcm
           import plugins.platforms.wecom.callback_adapter as wc
           import gateway.platforms.weixin as wx
+          for m in (
+              "tools.computer_use_tool",
+              "tools.computer_use.tool",
+              "tools.computer_use.doctor",
+              "tools.computer_use.cua_backend",
+              "plugins.web.brave_free",
+              "plugins.web.ddgs",
+              "plugins.web.exa",
+              "plugins.web.firecrawl",
+              "plugins.web.parallel",
+              "plugins.web.searxng",
+              "plugins.web.tavily",
+              "plugins.web.xai",
+          ):
+              try:
+                  importlib.import_module(m)
+              except Exception as e:
+                  missing.append(f"{m}: {type(e).__name__}: {e}")
           flags = {
               "feishu.FEISHU_AVAILABLE": fs.FEISHU_AVAILABLE,
               "dingtalk.DINGTALK_STREAM_AVAILABLE": dt.DINGTALK_STREAM_AVAILABLE,
@@ -257,6 +290,12 @@ jobs:
             --collect-submodules pydantic \
             --collect-submodules anthropic \
             --collect-submodules mcp \
+            --collect-submodules tools \
+            --collect-submodules plugins.web \
+            --collect-submodules ddgs \
+            --collect-submodules exa_py \
+            --collect-submodules firecrawl \
+            --collect-submodules parallel \
             --collect-submodules lark_oapi \
             --collect-submodules dingtalk_stream \
             --collect-submodules alibabacloud_dingtalk \
@@ -299,6 +338,10 @@ jobs:
             --copy-metadata pydantic \
             --copy-metadata anthropic \
             --copy-metadata mcp \
+            --copy-metadata ddgs \
+            --copy-metadata exa-py \
+            --copy-metadata firecrawl-py \
+            --copy-metadata parallel-web \
             --copy-metadata typer \
             --copy-metadata hindsight-client \
             --copy-metadata aiohttp-retry \
@@ -376,6 +419,32 @@ jobs:
           echo "Staged node + TUI into dist/$NAME:"
           ls -la "$dest"
 
+      - name: Stage bundled plugin/tool resources into payload
+        shell: bash
+        run: |
+          # PyInstaller's module graph makes code importable, but several
+          # Hermes discovery paths intentionally inspect files on disk
+          # (tool shims, plugin manifests, provider.py). Stage the declared
+          # Desktop runtime resources into _internal so the frozen runtime's
+          # advertised tool/plugin inventory matches the payload.
+          NAME="hermes-agent-cn-runtime-${{ matrix.platform }}-${{ matrix.arch }}"
+          internal="dist/$NAME/_internal"
+          mkdir -p "$internal/tools" "$internal/plugins"
+          rm -rf "$internal/tools/computer_use" "$internal/plugins/web"
+          cp tools/__init__.py "$internal/tools/__init__.py"
+          cp tools/computer_use_tool.py "$internal/tools/computer_use_tool.py"
+          cp -R tools/computer_use "$internal/tools/computer_use"
+          cp plugins/__init__.py "$internal/plugins/__init__.py"
+          cp -R plugins/web "$internal/plugins/web"
+
+          test -f "$internal/tools/computer_use_tool.py" || { echo "::error::missing computer_use tool shim" >&2; exit 1; }
+          test -f "$internal/tools/computer_use/tool.py" || { echo "::error::missing computer_use package" >&2; exit 1; }
+          for p in brave_free ddgs exa firecrawl parallel searxng tavily xai; do
+            test -f "$internal/plugins/web/$p/__init__.py" || { echo "::error::missing web plugin $p __init__.py" >&2; exit 1; }
+            test -f "$internal/plugins/web/$p/provider.py" || { echo "::error::missing web plugin $p provider.py" >&2; exit 1; }
+            test -f "$internal/plugins/web/$p/plugin.yaml" || { echo "::error::missing web plugin $p plugin.yaml" >&2; exit 1; }
+          done
+
       - name: Normalize macOS framework layout
         if: matrix.platform == 'darwin'
         shell: bash
@@ -448,7 +517,8 @@ jobs:
                      alibabacloud_tea darabonba_core requests_toolbelt \
                      aiohttp websockets apscheduler aiofiles qrcode pypng \
                      defusedxml cryptography pycryptodome certifi \
-                     hindsight_client aiohttp_retry; do
+                     hindsight_client aiohttp_retry ddgs exa_py firecrawl_py \
+                     parallel_web; do
             if [[ -z "$(find "$internal" -maxdepth 1 -type d -name "${pkg}-*.dist-info" -print -quit)" ]]; then
               echo "::error::Frozen runtime is missing ${pkg} package metadata" >&2
               find "dist/$NAME" -maxdepth 3 -type d -iname "${pkg}*" -print >&2
@@ -473,11 +543,29 @@ jobs:
           fi
           python -c "import json,sys; d=json.load(open(sys.argv[1])); assert isinstance(d, dict) and d, 'snapshot empty'; print('models.dev snapshot OK:', len(d), 'providers')" "$snap"
 
+      - name: Verify frozen runtime resources
+        shell: bash
+        run: |
+          NAME="hermes-agent-cn-runtime-${{ matrix.platform }}-${{ matrix.arch }}"
+          root="dist/$NAME"
+          internal="$root/_internal"
+
+          test -f "$internal/hermes_cli/web_dist/index.html" || { echo "::error::missing hermes_cli/web_dist/index.html" >&2; exit 1; }
+          test -f "$internal/tools/computer_use_tool.py" || { echo "::error::missing tools/computer_use_tool.py" >&2; exit 1; }
+          test -f "$internal/tools/computer_use/tool.py" || { echo "::error::missing tools/computer_use/tool.py" >&2; exit 1; }
+          for p in brave_free ddgs exa firecrawl parallel searxng tavily xai; do
+            for f in __init__.py provider.py plugin.yaml; do
+              test -f "$internal/plugins/web/$p/$f" || { echo "::error::missing plugins/web/$p/$f" >&2; exit 1; }
+            done
+          done
+
       - name: Smoke-test the binary
         shell: bash
         run: |
           NAME="hermes-agent-cn-runtime-${{ matrix.platform }}-${{ matrix.arch }}"
           "./dist/$NAME/$NAME${{ matrix.ext }}" dashboard --help
+          "./dist/$NAME/$NAME${{ matrix.ext }}" tools list --platform cli
+          "./dist/$NAME/$NAME${{ matrix.ext }}" computer-use status
 
       - name: Verify bundled Node runtime + TUI
         shell: bash

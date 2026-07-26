@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+from pathlib import Path
 
 import pytest
 
@@ -70,7 +71,7 @@ def _isolate_env(monkeypatch: pytest.MonkeyPatch) -> None:
 class TestBundledPluginsRegister:
     """All eight bundled web plugins discover and register correctly."""
 
-    def test_all_seven_plugins_present_in_registry(self) -> None:
+    def test_all_eight_plugins_present_in_registry(self) -> None:
         _ensure_plugins_loaded()
         from agent.web_search_registry import list_providers
 
@@ -85,6 +86,29 @@ class TestBundledPluginsRegister:
             "tavily",
             "xai",
         ]
+
+    def test_plugin_entrypoints_use_package_relative_provider_imports(self) -> None:
+        """PyInstaller can stage bundled plugins at package-relative paths."""
+        root = Path(__file__).resolve().parents[3]
+        for init_file in (root / "plugins" / "web").glob("*/__init__.py"):
+            text = init_file.read_text(encoding="utf-8", errors="replace")
+            assert "from plugins.web." not in text
+            assert "from .provider import " in text
+
+    def test_check_fn_triggers_plugin_discovery_before_availability(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Tool schema gating must see plugin-registered web providers."""
+        import tools.web_tools as web_tools
+        from agent import web_search_registry
+
+        calls: list[str] = []
+
+        monkeypatch.setattr(web_tools, "_ensure_web_plugins_loaded", lambda: calls.append("loaded"))
+        monkeypatch.setattr(web_tools, "_load_web_config", lambda: {"backend": ""})
+        monkeypatch.setattr(web_tools, "_is_backend_available", lambda _backend: False)
+        monkeypatch.setattr(web_search_registry, "list_providers", lambda: [])
+
+        assert web_tools.check_web_api_key() is False
+        assert calls == ["loaded"]
 
     @pytest.mark.parametrize(
         "plugin_name,expected_search,expected_extract",

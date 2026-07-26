@@ -85,7 +85,19 @@ def test_cn_desktop_extra_bundles_every_desktop_backend():
     extra = _cn_desktop_extra()
     blob = "\n".join(extra)
     # Aggregated sub-extras
-    for sub in ("web", "anthropic", "mcp", "feishu", "dingtalk", "wecom"):
+    for sub in (
+        "web",
+        "anthropic",
+        "mcp",
+        "computer-use",
+        "exa",
+        "firecrawl",
+        "parallel-web",
+        "ddgs",
+        "feishu",
+        "dingtalk",
+        "wecom",
+    ):
         assert f"[{sub}]" in blob, f"cn-desktop is missing the {sub} extra"
     # 微信 (weixin) has no dedicated extra — its adapter deps are listed directly
     assert any(e.startswith("aiohttp") for e in extra), "cn-desktop missing aiohttp (微信/feishu/wecom)"
@@ -109,6 +121,51 @@ def test_runtime_workflow_freezes_native_mcp_client():
     assert "--collect-submodules mcp" in workflow
     assert "--copy-metadata mcp" in workflow
     assert "mcp" in _frozen_verify_packages()
+
+
+def test_runtime_workflow_builds_and_verifies_web_dist():
+    """Issue #116: the frozen runtime must ship the dashboard SPA bundle."""
+    workflow = _workflow_text()
+    assert "Build web dashboard" in workflow
+    assert "hermes_cli/web_dist/index.html not built" in workflow
+    assert "--collect-data hermes_cli" in workflow
+    assert "Verify frozen runtime resources" in workflow
+    assert "hermes_cli/web_dist/index.html" in workflow
+
+
+def test_runtime_workflow_freezes_computer_use_tooling():
+    """Issue #106: Desktop-visible computer_use must be importable frozen."""
+    workflow = _workflow_text()
+    assert any("[computer-use]" in e for e in _cn_desktop_extra())
+    assert "--collect-submodules tools" in workflow
+    for mod in (
+        "tools.computer_use_tool",
+        "tools.computer_use.tool",
+        "tools.computer_use.doctor",
+        "tools.computer_use.cua_backend",
+    ):
+        assert mod in workflow
+    assert "tools/computer_use_tool.py" in workflow
+    assert "tools/computer_use/tool.py" in workflow
+    assert "computer-use status" in workflow
+    assert "cua-driver" not in "\n".join(_cn_desktop_extra())
+
+
+def test_runtime_workflow_freezes_web_search_providers():
+    """Issue #111: bundled Web providers and SDK metadata must ship frozen."""
+    workflow = _workflow_text()
+    extra = _cn_desktop_extra()
+    for sub in ("exa", "firecrawl", "parallel-web", "ddgs"):
+        assert any(f"[{sub}]" in e for e in extra), f"cn-desktop missing {sub}"
+    for mod in ("plugins.web", "ddgs", "exa_py", "firecrawl", "parallel"):
+        assert f"--collect-submodules {mod}" in workflow
+    for dist in ("ddgs", "exa-py", "firecrawl-py", "parallel-web"):
+        assert f"--copy-metadata {dist}" in workflow
+    for pkg in ("ddgs", "exa_py", "firecrawl_py", "parallel_web"):
+        assert pkg in _frozen_verify_packages()
+    for plugin in ("brave_free", "ddgs", "exa", "firecrawl", "parallel", "searxng", "tavily", "xai"):
+        assert f"plugins.web.{plugin}" in workflow
+        assert f"plugins/web/$p/plugin.yaml" in workflow
 
 
 def test_runtime_workflow_freezes_im_platform_backends():

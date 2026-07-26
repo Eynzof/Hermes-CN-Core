@@ -160,6 +160,7 @@ anthropic = ["anthropic==0.87.0"]  # CVE-2026-34450, CVE-2026-34452
 exa = ["exa-py==2.10.2"]
 firecrawl = ["firecrawl-py==4.17.0"]
 parallel-web = ["parallel-web==0.4.2"]
+ddgs = ["ddgs==9.14.4"]
 # Image generation backends
 fal = ["fal-client==0.13.1"]
 # Edge TTS — default TTS provider but still optional (users can pick
@@ -328,6 +329,11 @@ cn-desktop = [
   "hermes-agent[web]",        # dashboard: fastapi / uvicorn / starlette
   "hermes-agent[anthropic]",  # native Anthropic transport (MiniMax-CN etc.)
   "hermes-agent[mcp]",        # native MCP client SDK (issue #16)
+  "hermes-agent[computer-use]", # computer_use tool shim + MCP client; cua-driver stays post-install
+  "hermes-agent[exa]",        # bundled web provider (frozen runtime cannot lazy-install)
+  "hermes-agent[firecrawl]",  # bundled web provider (frozen runtime cannot lazy-install)
+  "hermes-agent[parallel-web]", # bundled web provider (frozen runtime cannot lazy-install)
+  "hermes-agent[ddgs]",       # bundled no-key web provider (frozen runtime cannot lazy-install)
   # PyInstaller's --collect-submodules mcp imports mcp.cli during analysis.
   # The mcp package keeps its CLI deps behind the mcp[cli] extra, so the frozen
   # runtime build must install typer explicitly or all platform builds fail.

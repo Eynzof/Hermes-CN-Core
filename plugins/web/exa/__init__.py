@@ -7,7 +7,7 @@ caller is async.
 
 from __future__ import annotations
 
-from plugins.web.exa.provider import ExaWebSearchProvider
+from .provider import ExaWebSearchProvider
 
 
 def register(ctx) -> None:

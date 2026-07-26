@@ -7,7 +7,7 @@ results page. No API key required, but the package itself must be installed
 
 from __future__ import annotations
 
-from plugins.web.ddgs.provider import DDGSWebSearchProvider
+from .provider import DDGSWebSearchProvider
 
 
 def register(ctx) -> None:

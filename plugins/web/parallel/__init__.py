@@ -8,7 +8,7 @@ awaits.
 
 from __future__ import annotations
 
-from plugins.web.parallel.provider import ParallelWebSearchProvider
+from .provider import ParallelWebSearchProvider
 
 
 def register(ctx) -> None:

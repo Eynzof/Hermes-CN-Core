@@ -1900,6 +1900,9 @@ def list_authenticated_providers(
     seen_slugs: set = set()  # lowercase-normalized to catch case variants (#9545)
     _current_provider_norm = str(current_provider or "").strip().lower()
     _current_base_url_norm = str(current_base_url or "").strip().rstrip("/").lower()
+    fallback_catalog_warning = (
+        "Live model discovery is unavailable; showing bundled fallback models."
+    )
 
     def _can_probe_custom_provider(*, row_is_current: bool) -> bool:
         return bool(probe_custom_providers or (probe_current_custom_provider and row_is_current))
@@ -2119,10 +2122,13 @@ def list_authenticated_providers(
         # disk caching to keep the picker open snappy. Falls back to the
         # curated static list when the live fetcher returns nothing.
         model_ids = cached_provider_model_ids(hermes_id)
+        fallback_warning = ""
         if not model_ids:
             model_ids = curated.get(hermes_id, [])
             if hermes_id in _MODELS_DEV_PREFERRED:
                 model_ids = _merge_with_models_dev(hermes_id, model_ids)
+            if model_ids:
+                fallback_warning = fallback_catalog_warning
         # A providers.<built-in>.models block extends the provider's discovered
         # catalog. Section 3 cannot emit it later because this built-in row owns
         # the slug, so merge declarations here before applying max_models.
@@ -2141,7 +2147,7 @@ def list_authenticated_providers(
         pinfo = _mdev_pinfo(mdev_id)
         display_name = pconfig.name if pconfig and pconfig.name else (pinfo.name if pinfo else mdev_id)
 
-        results.append({
+        row = {
             "slug": slug,
             "name": display_name,
             "is_current": (
@@ -2153,7 +2159,10 @@ def list_authenticated_providers(
             "models": top,
             "total_models": total,
             "source": "built-in",
-        })
+        }
+        if fallback_warning:
+            row["warning"] = fallback_warning
+        results.append(row)
         seen_slugs.add(slug.lower())
         _record_builtin_endpoint(slug)
 
@@ -2251,6 +2260,7 @@ def list_authenticated_providers(
         if not has_creds:
             continue
 
+        fallback_warning = ""
         if hermes_slug in {"openai-codex", "copilot", "copilot-acp"}:
             # Use live OAuth-backed discovery so the gateway /model picker
             # matches what the user's authenticated Codex/Copilot backend
@@ -2266,8 +2276,12 @@ def list_authenticated_providers(
             try:
                 _ids = cached_provider_model_ids(hermes_slug)
                 model_ids = _ids if _ids else (curated.get(hermes_slug, []) or curated.get(pid, []))
+                if not _ids and model_ids:
+                    fallback_warning = fallback_catalog_warning
             except Exception:
                 model_ids = curated.get(hermes_slug, []) or curated.get(pid, [])
+                if model_ids:
+                    fallback_warning = fallback_catalog_warning
         elif hermes_slug == "nous":
             # Nous serves a large live /v1/models catalog (vendor-prefixed
             # models from many providers, returned alphabetically). The
@@ -2314,13 +2328,15 @@ def list_authenticated_providers(
                 model_ids = curated.get(hermes_slug, []) or curated.get(pid, [])
                 if hermes_slug in _MODELS_DEV_PREFERRED:
                     model_ids = _merge_with_models_dev(hermes_slug, model_ids)
+                if model_ids:
+                    fallback_warning = fallback_catalog_warning
         total = len(model_ids)
         if hermes_slug in _UNCAPPED_PICKER_PROVIDERS:
             top = model_ids  # Aggregator: show full catalog regardless of max_models
         else:
             top = model_ids[:max_models] if max_models is not None else model_ids
 
-        results.append({
+        row = {
             "slug": hermes_slug,
             "name": get_label(hermes_slug),
             "is_current": hermes_slug == current_provider or pid == current_provider,
@@ -2328,7 +2344,10 @@ def list_authenticated_providers(
             "models": top,
             "total_models": total,
             "source": "hermes",
-        })
+        }
+        if fallback_warning:
+            row["warning"] = fallback_warning
+        results.append(row)
         seen_slugs.add(pid.lower())
         seen_slugs.add(hermes_slug.lower())
         _record_builtin_endpoint(hermes_slug)
@@ -2392,21 +2411,28 @@ def list_authenticated_providers(
 
         # For bedrock, use live discovery so the list reflects the active
         # region (eu.*, us.*, ap.*) instead of the hardcoded us.* static list.
+        _cp_fallback_warning = ""
         if _cp_config and getattr(_cp_config, "auth_type", "") == "aws_sdk":
             try:
                 _ids = cached_provider_model_ids(_cp.slug)
                 _cp_model_ids = _ids if _ids else curated.get(_cp.slug, [])
+                if not _ids and _cp_model_ids:
+                    _cp_fallback_warning = fallback_catalog_warning
             except Exception:
                 _cp_model_ids = curated.get(_cp.slug, [])
+                if _cp_model_ids:
+                    _cp_fallback_warning = fallback_catalog_warning
         else:
             # Unified pathway — same as sections 1 and 2.
             _cp_model_ids = cached_provider_model_ids(_cp.slug)
             if not _cp_model_ids:
                 _cp_model_ids = curated.get(_cp.slug, [])
+                if _cp_model_ids:
+                    _cp_fallback_warning = fallback_catalog_warning
         _cp_total = len(_cp_model_ids)
         _cp_top = _cp_model_ids[:max_models] if max_models is not None else _cp_model_ids
 
-        results.append({
+        row = {
             "slug": _cp.slug,
             "name": _cp.label,
             "is_current": _cp.slug == current_provider,
@@ -2414,7 +2440,10 @@ def list_authenticated_providers(
             "models": _cp_top,
             "total_models": _cp_total,
             "source": "canonical",
-        })
+        }
+        if _cp_fallback_warning:
+            row["warning"] = _cp_fallback_warning
+        results.append(row)
         seen_slugs.add(_cp.slug.lower())
         _record_builtin_endpoint(_cp.slug)
 

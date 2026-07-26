@@ -6,7 +6,7 @@ provider class, ``__init__.py::register(ctx)`` registers an instance.
 
 from __future__ import annotations
 
-from plugins.web.xai.provider import XAIWebSearchProvider
+from .provider import XAIWebSearchProvider
 
 
 def register(ctx) -> None:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from plugins.web.tavily.provider import TavilyWebSearchProvider
+from .provider import TavilyWebSearchProvider
 
 
 def register(ctx) -> None:

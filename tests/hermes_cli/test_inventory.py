@@ -19,6 +19,7 @@ depend on:
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import patch
 
 
@@ -329,6 +330,29 @@ def test_list_authenticated_providers_force_fresh_is_keyword_only():
     param = sig.parameters["force_fresh_nous_tier"]
     assert param.kind is inspect.Parameter.KEYWORD_ONLY
     assert param.default is False
+
+
+def test_list_authenticated_providers_warns_when_catalog_falls_back(monkeypatch):
+    """Authenticated rows must mark curated/models.dev fallback catalogs."""
+    from hermes_cli.model_switch import list_authenticated_providers
+
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-key")
+
+    with (
+        patch("agent.models_dev.PROVIDER_TO_MODELS_DEV", {"deepseek": "deepseek"}),
+        patch("agent.models_dev.fetch_models_dev", return_value={"deepseek": {"env": ["DEEPSEEK_API_KEY"]}}),
+        patch("agent.models_dev.get_provider_info", return_value=SimpleNamespace(name="DeepSeek")),
+        patch("hermes_cli.auth.is_runtime_provider_routable", return_value=True),
+        patch("hermes_cli.models.cached_provider_model_ids", return_value=[]),
+        patch("hermes_cli.models._merge_with_models_dev", side_effect=lambda _provider, models: list(models)),
+        patch("hermes_cli.providers.HERMES_OVERLAYS", {}),
+        patch("hermes_cli.models.CANONICAL_PROVIDERS", []),
+    ):
+        rows = list_authenticated_providers(max_models=3)
+
+    deepseek = next(row for row in rows if row["slug"] == "deepseek")
+    assert deepseek["models"]
+    assert "Live model discovery is unavailable" in deepseek["warning"]
 
 
 def test_pricing_uses_cached_nous_tier_by_default():

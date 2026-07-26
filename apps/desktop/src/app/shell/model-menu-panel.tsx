@@ -266,6 +266,11 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
                   )}
                   {group.provider.name}
                 </DropdownMenuItem>
+                {!collapsed && group.provider.warning ? (
+                  <DropdownMenuItem className={cn(dropdownMenuRow, 'text-(--ui-text-tertiary)')} disabled>
+                    {group.provider.warning}
+                  </DropdownMenuItem>
+                ) : null}
                 {!collapsed &&
                   group.families.map(family => {
                     // The active id may be the base or its -fast sibling; either

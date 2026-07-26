@@ -133,6 +133,21 @@ describe('ModelMenuPanel provider collapse', () => {
     expect(content.queryByText('Deepseek Chat')).not.toBeNull()
   })
 
+  it('surfaces backend provider warnings next to the affected provider', async () => {
+    getGlobalModelOptions.mockResolvedValueOnce({
+      providers: [
+        {
+          ...DEEPSEEK_PROVIDER,
+          warning: 'Live model discovery is unavailable; showing bundled fallback models.'
+        }
+      ]
+    })
+    const { content } = renderPanel()
+
+    await content.findByText('DeepSeek')
+    expect(content.queryByText('Live model discovery is unavailable; showing bundled fallback models.')).not.toBeNull()
+  })
+
   it('collapses provider models when header is clicked', async () => {
     const { content } = renderPanel()
 

@@ -296,6 +296,7 @@ export interface ModelOptionProvider {
   is_current?: boolean
   models?: string[]
   name: string
+  source?: string
   slug: string
   total_models?: number
   warning?: string

@@ -360,8 +360,12 @@ class TestWebToolPolicy:
     _register_providers = staticmethod(register_all_web_providers)
 
     @pytest.fixture(autouse=True)
-    def _populate_web_registry(self):
+    def _populate_web_registry(self, monkeypatch):
         self._register_providers()
+        from tools import web_tools
+
+        monkeypatch.setattr(web_tools, "_ensure_web_plugins_loaded", lambda: None)
+        monkeypatch.setattr(web_tools, "_load_web_config", lambda: {"backend": "firecrawl"})
         yield
         from agent.web_search_registry import _reset_for_tests
         _reset_for_tests()

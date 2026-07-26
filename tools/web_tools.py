@@ -1048,6 +1048,10 @@ def check_web_api_key() -> bool:
     :func:`_is_backend_available`, which delegates non-legacy names to the
     registry.
     """
+    # check_fn runs before tool dispatch, so registry-backed plugin providers
+    # must be discovered here too. Otherwise the Desktop/frozen runtime can hide
+    # web_search/web_extract even though bundled provider plugins are present.
+    _ensure_web_plugins_loaded()
     # ``or ""``: a null ``web.backend`` value yields None from ``.get``, and
     # ``None.lower()`` would raise. Mirrors ``_get_backend``.
     configured = (_load_web_config().get("backend") or "").lower().strip()
@@ -1057,20 +1061,28 @@ def check_web_api_key() -> bool:
     # unlike _get_backend() the probe order is irrelevant.
     if any(_is_backend_available(backend) for backend in _LEGACY_WEB_BACKENDS):
         return True
-    # Any plugin-registered provider the registry considers active for either
-    # capability. Delegating to the registry's own availability-filtered
-    # resolvers keeps a single authority for "is a custom provider usable"
-    # rather than re-implementing the walk here.
+    # Any non-legacy plugin-registered provider that reports itself available.
+    # Legacy providers are already covered above through the hardcoded probes;
+    # do not let the registry re-evaluate them or a bundled/free provider like
+    # ddgs can bypass test and setup-time availability shims.
     try:
-        from agent.web_search_registry import (
-            get_active_search_provider,
-            get_active_extract_provider,
-        )
+        from agent.web_search_registry import list_providers
 
-        return (
-            get_active_search_provider() is not None
-            or get_active_extract_provider() is not None
-        )
+        for provider in list_providers():
+            if provider.name in _LEGACY_WEB_BACKENDS:
+                continue
+            if not (provider.supports_search() or provider.supports_extract()):
+                continue
+            try:
+                if provider.is_available():
+                    return True
+            except Exception as provider_exc:  # noqa: BLE001
+                logger.debug(
+                    "web provider %r.is_available() raised: %s",
+                    provider.name,
+                    provider_exc,
+                )
+        return False
     except Exception as exc:  # noqa: BLE001 — registry optional; never fatal
         logger.debug("web provider registry availability check failed: %s", exc)
         return False

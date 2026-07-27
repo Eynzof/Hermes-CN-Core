@@ -8050,6 +8050,42 @@ def save_config(
         )
 
 
+def ensure_starter_config_file() -> Optional[Path]:
+    """Create a minimal first-run config.yaml if the user has none.
+
+    load_config() intentionally returns in-memory defaults when config.yaml is
+    absent. GUI/dashboard entrypoints still need a real file on first launch so
+    new desktop users have an obvious configuration surface and later writes do
+    not look like they appeared from nowhere. Keep this starter file small; do
+    not materialize DEFAULT_CONFIG here.
+    """
+    if is_managed():
+        return None
+
+    config_path = get_config_path()
+    if config_path.exists() or os.path.lexists(config_path):
+        return None
+    ensure_hermes_home()
+    if config_path.exists() or os.path.lexists(config_path):
+        return None
+
+    starter = {
+        "_config_version": DEFAULT_CONFIG.get("_config_version", 1),
+        "model": {
+            "provider": "",
+            "default": "",
+        },
+        "providers": {},
+    }
+    atomic_config_write(
+        config_path,
+        starter,
+        extra_content=_SECURITY_COMMENT + _FALLBACK_COMMENT,
+    )
+    _secure_file(config_path)
+    return config_path if config_path.exists() else None
+
+
 def _parse_env_value(raw_value: str) -> str:
     """Parse the small .env value subset Hermes writes itself."""
     value = raw_value.strip()

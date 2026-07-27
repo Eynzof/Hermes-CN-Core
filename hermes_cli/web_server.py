@@ -74,6 +74,7 @@ from hermes_cli.config import (
     get_env_path,
     get_hermes_home,
     get_process_hermes_home,
+    ensure_starter_config_file,
     load_config,
     load_env,
     read_raw_config,
@@ -6201,6 +6202,7 @@ async def update_memory_provider_config(
 @app.get("/api/config")
 async def get_config(profile: Optional[str] = None):
     with _profile_scope(profile):
+        ensure_starter_config_file()
         config = _normalize_config_for_web(load_config())
     # Strip internal keys that the frontend shouldn't see or send back
     return {k: v for k, v in config.items() if not k.startswith("_")}

@@ -4720,6 +4720,23 @@ class TestConfigRoundTrip:
         assert isinstance(config.get("model"), str), \
             f"model should be string, got {type(config.get('model'))}"
 
+    def test_get_config_seeds_missing_config_file(self):
+        """GET /api/config should create the first-run starter config.yaml."""
+        from hermes_constants import get_hermes_home
+
+        config_path = get_hermes_home() / "config.yaml"
+        config_path.unlink(missing_ok=True)
+
+        resp = self.client.get("/api/config")
+
+        assert resp.status_code == 200
+        assert config_path.exists()
+        raw = yaml.safe_load(config_path.read_text(encoding="utf-8", errors="replace"))
+        assert raw["_config_version"] == DEFAULT_CONFIG["_config_version"]
+        assert raw["model"] == {"provider": "", "default": ""}
+        assert raw["providers"] == {}
+        assert "agent" not in raw
+
     def test_round_trip_preserves_model_subkeys(self):
         """Save and reload should not lose model.provider, model.base_url, etc."""
         from hermes_cli.config import load_config, save_config

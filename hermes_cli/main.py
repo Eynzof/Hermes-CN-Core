@@ -12724,6 +12724,16 @@ def cmd_dashboard(args):
     # backend is the desktop's primary entrypoint and needs the same.
     _sync_bundled_skills_quietly()
 
+    if not _headless_backend:
+        try:
+            from hermes_cli.config import ensure_starter_config_file
+
+            seeded_config = ensure_starter_config_file()
+            if seeded_config:
+                logger.info("Seeded starter config.yaml at %s", seeded_config)
+        except Exception:
+            logger.warning("Failed to seed starter config.yaml", exc_info=True)
+
     # Bridge terminal.* config into the TERMINAL_* env vars for THIS process,
     # mirroring the CLI (cli.py env_mappings) and gateway (gateway/run.py
     # _terminal_env_map) startup bridges. The dashboard/serve backend runs

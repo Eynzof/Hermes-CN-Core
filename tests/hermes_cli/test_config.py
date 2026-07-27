@@ -13,6 +13,7 @@ from hermes_cli.config import (
     check_config_version,
     get_hermes_home,
     ensure_hermes_home,
+    ensure_starter_config_file,
     get_compatible_custom_providers,
     _explicit_config_paths,
     _normalize_max_turns_config,
@@ -517,6 +518,43 @@ class TestSaveAndLoadRoundtrip:
         atomic_config_write(config_path, {"model": {"provider": "openrouter"}})
         assert config_path.exists()
         assert "openrouter" in config_path.read_text(encoding="utf-8", errors="replace")
+
+    def test_ensure_starter_config_file_creates_minimal_config(self, tmp_path):
+        config_path = tmp_path / "config.yaml"
+        with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
+            created = ensure_starter_config_file()
+
+        assert created == config_path
+        raw = yaml.safe_load(config_path.read_text(encoding="utf-8", errors="replace"))
+        assert raw["_config_version"] == DEFAULT_CONFIG["_config_version"]
+        assert raw["model"] == {"provider": "", "default": ""}
+        assert raw["providers"] == {}
+        assert "agent" not in raw
+        assert "terminal" not in raw
+
+    def test_ensure_starter_config_file_refreshes_no_file_cache(self, tmp_path):
+        config_path = tmp_path / "config.yaml"
+        with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
+            assert load_config()["_config_version"] == DEFAULT_CONFIG["_config_version"]
+            assert not config_path.exists()
+
+            ensure_starter_config_file()
+            reloaded = load_config()
+
+        assert config_path.exists()
+        assert reloaded["model"]["provider"] == ""
+        assert reloaded["model"]["default"] == ""
+
+    def test_ensure_starter_config_file_does_not_overwrite_existing_config(self, tmp_path):
+        config_path = tmp_path / "config.yaml"
+        original = "model: existing/model\n"
+        config_path.write_text(original, encoding="utf-8")
+
+        with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
+            created = ensure_starter_config_file()
+
+        assert created is None
+        assert config_path.read_text(encoding="utf-8", errors="replace") == original
 
     def test_save_config_normalizes_legacy_root_level_max_turns(self, tmp_path):
         with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):

@@ -4,6 +4,7 @@ Tests _wrap_command(), _extract_cwd_from_output(), _embed_stdin_heredoc(),
 init_session() failure handling, and the CWD marker contract.
 """
 
+import subprocess
 import sys
 import uuid
 from unittest.mock import MagicMock
@@ -42,6 +43,31 @@ class TestBoundedOutputCollector:
         assert rendered.startswith("HEAD-SENTINEL")
         assert rendered.endswith("TAIL-SENTINEL")
         assert "[OUTPUT TRUNCATED" in rendered
+
+
+    def test_wait_for_process_observes_output_while_preserving_result(self):
+        env = _TestableEnv()
+        observed: list[str] = []
+        proc = subprocess.Popen(
+            [
+                sys.executable,
+                "-c",
+                "import sys,time; print('first', flush=True); time.sleep(0.1); print('second', flush=True)",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        )
+
+        result = env._wait_for_process(
+            proc,
+            timeout=5,
+            bounded_capture=True,
+            output_callback=observed.append,
+        )
+
+        assert result["returncode"] == 0
+        assert "first" in result["output"] and "second" in result["output"]
+        assert "first" in "".join(observed) and "second" in "".join(observed)
 
     def test_small_stream_is_unchanged(self):
         collector = _BoundedOutputCollector(100)

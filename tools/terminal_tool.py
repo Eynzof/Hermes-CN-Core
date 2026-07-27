@@ -50,6 +50,10 @@ from pathlib import Path
 from typing import Optional, Dict, Any, List
 
 from utils import env_var_enabled
+from tools.terminal_output_stream import (
+    emit_foreground_output,
+    has_foreground_output_sink,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -2214,6 +2218,7 @@ def terminal_tool(
     watch_patterns: Optional[List[str]] = None,
     token_kill: bool = True,
     max_lines: Optional[int] = None,
+    tool_call_id: Optional[str] = None,
 ) -> str:
     """
     Execute a command in the configured terminal environment.
@@ -2609,6 +2614,7 @@ def terminal_tool(
                     "output": "Background process started",
                     "session_id": proc_session.id,
                     "pid": proc_session.pid,
+                    "cwd": effective_cwd,
                     "exit_code": 0,
                     "error": None,
                 }
@@ -2857,6 +2863,12 @@ def terminal_tool(
                         # reads, RPC reads) intentionally stay unbounded.
                         "bounded_capture": True,
                     }
+                    if tool_call_id and has_foreground_output_sink():
+                        execute_kwargs["output_callback"] = (
+                            lambda chunk: emit_foreground_output(
+                                tool_call_id or "", chunk
+                            )
+                        )
                     # Apply token_kill command rewriting before execution
                     exec_command = command
                     rtk_rewritten = False
@@ -3004,6 +3016,15 @@ def terminal_tool(
                 "exit_code": returncode,
                 "error": None,
                 "command": exec_command,
+                # BaseEnvironment updates env.cwd from the shell wrapper's
+                # final marker, so dynamic commands such as `cd $(mktemp -d)`
+                # report the directory that actually executed the CLI.
+                "cwd": (
+                    getattr(env, "cwd", None)
+                    if isinstance(getattr(env, "cwd", None), str)
+                    and getattr(env, "cwd", None)
+                    else command_cwd
+                ),
             }
             try:
                 from agent.verification_evidence import record_terminal_result
@@ -3298,6 +3319,7 @@ def _handle_terminal(args, **kw):
         watch_patterns=args.get("watch_patterns"),
         token_kill=args.get("token_kill", True),
         max_lines=args.get("max_lines"),
+        tool_call_id=kw.get("tool_call_id"),
     )
 
 

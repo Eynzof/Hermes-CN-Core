@@ -41,12 +41,12 @@ that Codex auth is missing.
 ## One-Shot Tasks
 
 ```
-terminal(command="codex exec 'Add dark mode toggle to settings'", workdir="~/project", pty=true)
+terminal(command="codex exec --json 'Add dark mode toggle to settings'", workdir="~/project", pty=true)
 ```
 
 For scratch work (Codex needs a git repo):
 ```
-terminal(command="cd $(mktemp -d) && git init && codex exec 'Build a snake game in Python'", pty=true)
+terminal(command="cd $(mktemp -d) && git init && codex exec --json 'Build a snake game in Python'", pty=true)
 ```
 
 ## Background Mode (Long Tasks)
@@ -147,6 +147,6 @@ terminal(command="gh pr comment 86 --body '<review>'", workdir="~/project")
 2. **Git repo required** — Codex won't run outside a git directory. Use `mktemp -d && git init` for scratch
 3. **Use `exec` for one-shots** — `codex exec "prompt"` runs and exits cleanly
 4. **`--full-auto` for building** — auto-approves changes within the sandbox
-5. **Background for long tasks** — use `background=true, notify_on_complete=true` and monitor with `process` tool; add `--json` when supported so progress is machine-readable
+5. **Use machine-readable progress** — add `--json` when supported for both foreground and background runs so Hermes can stream steps and Token usage; for long tasks also use `background=true, notify_on_complete=true` and monitor with the `process` tool
 6. **Don't interfere** — monitor with `poll`/`log`, be patient with long-running tasks
 7. **Parallel is fine** — run multiple Codex processes at once for batch work

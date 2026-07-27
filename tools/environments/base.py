@@ -678,7 +678,12 @@ class BaseEnvironment(ABC):
     # ------------------------------------------------------------------
 
     def _wait_for_process(
-        self, proc: ProcessHandle, timeout: int = 120, *, bounded_capture: bool = False
+        self,
+        proc: ProcessHandle,
+        timeout: int = 120,
+        *,
+        bounded_capture: bool = False,
+        output_callback: Callable[[str], None] | None = None,
     ) -> dict:
         """Poll-based wait with interrupt checking and stdout draining.
 
@@ -716,6 +721,17 @@ class BaseEnvironment(ABC):
             # accumulate-everything semantics.
             capture_limit = _UNBOUNDED_CAPTURE_CHARS
         output = _BoundedOutputCollector(capture_limit)
+
+        def _append_output(text: str) -> None:
+            if not text:
+                return
+            output.append(text)
+            if output_callback is not None:
+                try:
+                    output_callback(text)
+                except Exception:
+                    # Live observation must never be able to fail a command.
+                    pass
 
         # Non-blocking drain via select().
         #
@@ -756,16 +772,16 @@ class BaseEnvironment(ABC):
                     if piece is None:
                         continue
                     if isinstance(piece, bytes):
-                        output.append(decoder.decode(piece))
+                        _append_output(decoder.decode(piece))
                     else:
-                        output.append(str(piece))
+                        _append_output(str(piece))
             except Exception:
                 pass
             finally:
                 try:
                     tail = decoder.decode(b"", final=True)
                     if tail:
-                        output.append(tail)
+                        _append_output(tail)
                 except Exception:
                     pass
 
@@ -796,14 +812,14 @@ class BaseEnvironment(ABC):
                         chunk = os.read(fd, 4096)
                         if not chunk:
                             break
-                        output.append(decoder.decode(chunk))
+                        _append_output(decoder.decode(chunk))
                 except (ValueError, OSError):
                     pass
                 finally:
                     try:
                         tail = decoder.decode(b"", final=True)
                         if tail:
-                            output.append(tail)
+                            _append_output(tail)
                     except Exception:
                         pass
                 return
@@ -821,7 +837,7 @@ class BaseEnvironment(ABC):
                             break
                         if not chunk:
                             break  # true EOF — all writers closed
-                        output.append(decoder.decode(chunk))
+                        _append_output(decoder.decode(chunk))
                         idle_after_exit = 0
                     elif proc.poll() is not None:
                         # bash is gone and the pipe was idle for ~100ms.  Give
@@ -837,7 +853,7 @@ class BaseEnvironment(ABC):
                 try:
                     tail = decoder.decode(b"", final=True)
                     if tail:
-                        output.append(tail)
+                        _append_output(tail)
                 except Exception:
                     pass
 
@@ -1053,6 +1069,7 @@ class BaseEnvironment(ABC):
         stdin_data: str | None = None,
         rewrite_compound_background: bool = True,
         bounded_capture: bool = False,
+        output_callback: Callable[[str], None] | None = None,
     ) -> dict:
         """Execute a command, return {"output": str, "returncode": int}.
 
@@ -1100,7 +1117,10 @@ class BaseEnvironment(ABC):
             wrapped, login=login, timeout=effective_timeout, stdin_data=effective_stdin
         )
         result = self._wait_for_process(
-            proc, timeout=effective_timeout, bounded_capture=bounded_capture
+            proc,
+            timeout=effective_timeout,
+            bounded_capture=bounded_capture,
+            output_callback=output_callback,
         )
         self._update_cwd(result)
 

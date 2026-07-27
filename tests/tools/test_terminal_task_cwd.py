@@ -5,6 +5,7 @@ import orjson
 from types import SimpleNamespace
 
 import tools.terminal_tool as terminal_tool
+import tools.terminal_output_stream as terminal_output_stream
 
 
 def _minimal_terminal_config(cwd="/default"):
@@ -75,6 +76,46 @@ def test_explicit_workdir_still_wins_over_registered_task_cwd(monkeypatch):
 
     assert result["exit_code"] == 0
     assert calls == [{"timeout": 60, "cwd": "/explicit/workdir", "bounded_capture": True}]
+
+
+def test_foreground_tool_call_forwards_live_output_to_gateway_sink(monkeypatch):
+    observed = []
+
+    class FakeEnv:
+        env = {}
+        cwd = "/resolved/workdir"
+
+        def execute(self, command, **kwargs):
+            kwargs["output_callback"]("first chunk\n")
+            return {"output": "first chunk\n", "returncode": 0}
+
+    task_id = "streaming-session"
+    monkeypatch.setattr(terminal_tool, "_active_environments", {task_id: FakeEnv()})
+    monkeypatch.setattr(terminal_tool, "_last_activity", {})
+    monkeypatch.setattr(terminal_tool, "_task_env_overrides", {task_id: {"cwd": "/workspace"}})
+    monkeypatch.setattr(terminal_tool, "_get_env_config", lambda: _minimal_terminal_config())
+    monkeypatch.setattr(
+        terminal_tool,
+        "_check_all_guards",
+        lambda command, env_type, **kwargs: {"approved": True},
+    )
+    monkeypatch.setattr(
+        terminal_output_stream,
+        "_sink",
+        lambda tool_call_id, chunk: observed.append((tool_call_id, chunk)),
+    )
+
+    result = orjson.loads(
+        terminal_tool.terminal_tool(
+            command="printf hello",
+            task_id=task_id,
+            tool_call_id="tool-live-1",
+        )
+    )
+
+    assert result["exit_code"] == 0
+    assert result["cwd"] == "/resolved/workdir"
+    assert observed == [("tool-live-1", "first chunk\n")]
 
 
 def test_foreground_command_prefers_recorded_session_cwd_over_init_time_cwd(monkeypatch):

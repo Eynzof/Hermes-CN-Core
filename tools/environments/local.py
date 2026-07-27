@@ -2064,6 +2064,7 @@ class LocalEnvironment(BaseEnvironment):
         stdin_data: str | None = None,
         rewrite_compound_background: bool = True,
         bounded_capture: bool = False,
+        output_callback=None,
     ) -> dict:
         """Execute a command via the fastest eligible path (P-042).
 
@@ -2122,6 +2123,7 @@ class LocalEnvironment(BaseEnvironment):
             stdin_data=stdin_data,
             rewrite_compound_background=rewrite_compound_background,
             bounded_capture=bounded_capture,
+            output_callback=output_callback,
         )
 
     # ------------------------------------------------------------------

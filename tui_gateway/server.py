@@ -10136,6 +10136,9 @@ def _wire_agent_terminal_output() -> None:
     cli_delegation.tracker.configure(
         emit=_emit, is_alive=lambda sid: sid in _sessions
     )
+    from tools.terminal_output_stream import set_foreground_output_sink
+
+    set_foreground_output_sink(cli_delegation.tracker.on_foreground_chunk)
 
     has_output_sink = getattr(process_registry, "on_output", None) is not None
     has_close_sink = getattr(process_registry, "on_close", None) is not None

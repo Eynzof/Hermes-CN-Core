@@ -95,6 +95,59 @@ def test_half_line_jsonl_is_assembled_across_chunks(rig):
     assert outputs[1]["events"] == [{"kind": "text", "text": "hello world"}]
 
 
+def test_foreground_chunks_stream_before_tool_complete(rig):
+    tracker, _processes, collected = rig
+    tracker.handle_tool_start(
+        "sid-live",
+        "deleg-live",
+        "terminal",
+        {"command": "codex exec --json 'task'", "pty": True},
+    )
+    entry = tracker._entries["deleg-live"]
+
+    tracker.on_foreground_chunk(
+        "deleg-live",
+        '{"type":"thread.started","thread_id":"thread-1","cwd":"/repo"}\n',
+    )
+    tracker.on_foreground_chunk("deleg-live", "Reconnecting... 1/5\n")
+    tracker._flush_entry(entry)
+
+    outputs = _events_of(collected, "delegation.cli.output")
+    assert len(outputs) == 1
+    assert outputs[0]["events"] == [
+        {
+            "kind": "init",
+            "session_id": "thread-1",
+            "workdir": "/repo",
+        },
+        {"kind": "raw", "text": "Reconnecting... 1/5"},
+    ]
+    assert _events_of(collected, "delegation.cli.completed") == []
+
+    tracker.handle_tool_complete(
+        "sid-live",
+        "deleg-live",
+        "terminal",
+        {
+            "output": (
+                '{"type":"thread.started","thread_id":"thread-1",'
+                '"cwd":"/repo"}\n'
+                '{"type":"turn.completed","usage":'
+                '{"input_tokens":10,"output_tokens":5}}'
+            ),
+            "exit_code": 0,
+        },
+    )
+    completed = _events_of(collected, "delegation.cli.completed")[-1]
+    assert completed["status"] == "completed"
+    assert completed["result"] == {
+        "session_id": "thread-1",
+        "workdir": "/repo",
+        "input_tokens": 10,
+        "output_tokens": 5,
+    }
+
+
 def test_chunk_is_capped_and_stream_total_cap_degrades_to_events_only(rig):
     tracker, processes, collected = rig
     entry, process = _bind_background(tracker, processes)
@@ -128,6 +181,24 @@ def test_ansi_is_stripped_at_ingestion(rig):
     outputs = _events_of(collected, "delegation.cli.output")
     assert "\x1b" not in outputs[0]["chunk"]
     assert "red text" in outputs[0]["chunk"]
+
+
+def test_foreground_cwd_wrapper_marker_is_not_rendered_as_progress(rig):
+    tracker, _processes, collected = rig
+    tracker.handle_tool_start(
+        "sid-marker",
+        "deleg-marker",
+        "terminal",
+        {"command": "codex exec --json 'task'"},
+    )
+    entry = tracker._entries["deleg-marker"]
+    tracker.on_foreground_chunk(
+        "deleg-marker",
+        "__HERMES_CWD_session__/repo__HERMES_CWD_session__\n",
+    )
+    tracker._flush_entry(entry)
+
+    assert _events_of(collected, "delegation.cli.output") == []
 
 
 def test_exit_status_mapping_and_result_extraction(rig):

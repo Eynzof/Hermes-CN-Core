@@ -28,6 +28,7 @@ Optional hooks (override to opt in):
   on_pre_compress(messages) -> str       — extract before context compression
   on_memory_write(action, target, content, metadata=None) — mirror built-in memory writes
   on_delegation(task, result, **kwargs)  — parent-side observation of subagent work
+  get_runtime_status() -> dict | None    — read-only backend health and metrics
   backup_paths() -> list[str]            — extra on-disk paths to include in `hermes backup`
 """
 
@@ -259,6 +260,16 @@ class MemoryProvider(ABC):
         Return empty list if no config needed (e.g. local-only providers).
         """
         return []
+
+    def get_runtime_status(self) -> Optional[Dict[str, Any]]:
+        """Return a read-only backend status snapshot for the dashboard.
+
+        Providers that support monitoring return common connection fields plus
+        a provider-specific ``details`` payload. The dashboard executes this
+        hook off the event loop. Returning ``None`` keeps existing providers
+        compatible and explicitly marks runtime monitoring as unsupported.
+        """
+        return None
 
     def save_config(self, values: Dict[str, Any], hermes_home: str) -> None:
         """Write non-secret config to the provider's native location.

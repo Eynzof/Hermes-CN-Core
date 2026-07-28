@@ -734,6 +734,106 @@ class TestWebServerEndpoints:
         assert provider_config["recall_budget"] == "high"
         assert "api_key" not in provider_config
 
+    def test_put_memory_provider_config_can_save_without_activation(self):
+        from hermes_cli.config import load_config, save_config
+
+        config = load_config()
+        config.setdefault("memory", {})["provider"] = ""
+        save_config(config)
+
+        resp = self.client.put(
+            "/api/memory/providers/hindsight/config",
+            json={
+                "values": {
+                    "mode": "local_external",
+                    "api_url": "http://localhost:8888",
+                    "bank_id": "hermes",
+                    "recall_budget": "mid",
+                },
+                "activate": False,
+            },
+        )
+
+        assert resp.status_code == 200
+        assert resp.json() == {"ok": True, "active": ""}
+        assert load_config()["memory"]["provider"] == ""
+
+        resp = self.client.put(
+            "/api/memory/providers/hindsight/config",
+            json={
+                "values": {
+                    "mode": "local_external",
+                    "api_url": "http://localhost:8888",
+                    "bank_id": "hermes",
+                    "recall_budget": "mid",
+                }
+            },
+        )
+
+        assert resp.status_code == 200
+        assert resp.json() == {"ok": True, "active": "hindsight"}
+        assert load_config()["memory"]["provider"] == "hindsight"
+
+    def test_saved_openviking_endpoint_becomes_ready_without_activation(self, monkeypatch):
+        monkeypatch.delenv("OPENVIKING_ENDPOINT", raising=False)
+
+        resp = self.client.put(
+            "/api/memory/providers/openviking/config",
+            json={
+                "values": {
+                    "endpoint": "http://127.0.0.1:1933",
+                    "account": "default",
+                    "user": "default",
+                    "agent": "hermes",
+                },
+                "activate": False,
+            },
+        )
+
+        assert resp.status_code == 200
+        providers = {
+            row["name"]: row
+            for row in self.client.get("/api/memory").json()["providers"]
+        }
+        assert providers["openviking"]["status"] == "ready"
+
+    def test_get_memory_provider_runtime_status_wraps_provider_snapshot(self, monkeypatch):
+        from hermes_cli import web_server
+        from hermes_cli.config import load_config, save_config
+
+        class StubProvider:
+            def get_runtime_status(self):
+                return {
+                    "configured": True,
+                    "reachable": True,
+                    "healthy": True,
+                    "endpoint": "http://127.0.0.1:1933",
+                    "console_url": "http://127.0.0.1:1933/studio",
+                    "version": "0.3.26",
+                    "error": "",
+                    "details": {"kind": "openviking", "memory_stats": {"total_memories": 4}},
+                }
+
+        config = load_config()
+        config.setdefault("memory", {})["provider"] = "openviking"
+        save_config(config)
+        monkeypatch.setattr(web_server, "_load_memory_provider", lambda name: StubProvider())
+
+        resp = self.client.get("/api/memory/providers/openviking/status")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["provider"] == "openviking"
+        assert data["active"] is True
+        assert data["healthy"] is True
+        assert data["details"]["kind"] == "openviking"
+        assert data["checked_at"].endswith("Z")
+
+    def test_get_unknown_memory_provider_runtime_status_returns_404(self):
+        resp = self.client.get("/api/memory/providers/nope/status")
+
+        assert resp.status_code == 404
+
     def test_put_memory_provider_config_rejects_unsupported_select_value(self):
         resp = self.client.put(
             "/api/memory/providers/hindsight/config",

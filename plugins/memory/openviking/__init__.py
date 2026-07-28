@@ -26,6 +26,7 @@ Capabilities:
 from __future__ import annotations
 
 import atexit
+import concurrent.futures
 import orjson
 import logging
 import mimetypes
@@ -387,6 +388,97 @@ class _VikingClient:
     def validate_root_access(self) -> dict:
         """Validate ROOT access against a read-only admin endpoint."""
         return self.get("/api/v1/admin/accounts")
+
+
+def _openviking_result(payload: Any) -> Any:
+    if isinstance(payload, dict) and "result" in payload:
+        return payload["result"]
+    return payload
+
+
+def _split_observer_table_row(line: str) -> List[str]:
+    return [part.strip() for part in line.strip().strip("|").split("|")]
+
+
+def _observer_int(value: str) -> int:
+    try:
+        return int(value.strip().replace(",", ""))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _parse_openviking_model_usage(status: str) -> List[Dict[str, Any]]:
+    usage: List[Dict[str, Any]] = []
+    kind = ""
+    for line in str(status or "").splitlines():
+        trimmed = line.strip()
+        lowered = trimmed.lower()
+        if lowered.startswith("vlm models"):
+            kind = "vlm"
+            continue
+        if lowered.startswith("embedding models"):
+            kind = "embedding"
+            continue
+        if not kind or not trimmed.startswith("|"):
+            continue
+        columns = _split_observer_table_row(trimmed)
+        if len(columns) < 7 or columns[0].lower() == "model":
+            continue
+        usage.append({
+            "kind": kind,
+            "model": columns[0],
+            "provider": columns[1],
+            "calls": _observer_int(columns[2]),
+            "prompt_tokens": _observer_int(columns[3]),
+            "completion_tokens": _observer_int(columns[4]),
+            "total_tokens": _observer_int(columns[5]),
+            "last_updated": columns[6],
+        })
+    return usage
+
+
+def _parse_openviking_queue_usage(status: str) -> List[Dict[str, Any]]:
+    usage: List[Dict[str, Any]] = []
+    for line in str(status or "").splitlines():
+        trimmed = line.strip()
+        if not trimmed.startswith("|"):
+            continue
+        columns = _split_observer_table_row(trimmed)
+        if len(columns) < 7 or columns[0].lower() == "queue":
+            continue
+        usage.append({
+            "queue": columns[0],
+            "pending": _observer_int(columns[1]),
+            "in_progress": _observer_int(columns[2]),
+            "processed": _observer_int(columns[3]),
+            "requeued": _observer_int(columns[4]),
+            "errors": _observer_int(columns[5]),
+            "total": _observer_int(columns[6]),
+        })
+    return usage
+
+
+def _compact_openviking_tasks(payload: Any) -> List[Dict[str, Any]]:
+    tasks = _openviking_result(payload)
+    if isinstance(tasks, dict):
+        tasks = tasks.get("tasks", [])
+    if not isinstance(tasks, list):
+        return []
+    allowed = {
+        "task_id",
+        "id",
+        "type",
+        "status",
+        "progress",
+        "error",
+        "created_at",
+        "updated_at",
+    }
+    return [
+        {key: value for key, value in task.items() if key in allowed}
+        for task in tasks[:10]
+        if isinstance(task, dict)
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -889,11 +981,33 @@ def _resolve_connection_settings(provider_config: Optional[dict] = None) -> dict
     agent_env = _env_value("OPENVIKING_AGENT")
 
     return {
-        "endpoint": _first_nonempty(endpoint_env, ovcli_values.get("endpoint"), default=_DEFAULT_ENDPOINT),
-        "api_key": api_key_env if api_key_env is not None else ovcli_values.get("api_key", ""),
-        "account": account_env if account_env is not None else ovcli_values.get("account", ""),
-        "user": user_env if user_env is not None else ovcli_values.get("user", ""),
-        "agent": _first_nonempty(agent_env, ovcli_values.get("agent"), default=_DEFAULT_AGENT),
+        "endpoint": _first_nonempty(
+            endpoint_env,
+            ovcli_values.get("endpoint"),
+            str(provider_config.get("endpoint") or "").strip(),
+            default=_DEFAULT_ENDPOINT,
+        ),
+        "api_key": (
+            api_key_env
+            if api_key_env is not None
+            else ovcli_values.get("api_key") or provider_config.get("api_key", "")
+        ),
+        "account": (
+            account_env
+            if account_env is not None
+            else ovcli_values.get("account") or provider_config.get("account", "")
+        ),
+        "user": (
+            user_env
+            if user_env is not None
+            else ovcli_values.get("user") or provider_config.get("user", "")
+        ),
+        "agent": _first_nonempty(
+            agent_env,
+            ovcli_values.get("agent"),
+            str(provider_config.get("agent") or "").strip(),
+            default=_DEFAULT_AGENT,
+        ),
     }
 
 
@@ -1834,6 +1948,8 @@ class OpenVikingMemoryProvider(MemoryProvider):
         if os.environ.get("OPENVIKING_ENDPOINT"):
             return True
         provider_config = _load_hermes_openviking_config()
+        if str(provider_config.get("endpoint") or "").strip():
+            return True
         if not provider_config.get("use_ovcli_config"):
             return False
         try:
@@ -1841,6 +1957,120 @@ class OpenVikingMemoryProvider(MemoryProvider):
             return bool(_connection_values_from_ovcli(_load_ovcli_config(ovcli_path)).get("endpoint"))
         except Exception:
             return False
+
+    def get_runtime_status(self) -> Dict[str, Any]:
+        provider_config = _load_hermes_openviking_config()
+        configured = self.is_available()
+        try:
+            settings = _resolve_connection_settings(provider_config)
+        except Exception as exc:
+            return {
+                "configured": configured,
+                "reachable": False,
+                "healthy": False,
+                "endpoint": str(provider_config.get("endpoint") or ""),
+                "console_url": "",
+                "version": "",
+                "error": _format_openviking_exception(exc),
+                "details": {"kind": "openviking"},
+            }
+
+        endpoint = str(settings.get("endpoint") or "").rstrip("/")
+        base = {
+            "configured": configured,
+            "reachable": False,
+            "healthy": False,
+            "endpoint": endpoint,
+            "console_url": f"{endpoint}/studio" if endpoint else "",
+            "version": "",
+            "error": "OpenViking is not configured." if not configured else "",
+            "details": {"kind": "openviking"},
+        }
+        if not configured:
+            return base
+
+        try:
+            client = _VikingClient(
+                endpoint,
+                str(settings.get("api_key") or ""),
+                account=str(settings.get("account") or "") or None,
+                user=str(settings.get("user") or "") or None,
+                agent=str(settings.get("agent") or "") or None,
+            )
+        except Exception as exc:
+            base["error"] = _format_openviking_exception(exc)
+            return base
+
+        paths = {
+            "health": "/health",
+            "ready": "/ready",
+            "system": "/api/v1/system/status",
+            "observer": "/api/v1/observer/system",
+            "summary": "/api/v1/console/dashboard/summary",
+            "memories": "/api/v1/stats/memories",
+            "tasks": "/api/v1/tasks",
+        }
+        payloads: Dict[str, Any] = {}
+        errors: List[str] = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(paths)) as executor:
+            futures = {
+                executor.submit(client.get, path, timeout=3.0): label
+                for label, path in paths.items()
+            }
+            for future, label in futures.items():
+                try:
+                    payloads[label] = future.result()
+                except Exception as exc:
+                    errors.append(f"{label}: {_format_openviking_exception(exc)}")
+
+        health = _openviking_result(payloads.get("health", {}))
+        ready = _openviking_result(payloads.get("ready", {}))
+        system = _openviking_result(payloads.get("system", {}))
+        observer = _openviking_result(payloads.get("observer", {}))
+        summary = _openviking_result(payloads.get("summary", {}))
+        memories = _openviking_result(payloads.get("memories", {}))
+
+        components = observer.get("components", {}) if isinstance(observer, dict) else {}
+        models_component = components.get("models", {}) if isinstance(components, dict) else {}
+        queue_component = components.get("queue", {}) if isinstance(components, dict) else {}
+        health_ok = bool(
+            isinstance(health, dict)
+            and (health.get("healthy") is True or str(health.get("status", "")).lower() == "ok")
+        )
+        ready_ok = bool(
+            isinstance(ready, dict)
+            and str(ready.get("status", "")).lower() in {"ready", "ok"}
+        )
+        observer_ok = not observer or bool(
+            isinstance(observer, dict) and observer.get("is_healthy") is not False
+        )
+        base.update({
+            "reachable": bool(payloads),
+            "healthy": health_ok and ready_ok and observer_ok,
+            "version": str(health.get("version") or "") if isinstance(health, dict) else "",
+            "error": "; ".join(errors),
+            "details": {
+                "kind": "openviking",
+                "auth_mode": str(health.get("auth_mode") or "") if isinstance(health, dict) else "",
+                "ready_checks": ready.get("checks", {}) if isinstance(ready, dict) else {},
+                "system": system if isinstance(system, dict) else {},
+                "components": components if isinstance(components, dict) else {},
+                "summary": summary if isinstance(summary, dict) else {},
+                "memory_stats": memories if isinstance(memories, dict) else {},
+                "model_usage": _parse_openviking_model_usage(
+                    str(models_component.get("status") or "")
+                    if isinstance(models_component, dict)
+                    else ""
+                ),
+                "queue_usage": _parse_openviking_queue_usage(
+                    str(queue_component.get("status") or "")
+                    if isinstance(queue_component, dict)
+                    else ""
+                ),
+                "tasks": _compact_openviking_tasks(payloads.get("tasks", {})),
+            },
+        })
+        return base
 
     def get_config_schema(self):
         return [

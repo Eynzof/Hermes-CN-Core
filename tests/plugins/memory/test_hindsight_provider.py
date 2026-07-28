@@ -10,11 +10,13 @@ import os
 from agent.re_compat import re
 import stat
 import sys
+import urllib.error
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+import plugins.memory.hindsight as hindsight_module
 from hermes_cli.memory_setup import _CANCELLED
 from plugins.memory.hindsight import (
     HindsightMemoryProvider,
@@ -81,6 +83,144 @@ def _make_mock_client():
     client.aretain_batch = AsyncMock()
     client.aclose = AsyncMock()
     return client
+
+
+def test_runtime_status_aggregates_bank_stats_and_runtime_config(monkeypatch):
+    requests = []
+    monkeypatch.setattr(
+        hindsight_module,
+        "_load_config",
+        lambda: {
+            "mode": "local_external",
+            "api_url": "http://hindsight.local:8888",
+            "apiKey": "secret-key",
+            "bank_id": "bank-a",
+            "dashboard_url": "http://hindsight.local:9999/dashboard",
+        },
+    )
+
+    def fake_get(api_url, path, api_key, timeout=3.0):
+        requests.append((api_url, path, api_key))
+        if path == "/health":
+            return {"status": "healthy", "database": "healthy"}
+        if path == "/version":
+            return {"api_version": "0.6.1", "features": {"observations": True}}
+        if path == "/v1/default/banks":
+            return {"banks": [{"bank_id": "bank-a", "name": "Hermes", "fact_count": 12}]}
+        if path.endswith("/stats"):
+            return {
+                "total_nodes": 12,
+                "total_documents": 3,
+                "total_observations": 4,
+                "pending_operations": 1,
+                "failed_operations": 0,
+            }
+        if path.endswith("/runtime-config"):
+            return {
+                "model_stack": {"embedding": {"provider": "local", "model": "embed-1"}},
+                "api_key": "must-not-leak",
+            }
+        raise AssertionError(path)
+
+    monkeypatch.setattr(hindsight_module, "_hindsight_get_json", fake_get)
+
+    status = HindsightMemoryProvider().get_runtime_status()
+
+    assert status["reachable"] is True
+    assert status["healthy"] is True
+    assert status["version"] == "0.6.1"
+    assert status["console_url"] == "http://hindsight.local:9999/dashboard"
+    assert status["details"]["bank_id"] == "bank-a"
+    assert status["details"]["stats"]["total_documents"] == 3
+    assert status["details"]["runtime_config"]["model_stack"]["embedding"]["model"] == "embed-1"
+    assert "must-not-leak" not in orjson.dumps(status).decode("utf-8")
+    assert requests and all(request[2] == "secret-key" for request in requests)
+
+
+def test_runtime_status_treats_missing_runtime_config_as_healthy(monkeypatch):
+    monkeypatch.setattr(
+        hindsight_module,
+        "_load_config",
+        lambda: {"mode": "local_external", "api_url": "http://hindsight.local:8888", "bank_id": "bank-a"},
+    )
+
+    def fake_get(api_url, path, api_key, timeout=3.0):
+        if path == "/health":
+            return {"status": "healthy", "database": "healthy"}
+        if path == "/version":
+            return {"api_version": "0.5.0"}
+        if path == "/v1/default/banks":
+            return {"banks": [{"bank_id": "bank-a"}]}
+        if path.endswith("/stats"):
+            return {"failed_operations": 0}
+        if path.endswith("/runtime-config"):
+            raise urllib.error.HTTPError("http://hindsight.local", 404, "Not Found", {}, None)
+        raise AssertionError(path)
+
+    monkeypatch.setattr(hindsight_module, "_hindsight_get_json", fake_get)
+
+    status = HindsightMemoryProvider().get_runtime_status()
+
+    assert status["healthy"] is True
+    assert status["details"]["runtime_config"] is None
+    assert status["error"] == ""
+
+
+def test_runtime_status_does_not_substitute_an_unrelated_bank(monkeypatch):
+    monkeypatch.setattr(
+        hindsight_module,
+        "_load_config",
+        lambda: {
+            "mode": "local_external",
+            "api_url": "http://hindsight.local:8888",
+            "bank_id": "hermes",
+        },
+    )
+    requested_paths = []
+
+    def fake_get(api_url, path, api_key, timeout=3.0):
+        requested_paths.append(path)
+        if path == "/health":
+            return {"status": "healthy", "database": "healthy"}
+        if path == "/version":
+            return {"api_version": "0.8.2"}
+        if path == "/v1/default/banks":
+            return {"banks": [{"bank_id": "another-bank", "name": "Other"}]}
+        if path.endswith("/stats"):
+            return {"bank_id": "hermes", "failed_operations": 0}
+        if path.endswith("/runtime-config"):
+            raise urllib.error.HTTPError("http://hindsight.local", 404, "Not Found", {}, None)
+        raise AssertionError(path)
+
+    monkeypatch.setattr(hindsight_module, "_hindsight_get_json", fake_get)
+
+    status = HindsightMemoryProvider().get_runtime_status()
+
+    assert status["healthy"] is True
+    assert status["details"]["bank_id"] == "hermes"
+    assert status["details"]["bank"] is None
+    assert "/v1/default/banks/hermes/stats" in requested_paths
+    assert all("another-bank" not in path for path in requested_paths)
+
+
+def test_runtime_status_reports_hindsight_offline(monkeypatch):
+    monkeypatch.setattr(
+        hindsight_module,
+        "_load_config",
+        lambda: {"mode": "local_external", "api_url": "http://hindsight.local:8888"},
+    )
+    monkeypatch.setattr(
+        hindsight_module,
+        "_hindsight_get_json",
+        lambda *args, **kwargs: (_ for _ in ()).throw(OSError("connection refused")),
+    )
+
+    status = HindsightMemoryProvider().get_runtime_status()
+
+    assert status["configured"] is True
+    assert status["reachable"] is False
+    assert status["healthy"] is False
+    assert "connection refused" in status["error"]
 
 
 def _provider_for_mode(tmp_path, monkeypatch, mode: str):

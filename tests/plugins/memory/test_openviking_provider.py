@@ -40,6 +40,117 @@ def _clear_openviking_env(monkeypatch):
         monkeypatch.delenv(key, raising=False)
 
 
+def test_direct_profile_endpoint_is_available_and_used(monkeypatch):
+    _clear_openviking_env(monkeypatch)
+    monkeypatch.setattr(
+        openviking_module,
+        "_load_hermes_openviking_config",
+        lambda: {
+            "endpoint": "http://127.0.0.1:1933",
+            "account": "profile-account",
+            "user": "profile-user",
+            "agent": "profile-agent",
+        },
+    )
+
+    provider = OpenVikingMemoryProvider()
+    settings = openviking_module._resolve_connection_settings(
+        openviking_module._load_hermes_openviking_config()
+    )
+
+    assert provider.is_available() is True
+    assert settings["endpoint"] == "http://127.0.0.1:1933"
+    assert settings["account"] == "profile-account"
+    assert settings["user"] == "profile-user"
+    assert settings["agent"] == "profile-agent"
+
+
+def test_runtime_status_aggregates_components_without_returning_secret(monkeypatch):
+    _clear_openviking_env(monkeypatch)
+    monkeypatch.setattr(
+        openviking_module,
+        "_load_hermes_openviking_config",
+        lambda: {"endpoint": "http://ov.local", "agent": "hermes"},
+    )
+
+    class FakeClient:
+        def __init__(self, endpoint, api_key, **kwargs):
+            assert endpoint == "http://ov.local"
+            assert api_key == ""
+
+        def get(self, path, **kwargs):
+            responses = {
+                "/health": {"status": "ok", "healthy": True, "version": "0.3.26", "auth_mode": "dev"},
+                "/ready": {"status": "ready", "checks": {"vectordb": "ok", "embedding": "ok"}},
+                "/api/v1/system/status": {"result": {"initialized": True}},
+                "/api/v1/observer/system": {
+                    "result": {
+                        "is_healthy": True,
+                        "components": {
+                            "models": {
+                                "is_healthy": True,
+                                "status": "VLM Models\n| Model | Provider | Calls | Prompt | Completion | Total | Last Updated |\n| vision-1 | openai | 2 | 10 | 4 | 14 | now |",
+                            },
+                            "queue": {
+                                "is_healthy": True,
+                                "status": "| Queue | Pending | In Progress | Processed | Requeued | Errors | Total |\n| memory | 1 | 2 | 3 | 0 | 0 | 6 |",
+                            },
+                            "vikingdb": {"is_healthy": True},
+                            "retrieval": {"is_healthy": True},
+                        },
+                    }
+                },
+                "/api/v1/console/dashboard/summary": {"result": {"context_counts": {"memories": 8}}},
+                "/api/v1/stats/memories": {"result": {"total_memories": 8, "by_category": {"preference": 3}}},
+                "/api/v1/tasks": {"result": [{"task_id": "task-1", "status": "done", "private": "drop"}]},
+            }
+            return responses[path]
+
+    monkeypatch.setattr(openviking_module, "_VikingClient", FakeClient)
+
+    status = OpenVikingMemoryProvider().get_runtime_status()
+
+    assert status["reachable"] is True
+    assert status["healthy"] is True
+    assert status["version"] == "0.3.26"
+    assert status["console_url"] == "http://ov.local/studio"
+    assert status["details"]["kind"] == "openviking"
+    assert status["details"]["model_usage"][0]["model"] == "vision-1"
+    assert status["details"]["queue_usage"][0]["pending"] == 1
+    assert status["details"]["memory_stats"]["total_memories"] == 8
+    assert status["details"]["tasks"] == [{"task_id": "task-1", "status": "done"}]
+    assert "private" not in orjson.dumps(status).decode("utf-8")
+
+
+def test_runtime_status_keeps_partial_openviking_data(monkeypatch):
+    _clear_openviking_env(monkeypatch)
+    monkeypatch.setattr(
+        openviking_module,
+        "_load_hermes_openviking_config",
+        lambda: {"endpoint": "http://ov.local"},
+    )
+
+    class PartialClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def get(self, path, **kwargs):
+            if path == "/health":
+                return {"status": "ok", "healthy": True, "version": "0.3.26"}
+            if path == "/ready":
+                return {"status": "ready", "checks": {"vectordb": "ok"}}
+            raise OSError("component unavailable")
+
+    monkeypatch.setattr(openviking_module, "_VikingClient", PartialClient)
+
+    status = OpenVikingMemoryProvider().get_runtime_status()
+
+    assert status["reachable"] is True
+    assert status["healthy"] is True
+    assert status["version"] == "0.3.26"
+    assert "summary: component unavailable" in status["error"]
+
+
 def _prompt_from_values(values: dict[str, str], *, forbidden: set[str] | None = None):
     forbidden = forbidden or set()
 

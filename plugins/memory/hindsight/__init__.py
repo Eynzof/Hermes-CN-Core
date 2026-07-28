@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import asyncio
 import atexit
+import concurrent.futures
 import importlib
 import orjson
 import logging
@@ -39,9 +40,12 @@ import os
 import queue
 import sys
 import threading
+import urllib.error
+import urllib.parse
+import urllib.request
 
 from datetime import datetime, timezone
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from agent.memory_provider import MemoryProvider
 from hermes_constants import get_hermes_home
@@ -74,6 +78,32 @@ _PROVIDER_DEFAULT_MODELS = {
     "lmstudio": "local-model",
     "openai_compatible": "your-model-name",
 }
+
+
+def _hindsight_get_json(api_url: str, path: str, api_key: str, timeout: float = 3.0) -> Any:
+    request = urllib.request.Request(
+        api_url.rstrip("/") + path,
+        headers={"Accept": "application/json"},
+    )
+    if api_key:
+        request.add_header("Authorization", f"Bearer {api_key}")
+    with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
+        payload = response.read().decode("utf-8", errors="replace")
+    return orjson.loads(payload) if payload else {}
+
+
+def _without_runtime_secrets(value: Any) -> Any:
+    if isinstance(value, dict):
+        safe = {}
+        for key, item in value.items():
+            normalized = str(key).lower().replace("-", "_")
+            if any(marker in normalized for marker in ("api_key", "apikey", "secret", "password", "authorization", "token")):
+                continue
+            safe[str(key)] = _without_runtime_secrets(item)
+        return safe
+    if isinstance(value, list):
+        return [_without_runtime_secrets(item) for item in value]
+    return value
 
 
 def _parse_int_setting(value: Any, default: int) -> int:
@@ -736,6 +766,150 @@ class HindsightMemoryProvider(MemoryProvider):
         except Exception:
             return False
 
+    def get_runtime_status(self) -> Dict[str, Any]:
+        config = _load_config()
+        mode = str(config.get("mode") or "cloud")
+        api_key = str(
+            config.get("apiKey")
+            or config.get("api_key")
+            or os.environ.get("HINDSIGHT_API_KEY", "")
+        )
+        default_url = _DEFAULT_API_URL if mode == "cloud" else _DEFAULT_LOCAL_URL
+        api_url = str(
+            config.get("api_url")
+            or os.environ.get("HINDSIGHT_API_URL", "")
+            or default_url
+        ).rstrip("/")
+        bank_id = str(
+            config.get("bank_id")
+            or os.environ.get("HINDSIGHT_BANK_ID", "")
+            or "hermes"
+        )
+        dashboard_url = str(config.get("dashboard_url") or "").strip()
+        if not dashboard_url:
+            dashboard_url = (
+                "https://ui.hindsight.vectorize.io"
+                if mode == "cloud"
+                else "http://localhost:9999/dashboard"
+            )
+        configured = self.is_available()
+        base = {
+            "configured": configured,
+            "reachable": False,
+            "healthy": False,
+            "endpoint": api_url,
+            "console_url": dashboard_url,
+            "version": "",
+            "error": "Hindsight is not configured." if not configured else "",
+            "details": {
+                "kind": "hindsight",
+                "mode": mode,
+                "bank_id": bank_id,
+            },
+        }
+        if not configured:
+            return base
+
+        initial_paths = {
+            "health": "/health",
+            "version": "/version",
+            "banks": "/v1/default/banks",
+        }
+        payloads: Dict[str, Any] = {}
+        errors: List[str] = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(initial_paths)) as executor:
+            futures = {
+                executor.submit(_hindsight_get_json, api_url, path, api_key): label
+                for label, path in initial_paths.items()
+            }
+            for future, label in futures.items():
+                try:
+                    payloads[label] = future.result()
+                except Exception as exc:
+                    errors.append(f"{label}: {exc}")
+
+        health = payloads.get("health", {})
+        version_payload = payloads.get("version", {})
+        banks_payload = payloads.get("banks", {})
+        banks = banks_payload.get("banks", []) if isinstance(banks_payload, dict) else []
+        if not isinstance(banks, list):
+            banks = []
+        selected_bank = next(
+            (
+                bank
+                for bank in banks
+                if isinstance(bank, dict)
+                and str(bank.get("bank_id") or bank.get("bankId") or "") == bank_id
+            ),
+            None,
+        )
+        selected_bank_id = bank_id
+
+        stats: Dict[str, Any] = {}
+        runtime_config: Optional[Dict[str, Any]] = None
+        if selected_bank_id:
+            escaped_bank_id = urllib.parse.quote(selected_bank_id, safe="")
+            detail_paths = {
+                "stats": f"/v1/default/banks/{escaped_bank_id}/stats",
+                "runtime_config": f"/v1/default/banks/{escaped_bank_id}/runtime-config",
+            }
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                futures = {
+                    executor.submit(_hindsight_get_json, api_url, path, api_key): label
+                    for label, path in detail_paths.items()
+                }
+                for future, label in futures.items():
+                    try:
+                        value = future.result()
+                        if label == "stats" and isinstance(value, dict):
+                            stats = value
+                        elif label == "runtime_config" and isinstance(value, dict):
+                            runtime_config = _without_runtime_secrets(value)
+                    except urllib.error.HTTPError as exc:
+                        if label == "runtime_config" and exc.code == 404:
+                            continue
+                        errors.append(f"{label}: HTTP {exc.code}")
+                    except Exception as exc:
+                        errors.append(f"{label}: {exc}")
+
+        health_status = str(health.get("status") or "").lower() if isinstance(health, dict) else ""
+        database_status = str(health.get("database") or "").lower() if isinstance(health, dict) else ""
+        health_ok = bool(
+            isinstance(health, dict)
+            and (
+                health.get("healthy") is True
+                or health_status in {"ok", "healthy", "ready"}
+            )
+            and database_status not in {"error", "failed", "unhealthy"}
+        )
+        failed_operations = 0
+        if isinstance(stats, dict):
+            try:
+                failed_operations = int(stats.get("failed_operations") or 0)
+            except (TypeError, ValueError):
+                failed_operations = 0
+        version = ""
+        if isinstance(version_payload, dict):
+            version = str(version_payload.get("api_version") or version_payload.get("version") or "")
+
+        base.update({
+            "reachable": "health" in payloads,
+            "healthy": health_ok and failed_operations == 0,
+            "version": version,
+            "error": "; ".join(errors),
+            "details": {
+                "kind": "hindsight",
+                "mode": mode,
+                "health": _without_runtime_secrets(health) if isinstance(health, dict) else {},
+                "bank_id": selected_bank_id,
+                "bank": _without_runtime_secrets(selected_bank) if isinstance(selected_bank, dict) else None,
+                "banks_count": len(banks),
+                "stats": _without_runtime_secrets(stats),
+                "runtime_config": runtime_config,
+            },
+        })
+        return base
+
     def save_config(self, values, hermes_home):
         """Write config to $HERMES_HOME/hindsight/config.json."""
         import orjson
@@ -976,6 +1150,7 @@ class HindsightMemoryProvider(MemoryProvider):
             # Local external mode
             {"key": "api_url", "description": "Hindsight API URL", "default": _DEFAULT_LOCAL_URL, "when": {"mode": "local_external"}},
             {"key": "api_key", "description": "API key (optional)", "secret": True, "env_var": "HINDSIGHT_API_KEY", "when": {"mode": "local_external"}},
+            {"key": "dashboard_url", "description": "Hindsight dashboard URL", "default": "http://localhost:9999/dashboard", "when": {"mode": "local_external"}},
             # Local embedded mode
             {"key": "llm_provider", "description": "LLM provider", "default": "openai", "choices": ["openai", "anthropic", "gemini", "groq", "openrouter", "minimax", "ollama", "lmstudio", "openai_compatible"], "when": {"mode": "local_embedded"}},
             {"key": "llm_base_url", "description": "Endpoint URL (e.g. http://192.168.1.10:8080/v1)", "default": "", "when": {"mode": "local_embedded", "llm_provider": "openai_compatible"}},

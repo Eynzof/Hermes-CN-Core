@@ -87,6 +87,7 @@
    - 维护 `_RTK_KNOWN_COMMANDS`（git、cargo、pytest、npm、pnpm、yarn、docker、kubectl、ls、grep、rg、find、cat、head、tail、python、pip、go、rustc、make、cmake、curl、wget、ps、df、du、netstat、ss、systemctl、journalctl，以及 PowerShell cmdlet 如 Get-ChildItem、Get-Content、Select-String 等）。
    - `_rewrite_shell_segment()`：找到第一个真正的可执行 token（跳过环境变量 `KEY=VALUE` 赋值和 `sudo`），若匹配已知命令列表则前置 `rtk`。
    - `_split_shell_segments()`：正确解析 `;`/`&&`/`||`/`|` 分割，尊重引号、转义和 `$(...)` subshell。
+   - Shell 元字符读取始终推进游标，避免 `2>&1` 等重定向在命令重写时卡死 Gateway 事件循环；`tests/tools/test_terminal_command_rewrite.py` 覆盖该回归。
    - 尊重 `RTK_DISABLED=1` 前缀和已经以 `rtk` 开头的命令。
 
 4. **`tools/terminal_tool.py`** — 集成：

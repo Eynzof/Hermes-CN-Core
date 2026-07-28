@@ -90,6 +90,7 @@ This document explains the fork-specific changes on `main` that diverge from ups
    - Maintains `_RTK_KNOWN_COMMANDS` (git, cargo, pytest, npm, pnpm, yarn, docker, kubectl, ls, grep, rg, find, cat, head, tail, python, pip, go, rustc, make, cmake, curl, wget, ps, df, du, netstat, ss, systemctl, journalctl, plus PowerShell cmdlets like Get-ChildItem, Get-Content, Select-String, etc.).
    - `_rewrite_shell_segment()`: Finds the first real executable token (skipping env `KEY=VALUE` assignments and `sudo`), and if it matches the known list, prepends `rtk`.
    - `_split_shell_segments()`: Correctly splits at `;`/`&&`/`||`/`|` while respecting quotes, escapes, and `$(...)` subshells.
+   - Shell metacharacters always advance the token reader, preventing redirections such as `2>&1` from wedging the gateway event loop; `tests/tools/test_terminal_command_rewrite.py` covers the regression.
    - Respects `RTK_DISABLED=1` prefix and already-`rtk`-prefixed commands.
 
 4. **`tools/terminal_tool.py`** — integration:

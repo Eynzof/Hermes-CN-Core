@@ -154,6 +154,17 @@ def _read_shell_word(command: str, start: int) -> tuple[str, int]:
 
     ch = command[i]
 
+    # Shell metacharacters are tokens in their own right.  The regular-word
+    # scanner below deliberately stops before them; if a metacharacter appears
+    # at ``start`` (for example the ``&`` in ``2>&1``), returning an empty word
+    # without advancing would make callers such as ``_split_shell_words`` spin
+    # forever.  Consume the full operator where possible so every successful
+    # read advances monotonically.
+    if ch in (";", "&", "|", "(", ")"):
+        if i + 1 < n and command[i : i + 2] in ("&&", "||", "|&"):
+            return command[i : i + 2], i + 2
+        return ch, i + 1
+
     # ANSI-C quoting  $'...'
     if ch == "$" and i + 1 < n and command[i + 1] == "'":
         end = _find_ansi_c_end(command, i + 2)
@@ -356,7 +367,12 @@ def _split_shell_words(command: str) -> list[str]:
             i += 1
         if i >= n:
             break
-        word, i = _read_shell_word(command, i)
+        word, next_i = _read_shell_word(command, i)
+        # Defensive progress invariant: future token-reader changes must never
+        # be able to wedge the dashboard event loop on malformed shell input.
+        if next_i <= i:
+            next_i = i + 1
+        i = next_i
         if word:
             words.append(word)
     return words

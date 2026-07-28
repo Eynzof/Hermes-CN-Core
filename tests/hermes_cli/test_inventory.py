@@ -25,6 +25,7 @@ from unittest.mock import patch
 
 from hermes_cli.inventory import (
     ConfigContext,
+    _apply_capabilities,
     build_models_payload,
     load_picker_context,
 )
@@ -257,6 +258,89 @@ def test_build_models_payload_can_skip_custom_provider_probes():
 
     mock_list.assert_called_once()
     assert mock_list.call_args.kwargs["probe_custom_providers"] is False
+
+
+def test_apply_capabilities_includes_models_dev_picker_metadata():
+    rows = [{"slug": "deepseek", "models": ["deepseek-reasoner"]}]
+    metadata = SimpleNamespace(
+        supports_tools=True,
+        supports_vision=False,
+        supports_pdf=True,
+        supports_audio=True,
+        supports_video=True,
+        supports_reasoning=True,
+        supports_reasoning_control=True,
+        open_weights=True,
+        context_window=131_072,
+        max_output_tokens=65_536,
+        model_family="deepseek",
+    )
+
+    with (
+        patch("agent.models_dev.get_model_capabilities", return_value=metadata),
+        patch("hermes_cli.models.model_supports_fast_mode", return_value=False),
+    ):
+        _apply_capabilities(rows)
+
+    assert rows[0]["capabilities"]["deepseek-reasoner"] == {
+        "fast": False,
+        "reasoning": True,
+        "supports_tools": True,
+        "supports_vision": False,
+        "supports_pdf": True,
+        "supports_audio": True,
+        "supports_video": True,
+        "supports_reasoning": True,
+        "supports_reasoning_control": True,
+        "open_weights": True,
+        "context_window": 131_072,
+        "max_output_tokens": 65_536,
+        "model_family": "deepseek",
+    }
+
+
+def test_apply_capabilities_keeps_legacy_shape_for_unknown_models():
+    rows = [{"slug": "custom:local", "models": ["private-model"]}]
+
+    with (
+        patch("agent.models_dev.get_model_capabilities", return_value=None),
+        patch("hermes_cli.models.model_supports_fast_mode", return_value=True),
+    ):
+        _apply_capabilities(rows)
+
+    assert rows[0]["capabilities"]["private-model"] == {
+        "fast": True,
+        "reasoning": True,
+    }
+
+
+def test_apply_capabilities_resolves_custom_canonical_provider_alias():
+    rows = [{"slug": "custom:deepseek", "models": ["deepseek-v4-pro"]}]
+    metadata = SimpleNamespace(
+        supports_tools=True,
+        supports_vision=False,
+        supports_pdf=False,
+        supports_audio=False,
+        supports_video=False,
+        supports_reasoning=True,
+        supports_reasoning_control=True,
+        open_weights=True,
+        context_window=1_000_000,
+        max_output_tokens=384_000,
+        model_family="deepseek-thinking",
+    )
+
+    def lookup(provider, _model):
+        return metadata if provider == "deepseek" else None
+
+    with (
+        patch("agent.models_dev.get_model_capabilities", side_effect=lookup),
+        patch("hermes_cli.models.model_supports_fast_mode", return_value=False),
+    ):
+        _apply_capabilities(rows)
+
+    assert rows[0]["capabilities"]["deepseek-v4-pro"]["context_window"] == 1_000_000
+    assert rows[0]["capabilities"]["deepseek-v4-pro"]["open_weights"] is True
 
 
 def test_build_models_payload_can_probe_only_current_custom_provider():

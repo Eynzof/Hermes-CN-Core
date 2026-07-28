@@ -430,6 +430,19 @@ CAPS_REGISTRY = {
                 "modalities": {"input": ["text"]},
                 "limit": {"context": 128000, "output": 8192},
             },
+            "multimodal-open-reasoner": {
+                "id": "multimodal-open-reasoner",
+                "tool_call": True,
+                "reasoning": True,
+                "reasoning_options": [
+                    {"type": "effort", "values": ["low", "medium", "high"]}
+                ],
+                "open_weights": True,
+                "modalities": {
+                    "input": ["text", "image", "pdf", "audio", "video"]
+                },
+                "limit": {"context": 1000000, "output": 65536},
+            },
         },
     },
     "anthropic": {
@@ -477,6 +490,18 @@ class TestGetModelCapabilities:
             caps = get_model_capabilities("google", "gemma-3-1b")
         assert caps is not None
         assert caps.supports_vision is False
+
+    def test_extended_picker_capabilities_from_models_dev_fields(self):
+        with patch("agent.models_dev.fetch_models_dev", return_value=CAPS_REGISTRY):
+            caps = get_model_capabilities("gemini", "multimodal-open-reasoner")
+
+        assert caps is not None
+        assert caps.supports_pdf is True
+        assert caps.supports_audio is True
+        assert caps.supports_video is True
+        assert caps.open_weights is True
+        assert caps.supports_reasoning_control is True
+        assert caps.context_window == 1000000
 
     def test_modalities_non_dict_handled(self):
         """Non-dict modalities field should not crash."""

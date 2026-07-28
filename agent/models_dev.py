@@ -568,7 +568,12 @@ class ModelCapabilities:
 
     supports_tools: bool = True
     supports_vision: bool = False
+    supports_pdf: bool = False
+    supports_audio: bool = False
+    supports_video: bool = False
     supports_reasoning: bool = False
+    supports_reasoning_control: bool = False
+    open_weights: bool = False
     context_window: int = 200000
     max_output_tokens: int = 8192
     model_family: str = ""
@@ -624,12 +629,14 @@ def get_model_capabilities(
     cache/snapshot only (non-blocking) for hot paths like ``/api/model/info``.
 
     Extracts from model entry fields:
-      - reasoning  (bool)  → supports_reasoning
-      - tool_call  (bool)  → supports_tools
-      - attachment (bool)  → supports_vision
-      - limit.context (int) → context_window
-      - limit.output  (int) → max_output_tokens
-      - family     (str)   → model_family
+      - reasoning          → supports_reasoning
+      - reasoning_options  → supports_reasoning_control
+      - tool_call          → supports_tools
+      - modalities.input   → vision/PDF/audio/video support
+      - open_weights       → open_weights
+      - limit.context      → context_window
+      - limit.output       → max_output_tokens
+      - family             → model_family
     """
     models = _get_provider_models(provider, allow_network=allow_network)
     if models is None:
@@ -653,7 +660,16 @@ def get_model_capabilities(
         supports_vision = "image" in input_mods
     else:
         supports_vision = bool(entry.get("attachment", False))
+    input_modality_set = set(input_mods) if isinstance(input_mods, list) else set()
+    supports_pdf = "pdf" in input_modality_set
+    supports_audio = "audio" in input_modality_set
+    supports_video = "video" in input_modality_set
     supports_reasoning = bool(entry.get("reasoning", False))
+    reasoning_options = entry.get("reasoning_options")
+    supports_reasoning_control = (
+        isinstance(reasoning_options, list) and len(reasoning_options) > 0
+    )
+    open_weights = bool(entry.get("open_weights", False))
 
     # Extract limits
     limit = entry.get("limit", {})
@@ -671,7 +687,12 @@ def get_model_capabilities(
     return ModelCapabilities(
         supports_tools=supports_tools,
         supports_vision=supports_vision,
+        supports_pdf=supports_pdf,
+        supports_audio=supports_audio,
+        supports_video=supports_video,
         supports_reasoning=supports_reasoning,
+        supports_reasoning_control=supports_reasoning_control,
+        open_weights=open_weights,
         context_window=context_window,
         max_output_tokens=max_output_tokens,
         model_family=model_family,

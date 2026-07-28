@@ -147,10 +147,10 @@ def build_models_payload(
       show $/Mtok columns and gate paid models on free accounts —
       mirroring the ``hermes model`` CLI picker. Adds network calls
       (pricing fetch + Nous tier check); only set for interactive pickers.
-    - ``capabilities``: add a per-row ``capabilities`` map
-      ``{model: {fast, reasoning}}`` so pickers can gate the model-options
-      controls (fast toggle / reasoning) to what each model actually
-      supports, instead of offering knobs the backend would reject.
+    - ``capabilities``: add a per-row ``capabilities`` map sourced from the
+      bundled models.dev snapshot. Besides the legacy ``fast``/``reasoning``
+      gates, each known model includes tools, vision, reasoning, context-window,
+      output-token, and family metadata for richer desktop picker tags.
     - ``force_fresh_nous_tier``: bypass the short Nous free-tier cache when
       selecting Portal-recommended Nous models and applying tier gating. Keep
       this false for UI picker opens; explicit auth/model flows can opt in
@@ -264,13 +264,15 @@ def build_models_payload(
 
 
 def _apply_capabilities(rows: list[dict]) -> None:
-    """Attach a ``{model: {fast, reasoning}}`` map to each provider row.
+    """Attach models.dev-backed capability metadata to each provider row.
 
     `fast` mirrors ``model_supports_fast_mode`` (the same gate the runtime
     enforces). `reasoning` comes from the models.dev catalog when known and
     defaults to True otherwise — the effort dial is broadly accepted and a
     no-op on models that ignore it, whereas hiding it from a capable-but-
-    uncatalogued model is the worse failure.
+    uncatalogued model is the worse failure. The richer fields are emitted only
+    when models.dev knows the model, allowing older/static desktop catalogs to
+    remain a fallback for custom or newly-added model IDs.
     """
     from hermes_cli.models import model_supports_fast_mode
 
@@ -281,22 +283,43 @@ def _apply_capabilities(rows: list[dict]) -> None:
 
     for row in rows:
         slug = row.get("slug") or ""
-        caps: dict[str, dict[str, bool]] = {}
+        caps: dict[str, dict[str, object]] = {}
 
         for model in row.get("models") or []:
             reasoning = True
+            meta = None
             if get_model_capabilities is not None and slug:
                 try:
                     meta = get_model_capabilities(slug, model)
+                    if meta is None and str(slug).lower().startswith("custom:"):
+                        canonical_slug = str(slug).split(":", 1)[1].strip().lower()
+                        meta = get_model_capabilities(canonical_slug, model)
                     if meta is not None:
                         reasoning = bool(meta.supports_reasoning)
                 except Exception:
                     reasoning = True
 
-            caps[model] = {
+            model_caps: dict[str, object] = {
                 "fast": bool(model_supports_fast_mode(model)),
                 "reasoning": reasoning,
             }
+            if meta is not None:
+                model_caps.update({
+                    "supports_tools": bool(meta.supports_tools),
+                    "supports_vision": bool(meta.supports_vision),
+                    "supports_pdf": bool(meta.supports_pdf),
+                    "supports_audio": bool(meta.supports_audio),
+                    "supports_video": bool(meta.supports_video),
+                    "supports_reasoning": bool(meta.supports_reasoning),
+                    "supports_reasoning_control": bool(
+                        meta.supports_reasoning_control
+                    ),
+                    "open_weights": bool(meta.open_weights),
+                    "context_window": int(meta.context_window),
+                    "max_output_tokens": int(meta.max_output_tokens),
+                    "model_family": str(meta.model_family or ""),
+                })
+            caps[model] = model_caps
 
         row["capabilities"] = caps
 

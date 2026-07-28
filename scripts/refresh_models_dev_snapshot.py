@@ -28,13 +28,23 @@ DEST = Path(__file__).resolve().parent.parent / "agent" / "models_dev_snapshot.j
 
 def main() -> int:
     print(f"Fetching {URL} ...", file=sys.stderr)
-    with urllib.request.urlopen(URL, timeout=30) as resp:  # noqa: S310
+    request = urllib.request.Request(  # noqa: S310
+        URL,
+        headers={
+            "Accept": "application/json",
+            "User-Agent": "Hermes-Agent-CN/0.19 snapshot-refresh",
+        },
+    )
+    with urllib.request.urlopen(request, timeout=30) as resp:  # noqa: S310
         data = orjson.loads(resp.read().decode("utf-8"))
     if not isinstance(data, dict) or not data:
-        print("error: unexpected models.dev payload (not a non-empty dict)", file=sys.stderr)
+        print(
+            "error: unexpected models.dev payload (not a non-empty dict)",
+            file=sys.stderr,
+        )
         return 1
     with open(DEST, "w", encoding="utf-8", errors="replace") as f:
-        f.write(orjson.dumps(data, option=orjson.OPT_SORT_KEYS).decode('utf-8'))
+        f.write(orjson.dumps(data, option=orjson.OPT_SORT_KEYS).decode("utf-8"))
     total_models = sum(
         len(p.get("models", {})) for p in data.values() if isinstance(p, dict)
     )

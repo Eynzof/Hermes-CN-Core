@@ -1376,6 +1376,7 @@ class ContextCompressor(ContextEngine):
             model, base_url=base_url, api_key=api_key,
             config_context_length=config_context_length,
             provider=provider,
+            allow_network=False,
         )
         # Small-context threshold floor: models under 512K trigger at >=75%
         # so compaction doesn't fire with half the window still free (the

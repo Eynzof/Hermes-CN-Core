@@ -2324,6 +2324,7 @@ def switch_model(agent, new_model, new_provider, api_key="", base_url="", api_mo
             provider=agent.provider,
             config_context_length=getattr(agent, "_config_context_length", None),
             custom_providers=_sm_custom_providers,
+            allow_network=False,
         )
         agent.context_compressor.update_model(
             model=agent.model,

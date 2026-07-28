@@ -263,7 +263,14 @@ jobs:
             --kernel-version "${{ steps.meta.outputs.kernel_version }}" \
             --runtime-version "${{ steps.meta.outputs.runtime_version }}" \
             --output runtime_version_info.txt
-          echo "VERSION_FILE_ARG=--version-file runtime_version_info.txt" >> "$GITHUB_ENV"
+          python scripts/gen_win_version_info.py \
+            --kernel-version "${{ steps.meta.outputs.kernel_version }}" \
+            --runtime-version "${{ steps.meta.outputs.runtime_version }}" \
+            --file-description "Hermes Agent CN Desktop Core Host" \
+            --internal-name "hermes-core-host" \
+            --original-filename "hermes-core-host.exe" \
+            --product-name "Hermes Agent CN Desktop" \
+            --output desktop_host_version_info.txt
 
       - name: Build self-contained executable
         shell: bash
@@ -276,12 +283,17 @@ jobs:
           # so collect both the direct backend packages and the cross-platform
           # transitive SDK packages those backends load dynamically.
           NAME="hermes-agent-cn-runtime-${{ matrix.platform }}-${{ matrix.arch }}"
-          pyinstaller --noconfirm \
-            --name "$NAME" \
-            --onedir \
-            --console \
-            --noupx \
-            ${VERSION_FILE_ARG:-} \
+          PLUGIN_STAGE="${RUNNER_TEMP}/hermes-frozen-plugins"
+          python scripts/stage_frozen_plugins.py \
+            --source plugins \
+            --output "$PLUGIN_STAGE"
+          build_runtime() {
+            local entrypoint="$1"
+            shift
+            pyinstaller --noconfirm \
+              "$@" \
+              --onedir \
+              --noupx \
             --collect-submodules hermes_cli \
             --collect-submodules tui_gateway \
             --collect-submodules fastapi \
@@ -327,6 +339,7 @@ jobs:
             --collect-data gateway \
             --collect-data plugins \
             --collect-data agent \
+            --add-data "$PLUGIN_STAGE:plugins" \
             --hidden-import gateway.status \
             --hidden-import uvicorn.loops.auto \
             --hidden-import uvicorn.protocols.http.auto \
@@ -371,7 +384,41 @@ jobs:
             --copy-metadata certifi \
             --paths . \
             -p . \
-            hermes_cli/main.py
+            "$entrypoint"
+          }
+
+          runtime_args=(--name "$NAME" --console)
+          if [[ "${{ matrix.platform }}" == "win32" ]]; then
+            runtime_args+=(--version-file runtime_version_info.txt)
+          fi
+          build_runtime hermes_cli/main.py "${runtime_args[@]}"
+
+          if [[ "${{ matrix.platform }}" == "win32" ]]; then
+            # The Desktop launches this GUI-subsystem executable directly.
+            # Keeping it beside the original CLI executable lets old Desktop
+            # versions continue using `hermes ... dashboard`, while new
+            # versions avoid creating a console process that AV products often
+            # classify as a suspicious command-line launcher.
+            build_runtime hermes_cli/desktop_host.py \
+              --name hermes-core-host \
+              --windowed \
+              --version-file desktop_host_version_info.txt
+            cp dist/hermes-core-host/hermes-core-host.exe "dist/$NAME/hermes-core-host.exe"
+          fi
+          PLUGIN_ROOT="dist/$NAME/_internal/plugins"
+          for plugin_file in \
+            browser/browser_use/__init__.py \
+            dashboard_auth/basic/__init__.py \
+            image_gen/openai/__init__.py \
+            platforms/feishu/__init__.py \
+            web/brave_free/__init__.py \
+            hermes-achievements/dashboard/plugin_api.py \
+            kanban/dashboard/plugin_api.py; do
+            test -f "$PLUGIN_ROOT/$plugin_file" || {
+              echo "::error::frozen plugin resource missing: $plugin_file" >&2
+              exit 1
+            }
+          done
           ls -la "dist/$NAME"
 
       - name: Stage bundled Node runtime + TUI into payload
@@ -566,6 +613,10 @@ jobs:
           "./dist/$NAME/$NAME${{ matrix.ext }}" dashboard --help
           "./dist/$NAME/$NAME${{ matrix.ext }}" tools list --platform cli
           "./dist/$NAME/$NAME${{ matrix.ext }}" computer-use status
+          if [[ "${{ matrix.platform }}" == "win32" ]]; then
+            test -f "dist/$NAME/hermes-core-host.exe"
+            "./dist/$NAME/hermes-core-host.exe" --smoke-check
+          fi
 
       - name: Verify bundled Node runtime + TUI
         shell: bash

@@ -2287,10 +2287,11 @@ def get_model_context_length(
 ) -> int:
     """Get the context length for a model.
 
-    ``allow_network=False`` skips the foreign metadata services (models.dev and
-    the OpenRouter live API) so display/hot paths like ``/api/model/info`` never
-    block on them; resolution falls through to cache + hardcoded defaults. The
-    local/own-provider endpoint probes are unaffected. See P-028.
+    ``allow_network=False`` skips all remote metadata services and OAuth-backed
+    provider catalog probes so display/startup hot paths never block on them.
+    Local endpoint probes remain available; other resolution falls through to
+    persisted cache, the bundled models.dev snapshot, and hardcoded defaults.
+    See P-028.
 
     Resolution order:
     0. Explicit config override (model.context_length or custom_providers per-model)
@@ -2342,6 +2343,7 @@ def get_model_context_length(
                     base_url=rt.get("base_url", "") or "",
                     api_key=rt.get("api_key", "") or "",
                     provider=agg_provider,
+                    allow_network=allow_network,
                 )
         except Exception:
             logger.debug("MoA aggregator context-length resolution failed", exc_info=True)
@@ -2527,20 +2529,27 @@ def get_model_context_length(
                 _m = re.search(r"bedrock-runtime\.([a-z0-9-]+)\.", base_url)
                 if _m:
                     region = _m.group(1)
-            if not region:
+            if not region and allow_network:
                 try:
                     region = resolve_bedrock_region()
                 except Exception:
                     region = ""
-            ctx = get_bedrock_context_length(model, region=region, probe=bool(region))
-            if ctx and region:
+            ctx = get_bedrock_context_length(
+                model,
+                region=region,
+                probe=allow_network and bool(region),
+            )
+            if ctx and region and allow_network:
                 # Only persist probe-derived values (region present); a pure
                 # table fallback shouldn't poison the cache against a later
                 # successful probe.
                 save_context_length(model, cache_key_url, ctx)
             return ctx
 
-    if provider == "novita" or (base_url and base_url_host_matches(base_url, "api.novita.ai")):
+    if allow_network and (
+        provider == "novita"
+        or (base_url and base_url_host_matches(base_url, "api.novita.ai"))
+    ):
         ctx = _resolve_endpoint_context_length(model, base_url or "https://api.novita.ai/openai/v1", api_key=api_key)
         if ctx is not None:
             if base_url:
@@ -2552,7 +2561,11 @@ def get_model_context_length(
     # /models endpoint may report a provider-imposed limit (e.g. Copilot
     # returns 128k) instead of the model's full context (400k).  models.dev
     # has the correct per-provider values and is checked at step 5+.
-    if _is_custom_endpoint(base_url) and not _is_known_provider_base_url(base_url):
+    if (
+        _is_custom_endpoint(base_url)
+        and not _is_known_provider_base_url(base_url)
+        and (allow_network or is_local_endpoint(base_url))
+    ):
         context_length = _resolve_endpoint_context_length(model, base_url, api_key=api_key)
         if context_length is not None:
             return context_length
@@ -2601,8 +2614,9 @@ def get_model_context_length(
             return DEFAULT_FALLBACK_CONTEXT
 
     # 4. Anthropic /v1/models API (only for regular API keys, not OAuth)
-    if provider == "anthropic" or (
-        base_url and base_url_hostname(base_url) == "api.anthropic.com"
+    if allow_network and (
+        provider == "anthropic"
+        or (base_url and base_url_hostname(base_url) == "api.anthropic.com")
     ):
         ctx = _query_anthropic_context_length(model, base_url or "https://api.anthropic.com", api_key)
         if ctx:
@@ -2626,7 +2640,11 @@ def get_model_context_length(
     # This catches account-specific models (e.g. claude-opus-4.6-1m) that
     # don't exist in models.dev. For models that ARE in models.dev, this
     # returns the provider-enforced limit which is what users can actually use.
-    if effective_provider in {"copilot", "copilot-acp", "github-copilot"}:
+    if allow_network and effective_provider in {
+        "copilot",
+        "copilot-acp",
+        "github-copilot",
+    }:
         try:
             from hermes_cli.models import get_copilot_model_context
             ctx = get_copilot_model_context(model, api_key=api_key)
@@ -2635,7 +2653,7 @@ def get_model_context_length(
         except Exception:
             pass  # Fall through to models.dev
 
-    if effective_provider == "nous":
+    if allow_network and effective_provider == "nous":
         ctx, source = _resolve_nous_context_length(
             model, base_url=base_url or "", api_key=api_key or ""
         )
@@ -2649,7 +2667,7 @@ def get_model_context_length(
             if base_url and source == "portal":
                 save_context_length(model, base_url, ctx)
             return ctx
-    if effective_provider == "openai-codex":
+    if allow_network and effective_provider == "openai-codex":
         # Codex OAuth enforces lower context limits than the direct OpenAI
         # API for the same slug (e.g. gpt-5.5 is 1.05M on the API but 272K
         # on Codex). Authoritative source is Codex's own /models endpoint.
@@ -2658,7 +2676,7 @@ def get_model_context_length(
             if base_url:
                 save_context_length(model, base_url, codex_ctx)
             return codex_ctx
-    if effective_provider == "gmi" and base_url:
+    if allow_network and effective_provider == "gmi" and base_url:
         # GMI exposes authoritative context_length via /models, but it is not
         # in models.dev yet. Preserve that higher-fidelity endpoint lookup.
         ctx = _resolve_endpoint_context_length(model, base_url, api_key=api_key)
@@ -2675,7 +2693,7 @@ def get_model_context_length(
     # is never cached for them — so every fresh process used to pay a
     # ~300ms blocking HTTP round-trip on the first-turn critical path
     # (measured against openrouter.ai; worse on slow DNS).
-    if base_url:
+    if base_url and (allow_network or is_local_endpoint(base_url)):
         _inferred_for_probe = _infer_provider_from_url(base_url)
         _skip_ollama_probe = (
             _inferred_for_probe is not None

@@ -1046,7 +1046,14 @@ def _resolve_active_context_length() -> int:
         # CLI startup.  See issue #46620.
         raw_ctx = model_cfg.get("context_length")
         config_ctx = raw_ctx if isinstance(raw_ctx, int) and raw_ctx > 0 else None
-        return int(get_model_context_length(model_id, config_context_length=config_ctx) or 0)
+        return int(
+            get_model_context_length(
+                model_id,
+                config_context_length=config_ctx,
+                allow_network=False,
+            )
+            or 0
+        )
     except Exception as e:
         logger.debug("Could not resolve active context length: %s", e)
         return 0

@@ -44,17 +44,17 @@ VSVersionInfo(
                     "040904B0",
                     [
                         StringStruct("CompanyName", "Hermes Agent CN"),
-                        StringStruct("FileDescription", "Hermes Agent CN Runtime"),
+                        StringStruct("FileDescription", "{file_description}"),
                         StringStruct("FileVersion", "{runtime_version}"),
-                        StringStruct("InternalName", "hermes-agent-cn-runtime"),
+                        StringStruct("InternalName", "{internal_name}"),
                         StringStruct(
                             "LegalCopyright",
                             "Hermes Agent CN community. Apache-2.0.",
                         ),
                         StringStruct(
-                            "OriginalFilename", "hermes-agent-cn-runtime.exe"
+                            "OriginalFilename", "{original_filename}"
                         ),
-                        StringStruct("ProductName", "Hermes Agent CN Runtime"),
+                        StringStruct("ProductName", "{product_name}"),
                         StringStruct("ProductVersion", "{runtime_version}"),
                     ],
                 )
@@ -74,10 +74,22 @@ def _vers_tuple(kernel_version: str) -> tuple[int, int, int, int]:
     return tuple(nums[:4])  # type: ignore[return-value]
 
 
-def render(kernel_version: str, runtime_version: str) -> str:
+def render(
+    kernel_version: str,
+    runtime_version: str,
+    *,
+    file_description: str = "Hermes Agent CN Runtime",
+    internal_name: str = "hermes-agent-cn-runtime",
+    original_filename: str = "hermes-agent-cn-runtime.exe",
+    product_name: str = "Hermes Agent CN Runtime",
+) -> str:
     return _TEMPLATE.format(
         vers=_vers_tuple(kernel_version),
         runtime_version=runtime_version,
+        file_description=file_description,
+        internal_name=internal_name,
+        original_filename=original_filename,
+        product_name=product_name,
     )
 
 
@@ -86,6 +98,10 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--kernel-version", default="0.0.0")
     parser.add_argument("--runtime-version", default="0.0.0")
     parser.add_argument("--output", default="version_info.txt")
+    parser.add_argument("--file-description", default="Hermes Agent CN Runtime")
+    parser.add_argument("--internal-name", default="hermes-agent-cn-runtime")
+    parser.add_argument("--original-filename", default="hermes-agent-cn-runtime.exe")
+    parser.add_argument("--product-name", default="Hermes Agent CN Runtime")
     parser.add_argument(
         "--check",
         metavar="FILE",
@@ -100,7 +116,14 @@ def main(argv: list[str]) -> int:
         print(f"{args.check}: OK")
         return 0
 
-    text = render(args.kernel_version, args.runtime_version)
+    text = render(
+        args.kernel_version,
+        args.runtime_version,
+        file_description=args.file_description,
+        internal_name=args.internal_name,
+        original_filename=args.original_filename,
+        product_name=args.product_name,
+    )
     # Fail loudly here rather than at PyInstaller time if the template ever drifts.
     compile(text, args.output, "exec")
     with open(args.output, "w", encoding="utf-8", errors="replace") as fh:

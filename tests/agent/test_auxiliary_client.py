@@ -4687,7 +4687,9 @@ class TestVisionAutoSkipsKimiCoding:
         )
         monkeypatch.setattr(
             "agent.models_dev.get_model_capabilities",
-            lambda provider, model: SimpleNamespace(supports_vision=False),
+            lambda provider, model, *, allow_network=True: SimpleNamespace(
+                supports_vision=False
+            ),
         )
         monkeypatch.setattr(
             "agent.auxiliary_client.resolve_provider_client",
@@ -4718,7 +4720,9 @@ class TestVisionAutoSkipsKimiCoding:
         )
         monkeypatch.setattr(
             "agent.models_dev.get_model_capabilities",
-            lambda provider, model: SimpleNamespace(supports_vision=False),
+            lambda provider, model, *, allow_network=True: SimpleNamespace(
+                supports_vision=False
+            ),
         )
         monkeypatch.setattr(
             "agent.auxiliary_client.resolve_provider_client",

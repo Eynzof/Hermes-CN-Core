@@ -9661,7 +9661,12 @@ def _(rid, params: dict) -> dict:
 
     sid = params.get("session_id", "")
     raw_text = params.get("text", "")
-    text = sanitize_user_prompt_text(raw_text) if isinstance(raw_text, str) else raw_text
+    if not isinstance(raw_text, str):
+        # Non-string text (list/None/number) used to skip sanitization and flow
+        # raw into turn handling, surfacing as an opaque -32000 handler error.
+        # Reject it at the envelope layer with a proper invalid-params error.
+        return _err(rid, -32602, "invalid params: text must be a string")
+    text = sanitize_user_prompt_text(raw_text)
     truncate_user_ordinal = params.get("truncate_before_user_ordinal")
     session, err = _sess_nowait(params, rid)
     if err:
@@ -11025,6 +11030,17 @@ def _(rid, params: dict) -> dict:
     ext_hint = str(params.get("ext", "") or "").strip().lower()
     if ext_hint and not ext_hint.startswith("."):
         ext_hint = "." + ext_hint
+    # Validate the CONTENT, not just the client-supplied filename: previously
+    # a ``.png`` filename hint short-circuited the sniff, so arbitrary bytes
+    # named ``fake.png`` were written to disk and later sent to the model as
+    # an image. Require a known magic-byte signature; the extension itself
+    # stays filename/ext-hint driven (unsupported hints are rejected below).
+    head = img_bytes[:16]
+    magic_hit = (head.startswith(b"RIFF") and head[8:12] == b"WEBP") or any(
+        head.startswith(sig) for sig, _ in _IMAGE_MAGIC
+    )
+    if not magic_hit:
+        return _err(rid, 4016, "payload is not a supported image (unrecognized magic bytes)")
     ext = _sniff_image_ext(img_bytes, filename or (f"x{ext_hint}" if ext_hint else ""))
     if ext not in _allowed_image_extensions():
         return _err(rid, 4016, f"unsupported image extension: {ext}")
@@ -16341,20 +16357,31 @@ def _(rid, params: dict) -> dict:
         if action == "list":
             return _ok(rid, orjson.loads(cronjob(action="list")))
         if action == "add":
-            return _ok(
-                rid,
-                orjson.loads(
-                    cronjob(
-                        action="create",
-                        name=jid,
-                        schedule=params.get("schedule", ""),
-                        prompt=params.get("prompt", ""),
-                    )
-                ),
+            payload = orjson.loads(
+                cronjob(
+                    action="create",
+                    name=jid,
+                    schedule=params.get("schedule", ""),
+                    prompt=params.get("prompt", ""),
+                )
             )
+            # The cronjob tool reports validation failures (missing/invalid
+            # schedule, empty prompt, bad script path, ...) as a success=False
+            # payload rather than raising. Unwrap those into a client-visible
+            # RPC error instead of masquerading as a successful call.
+            if isinstance(payload, dict) and payload.get("success") is False:
+                return _err(rid, 4023, str(payload.get("error", "cron create failed")))
+            return _ok(rid, payload)
         if action in {"remove", "pause", "resume"}:
-            return _ok(rid, orjson.loads(cronjob(action=action, job_id=jid)))
+            payload = orjson.loads(cronjob(action=action, job_id=jid))
+            if isinstance(payload, dict) and payload.get("success") is False:
+                return _err(rid, 4023, str(payload.get("error", f"cron {action} failed")))
+            return _ok(rid, payload)
         return _err(rid, 4016, f"unknown cron action: {action}")
+    except ValueError as e:
+        # Invalid cron expressions / bad client input surface as ValueError
+        # from the schedule parser — a client error, not a server fault.
+        return _err(rid, 4023, str(e))
     except Exception as e:
         return _err(rid, 5023, str(e))
 

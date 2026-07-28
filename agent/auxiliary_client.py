@@ -5514,7 +5514,12 @@ _VISION_AUTO_PROVIDER_ORDER = (
 )
 
 
-def _main_model_supports_vision(provider: str, model: Optional[str]) -> bool:
+def _main_model_supports_vision(
+    provider: str,
+    model: Optional[str],
+    *,
+    allow_network: bool = True,
+) -> bool:
     """Return True when ``provider``/``model`` is known to accept image input.
 
     Used by the vision auto-detect chain to skip the user's main provider
@@ -5534,7 +5539,12 @@ def _main_model_supports_vision(provider: str, model: Optional[str]) -> bool:
     except ImportError:
         return True
     try:
-        supports = _lookup_supports_vision(provider, model, load_config())
+        supports = _lookup_supports_vision(
+            provider,
+            model,
+            load_config(),
+            allow_network=allow_network,
+        )
     except Exception:  # pragma: no cover - defensive
         return True
     if supports is None:
@@ -5587,7 +5597,12 @@ def _resolve_strict_vision_backend(
     return None, None
 
 
-def _model_capability_explicitly_lacks_vision(provider: str, model: Optional[str]) -> bool:
+def _model_capability_explicitly_lacks_vision(
+    provider: str,
+    model: Optional[str],
+    *,
+    allow_network: bool = True,
+) -> bool:
     """Return True only when models.dev explicitly marks this model text-only.
 
     Unknown metadata must not block auto-routing: custom endpoints and newly
@@ -5602,7 +5617,9 @@ def _model_capability_explicitly_lacks_vision(provider: str, model: Optional[str
     try:
         from agent.models_dev import get_model_capabilities
 
-        caps = get_model_capabilities(provider, model)
+        caps = get_model_capabilities(
+            provider, model, allow_network=allow_network
+        )
     except Exception as exc:  # pragma: no cover - defensive only
         logger.debug(
             "Vision auto-detect: capability lookup failed for %s (%s): %s",
@@ -5616,6 +5633,115 @@ def _model_capability_explicitly_lacks_vision(provider: str, model: Optional[str
 
 def _strict_vision_backend_available(provider: str) -> bool:
     return _resolve_strict_vision_backend(provider)[0] is not None
+
+
+def _vision_provider_configured_offline(
+    provider: str,
+    model: Optional[str] = None,
+    *,
+    base_url: Optional[str] = None,
+    api_key: Optional[str] = None,
+) -> bool:
+    """Check local vision configuration without constructing a client.
+
+    This helper is intentionally limited to config, environment variables,
+    persisted credentials, and the bundled models.dev snapshot.  It must not
+    refresh OAuth credentials, query provider catalogs, or probe endpoints.
+    Actual client construction remains lazy in
+    :func:`resolve_vision_provider_client` when the tool is invoked.
+    """
+    provider = _normalize_vision_provider(provider)
+    model = (model or "").strip()
+    base_url = (base_url or "").strip()
+    api_key = (api_key or "").strip()
+
+    if provider in _PROVIDERS_WITHOUT_VISION:
+        return False
+
+    if base_url:
+        # Explicit endpoints use a placeholder key for local/no-auth servers.
+        # Capability metadata is advisory: only reject a model when the
+        # bundled snapshot explicitly says it is text-only.
+        return not _model_capability_explicitly_lacks_vision(
+            provider,
+            model,
+            allow_network=False,
+        )
+
+    if provider == "custom":
+        custom_base, _custom_key, _custom_mode = _resolve_custom_runtime()
+        if not custom_base:
+            return False
+        return not _model_capability_explicitly_lacks_vision(
+            provider,
+            model or _read_main_model(),
+            allow_network=False,
+        )
+
+    try:
+        from hermes_cli.auth import is_provider_explicitly_configured
+
+        configured = is_provider_explicitly_configured(provider)
+    except Exception:
+        configured = bool(api_key)
+    if not configured:
+        return False
+
+    # These providers have dedicated vision routing once locally configured;
+    # the runtime will choose their current vision model lazily.
+    if provider in _VISION_EXPLICIT_PROVIDER_ORDER or provider == "openai-codex":
+        return True
+
+    vision_model = _PROVIDER_VISION_MODELS.get(provider, model or _read_main_model())
+    return _main_model_supports_vision(
+        provider,
+        vision_model,
+        allow_network=False,
+    )
+
+
+def vision_backend_available_offline(
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
+    *,
+    base_url: Optional[str] = None,
+    api_key: Optional[str] = None,
+) -> bool:
+    """Return whether vision is locally configured on the startup hot path.
+
+    The explicit ``auxiliary.vision`` target is checked first.  If it is not
+    usable, the same main-provider then Anthropic fallback shape as runtime is
+    evaluated using only local state.  No OAuth refresh or network metadata
+    request is permitted here.
+    """
+    requested, resolved_model, resolved_base_url, resolved_api_key, _api_mode = (
+        _resolve_task_provider_model("vision", provider, model, base_url, api_key)
+    )
+    requested = _normalize_vision_provider(requested)
+
+    if requested != "auto" and _vision_provider_configured_offline(
+        requested,
+        resolved_model,
+        base_url=resolved_base_url,
+        api_key=resolved_api_key,
+    ):
+        return True
+
+    main_provider = _normalize_vision_provider(_read_main_provider())
+    main_model = _read_main_model()
+    if main_provider not in {"", "auto"} and _vision_provider_configured_offline(
+        main_provider,
+        main_model,
+        base_url=_read_main_base_url(),
+        api_key=_read_main_api_key(),
+    ):
+        return True
+
+    if main_provider != "anthropic" and _vision_provider_configured_offline(
+        "anthropic"
+    ):
+        return True
+    return False
 
 
 def get_available_vision_backends() -> List[str]:

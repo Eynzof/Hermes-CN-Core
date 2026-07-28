@@ -1358,27 +1358,20 @@ async def vision_analyze_tool(
 
 
 def check_vision_requirements() -> bool:
-    """Check if the configured runtime vision path can resolve a client.
+    """Check local vision configuration without touching the network.
 
-    Mirrors the fallback chain that ``call_llm(task="vision")`` actually uses
-    at runtime: first the explicit ``auxiliary.vision.provider`` (if any),
-    and if that fails, the auto chain (main provider → openrouter → nous).
-    Without the auto-fallback step the tool would disappear from the model's
-    tool list whenever the explicit provider name was unresolvable, even
-    when the auto chain would have served the request (issue #31179).
+    This function runs inside ``get_tool_definitions`` while the agent is being
+    built, so constructing a client here can refresh OAuth credentials and
+    fetch models.dev before the first prompt.  Availability is therefore based
+    only on local config/credentials and bundled capability metadata.  The
+    actual provider client is resolved lazily when ``vision_analyze`` runs.
     """
     try:
-        from agent.auxiliary_client import resolve_vision_provider_client
+        from agent.auxiliary_client import vision_backend_available_offline
     except ImportError:
         return False
     try:
-        _provider, client, _model = resolve_vision_provider_client()
-        if client is not None:
-            return True
-        # Same fallback to "auto" that call_llm performs when the configured
-        # provider can't be resolved.
-        _provider, client, _model = resolve_vision_provider_client(provider="auto")
-        return client is not None
+        return vision_backend_available_offline()
     except Exception:
         return False
 

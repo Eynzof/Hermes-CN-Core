@@ -376,6 +376,8 @@ def _lookup_supports_vision(
     provider: str,
     model: str,
     cfg: Optional[Dict[str, Any]] = None,
+    *,
+    allow_network: bool = True,
 ) -> Optional[bool]:
     """Return True/False if we can resolve caps, None if unknown.
 
@@ -391,7 +393,9 @@ def _lookup_supports_vision(
     caps = None
     try:
         from agent.models_dev import get_model_capabilities
-        caps = get_model_capabilities(provider, model)
+        caps = get_model_capabilities(
+            provider, model, allow_network=allow_network
+        )
     except Exception as exc:  # pragma: no cover - defensive
         logger.debug("image_routing: caps lookup failed for %s:%s — %s", provider, model, exc)
     if caps is not None:
@@ -400,7 +404,7 @@ def _lookup_supports_vision(
     base_url = _resolve_inference_base_url(cfg, provider)
     if not base_url and (provider or "").strip().lower() == "ollama":
         base_url = "http://localhost:11434/v1"
-    if _should_probe_ollama_vision(provider, base_url):
+    if allow_network and _should_probe_ollama_vision(provider, base_url):
         try:
             from agent.model_metadata import query_ollama_supports_vision
 

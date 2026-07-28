@@ -1921,3 +1921,36 @@ class TestMoAContextLength:
             "p", base_url="http://127.0.0.1/v1", provider="moa", config_context_length=500_000
         )
         assert ctx == 500_000
+
+
+class TestOfflineContextResolution:
+    def test_allow_network_false_skips_codex_oauth_catalog(self):
+        with patch(
+            "agent.model_metadata._resolve_codex_oauth_context_length",
+            side_effect=AssertionError("OAuth catalog must stay lazy"),
+        ) as oauth_catalog:
+            ctx = get_model_context_length(
+                "gpt-5.5",
+                base_url="https://chatgpt.com/backend-api/codex",
+                provider="openai-codex",
+                allow_network=False,
+            )
+
+        assert ctx > 0
+        oauth_catalog.assert_not_called()
+
+    def test_allow_network_false_skips_anthropic_catalog(self):
+        with patch(
+            "agent.model_metadata._query_anthropic_context_length",
+            side_effect=AssertionError("provider catalog must stay lazy"),
+        ) as anthropic_catalog:
+            ctx = get_model_context_length(
+                "claude-sonnet-4-6",
+                base_url="https://api.anthropic.com",
+                api_key="sk-test",
+                provider="anthropic",
+                allow_network=False,
+            )
+
+        assert ctx > 0
+        anthropic_catalog.assert_not_called()

@@ -2129,6 +2129,7 @@ def init_agent(
             config_context_length=_config_context_length,
             provider=agent.provider,
             custom_providers=_custom_providers,
+            allow_network=False,
         )
         agent.context_compressor.update_model(
             model=agent.model,

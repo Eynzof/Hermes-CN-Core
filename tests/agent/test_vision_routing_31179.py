@@ -261,6 +261,42 @@ model:
         from tools.vision_tools import check_vision_requirements
         assert check_vision_requirements() is False
 
+    def test_startup_gate_never_constructs_clients_or_refreshes_oauth(
+        self, isolated_home, monkeypatch
+    ):
+        """Agent construction must use local state even when ambient Claude
+        credentials could trigger a slow refresh in the runtime resolver."""
+        from unittest.mock import patch
+
+        _write_config(isolated_home, """
+model:
+  provider: deepseek
+  default: deepseek-v4-flash
+""")
+        monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test")
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "stale-ambient-token")
+        _fresh_modules()
+
+        from tools.vision_tools import check_vision_requirements
+
+        with patch(
+            "agent.auxiliary_client.resolve_vision_provider_client",
+            side_effect=AssertionError("startup must not construct a vision client"),
+        ), patch(
+            "agent.anthropic_adapter.resolve_anthropic_token",
+            side_effect=AssertionError("startup must not refresh OAuth"),
+        ), patch(
+            "agent.models_dev.get_model_capabilities",
+            return_value=type("Caps", (), {"supports_vision": False})(),
+        ) as capability_lookup:
+            assert check_vision_requirements() is False
+
+        capability_lookup.assert_called_once_with(
+            "deepseek",
+            "deepseek-v4-flash",
+            allow_network=False,
+        )
+
     def test_browser_vision_requires_both_browser_and_vision(self, isolated_home, monkeypatch):
         """``browser_vision`` must not be advertised when vision is unavailable."""
         from unittest.mock import patch

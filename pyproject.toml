@@ -355,6 +355,7 @@ cn-desktop = [
 
 [project.scripts]
 hermes = "hermes_cli.main:main"
+hermes-core-host = "hermes_cli.desktop_host:main"
 hermes-agent = "run_agent:main"
 hermes-acp = "acp_adapter.entry:main"
 

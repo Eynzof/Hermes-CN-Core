@@ -67,6 +67,18 @@ MEMORY_BLOCK_HEADERS = {
 }
 
 ENTRY_DELIMITER = "\n§\n"
+DEFAULT_MEMORY_CHAR_LIMIT = 2200
+MIN_MEMORY_CHAR_LIMIT = 1
+MAX_MEMORY_CHAR_LIMIT = 8000
+
+
+def normalize_memory_char_limit(value: Any) -> int:
+    """Return a safe built-in-memory limit for every runtime entry point."""
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return DEFAULT_MEMORY_CHAR_LIMIT
+    return max(MIN_MEMORY_CHAR_LIMIT, min(MAX_MEMORY_CHAR_LIMIT, parsed))
 
 
 # ---------------------------------------------------------------------------
@@ -137,10 +149,10 @@ class MemoryStore:
     # turn to budget exhaustion and suppress the user's reply (issue #42405).
     _MAX_CONSOLIDATION_FAILURES_PER_TURN = 3
 
-    def __init__(self, memory_char_limit: int = 2200, user_char_limit: int = 1375):
+    def __init__(self, memory_char_limit: int = DEFAULT_MEMORY_CHAR_LIMIT, user_char_limit: int = 1375):
         self.memory_entries: List[str] = []
         self.user_entries: List[str] = []
-        self.memory_char_limit = memory_char_limit
+        self.memory_char_limit = normalize_memory_char_limit(memory_char_limit)
         self.user_char_limit = user_char_limit
         # Frozen snapshot for system prompt -- set once at load_from_disk()
         self._system_prompt_snapshot: Dict[str, str] = {"memory": "", "user": ""}
@@ -822,7 +834,7 @@ def load_on_disk_store() -> "MemoryStore":
     Falls back to the built-in defaults if config can't be loaded, so this can
     never raise on a missing/unreadable config.
     """
-    memory_char_limit = 2200
+    memory_char_limit = DEFAULT_MEMORY_CHAR_LIMIT
     user_char_limit = 1375
     try:
         from hermes_cli.config import load_config
@@ -1158,7 +1170,6 @@ registry.register(
     check_fn=check_memory_requirements,
     emoji="🧠",
 )
-
 
 
 

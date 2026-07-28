@@ -787,6 +787,12 @@ def _memory_provider_options() -> List[str]:
 
 
 _SCHEMA_OVERRIDES: Dict[str, Dict[str, Any]] = {
+    "memory.memory_char_limit": {
+        "type": "number",
+        "description": "MEMORY.md character limit (1-8000)",
+        "minimum": 1,
+        "maximum": 8000,
+    },
     "memory.provider": {
         "type": "select",
         "description": "Memory provider plugin",
@@ -7046,6 +7052,18 @@ async def update_config(body: ConfigUpdate, profile: Optional[str] = None):
             # frontend can only overwrite what it explicitly sends.
             existing = read_raw_config()
             incoming = _denormalize_config_from_web(body.config)
+            incoming_memory = incoming.get("memory")
+            if isinstance(incoming_memory, dict) and "memory_char_limit" in incoming_memory:
+                memory_char_limit = incoming_memory["memory_char_limit"]
+                if (
+                    isinstance(memory_char_limit, bool)
+                    or not isinstance(memory_char_limit, int)
+                    or not 1 <= memory_char_limit <= 8000
+                ):
+                    raise HTTPException(
+                        status_code=400,
+                        detail="memory.memory_char_limit must be an integer between 1 and 8000",
+                    )
             # The frontend sends the complete ``providers`` mapping; if a
             # provider was deleted, it is absent from ``incoming`` but would
             # survive ``_deep_merge`` (which only iterates *override* keys).

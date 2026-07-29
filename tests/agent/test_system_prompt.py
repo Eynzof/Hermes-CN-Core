@@ -79,6 +79,33 @@ def _init_code_repo(path):
     (path / "main.py").write_text("print('hi')\n")
 
 
+class TestProfileScopeHint:
+    def test_named_profile_uses_exact_active_home(self, monkeypatch, tmp_path):
+        root = tmp_path / "hermes-root"
+        active_home = root / "profiles" / "coder"
+        monkeypatch.setenv("HERMES_HOME", str(active_home))
+        monkeypatch.delenv("HERMES_DESKTOP_MANAGED", raising=False)
+
+        stable = _stable_prompt(_make_agent())
+
+        assert f"This session reads and writes {active_home}/" in stable
+        assert f"{active_home}/profiles/coder" not in stable
+        assert f"The default profile's data lives at {root}/skills/" in stable
+
+    def test_managed_desktop_pins_authoritative_home(self, monkeypatch, tmp_path):
+        active_home = tmp_path / "managed-runtime" / "hermes-home"
+        monkeypatch.setenv("HERMES_HOME", str(active_home))
+        monkeypatch.setenv("HERMES_DESKTOP_MANAGED", "1")
+
+        stable = _stable_prompt(_make_agent(platform="desktop"))
+
+        assert f"{active_home} is the authoritative HERMES_HOME" in stable
+        assert "Do not inspect or modify the global ~/.hermes tree" in stable
+        assert "`hermes memory status`" in stable
+        assert "`/api/memory` provider config/status endpoints" in stable
+        assert "alone does not prove this managed profile is configured" in stable
+
+
 class TestCodingContextBlock:
     def test_injected_when_active(self, monkeypatch, tmp_path):
         _init_code_repo(tmp_path)

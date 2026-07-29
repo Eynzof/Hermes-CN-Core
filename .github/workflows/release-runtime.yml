@@ -323,6 +323,7 @@ jobs:
             --collect-submodules hindsight_client \
             --collect-submodules hindsight_client_api \
             --collect-submodules aiohttp_retry \
+            --collect-submodules plugins.memory \
             --collect-data hermes_cli \
             --collect-data gateway \
             --collect-data plugins \
@@ -566,6 +567,22 @@ jobs:
           "./dist/$NAME/$NAME${{ matrix.ext }}" dashboard --help
           "./dist/$NAME/$NAME${{ matrix.ext }}" tools list --platform cli
           "./dist/$NAME/$NAME${{ matrix.ext }}" computer-use status
+
+      - name: Verify frozen memory provider discovery
+        shell: bash
+        run: |
+          NAME="hermes-agent-cn-runtime-${{ matrix.platform }}-${{ matrix.arch }}"
+          binary="./dist/$NAME/$NAME${{ matrix.ext }}"
+          smoke_home="$RUNNER_TEMP/hermes-memory-provider-smoke"
+          mkdir -p "$smoke_home"
+
+          for provider in openviking hindsight; do
+            printf 'memory:\n  provider: %s\n' "$provider" > "$smoke_home/config.yaml"
+            output="$(HERMES_HOME="$smoke_home" "$binary" memory status)"
+            printf '%s\n' "$output"
+            grep -F "Provider:  $provider" <<< "$output"
+            grep -F "Plugin:    installed" <<< "$output"
+          done
 
       - name: Verify bundled Node runtime + TUI
         shell: bash

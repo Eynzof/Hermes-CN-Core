@@ -46,7 +46,7 @@ from agent.prompt_builder import (
     drain_truncation_warnings,
 )
 from agent.runtime_cwd import resolve_context_cwd
-from hermes_constants import get_hermes_home
+from hermes_constants import get_default_hermes_root, get_hermes_home
 from utils import is_truthy_value
 
 
@@ -393,10 +393,13 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
         active_profile = _resolve_active_profile_name()
     except Exception:
         active_profile = "default"
+    active_home = get_hermes_home()
+    hermes_root = get_default_hermes_root()
     if active_profile == "default":
         stable_parts.append(
-            "Active Hermes profile: default. Other profiles (if any) live "
-            "under " + str(get_hermes_home()) + "/profiles/<name>/. Each profile has its own "
+            f"Active Hermes profile: default. This session reads and writes {active_home}/. "
+            f"Other profiles (if any) live under {hermes_root}/profiles/<name>/. "
+            "Each profile has its own "
             "skills/, plugins/, cron/, and memories/ that affect a different "
             "session than this one. Do not modify another profile's "
             "skills/plugins/cron/memories unless the user explicitly directs "
@@ -405,14 +408,27 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
     else:
         stable_parts.append(
             f"Active Hermes profile: {active_profile}. This session reads "
-            f"and writes {get_hermes_home()}/profiles/{active_profile}/. The default "
-            f"profile's data lives at {get_hermes_home()}/skills/, {get_hermes_home()}/plugins/, "
-            f"{get_hermes_home()}/cron/, {get_hermes_home()}/memories/ — those belong to a "
+            f"and writes {active_home}/. The default profile's data lives at "
+            f"{hermes_root}/skills/, {hermes_root}/plugins/, {hermes_root}/cron/, "
+            f"{hermes_root}/memories/ — those belong to a "
             f"different session run from a different shell. Do NOT modify "
             f"another profile's skills/plugins/cron/memories unless the user "
             f"explicitly directs you to. The cross-profile write guard will "
             f"refuse such writes by default; pass cross_profile=True only "
             f"after explicit direction."
+        )
+
+    if os.environ.get("HERMES_DESKTOP_MANAGED") == "1":
+        stable_parts.append(
+            f"Managed Desktop scope: {active_home} is the authoritative HERMES_HOME "
+            "for this session. Resolve config.yaml, .env, plugins/, memories/, and "
+            "all Hermes state from that exact directory. Do not inspect or modify "
+            "the global ~/.hermes tree unless the user explicitly asks to operate "
+            "outside the Desktop runtime. When configuring memory, verify the active "
+            "provider with `hermes memory status` and the managed Dashboard "
+            "`/api/memory` provider config/status endpoints; a direct health check of "
+            "OpenViking or another external service alone does not prove this managed "
+            "profile is configured."
         )
 
     platform_key = (agent.platform or "").lower().strip()

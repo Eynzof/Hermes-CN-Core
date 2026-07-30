@@ -1724,7 +1724,7 @@ def run_conversation(
                         if _code_raw is not None:
                             try:
                                 _resp_error_code = int(_code_raw)
-                            except TypeError, ValueError:
+                            except (TypeError, ValueError):
                                 pass
 
                     # Build a human-readable failure hint from the error code
@@ -2520,7 +2520,7 @@ def run_conversation(
                     if _moa_ref_cost is not None:
                         try:
                             agent.session_estimated_cost_usd += float(_moa_ref_cost)
-                        except TypeError, ValueError:  # pragma: no cover - defensive
+                        except (TypeError, ValueError):  # pragma: no cover - defensive
                             pass
                     agent.session_cost_status = cost_result.status
                     agent.session_cost_source = cost_result.source
@@ -2554,7 +2554,7 @@ def run_conversation(
                                     _cost_delta = (_cost_delta or 0.0) + float(
                                         _moa_ref_cost
                                     )
-                                except TypeError, ValueError:  # pragma: no cover
+                                except (TypeError, ValueError):  # pragma: no cover
                                     pass
                             agent._session_db.update_token_counts(
                                 agent.session_id,
@@ -4818,7 +4818,7 @@ def run_conversation(
                                 # limit. 600s covers all realistic provider reset
                                 # windows while still rejecting pathological values. (#26293)
                                 _retry_after = min(float(_ra_raw), 600)
-                            except TypeError, ValueError:
+                            except (TypeError, ValueError):
                                 pass
                 if is_rate_limited and not _retry_after:
                     # 429 rate limit: short exponential backoff 1s → 2s → 4s → 4s (capped)
@@ -6352,7 +6352,7 @@ def run_conversation(
             )
             try:
                 print(f"❌ {error_msg}")
-            except OSError, ValueError:
+            except (OSError, ValueError):
                 logger.error(error_msg)
 
             # Emit the full traceback at ERROR level so it lands in both

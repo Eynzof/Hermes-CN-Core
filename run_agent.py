@@ -940,7 +940,7 @@ class AIAgent:
         try:
             fn = self._print_fn or print
             fn(*args, **kwargs)
-        except OSError, ValueError:
+        except (OSError, ValueError):
             pass
 
     def _vprint(self, *args, force: bool = False, **kwargs):
@@ -986,7 +986,7 @@ class AIAgent:
             return False
         try:
             return bool(stream.isatty())
-        except AttributeError, ValueError, OSError:
+        except (AttributeError, ValueError, OSError):
             return False
 
     def _should_emit_quiet_tool_messages(self) -> bool:
@@ -1621,7 +1621,7 @@ class AIAgent:
             raw = api_kwargs.get(key)
             try:
                 value = int(raw)
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 continue
             if value > 0:
                 return value
@@ -2486,7 +2486,7 @@ class AIAgent:
                 prefix = f"HTTP {status_code}: " if status_code else ""
                 try:
                     payload = orjson.loads(snippet)
-                except orjson.JSONDecodeError, TypeError:
+                except (orjson.JSONDecodeError, TypeError):
                     payload = None
                 if isinstance(payload, dict):
                     err = payload.get("error")
@@ -2572,7 +2572,7 @@ class AIAgent:
         raw = os.getenv("HERMES_PLUGIN_PAYLOAD_MAX_CHARS", "50000")
         try:
             return max(1000, int(raw))
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             return 50000
 
     @staticmethod
@@ -3972,7 +3972,7 @@ class AIAgent:
                 if "todos" in data and isinstance(data["todos"], list):
                     last_todo_response = data["todos"]
                     break
-            except orjson.JSONDecodeError, TypeError:
+            except (orjson.JSONDecodeError, TypeError):
                 continue
 
         if last_todo_response:

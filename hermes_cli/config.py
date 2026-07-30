@@ -911,7 +911,7 @@ def _chown_to_hermes_uid(path) -> None:
             uid if uid is not None else -1,
             gid if gid is not None else -1,
         )
-    except OSError, AttributeError, NotImplementedError:
+    except (OSError, AttributeError, NotImplementedError):
         # OSError covers EPERM (not running as root) and ENOENT (race),
         # both of which are non-fatal — the dir is still created and
         # the entrypoint's startup chown -R will fix it on next restart.
@@ -945,7 +945,7 @@ def _secure_dir(path):
         mode = 0o700
     try:
         os.chmod(path, mode)
-    except OSError, NotImplementedError:
+    except (OSError, NotImplementedError):
         pass
     _chown_to_hermes_uid(path)
 
@@ -974,7 +974,7 @@ def _is_container() -> bool:
             or "kubepods" in cgroup_content
         ):
             return True
-    except OSError, IOError:
+    except (OSError, IOError):
         pass
     return False
 
@@ -993,7 +993,7 @@ def _secure_file(path):
     try:
         if os.path.exists(str(path)):
             os.chmod(path, 0o600)
-    except OSError, NotImplementedError:
+    except (OSError, NotImplementedError):
         pass
 
 
@@ -1009,7 +1009,7 @@ def _ensure_default_soul_md(home: Path) -> None:
     if soul_path.exists():
         try:
             existing = soul_path.read_text(encoding="utf-8", errors="replace")
-        except OSError, UnicodeDecodeError:
+        except (OSError, UnicodeDecodeError):
             return
         if not is_legacy_template_soul(existing):
             return
@@ -4842,7 +4842,7 @@ def _set_nested(config, dotted_key: str, value):
         if isinstance(current, list):
             try:
                 idx = int(part)
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 raise TypeError(
                     f"Cannot navigate into list at key {dotted_key!r}: "
                     f"segment {part!r} is not a numeric index"
@@ -5614,7 +5614,7 @@ def get_custom_provider_context_length(
             continue
         try:
             ctx = int(raw_ctx)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             continue
         if ctx > 0:
             return ctx
@@ -5627,7 +5627,7 @@ def _coerce_config_version(value: Any) -> int:
         return 0
     try:
         version = int(value)
-    except TypeError, ValueError:
+    except (TypeError, ValueError):
         return 0
     return max(version, 0)
 
@@ -6634,12 +6634,12 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
             old_async = raw_deleg.pop("max_async_children")
             try:
                 old_async_i = int(old_async)
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 old_async_i = None
             if old_async_i is not None and old_async_i > 3:
                 try:
                     cur_children = int(raw_deleg.get("max_concurrent_children", 3))
-                except TypeError, ValueError:
+                except (TypeError, ValueError):
                     cur_children = 3
                 if old_async_i > cur_children:
                     raw_deleg["max_concurrent_children"] = old_async_i
@@ -6770,7 +6770,7 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
             print()
             try:
                 answer = input("  Configure new keys? [y/N]: ").strip().lower()
-            except EOFError, KeyboardInterrupt:
+            except (EOFError, KeyboardInterrupt):
                 answer = "n"
 
             if answer in {"y", "yes"}:
@@ -6828,7 +6828,7 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
         print()
         try:
             answer = input("  Configure skill settings? [y/N]: ").strip().lower()
-        except EOFError, KeyboardInterrupt:
+        except (EOFError, KeyboardInterrupt):
             answer = "n"
 
         if answer in {"y", "yes"}:
@@ -7435,7 +7435,7 @@ def read_raw_config() -> Dict[str, Any]:
             config_path = get_config_path()
             st = config_path.stat()
             cache_key = (st.st_mtime_ns, st.st_size)
-        except FileNotFoundError, OSError:
+        except (FileNotFoundError, OSError):
             return {}
 
         path_key = str(config_path)

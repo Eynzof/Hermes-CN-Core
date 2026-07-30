@@ -186,7 +186,7 @@ def _codex_gpt55_autoraise_notice_seen(autoraise: Dict[str, Any]) -> bool:
             _codex_gpt55_autoraise_notice_marker().read_text(encoding="utf-8", errors="replace").strip()
             == current
         )
-    except OSError, KeyError, TypeError, ValueError:
+    except (OSError, KeyError, TypeError, ValueError):
         return False
 
 
@@ -202,7 +202,7 @@ def _record_codex_gpt55_autoraise_notice(autoraise: Dict[str, Any]) -> None:
         marker.write_text(
             _codex_gpt55_autoraise_notice_state(autoraise), encoding="utf-8"
         )
-    except OSError, KeyError, TypeError, ValueError:
+    except (OSError, KeyError, TypeError, ValueError):
         pass
 
 
@@ -1808,7 +1808,7 @@ def init_agent(
         _raw_api_retries = _agent_section.get("api_max_retries", 3)
         _api_retries = int(_raw_api_retries)
         _api_retries = max(_api_retries, 1)  # 1 = no retry (single attempt)
-    except TypeError, ValueError:
+    except (TypeError, ValueError):
         _api_retries = 3
     agent._api_max_retries = _api_retries
 
@@ -1914,7 +1914,7 @@ def init_agent(
     if _aux_context_config is not None:
         try:
             _aux_context_config = int(_aux_context_config)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             _aux_context_config = None
     agent._aux_compression_context_length_config = _aux_context_config
 
@@ -1931,7 +1931,7 @@ def init_agent(
                 if _parsed_max_tokens <= 0:
                     raise ValueError
                 agent.max_tokens = _parsed_max_tokens
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 _ra().logger.warning(
                     "Invalid model.max_tokens in config.yaml: %r — "
                     "must be a positive integer (e.g. 4096). "
@@ -1954,7 +1954,7 @@ def init_agent(
     if _config_context_length is not None:
         try:
             _config_context_length = int(_config_context_length)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             _ra().logger.warning(
                 "Invalid model.context_length in config.yaml: %r — "
                 "must be a plain integer (e.g. 256000, not '256K'). "
@@ -2023,7 +2023,7 @@ def init_agent(
                                     _parsed = int(_cp_ctx)
                                     if _parsed <= 0:
                                         raise ValueError
-                                except TypeError, ValueError:
+                                except (TypeError, ValueError):
                                     _ra().logger.warning(
                                         "Invalid context_length for model %r in "
                                         "custom_providers: %r — must be a positive "
@@ -2205,7 +2205,7 @@ def init_agent(
     else:
         try:
             agent.steer_max_length = int(_steer_max_length)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             agent.steer_max_length = 4000
 
     # Unified reminder registry — system reminders + user steers share one
@@ -2376,7 +2376,7 @@ def init_agent(
     if _ollama_num_ctx_override is not None:
         try:
             agent._ollama_num_ctx = int(_ollama_num_ctx_override)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             _ra().logger.debug(
                 "Invalid ollama_num_ctx config value: %r", _ollama_num_ctx_override
             )

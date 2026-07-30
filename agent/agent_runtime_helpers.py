@@ -211,7 +211,7 @@ def convert_to_trajectory_format(
                     try:
                         if tool_content.strip().startswith(("{", "[")):
                             tool_content = orjson.loads(tool_content)
-                    except orjson.JSONDecodeError, AttributeError:
+                    except (orjson.JSONDecodeError, AttributeError):
                         pass  # Keep as string if not valid JSON
 
                     tool_index = len(tool_responses)
@@ -3506,7 +3506,7 @@ def extract_api_error_context(error: Exception) -> Dict[str, Any]:
         if retry_after not in {None, ""} and "reset_at" not in context:
             try:
                 context["reset_at"] = time.time() + float(retry_after)
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 pass
 
     response = getattr(error, "response", None)
@@ -3516,7 +3516,7 @@ def extract_api_error_context(error: Exception) -> Dict[str, Any]:
         if retry_after and "reset_at" not in context:
             try:
                 context["reset_at"] = time.time() + float(retry_after)
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 pass
         ratelimit_reset = headers.get("x-ratelimit-reset")
         if ratelimit_reset and "reset_at" not in context:

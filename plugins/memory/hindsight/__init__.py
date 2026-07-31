@@ -762,7 +762,24 @@ class HindsightMemoryProvider(MemoryProvider):
                 or os.environ.get("HINDSIGHT_API_KEY", "")
             )
             has_url = bool(cfg.get("api_url") or os.environ.get("HINDSIGHT_API_URL", ""))
-            return has_key or has_url
+            has_config = has_key or has_url
+
+            if not has_config:
+                return False
+
+            # In a normal Python env with lazy_deps available, config-only check
+            # is correct because ensure() can install the SDK on demand later.
+            # But in the PyInstaller frozen runtime (CN Desktop), lazy_deps is
+            # not available and the SDK must be pre-baked — fall back to checking
+            # actual SDK importability to avoid a false green light. See P-040.
+            try:
+                from tools.lazy_deps import ensure as _lazy_ensure
+                return True
+            except ImportError:
+                # Frozen runtime: tools.lazy_deps is not bundled.
+                import importlib.util
+                return importlib.util.find_spec("hindsight") is not None \
+                       or importlib.util.find_spec("hindsight_client") is not None
         except Exception:
             return False
 

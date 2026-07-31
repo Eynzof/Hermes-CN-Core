@@ -324,6 +324,9 @@ jobs:
             --collect-submodules hindsight_client_api \
             --collect-submodules aiohttp_retry \
             --collect-submodules plugins.memory \
+            --hidden-import tools.lazy_deps \
+            --collect-submodules supermemory \
+            --collect-submodules mem0ai \
             --collect-data hermes_cli \
             --collect-data gateway \
             --collect-data plugins \
@@ -519,7 +522,7 @@ jobs:
                      aiohttp websockets apscheduler aiofiles qrcode pypng \
                      defusedxml cryptography pycryptodome certifi \
                      hindsight_client aiohttp_retry ddgs exa_py firecrawl_py \
-                     parallel_web; do
+                     parallel_web supermemory mem0ai; do
             if [[ -z "$(find "$internal" -maxdepth 1 -type d -name "${pkg}-*.dist-info" -print -quit)" ]]; then
               echo "::error::Frozen runtime is missing ${pkg} package metadata" >&2
               find "dist/$NAME" -maxdepth 3 -type d -iname "${pkg}*" -print >&2

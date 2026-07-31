@@ -6,6 +6,7 @@ explicit memory tools, cleaned turn capture, and session-end conversation ingest
 
 from __future__ import annotations
 
+import importlib.util
 import orjson
 import logging
 import os
@@ -553,6 +554,7 @@ class SupermemoryMemoryProvider(MemoryProvider):
         self._hermes_home = ""
         self._write_enabled = True
         self._active = False
+        self._init_error: Optional[str] = None
         # Multi-container support
         self._enable_custom_containers = False
         self._custom_containers: List[str] = []
@@ -572,7 +574,27 @@ class SupermemoryMemoryProvider(MemoryProvider):
         # Docker venv the package isn't present until ensure() runs, but
         # ensure() only runs once the provider is loaded — which this gates.
         # Mirrors honcho/mem0, which check config only. No network calls.
-        return bool(os.environ.get("SUPERMEMORY_API_KEY", ""))
+        #
+        # HOWEVER: in the PyInstaller frozen runtime (CN Desktop), lazy_deps
+        # is NOT available (no pip inside frozen binary) AND the SDK must be
+        # pre-baked. When tools.lazy_deps cannot be imported, fall back to
+        # importlib.util.find_spec so is_available() reports the actual
+        # importability of the SDK rather than producing a false green light.
+        if not os.environ.get("SUPERMEMORY_API_KEY", ""):
+            return False
+        # Check if we can potentially load the SDK. In a normal Python env
+        # with lazy_deps available, just having the key is sufficient. In the
+        # frozen runtime, we need the SDK to actually be importable.
+        try:
+            from tools.lazy_deps import ensure as _lazy_ensure
+            # lazy_deps is available — the key-only check is correct because
+            # ensure() can install the SDK on demand later.
+            return True
+        except ImportError:
+            # Frozen runtime: tools.lazy_deps is not bundled. Fall back to
+            # checking whether the SDK is actually importable. This prevents
+            # the false green light reported in P-040.
+            return importlib.util.find_spec("supermemory") is not None
 
     def get_config_schema(self):
         # Only prompt for the API key during `hermes memory setup`.
@@ -676,6 +698,7 @@ class SupermemoryMemoryProvider(MemoryProvider):
 
         agent_context = kwargs.get("agent_context", "")
         self._write_enabled = agent_context not in {"cron", "flush", "subagent"}
+        self._init_error = None
         self._active = bool(self._api_key)
         self._client = None
         if self._active:
@@ -687,8 +710,9 @@ class SupermemoryMemoryProvider(MemoryProvider):
                     search_mode=self._search_mode,
                     base_url=self._base_url,
                 )
-            except Exception:
+            except Exception as exc:
                 logger.warning("Supermemory initialization failed", exc_info=True)
+                self._init_error = str(exc)
                 self._active = False
                 self._client = None
 
@@ -1021,6 +1045,14 @@ class SupermemoryMemoryProvider(MemoryProvider):
 
     def handle_tool_call(self, tool_name: str, args: Dict[str, Any], **kwargs) -> str:
         if not self._active or not self._client:
+            if self._init_error and ("ModuleNotFoundError" in self._init_error
+                                      or "No module" in self._init_error):
+                return tool_error(
+                    f"Supermemory SDK not available in this runtime "
+                    f"({self._init_error}). The SDK must be bundled in the "
+                    f"desktop installer; installed Python packages are not "
+                    f"visible to the frozen runtime."
+                )
             return tool_error("Supermemory is not configured")
         aliases = {
             "supermemory-save": "supermemory_store",

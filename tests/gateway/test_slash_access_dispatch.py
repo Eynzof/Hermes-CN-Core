@@ -328,7 +328,7 @@ async def test_non_admin_denied_for_unlisted_quick_command_exec():
         }
     )
     runner.config.quick_commands = {
-        "limits": {"type": "exec", "command": "printf quick-command-bypass-confirmed"}
+        "limits": {"type": "exec", "command": "echo quick-command-bypass-confirmed"}
     }
 
     result = await runner._handle_message(
@@ -352,7 +352,7 @@ async def test_listed_quick_command_runs_for_non_admin():
         }
     )
     runner.config.quick_commands = {
-        "limits": {"type": "exec", "command": "printf quick-command-allowed"}
+        "limits": {"type": "exec", "command": "echo quick-command-allowed"}
     }
 
     result = await runner._handle_message(
@@ -373,7 +373,7 @@ async def test_admin_runs_quick_command_when_gating_enabled():
         }
     )
     runner.config.quick_commands = {
-        "limits": {"type": "exec", "command": "printf quick-command-admin"}
+        "limits": {"type": "exec", "command": "echo quick-command-admin"}
     }
 
     result = await runner._handle_message(

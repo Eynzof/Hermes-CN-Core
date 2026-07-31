@@ -720,11 +720,14 @@ class TestSaveEnvValueSecure:
             assert load_env()["TERMINAL_SSH_KEY"] == path
 
             # Shell source must round-trip (this is what the bug broke).
-            # POSIX-only: there is no `sh` on Windows; dotenv round-trip above
-            # already covers the quoting contract there.
+            # POSIX-only: there is no usable `sh` on Windows — Git's sh is
+            # found by shutil.which() but `env -i` clears PATH, so the
+            # sub-check cannot run there; the dotenv round-trip above already
+            # covers the quoting contract.
             import shutil
+            import sys
 
-            if not shutil.which("sh"):
+            if sys.platform == "win32" or not shutil.which("sh"):
                 return
             r = subprocess.run(
                 [
@@ -762,8 +765,9 @@ class TestSaveEnvValueSecure:
 
             # POSIX-only shell-source check (see above).
             import shutil
+            import sys
 
-            if not shutil.which("sh"):
+            if sys.platform == "win32" or not shutil.which("sh"):
                 return
             r = subprocess.run(
                 [

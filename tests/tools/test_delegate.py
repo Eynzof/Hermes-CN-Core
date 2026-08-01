@@ -1690,7 +1690,9 @@ class TestDelegationProviderIntegration(unittest.TestCase):
         )
 
     def test_build_child_agent_inherits_active_client_endpoint(self):
-        """Regression: stale parent.base_url must not route subagents to OpenRouter."""
+        """Regression: stale parent.base_url AND stale parent.api_key must not
+        reach subagents — the live client's endpoint + key win (the stale pair
+        ​401s against the live endpoint)."""
         parent = _make_mock_parent(depth=0)
         parent.provider = "ollama"
         parent.base_url = "https://openrouter.ai/api/v1"
@@ -1716,7 +1718,9 @@ class TestDelegationProviderIntegration(unittest.TestCase):
 
             _, kwargs = MockAgent.call_args
             self.assertEqual(kwargs["base_url"], "http://localhost:11434/v1")
-            self.assertEqual(kwargs["api_key"], "ollama")
+            # The surface key "ollama" is a leftover from the old endpoint;
+            # the child must inherit the live client's key instead.
+            self.assertEqual(kwargs["api_key"], "no-key-required")
 
     @patch("tools.delegate_tool._load_config")
     @patch("tools.delegate_tool._resolve_delegation_credentials")

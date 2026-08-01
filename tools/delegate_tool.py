@@ -1072,6 +1072,79 @@ def _inherit_parent_base_url(parent_agent, fallback_base_url: Optional[str]) -> 
 
     return fallback_base_url or None
 
+
+def _redact_api_key(value: Any) -> str:
+    """Mask an API key for logs: show only the first/last 4 chars.
+
+    Never log a raw credential — ``_inherit_parent_api_key`` warnings carry
+    masked previews only.
+    """
+    if callable(value):
+        return "<callable-token-provider>"
+    text = str(value or "")
+    if not text:
+        return "<empty>"
+    if len(text) <= 8:
+        return "<redacted>"
+    return f"{text[:4]}...{text[-4:]}"
+
+
+def _inherit_parent_api_key(parent_agent, fallback_api_key: Optional[str]) -> Optional[str]:
+    """Return the API key the parent's live client is actually using.
+
+    Mirror of :func:`_inherit_parent_base_url` for the credential side:
+    ``parent_agent.api_key`` can still carry a leftover key from an old config
+    (e.g. a previous OpenRouter key) while the live OpenAI client in
+    ``_client_kwargs`` / ``client`` already authenticates to a different
+    endpoint with a different key. Subagents must inherit the active key or
+    they 401 against the live endpoint with the stale key.
+
+    Precedence:
+    1. ``client.api_key`` — the key the mounted live client actually holds
+       (authoritative after mid-session credential refresh/rotation).
+    2. ``_client_kwargs["api_key"]`` — the key the SDK client was built with.
+    3. The surface ``parent_agent.api_key`` as fallback, preserved verbatim so
+       callable token providers (Entra ID, MiniMax OAuth) pass through
+       untouched.
+
+    Only string keys override the fallback; callables, placeholders and
+    mock-ish values are left alone so no live credential is invented where
+    none exists.
+    """
+    surface_key = fallback_api_key if fallback_api_key is not None else None
+    client = getattr(parent_agent, "client", None)
+    if client is not None:
+        live_key = getattr(client, "api_key", None)
+        if (
+            isinstance(live_key, str)
+            and live_key.strip()
+            and live_key != surface_key
+        ):
+            logger.warning(
+                "_inherit_parent_api_key: overriding fallback key %s -> %s "
+                "from parent.client.api_key (stale agent.api_key)",
+                _redact_api_key(surface_key), _redact_api_key(live_key),
+            )
+            return live_key
+
+    client_kwargs = getattr(parent_agent, "_client_kwargs", None)
+    if isinstance(client_kwargs, dict):
+        kwargs_key = client_kwargs.get("api_key")
+        if (
+            isinstance(kwargs_key, str)
+            and kwargs_key.strip()
+            and kwargs_key != surface_key
+        ):
+            logger.warning(
+                "_inherit_parent_api_key: overriding fallback key %s -> %s "
+                "from parent._client_kwargs (stale agent.api_key)",
+                _redact_api_key(surface_key), _redact_api_key(kwargs_key),
+            )
+            return kwargs_key
+
+    return fallback_api_key or None
+
+
 def _build_child_agent(
     task_index: int,
     goal: str,
@@ -1206,9 +1279,12 @@ def _build_child_agent(
         child_depth=child_depth,
     )
     # Extract parent's API key so subagents inherit auth (e.g. Nous Portal).
-    parent_api_key = getattr(parent_agent, "api_key", None)
-    if (not parent_api_key) and hasattr(parent_agent, "_client_kwargs"):
-        parent_api_key = parent_agent._client_kwargs.get("api_key")
+    # The LIVE client's key wins over a stale surface ``parent_agent.api_key``
+    # (mirror of _inherit_parent_base_url for the key side) — a leftover key
+    # from a previous provider 401s against the live endpoint.
+    parent_api_key = _inherit_parent_api_key(
+        parent_agent, getattr(parent_agent, "api_key", None)
+    )
 
     # Resolve the child's effective model early so it can ride on every event.
     effective_model_for_cb = model or getattr(parent_agent, "model", None)

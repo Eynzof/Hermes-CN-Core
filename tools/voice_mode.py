@@ -190,17 +190,13 @@ def detect_audio_environment() -> dict:
                 "    PipeWire:    -e PIPEWIRE_REMOTE=$XDG_RUNTIME_DIR/pipewire-0"
             )
 
-	# WSL detection — PulseAudio/PipeWire bridge makes audio work in WSL.
-    # Only block if no host audio forwarding is configured (PULSE_SERVER /
-    # PIPEWIRE_REMOTE / reachable pulse socket), matching the SSH and
-    # container branches above. WSLg exposes both a PulseAudio and a
-    # PipeWire socket, so honoring PIPEWIRE_REMOTE alone is enough to
-    # unblock voice mode on modern WSL setups (issue #21203 pattern).
+    # WSL detection — PulseAudio bridge makes audio work in WSL.
+    # Only block if PULSE_SERVER is not configured.
     try:
         with open('/proc/version', 'r', encoding="utf-8", errors="replace") as f:
             if 'microsoft' in f.read().lower():
-                if has_forwarded_audio:
-                    notices.append("Running in WSL with host audio forwarding")
+                if os.environ.get('PULSE_SERVER'):
+                    notices.append("Running in WSL with PulseAudio bridge")
                 else:
                     warnings.append(
                         "Running in WSL -- audio requires PulseAudio bridge.\n"

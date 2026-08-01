@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import sys
 import orjson
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -210,6 +211,47 @@ def test_run_job_no_agent_success_returns_script_stdout(hermes_env):
     assert error is None
     assert "RAM 92% on host" in final_response
     assert "RAM 92% on host" in doc
+
+
+def test_run_job_no_agent_uses_frozen_python_runner(hermes_env, tmp_path, monkeypatch):
+    from cron import scheduler
+    from cron.jobs import create_job
+    from hermes_cli._cron_script_runner import INTERNAL_CRON_SCRIPT_ARG
+
+    script_path = hermes_env / "scripts" / "alert.py"
+    script_path.write_text('print("RAM 92% on host")\n')
+    runtime = tmp_path / "hermes-agent-cn-runtime.exe"
+    runtime.write_text("", encoding="utf-8")
+    captured = {}
+
+    def fake_run(argv, **kwargs):
+        captured["argv"] = argv
+        captured["env"] = kwargs["env"]
+        return SimpleNamespace(returncode=0, stdout="RAM 92% on host\n", stderr="")
+
+    monkeypatch.setattr(scheduler.sys, "executable", str(runtime))
+    monkeypatch.setattr(scheduler.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(scheduler.subprocess, "run", fake_run)
+    job = create_job(
+        prompt=None,
+        schedule="every 5m",
+        script="alert.py",
+        no_agent=True,
+        deliver="local",
+    )
+
+    success, doc, final_response, error = scheduler.run_job(job)
+
+    assert success is True
+    assert error is None
+    assert final_response == "RAM 92% on host"
+    assert "RAM 92% on host" in doc
+    assert captured["argv"] == [
+        str(runtime),
+        INTERNAL_CRON_SCRIPT_ARG,
+        str(script_path.resolve()),
+    ]
+    assert captured["env"]["HERMES_HOME"] == str(hermes_env.resolve())
 
 
 @pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: script empty output")

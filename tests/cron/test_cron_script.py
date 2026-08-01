@@ -252,6 +252,42 @@ class TestRunJobScript:
         assert captured["kwargs"]["encoding"] == "utf-8"
         assert captured["kwargs"]["errors"] == "replace"
 
+    def test_frozen_runtime_routes_python_script_through_internal_runner(
+        self, cron_env, tmp_path, monkeypatch
+    ):
+        from cron import scheduler as sched_mod
+        from cron.scheduler import _run_job_script
+        from hermes_cli._cron_script_runner import INTERNAL_CRON_SCRIPT_ARG
+
+        script = cron_env / "scripts" / "probe.py"
+        script.write_text('print("ok")\n')
+        runtime = tmp_path / "hermes-agent-cn-runtime-win32-x64.exe"
+        runtime.write_text("", encoding="utf-8")
+        captured = {}
+
+        def fake_run(argv, **kwargs):
+            captured["argv"] = argv
+            captured["kwargs"] = kwargs
+            return SimpleNamespace(returncode=0, stdout="ok\n", stderr="")
+
+        monkeypatch.setattr(sched_mod.sys, "platform", "win32")
+        monkeypatch.setattr(sched_mod.sys, "executable", str(runtime))
+        monkeypatch.setattr(sched_mod.sys, "frozen", True, raising=False)
+        monkeypatch.setattr(sched_mod, "windows_hide_flags", lambda: 0x08000000)
+        monkeypatch.setattr(sched_mod.subprocess, "run", fake_run)
+
+        success, output = _run_job_script("probe.py")
+
+        assert success is True
+        assert output == "ok"
+        assert captured["argv"] == [
+            str(runtime),
+            INTERNAL_CRON_SCRIPT_ARG,
+            str(script.resolve()),
+        ]
+        assert captured["kwargs"]["creationflags"] == 0x08000000
+        assert captured["kwargs"]["env"]["HERMES_HOME"] == str(cron_env.resolve())
+
     @pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: encoding is always set on Windows")
     def test_non_windows_script_pins_text_decoding(self, cron_env, monkeypatch):
         from cron import scheduler as sched_mod
@@ -338,6 +374,40 @@ class TestBuildJobPromptWithScript:
         assert "## Script Output" in prompt
         assert "new PR: #123 fix typo" in prompt
         assert "Report any notable changes." in prompt
+
+    def test_frozen_script_output_injected(self, cron_env, tmp_path, monkeypatch):
+        from cron import scheduler
+        from hermes_cli._cron_script_runner import INTERNAL_CRON_SCRIPT_ARG
+
+        script = cron_env / "scripts" / "data.py"
+        script.write_text('print("new PR: #123 fix typo")\n')
+        runtime = tmp_path / "hermes-agent-cn-runtime.exe"
+        runtime.write_text("", encoding="utf-8")
+        captured = {}
+
+        def fake_run(argv, **kwargs):
+            captured["argv"] = argv
+            return SimpleNamespace(
+                returncode=0,
+                stdout="new PR: #123 fix typo\n",
+                stderr="",
+            )
+
+        monkeypatch.setattr(scheduler.sys, "executable", str(runtime))
+        monkeypatch.setattr(scheduler.sys, "frozen", True, raising=False)
+        monkeypatch.setattr(scheduler.subprocess, "run", fake_run)
+
+        prompt = scheduler._build_job_prompt(
+            {"prompt": "Report any notable changes.", "script": "data.py"}
+        )
+
+        assert "new PR: #123 fix typo" in prompt
+        assert "Report any notable changes." in prompt
+        assert captured["argv"] == [
+            str(runtime),
+            INTERNAL_CRON_SCRIPT_ARG,
+            str(script.resolve()),
+        ]
 
     def test_script_error_injected(self, cron_env):
         from cron.scheduler import _build_job_prompt

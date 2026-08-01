@@ -64,6 +64,13 @@ except ModuleNotFoundError:
 import os
 import sys
 
+from hermes_cli._cron_script_runner import dispatch_frozen_cron_script
+
+
+_cron_script_exit_code = dispatch_frozen_cron_script()
+if _cron_script_exit_code is not None:
+    raise SystemExit(_cron_script_exit_code)
+
 
 def _exit_after_oneshot(rc: object) -> None:
     """Exit one-shot mode without letting late native finalizers change rc.

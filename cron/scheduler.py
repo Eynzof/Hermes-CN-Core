@@ -41,6 +41,7 @@ from typing import Any, List, Optional
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import hermes_constants
+from hermes_cli._cron_script_runner import INTERNAL_CRON_SCRIPT_ARG
 from hermes_cli._subprocess_compat import windows_hide_flags
 from hermes_cli.config import load_config, _expand_env_vars
 from hermes_cli.fallback_config import get_fallback_chain
@@ -2305,6 +2306,9 @@ def _run_job_script(script_path: str) -> tuple[bool, str]:
             )
         argv = [_bash, str(path)]
         env_overlay: dict[str, str] = {}
+    elif getattr(sys, "frozen", False):
+        argv = [sys.executable, INTERNAL_CRON_SCRIPT_ARG, str(path)]
+        env_overlay = {"HERMES_HOME": str(scripts_dir_resolved.parent)}
     else:
         python_exe, env_overlay = _windows_cron_python_invocation(sys.executable)
         argv = [python_exe, str(path)]

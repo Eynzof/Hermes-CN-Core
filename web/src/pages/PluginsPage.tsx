@@ -926,7 +926,8 @@ function PluginRowCard(props: PluginRowCardProps) {
 
   const tabPath = dm?.tab && !dm.tab.hidden ? dm.tab.override ?? dm.tab.path : null;
 
-  const busy = rowBusy === row.name;
+  const pluginKey = row.key || row.name;
+  const busy = rowBusy === pluginKey;
   const [confirmRemove, setConfirmRemove] = useState(false);
 
   const badgeTone =
@@ -964,14 +965,16 @@ function PluginRowCard(props: PluginRowCardProps) {
           </div>
 
           <div className="flex flex-wrap items-center gap-2 shrink-0">
-            {row.runtime_status === "enabled" ? (
+            {row.can_toggle === false ? (
+              <Badge tone="outline">provider managed</Badge>
+            ) : row.runtime_status === "enabled" ? (
               <Button
                 disabled={busy}
                 ghost
                 size="sm"
                 onClick={() => {
-                  void setRuntimeLoading(row.name, async () => {
-                    await api.disableAgentPlugin(row.name);
+                  void setRuntimeLoading(pluginKey, async () => {
+                    await api.disableAgentPlugin(pluginKey);
                     showToast(t.pluginsPage.disableRuntime, "success");
                   });
                 }}
@@ -984,8 +987,8 @@ function PluginRowCard(props: PluginRowCardProps) {
                 ghost
                 size="sm"
                 onClick={() => {
-                  void setRuntimeLoading(row.name, async () => {
-                    await api.enableAgentPlugin(row.name);
+                  void setRuntimeLoading(pluginKey, async () => {
+                    await api.enableAgentPlugin(pluginKey);
                     showToast(t.pluginsPage.enableRuntime, "success");
                   });
                 }}
@@ -1015,8 +1018,8 @@ function PluginRowCard(props: PluginRowCardProps) {
                 ghost
                 size="sm"
                 onClick={() => {
-                  void setRuntimeLoading(row.name, async () => {
-                    await api.updateAgentPlugin(row.name);
+                  void setRuntimeLoading(pluginKey, async () => {
+                    await api.updateAgentPlugin(pluginKey);
                     showToast(t.pluginsPage.updateGit, "success");
                   });
                 }}
@@ -1033,8 +1036,8 @@ function PluginRowCard(props: PluginRowCardProps) {
                 size="sm"
                 title={row.user_hidden ? t.pluginsPage.showInSidebar : t.pluginsPage.hideFromSidebar}
                 onClick={() => {
-                  void setRuntimeLoading(row.name, async () => {
-                    await api.setPluginVisibility(row.name, !row.user_hidden);
+                  void setRuntimeLoading(pluginKey, async () => {
+                    await api.setPluginVisibility(pluginKey, !row.user_hidden);
                   });
                 }}
               >
@@ -1098,8 +1101,8 @@ function PluginRowCard(props: PluginRowCardProps) {
         onCancel={() => setConfirmRemove(false)}
         onConfirm={() => {
           setConfirmRemove(false);
-          void setRuntimeLoading(row.name, async () => {
-            await api.removeAgentPlugin(row.name);
+          void setRuntimeLoading(pluginKey, async () => {
+            await api.removeAgentPlugin(pluginKey);
             showToast(`${row.name} removed`, "success");
           });
         }}

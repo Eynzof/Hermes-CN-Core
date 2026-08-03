@@ -1,5 +1,7 @@
 """Local execution environment — spawn-per-call with session snapshot."""
 
+import base64
+import gzip
 import logging
 import ntpath
 import os
@@ -17,7 +19,9 @@ from pathlib import Path
 from hermes_cli._subprocess_compat import windows_hide_flags
 from tools.environments.base import BaseEnvironment, _pipe_stdin
 from tools.environments._process_bash_command import _prepare_bash_cmd
-from tools.environments.proccess_pwsh import pwsh_transform
+from tools.environments.bash_fix import fix_bash_command
+from tools.environments.process_pwsh import pwsh_transform
+from tools.environments.pwsh_fix import fix_pwsh_command
 from tools.environments.windows_env import refresh_env_from_registry
 _IS_WINDOWS = is_windows()
 
@@ -758,8 +762,157 @@ def _decode_cmd_output(data: bytes) -> str:
     return data.decode("utf-8", errors="replace")
 
 
+def _encode_startup_script(script: str) -> str:
+    """Encode a multi-line startup script as a self-decoding one-liner.
+
+    Long multi-line scripts passed through the Windows command line to MSYS2
+    bash get corrupted (argv quoting heuristics).  A single-line base64+gzip
+    payload contains only safe ASCII characters and sidesteps every quoting
+    issue; the receiving shell decodes and evals it.
+
+    Ported from kimix ``bash_tool._encode_startup_script`` (stdlib
+    ``base64``/``gzip`` replace kimix's ``pybase64`` — identical output).
+    This is one third of the interactive-Git-Bash bootstrap set, together
+    with :func:`bash_compatibility_prelude` (bash_fix.py) and
+    :func:`_with_msystem_neutralized`.
+    """
+    payload = base64.b64encode(gzip.compress(script.encode("utf-8"))).decode("ascii")
+    return "eval \"$(printf '%s' '" + payload + "' | base64 -d | gzip -d)\""
+
+
+def _where_git_executables() -> list[str]:
+    """Return candidate git.exe paths reported by ``where.exe git``.
+
+    Ported from kimix ``bash_tool._where_git_executables``.  Windows-only by
+    nature (``where.exe`` is a cmd.exe builtin); returns ``[]`` on any error
+    or when ``where.exe`` is unavailable.
+    """
+    try:
+        result = subprocess.run(
+            ["where.exe", "git"],
+            capture_output=True,
+            text=True,
+            check=False,
+            creationflags=windows_hide_flags() if _IS_WINDOWS else 0,
+        )
+    except OSError:
+        return []
+    if result.returncode != 0:
+        return []
+    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+
+
+def _git_bash_candidate_from_git_path(git_path: str) -> Path:
+    """Derive ``<gitRoot>/bin/bash.exe`` from the path to ``git.exe``."""
+    normalized = ntpath.normpath(
+        ntpath.join(ntpath.dirname(git_path), "..", "bin", "bash.exe")
+    )
+    return Path(normalized)
+
+
+def _git_exec_path(git_path: str) -> str | None:
+    """Run ``git --exec-path`` and return the first non-empty line."""
+    try:
+        result = subprocess.run(
+            [git_path, "--exec-path"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
+            creationflags=windows_hide_flags() if _IS_WINDOWS else 0,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    for line in result.stdout.splitlines():
+        exec_path = line.strip()
+        if exec_path:
+            return exec_path
+    return None
+
+
+def _git_install_root_from_exec_path(exec_path: str) -> str | None:
+    """Return the Git for Windows install root given a ``mingw*/libexec/git-core`` path."""
+    current = ntpath.normpath(exec_path)
+    while True:
+        parent, name = ntpath.split(current)
+        if name.casefold() in {"mingw32", "mingw64"}:
+            return parent
+        if parent == current:
+            return None
+        current = parent
+
+
+def _git_bash_candidates_from_exec_path(exec_path: str) -> list[Path]:
+    """Return candidate ``bash.exe`` paths derived from ``git --exec-path``."""
+    normalized_exec_path = ntpath.normpath(exec_path)
+    install_root = _git_install_root_from_exec_path(normalized_exec_path)
+    if install_root is not None:
+        return [Path(ntpath.join(install_root, "bin", "bash.exe"))]
+    return [
+        Path(
+            ntpath.normpath(
+                ntpath.join(normalized_exec_path, "..", "..", "bin", "bash.exe")
+            )
+        )
+    ]
+
+
+def _bash_candidates_macos() -> list[Path]:
+    """Well-known bash locations for macOS (Homebrew/MacPorts).
+
+    Ported from kimix ``bash_tool._bash_candidates_macos``: newer Homebrew /
+    MacPorts bash builds are preferred over the aging system bash 3.2.
+    """
+    return [
+        Path("/opt/homebrew/bin/bash"),
+        Path("/usr/local/bin/bash"),
+        Path("/opt/local/bin/bash"),
+    ]
+
+
+def _bash_candidates_system() -> list[Path]:
+    """Standard system bash locations (Linux and macOS)."""
+    return [Path("/bin/bash"), Path("/usr/bin/bash")]
+
+
+def _git_bash_for_macos() -> str | None:
+    """Return bash bundled with the official Git installer for macOS, if any.
+
+    Ported from kimix ``bash_tool._git_bash_for_macos``: the official macOS
+    Git installer ships a bash under ``<gitRoot>/bin/bash`` or
+    ``<gitRoot>/usr/bin/bash``.
+    """
+    git_path = shutil.which("git")
+    if not git_path:
+        return None
+    git_exe = Path(git_path).resolve()
+    if git_exe.parent.name.lower() == "bin":
+        git_root = git_exe.parent.parent
+    else:
+        git_root = git_exe.parent
+    for subpath in ("bin/bash", "usr/bin/bash"):
+        candidate = git_root / subpath
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate.resolve())
+    return None
+
+
 def _find_bash_posix() -> str:
-    """Find bash on non-Windows systems."""
+    """Find bash on non-Windows systems.
+
+    On macOS, newer Homebrew/MacPorts bash and the bash bundled with the
+    official Git installer are preferred over the aging system bash 3.2
+    (mirrors kimix ``find_bash``); the ordering for Linux is unchanged.
+    """
+    if sys.platform == "darwin":
+        for candidate in _bash_candidates_macos():
+            if candidate.is_file() and os.access(candidate, os.X_OK):
+                return str(candidate.resolve())
+        git_bash = _git_bash_for_macos()
+        if git_bash:
+            return git_bash
     return (
         shutil.which("bash")
         or ("/usr/bin/bash" if os.path.isfile("/usr/bin/bash") else None)
@@ -822,6 +975,24 @@ def _find_bash() -> str:
     if found and found not in candidates:
         candidates.append(found)
 
+    # git.exe-based discovery (ported from kimix ``bash_tool._find_git_bash_windows``):
+    # ``where.exe git`` -> <gitDir>/../bin/bash.exe, then ``git --exec-path``
+    # -> Git for Windows install root -> bin/bash.exe.  Catches per-user /
+    # chocolatey / scoop / side-by-side Git installs that live outside the
+    # well-known Program Files locations.  Kept as the LAST candidate source so
+    # the Hermes-managed portable Git and standard install locations keep their
+    # existing priority, and a plain ``bash`` on PATH is preferred over shelling
+    # out to ``where.exe``/``git``.
+    for git_path in _where_git_executables():
+        candidate = _git_bash_candidate_from_git_path(git_path)
+        if candidate.is_file() and str(candidate) not in candidates:
+            candidates.append(str(candidate))
+        git_exec_path = _git_exec_path(git_path)
+        if git_exec_path:
+            for candidate in _git_bash_candidates_from_exec_path(git_exec_path):
+                if candidate.is_file() and str(candidate) not in candidates:
+                    candidates.append(str(candidate))
+
     for candidate in candidates:
         if _bash_starts(candidate):
             if candidate != custom and custom and os.path.isfile(custom):
@@ -851,6 +1022,61 @@ def _find_bash() -> str:
         "Git Bash is not found on this system. It was explicitly selected via "
         "HERMES_SHELL_TYPE=bash; install Git for Windows or use PowerShell."
     )
+
+
+def _is_git_bash_install(bash_path: str) -> bool:
+    """Return True when *bash_path* is a bash of a Git for Windows install.
+
+    Both layouts are accepted: the native launcher ``<root>/bin/bash.exe``
+    and the real MSYS2 bash ``<root>/usr/bin/bash.exe``.  Git for Windows
+    always ships a ``<root>/cmd/git.exe`` marker; MSYS2 (which also ships
+    ``usr/bin/bash.exe``) has no such marker, so ``MSYSTEM`` neutralization
+    stays limited to Git Bash and never affects real MSYS2 shells.
+
+    Ported from kimix ``bash_tool._is_git_bash_install``.  The marker probe
+    is drive-anchored (``C:\\...``, never the drive-relative ``C:...``), so
+    the check is CWD-independent.
+    """
+    if not bash_path:
+        return False
+    text = ntpath.normpath(bash_path)
+    drive, tail = ntpath.splitdrive(text)
+    parts = [p.lower() for p in tail.split("\\") if p]
+    # expect either ...\usr\bin\bash.exe or ...\bin\bash.exe
+    if len(parts) < 3 or parts[-1] != "bash.exe" or parts[-2] != "bin":
+        return False
+    if parts[-3] == "usr":
+        root = "\\".join(parts[:-3])
+    else:
+        root = "\\".join(parts[:-2])
+    root_path = (drive + "\\" if drive else "") + root
+    return os.path.isfile(ntpath.join(root_path, "cmd", "git.exe"))
+
+
+_MSYSTEM_NEUTRALIZE_PREFIX = "export MSYSTEM=; "
+
+
+def _with_msystem_neutralized(cmd: str, bash_path: str | None) -> str:
+    """Prepend an ``MSYSTEM``-neutralizing statement to *cmd* on Git Bash.
+
+    Git Bash's ``bin/bash.exe`` launcher unconditionally injects
+    ``MSYSTEM=MINGW64`` into the shell (setting ``MSYSTEM`` in the parent
+    environment is useless), and the MSYS2 runtime re-injects the variable
+    into children when it is *absent* (``unset`` does not stick).  Exporting
+    an *empty* value at the start of the command makes xmake — a child
+    process — see an empty ``MSYSTEM`` and default to the ``windows``/MSVC
+    platform, while the launcher's PATH setup stays intact.  Limited to Git
+    for Windows bash on Windows; all other platforms and shells run the
+    command unchanged.
+
+    Ported from kimix ``bash_tool._with_msystem_neutralized``.  In Hermes the
+    prefix is prepended per command inside ``LocalEnvironment._wrap_command``
+    (it runs AFTER the snapshot source inside the eval, so children spawned
+    by the user command still see the empty value).
+    """
+    if sys.platform == "win32" and _is_git_bash_install(bash_path or ""):
+        return _MSYSTEM_NEUTRALIZE_PREFIX + cmd
+    return cmd
 
 
 def _find_powershell() -> str:
@@ -992,6 +1218,15 @@ def _build_powershell_background_script(
     Returns:
         A multi-line PowerShell script ready for ``-Command``.
     """
+    # Same PowerShell-aware quoting repair as the foreground wrapper, and like
+    # there it runs FIRST, before any PS7→5.1 transform: fix unclosed
+    # strings/here-strings/comments so the background script stays legal.
+    # (No warning channel here — background output goes to the
+    # process-registry buffer.)
+    if command.strip():
+        fix = fix_pwsh_command(command)
+        if fix is not None and fix.changed:
+            command = fix.command
     if shell_type != "pwsh":
         command, _ = pwsh_transform(command)
 
@@ -1772,10 +2007,37 @@ class LocalEnvironment(BaseEnvironment):
         #
         # When running PowerShell 7 (``pwsh``) natively, skip the transform
         # entirely — PS7 supports all modern operators natively.
-        if self._shell_type == "pwsh":
-            pwsh_warnings: list[str] = []
-        else:
-            command, pwsh_warnings = pwsh_transform(command)
+        # [CN-fork] bash_fix/pwsh_fix port: PowerShell-aware quoting repair runs
+        # FIRST, before any PS7→5.1 transform — validate the command under real
+        # PowerShell quoting rules and fix what is safely fixable: an unclosed
+        # string/here-string/comment gets its missing closing token appended,
+        # and a trailing line comment / ``--%`` / dangling continuation gets a
+        # newline so the try/catch wrapper below is not swallowed.  Unrepairable
+        # commands run as-is inside the wrapper's error guard, with a warning
+        # surfaced to the LLM.
+        pwsh_warnings: list[str] = []
+        if command.strip():
+            fix = fix_pwsh_command(command)
+            if fix is None:
+                pwsh_warnings.append(
+                    "PowerShell command could not be validated or auto-repaired; "
+                    "running it as-is inside the error-guarding try/catch wrapper."
+                )
+            elif fix.changed:
+                command = fix.command
+                pwsh_warnings.append(fix.warning)
+        # [CN-fork] P-037: down-level PS7+ syntax (``&&`` ``||`` ``??`` ``?:``
+        # ``?.`` ``?[``) to PS5.1 on the (repaired) RAW command *before* it is
+        # embedded as a single-quoted ``Invoke-Expression`` literal below.
+        # ``pwsh_transform`` builds a region mask that deliberately skips
+        # single-quoted string contents, so transforming the *assembled*
+        # wrapper (the old call site in ``_run_powershell``) never reached
+        # the user's command.  When running PowerShell 7 (``pwsh``) natively,
+        # skip the transform entirely — PS7 supports all modern operators
+        # natively.
+        if self._shell_type != "pwsh":
+            command, transform_warnings = pwsh_transform(command)
+            pwsh_warnings.extend(transform_warnings)
         self._pwsh_warnings = pwsh_warnings
 
         # Escape single quotes for PowerShell: double them
@@ -1842,10 +2104,24 @@ class LocalEnvironment(BaseEnvironment):
         WITHOUT the stdout cwd marker (the file is authoritative for the local
         backend's :meth:`_update_cwd`).
         """
-        if self._shell_type == "pwsh":
-            pwsh_warnings: list[str] = []
-        else:
-            command, pwsh_warnings = pwsh_transform(command)
+        # Same PowerShell-aware quoting repair as _wrap_command_powershell, and
+        # like there it runs FIRST, before any PS7→5.1 transform: fix unclosed
+        # strings/here-strings/comments and protect the session body from
+        # trailing comments / ``--%`` / dangling continuations.
+        pwsh_warnings: list[str] = []
+        if command.strip():
+            fix = fix_pwsh_command(command)
+            if fix is None:
+                pwsh_warnings.append(
+                    "PowerShell command could not be validated or auto-repaired; "
+                    "running it as-is inside the error-guarding try/catch wrapper."
+                )
+            elif fix.changed:
+                command = fix.command
+                pwsh_warnings.append(fix.warning)
+        if self._shell_type != "pwsh":
+            command, transform_warnings = pwsh_transform(command)
+            pwsh_warnings.extend(transform_warnings)
         self._pwsh_warnings = pwsh_warnings
 
         escaped = command.replace("'", "''")
@@ -2183,8 +2459,14 @@ class LocalEnvironment(BaseEnvironment):
                 cmd_string, login=login, timeout=timeout, stdin_data=stdin_data
             )
 
-        # --- bash path (non-Windows only) ---
-        bash = _find_bash_posix()
+        # --- bash path ---
+        # Use the bash resolved at environment init (``self._shell_path``)
+        # rather than re-finding via PATH: on Windows with
+        # ``HERMES_SHELL_TYPE=bash`` that is the discovered Git Bash (env
+        # override -> managed portable Git -> git.exe discovery -> known
+        # locations -> PATH), and init_session + execute must spawn the SAME
+        # binary.  ``_find_bash_posix()`` remains the POSIX-only fallback.
+        bash = self._shell_path or _find_bash_posix()
         # For login-shell invocations (used by init_session to build the
         # environment snapshot), prepend sources for the user's bashrc /
         # custom init files so tools registered outside bash_profile
@@ -2255,10 +2537,46 @@ class LocalEnvironment(BaseEnvironment):
         """Build the shell script wrapper for command execution.
 
         Dispatches to ``_wrap_command_powershell()`` when the active shell
-        is powershell, otherwise uses the base bash wrapping.
+        is powershell, otherwise uses the base bash wrapping.  On Windows Git
+        Bash the raw command is first covered by :func:`fix_bash_command`
+        (mirroring kimix ``bash_tool._prepare_command``): verified native
+        POSIX command words (``open``, ``pbcopy``, ``rev``, ``gtimeout``, …)
+        get bundled fallback definitions prepended and Windows backslash
+        paths are normalized, so the wrapper embeds a Git Bash-safe command.
+        The fix is gated explicitly on ``sys.platform == "win32"`` — it is a
+        Windows-only rewrite that turns native POSIX commands into Git Bash
+        compatible form, and on non-Windows hosts ``_wrap_command`` skips the
+        fixer entirely (byte-for-byte no-op; the guard mirrors the one inside
+        :func:`fix_bash_command`).  ``init_session`` never reaches this
+        method (it probes ``_run_bash`` directly), so the fallback functions
+        cannot leak into the env snapshot.
         """
         if self._shell_type in ("powershell", "pwsh"):
             return self._wrap_command_powershell(command, cwd)
+        # [CN-fork P-052] bash_fix is win32-only by design: it rewrites native POSIX
+        # command words (``open``, ``rev``, ``wget``, …) to Git Bash compatible
+        # fallbacks.  Guarding the call here — not just inside
+        # ``fix_bash_command`` — keeps the win32-only contract visible at the
+        # call site and avoids any fixer overhead on POSIX hosts.
+        if sys.platform == "win32":
+            bash_fix_result = fix_bash_command(command)
+            command = bash_fix_result.command
+            if bash_fix_result.changed:
+                self._bash_fix_warnings = bash_fix_result.warning
+            # [CN-fork P-052] MSYSTEM neutralization (ported from kimix
+            # ``bash_tool._with_msystem_neutralized``): Git Bash's
+            # ``bin/bash.exe`` launcher unconditionally injects
+            # ``MSYSTEM=MINGW64``, and the MSYS2 runtime re-injects it into
+            # children when absent, so build tools (xmake, meson,
+            # cross-toolchains) spawned from a one-shot ``bash -c`` misdetect
+            # the platform as ``MINGW64``/MSYS2 instead of ``windows``/MSVC.
+            # Exporting an EMPTY ``MSYSTEM`` at the start of the eval'd
+            # command fixes that while the launcher's PATH setup stays intact.
+            # The ``<root>/cmd/git.exe`` marker guard (``_is_git_bash_install``)
+            # keeps real MSYS2 installs untouched.  The prefix runs AFTER the
+            # snapshot source inside the eval, so children still see the empty
+            # value even if the snapshot exports MSYSTEM=MINGW64.
+            command = _with_msystem_neutralized(command, self._shell_path)
         return super()._wrap_command(command, cwd)
 
     def _kill_process(self, proc):

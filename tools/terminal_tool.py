@@ -3042,6 +3042,8 @@ def terminal_tool(
                 result_dict["exit_code_meaning"] = exit_note
             if result.get("pwsh_warnings"):
                 result_dict["pwsh_warnings"] = result["pwsh_warnings"]
+            if result.get("bash_fix_warnings"):
+                result_dict["bash_fix_warnings"] = result["bash_fix_warnings"]
             if sudo_auth_failed:
                 result_dict["sudo_auth_failed"] = True
             if sudo_cache_cleared:

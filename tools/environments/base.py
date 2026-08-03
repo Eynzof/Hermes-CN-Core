@@ -1112,6 +1112,13 @@ class BaseEnvironment(ABC):
             result["pwsh_warnings"] = pwsh_warnings
             self._pwsh_warnings = None  # consume once, prevent stale leaks
 
+        # Windows Git Bash fallback/path-rewrite warnings (only LocalEnvironment
+        # running bash on Windows sets these; non-Windows bash is a no-op).
+        bash_fix_warnings = getattr(self, "_bash_fix_warnings", None)
+        if bash_fix_warnings:
+            result["bash_fix_warnings"] = bash_fix_warnings
+            self._bash_fix_warnings = None  # consume once, prevent stale leaks
+
         return result
 
     # ------------------------------------------------------------------

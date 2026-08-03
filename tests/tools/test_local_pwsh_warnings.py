@@ -293,7 +293,7 @@ class TestPwshTransformAndUtf8Compose:
 
     def test_transform_applied_before_preamble(self):
         """Encoding preamble must NOT be transformed by pwsh_transform."""
-        from tools.environments.proccess_pwsh import pwsh_transform
+        from tools.environments.process_pwsh import pwsh_transform
         preamble = (
             "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8;"
             "$OutputEncoding=[System.Text.Encoding]::UTF8;"

@@ -98,6 +98,7 @@ class TestResolveAutoMainFirst:
             mock_client = MagicMock()
             mock_resolve.return_value = (mock_client, "anthropic/claude-opus-4.6")
 
+            from agent.auxiliary_client import _resolve_auto
 
             client, model = _resolve_auto()
 
@@ -181,14 +182,6 @@ class TestResolveAutoMainFirst:
         mock_task_chain.assert_called_once_with(
             "title_generation", "nvidia", reason="main provider unavailable")
         mock_main_chain.assert_not_called()
-        mock_openrouter.assert_not_called()
-
-
-
-        assert client is main_fallback_client
-        assert model == "inclusionai/ring-2.6-1t:free"
-        mock_main_chain.assert_called_once_with(
-            "title_generation", "nvidia", reason="main provider unavailable")
         mock_openrouter.assert_not_called()
 
     def test_no_main_config_uses_chain_directly(self):

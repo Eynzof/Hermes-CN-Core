@@ -3429,7 +3429,7 @@ def _wire_message_shadow(msg: Dict[str, Any]) -> Dict[str, Any]:
       raw chars here would massively overestimate usage.
     """
     if not isinstance(msg, dict):
-        return len(str(msg))
+        return msg
     # Fast path: the shadow dict only ever differs from ``msg`` when a base64
     # image needs stripping — i.e. when ``_anthropic_content_blocks`` is present
     # or ``content`` is a list / a ``_multimodal`` dict. In every other case
@@ -3444,7 +3444,10 @@ def _wire_message_shadow(msg: Dict[str, Any]) -> Dict[str, Any]:
         and not isinstance(content, list)
         and not (isinstance(content, dict) and content.get("_multimodal"))
     ):
-        return len(str(msg))
+        # Return the dict itself (not a copy): str(shadow) == str(msg), and
+        # callers either stringify it (estimate_tokens_rough path) or take
+        # len(str()) for the char-count path — both need a str-able object.
+        return msg
     sidecar = msg.get("api_content")
     sidecar_wins = (
         isinstance(sidecar, str)

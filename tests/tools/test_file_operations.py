@@ -1277,6 +1277,7 @@ class TestRgDispatchToRipgrepy:
 # Atomic write: umask-default permissions for new files
 # =========================================================================
 
+@pytest.mark.skipif(sys.platform == "win32", reason="umask/mode-bit semantics are POSIX-only; Windows has no umask")
 class TestAtomicWriteNewFilePermissions:
     """_atomic_write should apply umask-default perms to new files (not 0600)."""
 
@@ -1320,6 +1321,7 @@ class TestAtomicWriteNewFilePermissions:
         assert dest.stat().st_mode & 0o777 == 0o755
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="symlink creation needs admin/developer mode on Windows")
 class TestAtomicWriteThroughSymlink:
     """_atomic_write must edit a symlink's target, not replace the link.
 

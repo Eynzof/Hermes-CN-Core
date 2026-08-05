@@ -900,31 +900,31 @@ def build_anthropic_client(
         if common_betas:
             kwargs["default_headers"] = {"anthropic-beta": ",".join(common_betas)}
 
-        try:
-            from agent.httpx_clients import build_httpx_client, keepalive_socket_options
+    try:
+        from agent.httpx_clients import build_httpx_client, keepalive_socket_options
 
-            # Inject TCP keepalives (parity with the OpenAI-wire primary client,
-            # see agent_runtime_helpers.create_openai_client) so the kernel
-            # surfaces a dead Anthropic streaming connection as a read error
-            # instead of leaving the worker thread blocked on recv() forever.
-            kwargs["http_client"] = build_httpx_client(
-                base_url=normalized_base_url,
-                timeout=kwargs.get("timeout"),
-                socket_options=keepalive_socket_options(),
-            )
-        except Exception:
-            pass
+        # Inject TCP keepalives (parity with the OpenAI-wire primary client,
+        # see agent_runtime_helpers.create_openai_client) so the kernel
+        # surfaces a dead Anthropic streaming connection as a read error
+        # instead of leaving the worker thread blocked on recv() forever.
+        kwargs["http_client"] = build_httpx_client(
+            base_url=normalized_base_url,
+            timeout=kwargs.get("timeout"),
+            socket_options=keepalive_socket_options(),
+        )
+    except Exception:
+        pass
 
-        client = _anthropic_sdk.Anthropic(**kwargs)
-        # Bearer-only construction leaves ``api_key`` unset, so the SDK fills it
-        # from ``ANTHROPIC_API_KEY`` (Hermes loads that into the process env from
-        # ``~/.hermes/.env``). The result is dual auth —
-        # ``X-Api-Key: sk-ant-…`` *and* ``Authorization: Bearer <portal-jwt>`` —
-        # on every Portal / MiniMax / OAuth Messages request. Clear the env-filled
-        # key whenever we intentionally authenticated via auth_token alone.
-        if "auth_token" in kwargs and "api_key" not in kwargs:
-            client.api_key = None
-        return client
+    client = _anthropic_sdk.Anthropic(**kwargs)
+    # Bearer-only construction leaves ``api_key`` unset, so the SDK fills it
+    # from ``ANTHROPIC_API_KEY`` (Hermes loads that into the process env from
+    # ``~/.hermes/.env``). The result is dual auth —
+    # ``X-Api-Key: sk-ant-…`` *and* ``Authorization: Bearer <portal-jwt>`` —
+    # on every Portal / MiniMax / OAuth Messages request. Clear the env-filled
+    # key whenever we intentionally authenticated via auth_token alone.
+    if "auth_token" in kwargs and "api_key" not in kwargs:
+        client.api_key = None
+    return client
 
 
 def build_anthropic_bedrock_client(region: str):

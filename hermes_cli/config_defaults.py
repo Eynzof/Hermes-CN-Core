@@ -6,6 +6,23 @@ verbatim from hermes_cli/config.py. Must not import from hermes_cli.config.
 
 DEFAULT_CONFIG = {
     "model": "",
+    # CN fork (P-041/P-023 family): compact-reminder — injects a lightweight
+    # nudge when context usage is high (agent/compact_reminder.py). Restored
+    # from the fork's DEFAULT_CONFIG during the upstream sync (upstream moved
+    # DEFAULT_CONFIG here without the CN sections).
+    "compact_reminder": {
+        "enabled": True,
+        "threshold": 0.70,  # Inject reminder when context is above this ratio
+        "cooldown_steps": 5,  # Minimum steps between injections
+    },
+    # CN fork: /steer — out-of-band mid-turn user messages, injected as
+    # ephemeral text appended to the current turn's user message copy
+    # (agent/conversation_loop.py steer drain; P-023/P-041).
+    "steer": {
+        "enabled": True,
+        "max_length": 4000,  # Characters per /steer push
+    },
+
     "providers": {},
     "fallback_providers": [],
     "credential_pool_strategies": {},
@@ -725,7 +742,7 @@ DEFAULT_CONFIG = {
                                       # session_search and recoverable, not deleted.
                                       # Default True since 2107b86024; set False to
                                       # restore the legacy rotating-compaction path.
-        "model_thresholds": {},       # Per-model threshold overrides. Keys are
+    "model_thresholds": {},       # Per-model threshold overrides. Keys are
                                       # substring-matched against the model name
                                       # (longest match wins); values replace the
                                       # global `threshold` for that model, e.g.

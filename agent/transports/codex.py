@@ -166,7 +166,7 @@ def _content_cache_key(
         tools_part = orjson.dumps(sorted_tools, option=orjson.OPT_SORT_KEYS).decode('utf-8')
         # \x00 separators so a scope/instructions/tools boundary can't be forged
         # by content that happens to contain the same bytes.
-        content = f"{scope_id}\x00{instructions or ''}\x00{tools_part}"
+    content = f"{scope_id}\x00{instructions or ''}\x00{tools_part}"
     digest = hashlib.sha256(content.encode("utf-8", errors="replace")).hexdigest()[:24]
     return f"pck_{digest}"
 

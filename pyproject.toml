@@ -109,7 +109,7 @@ dependencies = [
   "ptyprocess>=0.7.0,<1; sys_platform != 'win32'",
   # P-048: fork requires Python >=3.14, so pywinpty's upper bound is <4
   # (v3.0.5 ships cp314 wheels). Upstream caps <3; we keep <4.
-  "pywinpty>=2.0.0,<4; sys_platform == 'win32'",
+  "pywinpty>=3.0.5,<4; sys_platform == 'win32'",
   # Desktop SSH's Windows remote runtime (hermes_cli/windows_ssh_runtime.py)
   # imports win32security/win32file/etc. directly — declare pywin32 rather than
   # relying on the concurrent-log-handler → portalocker transitive chain.

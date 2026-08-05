@@ -3381,7 +3381,7 @@ def repair_empty_non_final_messages(
             repaired.append(msg)
 
     if healed:
-        _ra().logger.warning(
+        logger.warning(
             "Pre-call sanitizer: healed %d empty non-final message(s) by "
             "substituting placeholder content — an empty-content turn was in "
             "the transcript and would 400 the request ('messages must have "

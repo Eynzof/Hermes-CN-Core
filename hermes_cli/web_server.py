@@ -18344,3 +18344,44 @@ def start_server(
         _runner(_serve(), loop_factory=_loop_factory)
     else:
         asyncio.run(_serve())
+
+
+# ── CN fork: metadata-prefix stripping for persisted session messages ──────
+# The desktop renders /api/sessions/{id}/messages directly; internal
+# markers (model-switch notices, image pre-analysis stubs) are stripped so
+# they never surface as user content. P-050/P-051 era fork feature, kept on
+# merge (upstream's web_routers/sessions.py has no equivalent).
+
+
+_METADATA_MODEL_SWITCH_PREFIXES = (
+    "[System: The active model for this chat has changed to",
+    "[Note: model was just switched",
+)
+
+_IMAGE_METADATA_RE = re.compile(
+    r"^\[The user attached an image[\s\S]*?\]\n?"
+    r"\[(?:If you need a closer look, use |You can examine it with )"
+    r"vision_analyze (?:with |using )?image_url: [^\]\n]+\]",
+    re.MULTILINE,
+)
+
+
+def _normalize_message_content(content: str | None) -> str | None:
+    """Strip internal metadata prefixes from persisted message content.
+
+    Returns None for metadata-only messages (to be dropped entirely),
+    or the original/clean content for normal messages.
+    """
+    if not content:
+        return content
+    stripped = content.strip()
+    # Check for model-switch markers
+    for prefix in _METADATA_MODEL_SWITCH_PREFIXES:
+        if stripped.startswith(prefix):
+            return None  # drop entirely
+    # Check for image pre-analysis metadata
+    if _IMAGE_METADATA_RE.match(stripped):
+        return None  # drop entirely
+    return content
+
+

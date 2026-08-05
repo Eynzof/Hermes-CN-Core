@@ -6854,3 +6854,21 @@ This compaction should PRIORITISE preserving all information related to the focu
                 "current_usage": self.get_usage_status(),
             }).decode('utf-8')
         return super().handle_tool_call(name, args, **kwargs)
+
+
+def is_compaction_summary_message(message: Any) -> bool:
+    """Return True when *message* is a context-compaction handoff summary.
+
+    Public API for consumers outside the compressor (memory providers,
+    frontends) that must not treat compaction summaries as real user or
+    assistant turns (#57682). Prefers the in-process
+    COMPRESSED_SUMMARY_METADATA_KEY marker and falls back to the content
+    heuristics in ``_is_context_summary_content``.
+    """
+    if isinstance(message, dict):
+        if message.get(COMPRESSED_SUMMARY_METADATA_KEY):
+            return True
+        content = message.get("content")
+    else:
+        content = message
+    return ContextCompressor._is_context_summary_content(content)

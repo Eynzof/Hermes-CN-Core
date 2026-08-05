@@ -619,6 +619,18 @@ async def get_session_messages(
     if result is None:
         raise HTTPException(status_code=404, detail="Session not found")
     sid, _limit, messages = result
+    # CN fork: strip internal metadata prefixes (model-switch notices,
+    # image pre-analysis stubs) from persisted user content.
+    from hermes_cli.web_server import _normalize_message_content
+    normalized = []
+    for msg in messages:
+        if msg.get("role") == "user" and msg.get("content"):
+            content = _normalize_message_content(msg["content"])
+            if content is None:
+                continue
+            msg["content"] = content
+        normalized.append(msg)
+    messages = normalized
     return {
         "session_id": sid,
         "messages": messages,

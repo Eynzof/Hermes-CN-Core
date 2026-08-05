@@ -84,7 +84,7 @@ def _relay_bot_ids_map() -> dict:
     map yields ``{}`` so a bad config degrades to empty bot ids (the connector
     rejects an unprovisioned platform) rather than crashing boot."""
     import json
-import orjson
+    import orjson
     import logging
 
     raw = os.environ.get("GATEWAY_RELAY_BOT_IDS", "").strip()

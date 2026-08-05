@@ -378,7 +378,9 @@ def _wsl_windows_path_to_posix(path: str) -> str:
     drive = (win.drive or "").rstrip(":").lower()
     if not drive:
         return path
-    return os.path.join("/mnt", drive, *(str(part) for part in win.parts[1:]))
+    # DrvFS paths are always POSIX — build with "/" explicitly so the
+    # translation is identical on Windows hosts (os.path.join would use os.sep).
+    return "/mnt/{}/{}".format(drive, "/".join(str(part) for part in win.parts[1:]))
 
 
 class _EmbeddedCuaDaemon:

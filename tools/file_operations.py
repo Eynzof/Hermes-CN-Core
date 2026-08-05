@@ -1600,8 +1600,7 @@ class ShellFileOperations(FileOperations):
         A missing/empty file returns False (new writes get no BOM
         unless the caller explicitly includes one).
         """
-        if pre_content is not None:
-            return _has_bom(pre_content)
+        # Always probe the disk — never trust ``pre_content`` (see docstring).
         head_result = self._prim_read_sample(path, 3)
         if head_result.exit_code != 0 or not head_result.stdout:
             return False
@@ -2100,21 +2099,35 @@ class ShellFileOperations(FileOperations):
         # (mirrors patch_replace's post-write verification).
         content_verified: Optional[bool] = None
         try:
-            hash_cmd = f"sha256sum {self._escape_shell_arg(path)} 2>/dev/null"
-            hash_result = self._exec(hash_cmd)
-            if hash_result.exit_code == 0 and hash_result.stdout.strip():
-                disk_sha = hash_result.stdout.strip().split()[0]
-                expected_sha = hashlib.sha256(content_bytes).hexdigest()
-                content_verified = disk_sha == expected_sha
-                if not content_verified:
-                    return WriteResult(
-                        error=(
-                            f"Post-write verification failed for {path}: on-disk "
-                            "content hash differs from the intended write. The "
-                            "write did not persist correctly — re-read the file "
-                            "and retry."
-                        )
+            if self._use_inproc_io():
+                # [CN-fork] P-033b/P-037: on the local Windows backend compute
+                # the hash in-process — `sha256sum` is a POSIX binary that
+                # does not exist under Windows PowerShell (the fork's only
+                # Windows shell), so the shell probe would silently report
+                # verified=None and force a verify-read round-trip.
+                read_result = self._prim_read_all(path)
+                if read_result.exit_code == 0:
+                    disk_sha = hashlib.sha256(
+                        read_result.stdout.encode("utf-8", "surrogatepass")
+                    ).hexdigest()
+                    expected_sha = hashlib.sha256(content_bytes).hexdigest()
+                    content_verified = disk_sha == expected_sha
+            else:
+                hash_cmd = f"sha256sum {self._escape_shell_arg(path)} 2>/dev/null"
+                hash_result = self._exec(hash_cmd)
+                if hash_result.exit_code == 0 and hash_result.stdout.strip():
+                    disk_sha = hash_result.stdout.strip().split()[0]
+                    expected_sha = hashlib.sha256(content_bytes).hexdigest()
+                    content_verified = disk_sha == expected_sha
+            if content_verified is False:
+                return WriteResult(
+                    error=(
+                        f"Post-write verification failed for {path}: on-disk "
+                        "content hash differs from the intended write. The "
+                        "write did not persist correctly — re-read the file "
+                        "and retry."
                     )
+                )
         except Exception:
             content_verified = None
 
@@ -2699,6 +2712,16 @@ class ShellFileOperations(FileOperations):
         # path as missing.
         if self._is_local_env():
             if not os.path.exists(path):
+                # Multi-path recovery: models frequently pass several paths in
+                # one string ("dir1 dir2 dir3" or comma-separated). Instead of
+                # failing the whole call, split, search every path that exists,
+                # merge the results, and report the skipped parts. Existence is
+                # checked in-process (no POSIX `test -e` under PowerShell).
+                multi = self._try_multi_path_search(
+                    pattern, path, target, file_glob, limit, offset, output_mode, context
+                )
+                if multi is not None:
+                    return multi
                 return self._path_not_found_result(path)
         else:
             check = self._exec(f"test -e {self._escape_shell_arg(path)} && echo exists || echo not_found")
@@ -2769,10 +2792,16 @@ class ShellFileOperations(FileOperations):
         existing, missing = [], []
         for p in parts:
             expanded = self._expand_path(p)
-            chk = self._exec(
-                f"test -e {self._escape_shell_arg(expanded)} && echo exists || echo not_found"
-            )
-            (existing if "exists" in chk.stdout else missing).append(expanded)
+            if self._is_local_env():
+                # In-process existence check (POSIX `test -e` cannot run under
+                # Windows PowerShell — P-030 in-process policy).
+                exists = os.path.exists(expanded)
+            else:
+                chk = self._exec(
+                    f"test -e {self._escape_shell_arg(expanded)} && echo exists || echo not_found"
+                )
+                exists = "exists" in chk.stdout
+            (existing if exists else missing).append(expanded)
         if not existing:
             return None
 
@@ -2801,6 +2830,53 @@ class ShellFileOperations(FileOperations):
         merged.warning = note
         return merged
 
+    def _rg_count_via_ripgrepy(self, pattern: str, path: str,
+                               file_glob: Optional[str], *,
+                               ignore_case: bool = False,
+                               hidden: bool = False,
+                               fixed: bool = False) -> int:
+        """Total ``--count-matches`` output for a probe via ripgrepy (local only).
+
+        The shell version of :meth:`_zero_match_probe` uses a POSIX
+        ``rg … | head`` pipeline that cannot run under Windows PowerShell
+        (P-030/P-033 in-process policy).  This in-process variant builds the
+        same bounded, count-only command via ripgrepy and sums the counts.
+        """
+        from hermes_cli.dep_ensure import _find_rg
+        rg_path = _find_rg()
+        if not rg_path:
+            return 0
+        try:
+            from ripgrepy import Ripgrepy, RipGrepNotFound
+            rg = Ripgrepy(pattern, path, rg_path=rg_path)
+            rg.count_matches()
+            if ignore_case:
+                rg.ignore_case()
+            if hidden:
+                rg.hidden().no_ignore()
+            if fixed:
+                rg.fixed_strings()
+            if file_glob:
+                rg.glob(file_glob)
+            full_cmd = list(rg.command) + [rg.regex_pattern, rg.path]
+            proc = subprocess.run(
+                full_cmd,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=30,
+                stdin=subprocess.DEVNULL,
+            )
+        except Exception:  # noqa: BLE001
+            return 0
+        total = 0
+        for line in (proc.stdout or "").strip().splitlines():
+            _p, _sep, n = line.rpartition(":")
+            if n.isdigit():
+                total += int(n)
+        return total
+
     def _zero_match_probe(self, pattern: str, path: str,
                           file_glob: Optional[str]) -> Optional[str]:
         """Return a hint for a 0-match content search, or None.
@@ -2811,6 +2887,35 @@ class ShellFileOperations(FileOperations):
         metacharacters, also probe it as a fixed string. Bounded: two rg
         invocations max, count-only output.
         """
+        if self._is_local_env():
+            # In-process ripgrepy probe (Windows PowerShell-safe).
+            from hermes_cli.dep_ensure import _find_rg
+            if _find_rg() is None:
+                # No rg at all on the local backend — nothing to probe with.
+                return None
+            ci_total = self._rg_count_via_ripgrepy(pattern, path, file_glob, ignore_case=True)
+            if ci_total > 0:
+                return (
+                    f"0 exact matches, but {ci_total} case-insensitive match(es) "
+                    "— the pattern's casing may be wrong."
+                )
+            h_total = self._rg_count_via_ripgrepy(pattern, path, file_glob, hidden=True)
+            if h_total > 0:
+                return (
+                    f"0 matches in visible files, but {h_total} match(es) in "
+                    f"hidden or gitignored file(s) — these are excluded "
+                    "by default. Search the hidden path explicitly to include them."
+                )
+            if re.search(r"[.\[\](){}?*+^$\\|]", pattern):
+                f_total = self._rg_count_via_ripgrepy(pattern, path, file_glob, fixed=True)
+                if f_total > 0:
+                    return (
+                        f"0 regex matches, but {f_total} literal match(es) — the "
+                        "pattern contains regex metacharacters that likely need "
+                        "escaping (or pass a simpler substring)."
+                    )
+            return None
+
         if not self._has_command('rg'):
             return None
         glob_expr = f" --glob {self._escape_shell_arg(file_glob)}" if file_glob else ""
@@ -3117,11 +3222,30 @@ class ShellFileOperations(FileOperations):
         if self._is_local_env():
             from hermes_cli.dep_ensure import _find_rg
             if _find_rg():
+                used_rg = True
                 result = self._search_with_rg(pattern, path, file_glob, limit, offset,
                                               output_mode, context)
             else:
+                used_rg = False
                 result = self._search_content_python(pattern, path, file_glob, limit,
                                                      offset, output_mode, context)
+            # Zero-match steering: a 0-match result with no guidance is a dead
+            # turn. Probe cheaply for near-misses (wrong casing, hidden-only
+            # matches, unescaped regex metacharacters) and attach the finding
+            # as a warning. Runs for BOTH engines (rg and the python fallback)
+            # so a 0-match local search is never a bare dead turn.
+            if (not result.error and result.total_count == 0
+                    and not result.matches and not result.files and not result.counts):
+                try:
+                    hint = self._zero_match_probe(pattern, path, file_glob)
+                except Exception:
+                    hint = None
+                if hint:
+                    result.warning = hint if not result.warning else f"{result.warning} {hint}"
+            # rg auto-enables --multiline for \n patterns, so the line-oriented
+            # explanation only applies to the python fallback engine.
+            if used_rg:
+                return result
             return _maybe_warn_line_oriented_newline_pattern(result, pattern)
 
         # Remote backends: try ripgrep first (fast), fallback to grep.
@@ -3185,6 +3309,17 @@ class ShellFileOperations(FileOperations):
         """
         from ripgrepy import Ripgrepy, RipGrepNotFound
 
+        # Auto-multiline: a regex `\n` (or a literal newline in the pattern)
+        # cannot match in rg's default line-oriented mode — it used to hard
+        # error ("the literal \"\\n\" is not allowed") and burn a turn. When
+        # the pattern clearly wants to cross lines, enable -U/--multiline up
+        # front and note it in the result (mirrors the shell rg path).
+        multiline = _pattern_has_regex_newline(pattern)
+        _ml_note = (
+            "Pattern contains \\n — multiline mode (-U) was enabled automatically "
+            "so the regex can match across line boundaries."
+        ) if multiline else None
+
         try:
             rg = Ripgrepy(pattern, path, rg_path=rg_path)
         except RipGrepNotFound:
@@ -3193,6 +3328,9 @@ class ShellFileOperations(FileOperations):
             )
 
         rg.line_number().no_heading().with_filename()
+
+        if multiline:
+            rg.multiline()
 
         if context > 0:
             rg.context(context)
@@ -3248,7 +3386,10 @@ class ShellFileOperations(FileOperations):
             ]
             output = '\n'.join(payload_lines)
 
-        return _parse_search_content_output(output, output_mode, context, limit, offset)
+        parsed = _parse_search_content_output(output, output_mode, context, limit, offset)
+        if _ml_note and not parsed.warning:
+            parsed.warning = _ml_note
+        return parsed
 
     def _search_with_rg_shell(self, pattern: str, path: str, file_glob: Optional[str],
                               limit: int, offset: int, output_mode: str, context: int) -> SearchResult:

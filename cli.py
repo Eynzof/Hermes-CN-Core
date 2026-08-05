@@ -12462,7 +12462,7 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin, CLIBillingMixin):
             else:
                 self._no_speech_count = 0
 
-            if _stop_continuous:
+            if stop_continuous_restart:
                 # Continuous mode stopped – do not restart recording.
                 pass
             # If no transcript was submitted but continuous mode is active,

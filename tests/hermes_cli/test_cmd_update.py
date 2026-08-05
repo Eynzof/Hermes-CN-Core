@@ -9,6 +9,17 @@ import pytest
 
 from hermes_cli.main import cmd_update, PROJECT_ROOT
 
+import sys
+
+# These tests resolve npm on the real PATH on Windows (find_node_executable_on_path
+# scans PATH directly, bypassing the shutil.which mock), which triggers the real
+# npm engine-repair path (EBADENGINE + managed node download). Skip on win32 like
+# the pre-merge fork did for this whole file.
+win32_npm_repair_skip = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Windows: npm resolves from real PATH, triggering live npm engine repair",
+)
+
 
 def _make_run_side_effect(branch="main", verify_ok=True, commit_count="0"):
     """Build a side_effect function for subprocess.run that simulates git commands."""
@@ -275,6 +286,7 @@ class TestCmdUpdateMigrationPrompt:
     yes looked like a no-op.
     """
 
+    @win32_npm_repair_skip
     def test_version_bump_only_applies_silently_without_prompt(
         self, mock_args, capsys
     ):
@@ -351,6 +363,7 @@ class TestCmdUpdateProfileSkillSync:
 
     @patch("shutil.which", return_value=None)
     @patch("subprocess.run")
+    @win32_npm_repair_skip
     def test_active_profile_included_in_skill_sync(
         self, mock_run, _mock_which, mock_args, capsys
     ):
@@ -389,6 +402,7 @@ class TestCmdUpdateProfileSkillSync:
 
     @patch("shutil.which", return_value=None)
     @patch("subprocess.run")
+    @win32_npm_repair_skip
     def test_single_profile_default_is_synced(
         self, mock_run, _mock_which, mock_args, capsys
     ):
@@ -461,6 +475,7 @@ class TestCmdUpdateBranchFlag:
 
     @patch("shutil.which", return_value=None)
     @patch("subprocess.run")
+    @win32_npm_repair_skip
     def test_branch_flag_pulls_against_named_branch(self, mock_run, _mock_which, capsys):
         """--branch bb/gui makes rev-list and pull target origin/bb/gui."""
         mock_run.side_effect = self._branch_side_effect(

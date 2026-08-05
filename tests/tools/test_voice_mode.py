@@ -201,6 +201,13 @@ class TestDetectAudioEnvironment:
         assert result["warnings"] == []
         assert any("SSH" in n for n in result.get("notices", []))
 
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="Simulates WSL on the host; on Windows the PowerShell TTS fallback "
+        "(powershell.exe + ffmpeg, both on PATH) is inherently available, so the "
+        "upstream non-blocking notice branch always wins and the blocking path "
+        "cannot be reproduced (Linux-only environment test)",
+    )
     def test_wsl_without_pulse_blocks_voice(self, monkeypatch, tmp_path):
         """WSL without PULSE_SERVER should block voice mode."""
         monkeypatch.delenv("SSH_CLIENT", raising=False)
@@ -1373,6 +1380,12 @@ class TestDefaultInputSamplerate:
             assert wf.getframerate() == 48000
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="WSL2 PowerShell fallback branch is gated on platform.system() == 'Linux' "
+    "(WSL detection reads /proc/version) — unreachable on a Windows host "
+    "(Linux-only environment tests)",
+)
 class TestWSL2PowerShellFallback:
     """Regression tests for WSL2 PowerShell TTS fallback (issue #17608).
 

@@ -4,6 +4,7 @@ Tests verify tool schemas, handler dispatch, validation logic, and error
 handling without requiring a running terminal environment.
 """
 
+import json
 import os
 import orjson
 import logging
@@ -569,6 +570,7 @@ class TestSensitivePathCheck:
         assert "error" in result
         assert "sensitive system path" in result["error"]
 
+    @_win32
     def test_macos_private_var_carveouts(self):
         """macOS temp dirs under /private/var must not be blanket-blocked,
         while the genuinely-sensitive /private/var subtrees still are."""

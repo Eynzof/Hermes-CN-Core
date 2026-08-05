@@ -1428,15 +1428,6 @@ def execute_tool_calls_concurrent(
                 )
             except Exception as cb_err:
                 logging.debug("Tool output risk callback error: %s", cb_err)
-        _flush_session_db_after_tool_progress(
-            agent,
-            messages,
-            stage=f"tool result {name}",
-        )
-
-        # Drain pending user steers between collected results so they reach the
-        # model on the earliest possible follow-up request.
-        agent._apply_pending_steer_to_tool_results(messages, 1)
 
     # ── Per-turn aggregate budget enforcement ─────────────────────────
     # Keep /steer pending until the final post-budget drain below.  The model
@@ -1451,22 +1442,6 @@ def execute_tool_calls_concurrent(
 
     if finalize and num_tools > 0:
         agent._apply_pending_steer_to_tool_results(messages, num_tools)
-
-
-def execute_tool_calls_sequential(
-    agent,
-    assistant_message,
-    messages: list,
-    effective_task_id: str,
-    api_call_count: int = 0,
-    *,
-    finalize: bool = True,
-) -> None:
-    """Execute tool calls sequentially (original behavior).
-
-    ``finalize=False`` leaves whole-turn budget and steer handling to the
-    segmented dispatcher.
-    """
 
 
 def _append_cancelled_tool_results(messages: list, tool_calls, *, reason: str) -> None:
@@ -1487,6 +1462,22 @@ def _append_cancelled_tool_results(messages: list, tool_calls, *, reason: str) -
             getattr(tc, "id", "") or "",
             effect_disposition="none",
         ))
+
+
+def execute_tool_calls_sequential(
+    agent,
+    assistant_message,
+    messages: list,
+    effective_task_id: str,
+    api_call_count: int = 0,
+    *,
+    finalize: bool = True,
+) -> None:
+    """Execute tool calls sequentially (original behavior).
+
+    ``finalize=False`` leaves whole-turn budget and steer handling to the
+    segmented dispatcher.
+    """
     # Resolve the context-scaled tool-output budget once per turn.
     _tool_budget = _budget_for_agent(agent)
     for i, tool_call in enumerate(assistant_message.tool_calls, 1):
@@ -1844,13 +1835,15 @@ def _append_cancelled_tool_results(messages: list, tool_calls, *, reason: str) -
             try:
                 def _execute(next_args: dict) -> Any:
                     return agent._dispatch_agent_swarm(next_args)
-                function_result, function_args = _run_agent_tool_execution_middleware(
-                    agent,
-                    function_name=function_name,
-                    function_args=function_args,
-                    effective_task_id=effective_task_id,
-                    tool_call_id=getattr(tool_call, "id", "") or "",
-                    execute=_execute,
+                function_result, function_args, _sw_trace, _sw_blocked, _sw_dispatched = _managed_values(
+                    _run_agent_tool_execution_middleware(
+                        agent,
+                        function_name=function_name,
+                        function_args=function_args,
+                        effective_task_id=effective_task_id,
+                        tool_call_id=getattr(tool_call, "id", "") or "",
+                        execute=_execute,
+                    )
                 )
                 _swarm_result = function_result
             finally:
@@ -1981,7 +1974,7 @@ def _append_cancelled_tool_results(messages: list, tool_calls, *, reason: str) -
                             function_name, next_args, messages=messages
                         )
 
-                    function_result, function_args = (
+                    function_result, function_args, _ce_trace, _ce_blocked, _ce_dispatched = _managed_values(
                         _run_agent_tool_execution_middleware(
                             agent,
                             function_name=function_name,
@@ -2376,17 +2369,6 @@ def _append_cancelled_tool_results(messages: list, tool_calls, *, reason: str) -
             logging.debug("Tool %s completed in %.2fs", function_name, tool_duration)
             _log_result = _multimodal_text_summary(function_result)
             logging.debug("Tool result (%d chars): %s", len(_log_result), _log_result)
-        if not _execution_blocked and agent.tool_complete_callback:
-            try:
-                display_args = (
-                    _redact_tool_args_for_display(function_name, function_args)
-                    or function_args
-                )
-                agent.tool_complete_callback(
-                    tool_call.id, function_name, display_args, function_result
-                )
-            except Exception as cb_err:
-                logging.debug(f"Tool complete callback error: {cb_err}")
 
 
         display_function_result = function_result

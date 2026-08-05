@@ -41,6 +41,7 @@ import json
 import orjson
 import logging
 import os
+import platform
 import queue
 from agent.re_compat import re
 import shlex

@@ -184,11 +184,11 @@ def test_build_powershell_uses_powershell_sentence_and_cmdlet_refs():
         desc = _build_dynamic_terminal_description()["description"]
     assert "Windows PowerShell environment" in desc
     # powershell-adapted forbidden-command references applied …
-    assert "Do NOT use Get-Content/cat/type to read files" in desc
-    assert "Do NOT use Select-String/findstr to search" in desc
+    assert "Do NOT use Get-Content/cat/type (use read_file)" in desc
+    assert "Select-String/findstr (use search_files)" in desc
     assert "Out-Host -Paging" in desc
     # … and the Linux/bash-only phrasings are gone.
-    assert "Do NOT use cat/head/tail to read files" not in desc
+    assert "Do NOT use cat/head/tail (use read_file)" not in desc
     assert "Execute shell commands on a Linux environment." not in desc
 
 
@@ -197,8 +197,8 @@ def test_build_pwsh_uses_pwsh_sentence():
         desc = _build_dynamic_terminal_description()["description"]
     assert "PowerShell 7 (pwsh)" in desc
     # pwsh still gets cmdlet-adapted references
-    assert "Do NOT use Get-Content/cat/type to read files" in desc
-    assert "Do NOT use Select-String/findstr to search" in desc
+    assert "Do NOT use Get-Content/cat/type (use read_file)" in desc
+    assert "Select-String/findstr (use search_files)" in desc
     assert "Out-Host -Paging" in desc
 
 
@@ -206,7 +206,7 @@ def test_build_non_windows_leaves_linux_references_intact():
     with mock.patch(DETECT, return_value="bash"), mock.patch(SYSTEM, return_value="Linux"):
         desc = _build_dynamic_terminal_description()["description"]
     assert "Linux environment" in desc
-    assert "Do NOT use cat/head/tail to read files" in desc
+    assert "Do NOT use cat/head/tail (use read_file)" in desc
     # no powershell cmdlet substitutions on the bash/Linux path
     assert "Get-Content/cat/type" not in desc
 
@@ -217,8 +217,8 @@ def test_static_description_contains_phrases_the_powershell_path_rewrites():
     # no-op rewrite would otherwise pass the powershell test above only by luck).
     for phrase in (
         "Execute shell commands on a Linux environment.",
-        "Do NOT use cat/head/tail to read files",
-        "Do NOT use grep/rg/find to search",
+        "Do NOT use cat/head/tail (use read_file)",
+        "grep/rg/find/ls (use search_files)",
         "Pipe git output to cat if it might page.",
     ):
         assert phrase in TERMINAL_TOOL_DESCRIPTION

@@ -639,7 +639,8 @@ class TestFetchEndpointModelMetadata:
         response.status_code = status_code
         response.raise_for_status.side_effect = RuntimeError(str(status_code))
 
-        with patch("agent.model_metadata.requests.get", return_value=response) as mock_get:
+        with patch("agent.model_metadata._endpoint_reachable", return_value=True), \
+             patch("agent.model_metadata.requests.get", return_value=response) as mock_get:
             result = mm.fetch_endpoint_model_metadata("https://custom.example/v1")
 
         assert result == {}
@@ -656,7 +657,8 @@ class TestFetchEndpointModelMetadata:
         response.status_code = 401
         response.raise_for_status.side_effect = RuntimeError("401")
 
-        with patch("agent.model_metadata.requests.get", return_value=response) as mock_get:
+        with patch("agent.model_metadata._endpoint_reachable", return_value=True), \
+             patch("agent.model_metadata.requests.get", return_value=response) as mock_get:
             first = mm.fetch_endpoint_model_metadata("https://custom.example/v1")
             second = mm.fetch_endpoint_model_metadata("https://custom.example/v1")
 
@@ -676,10 +678,11 @@ class TestFetchEndpointModelMetadata:
             "data": [{"id": "test/model", "context_length": 32768}]
         }
 
-        with patch(
-            "agent.model_metadata.requests.get",
-            side_effect=[not_found, success],
-        ) as mock_get:
+        with patch("agent.model_metadata._endpoint_reachable", return_value=True), \
+             patch(
+                 "agent.model_metadata.requests.get",
+                 side_effect=[not_found, success],
+             ) as mock_get:
             result = mm.fetch_endpoint_model_metadata("https://custom.example/v1")
 
         assert result["test/model"]["context_length"] == 32768

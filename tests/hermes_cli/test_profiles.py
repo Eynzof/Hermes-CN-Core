@@ -16,6 +16,13 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import pytest
+
+# Windows cannot represent POSIX 0o600 owner-only mode (os.chmod is a no-op
+# for read/write bits on NTFS); the code under test applies chmod 0o600 which
+# only works on POSIX. Skip the mode assertions on win32 (CN fork runs on Windows).
+skip_on_win32 = pytest.mark.skipif(
+    sys.platform == "win32", reason="POSIX 0o600 .env mode not representable on Windows",
+)
 import yaml
 
 from hermes_cli import profiles
@@ -115,6 +122,7 @@ class TestCreateProfile:
     """Tests for create_profile()."""
 
 
+    @skip_on_win32
     def test_seeds_placeholder_env_file(self, profile_env):
         """Fresh profiles get their own .env (owner-only) so channel/env
         writes are profile-scoped from day one instead of falling through
@@ -217,6 +225,7 @@ class TestBackfillProfileEnvs:
     gives pre-#44792 profiles (created before .env seeding) their own
     .env, copied from the default install so credentials don't break."""
 
+    @skip_on_win32
     def test_copies_default_env_into_envless_profiles(self, profile_env):
         import stat
         tmp_path = profile_env

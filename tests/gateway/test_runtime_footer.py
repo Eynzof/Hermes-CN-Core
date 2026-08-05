@@ -216,6 +216,7 @@ def test_format_footer_latency_zero_renders_sub_second():
     assert out == "<1s"
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: os.path.expanduser ignores HOME env")
 def test_format_footer_latency_in_field_order(monkeypatch, tmp_path):
     monkeypatch.setenv("HOME", str(tmp_path))
     out = format_runtime_footer(
@@ -286,6 +287,7 @@ def test_resolve_footer_config_default_fields_exclude_latency():
         ("m", 10, 100, "", "m · 10%"),
     ],
 )
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: POSIX /var/data renders as C:\\var\\data")
 def test_default_footer_renders_byte_identically(
     monkeypatch, model, tokens, window, cwd, expected
 ):
@@ -306,6 +308,7 @@ def test_default_footer_renders_byte_identically(
     assert out == expected
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: POSIX /var/data renders as C:\\var\\data")
 def test_default_build_footer_line_ignores_turn_seconds(monkeypatch):
     """build_footer_line with default fields is unaffected by turn_seconds."""
     monkeypatch.delenv("TERMINAL_CWD", raising=False)

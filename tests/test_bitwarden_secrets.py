@@ -376,7 +376,8 @@ def test_encrypted_cache_writes_without_plaintext(monkeypatch, tmp_path):
     cache_path = bw._encrypted_disk_cache_path(home)
     assert cache_path.exists()
     mode = stat.S_IMODE(os.stat(cache_path).st_mode)
-    assert mode == 0o600, f"expected 0o600, got 0o{mode:o}"
+    if sys.platform != "win32":  # POSIX permission bits do not apply on Windows
+        assert mode == 0o600, f"expected 0o600, got 0o{mode:o}"
     text = cache_path.read_text()
     assert "secret-value" not in text
     assert "0.t" not in text

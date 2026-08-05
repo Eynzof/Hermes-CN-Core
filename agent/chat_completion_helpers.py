@@ -4190,6 +4190,21 @@ def interruptible_streaming_api_call(agent, api_kwargs: dict, *, on_first_delta=
         if _reasoning_floor is not None:
             _stream_stale_timeout = max(_stream_stale_timeout, _reasoning_floor)
 
+    # Bound the stale-stream recovery so a provider connection that goes
+    # silent can never wedge the turn forever (P-022).  After the stale
+    # timeout the detector aborts the live transport (which makes the
+    # worker's blocked recv() raise so the inner retry loop reconnects); if
+    # the worker is STILL alive after _max_stale_kills aborts spaced
+    # _stale_kill_grace apart, we synthesize a timeout and abandon the
+    # daemon worker — the same escape hatch the non-streaming stale path
+    # uses.  (These locals were dropped by the upstream sync — restored from
+    # the fork's pre-merge implementation.)
+    _stale_kill_grace = max(1.0, float(os.getenv("HERMES_STREAM_STALE_KILL_GRACE", 10.0)))
+    _max_stale_kills = max(1, int(os.getenv("HERMES_STREAM_STALE_MAX_KILLS", 3)))
+    _stale_kill_count = 0
+    _last_stale_kill_at = 0.0
+    _chunk_time_at_last_kill = 0.0
+
     t = threading.Thread(target=_context_thread_target(_call), daemon=True)
     t.start()
     _last_heartbeat = time.time()

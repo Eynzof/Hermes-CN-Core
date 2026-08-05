@@ -2,6 +2,7 @@
 
 import json
 import os
+import sys
 import sqlite3
 import zipfile
 from argparse import Namespace
@@ -599,9 +600,12 @@ class TestProfileRestoration:
         from hermes_cli.backup import run_import
         run_import(args)
 
-        # Only valid profile should get a wrapper
-        assert (wrapper_dir / "valid").exists()
-        assert not (wrapper_dir / "empty").exists()
+        # Only valid profile should get a wrapper. On Windows the wrapper is
+        # a .bat file (create_wrapper_script), elsewhere a bare shell script.
+        wrapper_name = "valid.bat" if sys.platform == "win32" else "valid"
+        empty_name = "empty.bat" if sys.platform == "win32" else "empty"
+        assert (wrapper_dir / wrapper_name).exists()
+        assert not (wrapper_dir / empty_name).exists()
 
 
 # ---------------------------------------------------------------------------
@@ -906,7 +910,8 @@ class TestQuickSnapshotProjectsKanban:
         monkeypatch.setattr(bk, "_safe_copy_db", _spy)
         snap_id = create_quick_snapshot(hermes_home=hermes_home)
         # The board db was copied via _safe_copy_db (not raw copy).
-        assert any(s.endswith("boards/work/kanban.db") for s in called["db"]), called["db"]
+        suffix = os.path.join("boards", "work", "kanban.db")
+        assert any(s.replace("\\", "/").endswith(suffix.replace("\\", "/")) for s in called["db"]), called["db"]
         copy = hermes_home / "state-snapshots" / snap_id / "kanban" / "boards" / "work" / "kanban.db"
         rows = sqlite3.connect(str(copy)).execute("SELECT * FROM tasks").fetchall()
         assert rows == [("w1", "ship")]
@@ -1238,8 +1243,10 @@ class TestMemoryProviderExternalPaths:
         restored = dst_home / ".honcho" / "config.json"
         assert restored.exists()
         assert restored.read_text() == '{"peer":"bob"}'
-        # Credential-shaped file tightened.
-        assert (restored.stat().st_mode & 0o777) == 0o600
+        # Credential-shaped file tightened (POSIX mode; Windows cannot
+        # represent 0o600 on NTFS).
+        if sys.platform != "win32":
+            assert (restored.stat().st_mode & 0o777) == 0o600
         # External state did NOT leak into HERMES_HOME.
         assert not (hermes_home / "_external").exists()
 

@@ -75,6 +75,13 @@ class TestRegistration:
         assert entry.schema["name"] == "computer_use"
 
 
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="POSIX-only: resolves an extension-less executable script "
+        "(#!/bin/sh + chmod 0o755 + PATH=/usr/bin:/bin); shutil.which on "
+        "Windows requires a PATHEXT extension for X_OK mode, so an "
+        "extension-less driver path is not a Windows scenario",
+    )
     def test_cua_driver_cmd_env_override_is_resolved_dynamically(self, tmp_path, monkeypatch):
         from tools.computer_use import cua_backend
 
@@ -1113,9 +1120,13 @@ class TestCuaDriverSessionReconnect:
         class FakeProc:
             returncode = 0
             stderr = ""
-            # Daemon returns a path, not inline base64.
-            stdout = ('{"element_count": 7, "tree_markdown": "- [0] AXButton",'
-                      ' "screenshot_file_path": "%s"}' % str(shot))
+            # Daemon returns a path, not inline base64.  Build via json.dumps
+            # so Windows paths (C:\Users\...) are escaped as valid JSON.
+            stdout = json.dumps({
+                "element_count": 7,
+                "tree_markdown": "- [0] AXButton",
+                "screenshot_file_path": str(shot),
+            })
 
         import subprocess as _sp
         orig_run = _sp.run
@@ -1221,6 +1232,11 @@ class TestCaptureAppFilterNoMatch:
         assert backend._active_pid is None
         assert backend._active_window_id is None
 
+    @pytest.mark.skipif(
+        sys.platform != "linux",
+        reason="GNOME/X11 helper-window filtering is gated on sys.platform == "
+        "'linux' in _select_capture_target (X11-only concept)",
+    )
     def test_linux_default_capture_skips_gnome_shell_helper(self):
         windows = [
             {"app_name": "", "pid": 100, "window_id": 1,

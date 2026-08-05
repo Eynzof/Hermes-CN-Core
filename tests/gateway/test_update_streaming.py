@@ -9,6 +9,7 @@ Tests the new --gateway mode for hermes update, including:
 
 import json
 import os
+import sys
 import time
 import asyncio
 from unittest.mock import patch, MagicMock, AsyncMock
@@ -129,6 +130,7 @@ class TestRestoreStashWithInputFn:
 class TestUpdateCommandGatewayFlag:
     """Verify the gateway spawns hermes update --gateway."""
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows: no bash chain — fork runs sys.executable + helper (P-019 PowerShell-only)")
     @pytest.mark.asyncio
     async def test_spawns_with_gateway_flag(self, tmp_path):
         """The spawned update command includes --gateway and PYTHONUNBUFFERED."""

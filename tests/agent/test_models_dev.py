@@ -323,7 +323,8 @@ class TestFetchModelsDev:
 
         md._models_dev_cache = cache
         md._models_dev_cache_time = cache_time(md)
-        with patch.object(md, "_load_disk_cache", return_value=disk_data):
+        with patch.object(md, "_load_disk_cache", return_value=disk_data), \
+             patch.object(md, "_load_bundled_snapshot", return_value={}):
             result = fetch_models_dev(allow_network=False)
 
         assert result == expected

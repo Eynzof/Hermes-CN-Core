@@ -8,9 +8,19 @@ Covers:
 
 import json
 import os
+import sys
 from argparse import Namespace
 
 import pytest
+
+# Referenced-script scanning exercises POSIX shell semantics (/bin/bash,
+# launchctl/systemctl, os.mkfifo, chmod 0o700) and the guard tokenizer is
+# shlex(posix=True), which mangles Windows backslash paths. The CN fork runs
+# the suite on Windows (PowerShell primary shell) and must skip them.
+skip_on_win32 = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="POSIX shell referenced-script scanning; shlex posix quoting cannot handle Windows paths",
+)
 
 from hermes_cli.cron import (
     _contains_gateway_lifecycle_command,
@@ -296,6 +306,7 @@ class TestTerminalToolGatewayLifecycleGuard:
         assert result["exit_code"] == 1
         assert "Blocked" in result["error"]
 
+    @skip_on_win32
     def test_blocks_lifecycle_command_hidden_in_referenced_script(
         self, monkeypatch, tmp_path
     ):
@@ -372,6 +383,7 @@ class TestTerminalToolGatewayLifecycleGuard:
         assert result["exit_code"] == 0
         assert calls == [command]
 
+    @skip_on_win32
     def test_blocks_launchctl_submit_hidden_in_referenced_script(
         self, monkeypatch, tmp_path
     ):
@@ -407,6 +419,7 @@ class TestTerminalToolGatewayLifecycleGuard:
         assert result["exit_code"] == 1
         assert "referenced script" in result["error"]
 
+    @skip_on_win32
     def test_blocks_executable_shebang_script(self, monkeypatch, tmp_path):
         import tools.terminal_tool as tt
 
@@ -430,6 +443,7 @@ class TestTerminalToolGatewayLifecycleGuard:
         assert result["exit_code"] == 1
         assert "KeepAlive" in result["error"]
 
+    @skip_on_win32
     def test_shell_option_with_value_still_scans_script(self, monkeypatch, tmp_path):
         import tools.terminal_tool as tt
 
@@ -463,6 +477,7 @@ class TestTerminalToolGatewayLifecycleGuard:
 
         assert result["exit_code"] == 1
 
+    @skip_on_win32
     def test_nested_wrapper_script_is_scanned(self, monkeypatch, tmp_path):
         import tools.terminal_tool as tt
 
@@ -483,6 +498,7 @@ class TestTerminalToolGatewayLifecycleGuard:
 
         assert result["exit_code"] == 1
 
+    @skip_on_win32
     def test_non_regular_referenced_script_fails_closed(self, monkeypatch, tmp_path):
         import tools.terminal_tool as tt
 
@@ -516,6 +532,7 @@ class TestTerminalToolGatewayLifecycleGuard:
         assert result["exit_code"] == 0
         assert calls == [command]
 
+    @skip_on_win32
     def test_safe_referenced_script_passes_through(self, monkeypatch, tmp_path):
         import tools.terminal_tool as tt
 
@@ -796,6 +813,7 @@ class TestTerminalToolGatewayLifecycleGuardRemote:
         else:
             monkeypatch.delenv("_HERMES_GATEWAY", raising=False)
 
+    @skip_on_win32
     def test_remote_backend_script_read_uses_env_execute(self, monkeypatch, tmp_path):
         import tools.terminal_tool as tt
 

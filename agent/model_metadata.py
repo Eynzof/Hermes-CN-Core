@@ -943,35 +943,6 @@ def _skip_persistent_context_cache(base_url: str, provider: str) -> bool:
     return (provider or "").strip().lower() in {"lmstudio", "openai-codex"}
 
 
-def _endpoint_scoped_context_length(model: str, base_url: str) -> Optional[int]:
-    """Return metadata confirmed only for the Kimi Coding endpoint.
-
-    Kimi Coding serves K3 under the bare slug ``k3``, but users may also
-    configure or select the public-facing aliases ``kimi-k3`` and
-    ``kimi-k3-cot``. Only canonical ``https://api.kimi.com/coding`` endpoints
-    (legacy Moonshot keys do not serve K3) get the 1 Mi context window.
-    """
-    normalized = _normalize_base_url(base_url)
-    try:
-        parsed = urlparse(normalized)
-        port = parsed.port
-    except ValueError:
-        return None
-    if (
-        parsed.scheme.lower() == "https"
-        and (parsed.hostname or "").lower() == "api.kimi.com"
-        and port in (None, 443)
-        and parsed.username is None
-        and parsed.password is None
-        and parsed.path.rstrip("/") in {"/coding", "/coding/v1"}
-        and not parsed.query
-        and not parsed.fragment
-        and model.strip().lower() in {"k3", "kimi-k3", "kimi-k3-cot"}
-    ):
-        return 1_048_576
-    return None
-
-
 def _maybe_cache_local_context_length(
     model: str,
     base_url: str,
@@ -1116,12 +1087,6 @@ def detect_local_server_type(base_url: str, api_key: str = "") -> Optional[str]:
     calls (e.g. every 5-minute metadata refresh) never re-run the waterfall
     and never spray 404s at endpoints the server does not expose.
     """
-    # Fast reachability gate: if the port isn't accepting connections, none of
-    # the four probes below can succeed, so skip them and avoid paying four
-    # connect timeouts for nothing (a placeholder/down endpoint would otherwise
-    # stall agent construction tens of seconds — see _endpoint_reachable).
-    if not _endpoint_reachable(base_url):
-        return None
     normalized = _normalize_base_url(base_url)
 
     # Resolve localhost to IPv4 to avoid 2s IPv6 timeout on Windows dual-stack.
@@ -1151,6 +1116,13 @@ def detect_local_server_type(base_url: str, api_key: str = "") -> Optional[str]:
     if isinstance(disk_hit, str):
         _endpoint_probe_path_cache[server_url] = (disk_hit, time.monotonic())
         return disk_hit
+
+    # Fast reachability gate: if the port isn't accepting connections, none of
+    # the four probes below can succeed, so skip them and avoid paying four
+    # connect timeouts for nothing (a placeholder/down endpoint would otherwise
+    # stall agent construction tens of seconds — see _endpoint_reachable).
+    if not _endpoint_reachable(base_url):
+        return None
 
     headers = _auth_headers(api_key)
 
@@ -3290,8 +3262,9 @@ def estimate_messages_tokens_rough(
     Pass an :class:`IncrementalTokenEstimator` as ``estimator`` to reuse
     per-message work across calls over an append-mostly conversation: the
     estimate is then O(new messages) instead of O(all messages), and the
-    returned value is byte-for-byte identical to the stateless path (character
-    counts are summed *before* the single ceiling-division, exactly as here).
+    returned value is byte-for-byte identical to the stateless path (both
+    paths apply the same per-message character rounding via
+    ``estimate_tokens_rough``).
     """
     if estimator is not None:
         return estimator.estimate(messages)
@@ -3515,7 +3488,7 @@ class IncrementalTokenEstimator:
     the whole history even though only the last couple of messages are new —
     an O(n) pass per turn, O(n²) across a session.
 
-    This estimator memoises each message's ``(chars, image_tokens)``
+    This estimator memoises each message's ``(tokens, image_tokens)``
     contribution keyed on the message object's identity, so re-estimating a
     conversation that grew by a few messages only pays for the new ones.  A
     strong reference to each still-present message is kept alongside its cached
@@ -3524,17 +3497,18 @@ class IncrementalTokenEstimator:
     that dropped out of the list are discarded each call, so the cache tracks
     the live conversation and never grows unbounded.
 
-    The result is byte-for-byte identical to the stateless function: character
-    counts are summed *before* the single ceiling-division, the same rounding
-    the stateless path uses.  It is intended only for the *rough* pre-flight
-    estimate — if a cached message is mutated in place the estimate drifts by a
-    handful of characters, which is immaterial to a ~4-chars/token gate.
+    The result is byte-for-byte identical to the stateless function: each
+    message contributes ``estimate_tokens_rough(str(_wire_message_shadow(msg)))``
+    plus its flat image cost, the same per-message rounding the stateless path
+    uses.  It is intended only for the *rough* pre-flight estimate — if a
+    cached message is mutated in place the estimate drifts by a handful of
+    tokens, which is immaterial to a ~4-chars/token gate.
     """
 
     __slots__ = ("_cache",)
 
     def __init__(self) -> None:
-        # id(msg) -> (msg, chars, image_tokens)
+        # id(msg) -> (msg, tokens, image_tokens)
         self._cache: Dict[int, Any] = {}
 
     def estimate(self, messages: List[Dict[str, Any]]) -> int:
@@ -3544,22 +3518,20 @@ class IncrementalTokenEstimator:
             return 0
         cache = self._cache
         fresh: Dict[int, Any] = {}
-        total_chars = 0
-        image_tokens = 0
+        total = 0
         for msg in messages:
             key = id(msg)
             entry = cache.get(key)
             if entry is not None and entry[0] is msg:
-                chars = entry[1]
+                tokens = entry[1]
                 imgs = entry[2]
             else:
-                chars = _estimate_message_chars(msg)
+                tokens = _estimate_message_tokens_without_images(msg)
                 imgs = _count_image_tokens(msg, _IMAGE_TOKEN_COST)
-            fresh[key] = (msg, chars, imgs)
-            total_chars += chars
-            image_tokens += imgs
+            fresh[key] = (msg, tokens, imgs)
+            total += tokens + imgs
         self._cache = fresh
-        return ((total_chars + 3) // 4) + image_tokens
+        return total
 
     def invalidate(self) -> None:
         """Drop all cached contributions (e.g. after a full history rebuild)."""

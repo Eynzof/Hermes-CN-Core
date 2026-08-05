@@ -2039,7 +2039,10 @@ def test_load_enabled_toolsets_rejects_disabled_mcp_env(monkeypatch, capsys):
     result = server._load_enabled_toolsets()
     assert result is not None
     assert {"context_engine", "kanban", "memory", "project"} <= set(result)
-    assert set(result) - {"context_engine", "kanban", "memory", "project"} <= _RECENTLY_SHIPPED_TOOLSETS
+    # `swarm` is auto-recovered like `kanban` (non-configurable platform
+    # toolset), so it belongs in the base set rather than the recently-shipped
+    # back-fill bucket.
+    assert set(result) - {"context_engine", "kanban", "memory", "project", "swarm"} <= _RECENTLY_SHIPPED_TOOLSETS
     err = capsys.readouterr().err
     assert "ignoring disabled MCP servers" in err
     assert "mcp-off" in err
@@ -2068,7 +2071,10 @@ def test_load_enabled_toolsets_falls_back_when_tui_env_invalid(monkeypatch, caps
     result = server._load_enabled_toolsets()
     assert result is not None
     assert {"context_engine", "kanban", "memory", "project"} <= set(result)
-    assert set(result) - {"context_engine", "kanban", "memory", "project"} <= _RECENTLY_SHIPPED_TOOLSETS
+    # `swarm` is auto-recovered like `kanban` (non-configurable platform
+    # toolset), so it belongs in the base set rather than the recently-shipped
+    # back-fill bucket.
+    assert set(result) - {"context_engine", "kanban", "memory", "project", "swarm"} <= _RECENTLY_SHIPPED_TOOLSETS
     assert "using configured CLI toolsets" in capsys.readouterr().err
 
 
@@ -7863,7 +7869,7 @@ def test_prompt_submit_sets_approval_session_key(monkeypatch):
 def test_prompt_submit_rebinds_session_transport_for_reconnected_client(monkeypatch):
     class _Agent:
         def run_conversation(
-            self, prompt, conversation_history=None, stream_callback=None
+            self, prompt, conversation_history=None, stream_callback=None, **_kwargs
         ):
             if stream_callback:
                 stream_callback("partial")

@@ -8,6 +8,13 @@ implementation in this same file once that phase ships.
 from __future__ import annotations
 
 import pytest
+import sys
+
+# s6 supervisor skeleton tests use os.mkfifo and POSIX mode bits (03730/0660),
+# which do not exist on Windows — s6 is a Linux/docker backend anyway.
+skip_on_win32 = pytest.mark.skipif(
+    sys.platform == "win32", reason="s6 supervise skeleton: os.mkfifo + POSIX modes",
+)
 
 from hermes_cli.service_manager import (
     LaunchdServiceManager,
@@ -192,6 +199,7 @@ def fake_subprocess_run(monkeypatch: pytest.MonkeyPatch):
 # tests/docker/test_s6_profile_gateway_integration.py.
 
 
+@skip_on_win32
 def test_seed_supervise_skeleton_creates_expected_layout(tmp_path) -> None:
     """Verifies the dirs + FIFO + modes the helper lays down."""
     import stat
@@ -328,6 +336,7 @@ def _log_run_setup_fragment(rendered: str) -> str:
     return "#!/bin/sh\n" + "".join(keep)
 
 
+@skip_on_win32
 def test_s6_log_run_creates_leaf_as_hermes_without_chown(
     s6_scandir, fake_subprocess_run,
 ) -> None:

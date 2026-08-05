@@ -2,6 +2,7 @@
 
 import orjson
 import json
+import os
 import uuid
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -294,7 +295,10 @@ def test_relay_rewrite_precedes_sequential_policy_approval_checkpoint_and_dispat
     assert observed["start"] == expected
     assert observed["dispatch"] == expected
     assert observed["checkpoint"] == [
-        ("/approved/path", "before write_file")
+        (
+            os.path.abspath("/approved/path") if os.name == "nt" else "/approved/path",
+            "before write_file",
+        )
     ]
 
 

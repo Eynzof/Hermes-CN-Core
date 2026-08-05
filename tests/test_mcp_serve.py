@@ -1343,7 +1343,11 @@ class TestEventBridgePollE2E:
             "id": 2, "role": "assistant", "content": "arrived after start",
             "timestamp": "2026-03-29T15:05:00",
         })
-        os.utime(db_path, None)  # bump mtime so the poll gate opens
+        # Bump mtime so the poll gate opens. Use an explicit future stamp: on
+        # coarse-timestamp filesystems (Windows/NTFS) os.utime(None) right after
+        # the baseline stat can land in the same tick and leave the gate closed.
+        _now = time.time() + 5
+        os.utime(db_path, (_now, _now))
         bridge._poll_once(DB())
         events = bridge.poll_events(after_cursor=0)["events"]
         assert len(events) == 1
@@ -1381,7 +1385,8 @@ class TestEventBridgePollE2E:
             "id": 1, "role": "user", "content": "hello after baseline",
             "timestamp": "2026-03-29T15:10:00",
         }]
-        os.utime(db_path, None)
+        _now = time.time() + 5  # explicit future stamp (see above)
+        os.utime(db_path, (_now, _now))
         bridge._poll_once(DB())
 
         events = bridge.poll_events(after_cursor=0)["events"]

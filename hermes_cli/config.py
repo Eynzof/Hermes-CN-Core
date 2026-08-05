@@ -4223,62 +4223,7 @@ def _sanitize_env_lines(lines: list) -> list:
             sanitized.append(raw + "\n")
             continue
 
-        # Detect concatenated KEY=VALUE pairs on one line.
-        # Search for known KEY= patterns at any position in the line.
-        # We collect full needle ranges so we can drop matches that are
-        # fully contained within a longer overlapping needle. Without this,
-        # suffix collisions corrupt the file: e.g. LM_API_KEY= inside
-        # GLM_API_KEY= would otherwise split the line into "G\nLM_API_KEY=...".
-        match_ranges: list[tuple[int, int]] = []
-        for key_name in known_keys:
-            needle = key_name + "="
-            idx = stripped.find(needle)
-            while idx >= 0:
-                match_ranges.append((idx, idx + len(needle)))
-                idx = stripped.find(needle, idx + len(needle))
-
-        split_positions = sorted({
-            s
-            for s, e in match_ranges
-            if not any(
-                s2 <= s and e2 >= e and (s2, e2) != (s, e) for s2, e2 in match_ranges
-            )
-        })
-
-        # Only treat the line as a concatenation when it actually begins with a
-        # known KEY= (split_positions[0] == 0). A first match at a non-zero
-        # offset means the matches sit inside a value, so splitting there would
-        # silently drop the leading text — keep the line intact instead.
-        split_into_entries = False
-        segments: list[str] = []
-        if len(split_positions) > 1 and split_positions[0] == 0:
-            segments = [
-                stripped[
-                    pos : (
-                        split_positions[i + 1]
-                        if i + 1 < len(split_positions)
-                        else len(stripped)
-                    )
-                ]
-                for i, pos in enumerate(split_positions)
-            ]
-            # A genuine concatenation has a simple token value in every segment
-            # that precedes a boundary. If a preceding value looks structured
-            # (a URL/query string or whitespace), the embedded KNOWN_KEY= is
-            # part of that value rather than a new entry, so we must not split —
-            # otherwise we truncate the real secret and fabricate a bogus one.
-            split_into_entries = all(
-                not _looks_like_structured_value(seg.split("=", 1)[1])
-                for seg in segments[:-1]
-            )
-
-        if split_into_entries:
-            for seg in segments:
-                part = seg.strip()
-                if part:
-                    sanitized.append(part + "\n")
-        else:
-            sanitized.append(stripped + "\n")
+        sanitized.append(stripped + "\n")
 
     return sanitized
 
@@ -5484,7 +5429,7 @@ def set_config_value(key: str, value: str, force: bool = False):
 
     if (
         key.upper() in api_keys
-        or key.upper().endswith(("_API_KEY", "_TOKEN"))
+        or key.upper().endswith(("_API_KEY", "_TOKEN", "_SECRET"))
         or key.upper().startswith("TERMINAL_SSH")
     ):
         save_env_value(key.upper(), value)

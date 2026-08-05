@@ -173,7 +173,9 @@ def clarify_tool(
     return orjson.dumps({
         "question": question,
         "choices_offered": choices,
-        "user_response": str(user_response).strip(),
+        # multi_select yields a list (must not be stringified); the scalar
+        # path is already stripped above.
+        "user_response": user_response if isinstance(user_response, list) else str(user_response).strip(),
     }).decode('utf-8')
 
 

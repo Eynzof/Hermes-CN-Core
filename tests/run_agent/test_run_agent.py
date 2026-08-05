@@ -2285,6 +2285,10 @@ class TestAgentRuntimePostHookOwnershipSync:
         ("clarify", {"question": "Continue?"}),
         ("read_terminal", {}),
         ("delegate_task", {"goal": "Check the child path"}),
+        # agent_swarm is dispatched inline on the CN fork and owns its post
+        # hook (AGENT_RUNTIME_POST_HOOK_TOOL_NAMES includes it) — the
+        # ownership-contract test must exercise it like the other inline tools.
+        ("agent_swarm", {"description": "Test swarm"}),
     )
 
     @pytest.mark.parametrize(("tool_name", "tool_args"), _CASES)
@@ -2327,6 +2331,11 @@ class TestAgentRuntimePostHookOwnershipSync:
         monkeypatch.setattr(
             agent,
             "_dispatch_delegate_task",
+            lambda args: '{"ok":true}',
+        )
+        monkeypatch.setattr(
+            agent,
+            "_dispatch_agent_swarm",
             lambda args: '{"ok":true}',
         )
         agent._memory_manager = None

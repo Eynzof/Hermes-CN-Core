@@ -3410,10 +3410,6 @@ class AIAgent:
         # meant for the agent's next tool-call iteration, which will no
         # longer happen. Drop it instead of surprising the user with a
         # late injection on the post-interrupt turn.
-        # A hard interrupt supersedes any pending /steer — the steer was
-        # meant for the agent's next tool-call iteration, which will no
-        # longer happen. Drop it instead of surprising the user with a
-        # late injection on the post-interrupt turn.
         registry = getattr(self, "_reminder_registry", None)
         if registry is not None:
             registry.clear_user_reminders()
@@ -3448,7 +3444,24 @@ class AIAgent:
         registry = getattr(self, "_reminder_registry", None)
         if registry is None:
             return False
-        return registry.steer(text.strip())
+        if not registry.steer(text.strip()):
+            return False
+        # Deprecated mirror attribute: keep ``_pending_steer`` in sync so
+        # legacy readers (tests, the upstream tool-result injection helper)
+        # still observe the queued steer. The registry provider remains the
+        # single source of truth for the loop drains.
+        cleaned = text.strip()
+        _steer_lock = getattr(self, "_pending_steer_lock", None)
+        if _steer_lock is None:
+            existing = getattr(self, "_pending_steer", None)
+            self._pending_steer = (existing + "\n" + cleaned) if existing else cleaned
+        else:
+            with _steer_lock:
+                if self._pending_steer:
+                    self._pending_steer = self._pending_steer + "\n" + cleaned
+                else:
+                    self._pending_steer = cleaned
+        return True
 
     def redirect(self, text: str) -> bool:
         """Redirect the active turn without converting it into a new task.
@@ -3572,12 +3585,21 @@ class AIAgent:
         registry = getattr(self, "_reminder_registry", None)
         if registry is None:
             return None
+        text = None
         for provider in registry._user_providers:
             if isinstance(provider, SteerUserReminderProvider):
                 reminders = provider.get_reminders(self, 0)
                 if reminders:
-                    return reminders[0].content
-        return None
+                    text = reminders[0].content
+                break
+        # Keep the deprecated mirror attribute in sync (cleared on drain).
+        _steer_lock = getattr(self, "_pending_steer_lock", None)
+        if _steer_lock is None:
+            self._pending_steer = None
+        else:
+            with _steer_lock:
+                self._pending_steer = None
+        return text
 
     def _record_file_mutation_result(
         self,
@@ -3848,14 +3870,10 @@ class AIAgent:
     def _apply_pending_steer_to_tool_results(
         self, messages: list, num_tool_msgs: int
     ) -> None:
-        """Deprecated no-op.
+        """Forwarder — see ``agent.agent_runtime_helpers.apply_pending_steer_to_tool_results``."""
+        from agent.agent_runtime_helpers import apply_pending_steer_to_tool_results
 
-        Steers are now injected into the current turn's user message copy by
-        the unified :class:`ReminderRegistry`. Kept as a thin forwarder for
-        one transition cycle so external stubs/tests that monkeypatch it do
-        not crash.
-        """
-        return None
+        return apply_pending_steer_to_tool_results(self, messages, num_tool_msgs)
 
     def _touch_activity(
         self,

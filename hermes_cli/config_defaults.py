@@ -2403,10 +2403,12 @@ DEFAULT_CONFIG = {
     # curated model lists for OpenRouter and Nous Portal from this URL,
     # falling back to the in-repo snapshot on network failure.  Lets us
     # update model picker lists without shipping a hermes-agent release.
-    # The default URL is served by the docs site GitHub Pages deploy.
+    # CN fork: primary URL is the CN Desktop mirror (fast in mainland China);
+    # the docs-site URL upstream ships is used as the fallback chain in
+    # hermes_cli/model_catalog.py.
     "model_catalog": {
         "enabled": True,
-        "url": "https://hermes-agent.nousresearch.com/docs/api/model-catalog.json",
+        "url": "https://desktop.hermesagent.org.cn/api/model-catalog.json",
         # Disk cache TTL in hours.  Beyond this, the CLI refetches on the
         # next /model or `hermes model` invocation; network failures
         # silently fall back to the stale cache.

@@ -244,7 +244,10 @@ class TestEnsureInstalled:
         mock_cfg.return_value = {"tirith_enabled": True, "tirith_path": "tirith",
                                  "tirith_timeout": 5, "tirith_fail_open": True}
         _tirith_mod._resolved_path = None
-        with patch("os.path.isfile", return_value=True), \
+        # P-049 order: managed tools dir → PATH → legacy bin. The managed
+        # dir is absent here (isfile False), so the PATH-resolved binary
+        # must be returned immediately without any network attempt.
+        with patch("os.path.isfile", return_value=False), \
              patch("os.access", return_value=True):
             result = ensure_installed()
         assert result == "/usr/local/bin/tirith"
@@ -464,7 +467,9 @@ class TestInstallArchiveMemberValidation:
             path, reason = _install_tirith(log_failures=False)
 
         assert reason == ""
-        assert path == str(hermes_home / "bin" / "tirith")
+        # P-049: installs land in the managed tools dir (<HERMES_HOME>/tools),
+        # not the legacy <HERMES_HOME>/bin.
+        assert path == str(hermes_home / "tools" / "tirith")
         assert os.path.isfile(path)
         assert not os.path.islink(path)
         with open(path, "rb") as f:

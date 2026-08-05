@@ -654,10 +654,12 @@ class TestSpawnEnvSanitization:
             "PATH": "/usr/bin:/bin",
             "HOME": "/home/user",
             "USER": "tester",
+            "USERPROFILE": "C:\\Users\\tester",  # Windows Path.home() reads USERPROFILE, not HOME
             "TELEGRAM_BOT_TOKEN": "bot-secret",
             "FIRECRAWL_API_KEY": "fc-secret",
         }, clear=True), \
             patch("tools.process_registry._find_shell", return_value="/bin/bash"), \
+            patch("tools.process_registry._IS_WINDOWS", False), \
             patch("subprocess.Popen", side_effect=fake_popen), \
             patch("threading.Thread", return_value=fake_thread), \
             patch.object(registry, "_write_checkpoint"):
@@ -819,6 +821,7 @@ class TestSpawnRewriteCompoundBackground:
         fake_thread.daemon = False
 
         with patch("tools.process_registry._find_shell", return_value="/bin/bash"), \
+             patch("tools.process_registry._IS_WINDOWS", False), \
              patch("subprocess.Popen", side_effect=fake_popen), \
              patch("threading.Thread", return_value=fake_thread), \
              patch.object(registry, "_write_checkpoint"):
@@ -844,6 +847,7 @@ class TestSpawnRewriteCompoundBackground:
         fake_thread.daemon = False
 
         with patch("tools.process_registry._find_shell", return_value="/bin/bash"), \
+             patch("tools.process_registry._IS_WINDOWS", False), \
              patch("subprocess.Popen", side_effect=fake_popen), \
              patch("threading.Thread", return_value=fake_thread), \
              patch.object(registry, "_write_checkpoint"):
@@ -962,6 +966,7 @@ class TestKillProcess:
             with patch("gateway.status._pid_exists", return_value=True), \
                  patch.object(ProcessRegistry, "_daemon_term_grace_seconds",
                               staticmethod(lambda: 0.0)), \
+                 patch("tools.process_registry._IS_WINDOWS", False), \
                  patch.object(_psutil, "Process", side_effect=lambda pid: FakeProcess(pid)):
                 result = registry.kill_process(s.id)
 
@@ -1604,7 +1609,7 @@ class TestSpawnLocalShellSelection:
         assert "-Command" in captured["cmd"]
         ps_script = captured["cmd"][captured["cmd"].index("-Command") + 1]
         assert "Invoke-Expression 'echo hello'" in ps_script
-        assert "Set-Location -LiteralPath 'D:\test'" in ps_script
+        assert r"Set-Location -LiteralPath 'D:\test'" in ps_script
         assert "D:/tmp/hermes-cwd.txt" in ps_script
         assert captured["kwargs"]["env"]["PYTHONUNBUFFERED"] == "1"
 

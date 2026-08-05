@@ -52,6 +52,7 @@ from agent.trajectory import convert_scratchpad_to_think
 from agent.turn_context import drop_stale_api_content
 from agent.credential_pool import STATUS_EXHAUSTED, credential_pool_matches_provider
 from agent.error_classifier import FailoverReason
+from agent.prompt_builder import format_steer_marker
 from utils import (
     base_url_host_matches,
     base_url_hostname,
@@ -3438,9 +3439,10 @@ def sanitize_api_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]
     # empty-content filter only removes {assistant,user,function} turns while the
     # orphan/stub reconciliation below only rewrites {tool} messages, so the two
     # phases never interact and the fused order yields byte-identical output.
-    # Heal empty-content non-final stubs first (upstream self-recovery); our (b)
-    # pass below then drops any remaining payload-less empty turns (P-024).
-    messages = repair_empty_non_final_messages(messages)
+    # (The upstream ``repair_empty_non_final_messages`` heal is NOT wired into
+    # this fork's fused pass — P-024's empty-content DROP is the fork contract,
+    # and the differential fuzz in tests/run_agent/test_sanitize_single_pass.py
+    # pins the pass to the reference multi-pass which has no heal step.)
 
     surviving_call_ids: set = set()
     result_call_ids: set = set()
@@ -4107,13 +4109,69 @@ def extract_api_error_context(error: Exception) -> Dict[str, Any]:
 def apply_pending_steer_to_tool_results(
     agent, messages: list, num_tool_msgs: int
 ) -> None:
-    """Deprecated no-op.
+    """Append any pending /steer text to the last tool result in this turn.
 
-    Steers are now injected into the current turn's user message copy by
-    the unified :class:`ReminderRegistry`. Kept for backward compatibility
-    with any external code that still imports this helper.
+    Called at the end of a tool-call batch (after aggregate turn-budget
+    enforcement), before the next API call. The steer is appended to the
+    last ``role:"tool"`` message's content with a clear marker so the model
+    understands it came from the user and NOT from the tool itself. Role
+    alternation is preserved — nothing new is inserted, we only modify
+    existing content. (Restored from upstream — the merged no-op dropped the
+    executor's steer delivery, breaking P-023's tool-result injection.)
+
+    Args:
+        messages: The running messages list.
+        num_tool_msgs: Number of tool results appended in this batch;
+            used to locate the tail slice safely.
     """
-    return None
+    if num_tool_msgs <= 0 or not messages:
+        return
+    steer_text = agent._drain_pending_steer()
+    if not steer_text:
+        return
+    # Find the last tool-role message in the recent tail. Skipping
+    # non-tool messages defends against future code appending
+    # something else at the boundary.
+    target_idx = None
+    for j in range(len(messages) - 1, max(len(messages) - num_tool_msgs - 1, -1), -1):
+        msg = messages[j]
+        if isinstance(msg, dict) and msg.get("role") == "tool":
+            target_idx = j
+            break
+    if target_idx is None:
+        # No tool result in this batch (e.g. all skipped by interrupt);
+        # put the steer back so the caller's fallback path can deliver
+        # it as a normal next-turn user message.
+        _lock = getattr(agent, "_pending_steer_lock", None)
+        if _lock is not None:
+            with _lock:
+                if agent._pending_steer:
+                    agent._pending_steer = agent._pending_steer + "\n" + steer_text
+                else:
+                    agent._pending_steer = steer_text
+        else:
+            existing = getattr(agent, "_pending_steer", None)
+            agent._pending_steer = (existing + "\n" + steer_text) if existing else steer_text
+        return
+    marker = format_steer_marker(steer_text)
+    existing_content = messages[target_idx].get("content", "")
+    if not isinstance(existing_content, str):
+        # Anthropic multimodal content blocks — preserve them and append
+        # a text block at the end.
+        try:
+            blocks = list(existing_content) if existing_content else []
+            blocks.append({"type": "text", "text": marker.lstrip()})
+            messages[target_idx]["content"] = blocks
+        except Exception:
+            # Fall back to string replacement if content shape is unexpected.
+            messages[target_idx]["content"] = f"{existing_content}{marker}"
+    else:
+        messages[target_idx]["content"] = existing_content + marker
+    _ra().logger.info(
+        "Delivered /steer to agent after tool batch (%d chars): %s",
+        len(steer_text),
+        steer_text[:120] + ("..." if len(steer_text) > 120 else ""),
+    )
 
 
 def force_close_tcp_sockets(client: Any) -> int:

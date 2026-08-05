@@ -476,18 +476,20 @@ class TestSteerToolResultInjection:
         _inject_steer_into_tool_results(agent, messages, api_call_count=1)
         assert agent._steer_provider.peek() == "hello"
 
-    def test_apply_pending_steer_to_tool_results_is_no_op(self):
-        """The old tool-result injection path is deprecated and does nothing."""
+    def test_apply_pending_steer_to_tool_results_forwards_to_helper(self):
+        """The method forwards to the real marker injection (restored from
+        upstream) — the steer lands on the last tool result and is drained."""
         agent = _bare_agent()
-        agent.steer("should not land here")
+        agent.steer("should land here")
         messages = [
             {"role": "assistant", "tool_calls": [{"id": "a"}]},
             {"role": "tool", "content": "output", "tool_call_id": "a"},
         ]
         agent._apply_pending_steer_to_tool_results(messages, num_tool_msgs=1)
-        assert messages[-1]["content"] == "output"
-        # The steer is still pending in the registry.
-        assert agent._steer_provider.peek() == "should not land here"
+        assert STEER_MARKER_OPEN in messages[-1]["content"]
+        assert "should land here" in messages[-1]["content"]
+        # The steer was drained by the injection.
+        assert agent._steer_provider.peek() is None
 
     def test_marker_labels_text_as_out_of_band_user_message(self):
         """The injection marker must attribute the appended text to the user

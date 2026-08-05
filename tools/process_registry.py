@@ -869,7 +869,7 @@ class ProcessRegistry:
                         dimensions=(30, 120),
                     )
 
-                    session.pid = pty_proc.pid
+                session.pid = pty_proc.pid
                 session.host_start_time = self._safe_host_start_time(session.pid)
                 # Store the pty handle on the session for read/write
                 session._pty = pty_proc
@@ -909,7 +909,7 @@ class ProcessRegistry:
         else:
             proc = self._spawn_posix_local(
                 session=session,
-                command=command,
+                command=safe_command,
                 env_vars=env_vars,
             )
 

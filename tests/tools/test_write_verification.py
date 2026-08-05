@@ -1,6 +1,7 @@
 """Tests for write_file post-write content verification (verified flag)."""
 
 import json
+import sys
 from unittest.mock import patch as mock_patch
 
 import pytest
@@ -38,6 +39,12 @@ class TestWriteVerification:
         assert r.get("verified") is True
         assert b"\r\n" in f.read_bytes()
 
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="Mocking hashlib.sha256 can only force a mismatch when the on-disk "
+        "hash comes from the real sha256sum shell; on the Windows local backend "
+        "both sides hash in-process through the mocked module (P-033b/P-037)",
+    )
     def test_hash_mismatch_is_hard_error(self, workdir):
         f = workdir / "bad.txt"
         import tools.file_operations as fo
@@ -54,6 +61,12 @@ class TestWriteVerification:
         assert "error" in r
         assert "did not persist" in r["error"]
 
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="Simulates sha256sum missing by mocking _exec; on the Windows local "
+        "backend verification hashing is in-process (P-033b/P-037) and never "
+        "shells out, so the scenario is unreachable — verification simply runs",
+    )
     def test_verification_failure_never_breaks_write(self, workdir):
         # sha256sum unavailable/failing -> verified omitted, write still ok.
         f = workdir / "ok.txt"

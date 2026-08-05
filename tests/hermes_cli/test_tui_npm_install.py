@@ -1,6 +1,7 @@
 """_tui_need_npm_install: auto npm when node_modules is behind the lockfile."""
 
 import os
+import sys
 import types
 from pathlib import Path
 
@@ -44,6 +45,7 @@ def _assert_utf8_replace_capture(kwargs: dict) -> None:
 
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX node/npm path assertions; Windows resolves real PATH binaries")
 def test_make_tui_argv_uses_bundled_tui_when_workspace_missing(
     tmp_path: Path, main_mod, monkeypatch
 ) -> None:
@@ -137,6 +139,7 @@ def test_no_stray_lockfiles_in_workspace_subdirs(main_mod) -> None:
     )
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX node/npm path assertions; Windows resolves real PATH binaries")
 def test_make_tui_argv_omits_workspace_when_tui_has_own_lockfile(
     tmp_path: Path, main_mod, monkeypatch
 ) -> None:

@@ -13,10 +13,19 @@ freshness check is a no-op and the OOM rebuild always runs.
 
 import os
 import time
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+
+# POSIX-only: /usr/bin/npm path assertions and fcntl flock serialization.
+# On Windows npm resolves from the real PATH (find_node_executable_on_path scans
+# PATH directly, bypassing the shutil.which mock) and fcntl does not exist.
+win32_posix_web_build = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="POSIX-only: /usr/bin/npm path assertion + fcntl flock",
+)
 
 from hermes_cli.main import (
     _web_ui_build_needed,
@@ -123,6 +132,7 @@ class TestBuildWebUISkipsWhenFresh:
 
 
 
+    @win32_posix_web_build
     def test_web_install_omits_workspace_when_web_has_own_lockfile(
         self, tmp_path, monkeypatch
     ):
@@ -153,6 +163,7 @@ class TestBuildWebUISkipsWhenFresh:
         assert args[0] == ["/usr/bin/npm", "ci", "--include=dev", "--silent", "--prefer-offline"]
         assert kwargs["cwd"] == web_dir
 
+    @win32_posix_web_build
     def test_web_build_uses_idle_timeout_helper(self, tmp_path):
         """npm run build now goes through _run_with_idle_timeout (issue #33788).
 
@@ -235,6 +246,7 @@ class TestBuildWebUIFlock:
 
 
 
+    @win32_posix_web_build
     def test_contended_lock_without_dist_waits_then_skips_fresh_build(self, tmp_path):
         """First-ever build race: the waiter blocks, and once it acquires the
         lock the callee's own staleness check (running under the lock) sees

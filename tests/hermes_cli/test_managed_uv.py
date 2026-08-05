@@ -131,6 +131,7 @@ class TestEnsureUv:
             assert path == str(tmp_path / "bin" / "uv")
             mock_install.assert_called_once()
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="assumes POSIX uv layout (bin/uv, exec bit, shell installer); Windows uses uv.exe + install.ps1")
     def test_install_reports_runtime_repair_to_observer(self, tmp_path):
         from hermes_cli.managed_uv import (
             RuntimeRepairResult,
@@ -274,6 +275,7 @@ class TestUpdateManagedUv:
             assert mock_run.call_count == 2
             assert mock_run.call_args_list[0][0][0] == [str(tmp_path / "bin" / "uv"), "self", "update"]
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="assumes POSIX uv layout (bin/uv, exec bit, shell installer); Windows uses uv.exe + install.ps1")
     def test_fresh_stamp_skips_network_self_update_but_not_repair(self, tmp_path, monkeypatch):
         """A recent success stamp must skip `uv self update` entirely while the
         vulnerable-runtime repair probe still runs (CVE repair is never gated)."""
@@ -300,6 +302,7 @@ class TestUpdateManagedUv:
         mock_repair.assert_called_once_with(str(uv))
 
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="assumes POSIX uv layout (bin/uv, exec bit, shell installer); Windows uses uv.exe + install.ps1")
     def test_stale_stamp_runs_self_update_and_refreshes_stamp(self, tmp_path):
         import os as _os
         import time as _time
@@ -1017,9 +1020,12 @@ class TestDefaultLiveVenv:
         root.mkdir()
         (root / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
         for d in dirs:
-            bin_dir = root / d / "bin"
+            # venv interpreter layout: Scripts/python.exe on Windows,
+            # bin/python on POSIX (mirrors hermes_constants.venv_python_path).
+            bin_dir = root / d / ("Scripts" if sys.platform == "win32" else "bin")
             bin_dir.mkdir(parents=True)
-            (bin_dir / "python").write_text("py", encoding="utf-8")
+            py_name = "python.exe" if sys.platform == "win32" else "python"
+            (bin_dir / py_name).write_text("py", encoding="utf-8")
         return root
 
     def test_dot_venv_only_is_targeted(self, tmp_path):

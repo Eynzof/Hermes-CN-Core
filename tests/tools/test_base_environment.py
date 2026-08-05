@@ -4,6 +4,7 @@ Tests _wrap_command(), _extract_cwd_from_output(), _embed_stdin_heredoc(),
 init_session() failure handling, and the CWD marker contract.
 """
 
+import sys
 from unittest.mock import MagicMock
 
 from tools.environments.base import BaseEnvironment, _BoundedOutputCollector
@@ -192,9 +193,9 @@ class TestAtomicSnapshotConcurrencyBehavioral:
 
     def test_concurrent_writes_never_tear_the_snapshot(self, tmp_path):
         import shutil
-        if not shutil.which("bash"):
+        if sys.platform == "win32" or not shutil.which("bash"):
             import pytest
-            pytest.skip("bash required")
+            pytest.skip("bash required (POSIX-only; /bin/bash hardcoded)")
         import shlex
         snap = str(tmp_path / "hermes-snap-x.sh")
         _q = shlex.quote
@@ -231,9 +232,9 @@ class TestAtomicSnapshotConcurrencyBehavioral:
         """If ``export -p`` fails, the ``&&``-chained mv must NOT clobber the
         existing good snapshot."""
         import shutil
-        if not shutil.which("bash"):
+        if sys.platform == "win32" or not shutil.which("bash"):
             import pytest
-            pytest.skip("bash required")
+            pytest.skip("bash required (POSIX-only; /bin/bash hardcoded)")
         import shlex
         snap = str(tmp_path / "snap.sh")
         _q = shlex.quote
@@ -260,9 +261,9 @@ class TestSnapshotFileModes:
         import shutil
         import stat
         import subprocess
-        if not shutil.which("bash"):
+        if sys.platform == "win32" or not shutil.which("bash"):
             import pytest
-            pytest.skip("bash required")
+            pytest.skip("bash required (POSIX-only; /bin/bash hardcoded)")
 
         class ExecutableEnv(BaseEnvironment):
             def __init__(self, temp_dir):

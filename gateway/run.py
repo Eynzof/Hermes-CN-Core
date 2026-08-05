@@ -22711,7 +22711,9 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
             option=_j.OPT_SORT_KEYS,
             default=str,
         )
-        return hashlib.sha256(blob.encode()).hexdigest()[:16]
+        # orjson.dumps returns bytes (unlike stdlib json.dumps str), so no
+        # .encode() here.
+        return hashlib.sha256(blob).hexdigest()[:16]
 
     def _rehydrate_session_model_override(self, session_key: str) -> None:
         """Lazily restore a persisted /model override after a gateway restart.

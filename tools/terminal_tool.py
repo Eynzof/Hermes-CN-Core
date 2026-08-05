@@ -63,6 +63,7 @@ logger = logging.getLogger(__name__)
 # long-running subprocesses immediately instead of blocking until timeout.
 # ---------------------------------------------------------------------------
 from tools.interrupt import is_interrupted, _interrupt_event  # noqa: F401 — re-exported
+from tools.ansi_strip import strip_ansi
 from tools.registry import tool_error
 # display_hermes_home imported lazily at call site (stale-module safety during hermes update)
 
@@ -1153,20 +1154,20 @@ def _build_dynamic_terminal_description() -> dict:
     # commands change.
     if shell_type in ("powershell", "pwsh"):
         new_description = new_description.replace(
-            "Do NOT use cat/head/tail to read files",
-            "Do NOT use Get-Content/cat/type to read files",
+            "Do NOT use cat/head/tail (use read_file)",
+            "Do NOT use Get-Content/cat/type (use read_file)",
         )
         new_description = new_description.replace(
-            "Do NOT use grep/rg/find to search",
-            "Do NOT use Select-String/findstr to search",
+            "grep/rg/find/ls (use search_files)",
+            "Select-String/findstr (use search_files)",
         )
         new_description = new_description.replace(
-            "Do NOT use ls to list directories",
-            "Do NOT use Get-ChildItem/ls/dir to list directories",
+            "sed/awk (use patch)",
+            "Set-Content/Out-File (use patch)",
         )
         new_description = new_description.replace(
-            "Do NOT use echo/cat heredoc to create files",
-            "Do NOT use echo/Set-Content/Out-File to create files",
+            "echo/heredoc file creation (use write_file)",
+            "echo/Set-Content/Out-File file creation (use write_file)",
         )
         new_description = new_description.replace(
             "Pipe git output to cat if it might page.",
@@ -2686,7 +2687,7 @@ def terminal_tool(
                         "separate shell outside the running gateway."
                     ),
                     "status": "error",
-                }).decode('utf-8')
+                }, ensure_ascii=False)
 
         # Pre-exec security checks (tirith + dangerous command detection)
         # Skip check if force=True (user has confirmed they want to run it)

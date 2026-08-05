@@ -1,4 +1,3 @@
-import json
 """Relay media client — gateway↔connector media plane (Phase 2). EXPERIMENTAL.
 
 The relay wire contract carries media BY REFERENCE, never by value: an inbound
@@ -32,6 +31,7 @@ EXPERIMENTAL: may change without a deprecation cycle (docs/relay-connector-contr
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import mimetypes
 import os

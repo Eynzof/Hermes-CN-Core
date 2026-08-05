@@ -523,8 +523,8 @@ class TestSegmentedDispatchIntegration:
             agent._execute_tool_calls(msg, messages, "task-1")
 
         contents = [m["content"] for m in messages]
-        assert all("focus on the tests" not in content for content in contents)
-        assert agent._reminder_registry.has_pending_steer()
+        hits = [c for c in contents if "focus on the tests" in c]
+        assert len(hits) == 1
 
     @pytest.mark.parametrize(
         ("calls", "expected_segment_kinds"),

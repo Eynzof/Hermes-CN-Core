@@ -330,6 +330,7 @@ class TestSupervisedBackendRestart:
     def _live(self):
         return sys.modules["hermes_cli.main"]
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="POSIX kill/systemd semantics")
     def test_supervised_pid_restarts_owning_unit(self, capsys):
         """A killed PID whose cgroup names a custom unit → systemctl restart."""
         live = self._live()
@@ -366,6 +367,7 @@ class TestManualBackendRespawn:
         return sys.modules["hermes_cli.main"]
 
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="POSIX kill/systemd semantics")
     def test_argv_capture_failure_falls_back_to_hint(self, capsys):
         live = self._live()
 
@@ -425,6 +427,7 @@ class TestCmdlineCapture:
     def _live(self):
         return sys.modules["hermes_cli.main"]
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="POSIX kill/systemd semantics")
     def test_reads_proc_cmdline_when_available(self, tmp_path, monkeypatch):
         live = self._live()
         proc_file = tmp_path / "cmdline"
@@ -450,6 +453,7 @@ class TestCmdlineCapture:
 
         assert argv == ["/usr/bin/python3", "-m", "hermes_cli.main", "serve"]
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="POSIX kill/systemd semantics")
     def test_falls_back_to_ps_without_proc(self, monkeypatch):
         live = self._live()
 

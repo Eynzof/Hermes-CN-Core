@@ -569,17 +569,34 @@ class TestSubprocessCompatHelpers:
             # No start_new_session on Windows (silently no-op there).
             assert "start_new_session" not in kwargs
 
-    def test_windows_detach_flags_has_expected_win32_bits(self, monkeypatch):
-        """Simulate Windows to verify flag bundle."""
+    def test_windows_detach_flags_exclude_detached_process(self, monkeypatch):
+        """DETACHED_PROCESS must stay OUT of every detach bundle.
+
+        Two reasons (the #54220/#56747 console-flash class):
+        1. MSDN: CREATE_NO_WINDOW is IGNORED when combined with
+           DETACHED_PROCESS — the hide bit would be dead.
+        2. A console-less daemon forces every console-subsystem descendant
+           (git, gh, cmd, node, …) to allocate its own visible console — a
+           flash per spawn that no per-call-site hide sweep can fully cover.
+           CREATE_NO_WINDOW instead gives the daemon one hidden console that
+           all descendants inherit (parent-console root cause isolated by
+           the desktop backend fix, commit aa2ae36c3f).
+        """
         from hermes_cli import _subprocess_compat as sc
         monkeypatch.setattr(sc, "IS_WINDOWS", True)
         flags = sc.windows_detach_flags()
-        # CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS | CREATE_NO_WINDOW |
-        # CREATE_BREAKAWAY_FROM_JOB
+        # CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW | CREATE_BREAKAWAY_FROM_JOB
         assert flags & 0x00000200, "missing CREATE_NEW_PROCESS_GROUP"
-        assert flags & 0x00000008, "missing DETACHED_PROCESS"
         assert flags & 0x08000000, "missing CREATE_NO_WINDOW"
         assert flags & 0x01000000, "missing CREATE_BREAKAWAY_FROM_JOB"
+        assert not flags & 0x00000008, (
+            "DETACHED_PROCESS must not be in windows_detach_flags(): it makes "
+            "CREATE_NO_WINDOW a no-op and re-creates the per-descendant "
+            "console flash (#54220/#56747)."
+        )
+        assert not sc.windows_detach_flags_without_breakaway() & 0x00000008, (
+            "DETACHED_PROCESS must not be in the no-breakaway fallback either."
+        )
 
     def test_windows_detach_flags_includes_breakaway_from_job(self, monkeypatch):
         """CREATE_BREAKAWAY_FROM_JOB is load-bearing for the GUI-driven update path.
@@ -621,9 +638,10 @@ class TestSubprocessCompatHelpers:
         fallback = sc.windows_detach_flags_without_breakaway()
         # Fallback equals full minus the breakaway bit, nothing else changed.
         assert fallback == full & ~0x01000000
-        # And the three "detach" bits we still need are present.
+        # And the detach bits we still need are present (hidden console, own
+        # process group — NOT console-less DETACHED_PROCESS, see
+        # test_windows_detach_flags_exclude_detached_process).
         assert fallback & 0x00000200, "fallback missing CREATE_NEW_PROCESS_GROUP"
-        assert fallback & 0x00000008, "fallback missing DETACHED_PROCESS"
         assert fallback & 0x08000000, "fallback missing CREATE_NO_WINDOW"
 
 
@@ -643,15 +661,21 @@ class TestTuiGatewayEntrySignalGuards:
     def test_source_guards_each_signal_installation(self):
         root = Path(__file__).resolve().parents[2]
         source = (root / "tui_gateway" / "entry.py").read_text(encoding="utf-8", errors="replace")
-        # Every signal.signal(...) at module scope must be preceded by a
-        # hasattr check.  We look at the text: no bare "signal.signal("
-        # call should appear outside a function body without a guard.
-        # Simpler heuristic: all SIGPIPE / SIGHUP references outside the
-        # dict-building loop must be wrapped in hasattr.
-        assert 'hasattr(signal, "SIGPIPE")' in source
-        assert 'hasattr(signal, "SIGHUP")' in source
-        assert 'hasattr(signal, "SIGTERM")' in source
-        assert 'hasattr(signal, "SIGINT")' in source
+        # Every signal installation at module scope must be guarded against
+        # missing signals (Windows: SIGPIPE/SIGHUP absent).  Originally this
+        # was ``hasattr(signal, "SIGPIPE")`` inline; PR #72677 refactored to
+        # ``_install_signal("SIGPIPE", ...)`` which does the same guard via
+        # ``getattr(signal, signame, None)`` internally.  Either form is
+        # acceptable — what matters is no bare ``signal.signal(SIGPIPE)``
+        # at module scope without a guard.
+        for sig_name in ("SIGPIPE", "SIGHUP", "SIGTERM", "SIGINT"):
+            assert (
+                f'hasattr(signal, "{sig_name}")' in source
+                or f'_install_signal("{sig_name}"' in source
+            ), (
+                f"signal {sig_name} must be installed via a guarded path "
+                f"(hasattr or _install_signal), not bare signal.signal()"
+            )
 
     def test_module_imports_cleanly(self):
         """Importing the module must not raise — verifies the guards work."""

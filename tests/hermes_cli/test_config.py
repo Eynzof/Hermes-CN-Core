@@ -36,7 +36,12 @@ class TestGetHermesHome:
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("HERMES_HOME", None)
             home = get_hermes_home()
-            assert home == Path.home() / ".hermes"
+            # CN fork: on Windows the platform-native default home is
+            # %LOCALAPPDATA%\hermes, not ~/.hermes (see
+            # hermes_constants._get_platform_default_hermes_home).
+            from hermes_constants import _get_platform_default_hermes_home
+
+            assert home == _get_platform_default_hermes_home()
 
 
 class TestEnsureHermesHome:

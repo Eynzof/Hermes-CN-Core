@@ -1,5 +1,6 @@
 """Tests for OSV malware check on MCP extension packages."""
 
+import json
 import orjson
 import pytest
 from unittest.mock import patch, MagicMock

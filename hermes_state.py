@@ -8739,10 +8739,16 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
             return 0
 
         def _do(conn):
+            # Match rows under the workspaces root regardless of the path
+            # separator: POSIX stores ``<root>/<id>``, Windows stores
+            # ``<root>\<id>``.  The ESCAPE char is ``\``, so a literal
+            # backslash in the pattern is ``\\``.
+            escaped = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
             cursor = conn.execute(
                 "UPDATE sessions SET source = 'kanban' "
-                "WHERE source = 'cli' AND (cwd = ? OR cwd LIKE ? ESCAPE '\\')",
-                (prefix, prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "/%"),
+                "WHERE source = 'cli' AND (cwd = ? OR cwd LIKE ? ESCAPE '\\' "
+                "OR cwd LIKE ? ESCAPE '\\')",
+                (prefix, escaped + "/%", escaped + "\\\\%"),
             )
             # Read rowcount before set_meta reuses this cursor for its INSERT,
             # which would otherwise overwrite it with the meta write's count.

@@ -1,3 +1,4 @@
+import json
 """Relay media client — gateway↔connector media plane (Phase 2). EXPERIMENTAL.
 
 The relay wire contract carries media BY REFERENCE, never by value: an inbound

@@ -1,3 +1,4 @@
+import json
 """hermes memory setup|status — configure memory provider plugins.
 
 Auto-detects installed memory providers via the plugin system.

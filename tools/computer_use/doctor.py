@@ -21,6 +21,7 @@ Exit code conventions:
 
 from __future__ import annotations
 
+import json
 import orjson
 import os
 import platform as _platform_mod

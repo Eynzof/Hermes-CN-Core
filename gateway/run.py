@@ -29,6 +29,7 @@ import concurrent.futures
 import dataclasses
 import faulthandler
 import inspect
+import json
 import orjson
 import logging
 import os
@@ -22707,7 +22708,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                 # rebuild the cached agent, not silently reuse it.
                 bool(skip_context_files),
             ],
-            sort_keys=True,
+            option=_j.OPT_SORT_KEYS,
             default=str,
         )
         return hashlib.sha256(blob.encode()).hexdigest()[:16]

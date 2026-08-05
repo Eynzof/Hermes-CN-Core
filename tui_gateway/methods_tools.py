@@ -1,3 +1,4 @@
+import json
 """Tools & system / slash.exec / insights / rollback / browser-plugins-cron-skills JSON-RPC handlers (moved verbatim from server.py).
 
 Handler bodies are byte-identical to their pre-split server.py form; they

@@ -15,6 +15,7 @@ This module provides:
 """
 
 import copy
+import json
 import orjson
 import logging
 import os

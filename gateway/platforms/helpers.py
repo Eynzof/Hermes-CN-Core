@@ -6,6 +6,7 @@ and thread participation tracking.
 """
 
 import asyncio
+import json
 import orjson
 import logging
 from agent.re_compat import re

@@ -14,6 +14,7 @@ gateway/run.py for messaging). This module defines the schema, validation, and
 a thin dispatcher that delegates to a platform-provided callback.
 """
 
+import json
 import orjson
 from typing import List, Optional, Callable
 

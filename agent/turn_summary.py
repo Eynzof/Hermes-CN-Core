@@ -1,3 +1,4 @@
+import json
 """Per-turn accounting for the interactive CLI.
 
 Two display-only pieces live here:

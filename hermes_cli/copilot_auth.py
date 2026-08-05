@@ -18,6 +18,7 @@ Credential search order (matching Copilot CLI behaviour):
 
 from __future__ import annotations
 
+import json
 import orjson
 import logging
 import os

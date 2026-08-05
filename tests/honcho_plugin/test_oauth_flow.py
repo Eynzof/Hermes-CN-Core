@@ -6,6 +6,7 @@ exchange → install_grant → forced-expiry refresh with rotation. This is the
 deterministic "real smoke test" for the consumer flow.
 """
 
+import json
 import orjson
 import threading
 import time

@@ -5402,6 +5402,7 @@ class GatewaySlashCommandsMixin:
         can notify the user when the update finishes.
         """
         from gateway.run import _hermes_home, _resolve_hermes_bin
+        import json
         import orjson
         import shutil
         import subprocess

@@ -83,7 +83,8 @@ def _relay_bot_ids_map() -> dict:
     """Parse ``GATEWAY_RELAY_BOT_IDS`` (JSON keyed map). Never raises — a malformed
     map yields ``{}`` so a bad config degrades to empty bot ids (the connector
     rejects an unprovisioned platform) rather than crashing boot."""
-    import orjson
+    import json
+import orjson
     import logging
 
     raw = os.environ.get("GATEWAY_RELAY_BOT_IDS", "").strip()

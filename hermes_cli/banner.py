@@ -3,6 +3,7 @@
 Pure display functions with no HermesCLI state dependency.
 """
 
+import json
 import orjson
 import logging
 import os

@@ -2071,7 +2071,8 @@ def run_doctor(args):
                     cwd=str(npm_dir),
                     capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=30,
                 )
-                import orjson as _json
+                import json
+import orjson as _json
                 audit_data = _json.loads(audit_result.stdout) if audit_result.stdout.strip() else {}
                 vuln_count = audit_data.get("metadata", {}).get("vulnerabilities", {})
                 critical = vuln_count.get("critical", 0)

@@ -13,6 +13,7 @@ calls ``build_system_prompt_parts`` / inspects ``agent.tools`` offline.
 
 from __future__ import annotations
 
+import json
 import orjson
 from agent.re_compat import re
 from pathlib import Path

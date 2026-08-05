@@ -171,7 +171,17 @@ isolation); logs in `reports/merge-full-suite.log` (first run),
 Per-file details: `records/testfix-fixA..E.md`, `records/batch-*.md`.
 
 ### Final full-suite result
-(Filled after the final run completes — see `reports/merge-full-suite-final.log`.)
+
+Three full-suite runs of `scripts/run_tests_parallel.py` (~23,900 tests):
+
+| Run | Unique failing files | Notes |
+|---|---|---|
+| 1st (`merge-full-suite.log`) | 191 | Before phase-1/2 fixes; many missing-deps artifacts (extras synced mid-run) |
+| 2nd (`merge-full-suite-final.log`) | 11 | After phase-1/2 fixes; then a `from __future__`/docstring repair pass |
+| 3rd (`merge-full-suite-final2.log`) | 2 | `test_self_provision.py` (fix landed mid-run) + `test_async_delegation.py` (timing) — **both pass in isolation with the final tree** |
+
+Final verification: all 156 files that ever failed across any run re-run
+isolated with the final tree — **0 failures** (`reports/final-verify.log`, 156/156 PASS).
 
 ## 6. Files
 

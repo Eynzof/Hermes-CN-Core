@@ -1,6 +1,6 @@
 """Tests for ``hermes gui`` desktop launcher wiring."""
-
 from __future__ import annotations
+
 
 import argparse
 import subprocess

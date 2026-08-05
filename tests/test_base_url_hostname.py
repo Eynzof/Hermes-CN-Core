@@ -5,8 +5,8 @@ wizards, billing routes, and the trajectory compressor to avoid the
 substring-match false-positive class documented in
 tests/agent/test_direct_provider_url_detection.py.
 """
-
 from __future__ import annotations
+
 
 from utils import base_url_hostname, base_url_host_matches
 

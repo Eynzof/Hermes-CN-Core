@@ -10,8 +10,8 @@ Covers:
 
 Pure unit tests: no socket, no websockets dependency.
 """
-
 from __future__ import annotations
+
 
 from gateway.relay.descriptor import CapabilityDescriptor
 from gateway.relay.ws_transport import _event_from_wire, _render_relay_context

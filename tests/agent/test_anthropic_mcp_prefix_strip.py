@@ -12,8 +12,8 @@ the OAuth wire NOTHING may carry a single-underscore ``mcp_`` prefix:
 registry knows (the single-underscore ``mcp_<server>_<tool>`` form for MCP server
 tools, or the bare name for native tools) so the dispatcher is unaffected.
 """
-
 from __future__ import annotations
+
 
 from types import SimpleNamespace
 from unittest.mock import patch

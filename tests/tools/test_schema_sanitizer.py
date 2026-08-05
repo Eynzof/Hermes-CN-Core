@@ -4,8 +4,8 @@ Targets the known llama.cpp ``json-schema-to-grammar`` failure modes that
 cause ``HTTP 400: Unable to generate parser for this template. ...
 Unrecognized schema: "object"`` errors on local inference backends.
 """
-
 from __future__ import annotations
+
 
 import copy
 

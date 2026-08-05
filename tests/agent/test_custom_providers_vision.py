@@ -5,8 +5,8 @@ legacy list-style custom_providers config, image_routing should honor it
 and route images natively instead of falling through to models.dev or
 the auxiliary vision_analyze path.
 """
-
 from __future__ import annotations
+
 
 import pytest
 

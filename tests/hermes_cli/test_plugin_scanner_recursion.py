@@ -5,8 +5,8 @@ Covers ``_scan_directory`` recursion into category namespaces
 keys, and the new gate logic (bundled backends auto-load; user backends
 still opt-in; exclusive kind skipped; unknown kinds → standalone warning).
 """
-
 from __future__ import annotations
+
 
 from pathlib import Path
 from typing import Any, Dict

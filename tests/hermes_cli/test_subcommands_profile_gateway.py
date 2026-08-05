@@ -3,8 +3,8 @@
 Confirms the builders attach the same subactions and ``func=`` dispatch that
 lived inline in ``main()`` before the god-file Phase 2 extraction.
 """
-
 from __future__ import annotations
+
 
 import argparse
 

@@ -15,8 +15,8 @@ globals, managed-scope caches, and ``_under_pytest`` guards behave like
 production: ``HERMES_MANAGED_DIR`` is set explicitly, which bypasses the
 pytest suppression in ``get_managed_dir``.
 """
-
 from __future__ import annotations
+
 
 import json
 import subprocess

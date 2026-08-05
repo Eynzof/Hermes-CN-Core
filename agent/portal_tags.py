@@ -28,8 +28,8 @@ Do NOT pre-compute these as module-level constants in the consumers. The
 version can change at runtime (editable installs, hot-reload tooling), and
 ``hermes_cli.__version__`` is the canonical source of truth.
 """
-
 from __future__ import annotations
+
 
 from contextvars import ContextVar
 from typing import List, Optional

@@ -18,8 +18,8 @@ Contract pinned here:
 * ``session.resume``'s live payload carries the retained snapshot.
 * A retained failure never leaks into the next turn's inflight state.
 """
-
 from __future__ import annotations
+
 
 import threading
 import types

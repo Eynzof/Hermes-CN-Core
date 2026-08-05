@@ -18,8 +18,8 @@ whether the page is a valid OAuth endpoint or a misconfigured URL.  The right
 validator for OAuth servers is ``.well-known/oauth-protected-resource``, which
 the OAuth handshake consults automatically.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import http.server

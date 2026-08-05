@@ -1,6 +1,6 @@
 """Durable aggregation and local export for Hermes shared metrics."""
-
 from __future__ import annotations
+
 
 import json
 import logging

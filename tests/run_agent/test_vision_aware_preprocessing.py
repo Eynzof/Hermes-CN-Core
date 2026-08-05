@@ -10,8 +10,8 @@ Covers:
 * ``_prepare_messages_for_non_vision_model`` — the mirror method for the
   chat.completions / codex_responses paths. Same contract.
 """
-
 from __future__ import annotations
+
 
 from unittest.mock import MagicMock, patch
 

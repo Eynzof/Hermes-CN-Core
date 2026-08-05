@@ -8,8 +8,8 @@ to a text summary instead of waiting for a reactive 400 recovery.
 The fix adds ``supports_vision_tool_messages`` to ``ProviderProfile``
 and checks it in ``_tool_result_content_for_active_model``.
 """
-
 from __future__ import annotations
+
 
 from unittest.mock import MagicMock, patch
 

@@ -13,8 +13,8 @@ Covers NousResearch/hermes-agent#67052:
 
 Stdlib + pytest + unittest.mock only. No live cua-driver, no network.
 """
-
 from __future__ import annotations
+
 
 import json
 import os

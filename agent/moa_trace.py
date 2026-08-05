@@ -19,8 +19,8 @@ files, keyed by session id, and are safe to delete.
 Cost model note: gated OFF by default. When off, the only overhead is the
 ``_traces_enabled()`` config read (cheap) — no file I/O, no serialization.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import logging

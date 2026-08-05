@@ -26,8 +26,8 @@ Configuration in config.yaml:
             group_id_1:
               allow_from: ["user_id_1"]
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import pybase64 as base64

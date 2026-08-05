@@ -14,8 +14,8 @@ connector's resolve + tenant-match enforcement lives in the connector repo
   - a failed resolve (absent/expired/tenant mismatch) returns success=False
     with nothing for the gateway to retry with.
 """
-
 from __future__ import annotations
+
 
 import pytest
 

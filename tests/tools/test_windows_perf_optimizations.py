@@ -14,8 +14,8 @@ contracts that mock the platform / force the in-process path, so they run on
 any host (including the Linux CI slices).  The live PowerShell / cmd.exe /
 Win32-attribute tests ``skipif`` when PowerShell or Windows is unavailable.
 """
-
 from __future__ import annotations
+
 
 import os
 import shutil

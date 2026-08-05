@@ -5,8 +5,8 @@ Covers ``_UpdateOutputStream``, ``_install_hangup_protection``, and
 that ``hermes update`` survives a terminal disconnect mid-install
 (SSH drop, shell close) without leaving the venv half-installed.
 """
-
 from __future__ import annotations
+
 
 import io
 import signal

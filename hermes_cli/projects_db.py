@@ -20,8 +20,8 @@ systems agree on the repo + branch convention without merging their stores.
 The schema is intentionally small and additive: column additions go through
 :func:`_add_column_if_missing` so opening an old DB is always safe.
 """
-
 from __future__ import annotations
+
 
 import contextlib
 import os

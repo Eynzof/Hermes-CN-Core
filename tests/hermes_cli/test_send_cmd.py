@@ -4,8 +4,8 @@ Covers the argument parsing / stdin / file / list behavior of
 ``hermes_cli.send_cmd``. The underlying ``send_message_tool`` is stubbed so
 no network I/O or gateway is required.
 """
-
 from __future__ import annotations
+
 
 import io
 import json

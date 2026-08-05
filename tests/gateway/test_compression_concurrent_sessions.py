@@ -14,8 +14,8 @@ the compressor returns deterministic output and sleeps briefly so threads
 actually overlap at the OS level, making the absence of aliasing a genuine
 stress test rather than a timing accident.
 """
-
 from __future__ import annotations
+
 
 import os
 import threading

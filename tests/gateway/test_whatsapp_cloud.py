@@ -9,8 +9,8 @@ All tests are fixture-driven — no live network. httpx is patched so the
 adapter never reaches graph.facebook.com, and the aiohttp server is
 exercised with synthetic ``Request`` objects.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import json

@@ -11,8 +11,8 @@ Covers the agent half of Shape A (gateway-gateway D-Q1.5b.1 / D-Q1.5c):
 
 The connector HTTP is monkeypatched; the cross-repo E2E exercises the real path.
 """
-
 from __future__ import annotations
+
 
 import orjson
 

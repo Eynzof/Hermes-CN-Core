@@ -1,6 +1,6 @@
 """Regression tests for hermetic guards around local desktop side effects."""
-
 from __future__ import annotations
+
 
 import webbrowser
 

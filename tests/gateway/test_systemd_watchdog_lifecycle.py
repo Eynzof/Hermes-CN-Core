@@ -1,6 +1,6 @@
 """Gateway lifecycle contract for the opt-in systemd watchdog."""
-
 from __future__ import annotations
+
 
 import inspect
 from unittest.mock import patch

@@ -6,8 +6,8 @@ the client tools (with HTTP mocked), adapter RPC handlers driven directly
 (no HTTP), and real end-to-end inbound round-trips against a live http.server
 with a mocked agent handler.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import hashlib

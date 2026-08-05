@@ -15,8 +15,8 @@ This test class covers all FIVE sites that assign ``_is_anthropic_oauth``:
 4. ``AIAgent._swap_credential``                      (line ~5378)
 5. ``AIAgent._try_activate_fallback``                (line ~6536)
 """
-
 from __future__ import annotations
+
 
 from unittest.mock import MagicMock, patch
 

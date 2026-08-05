@@ -12,8 +12,8 @@ available. The reset is now gated on the snapshot's ``claim_lock`` (and pid),
 so it only fires when the task is still owned by the worker the reclaim was
 computed for.
 """
-
 from __future__ import annotations
+
 
 import subprocess
 from pathlib import Path

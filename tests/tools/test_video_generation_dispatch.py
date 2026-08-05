@@ -1,6 +1,6 @@
 """Tests for the unified ``video_generate`` tool dispatch surface."""
-
 from __future__ import annotations
+
 
 import orjson
 from typing import Any, Dict, List, Optional

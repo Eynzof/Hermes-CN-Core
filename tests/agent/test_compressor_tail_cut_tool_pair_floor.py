@@ -18,8 +18,8 @@ The floor now re-aligns FORWARD (never backward, which would hand back the
 message the floor just claimed), so a raised cut skips to the end of the
 group and the call/result pair is summarised together.
 """
-
 from __future__ import annotations
+
 
 import itertools
 

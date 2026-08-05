@@ -27,8 +27,8 @@ run under ``is_managed()`` (mirrors ``dashboard register``).
 EXPERIMENTAL: the relay auth scheme may change without a deprecation cycle until
 ≥2 Class-1 platforms validate the contract.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import os

@@ -5,8 +5,8 @@ extraction) strictly BEFORE on_session_switch (provider rebinding to the
 new session), without blocking the caller. Both hooks run as one task on
 the manager's single serialized background worker.
 """
-
 from __future__ import annotations
+
 
 import threading
 import time

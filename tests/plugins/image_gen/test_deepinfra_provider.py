@@ -6,8 +6,8 @@ are covered by the shared tag-filter test in
 ``tests/hermes_cli/test_api_key_providers.py``; these two tests pin the
 plugin-specific bits that wrapper doesn't reach.
 """
-
 from __future__ import annotations
+
 
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch

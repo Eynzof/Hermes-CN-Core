@@ -1,6 +1,6 @@
 """Tests for the bundled OpenAI image_gen plugin (gpt-image-2, three tiers)."""
-
 from __future__ import annotations
+
 
 import sys
 

@@ -9,8 +9,8 @@ subsequent turns and breaks the conversation with HTTP 400 (#15700, #17212,
 These tests pin the profile's wire-shape contract so DeepSeek requests stay
 correctly shaped without going live.
 """
-
 from __future__ import annotations
+
 
 import pytest
 

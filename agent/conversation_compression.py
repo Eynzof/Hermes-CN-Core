@@ -48,8 +48,8 @@ thread, not the conversation thread. Extension authors must assume:
   on pool siblings — engine/provider instances shared across sessions must
   be thread-safe or internally locked.
 """
-
 from __future__ import annotations
+
 
 import concurrent.futures
 import copy

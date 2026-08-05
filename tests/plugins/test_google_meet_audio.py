@@ -3,8 +3,8 @@
 Covers the platform gating and pactl / system_profiler plumbing
 without actually invoking those tools on the host.
 """
-
 from __future__ import annotations
+
 
 from unittest.mock import MagicMock, patch
 

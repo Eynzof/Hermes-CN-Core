@@ -15,8 +15,8 @@ forever" gap:
 Windows-specific paths are exercised via ``_is_windows`` patching so they
 run on any host (same approach as test_update_venv_health).
 """
-
 from __future__ import annotations
+
 
 from pathlib import Path
 from unittest import mock

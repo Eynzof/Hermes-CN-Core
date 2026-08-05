@@ -7,8 +7,8 @@ notifications/artifacts, and drive the multi-agent dispatcher. They use only
 ``self._kanban_*`` call sites resolve identically via the MRO, making this a
 behavior-neutral move that lifts ~1,000 LOC out of run.py.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import logging

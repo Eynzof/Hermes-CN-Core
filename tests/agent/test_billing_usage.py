@@ -3,8 +3,8 @@
 Behavior contracts: status classification, bar math, fail-open, and the
 dollars-only / topup-split invariants the billing UX requires.
 """
-
 from __future__ import annotations
+
 
 from dataclasses import dataclass
 from typing import Optional

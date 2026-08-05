@@ -22,8 +22,8 @@ Capabilities:
   - Filesystem-style browsing via viking:// URIs
   - Resource ingestion (URLs, docs, code)
 """
-
 from __future__ import annotations
+
 
 import atexit
 import errno

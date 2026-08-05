@@ -1,6 +1,6 @@
 """Behavior contracts for cua-driver 0.10 permission-mode integration."""
-
 from __future__ import annotations
+
 
 from types import SimpleNamespace
 from unittest.mock import Mock, patch

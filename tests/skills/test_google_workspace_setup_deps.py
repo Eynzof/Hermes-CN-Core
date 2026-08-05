@@ -10,8 +10,8 @@ There are three install paths for google-workspace dependencies:
 
 This test ensures path 3 stays pinned and consistent with the other two.
 """
-
 from __future__ import annotations
+
 
 import ast
 from pathlib import Path

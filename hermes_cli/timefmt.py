@@ -5,8 +5,8 @@ Public home for helpers that used to live as private functions on
 surface, which lightweight consumers (``hermes status``, dump tooling)
 should not pay for.
 """
-
 from __future__ import annotations
+
 
 import time as _time
 from datetime import datetime

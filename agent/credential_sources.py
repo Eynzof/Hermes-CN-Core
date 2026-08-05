@@ -42,8 +42,8 @@ Adding a new credential source is:
 
 No more per-source if/elif chain in ``auth_remove_command``.
 """
-
 from __future__ import annotations
+
 
 import os
 from dataclasses import dataclass, field

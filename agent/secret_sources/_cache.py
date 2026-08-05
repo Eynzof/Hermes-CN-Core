@@ -17,8 +17,8 @@ Nothing in this module ever raises out to the caller's hot path: the disk
 layer is strictly best-effort (a miss just triggers a refetch), because a
 cache problem must never block Hermes startup.
 """
-
 from __future__ import annotations
+
 
 import json
 import os

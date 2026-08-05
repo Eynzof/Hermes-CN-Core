@@ -28,8 +28,8 @@ Configuration in config.yaml:
 
 Reference: https://bot.q.qq.com/wiki/develop/api-v2/
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import pybase64 as base64

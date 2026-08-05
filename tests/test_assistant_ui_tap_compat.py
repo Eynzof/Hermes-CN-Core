@@ -27,8 +27,8 @@ numbers, only that whatever tap the lockfile hoists satisfies every
 ``@assistant-ui/*`` package's declared tap requirement. It fails if any future
 bump reintroduces a split tap requirement across the cluster.
 """
-
 from __future__ import annotations
+
 
 import orjson
 from pathlib import Path

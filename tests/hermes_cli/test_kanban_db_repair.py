@@ -1,7 +1,7 @@
 """Tests for kanban DB corruption repair, backup retention, WAL checkpointing,
 and the ``hermes kanban repair`` CLI verb."""
-
 from __future__ import annotations
+
 
 import json
 import sqlite3

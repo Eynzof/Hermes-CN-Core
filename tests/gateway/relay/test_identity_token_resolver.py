@@ -11,8 +11,8 @@ Two modes:
 The HTTP POST and the Nous resolver are monkeypatched; these prove the mode
 SELECTION, the client_credentials request shape, and the fail-closed paths.
 """
-
 from __future__ import annotations
+
 
 import io
 import json

@@ -22,8 +22,8 @@ Two delivery strategies, selected by the target adapter's
 Failures RAISE (after bounded retries on transient errors) so callers can
 rewind cursors / retry instead of silently losing the event.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import logging

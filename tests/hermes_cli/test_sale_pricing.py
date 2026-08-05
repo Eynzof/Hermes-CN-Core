@@ -1,6 +1,6 @@
 """Sale UI pricing helpers: gateway pricing.original → discount chrome."""
-
 from __future__ import annotations
+
 
 import json
 from unittest.mock import MagicMock

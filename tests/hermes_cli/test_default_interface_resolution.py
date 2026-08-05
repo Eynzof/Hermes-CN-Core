@@ -27,8 +27,8 @@ These tests pin that precedence at every layer that makes the decision:
   * the argument parser   — both ``--cli`` and ``--tui`` parse at the top
     level and under the ``chat`` subcommand and are relaunch-inherited.
 """
-
 from __future__ import annotations
+
 
 import os
 from types import SimpleNamespace

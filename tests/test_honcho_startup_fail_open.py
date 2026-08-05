@@ -1,6 +1,6 @@
 """Regression tests for Honcho startup fail-open behavior."""
-
 from __future__ import annotations
+
 
 import orjson
 import threading

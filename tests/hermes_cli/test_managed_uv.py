@@ -1,6 +1,6 @@
 """Tests for hermes_cli.managed_uv — one path, no guessing."""
-
 from __future__ import annotations
+
 
 import os
 import stat

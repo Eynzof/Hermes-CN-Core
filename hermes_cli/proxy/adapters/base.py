@@ -10,8 +10,8 @@ local proxy can forward requests to. The adapter is responsible for:
 
 The proxy server is otherwise provider-agnostic.
 """
-
 from __future__ import annotations
+
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass

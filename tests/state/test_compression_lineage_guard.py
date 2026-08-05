@@ -1,6 +1,6 @@
 """Regression tests for stale writes after a compression session split."""
-
 from __future__ import annotations
+
 
 import pytest
 

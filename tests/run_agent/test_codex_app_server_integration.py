@@ -9,8 +9,8 @@ Verifies that:
   - Memory nudge counter ticks once per turn
   - The returned dict has the same shape as the chat_completions path
 """
-
 from __future__ import annotations
+
 
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch

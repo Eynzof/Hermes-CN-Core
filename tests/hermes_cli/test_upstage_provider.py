@@ -6,8 +6,8 @@ correctly but, on re-entry, showed a different provider as active. Root cause:
 `upstage` overlay, so `resolve_provider_full("upstage")` returned None, the
 config provider was discarded, and resolution fell through to env auto-detect.
 """
-
 from __future__ import annotations
+
 
 import sys
 import types

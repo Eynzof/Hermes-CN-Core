@@ -6,8 +6,8 @@ per-file status line killed the whole run with UnicodeEncodeError. The
 failure depends only on the stream's encoding, so these tests pin it on
 every OS by building a cp1252 stream explicitly.
 """
-
 from __future__ import annotations
+
 
 import importlib.util
 import io

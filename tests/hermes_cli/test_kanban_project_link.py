@@ -1,7 +1,7 @@
 """Kanban <-> Projects integration: project-linked tasks get a deterministic
 worktree path + branch instead of the random ``wt/<task-id>`` fallback."""
-
 from __future__ import annotations
+
 
 import os
 

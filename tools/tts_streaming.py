@@ -18,8 +18,8 @@ Two provider shapes, one contract (int16 mono PCM at ``sample_rate``):
 Adding a streamer is `@register("name")` on a `StreamingTTSProvider` subclass;
 the dispatcher, config gate (`tts.<name>.streaming`), and resolver come free.
 """
-
 from __future__ import annotations
+
 
 import logging
 import re

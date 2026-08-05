@@ -18,8 +18,8 @@ This test drives the *real* ``_run_stdio`` with a fake transport whose
 subprocess, no network (the drain-to-zero behaviour was additionally verified
 manually against the reporter's live repro).
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import time

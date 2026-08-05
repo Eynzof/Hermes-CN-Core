@@ -18,8 +18,8 @@ result distinct from ``compression_exhausted``.
 
 Salvaged from PR #49874 (@helix4u), rebuilt on the landed #69870 signal.
 """
-
 from __future__ import annotations
+
 
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch

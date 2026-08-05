@@ -5,8 +5,8 @@ ADC), NOT a static API key. These tests mock google-auth entirely — no network
 calls — and cover token minting, the config.yaml→env precedence bridge, the
 global vs regional base-URL shapes, and the ADC→service-account fallback.
 """
-
 from __future__ import annotations
+
 
 import importlib
 import sys

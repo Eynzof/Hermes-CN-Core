@@ -25,8 +25,8 @@ The renderer never raises: any unexpected input degrades to ``None`` (caller
 uses plain text).  It is a pure function of its input — no Slack client, no
 adapter state — so it is trivially unit-testable.
 """
-
 from __future__ import annotations
+
 from agent.re_compat import re
 from typing import Any, Dict, List, Optional, Tuple
 

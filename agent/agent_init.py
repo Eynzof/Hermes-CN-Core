@@ -16,8 +16,8 @@ Symbols that tests patch on ``run_agent.*`` (``OpenAI``, ``cleanup_vm``,
 etc.) are resolved through :func:`_ra` so the patch contract is
 preserved.
 """
-
 from __future__ import annotations
+
 
 import logging
 import os

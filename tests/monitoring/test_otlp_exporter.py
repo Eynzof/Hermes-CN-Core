@@ -4,8 +4,8 @@ No SQLite involved — monitoring is an egress path, so the exporter consumes
 emitter batches directly. Uses the in-memory OTel span exporter; skipped when
 the optional otlp extra is not installed.
 """
-
 from __future__ import annotations
+
 
 import pytest
 

@@ -8,8 +8,8 @@ Wires ``hermes meet <subcommand>``:
   transcript  — print the transcript
   stop        — leave the current meeting
 """
-
 from __future__ import annotations
+
 
 import argparse
 import orjson

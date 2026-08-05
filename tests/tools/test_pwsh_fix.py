@@ -19,8 +19,8 @@ Sections:
 
 Classes that execute against a real pwsh are skipped when pwsh is missing.
 """
-
 from __future__ import annotations
+
 
 import shutil
 import subprocess

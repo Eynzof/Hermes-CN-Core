@@ -21,8 +21,8 @@ session DB) exactly as the inline code did — those side effects are the point.
 Behavior is identical to the original inline prologue; this is a pure
 move-and-name refactor with no semantic change.
 """
-
 from __future__ import annotations
+
 
 import logging
 import threading

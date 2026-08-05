@@ -13,8 +13,8 @@ Two value shapes are accepted anywhere a point in time is expected:
   ``2026-07-05T14:30:00`` (any ISO-8601 form ``datetime.fromisoformat``
   understands; naive values are interpreted in local time).
 """
-
 from __future__ import annotations
+
 
 import re
 import time

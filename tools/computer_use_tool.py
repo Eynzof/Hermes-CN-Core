@@ -4,8 +4,8 @@ The real implementation lives in the `tools/computer_use/` package to keep
 the file structure clean. This shim exists because tools.registry auto-imports
 `tools/*.py` — we need a top-level module to trigger the registration.
 """
-
 from __future__ import annotations
+
 
 from tools.computer_use.schema import COMPUTER_USE_SCHEMA
 from tools.computer_use.tool import (

@@ -15,8 +15,8 @@ Deliberately behavioral, not a snapshot: nothing here pins a version we
 expect to change. Each test asserts a *relationship* — between the floor we
 declare and the toolchain that has to satisfy it.
 """
-
 from __future__ import annotations
+
 
 import json
 import re

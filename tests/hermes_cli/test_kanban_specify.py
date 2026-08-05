@@ -4,8 +4,8 @@ The auxiliary LLM client is mocked — these tests don't hit any network or
 real provider. They exercise the prompt plumbing, response parsing, DB
 writes, and CLI flag surface.
 """
-
 from __future__ import annotations
+
 
 import argparse
 import json as jsonlib

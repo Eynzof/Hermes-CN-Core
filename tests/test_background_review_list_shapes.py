@@ -32,8 +32,8 @@ plain ``assert`` and a small standalone runner.  Importing the module
 exercises the new code paths without booting the LLM stack — there
 are no I/O or model dependencies in the unit-of-work being tested.
 """
-
 from __future__ import annotations
+
 
 import importlib
 import importlib.util

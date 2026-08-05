@@ -12,8 +12,8 @@ Covers, by analogy with ``test_nous_provider.py``:
 
 All HTTP is mocked: nothing here talks to a real IDP.
 """
-
 from __future__ import annotations
+
 
 import pybase64 as base64
 import hashlib

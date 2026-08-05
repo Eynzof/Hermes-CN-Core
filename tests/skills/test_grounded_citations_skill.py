@@ -6,8 +6,8 @@ that assigns stable ``url -> [n]`` ids, renders Sources blocks, and verifies a
 draft's citations. The verify path is the load-bearing piece: it is what
 catches a hallucinated or renumbered citation before delivery.
 """
-
 from __future__ import annotations
+
 
 import importlib.util
 import json

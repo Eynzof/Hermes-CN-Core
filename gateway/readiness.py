@@ -1,6 +1,6 @@
 """Bounded, non-destructive readiness probes for authenticated health surfaces."""
-
 from __future__ import annotations
+
 
 import shutil
 import sqlite3

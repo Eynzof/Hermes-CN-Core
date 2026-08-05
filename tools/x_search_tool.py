@@ -39,8 +39,8 @@ can tell a real citation-backed answer from an unsourced one:
 Salvaged from PR #10786 (originally by @Jaaneek); credential resolution
 reworked to honor both auth modes per Teknium's design.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import logging

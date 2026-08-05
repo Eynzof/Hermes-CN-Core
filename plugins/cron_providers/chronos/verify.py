@@ -15,8 +15,8 @@ The verifier is pluggable (``get_fire_verifier``) so the escape-hatch mode
 Crypto is delegated to PyJWT (already a declared dependency) — we do NOT
 hand-roll JWT verification.
 """
-
 from __future__ import annotations
+
 
 import logging
 import threading

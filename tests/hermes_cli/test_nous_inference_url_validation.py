@@ -18,8 +18,8 @@ These tests verify:
    gated by the validator — that's the documented dev/staging escape
    hatch.
 """
-
 from __future__ import annotations
+
 
 import logging
 

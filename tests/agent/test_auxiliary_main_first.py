@@ -11,8 +11,8 @@ regardless of provider type.  Explicit per-task overrides in ``config.yaml``
 local/custom endpoints and directly configured API-key providers when the
 main provider has no working client.
 """
-
 from __future__ import annotations
+
 
 from unittest.mock import MagicMock, patch
 

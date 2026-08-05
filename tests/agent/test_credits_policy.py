@@ -4,8 +4,8 @@ All tests use a fresh latch (new_credits_latch(), the shape every production
 caller builds) per scenario. CreditsState is constructed directly (not parsed
 from headers).
 """
-
 from __future__ import annotations
+
 
 import pytest
 

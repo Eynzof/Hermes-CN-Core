@@ -1,6 +1,6 @@
 """FTS UPDATE OF narrowing + migration (#73639 retargeted onto split SessionDB)."""
-
 from __future__ import annotations
+
 
 import sqlite3
 import tempfile

@@ -5,8 +5,8 @@ Covers the reconfigure path that previously failed to write
 through Reconfigure tool → Video Generation. The first-time configure
 path already handled it; the reconfigure path forgot to mirror it.
 """
-
 from __future__ import annotations
+
 
 from typing import Any, Dict, List, Optional
 

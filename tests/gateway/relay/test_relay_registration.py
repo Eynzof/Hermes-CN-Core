@@ -6,8 +6,8 @@ config-driven shape as ``gateway.proxy_url``, not a separate feature flag. With
 no URL configured, registration is a no-op so direct/single-tenant deployments
 are unaffected. ``force=True`` registers a transport-less adapter for tests.
 """
-
 from __future__ import annotations
+
 
 import pytest
 

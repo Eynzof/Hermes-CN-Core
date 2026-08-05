@@ -1,6 +1,6 @@
 """Unit tests for the Vercel Sandbox terminal backend."""
-
 from __future__ import annotations
+
 
 import importlib
 import io

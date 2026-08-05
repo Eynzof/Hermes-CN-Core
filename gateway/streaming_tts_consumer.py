@@ -35,8 +35,8 @@ Design:
   does NOT replay the whole response from the beginning.
 - Cancellation/abort is idempotent: late chunks are silently dropped.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import logging

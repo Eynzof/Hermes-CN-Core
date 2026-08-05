@@ -14,8 +14,8 @@ This test asserts the live state on whichever platform CI runs on, plus a
 source-text check confirming the branch shape is preserved so a future
 refactor can't accidentally collapse it back to a POSIX-only import.
 """
-
 from __future__ import annotations
+
 
 import sys
 

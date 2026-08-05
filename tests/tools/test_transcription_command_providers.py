@@ -15,8 +15,8 @@ Nothing here talks to a real STT engine. The shell command writes a static
 transcript to ``{output_path}`` using ``python -c`` so the tests run
 identically on Linux, macOS, and Windows (with minor quoting differences).
 """
-
 from __future__ import annotations
+
 
 import os
 import sys

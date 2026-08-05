@@ -10,8 +10,8 @@ Environment variables:
     MATTERMOST_ALLOWED_USERS    Comma-separated user IDs
     MATTERMOST_HOME_CHANNEL     Channel ID for cron/notification delivery
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import orjson

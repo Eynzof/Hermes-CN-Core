@@ -1,6 +1,6 @@
 """Session /model overrides must attach credential_pool for 402 rotation."""
-
 from __future__ import annotations
+
 
 from unittest.mock import MagicMock
 

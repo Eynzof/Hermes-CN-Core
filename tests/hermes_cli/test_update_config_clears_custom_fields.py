@@ -10,8 +10,8 @@ xai) compute it at request-resolution time in
 ``_copilot_runtime_api_mode`` / ``_detect_api_mode_for_url``, so removing
 the persisted value here is safe.
 """
-
 from __future__ import annotations
+
 
 import yaml
 

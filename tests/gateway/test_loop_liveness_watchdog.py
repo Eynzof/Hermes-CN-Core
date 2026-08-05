@@ -1,6 +1,6 @@
 """Gateway event-loop freeze backstops for issue #69089."""
-
 from __future__ import annotations
+
 
 import asyncio
 import threading

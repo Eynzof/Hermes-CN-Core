@@ -16,8 +16,8 @@ inline ``endswith`` checks spread across _resolve_runtime_from_pool_entry,
 the explicit-provider path, and the api-key-provider path) means every
 future update to the detection logic lives in one place.
 """
-
 from __future__ import annotations
+
 
 from hermes_cli.runtime_provider import _detect_api_mode_for_url
 

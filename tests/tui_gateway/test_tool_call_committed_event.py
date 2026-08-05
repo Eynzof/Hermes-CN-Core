@@ -5,8 +5,8 @@ assistant message that contains tool calls.  The gateway must relay that as an
 ``assistant.tool_calls_committed`` event so the desktop UI has a clean boundary
 between ``message.start`` and ``tool.start``.
 """
-
 from __future__ import annotations
+
 
 import threading
 import time

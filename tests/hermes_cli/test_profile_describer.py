@@ -1,8 +1,8 @@
 """Tests for the profile.yaml metadata layer (description + description_auto)
 and the profile_describer LLM module.
 """
-
 from __future__ import annotations
+
 
 import json as jsonlib
 from pathlib import Path

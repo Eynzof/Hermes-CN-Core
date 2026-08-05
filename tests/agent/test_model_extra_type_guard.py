@@ -19,8 +19,8 @@ These tests exercise the real ``ChatCompletionsTransport.normalize_response``
 path (the non-streaming site at chat_completions.py), not a local replica of
 the expression.
 """
-
 from __future__ import annotations
+
 
 from types import SimpleNamespace
 

@@ -11,8 +11,8 @@ The companion end-to-end regression for #24015 lives in
 unit contract of the helper in isolation so behaviour does not regress
 silently if the surrounding ``computer_use`` plumbing is refactored.
 """
-
 from __future__ import annotations
+
 
 from unittest.mock import patch
 

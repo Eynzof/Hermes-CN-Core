@@ -18,8 +18,8 @@ fallback for ``tool_progress`` when no ``display.platforms`` entry exists.  A
 config migration (version bump) automatically moves the old format into the new
 ``display.platforms`` structure.
 """
-
 from __future__ import annotations
+
 
 from typing import Any
 

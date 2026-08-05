@@ -17,8 +17,8 @@ These tests pin the new probe ladder:
      the package → return False (the genuine "CLI without app"
      case the existing warning was written for).
 """
-
 from __future__ import annotations
+
 
 import subprocess
 from types import SimpleNamespace

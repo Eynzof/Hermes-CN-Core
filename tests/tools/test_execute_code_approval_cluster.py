@@ -12,8 +12,8 @@ Covers the canonical fix for issues #4146, #27303, #30882, #33057:
   4. tools.code_execution_tool._scrub_child_env — broad HERMES_ prefix dropped,
      operational allowlist kept, DSN/WEBHOOK blocked, passthrough precedence.
 """
-
 from __future__ import annotations
+
 
 import concurrent.futures
 import contextvars

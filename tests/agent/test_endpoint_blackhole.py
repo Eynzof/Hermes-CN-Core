@@ -12,8 +12,8 @@ Covers:
   honouring and recording the blackhole
 - non-timeout failures (refused, no route) leaving the waterfall untouched
 """
-
 from __future__ import annotations
+
 
 import os
 import sys

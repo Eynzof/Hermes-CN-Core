@@ -29,8 +29,8 @@ applied at every step so a search-only provider (``brave-free``)
 configured as ``web.extract_backend`` correctly falls through to an
 extract-capable backend.
 """
-
 from __future__ import annotations
+
 
 import logging
 import threading

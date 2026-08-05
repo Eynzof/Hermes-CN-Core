@@ -12,8 +12,8 @@ meaningful recovery):
    get DISTINCT client-cache keys, so a concurrent fan-out (e.g. opus + gpt-5.5
    advisors) never shares one client entry.
 """
-
 from __future__ import annotations
+
 
 import os
 import types

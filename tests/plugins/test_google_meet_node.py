@@ -5,8 +5,8 @@ token-and-dispatch machinery, a mocked client, and the CLI plumbing.
 We never open a real socket — websockets.serve / websockets.sync.client
 are fully mocked.
 """
-
 from __future__ import annotations
+
 
 import argparse
 import asyncio

@@ -47,8 +47,8 @@ Two mechanisms recognize the orchestrating parent, and either suffices:
   ancestry check those users get exit 2 ("Hermes is still running") on every
   GUI update forever, with no Hermes process actually running.
 """
-
 from __future__ import annotations
+
 
 import logging
 import os

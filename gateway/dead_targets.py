@@ -21,8 +21,8 @@ profile keeps its own dead set.  Reads/writes are best-effort: a corrupt or
 unwritable file degrades to an in-memory-only registry rather than raising on
 the delivery path.
 """
-
 from __future__ import annotations
+
 
 import json
 import logging

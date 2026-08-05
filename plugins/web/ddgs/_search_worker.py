@@ -14,8 +14,8 @@ Envelope::
 Optional test hooks (only when ``HERMES_DDGS_ALLOW_TEST_HOOKS=1``)::
     {"query": ..., "safe_limit": ..., "test_hook": "sleep"|"gil"|"success"|"error"|"empty"}
 """
-
 from __future__ import annotations
+
 
 import json
 import os

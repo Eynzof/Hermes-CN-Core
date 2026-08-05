@@ -10,8 +10,8 @@ from). The default agent activity clock (``_touch_activity``) stamps
 ``unknown`` unless a caller passes an explicit ``provenance=``; named
 values are for special writers.
 """
-
 from __future__ import annotations
+
 
 from enum import Enum
 from typing import Any, Mapping, Optional

@@ -18,8 +18,8 @@ Both ``code_execution_tool.py`` and ``tools/environments/local.py`` consult
 When profile multiplexing is active, their forwarded values are resolved
 through the current profile's secret scope rather than the process environment.
 """
-
 from __future__ import annotations
+
 
 import logging
 from contextvars import ContextVar

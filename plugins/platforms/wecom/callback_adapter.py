@@ -9,8 +9,8 @@ acknowledges.  The agent's reply is delivered later via the proactive
 Supports multiple self-built apps under one gateway instance, scoped by
 ``corp_id:user_id`` to avoid cross-corp collisions.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import logging

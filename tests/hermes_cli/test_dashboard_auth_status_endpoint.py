@@ -10,8 +10,8 @@ behaviour (renders nothing on 401, shows truncated user_id, etc.) is
 documented in AuthWidget.tsx; covered manually via the Phase 4.2
 smoke test against staging Portal.
 """
-
 from __future__ import annotations
+
 
 import pytest
 from fastapi.testclient import TestClient

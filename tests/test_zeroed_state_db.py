@@ -1,6 +1,6 @@
 """#68474 hardening: zeroed state.db detection + quarantine."""
-
 from __future__ import annotations
+
 
 from pathlib import Path
 

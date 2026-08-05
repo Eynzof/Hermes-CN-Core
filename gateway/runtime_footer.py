@@ -31,8 +31,8 @@ partials.  When streaming is on and the final text has already been delivered
 piecemeal, the footer is sent as a separate trailing message via
 ``send_trailing_footer()``.
 """
-
 from __future__ import annotations
+
 
 import os
 from typing import Any, Iterable, Optional

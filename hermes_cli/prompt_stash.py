@@ -20,8 +20,8 @@ under NDA, or pasted secrets, and a session-scoped stash keeps that material
 in memory only. Callers that later want cross-restart persistence must route
 through ``get_hermes_home()`` rather than hardcoding ``~/.hermes``.
 """
-
 from __future__ import annotations
+
 
 import time
 from dataclasses import dataclass, field

@@ -23,8 +23,8 @@ The fix has three pieces — these tests pin all three:
    this with a source-level guard rather than spinning the full
    send pipeline.
 """
-
 from __future__ import annotations
+
 
 import inspect
 from types import SimpleNamespace

@@ -1,6 +1,6 @@
 """Security-floor tests for the Google Chat runtime installer."""
-
 from __future__ import annotations
+
 
 from importlib.metadata import PackageNotFoundError
 from types import SimpleNamespace

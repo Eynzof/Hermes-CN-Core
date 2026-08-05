@@ -40,8 +40,8 @@ Pinned here:
   ``agent/context_compressor.py`` so a future refactor can't
   silently drop the anchor.
 """
-
 from __future__ import annotations
+
 
 from unittest.mock import patch
 

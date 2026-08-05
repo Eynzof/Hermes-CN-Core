@@ -1,6 +1,6 @@
 """Contract tests for the native Google Gemini provider profile."""
-
 from __future__ import annotations
+
 
 import pytest
 

@@ -18,8 +18,8 @@ Covers the contract introduced in PR for Microsoft Entra ID auth on
   * ``has_usable_secret`` for ``AZURE_FOUNDRY_API_KEY`` is irrelevant
     when ``auth_mode == entra_id``.
 """
-
 from __future__ import annotations
+
 
 import sys
 from types import SimpleNamespace

@@ -3,8 +3,8 @@
 These never hit the live OSV API; HTTP is monkeypatched. The live-call path
 is exercised in the E2E test embedded in PR validation, not here.
 """
-
 from __future__ import annotations
+
 
 import orjson
 from pathlib import Path

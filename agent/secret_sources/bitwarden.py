@@ -26,8 +26,8 @@ The module is intentionally subprocess-driven rather than going through
 the ``bitwarden-sdk-secrets`` Python package: one cross-platform binary
 is easier to lazy-install than a wheels-with-Rust-extension dependency.
 """
-
 from __future__ import annotations
+
 
 import base64
 import hashlib

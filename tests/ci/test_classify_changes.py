@@ -4,8 +4,8 @@ Check some common patterns of file modifications and the CI lanes they should ru
 We should always fail open. We may run a lane we didn't need, never skip one a
 change could have broken.
 """
-
 from __future__ import annotations
+
 
 import importlib.util
 from pathlib import Path

@@ -14,8 +14,8 @@ Configuration in config.yaml (or via env vars):
           ws_url: "wss://..."        # or YUANBAO_WS_URL
           api_domain: "https://..."  # or YUANBAO_API_DOMAIN
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import pybase64 as base64

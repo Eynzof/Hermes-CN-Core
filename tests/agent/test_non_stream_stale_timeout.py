@@ -8,8 +8,8 @@ Covers:
 - The May 2026 default-base change (300s -> 90s) and the lowered
   context-tier ceilings (450/600 -> 150/240).
 """
-
 from __future__ import annotations
+
 
 from pathlib import Path
 

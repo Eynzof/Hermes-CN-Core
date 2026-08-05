@@ -6,8 +6,8 @@ tests fail loudly if a refactor gives those renderers instance state), and
 vector-file shape. Native outputs themselves are NOT snapshotted here — the
 connector's conformance runner is the consumer that asserts them.
 """
-
 from __future__ import annotations
+
 
 import json
 import re

@@ -14,8 +14,8 @@ side.  The companion Vitest (``ui-tui/src/__tests__/createSlashHandler.test.ts``
 covers the TypeScript slash-handler that *emits* code 42; this file covers
 the Python wrapper branch that *acts on* it.
 """
-
 from __future__ import annotations
+
 
 from types import SimpleNamespace
 from unittest.mock import patch

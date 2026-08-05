@@ -27,8 +27,8 @@ Config via environment variables:
 Or via $HERMES_HOME/hindsight/config.json (profile-scoped), falling back to
 ~/.hindsight/config.json (legacy, shared) for backward compatibility.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import atexit

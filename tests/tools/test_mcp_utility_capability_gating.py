@@ -23,8 +23,8 @@ and gates utility schema registration on the advertised
 ``capabilities.resources`` / ``capabilities.prompts`` sub-objects. See
 #18051 for the reporter's repro (Context7) and analysis.
 """
-
 from __future__ import annotations
+
 
 from types import SimpleNamespace
 from unittest.mock import MagicMock

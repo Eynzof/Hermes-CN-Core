@@ -5,8 +5,8 @@ in state.db (active=0, kept for audit, hidden from re-prompts/search) via
 SessionDB.rewind_to_message, rather than the old hard rewrite_transcript.
 load_transcript returns only the active view. See issue #21910.
 """
-
 from __future__ import annotations
+
 
 from pathlib import Path
 

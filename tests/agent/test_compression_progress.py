@@ -11,8 +11,8 @@ These tests pin the contract of ``_compression_made_progress``: a
 row-count reduction OR a *material* (>5%) token-count reduction counts as
 progress.
 """
-
 from __future__ import annotations
+
 
 from agent.turn_context import (
     _compression_made_progress,

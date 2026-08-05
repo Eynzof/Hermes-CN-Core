@@ -17,8 +17,8 @@ This preserves strict message-role alternation and the design invariant that a
 completion surfaces as a NEW turn only when idle, never spliced into a running
 turn.
 """
-
 from __future__ import annotations
+
 
 import sys
 import threading

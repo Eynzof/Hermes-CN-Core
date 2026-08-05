@@ -23,8 +23,8 @@ Both behaviors were previously broken: the existing
 models still route to context_overflow on a large session, so the
 reasoning-model override is strictly targeted.
 """
-
 from __future__ import annotations
+
 
 from types import SimpleNamespace
 

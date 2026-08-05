@@ -56,8 +56,8 @@ Backed by :func:`agent.auxiliary_client.call_llm`, which already
 handles every provider, fallback chain, and per-task override Hermes
 supports.
 """
-
 from __future__ import annotations
+
 
 import pybase64 as base64
 import orjson

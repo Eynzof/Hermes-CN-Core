@@ -25,8 +25,8 @@ Run manually:
 ``HERMES_E2E_BROWSER`` explicitly; ``-m integration`` overrides the default
 marker filter.)
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import base64

@@ -9,8 +9,8 @@ Proves the gateway side of the relay works with no real connector:
 These target the transport contract + session-key derivation (Task 1.2's gate),
 not the full agent turn — handle_message is patched to capture the event.
 """
-
 from __future__ import annotations
+
 
 import pytest
 

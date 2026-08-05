@@ -9,8 +9,8 @@ the JSON Schema ecosystem accepts:
 
 These tests cover the repairs applied by ``agent/moonshot_schema.py``.
 """
-
 from __future__ import annotations
+
 
 import pytest
 

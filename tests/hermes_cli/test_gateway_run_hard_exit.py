@@ -5,8 +5,8 @@ After graceful teardown it must use the same hard-exit backstop as gateway.run.m
 so Python finalization does not wait on non-daemon worker threads (for example
 in-flight cron ThreadPoolExecutor jobs) and delay service-managed restarts.
 """
-
 from __future__ import annotations
+
 
 import types
 

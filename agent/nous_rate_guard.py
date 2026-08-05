@@ -9,8 +9,8 @@ Each 429 from Nous triggers up to 9 API calls per conversation turn
 against RPH.  By recording the rate limit state on first 429 and checking
 it before subsequent attempts, we eliminate the amplification effect.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import logging

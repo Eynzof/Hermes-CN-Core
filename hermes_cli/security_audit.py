@@ -16,8 +16,8 @@ notes in ``references/security-disclosure-triage.md``.
 Out of scope on purpose: global pip/npm, editor/browser extensions,
 daily background scans, auto-blocking installs.
 """
-
 from __future__ import annotations
+
 
 import argparse
 import concurrent.futures

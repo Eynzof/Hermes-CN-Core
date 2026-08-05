@@ -4,8 +4,8 @@ Behavior/invariant focused — no network, no live manifest. A tiny synthetic
 spritesheet is generated with Pillow so render paths exercise real decode
 without depending on a downloaded pet.
 """
-
 from __future__ import annotations
+
 
 import io
 

@@ -1,6 +1,6 @@
 """Focused tests for the Hermes shared-metrics durable store."""
-
 from __future__ import annotations
+
 
 import json
 import multiprocessing as mp

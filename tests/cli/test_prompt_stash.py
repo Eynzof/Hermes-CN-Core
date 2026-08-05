@@ -8,8 +8,8 @@ Covers the pure state machine directly — no prompt_toolkit, no TUI:
   - browse-panel cursor, delete, and restore
   - the resolve_ctrl_s decision table
 """
-
 from __future__ import annotations
+
 
 import pytest
 

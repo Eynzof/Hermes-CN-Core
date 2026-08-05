@@ -12,8 +12,8 @@ spraying a traceback into ``errors.log`` on every restart-race.
 The fix adds ``_interpreter_shutting_down()`` and guards the scheduling
 sites so they skip gracefully with a warning instead of raising.
 """
-
 from __future__ import annotations
+
 
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch

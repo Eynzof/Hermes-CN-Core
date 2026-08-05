@@ -1,6 +1,6 @@
 """Tests for the Teams pipeline plugin package."""
-
 from __future__ import annotations
+
 
 import asyncio
 from types import SimpleNamespace

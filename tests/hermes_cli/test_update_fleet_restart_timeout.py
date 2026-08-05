@@ -6,8 +6,8 @@ On hosts with many profile-backed ``hermes-gateway*.service`` units,
 N+1…, leaving later gateways on pre-update in-memory modules while the
 checkout on disk was already new (mixed-generation crashes).
 """
-
 from __future__ import annotations
+
 
 import subprocess
 

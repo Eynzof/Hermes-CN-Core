@@ -7,8 +7,8 @@ Instead we handle ``/goal`` directly in the server and return a
 ``{"type": "send", "notice": ..., "message": ...}`` payload the TUI client
 uses to render a system line and fire the kickoff prompt.
 """
-
 from __future__ import annotations
+
 
 import importlib
 import threading

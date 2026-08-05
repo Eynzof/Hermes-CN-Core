@@ -1,6 +1,6 @@
 """Native Windows trust boundary for Desktop SSH backend lifecycle."""
-
 from __future__ import annotations
+
 
 import json
 import os

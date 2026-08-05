@@ -7,8 +7,8 @@ calls and gateway auto-TTS replies.
 Non-ASCII characters are written as escapes on purpose so the file stays free of
 invisible/look-alike glyphs.
 """
-
 from __future__ import annotations
+
 
 import html
 import re

@@ -4,8 +4,8 @@ A kanban board can be scoped to a first-class Hermes project so every task on
 it anchors to that project (deterministic worktree + branch). Covers the
 metadata round-trip and the create-time inheritance.
 """
-
 from __future__ import annotations
+
 
 import sys
 from pathlib import Path

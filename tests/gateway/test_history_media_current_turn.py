@@ -12,8 +12,8 @@ path deduped against ITSELF and the attachment was silently stripped
 Contract: everything from the LAST USER MESSAGE onward is the current turn and
 must be excluded from the dedup set; genuinely-prior turns must stay in it.
 """
-
 from __future__ import annotations
+
 
 from typing import Any, Dict, List, Optional
 

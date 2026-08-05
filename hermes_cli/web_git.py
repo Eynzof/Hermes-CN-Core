@@ -9,8 +9,8 @@ Everything shells out to the system ``git`` (and ``gh`` for ship info / PRs).
 Reads degrade to ``None`` / empty on a non-repo; mutations raise so the renderer
 can surface a toast. Callers pass an already path-hardened ``cwd``.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import os

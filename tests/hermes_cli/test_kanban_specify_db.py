@@ -1,7 +1,7 @@
 """Tests for kb.specify_triage_task — the DB-layer atomic promotion
 from the triage column to todo. LLM-free by design."""
-
 from __future__ import annotations
+
 
 from pathlib import Path
 

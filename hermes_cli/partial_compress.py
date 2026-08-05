@@ -38,8 +38,8 @@ Design notes / invariants honored:
   turn plus its following assistant/tool turns), defaulting to 2. The
   split never compresses if doing so would leave nothing in the head.
 """
-
 from __future__ import annotations
+
 
 from typing import Any, Dict, List, Optional, Tuple
 

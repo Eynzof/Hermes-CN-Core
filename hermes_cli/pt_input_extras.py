@@ -8,8 +8,8 @@ key tuples Hermes already binds.
 Kept in a standalone module — separate from `cli.py` — so the registrations
 can be unit-tested without importing the whole CLI runtime.
 """
-
 from __future__ import annotations
+
 
 
 def install_shift_enter_alias() -> int:

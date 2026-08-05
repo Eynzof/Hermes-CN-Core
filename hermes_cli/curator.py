@@ -6,8 +6,8 @@ table, triggers a run, pauses/resumes, and pins/unpins skills.
 This module intentionally has no side effects at import time — main.py wires
 the argparse subparsers on demand.
 """
-
 from __future__ import annotations
+
 
 import argparse
 import sys

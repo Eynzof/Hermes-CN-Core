@@ -14,8 +14,8 @@ covered by the live E2E in the PR description. These tests lock in the
 two pieces that matter independently: the classifier signal and the
 payload rewriter.
 """
-
 from __future__ import annotations
+
 
 import pybase64 as base64
 import sys

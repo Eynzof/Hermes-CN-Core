@@ -14,8 +14,8 @@ Two layers are tested:
 2. The ``send_progress_messages`` caller in ``run.py`` honours
    ``result.retryable`` and keeps ``can_edit = True``.
 """
-
 from __future__ import annotations
+
 
 
 import pytest

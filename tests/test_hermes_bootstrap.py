@@ -16,8 +16,8 @@ Key invariants covered by these tests:
      first non-docstring import (before anything that might do file I/O
      or print to stdout)
 """
-
 from __future__ import annotations
+
 
 import io
 import os

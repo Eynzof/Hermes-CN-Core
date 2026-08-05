@@ -1,6 +1,6 @@
 """#69283: kanban write guard prevents tests from writing to real ~/.hermes."""
-
 from __future__ import annotations
+
 
 import pytest
 

@@ -20,8 +20,8 @@ Only monitoring events (gateway_health / gateway_diagnostic) exist on this
 plane; the ``event_filter`` seam is kept so future planes sharing the emitter
 cannot silently ride along on this exporter.
 """
-
 from __future__ import annotations
+
 
 import logging
 import os

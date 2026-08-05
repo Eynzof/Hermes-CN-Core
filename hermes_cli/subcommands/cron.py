@@ -4,8 +4,8 @@ Extracted verbatim from ``hermes_cli/main.py:main()`` — same arguments, same
 ``func=cmd_cron`` dispatch. The handler is injected so this module does not
 import ``main`` (cycle avoidance).
 """
-
 from __future__ import annotations
+
 
 from typing import Callable
 

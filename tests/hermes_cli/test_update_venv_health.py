@@ -12,8 +12,8 @@ Covers three additions to ``hermes update``:
 All Windows-specific paths are exercised via ``_is_windows`` patching so
 they run on any host (same approach as test_update_concurrent_quarantine).
 """
-
 from __future__ import annotations
+
 
 import subprocess
 import sys

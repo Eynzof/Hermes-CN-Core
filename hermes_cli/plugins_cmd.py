@@ -6,8 +6,8 @@ Supports full URLs and ``owner/repo`` shorthand (resolves to GitHub).
 After install, if the plugin ships an ``after-install.md`` file it is
 rendered with Rich Markdown.  Otherwise a default confirmation is shown.
 """
-
 from __future__ import annotations
+
 
 import functools
 import importlib.metadata

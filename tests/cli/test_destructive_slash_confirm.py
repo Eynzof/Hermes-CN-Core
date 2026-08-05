@@ -3,8 +3,8 @@
 Drives the helper directly via __get__ on a SimpleNamespace stand-in so we
 don't have to construct a full HermesCLI (which requires extensive setup).
 """
-
 from __future__ import annotations
+
 
 import queue
 from types import SimpleNamespace

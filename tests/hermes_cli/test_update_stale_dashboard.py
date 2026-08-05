@@ -10,8 +10,8 @@ History:
 - #17049 fixed a Windows wmic UnicodeDecodeError crash on non-UTF-8 locales.
 - This file now also covers the kill semantics that replaced the warning.
 """
-
 from __future__ import annotations
+
 
 import importlib
 import os

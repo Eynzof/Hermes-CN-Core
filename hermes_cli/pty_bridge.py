@@ -25,8 +25,8 @@ Design constraints:
   streaming ANSI is inherently byte-oriented and UTF-8 boundaries may land
   mid-read.
 """
-
 from __future__ import annotations
+
 
 import errno
 import fcntl

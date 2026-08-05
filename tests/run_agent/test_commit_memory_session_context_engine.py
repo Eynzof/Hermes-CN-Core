@@ -6,8 +6,8 @@ per-session state (LCM-style DAGs, summary stores) leaked that state from a
 rotated-out session into whatever continued under the same compressor
 instance.
 """
-
 from __future__ import annotations
+
 
 from types import SimpleNamespace
 from unittest.mock import MagicMock

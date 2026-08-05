@@ -7,8 +7,8 @@ derives its data from ``COMMAND_REGISTRY``.
 To add a command: add a ``CommandDef`` entry to ``COMMAND_REGISTRY``.
 To add an alias: set ``aliases=("short",)`` on the existing ``CommandDef``.
 """
-
 from __future__ import annotations
+
 
 import logging
 import os

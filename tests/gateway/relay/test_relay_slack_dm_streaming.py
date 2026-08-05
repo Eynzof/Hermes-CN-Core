@@ -18,8 +18,8 @@ the chat type + thread metadata (the invariant the connector depends on), not a
 snapshot. They drive the REAL ``RelayAdapter`` + ``GatewayStreamConsumer`` +
 ``StubConnector`` end to end.
 """
-
 from __future__ import annotations
+
 
 import pytest
 

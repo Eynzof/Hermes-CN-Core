@@ -1,5 +1,5 @@
-from __future__ import annotations
 
+from __future__ import annotations
 import pybase64 as base64
 import orjson
 import time

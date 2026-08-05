@@ -13,8 +13,8 @@ These tests pin the new behaviour: when ``detect_install_method`` reports
 ``docker pull`` guidance from ``format_docker_update_message`` and exit
 with status 1, without running ``git fetch`` / ``subprocess.run``.
 """
-
 from __future__ import annotations
+
 
 from types import SimpleNamespace
 from unittest.mock import patch

@@ -13,8 +13,8 @@ Usage::
     )
     # cmd == "rtk git log --oneline -100", rewritten == True
 """
-
 from __future__ import annotations
+
 
 import functools
 import platform

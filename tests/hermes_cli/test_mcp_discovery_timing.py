@@ -13,8 +13,8 @@ Tests verify:
   4. The wait stays bounded when discovery is slow (dead server).
   5. Interactive mode keeps the small bound (not affected).
 """
-
 from __future__ import annotations
+
 
 import sys
 import threading

@@ -1,6 +1,6 @@
 """Tests for tools/microsoft_graph_client.py."""
-
 from __future__ import annotations
+
 
 from pathlib import Path
 

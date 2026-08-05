@@ -10,8 +10,8 @@ tool routes to a provider's edit endpoint when ``image_url`` /
 - ``capabilities()`` honesty drives the dynamic tool-schema description
 - Models without an edit endpoint reject image inputs with a clear error
 """
-
 from __future__ import annotations
+
 
 import json
 from typing import Any, Dict, List, Optional

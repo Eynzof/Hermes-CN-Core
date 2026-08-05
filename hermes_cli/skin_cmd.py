@@ -7,8 +7,8 @@ repaints every live surface within ~a second. A built-in skin (no file) is forke
 into an editable copy that carries its full palette, so the current look is
 preserved and only the one key changes.
 """
-
 from __future__ import annotations
+
 
 import argparse
 import re

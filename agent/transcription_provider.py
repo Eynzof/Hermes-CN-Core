@@ -43,8 +43,8 @@ Response contract
     provider     str       provider name (for diagnostics)
     error        str       only when success=False
 """
-
 from __future__ import annotations
+
 
 import abc
 import logging

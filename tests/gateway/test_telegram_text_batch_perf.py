@@ -9,8 +9,8 @@ gets the lower number on every tier.
 The env-clamped helper guarantees float env vars never produce NaN/Inf
 or out-of-bounds values that could break asyncio.sleep().
 """
-
 from __future__ import annotations
+
 
 import math
 

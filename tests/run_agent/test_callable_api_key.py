@@ -22,8 +22,8 @@ Covered:
   * ``batch_runner`` strips the callable from the worker config dict
     so multiprocessing.Pool can pickle the rest.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import json

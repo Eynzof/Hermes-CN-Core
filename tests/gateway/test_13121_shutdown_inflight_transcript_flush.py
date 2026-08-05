@@ -29,8 +29,8 @@ with the in-flight messages) AND a true E2E path (a real ``AIAgent`` flush
 against a real ``SessionDB`` in a temp ``HERMES_HOME``, read back through the
 real ``SessionStore.load_transcript``).
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import sys

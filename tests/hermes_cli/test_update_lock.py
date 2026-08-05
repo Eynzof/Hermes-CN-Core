@@ -13,8 +13,8 @@ These exercise the real marker file against a temp home — no mocks — because
 the contract that matters is what the Rust updater and the Electron gate see on
 disk.
 """
-
 from __future__ import annotations
+
 
 import os
 import time

@@ -1,6 +1,6 @@
 """Tests for the ``hermes hooks`` CLI subcommand."""
-
 from __future__ import annotations
+
 
 import io
 import json

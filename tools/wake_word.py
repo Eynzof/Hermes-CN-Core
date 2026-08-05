@@ -28,8 +28,8 @@ again (two input streams on one device is unreliable cross-platform).
 Nothing here mutates agent context or the prompt cache — on wake we hand a plain
 string to the caller, exactly like a voice transcript.
 """
-
 from __future__ import annotations
+
 
 import logging
 import os

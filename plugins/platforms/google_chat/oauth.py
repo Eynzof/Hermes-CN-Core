@@ -53,8 +53,8 @@ Token storage layout
 - OAuth client secret (profile-scoped — each profile registers its own):
     ``${HERMES_HOME}/google_chat_user_client_secret.json``
 """
-
 from __future__ import annotations
+
 
 import argparse
 import orjson

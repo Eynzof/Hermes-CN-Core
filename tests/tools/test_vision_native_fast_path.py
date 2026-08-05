@@ -5,8 +5,8 @@ image content inside tool-result messages, ``_handle_vision_analyze`` skips
 the auxiliary LLM and returns a multimodal envelope so the main model sees
 the pixels directly on its next turn.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import base64

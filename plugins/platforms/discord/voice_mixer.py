@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 """
 Continuous PCM audio mixer for Discord voice channels.
@@ -41,6 +40,7 @@ The mixer NEVER touches the inbound receive path: it only produces the bot's
 *outgoing* stream.  The :class:`VoiceReceiver` decodes incoming SSRCs only, so
 the mixer's output cannot echo back into transcription.
 """
+from __future__ import annotations
 
 import logging
 import threading

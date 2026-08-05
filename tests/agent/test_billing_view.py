@@ -11,8 +11,8 @@ Covers:
 No network: HTTP-layer tests drive _raise_for_error directly and monkeypatch the
 request function for the builder.
 """
-
 from __future__ import annotations
+
 
 from decimal import Decimal
 

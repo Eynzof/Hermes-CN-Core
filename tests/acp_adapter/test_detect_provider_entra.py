@@ -7,8 +7,8 @@ returned a callable ``api_key`` — i.e. Azure Foundry with
 ``"openrouter"`` and reject the legitimate provider in its auth handshake.
 This test pins the callable-aware fix so it never regresses.
 """
-
 from __future__ import annotations
+
 
 from unittest.mock import patch
 

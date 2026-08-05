@@ -30,8 +30,8 @@ Substrate facts (verified May 2026):
   curation and pulls in non-agentic models (Nous /models returns ~400
   IDs including TTS, embeddings, rerankers, image/video generators).
 """
-
 from __future__ import annotations
+
 
 from dataclasses import dataclass, replace
 from typing import Optional

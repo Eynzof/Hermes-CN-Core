@@ -1,6 +1,6 @@
 """Generic managed-tool gateway helpers for Nous-hosted vendor passthroughs."""
-
 from __future__ import annotations
+
 
 import orjson
 import logging

@@ -8,8 +8,8 @@ The helpers must match the bare model name, including when it arrives via
 OpenRouter as ``arcee-ai/trinity-large-thinking``, but must NOT hit sibling
 Arcee models like trinity-large-preview or trinity-mini.
 """
-
 from __future__ import annotations
+
 
 import pytest
 

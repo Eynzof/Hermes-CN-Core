@@ -10,8 +10,8 @@ This module deliberately stops at the Hermes boundary:
 Direct Modal and managed Modal keep separate transport logic, persistence, and
 trust-boundary decisions in their own modules.
 """
-
 from __future__ import annotations
+
 
 import shlex
 import time

@@ -1,6 +1,6 @@
 """Regression tests for Linux/X11 capture target selection (#58026, #54173)."""
-
 from __future__ import annotations
+
 
 from unittest.mock import patch
 

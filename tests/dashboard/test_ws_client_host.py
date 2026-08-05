@@ -18,8 +18,8 @@ The contract these tests pin down:
   * ``app.state.bound_host`` is left untouched — the bind address used by
     the listener doesn't change.
 """
-
 from __future__ import annotations
+
 
 import os
 

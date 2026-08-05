@@ -11,8 +11,8 @@ rejected #65998 approach) is specifically forbidden: the watchdog thread
 calls ``os._exit(0)`` unconditionally after its sleep, so a startup-armed
 timer hard-kills every session that outlives the timeout.
 """
-
 from __future__ import annotations
+
 
 import os
 import signal

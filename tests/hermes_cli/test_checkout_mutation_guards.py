@@ -12,8 +12,8 @@ The guard predicate requires BOTH conditions (under pytest AND the target is
 this checkout itself), so every tmp_path-sandboxed test keeps exercising the
 real code paths unchanged.
 """
-
 from __future__ import annotations
+
 
 from pathlib import Path
 

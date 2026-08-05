@@ -22,8 +22,8 @@ one function's behavior, and there is no runtime seam that can observe a lookup
 that was never written. Every entry in the allow-list below names a call site
 whose behavior is separately covered by a real test.
 """
-
 from __future__ import annotations
+
 
 import ast
 from pathlib import Path

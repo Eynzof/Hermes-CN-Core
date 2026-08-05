@@ -66,8 +66,8 @@ Skip reasons:
   ("Set HERMES_DASHBOARD_OAUTH_CLIENT_ID …") instead of the bare "no
   providers registered" the gate would otherwise emit.
 """
-
 from __future__ import annotations
+
 
 import pybase64 as base64
 import hashlib

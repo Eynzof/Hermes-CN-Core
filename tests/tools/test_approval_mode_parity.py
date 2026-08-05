@@ -22,8 +22,8 @@ There is no per-platform ``approvals.mode`` override in the config schema;
 mode/timeout are global, so the synthetic configs below cover global-set,
 unset (defaults), and malformed values.
 """
-
 from __future__ import annotations
+
 
 import importlib
 from unittest.mock import MagicMock, patch

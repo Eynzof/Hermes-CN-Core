@@ -1,6 +1,6 @@
 """Tests for tui_gateway.loop_noise — the WS peer-hangup teardown filter (#50005)."""
-
 from __future__ import annotations
+
 
 import asyncio
 

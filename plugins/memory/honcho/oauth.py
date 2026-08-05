@@ -9,8 +9,8 @@ revokes the whole grant. So every refresh must persist the rotated token
 atomically and be serialized — and a failed refresh never raises into the
 agent (stale token stays; the fail-open path absorbs the eventual 401).
 """
-
 from __future__ import annotations
+
 
 import orjson
 import logging

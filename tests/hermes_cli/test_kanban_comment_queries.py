@@ -4,8 +4,8 @@
 newer than a cursor so a running worker folds in new operator notes without
 re-reading the whole thread.
 """
-
 from __future__ import annotations
+
 
 import sys
 from pathlib import Path

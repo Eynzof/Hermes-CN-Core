@@ -2,8 +2,8 @@
 
 Salvaged from PR #65544 (adapted: agent.fts_v2_read → sessions.cjk_fts).
 """
-
 from __future__ import annotations
+
 
 import os
 from pathlib import Path

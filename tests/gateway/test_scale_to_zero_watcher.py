@@ -7,8 +7,8 @@ These cover the parts gateway/test_scale_to_zero.py (pure helpers) can't: that
 the watcher calls the relay adapter's go_dormant() exactly when idle+armed,
 respects the cooldown, and skips when busy — the F7/D3 + D12 behaviour.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import time

@@ -5,8 +5,8 @@ should prefer `capture(mode='som')` then `click(element=N)` — much more
 reliable than pixel coordinates. Pixel coordinates remain supported for
 models that were trained on them (e.g. Claude's computer-use RL).
 """
-
 from __future__ import annotations
+
 
 from typing import Any, Dict
 

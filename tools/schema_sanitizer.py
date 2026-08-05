@@ -33,8 +33,8 @@ and any per-tool dynamic rebuilds) and fixes the known-hostile constructs
 in-place on a deep copy. It is intentionally conservative: it only modifies
 shapes the LLM backend couldn't use anyway.
 """
-
 from __future__ import annotations
+
 
 import copy
 import logging

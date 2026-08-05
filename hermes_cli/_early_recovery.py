@@ -20,8 +20,8 @@ the pins from pyproject.toml).  It NEVER clears the recovery markers — the
 full, confirmed marker lifecycle stays with ``_recover_from_interrupted_install()``
 in main.py, which runs right after import succeeds.
 """
-
 from __future__ import annotations
+
 
 import importlib
 import os

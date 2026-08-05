@@ -1,6 +1,6 @@
 """Tests for scripts/ci/publish_e2e_evidence.py."""
-
 from __future__ import annotations
+
 
 import importlib.util
 import sys

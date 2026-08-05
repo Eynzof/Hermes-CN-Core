@@ -3,8 +3,8 @@
 Covers the 9-state matrix plus validation edge cases.  All header values
 arrive as STRINGS (the producer calls String(...) on every field).
 """
-
 from __future__ import annotations
+
 
 import logging
 import time

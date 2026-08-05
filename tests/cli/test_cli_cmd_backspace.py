@@ -2,8 +2,8 @@
 terminals reach prompt_toolkit's readline kill bindings instead of leaking
 into the buffer as literal text.
 """
-
 from __future__ import annotations
+
 
 import pytest
 

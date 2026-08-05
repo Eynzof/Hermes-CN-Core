@@ -23,8 +23,8 @@ engine plugins (e.g. hermes-lcm) rely on:
    from a plugin engine's ``register(ctx)`` entry point and routes it
    to the global plugin command registry.
 """
-
 from __future__ import annotations
+
 
 from unittest.mock import MagicMock
 

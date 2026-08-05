@@ -5,8 +5,8 @@ A half-closed Gateway socket can leave ``Bot.start()`` alive while REST still
 returns 200, so health must come from the active WebSocket's ready/open/ACK and
 heartbeat-latency state rather than ``fetch_user()``.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import time

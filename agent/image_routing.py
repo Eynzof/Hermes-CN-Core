@@ -35,8 +35,8 @@ URL-referenced images, style-gating loops) keep working. The routing only
 affects *how user-attached images on the current turn* are presented to the
 main model.
 """
-
 from __future__ import annotations
+
 
 import pybase64 as base64
 import logging

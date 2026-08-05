@@ -3,8 +3,8 @@ produces, so the existing Alt+Enter newline handler in `cli.py` fires for
 terminals that emit a distinct Shift+Enter under the Kitty keyboard protocol
 or xterm modifyOtherKeys mode.
 """
-
 from __future__ import annotations
+
 
 import pytest
 

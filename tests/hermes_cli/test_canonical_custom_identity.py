@@ -12,8 +12,8 @@ Both spellings match the entry (``_get_named_custom_provider`` accepts
 either), so the test asserts they converge on one identity rather than
 asserting any particular spelling is rejected.
 """
-
 from __future__ import annotations
+
 
 import pytest
 

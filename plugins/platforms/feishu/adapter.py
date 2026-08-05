@@ -44,8 +44,8 @@ Session-key participant isolation prefers ``union_id`` (via user_id_alt)
 over ``open_id`` (via user_id) so that sessions stay stable if the same
 user is seen through different apps in the future.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import collections

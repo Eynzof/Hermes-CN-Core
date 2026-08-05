@@ -17,8 +17,8 @@ Provider switching uses the ``--provider`` flag exclusively.
 No colon-based ``provider:model`` syntax — colons are reserved for
 OpenRouter variant suffixes (``:free``, ``:extended``, ``:fast``).
 """
-
 from __future__ import annotations
+
 
 import logging
 from agent.re_compat import re

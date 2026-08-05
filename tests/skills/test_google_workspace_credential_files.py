@@ -4,8 +4,8 @@ PR #9931 accidentally removed the required_credential_files header, which broke
 credential file mounting in Docker/Modal remote backends (#16452). This test
 prevents the regression from silently reappearing.
 """
-
 from __future__ import annotations
+
 
 import os
 from pathlib import Path

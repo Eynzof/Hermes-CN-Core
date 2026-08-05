@@ -1,6 +1,6 @@
 """Tests for tools/microsoft_graph_auth.py."""
-
 from __future__ import annotations
+
 
 import asyncio
 

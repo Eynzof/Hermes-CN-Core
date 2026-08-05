@@ -16,8 +16,8 @@ a compression-induced session split. All three MUST be followed by a
 actual propagation path inline, verifying that the mock session_entry update
 and _save() semantics are correct without requiring a live gateway.
 """
-
 from __future__ import annotations
+
 
 import ast
 import inspect

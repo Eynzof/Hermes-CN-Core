@@ -6,8 +6,8 @@
   output selection wires a CPR-disabled Output into Application on POSIX.
 * Native Windows keeps prompt_toolkit's default output selection.
 """
-
 from __future__ import annotations
+
 
 import os
 import select

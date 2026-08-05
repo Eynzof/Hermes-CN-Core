@@ -6,8 +6,8 @@ one next-turn pending message instead of clobbering each other. In
 debounce so bursty multi-message thoughts are merged before the active drain
 hands off the next turn.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import sys

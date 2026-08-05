@@ -8,8 +8,8 @@ Exits 0 for valid clear or blocked results.  Non-zero exit signals probe
 failure (the detector itself crashed, psutil unavailable, etc.).  Exactly
 one JSON document on stdout; diagnostics on stderr only.
 """
-
 from __future__ import annotations
+
 
 import json
 import sys

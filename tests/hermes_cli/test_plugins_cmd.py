@@ -1,6 +1,6 @@
 """Tests for hermes_cli.plugins_cmd — the ``hermes plugins`` CLI subcommand."""
-
 from __future__ import annotations
+
 
 import logging
 import os

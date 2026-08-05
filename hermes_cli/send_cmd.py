@@ -23,8 +23,8 @@ Design notes:
     1 — delivery failed at the platform level
     2 — usage / argument / config error (argparse already uses 2)
 """
-
 from __future__ import annotations
+
 
 import argparse
 import orjson

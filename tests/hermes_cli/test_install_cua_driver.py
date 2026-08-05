@@ -18,8 +18,8 @@ cleanly on missing-arch assets, and the upgrade path uses
 ``cua_driver_update_check()`` (which shells `cua-driver check-update
 --json` against the already-installed binary).
 """
-
 from __future__ import annotations
+
 
 import sys
 from types import SimpleNamespace

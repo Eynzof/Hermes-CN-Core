@@ -4,8 +4,8 @@ Proves a connector-delivered mid-turn interrupt reaches the existing per-session
 interrupt mechanism and cancels exactly the targeted session_key's turn — never
 a sibling's. Mirrors the isolation discipline of test_stop_thread_sibling.py.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 

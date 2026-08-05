@@ -18,8 +18,8 @@ Strict invariants:
   - Pinned skills bypass all auto-transitions
   - Uses the auxiliary client; never touches the main session's prompt cache
 """
-
 from __future__ import annotations
+
 
 import orjson
 import logging

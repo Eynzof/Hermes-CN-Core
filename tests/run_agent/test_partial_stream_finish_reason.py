@@ -12,8 +12,8 @@ Pins the contract:
   output-length truncation from a partial-stream-stub network error
   via response.id.
 """
-
 from __future__ import annotations
+
 
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch

@@ -4,8 +4,8 @@ xAI exposes only text-to-video and image-to-video through the unified
 ``video_generate`` tool. We assert the endpoint hit and the payload shape
 because routing is the part most likely to break silently.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import orjson

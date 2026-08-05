@@ -20,8 +20,8 @@ Note ``running`` is the *working* state (in-place processing), NOT locomotion â€
 The frame-segmentation, fit-to-cell, and transparency-residue logic is adapted
 from OpenAI's ``hatch-pet`` skill (openai/skills, Apache-2.0).
 """
-
 from __future__ import annotations
+
 
 import io
 import logging

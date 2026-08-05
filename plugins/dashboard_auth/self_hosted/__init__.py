@@ -72,8 +72,8 @@ client_id), it writes a human-readable reason to the module-level
 :data:`LAST_SKIP_REASON` so the gate's fail-closed branch can surface a useful
 operator error instead of the bare "no providers registered".
 """
-
 from __future__ import annotations
+
 
 import pybase64 as base64
 import hashlib

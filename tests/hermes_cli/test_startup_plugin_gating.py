@@ -17,8 +17,8 @@ Two invariants:
 2. ``_plugin_cli_discovery_needed()`` returns the right answer for the
    flag/positional parsing cases it's meant to handle.
 """
-
 from __future__ import annotations
+
 
 import io
 from agent.re_compat import re

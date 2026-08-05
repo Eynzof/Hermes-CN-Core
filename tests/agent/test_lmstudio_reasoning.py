@@ -4,8 +4,8 @@ Covers the contract that Hermes' generic effort ladder must stay monotonic
 once it is mapped onto LM Studio's narrower vocabulary: a stronger requested
 level may resolve to an equal-or-stronger LM Studio level, never a weaker one.
 """
-
 from __future__ import annotations
+
 
 import pytest
 

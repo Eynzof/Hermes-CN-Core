@@ -9,8 +9,8 @@ like a URL / file path, runs venv-scoped, and respects the
 These tests cover the security boundary and the public API. The real pip
 call is mocked — we never actually shell out during unit tests.
 """
-
 from __future__ import annotations
+
 
 
 import pytest

@@ -22,8 +22,8 @@ Pinned scenarios:
   * Failure path when no model is configured returns ``(None, None)``
     cleanly so the auto chain falls through.
 """
-
 from __future__ import annotations
+
 
 import sys
 from types import SimpleNamespace

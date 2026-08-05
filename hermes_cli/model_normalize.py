@@ -28,8 +28,8 @@ This module centralises that translation so callers can simply write::
 
 Inspired by Clawdbot's ``normalizeAnthropicModelId`` pattern.
 """
-
 from __future__ import annotations
+
 from agent.re_compat import re
 from typing import Optional
 

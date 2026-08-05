@@ -22,8 +22,8 @@ Design rules:
   stored auth-state ``portal_base_url`` → the registry default. This is how the
   E2E run points the client at a preview deployment with zero code change.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import os

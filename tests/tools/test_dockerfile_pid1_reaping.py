@@ -17,8 +17,8 @@ The init can be any reaper-capable PID-1: the historical lineage was
 checks below accept either family — the contract is behavioural, not
 nominal.
 """
-
 from __future__ import annotations
+
 
 from pathlib import Path
 

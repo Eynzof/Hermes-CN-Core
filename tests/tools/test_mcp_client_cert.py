@@ -11,8 +11,8 @@ Covers:
 3. SSE path forwards ``cert`` and ``ssl_verify`` via an ``httpx_client_factory``
    without breaking the OAuth/headers/timeout passthrough.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch

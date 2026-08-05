@@ -67,8 +67,8 @@ The CAS coordination is **per-board** — each board is a separate DB,
 so multi-board installs get the same atomicity guarantees without any
 new locking.
 """
-
 from __future__ import annotations
+
 
 import contextlib
 import hashlib

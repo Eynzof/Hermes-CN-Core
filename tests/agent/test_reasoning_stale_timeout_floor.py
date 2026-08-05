@@ -30,8 +30,8 @@ These tests pin the floor's behavior:
    context-size scaling block, raising the timeout for reasoning
    models without lowering it for non-reasoning models.
 """
-
 from __future__ import annotations
+
 
 from pathlib import Path
 

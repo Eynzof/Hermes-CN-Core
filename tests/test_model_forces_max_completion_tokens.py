@@ -6,8 +6,8 @@ This helper decides whether a given model name requires the newer
 error seen when third-party OpenAI-compatible endpoints serve gpt-4o / 4.1 /
 5.x / o-series models by name and the caller only checks the URL host.
 """
-
 from __future__ import annotations
+
 
 from utils import model_forces_max_completion_tokens
 

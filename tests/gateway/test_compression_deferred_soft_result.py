@@ -15,8 +15,8 @@ AST invariants on ``gateway/run.py`` (mirrors
   ``reset_session``, no ``_evict_cached_agent``, no
   ``_clear_conversation_scope``).
 """
-
 from __future__ import annotations
+
 
 import ast
 import inspect

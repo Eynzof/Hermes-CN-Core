@@ -5,8 +5,8 @@ The dashboard process owns sockets and JSON-RPC dispatch.  When
 ``python -m tui_gateway.compute_host`` child so compute-heavy agent threads do
 not contend with the serving process' event loop for the same GIL.
 """
-
 from __future__ import annotations
+
 
 import json
 import logging

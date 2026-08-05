@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Tests for the OpenRouter-compatible image gen provider (OpenRouter + Nous)."""
-
 from __future__ import annotations
+
 
 import sys
 

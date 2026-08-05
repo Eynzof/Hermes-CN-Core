@@ -5,8 +5,8 @@ JSON parsing, matcher behaviour, block-schema correctness, and the
 subprocess runner's graceful error handling.  Consent prompts are
 covered in ``test_shell_hooks_consent.py``.
 """
-
 from __future__ import annotations
+
 
 import orjson
 from pathlib import Path

@@ -12,8 +12,8 @@ We don't exercise the full agent loop here (it's 3000 lines of inference,
 streaming, plugin hooks, etc.) — instead we verify the normalization
 adapter produces exactly the shape the continuation block now consumes.
 """
-
 from __future__ import annotations
+
 
 from types import SimpleNamespace
 

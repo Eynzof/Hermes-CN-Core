@@ -13,8 +13,8 @@ files. In Hermes the equivalent isolation is:
 Both flags are wired via env vars so they work cleanly across the
 argparse → cmd_chat → cli.main() → HermesCLI → AIAgent call chain.
 """
-
 from __future__ import annotations
+
 
 import os
 import textwrap

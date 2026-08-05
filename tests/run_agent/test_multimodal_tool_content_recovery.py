@@ -22,8 +22,8 @@ a trivial flag-and-continue around the existing pattern used for
 
 See: https://github.com/NousResearch/hermes-agent/issues/27344
 """
-
 from __future__ import annotations
+
 
 
 from agent.error_classifier import FailoverReason, classify_api_error

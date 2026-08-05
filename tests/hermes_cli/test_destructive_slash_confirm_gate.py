@@ -8,8 +8,8 @@ destructive commands run silently.
 See gateway/run.py::_maybe_confirm_destructive_slash and
 cli.py::_confirm_destructive_slash for the runtime gate.
 """
-
 from __future__ import annotations
+
 
 from hermes_cli.config import DEFAULT_CONFIG
 

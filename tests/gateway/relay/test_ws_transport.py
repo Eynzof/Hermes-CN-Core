@@ -8,8 +8,8 @@ end to end on a live socket.
 
 Skipped cleanly if the optional ``websockets`` dependency is absent.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import orjson

@@ -10,8 +10,8 @@ the Ink client drops the message into the composer for editing.
 
 ``/undo N`` backs up N user turns at once (default 1). See issue #21910.
 """
-
 from __future__ import annotations
+
 
 import importlib
 import threading

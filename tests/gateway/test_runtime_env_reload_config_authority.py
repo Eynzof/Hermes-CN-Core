@@ -4,8 +4,8 @@ Issue #19158: startup bridges config.yaml agent.max_turns into
 HERMES_MAX_ITERATIONS, but a later per-turn load_dotenv(..., override=True)
 can restore a stale .env HERMES_MAX_ITERATIONS value before the next turn.
 """
-
 from __future__ import annotations
+
 
 import os
 from pathlib import Path

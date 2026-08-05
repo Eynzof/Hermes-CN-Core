@@ -9,8 +9,8 @@ Slack Workflow Builder posts (and other app/bot messages) arrive as
 ``_is_user_authorized`` even when the operator enabled ``SLACK_ALLOW_BOTS`` --
 the bug that makes @mentioning the bot from a Slack workflow do nothing.
 """
-
 from __future__ import annotations
+
 
 from types import SimpleNamespace
 

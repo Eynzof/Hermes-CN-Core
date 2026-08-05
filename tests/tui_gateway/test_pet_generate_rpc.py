@@ -3,8 +3,8 @@
 Image generation is mocked, so these assert the RPC contract + staging behavior
 (draft tokens, data-URI previews, expiry, activation) without any API calls.
 """
-
 from __future__ import annotations
+
 
 import pytest
 

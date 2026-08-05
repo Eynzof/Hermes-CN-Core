@@ -9,8 +9,8 @@ combination unbootable. That is the mechanism behind the ``ImportError`` in
 
 Reference: issues #76104 (ZIP atomicity) and #76105 (venv-helper duplication).
 """
-
 from __future__ import annotations
+
 
 import os
 from pathlib import Path

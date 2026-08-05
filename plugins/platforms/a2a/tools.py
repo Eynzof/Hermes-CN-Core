@@ -20,8 +20,8 @@ Peers are resolved from config.yaml under ``a2a_agents``::
 Transport is stdlib urllib (no a2a-sdk dependency). The wire format is the A2A
 v1.0 JSON-RPC ``message/send`` method; replies from v0.3 peers still parse.
 """
-
 from __future__ import annotations
+
 
 import json
 import logging

@@ -4,8 +4,8 @@ The poller's core logic is a pure function: take raw GitHub API job dicts
 and split them into (completed, pending). The API wrapper + polling loop
 are tested via E2E in CI, not here.
 """
-
 from __future__ import annotations
+
 
 import importlib.util
 import sys

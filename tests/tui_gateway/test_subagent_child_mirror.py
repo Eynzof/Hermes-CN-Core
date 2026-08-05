@@ -7,8 +7,8 @@ reaches the gateway only as relayed ``subagent.*`` events on the PARENT sid
 relayed events into native stream events on the CHILD's live sid so the window
 shows a real midstream turn instead of sitting silent until persistence.
 """
-
 from __future__ import annotations
+
 
 from unittest.mock import MagicMock, patch
 

@@ -7,8 +7,8 @@ BLOCKED/denied/pending marker ran with user consent. These tests build
 synthetic state.db fixtures and verify scanning, ranking, safety exclusions,
 and the --apply merge path.
 """
-
 from __future__ import annotations
+
 
 import json
 import sqlite3

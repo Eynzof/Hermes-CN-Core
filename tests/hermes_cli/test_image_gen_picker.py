@@ -3,8 +3,8 @@
 Covers `_plugin_image_gen_providers`, `_visible_providers`, and
 `_toolset_needs_configuration_prompt` handling of plugin providers.
 """
-
 from __future__ import annotations
+
 
 from types import SimpleNamespace
 

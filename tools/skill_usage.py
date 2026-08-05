@@ -21,8 +21,8 @@ Lifecycle states:
     archived  -> unused > archive_after_days (config); moved to .archive/
     pinned    -> opt-out from auto transitions (boolean flag, orthogonal to state)
 """
-
 from __future__ import annotations
+
 
 import orjson
 import logging

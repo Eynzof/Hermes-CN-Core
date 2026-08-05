@@ -6,8 +6,8 @@ FastAPI Query bounds reject out-of-range values at the validation layer
 across every profile's state.db on the fan-out endpoint), and an
 unbounded/inverted ``days`` forces full-history InsightsEngine work.
 """
-
 from __future__ import annotations
+
 
 import pytest
 

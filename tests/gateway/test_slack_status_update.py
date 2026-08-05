@@ -6,8 +6,8 @@ The status-update path must:
   3. Fall back to sending fresh when the cached message edit fails.
   4. Keep distinct keys and distinct threads independent.
 """
-
 from __future__ import annotations
+
 
 import sys
 from unittest.mock import AsyncMock, MagicMock

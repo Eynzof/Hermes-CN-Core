@@ -6,8 +6,8 @@ https://sqlite.org/wal.html#walresetbug
 
 Existing on-disk WAL databases are left alone (no live downgrade).
 """
-
 from __future__ import annotations
+
 
 import sqlite3
 from types import SimpleNamespace

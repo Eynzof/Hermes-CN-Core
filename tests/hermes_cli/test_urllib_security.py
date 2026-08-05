@@ -1,6 +1,6 @@
 """Wire-level tests for credential-safe stdlib urllib redirects."""
-
 from __future__ import annotations
+
 
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer

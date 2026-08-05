@@ -12,8 +12,8 @@ Two DIFFERENT Anthropic endpoints impose OPPOSITE User-Agent requirements:
   validation). The token endpoint must therefore use a non-``claude-code/`` UA
   (we send ``axios/*``, matching the real Claude Code CLI's exchange client).
 """
-
 from __future__ import annotations
+
 from agent.re_compat import re
 from unittest.mock import MagicMock, patch
 

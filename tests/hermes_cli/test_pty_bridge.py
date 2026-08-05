@@ -3,8 +3,8 @@
 These tests drive the bridge with minimal POSIX processes (echo, env, sleep,
 printf) to verify it behaves like a PTY you can read/write/resize/close.
 """
-
 from __future__ import annotations
+
 
 import os
 import shutil

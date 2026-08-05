@@ -8,8 +8,8 @@ Covers:
 These tests exercise ``_maybe_continue_goal_after_turn`` directly on a
 minimal ``HermesCLI`` stub (pattern used elsewhere in tests/cli).
 """
-
 from __future__ import annotations
+
 
 import queue
 import uuid

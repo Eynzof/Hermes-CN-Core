@@ -1,6 +1,6 @@
 """nemo_relay — optional Hermes plugin for NeMo Relay observability."""
-
 from __future__ import annotations
+
 
 import atexit
 import asyncio

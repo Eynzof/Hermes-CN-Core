@@ -12,8 +12,8 @@ Config: Uses the existing Honcho config chain:
   2. ~/.honcho/config.json (legacy global)
   3. Environment variables
 """
-
 from __future__ import annotations
+
 
 import json
 import orjson

@@ -4,8 +4,8 @@ Coverage targets — these mirror the issues called out in the OpenClaw tool
 search report. Every test that names an OpenClaw issue is the regression
 guard that would have caught that specific failure mode.
 """
-
 from __future__ import annotations
+
 
 import json
 import os

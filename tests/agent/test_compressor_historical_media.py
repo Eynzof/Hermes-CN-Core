@@ -6,8 +6,8 @@ payloads after context compression, and every subsequent request re-ships
 them — sometimes breaching provider body-size limits and wedging the
 session.
 """
-
 from __future__ import annotations
+
 
 from unittest.mock import patch
 

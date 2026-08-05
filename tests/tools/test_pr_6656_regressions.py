@@ -17,8 +17,8 @@ Three independent fixes that were salvaged together:
    ``_cleanup_expired`` (which writes the JSON file) without holding
    ``self._lock``, racing with ``generate_code`` / ``approve_code``.
 """
-
 from __future__ import annotations
+
 
 import orjson
 from pathlib import Path

@@ -33,8 +33,8 @@ required-signature changes do, and the registry skips (with a warning)
 sources built against a different major version instead of crashing
 startup.
 """
-
 from __future__ import annotations
+
 
 import os
 import re

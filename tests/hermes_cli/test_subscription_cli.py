@@ -5,8 +5,8 @@ in-terminal (picker → preview → confirm → apply), allows remote spending i
 insufficient_scope, and leads a scheduled downgrade/cancel with a prominent banner.
 Interactive screens are driven by mocking `_prompt_text_input_modal`.
 """
-
 from __future__ import annotations
+
 
 from decimal import Decimal
 

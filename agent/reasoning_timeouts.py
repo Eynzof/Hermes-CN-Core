@@ -49,8 +49,8 @@ why start-of-slug anchoring is the right shape.
 
 Fixes #52217.
 """
-
 from __future__ import annotations
+
 from agent.re_compat import re
 from typing import Optional
 

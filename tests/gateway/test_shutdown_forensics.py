@@ -1,6 +1,6 @@
 """Tests for gateway.shutdown_forensics — fast snapshot + async diag spawn."""
-
 from __future__ import annotations
+
 
 import orjson
 import os

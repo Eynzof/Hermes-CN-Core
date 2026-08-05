@@ -21,8 +21,8 @@ that has credentials for only one backend (e.g. DeepInfra, while the
 ``fal``/``xai`` plugins also register unconditionally) auto-selects it
 instead of returning ``None``.
 """
-
 from __future__ import annotations
+
 
 import logging
 import threading

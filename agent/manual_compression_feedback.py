@@ -1,6 +1,6 @@
 """User-facing summaries for manual compression commands."""
-
 from __future__ import annotations
+
 
 from typing import Any, Sequence
 

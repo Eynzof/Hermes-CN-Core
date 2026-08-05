@@ -12,8 +12,8 @@ Covers LINE adapter behavior from the PR review:
 8. send routing: reply token preferred → push fallback → batched at 5/call
 9. register() metadata + standalone_send shape
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import hashlib

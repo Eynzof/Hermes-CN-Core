@@ -1,5 +1,5 @@
-from __future__ import annotations
 
+from __future__ import annotations
 import threading
 from pathlib import Path
 from types import SimpleNamespace

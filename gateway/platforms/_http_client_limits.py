@@ -25,8 +25,8 @@ adapter factories use instead of the httpx default.  The values chosen:
 Override via ``HERMES_GATEWAY_HTTPX_KEEPALIVE_EXPIRY`` /
 ``HERMES_GATEWAY_HTTPX_MAX_KEEPALIVE`` env vars when tuning under load.
 """
-
 from __future__ import annotations
+
 
 import os
 

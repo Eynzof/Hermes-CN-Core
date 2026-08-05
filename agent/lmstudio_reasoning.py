@@ -7,8 +7,8 @@ graduated models). We map the user's ``reasoning_config`` onto LM Studio's
 OpenAI-compatible vocabulary, then clamp against the model's allowed set so
 the server doesn't 400 on an unsupported effort.
 """
-
 from __future__ import annotations
+
 
 from typing import List, Optional
 

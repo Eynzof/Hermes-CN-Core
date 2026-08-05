@@ -5,8 +5,8 @@ They verify the *behavior*: (1) a blocked discovery doesn't block startup, and
 (2) a delayed-but-reachable MCP server's tools land in the agent's snapshot
 via the automatic late-refresh, cache-safely (pre-first-turn only).
 """
-
 from __future__ import annotations
+
 
 import sys
 import threading

@@ -25,8 +25,8 @@ The allowlist exists only to reject an untrusted NETWORK-provided value
 (a poisoned portal_base_url written to auth.json by a compromised Portal
 response), never a value the operator explicitly configured.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import logging

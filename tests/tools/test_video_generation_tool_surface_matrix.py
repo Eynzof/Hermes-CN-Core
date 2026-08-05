@@ -10,8 +10,8 @@ config read → registry lookup → provider.generate() → outbound HTTP/SDK
 call. Stubs fal_client and httpx so we observe routing without hitting
 the network.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import orjson

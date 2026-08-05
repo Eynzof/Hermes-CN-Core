@@ -48,8 +48,8 @@ Activation (config ``agent.coding_context``):
   * ``on`` — force the posture anywhere (incl. non-workspaces). Prompt-only.
   * ``off`` — disable entirely.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import logging

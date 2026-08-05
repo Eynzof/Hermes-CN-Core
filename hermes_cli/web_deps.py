@@ -20,8 +20,8 @@ initialised) and keeps ``web_server``'s runtime behaviour byte-identical:
 monkeypatching an attribute on ``web_server`` is still authoritative because
 every call re-reads the attribute from the live module.
 """
-
 from __future__ import annotations
+
 
 import sys
 from typing import Any

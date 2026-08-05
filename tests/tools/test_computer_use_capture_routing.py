@@ -18,8 +18,8 @@ deterministic stubs for:
 …so the full code path is covered without a live cua-driver, a real
 auxiliary client, or network access.
 """
-
 from __future__ import annotations
+
 
 import base64
 import json

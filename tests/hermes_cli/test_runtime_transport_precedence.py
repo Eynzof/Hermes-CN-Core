@@ -12,8 +12,8 @@ provider's declared transport), and only lands on ``chat_completions`` for
 genuinely unknown providers/endpoints. Covers the explicit-runtime path and
 the API-key-provider path; the pool-entry path shares the same helper.
 """
-
 from __future__ import annotations
+
 
 from unittest.mock import patch as mock_patch
 

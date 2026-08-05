@@ -11,8 +11,8 @@ the crash class cannot silently regress.
 
 # Test pattern adapted from @devorun's PR #52700 (salvage convention).
 """
-
 from __future__ import annotations
+
 
 import subprocess
 from unittest.mock import MagicMock, patch

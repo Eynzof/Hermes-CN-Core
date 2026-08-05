@@ -1,6 +1,6 @@
 """Tests for the startup security posture audit (hermes_cli.security_audit_startup)."""
-
 from __future__ import annotations
+
 
 import os
 from pathlib import Path

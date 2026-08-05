@@ -5,8 +5,8 @@ thread until they respond.  These tests cover the module-level state
 machine: register, wait, resolve via button, resolve via text-fallback,
 "Other"-button text-capture flip, timeout, session boundary cleanup.
 """
-
 from __future__ import annotations
+
 
 import threading
 import time

@@ -15,8 +15,8 @@ which left two holes:
 ``persist_user_display_kind`` moves the typing to turn start, where the
 crash-resilience persist writes it in the same insert as the content.
 """
-
 from __future__ import annotations
+
 
 import shutil
 import tempfile

@@ -1,6 +1,6 @@
 """Behavioral tests for exact-interpreter SQLite runtime inspection."""
-
 from __future__ import annotations
+
 
 import json
 import os

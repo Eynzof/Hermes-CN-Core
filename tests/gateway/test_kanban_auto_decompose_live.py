@@ -6,8 +6,8 @@ created and launched tasks they didn't intend) found the flag had no effect
 without a full gateway restart. ``_resolve_auto_decompose_settings`` is now
 called every tick, reading the current config.
 """
-
 from __future__ import annotations
+
 
 import pytest
 

@@ -12,8 +12,8 @@ Covers:
 Port-tracking: anomalyco/opencode PR #23770
 (feat(truncate): allow configuring tool output truncation limits).
 """
-
 from __future__ import annotations
+
 
 from unittest.mock import patch
 

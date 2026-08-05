@@ -9,8 +9,8 @@ This test exercises _execute_mcp_reload directly with mocked MCP discovery
 and asserts that every cached agent's `tools` and `valid_tool_names`
 attributes are overwritten with the freshly-discovered tool set.
 """
-
 from __future__ import annotations
+
 
 from collections import OrderedDict
 from datetime import datetime

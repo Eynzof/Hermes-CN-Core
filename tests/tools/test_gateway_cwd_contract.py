@@ -9,8 +9,8 @@ were deliberately left out of scope. This file is a *characterization* guard: it
 pins the already-correct behavior so the supersession of PR #29365 is airtight
 and a future refactor of these sites can't silently regress the contract.
 """
-
 from __future__ import annotations
+
 
 from pathlib import Path
 

@@ -7,8 +7,8 @@ hung against the squatter (accepts TCP, never answers HTTP), driving the
 whole connect past the desktop GUI's RPC timeout
 ("error: request timed out: browser.manage").
 """
-
 from __future__ import annotations
+
 
 import socket
 import threading

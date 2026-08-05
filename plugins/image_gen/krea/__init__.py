@@ -19,8 +19,8 @@ Selection precedence (first hit wins):
 Docs: https://docs.krea.ai/developers/krea-2/overview
 API:  https://docs.krea.ai/api-reference/krea/krea-2-large
 """
-
 from __future__ import annotations
+
 
 import logging
 import os

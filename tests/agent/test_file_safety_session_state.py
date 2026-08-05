@@ -5,8 +5,8 @@ manipulation. Hermes keeps canonical conversation history in state.db and may
 also emit legacy JSON snapshots under sessions/; agent tools must not rewrite
 or delete either store.
 """
-
 from __future__ import annotations
+
 
 import json
 from pathlib import Path

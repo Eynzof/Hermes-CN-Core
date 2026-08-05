@@ -30,8 +30,8 @@ Optional hooks (override to opt in):
   on_delegation(task, result, **kwargs)  — parent-side observation of subagent work
   backup_paths() -> list[str]            — extra on-disk paths to include in `hermes backup`
 """
-
 from __future__ import annotations
+
 
 import logging
 import re

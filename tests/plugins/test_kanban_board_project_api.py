@@ -5,8 +5,8 @@ test_kanban_dashboard_plugin.py) and exercises the project surface:
 GET /projects, board create/patch/list carrying project scope, and a task
 on a scoped board inheriting the project.
 """
-
 from __future__ import annotations
+
 
 import importlib.util
 import sys

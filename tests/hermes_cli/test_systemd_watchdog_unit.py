@@ -1,6 +1,6 @@
 """Generated service behavior for the opt-in systemd watchdog."""
-
 from __future__ import annotations
+
 
 from gateway.config import GatewayConfig
 from hermes_cli import gateway as gateway_cli

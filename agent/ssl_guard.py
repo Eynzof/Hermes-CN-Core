@@ -3,8 +3,8 @@
 This module catches broken CA bundle paths before OpenAI/httpx turns them into
 opaque ``FileNotFoundError: [Errno 2] No such file or directory`` failures.
 """
-
 from __future__ import annotations
+
 
 import logging
 import os

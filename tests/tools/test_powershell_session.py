@@ -6,8 +6,8 @@ Two layers:
 * Live-session tests spawn a real interpreter and are skipped when PowerShell
   is unavailable (i.e. everywhere but Windows).
 """
-
 from __future__ import annotations
+
 
 import shutil
 import sys

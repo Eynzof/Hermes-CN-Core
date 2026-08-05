@@ -12,8 +12,8 @@ instead of rebuilding).  Covers:
       - Row has system_prompt="" → WARNING + fresh build
       - DB write fails → WARNING (subsequent turns will miss cache)
 """
-
 from __future__ import annotations
+
 
 import logging
 from unittest.mock import MagicMock

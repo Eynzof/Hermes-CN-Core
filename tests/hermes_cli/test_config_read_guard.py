@@ -21,8 +21,8 @@ code, use ``load_config()``/``load_config_readonly()`` for behavioral reads,
 or ``read_user_config_raw()`` for write-back round-trips — do not add your
 file to the allowlist without a reason of the same class.
 """
-
 from __future__ import annotations
+
 
 import re
 from pathlib import Path

@@ -14,8 +14,8 @@ forever. The fix gives ``block_task`` a typed ``kind`` and a persistent
   amnesia that let the loop run unbounded).
 * A successful ``complete_task`` resets the loop memory.
 """
-
 from __future__ import annotations
+
 
 from pathlib import Path
 

@@ -9,8 +9,8 @@ behavioural regression test).
 Focus here: the lock primitives themselves (acquire, release, TTL,
 diagnostic accessor) — not the wiring into compression.
 """
-
 from __future__ import annotations
+
 
 import os
 import threading

@@ -18,8 +18,8 @@ Rules:
 Scope: strictly HERMES_HOME and /tmp/hermes-*
 Never touches: ~/.hermes/logs/ or any system directory.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import logging

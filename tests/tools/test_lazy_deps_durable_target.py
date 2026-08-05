@@ -12,8 +12,8 @@ mocked pip), exercising the actual ``--target`` + sys.path-append path.
 That E2E test is guarded by network availability; everything else is pure
 unit logic with no network.
 """
-
 from __future__ import annotations
+
 
 import os
 import subprocess

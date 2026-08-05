@@ -6,8 +6,8 @@ task/event/run fixtures (no DB) plus a few integration-style cases
 that round-trip through the real kanban_db to make sure the rule
 engine works on sqlite3.Row objects as well as dataclasses.
 """
-
 from __future__ import annotations
+
 
 import time
 from pathlib import Path

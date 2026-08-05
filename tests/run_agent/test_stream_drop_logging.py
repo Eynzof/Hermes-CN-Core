@@ -14,8 +14,8 @@ Plus the user-visible UI line gains an ``after Xs`` suffix when timing data
 is available, distinguishing "couldn't connect at all" from "died mid-stream
 after N seconds" (very different root causes).
 """
-
 from __future__ import annotations
+
 
 import logging
 import time

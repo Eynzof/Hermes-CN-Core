@@ -15,8 +15,8 @@ Two layers of coverage:
 3. Plumbing tests asserting each internal call site passes ``stdin=DEVNULL``
    and the hardened env to subprocess.
 """
-
 from __future__ import annotations
+
 
 import http.server
 import os

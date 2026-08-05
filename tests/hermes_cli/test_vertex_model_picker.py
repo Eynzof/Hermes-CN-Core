@@ -12,8 +12,8 @@ gaps that kept the provider invisible/unusable in the /model menu:
 
 No network calls.
 """
-
 from __future__ import annotations
+
 
 from unittest.mock import patch
 

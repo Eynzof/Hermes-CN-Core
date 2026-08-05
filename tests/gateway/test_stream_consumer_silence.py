@@ -16,8 +16,8 @@ These tests pin the two halves of the fix:
   any already-shown preview is retracted, while substantive prose that merely
   mentions a marker is delivered normally.
 """
-
 from __future__ import annotations
+
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock

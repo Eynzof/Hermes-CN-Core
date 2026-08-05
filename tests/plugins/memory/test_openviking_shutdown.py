@@ -7,8 +7,8 @@ which crashes CPython with SIGABRT at ``Py_FinalizeEx``. These tests assert
 the waiter short-circuits on shutdown and that ``shutdown()`` waits for the
 runtime-start thread.
 """
-
 from __future__ import annotations
+
 
 import threading
 import time

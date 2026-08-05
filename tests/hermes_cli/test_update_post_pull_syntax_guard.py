@@ -11,8 +11,8 @@ markers in ``hermes_cli/config.py``; users who ran ``hermes update`` in
 the 7-minute window before #28458 landed could not run any ``hermes``
 command afterward.
 """
-
 from __future__ import annotations
+
 
 from pathlib import Path
 from types import SimpleNamespace

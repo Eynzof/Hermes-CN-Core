@@ -6,8 +6,8 @@ protected vars), conflict surfacing, timeout enforcement, provenance,
 and Bitwarden's SecretSource adapter — plus the conformance kit run
 against the bundled Bitwarden source.
 """
-
 from __future__ import annotations
+
 
 import sys
 import time

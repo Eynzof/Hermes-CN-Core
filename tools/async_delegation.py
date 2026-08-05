@@ -33,8 +33,8 @@ delegated back to ``delegate_tool._run_single_child`` via an injected
 runner, so all the credential leasing, heartbeat, timeout, and result-shaping
 logic stays in one place.
 """
-
 from __future__ import annotations
+
 
 import json
 import logging

@@ -14,8 +14,8 @@ Covers:
 
 Run: pytest tests/hermes_cli/test_dashboard_auth_native_flow.py
 """
-
 from __future__ import annotations
+
 
 import hashlib
 import base64

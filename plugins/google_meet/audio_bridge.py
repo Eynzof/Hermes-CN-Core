@@ -16,8 +16,8 @@ avoid surprising the user's system audio state.
 
 Windows: not supported in v2.
 """
-
 from __future__ import annotations
+
 
 import platform
 import subprocess

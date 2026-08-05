@@ -25,8 +25,8 @@ Run standalone for debugging::
 No meet.google.com URL → exits non-zero. Any URL that doesn't start with
 ``https://meet.google.com/`` is rejected (explicit-by-design).
 """
-
 from __future__ import annotations
+
 
 import orjson
 import os

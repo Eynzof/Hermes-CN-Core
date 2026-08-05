@@ -5,8 +5,8 @@ HTML page when a route isn't actually serving the billing API) must surface as a
 typed BillingError, NOT a raw json.JSONDecodeError that escapes the typed-error
 contract and reads downstream as "not logged in".
 """
-
 from __future__ import annotations
+
 
 import io
 import json

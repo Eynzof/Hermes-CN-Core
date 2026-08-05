@@ -4,8 +4,8 @@ Loaded via the ``_plugin_adapter_loader`` helper so this lives under
 ``plugin_adapter_simplex`` in ``sys.modules`` and cannot collide with
 sibling platform-plugin tests on the same xdist worker.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import orjson

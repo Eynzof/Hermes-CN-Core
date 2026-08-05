@@ -20,8 +20,8 @@ The legacy aliases ``deepseek-chat`` / ``deepseek-reasoner`` were retired on
 2026-07-24.  Use ``deepseek-v4-flash`` or ``deepseek-v4-pro``; Hermes remaps
 the retired IDs in ``hermes_cli.model_normalize``.
 """
-
 from __future__ import annotations
+
 
 from typing import Any
 

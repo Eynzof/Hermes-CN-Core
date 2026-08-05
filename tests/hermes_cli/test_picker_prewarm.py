@@ -6,8 +6,8 @@ of blocking ~1-2s on serial /v1/models fetches. These pin the two contracts
 that matter: it runs the warm path exactly once per process (no thread leak),
 and it delegates to ``list_authenticated_providers`` to do the warming.
 """
-
 from __future__ import annotations
+
 
 from unittest.mock import patch
 

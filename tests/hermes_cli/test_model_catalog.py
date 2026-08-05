@@ -1,6 +1,6 @@
 """Tests for hermes_cli.model_catalog — remote manifest fetch + cache."""
-
 from __future__ import annotations
+
 
 import json
 import orjson

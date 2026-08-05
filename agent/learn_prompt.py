@@ -21,8 +21,8 @@ local, Docker, and remote terminal backends. Every surface (CLI ``/learn``,
 gateway ``/learn``, the dashboard "Learn a skill" panel) calls
 :func:`build_learn_prompt` and feeds the result to the agent as a normal turn.
 """
-
 from __future__ import annotations
+
 
 # The house-style rules, distilled from AGENTS.md "Skill authoring standards
 # (HARDLINE)" and the hermes-agent-dev new-skill salvage reference. Embedded in

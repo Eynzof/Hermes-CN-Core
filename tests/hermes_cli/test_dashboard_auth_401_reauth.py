@@ -15,8 +15,8 @@ Verifies the contract documented in Phase 6 v2 of the plan:
     ``hermes_session_rt`` cookie (contract V1: no RT to persist).
   - ``/auth/callback?next=…`` honours the same-origin landing path.
 """
-
 from __future__ import annotations
+
 
 from urllib.parse import quote
 

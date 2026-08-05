@@ -28,8 +28,8 @@ a secret rotation doesn't invalidate outstanding tokens.
 EXPERIMENTAL: may change without a deprecation cycle until ≥2 Class-1 platforms
 validate the relay contract.
 """
-
 from __future__ import annotations
+
 
 import pybase64 as base64
 import hashlib

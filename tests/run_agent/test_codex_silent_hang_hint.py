@@ -6,8 +6,8 @@ warning when the request matches a known Codex silent-reject pattern
 symptom history. The recommended workaround for ChatGPT Codex OAuth
 accounts is `gpt-5.4` / `gpt-5.3-codex`, not `gpt-5.4-codex`.
 """
-
 from __future__ import annotations
+
 
 from pathlib import Path
 

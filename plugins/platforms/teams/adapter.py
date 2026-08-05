@@ -19,8 +19,8 @@ Configuration in config.yaml:
           tenant_id: "your-tenant-id"       # or TEAMS_TENANT_ID env var
           port: 3978                        # or TEAMS_PORT env var
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import html

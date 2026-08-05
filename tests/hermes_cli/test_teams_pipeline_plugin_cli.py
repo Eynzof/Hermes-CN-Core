@@ -1,6 +1,6 @@
 """Tests for the teams_pipeline plugin CLI."""
-
 from __future__ import annotations
+
 
 import json
 from argparse import ArgumentParser, Namespace

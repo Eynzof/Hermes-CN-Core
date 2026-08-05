@@ -32,8 +32,8 @@ isn't multi-user — anyone who can read the printed URL+token gets full
 dashboard access — but they can't ride along just because they can reach
 the port.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import orjson

@@ -4,8 +4,8 @@ Issue #58819: ``MoaConfigPayload`` does not declare ``save_traces`` or
 ``trace_dir``, so a GUI save via ``PUT /api/model/moa`` silently drops
 these hand-edited keys from ``config.yaml``.
 """
-
 from __future__ import annotations
+
 
 from unittest.mock import patch
 

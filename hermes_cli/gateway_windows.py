@@ -24,8 +24,8 @@ Design notes
 * All of this is Windows-only. ``import`` paths are still safe on POSIX but
   the functions raise if called on non-Windows.
 """
-
 from __future__ import annotations
+
 
 import ctypes
 import locale

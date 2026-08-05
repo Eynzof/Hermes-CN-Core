@@ -28,8 +28,8 @@ Design notes
   specifier works on providers that don't implement it. The parse
   is lenient (tolerates markdown code fences around the JSON).
 """
-
 from __future__ import annotations
+
 
 import orjson
 import logging

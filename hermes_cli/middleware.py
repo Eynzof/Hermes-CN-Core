@@ -4,8 +4,8 @@ Observer hooks report what happened. Middleware can change what happens by
 rewriting a request or wrapping the actual execution callback. Keep the small
 contract helpers here so agent-loop call sites and plugins share one vocabulary.
 """
-
 from __future__ import annotations
+
 
 import logging
 from agent.fast_deepcopy import orjson_roundtrip_copy as _orjson_copy

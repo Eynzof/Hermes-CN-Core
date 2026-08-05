@@ -5,8 +5,8 @@ refreshes the project tree and scopes into the new project), but it only ever
 sees a move when the backend reports one on ``session.info``. These tests
 exercise the backend half against real git worktrees on disk.
 """
-
 from __future__ import annotations
+
 
 import os
 import subprocess

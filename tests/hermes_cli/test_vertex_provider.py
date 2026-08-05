@@ -4,8 +4,8 @@ Covers: provider-profile registration + aliases, alias canonicalization,
 resolve_runtime_provider(vertex) minting an OAuth token, and the friendly
 AuthError when credentials can't be resolved. No network calls.
 """
-
 from __future__ import annotations
+
 
 import pytest
 

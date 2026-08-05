@@ -11,8 +11,8 @@ The bridge is the ConPTY backend behind the dashboard ``/chat`` tab — see
 unit-level half of the integration check that the dashboard chat pane is
 actually live on native Windows.
 """
-
 from __future__ import annotations
+
 
 import os
 import sys

@@ -10,8 +10,8 @@ lives in ``tools.image_generation_tool`` and is exercised by
   ``monkeypatch.setattr(image_tool, ...)`` keeps working)
 * response shape stamping (provider/prompt/aspect_ratio/model)
 """
-
 from __future__ import annotations
+
 
 import orjson
 from unittest.mock import MagicMock

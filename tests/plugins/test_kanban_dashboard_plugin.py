@@ -4,8 +4,8 @@ The plugin mounts as /api/plugins/kanban/ inside the dashboard's FastAPI app,
 but here we attach its router to a bare FastAPI instance so we can test the
 REST surface without spinning up the whole dashboard.
 """
-
 from __future__ import annotations
+
 
 import importlib.util
 import os

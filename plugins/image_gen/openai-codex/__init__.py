@@ -17,8 +17,8 @@ Selection precedence for the tier (first hit wins):
 Output is saved as PNG under ``$HERMES_HOME/cache/images/``. Source images for
 image-to-image/editing are sent as Responses ``input_image`` content parts.
 """
-
 from __future__ import annotations
+
 
 import pybase64 as base64
 import json

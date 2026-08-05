@@ -1,6 +1,6 @@
 """Dependency-free Nostr signing for Buzz WebSocket authentication."""
-
 from __future__ import annotations
+
 
 import hashlib
 import json

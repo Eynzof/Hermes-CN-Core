@@ -11,8 +11,8 @@ Import discipline (mirrors gateway/slash_commands.py, PR #41886):
     via ``from cli import ...`` — that resolves at call time when ``cli`` is fully
     loaded, so the mixin module never imports ``cli`` at top level (no cycle).
 """
-
 from __future__ import annotations
+
 
 import orjson
 import os

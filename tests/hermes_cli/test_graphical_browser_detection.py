@@ -10,8 +10,8 @@ The helper distinguishes "a real windowed browser will pop up" from "a console
 browser will hijack the terminal" so OAuth callsites can fall back to printing
 the URL / manual paste instead of auto-opening.
 """
-
 from __future__ import annotations
+
 
 import webbrowser
 

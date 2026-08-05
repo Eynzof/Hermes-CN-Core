@@ -11,8 +11,8 @@ top level; ``cli.py``-internal helpers/constants are imported lazily inside each
 method (``from cli import ...`` resolves at call time, when ``cli`` is fully
 loaded) so this module never imports ``cli`` at import time -> no import cycle.
 """
-
 from __future__ import annotations
+
 
 import sys
 

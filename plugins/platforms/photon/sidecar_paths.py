@@ -31,8 +31,8 @@ self-heal inside the mirror.
 This module is import-light on purpose: both ``adapter.py`` (gateway) and
 ``cli.py`` (``hermes photon ...``) use it.
 """
-
 from __future__ import annotations
+
 
 import filecmp
 import logging

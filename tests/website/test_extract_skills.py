@@ -13,8 +13,8 @@ per-skill source links and a cleaned-up category sidebar:
    sidebar doesn't fill with one-off junk like version strings or brand
    names.
 """
-
 from __future__ import annotations
+
 
 import importlib.util
 from pathlib import Path

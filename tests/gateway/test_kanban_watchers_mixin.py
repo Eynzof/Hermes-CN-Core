@@ -4,8 +4,8 @@ The kanban watcher loops were lifted out of gateway/run.py into a mixin that
 GatewayRunner inherits. These tests confirm the mixin exposes the methods and
 that GatewayRunner picks them up via the MRO (behavior-neutral relocation).
 """
-
 from __future__ import annotations
+
 
 import inspect
 

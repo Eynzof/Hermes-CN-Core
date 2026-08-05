@@ -8,8 +8,8 @@ When HERMES_HOME is already a profile directory (.../profiles/<name>),
 _apply_profile_override must trust it and return without re-reading
 active_profile (child-process inheritance contract).
 """
-
 from __future__ import annotations
+
 
 import os
 import sys

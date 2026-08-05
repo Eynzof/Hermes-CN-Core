@@ -13,8 +13,8 @@ The fix reads ``_session_messages`` (same attribute the gateway path uses)
 with an ``isinstance(..., list)`` guard so MagicMock-based agents in
 other tests keep their existing no-arg behaviour.
 """
-
 from __future__ import annotations
+
 
 import threading
 import types

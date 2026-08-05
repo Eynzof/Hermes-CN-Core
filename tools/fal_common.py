@@ -23,8 +23,8 @@ caches here would silently defeat ``monkeypatch.setattr(image_tool,
 ``fal_common``'s namespace instead. See the per-rule walkthrough at
 issue #26241 for details.
 """
-
 from __future__ import annotations
+
 
 from typing import Any, Dict, Optional, Union
 from urllib.parse import urlencode

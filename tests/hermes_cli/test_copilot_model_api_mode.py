@@ -1,6 +1,6 @@
 """Tests for Copilot model API-mode routing."""
-
 from __future__ import annotations
+
 
 
 def test_copilot_claude_stays_on_chat_completions_even_if_catalog_lists_messages():

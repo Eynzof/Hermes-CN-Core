@@ -28,8 +28,8 @@ Two delivery paths from the adapter:
      The user replies with a number ("2") or with free text; the gateway's
      ``_handle_message`` intercepts the reply and resolves directly.
 """
-
 from __future__ import annotations
+
 
 import logging
 import threading

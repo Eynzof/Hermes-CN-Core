@@ -9,8 +9,8 @@ Adapter under test is a runtime subclass of BasePlatformAdapter that
 overrides supports_draft_streaming + send_draft, since the consumer's
 isinstance(BasePlatformAdapter) gate excludes plain MagicMocks.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 from types import SimpleNamespace

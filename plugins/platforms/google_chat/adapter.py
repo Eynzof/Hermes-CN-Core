@@ -34,8 +34,8 @@ CARD_CLICKED]. Only MESSAGE dispatches to the agent. ADDED_TO_SPACE caches the
 bot's resource name (belt-and-suspenders on top of eager resolution in connect()).
 CARD_CLICKED is ACK'd only in v1 (follow-up PR implements interactivity).
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import orjson

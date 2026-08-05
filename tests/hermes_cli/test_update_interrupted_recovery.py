@@ -4,8 +4,8 @@ Covers the breadcrumb lifecycle and the launch-time recovery guard added so a
 ``hermes update`` killed mid-install (Ctrl-C, terminal close, WSL OOM) gets
 finished automatically on the next launch instead of leaving a half-built venv.
 """
-
 from __future__ import annotations
+
 
 from pathlib import Path
 

@@ -1,6 +1,6 @@
 """Tests for xAI Imagine storage helper behavior."""
-
 from __future__ import annotations
+
 
 import yaml
 

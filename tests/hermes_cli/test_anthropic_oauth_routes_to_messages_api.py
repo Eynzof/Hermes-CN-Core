@@ -23,8 +23,8 @@ that resolves an Anthropic endpoint must return
 ``api_mode == "anthropic_messages"``, so a future refactor of any
 single branch cannot silently revert #32243.
 """
-
 from __future__ import annotations
+
 
 from hermes_cli import runtime_provider as rp
 

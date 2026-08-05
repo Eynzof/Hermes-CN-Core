@@ -6,8 +6,8 @@ fallbacks that work under Git Bash on Windows, and normalizes Windows
 backslash paths for the shell.  On non-Windows hosts it is a byte-for-byte
 no-op; the Windows-specific behavior is tested by patching ``sys.platform``.
 """
-
 from __future__ import annotations
+
 
 from unittest.mock import MagicMock, patch
 

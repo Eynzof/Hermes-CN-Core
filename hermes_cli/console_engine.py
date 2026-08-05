@@ -4,8 +4,8 @@ This module backs ``hermes console`` and is intentionally narrower than the
 full Hermes CLI. It exposes a curated set of native adapters that can later be
 shared by the dashboard console websocket without becoming a raw shell.
 """
-
 from __future__ import annotations
+
 
 import argparse
 import contextlib

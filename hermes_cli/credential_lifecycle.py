@@ -36,8 +36,8 @@ deleting an API key must not revoke an OAuth grant for the same provider.
 Secrecy contract: no function in this module logs, prints, or returns a
 credential value. Results carry key NAMES and config PATHS only.
 """
-
 from __future__ import annotations
+
 
 from typing import Any, Dict, List
 

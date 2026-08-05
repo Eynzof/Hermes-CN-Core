@@ -23,8 +23,8 @@ under their MAIN repo via a git common-dir probe (injected as ``resolve``),
 instead of being treated as separate repos (``git rev-parse --show-toplevel``
 returns the worktree's own root, which is why the client double-counted them).
 """
-
 from __future__ import annotations
+
 from agent.re_compat import re
 from typing import Any, Callable, Optional
 

@@ -1,7 +1,7 @@
 """User-reminder providers for out-of-band user messages (e.g. /steer) injected
 with the `User injection prompt:` prefix."""
-
 from __future__ import annotations
+
 
 from abc import abstractmethod
 from threading import Lock

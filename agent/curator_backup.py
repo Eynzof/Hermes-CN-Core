@@ -36,8 +36,8 @@ fidelity but rollback only touches the ``skills``/``skill`` fields — the
 rest (schedule, next_run_at, enabled, prompt, etc.) is live state and
 we leave it alone.
 """
-
 from __future__ import annotations
+
 
 import json
 import orjson

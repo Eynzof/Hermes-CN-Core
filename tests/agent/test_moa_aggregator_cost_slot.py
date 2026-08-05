@@ -8,8 +8,8 @@ client's ``last_aggregator_slot``. Before the fix that slot did not exist and
 the aggregator's spend (often >50% of the turn) was silently dropped, leaving
 the session cost as advisor-fan-out only.
 """
-
 from __future__ import annotations
+
 
 from types import SimpleNamespace
 from unittest.mock import patch

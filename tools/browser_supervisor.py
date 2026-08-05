@@ -17,8 +17,8 @@ agent via two channels:
 
 Design spec: ``website/docs/developer-guide/browser-supervisor.md``.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import orjson

@@ -5,8 +5,8 @@ image input encoding, and the auxiliary-client invocation contract.
 The auxiliary client itself is stubbed via ``make_plugin_llm_for_test``
 so we don't hit real providers.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import pybase64 as base64

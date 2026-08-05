@@ -10,8 +10,8 @@ These tests guard the fix.  They invoke the real adapter via the project's
 plugin-loader helper so that no ``sys.path`` / ``sys.modules`` games are
 needed.
 """
-
 from __future__ import annotations
+
 
 import json
 

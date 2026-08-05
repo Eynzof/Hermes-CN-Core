@@ -4,8 +4,8 @@ The session database records persisted conversations.  This module records
 currently open chat surfaces, including idle CLI/TUI sessions that have not
 written a transcript row yet.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import logging

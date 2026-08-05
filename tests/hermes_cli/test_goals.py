@@ -1,6 +1,6 @@
 """Tests for hermes_cli/goals.py — persistent cross-turn goals."""
-
 from __future__ import annotations
+
 
 import json
 import time

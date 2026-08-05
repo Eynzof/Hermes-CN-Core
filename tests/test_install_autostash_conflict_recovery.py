@@ -5,8 +5,8 @@ checkout. If upstream then changes the same lines, ``git stash apply`` conflicts
 during the repository-update stage. Both installers must leave the stash intact,
 reset the worktree clean, and complete the real repository stage.
 """
-
 from __future__ import annotations
+
 
 import os
 import shutil

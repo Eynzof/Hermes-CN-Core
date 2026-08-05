@@ -35,8 +35,8 @@ are classifiable from the volume alone (no Prometheus retention races).
 Everything here is best-effort: a forensics failure must never affect the
 gateway lifecycle it is observing.
 """
-
 from __future__ import annotations
+
 
 import json
 import logging

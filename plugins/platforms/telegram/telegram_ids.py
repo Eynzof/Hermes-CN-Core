@@ -8,8 +8,8 @@ coerced every ``chat_id`` with ``int()``, which crashes on the username form
 pass through as ints while usernames pass through unchanged — both are valid
 values for the Bot API.
 """
-
 from __future__ import annotations
+
 from agent.re_compat import re
 from typing import Any, Union
 

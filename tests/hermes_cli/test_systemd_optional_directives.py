@@ -9,8 +9,8 @@ comparison sees a difference.
 The fix: _strip_optional_systemd_directives() removes those directives
 from both the installed and expected text before comparison.
 """
-
 from __future__ import annotations
+
 
 import pytest
 

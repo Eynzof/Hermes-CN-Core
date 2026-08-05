@@ -4,8 +4,8 @@ The projects and kanban stores open WAL SQLite files with the same two
 primitives — an idempotent column-add migration and an IMMEDIATE write
 transaction. One definition here keeps the two stores from drifting.
 """
-
 from __future__ import annotations
+
 
 import contextlib
 import sqlite3

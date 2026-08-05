@@ -10,8 +10,8 @@ speaker, per session. The ``websockets`` package is imported lazily so
 that importing this module never fails just because the optional dep
 is missing.
 """
-
 from __future__ import annotations
+
 
 import pybase64 as base64
 import orjson

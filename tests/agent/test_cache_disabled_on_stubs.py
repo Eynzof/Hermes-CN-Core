@@ -5,8 +5,8 @@ plan_cache_sections_for_destination never carried ``_cache_disabled``, so
 ``anthropic_prompt_cache_policy`` re-enabled cache_control markers even when
 the operator set ``prompt_caching.cache_ttl: false``.
 """
-
 from __future__ import annotations
+
 
 from types import SimpleNamespace
 from unittest.mock import patch

@@ -30,8 +30,8 @@ Two tests:
   ``SessionStore``: after ``reset_session`` the next turn loads an EMPTY
   transcript for the new session_id, never the bloated child's transcript.
 """
-
 from __future__ import annotations
+
 
 import ast
 import inspect

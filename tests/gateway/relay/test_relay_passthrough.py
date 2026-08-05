@@ -9,8 +9,8 @@ interaction through the normal agent path (handle_message).
 Mirrors test_relay_interrupt.py's wiring discipline (connect() registers the
 connector->gateway handlers on the transport).
 """
-
 from __future__ import annotations
+
 
 import pybase64 as base64
 import orjson

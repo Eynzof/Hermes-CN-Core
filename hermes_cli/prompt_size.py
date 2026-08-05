@@ -10,8 +10,8 @@ actually ships on the wire) but never makes a network call: it passes dummy
 credentials so ``AIAgent.__init__`` takes the direct-construction path, then
 calls ``build_system_prompt_parts`` / inspects ``agent.tools`` offline.
 """
-
 from __future__ import annotations
+
 
 import json
 import orjson

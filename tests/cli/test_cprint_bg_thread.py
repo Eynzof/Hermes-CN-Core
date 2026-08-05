@@ -9,8 +9,8 @@ routes cross-thread prints through ``run_in_terminal`` via
 
 These tests verify the routing logic without spinning up a real PT app.
 """
-
 from __future__ import annotations
+
 
 import sys
 import types

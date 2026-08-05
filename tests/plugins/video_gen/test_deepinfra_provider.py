@@ -6,8 +6,8 @@ these tests pin the plugin-specific bits (tag filtering, identity) and the
 shared base behaviour exercised through it (OpenAI ``videos`` call shape,
 t2v vs i2v routing, download → save).
 """
-
 from __future__ import annotations
+
 
 import sys
 

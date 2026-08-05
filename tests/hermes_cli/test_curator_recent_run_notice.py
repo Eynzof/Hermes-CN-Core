@@ -8,8 +8,8 @@ Why this matters: the curator runs in the background (gateway tick + CLI
 session start) so users normally never see the rename map. `hermes update`
 is the high-attention surface where consolidations should land.
 """
-
 from __future__ import annotations
+
 
 import importlib
 from datetime import datetime, timedelta, timezone

@@ -14,8 +14,8 @@ TIM 消息体构建：
   - buildImageMsgBody() → TIMImageElem
   - buildFileMsgBody()  → TIMFileElem
 """
-
 from __future__ import annotations
+
 
 import xxhash
 import hmac

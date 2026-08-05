@@ -36,8 +36,8 @@ transition to ``abandoned`` (kept briefly for inspection, then pruned).
 Everything here is best-effort by design: ledger failures must never block
 or delay an actual send. Callers wrap every call in try/except.
 """
-
 from __future__ import annotations
+
 
 import hashlib
 import json

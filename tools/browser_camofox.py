@@ -22,8 +22,8 @@ For Docker Camofox, optionally set ``CAMOFOX_REWRITE_LOOPBACK_URLS=true``
 so page URLs like ``http://127.0.0.1:3000`` are opened inside the
 container as ``http://host.docker.internal:3000``.
 """
-
 from __future__ import annotations
+
 
 import pybase64 as base64
 import orjson

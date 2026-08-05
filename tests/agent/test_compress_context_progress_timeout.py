@@ -5,8 +5,8 @@ In-loop / preflight / manual ``/compress`` paths historically waited on
 hygiene already had a progress-aware wait; these tests pin the same contract
 for the owned wrapper used when callers do not pass a ``commit_fence``.
 """
-
 from __future__ import annotations
+
 
 import threading
 import time

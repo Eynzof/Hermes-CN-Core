@@ -5,8 +5,8 @@ cover the flag resolver (cross-platform, mocked) and the live execute() path
 (Windows only), including output/exit-code/cwd parity with the spawn path and
 the stdin fallback.
 """
-
 from __future__ import annotations
+
 
 import shutil
 import sys

@@ -1,6 +1,6 @@
 """Tests for hermes_cli.azure_detect — transport & model auto-detection."""
-
 from __future__ import annotations
+
 
 import orjson
 from unittest.mock import MagicMock, patch

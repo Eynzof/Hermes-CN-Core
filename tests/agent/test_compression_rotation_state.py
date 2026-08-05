@@ -14,8 +14,8 @@ three pieces of state used to be lost or corrupted:
 
 These tests drive the real ``compress_context`` path against a real SessionDB.
 """
-
 from __future__ import annotations
+
 
 import os
 import time

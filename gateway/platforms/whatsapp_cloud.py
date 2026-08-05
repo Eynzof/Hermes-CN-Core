@@ -38,8 +38,8 @@ Optional / Phase-3+:
 - WHATSAPP_CLOUD_WEBHOOK_PATH     (default /whatsapp/webhook)
 - WHATSAPP_CLOUD_API_VERSION      (default v20.0)
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import hashlib

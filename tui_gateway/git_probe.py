@@ -21,8 +21,8 @@ same "not a repo" answer from being re-derived dozens of times within one build
 and across rapid re-opens. `invalidate()` drops everything after a known
 mutation.
 """
-
 from __future__ import annotations
+
 
 import os
 import threading

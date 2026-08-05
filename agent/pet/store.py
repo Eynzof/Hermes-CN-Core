@@ -13,8 +13,8 @@ The active pet is resolved from the caller-supplied ``display.pet.slug`` config
 value (falling back to the first installed pet), so this module stays free of
 the config loader.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import logging

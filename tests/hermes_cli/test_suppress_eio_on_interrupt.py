@@ -9,8 +9,8 @@ The ``_suppress_closed_loop_errors`` asyncio exception handler and the
 outer ``except (KeyError, OSError)`` block must both suppress this error
 to prevent a hard crash.
 """
-
 from __future__ import annotations
+
 
 import errno
 from unittest.mock import MagicMock

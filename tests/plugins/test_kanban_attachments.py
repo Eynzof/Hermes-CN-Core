@@ -9,8 +9,8 @@ The plugin router is attached to a bare FastAPI app — same approach as
 ``test_kanban_dashboard_plugin.py`` — so we exercise the real HTTP path
 (multipart upload, streaming download) without the whole dashboard.
 """
-
 from __future__ import annotations
+
 
 import importlib.util
 import sys

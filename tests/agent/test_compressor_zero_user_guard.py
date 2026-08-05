@@ -24,8 +24,8 @@ The fix generalises the #52160 guard: when NO user-role message survives
 in the protected head or preserved tail, the summary MUST carry
 ``role="user"``.
 """
-
 from __future__ import annotations
+
 
 from unittest.mock import patch
 

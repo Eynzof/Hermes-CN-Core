@@ -1,6 +1,6 @@
 """Tests for the FAL video gen plugin — family routing, payload shape."""
-
 from __future__ import annotations
+
 
 import pytest
 

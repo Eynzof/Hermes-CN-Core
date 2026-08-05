@@ -64,8 +64,8 @@ Adding a new backend:
    ``ensure("feature.name")`` inside a try/except that converts
    :class:`FeatureUnavailable` to a useful runtime error.
 """
-
 from __future__ import annotations
+
 
 import logging
 import os

@@ -20,8 +20,8 @@ This module provides:
 4. A self-rescheduling floor timer that keeps the loop selector's timeout
    finite, giving existing async recovery tasks a chance to resume.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import faulthandler

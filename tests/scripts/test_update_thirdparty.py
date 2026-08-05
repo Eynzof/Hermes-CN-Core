@@ -4,8 +4,8 @@ These tests exercise the version-check/update logic with mocked GitHub
 responses and temporary copies of the pinned files.  No real network requests
 are made.
 """
-
 from __future__ import annotations
+
 
 import os
 import sys

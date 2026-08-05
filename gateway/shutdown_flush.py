@@ -22,8 +22,8 @@ This module provides three hooks:
 
 See issue #72680 for the full incident report.
 """
-
 from __future__ import annotations
+
 
 import json
 import logging

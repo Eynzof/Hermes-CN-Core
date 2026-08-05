@@ -27,8 +27,8 @@ the per-instance capability methods on ``BasePlatformAdapter``):
 - ``emoji`` / ``platform_hint`` / ``pii_safe`` -> ``PlatformEntry`` fields of the
   same name.
 """
-
 from __future__ import annotations
+
 
 import orjson
 from dataclasses import asdict, dataclass

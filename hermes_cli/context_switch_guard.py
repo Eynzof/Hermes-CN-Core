@@ -9,8 +9,8 @@ handling) are tracked separately.
 Mirrors the expensive-model guard pattern: merge into ``ModelSwitchResult.warning_message``
 so Herm TUI, CLI, and gateway surfaces that already show switch warnings pick it up.
 """
-
 from __future__ import annotations
+
 
 from typing import Any, Callable, List, Optional
 

@@ -7,8 +7,8 @@ blocked on 8-9 serial /v1/models round-trips (~2-3s) before rendering.
 With SWR, an expired-but-credential-matching entry is served immediately
 and refreshed off-thread for the next open.
 """
-
 from __future__ import annotations
+
 
 import time
 from unittest.mock import patch

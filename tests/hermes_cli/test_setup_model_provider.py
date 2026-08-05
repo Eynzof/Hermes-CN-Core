@@ -4,8 +4,8 @@ Since setup_model_provider delegates to select_provider_and_model()
 from hermes_cli.main, these tests mock the delegation point and verify
 that the setup wizard correctly syncs config from disk after the call.
 """
-
 from __future__ import annotations
+
 
 from hermes_cli.config import load_config, save_config, save_env_value
 from hermes_cli.nous_subscription import NousFeatureState, NousSubscriptionFeatures

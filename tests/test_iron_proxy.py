@@ -10,8 +10,8 @@ Live network and the real ``iron-proxy`` binary are NEVER touched.  See
 ``tests/test_iron_proxy_e2e.py`` (gated behind a marker) for the real-binary
 smoke test.
 """
-
 from __future__ import annotations
+
 
 import io
 import os

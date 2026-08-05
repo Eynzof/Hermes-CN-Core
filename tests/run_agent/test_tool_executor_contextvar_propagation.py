@@ -29,8 +29,8 @@ necessary. If anyone ever reverts the wrapper, the call-site test
 fails while the contract test keeps passing — a clear diagnostic
 signal for *why* the call-site regressed.
 """
-
 from __future__ import annotations
+
 
 import concurrent.futures
 import contextvars

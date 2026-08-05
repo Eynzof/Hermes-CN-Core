@@ -22,8 +22,8 @@ These tests pin down the gateway-side guard introduced for #30170:
 * The ``queue`` and ``steer`` configured modes still behave exactly as
   before — the guard is interrupt-only.
 """
-
 from __future__ import annotations
+
 
 import sys
 import threading

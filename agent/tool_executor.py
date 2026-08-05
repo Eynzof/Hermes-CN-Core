@@ -9,8 +9,8 @@ that patch ``run_agent._set_interrupt`` are honored because the
 extracted functions reach back through the ``run_agent`` module via
 ``_ra()`` for that symbol.
 """
-
 from __future__ import annotations
+
 
 import concurrent.futures
 import json

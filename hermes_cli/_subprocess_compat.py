@@ -25,8 +25,8 @@ codebase doesn't sprinkle ``if sys.platform == "win32":`` everywhere.
 code paths is safe by design.  That's the "do no damage on POSIX"
 guarantee.
 """
-
 from __future__ import annotations
+
 
 import os
 import shutil

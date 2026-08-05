@@ -17,8 +17,8 @@ Wires three behaviours:
 Replaces PR #12212's skill-plus-script design: the agent no longer
 needs to remember to run commands.
 """
-
 from __future__ import annotations
+
 
 import logging
 from agent.re_compat import re

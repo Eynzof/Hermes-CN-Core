@@ -13,8 +13,8 @@ This module performs a *source-to-source* transformation.  It operates on raw
 text rather than an AST because the target environment (5.1) cannot parse the
 new syntax in the first place.
 """
-
 from __future__ import annotations
+
 from agent.re_compat import re
 from collections.abc import Callable
 

@@ -6,8 +6,8 @@ dead-when-unset contract, (b) that an armed turn holds for the requested wall
 duration and streams deltas, (c) that interrupt aborts it promptly, and (d) the
 harness percentile math.
 """
-
 from __future__ import annotations
+
 
 import importlib.util
 import threading

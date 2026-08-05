@@ -34,8 +34,8 @@ for the full rationale):
   feed, gateway, saved trajectories) always sees the underlying tool, not
   the bridge.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import logging

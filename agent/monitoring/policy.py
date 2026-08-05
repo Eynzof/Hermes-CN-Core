@@ -5,8 +5,8 @@ exported health signals so an operator can tell instances apart in their
 collector. It carries no account identity and can be rotated by clearing
 ``monitoring.install_id`` in config.
 """
-
 from __future__ import annotations
+
 
 import logging
 import uuid

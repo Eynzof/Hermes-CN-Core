@@ -10,8 +10,8 @@ the dispatching gateway's cwd — relative writes landed in the gateway user's
 home (#41312) and the wrong profile's ``AGENTS.md`` was loaded (#34619).
 Pinning ``TERMINAL_CWD`` to the workspace fixes both.
 """
-
 from __future__ import annotations
+
 
 import subprocess
 

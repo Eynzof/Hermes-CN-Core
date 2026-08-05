@@ -7,8 +7,8 @@ pass: circuit breaker, crash detection, daemon loop, idempotency,
 retention/gc, stats, notify subscriptions, worker log accessor, run_slash
 parity across every registered verb.
 """
-
 from __future__ import annotations
+
 
 import argparse
 import json

@@ -23,8 +23,8 @@ Layout rules tested here:
   - jobs with declared statuses excluded from failed-jobs list
   - per-job URLs used for failed job links when available
 """
-
 from __future__ import annotations
+
 
 import importlib.util
 import json

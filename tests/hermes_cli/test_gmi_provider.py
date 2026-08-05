@@ -1,6 +1,6 @@
 """Focused tests for GMI Cloud first-class provider wiring."""
-
 from __future__ import annotations
+
 
 import contextlib
 import io

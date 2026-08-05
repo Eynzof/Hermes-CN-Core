@@ -7,8 +7,8 @@ rate limit / auth / transport". The resulting :class:`BillingBlock` rides the
 turn result and the gateway ``message.complete`` event so every surface (CLI,
 TUI, desktop) renders one structured signal instead of re-parsing error text.
 """
-
 from __future__ import annotations
+
 
 from dataclasses import asdict, dataclass
 from typing import Optional

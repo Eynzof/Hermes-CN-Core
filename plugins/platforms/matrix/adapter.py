@@ -48,8 +48,8 @@ Environment variables:
     MATRIX_APPROVAL_TIMEOUT_SECONDS
                               Reaction approval/model-picker timeout (default: 300)
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import array

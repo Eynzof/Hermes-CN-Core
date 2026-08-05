@@ -6,8 +6,8 @@ endpoint accepted any HTTP POST.
 
 The fix refuses to start the adapter in webhook mode without the secret.
 """
-
 from __future__ import annotations
+
 from agent.re_compat import re
 import sys
 from pathlib import Path

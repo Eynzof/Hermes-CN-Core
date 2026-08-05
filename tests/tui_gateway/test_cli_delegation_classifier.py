@@ -5,8 +5,8 @@ FIXTURES 与桌面端前端分类器共用同一份字面用例
 改动任意一侧必须同步另一侧——两边的分类语义必须一致，
 否则旧内核回退模式下桌面端会与新内核事件判定不一致。
 """
-
 from __future__ import annotations
+
 
 from tui_gateway.cli_delegation import (
     classify_cli_delegation,

@@ -18,8 +18,8 @@ blocks that Hermes synthesises from ``reasoning_content``.
 
 See hermes-agent#16748.
 """
-
 from __future__ import annotations
+
 
 import pytest
 

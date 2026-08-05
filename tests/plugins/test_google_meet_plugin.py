@@ -11,8 +11,8 @@ Covers the safety-gated pieces that don't require Playwright:
 
 Does NOT spawn a real Chromium — we mock ``subprocess.Popen`` where needed.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import os

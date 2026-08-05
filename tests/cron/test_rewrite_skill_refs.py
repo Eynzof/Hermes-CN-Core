@@ -7,8 +7,8 @@ any cron job whose ``skills`` list contains X would silently fail to
 load X at run time (the scheduler logs a warning and skips it), so the
 job runs without the instructions it was scheduled to follow.
 """
-
 from __future__ import annotations
+
 
 import sys
 from pathlib import Path

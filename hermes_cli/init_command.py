@@ -23,8 +23,8 @@ as a normal user turn — the same prompt-injection pattern as ``/learn`` and
 ``/blueprint``, which preserves prompt-cache invariants (no system-prompt or
 history mutation).
 """
-
 from __future__ import annotations
+
 
 # The quality bar, embedded in every prompt so the generated file reads like a
 # maintainer wrote it — concrete and command-exact, not generic advice.

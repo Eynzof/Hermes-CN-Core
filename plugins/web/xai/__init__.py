@@ -3,8 +3,8 @@
 Mirrors the ``plugins/web/brave_free/`` layout: ``provider.py`` holds the
 provider class, ``__init__.py::register(ctx)`` registers an instance.
 """
-
 from __future__ import annotations
+
 
 from plugins.web.xai.provider import XAIWebSearchProvider
 

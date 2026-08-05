@@ -3,8 +3,8 @@
 These tests exercise the real _agent_cbs() wiring rather than a local
 imitation, so a break in the production callback registration is caught.
 """
-
 from __future__ import annotations
+
 
 from unittest.mock import patch
 

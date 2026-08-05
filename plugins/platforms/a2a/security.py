@@ -21,8 +21,8 @@ Layers (all opt-out-able only by explicit config, never silently):
                          identities may run tasks
   7. Push auth         — HMAC-SHA256 webhook signing + SSRF-safe callback URLs
 """
-
 from __future__ import annotations
+
 
 import hashlib
 import hmac

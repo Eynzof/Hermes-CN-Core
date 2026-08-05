@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Tests for xAI image generation provider."""
-
 from __future__ import annotations
+
 
 import sys
 

@@ -24,8 +24,8 @@ installer. Keeping the whole file ASCII-only is the transport-independent
 invariant: pure ASCII cannot be misdecoded under any code page, BOM or not, so
 the bug class cannot recur -- in a comment or a string.
 """
-
 from __future__ import annotations
+
 
 from pathlib import Path
 

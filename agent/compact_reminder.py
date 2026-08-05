@@ -1,6 +1,6 @@
 """Compact reminder provider — injects a hint to call Compact when context > threshold."""
-
 from __future__ import annotations
+
 
 from typing import Any, Dict, List
 

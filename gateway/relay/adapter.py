@@ -15,8 +15,8 @@ The gateway sees an ordinary ``MessageEvent`` in and calls ``adapter.send`` out.
 EXPERIMENTAL: the transport protocol and descriptor schema may change without a
 deprecation cycle until >=2 Class-1 platforms validate them.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import logging

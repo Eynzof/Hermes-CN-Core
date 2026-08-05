@@ -7,8 +7,8 @@ final reply as a brand-new message and best-effort deletes the old
 preview.  This makes Telegram's visible timestamp reflect completion
 time instead of first-token time.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 from types import SimpleNamespace

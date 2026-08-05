@@ -14,8 +14,8 @@ the patch landed in a different directory's copy of the same file).
 Fix: _exec() now prefers the LIVE ``env.cwd`` over the init-time
 ``self.cwd``.  Explicit ``cwd`` arg to _exec still wins over both.
 """
-
 from __future__ import annotations
+
 
 import os
 import sys

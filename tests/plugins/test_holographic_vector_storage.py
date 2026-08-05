@@ -1,6 +1,6 @@
 """Storage-size regression tests for holographic HRR vectors."""
-
 from __future__ import annotations
+
 
 import pytest
 

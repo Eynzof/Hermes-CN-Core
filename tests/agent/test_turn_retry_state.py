@@ -5,8 +5,8 @@ signals. These tests pin its shape and default semantics — the behavioral
 guarantee for the loop itself is the existing recovery-branch tests in
 tests/run_agent/ which now exercise these fields via `_retry.<flag>`.
 """
-
 from __future__ import annotations
+
 
 from dataclasses import fields
 

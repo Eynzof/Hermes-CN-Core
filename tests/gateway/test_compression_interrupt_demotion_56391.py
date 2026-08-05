@@ -5,8 +5,8 @@ gateway ``busy_input_mode='interrupt'`` must demote to queue semantics so a
 rapid message burst cannot start a follow-up turn against the pre-rotation
 parent and fork orphaned compression siblings.
 """
-
 from __future__ import annotations
+
 
 import sys
 import threading

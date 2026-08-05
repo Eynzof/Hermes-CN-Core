@@ -5,8 +5,8 @@ Invariants:
   * Fails CLOSED: if the redactor can't run, the raw string is never emitted.
   * Structure (subsystem names, error codes) survives; free-text PII does not.
 """
-
 from __future__ import annotations
+
 
 from unittest import mock
 

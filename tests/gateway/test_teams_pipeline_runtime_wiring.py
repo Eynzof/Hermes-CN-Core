@@ -1,6 +1,6 @@
 """Tests for Teams pipeline runtime wiring into the gateway."""
-
 from __future__ import annotations
+
 
 import sys
 from types import ModuleType

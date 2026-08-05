@@ -9,8 +9,8 @@ tool, etc.  Each hint is shown once per install (tracked in ``config.yaml`` unde
 Keep this module tiny and dependency-free so both the CLI and gateway can import
 it without pulling in heavy modules.
 """
-
 from __future__ import annotations
+
 
 import logging
 from pathlib import Path

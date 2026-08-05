@@ -5,8 +5,8 @@ Hosted/managed images keep the plugin tree under an immutable
 baked and current, and mirror the sidecar to the writable ``HERMES_HOME``
 volume when a runtime install is unavoidable.
 """
-
 from __future__ import annotations
+
 
 import os
 from pathlib import Path

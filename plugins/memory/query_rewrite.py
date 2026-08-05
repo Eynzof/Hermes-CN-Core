@@ -3,8 +3,8 @@
 Provider-agnostic: any memory provider can pass ``rewrite_memory_query``
 as its query rewriter. Model/timeout are configured under
 ``auxiliary.memory_query_rewrite`` in config.yaml."""
-
 from __future__ import annotations
+
 
 import json
 import logging

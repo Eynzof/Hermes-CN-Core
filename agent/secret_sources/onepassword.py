@@ -36,8 +36,8 @@ so back-to-back short-lived ``hermes`` invocations don't re-shell ``op`` for
 every reference.  The disk file holds only resolved secret *values*; auth
 material is fingerprinted, never stored.
 """
-
 from __future__ import annotations
+
 
 import hashlib
 import logging

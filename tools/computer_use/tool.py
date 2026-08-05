@@ -35,8 +35,8 @@ For captures / actions with `capture_after=True`:
   `agent/anthropic_adapter.py`). Every provider that supports multi-part
   tool content gets the image; text-only providers see the summary only.
 """
-
 from __future__ import annotations
+
 
 import atexit
 import pybase64 as base64

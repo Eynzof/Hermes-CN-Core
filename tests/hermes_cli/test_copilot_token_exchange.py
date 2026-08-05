@@ -1,6 +1,6 @@
 """Tests for Copilot token exchange (raw GitHub token → Copilot API token)."""
-
 from __future__ import annotations
+
 
 import json
 import time

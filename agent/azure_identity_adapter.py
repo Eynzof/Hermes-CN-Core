@@ -28,8 +28,8 @@ Reference: https://learn.microsoft.com/azure/ai-foundry/foundry-models/how-to/co
 Requires: ``azure-identity`` (optional dependency — only needed when
 ``model.auth_mode = entra_id``).
 """
-
 from __future__ import annotations
+
 
 import functools
 import logging

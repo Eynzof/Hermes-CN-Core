@@ -24,8 +24,8 @@ deliberately closed (Bitwarden, and 1Password once it lands); new
 third-party backends ship as standalone plugin repos implementing
 :class:`agent.secret_sources.base.SecretSource`.
 """
-
 from __future__ import annotations
+
 
 import concurrent.futures
 import logging

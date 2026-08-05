@@ -1,6 +1,6 @@
 """Security-floor tests for the Google Workspace runtime installer."""
-
 from __future__ import annotations
+
 
 import importlib.util
 from importlib.metadata import PackageNotFoundError

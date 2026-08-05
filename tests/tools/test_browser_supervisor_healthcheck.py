@@ -4,8 +4,8 @@ Verifies that get_or_start() does NOT return a cached supervisor whose
 thread has exited or whose event loop has stopped. Avoids a real Chrome —
 the only thing under test is the registry's cache decision.
 """
-
 from __future__ import annotations
+
 
 import threading
 from types import SimpleNamespace

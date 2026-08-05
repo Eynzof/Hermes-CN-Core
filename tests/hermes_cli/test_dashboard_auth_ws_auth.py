@@ -10,8 +10,8 @@ plus the ticket-mint endpoint under realistic gated-mode setup. We don't
 test the full WS upgrade because the starlette TestClient WS path has a
 pre-existing regression unrelated to dashboard-auth.
 """
-
 from __future__ import annotations
+
 
 from types import SimpleNamespace
 

@@ -15,8 +15,8 @@ Credential search order (matching Copilot CLI behaviour):
   3. GITHUB_TOKEN env var
   4. gh auth token  CLI fallback
 """
-
 from __future__ import annotations
+
 
 import json
 import orjson

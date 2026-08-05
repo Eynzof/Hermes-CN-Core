@@ -16,8 +16,8 @@ Untracked files are folded in via ``git diff --no-index /dev/null <file>`` so
 brand-new files show up as additions instead of being silently invisible
 (mirrors Codex CLI's ``/diff`` behaviour).
 """
-
 from __future__ import annotations
+
 
 import os
 import shutil

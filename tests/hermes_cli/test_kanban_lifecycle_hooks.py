@@ -5,8 +5,8 @@ kanban_task_claimed / kanban_task_completed / kanban_task_blocked plugin
 hooks AFTER the board DB change is committed, with the documented kwargs,
 and that a misbehaving hook callback never breaks the transition.
 """
-
 from __future__ import annotations
+
 
 from pathlib import Path
 

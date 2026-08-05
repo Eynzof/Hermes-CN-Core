@@ -22,8 +22,8 @@ frame relates to the inherited thread metadata (the invariant the connector
 depends on), not a snapshot. They drive the REAL ``RelayAdapter`` +
 ``StubConnector`` end to end.
 """
-
 from __future__ import annotations
+
 
 import pytest
 

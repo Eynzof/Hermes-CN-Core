@@ -11,8 +11,8 @@ gracefully (never crash).
 Money discipline: the server emits decimal STRINGS (``"142.5"``, not fixed 2dp).
 We keep them as :class:`decimal.Decimal` end-to-end and only format for display.
 """
-
 from __future__ import annotations
+
 
 import logging
 import os

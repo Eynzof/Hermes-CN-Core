@@ -15,8 +15,8 @@ Two layers:
          console.log(m.makeToken("gw-instance-1", s, 0)); \
          console.log(m.sign("1750000000."+JSON.stringify({a:1}), s)); })'
 """
-
 from __future__ import annotations
+
 
 import json
 

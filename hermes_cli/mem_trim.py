@@ -4,8 +4,8 @@ On Linux/glibc, ``malloc_trim(0)`` can return pages from freed Python/C
 allocations to the OS.  Other platforms and allocators are safe no-ops.
 Behavior is configured under ``context.memory_trim`` in ``config.yaml``.
 """
-
 from __future__ import annotations
+
 
 import ctypes
 import gc

@@ -6,8 +6,8 @@ Covers:
   GET /runs/{run_id}/inspect
   POST /runs/{run_id}/terminate
 """
-
 from __future__ import annotations
+
 
 import importlib.util
 import secrets

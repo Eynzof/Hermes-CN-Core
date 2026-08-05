@@ -16,8 +16,8 @@ Telegram's discriminator profile differs from Discord's, which is the point:
 
 If the descriptor or session-keying only worked for Discord, these fail.
 """
-
 from __future__ import annotations
+
 
 import pytest
 

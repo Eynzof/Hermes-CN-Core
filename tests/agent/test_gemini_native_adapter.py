@@ -1,6 +1,6 @@
 """Tests for the native Google AI Studio Gemini adapter."""
-
 from __future__ import annotations
+
 
 import orjson
 from types import SimpleNamespace

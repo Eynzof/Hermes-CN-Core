@@ -10,8 +10,8 @@ with ``UnicodeDecodeError`` on non-default-codepage bytes.
 
 See issues #47939, #53428, #57238.
 """
-
 from __future__ import annotations
+
 
 import importlib.util
 import sys

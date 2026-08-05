@@ -15,8 +15,8 @@ cap (see #52118) cannot fire in that state — the waiter never reacquires the
 GIL — so the whole Hermes process freezes through Ctrl+C/SIGTERM. Each search
 therefore runs in a disposable child process the parent can terminate/kill.
 """
-
 from __future__ import annotations
+
 
 import concurrent.futures as cf
 import json

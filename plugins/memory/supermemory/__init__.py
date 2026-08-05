@@ -3,8 +3,8 @@
 Provides semantic long-term memory with profile recall, semantic search,
 explicit memory tools, cleaned turn capture, and session-end conversation ingest.
 """
-
 from __future__ import annotations
+
 
 import importlib.util
 import orjson

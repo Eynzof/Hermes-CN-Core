@@ -5,8 +5,8 @@ into the agent snapshot without spawning the stdio child process at idle
 dashboard startup. Cache entries are keyed by server name + a fingerprint
 of the connection config (command/args/url/tools filters).
 """
-
 from __future__ import annotations
+
 
 import hashlib
 import json

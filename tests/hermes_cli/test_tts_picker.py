@@ -5,8 +5,8 @@ integration that injects plugin rows into the Text-to-Speech category.
 
 Mirrors the structure of existing image_gen / browser picker tests.
 """
-
 from __future__ import annotations
+
 
 import pytest
 

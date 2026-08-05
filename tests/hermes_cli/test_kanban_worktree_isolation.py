@@ -13,8 +13,8 @@ Two-part fix under test:
   when the requested path is occupied by another task's branch (heals
   pre-existing rows that still carry a shared path).
 """
-
 from __future__ import annotations
+
 
 import subprocess
 from pathlib import Path

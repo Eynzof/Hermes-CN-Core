@@ -6,8 +6,8 @@ false-positive class (custom URLs containing ``api.openai.com`` /
 by ``determine_api_mode`` as well, since it's the code path used by
 custom/unknown providers in ``resolve_custom_provider``.
 """
-
 from __future__ import annotations
+
 
 from hermes_cli.providers import determine_api_mode
 

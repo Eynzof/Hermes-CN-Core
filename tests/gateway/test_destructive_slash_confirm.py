@@ -6,8 +6,8 @@ yes/no buttons on Telegram/Discord/Slack, text fallback elsewhere.
 When False (after "Always Approve"), the destructive action runs
 immediately.
 """
-
 from __future__ import annotations
+
 
 from datetime import datetime
 from types import SimpleNamespace

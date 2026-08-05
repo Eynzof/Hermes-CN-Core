@@ -3,8 +3,8 @@
 Tests call the real production functions (``main``, ``_redact_sensitive_cmdline``).
 The detector is patched directly so no real process table interaction occurs.
 """
-
 from __future__ import annotations
+
 
 import builtins
 import json

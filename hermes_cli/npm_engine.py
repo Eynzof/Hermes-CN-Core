@@ -23,8 +23,8 @@ tree (the same tree a fresh install creates), upgrades *that* npm into range,
 and hands the caller the managed npm to retry with — leaving the user's
 toolchain untouched.
 """
-
 from __future__ import annotations
+
 
 import json
 import os

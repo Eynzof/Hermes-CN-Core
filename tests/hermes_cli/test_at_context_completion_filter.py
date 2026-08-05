@@ -8,8 +8,8 @@ auto-switched the completion kind based on `is_dir`. That defeated the user's
 explicit choice and rendered the `@folder:` / `@file:` prefixes useless for
 filtering.
 """
-
 from __future__ import annotations
+
 
 from pathlib import Path
 from typing import Iterable

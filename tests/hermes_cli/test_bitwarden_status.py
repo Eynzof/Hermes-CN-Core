@@ -1,5 +1,5 @@
-from __future__ import annotations
 
+from __future__ import annotations
 from argparse import Namespace
 from pathlib import Path
 

@@ -10,8 +10,8 @@ The stub:
   - records every outbound action (sent/interrupts) for assertions,
   - answers get_chat_info from a small fixture map.
 """
-
 from __future__ import annotations
+
 
 from typing import Any, Dict, List, Optional
 

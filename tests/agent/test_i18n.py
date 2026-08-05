@@ -1,6 +1,6 @@
 """Tests for agent.i18n -- catalog parity, fallback, language resolution."""
-
 from __future__ import annotations
+
 
 from pathlib import Path
 

@@ -9,8 +9,8 @@ form rendering, and the route's rate limiter.
 The E2E harness mirrors ``test_dashboard_auth_401_reauth.py``: register a
 provider, flip ``app.state.auth_required = True``, drive a ``TestClient``.
 """
-
 from __future__ import annotations
+
 
 import time
 

@@ -18,8 +18,8 @@ hit), but there is no PowerShell host in CI to execute it against a real repo,
 and asserting on the script's *source text* would test its shape rather than
 its behavior. These run the bash implementation of the same logic for real.
 """
-
 from __future__ import annotations
+
 
 import re
 import shutil

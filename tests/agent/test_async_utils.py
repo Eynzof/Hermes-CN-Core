@@ -1,6 +1,6 @@
 """Tests for agent.async_utils.safe_schedule_threadsafe."""
-
 from __future__ import annotations
+
 
 import asyncio
 import gc

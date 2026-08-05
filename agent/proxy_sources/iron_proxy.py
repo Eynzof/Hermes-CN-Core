@@ -54,8 +54,8 @@ iron-proxy Python bindings — a single cross-platform binary is easier to
 lazy-install than a wheels-with-extension dependency, and we keep maintenance
 to a "bump the pinned version" loop.
 """
-
 from __future__ import annotations
+
 
 import hashlib
 import ipaddress

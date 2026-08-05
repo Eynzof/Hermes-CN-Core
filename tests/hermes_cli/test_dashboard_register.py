@@ -12,8 +12,8 @@ The portal HTTP call and the Nous token resolution are both mocked — this
 file proves the CLI wiring + env-write behaviour. The live end-to-end token
 round-trip against the Vercel preview build is a separate manual step.
 """
-
 from __future__ import annotations
+
 
 import argparse
 import orjson

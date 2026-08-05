@@ -8,8 +8,8 @@ subagent) holds an :class:`IterationBudget`; the parent's cap comes from
 ``run_agent`` re-exports ``IterationBudget`` so existing
 ``from run_agent import IterationBudget`` imports keep working unchanged.
 """
-
 from __future__ import annotations
+
 
 import threading
 

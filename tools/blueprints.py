@@ -28,8 +28,8 @@ The dev guide's "Extend, Don't Duplicate" rule is the whole design: the blueprin
 is a skill, the schedule is a cron job, sharing is the existing publish/tap/
 index path.
 """
-
 from __future__ import annotations
+
 
 import logging
 from dataclasses import dataclass, field

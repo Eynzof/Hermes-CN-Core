@@ -5,8 +5,8 @@ gateway re-tags it as ``kind="compacting"`` so drivers (the desktop app) can
 show an explicit summarizing indicator instead of the transcript appearing to
 silently reset mid-turn.
 """
-
 from __future__ import annotations
+
 
 import importlib
 

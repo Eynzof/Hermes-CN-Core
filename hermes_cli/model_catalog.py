@@ -41,8 +41,8 @@ Unknown fields are ignored — extra metadata can be added at either level
 without bumping ``version``. ``version`` bumps are reserved for
 breaking changes (renaming ``providers``, changing ``models`` shape).
 """
-
 from __future__ import annotations
+
 
 import orjson
 import logging

@@ -8,8 +8,8 @@ the desktop never invokes ``dashboard``. These tests pin that contract:
 - ``serve`` is headless by default, ``dashboard`` is not;
 - both expose the identical server-runtime flag surface.
 """
-
 from __future__ import annotations
+
 
 import argparse
 

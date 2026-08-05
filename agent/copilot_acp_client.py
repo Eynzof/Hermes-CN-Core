@@ -5,8 +5,8 @@ backend. Each request starts a short-lived ACP session, sends the formatted
 conversation as a single prompt, collects text chunks, and converts the result
 back into the minimal shape Hermes expects from an OpenAI client.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import os

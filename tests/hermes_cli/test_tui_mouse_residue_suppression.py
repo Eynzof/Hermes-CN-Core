@@ -8,8 +8,8 @@ echoes literal ``^[[<…M`` text into the user's scrollback.
 `_suppress_mouse_residue_early()` writes the disable sequence to stdout
 before the heavy imports so the terminal stops emitting events ASAP.
 """
-
 from __future__ import annotations
+
 
 import sys
 from unittest.mock import patch

@@ -1,4 +1,3 @@
-import json
 """hermes memory setup|status — configure memory provider plugins.
 
 Auto-detects installed memory providers via the plugin system.
@@ -7,6 +6,9 @@ the provider's config schema. Writes config to config.yaml + .env.
 """
 
 from __future__ import annotations
+import json
+
+
 
 import os
 import re

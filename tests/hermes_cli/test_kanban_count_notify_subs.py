@@ -7,8 +7,8 @@ tick is exactly what the zero-sub early exit avoids. It must also never
 UNDER-count: rows sitting in a not-yet-checkpointed WAL still count, or the
 notifier would skip a board that has a live subscription.
 """
-
 from __future__ import annotations
+
 
 import sqlite3
 from pathlib import Path

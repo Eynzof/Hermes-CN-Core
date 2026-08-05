@@ -13,8 +13,8 @@ the curated catalog. Custom OpenAI-compatible proxies and other providers
 keep the #46850 curated-fallback behavior (their listings are often
 incomplete).
 """
-
 from __future__ import annotations
+
 
 from unittest.mock import patch as mock_patch
 

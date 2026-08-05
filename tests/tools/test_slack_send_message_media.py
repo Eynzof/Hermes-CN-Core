@@ -6,8 +6,8 @@ text+file, media-only, caption-on-upload, missing-file warnings.
 ``slack_sdk`` is optional in CI, so tests inject a fake module into
 ``sys.modules`` (same pattern as ``tests/gateway/test_slack.py``).
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import contextlib

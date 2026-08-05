@@ -1,6 +1,6 @@
 """Regression tests for bounded upstream TTS response reads."""
-
 from __future__ import annotations
+
 
 from unittest.mock import patch
 

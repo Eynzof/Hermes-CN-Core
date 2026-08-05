@@ -1,7 +1,7 @@
 """Unit tests for gateway.runtime_footer — the opt-in runtime-metadata footer
 appended to final gateway replies."""
-
 from __future__ import annotations
+
 
 import os
 import sys

@@ -6,8 +6,8 @@ single ``moa.aggregating`` marker. ``_on_tool_progress`` must forward these to
 the Ink/desktop client as labelled events so each reference renders like a
 thinking block tagged with its source model.
 """
-
 from __future__ import annotations
+
 
 from unittest.mock import MagicMock, patch
 

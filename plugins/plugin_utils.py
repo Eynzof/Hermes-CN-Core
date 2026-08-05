@@ -28,8 +28,8 @@ double-checked locking, this module gives them two thread-safe primitives:
 Both are import-light (stdlib ``threading`` only) so any plugin can import
 them without dragging in heavyweight host modules.
 """
-
 from __future__ import annotations
+
 
 import functools
 import threading

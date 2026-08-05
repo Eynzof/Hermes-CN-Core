@@ -6,8 +6,8 @@ host. The transport keeps the logical request host and TLS SNI as
 api.telegram.org while retrying the TCP connection against one or more fallback
 IPv4 addresses.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import ipaddress

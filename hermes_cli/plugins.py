@@ -30,8 +30,8 @@ Tool registration
 ``PluginContext.register_tool()`` delegates to ``tools.registry.register()``
 so plugin-defined tools appear alongside the built-in tools.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import importlib.metadata

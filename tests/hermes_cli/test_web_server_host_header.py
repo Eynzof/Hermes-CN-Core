@@ -6,8 +6,8 @@ that TTL-flips to 127.0.0.1. Same-origin / CORS checks won't help —
 the browser now treats the attacker origin as same-origin. Validating
 the Host header at the application layer rejects the attack.
 """
-
 from __future__ import annotations
+
 
 import sys
 from pathlib import Path

@@ -8,8 +8,8 @@ install whose ``config.yaml`` is not writable (read-only bind mount, container
 recreation) the user was told the preference stuck when it had not. The prompt
 comes back on the next restart with no explanation.
 """
-
 from __future__ import annotations
+
 
 import sys
 import types

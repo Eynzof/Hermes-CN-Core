@@ -10,8 +10,8 @@ and logs+swallows it; non-transient errors still surface.
 These tests pin the classifier and the loop handler so the safety net
 can't silently regress to swallowing every exception.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import logging

@@ -6,8 +6,8 @@ role="user" is safe — the system prompt is prepended to the API message list,
 so a user-role marker can appear at any later position, and the gateway's
 sanitize/merge pass already coalesces consecutive user messages.
 """
-
 from __future__ import annotations
+
 
 import threading
 from types import SimpleNamespace

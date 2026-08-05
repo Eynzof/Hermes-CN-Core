@@ -5,8 +5,8 @@ for supply-chain attacks (e.g. the Mini Shai-Hulud worm of May 2026 that
 poisoned mistralai 2.4.6 on PyPI). These tests exercise the public API in
 isolation — no real package metadata, no real config, no real cache.
 """
-
 from __future__ import annotations
+
 
 import time
 from pathlib import Path

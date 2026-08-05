@@ -17,8 +17,8 @@ Browser preparation remains a separate approved action. Existing-profile
 attachment is delegated to cua-driver's daemon authorization coordinator;
 ordinary Hermes tool approval never substitutes for protected consent.
 """
-
 from __future__ import annotations
+
 
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Iterable, Optional, Set

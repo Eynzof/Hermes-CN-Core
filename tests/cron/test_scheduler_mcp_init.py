@@ -12,8 +12,8 @@ wrapped in try/except so a broken MCP server can't kill an otherwise
 working cron job. ``discover_mcp_tools`` is idempotent — subsequent ticks
 short-circuit on already-connected servers.
 """
-
 from __future__ import annotations
+
 
 from unittest.mock import patch
 

@@ -10,8 +10,8 @@ Tools:
                      Requires the active meeting to have been joined with
                      mode='realtime'.
 """
-
 from __future__ import annotations
+
 
 import orjson
 from typing import Any, Dict, Optional

@@ -1,6 +1,6 @@
 """AES-256-GCM utilities for QQBot scan-to-configure credential decryption."""
-
 from __future__ import annotations
+
 
 import pybase64 as base64
 import os

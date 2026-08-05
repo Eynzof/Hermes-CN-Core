@@ -7,8 +7,8 @@ connector HTTP POST is monkeypatched; the cross-repo E2E (connector repo,
 gateway_policy_driver.py) exercises the real route. These prove the PROJECTION
 mapping, the auth/skip logic, and the fail-soft boot behaviour.
 """
-
 from __future__ import annotations
+
 
 import pytest
 

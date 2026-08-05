@@ -11,8 +11,8 @@ ntfy adapter no longer modifies ``gateway/config.py``, ``gateway/run.py``,
 ``cron/scheduler.py``, ``toolsets.py``, etc.  Everything routes through
 the ``platform_registry``.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch

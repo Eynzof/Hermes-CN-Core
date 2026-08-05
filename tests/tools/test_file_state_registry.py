@@ -13,8 +13,8 @@ Plus integration through the real ``read_file_tool`` / ``write_file_tool``
 Run:
     python -m pytest tests/tools/test_file_state_registry.py -v
 """
-
 from __future__ import annotations
+
 
 import orjson
 import os

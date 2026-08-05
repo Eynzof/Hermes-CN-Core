@@ -23,8 +23,8 @@ Auth env vars::
     FIRECRAWL_API_URL=...           # optional override (default https://api.firecrawl.dev)
     FIRECRAWL_BROWSER_TTL=...       # optional, default 300 seconds
 """
-
 from __future__ import annotations
+
 
 import logging
 import os

@@ -20,8 +20,8 @@ so:
 See issue #26241 for the migration plan and the
 ``plugin-extraction-test-patch-compatibility.md`` rules this follows.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import logging

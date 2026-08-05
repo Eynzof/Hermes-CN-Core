@@ -7,8 +7,8 @@ Transport-layer tests (git clone, URL handling) are exercised through live
 E2E runs, not unit tests — git itself is tested upstream, and subprocess-
 mocking git would just test the mock.
 """
-
 from __future__ import annotations
+
 
 from pathlib import Path
 

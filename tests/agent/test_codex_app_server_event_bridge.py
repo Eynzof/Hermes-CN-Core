@@ -12,8 +12,8 @@ asserts the right agent callback fired with the right arguments. The
 bridge is deliberately small (~150 lines of pure dict mapping) so the
 tests can stay focused on the wire format ↔ callback contract.
 """
-
 from __future__ import annotations
+
 
 import json
 from types import SimpleNamespace

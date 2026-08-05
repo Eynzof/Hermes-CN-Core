@@ -26,8 +26,8 @@ in ``agent/prompt_builder.py``.
 
 Toggle via ``agent.environment_probe`` in config.yaml (default True).
 """
-
 from __future__ import annotations
+
 
 import logging
 import os

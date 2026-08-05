@@ -3,8 +3,8 @@
 These cover the alignment guarantee on CJK / wide-character tables and
 the conservative no-op behaviour on non-table input.
 """
-
 from __future__ import annotations
+
 
 from textwrap import dedent
 

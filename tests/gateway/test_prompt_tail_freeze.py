@@ -15,8 +15,8 @@ sidecar), so a key hit reuses the pinned bytes verbatim.
 The maintained invariant — every rendered input appears in the change key —
 is guarded by the parity test below.
 """
-
 from __future__ import annotations
+
 
 import hashlib
 from types import SimpleNamespace

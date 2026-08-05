@@ -5,8 +5,8 @@ interrupting. The note is appended to the current turn's user message copy
 on the next API call, so the model sees it in its natural ``user`` role.
 The persisted message history is not mutated, preserving the prompt cache.
 """
-
 from __future__ import annotations
+
 
 import threading
 from typing import Any, Dict, List, Optional

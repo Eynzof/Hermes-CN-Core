@@ -27,8 +27,8 @@ per-contact authorisation, policy gating in a gateway hook) should use
 ``canonical_whatsapp_identifier`` so their bookkeeping lines up with
 Hermes' own session keys.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import logging

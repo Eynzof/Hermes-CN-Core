@@ -5,8 +5,8 @@ tool schemas, and conversation history. Uses the same rough char/4 heuristic
 as ``agent.model_metadata.estimate_request_tokens_rough`` so numbers align
 with compression thresholds — not exact tokenizer counts.
 """
-
 from __future__ import annotations
+
 
 import orjson
 from agent.re_compat import re

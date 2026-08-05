@@ -22,8 +22,8 @@ Three tiers are joined with ``\\n\\n``:
 
 Pure helpers that read the agent's state.  AIAgent keeps thin forwarders.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import logging

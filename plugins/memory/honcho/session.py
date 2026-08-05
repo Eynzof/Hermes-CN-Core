@@ -1,6 +1,6 @@
 """Honcho-based session management for conversation history."""
-
 from __future__ import annotations
+
 
 import hashlib
 import queue

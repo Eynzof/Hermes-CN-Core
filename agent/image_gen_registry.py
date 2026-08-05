@@ -17,8 +17,8 @@ If unset, :func:`get_active_provider` applies fallback logic:
 3. Otherwise return ``None`` (the tool surfaces a helpful error pointing
    the user at ``hermes tools``).
 """
-
 from __future__ import annotations
+
 
 import logging
 import threading

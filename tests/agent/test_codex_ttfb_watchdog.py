@@ -13,8 +13,8 @@ The "bytes flowing" signal is ``agent._codex_stream_last_event_ts``, set on
 tool-call-only turns (which emit no output-text deltas) are not mistaken for a
 stall.
 """
-
 from __future__ import annotations
+
 
 import sys
 import time

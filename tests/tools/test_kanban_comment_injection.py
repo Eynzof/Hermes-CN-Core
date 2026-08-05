@@ -8,8 +8,8 @@ task without the block→comment→unblock dance or a restart.
 Verifies: no-op off a worker, watermark seeding (history isn't re-injected),
 new comments steer, and own-authored comments are skipped.
 """
-
 from __future__ import annotations
+
 
 import sys
 from pathlib import Path

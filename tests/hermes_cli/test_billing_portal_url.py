@@ -4,8 +4,8 @@ The server emits ``portalUrl`` relative by design (``/billing?topup=open``); the
 client must resolve it against the active portal base so deep-links are clickable
 on whatever deployment (preview / staging / prod) the user is pointed at.
 """
-
 from __future__ import annotations
+
 
 import pytest
 

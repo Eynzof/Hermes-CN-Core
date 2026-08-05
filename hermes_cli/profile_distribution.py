@@ -58,8 +58,8 @@ Update semantics:
   logs/, workspace/, home/, plans/, *_cache/, and anything under
   ``local/``) are never touched.
 """
-
 from __future__ import annotations
+
 from agent.re_compat import re
 import shutil
 import subprocess

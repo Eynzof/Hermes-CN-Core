@@ -8,8 +8,8 @@ Qwen3 wrapper that happens to live under the "hermes" tag namespace.
 ``is_nous_hermes_non_agentic`` should only match the actual Nous Research
 Hermes-3 / Hermes-4 chat family.
 """
-
 from __future__ import annotations
+
 
 import pytest
 

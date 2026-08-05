@@ -1,6 +1,6 @@
 """Tests for agent/image_routing.py — the per-turn image input mode decision."""
-
 from __future__ import annotations
+
 
 import pybase64 as base64
 import sys

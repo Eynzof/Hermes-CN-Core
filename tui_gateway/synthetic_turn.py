@@ -27,8 +27,8 @@ token accounting) is carried in the prompt text as a small JSON spec so the
 harness has full control and the server seam stays dumb. Any prompt that is not
 a JSON object falls back to env / built-in defaults.
 """
-
 from __future__ import annotations
+
 
 import json
 import os

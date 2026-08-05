@@ -23,8 +23,8 @@ The ``tests/gateway/conftest.py`` guard rejects the anti-pattern at
 collection time so this can't regress when new plugin adapter tests are
 added.
 """
-
 from __future__ import annotations
+
 
 import importlib.util
 import sys

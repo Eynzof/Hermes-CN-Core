@@ -1,6 +1,6 @@
 """Core NeMo Relay adapter for Hermes tool execution."""
-
 from __future__ import annotations
+
 
 import asyncio
 import contextvars

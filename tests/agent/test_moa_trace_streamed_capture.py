@@ -12,8 +12,8 @@ produced without joining to the session DB by hand.
 These exercise the real ``consume_and_save_trace`` → ``save_moa_turn`` path
 with real file I/O against a temp HERMES_HOME — no mocks on the write path.
 """
-
 from __future__ import annotations
+
 
 import orjson
 

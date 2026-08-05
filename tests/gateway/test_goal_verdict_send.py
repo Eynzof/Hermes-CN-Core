@@ -6,8 +6,8 @@ must reach the user after each turn. Before this fix the code checked
 never ``send_message``, so the check always evaluated False and users
 never saw verdicts. This test locks in the fix.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 from datetime import datetime

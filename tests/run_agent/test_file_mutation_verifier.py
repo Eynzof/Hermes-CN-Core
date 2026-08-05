@@ -16,8 +16,8 @@ turn claiming every file was edited.  This verifier makes over-claiming
 structurally impossible past the model: the user always sees the real
 list of files that did NOT change.
 """
-
 from __future__ import annotations
+
 
 import orjson
 

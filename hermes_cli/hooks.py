@@ -15,8 +15,8 @@ This module is a thin CLI shell over :mod:`agent.shell_hooks`; every
 shared concern (payload serialisation, response parsing, allowlist
 format) lives there.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import json

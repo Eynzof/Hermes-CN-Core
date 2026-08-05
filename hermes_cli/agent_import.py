@@ -35,8 +35,8 @@ are ignored, and MCP server env vars with secret-looking names (KEY, TOKEN,
 SECRET, PASSWORD, ...) are stripped and reported so the user can re-add them
 deliberately via ``hermes setup`` or config.yaml.
 """
-
 from __future__ import annotations
+
 
 import json
 import logging

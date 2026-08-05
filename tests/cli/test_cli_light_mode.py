@@ -5,8 +5,8 @@ the resize / light-mode salvage installs at module import time.  We don't
 try to fake an OSC 11 reply — the env-override branch short-circuits
 before the terminal query, which is the path most users hit.
 """
-
 from __future__ import annotations
+
 
 
 import pytest

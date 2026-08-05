@@ -6,8 +6,8 @@ BOTH v2 projects (`store_status()["projects"]`) and pre-v2 shadow repos
 orphans from both layouts. Exercises decline / accept / --force across
 pre-v2-only and mixed (v2 + pre-v2) stores.
 """
-
 from __future__ import annotations
+
 
 import argparse
 

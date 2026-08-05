@@ -10,8 +10,8 @@ and exit `✓ Saved` without ever invoking the post_setup install. These
 tests pin the new predicate-aware behaviour so the regression doesn't
 sneak back in.
 """
-
 from __future__ import annotations
+
 
 
 class TestPostSetupGate:

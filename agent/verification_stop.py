@@ -4,8 +4,8 @@ This module is intentionally policy-only. It never runs checks itself; it turns
 the passive verification ledger into a bounded follow-up when the model tries to
 finish immediately after editing code without fresh evidence.
 """
-
 from __future__ import annotations
+
 
 import os
 import tempfile

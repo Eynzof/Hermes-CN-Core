@@ -7,8 +7,8 @@ redaction posture.
 The handler is injected to avoid importing ``main`` (mirrors the insights
 subcommand).
 """
-
 from __future__ import annotations
+
 
 from typing import Callable
 

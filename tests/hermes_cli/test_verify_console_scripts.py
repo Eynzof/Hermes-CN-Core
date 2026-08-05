@@ -1,6 +1,6 @@
 """Tests for _verify_console_scripts_installed (issue #52931)."""
-
 from __future__ import annotations
+
 
 import textwrap
 from pathlib import Path

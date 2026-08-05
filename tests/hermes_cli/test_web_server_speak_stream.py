@@ -1,6 +1,6 @@
 """/api/audio/speak-stream — desktop streaming TTS over WebSocket."""
-
 from __future__ import annotations
+
 
 import json
 import time

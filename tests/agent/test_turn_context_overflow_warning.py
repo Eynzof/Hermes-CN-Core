@@ -7,8 +7,8 @@ The fix surfaces a deduped ``_emit_warning`` from ``build_turn_context`` and
 exposes ``ContextCompressor.should_compress_info`` (a ``(bool, reason)`` tuple)
 so callers can tell *why* compression was skipped while still over threshold.
 """
-
 from __future__ import annotations
+
 
 import time
 from unittest.mock import patch

@@ -4,8 +4,8 @@ The auxiliary LLM client is mocked — no network calls. Tests exercise the
 prompt plumbing, response parsing, DB writes (via the real DB helper),
 and the assignee-fallback logic.
 """
-
 from __future__ import annotations
+
 
 import json as jsonlib
 from pathlib import Path

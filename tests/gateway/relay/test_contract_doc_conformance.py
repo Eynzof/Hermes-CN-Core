@@ -21,8 +21,8 @@ a field to the descriptor and the doc, and the test stays green; add it to only
 one, and CI fails — which is exactly the lockstep guarantee the plan's
 Cross-Repo Coordination Checklist calls for.
 """
-
 from __future__ import annotations
+
 from agent.re_compat import re
 from pathlib import Path
 

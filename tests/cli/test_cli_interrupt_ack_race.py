@@ -20,8 +20,8 @@ The fix: when ``chat()`` consumed an ``interrupt_msg`` but the result
 doesn't acknowledge the interrupt, re-queue the message as the next turn
 and clear the stale agent flag (only when the agent thread has exited).
 """
-
 from __future__ import annotations
+
 
 import importlib
 import queue

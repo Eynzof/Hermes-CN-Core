@@ -5,8 +5,8 @@ Without the bypass in gateway/run.py, Feishu bot senders admitted by the
 adapter would be rejected at _is_user_authorized with "Unauthorized user"
 — same class of bug as Discord #4466.
 """
-
 from __future__ import annotations
+
 
 from types import SimpleNamespace
 

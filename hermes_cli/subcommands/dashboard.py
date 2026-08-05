@@ -7,8 +7,8 @@ Both share one handler (``cmd_dashboard`` → ``start_server``). Extracted from
 ``hermes_cli/main.py:main()`` (god-file Phase 2); handler injected to avoid
 importing ``main``.
 """
-
 from __future__ import annotations
+
 
 import argparse
 from typing import Callable

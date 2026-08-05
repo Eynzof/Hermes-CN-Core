@@ -13,8 +13,8 @@ Symbols that production code or tests patch on ``run_agent`` directly
 (``handle_function_call``, ``_set_interrupt``, ``OpenAI``, ...) are
 resolved through :func:`_ra` so those patches keep working.
 """
-
 from __future__ import annotations
+
 
 import json
 import orjson

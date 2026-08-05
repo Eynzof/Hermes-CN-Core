@@ -5,8 +5,8 @@ multimodal message length counter now charges ~1600 tokens per attached
 image part instead of 0, so tail-cut / prune decisions are accurate for
 creative workflows that iterate on images across many turns.
 """
-
 from __future__ import annotations
+
 
 
 from agent.context_compressor import (

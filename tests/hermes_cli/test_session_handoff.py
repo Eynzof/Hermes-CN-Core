@@ -9,8 +9,8 @@ Gateway side iterates ``list_pending_handoffs``, calls ``claim_handoff`` to
 flip pending → running, and finishes with ``complete_handoff`` or
 ``fail_handoff``.
 """
-
 from __future__ import annotations
+
 
 import time
 

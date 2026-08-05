@@ -16,8 +16,8 @@ Covers:
 We mock azure.identity at the import boundary rather than hitting any
 real Azure endpoint. Tests must remain hermetic per AGENTS.md.
 """
-
 from __future__ import annotations
+
 
 import sys
 from collections.abc import Callable

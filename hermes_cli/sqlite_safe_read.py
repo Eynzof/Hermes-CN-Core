@@ -58,8 +58,8 @@ not trustworthy: ``SessionDB``'s read-only path opens
 filesystem path yields a key like ``<cwd>/file:/…/state.db?mode=ro`` which no
 later probe of the real ``Path`` can ever match.
 """
-
 from __future__ import annotations
+
 
 import contextlib
 import logging

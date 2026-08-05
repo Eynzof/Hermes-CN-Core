@@ -32,8 +32,8 @@ dicts, most of which also leaked empty/stale entries for dead sessions —
 see the migration table in the consolidating commit).  Follow-up work may
 add eviction of fully-default SessionStates.
 """
-
 from __future__ import annotations
+
 
 from collections.abc import MutableMapping
 from dataclasses import dataclass, field

@@ -16,8 +16,8 @@ Covers:
   - Explicit prefix is preserved in the completion text
   - `@<name>` with no slash fuzzy-matches basenames anywhere in the tree
 """
-
 from __future__ import annotations
+
 
 from pathlib import Path
 

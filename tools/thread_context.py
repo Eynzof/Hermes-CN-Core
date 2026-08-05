@@ -30,8 +30,8 @@ Approval/sudo callbacks are installed for the worker's lifetime and **always
 cleared on exit**, so a recycled thread never holds a stale reference to a
 disposed CLI instance.
 """
-
 from __future__ import annotations
+
 
 import contextvars
 import logging

@@ -4,8 +4,8 @@ Ported from cline/cline#10343.  The module logs a structured
 ``[MEMORY] rss=...MB ...`` line periodically so long-running gateway
 leaks show up as a time series in agent.log / gateway.log.
 """
-
 from __future__ import annotations
+
 
 import logging
 import time

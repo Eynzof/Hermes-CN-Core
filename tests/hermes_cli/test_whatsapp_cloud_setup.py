@@ -11,8 +11,8 @@ Covers:
   (the wizard can't smoke-test reachability itself because the gateway
   isn't running yet during setup).
 """
-
 from __future__ import annotations
+
 
 import io
 import os

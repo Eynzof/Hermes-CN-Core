@@ -1,6 +1,6 @@
 """Helpers for reading the effective fallback provider chain from config."""
-
 from __future__ import annotations
+
 
 from typing import Any
 

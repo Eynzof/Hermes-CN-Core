@@ -10,8 +10,8 @@ WhatsApp for indefinite retries — looking like "the gateway is broken."
 The fix: only set ``WHATSAPP_ENABLED=true`` once pairing actually
 succeeds (creds.json exists).  Aborted setup leaves no enabled state.
 """
-
 from __future__ import annotations
+
 
 import io
 import os

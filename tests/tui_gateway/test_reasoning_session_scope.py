@@ -17,8 +17,8 @@ Covers the "desktop reverts thinking to medium after one turn" report:
 3. ``_load_reasoning_config`` must honor a YAML boolean False
    (``reasoning_effort: false`` / ``off`` / ``no``) as thinking-disabled.
 """
-
 from __future__ import annotations
+
 
 from types import SimpleNamespace
 from unittest.mock import patch

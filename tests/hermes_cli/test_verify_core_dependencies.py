@@ -13,8 +13,8 @@ The verification step:
   3. Probes ``importlib.metadata.version()`` in the venv interpreter.
   4. Reinstalls with --reinstall, then per-package, if anything's missing.
 """
-
 from __future__ import annotations
+
 
 import subprocess
 import textwrap

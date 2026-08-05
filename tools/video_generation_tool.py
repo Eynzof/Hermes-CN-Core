@@ -40,8 +40,8 @@ the tool surface stable as new providers ship with different capabilities.
 Video edit and video extend are intentionally not exposed here; providers with
 those workflows should expose separate tools.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import logging

@@ -6,8 +6,8 @@ light — the byte-identical ``--help`` verification done at extraction time is
 the real behavioral guarantee; this just guards against a module failing to
 import or a builder raising.
 """
-
 from __future__ import annotations
+
 
 import argparse
 

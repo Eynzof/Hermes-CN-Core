@@ -13,8 +13,8 @@ agent/tool loop (auth churn, tool-call replay quirks, thought-signature
 requirements).  The native Gemini API is the canonical path and avoids the
 OpenAI-compat layer entirely.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import pybase64 as base64

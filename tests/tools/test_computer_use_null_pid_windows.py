@@ -18,8 +18,8 @@ The fix routes both ingestion sites through ``_ingest_windows``, which skips
 windows lacking a usable pid/window_id (uncapturable anyway) and coerces the
 rest, so real targetable windows survive.
 """
-
 from __future__ import annotations
+
 
 import base64
 from unittest.mock import MagicMock

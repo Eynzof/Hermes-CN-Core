@@ -10,8 +10,8 @@ Resolution order for host-specific settings:
   2. Flat/global fields from config root
   3. Defaults (host name as workspace/peer)
 """
-
 from __future__ import annotations
+
 
 import json
 import orjson

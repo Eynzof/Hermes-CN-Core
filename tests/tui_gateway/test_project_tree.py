@@ -4,8 +4,8 @@ These assert structural contracts (worktree folding, kanban collapse, lane id
 scheme, membership union) rather than snapshots, so routine data changes don't
 break them.
 """
-
 from __future__ import annotations
+
 
 from tui_gateway import project_tree as pt
 

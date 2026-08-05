@@ -1,6 +1,6 @@
 """Verify `hermes -c` picks the session the user most recently used."""
-
 from __future__ import annotations
+
 
 from hermes_cli.main import _resolve_last_session
 

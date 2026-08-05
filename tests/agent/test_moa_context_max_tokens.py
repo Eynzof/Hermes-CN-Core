@@ -14,8 +14,8 @@ uses.
 ``call_llm`` (task="moa_reference" vs task="moa_aggregator"), so mocking
 just that one function exercises the real fan-out/aggregation code path.
 """
-
 from __future__ import annotations
+
 
 from types import SimpleNamespace
 

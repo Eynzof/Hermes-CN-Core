@@ -1,6 +1,6 @@
 """Unit tests for OpenCode Go reasoning-control wiring."""
-
 from __future__ import annotations
+
 
 import pytest
 

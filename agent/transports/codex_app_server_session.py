@@ -21,8 +21,8 @@ The underlying CodexAppServerClient owns its own reader threads but exposes
 blocking-with-timeout queues that this adapter polls in a loop, so the run_turn
 call is synchronous and behaves like AIAgent's existing chat_completions loop.
 """
-
 from __future__ import annotations
+
 
 import logging
 import os

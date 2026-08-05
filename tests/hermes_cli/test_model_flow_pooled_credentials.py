@@ -1,6 +1,6 @@
 """Pool-only credentials must be visible to interactive model setup flows."""
-
 from __future__ import annotations
+
 
 from unittest.mock import patch
 

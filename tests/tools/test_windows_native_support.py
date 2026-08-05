@@ -8,8 +8,8 @@ Runs on Linux CI — every test mocks ``sys.platform``, ``subprocess.run``,
 and ``os.kill`` as needed to simulate Windows behavior without requiring a
 Windows runner.
 """
-
 from __future__ import annotations
+
 
 import os
 import signal

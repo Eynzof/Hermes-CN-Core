@@ -4,8 +4,8 @@ The estimate endpoints call the auto-routed auxiliary model and parse a
 compact JSON reply (tokens + complexity + rationale). Tests monkeypatch
 ``call_llm`` so no network is touched.
 """
-
 from __future__ import annotations
+
 
 import importlib.util
 import sys

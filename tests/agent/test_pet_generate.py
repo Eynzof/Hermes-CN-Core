@@ -4,8 +4,8 @@ No network/API calls — image generation is mocked with synthetic strips so the
 whole pipeline (segmentation → compose → validate → register → adopt) is
 exercised hermetically.
 """
-
 from __future__ import annotations
+
 
 import os
 

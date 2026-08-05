@@ -1,6 +1,6 @@
 """Backend abstraction for Mem0 Platform and OSS modes."""
-
 from __future__ import annotations
+
 
 from abc import ABC, abstractmethod
 from typing import Any

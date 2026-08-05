@@ -57,8 +57,8 @@ a single plugin-form module that requires zero core edits:
 * PR #6676  (liyoungc)    — Push-only mode (used as the ``threshold=0``
   fallback path here).
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import pybase64 as base64

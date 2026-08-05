@@ -10,8 +10,8 @@ This mirrors ``test_discord_media_metadata.py`` but covers the two
 adapters that previously slipped, plus a best-effort sweep over every
 adapter that imports cleanly so the next slip is caught at test time.
 """
-
 from __future__ import annotations
+
 
 import importlib
 import inspect

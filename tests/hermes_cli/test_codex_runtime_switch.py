@@ -3,8 +3,8 @@
 These cover the pure-Python state machine; CLI and gateway handlers are
 tested separately because they involve config persistence and prompt
 formatting that's surface-specific."""
-
 from __future__ import annotations
+
 
 from unittest.mock import patch
 

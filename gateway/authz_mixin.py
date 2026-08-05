@@ -14,8 +14,8 @@ that uses it (``from gateway.run import logger`` resolves at call time, when
 import time -> no import cycle. The lazy import preserves the exact logger name
 (``"gateway.run"``) so log records are unchanged.
 """
-
 from __future__ import annotations
+
 
 import os
 from typing import Optional

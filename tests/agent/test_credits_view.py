@@ -6,8 +6,8 @@ handler renders the block + tappable top-up URL + no-wait copy. The CLI panel is
 a thin wrapper over the same view (interactive prompt_toolkit modal — covered by
 the view-core tests plus manual verification).
 """
-
 from __future__ import annotations
+
 
 import asyncio
 

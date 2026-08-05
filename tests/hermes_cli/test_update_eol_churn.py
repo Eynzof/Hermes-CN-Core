@@ -10,8 +10,8 @@ The pin and the cleanup are one operation: under ``autocrlf=true`` git compares
 normalized content, so the CRLF tree reads clean and pinning alone would expose
 the whole tree as modified. These tests pin down that coupling.
 """
-
 from __future__ import annotations
+
 
 import shutil
 import subprocess

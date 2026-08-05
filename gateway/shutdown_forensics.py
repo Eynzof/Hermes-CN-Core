@@ -14,8 +14,8 @@ even if /proc is wedged.
 Anything that needs to wait (e.g. shelling out to ``ps aux``) belongs in
 the async helper, never in the synchronous probe.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import os

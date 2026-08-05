@@ -15,8 +15,8 @@ Covers:
   - the ws transport sends command_manifest on the DISCORD hello only;
   - the manifest builder satisfies Discord CHAT_INPUT naming rules.
 """
-
 from __future__ import annotations
+
 
 import re
 from typing import Any, Dict

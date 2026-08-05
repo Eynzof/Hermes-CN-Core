@@ -6,8 +6,8 @@ This module mirrors the pattern from
 ``kimix/utils/windows_env.py`` / ``kimi-cli/src/kimi_cli/utils/environment.py``
 in the upstream kimi-agent project.
 """
-
 from __future__ import annotations
+
 
 import os
 import sys

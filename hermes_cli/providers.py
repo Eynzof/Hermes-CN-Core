@@ -16,8 +16,8 @@ Two data sources, merged at runtime:
 
 Other modules import from this file.  No parallel registries.
 """
-
 from __future__ import annotations
+
 
 import logging
 from dataclasses import dataclass

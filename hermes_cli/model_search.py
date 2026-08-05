@@ -7,8 +7,8 @@ the familiar ``kimi-…`` naming of sibling models.
 Keep in sync with ``ui-tui/src/lib/model-search-text.ts`` and
 ``web/src/lib/model-search-text.ts``.
 """
-
 from __future__ import annotations
+
 
 # Lowercased wire id → extra tokens appended to the search haystack only.
 _MODEL_SEARCH_ALIASES: dict[str, tuple[str, ...]] = {

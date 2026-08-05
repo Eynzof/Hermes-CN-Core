@@ -17,8 +17,8 @@ imported lazily inside the flows (``from hermes_cli.main import ...`` resolves a
 call time, when main.py is fully loaded) so this module never imports
 ``hermes_cli.main`` at import time -> no import cycle.
 """
-
 from __future__ import annotations
+
 
 import argparse
 import os

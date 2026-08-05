@@ -6,8 +6,8 @@ whitelist, default merging, GPT quality override, and model resolution
 fallback. Does NOT exercise fal_client submission — that's covered by
 tests/tools/test_managed_media_gateways.py.
 """
-
 from __future__ import annotations
+
 
 from unittest.mock import patch
 

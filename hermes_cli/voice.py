@@ -18,8 +18,8 @@ Two usage modes are exposed:
   Three consecutive no-speech cycles stop the loop and fire
   ``on_silent_limit`` so the UI can turn the mode off.
 """
-
 from __future__ import annotations
+
 
 import json
 import logging

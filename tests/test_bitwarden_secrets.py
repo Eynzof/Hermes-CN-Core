@@ -5,8 +5,8 @@ mocked so the suite stays fast and offline-safe.  The "live" pull and
 binary download are exercised manually by `hermes secrets bitwarden
 setup` outside of pytest.
 """
-
 from __future__ import annotations
+
 
 import hashlib
 import io

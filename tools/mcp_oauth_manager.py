@@ -31,8 +31,8 @@ Design reference:
   ``stat()`` per tool call is cheaper than an ``await`` + potential refresh
   round-trip, and the SDK's in-memory expiry path is already correct.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import logging

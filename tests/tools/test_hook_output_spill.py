@@ -1,6 +1,6 @@
 """Tests for tools.hook_output_spill."""
-
 from __future__ import annotations
+
 
 import os
 import tempfile

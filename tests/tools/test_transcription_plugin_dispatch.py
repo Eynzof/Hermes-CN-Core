@@ -15,8 +15,8 @@ to #30398 — STT pluggability):
 5. Plugin returning non-dict → caught with error envelope.
 6. Plugin result has ``provider`` field stamped if missing.
 """
-
 from __future__ import annotations
+
 
 import pytest
 

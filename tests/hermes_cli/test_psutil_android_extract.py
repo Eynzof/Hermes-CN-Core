@@ -1,6 +1,6 @@
 """Regression tests for the Android psutil compatibility installer."""
-
 from __future__ import annotations
+
 
 import io
 import shutil

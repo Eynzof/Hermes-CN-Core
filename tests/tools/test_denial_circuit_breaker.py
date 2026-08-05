@@ -10,8 +10,8 @@ tests/tools/test_execute_code_approval_cluster.py: monkeypatch
 ``_smart_approve`` / ``_get_approval_mode`` on the module and drive the
 public guard entry points.
 """
-
 from __future__ import annotations
+
 
 import pytest
 

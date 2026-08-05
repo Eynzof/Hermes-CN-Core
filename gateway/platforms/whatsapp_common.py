@@ -28,8 +28,8 @@ mixin's methods are called (typically in ``__init__``):
 Class attributes ``MAX_MESSAGE_LENGTH`` and ``DEFAULT_REPLY_PREFIX`` are
 defined on the mixin and may be overridden per-adapter if needed.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import logging

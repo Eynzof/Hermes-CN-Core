@@ -5,8 +5,8 @@ Covers:
   `status` which is scoped to curator-managed candidates.
 - --provenance filter, --sort ordering, and --json output.
 """
-
 from __future__ import annotations
+
 
 import json
 from types import SimpleNamespace

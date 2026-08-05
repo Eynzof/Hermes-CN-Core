@@ -14,8 +14,8 @@ approval callback and Docker host-access handling behave identically.
 CLI-only by design: gateway/API/cron sessions have their own shells and no
 composer, so :func:`bang_shell_enabled` gates the feature off there.
 """
-
 from __future__ import annotations
+
 
 import os
 import subprocess

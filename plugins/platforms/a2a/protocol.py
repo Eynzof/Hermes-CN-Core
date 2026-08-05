@@ -17,8 +17,8 @@ Wire shape follows A2A Protocol v1.0 (JSON-RPC 2.0 binding over HTTP):
 We deliberately implement the subset of A2A needed for text task exchange with
 stdlib only (no a2a-sdk). ``extract_text`` stays tolerant of v0.3 peers.
 """
-
 from __future__ import annotations
+
 
 import json
 import copy

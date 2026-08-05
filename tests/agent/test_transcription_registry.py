@@ -11,8 +11,8 @@ Covers:
 - ABC contract: transcribe() must be implemented
 - Sync invariant: registry built-ins match tools/transcription_tools.py
 """
-
 from __future__ import annotations
+
 
 import logging
 from typing import Any, Optional

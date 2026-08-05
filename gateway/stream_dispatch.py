@@ -17,8 +17,8 @@ This module deliberately has no platform knowledge and no asyncio: it is a thin
 synchronous router callable from the agent's worker thread, exactly like the
 callbacks it replaces.
 """
-
 from __future__ import annotations
+
 
 import logging
 from typing import Any, Callable, Optional

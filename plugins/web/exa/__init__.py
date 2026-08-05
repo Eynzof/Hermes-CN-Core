@@ -4,8 +4,8 @@ Backed by the official Exa SDK (``exa-py``). Both search and extract are
 sync; the dispatcher in :mod:`tools.web_tools` handles the wrap when the
 caller is async.
 """
-
 from __future__ import annotations
+
 
 from plugins.web.exa.provider import ExaWebSearchProvider
 

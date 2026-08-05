@@ -5,8 +5,8 @@ per-turn tool-call observations and returns decisions. Runtime code owns whether
 those decisions become warning guidance, synthetic tool results, or controlled
 turn halts.
 """
-
 from __future__ import annotations
+
 
 import hashlib
 import json

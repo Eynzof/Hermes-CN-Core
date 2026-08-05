@@ -21,8 +21,8 @@ keyword. Doing this via AST (rather than importing) avoids pulling every
 platform's optional third-party SDK (aiohttp, slack_sdk, telegram,
 matrix-nio, etc.) into the test environment.
 """
-
 from __future__ import annotations
+
 
 import ast
 from pathlib import Path

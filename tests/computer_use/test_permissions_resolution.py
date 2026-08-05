@@ -1,6 +1,6 @@
 """Regression tests for Computer Use readiness under a thin GUI PATH."""
-
 from __future__ import annotations
+
 
 import sys
 from unittest.mock import MagicMock, patch

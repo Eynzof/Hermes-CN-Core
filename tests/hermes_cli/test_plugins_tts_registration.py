@@ -7,8 +7,8 @@ and asserts the registration result.
 Mirrors the structure of
 ``tests/hermes_cli/test_plugin_scanner_recursion.py::TestRegisterImageGenProvider``.
 """
-
 from __future__ import annotations
+
 
 import os
 from pathlib import Path

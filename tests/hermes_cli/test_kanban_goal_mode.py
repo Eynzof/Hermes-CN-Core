@@ -9,8 +9,8 @@ Covers three layers:
 3. Loop: goals.run_kanban_goal_loop continuation / completion / budget
    behaviour, driven entirely through injected callbacks (no live model).
 """
-
 from __future__ import annotations
+
 
 import sqlite3
 from pathlib import Path

@@ -1,6 +1,6 @@
 """Setup wizard for Mem0 plugin — interactive and flag-based modes."""
-
 from __future__ import annotations
+
 
 import getpass
 import orjson

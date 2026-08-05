@@ -34,8 +34,8 @@ importantly, tests that monkeypatch helpers on ``hermes_cli.config`` (e.g.
 the steps always go through the module attribute rather than a bound-early
 reference.
 """
-
 from __future__ import annotations
+
 
 import copy
 from typing import Any, Callable, Dict, List, Tuple

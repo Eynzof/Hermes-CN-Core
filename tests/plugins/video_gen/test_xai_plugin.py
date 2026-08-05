@@ -1,6 +1,6 @@
 """Smoke tests for the xAI video gen plugin — load & register surface."""
-
 from __future__ import annotations
+
 
 import pytest
 

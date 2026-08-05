@@ -12,8 +12,8 @@ Covers the pieces added when boards became a first-class concept:
 * CLI surface: ``hermes kanban boards list/create/switch/rm``.
 * ``_default_spawn`` injects ``HERMES_KANBAN_BOARD`` into worker env.
 """
-
 from __future__ import annotations
+
 
 import json
 import os

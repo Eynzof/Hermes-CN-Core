@@ -26,8 +26,8 @@ This file guards the class two ways:
    (kwarg form *or* ``**kwargs``-dict splat form) without explicit ``errors=``.
 2. A behavioral test proving ``coding_context._git`` survives hostile bytes.
 """
-
 from __future__ import annotations
+
 
 import ast
 import subprocess

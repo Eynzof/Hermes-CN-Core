@@ -4,8 +4,8 @@ Confirms ``build_cron_parser`` wires up the same subactions, aliases, options,
 and ``func=cmd_cron`` dispatch that lived inline in ``main()`` before the
 god-file Phase 2 extraction.
 """
-
 from __future__ import annotations
+
 
 import argparse
 

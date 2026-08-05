@@ -9,8 +9,8 @@ and passes the standard levels through unchanged.
 These tests pin the profile's wire-shape contract so Ollama Cloud
 requests carry the correct ``reasoning_effort`` field.
 """
-
 from __future__ import annotations
+
 
 import pytest
 

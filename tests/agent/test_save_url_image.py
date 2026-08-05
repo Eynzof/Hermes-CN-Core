@@ -9,8 +9,8 @@ actually writes to.
 Pre-fix the helper didn't exist; xAI URL responses were returned bare
 and the gateway 404'd at ``send_photo`` time.
 """
-
 from __future__ import annotations
+
 
 import http.server
 import os

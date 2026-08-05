@@ -13,8 +13,8 @@ replaces top-level entries one at a time in ``os.listdir`` order, so an
 interruption between ``agent/`` and ``tools/`` produces exactly that skew --
 and the syntax guard reported the update as successful.
 """
-
 from __future__ import annotations
+
 
 from pathlib import Path
 

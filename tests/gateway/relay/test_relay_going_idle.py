@@ -6,8 +6,8 @@ runs), the NET-NEW reconnect loop (re-dial + re-handshake after an unexpected
 close), and the RelayAdapter emitting going_idle from its existing drain
 (disconnect) transition. All against a real in-process websockets server.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import orjson

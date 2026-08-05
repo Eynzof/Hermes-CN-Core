@@ -63,8 +63,8 @@ Headers::
     X-Hermes-Delivery:       <delivery_id>
     X-Hermes-Signature-256:  sha256=<hmac hexdigest>   # only when secret set
 """
-
 from __future__ import annotations
+
 
 import atexit
 import hashlib

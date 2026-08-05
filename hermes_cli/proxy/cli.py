@@ -1,6 +1,6 @@
 """CLI handlers for the ``hermes proxy`` subcommand."""
-
 from __future__ import annotations
+
 
 import asyncio
 import logging

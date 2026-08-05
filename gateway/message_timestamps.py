@@ -4,8 +4,8 @@ Gateway messages need timestamps in the LLM context for temporal awareness, but
 persisted message content should stay clean so replay does not accumulate
 ``[timestamp] [timestamp] ...`` prefixes across turns.
 """
-
 from __future__ import annotations
+
 from agent.re_compat import re
 from datetime import datetime
 from typing import Any, Optional, Tuple

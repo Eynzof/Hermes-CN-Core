@@ -1,6 +1,6 @@
 """Shared CLI/TUI-safe helpers for background MCP discovery."""
-
 from __future__ import annotations
+
 
 import threading
 from contextlib import nullcontext

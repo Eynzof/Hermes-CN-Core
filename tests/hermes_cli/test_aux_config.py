@@ -9,8 +9,8 @@ Covers the helper functions:
 These are pure-function tests — the interactive menu loops are not covered
 here (they're stdin-driven curses prompts).
 """
-
 from __future__ import annotations
+
 
 import pytest
 

@@ -1,6 +1,6 @@
 """Tests for the systemd ExecStopPost cgroup reaper (issue #37454)."""
-
 from __future__ import annotations
+
 
 import os
 import sys

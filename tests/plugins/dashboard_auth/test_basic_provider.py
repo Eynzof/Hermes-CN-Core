@@ -5,8 +5,8 @@ Loads the plugin module directly (it's a bundled backend plugin, not on the
 import path as a package) and exercises the provider behaviour + the
 ``register(ctx)`` entry point's config/env resolution and skip reasons.
 """
-
 from __future__ import annotations
+
 
 import secrets
 from unittest.mock import MagicMock

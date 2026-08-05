@@ -12,8 +12,8 @@ This is universally supported across Telegram, Discord, and Slack.
 
 Credit: jobless0x (#774, #1312), OutThisLife (#798), clicksingh (#697).
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import inspect

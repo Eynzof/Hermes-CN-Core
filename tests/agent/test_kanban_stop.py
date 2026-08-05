@@ -1,6 +1,6 @@
 """Tests for the kanban worker turn-end stop guard."""
-
 from __future__ import annotations
+
 
 import pytest
 

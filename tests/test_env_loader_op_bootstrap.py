@@ -18,8 +18,8 @@ Two behaviours are covered:
 These stay fully hermetic — the real ``op`` binary is never invoked and no
 1Password integration is enabled.
 """
-
 from __future__ import annotations
+
 
 import os
 import sys

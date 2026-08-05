@@ -9,8 +9,8 @@ Registers:
 Zero core edits — everything goes through the public PluginContext surface
 (``ctx.register_platform`` + ``ctx.register_tool``).
 """
-
 from __future__ import annotations
+
 
 import logging
 import os

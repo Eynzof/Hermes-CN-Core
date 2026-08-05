@@ -28,8 +28,8 @@ Language resolution order:
 Supported languages: en, zh, zh-hant, ja, de, es, fr, tr, uk, af, ko, it, ga,
 pt, ru, hu, ar.  Unknown values fall back to en.
 """
-
 from __future__ import annotations
+
 
 import logging
 import os

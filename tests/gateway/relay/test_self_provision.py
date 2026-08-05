@@ -9,8 +9,8 @@ The trigger is deliberately NOT is_managed() (that means NixOS/package-manager-
 managed, which is False on a NAS-hosted Fly agent). The real gate is
 "relay_url set + no pinned secret + a resolvable NAS token".
 """
-
 from __future__ import annotations
+
 
 import os
 

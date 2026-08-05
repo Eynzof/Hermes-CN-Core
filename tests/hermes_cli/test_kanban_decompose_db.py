@@ -1,8 +1,8 @@
 """Tests for kb.decompose_triage_task — the DB-layer atomic fan-out
 from the triage column. LLM-free by design.
 """
-
 from __future__ import annotations
+
 
 from pathlib import Path
 

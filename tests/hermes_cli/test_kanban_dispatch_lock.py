@@ -9,8 +9,8 @@ a non-blocking, board-scoped dispatch lock so two dispatchers can never run
 a reclaim/spawn/write tick concurrently. The losing dispatcher returns an
 empty ``DispatchResult`` with ``skipped_locked=True`` and does no DB writes.
 """
-
 from __future__ import annotations
+
 
 from pathlib import Path
 

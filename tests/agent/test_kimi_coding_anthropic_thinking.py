@@ -16,8 +16,8 @@ Contract (changed from the original #13848 mitigation):
 Kimi on the chat_completions route handles ``thinking`` via ``extra_body``
 in ``ChatCompletionsTransport`` (#13503).
 """
-
 from __future__ import annotations
+
 
 import pytest
 

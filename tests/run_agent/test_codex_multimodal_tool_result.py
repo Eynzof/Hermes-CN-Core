@@ -9,8 +9,8 @@ This file verifies the Codex Responses adapter:
      ``input_text``/``input_image`` items (not a stringified blob).
   2. Preserves array-shaped output through the preflight validator.
 """
-
 from __future__ import annotations
+
 
 from agent.codex_responses_adapter import (
     _chat_messages_to_responses_input,

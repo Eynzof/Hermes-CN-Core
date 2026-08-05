@@ -1,6 +1,6 @@
 """Content-free cron service-health and execution telemetry projection."""
-
 from __future__ import annotations
+
 
 import hashlib
 import logging

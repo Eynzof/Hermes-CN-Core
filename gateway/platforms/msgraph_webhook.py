@@ -1,6 +1,6 @@
 """Microsoft Graph webhook adapter for change-notification ingress."""
-
 from __future__ import annotations
+
 
 import asyncio
 import hmac

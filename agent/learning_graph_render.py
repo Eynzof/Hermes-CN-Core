@@ -12,8 +12,8 @@ consumer maps the semantic style + brightness onto its own palette; the
 optional 4th element overrides the base color (category heatmap). Pure,
 stdlib-only.
 """
-
 from __future__ import annotations
+
 
 import math
 from datetime import datetime, timezone

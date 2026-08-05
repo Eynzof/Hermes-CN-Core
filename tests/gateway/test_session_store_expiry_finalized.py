@@ -10,8 +10,8 @@ These tests use a real ``SessionDB`` (in-memory) to verify the actual recovery
 contract in ``find_latest_gateway_session_for_peer`` — not just call counts on
 a MagicMock.
 """
-
 from __future__ import annotations
+
 
 import time
 from pathlib import Path

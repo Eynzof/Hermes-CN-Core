@@ -1,6 +1,6 @@
 """Tests for the Kanban DB layer (hermes_cli.kanban_db)."""
-
 from __future__ import annotations
+
 
 import concurrent.futures
 import os

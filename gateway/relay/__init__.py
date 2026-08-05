@@ -15,8 +15,8 @@ platform is registered when a connector relay URL is configured
 (``GATEWAY_RELAY_URL`` env or ``gateway.relay_url`` in config.yaml). Deployments
 that don't set it are unaffected — exactly the same shape as ``gateway.proxy_url``.
 """
-
 from __future__ import annotations
+
 
 import os
 from typing import Optional

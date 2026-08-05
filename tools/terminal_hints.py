@@ -22,8 +22,8 @@ Frequencies quoted below come from a 250k-terminal-result window of the
 production session DB (Aug 2026): together these classes cover ~14k failed
 calls whose retry chains averaged 1.4 extra tool turns each.
 """
-
 from __future__ import annotations
+
 
 import re
 from typing import Callable, Optional

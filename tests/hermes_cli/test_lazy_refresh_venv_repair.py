@@ -1,6 +1,6 @@
 """Tests for lazy-backend refresh venv repair (#57828 / #58004)."""
-
 from __future__ import annotations
+
 
 import textwrap
 from pathlib import Path

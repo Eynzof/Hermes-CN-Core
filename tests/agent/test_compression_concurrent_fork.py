@@ -25,8 +25,8 @@ against a shared ``state.db`` and asserts that the per-session compression
 lock added in this PR prevents the orphan child.  Without the lock the
 fixture deterministically produces 2 children; with the lock, exactly 1.
 """
-
 from __future__ import annotations
+
 
 import copy
 import inspect

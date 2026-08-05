@@ -157,7 +157,7 @@ def test_linked_ovcli_config_is_read_at_runtime(tmp_path, monkeypatch):
             "account": "acct-one",
             "user": "alice",
             "agent_id": "agent-one",
-        }).decode('utf-8'),
+        }),
         encoding="utf-8",
     )
     provider_config = {"use_ovcli_config": True, "ovcli_config_path": str(ovcli_path)}
@@ -177,7 +177,7 @@ def test_linked_ovcli_config_is_read_at_runtime(tmp_path, monkeypatch):
             "url": "http://openviking-two.test",
             "api_key": "key-two",
             "agent_id": "agent-two",
-        }).decode('utf-8'),
+        }),
         encoding="utf-8",
     )
 

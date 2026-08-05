@@ -17,8 +17,8 @@ kernel's process table.
 POSIX-only: Windows has its own grandchild lifecycle (no shared session,
 ``taskkill /F /T`` semantics). Marked accordingly.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import os

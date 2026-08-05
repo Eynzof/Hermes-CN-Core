@@ -33,8 +33,8 @@ Design notes
 * Thread-safe: a single ``RLock`` guards all mutation so a background
   review fork and the main loop can share one store.
 """
-
 from __future__ import annotations
+
 
 import pybase64 as base64
 import orjson

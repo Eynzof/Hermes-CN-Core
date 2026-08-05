@@ -16,8 +16,8 @@ and refreshed every turn via ``_persist_session``) and forwards it to
 or plain ``MagicMock()`` still exercise the legacy no-arg path, so the
 change is backward-compatible with existing suites.
 """
-
 from __future__ import annotations
+
 
 import sys
 import types

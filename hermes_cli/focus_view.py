@@ -22,8 +22,8 @@ Flipping focus view must never change a single byte of what is sent to the
 model — that invariant is covered by
 ``tests/cli/test_focus_view.py::test_model_facing_messages_identical_with_focus_on_vs_off``.
 """
-
 from __future__ import annotations
+
 
 from typing import Optional
 

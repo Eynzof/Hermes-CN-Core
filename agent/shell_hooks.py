@@ -103,8 +103,8 @@ emitted by each built-in hook site.
     tool_call_history – redacted tool name/input summary/byte counts/status list
     duration_ms     – wall-clock time of the child run in milliseconds
 """
-
 from __future__ import annotations
+
 
 import rapidfuzz.process as _fuzz_process
 import orjson

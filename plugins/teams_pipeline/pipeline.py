@@ -1,6 +1,6 @@
 """Pipeline orchestration for Microsoft Teams meeting summaries."""
-
 from __future__ import annotations
+
 
 import asyncio
 import orjson

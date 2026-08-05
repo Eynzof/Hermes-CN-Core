@@ -13,8 +13,8 @@ the var). See PR #6659.
 These assert the behavior contract (prefix stripped → canonical key resolves),
 not the literal parser source.
 """
-
 from __future__ import annotations
+
 
 import tempfile
 from pathlib import Path

@@ -5,8 +5,8 @@ confirm the prologue produces the right ``TurnContext`` and applies the
 ``agent`` side effects the loop relies on — without spinning up a real
 ``AIAgent`` or hitting any provider.
 """
-
 from __future__ import annotations
+
 
 import threading
 import types

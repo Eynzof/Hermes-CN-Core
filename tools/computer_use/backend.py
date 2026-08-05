@@ -4,8 +4,8 @@ Any implementation (cua-driver over MCP, pyautogui, noop, future Linux/Windows)
 must return the shape described below. All methods synchronous; async is
 handled inside the backend implementation if needed.
 """
-
 from __future__ import annotations
+
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field

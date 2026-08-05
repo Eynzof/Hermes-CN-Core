@@ -25,8 +25,8 @@ path is resolved through :func:`tools.image_source.resolve_image_source`
 protocol (presign, direct PUT to storage, ``nous-upload:<token>`` reference).
 URLs pass through untouched.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import json

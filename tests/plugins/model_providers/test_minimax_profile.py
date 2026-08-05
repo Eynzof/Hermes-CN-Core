@@ -17,8 +17,8 @@ Refs:
   - PR #6082: M2.7-highspeed → M2.7 for aux model (half-price fix)
   - Commit 773a0faca: same profile-layer fix pattern for `deepseek`
 """
-
 from __future__ import annotations
+
 
 import pytest
 

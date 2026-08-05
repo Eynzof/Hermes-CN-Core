@@ -7,8 +7,8 @@ config.yaml (~85ms each, 10+ seconds total).  This test pins the
 behavior: first call parses, subsequent calls return cached result,
 cache invalidates when config.yaml's mtime changes.
 """
-
 from __future__ import annotations
+
 
 import os
 from pathlib import Path

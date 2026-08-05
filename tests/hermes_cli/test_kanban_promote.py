@@ -5,8 +5,8 @@ The realistic bug scenario from #28822 is: a child task ends up in
 auto-promote daemon hasn't run, or a manual close raced it).
 Direct-SQL setup is used to construct that state deterministically.
 """
-
 from __future__ import annotations
+
 
 import argparse
 import json

@@ -1,6 +1,6 @@
 """Bounded product contract for the first Hermes shared-metrics slice."""
-
 from __future__ import annotations
+
 
 from math import isfinite
 from typing import Any

@@ -12,8 +12,8 @@ A compression hold is even more bounded, since the lock row carries its own
 The sibling condition, a compressor finding its own lease gone, is permanent
 and must still fail fast rather than spin out the whole budget.
 """
-
 from __future__ import annotations
+
 
 import threading
 import time

@@ -8,8 +8,8 @@ writes the change silently. ``_init_session`` attaches a callback that
 emits a ``review.summary`` event which Ink renders as a persistent
 transcript line.
 """
-
 from __future__ import annotations
+
 
 from unittest.mock import MagicMock, patch
 

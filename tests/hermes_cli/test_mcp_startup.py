@@ -1,6 +1,6 @@
 """Regression tests for bounded/lazy CLI MCP startup."""
-
 from __future__ import annotations
+
 
 from argparse import Namespace
 from contextlib import nullcontext

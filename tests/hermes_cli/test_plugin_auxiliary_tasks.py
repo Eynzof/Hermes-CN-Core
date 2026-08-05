@@ -8,8 +8,8 @@ Covers:
   - _reset_aux_to_auto() includes plugin tasks
   - _get_auxiliary_task_config() layers plugin defaults under user config
 """
-
 from __future__ import annotations
+
 
 import pytest
 

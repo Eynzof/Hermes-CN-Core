@@ -1,6 +1,6 @@
 """Compatibility helper for explicit agent stop producers."""
-
 from __future__ import annotations
+
 
 import inspect
 from typing import Any

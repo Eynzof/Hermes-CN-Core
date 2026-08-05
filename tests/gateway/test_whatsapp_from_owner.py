@@ -9,8 +9,8 @@ with ``[owner reply] ``, and otherwise leave metadata absent and text
 unchanged.  The env-var gate itself lives in the bridge — the adapter just
 trusts the payload.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 from unittest.mock import AsyncMock, MagicMock

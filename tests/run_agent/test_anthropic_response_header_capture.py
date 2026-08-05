@@ -5,8 +5,8 @@ streaming path captured both header families from ``stream.response``; the
 Messages path must do the same via ``on_response`` or /status and the Nous
 429 classifier lose last-known state.
 """
-
 from __future__ import annotations
+
 
 from types import SimpleNamespace
 from unittest.mock import MagicMock

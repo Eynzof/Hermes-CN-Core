@@ -1,6 +1,6 @@
 """Shared session-listing helpers for CLI and gateway slash surfaces."""
-
 from __future__ import annotations
+
 
 from typing import Any
 

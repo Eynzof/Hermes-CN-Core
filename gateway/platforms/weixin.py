@@ -9,8 +9,8 @@ Design notes:
 - Media files move through an AES-128-ECB encrypted CDN protocol.
 - QR login is exposed as a helper for the gateway setup wizard.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import pybase64 as base64

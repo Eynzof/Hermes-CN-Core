@@ -4,8 +4,8 @@ Covers the prompt/non-prompt decision tree: TTY vs non-TTY, and the
 three accept-hooks channels (--accept-hooks, HERMES_ACCEPT_HOOKS env,
 hooks_auto_accept: config key).
 """
-
 from __future__ import annotations
+
 
 from pathlib import Path
 from unittest.mock import patch

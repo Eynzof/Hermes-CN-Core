@@ -1,6 +1,6 @@
 """Tests for the codex MCP plugin migration helper."""
-
 from __future__ import annotations
+
 
 
 import pytest

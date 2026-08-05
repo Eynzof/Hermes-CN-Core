@@ -12,8 +12,8 @@ History:
 - The default ``limit`` raised from 20 to 200 so longer-running users
   can scroll through their history without hitting an artificial cap.
 """
-
 from __future__ import annotations
+
 
 from tui_gateway import server
 

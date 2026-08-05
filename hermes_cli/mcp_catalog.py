@@ -24,8 +24,8 @@ Catalog policy:
 See website/docs/user-guide/mcp-catalog.md for user docs.
 See references/mcp-catalog.md (this repo's skill) for the manifest schema.
 """
-
 from __future__ import annotations
+
 from agent.re_compat import re
 import shutil
 import subprocess

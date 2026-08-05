@@ -5,8 +5,8 @@ memory cards are represented consistently), never a snapshot of the live skill
 catalog — that catalog grows every release and a count assertion would be a
 change-detector.
 """
-
 from __future__ import annotations
+
 
 from agent import learning_graph
 from hermes_constants import reset_hermes_home_override, set_hermes_home_override

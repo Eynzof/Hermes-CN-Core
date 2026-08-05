@@ -5,8 +5,8 @@ discipline as the /credits non-interactive test: it must render text, never
 invoke the modal (which would read the slash-worker's JSON-RPC stdin and hang).
 Plus role/kill-switch gating and logged-out handling.
 """
-
 from __future__ import annotations
+
 
 from decimal import Decimal
 

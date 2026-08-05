@@ -8,8 +8,8 @@ Gated on the network. Skipped by default in CI unless the user explicitly
 opts in with --run-e2e or HERMES_RUN_E2E=1.  This is intentional — the test
 downloads ~16MB and requires both `openssl` and `curl` to be present.
 """
-
 from __future__ import annotations
+
 
 import os
 import socket

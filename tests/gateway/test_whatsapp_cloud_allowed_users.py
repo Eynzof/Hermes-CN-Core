@@ -7,8 +7,8 @@ dm_policy default was "open" (which fails closed without an allow-all
 opt-in), so a wizard-configured install using the documented vars
 silently dropped every inbound message.
 """
-
 from __future__ import annotations
+
 
 from unittest.mock import MagicMock
 

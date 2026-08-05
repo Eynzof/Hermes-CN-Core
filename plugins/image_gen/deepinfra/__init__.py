@@ -24,8 +24,8 @@ Model selection (first hit wins):
 When all three are absent (catalog unreachable, nothing configured),
 ``generate()`` returns an :func:`error_response` rather than guessing.
 """
-
 from __future__ import annotations
+
 
 import logging
 import os

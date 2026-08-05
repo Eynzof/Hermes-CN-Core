@@ -21,8 +21,8 @@ Sync is INERT unless the resolved Nous token carries the access-gate claim
 AND a sync base URL is configured. The commands report that state rather than
 failing opaquely.
 """
-
 from __future__ import annotations
+
 
 import argparse
 from typing import Callable

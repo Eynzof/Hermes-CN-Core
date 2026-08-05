@@ -15,8 +15,8 @@ TIMFaceElem wire format:
 The `data` field carries a JSON string with the sticker's metadata so the
 receiver can look up the correct asset in the emoji pack.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import random

@@ -3,8 +3,8 @@
 Ported from KIK memory_agent.py — combines FTS5 full-text search with
 Jaccard similarity reranking and trust-weighted scoring.
 """
-
 from __future__ import annotations
+
 
 import math
 from datetime import datetime, timezone

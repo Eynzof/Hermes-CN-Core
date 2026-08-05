@@ -1,6 +1,6 @@
 """Tests for honcho_profile's empty-card hint (#5137 follow-up)."""
-
 from __future__ import annotations
+
 
 import json
 from unittest.mock import MagicMock

@@ -4,8 +4,8 @@ quarantine retry / reboot-deferred fallback during `hermes update` on Windows.
 These tests force ``_is_windows`` to return ``True`` via patching so the
 Windows-specific code paths can be exercised on any host.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import os

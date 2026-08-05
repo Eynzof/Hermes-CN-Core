@@ -4,8 +4,8 @@ The drain path is asyncio-based; a frozen loop makes every asyncio timeout
 structurally unable to fire. These tests pin the out-of-loop backstop
 (thread watchdog) and the loop-liveness heartbeat file contract.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import json

@@ -5,8 +5,8 @@ resolution through both CLI resolvers, config/doctor/overlay registration,
 and credential/base-URL resolution — without
 any live network calls.
 """
-
 from __future__ import annotations
+
 
 import contextlib
 import io

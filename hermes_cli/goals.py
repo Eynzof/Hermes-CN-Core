@@ -26,8 +26,8 @@ Design notes / invariants:
 
 Nothing in this module touches the agent's system prompt or toolset.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import logging

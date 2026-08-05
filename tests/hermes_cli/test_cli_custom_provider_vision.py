@@ -4,8 +4,8 @@ Adapted from the independently reproduced CLI regression in #69896.  Unlike
 that PR, these tests keep the live transport canonical (``provider=custom``)
 and assert that the separate requested identity reaches each capability gate.
 """
-
 from __future__ import annotations
+
 
 from types import SimpleNamespace
 

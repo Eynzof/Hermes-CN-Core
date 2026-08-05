@@ -7,8 +7,8 @@ browser and the remote host's loopback listener.
 xAI Grok OAuth no longer uses this helper — its login is device-code-only —
 but the Spotify integration still relies on it.
 """
-
 from __future__ import annotations
+
 
 import io
 import contextlib

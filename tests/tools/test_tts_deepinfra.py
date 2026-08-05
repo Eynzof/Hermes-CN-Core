@@ -6,8 +6,8 @@ delegation happy path and the no-hardcoded-fallback contract; shared
 infrastructure (catalog fetch + tag filter) is covered in
 ``tests/hermes_cli/test_api_key_providers.py``.
 """
-
 from __future__ import annotations
+
 
 from unittest.mock import MagicMock, patch
 

@@ -15,8 +15,8 @@ WS1 dependency: ``GET /api/billing/subscription`` is a NAS endpoint (WS1 Phase A
 Until it ships, the fail-open contract handles 404s — the builder returns
 ``logged_in=False`` and the surface degrades gracefully.
 """
-
 from __future__ import annotations
+
 
 import logging
 import os

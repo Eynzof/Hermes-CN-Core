@@ -8,8 +8,8 @@ response is streamed back unmodified, preserving SSE.
 The server is intentionally minimal: it does NOT mediate, log, transform,
 or rewrite request/response bodies. It's a credential-attaching forwarder.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import logging

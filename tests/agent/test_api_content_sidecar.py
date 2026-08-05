@@ -13,8 +13,8 @@ helper, prologue stamping order, the flush-override sidecar, and the
 end-to-end wire invariant (turn N+1 replays turn N's bytes) against an
 in-process mock provider.
 """
-
 from __future__ import annotations
+
 
 import json
 import os

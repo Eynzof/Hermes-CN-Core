@@ -8,8 +8,8 @@ Covers the bug class ported from openclaw/openclaw#95108: an unbounded
 ``response.read()`` on a non-OK streaming response can balloon memory (huge
 body) or hang forever (body opens then stalls).
 """
-
 from __future__ import annotations
+
 
 import http.server
 import json

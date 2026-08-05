@@ -18,8 +18,8 @@ Exit code conventions:
 - 1: overall in ("degraded", "failed")
 - 2: driver binary missing / unreachable / protocol error
 """
-
 from __future__ import annotations
+
 
 import json
 import orjson

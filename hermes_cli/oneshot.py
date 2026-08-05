@@ -1,4 +1,3 @@
-import json
 """Oneshot (-z) mode: send a prompt, get the final content block, exit.
 
 Bypasses cli.py entirely.  No banner, no spinner, no session_id line,
@@ -21,6 +20,9 @@ Env var fallbacks (used when the corresponding arg is not passed):
 """
 
 from __future__ import annotations
+import json
+
+
 
 import logging
 import os

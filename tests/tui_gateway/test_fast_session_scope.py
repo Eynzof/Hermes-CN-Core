@@ -16,8 +16,8 @@ Contract under test:
 2. Without a session it persists globally, unchanged.
 3. ``config.get key=fast`` must read a pre-build session's pin.
 """
-
 from __future__ import annotations
+
 
 from types import SimpleNamespace
 from unittest.mock import patch

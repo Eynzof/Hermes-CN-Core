@@ -6,8 +6,8 @@ only layers the Discord-voice-specific extras on top: an explicit
 ``FFMPEG_PATH`` override and a Windows winget fallback for installs that
 never touch PATH.
 """
-
 from __future__ import annotations
+
 
 import os
 import shutil

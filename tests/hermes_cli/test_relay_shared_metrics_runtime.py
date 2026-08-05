@@ -1,6 +1,6 @@
 """Tests for the direct Hermes-to-Relay shared-metrics runtime."""
-
 from __future__ import annotations
+
 
 import contextvars
 import asyncio

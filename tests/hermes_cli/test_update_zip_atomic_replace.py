@@ -8,8 +8,8 @@ which broke ``hermes --tui`` because ``ui-tui/`` had vanished.
 ``_atomic_replace_dir`` stages the new copy first and only swaps it in on full
 success, so a mid-copy failure leaves the original directory intact.
 """
-
 from __future__ import annotations
+
 
 import shutil
 from pathlib import Path

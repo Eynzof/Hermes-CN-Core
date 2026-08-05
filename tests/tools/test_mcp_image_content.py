@@ -13,8 +13,8 @@ Hermes' existing ``cache_image_from_bytes`` so a ``MEDIA:<path>`` tag
 goes back to the agent and through to messaging adapters that render
 images natively.
 """
-
 from __future__ import annotations
+
 
 import pybase64 as base64
 from types import SimpleNamespace

@@ -1,6 +1,6 @@
 """Regression tests for gateway runtime config env-var expansion."""
-
 from __future__ import annotations
+
 
 import orjson
 

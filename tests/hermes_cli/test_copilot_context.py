@@ -1,6 +1,6 @@
 """Tests for Copilot live /models context-window resolution."""
-
 from __future__ import annotations
+
 
 import time
 from unittest.mock import patch

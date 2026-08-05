@@ -32,8 +32,8 @@ Apple-public and can break on OS updates. The Windows path in cua-driver-rs
 uses stable Win32 APIs (SendInput + UI Automation) — not subject to the
 same SPI breakage class.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import pybase64 as base64

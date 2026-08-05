@@ -5,8 +5,8 @@ document creation/editing suite. Tests assert contracts (frontmatter
 shape, referenced scripts exist, cross-links resolve), not snapshots
 of skill content.
 """
-
 from __future__ import annotations
+
 
 import re
 from pathlib import Path

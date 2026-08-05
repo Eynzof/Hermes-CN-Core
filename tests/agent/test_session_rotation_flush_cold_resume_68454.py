@@ -10,8 +10,8 @@ These tests bind the real ``AIAgent._flush_messages_to_session_db`` methods onto
 a lightweight stand-in so construction never hits network model-metadata
 lookups (offline CI / hung OpenRouter).
 """
-
 from __future__ import annotations
+
 
 from pathlib import Path
 from types import SimpleNamespace

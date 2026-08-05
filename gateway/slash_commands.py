@@ -12,8 +12,8 @@ Module-level run.py helpers a handler needs (``_hermes_home``,
 inside the handler body — a deferred ``from gateway.run import ...`` resolves at
 call time (run.py fully loaded by then), avoiding an import cycle.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import dataclasses

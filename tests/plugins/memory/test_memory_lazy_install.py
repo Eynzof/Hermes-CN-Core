@@ -26,8 +26,8 @@ The pip subprocess is never actually run — ``_venv_pip_install`` /
 ``_is_satisfied`` are stubbed so we exercise the real ``ensure()`` control
 flow without touching PyPI.
 """
-
 from __future__ import annotations
+
 
 import os
 

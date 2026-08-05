@@ -5,8 +5,8 @@ it affects subsequent terminal guard checks immediately because approval.py
 loads config on each check; it must not rebuild a live agent or mutate its
 system prompt/tool schema, preserving the prompt-cache prefix.
 """
-
 from __future__ import annotations
+
 
 from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import dataclass

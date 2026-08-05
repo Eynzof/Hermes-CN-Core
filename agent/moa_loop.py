@@ -5,8 +5,8 @@ MoA-enabled; the normal Hermes agent loop still owns tool calling and turn
 termination, while this module gathers reference-model context before each model
 iteration.
 """
-
 from __future__ import annotations
+
 
 import hashlib
 import logging

@@ -22,8 +22,8 @@ They also assert the *behavior* the fix preserves: a tool message never
 produces interim text, and list content with an inline ``<think>`` block is
 flattened + stripped correctly.
 """
-
 from __future__ import annotations
+
 
 from types import SimpleNamespace
 from unittest.mock import MagicMock

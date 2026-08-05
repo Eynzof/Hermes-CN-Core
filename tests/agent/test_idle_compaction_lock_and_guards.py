@@ -17,8 +17,8 @@ a real ``SessionDB``: when a guard says no, the idle path must be a strict
 no-op for the turn (no compressor call, no session rotation, no flush
 re-baseline, no user-message re-anchor).
 """
-
 from __future__ import annotations
+
 
 import time
 import types

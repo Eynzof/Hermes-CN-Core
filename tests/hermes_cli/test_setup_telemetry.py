@@ -1,6 +1,6 @@
 """Tests for shared-metrics configuration discovery and setup."""
-
 from __future__ import annotations
+
 
 import argparse
 

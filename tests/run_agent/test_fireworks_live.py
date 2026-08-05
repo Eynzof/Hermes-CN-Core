@@ -9,8 +9,8 @@ own provider resolution — ``resolve_provider_client('fireworks')`` — so it
 verifies the auth/config/base-URL/aux-model wiring that the
 bundled provider actually ships, then makes a real call through that client.
 """
-
 from __future__ import annotations
+
 
 import os
 

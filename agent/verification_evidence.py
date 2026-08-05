@@ -4,8 +4,8 @@ This module records what the agent actually proved while working in a code
 workspace. It is deliberately passive: it never decides to run a suite, never
 blocks completion, and never upgrades targeted checks into "repo green".
 """
-
 from __future__ import annotations
+
 
 import orjson
 from agent.re_compat import re

@@ -1,6 +1,6 @@
 """Mixture-of-Agents configuration and slash-command helpers."""
-
 from __future__ import annotations
+
 
 import pybase64 as base64
 import orjson

@@ -12,8 +12,8 @@ sites unchanged.  Symbols that tests patch on ``run_agent`` (e.g.
 ``test_zombie_process_cleanup.py``) are resolved through
 :func:`_ra` so the patch contract is preserved.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import contextvars

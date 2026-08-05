@@ -7,8 +7,8 @@ Covers:
 * Defensive wrapping: a plugin handler that raises does NOT take down
   the gateway and Slack still gets an ack.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import os

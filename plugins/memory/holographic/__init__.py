@@ -14,8 +14,8 @@ Config in $HERMES_HOME/config.yaml (profile-scoped):
       min_trust_threshold: 0.3
       temporal_decay_half_life: 0
 """
-
 from __future__ import annotations
+
 
 import orjson
 import logging

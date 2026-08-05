@@ -26,8 +26,8 @@ Design (the #11025 insight, done as a plugin with zero core edits):
 
 Bind safety: with no token configured, the server binds 127.0.0.1 only.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import json

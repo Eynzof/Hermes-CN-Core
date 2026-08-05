@@ -7,8 +7,8 @@ and asserts the registration result.
 Mirrors the shape of ``test_plugins_tts_registration.py`` (companion
 TTS hook from issue #30398).
 """
-
 from __future__ import annotations
+
 
 import os
 from pathlib import Path

@@ -7,8 +7,8 @@ on auth.json path + mtime so profile switches stay isolated while
 login/logout flows invalidate naturally; tests and other writers can
 also call invalidate_nous_auth_status_cache().
 """
-
 from __future__ import annotations
+
 
 import orjson
 import os

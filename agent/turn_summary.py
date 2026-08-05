@@ -1,4 +1,3 @@
-import json
 """Per-turn accounting for the interactive CLI.
 
 Two display-only pieces live here:
@@ -25,6 +24,9 @@ terminal, an agent, or a network call.
 """
 
 from __future__ import annotations
+import json
+
+
 
 from dataclasses import dataclass, field
 from typing import Any

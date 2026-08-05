@@ -11,8 +11,8 @@ a multi-minute tool outage for a sub-second glitch.
 ``"reconnect"`` (immediate rebuild, no backoff/park), while still propagating
 real shutdown/cancellation and genuine connect/handshake failures.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 

@@ -14,8 +14,8 @@ These tests pin the wire-shape contract:
   - enabled + no effort → nothing emitted (endpoint's server default applies)
   - ollama_num_ctx      → extra_body.options.num_ctx, orthogonal to reasoning
 """
-
 from __future__ import annotations
+
 
 import pytest
 

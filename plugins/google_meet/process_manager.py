@@ -8,8 +8,8 @@ it up.
 The bot runs as a detached subprocess — we don't hold file descriptors open,
 so the parent agent loop can't block on it. We communicate via files only.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import os

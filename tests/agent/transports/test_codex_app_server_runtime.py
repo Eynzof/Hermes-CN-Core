@@ -4,8 +4,8 @@ These are unit tests for the api_mode rewriter and the wire-level transport
 module. They do NOT require the `codex` CLI to be installed — that's
 covered by a separate live test gated on `codex --version`.
 """
-
 from __future__ import annotations
+
 
 import pytest
 

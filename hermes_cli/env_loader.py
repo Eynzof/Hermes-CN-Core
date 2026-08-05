@@ -1,6 +1,6 @@
 """Helpers for loading Hermes .env files consistently across entrypoints."""
-
 from __future__ import annotations
+
 
 import codecs
 import io

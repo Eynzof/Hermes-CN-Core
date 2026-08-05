@@ -17,8 +17,8 @@ relay path, re-coupling the gateway to platform secrets it must never hold.
 It is an invariant (asserts the *relation* "relay imports no crypto"), not a
 change-detector snapshot of a frozen import list.
 """
-
 from __future__ import annotations
+
 
 import ast
 from agent.re_compat import re

@@ -7,8 +7,8 @@ defaults encode that: display.platforms.telegram.streaming=true,
 values win via deep-merge) and, because the dashboard schema is generated from
 DEFAULT_CONFIG, they automatically appear as editable toggles in the web UI.
 """
-
 from __future__ import annotations
+
 
 
 def test_default_per_platform_streaming_flags():

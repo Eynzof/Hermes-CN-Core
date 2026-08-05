@@ -1,6 +1,6 @@
 """Regression coverage for the user-facing macOS Hermes launcher."""
-
 from __future__ import annotations
+
 
 import os
 import re

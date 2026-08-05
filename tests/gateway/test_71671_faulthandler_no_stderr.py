@@ -1,6 +1,6 @@
 """Regression: #71671 — gateway must survive faulthandler.enable() with sys.stderr=None."""
-
 from __future__ import annotations
+
 
 import faulthandler
 import sys

@@ -12,8 +12,8 @@ for hours without ever seeing a "💾 Self-improvement review:" message.
 
 This test pins the hydration behavior added at the top of run_conversation().
 """
-
 from __future__ import annotations
+
 
 
 def _make_minimal_agent():

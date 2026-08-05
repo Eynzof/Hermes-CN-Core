@@ -1,6 +1,6 @@
 """Tests for the bundled observability/nemo_relay plugin."""
-
 from __future__ import annotations
+
 
 import asyncio
 import contextvars

@@ -8,8 +8,8 @@ Tests cover:
 - resolve_modal_backend_state() backend selection matrix
 - resolve_openai_audio_api_key() priority chain
 """
-
 from __future__ import annotations
+
 
 from pathlib import Path
 from unittest.mock import patch

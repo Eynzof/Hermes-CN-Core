@@ -24,8 +24,8 @@ Discord option objects passed through verbatim. Names must satisfy
 Discord's CHAT_INPUT rules ([a-z0-9_-]{1,32}); the connector drops invalid
 entries (fail-open per entry, never the whole manifest).
 """
-
 from __future__ import annotations
+
 
 from typing import Any, Dict, List
 

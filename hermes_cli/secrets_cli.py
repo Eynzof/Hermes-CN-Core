@@ -7,8 +7,8 @@ Subcommands:
     disable  — flip ``secrets.bitwarden.enabled`` to False
     install  — just download the bws binary (no token / project required)
 """
-
 from __future__ import annotations
+
 
 import argparse
 import orjson

@@ -3,8 +3,8 @@
 LLM spawning is never exercised here — `_run_llm_review` is monkeypatched so
 tests run fully offline and the curator module doesn't need real credentials.
 """
-
 from __future__ import annotations
+
 
 import importlib
 import threading

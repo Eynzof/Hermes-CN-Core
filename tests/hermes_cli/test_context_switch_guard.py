@@ -1,6 +1,6 @@
 """Tests for hermes_cli.context_switch_guard."""
-
 from __future__ import annotations
+
 
 from types import SimpleNamespace
 

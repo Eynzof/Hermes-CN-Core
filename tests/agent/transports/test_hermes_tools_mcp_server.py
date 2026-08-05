@@ -5,8 +5,8 @@ subprocess + client + an event loop. These tests pin the static
 contract: the module imports, the EXPOSED_TOOLS list is sane, and the
 build helper assembles a server when the SDK is present.
 """
-
 from __future__ import annotations
+
 
 import inspect
 from typing import get_args

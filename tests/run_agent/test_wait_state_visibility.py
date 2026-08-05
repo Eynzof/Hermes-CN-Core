@@ -7,8 +7,8 @@ rewrites the live spinner/status line (via ``thinking_callback``, bridged to
 ``thinking.delta`` for TUI/Desktop) and updates the activity tracker (which the
 gateway's "⏳ Working — N min" heartbeat includes).
 """
-
 from __future__ import annotations
+
 
 import sys
 import time

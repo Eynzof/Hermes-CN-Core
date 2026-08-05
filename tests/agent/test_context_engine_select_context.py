@@ -12,8 +12,8 @@ This pins the contract that engines such as retrieval-augmented, topic-routed,
 and role-switching engines rely on (RFC #36765), consolidating the per-turn
 request-assembly surface proposed across #41918, #24949, #47109, and #50053.
 """
-
 from __future__ import annotations
+
 
 from typing import Any, Dict, List
 from unittest.mock import MagicMock

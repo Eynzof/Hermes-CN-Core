@@ -54,8 +54,8 @@ Skip reasons:
   the gate's fail-closed branch can surface when the plugin loads but
   declines to register (no username/password configured).
 """
-
 from __future__ import annotations
+
 
 import pybase64 as base64
 import hashlib

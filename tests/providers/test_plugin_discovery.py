@@ -5,8 +5,8 @@ Verifies that:
  2. User plugins at $HERMES_HOME/plugins/model-providers/<name>/ override bundled
  3. plugin.yaml manifests with kind=model-provider are correctly categorized
 """
-
 from __future__ import annotations
+
 
 import sys
 from pathlib import Path

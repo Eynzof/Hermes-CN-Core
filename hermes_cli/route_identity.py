@@ -1,6 +1,6 @@
 """Fail-closed URL identity normalization for model/provider routes."""
-
 from __future__ import annotations
+
 
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit

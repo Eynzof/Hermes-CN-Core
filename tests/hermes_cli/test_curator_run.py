@@ -1,6 +1,6 @@
 """Tests for `hermes curator run` CLI behavior."""
-
 from __future__ import annotations
+
 
 from types import SimpleNamespace
 

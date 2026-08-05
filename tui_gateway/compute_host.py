@@ -4,8 +4,8 @@ Phase 0 used this module as a deterministic line-JSON spike.  Phase 1 keeps the
 same transport and turns it into the long-lived child that owns live AIAgent
 objects when ``dashboard.turn_isolation`` is enabled.
 """
-
 from __future__ import annotations
+
 
 import argparse
 import concurrent.futures

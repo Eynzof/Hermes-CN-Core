@@ -30,8 +30,8 @@ Run from the PR worktree::
 
     python tests/plugins/transcription/check_parity_vs_main.py
 """
-
 from __future__ import annotations
+
 
 import orjson
 import subprocess

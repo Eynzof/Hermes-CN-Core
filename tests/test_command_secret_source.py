@@ -19,8 +19,8 @@ Security invariants under test (ported from the desktop TS provider):
 NOTE: tests assert on key NAMES, lengths, and presence — never log secret
 values themselves.
 """
-
 from __future__ import annotations
+
 
 import os
 import stat

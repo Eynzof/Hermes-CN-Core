@@ -1,6 +1,6 @@
 """Direct NeMo Relay integration for Hermes shared client metrics."""
-
 from __future__ import annotations
+
 
 import atexit
 import contextvars

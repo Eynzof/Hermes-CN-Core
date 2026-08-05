@@ -13,8 +13,8 @@ endpoint; the Hermes effort scale is collapsed onto those.
 These tests pin the profile's wire-shape contract so Z.AI requests stay
 correctly shaped without going live.
 """
-
 from __future__ import annotations
+
 
 import pytest
 

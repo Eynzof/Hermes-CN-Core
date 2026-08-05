@@ -1,6 +1,6 @@
 """Route-local filters and script transforms for the webhook adapter."""
-
 from __future__ import annotations
+
 
 import json
 import logging

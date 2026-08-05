@@ -6,8 +6,8 @@ in ``test_update_stale_dashboard.py``.  This file just verifies the flag
 dispatch: argparse wiring, no-op when nothing is running, and correct
 exit codes.
 """
-
 from __future__ import annotations
+
 
 import argparse
 import sys

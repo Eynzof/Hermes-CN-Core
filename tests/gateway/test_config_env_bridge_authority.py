@@ -6,8 +6,8 @@ bridge used `if X not in os.environ` guards. After PR#18413 the bridge
 treats config.yaml as authoritative and unconditionally overwrites .env
 values for `agent.*`, `display.*`, `timezone`, and `security.*` keys.
 """
-
 from __future__ import annotations
+
 
 import os
 import subprocess

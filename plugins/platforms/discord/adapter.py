@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 """
 Discord platform adapter.
@@ -8,6 +7,7 @@ Uses discord.py library for:
 - Sending responses back
 - Handling threads and channels
 """
+from __future__ import annotations
 
 import asyncio
 import datetime as dt

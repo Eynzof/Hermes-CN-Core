@@ -7,8 +7,8 @@ Covers wire-up from tools.delegate_tool.delegate_task:
   * carries child_role=None when _delegate_role is not set (pre-M3)
   * exposes a detached, metadata-only tool_call_history
 """
-
 from __future__ import annotations
+
 
 import orjson
 import threading

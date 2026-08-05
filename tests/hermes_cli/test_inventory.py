@@ -16,8 +16,8 @@ depend on:
 - picker_hints adds authenticated/auth_type/key_env/warning per row,
   matching the TUI ModelPickerDialog shape.
 """
-
 from __future__ import annotations
+
 
 from unittest.mock import patch
 

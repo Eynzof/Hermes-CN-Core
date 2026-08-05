@@ -16,8 +16,8 @@ Import discipline: this module imports nothing heavy at module level and
 a plain string), so the gateway can keep importing ``commands.py`` without
 prompt_toolkit and without cycles.
 """
-
 from __future__ import annotations
+
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field

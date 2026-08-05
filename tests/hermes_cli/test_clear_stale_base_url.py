@@ -1,6 +1,6 @@
 """Tests for _clear_stale_openai_base_url() cleanup after provider switch (#5161)."""
-
 from __future__ import annotations
+
 
 
 from hermes_cli.config import load_config, save_config, save_env_value, get_env_value

@@ -8,8 +8,8 @@ Ctrl+Enter submits instead of inserting a newline.
 
 These tests pin the gating predicate and the resulting binding behavior.
 """
-
 from __future__ import annotations
+
 
 import os
 import sys

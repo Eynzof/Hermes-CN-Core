@@ -4,8 +4,8 @@ Verify that _slot_runtime passes the resolved api_mode through to call_llm,
 so reference slots using providers that require a specific API surface
 (e.g. Copilot GPT-5.x → codex_responses) get routed correctly.
 """
-
 from __future__ import annotations
+
 
 from types import SimpleNamespace
 from unittest.mock import patch

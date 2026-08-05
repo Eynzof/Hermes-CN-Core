@@ -6,8 +6,8 @@ uncovered.  We mock the iron_proxy module's side-effect functions
 return-code logic plus the small amount of presentation logic in
 each handler (e.g. --from-bitwarden's fail-loud path).
 """
-
 from __future__ import annotations
+
 
 import argparse
 import os

@@ -6,8 +6,8 @@ default BasePlatformAdapter rendering must reproduce today's behavior exactly;
 an adapter may override format_tool_event to eat tool chrome on platforms that
 can't render it.
 """
-
 from __future__ import annotations
+
 
 from unittest.mock import MagicMock
 

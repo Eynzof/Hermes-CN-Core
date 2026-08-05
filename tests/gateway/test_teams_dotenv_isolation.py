@@ -1,6 +1,6 @@
 """Canaries for Teams SDK import-time dotenv isolation (#62935 / #62947)."""
-
 from __future__ import annotations
+
 
 import os
 import sys

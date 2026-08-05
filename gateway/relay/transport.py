@@ -19,8 +19,8 @@ contract has four concerns:
 EXPERIMENTAL: may change without a deprecation cycle until >=2 Class-1 platforms
 validate it. See docs/relay-connector-contract.md.
 """
-
 from __future__ import annotations
+
 
 from typing import Any, Awaitable, Callable, Dict, Optional, Protocol, runtime_checkable
 

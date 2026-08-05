@@ -32,8 +32,8 @@ Blocking cron specs at creation time as well means the agent gets an immediate,
 informative rejection instead of scheduling a job that will only fail
 (silently) when it fires.
 """
-
 from __future__ import annotations
+
 
 import os
 import shlex

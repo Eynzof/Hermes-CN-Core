@@ -4,8 +4,8 @@ Manifest parsing, install/uninstall config writes, and picker plumbing
 are exercised here. Anything that would actually clone a repo or
 launch an MCP is mocked.
 """
-
 from __future__ import annotations
+
 
 import re
 from pathlib import Path

@@ -18,8 +18,8 @@ back to the model for each name shape), exercised end-to-end through
 ``AIAgent.run_conversation`` against an in-process mock provider — not a snapshot
 of the message string.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import os

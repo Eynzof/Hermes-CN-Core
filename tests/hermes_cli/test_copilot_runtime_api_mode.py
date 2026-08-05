@@ -1,6 +1,6 @@
 """Tests for Copilot runtime api_mode resolution."""
-
 from __future__ import annotations
+
 
 from types import SimpleNamespace
 

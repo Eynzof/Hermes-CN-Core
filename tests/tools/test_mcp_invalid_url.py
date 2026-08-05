@@ -13,8 +13,8 @@ eventually giving up.
 The fix validates the URL once, up front, and fails fast with a specific
 error message identifying the offending server.
 """
-
 from __future__ import annotations
+
 
 import pytest
 

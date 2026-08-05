@@ -11,8 +11,8 @@ then refuses to launch it with "This app can't run on your computer"
 These tests exercise the behavior contract only: synthetic PE files go in,
 verdicts/rollbacks come out.
 """
-
 from __future__ import annotations
+
 
 import argparse
 import struct

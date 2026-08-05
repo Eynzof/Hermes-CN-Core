@@ -6,8 +6,8 @@ sendPhoto/sendVideo/sendDocument ``caption`` rather than being posted as a
 separate sendMessage beforehand. Longer text (> Telegram's 1024 caption cap)
 falls back to a separate message. The ``telegram`` package is stubbed.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import os

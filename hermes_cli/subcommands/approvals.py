@@ -4,8 +4,8 @@ Follows the cron/security pattern: parser construction lives here, the
 handler is injected by ``main.py`` so this module never imports ``main``
 (cycle avoidance).
 """
-
 from __future__ import annotations
+
 
 from typing import Callable
 

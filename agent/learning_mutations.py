@@ -14,8 +14,8 @@ shared by the CLI (``hermes journey delete|edit``), the TUI ``/journey`` overlay
 (recoverable via ``hermes curator restore``); deleting a memory rewrites its
 file. Pure stdlib + existing skill/memory helpers.
 """
-
 from __future__ import annotations
+
 
 from pathlib import Path
 from typing import Any

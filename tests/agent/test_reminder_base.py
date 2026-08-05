@@ -1,6 +1,6 @@
 """Tests for agent/reminder_base.py."""
-
 from __future__ import annotations
+
 
 from abc import ABC
 from typing import Any, List

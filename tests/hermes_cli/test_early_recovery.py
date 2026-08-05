@@ -8,8 +8,8 @@ Covers:
 - recover_if_needed unit behavior: fast path, marker gating, update-argv skip,
   lock single-flight, no marker clearing, pinned repair specs
 """
-
 from __future__ import annotations
+
 
 import os
 import subprocess

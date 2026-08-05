@@ -21,8 +21,8 @@ Three scenarios are covered:
 3. No orphan accumulation: three concurrent /api/status requests all receive a
    200 response — no socket timeouts, no connection resets.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import time

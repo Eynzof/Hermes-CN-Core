@@ -12,8 +12,8 @@ Covers:
 - ABC contract: stream() raises NotImplementedError by default
 - resolve_output_format helper coerces invalid input
 """
-
 from __future__ import annotations
+
 
 import logging
 from typing import Any, Optional

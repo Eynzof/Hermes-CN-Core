@@ -20,8 +20,8 @@ These tests verify:
 5. The main CMD path (``docker run <image> …``) is unaffected by the
    PATH-shim ordering — no recursion, no behavior change.
 """
-
 from __future__ import annotations
+
 from tests.docker.conftest import docker_exec
 
 import subprocess

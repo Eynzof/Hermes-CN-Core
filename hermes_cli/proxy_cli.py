@@ -13,8 +13,8 @@ The top-level command is ``hermes egress``.  Note that the inbound OAuth
 reverse-proxy command (``hermes proxy``) lives elsewhere in
 ``hermes_cli/main.py`` — different direction, different purpose.
 """
-
 from __future__ import annotations
+
 
 import argparse
 import os

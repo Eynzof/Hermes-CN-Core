@@ -35,8 +35,8 @@ Session metadata contract (preserved from the legacy ``CloudBrowserProvider``)::
 :mod:`tools.browser_tool` — it holds the provider's session ID regardless of
 which provider is in use.
 """
-
 from __future__ import annotations
+
 
 import abc
 from typing import Any, Dict

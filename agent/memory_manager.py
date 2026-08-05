@@ -22,8 +22,8 @@ Usage in run_agent.py:
     self._memory_manager.sync_all(user_msg, assistant_response)
     self._memory_manager.queue_prefetch_all(user_msg)
 """
-
 from __future__ import annotations
+
 
 import orjson
 import logging

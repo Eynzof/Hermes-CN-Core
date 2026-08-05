@@ -24,8 +24,8 @@ bodies, assignments, case patterns, and ordinary arguments are data, not
 commands.  Nested command substitutions and process substitutions are scanned
 as their own command contexts.
 """
-
 from __future__ import annotations
+
 
 import sys
 from dataclasses import dataclass

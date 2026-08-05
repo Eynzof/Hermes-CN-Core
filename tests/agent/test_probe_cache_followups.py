@@ -4,8 +4,8 @@ Covers:
 - _query_ollama_api_show TTL caching (positive-only, namespaced key)
 - persistent context-cache key normalization (trailing-slash dedup)
 """
-
 from __future__ import annotations
+
 
 from unittest.mock import MagicMock, patch
 

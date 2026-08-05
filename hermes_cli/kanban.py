@@ -11,8 +11,8 @@ Exposes the full Kanban command surface documented in the design spec
     (used by ``/kanban …`` in CLI and gateway) and forwards it to the
     argparse surface.
 """
-
 from __future__ import annotations
+
 
 import argparse
 import contextlib

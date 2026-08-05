@@ -18,8 +18,8 @@ Usage:
     available = discover_memory_providers()   # [(name, desc, available), ...]
     provider = load_memory_provider("mnemosyne")  # MemoryProvider instance
 """
-
 from __future__ import annotations
+
 
 import importlib
 import importlib.machinery

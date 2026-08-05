@@ -1,6 +1,6 @@
 """Tests for the `hermes proxy` subcommand and its upstream adapters."""
-
 from __future__ import annotations
+
 
 import asyncio
 import json

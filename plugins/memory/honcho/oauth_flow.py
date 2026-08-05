@@ -6,8 +6,8 @@ core: the code can arrive via the loopback listener here or a future
 because ``/authorize`` (dashboard) and ``/oauth/token`` (API) live on
 different origins.
 """
-
 from __future__ import annotations
+
 
 import pybase64 as base64
 import hashlib

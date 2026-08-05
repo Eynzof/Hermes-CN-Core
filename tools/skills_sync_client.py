@@ -52,8 +52,8 @@ authoritative; the local flag is just the editable intent. Only agent-created +
 user-authored skills under ``~/.hermes/skills/`` are eligible; bundled and
 hub-installed skills are excluded.
 """
-
 from __future__ import annotations
+
 
 import hashlib
 import json

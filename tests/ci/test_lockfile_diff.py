@@ -5,8 +5,8 @@ churn in the lockfile text must produce an empty diff, while actual
 version movement must show up as added/removed/updated regardless of
 where in the file it appears.
 """
-
 from __future__ import annotations
+
 
 import importlib.util
 import json

@@ -1,5 +1,5 @@
-from __future__ import annotations
 
+from __future__ import annotations
 import importlib.util
 import orjson
 import json

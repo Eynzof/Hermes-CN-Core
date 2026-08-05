@@ -22,8 +22,8 @@ the day it landed.
 sync (this module deliberately only PROBES existence/typos cheaply and errs
 toward the slow path, which then does the authoritative parse).
 """
-
 from __future__ import annotations
+
 
 import os
 import sys

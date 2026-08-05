@@ -9,8 +9,8 @@ marker (losing the real handoff). Compression now runs its summary call
 under aux_interrupt_protection(), so the interrupt poll is masked for the
 compression task only (timeouts and other aux tasks stay interruptible).
 """
-
 from __future__ import annotations
+
 
 from unittest.mock import patch
 

@@ -19,8 +19,8 @@ Config via config.yaml:
 
 Working directory: $HERMES_HOME/byterover/ (profile-scoped context tree)
 """
-
 from __future__ import annotations
+
 
 import orjson
 import logging

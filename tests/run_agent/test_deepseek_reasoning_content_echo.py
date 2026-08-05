@@ -26,8 +26,8 @@ fabricated reasoning.
 
 Refs #15250 / #15353 / #17341.
 """
-
 from __future__ import annotations
+
 
 from types import SimpleNamespace
 

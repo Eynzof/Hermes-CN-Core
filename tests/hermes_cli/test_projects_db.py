@@ -1,6 +1,6 @@
 """Tests for the per-profile Projects store (hermes_cli/projects_db)."""
-
 from __future__ import annotations
+
 
 import os
 

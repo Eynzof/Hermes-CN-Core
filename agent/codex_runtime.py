@@ -13,8 +13,8 @@ compatibility.
 * ``run_codex_create_stream_fallback`` — recovery path when the
   Responses ``stream=True`` initial create fails.
 """
-
 from __future__ import annotations
+
 
 import json
 import logging

@@ -4,8 +4,8 @@ Canonical model catalogs and lightweight validation helpers.
 Add, remove, or reorder entries here — both `hermes setup` and
 `hermes` provider-selection will pick up the change automatically.
 """
-
 from __future__ import annotations
+
 
 import copy
 import json

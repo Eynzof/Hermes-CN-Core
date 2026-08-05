@@ -11,8 +11,8 @@ pyproject.toml) instead of ``ptyprocess``/``fcntl``/``termios``, none of
 which exist on native Windows. The read/write/terminate calls here match
 the working winpty usage already shipping in ``tools/process_registry.py``.
 """
-
 from __future__ import annotations
+
 
 import os
 import sys

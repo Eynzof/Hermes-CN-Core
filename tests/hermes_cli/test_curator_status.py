@@ -5,8 +5,8 @@ Covers:
 - The most-used / least-used rankings by activity_count so users can see which
   skills actually get exercised.
 """
-
 from __future__ import annotations
+
 
 import io
 from argparse import Namespace

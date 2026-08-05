@@ -36,8 +36,8 @@ Configuration (config.yaml):
           thread_id: "YOUR_THREAD_ID"
           profile: thread-profile
 """
-
 from __future__ import annotations
+
 
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional

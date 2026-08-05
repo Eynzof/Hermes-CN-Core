@@ -8,8 +8,8 @@ data-residency hosts (``us.api.openai.com``, ``eu.api.openai.com``, and any
 future ``<region>.api.openai.com``) are the same API surface as the
 canonical host and must match; lookalike/spoof hosts must not (#32243).
 """
-
 from __future__ import annotations
+
 
 import pytest
 

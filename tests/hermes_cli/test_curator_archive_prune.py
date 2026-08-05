@@ -9,8 +9,8 @@ Covers:
 - prune --yes skips confirmation
 - prune --days validation
 """
-
 from __future__ import annotations
+
 
 from types import SimpleNamespace
 

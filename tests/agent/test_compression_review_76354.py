@@ -16,8 +16,8 @@ Covers:
 - S3 analogue: the idle wait is charged from the last progress event, so
   silence cannot approach 2x the configured idle timeout.
 """
-
 from __future__ import annotations
+
 
 import concurrent.futures
 import logging

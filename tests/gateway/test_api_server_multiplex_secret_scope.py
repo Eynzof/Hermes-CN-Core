@@ -11,8 +11,8 @@ no profile was requested.
 Adapted from PR #61283 by @giggling-ginger (originally targeting a
 pre-``_profile_scope`` helper); no live gateway or network.
 """
-
 from __future__ import annotations
+
 
 import pytest
 

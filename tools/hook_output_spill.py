@@ -39,8 +39,8 @@ Design invariants
 * Spill files are grouped by session so a ``/new`` session doesn't grow
   them forever in one directory.
 """
-
 from __future__ import annotations
+
 
 import logging
 import os

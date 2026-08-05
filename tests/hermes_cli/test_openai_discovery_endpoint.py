@@ -16,8 +16,8 @@ Contracts pinned here:
   3. Official OpenAI hosts (canonical + regional) all get the curated∩live
      intersection; custom proxies keep the verbatim live list.
 """
-
 from __future__ import annotations
+
 
 from unittest.mock import patch as mock_patch
 

@@ -8,8 +8,8 @@ provider.  Writes still target the profile only.
 See the #18594 follow-up report: profile workers couldn't see providers
 authenticated only at the global root.
 """
-
 from __future__ import annotations
+
 
 import json
 import time

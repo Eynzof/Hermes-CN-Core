@@ -1,6 +1,6 @@
 """Tests for hermes_cli.telegram_managed_bot — QR codes, deep links, pairing."""
-
 from __future__ import annotations
+
 
 from pathlib import PureWindowsPath
 from unittest.mock import MagicMock, patch

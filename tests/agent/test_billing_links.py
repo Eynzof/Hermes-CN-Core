@@ -3,8 +3,8 @@
 Behavior/invariant tests — no snapshotting of the exact URL strings beyond the
 few that are the whole point of the mapping (the host they must land on).
 """
-
 from __future__ import annotations
+
 
 from agent.billing_links import (
     BillingBlock,

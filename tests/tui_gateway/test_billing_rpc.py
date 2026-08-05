@@ -6,8 +6,8 @@ Verifies the structured envelope contract the Ink side branches on:
   (result.ok=false, result.error=<code>) instead of JSON-RPC errors.
 - billing.charge mints + echoes an idempotency_key for retry reuse.
 """
-
 from __future__ import annotations
+
 
 from decimal import Decimal
 

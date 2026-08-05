@@ -26,8 +26,8 @@ in #28712 (``init_db`` crashing on legacy DBs that pre-dated the
 ``test_kanban_db.py::test_connect_migrates_legacy_db_before_optional_column_indexes``,
 landed via #28754 / #28781 ahead of this fix.
 """
-
 from __future__ import annotations
+
 
 import time
 from pathlib import Path

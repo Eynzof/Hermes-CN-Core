@@ -1,6 +1,6 @@
 """Tests for the projects.* JSON-RPC methods on the tui_gateway server."""
-
 from __future__ import annotations
+
 
 import os
 import subprocess

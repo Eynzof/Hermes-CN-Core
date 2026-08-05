@@ -6,8 +6,8 @@ return and paid a full load_config() + worker-pool resolution per tick.
 The fix returns early on ANY idle tick while preserving the post-tick MCP
 orphan sweep that main intentionally runs even when nothing is due.
 """
-
 from __future__ import annotations
+
 
 from unittest.mock import patch
 

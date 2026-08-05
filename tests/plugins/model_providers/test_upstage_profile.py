@@ -5,8 +5,8 @@ the profile is registered correctly and wires the expected identity, endpoint,
 auth, and catalog fields — the contract every downstream layer (auth, models,
 doctor, runtime_provider, transport) reads from.
 """
-
 from __future__ import annotations
+
 
 import pytest
 

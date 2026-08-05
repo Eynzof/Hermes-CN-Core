@@ -8,8 +8,8 @@ which on Windows storms concurrent-log-handler's cross-process lock
 fails the Desktop backend readiness handshake ("Timed out connecting to Hermes
 backend after 15000ms"). See #58265 for the same fix class on another message.
 """
-
 from __future__ import annotations
+
 
 import logging
 

@@ -23,8 +23,8 @@ MoA reference/aggregator slots are explicitly EXCLUDED from recording:
 the main loop's ``update_token_counts`` delta, so recording them here would
 double-count (see ``_EXCLUDED_TASKS``).
 """
-
 from __future__ import annotations
+
 
 import logging
 from contextvars import ContextVar

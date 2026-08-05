@@ -4,8 +4,8 @@ The fixture used here is a deliberately selected and normalized ``tools/list``
 capture.  It contains schemas, not machine/user state, and records the 0.9-era
 contract where input properties are the discovery surface.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import json

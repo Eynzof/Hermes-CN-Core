@@ -12,8 +12,8 @@ The scheduler serializes concurrent calls through an ``asyncio.Lock``,
 giving FIFO fairness across agent sessions sharing one signal-cli
 daemon.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import logging

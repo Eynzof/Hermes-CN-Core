@@ -14,8 +14,8 @@ content-free by design: rendered log messages are not exported, and bounded
 structured strings are still scrubbed as defense-in-depth. This redactor also
 remains available for a future, explicitly gated redacted-message detail mode.
 """
-
 from __future__ import annotations
+
 
 import re
 from typing import Optional

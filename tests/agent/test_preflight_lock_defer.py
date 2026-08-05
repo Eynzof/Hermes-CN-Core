@@ -12,8 +12,8 @@ compression no-op (#69870 lock-skip signal, consumer salvaged from #49874):
 * a MagicMock-style truthy junk flag value does NOT take the defer branch
   (type-pin rule).
 """
-
 from __future__ import annotations
+
 
 import types
 from unittest.mock import MagicMock, patch

@@ -6,8 +6,8 @@ blocks leaking through the stream_delta_callback.  The scenarios map
 directly to the MiniMax-M2.7 / DeepSeek / Qwen3 streaming patterns that
 break the older per-delta regex strip.
 """
-
 from __future__ import annotations
+
 
 import pytest
 

@@ -9,8 +9,8 @@ The recovery path deliberately avoids in-place repair:
 * derived FTS tables and migration bookkeeping are rebuilt, not copied; and
 * the recovered database is never installed over the active database.
 """
-
 from __future__ import annotations
+
 
 import json
 import os

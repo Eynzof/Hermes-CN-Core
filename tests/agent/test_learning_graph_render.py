@@ -4,8 +4,8 @@ Asserts invariants of the timeline layout, the ported age gradient + palette, an
 the constellation scrubber — never a cell snapshot, which would be a
 change-detector against layout tuning.
 """
-
 from __future__ import annotations
+
 
 from agent import learning_graph_render as render
 

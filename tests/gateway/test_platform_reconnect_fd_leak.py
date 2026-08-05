@@ -17,8 +17,8 @@ behavior of also closing the ``ResponseStore``. The pre-fix
 implementation did not call ``disconnect()`` on any of these paths;
 this file would have caught the regression and now pins the fix.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import time

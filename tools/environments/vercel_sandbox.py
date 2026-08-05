@@ -5,8 +5,8 @@ shared ``BaseEnvironment`` shell contract. When persistence is enabled, the
 backend stores task-scoped snapshot metadata under ``HERMES_HOME`` and restores
 new sandboxes from those snapshots on later task reuse.
 """
-
 from __future__ import annotations
+
 
 from functools import cache
 from dataclasses import dataclass

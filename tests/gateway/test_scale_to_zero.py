@@ -5,8 +5,8 @@ each clause of the arm-gate is exercised independently, not frozen against a
 snapshot. The pure helpers in gateway/scale_to_zero.py take plain inputs so they
 test without a live gateway.
 """
-
 from __future__ import annotations
+
 
 import pytest
 

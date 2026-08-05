@@ -13,8 +13,8 @@ Also exercises ``revoke_session`` (no-op) and ``refresh_session``
 
 All HTTP is mocked: nothing in this file talks to a real Portal.
 """
-
 from __future__ import annotations
+
 
 import pybase64 as base64
 import hashlib

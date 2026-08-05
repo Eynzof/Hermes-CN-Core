@@ -27,8 +27,8 @@ Transport is stdlib ``urllib`` run in a thread executor (the same dependency
 posture as ``_post_provision`` — the relay lane adds no HTTP client deps).
 EXPERIMENTAL: may change without a deprecation cycle (docs/relay-connector-contract.md).
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import json

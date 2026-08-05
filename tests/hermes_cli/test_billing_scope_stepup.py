@@ -1,6 +1,6 @@
 """Tests for the Phase 2b billing:manage scope step-up (auth.py)."""
-
 from __future__ import annotations
+
 
 import pytest
 

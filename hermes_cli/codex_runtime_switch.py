@@ -10,8 +10,8 @@ The actual runtime resolution happens in hermes_cli.runtime_provider's
 _maybe_apply_codex_app_server_runtime() helper, which reads the persisted
 config value. This module just persists the value and reports the change.
 """
-
 from __future__ import annotations
+
 
 import logging
 from dataclasses import dataclass

@@ -57,8 +57,8 @@ In-memory and process-local: the dashboard is a single process, so no
 distributed coordination is needed (mirrors ``ws_tickets``). A functional API
 (not a class) keeps ``time.time`` patchable in tests.
 """
-
 from __future__ import annotations
+
 
 import base64
 import hashlib

@@ -30,8 +30,8 @@ Safety posture:
   restarts, hermes self-management, …) are eligible.
 * **Dangerous root binaries never become globs** (``rm *``, ``sudo *`` …).
 """
-
 from __future__ import annotations
+
 
 import json
 import re

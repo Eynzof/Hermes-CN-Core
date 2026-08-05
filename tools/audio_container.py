@@ -25,8 +25,8 @@ Detection notes:
 - The ``0xFF 0xFx`` sync word is shared by MP3 and ADTS AAC; bits 3-1 of
   byte 1 disambiguate (ADTS: ``ID=0``, ``layer=00``).
 """
-
 from __future__ import annotations
+
 
 from typing import Optional
 

@@ -5,8 +5,8 @@ Codex/ChatGPT-OAuth-backed provider that uses the Responses
 ``image_generation`` tool path instead of the ``images.generate`` REST
 endpoint.
 """
-
 from __future__ import annotations
+
 
 import importlib
 import json

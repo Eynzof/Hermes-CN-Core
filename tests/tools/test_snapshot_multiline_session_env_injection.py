@@ -7,8 +7,8 @@ a newline as a multi-line ``declare -x NAME="…`` block. The old line-based
 the shared terminal snapshot and executed on the next ``source``, with stdout
 discarded by the wrapper.
 """
-
 from __future__ import annotations
+
 
 import os
 import shlex

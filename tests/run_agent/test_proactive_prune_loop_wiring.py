@@ -14,8 +14,8 @@ These tests drive ``run_conversation()`` through real tool iterations and pin:
   SimpleNamespace test double) does not raise — getattr-guarded;
 - a raising prune is swallowed (debug log), never fails the turn.
 """
-
 from __future__ import annotations
+
 
 import json
 from types import SimpleNamespace

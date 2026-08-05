@@ -557,7 +557,7 @@ def show_status(args):
     jobs_file = get_hermes_home() / "cron" / "jobs.json"
     if jobs_file.exists():
         import json
-import orjson
+        import orjson
         try:
             with open(jobs_file, encoding="utf-8-sig") as f:
                 data = orjson.loads(f.read())

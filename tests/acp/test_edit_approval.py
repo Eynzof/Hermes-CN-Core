@@ -1,6 +1,6 @@
 """Tests for ACP pre-edit approval gating."""
-
 from __future__ import annotations
+
 
 import json
 import tempfile

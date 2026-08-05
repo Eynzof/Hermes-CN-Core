@@ -5,8 +5,8 @@ classes. The test matrix pins the decision for each so a regression (e.g.
 silently dropping caching on third-party Anthropic gateways, or applying
 the native layout on OpenRouter) surfaces loudly.
 """
-
 from __future__ import annotations
+
 
 from unittest.mock import MagicMock
 

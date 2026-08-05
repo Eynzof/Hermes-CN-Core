@@ -1,6 +1,6 @@
 """Tests for acp_adapter.entry._BenignProbeMethodFilter."""
-
 from __future__ import annotations
+
 
 import sys
 

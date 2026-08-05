@@ -16,8 +16,8 @@ display hook (``reference_callback``) — no mocks on the dispatch path.
 The LLM is stubbed via ``call_llm`` so the test does not depend on any
 real provider.
 """
-
 from __future__ import annotations
+
 
 from types import SimpleNamespace
 from unittest.mock import patch

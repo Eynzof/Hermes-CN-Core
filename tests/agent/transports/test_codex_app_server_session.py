@@ -4,8 +4,8 @@ The session adapter has the most complex behavior of the three new modules:
 notification draining, server-request handling (approvals), interrupt,
 deadline timeouts. These tests pin all of that without spawning real codex.
 """
-
 from __future__ import annotations
+
 
 import time
 from unittest.mock import patch

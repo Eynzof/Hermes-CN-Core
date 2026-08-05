@@ -15,8 +15,8 @@ Architecture:
 Nous authentication paths:
 - Invoke JWT (preferred): use a scoped access_token directly for inference.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import json

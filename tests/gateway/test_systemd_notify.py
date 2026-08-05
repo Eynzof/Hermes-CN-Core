@@ -1,6 +1,6 @@
 """Tests for the optional systemd event-loop watchdog protocol."""
-
 from __future__ import annotations
+
 
 import asyncio
 import socket

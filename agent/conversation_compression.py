@@ -2523,43 +2523,6 @@ def compress_context(
             )
             _complete_compaction_lifecycle()
             return messages, _existing_sp
-        # A lock serializes overlapping calls, but it cannot by itself reject a
-        # stale agent that reaches this point only after the winner released the
-        # lock. That agent still carries the old parent id and would otherwise
-        # rotate it a second time, creating a sibling continuation. Re-check the
-        # durable lineage while we own the parent lock: if the session already
-        # has a compression continuation, this snapshot has been superseded.
-        #
-        # This guard applies only to the legacy rotation path. In-place
-        # compaction deliberately keeps the same durable session id, so
-        # ``get_compression_tip`` cannot be used as its generation marker.
-        if not in_place and _lock_holder is not None:
-            try:
-                _compression_tip = _lock_db.get_compression_tip(_lock_sid)
-            except Exception:
-                # Preserve the existing version-skew fail-open behaviour when a
-                # long-lived process still has an older SessionDB implementation.
-                _compression_tip = _lock_sid
-            if (
-                isinstance(_compression_tip, str)
-                and _compression_tip
-                and _compression_tip != _lock_sid
-            ):
-                logger.warning(
-                    "compression skipped: session=%s already continued as %s "
-                    "— returning stale snapshot unchanged",
-                    _lock_sid,
-                    _compression_tip,
-                )
-                try:
-                    _lock_db.release_compression_lock(_lock_sid, _lock_holder)
-                except Exception as _rel_err:
-                    logger.debug("stale compression lock release failed: %s", _rel_err)
-                _lock_holder = None
-                _existing_sp = getattr(agent, "_cached_system_prompt", None)
-                if not _existing_sp:
-                    _existing_sp = agent._build_system_prompt(system_message)
-                return messages, _existing_sp
     _lock_released = False
     _lock_release_guard = threading.Lock()
 

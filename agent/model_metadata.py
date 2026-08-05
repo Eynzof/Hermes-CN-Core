@@ -3414,6 +3414,7 @@ def _wire_message_shadow(msg: Dict[str, Any]) -> Dict[str, Any]:
     if (
         "api_content" not in msg
         and "_anthropic_content_blocks" not in msg
+        and "reasoning_details" not in msg
         and not isinstance(content, list)
         and not (isinstance(content, dict) and content.get("_multimodal"))
     ):

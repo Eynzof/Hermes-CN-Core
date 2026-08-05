@@ -876,7 +876,10 @@ def build_coding_workspace_block(cwd: Optional[str | Path] = None) -> str:
         return ""
 
     lines = ["Workspace (snapshot at session start — re-check with `git` before acting on it):"]
-    lines.append(f"- Root: {root}")
+    # Prompt-stability: always render the root with forward slashes so the
+    # snapshot text is byte-identical across platforms (a model must not see
+    # backslash paths from a Windows host).
+    lines.append(f"- Root: {Path(root).as_posix()}")
 
     if git_root is not None:
         branch, counts = _parse_status(_git(root, "status", "--porcelain=2", "--branch"))

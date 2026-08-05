@@ -454,6 +454,9 @@ class TestF6ExecutorSaturation:
             assert returned is messages
             # The cancelled attempt must not leave the durable lock held.
             assert db.get_compression_lock_holder(session_id) is None
+            # Windows cannot unlink an open SQLite file: release the handle
+            # before the TemporaryDirectory cleanup runs.
+            db.close()
 
 
 class TestS3IdleChargedFromLastProgress:

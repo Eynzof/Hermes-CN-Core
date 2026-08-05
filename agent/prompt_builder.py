@@ -1783,10 +1783,6 @@ def build_skills_system_prompt(
                 available_toolsets,
             ):
                 continue
-            skills_by_category.setdefault(category, []).append((
-                frontmatter_name,
-                entry.get("description", ""),
-            ))
             visible_entries.append(entry)
         category_descriptions = {
             str(k): str(v)
@@ -1809,10 +1805,6 @@ def build_skills_system_prompt(
                 available_toolsets,
             ):
                 continue
-            skills_by_category.setdefault(entry["category"], []).append((
-                entry["frontmatter_name"],
-                entry["description"],
-            ))
             visible_entries.append(entry)
 
     # ── M2 org labeling + FAIL-LOUD collisions ─────────────────────────

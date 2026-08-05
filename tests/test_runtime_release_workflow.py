@@ -8,6 +8,7 @@ that contract so a backend can't silently drop out of the build again — the
 failure mode behind issue #16 (MCP) and the 飞书/钉钉/企微/微信 desktop reports.
 """
 
+import plistlib
 import re
 import sys
 from pathlib import Path
@@ -431,3 +432,28 @@ def test_runtime_workflow_signs_and_preserves_macos_frameworks():
     assert "Prepare macOS signing credentials" in workflow
     assert "scripts/sign_macos_runtime_payload.sh" in workflow
     assert "zip -r -y" in workflow
+
+
+def test_macos_runtime_signing_grants_ctypes_executable_memory_to_main_only():
+    """The hardened Python 3.14 executable must permit libffi trampolines.
+
+    macOS 13 otherwise spins in ``ffi_closure_alloc`` before even
+    ``dashboard --help`` returns. The exception belongs on the loading main
+    executable, not on every bundled dylib/framework.
+    """
+    root = _repo_root()
+    script = (root / "scripts" / "sign_macos_runtime_payload.sh").read_text(
+        encoding="utf-8", errors="replace"
+    )
+    entitlements_path = root / "scripts" / "macos-runtime.entitlements.plist"
+    with entitlements_path.open("rb") as handle:
+        entitlements = plistlib.load(handle)
+
+    assert entitlements == {
+        "com.apple.security.cs.allow-unsigned-executable-memory": True,
+    }
+    assert 'runtime_main="$runtime_dir/$(basename "$runtime_dir")"' in script
+    assert 'if [[ "$path" == "$runtime_main" ]]; then' in script
+    assert 'path_sign_args+=(--entitlements "$entitlements_file")' in script
+    assert 'codesign -d --entitlements :- "$runtime_main"' in script
+    assert "<key>com.apple.security.cs.allow-unsigned-executable-memory</key><true/>" in script

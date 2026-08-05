@@ -2,10 +2,24 @@
 set -euo pipefail
 
 runtime_dir="${1:?usage: scripts/sign_macos_runtime_payload.sh <runtime-dir>}"
+runtime_dir="${runtime_dir%/}"
 identity="${APPLE_SIGNING_IDENTITY:-}"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+entitlements_file="$script_dir/macos-runtime.entitlements.plist"
+runtime_main="$runtime_dir/$(basename "$runtime_dir")"
 
 if [[ ! -d "$runtime_dir" ]]; then
   echo "macOS runtime payload not found: $runtime_dir" >&2
+  exit 1
+fi
+
+if [[ ! -f "$runtime_main" ]]; then
+  echo "macOS runtime main executable not found: $runtime_main" >&2
+  exit 1
+fi
+
+if [[ ! -f "$entitlements_file" ]]; then
+  echo "macOS runtime entitlements not found: $entitlements_file" >&2
   exit 1
 fi
 
@@ -37,7 +51,15 @@ inside_framework() {
 
 sign_path() {
   local path="$1"
-  codesign "${sign_args[@]}" "$path"
+  local path_sign_args=("${sign_args[@]}")
+  if [[ "$path" == "$runtime_main" ]]; then
+    # Python 3.14's _ctypes uses libffi closures. On macOS 13, a hardened
+    # runtime without this entitlement can spin forever in ffi_closure_alloc
+    # before argparse reaches even `dashboard --help`. Entitlements belong on
+    # the executable; dylibs/frameworks inherit them from the loading process.
+    path_sign_args+=(--entitlements "$entitlements_file")
+  fi
+  codesign "${path_sign_args[@]}" "$path"
 }
 
 verify_path() {
@@ -78,5 +100,11 @@ while IFS= read -r -d '' path; do
     verify_path "$path"
   fi
 done < <(find "$runtime_dir" -type f -print0)
+
+embedded_entitlements="$(codesign -d --entitlements :- "$runtime_main" 2>&1)"
+if [[ "$embedded_entitlements" != *'<key>com.apple.security.cs.allow-unsigned-executable-memory</key><true/>'* ]]; then
+  echo "macOS runtime main executable is missing the unsigned executable memory entitlement" >&2
+  exit 1
+fi
 
 echo "macOS runtime payload signing verification passed."

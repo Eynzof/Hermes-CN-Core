@@ -56,7 +56,7 @@ from hermes_cli._subprocess_compat import (
 )
 import urllib.request
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, BinaryIO, Dict, Iterator, List, Optional, Tuple
 
 import yaml
 
@@ -128,7 +128,14 @@ except ImportError:
             WebSocket, WebSocketDisconnect,
         )
         from fastapi.middleware.cors import CORSMiddleware
-        from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+        from fastapi.responses import (
+            FileResponse,
+            HTMLResponse,
+            JSONResponse,
+            PlainTextResponse,
+            Response,
+            StreamingResponse,
+        )
         from fastapi.staticfiles import StaticFiles
         from pydantic import BaseModel, SecretStr
         from starlette.concurrency import run_in_threadpool
@@ -392,9 +399,11 @@ def _has_valid_session_token(request: Request) -> bool:
 
 
 # Routes that may also authenticate via a ``?token=`` query param, for download
-# links opened by the OS shell or a new browser tab where the session header
-# can't be set. Kept narrow — same query-token tradeoff as the /api/pty WS.
-_QUERY_TOKEN_API_PATHS: frozenset[str] = frozenset({"/api/files/download"})
+# links and media elements where the session header can't be set. Kept narrow —
+# same query-token tradeoff as the /api/pty WS.
+_QUERY_TOKEN_API_PATHS: frozenset[str] = frozenset(
+    {"/api/files/download", "/api/media/file"}
+)
 
 
 def _has_valid_query_token(request: Request, path: str) -> bool:
@@ -1625,9 +1634,9 @@ async def _status_active_sessions() -> int:
     return 0
 
 
-# Image MIME types this endpoint will serve. Extension-allowlisted so an
-# authenticated caller can't pull non-image files through it.
-_MEDIA_CONTENT_TYPES = {
+# Media MIME types this endpoint will serve. Extension-allowlisted so an
+# authenticated caller can't pull non-media files through it.
+_IMAGE_MEDIA_CONTENT_TYPES = {
     ".png": "image/png",
     ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
@@ -1637,7 +1646,28 @@ _MEDIA_CONTENT_TYPES = {
     ".bmp": "image/bmp",
     ".ico": "image/x-icon",
 }
-_MEDIA_MAX_BYTES = 25 * 1024 * 1024
+_VIDEO_MEDIA_CONTENT_TYPES = {
+    ".mp4": "video/mp4",
+    ".webm": "video/webm",
+    ".mov": "video/quicktime",
+    ".mkv": "video/x-matroska",
+    ".avi": "video/x-msvideo",
+    ".m4v": "video/x-m4v",
+    ".mpeg": "video/mpeg",
+    ".mpg": "video/mpeg",
+    ".ogv": "video/ogg",
+}
+_MEDIA_CONTENT_TYPES = {
+    **_IMAGE_MEDIA_CONTENT_TYPES,
+    **_VIDEO_MEDIA_CONTENT_TYPES,
+}
+_IMAGE_MEDIA_MAX_BYTES = 25 * 1024 * 1024
+# The compatibility endpoint buffers and base64-encodes the entire file across
+# Python, Rust/Tauri IPC, and the webview. Keep video fallback payloads small;
+# larger videos use the range-capable streaming endpoint instead.
+_VIDEO_MEDIA_MAX_BYTES = 25 * 1024 * 1024
+_VIDEO_MEDIA_STREAM_MAX_BYTES = 4 * 1024 * 1024 * 1024
+_VIDEO_MEDIA_STREAM_CHUNK_BYTES = 64 * 1024
 _MANAGED_FILES_ROOT_ENV = "HERMES_DASHBOARD_FILES_ROOT"
 _MANAGED_FILE_MAX_BYTES = 100 * 1024 * 1024
 _HOSTED_MANAGED_FILES_ROOT = Path("/opt/data")
@@ -1917,57 +1947,381 @@ def _fs_git_branch(cwd: str) -> str:
         return ""
 
 
-def _media_serve_roots() -> list[Path]:
-    """Directories ``GET /api/media`` is allowed to read from.
-
-    Confined to where the agent and attach pipeline actually write media on the
-    gateway host — its images dir and cache subtree. This stops an authenticated
-    client from reading image-extension files anywhere on disk (e.g. a renamed
-    key or a screenshot outside the cache) merely because the suffix passes the
-    allowlist.
-    """
+def _media_root_candidates() -> list[Path]:
+    """Return configured media roots without following filesystem links."""
     home = get_hermes_home()
-    roots = [home / "images", home / "screenshots", home / "cache"]
+    return [home / "images", home / "screenshots", home / "cache"]
+
+
+def _lexical_media_roots() -> list[Path]:
+    """Return absolute media roots without resolving symlinks or junctions."""
     out: list[Path] = []
-    for root in roots:
+    for root in _media_root_candidates():
         try:
-            out.append(root.resolve())
-        except (OSError, RuntimeError):
+            out.append(Path(os.path.abspath(os.path.normpath(str(root)))))
+        except (OSError, RuntimeError, ValueError):
             continue
     return out
 
 
+def _media_serve_roots() -> list[Path]:
+    """Directories ``GET /api/media`` trusts without further validation.
+
+    Confined to where the agent and attach pipeline actually write media on the
+    gateway host — its images dir and cache subtree. Paths outside these roots
+    must pass the shared gateway media-delivery policy before they are served.
+    """
+    try:
+        canonical_home = get_hermes_home().expanduser().resolve()
+    except (OSError, RuntimeError, ValueError):
+        return []
+    # Do not resolve the child roots here. A cache/images junction must be
+    # rejected component-by-component before anything follows its target.
+    return [canonical_home / root.name for root in _media_root_candidates()]
+
+
+def _unsafe_media_path_syntax(path: str) -> bool:
+    """Reject Windows network/device namespaces before filesystem access."""
+    windows_path = path.replace("/", "\\")
+    if windows_path.startswith("\\\\") or windows_path.startswith("\\??\\"):
+        return True
+    if os.name == "nt":
+        # Disallow alternate data streams while preserving a normal drive
+        # prefix such as C:\\.
+        if len(windows_path) >= 2 and windows_path[1] == ":":
+            return not windows_path[0].isalpha() or ":" in windows_path[2:]
+        return ":" in windows_path
+    return False
+
+
+def _path_within_media_roots(path: Path, roots: list[Path]) -> bool:
+    return any(path == root or root in path.parents for root in roots)
+
+
+def _reject_media_link_components(path: Path, base: Path) -> None:
+    """Reject links/reparse points below ``base`` before resolving ``path``."""
+    try:
+        relative = path.relative_to(base)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid path")
+
+    current = base
+    reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+    for component in relative.parts:
+        current /= component
+        try:
+            component_stat = current.lstat()
+        except FileNotFoundError:
+            # Strict resolution below produces the endpoint's normal 404.
+            return
+        except (OSError, RuntimeError, ValueError):
+            raise HTTPException(status_code=400, detail="Invalid path")
+
+        is_reparse_point = bool(
+            reparse_flag
+            and getattr(component_stat, "st_file_attributes", 0) & reparse_flag
+        )
+        if stat.S_ISLNK(component_stat.st_mode) or is_reparse_point:
+            raise HTTPException(status_code=403, detail="Media links are not allowed")
+
+
+def _resolve_media_path(
+    path: str,
+    request: Request,
+    *,
+    video_only: bool = False,
+) -> tuple[Path, str, bool]:
+    """Resolve a supported media path and enforce the shared egress policy."""
+    candidate = _path_text(path)
+    if not candidate or _unsafe_media_path_syntax(candidate):
+        raise HTTPException(status_code=400, detail="Invalid path")
+
+    try:
+        candidate_path = Path(candidate).expanduser()
+    except (OSError, RuntimeError, ValueError):
+        raise HTTPException(status_code=400, detail="Invalid path")
+    if not candidate_path.is_absolute():
+        raise HTTPException(status_code=400, detail="Invalid path")
+
+    content_types = _VIDEO_MEDIA_CONTENT_TYPES if video_only else _MEDIA_CONTENT_TYPES
+    if candidate_path.suffix.lower() not in content_types:
+        raise HTTPException(status_code=415, detail="Unsupported media type")
+
+    try:
+        lexical_target = Path(os.path.abspath(os.path.normpath(str(candidate_path))))
+    except (OSError, RuntimeError, ValueError):
+        raise HTTPException(status_code=400, detail="Invalid path")
+
+    lexical_roots = _lexical_media_roots()
+    canonical_roots = _media_serve_roots()
+    root_match: tuple[Path, Path] | None = None
+    for lexical_root, canonical_root in zip(lexical_roots, canonical_roots):
+        if _path_within_media_roots(lexical_target, [lexical_root]):
+            root_match = (lexical_root.parent, canonical_root)
+            break
+        if _path_within_media_roots(lexical_target, [canonical_root]):
+            root_match = (canonical_root.parent, canonical_root)
+            break
+
+    external_allowed = (
+        os.getenv("HERMES_DESKTOP") == "1" and _local_dashboard_request(request)
+    )
+    if root_match is None and not external_allowed:
+        # Fail before resolve/stat so a remote caller cannot use response codes
+        # as a file-existence oracle or trigger UNC/device access.
+        raise HTTPException(status_code=403, detail="Media path is not allowed")
+
+    if root_match is not None:
+        trusted_home, canonical_root = root_match
+        # HERMES_HOME itself may be a deliberate link, but no component below
+        # it may redirect resolution outside the configured media tree.
+        _reject_media_link_components(lexical_target, trusted_home)
+    else:
+        if not lexical_target.anchor:
+            raise HTTPException(status_code=400, detail="Invalid path")
+        _reject_media_link_components(
+            lexical_target,
+            Path(lexical_target.anchor),
+        )
+
+    try:
+        target = candidate_path.resolve(strict=True)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="File not found")
+    except (OSError, RuntimeError, ValueError):
+        raise HTTPException(status_code=400, detail="Invalid path")
+
+    if root_match is not None:
+        if not _path_within_media_roots(target, [canonical_root]):
+            raise HTTPException(status_code=403, detail="Media path is not allowed")
+    else:
+        # MEDIA: delivery already has the denylist/strict-mode policy needed
+        # for user-selected paths such as Desktop files. Reuse it here so the
+        # desktop relay and messaging gateways make the same trust decision.
+        from gateway.platforms.base import validate_media_delivery_path
+
+        validated = validate_media_delivery_path(str(target))
+        if validated is None or Path(validated) != target:
+            raise HTTPException(status_code=403, detail="Media path is not allowed")
+
+    suffix = target.suffix.lower()
+    content_type = content_types.get(suffix)
+    if content_type is None:
+        raise HTTPException(status_code=415, detail="Unsupported media type")
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    return target, content_type, suffix in _VIDEO_MEDIA_CONTENT_TYPES
+
+
+def _open_media_file(
+    path: str,
+    request: Request,
+    *,
+    video_only: bool = False,
+) -> tuple[BinaryIO, Path, str, bool, int]:
+    """Open a validated media file once and bind checks to that handle."""
+    target, content_type, is_video = _resolve_media_path(
+        path,
+        request,
+        video_only=video_only,
+    )
+    try:
+        handle = target.open("rb")
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="File not found")
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="Media path is not allowed")
+    except OSError:
+        raise HTTPException(status_code=400, detail="Invalid path")
+
+    try:
+        opened_stat = os.fstat(handle.fileno())
+        if not stat.S_ISREG(opened_stat.st_mode):
+            raise HTTPException(status_code=404, detail="File not found")
+        if opened_stat.st_nlink > 1:
+            raise HTTPException(status_code=403, detail="Hard-linked media is not allowed")
+
+        # The canonical path must still identify the same file we opened. This
+        # catches a symlink/junction or rename swap between policy validation
+        # and open while keeping the response bound to one file descriptor.
+        current = target.resolve(strict=True)
+        current_stat = current.stat()
+        if current != target or not os.path.samestat(opened_stat, current_stat):
+            raise HTTPException(status_code=403, detail="Media path changed")
+    except FileNotFoundError:
+        handle.close()
+        raise HTTPException(status_code=404, detail="File not found")
+    except HTTPException:
+        handle.close()
+        raise
+    except (OSError, RuntimeError, ValueError):
+        handle.close()
+        raise HTTPException(status_code=400, detail="Invalid path")
+
+    return handle, target, content_type, is_video, opened_stat.st_size
+
+
+def _parse_media_range(range_header: str, size: int) -> tuple[int, int, bool]:
+    """Parse one RFC 7233 byte range as ``(start, length, partial)``."""
+    if not range_header:
+        return 0, size, False
+
+    unit, separator, value = range_header.partition("=")
+    value = value.strip()
+    if unit.strip().lower() != "bytes" or not separator or not value or "," in value:
+        raise HTTPException(
+            status_code=416,
+            detail="Invalid range",
+            headers={"Content-Range": f"bytes */{size}", "Accept-Ranges": "bytes"},
+        )
+
+    start_text, dash, end_text = value.partition("-")
+    if (
+        not dash
+        or (
+            start_text
+            and (not start_text.isascii() or not start_text.isdecimal())
+        )
+        or (
+            end_text
+            and (not end_text.isascii() or not end_text.isdecimal())
+        )
+        or len(start_text) > 20
+        or len(end_text) > 20
+    ):
+        raise HTTPException(
+            status_code=416,
+            detail="Invalid range",
+            headers={"Content-Range": f"bytes */{size}", "Accept-Ranges": "bytes"},
+        )
+
+    if not start_text:
+        suffix_length = int(end_text or "0")
+        if suffix_length <= 0 or size <= 0:
+            raise HTTPException(
+                status_code=416,
+                detail="Range not satisfiable",
+                headers={"Content-Range": f"bytes */{size}", "Accept-Ranges": "bytes"},
+            )
+        length = min(suffix_length, size)
+        return size - length, length, True
+
+    start = int(start_text)
+    if start >= size:
+        raise HTTPException(
+            status_code=416,
+            detail="Range not satisfiable",
+            headers={"Content-Range": f"bytes */{size}", "Accept-Ranges": "bytes"},
+        )
+
+    end = size - 1 if not end_text else min(int(end_text), size - 1)
+    if end < start:
+        raise HTTPException(
+            status_code=416,
+            detail="Range not satisfiable",
+            headers={"Content-Range": f"bytes */{size}", "Accept-Ranges": "bytes"},
+        )
+    return start, end - start + 1, True
+
+
+def _iter_media_file(handle: BinaryIO, start: int, length: int) -> Iterator[bytes]:
+    """Yield exactly the selected bytes and always close the open handle."""
+    try:
+        handle.seek(start)
+        remaining = length
+        while remaining > 0:
+            chunk = handle.read(min(_VIDEO_MEDIA_STREAM_CHUNK_BYTES, remaining))
+            if not chunk:
+                break
+            remaining -= len(chunk)
+            yield chunk
+    finally:
+        handle.close()
+
+
+class _ClosingStreamingResponse(StreamingResponse):
+    """Close a bound file even when Starlette aborts on client disconnect."""
+
+    def __init__(self, *args: Any, close_handle: BinaryIO, **kwargs: Any) -> None:
+        self._close_handle = close_handle
+        super().__init__(*args, **kwargs)
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            self._close_handle.close()
+
+
 @app.get("/api/media")
-async def get_media(path: str):
-    """Return a gateway-local image file as a base64 data URL.
+async def get_media(request: Request, path: str):
+    """Return a gateway-local image or video file as a base64 data URL.
 
     Lets remote clients (the desktop app over the network, or the web dashboard
-    in a browser) display images the agent wrote to *this* machine's filesystem
+    in a browser) display media the agent wrote to *this* machine's filesystem
     — they can't read the gateway's local disk directly.
 
     Auth-gated by the session token like every other /api route. Restricted to
-    an image-extension allowlist, a size cap, AND the gateway's own media roots
-    (resolved, symlink-safe) so it can't be used to read arbitrary files.
+    a media-extension allowlist, type-specific size caps, AND the gateway's own
+    media roots or the shared gateway media-delivery policy (both resolved and
+    symlink-safe) so it can't read denied files.
     """
-    try:
-        target = Path(path).expanduser().resolve()
-    except (OSError, RuntimeError):
-        raise HTTPException(status_code=400, detail="Invalid path")
-
-    if target.suffix.lower() not in _MEDIA_CONTENT_TYPES:
-        raise HTTPException(status_code=415, detail="Unsupported media type")
-
-    roots = _media_serve_roots()
-    if not any(target == root or root in target.parents for root in roots):
-        raise HTTPException(status_code=403, detail="Path outside media roots")
-
-    if not target.is_file():
-        raise HTTPException(status_code=404, detail="File not found")
-    if target.stat().st_size > _MEDIA_MAX_BYTES:
+    handle, _target, content_type, is_video, size = _open_media_file(path, request)
+    max_bytes = (
+        _VIDEO_MEDIA_MAX_BYTES
+        if is_video
+        else _IMAGE_MEDIA_MAX_BYTES
+    )
+    with handle:
+        if size > max_bytes:
+            raise HTTPException(status_code=413, detail="File too large")
+        payload = handle.read(max_bytes + 1)
+    if len(payload) > max_bytes:
         raise HTTPException(status_code=413, detail="File too large")
 
-    encoded = base64.b64encode(target.read_bytes()).decode("ascii")
-    return {"data_url": f"data:{_MEDIA_CONTENT_TYPES[target.suffix.lower()]};base64,{encoded}"}
+    encoded = base64.b64encode(payload).decode("ascii")
+    return {"data_url": f"data:{content_type};base64,{encoded}"}
+
+
+@app.get("/api/media/file")
+async def stream_media_file(request: Request, path: str):
+    """Stream a gateway-local video with bounded, single-range support."""
+    handle, target, content_type, _is_video, size = _open_media_file(
+        path,
+        request,
+        video_only=True,
+    )
+    try:
+        if size > _VIDEO_MEDIA_STREAM_MAX_BYTES:
+            raise HTTPException(status_code=413, detail="File too large")
+
+        start, length, partial = _parse_media_range(
+            request.headers.get("range", ""),
+            size,
+        )
+
+        end = start + length - 1
+        quoted_name = urllib.parse.quote(target.name)
+        headers = {
+            "Accept-Ranges": "bytes",
+            "Cache-Control": "private, no-store",
+            "Content-Disposition": f"inline; filename*=utf-8''{quoted_name}",
+            "Content-Length": str(length),
+        }
+        if partial:
+            headers["Content-Range"] = f"bytes {start}-{end}/{size}"
+
+        return _ClosingStreamingResponse(
+            _iter_media_file(handle, start, length),
+            close_handle=handle,
+            status_code=206 if partial else 200,
+            media_type=content_type,
+            headers=headers,
+        )
+    except BaseException:
+        handle.close()
+        raise
 
 
 def _canonical_path(path: Path, *, require_exists: bool = False) -> Path:
@@ -2007,10 +2361,19 @@ def _path_text(raw_path: str | None) -> str:
 def _local_dashboard_request(request: Request) -> bool:
     if getattr(request.app.state, "auth_required", False):
         return False
+    # A reverse proxy commonly makes the TCP peer look loopback-local. External
+    # media expansion is a desktop-only privilege, so never grant it to a
+    # forwarded request even when both the rewritten Host and peer are local.
+    forwarded_headers = ("forwarded", "x-forwarded-for", "x-real-ip")
+    headers = getattr(request, "headers", {})
+    if any(headers.get(name, "").strip() for name in forwarded_headers):
+        return False
     host = (request.url.hostname or "").lower()
     client_host = (request.client.host if request.client else "").lower()
-    local_hosts = {"", "localhost", "127.0.0.1", "::1", "testserver", "testclient"}
-    return host in local_hosts or client_host in local_hosts
+    if not host or not client_host:
+        return False
+    local_hosts = {"localhost", "127.0.0.1", "::1", "testserver", "testclient"}
+    return host in local_hosts and client_host in local_hosts
 
 
 def _default_hermes_root_is_opt_data() -> bool:

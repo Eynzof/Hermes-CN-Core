@@ -20,6 +20,10 @@
 <tr><td><b>本地与原生 Windows 友好</b></td><td>包含 PowerShell 安装器和桌面分发链路需要的 runtime 打包逻辑。</td></tr>
 <tr><td><b>真正可用的终端界面</b></td><td>完整 TUI，支持多行编辑、斜杠命令补全、会话历史、中断重定向和流式工具输出。</td></tr>
 <tr><td><b>能出现在你常用的平台里</b></td><td>Telegram、Discord、Slack、WhatsApp、Signal、Email 和 CLI 都可以通过同一个 gateway process 接入。</td></tr>
+<tr><td><b>闭环学习</b></td><td>智能体维护记忆并定期回顾；复杂任务后自动创建新技能，技能在使用中自我改进。FTS5 会话搜索配合 LLM 摘要实现跨会话回忆，支持 <a href="https://github.com/plastic-labs/honcho">Honcho</a> 对话式用户建模，兼容 <a href="https://agentskills.io">agentskills.io</a> 开放标准。</td></tr>
+<tr><td><b>定时自动化</b></td><td>内置 cron 调度器，可投递到任意平台。日报、夜间备份、每周审计——全部用自然语言描述、无人值守运行。</td></tr>
+<tr><td><b>委派与并行</b></td><td>派生隔离的子代理并行处理工作流。编写 Python 脚本通过 RPC 调用工具，把多步流水线折叠为零上下文成本的调用。</td></tr>
+<tr><td><b>随处运行</b></td><td>七种终端后端——local、Docker、SSH、Singularity、Modal、Daytona 和 Vercel Sandbox。Daytona 和 Modal 提供无服务器持久化——你的智能体环境空闲时休眠、按需唤醒，几乎不产生空闲成本。可以跑在 $5 VPS 或 GPU 集群上。</td></tr>
 <tr><td><b>保留研究能力</b></td><td>继续保留 batch trajectory generation 和 trajectory compression，方便工具调用模型训练与研究。</td></tr>
 </table>
 

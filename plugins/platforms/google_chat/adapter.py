@@ -558,7 +558,7 @@ class _ThreadCountStore:
             self._counts = {}
             return
         try:
-            raw = self._path.read_text()
+            raw = self._path.read_text(encoding="utf-8")
             data = orjson.loads(raw) if raw.strip() else {}
         except orjson.JSONDecodeError as exc:
             logger.warning(
@@ -3693,7 +3693,7 @@ def register(ctx) -> None:
         required_env=[
             "GOOGLE_CHAT_SERVICE_ACCOUNT_JSON",
         ],
-        install_hint="pip install 'hermes-agent[google_chat]'",
+        install_hint="Run `hermes setup` to install Google Chat support.",
         setup_fn=interactive_setup,
         # Env-driven auto-configuration — the core env-populator hook calls
         # this during ``_apply_env_overrides`` and seeds

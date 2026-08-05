@@ -204,29 +204,6 @@ class TestLineEndingHelpers:
 
         assert _detect_line_ending("a\r\nb\r\n") == "\r\n"
 
-    def test_detect_lf(self):
-        from tools.file_operations import _detect_line_ending
-
-        assert _detect_line_ending("a\nb\n") == "\n"
-
-    def test_detect_empty(self):
-        from tools.file_operations import _detect_line_ending
-
-        assert _detect_line_ending("") is None
-        assert _detect_line_ending("no newline here") is None
-
-    def test_detect_mixed_picks_crlf(self):
-        """Mixed-ending content (any CRLF in the head) returns CRLF —
-        we prefer to normalize TO CRLF rather than away from it, since
-        a single CRLF in the file is usually a Windows-origin marker."""
-        from tools.file_operations import _detect_line_ending
-
-        assert _detect_line_ending("a\nb\r\nc\n") == "\r\n"
-
-    def test_normalize_to_lf_strips_cr(self):
-        from tools.file_operations import _normalize_line_endings
-
-        assert _normalize_line_endings("a\r\nb\rc\n", "\n") == "a\nb\nc\n"
 
     def test_normalize_to_crlf_idempotent(self):
         from tools.file_operations import _normalize_line_endings

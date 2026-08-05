@@ -13,7 +13,6 @@ the GUI.
 """
 
 import orjson
-import os
 
 from utils import env_var_enabled
 

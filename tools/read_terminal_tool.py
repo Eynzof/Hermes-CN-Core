@@ -9,7 +9,6 @@ over the platform-injected callback.
 """
 
 import orjson
-import os
 from typing import Callable, Optional
 
 from tools.registry import registry, tool_error

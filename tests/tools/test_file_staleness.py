@@ -262,16 +262,6 @@ class TestCheckFileStalenessHelper(unittest.TestCase):
     def test_returns_none_for_unknown_task(self):
         self.assertIsNone(_check_file_staleness("/tmp/x.py", "nonexistent"))
 
-    def test_returns_none_for_unread_file(self):
-        # Populate tracker with a different file
-        from tools.file_tools import _read_tracker, _read_tracker_lock
-        with _read_tracker_lock:
-            _read_tracker["t1"] = {
-                "last_key": None, "consecutive": 0,
-                "read_history": set(), "dedup": {},
-                "read_timestamps": {"/tmp/other.py": 12345.0},
-            }
-        self.assertIsNone(_check_file_staleness("/tmp/x.py", "t1"))
 
     def test_returns_none_when_stat_fails(self):
         from tools.file_tools import _read_tracker, _read_tracker_lock

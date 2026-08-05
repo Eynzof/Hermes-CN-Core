@@ -69,7 +69,7 @@ def refresh_token(token_data: dict) -> dict:
     ).isoformat()
 
     get_token_path().write_text(
-        orjson.dumps(_normalize_authorized_user_payload(token_data), option=orjson.OPT_INDENT_2).decode('utf-8')
+        orjson.dumps(_normalize_authorized_user_payload(token_data), option=orjson.OPT_INDENT_2).decode('utf-8'), encoding="utf-8"
     )
     return token_data
 
@@ -81,7 +81,7 @@ def get_valid_token() -> str:
         print("ERROR: No Google token found. Run setup.py --auth-url first.", file=sys.stderr)
         sys.exit(1)
 
-    token_data = orjson.loads(token_path.read_text())
+    token_data = orjson.loads(token_path.read_text(encoding="utf-8"))
 
     expiry = token_data.get("expiry", "")
     if expiry:

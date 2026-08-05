@@ -117,7 +117,7 @@ def record_nous_rate_limit(
         # Atomic write: write to temp file + rename
         fd, tmp_path = tempfile.mkstemp(dir=state_dir, suffix=".tmp")
         try:
-            with os.fdopen(fd, "w") as f:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
                 f.write(orjson.dumps(state).decode('utf-8'))
             atomic_replace(tmp_path, path)
         except Exception:

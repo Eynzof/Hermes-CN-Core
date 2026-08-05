@@ -8,11 +8,15 @@ of 4000+ models across 109+ providers.  Provides:
   (reasoning, tools, vision, PDF, audio), modalities, knowledge cutoff,
   open-weights flag, family grouping, deprecation status
 
-Data resolution order (like TypeScript OpenCode):
-  1. Bundled snapshot (ships with the package — offline-first)
-  2. Disk cache (~/.hermes/models_dev_cache.json)
-  3. Network fetch (https://models.dev/api.json)
-  4. Background refresh every 60 minutes
+Data resolution order:
+  1. In-memory cache (fresh, or stale served immediately while a single
+     background daemon thread refreshes)
+  2. Disk cache (~/.hermes/models_dev_cache.json — any age; stale data is
+     served rather than blocking callers on the network)
+  3. Network fetch (https://models.dev/api.json) — only when no cache
+     exists at all; failed refreshes back off for 5 minutes process-wide
+Latency-sensitive callers (gateway route-identity checks) pass
+``allow_network=False`` and never touch the network.
 
 Other modules should import the dataclasses and query functions from here
 rather than parsing the raw JSON themselves.
@@ -194,6 +198,7 @@ PROVIDER_TO_MODELS_DEV: Dict[str, str] = {
     "alibaba": "alibaba",
     "qwen-oauth": "alibaba",
     "copilot": "github-copilot",
+    "ai-gateway": "vercel",
     "opencode-zen": "opencode",
     "opencode-go": "opencode-go",
     "kilocode": "kilo",
@@ -841,7 +846,9 @@ def _parse_provider_info(provider_id: str, raw: Dict[str, Any]) -> ProviderInfo:
 # Provider-level queries
 # ---------------------------------------------------------------------------
 
-def get_provider_info(provider_id: str) -> Optional[ProviderInfo]:
+def get_provider_info(
+    provider_id: str, *, allow_network: bool = True
+) -> Optional[ProviderInfo]:
     """Get full provider metadata from models.dev.
 
     Accepts either a Hermes provider ID (e.g. "kilocode") or a models.dev
@@ -850,7 +857,14 @@ def get_provider_info(provider_id: str) -> Optional[ProviderInfo]:
     # Resolve Hermes ID → models.dev ID
     mdev_id = PROVIDER_TO_MODELS_DEV.get(provider_id, provider_id)
 
-    data = fetch_models_dev()
+    # NOTE: keep the zero-argument call on the default path. Dozens of test
+    # sites monkeypatch fetch_models_dev with zero-arg lambdas; passing the
+    # kwarg unconditionally would break them all (they raise TypeError).
+    data = (
+        fetch_models_dev()
+        if allow_network
+        else fetch_models_dev(allow_network=False)
+    )
     raw = data.get(mdev_id)
     if not isinstance(raw, dict):
         return None

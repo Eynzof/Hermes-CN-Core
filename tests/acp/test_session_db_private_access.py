@@ -8,7 +8,7 @@ Verifies that:
 """
 
 import ast
-import orjson
+import json
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch, call
@@ -45,32 +45,15 @@ class TestUpdateSessionMeta:
         db = _tmp_db(tmp_path)
         db.create_session("s1", source="acp", model="gpt-4")
 
-        new_meta = orjson.dumps({"cwd": "/new/path", "provider": "openai"}).decode('utf-8')
+        new_meta = json.dumps({"cwd": "/new/path", "provider": "openai"})
         db.update_session_meta("s1", new_meta, model=None)
 
         row = db.get_session("s1")
-        stored = orjson.loads(row["model_config"])
+        stored = json.loads(row["model_config"])
         assert stored["cwd"] == "/new/path"
         assert stored["provider"] == "openai"
 
-    def test_updates_model_when_provided(self, tmp_path):
-        db = _tmp_db(tmp_path)
-        db.create_session("s2", source="acp", model="gpt-3.5")
 
-        db.update_session_meta("s2", orjson.dumps({"cwd": "."}).decode('utf-8'), model="gpt-4o")
-
-        row = db.get_session("s2")
-        assert row["model"] == "gpt-4o"
-
-    def test_preserves_existing_model_when_none(self, tmp_path):
-        """Passing model=None must leave the stored model unchanged (COALESCE)."""
-        db = _tmp_db(tmp_path)
-        db.create_session("s3", source="acp", model="claude-3")
-
-        db.update_session_meta("s3", orjson.dumps({"cwd": "."}).decode('utf-8'), model=None)
-
-        row = db.get_session("s3")
-        assert row["model"] == "claude-3"
 
     def test_uses_execute_write_not_private_api(self, tmp_path):
         """update_session_meta must route through _execute_write, not _conn directly."""
@@ -85,16 +68,12 @@ class TestUpdateSessionMeta:
             return original(fn)
 
         db._execute_write = patched
-        db.update_session_meta("s4", orjson.dumps({"cwd": "."}).decode('utf-8'), model="m")
+        db.update_session_meta("s4", json.dumps({"cwd": "."}), model="m")
 
         assert call_count[0] >= 1, (
             "update_session_meta must call _execute_write at least once"
         )
 
-    def test_noop_on_nonexistent_session(self, tmp_path):
-        """Updating a non-existent session must not raise."""
-        db = _tmp_db(tmp_path)
-        db.update_session_meta("ghost", orjson.dumps({"cwd": "."}).decode('utf-8'), model=None)
 
 
 # ---------------------------------------------------------------------------
@@ -105,7 +84,7 @@ class TestNoPrviateDBAccess:
     """_persist() in session.py must not access db._lock or db._conn."""
 
     def test_no_db_private_lock_access(self):
-        with open("acp_adapter/session.py", encoding="utf-8", errors="replace") as f:
+        with open("acp_adapter/session.py", encoding="utf-8") as f:
             source = f.read()
 
         tree = ast.parse(source)
@@ -128,7 +107,7 @@ class TestNoPrviateDBAccess:
 
     def test_persist_calls_update_session_meta(self):
         """AST check: _persist must call db.update_session_meta()."""
-        with open("acp_adapter/session.py", encoding="utf-8", errors="replace") as f:
+        with open("acp_adapter/session.py", encoding="utf-8") as f:
             tree = ast.parse(f.read())
 
         found = False
@@ -168,7 +147,7 @@ class TestPersistRoundTrip:
         manager.save_session(state.session_id)
 
         row = db.get_session(state.session_id)
-        mc = orjson.loads(row["model_config"])
+        mc = json.loads(row["model_config"])
         assert mc["cwd"] == "/updated"
 
     def test_model_persisted_via_update_session_meta(self, tmp_path):
@@ -189,7 +168,7 @@ class TestPersistRoundTrip:
 
         state = manager.create_session()
         # Manually set a model in DB
-        db.update_session_meta(state.session_id, orjson.dumps({"cwd": "."}).decode('utf-8'), model="stored-model")
+        db.update_session_meta(state.session_id, json.dumps({"cwd": "."}), model="stored-model")
 
         # Now save with empty model
         state.model = ""

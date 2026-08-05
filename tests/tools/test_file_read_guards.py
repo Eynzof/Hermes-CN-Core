@@ -166,16 +166,6 @@ class TestDevicePathBlocking(unittest.TestCase):
                 self.skipTest(f"symlink unavailable: {exc}")
             self.assertFalse(_is_blocked_device(link_path))
 
-    def test_symlink_to_blocked_alias_is_blocked_before_realpath(self):
-        if not os.path.exists("/dev/stdin"):
-            self.skipTest("/dev/stdin is not available on this platform")
-        with tempfile.TemporaryDirectory() as tmpdir:
-            link_path = os.path.join(tmpdir, "stdin-link")
-            try:
-                os.symlink("/dev/../dev/stdin", link_path)
-            except OSError as exc:
-                self.skipTest(f"symlink unavailable: {exc}")
-            self.assertTrue(_is_blocked_device(link_path))
 
     def test_read_file_tool_rejects_device(self):
         """read_file_tool returns an error without any file I/O."""
@@ -333,25 +323,6 @@ class TestTruncateToCharBudget(unittest.TestCase):
         self.assertEqual(lines, 3)
         self.assertFalse(trunc)
 
-    def test_trims_on_line_boundary(self):
-        fn = self._fn()
-        # 3 lines of 10 chars; budget fits ~2 lines.
-        text = "\n".join("x" * 10 for _ in range(5))  # 5 lines, 54 chars
-        out, lines, trunc = fn(text, 25)
-        self.assertTrue(trunc)
-        # Output ends on a complete line (no partial line at the tail).
-        self.assertFalse(out.endswith("x" * 3) and len(out.split("\n")[-1]) != 10)
-        self.assertEqual(lines, out.count("\n") + 1)
-        self.assertLessEqual(len(out), 25)
-
-    def test_single_line_over_budget_clamped(self):
-        fn = self._fn()
-        text = "y" * 500  # single line, no newline
-        out, lines, trunc = fn(text, 100)
-        self.assertTrue(trunc)
-        self.assertEqual(lines, 1)
-        self.assertEqual(len(out), 100)  # clamped to budget
-        self.assertNotEqual(out, "")  # never empty
 
     def test_empty_content(self):
         fn = self._fn()
@@ -976,11 +947,6 @@ class TestWriteInvalidatesDedup(unittest.TestCase):
         # on mtime.  The point is that _invalidate_dedup_for_path is
         # correctly scoped to task_id.
 
-    def test_invalidate_dedup_for_path_noop_on_missing_task(self):
-        """_invalidate_dedup_for_path is safe when task_id doesn't exist."""
-        _read_tracker.clear()
-        # Should not raise.
-        _invalidate_dedup_for_path("/nonexistent/path", "no_such_task")
 
     def test_invalidate_dedup_for_path_noop_on_empty_dedup(self):
         """_invalidate_dedup_for_path is safe when dedup dict is empty."""

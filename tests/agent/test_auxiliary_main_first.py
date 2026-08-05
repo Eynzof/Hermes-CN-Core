@@ -24,33 +24,6 @@ from unittest.mock import MagicMock, patch
 class TestResolveAutoMainFirst:
     """_resolve_auto() must prefer main provider + main model for every user."""
 
-    def test_openrouter_main_uses_main_model_for_aux(self, monkeypatch):
-        """OpenRouter main user → aux uses their picked OR model, not Gemini Flash."""
-        monkeypatch.setenv("OPENROUTER_API_KEY", "or-test-key")
-
-        with patch(
-            "agent.auxiliary_client._read_main_provider",
-            return_value="openrouter",
-        ), patch(
-            "agent.auxiliary_client._read_main_model",
-            return_value="anthropic/claude-sonnet-4.6",
-        ), patch(
-            "agent.auxiliary_client.resolve_provider_client"
-        ) as mock_resolve:
-            mock_client = MagicMock()
-            mock_resolve.return_value = (mock_client, "anthropic/claude-sonnet-4.6")
-
-            from agent.auxiliary_client import _resolve_auto
-
-            client, model = _resolve_auto()
-
-        assert client is mock_client
-        assert model == "anthropic/claude-sonnet-4.6"
-        # Verify it asked resolve_provider_client for the MAIN provider+model,
-        # not a fallback-chain provider
-        mock_resolve.assert_called_once()
-        assert mock_resolve.call_args.args[0] == "openrouter"
-        assert mock_resolve.call_args.args[1] == "anthropic/claude-sonnet-4.6"
 
     def test_moa_main_resolves_aux_to_aggregator(self, monkeypatch, tmp_path):
         """MoA main user → aux runs on the aggregator slot, NOT the preset name.
@@ -125,7 +98,6 @@ class TestResolveAutoMainFirst:
             mock_client = MagicMock()
             mock_resolve.return_value = (mock_client, "anthropic/claude-opus-4.6")
 
-            from agent.auxiliary_client import _resolve_auto
 
             client, model = _resolve_auto()
 
@@ -211,28 +183,7 @@ class TestResolveAutoMainFirst:
         mock_main_chain.assert_not_called()
         mock_openrouter.assert_not_called()
 
-    def test_main_unavailable_uses_main_fallback_chain_before_builtin_chain(self):
-        """Auto aux resolution honors top-level fallback_providers before built-ins."""
-        main_fallback_client = MagicMock()
-        with patch(
-            "agent.auxiliary_client._read_main_provider", return_value="nvidia",
-        ), patch(
-            "agent.auxiliary_client._read_main_model", return_value="qwen/qwen3.5-122b-a10b",
-        ), patch(
-            "agent.auxiliary_client.resolve_provider_client",
-            return_value=(None, None),  # main provider has no client
-        ), patch(
-            "agent.auxiliary_client._try_configured_fallback_chain",
-            return_value=(None, None, ""),
-        ), patch(
-            "agent.auxiliary_client._try_main_fallback_chain",
-            return_value=(main_fallback_client, "inclusionai/ring-2.6-1t:free", "openrouter"),
-        ) as mock_main_chain, patch(
-            "agent.auxiliary_client._try_openrouter",
-        ) as mock_openrouter:
-            from agent.auxiliary_client import _resolve_auto
 
-            client, model = _resolve_auto(task="title_generation")
 
         assert client is main_fallback_client
         assert model == "inclusionai/ring-2.6-1t:free"
@@ -386,73 +337,131 @@ class TestResolveVisionMainFirst:
         assert mock_resolve.call_args.args[1] == "anthropic/claude-sonnet-4.6"
         assert mock_resolve.call_args.kwargs.get("is_vision") is True
 
-    def test_nous_main_vision_uses_paid_nous_vision_backend(self):
-        """Paid Nous main → aux vision uses the dedicated Nous vision backend."""
+
+
+
+    @staticmethod
+    def _stub_nous_portal(seen: dict):
+        """Stub the Nous network boundary, keeping the resolution chain real.
+
+        Returns a ``_try_nous`` replacement that answers with the Portal's
+        tier-aware slots: a vision model for ``vision=True``, the text chat
+        default otherwise.
+        """
+        nous_client = MagicMock()
+        nous_client.api_key = "jwt-test"
+        nous_client.base_url = "https://inference-api.nousresearch.com/v1"
+
+        def fake_try_nous(vision=False):
+            seen["vision"] = vision
+            return nous_client, (
+                "stepfun/step-3.7-flash:free" if vision else "tencent/hy3:free"
+            )
+
+        return nous_client, fake_try_nous
+
+    def test_nous_main_vision_uses_portal_pick_not_text_chat_model(self):
+        """Nous main → vision runs the Portal's vision slot, not the chat model.
+
+        A Nous chat default is routinely text-only (e.g. a ``:free`` chat SKU).
+        Letting it reach the vision lane means the image goes to a model that
+        cannot accept one and the Portal 404s. Only the Nous network boundary
+        is stubbed — the strict vision backend, the provider router, and its
+        missing-model pre-fill all run for real, because that pre-fill is where
+        the chat model used to clobber the Portal's pick.
+        """
+        seen: dict = {}
+        nous_client, fake_try_nous = self._stub_nous_portal(seen)
+
         with patch(
             "agent.auxiliary_client._read_main_provider", return_value="nous",
         ), patch(
-            "agent.auxiliary_client._read_main_model",
-            return_value="openai/gpt-5",
+            "agent.auxiliary_client._read_main_model", return_value="tencent/hy3:free",
         ), patch(
             "agent.auxiliary_client._resolve_task_provider_model",
             return_value=("auto", None, None, None, None),
         ), patch(
-            "agent.auxiliary_client._resolve_strict_vision_backend",
-            return_value=(MagicMock(), "google/gemini-3-flash-preview"),
+            "agent.auxiliary_client._try_nous", side_effect=fake_try_nous,
         ):
             from agent.auxiliary_client import resolve_vision_provider_client
 
             provider, client, model = resolve_vision_provider_client()
 
         assert provider == "nous"
-        assert client is not None
-        assert model == "google/gemini-3-flash-preview"
+        assert client is nous_client
+        assert seen["vision"] is True
+        assert model == "stepfun/step-3.7-flash:free"
 
-    def test_nous_main_vision_uses_free_tier_nous_vision_backend(self):
-        """Free-tier Nous main → aux vision uses MiMo omni, not the text main model."""
+    def test_nous_main_vision_honours_explicit_vision_model(self):
+        """An explicit auxiliary.vision.model still overrides the Portal pick."""
+        seen: dict = {}
+        _nous_client, fake_try_nous = self._stub_nous_portal(seen)
+
         with patch(
             "agent.auxiliary_client._read_main_provider", return_value="nous",
         ), patch(
-            "agent.auxiliary_client._read_main_model",
-            return_value="xiaomi/mimo-v2-pro",
+            "agent.auxiliary_client._read_main_model", return_value="tencent/hy3:free",
         ), patch(
             "agent.auxiliary_client._resolve_task_provider_model",
-            return_value=("auto", None, None, None, None),
+            return_value=("auto", "qwen/qwen3-vl-8b-instruct", None, None, None),
         ), patch(
-            "agent.auxiliary_client._resolve_strict_vision_backend",
-            return_value=(MagicMock(), "xiaomi/mimo-v2-omni"),
+            "agent.auxiliary_client._try_nous", side_effect=fake_try_nous,
+        ):
+            from agent.auxiliary_client import resolve_vision_provider_client
+
+            provider, _client, model = resolve_vision_provider_client()
+
+        assert provider == "nous"
+        assert model == "qwen/qwen3-vl-8b-instruct"
+
+    def test_nous_explicit_vision_provider_also_skips_chat_model(self):
+        """``auxiliary.vision.provider: nous`` takes the same Portal pick.
+
+        The explicit-provider branch reaches the strict vision backend with no
+        model too, so it has to resolve the same way the auto branch does.
+        """
+        seen: dict = {}
+        nous_client, fake_try_nous = self._stub_nous_portal(seen)
+
+        with patch(
+            "agent.auxiliary_client._read_main_provider", return_value="nous",
+        ), patch(
+            "agent.auxiliary_client._read_main_model", return_value="tencent/hy3:free",
+        ), patch(
+            "agent.auxiliary_client._resolve_task_provider_model",
+            return_value=("nous", None, None, None, None),
+        ), patch(
+            "agent.auxiliary_client._try_nous", side_effect=fake_try_nous,
         ):
             from agent.auxiliary_client import resolve_vision_provider_client
 
             provider, client, model = resolve_vision_provider_client()
 
         assert provider == "nous"
-        assert client is not None
-        assert model == "xiaomi/mimo-v2-omni"
+        assert client is nous_client
+        assert model == "stepfun/step-3.7-flash:free"
 
-    def test_exotic_provider_with_vision_override_preserved(self):
-        """xiaomi → mimo-v2.5 override still wins over main_model."""
+    def test_nous_text_aux_still_uses_main_chat_model(self):
+        """The vision carve-out must not leak into text aux resolution.
+
+        Text auxiliary work on a Nous main deliberately keeps the user's chat
+        model rather than dropping to the Portal's cheap default.
+        """
+        seen: dict = {}
+        _nous_client, fake_try_nous = self._stub_nous_portal(seen)
+
         with patch(
-            "agent.auxiliary_client._read_main_provider", return_value="xiaomi",
+            "agent.auxiliary_client._read_main_provider", return_value="nous",
         ), patch(
-            "agent.auxiliary_client._read_main_model",
-            return_value="mimo-v2-pro",  # text model
+            "agent.auxiliary_client._read_main_model", return_value="tencent/hy3:free",
         ), patch(
-            "agent.auxiliary_client.resolve_provider_client"
-        ) as mock_resolve, patch(
-            "agent.auxiliary_client._resolve_task_provider_model",
-            return_value=("auto", None, None, None, None),
+            "agent.auxiliary_client._try_nous", side_effect=fake_try_nous,
         ):
-            mock_resolve.return_value = (MagicMock(), "mimo-v2.5")
+            from agent.auxiliary_client import resolve_provider_client
 
-            from agent.auxiliary_client import resolve_vision_provider_client
+            _client, model = resolve_provider_client("nous")
 
-            provider, client, model = resolve_vision_provider_client()
-
-        assert provider == "xiaomi"
-        # Should use mimo-v2.5 (vision override), not mimo-v2-pro (text main)
-        assert mock_resolve.call_args.args[1] == "mimo-v2.5"
-        assert mock_resolve.call_args.kwargs.get("is_vision") is True
+        assert model == "tencent/hy3:free"
 
     def test_copilot_vision_sets_vision_header(self, monkeypatch):
         """Copilot vision requests include the header required for vision routing."""

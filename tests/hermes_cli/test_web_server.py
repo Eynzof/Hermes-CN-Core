@@ -1,10 +1,12 @@
 """Tests for hermes_cli.web_server and related config utilities."""
 
 import asyncio
-import os
+import io
 import json
+import os
 import orjson
 import shutil
+import subprocess
 import sys
 import threading
 import time
@@ -36,6 +38,57 @@ from hermes_cli.config import (
 _EXAMPLE_PLUGIN_FIXTURE = (
     Path(__file__).resolve().parent.parent / "fixtures" / "plugins" / "example-dashboard"
 )
+
+
+def _create_test_directory_link(link: Path, target: Path) -> None:
+    """Create a symlink, or a Windows junction when symlinks need elevation."""
+    try:
+        link.symlink_to(target, target_is_directory=True)
+        return
+    except (NotImplementedError, OSError) as symlink_error:
+        if os.name != "nt":
+            pytest.skip(f"directory symlinks unavailable: {symlink_error}")
+
+    result = subprocess.run(
+        [
+            os.environ.get("COMSPEC", "cmd.exe"),
+            "/d",
+            "/c",
+            "mklink",
+            "/J",
+            str(link),
+            str(target),
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    if result.returncode != 0:
+        pytest.skip(f"directory links unavailable: {result.stderr.strip()}")
+
+
+def _remove_test_directory_link(link: Path) -> None:
+    """Remove a directory link itself without traversing its target."""
+    if link.is_symlink():
+        link.unlink()
+    elif link.exists():
+        link.rmdir()
+
+
+@pytest.fixture
+def _media_delivery_base(tmp_path, monkeypatch):
+    """Import the delivery policy with a stable, isolated platform home."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "AppData" / "Local"))
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+    from gateway.platforms import base
+
+    return base
 
 
 @pytest.fixture
@@ -953,11 +1006,274 @@ class TestWebServerEndpoints:
 
 
 
-    # ── GET /api/media (remote image display) ───────────────────────────
+    # ── GET /api/media (remote media display) ───────────────────────────
 
 
 
 
+    def test_get_media_serves_image_in_root(self):
+        """An image under the gateway's images dir is returned as a data URL."""
+        from hermes_constants import get_hermes_home
+
+        img_dir = get_hermes_home() / "images"
+        img_dir.mkdir(parents=True, exist_ok=True)
+        img = img_dir / "shot.png"
+        img.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 16)
+
+        resp = self.client.get("/api/media", params={"path": str(img)})
+        assert resp.status_code == 200
+        assert resp.json()["data_url"].startswith("data:image/png;base64,")
+
+    @pytest.mark.parametrize(
+        ("extension", "mime_type"),
+        [
+            (".mp4", "video/mp4"),
+            (".webm", "video/webm"),
+            (".mov", "video/quicktime"),
+            (".mkv", "video/x-matroska"),
+            (".avi", "video/x-msvideo"),
+            (".m4v", "video/x-m4v"),
+            (".mpeg", "video/mpeg"),
+            (".mpg", "video/mpeg"),
+            (".ogv", "video/ogg"),
+        ],
+    )
+    def test_get_media_serves_common_video_formats(self, extension, mime_type):
+        """Common video files under a media root are returned as data URLs."""
+        from hermes_constants import get_hermes_home
+
+        cache_dir = get_hermes_home() / "cache"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        video = cache_dir / f"clip{extension}"
+        video.write_bytes(b"video payload")
+
+        resp = self.client.get("/api/media", params={"path": str(video)})
+        assert resp.status_code == 200
+        assert resp.json()["data_url"].startswith(f"data:{mime_type};base64,")
+
+    def test_get_media_serves_safe_video_outside_roots_in_default_mode(
+        self, tmp_path, monkeypatch, _media_delivery_base
+    ):
+        """A normal Desktop-style path follows the default delivery policy."""
+        monkeypatch.setenv("HERMES_DESKTOP", "1")
+        monkeypatch.delenv("HERMES_MEDIA_DELIVERY_STRICT", raising=False)
+        desktop = tmp_path / "Desktop"
+        desktop.mkdir()
+        outside = desktop / "clip.mp4"
+        outside.write_bytes(b"video payload")
+
+        resp = self.client.get("/api/media", params={"path": str(outside)})
+        assert resp.status_code == 200
+        assert resp.json()["data_url"].startswith("data:video/mp4;base64,")
+
+    @pytest.mark.parametrize("target_exists", [False, True])
+    def test_get_media_rejects_external_directory_link_before_resolve(
+        self, target_exists, tmp_path, monkeypatch, _media_delivery_base
+    ):
+        monkeypatch.setenv("HERMES_DESKTOP", "1")
+        monkeypatch.delenv("HERMES_MEDIA_DELIVERY_STRICT", raising=False)
+        real_dir = tmp_path / "real-desktop-media"
+        real_dir.mkdir()
+        video = real_dir / "linked.mp4"
+        if target_exists:
+            video.write_bytes(b"video payload")
+        linked_dir = tmp_path / "linked-desktop-media"
+        _create_test_directory_link(linked_dir, real_dir)
+
+        try:
+            resp = self.client.get(
+                "/api/media",
+                params={"path": str(linked_dir / video.name)},
+            )
+            assert resp.status_code == 403
+        finally:
+            _remove_test_directory_link(linked_dir)
+
+    def test_get_media_rejects_path_blocked_by_delivery_policy(
+        self, tmp_path, monkeypatch, _media_delivery_base
+    ):
+        """An allowed extension does not bypass the shared path validator."""
+        monkeypatch.setenv("HERMES_DESKTOP", "1")
+        monkeypatch.delenv("HERMES_MEDIA_DELIVERY_STRICT", raising=False)
+        blocked_dir = tmp_path / "blocked"
+        blocked_dir.mkdir()
+        outside = blocked_dir / "secret.mp4"
+        outside.write_bytes(b"video payload")
+        monkeypatch.setattr(
+            _media_delivery_base,
+            "_MEDIA_DELIVERY_DENIED_PREFIXES",
+            (str(blocked_dir),),
+        )
+
+        resp = self.client.get("/api/media", params={"path": str(outside)})
+        assert resp.status_code == 403
+
+    def test_get_media_rejects_external_path_outside_desktop_mode(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.delenv("HERMES_DESKTOP", raising=False)
+        video = tmp_path / "external.mp4"
+        video.write_bytes(b"video payload")
+
+        resp = self.client.get("/api/media", params={"path": str(video)})
+        assert resp.status_code == 403
+
+    @pytest.mark.parametrize("exists", [False, True])
+    def test_get_media_external_rejection_does_not_reveal_existence(
+        self, exists, tmp_path, monkeypatch
+    ):
+        monkeypatch.delenv("HERMES_DESKTOP", raising=False)
+        video = tmp_path / "external-probe.mp4"
+        if exists:
+            video.write_bytes(b"video payload")
+
+        resp = self.client.get("/api/media", params={"path": str(video)})
+        assert resp.status_code == 403
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            r"\\server\share\clip.mp4",
+            r"\\?\C:\Windows\clip.mp4",
+            r"\??\C:\Windows\clip.mp4",
+        ],
+    )
+    def test_get_media_rejects_network_and_device_paths_before_access(self, path):
+        resp = self.client.get("/api/media", params={"path": path})
+        assert resp.status_code == 400
+
+    @pytest.mark.parametrize("use_canonical_path", [False, True])
+    @pytest.mark.parametrize("endpoint", ["/api/media", "/api/media/file"])
+    def test_get_media_allows_symlinked_hermes_home(
+        self, endpoint, use_canonical_path, tmp_path, monkeypatch
+    ):
+        real_home = tmp_path / "real-hermes-home"
+        real_home.mkdir()
+        linked_home = tmp_path / "linked-hermes-home"
+        _create_test_directory_link(linked_home, real_home)
+
+        try:
+            monkeypatch.setenv("HERMES_HOME", str(linked_home))
+            cache_dir = real_home / "cache"
+            cache_dir.mkdir()
+            video = cache_dir / "linked-home.mp4"
+            video.write_bytes(b"video payload")
+            requested = (
+                video if use_canonical_path else linked_home / "cache" / video.name
+            )
+
+            resp = self.client.get(endpoint, params={"path": str(requested)})
+            assert resp.status_code == 200
+            if endpoint == "/api/media":
+                assert resp.json()["data_url"].startswith("data:video/mp4;base64,")
+            else:
+                assert resp.content == b"video payload"
+        finally:
+            _remove_test_directory_link(linked_home)
+
+    @pytest.mark.parametrize("target_exists", [False, True])
+    def test_get_media_rejects_link_inside_media_root_before_resolve(
+        self, target_exists, tmp_path
+    ):
+        from hermes_constants import get_hermes_home
+
+        cache_dir = get_hermes_home() / "cache"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        outside = tmp_path / "outside-media-root"
+        outside.mkdir()
+        if target_exists:
+            (outside / "secret.mp4").write_bytes(b"sensitive payload")
+        redirect = cache_dir / "redirect"
+        _create_test_directory_link(redirect, outside)
+
+        try:
+            resp = self.client.get(
+                "/api/media",
+                params={"path": str(redirect / "secret.mp4")},
+            )
+            assert resp.status_code == 403
+        finally:
+            _remove_test_directory_link(redirect)
+
+    def test_media_link_check_rejects_windows_reparse_points(
+        self, tmp_path, monkeypatch
+    ):
+        from hermes_cli import web_server
+
+        fake_stat = SimpleNamespace(
+            st_mode=web_server.stat.S_IFDIR,
+            st_file_attributes=0x400,
+        )
+        monkeypatch.setattr(Path, "lstat", lambda _path: fake_stat)
+
+        with pytest.raises(web_server.HTTPException) as exc_info:
+            web_server._reject_media_link_components(
+                tmp_path / "junction" / "clip.mp4",
+                tmp_path,
+            )
+        assert exc_info.value.status_code == 403
+
+    def test_get_media_uses_independent_image_and_video_size_caps(self, monkeypatch):
+        from hermes_constants import get_hermes_home
+        from hermes_cli import web_server
+
+        cache_dir = get_hermes_home() / "cache"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        image = cache_dir / "large.png"
+        video = cache_dir / "clip.mp4"
+        image.write_bytes(b"12345")
+        video.write_bytes(b"12345")
+
+        monkeypatch.setattr(web_server, "_IMAGE_MEDIA_MAX_BYTES", 4)
+        monkeypatch.setattr(web_server, "_VIDEO_MEDIA_MAX_BYTES", 5)
+
+        image_resp = self.client.get("/api/media", params={"path": str(image)})
+        video_resp = self.client.get("/api/media", params={"path": str(video)})
+        assert image_resp.status_code == 413
+        assert video_resp.status_code == 200
+
+    def test_get_media_rejects_oversized_video(self, monkeypatch):
+        from hermes_constants import get_hermes_home
+        from hermes_cli import web_server
+
+        video_dir = get_hermes_home() / "images"
+        video_dir.mkdir(parents=True, exist_ok=True)
+        video = video_dir / "large.mp4"
+        video.write_bytes(b"12345")
+        monkeypatch.setattr(web_server, "_VIDEO_MEDIA_MAX_BYTES", 4)
+
+        resp = self.client.get("/api/media", params={"path": str(video)})
+        assert resp.status_code == 413
+
+    def test_get_media_bounds_read_when_file_grows_after_open(self, monkeypatch):
+        from hermes_cli import web_server
+
+        def fake_open(*_args, **_kwargs):
+            return io.BytesIO(b"12345"), Path("clip.mp4"), "video/mp4", True, 4
+
+        monkeypatch.setattr(web_server, "_open_media_file", fake_open)
+        monkeypatch.setattr(web_server, "_VIDEO_MEDIA_MAX_BYTES", 4)
+
+        resp = self.client.get("/api/media", params={"path": "C:\\clip.mp4"})
+        assert resp.status_code == 413
+
+    def test_get_media_rejects_unsupported_extension(self):
+        from hermes_constants import get_hermes_home
+
+        img_dir = get_hermes_home() / "images"
+        img_dir.mkdir(parents=True, exist_ok=True)
+        env = img_dir / "leak.env"
+        env.write_text("SECRET=1")
+
+        resp = self.client.get("/api/media", params={"path": str(env)})
+        assert resp.status_code == 415
+
+    def test_get_media_404_for_missing_file(self):
+        from hermes_constants import get_hermes_home
+
+        missing = get_hermes_home() / "images" / "nope.png"
+        resp = self.client.get("/api/media", params={"path": str(missing)})
+        assert resp.status_code == 404
 
     def test_get_media_requires_auth(self):
         from hermes_cli.web_server import _SESSION_HEADER_NAME
@@ -968,6 +1284,369 @@ class TestWebServerEndpoints:
             headers={_SESSION_HEADER_NAME: "wrong-token"},
         )
         assert resp.status_code == 401
+
+    def test_get_media_query_token_does_not_unlock_data_url_endpoint(self):
+        from starlette.testclient import TestClient
+
+        from hermes_constants import get_hermes_home
+        from hermes_cli.web_server import app, _SESSION_TOKEN
+
+        image_dir = get_hermes_home() / "images"
+        image_dir.mkdir(parents=True, exist_ok=True)
+        image = image_dir / "private.png"
+        image.write_bytes(b"image payload")
+
+        client = TestClient(app)
+        resp = client.get(
+            "/api/media",
+            params={"path": str(image), "token": _SESSION_TOKEN},
+        )
+        assert resp.status_code == 401
+
+    def test_stream_media_file_supports_query_token_and_inline_headers(self):
+        from starlette.testclient import TestClient
+
+        from hermes_constants import get_hermes_home
+        from hermes_cli.web_server import app, _SESSION_TOKEN
+
+        video_dir = get_hermes_home() / "images"
+        video_dir.mkdir(parents=True, exist_ok=True)
+        video = video_dir / "clip.mp4"
+        video.write_bytes(b"0123456789")
+
+        client = TestClient(app)
+        resp = client.get(
+            "/api/media/file",
+            params={"path": str(video), "token": _SESSION_TOKEN},
+        )
+
+        assert resp.status_code == 200
+        assert resp.content == b"0123456789"
+        assert resp.headers["content-type"] == "video/mp4"
+        assert resp.headers["accept-ranges"] == "bytes"
+        assert resp.headers["content-disposition"].startswith("inline;")
+        assert resp.headers["cache-control"] == "private, no-store"
+
+    def test_stream_media_file_supports_range_requests(self):
+        from starlette.testclient import TestClient
+
+        from hermes_constants import get_hermes_home
+        from hermes_cli.web_server import app, _SESSION_TOKEN
+
+        video_dir = get_hermes_home() / "cache"
+        video_dir.mkdir(parents=True, exist_ok=True)
+        video = video_dir / "range.webm"
+        video.write_bytes(b"0123456789")
+
+        client = TestClient(app)
+        resp = client.get(
+            "/api/media/file",
+            params={"path": str(video), "token": _SESSION_TOKEN},
+            headers={"Range": "bytes=2-5"},
+        )
+
+        assert resp.status_code == 206
+        assert resp.content == b"2345"
+        assert resp.headers["content-range"] == "bytes 2-5/10"
+        assert resp.headers["content-length"] == "4"
+
+    @pytest.mark.parametrize(
+        ("range_header", "content", "content_range"),
+        [
+            ("bytes=5-", b"56789", "bytes 5-9/10"),
+            ("bytes=-3", b"789", "bytes 7-9/10"),
+            ("bytes=8-20", b"89", "bytes 8-9/10"),
+        ],
+    )
+    def test_stream_media_file_supports_open_suffix_and_clamped_ranges(
+        self, range_header, content, content_range
+    ):
+        from hermes_constants import get_hermes_home
+
+        video_dir = get_hermes_home() / "cache"
+        video_dir.mkdir(parents=True, exist_ok=True)
+        video = video_dir / "range.mp4"
+        video.write_bytes(b"0123456789")
+
+        resp = self.client.get(
+            "/api/media/file",
+            params={"path": str(video)},
+            headers={"Range": range_header},
+        )
+
+        assert resp.status_code == 206
+        assert resp.content == content
+        assert resp.headers["content-range"] == content_range
+
+    @pytest.mark.parametrize(
+        "range_header",
+        [
+            "items=0-1",
+            "bytes=20-30",
+            "bytes=4-2",
+            "bytes=0-1,3-4",
+            "bytes=-0",
+            b"bytes=\xb2-",
+            b"bytes=-\xb2",
+            f"bytes={'9' * 5000}-",
+        ],
+    )
+    def test_stream_media_file_rejects_invalid_or_unsatisfiable_ranges(
+        self, range_header
+    ):
+        from hermes_constants import get_hermes_home
+
+        video_dir = get_hermes_home() / "cache"
+        video_dir.mkdir(parents=True, exist_ok=True)
+        video = video_dir / "range-invalid.mp4"
+        video.write_bytes(b"0123456789")
+
+        resp = self.client.get(
+            "/api/media/file",
+            params={"path": str(video)},
+            headers={"Range": range_header},
+        )
+
+        assert resp.status_code == 416
+        assert resp.headers["content-range"] == "bytes */10"
+        assert resp.headers["accept-ranges"] == "bytes"
+
+    def test_stream_media_file_rejects_wrong_query_token(self):
+        from starlette.testclient import TestClient
+
+        from hermes_constants import get_hermes_home
+        from hermes_cli.web_server import app
+
+        video_dir = get_hermes_home() / "images"
+        video_dir.mkdir(parents=True, exist_ok=True)
+        video = video_dir / "private.mp4"
+        video.write_bytes(b"private video")
+
+        client = TestClient(app)
+        resp = client.get(
+            "/api/media/file",
+            params={"path": str(video), "token": "wrong-token"},
+        )
+        assert resp.status_code == 401
+
+    def test_stream_media_file_rejects_non_video(self):
+        from hermes_constants import get_hermes_home
+
+        image_dir = get_hermes_home() / "images"
+        image_dir.mkdir(parents=True, exist_ok=True)
+        image = image_dir / "still.png"
+        image.write_bytes(b"image payload")
+
+        resp = self.client.get("/api/media/file", params={"path": str(image)})
+        assert resp.status_code == 415
+
+    def test_stream_media_file_rejects_path_blocked_by_delivery_policy(
+        self, tmp_path, monkeypatch, _media_delivery_base
+    ):
+        monkeypatch.setenv("HERMES_DESKTOP", "1")
+        monkeypatch.delenv("HERMES_MEDIA_DELIVERY_STRICT", raising=False)
+        blocked_dir = tmp_path / "blocked-stream"
+        blocked_dir.mkdir()
+        video = blocked_dir / "secret.mp4"
+        video.write_bytes(b"video payload")
+        monkeypatch.setattr(
+            _media_delivery_base,
+            "_MEDIA_DELIVERY_DENIED_PREFIXES",
+            (str(blocked_dir),),
+        )
+
+        resp = self.client.get("/api/media/file", params={"path": str(video)})
+        assert resp.status_code == 403
+
+    @pytest.mark.parametrize("endpoint", ["/api/media", "/api/media/file"])
+    def test_media_rejects_external_path_for_nonlocal_request(
+        self, endpoint, tmp_path, monkeypatch
+    ):
+        from starlette.testclient import TestClient
+
+        from hermes_cli.web_server import (
+            app,
+            _SESSION_HEADER_NAME,
+            _SESSION_TOKEN,
+        )
+
+        monkeypatch.setenv("HERMES_DESKTOP", "1")
+        video = tmp_path / "remote.mp4"
+        video.write_bytes(b"video payload")
+
+        client = TestClient(app, client=("203.0.113.10", 50000))
+        client.headers[_SESSION_HEADER_NAME] = _SESSION_TOKEN
+        resp = client.get(endpoint, params={"path": str(video)})
+        assert resp.status_code == 403
+
+    def test_stream_media_file_enforces_stream_size_cap(self, monkeypatch):
+        from hermes_constants import get_hermes_home
+        from hermes_cli import web_server
+
+        video_dir = get_hermes_home() / "cache"
+        video_dir.mkdir(parents=True, exist_ok=True)
+        video = video_dir / "large-stream.mp4"
+        video.write_bytes(b"12345")
+        monkeypatch.setattr(web_server, "_VIDEO_MEDIA_STREAM_MAX_BYTES", 4)
+
+        resp = self.client.get("/api/media/file", params={"path": str(video)})
+        assert resp.status_code == 413
+
+    def test_stream_media_file_never_reads_past_opened_size(self, monkeypatch):
+        from hermes_cli import web_server
+
+        def fake_open(*_args, **_kwargs):
+            return io.BytesIO(b"012345"), Path("clip.mp4"), "video/mp4", True, 4
+
+        monkeypatch.setattr(web_server, "_open_media_file", fake_open)
+        monkeypatch.setattr(web_server, "_VIDEO_MEDIA_STREAM_MAX_BYTES", 4)
+
+        resp = self.client.get(
+            "/api/media/file",
+            params={"path": "C:\\clip.mp4"},
+        )
+        assert resp.status_code == 200
+        assert resp.content == b"0123"
+        assert resp.headers["content-length"] == "4"
+
+    def test_stream_media_file_closes_handle_when_range_parser_raises(
+        self, monkeypatch
+    ):
+        from hermes_cli import web_server
+
+        handle = io.BytesIO(b"0123")
+
+        def fake_open(*_args, **_kwargs):
+            return handle, Path("clip.mp4"), "video/mp4", True, 4
+
+        def fail_range_parse(*_args, **_kwargs):
+            raise ValueError("unexpected parser failure")
+
+        monkeypatch.setattr(web_server, "_open_media_file", fake_open)
+        monkeypatch.setattr(web_server, "_parse_media_range", fail_range_parse)
+        request = SimpleNamespace(headers={})
+
+        with pytest.raises(ValueError, match="unexpected parser failure"):
+            asyncio.run(web_server.stream_media_file(request, "C:\\clip.mp4"))
+        assert handle.closed
+
+    def test_stream_media_file_closes_handle_when_response_building_raises(
+        self, monkeypatch
+    ):
+        from hermes_cli import web_server
+
+        handle = io.BytesIO(b"0123")
+
+        def fake_open(*_args, **_kwargs):
+            return handle, Path("clip.mp4"), "video/mp4", True, 4
+
+        def fail_quote(*_args, **_kwargs):
+            raise ValueError("unexpected response failure")
+
+        monkeypatch.setattr(web_server, "_open_media_file", fake_open)
+        monkeypatch.setattr(web_server.urllib.parse, "quote", fail_quote)
+        request = SimpleNamespace(headers={})
+
+        with pytest.raises(ValueError, match="unexpected response failure"):
+            asyncio.run(web_server.stream_media_file(request, "C:\\clip.mp4"))
+        assert handle.closed
+
+    def test_open_media_file_rejects_changed_path(self, monkeypatch):
+        from hermes_constants import get_hermes_home
+
+        video_dir = get_hermes_home() / "cache"
+        video_dir.mkdir(parents=True, exist_ok=True)
+        video = video_dir / "changed.mp4"
+        video.write_bytes(b"video payload")
+        monkeypatch.setattr(os.path, "samestat", lambda *_args: False)
+
+        resp = self.client.get("/api/media/file", params={"path": str(video)})
+        assert resp.status_code == 403
+
+    def test_open_media_file_rejects_hard_links(self, tmp_path):
+        from hermes_constants import get_hermes_home
+
+        source = tmp_path / "credential-source"
+        source.write_bytes(b"sensitive payload")
+        video_dir = get_hermes_home() / "cache"
+        video_dir.mkdir(parents=True, exist_ok=True)
+        video = video_dir / "linked.mp4"
+        try:
+            os.link(source, video)
+        except OSError as exc:
+            pytest.skip(f"hard links unavailable: {exc}")
+
+        assert video.stat().st_nlink > 1
+        resp = self.client.get("/api/media/file", params={"path": str(video)})
+        assert resp.status_code == 403
+
+    def test_stream_media_file_closes_handle_on_client_disconnect(self):
+        from starlette.requests import ClientDisconnect
+
+        from hermes_cli import web_server
+
+        handle = io.BytesIO(b"0123")
+        response = web_server._ClosingStreamingResponse(
+            web_server._iter_media_file(handle, 0, 4),
+            close_handle=handle,
+            media_type="video/mp4",
+        )
+
+        async def receive():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        async def send(message):
+            if message["type"] == "http.response.body":
+                raise OSError("client disconnected")
+
+        scope = {"type": "http", "asgi": {"spec_version": "2.4"}}
+        with pytest.raises(ClientDisconnect):
+            asyncio.run(response(scope, receive, send))
+        assert handle.closed
+
+    def test_local_dashboard_request_requires_host_and_client(self, monkeypatch):
+        from hermes_cli import web_server
+
+        monkeypatch.setattr(web_server.app.state, "auth_required", False, raising=False)
+        request = SimpleNamespace(
+            app=web_server.app,
+            url=SimpleNamespace(hostname="localhost"),
+            client=None,
+        )
+        assert web_server._local_dashboard_request(request) is False
+
+    @pytest.mark.parametrize(
+        "header",
+        ["forwarded", "x-forwarded-for", "x-real-ip"],
+    )
+    def test_media_rejects_external_path_from_forwarded_request(
+        self, header, tmp_path, monkeypatch
+    ):
+        from hermes_constants import get_hermes_home
+
+        monkeypatch.setenv("HERMES_DESKTOP", "1")
+        video = tmp_path / "forwarded.mp4"
+        video.write_bytes(b"video payload")
+
+        resp = self.client.get(
+            "/api/media/file",
+            params={"path": str(video)},
+            headers={header: "203.0.113.10"},
+        )
+        assert resp.status_code == 403
+
+        # Trusted gateway-root media remains available through a proxy; only
+        # the desktop-only external path expansion is denied.
+        cache_dir = get_hermes_home() / "cache"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        trusted = cache_dir / "trusted.mp4"
+        trusted.write_bytes(b"trusted video")
+        trusted_resp = self.client.get(
+            "/api/media/file",
+            params={"path": str(trusted)},
+            headers={header: "203.0.113.10"},
+        )
+        assert trusted_resp.status_code == 200
 
     # ── POST /api/chat/image-upload (browser clipboard/drop images) ─────
 

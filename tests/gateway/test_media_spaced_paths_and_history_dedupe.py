@@ -87,6 +87,8 @@ class TestHistoryMediaDedupe:
         monkeypatch,
     ):
         monkeypatch.setenv("HOME", str(tmp_path))
+        # Windows: os.path.expanduser reads USERPROFILE, not HOME (P-048).
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
         history = [
             {
                 "role": "assistant",
@@ -96,7 +98,11 @@ class TestHistoryMediaDedupe:
 
         paths = _collect_history_media_paths(history)
 
-        assert str(tmp_path / "audio cache" / "old.ogg") in paths
+        # Delivery form mixes separators on Windows; compare normpath'd.
+        import os as _os
+        assert _os.path.normpath(str(tmp_path / "audio cache" / "old.ogg")) in {
+            _os.path.normpath(p) for p in paths
+        }
 
     def test_empty_history_empty_set(self):
         assert _collect_history_media_paths([]) == set()

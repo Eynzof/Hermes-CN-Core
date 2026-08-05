@@ -434,6 +434,7 @@ def _post_provision(
     ``{secret, deliveryKey, tenant, gatewayId, routeKeys}``. Raises RuntimeError
     with a user-facing message on any non-2xx / transport failure.
     """
+    import json
     import orjson
     import urllib.error
     import urllib.request

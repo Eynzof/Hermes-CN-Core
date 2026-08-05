@@ -22,6 +22,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import sys
 
 from tui_gateway import server
 
@@ -223,6 +224,7 @@ def test_leading_slash_matches_the_bare_form(tmp_path, monkeypatch):
     assert slashed == bare
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="no POSIX /etc filesystem on Windows")
 def test_leading_slash_prefers_a_real_absolute_path(tmp_path, monkeypatch):
     """When the absolute reading resolves, it wins — no silent rewrite.
 

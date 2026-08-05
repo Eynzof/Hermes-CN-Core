@@ -613,7 +613,7 @@ class _ThreadCountStore:
         try:
             self._path.parent.mkdir(parents=True, exist_ok=True)
             tmp = self._path.with_suffix(self._path.suffix + ".tmp")
-            tmp.write_text(orjson.dumps(self._counts).decode('utf-8'))
+            tmp.write_text(orjson.dumps(self._counts).decode('utf-8'), encoding='utf-8')
             os.replace(tmp, self._path)
         except OSError as exc:
             logger.warning(

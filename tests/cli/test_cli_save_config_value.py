@@ -111,7 +111,9 @@ def test_save_config_value_never_writes_into_source_tree(tmp_path, monkeypatch):
     from cli import save_config_value
 
     hermes_home = tmp_path / ".hermes"  # intentionally has no config.yaml
-    monkeypatch.setattr("cli._hermes_home", hermes_home)
+    # Merged save_config_value resolves HERMES_HOME live via get_hermes_home()
+    # (not the import-time _hermes_home constant), so patch the live resolver.
+    monkeypatch.setattr("cli.get_hermes_home", lambda: hermes_home)
 
     project_config = Path(cli.__file__).parent / "cli-config.yaml"
     project_pre_existed = project_config.exists()

@@ -1327,7 +1327,10 @@ class ShellFileOperations(FileOperations):
             try:
                 with open(abs_path, "rb") as fh:
                     data = fh.read(n)
-                return ExecuteResult(stdout=data.decode("utf-8", errors="replace"), exit_code=0)
+                # P-037: decode via the UTF-8 → ANSI-code-page → lossy chain so
+                # legacy (GBK/cp936) text is NOT mangled to U+FFFD and then
+                # misdetected as binary.
+                return ExecuteResult(stdout=_decode_file_bytes(data), exit_code=0)
             except OSError:
                 return ExecuteResult(stdout="", exit_code=1)
         return self._exec(f"head -c {int(n)} {self._escape_shell_arg(path)} 2>/dev/null")

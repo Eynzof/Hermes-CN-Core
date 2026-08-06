@@ -709,6 +709,133 @@ class TestWebServerEndpoints:
         assert provider_config["recall_budget"] == "high"
         assert "api_key" not in provider_config
 
+    def test_put_memory_provider_config_can_save_without_activation(self):
+        from hermes_cli.config import load_config, save_config
+
+        config = load_config()
+        config.setdefault("memory", {})["provider"] = ""
+        save_config(config)
+
+        resp = self.client.put(
+            "/api/memory/providers/hindsight/config",
+            json={
+                "values": {
+                    "mode": "local_external",
+                    "api_url": "http://localhost:8888",
+                    "bank_id": "hermes",
+                    "recall_budget": "mid",
+                },
+                "activate": False,
+            },
+        )
+
+        assert resp.status_code == 200
+        assert resp.json() == {"ok": True, "active": ""}
+        assert load_config()["memory"]["provider"] == ""
+
+        resp = self.client.put(
+            "/api/memory/providers/hindsight/config",
+            json={
+                "values": {
+                    "mode": "local_external",
+                    "api_url": "http://localhost:8888",
+                    "bank_id": "hermes",
+                    "recall_budget": "mid",
+                }
+            },
+        )
+
+        assert resp.status_code == 200
+        assert resp.json() == {"ok": True, "active": "hindsight"}
+        assert load_config()["memory"]["provider"] == "hindsight"
+
+    def test_saved_openviking_endpoint_becomes_ready_without_activation(self, monkeypatch):
+        monkeypatch.delenv("OPENVIKING_ENDPOINT", raising=False)
+
+        resp = self.client.put(
+            "/api/memory/providers/openviking/config",
+            json={
+                "values": {
+                    "endpoint": "http://127.0.0.1:1933",
+                    "account": "default",
+                    "user": "default",
+                    "agent": "hermes",
+                },
+                "activate": False,
+            },
+        )
+
+        assert resp.status_code == 200
+        providers = {
+            row["name"]: row
+            for row in self.client.get("/api/memory").json()["providers"]
+        }
+        assert providers["openviking"]["status"] == "ready"
+
+    def test_get_memory_provider_runtime_status_wraps_provider_snapshot(self, monkeypatch):
+        from hermes_cli import web_server
+        from hermes_cli.config import load_config, save_config
+
+        class StubProvider:
+            def get_runtime_status(self):
+                return {
+                    "configured": True,
+                    "reachable": True,
+                    "healthy": True,
+                    "endpoint": "http://127.0.0.1:1933",
+                    "console_url": "http://127.0.0.1:1933/studio",
+                    "version": "0.3.26",
+                    "error": "",
+                    "details": {"kind": "openviking", "memory_stats": {"total_memories": 4}},
+                }
+
+        config = load_config()
+        config.setdefault("memory", {})["provider"] = "openviking"
+        save_config(config)
+        monkeypatch.setattr(web_server, "_load_memory_provider", lambda name: StubProvider())
+
+        resp = self.client.get("/api/memory/providers/openviking/status")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["provider"] == "openviking"
+        assert data["active"] is True
+        assert data["healthy"] is True
+        assert data["details"]["kind"] == "openviking"
+        assert data["checked_at"].endswith("Z")
+
+    def test_get_unknown_memory_provider_runtime_status_returns_404(self):
+        resp = self.client.get("/api/memory/providers/nope/status")
+
+        assert resp.status_code == 404
+
+    def test_put_memory_provider_config_rejects_unsupported_select_value(self):
+        resp = self.client.put(
+            "/api/memory/providers/hindsight/config",
+            json={
+                "values": {
+                    "mode": "spaceship",
+                    "api_url": "http://localhost:8888",
+                    "bank_id": "hermes",
+                    "recall_budget": "mid",
+                }
+            },
+        )
+
+        assert resp.status_code == 400
+
+    def test_put_unknown_memory_provider_returns_404(self):
+        resp = self.client.put(
+            "/api/memory/providers/nope/config", json={"values": {}}
+        )
+
+        assert resp.status_code == 404
+
+    def test_get_unknown_memory_provider_returns_empty_schema(self):
+        resp = self.client.get("/api/memory/providers/builtin/config")
+
+        assert resp.status_code == 200
+        assert resp.json()["fields"] == []
 
     def test_get_memory_provider_config_does_not_return_secret(self):
         self.client.put(
@@ -966,6 +1093,251 @@ class TestWebServerEndpoints:
 
 
 
+    def test_search_dedupes_compression_lineage_to_tip(self):
+        """A conversation that auto-compresses leaves the matched term in both
+        the root segment and the continuation. Search must collapse them to a
+        single result keyed by the lineage root and pointing at the live tip,
+        so the sidebar stops showing the same chat several times."""
+        import time as _time
+
+        from hermes_state import SessionDB
+
+        db = SessionDB()
+        try:
+            db.create_session(session_id="search-root", source="cli")
+            db.append_message(session_id="search-root", role="user", content="distinctneedle in the root")
+            db.end_session("search-root", "compression")
+            now = _time.time()
+            db._conn.execute(
+                "UPDATE sessions SET started_at = ?, ended_at = ? WHERE id = ?",
+                (now - 100, now - 90, "search-root"),
+            )
+            db.create_session(session_id="search-tip", source="cli", parent_session_id="search-root")
+            db._conn.execute("UPDATE sessions SET started_at = ? WHERE id = ?", (now - 90, "search-tip"))
+            db.append_message(session_id="search-tip", role="user", content="distinctneedle again in the tip")
+            db._conn.commit()
+        finally:
+            db.close()
+
+        resp = self.client.get("/api/sessions/search?q=distinctneedle")
+        assert resp.status_code == 200
+        results = resp.json()["results"]
+
+        lineage_hits = [r for r in results if r.get("lineage_root") == "search-root"]
+        # One conversation -> exactly one result despite two FTS hits.
+        assert len(lineage_hits) == 1
+        hit = lineage_hits[0]
+        # Surfaced under the live tip so clicking resumes the current session.
+        assert hit["session_id"] == "search-tip"
+        assert hit["lineage_root"] == "search-root"
+
+    def test_search_keeps_branch_specific_hits_on_branch(self):
+        """Branch sessions share parent_session_id, but they are not compression
+        continuations. A query that only exists in the branch must open the
+        branch instead of being collapsed back to the parent/root."""
+        import time as _time
+
+        from hermes_state import SessionDB
+
+        db = SessionDB()
+        try:
+            now = _time.time()
+            db.create_session(session_id="branch-parent", source="cli")
+            db.append_message(session_id="branch-parent", role="user", content="ancestor context")
+            db.end_session("branch-parent", "branched")
+            db._conn.execute(
+                "UPDATE sessions SET started_at = ?, ended_at = ? WHERE id = ?",
+                (now - 100, now - 90, "branch-parent"),
+            )
+            db.create_session(session_id="branch-child", source="cli", parent_session_id="branch-parent")
+            db._conn.execute("UPDATE sessions SET started_at = ? WHERE id = ?", (now - 80, "branch-child"))
+            db.append_message(session_id="branch-child", role="user", content="branchspecificneedle only here")
+            db._conn.commit()
+        finally:
+            db.close()
+
+        resp = self.client.get("/api/sessions/search?q=branchspecificneedle")
+        assert resp.status_code == 200
+        results = resp.json()["results"]
+
+        assert any(
+            r["session_id"] == "branch-child" and r.get("lineage_root") == "branch-child"
+            for r in results
+        )
+
+    def test_get_session_messages_follows_compression_tip(self):
+        """Reading a compressed session by its old id should hydrate from the
+        live continuation, matching /resume behavior."""
+        import time as _time
+
+        from hermes_state import SessionDB
+
+        db = SessionDB()
+        try:
+            db.create_session(session_id="desktop-root", source="cli")
+            db.append_message(session_id="desktop-root", role="user", content="before compression")
+            db.end_session("desktop-root", "compression")
+            now = _time.time()
+            db._conn.execute(
+                "UPDATE sessions SET started_at = ?, ended_at = ? WHERE id = ?",
+                (now - 10, now - 5, "desktop-root"),
+            )
+            db.create_session(session_id="desktop-tip", source="cli", parent_session_id="desktop-root")
+            db._conn.execute("UPDATE sessions SET started_at = ? WHERE id = ?", (now - 4, "desktop-tip"))
+            db.replace_messages("desktop-root", [])
+            db.append_message(session_id="desktop-tip", role="user", content="after compression")
+            db._conn.commit()
+        finally:
+            db.close()
+
+        resp = self.client.get("/api/sessions/desktop-root/messages")
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert payload["session_id"] == "desktop-tip"
+        assert [m["content"] for m in payload["messages"]] == ["after compression"]
+
+    def test_get_session_messages_clamps_negative_pagination(self):
+        from hermes_state import SessionDB
+
+        db = SessionDB()
+        try:
+            db.create_session(session_id="negative-pagination", source="desktop")
+            db.append_message(session_id="negative-pagination", role="user", content="hidden")
+        finally:
+            db.close()
+
+        resp = self.client.get(
+            "/api/sessions/negative-pagination/messages?limit=-1&offset=-7"
+        )
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert payload["messages"] == []
+        assert payload["pagination"] == {"limit": 0, "offset": 0, "returned": 0}
+
+    def test_get_sessions_archived_is_boolean(self):
+        from hermes_state import SessionDB
+
+        db = SessionDB()
+        try:
+            db.create_session(session_id="bool-arch", source="cli")
+            db.append_message(session_id="bool-arch", role="user", content="hi")
+        finally:
+            db.close()
+
+        row = next(s for s in self.client.get("/api/sessions").json()["sessions"] if s["id"] == "bool-arch")
+        assert row["archived"] is False
+
+    def test_rename_response_omits_archived_when_not_set(self):
+        """Title-only PATCH keeps its legacy {ok, title} response shape."""
+        from hermes_state import SessionDB
+
+        db = SessionDB()
+        try:
+            db.create_session(session_id="title-only", source="cli")
+        finally:
+            db.close()
+
+        resp = self.client.patch("/api/sessions/title-only", json={"title": "Hi"})
+        assert resp.status_code == 200
+        assert "archived" not in resp.json()
+
+    def test_audio_transcription_endpoint(self, monkeypatch):
+        import tools.transcription_tools as transcription_tools
+
+        captured = {}
+
+        def fake_transcribe_audio(path):
+            captured["path"] = path
+            return {
+                "success": True,
+                "transcript": "hello from voice mode",
+                "provider": "test",
+            }
+
+        monkeypatch.setattr(transcription_tools, "transcribe_audio", fake_transcribe_audio)
+
+        resp = self.client.post(
+            "/api/audio/transcribe",
+            json={
+                "data_url": "data:audio/webm;base64,aGVsbG8=",
+                "mime_type": "audio/webm",
+            },
+        )
+
+        assert resp.status_code == 200
+        assert resp.json() == {
+            "ok": True,
+            "transcript": "hello from voice mode",
+            "provider": "test",
+        }
+        assert captured["path"].endswith(".webm")
+        assert not Path(captured["path"]).exists()
+
+    def test_audio_transcription_rejects_invalid_base64(self):
+        resp = self.client.post(
+            "/api/audio/transcribe",
+            json={
+                "data_url": "data:audio/webm;base64,not base64",
+                "mime_type": "audio/webm",
+            },
+        )
+
+        assert resp.status_code == 400
+        assert "base64" in resp.json()["detail"]
+
+    def test_desktop_audio_routes_registered(self):
+        """All three desktop voice endpoints must exist.
+
+        The renderer (apps/desktop) calls /api/audio/transcribe, /speak, and
+        /elevenlabs/voices. /speak + /voices were silently dropped in a merge
+        once; this guards the contract so a future merge can't lose them
+        without failing CI.
+        """
+        from hermes_cli.web_server import app
+
+        paths = {getattr(r, "path", None) for r in app.routes}
+        assert "/api/audio/transcribe" in paths
+        assert "/api/audio/speak" in paths
+        assert "/api/audio/elevenlabs/voices" in paths
+
+    def test_elevenlabs_voices_unavailable_without_key(self, monkeypatch):
+        import hermes_cli.web_server as web_server
+
+        monkeypatch.setattr(web_server, "load_env", lambda: {})
+        monkeypatch.delenv("ELEVENLABS_API_KEY", raising=False)
+
+        resp = self.client.get("/api/audio/elevenlabs/voices")
+        assert resp.status_code == 200
+        assert resp.json() == {"available": False, "voices": []}
+
+    def test_speak_text_returns_base64_data_url(self, monkeypatch, tmp_path):
+        import tools.tts_tool as tts_tool
+
+        audio_file = tmp_path / "speech.mp3"
+        audio_file.write_bytes(b"ID3fake-audio-bytes")
+
+        def fake_tts(text):
+            return orjson.dumps({
+                "success": True,
+                "file_path": str(audio_file),
+                "provider": "test",
+            }).decode('utf-8')
+
+        monkeypatch.setattr(tts_tool, "text_to_speech_tool", fake_tts)
+
+        resp = self.client.post("/api/audio/speak", json={"text": "hello there"})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["ok"] is True
+        assert body["mime_type"] == "audio/mpeg"
+        assert body["data_url"].startswith("data:audio/mpeg;base64,")
+        assert body["provider"] == "test"
+        # The handler streams the bytes back and removes the temp file.
+        assert not audio_file.exists()
+
+    def test_speak_text_requires_nonempty_text(self):
+        resp = self.client.post("/api/audio/speak", json={"text": "   "})
+        assert resp.status_code == 400
 
     def test_update_hermes_returns_docker_guidance_without_spawning(self, monkeypatch):
         import hermes_cli.web_server as web_server
@@ -1767,6 +2139,26 @@ class TestConfigRoundTrip:
 
 
 
+    def test_get_config_seeds_missing_config_file(self):
+        """GET /api/config should create the first-run starter config.yaml."""
+        from hermes_constants import get_hermes_home
+
+        config_path = get_hermes_home() / "config.yaml"
+        config_path.unlink(missing_ok=True)
+
+        resp = self.client.get("/api/config")
+
+        assert resp.status_code == 200
+        assert config_path.exists()
+        raw = yaml.safe_load(config_path.read_text(encoding="utf-8", errors="replace"))
+        assert raw["_config_version"] == DEFAULT_CONFIG["_config_version"]
+        assert raw["model"] == {"provider": "", "default": ""}
+        assert raw["providers"] == {}
+        assert "agent" not in raw
+
+    def test_round_trip_preserves_model_subkeys(self):
+        """Save and reload should not lose model.provider, model.base_url, etc."""
+        from hermes_cli.config import load_config, save_config
 
 
 

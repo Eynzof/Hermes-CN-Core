@@ -678,7 +678,7 @@ agent 创建的 skill 的后台维护。跟踪使用情况，将闲置 skill 标
 
 ## Windows 特有问题
 
-Hermes 在 Windows 上原生运行。默认用于执行命令的 shell 是 **PowerShell**（优先使用 pwsh 7.x，自动回退到 Windows PowerShell 5.1）。Git Bash（git-bash mintty）在明确配置（config.yaml 中设置 `terminal.shell: bash`）且已预装 Git for Windows 时可用作可选 shell。大多数功能开箱即用，但 Win32 和 POSIX 之间有一些差异曾给我们带来麻烦——遇到新问题时请在此记录，以免下一个人（或下一个会话）重新踩坑。
+Hermes 在 Windows 上原生运行。默认用于执行命令的 shell 是 **Git Bash**（如果已安装 Git for Windows），回退到 **PowerShell**（优先使用 pwsh 7.x，自动回退到 Windows PowerShell 5.1）。可在 config.yaml 中设置 `terminal.shell: pwsh` / `terminal.shell: powershell` 强制使用 PowerShell，或 `terminal.shell: bash` 显式指定 Git Bash。大多数功能开箱即用，但 Win32 和 POSIX 之间有一些差异曾给我们带来麻烦——遇到新问题时请在此记录，以免下一个人（或下一个会话）重新踩坑。
 
 ### 输入/键绑定
 

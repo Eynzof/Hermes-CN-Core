@@ -349,13 +349,14 @@ class TestGitBashCoreutilsOnPath:
 # ---------------------------------------------------------------------------
 
 class TestWrapCommandWindowsNativeCwd:
-    """[CN-fork] P-019 rewrite of the upstream Git-Bash msys-cwd tests.
+    """[CN-fork] P-019/P-058 rewrite of the upstream Git-Bash msys-cwd tests.
 
     Upstream asserts ``_wrap_command`` converts a native ``C:\\Users\\x`` cwd to
-    the Git-Bash ``/c/Users/x`` form for ``builtin cd``. The fork removed Git
-    Bash entirely — Windows always runs PowerShell 5.1 (P-016/P-019) — so the
-    contract here is the opposite: the wrapper must use the NATIVE Windows
-    path verbatim (single-quoted for PowerShell), with no msys conversion.
+    the Git-Bash ``/c/Users/x`` form for ``builtin cd``. The fork runs Windows
+    PowerShell by default when git-bash is absent (P-016/P-019/P-058) — the
+    contract here is: with no git-bash and no pwsh, the auto default resolves
+    to PowerShell 5.1 and the wrapper must use the NATIVE Windows path verbatim
+    (single-quoted for PowerShell), with no msys conversion.
     """
 
     def test_wrap_command_uses_native_cwd_for_set_location(self, monkeypatch):
@@ -363,6 +364,8 @@ class TestWrapCommandWindowsNativeCwd:
 
         with patch.object(
             LocalEnvironment, "init_session", autospec=True, return_value=None
+        ), patch.object(
+            local_mod, "_find_bash", side_effect=lambda **kw: None
         ), patch.object(
             local_mod, "_find_pwsh", return_value=None
         ):
@@ -384,6 +387,8 @@ class TestWrapCommandWindowsNativeCwd:
             raise RuntimeError("bash path must not run on Windows (P-019)")
         monkeypatch.setattr(LocalEnvironment, "_run_bash", fake_run_bash)
         with patch.object(
+            local_mod, "_find_bash", side_effect=lambda **kw: None
+        ), patch.object(
             local_mod, "_find_pwsh", return_value=None
         ):
             env = LocalEnvironment(cwd=r"C:\Users\liush", timeout=10)
@@ -411,3 +416,24 @@ class TestWrapCommandWindowsNativeCwd:
         script = captured["script"]
         assert "/c/Users/Alexander/AppData/Local/Temp/hermes-snap-deadbeef.sh" in script
         assert r"C:\Users\Alexander\AppData" not in script
+    def test_wrap_command_uses_git_bash_cwd_when_bash_resolved(self, monkeypatch):
+        """[CN-fork P-058] With git-bash present (auto default), the wrapper
+        is the bash one and the cwd is msys-rewritten for ``builtin cd``."""
+        monkeypatch.setattr(local_mod, "_IS_WINDOWS", True)
+
+        with patch.object(
+            LocalEnvironment, "init_session", autospec=True, return_value=None
+        ), patch.object(
+            local_mod, "_find_bash", side_effect=lambda **kw: r"C:\Program Files\Git\bin\bash.exe"
+        ), patch.object(
+            local_mod, "_find_pwsh", return_value=r"C:\Program Files\PowerShell\7\pwsh.exe"
+        ):
+            env = LocalEnvironment(cwd=r"C:\Users\liush", timeout=10)
+
+        wrapped = env._wrap_command("pwd", r"C:\Users\liush")
+
+        assert env._shell_type == "bash"
+        # foreground bash wrapper cd's to the native path (MSYS converts at
+        # exec time); the point is it is the BASH wrapper, not PowerShell's.
+        assert "builtin cd -- " in wrapped and r"'C:\Users\liush'" in wrapped
+        assert "Set-Location" not in wrapped

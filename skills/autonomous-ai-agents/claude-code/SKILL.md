@@ -35,7 +35,7 @@ Hermes interacts with Claude Code in two fundamentally different ways. Choose ba
 Print mode runs a one-shot task, returns the result, and exits. No PTY needed. No interactive prompts. This is the cleanest integration path.
 
 ```
-terminal(command="claude -p 'Add error handling to all API calls in src/' --allowedTools 'Read,Edit' --max-turns 10", workdir="/path/to/project", timeout=120)
+terminal(command="claude -p 'Add error handling to all API calls in src/' --output-format stream-json --verbose --include-partial-messages --allowedTools 'Read,Edit' --max-turns 10", workdir="/path/to/project", timeout=120)
 ```
 
 **When to use print mode:**
@@ -63,8 +63,9 @@ process(action="log", session_id="<id>")    # stream-json lines so far
 # total_cost_usd, subtype. Keep session_id for --resume follow-ups.
 ```
 
-Short tasks (<30s) can stay foreground — prefer `--output-format json` there so the
-single result object is still machine-parseable.
+Short tasks (<30s) can stay foreground. Keep the streaming JSON flags
+(`--output-format stream-json --verbose --include-partial-messages`) so Hermes
+can render their progress and Token usage before the terminal call completes.
 
 ### Mode 2: Interactive PTY via tmux — Multi-Turn Sessions
 
@@ -762,5 +763,5 @@ Use `/context` in interactive mode to see a colored grid of context usage. Key t
 8. **Report results to user** — after completion, summarize what Claude did and what changed
 9. **Don't kill slow sessions** — Claude may be doing multi-step work; check progress instead
 10. **Use `--allowedTools`** — restrict capabilities to what the task actually needs
-11. **Prefer structured output** — `--output-format json` for short foreground runs, `--output-format stream-json --verbose --include-partial-messages` with `background=true, notify_on_complete=true` for longer ones; Hermes parses both and its desktop UI renders the live delegation timeline from the stream
+11. **Prefer streaming output** — use `--output-format stream-json --verbose --include-partial-messages` for foreground and background runs; for longer ones also set `background=true, notify_on_complete=true`. Hermes parses the stream and its desktop UI renders the live delegation timeline and Token usage
 12. **Keep the returned `session_id`** — it is the handle for `--resume` follow-ups; report it alongside your summary

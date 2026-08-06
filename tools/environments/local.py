@@ -1026,8 +1026,19 @@ def _find_bash_posix() -> str:
     )
 
 
-def _find_bash() -> str:
-    """Find a usable bash, including Git Bash when explicitly selected on Windows."""
+def _find_bash(raise_if_missing: bool = True) -> str | None:
+    """Find a usable bash, including Git Bash on Windows.
+
+    Candidates are probed with ``_bash_starts()`` (external-program smoke
+    test) so broken/WSL-stub bash is never returned as usable.
+
+    ``raise_if_missing`` (default ``True``) preserves the legacy contract for
+    callers that require bash (explicit ``HERMES_SHELL_TYPE=bash``): when no
+    candidate passes the smoke test a helpful ``RuntimeError`` is raised. The
+    default/auto resolution path passes ``raise_if_missing=False`` and treats
+    a ``None`` return as "no working bash" so the resolver can fall back to
+    PowerShell.
+    """
     if not _IS_WINDOWS:
         return _find_bash_posix()
 
@@ -1116,16 +1127,24 @@ def _find_bash() -> str:
         if _mandatory_aslr_enabled() is True or _looks_like_msys_spawn_failure(
             probe_details
         ):
+            if not raise_if_missing:
+                return None
             raise RuntimeError(_git_bash_aslr_help(candidates[0], probe_details))
 
-        # Preserve the underlying launch error for failures outside the known
-        # MSYS/ASLR class instead of replacing it with a misleading not-found.
-        return candidates[0]
+        if raise_if_missing:
+            # Preserve the underlying launch error for failures outside the known
+            # MSYS/ASLR class instead of replacing it with a misleading not-found.
+            return candidates[0]
+        # Non-raising probe: the smoke test failed, so the auto path must not
+        # select a broken bash — fall through to PowerShell instead.
+        return None
 
-    raise RuntimeError(
-        "Git Bash is not found on this system. It was explicitly selected via "
-        "HERMES_SHELL_TYPE=bash; install Git for Windows or use PowerShell."
-    )
+    if raise_if_missing:
+        raise RuntimeError(
+            "Git Bash is not found on this system. It was explicitly selected via "
+            "HERMES_SHELL_TYPE=bash; install Git for Windows or use PowerShell."
+        )
+    return None
 
 
 def _is_git_bash_install(bash_path: str) -> bool:
@@ -1246,17 +1265,23 @@ def _find_pwsh() -> str | None:
 def _resolve_shell() -> tuple[str, str]:
     """Determine which shell to use for local command execution.
 
-    On Windows: prefers PowerShell 7 (``pwsh``) when available, falling
-    back to Windows PowerShell 5.1 (``powershell.exe``) which ships with
-    every Windows 10/11 system.
+    On Windows with ``HERMES_SHELL_TYPE`` unset or ``"auto"`` (the default):
+    prefers **git-bash** when a working install exists (``_find_bash`` with
+    ``raise_if_missing=False`` — discovery + ``_bash_starts()`` smoke test),
+    then PowerShell 7 (``pwsh``), falling back to Windows PowerShell 5.1
+    (``powershell.exe``) which ships with every Windows 10/11 system.
 
     On non-Windows: always uses bash.
 
-    Env overrides:
+    Env overrides (respected, never git-bash for the explicit PowerShell
+    values):
       ``HERMES_SHELL_TYPE`` — ``"powershell"``, ``"pwsh"``, ``"bash"``,
       or ``"auto"`` (default: ``"auto"`` on Windows, ``"bash"`` otherwise).
-      ``HERMES_SHELL_TYPE=bash`` on Windows finds pre-installed Git Bash
-      via ``_find_bash_posix()`` (no auto-install).
+      ``HERMES_SHELL_TYPE=bash`` on Windows selects pre-installed Git Bash
+      via ``_find_bash()`` (no auto-install) and raises a helpful error when
+      it is missing.
+      ``HERMES_SHELL_TYPE=pwsh`` / ``powershell`` select PowerShell only
+      (pwsh → 5.1 fallback) and never probe for git-bash.
 
     Returns ``(shell_type, shell_path)`` where *shell_type* is
     ``"pwsh"``, ``"powershell"``, or ``"bash"``.
@@ -1264,8 +1289,23 @@ def _resolve_shell() -> tuple[str, str]:
     shell_type = os.environ.get("HERMES_SHELL_TYPE", "auto").strip().lower() or "auto"
 
     if _IS_WINDOWS:
-        if shell_type in ("auto", "pwsh", "powershell"):
-            # Prefer pwsh (PowerShell 7) when available
+        if shell_type == "auto":
+            # Default preference: git-bash (if a working one exists) →
+            # PowerShell 7 → Windows PowerShell 5.1.
+            bash_path = _find_bash(raise_if_missing=False)
+            if bash_path:
+                logger.info("Selected shell: bash at %s", bash_path)
+                return ("bash", bash_path)
+            pwsh_path = _find_pwsh()
+            if pwsh_path:
+                logger.info("Selected shell: pwsh at %s", pwsh_path)
+                return ("pwsh", pwsh_path)
+            ps_path = _find_powershell()
+            logger.info("Selected shell: powershell at %s", ps_path)
+            return ("powershell", ps_path)
+        if shell_type in ("pwsh", "powershell"):
+            # Explicit PowerShell: prefer pwsh (PowerShell 7) when available;
+            # never git-bash.
             pwsh_path = _find_pwsh()
             if pwsh_path:
                 logger.info("Selected shell: pwsh at %s", pwsh_path)
@@ -1285,7 +1325,7 @@ def _resolve_shell() -> tuple[str, str]:
             )
         raise RuntimeError(
             f"Unknown HERMES_SHELL_TYPE={shell_type!r} on Windows. "
-            "Supported values: 'auto' (default → pwsh/powershell), 'pwsh', "
+            "Supported values: 'auto' (default → bash/pwsh/powershell), 'pwsh', "
             "'powershell', 'bash' (requires pre-installed Git Bash)."
         )
 
@@ -1366,6 +1406,49 @@ def _build_powershell_background_script(
         )
 
     parts.append("exit $hermes_ec")
+    return "\n".join(parts)
+
+
+def _build_bash_background_script(
+    command: str,
+    cwd: str,
+    cwd_file: str | None = None,
+) -> str:
+    """Build a bash wrapper suitable for detached background processes.
+
+    Mirrors ``_build_powershell_background_script`` for the bash-on-Windows
+    background path (used by ``process_registry`` when the resolved shell is
+    git-bash). The wrapper cd's to *cwd* (guarded — exits 126 when the
+    directory can't be entered), runs *command*, persists the final working
+    directory to *cwd_file* when one is provided, and exits with the
+    command's exit code.
+
+    The persisted ``pwd`` is in MSYS form (``/c/Users/x``) on Windows; the
+    consumer (``LocalEnvironment._update_cwd``) translates it via
+    ``_msys_to_windows_path`` for bash sessions.
+
+    Args:
+        command: Raw user command (bash syntax).
+        cwd: Working directory to switch to before running *command*.
+        cwd_file: Optional path to write the final working directory to.
+
+    Returns:
+        A multi-line bash script ready for ``bash -lc``.
+    """
+    escaped = command.replace("'", "'\\''")
+    quoted_cwd = _quote_bash_path(cwd)
+
+    parts = [
+        f"builtin cd -- {quoted_cwd} || exit 126",
+        f"eval '{escaped}'",
+        "__hermes_ec=$?",
+    ]
+
+    if cwd_file:
+        quoted_cwd_file = _quote_bash_path(cwd_file)
+        parts.append(f"pwd > {quoted_cwd_file} 2>/dev/null || true")
+
+    parts.append("exit $__hermes_ec")
     return "\n".join(parts)
 
 
@@ -1607,8 +1690,9 @@ def _find_shell() -> str:
     behaviour).
 
     On Windows, ``process_registry.spawn_local`` uses ``_resolve_shell``
-    (PowerShell 7 / Windows PowerShell 5.1) instead of this function, so this
-    function is intentionally POSIX-only on Windows.
+    (git-bash when available, else PowerShell 7 / Windows PowerShell 5.1)
+    instead of this function, so this function is intentionally POSIX-only
+    on Windows.
     """
 
     if not _IS_WINDOWS:
@@ -1984,8 +2068,10 @@ class LocalEnvironment(BaseEnvironment):
     """Run commands directly on the host machine.
 
     Spawn-per-call: every execute() spawns a fresh shell process.
-    On Windows, uses Windows PowerShell 5.1 (``powershell.exe``) which
-    ships with every Windows 10/11 system.  On other platforms, uses bash.
+    On Windows, uses git-bash when a working install exists (default/auto),
+    else PowerShell 7 (``pwsh``) / Windows PowerShell 5.1 (``powershell.exe``)
+    which ships with every Windows 10/11 system.  On other platforms, uses
+    bash.
 
     Session snapshot preserves env vars across calls (bash only;
     Windows env vars propagate naturally through ``os.environ``).
@@ -1999,10 +2085,13 @@ class LocalEnvironment(BaseEnvironment):
         super().__init__(cwd=cwd, timeout=timeout, env=env)
         self._shell_type, self._shell_path = _resolve_shell()
         # [CN-fork P-042] persistent PowerShell session (opt-in, Windows only).
+        # Bash sessions skip this fast path: the resolver functions below
+        # return False unless shell_type is "powershell"/"pwsh".
         self._pwsh_session = None
         self._pwsh_session_lock = threading.Lock()
         self._pwsh_session_reuse = _resolve_pwsh_session_reuse(self._shell_type)
         # [CN-fork P-042 #3] cmd.exe fast path for trivial builtins (opt-in).
+        # PowerShell-only by design — bash sessions skip it (False).
         self._cmd_fast_path = _resolve_cmd_fast_path(self._shell_type)
         self.init_session()
 
@@ -2491,6 +2580,7 @@ class LocalEnvironment(BaseEnvironment):
         stdin_data: str | None = None,
         rewrite_compound_background: bool = True,
         bounded_capture: bool = False,
+        output_callback=None,
     ) -> dict:
         """Execute a command via the fastest eligible path (P-042).
 
@@ -2549,6 +2639,7 @@ class LocalEnvironment(BaseEnvironment):
             stdin_data=stdin_data,
             rewrite_compound_background=rewrite_compound_background,
             bounded_capture=bounded_capture,
+            output_callback=output_callback,
         )
 
     # ------------------------------------------------------------------

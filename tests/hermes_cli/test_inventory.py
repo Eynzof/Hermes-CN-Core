@@ -18,12 +18,13 @@ depend on:
 """
 from __future__ import annotations
 
-
+from types import SimpleNamespace
 from unittest.mock import patch
 
 
 from hermes_cli.inventory import (
     ConfigContext,
+    _apply_capabilities,
     build_models_payload,
     load_picker_context,
 )
@@ -84,6 +85,184 @@ def _nous_row(model: str = "openai/gpt-5.5") -> dict:
     }
 
 
+def test_build_models_payload_returns_expected_shape():
+    rows = [
+        {"slug": "openrouter", "name": "OpenRouter", "models": ["m1"],
+         "total_models": 1, "is_current": True, "is_user_defined": False,
+         "source": "built-in"},
+    ]
+    ctx = _empty_ctx(provider="openrouter", model="m1", base_url="")
+    with _list_auth_returning(rows):
+        payload = build_models_payload(ctx)
+    assert set(payload.keys()) == {"providers", "model", "provider"}
+    assert payload["model"] == "m1"
+    assert payload["provider"] == "openrouter"
+    assert payload["providers"][0]["slug"] == "moa"
+    assert payload["providers"][0]["models"] == ["default"]
+    assert payload["providers"][1:] == rows
+
+
+def test_build_models_payload_does_not_call_provider_model_ids():
+    """``build_models_payload`` is a thin shape adapter — it delegates the
+    actual curation to ``list_authenticated_providers`` (which DOES call
+    ``cached_provider_model_ids`` internally for live discovery, with disk
+    caching). ``build_models_payload`` itself must not call the live fetcher
+    directly; the test pins that boundary.
+    """
+    rows = [{"slug": "nous", "name": "Nous", "models": ["hermes-4-405b"],
+             "total_models": 1, "is_current": False, "is_user_defined": False,
+             "source": "built-in"}]
+    ctx = _empty_ctx()
+    with _list_auth_returning(rows), \
+         patch("hermes_cli.models.provider_model_ids") as mock_pm:
+        build_models_payload(ctx)
+    mock_pm.assert_not_called()
+
+
+def test_build_models_payload_uses_cached_nous_tier_by_default():
+    """Picker payloads should not force fresh Nous account checks.
+
+    Desktop/status picker opens are request/response UI paths. They can hit
+    the short free-tier cache; explicit model/auth flows can still opt into a
+    fresh account check when needed.
+    """
+    ctx = _empty_ctx(provider="nous", model="openai/gpt-5.5")
+    rows = [_nous_row()]
+    with patch(
+        "hermes_cli.model_switch.list_authenticated_providers",
+        return_value=rows,
+    ) as mock_list:
+        build_models_payload(ctx)
+
+    mock_list.assert_called_once()
+    assert mock_list.call_args.kwargs["force_fresh_nous_tier"] is False
+
+
+def test_build_models_payload_can_force_fresh_nous_tier():
+    ctx = _empty_ctx(provider="nous", model="openai/gpt-5.5")
+    rows = [_nous_row()]
+    with patch(
+        "hermes_cli.model_switch.list_authenticated_providers",
+        return_value=rows,
+    ) as mock_list:
+        build_models_payload(ctx, force_fresh_nous_tier=True)
+
+    mock_list.assert_called_once()
+    assert mock_list.call_args.kwargs["force_fresh_nous_tier"] is True
+
+
+def test_build_models_payload_can_skip_custom_provider_probes():
+    ctx = _empty_ctx()
+    rows = []
+    with patch(
+        "hermes_cli.model_switch.list_authenticated_providers",
+        return_value=rows,
+    ) as mock_list:
+        build_models_payload(ctx, probe_custom_providers=False)
+
+    mock_list.assert_called_once()
+    assert mock_list.call_args.kwargs["probe_custom_providers"] is False
+
+
+def test_apply_capabilities_includes_models_dev_picker_metadata():
+    rows = [{"slug": "deepseek", "models": ["deepseek-reasoner"]}]
+    metadata = SimpleNamespace(
+        supports_tools=True,
+        supports_vision=False,
+        supports_pdf=True,
+        supports_audio=True,
+        supports_video=True,
+        supports_reasoning=True,
+        supports_reasoning_control=True,
+        open_weights=True,
+        context_window=131_072,
+        max_output_tokens=65_536,
+        model_family="deepseek",
+    )
+
+    with (
+        patch("agent.models_dev.get_model_capabilities", return_value=metadata),
+        patch("hermes_cli.models.model_supports_fast_mode", return_value=False),
+    ):
+        _apply_capabilities(rows)
+
+    assert rows[0]["capabilities"]["deepseek-reasoner"] == {
+        "fast": False,
+        "reasoning": True,
+        "supports_tools": True,
+        "supports_vision": False,
+        "supports_pdf": True,
+        "supports_audio": True,
+        "supports_video": True,
+        "supports_reasoning": True,
+        "supports_reasoning_control": True,
+        "open_weights": True,
+        "context_window": 131_072,
+        "max_output_tokens": 65_536,
+        "model_family": "deepseek",
+    }
+
+
+def test_apply_capabilities_keeps_legacy_shape_for_unknown_models():
+    rows = [{"slug": "custom:local", "models": ["private-model"]}]
+
+    with (
+        patch("agent.models_dev.get_model_capabilities", return_value=None),
+        patch("hermes_cli.models.model_supports_fast_mode", return_value=True),
+    ):
+        _apply_capabilities(rows)
+
+    assert rows[0]["capabilities"]["private-model"] == {
+        "fast": True,
+        "reasoning": True,
+    }
+
+
+def test_apply_capabilities_resolves_custom_canonical_provider_alias():
+    rows = [{"slug": "custom:deepseek", "models": ["deepseek-v4-pro"]}]
+    metadata = SimpleNamespace(
+        supports_tools=True,
+        supports_vision=False,
+        supports_pdf=False,
+        supports_audio=False,
+        supports_video=False,
+        supports_reasoning=True,
+        supports_reasoning_control=True,
+        open_weights=True,
+        context_window=1_000_000,
+        max_output_tokens=384_000,
+        model_family="deepseek-thinking",
+    )
+
+    def lookup(provider, _model):
+        return metadata if provider == "deepseek" else None
+
+    with (
+        patch("agent.models_dev.get_model_capabilities", side_effect=lookup),
+        patch("hermes_cli.models.model_supports_fast_mode", return_value=False),
+    ):
+        _apply_capabilities(rows)
+
+    assert rows[0]["capabilities"]["deepseek-v4-pro"]["context_window"] == 1_000_000
+    assert rows[0]["capabilities"]["deepseek-v4-pro"]["open_weights"] is True
+
+
+def test_build_models_payload_can_probe_only_current_custom_provider():
+    ctx = _empty_ctx()
+    rows = []
+    with patch(
+        "hermes_cli.model_switch.list_authenticated_providers",
+        return_value=rows,
+    ) as mock_list:
+        build_models_payload(
+            ctx,
+            probe_custom_providers=False,
+            probe_current_custom_provider=True,
+        )
+
+    mock_list.assert_called_once()
+    assert mock_list.call_args.kwargs["probe_custom_providers"] is False
+    assert mock_list.call_args.kwargs["probe_current_custom_provider"] is True
 
 
 def test_cli_model_picker_forwards_force_refresh_to_probe_flags():
@@ -141,6 +320,69 @@ def test_list_authenticated_providers_force_fresh_is_keyword_only():
     assert param.default is False
 
 
+def test_list_authenticated_providers_warns_when_catalog_falls_back(monkeypatch):
+    """Authenticated rows must mark curated/models.dev fallback catalogs."""
+    from hermes_cli.model_switch import list_authenticated_providers
+
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-key")
+
+    with (
+        patch("agent.models_dev.PROVIDER_TO_MODELS_DEV", {"deepseek": "deepseek"}),
+        patch("agent.models_dev.fetch_models_dev", return_value={"deepseek": {"env": ["DEEPSEEK_API_KEY"]}}),
+        patch("agent.models_dev.get_provider_info", return_value=SimpleNamespace(name="DeepSeek")),
+        patch("hermes_cli.auth.is_runtime_provider_routable", return_value=True),
+        patch("hermes_cli.models.cached_provider_model_ids", return_value=[]),
+        patch("hermes_cli.models._merge_with_models_dev", side_effect=lambda _provider, models: list(models)),
+        patch("hermes_cli.providers.HERMES_OVERLAYS", {}),
+        patch("hermes_cli.models.CANONICAL_PROVIDERS", []),
+    ):
+        rows = list_authenticated_providers(max_models=3)
+
+    deepseek = next(row for row in rows if row["slug"] == "deepseek")
+    assert deepseek["models"]
+    assert "Live model discovery is unavailable" in deepseek["warning"]
+
+
+def test_pricing_uses_cached_nous_tier_by_default():
+    rows = [_nous_row()]
+    ctx = _empty_ctx(provider="nous", model="openai/gpt-5.5")
+    with (
+        _list_auth_returning(rows),
+        patch(
+            "hermes_cli.models.get_pricing_for_provider",
+            return_value={
+                "openai/gpt-5.5": {
+                    "prompt": "0.000001",
+                    "completion": "0.000002",
+                },
+            },
+        ),
+        patch("hermes_cli.models.check_nous_free_tier", return_value=False) as mock_free,
+    ):
+        build_models_payload(ctx, pricing=True)
+
+    mock_free.assert_called_once_with(force_fresh=False)
+
+
+def test_pricing_can_force_fresh_nous_tier():
+    rows = [_nous_row()]
+    ctx = _empty_ctx(provider="nous", model="openai/gpt-5.5")
+    with (
+        _list_auth_returning(rows),
+        patch(
+            "hermes_cli.models.get_pricing_for_provider",
+            return_value={
+                "openai/gpt-5.5": {
+                    "prompt": "0.000001",
+                    "completion": "0.000002",
+                },
+            },
+        ),
+        patch("hermes_cli.models.check_nous_free_tier", return_value=False) as mock_free,
+    ):
+        build_models_payload(ctx, pricing=True, force_fresh_nous_tier=True)
+
+    mock_free.assert_called_once_with(force_fresh=True)
 
 
 def test_include_unconfigured_appends_canonical_skeletons():

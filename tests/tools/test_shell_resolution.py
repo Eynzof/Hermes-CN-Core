@@ -171,21 +171,60 @@ class TestResolveShell:
     """
 
     def test_windows_auto_pwsh_available_returns_pwsh(self, monkeypatch):
+        """auto + no git-bash + pwsh available → pwsh (git-bash probed first)."""
         monkeypatch.setattr("tools.environments.local._IS_WINDOWS", True)
         env = {"HERMES_SHELL_TYPE": "auto"}
         pwsh_path = r"C:\Program Files\PowerShell\7\pwsh.exe"
         with mock.patch.dict(os.environ, env, clear=True):
-            with mock.patch("tools.environments.local._find_pwsh", return_value=pwsh_path):
+            with mock.patch(
+                "tools.environments.local._find_bash", side_effect=lambda **kw: None
+            ), mock.patch(
+                "tools.environments.local._find_pwsh", return_value=pwsh_path
+            ):
                 assert _resolve_shell() == ("pwsh", pwsh_path)
 
     def test_windows_auto_pwsh_unavailable_fallsback_to_powershell(self, monkeypatch):
+        """auto + no git-bash + no pwsh → powershell 5.1."""
         monkeypatch.setattr("tools.environments.local._IS_WINDOWS", True)
         env = {"HERMES_SHELL_TYPE": "auto"}
         ps_path = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
         with mock.patch.dict(os.environ, env, clear=True):
-            with mock.patch("tools.environments.local._find_pwsh", return_value=None):
-                with mock.patch("tools.environments.local._find_powershell", return_value=ps_path):
-                    assert _resolve_shell() == ("powershell", ps_path)
+            with mock.patch(
+                "tools.environments.local._find_bash", side_effect=lambda **kw: None
+            ), mock.patch(
+                "tools.environments.local._find_pwsh", return_value=None
+            ), mock.patch(
+                "tools.environments.local._find_powershell", return_value=ps_path
+            ):
+                assert _resolve_shell() == ("powershell", ps_path)
+
+    def test_windows_auto_git_bash_available_returns_bash(self, monkeypatch):
+        """auto prefers git-bash over pwsh when a working bash exists."""
+        monkeypatch.setattr("tools.environments.local._IS_WINDOWS", True)
+        bash_path = r"C:\Program Files\Git\bin\bash.exe"
+        pwsh_path = r"C:\Program Files\PowerShell\7\pwsh.exe"
+        env = {"HERMES_SHELL_TYPE": "auto"}
+        with mock.patch.dict(os.environ, env, clear=True):
+            with mock.patch(
+                "tools.environments.local._find_bash", side_effect=lambda **kw: bash_path
+            ), mock.patch(
+                "tools.environments.local._find_pwsh", return_value=pwsh_path
+            ):
+                # bash wins even though pwsh is available
+                assert _resolve_shell() == ("bash", bash_path)
+
+    def test_windows_auto_git_bash_missing_uses_pwsh(self, monkeypatch):
+        """auto + no git-bash + pwsh available → pwsh."""
+        monkeypatch.setattr("tools.environments.local._IS_WINDOWS", True)
+        pwsh_path = r"C:\Program Files\PowerShell\7\pwsh.exe"
+        env = {"HERMES_SHELL_TYPE": "auto"}
+        with mock.patch.dict(os.environ, env, clear=True):
+            with mock.patch(
+                "tools.environments.local._find_bash", side_effect=lambda **kw: None
+            ), mock.patch(
+                "tools.environments.local._find_pwsh", return_value=pwsh_path
+            ):
+                assert _resolve_shell() == ("pwsh", pwsh_path)
 
     def test_windows_explicit_powershell(self, monkeypatch):
         monkeypatch.setattr("tools.environments.local._IS_WINDOWS", True)
@@ -330,3 +369,57 @@ class TestBuildPowershellBackgroundScript:
         )
         assert "$Error.Count" in script
         assert "$hermes_ec = $LASTEXITCODE" in script
+
+
+class TestBuildBashBackgroundScript:
+    """_build_bash_background_script produces a runnable bash wrapper for the
+    git-bash default background path (mirrors the PowerShell wrapper)."""
+
+    def test_includes_cd_command_and_cwd_file(self):
+        from tools.environments.local import _build_bash_background_script
+
+        script = _build_bash_background_script(
+            command="echo hello",
+            cwd=r"D:\test",
+            cwd_file="D:/tmp/hermes-cwd.txt",
+        )
+        # cd is guarded (exit 126 when the directory cannot be entered); the
+        # cwd path is MSYS-rewritten on Windows hosts (/d/test) and kept
+        # verbatim on POSIX hosts - check the shape, not the exact form.
+        assert script.startswith("builtin cd -- ") and " || exit 126" in script
+        assert "eval 'echo hello'" in script
+        assert "pwd > " in script and "hermes-cwd.txt" in script
+        assert "__hermes_ec=$?" in script
+        assert "exit $__hermes_ec" in script
+
+    def test_omits_cwd_file_when_not_provided(self):
+        from tools.environments.local import _build_bash_background_script
+
+        script = _build_bash_background_script(
+            command="echo hello",
+            cwd=r"D:\test",
+        )
+        assert "pwd > " not in script
+        assert "exit $__hermes_ec" in script
+
+    def test_escapes_single_quotes(self):
+        from tools.environments.local import _build_bash_background_script
+
+        script = _build_bash_background_script(
+            command="echo 'hello'",
+            cwd=r"D:\test",
+        )
+        # bash single-quote escaping: ' -> '\'' (produced line:
+        #   eval 'echo '\''hello'\'''
+        esc = "'\\''"  # the bash escape sequence '\'' (value: quote, backslash, quote, quote)
+        assert "eval 'echo " + esc + "hello" + esc + "'" in script
+
+    def test_no_powershell_flags_in_wrapper(self):
+        from tools.environments.local import _build_bash_background_script
+
+        script = _build_bash_background_script(
+            command="echo hello",
+            cwd=r"D:\test",
+        )
+        assert "-NoProfile" not in script
+        assert "Invoke-Expression" not in script

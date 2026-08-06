@@ -73,3 +73,32 @@ class TestSessionIdForwarding:
                 skip_pre_tool_call_hook=True,
             )
         assert captured.get("task_id") == "task-999"
+
+
+class TestToolCallIdForwarding:
+
+    def test_standard_path_forwards_tool_call_id(self):
+        captured = {}
+        with patch("model_tools.registry", _make_registry(captured)):
+            from model_tools import handle_function_call
+            handle_function_call(
+                "web_search",
+                {"query": "test"},
+                task_id="t1",
+                tool_call_id="call-live-1",
+                skip_pre_tool_call_hook=True,
+            )
+        assert captured.get("tool_call_id") == "call-live-1"
+
+    def test_execute_code_path_forwards_tool_call_id(self):
+        captured = {}
+        with patch("model_tools.registry", _make_registry(captured)):
+            from model_tools import handle_function_call
+            handle_function_call(
+                "execute_code",
+                {"code": "print(1)"},
+                task_id="t1",
+                tool_call_id="call-code-1",
+                skip_pre_tool_call_hook=True,
+            )
+        assert captured.get("tool_call_id") == "call-code-1"

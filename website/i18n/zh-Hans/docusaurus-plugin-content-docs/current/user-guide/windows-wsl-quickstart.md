@@ -28,7 +28,7 @@ Hermes Agent 现已同时支持原生 Windows 和 WSL2。本页介绍 WSL2 路�
 
 ## 为什么选择 WSL2（而非原生 Windows）
 
-原生 Windows 安装直接运行在 Windows 上：使用 Windows 终端（PowerShell、Windows Terminal 等）、Windows 文件系统路径（`C:\Users\…`）和 Windows 进程。Hermes 默认使用 **PowerShell**（优先使用 pwsh 7.x，自动回退到 Windows PowerShell 5.1）来执行命令。Git Bash 可用作可选 shell —— 如果你已安装 Git for Windows，可在 config.yaml 中设置 `terminal.shell: bash`。
+原生 Windows 安装直接运行在 Windows 上：使用 Windows 终端（PowerShell、Windows Terminal 等）、Windows 文件系统路径（`C:\Users\…`）和 Windows 进程。Hermes 默认使用 **Git Bash**（如果已安装 Git for Windows）执行命令，回退到 **PowerShell**（优先使用 pwsh 7.x，自动回退到 Windows PowerShell 5.1）。可在 config.yaml 中设置 `terminal.shell: pwsh` / `terminal.shell: powershell` 强制使用 PowerShell，或 `terminal.shell: bash` 显式指定 Git Bash。
 
 WSL2 在轻量级虚拟机中运行真实的 Linux 内核，因此其中的 Hermes 与在 Ubuntu 上运行几乎完全相同。当你需要真正的 POSIX 环境时，这非常有价值：`fork`、`/tmp`、UNIX socket、信号语义、PTY 支持的终端、`bash`/`zsh` 等 shell，以及 `rg`、`git`、`ffmpeg` 等在 Linux 上行为一致的工具。
 

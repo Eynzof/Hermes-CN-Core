@@ -87,6 +87,25 @@ def _is_memory_provider_dir(path: Path) -> bool:
         return False
 
 
+def _bundled_module_is_importable(module_name: str) -> bool:
+    """Return whether a bundled module has executable code available.
+
+    PyInstaller stores Python modules in its frozen module graph while
+    ``--collect-data plugins`` stages manifests and README files on disk.  In
+    that layout ``plugins/memory/<name>/`` exists, but its ``__init__.py`` does
+    not.  ``find_spec`` bridges those two halves without importing the provider
+    during the cheap discovery pass.
+    """
+    cached = sys.modules.get(module_name)
+    if cached is not None and getattr(cached, "__file__", None):
+        return True
+    try:
+        spec = importlib.util.find_spec(module_name)
+    except (ImportError, AttributeError, ValueError):
+        return False
+    return spec is not None and spec.loader is not None
+
+
 def _iter_provider_dirs() -> List[Tuple[str, Path]]:
     """Yield ``(name, path)`` for all discovered provider directories.
 
@@ -101,7 +120,10 @@ def _iter_provider_dirs() -> List[Tuple[str, Path]]:
         for child in sorted(_MEMORY_PLUGINS_DIR.iterdir()):
             if not child.is_dir() or child.name.startswith(("_", ".")):
                 continue
-            if not (child / "__init__.py").exists():
+            module_name = f"plugins.memory.{child.name}"
+            if not (child / "__init__.py").exists() and not _bundled_module_is_importable(
+                module_name
+            ):
                 continue
             seen.add(child.name)
             dirs.append((child.name, child))
@@ -128,7 +150,11 @@ def find_provider_dir(name: str) -> Optional[Path]:
     """
     # Bundled
     bundled = _MEMORY_PLUGINS_DIR / name
-    if bundled.is_dir() and (bundled / "__init__.py").exists():
+    bundled_module = f"plugins.memory.{name}"
+    if bundled.is_dir() and (
+        (bundled / "__init__.py").exists()
+        or _bundled_module_is_importable(bundled_module)
+    ):
         return bundled
     # User-installed
     user_dir = _get_user_plugins_dir()
@@ -226,18 +252,29 @@ def _load_provider_from_dir(provider_dir: Path) -> Optional["MemoryProvider"]:
     name = provider_dir.name
     # Use a separate namespace for user-installed plugins so they don't
     # collide with bundled providers in sys.modules.
-    _is_bundled = _MEMORY_PLUGINS_DIR in provider_dir.parents or provider_dir.parent == _MEMORY_PLUGINS_DIR
+    _is_bundled = (
+        _MEMORY_PLUGINS_DIR in provider_dir.parents
+        or provider_dir.parent == _MEMORY_PLUGINS_DIR
+    )
     module_name = f"plugins.memory.{name}" if _is_bundled else f"{_USER_NAMESPACE}.{name}"
     init_file = provider_dir / "__init__.py"
 
     if not init_file.exists():
-        return None
+        if not _is_bundled or not _bundled_module_is_importable(module_name):
+            return None
+        try:
+            mod = importlib.import_module(module_name)
+        except Exception as e:
+            logger.debug("Failed to import frozen module %s: %s", module_name, e)
+            return None
 
     # Check if already loaded.  A synthetic package shell registered by
     # discover_plugin_cli_commands() for relative-import support has no
     # __file__; only reuse modules that were actually loaded from disk.
-    cached = sys.modules.get(module_name)
-    if cached is not None and getattr(cached, "__file__", None):
+    elif (
+        (cached := sys.modules.get(module_name)) is not None
+        and getattr(cached, "__file__", None)
+    ):
         mod = cached
     else:
         # Handle relative imports within the plugin
@@ -380,9 +417,6 @@ def discover_plugin_cli_commands() -> List[dict]:
     any provider is loaded.
     """
     results: List[dict] = []
-    if not _MEMORY_PLUGINS_DIR.is_dir():
-        return results
-
     active_provider = _get_active_memory_provider()
     if not active_provider:
         return results
@@ -393,15 +427,26 @@ def discover_plugin_cli_commands() -> List[dict]:
         return results
 
     cli_file = plugin_dir / "cli.py"
-    if not cli_file.exists():
+    _is_bundled = (
+        _MEMORY_PLUGINS_DIR in plugin_dir.parents
+        or plugin_dir.parent == _MEMORY_PLUGINS_DIR
+    )
+    module_name = (
+        f"plugins.memory.{active_provider}.cli"
+        if _is_bundled
+        else f"{_USER_NAMESPACE}.{active_provider}.cli"
+    )
+    if not cli_file.exists() and (
+        not _is_bundled or not _bundled_module_is_importable(module_name)
+    ):
         return results
 
-    _is_bundled = _MEMORY_PLUGINS_DIR in plugin_dir.parents or plugin_dir.parent == _MEMORY_PLUGINS_DIR
-    module_name = f"plugins.memory.{active_provider}.cli" if _is_bundled else f"{_USER_NAMESPACE}.{active_provider}.cli"
     try:
         # Import the CLI module (lightweight — no SDK needed)
         if module_name in sys.modules:
             cli_mod = sys.modules[module_name]
+        elif _is_bundled and not cli_file.exists():
+            cli_mod = importlib.import_module(module_name)
         else:
             if not _is_bundled:
                 # cli.py imports as _hermes_user_memory.<name>.cli, usually

@@ -12,7 +12,7 @@ tool.complete。本模块在 gateway 侧补齐这一语义：
 - ``DelegationTracker``：跟踪委派生命周期并发出三个新事件——
 
     delegation.cli.started    tool.start 分类命中即发（前后台皆有）
-    delegation.cli.output     仅后台委派；watcher 线程 ≤2Hz 合并冲刷
+    delegation.cli.output     前后台委派；watcher 线程 ≤2Hz 合并冲刷
     delegation.cli.completed  终态（completed/failed/killed/lost），前台在
                               tool.complete 时发，后台在进程退出时发
 
@@ -100,6 +100,14 @@ class DelegationSpec:
 
 def _oneline(text: str, cap: int) -> str:
     return re.sub(r"\s+", " ", str(text)).strip()[:cap]
+
+
+def _static_workdir(value: Any) -> Optional[str]:
+    """Return only a directory value that is resolved before shell execution."""
+    text = str(value or "").strip()
+    if not text or "$" in text or "`" in text:
+        return None
+    return text
 
 
 def _basename(token: str) -> str:
@@ -307,7 +315,7 @@ def _classify_codex(words: list[str], args: dict) -> Optional[DelegationSpec]:
     if values.get("--model") or values.get("-m"):
         flags["model"] = values.get("--model") or values.get("-m")
 
-    workdir = values.get("--cd") or values.get("-C")
+    workdir = _static_workdir(values.get("--cd") or values.get("-C"))
     prompt = positionals[0] if positionals else ""
     mode = subcommand or "interactive"
     if mode == "resume":
@@ -364,7 +372,11 @@ def _classify_command(
             continue
         spec = _classify_segment(seg, args, depth)
         if spec is not None:
-            workdir = args.get("workdir") or spec.workdir or pending_workdir
+            workdir = (
+                _static_workdir(args.get("workdir"))
+                or spec.workdir
+                or _static_workdir(pending_workdir)
+            )
             if workdir != spec.workdir:
                 spec = DelegationSpec(
                     agent=spec.agent,
@@ -421,11 +433,13 @@ def parse_claude_stream_json_line(line: str) -> list[dict]:
         return []
     kind = obj.get("type")
     if kind == "system" and obj.get("subtype") == "init":
-        return [{
+        event = {
             "kind": "init",
             "session_id": obj.get("session_id"),
             "model": obj.get("model"),
-        }]
+            "workdir": obj.get("cwd") or obj.get("workdir"),
+        }
+        return [{key: value for key, value in event.items() if value is not None}]
     if kind == "assistant":
         message = obj.get("message") or {}
         content = message.get("content") or []
@@ -445,13 +459,22 @@ def parse_claude_stream_json_line(line: str) -> list[dict]:
             events.append({"kind": "text", "text": _clip("".join(texts))})
         return events
     if kind == "result":
+        usage = obj.get("usage") or {}
+        if not isinstance(usage, dict):
+            usage = {}
         return [{
             "kind": "result",
             "session_id": obj.get("session_id"),
+            "model": obj.get("model"),
+            "workdir": obj.get("cwd") or obj.get("workdir"),
             "num_turns": obj.get("num_turns"),
             "total_cost_usd": obj.get("total_cost_usd"),
             "subtype": obj.get("subtype"),
             "is_error": obj.get("is_error"),
+            "input_tokens": usage.get("input_tokens"),
+            "output_tokens": usage.get("output_tokens"),
+            "cache_creation_input_tokens": usage.get("cache_creation_input_tokens"),
+            "cache_read_input_tokens": usage.get("cache_read_input_tokens"),
         }]
     return []
 
@@ -471,7 +494,13 @@ def parse_codex_jsonl_line(line: str) -> list[dict]:
     if isinstance(msg, dict):
         mtype = msg.get("type")
         if mtype == "session_configured":
-            return [{"kind": "init", "session_id": msg.get("session_id")}]
+            event = {
+                "kind": "init",
+                "session_id": msg.get("session_id"),
+                "model": msg.get("model"),
+                "workdir": msg.get("cwd") or msg.get("workdir"),
+            }
+            return [{key: value for key, value in event.items() if value is not None}]
         if mtype == "agent_message" and msg.get("message"):
             return [{"kind": "text", "text": _clip(msg.get("message"))}]
         if mtype == "exec_command_begin":
@@ -488,7 +517,13 @@ def parse_codex_jsonl_line(line: str) -> list[dict]:
 
     otype = obj.get("type")
     if otype == "thread.started":
-        return [{"kind": "init", "session_id": obj.get("thread_id")}]
+        event = {
+            "kind": "init",
+            "session_id": obj.get("thread_id"),
+            "model": obj.get("model"),
+            "workdir": obj.get("cwd") or obj.get("workdir"),
+        }
+        return [{key: value for key, value in event.items() if value is not None}]
     if otype == "item.completed":
         item = obj.get("item") or {}
         if not isinstance(item, dict):
@@ -509,6 +544,7 @@ def parse_codex_jsonl_line(line: str) -> list[dict]:
             "kind": "result",
             "input_tokens": usage.get("input_tokens"),
             "output_tokens": usage.get("output_tokens"),
+            "cached_input_tokens": usage.get("cached_input_tokens"),
         }]
     if otype == "turn.failed":
         return [{"kind": "result", "is_error": True}]
@@ -518,10 +554,21 @@ def parse_codex_jsonl_line(line: str) -> list[dict]:
 
 
 def normalize_output_line(agent: str, line: str) -> list[dict]:
+    if "__HERMES_CWD_" in line:
+        return []
     if agent == CLAUDE_AGENT:
-        return parse_claude_stream_json_line(line)
-    if agent == CODEX_AGENT:
-        return parse_codex_jsonl_line(line)
+        events = parse_claude_stream_json_line(line)
+    elif agent == CODEX_AGENT:
+        events = parse_codex_jsonl_line(line)
+    else:
+        return []
+    if events:
+        return events
+    # Human-readable foreground modes are still useful live. Unknown JSON
+    # frames stay silent (they can be high-volume partial protocol events);
+    # ordinary non-empty lines become a normalized raw progress row.
+    if _load_json_line(line) is None and _clip(line):
+        return [{"kind": "raw", "text": _clip(line)}]
     return []
 
 
@@ -541,31 +588,53 @@ def extract_claude_result(output: str) -> Optional[dict]:
             whole = candidate if isinstance(candidate, dict) else None
         except Exception:
             whole = None
+    result: dict[str, Any] = {}
+    lines = output.splitlines()[-400:]
     if whole is not None and (whole.get("type") == "result" or "session_id" in whole):
-        return {
-            "session_id": whole.get("session_id"),
-            "num_turns": whole.get("num_turns"),
-            "total_cost_usd": whole.get("total_cost_usd"),
-            "subtype": whole.get("subtype"),
-            "is_error": whole.get("is_error"),
-        }
-    for line in reversed(output.splitlines()[-200:]):
+        lines = [json.dumps(whole)]
+    for line in lines:
         for event in parse_claude_stream_json_line(line):
-            if event.get("kind") == "result":
-                event.pop("kind", None)
-                return event
-    return None
+            if event.get("kind") not in {"init", "result"}:
+                continue
+            for key, value in event.items():
+                if key != "kind" and value is not None:
+                    result[key] = value
+    return result or None
 
 
 def extract_codex_result(output: str) -> Optional[dict]:
     if not output:
         return None
-    for line in reversed(output.splitlines()[-200:]):
+    result: dict[str, Any] = {}
+    for line in output.splitlines()[-400:]:
         for event in parse_codex_jsonl_line(line):
-            if event.get("kind") == "result":
-                event.pop("kind", None)
-                return event
-    return None
+            if event.get("kind") not in {"init", "result"}:
+                continue
+            for key, value in event.items():
+                if key != "kind" and value is not None:
+                    result[key] = value
+
+    # Codex without --json prints a stable diagnostic header and a final
+    # "tokens used" count. Parse it defensively so old skills still surface
+    # useful metadata; dollar cost is intentionally not inferred.
+    patterns = {
+        "workdir": r"(?mi)^workdir:\s*(.+?)\s*$",
+        "model": r"(?mi)^model:\s*(.+?)\s*$",
+        "session_id": r"(?mi)^session id:\s*(\S+)\s*$",
+    }
+    for key, pattern in patterns.items():
+        match = re.search(pattern, output)
+        if match:
+            result[key] = match.group(1).strip()
+    token_match = re.search(
+        r"(?mi)^tokens used\s*\r?\n\s*([0-9][0-9,]*)\s*$", output
+    )
+    if token_match:
+        try:
+            result["total_tokens"] = int(token_match.group(1).replace(",", ""))
+        except ValueError:
+            pass
+    return result or None
 
 
 def _extract_result(agent: str, output: str) -> Optional[dict]:
@@ -617,8 +686,9 @@ class DelegationTracker:
     """CLI 委派生命周期跟踪器（gateway 进程内单例）。
 
     线程模型：``handle_tool_start``/``handle_tool_complete`` 来自 agent 线程；
-    ``on_chunk`` 来自 process_registry 的 reader 线程；冲刷与终态检测在自有
-    watcher daemon 线程。所有共享状态由 ``_lock`` 保护，事件发送不持锁。
+    后台 ``on_chunk`` 来自 process_registry reader，前台 chunk 来自 terminal
+    drain 线程；冲刷与终态检测在自有 watcher daemon 线程。所有共享状态由
+    ``_lock`` 保护，事件发送不持锁。
     """
 
     def __init__(self) -> None:
@@ -714,6 +784,7 @@ class DelegationTracker:
                 status="failed",
                 exit_code=exit_code if isinstance(exit_code, int) else None,
                 output=str((parsed or {}).get("output") or ""),
+                workdir=(parsed or {}).get("cwd") or (parsed or {}).get("workdir"),
             )
             return
 
@@ -723,9 +794,10 @@ class DelegationTracker:
             status="failed" if failed else "completed",
             exit_code=exit_code if isinstance(exit_code, int) else None,
             output=output,
+            workdir=(parsed or {}).get("cwd") or (parsed or {}).get("workdir"),
         )
 
-    # -- 后台输出流 ----------------------------------------------------------
+    # -- 前后台输出流 --------------------------------------------------------
 
     def on_chunk(self, process_session: Any, chunk: str) -> None:
         if not chunk:
@@ -744,6 +816,19 @@ class DelegationTracker:
             if len(entry.pending) > PENDING_BUFFER_CAP:
                 entry.pending = entry.pending[-PENDING_BUFFER_CAP:]
 
+    def on_foreground_chunk(self, tool_call_id: str, chunk: str) -> None:
+        """Accept live stdout/stderr from a foreground terminal invocation."""
+        if not tool_call_id or not chunk:
+            return
+        with self._lock:
+            entry = self._entries.get(tool_call_id)
+            if entry is None or entry.spec.flags.get("background"):
+                return
+            entry.pending += _strip_ansi(str(chunk))
+            if len(entry.pending) > PENDING_BUFFER_CAP:
+                entry.pending = entry.pending[-PENDING_BUFFER_CAP:]
+        self._ensure_watcher()
+
     def _ensure_watcher(self) -> None:
         with self._lock:
             if self._watcher is not None and self._watcher.is_alive():
@@ -758,30 +843,26 @@ class DelegationTracker:
         while True:
             time.sleep(FLUSH_INTERVAL_S)
             with self._lock:
-                bound = [
+                active = [
                     entry for entry in self._entries.values()
                     if entry.process_session_id is not None
+                    or not entry.spec.flags.get("background")
                 ]
-                if not bound:
+                if not active:
                     self._watcher = None
                     return
-            for entry in bound:
+            for entry in active:
                 try:
-                    self._tick_entry(entry)
+                    if entry.process_session_id is not None:
+                        self._tick_entry(entry)
+                    else:
+                        self._flush_entry(entry)
                 except Exception:
                     pass
             self._sweep()
 
     def _tick_entry(self, entry: _Entry) -> None:
-        chunk_out, events = self._drain(entry, final=False)
-        if chunk_out or events:
-            self._send("delegation.cli.output", entry.sid, {
-                "delegation_id": entry.delegation_id,
-                "process_session_id": entry.process_session_id,
-                "chunk": chunk_out,
-                "truncated": entry.stream_capped,
-                "events": events,
-            })
+        self._flush_entry(entry)
 
         process_session = self._lookup_process(entry.process_session_id)
         if process_session is None:
@@ -805,6 +886,17 @@ class DelegationTracker:
                 exit_code=exit_code if isinstance(exit_code, int) else None,
                 output=buffer,
             )
+
+    def _flush_entry(self, entry: _Entry) -> None:
+        chunk_out, events = self._drain(entry, final=False)
+        if chunk_out or events:
+            self._send("delegation.cli.output", entry.sid, {
+                "delegation_id": entry.delegation_id,
+                "process_session_id": entry.process_session_id,
+                "chunk": chunk_out,
+                "truncated": entry.stream_capped,
+                "events": events,
+            })
 
     @staticmethod
     def _lookup_process(process_session_id: Optional[str]) -> Any:
@@ -840,11 +932,19 @@ class DelegationTracker:
                 break
             events.extend(normalize_output_line(entry.spec.agent, line))
         events = events[:EVENTS_PER_FLUSH_CAP]
+        for event in events:
+            if event.get("text"):
+                event["text"] = _redact(str(event["text"]))
+            if event.get("tool_name"):
+                event["tool_name"] = _redact(str(event["tool_name"]))
 
         if capped or not pending:
             chunk_out = ""
         else:
-            chunk_out = _redact(pending[-CHUNK_CAP:])
+            visible_pending = "\n".join(
+                line for line in pending.split("\n") if "__HERMES_CWD_" not in line
+            )
+            chunk_out = _redact(visible_pending[-CHUNK_CAP:])
         return chunk_out, events
 
     def _sweep(self) -> None:
@@ -865,7 +965,12 @@ class DelegationTracker:
     # -- 终态 ---------------------------------------------------------------
 
     def _complete(
-        self, entry: _Entry, status: str, exit_code: Optional[int], output: str
+        self,
+        entry: _Entry,
+        status: str,
+        exit_code: Optional[int],
+        output: str,
+        workdir: Any = None,
     ) -> None:
         with self._lock:
             if entry.delegation_id not in self._entries:
@@ -880,6 +985,13 @@ class DelegationTracker:
                 "events": events,
             })
         tail = _strip_ansi(str(output or ""))[-OUTPUT_TAIL_CAP:]
+        result = _extract_result(entry.spec.agent, output) or {}
+        if _static_workdir(workdir) and not result.get("workdir"):
+            result["workdir"] = _static_workdir(workdir)
+        if entry.spec.workdir and not result.get("workdir"):
+            result["workdir"] = entry.spec.workdir
+        if entry.spec.flags.get("model") and not result.get("model"):
+            result["model"] = entry.spec.flags["model"]
         payload = {
             "delegation_id": entry.delegation_id,
             "agent": entry.spec.agent,
@@ -888,7 +1000,7 @@ class DelegationTracker:
             "exit_code": exit_code,
             "duration_s": round(time.time() - entry.created_at, 3),
             "output_tail": _redact(tail),
-            "result": _extract_result(entry.spec.agent, output),
+            "result": result or None,
         }
         self._forget(entry)
         self._send("delegation.cli.completed", entry.sid, payload)

@@ -12,6 +12,7 @@ from hermes_cli.config import (
     check_config_version,
     get_hermes_home,
     ensure_hermes_home,
+    ensure_starter_config_file,
     get_compatible_custom_providers,
     _explicit_config_paths,
     _normalize_max_turns_config,
@@ -249,6 +250,98 @@ class TestSaveAndLoadRoundtrip:
 
 
 
+        config_path = tmp_path / "config.yaml"
+        original = "model:\n  provider: openrouter\n"
+        config_path.write_text(original, encoding="utf-8")
+
+        with patch("builtins.open", side_effect=self._deny_config_reads(config_path)):
+            with pytest.raises(RuntimeError, match="Refusing to overwrite"):
+                atomic_config_write(config_path, {"model": {"provider": "openai"}})
+
+        assert config_path.read_text(encoding="utf-8", errors="replace") == original
+
+    def test_atomic_config_write_creates_new_file(self, tmp_path):
+        """A genuinely absent config.yaml must still be created — the guard
+        only refuses to clobber an existing-but-unreadable file."""
+        from hermes_cli.config import atomic_config_write
+
+        config_path = tmp_path / "config.yaml"
+        assert not config_path.exists()
+        atomic_config_write(config_path, {"model": {"provider": "openrouter"}})
+        assert config_path.exists()
+        assert "openrouter" in config_path.read_text(encoding="utf-8", errors="replace")
+
+    def test_ensure_starter_config_file_creates_minimal_config(self, tmp_path):
+        config_path = tmp_path / "config.yaml"
+        with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
+            created = ensure_starter_config_file()
+
+        assert created == config_path
+        raw = yaml.safe_load(config_path.read_text(encoding="utf-8", errors="replace"))
+        assert raw["_config_version"] == DEFAULT_CONFIG["_config_version"]
+        assert raw["model"] == {"provider": "", "default": ""}
+        assert raw["providers"] == {}
+        assert "agent" not in raw
+        assert "terminal" not in raw
+
+    def test_ensure_starter_config_file_refreshes_no_file_cache(self, tmp_path):
+        config_path = tmp_path / "config.yaml"
+        with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
+            assert load_config()["_config_version"] == DEFAULT_CONFIG["_config_version"]
+            assert not config_path.exists()
+
+            ensure_starter_config_file()
+            reloaded = load_config()
+
+        assert config_path.exists()
+        assert reloaded["model"]["provider"] == ""
+        assert reloaded["model"]["default"] == ""
+
+    def test_ensure_starter_config_file_does_not_overwrite_existing_config(self, tmp_path):
+        config_path = tmp_path / "config.yaml"
+        original = "model: existing/model\n"
+        config_path.write_text(original, encoding="utf-8")
+
+        with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
+            created = ensure_starter_config_file()
+
+        assert created is None
+        assert config_path.read_text(encoding="utf-8", errors="replace") == original
+
+    def test_save_config_normalizes_legacy_root_level_max_turns(self, tmp_path):
+        with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
+            save_config({"model": "test/custom-model", "max_turns": 37})
+
+            saved = yaml.safe_load((tmp_path / "config.yaml").read_text())
+            assert saved["agent"]["max_turns"] == 37
+            assert "max_turns" not in saved
+
+    def test_nested_values_preserved(self, tmp_path):
+        with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
+            config = load_config()
+            config["terminal"]["timeout"] = 999
+            save_config(config)
+
+            reloaded = load_config()
+            assert reloaded["terminal"]["timeout"] == 999
+
+    def test_write_platform_config_field_coerces_nested_platform_maps(self, tmp_path):
+        with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
+            (tmp_path / "config.yaml").write_text(
+                "model: test/custom-model\nplatforms: not-a-map\n",
+                encoding="utf-8",
+            )
+
+            write_platform_config_field(
+                "email",
+                "unauthorized_dm_behavior",
+                "pair",
+                raw=True,
+            )
+
+            saved = yaml.safe_load((tmp_path / "config.yaml").read_text(encoding="utf-8", errors="replace"))
+            assert saved["model"] == "test/custom-model"
+            assert saved["platforms"]["email"]["unauthorized_dm_behavior"] == "pair"
 
 
 class TestSaveEnvValueSecure:

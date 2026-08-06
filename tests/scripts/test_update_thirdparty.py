@@ -40,9 +40,16 @@ def fake_project(tmp_path, monkeypatch):
     (tools_dir / "rtk_provision.py").write_text(
         'RTK_VERSION = "0.43.0"\n'
     )
+    # The real workflow pins ripgrep TWICE — once in the `test` job and once
+    # in the `e2e` job. Both must be bumped together or CI ends up running two
+    # different ripgreps.
     (workflows_dir / "tests.yml").write_text(
-        "RG_VERSION=14.1.0\n"
-        "RG_SHA256=1c9297be4a084eea7ecaedf93eb03d058d6faae29bbc57ecdaf5063921491599\n"
+        "  test:\n"
+        "          RG_VERSION=14.1.0\n"
+        "          RG_SHA256=1c9297be4a084eea7ecaedf93eb03d058d6faae29bbc57ecdaf5063921491599\n"
+        "  e2e:\n"
+        "          RG_VERSION=14.1.0\n"
+        "          RG_SHA256=1c9297be4a084eea7ecaedf93eb03d058d6faae29bbc57ecdaf5063921491599\n"
     )
 
     monkeypatch.setattr(update_mod, "PROJECT_ROOT", tmp_path)
@@ -110,6 +117,27 @@ def test_update_ripgrep_all_files(fake_project, monkeypatch):
     assert "RG_SHA256=" + ("abcd" * 16) in yml
 
 
+def test_update_ripgrep_bumps_every_occurrence_in_a_file(fake_project, monkeypatch):
+    """Both ripgrep pins in the workflow move — not just the first one.
+
+    ``tests.yml`` installs ripgrep in the ``test`` job and again in the ``e2e``
+    job. A first-match-only rewrite silently leaves the second job on the old
+    version with the old checksum, which is exactly the cross-file drift this
+    script is supposed to eliminate.
+    """
+    monkeypatch.setattr(
+        update_mod, "_get_latest_tag", lambda repo, pattern, mirrors: "15.2.0"
+    )
+    monkeypatch.setattr(update_mod, "_compute_sha256", lambda urls: "abcd" * 16)
+
+    assert _run_main("--yes", "ripgrep") == 0
+
+    yml = (fake_project / ".github" / "workflows" / "tests.yml").read_text()
+    assert yml.count("RG_VERSION=15.2.0") == 2
+    assert "RG_VERSION=14.1.0" not in yml
+    assert yml.count("RG_SHA256=" + ("abcd" * 16)) == 2
+
+
 def test_update_rtk_strips_leading_v(fake_project, monkeypatch):
     """rtk tags are ``vX.Y.Z`` but the pinned version is ``X.Y.Z``."""
     monkeypatch.setattr(
@@ -142,7 +170,7 @@ def test_update_ripgrep_skip_shasum(fake_project, monkeypatch):
 
     yml = (fake_project / ".github" / "workflows" / "tests.yml").read_text()
     assert "RG_VERSION=15.2.0" in yml
-    assert "RG_SHA256=1c9297be4a084eea7ecaedf93eb03d058d6faae29bbc57ecdaf5063921491599" in yml
+    assert yml.count("RG_SHA256=1c9297be4a084eea7ecaedf93eb03d058d6faae29bbc57ecdaf5063921491599") == 2
 
 
 # ── Tool filtering ────────────────────────────────────────────────────────────
@@ -187,6 +215,44 @@ def test_iter_mirrors_custom_and_env(monkeypatch):
             if m not in ("https://custom.mirror/", "https://env.mirror/")
         ],
     ]
+
+
+def test_iter_mirrors_can_omit_china_defaults():
+    """The built-in proxy list can be left out entirely."""
+    mirrors = list(
+        update_mod._iter_mirrors(include_direct=True, include_china_defaults=False)
+    )
+    assert mirrors == [""]
+
+
+def _mirrors_for(*argv) -> list[str]:
+    """Build the mirror list the CLI would use for *argv*."""
+    parser_args = update_mod.argparse.Namespace(
+        mirror=None, china_mirror="--china-mirror" in argv
+    )
+    return update_mod._build_mirror_list(parser_args)
+
+
+def test_china_mirror_flag_gates_the_builtin_proxy_list(monkeypatch):
+    """--china-mirror is what enables the third-party proxies, not a no-op.
+
+    Without the flag we must not route a maintainer's requests through
+    ghproxy et al.; with it, they are appended as fallbacks after direct.
+    """
+    monkeypatch.delenv("HERMES_THIRDPARTY_MIRROR", raising=False)
+
+    assert _mirrors_for() == [""]
+
+    enabled = _mirrors_for("--china-mirror")
+    assert enabled[0] == ""
+    assert enabled[1:] == update_mod._DEFAULT_CHINA_MIRRORS
+
+
+def test_explicit_mirror_env_honored_without_china_flag(monkeypatch):
+    """An explicitly configured mirror is always used; the proxy list is not."""
+    monkeypatch.setenv("HERMES_THIRDPARTY_MIRROR", "https://env.mirror/")
+
+    assert _mirrors_for() == ["", "https://env.mirror/"]
 
 
 def test_mirror_url_prefixes_github_url():

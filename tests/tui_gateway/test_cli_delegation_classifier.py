@@ -197,6 +197,17 @@ FIXTURES = [
         },
     },
     {
+        "name": "codex-dynamic-cd-not-reported-as-dollar",
+        "command": "cd $(mktemp -d) && git init -q && codex exec 'task'",
+        "args": {},
+        "expect": {
+            "agent": "codex",
+            "mode": "exec",
+            "prompt": "task",
+            "workdir": None,
+        },
+    },
+    {
         "name": "codex-review",
         "command": "codex review --base origin/main",
         "args": {},

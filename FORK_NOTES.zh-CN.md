@@ -8,7 +8,12 @@
 
 | ID | 目标文件 | 做了什么 | 为什么需要 | 上游状态 |
 |---|---|---|---|---|
-| **P-035** | `scripts/update_thirdparty.py`、`tests/scripts/test_update_thirdparty.py` | 新增维护脚本，检查 **ripgrep** 与 **rtk** 的 GitHub 最新 release，自动同步 `scripts/install.sh`、`scripts/install.ps1`、`tools/rtk_provision.py`、`.github/workflows/tests.yml` 中的版本号，并重新计算 ripgrep 在 CI 工作流里的 SHA256；支持 `--china-mirror` / `--mirror` / `HERMES_THIRDPARTY_MIRROR` 国内镜像回退。 | Hermes-CN 把这些外部二进制版本钉在多种文件格式（Bash、PowerShell、Python、YAML）中，且国内访问 GitHub 经常慢或不通；统一 updater 可保持多文件版本一致，并提供镜像回退。 | CN 专属维护工具；待上游引入 `_ripgrep_common.py` / `_rtk_common.py` 后可考虑 upstream |
+| **P-058** | `tools/environments/local.py`、`tools/terminal_tool.py`、`tools/process_registry.py`、`agent/prompt_builder.py`、`website/docs/user-guide/windows-native.md`、`website/docs/reference/environment-variables.md`、`website/i18n/zh-Hans/docusaurus-plugin-content-docs/current/user-guide/windows-native.md`、`website/i18n/zh-Hans/docusaurus-plugin-content-docs/current/reference/environment-variables.md`、README 系列、`tests/tools/test_shell_resolution.py`、`tests/tools/test_terminal_dynamic_description.py`、`tests/tools/test_process_registry.py`、`tests/tools/test_find_bash_optional_probe.py`（新增）、`tests/agent/test_prompt_builder.py`、`FORK_NOTES.md`、`FORK_NOTES.zh-CN.md` | **Windows 默认 shell 偏好：git-bash → PowerShell 7 → Windows PowerShell 5.1。** 当 `terminal.shell` 未设置（`auto`）时，`_resolve_shell()` 现在优先选用 **git-bash**（经既有 `_find_bash` 发现链——env 覆盖 → 托管便携 Git → 标准安装位置 → PATH——加 `_bash_starts()` 冒烟测试，确为可用安装），再回退 `pwsh` 7.x，最后 `powershell.exe` 5.1。显式 `shell: bash` / `shell: pwsh` / `shell: powershell` 照旧尊重。`_find_bash` 新增非抛错探测（`raise_if_missing=False` → `None`）；`_detect_shell_for_description` 镜像同一顺序（bash→pwsh→powershell；显式 bash 现在返回 `"bash"`，未知值按 auto 处理）；`process_registry` 的后台/PTY 拉起变为 shell 感知，新增 `_build_bash_background_script`（bash 用 `-lc`，PowerShell 保留 `-NoProfile`）；prompt_builder 的 auto shell 提示优先 git-bash 提示。 | P-050 把 Git Bash 恢复为 Windows 上*可选显式* shell，但默认仍是 PowerShell。装了 Git for Windows 的用户（很常见——装 git 就带 bash）即使机器上摆着一个完整可用的 POSIX shell，默认也拿到 PowerShell 语法提示和 PowerShell 后台包装脚本。有 git-bash 时默认启用，让 agent 零配置获得 POSIX 语法（`pwd -P`、`sed/awk/grep` 管道），而 PowerShell 7 / 5.1 仍是每台 Windows 10/11 的保底回退。 | Windows 默认是刻意分叉（上游 shell 故事见 P-016/P-019/P-050）；非抛错 `_find_bash` 探测与 shell 感知的后台拉起是通用改进，可上游。Desktop 预检（`apps/desktop/electron/main.ts`）留作后续，本次不做。 |
+| **P-057** | `plugins/memory/__init__.py`、`agent/system_prompt.py`、`.github/workflows/release-runtime.yml`、聚焦测试 | 让内置记忆 provider 发现逻辑兼容 PyInstaller 的代码/数据分离布局：manifest 仍在磁盘，provider 代码则由冻结模块加载器提供。runtime 现在收集全部 `plugins.memory` 子模块，并用实际冻结二进制冒烟 OpenViking 与 Hindsight。Managed Desktop 的系统提示会钉住当前精确 `HERMES_HOME`，修正命名档案路径说明，并要求通过 managed CLI/API 验证记忆配置，而不是只探测外部服务。 | `runtime-v0.19.0-cn.6` 虽然带了 OpenViking/Hindsight manifest，却没有物理 `__init__.py`；原来的纯目录发现因此让 `/api/memory` 完全看不到 provider。受影响的 Desktop 会话随后检查了全局 `~/.hermes`，并把 OpenViking 服务健康误判成 managed 档案已经配置成功。 | 可导入模块发现与活动档案路径修正是通用修复；冻结打包闸门和 Managed Desktop 指引属于 CN 发版链路。 |
+| **P-056** | `hermes_cli/web_server.py`、`tui_gateway/server.py`、网关/API 聚焦测试 | 加固 Desktop 请求边界：会话记录分页参数不再接受负数，`prompt.submit` 拒绝非字符串文本，即使文件名伪装成图片也必须通过魔数校验，cron 工具返回的校验失败会转换为 JSON-RPC 错误。 | 畸形或伪造的 Desktop 请求过去可能绕过会话记录上限、以错误类型进入回合处理、把任意字节落盘成图片，或把失败的 cron 变更误报为成功。 | 通用网关/API 正确性修复，适合上游化。 |
+| **P-055** | `agent/memory_provider.py`、`hermes_cli/web_server.py`、`tools/memory_tool.py`、`plugins/memory/openviking/__init__.py`、`plugins/memory/hindsight/__init__.py`、聚焦测试 | 新增可选只读运行状态 hook 与 `GET /api/memory/providers/{name}/status`；OpenViking/Hindsight 分别聚合健康、就绪、组件、模型、队列、记忆或 bank/runtime 指标，且不返回秘密。Provider 配置保存支持 `activate:false`，省略时仍保持原有“保存并启用”兼容行为。直接写入档案 `memory.openviking` 的 endpoint 也会参与连接解析与可用性判断。内置 `MEMORY.md` 配置继续默认 2200 字符，并统一发布和执行 1–8000 字符范围。 | Desktop managed runtime 使用隔离的 `HERMES_HOME`；旧记忆页只会激活、不会保存连接字段，导致 OpenViking 一直是 `needs_config`，两个后端也都无法在 Hermes 内监控；内置记忆编辑器也需要与 Core 共享同一套容量边界。 | 通用 provider 可观测与配置接口，待 UI 评审后适合上游。 |
+| **P-054** | `model_tools.py`、`tools/environments/base.py`、`tools/environments/local.py`、`tools/environments/modal_utils.py`、`tools/terminal_tool.py`、`tui_gateway/cli_delegation.py`、`tui_gateway/server.py`、Claude Code/Codex 技能及聚焦测试 | 在 P-047 上补齐前台 terminal 委派：agent 调度层把 `tool_call_id` 透传到工具注册表，pipe 型环境再按该 id 提供失败开放的实时输出回调；gateway 将前后台 chunk 都以 ≤2 Hz 合并为 `delegation.cli.output`。普通文本输出归一化为脱敏 `raw` 进度事件；终态从 Claude/Codex JSON 汇总 model/session/workdir 与 Token，并兼容解析 Codex 人类可读头部和 `tokens used` 尾部。terminal 结果补充 shell 执行后的真实 cwd，动态 shell 表达式不再被错误展示为字面量 `$`，内置技能在前台也优先请求 stream-json/`--json`。 | 前台 Claude Code/Codex 过去只有 started/completed，Desktop 会静默转圈数分钟；completed 事件一旦丢失就永久显示运行中，而且旧 Codex 技能未加 `--json` 时目录与 Token 始终为空。 | 通用 terminal/gateway 可观测性可上游；事件名与分类器仍由 CN Desktop 驱动。关联 P-047。 |
+| **P-053** | `scripts/update_thirdparty.py`、`tests/scripts/test_update_thirdparty.py` | 新增维护脚本，检查 **ripgrep** 与 **rtk** 的 GitHub 最新 release，自动同步 `scripts/install.sh`、`scripts/install.ps1`、`tools/rtk_provision.py`、`.github/workflows/tests.yml` 中**每一处**版本钉子（tests.yml 里 `test` 与 `e2e` 两个 job 各钉一次 ripgrep），并重新计算 ripgrep 在 CI 工作流里的 SHA256；支持 `--china-mirror` / `--mirror` / `HERMES_THIRDPARTY_MIRROR` 显式开启的国内镜像回退。 | Hermes-CN 把这些外部二进制版本钉在多种文件格式（Bash、PowerShell、Python、YAML）中，且国内访问 GitHub 经常慢或不通；统一 updater 可保持多文件版本一致，并提供镜像回退。 | CN 专属维护工具；待上游引入 `_ripgrep_common.py` / `_rtk_common.py` 后可考虑 upstream |
 | **P-025** | `hermes_cli/web_server.py` | `/api/providers/oauth` 现在：(1) 命中 20s 的按 profile 进程内 TTL 缓存；(2) 用 `asyncio.to_thread` 并发跑各 provider 的状态检查（移出 FastAPI 事件循环），不再串行内联；(3) 在每次连接/断开时失效缓存（断开的两条清理路径、PKCE submit、设备码/loopback 轮询到 `approved`）。另加 `refresh=true` 逃生阀。 | 桌面端模型页每次打开、以及每次窗口重新聚焦都会串行枚举所有 OAuth provider 的状态；部分检查会联网/起子进程，而该 handler 是 `async`，于是阻塞了同时服务聊天网关 WebSocket 的事件循环——模型页要等好几秒，还会拖累实时会话。 | 建议上游（通用响应性修复） |
 | **P-001** | `tui_gateway/server.py` | provider 配置 dict/list 不一致修复 | 早期 fork 需要兼容用户配置形态 | 已由上游修复，本 fork 不再携带 |
 | **P-002** | `hermes_cli/web_server.py` | 增加 `POST /api/upload` 附件上传接口 | desktop / web composer 拖拽上传依赖它 | 未进入上游 |
@@ -17,7 +22,7 @@
 | **P-005** | `hermes_cli/web_server.py` | 增加 `GET /api/mcp-servers` 只读 MCP 列表 | desktop 健康检查需要 MCP 数量，但不能泄露 command/args/env | 可考虑上游 |
 | **P-006** | `hermes_cli/config.py` | 为 CN provider 注册 `OPTIONAL_ENV_VARS` | 模型设置页需要展示 ARK、QIANFAN、HUNYUAN、SiliconFlow 等密钥项 | CN 专属，通常不向上游提交 |
 | **P-007** | `tui_gateway/ws.py` | 捕获并记录 gateway dispatch 异常，返回 JSON-RPC error | 否则前端只看到 WebSocket closed，缺少诊断信息 | 建议上游 |
-| **P-008** | `hermes_cli/web_server.py` | 增加 `GET/PUT /api/profiles/active` | desktop profile 切换器需要读写 sticky active profile | 建议上游 |
+| **P-008** | `hermes_cli/web_server.py`、`hermes_cli/main.py`、档案相关定向测试 | 保留 `GET/PUT /api/profiles/active` 兼容层，并让 Desktop 托管启动信任显式 `HERMES_HOME`，避免命名档案切回默认档案时被旧 sticky 档案重新劫持 | desktop 切换器需要兼容读写 sticky active profile；实时切回默认档案时，旧 `active_profile` 会保留到替换进程就绪，Core 不能把新进程重新导向旧档案 | 上游已提供 GET/POST；其余为 Desktop 兼容与重启语义 |
 | **P-009** | `hermes_cli/web_server.py`, `tui_gateway/sse.py` | 增加 `/api/v2/events` SSE 和 `/api/v2/rpc` POST transport | ~~desktop 默认使用 EventSource + POST~~ → desktop ≥ 0.4 已改用原生 `/api/ws` WebSocket（与官方桌面端一致），此 transport 只服务旧版外壳 | **已弃用** —— 为 ≤ 0.3.x 旧外壳保留（外壳无自更新而 runtime 热更新），旧外壳 EOL 后移除。不上游。 |
 | **P-010** | `hermes_cli/config.py` | 注册 `LONGCAT_API_KEY` | CN 模型设置需要 LongCat 密钥入口 | CN 专属，除非上游支持 LongCat |
 | **P-011** | `tui_gateway/server.py` | 给 `model.options` 增加 `slug_filter`，并增加 `provider.probe` RPC | desktop 需要过滤模型选择器，并轻量探测 provider 状态 | 可考虑上游 |
@@ -88,6 +93,7 @@
    - 维护 `_RTK_KNOWN_COMMANDS`（git、cargo、pytest、npm、pnpm、yarn、docker、kubectl、ls、grep、rg、find、cat、head、tail、python、pip、go、rustc、make、cmake、curl、wget、ps、df、du、netstat、ss、systemctl、journalctl，以及 PowerShell cmdlet 如 Get-ChildItem、Get-Content、Select-String 等）。
    - `_rewrite_shell_segment()`：找到第一个真正的可执行 token（跳过环境变量 `KEY=VALUE` 赋值和 `sudo`），若匹配已知命令列表则前置 `rtk`。
    - `_split_shell_segments()`：正确解析 `;`/`&&`/`||`/`|` 分割，尊重引号、转义和 `$(...)` subshell。
+   - Shell 元字符读取始终推进游标，避免 `2>&1` 等重定向在命令重写时卡死 Gateway 事件循环；`tests/tools/test_terminal_command_rewrite.py` 覆盖该回归。
    - 尊重 `RTK_DISABLED=1` 前缀和已经以 `rtk` 开头的命令。
 
 4. **`tools/terminal_tool.py`** — 集成：
@@ -301,6 +307,8 @@
 - `PUT /api/profiles/active` 接收 `{name}` 并写入 sticky 设置。
 
 **风险和约束**：该接口只影响下次启动默认 profile，不改变当前 dashboard 进程正在使用的 `HERMES_HOME`。desktop 需要提示用户重启。
+
+**Desktop 托管的命名档案→默认档案重启修复**：Desktop 为保证失败可恢复，会先启动替换 dashboard，确认就绪后才清除 `active_profile`。旧逻辑在替换进程启动时读取这个尚未清除的 sticky 文件，把 Desktop 显式传入的根 `HERMES_HOME` 又改回 `profiles/<旧档案>`。现在当 `HERMES_DESKTOP_MANAGED=1` 且没有显式 `--profile` 时，`_apply_profile_override()` 以 Desktop 传入的 `HERMES_HOME` 为准；显式 `--profile` 仍然优先，独立 CLI/systemd 的 sticky 行为不变。回归覆盖见 `tests/hermes_cli/test_apply_profile_override.py`。
 
 **是否上游**：建议上游，属于明显的 API 对称性缺口。
 
@@ -667,3 +675,23 @@
 - `tools/environments/_process_bash_command.py`
 
 Windows 平台现在要求使用 PowerShell 7（`pwsh`）或 Windows PowerShell（系统 PowerShell）。Shell 通过 `_find_pwsh` 解析，不再自动安装——PowerShell 属于 Windows 标准组件，默认已可用。
+
+### P-058：Windows 默认 shell 偏好——git-bash → pwsh → powershell 5.1
+
+**现象 / 需求。** P-050 恢复了 Git Bash 作为 Windows 上*可选显式* shell（`HERMES_SHELL_TYPE=bash`），P-052 又移植了 kimi 的完整 bash 发现链，但默认/`auto` 解析仍然直奔 PowerShell 7 → Windows PowerShell 5.1，从不探测 bash。装了 Git for Windows 的 Windows 用户（很常见——装 git 就带 bash，且常为 VCS 操作而装）即使机器上有完全可用的 POSIX shell，默认仍拿到 PowerShell 语法提示与 PowerShell 后台包装脚本。`_detect_shell_for_description` 对显式 `HERMES_SHELL_TYPE=bash` 也仍返回 `"powershell"`（P-019 遗留守卫），导致模型被要求用 PowerShell 语法、实际却跑在 bash 下。
+
+**改动内容。**
+
+1. **`tools/environments/local.py` —— 非抛错 `_find_bash` 探测。** `_find_bash()` 增加 `raise_if_missing: bool = True`；两处现有 raise 点（ASLR/msys 失败类与最后的 `RuntimeError("Git Bash is not found ...")`）在 `raise_if_missing is False` 时改为返回 `None`。所有既有调用者保持原来的提示性 RuntimeError（默认参数保留行为）。默认/auto 解析路径用非抛错探测实现“有 git-bash 就用”。
+2. **`tools/environments/local.py` —— `_resolve_shell()` 默认 git-bash 优先。** Windows `auto`/未设置现在解析为：`_find_bash(raise_if_missing=False)` → `("bash", path)`；否则 `_find_pwsh()` → `("pwsh", path)`；否则 `_find_powershell()` → `("powershell", path)`。显式 `bash`（缺失时抛错，不变）、显式 `pwsh`/`powershell`（pwsh → 5.1，**绝不** git-bash，不变）、未知值（抛错，不变）三个分支不动。相关 docstring 更新（`_resolve_shell`、`_find_shell`、`LocalEnvironment`）。
+3. **`tools/environments/local.py` —— 新增 `_build_bash_background_script()`。** 镜像 `_build_powershell_background_script()` 用于 Windows 上的 bash 后台路径：构造 `bash -lc` 脚本——`cd` 到 cwd（带守卫，`|| exit 126`）、通过 `eval` 执行命令、在提供 cwd_file 时把 `pwd`（MSYS 形式；消费端经 `_msys_to_windows_path` 转换）写入、以命令的 `$?` 退出。复用 `_quote_bash_path`/`_bash_safe_path` 嵌入路径。（本基底不存在 P-052 的 MSYSTEM 辅助函数——wrapper 与 `BaseEnvironment._wrap_command` 保持一致。）
+4. **`tools/terminal_tool.py` —— shell 感知的描述检测。** `_detect_shell_for_description()` 镜像解析顺序：显式 `bash` → `"bash"`（移除遗留 `"powershell"` 守卫）；`auto`/未设置 → 有 bash 用 bash，否则 pwsh，否则 powershell；显式 `pwsh`/`powershell` 不变；未知值按 auto 处理（描述路径不得抛错）。`_build_dynamic_terminal_description` 不变（bash 已映射到 Linux/bash 句子，对 git-bash 正确）。
+5. **`tools/process_registry.py` —— 后台与 PTY 拉起跟随 shell。** `_spawn_windows_powershell_local()` / `_spawn_windows_pty_local()` 按 `shell_type` 分支：`"bash"` → `_build_bash_background_script()` + `[shell_path, "-lc", script]`（非 PTY 的 Popen 保持相同的 creationflags/env/管道处理；PTY 经 winpty 同参数）；PowerShell 保留既有 `-NoProfile` 路径。PTY docstring 改为 shell 通用。
+6. **`agent/prompt_builder.py` —— auto shell 提示优先 git-bash。** `build_environment_hints()` 的 auto/未知分支按新默认选提示：存在 git-bash → `_WINDOWS_BASH_SHELL_HINT`；否则 PATH 有 pwsh → `_WINDOWS_PWSH_SHELL_HINT`；否则 `_WINDOWS_POWERSHELL_SHELL_HINT`。显式 `bash`/`powershell` 分支不变。
+7. **文档与注释清扫。** `website/docs/user-guide/windows-native.md` + zh-Hans + `website/docs/reference/environment-variables.md` + zh-Hans + README 系列更新为新默认顺序；`hermes_cli/gateway.py`、`scripts/keystroke_diagnostic.py`、`tools/environments/base.py`、`hermes_cli/config.py` 的过期注释改为“存在时默认 git-bash 优先”。
+
+**有意不动的部分。** Desktop 预检（`apps/desktop/electron/main.ts`）——需求范围限定在 `tools/terminal_tool.py` + `tools/environments/local.py`；记为后续项，保持桌面预检一致。不自动安装 git-bash（kimix 也不自动装；需求是“若存在可用的”）。非 Windows 解析不变（恒为 bash）。`_resolve_pwsh_session_reuse` / `_resolve_cmd_fast_path` 仍是 PowerShell 专属（bash 会话跳过）。
+
+**测试。** `tests/tools/test_shell_resolution.py`（auto→bash 胜出 / auto→pwsh 回退 / 显式分支不变 / `TestBuildBashBackgroundScript`）、`tests/tools/test_terminal_dynamic_description.py`（显式 bash → `"bash"`、auto git-bash → `"bash"`、未知 → auto、Windows git-bash 描述句）、`tests/tools/test_process_registry.py`（bash 后台拉起用 `bash -lc` 包装、无 PowerShell 标志；PTY 变体）、`tests/agent/test_prompt_builder.py`（auto + git-bash → bash 提示）、`tests/tools/test_find_bash_optional_probe.py`（新增——`_find_bash(raise_if_missing=False)` → `None` 而非抛错，覆盖 ASLR/未找到/坏 bash 路径；仅存在于 dev-020 的 `test_local_git_bash_port.py` 在本基底不存在）。完整 `tests/tools` + `tests/agent` 套件通过；`ruff check .` 干净。
+
+**是否可上游？** git-bash 优先的*默认*是刻意分叉（上游 Windows shell 默认是 PowerShell 优先，P-016/P-019/P-050）。非抛错 `_find_bash` 探测与 shell 感知的后台/PTY 拉起是通用改进，适合上游。

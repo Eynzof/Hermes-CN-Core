@@ -180,7 +180,7 @@ terminal(command="tmux new-session -d -s resumed 'hermes --resume 20260225_14305
 ### Tips
 
 - **Prefer `delegate_task` for quick subtasks** — less overhead than spawning a full process
-- **Use `-w` (worktree mode)** when spawning agents that edit code — prevents git conflicts
+- **Use `-w` (worktree mode)** when spawning agents that edit code — prevents git conflicts — but **never create/remove a worktree, commit, push, or open a PR without the user's explicit approval**: those are dangerous operations the user must decide on, never auto-executed
 - **Set timeouts** for one-shot mode — complex tasks can take 5-10 minutes
 - **Use `hermes chat -q` for fire-and-forget** — no PTY needed
 - **Use tmux for interactive sessions** — raw PTY mode has `\r` vs `\n` issues with prompt_toolkit
@@ -596,6 +596,14 @@ Optional body.
 
 Types: `fix:`, `feat:`, `refactor:`, `docs:`, `chore:`
 
+> **⚠️ Dangerous git operations — the user decides; never auto-execute.**
+> Creating/switching branches, `git worktree add` / `git worktree remove`, `git commit`,
+> `git push`, and opening/merging PRs are **high-risk operations** (irreversible,
+> and/or they change shared remote state). Before running any of them, explain the
+> intent and consequences and get the user's **explicit approval**; if the user hasn't
+> approved, do nothing. Automating or looping them (auto-commit, auto-push,
+> "open a branch + PR for every issue") without per-action consent is forbidden.
+
 ### Key Rules
 
 - **Never break prompt caching** — don't change past context, toolsets, or the system prompt mid-conversation. The only exception is context compression.
@@ -603,3 +611,4 @@ Types: `fix:`, `feat:`, `refactor:`, `docs:`, `chore:`
 - **Secrets in `.env`, settings in `config.yaml`** — never tell a user to put a non-credential setting in `.env`.
 - **Profile-safe paths** — `get_hermes_home()` in code, `$HERMES_HOME` when resolving paths in a session.
 - **Never hand-edit `config.yaml` for the user** — use `hermes config set KEY VAL`; a stray indent can corrupt the file and break the live gateway.
+- **Never auto-execute git state-changing commands** — `git commit`, `git push`, branch/worktree creation or removal, and PR creation/merge are dangerous operations: present the plan and let the user decide; no automatic or batched execution without explicit per-action approval.

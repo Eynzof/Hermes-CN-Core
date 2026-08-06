@@ -109,6 +109,14 @@ terminal(command="REVIEW=$(mktemp -d) && git clone https://github.com/user/repo.
 
 ## Parallel Issue Fixing with Worktrees
 
+> **⚠️ Dangerous git operations — the user decides; never auto-execute.**
+> `git worktree add` / `git worktree remove`, branch creation, `git commit`, `git push`,
+> and `gh pr create` are **high-risk operations** (irreversible, and/or they change
+> shared remote state). Get the user's **explicit approval** before each one — never
+> auto-run them, and never script them in a loop (auto-commit "Commit when done",
+> auto-push, auto-PR) without per-action consent. The snippets below are examples the
+> user may approve, not instructions to execute on your own.
+
 ```
 # Create worktrees
 terminal(command="git worktree add -b fix/issue-78 /tmp/issue-78 main", workdir="~/project")

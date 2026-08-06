@@ -15,6 +15,13 @@ metadata:
 
 Complete guide for managing the PR lifecycle. Each section shows the `gh` way first, then the `git` + `curl` fallback for machines without `gh`.
 
+> **⚠️ Dangerous git operations — the user decides; never auto-execute.**
+> Branch creation/switching, `git commit`, `git push`, and PR creation/merge are
+> **high-risk operations** (irreversible, and/or they change shared remote state).
+> Before each step, explain the intent and consequences and get the user's
+> **explicit approval**; never commit, push, or open PRs automatically or in a loop
+> (e.g. "open a branch + PR for every issue") without per-action consent.
+
 ## Prerequisites
 
 - Authenticated with GitHub (see `github-auth` skill)

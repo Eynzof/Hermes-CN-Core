@@ -366,11 +366,18 @@ mcp__<server>__<tool>   # Specific MCP tool
 {
   "permissions": {
     "allow": ["Bash(npm run lint:*)", "WebSearch", "Read"],
-    "ask": ["Write(*.ts)", "Bash(git push*)"],
+    "ask": ["Write(*.ts)", "Bash(git push*)", "Bash(git commit*)", "Bash(git worktree*)", "Bash(git checkout*)", "Bash(gh pr create*)", "Bash(gh pr merge*)"],
     "deny": ["Read(.env)", "Bash(rm -rf *)"]
   }
 }
 ```
+
+> **⚠️ Dangerous git operations — the user decides; never auto-execute.**
+> `git worktree add` / `git worktree remove`, branch creation/switching, `git commit`,
+> `git push`, and PR creation/merge are **high-risk operations** (irreversible, and/or
+> they change shared remote state). Keep them under `ask` (never `allow`): the agent
+> must explain the intent and get the user's **explicit approval** before each one, and
+> must not batch/loop them (auto-commit, auto-push, auto-PR) without per-action consent.
 
 ### Memory Files (CLAUDE.md) Hierarchy
 1. **Global:** `~/.claude/CLAUDE.md` — applies to all projects

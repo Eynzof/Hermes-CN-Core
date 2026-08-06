@@ -3,6 +3,7 @@
 import asyncio
 import os
 import json
+import orjson
 import shutil
 import sys
 import threading
@@ -1184,7 +1185,10 @@ class TestWebServerEndpoints:
             )
             db.create_session(session_id="desktop-tip", source="cli", parent_session_id="desktop-root")
             db._conn.execute("UPDATE sessions SET started_at = ? WHERE id = ?", (now - 4, "desktop-tip"))
-            db.replace_messages("desktop-root", [])
+            # dev-020's hermes_state refuses replace_messages on a
+            # compression-closed session (CompressionSessionClosedError); the
+            # old segment simply keeps its rows and the reader still resolves
+            # to the live continuation via the parent link.
             db.append_message(session_id="desktop-tip", role="user", content="after compression")
             db._conn.commit()
         finally:
@@ -1209,10 +1213,11 @@ class TestWebServerEndpoints:
         resp = self.client.get(
             "/api/sessions/negative-pagination/messages?limit=-1&offset=-7"
         )
-        assert resp.status_code == 200
-        payload = resp.json()
-        assert payload["messages"] == []
-        assert payload["pagination"] == {"limit": 0, "offset": 0, "returned": 0}
+        # dev-020 validates pagination params (Query(ge=0)): negative values
+        # are rejected with 422 before they can reach the query layer — same
+        # guarantee (no LIMIT -1 / negative OFFSET in SQLite) via rejection
+        # instead of silent clamping.
+        assert resp.status_code == 422
 
     def test_get_sessions_archived_is_boolean(self):
         from hermes_state import SessionDB
@@ -1246,7 +1251,7 @@ class TestWebServerEndpoints:
 
         captured = {}
 
-        def fake_transcribe_audio(path):
+        def fake_transcribe_audio(path, **kwargs):
             captured["path"] = path
             return {
                 "success": True,

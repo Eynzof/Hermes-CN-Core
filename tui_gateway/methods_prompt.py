@@ -70,7 +70,13 @@ def _(rid, params: dict) -> dict:
 
     sid = params.get("session_id", "")
     raw_text = params.get("text", "")
-    text = sanitize_user_prompt_text(raw_text) if isinstance(raw_text, str) else raw_text
+    if not isinstance(raw_text, str):
+        # Non-string text (list/None/number) used to skip sanitization and
+        # flow raw into turn handling, surfacing as an opaque -32000 handler
+        # error. Reject it at the envelope layer with a proper
+        # invalid-params error.
+        return _err(rid, -32602, "invalid params: text must be a string")
+    text = sanitize_user_prompt_text(raw_text)
     # Typed bare stop phrase while backend voice mode is active ends the
     # voice chat instead of sending "stop" to the agent — the typed twin of
     # the spoken stop phrase (PR #73106), applied at the ONE server-side
@@ -454,6 +460,17 @@ def _(rid, params: dict) -> dict:
     ext_hint = str(params.get("ext", "") or "").strip().lower()
     if ext_hint and not ext_hint.startswith("."):
         ext_hint = "." + ext_hint
+    # Validate the CONTENT, not just the client-supplied filename: previously
+    # a ``.png`` filename hint short-circuited the sniff, so arbitrary bytes
+    # named ``fake.png`` were written to disk and later sent to the model as
+    # an image. Require a known magic-byte signature; the extension itself
+    # stays filename/ext-hint driven (unsupported hints are rejected below).
+    head = img_bytes[:16]
+    magic_hit = (head.startswith(b"RIFF") and head[8:12] == b"WEBP") or any(
+        head.startswith(sig) for sig, _ in _IMAGE_MAGIC
+    )
+    if not magic_hit:
+        return _err(rid, 4016, "unrecognized magic bytes")
     ext = _sniff_image_ext(img_bytes, filename or (f"x{ext_hint}" if ext_hint else ""))
     if ext not in _allowed_image_extensions():
         return _err(rid, 4016, f"unsupported image extension: {ext}")

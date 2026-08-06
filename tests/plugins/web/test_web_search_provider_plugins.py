@@ -87,13 +87,15 @@ class TestBundledPluginsRegister:
             "xai",
         ]
 
-    def test_plugin_entrypoints_use_package_relative_provider_imports(self) -> None:
-        """PyInstaller can stage bundled plugins at package-relative paths."""
+    def test_plugin_entrypoints_import_provider_via_package_path(self) -> None:
+        """Bundled web plugins import their provider through the package path
+        (dev-020 style) so PyInstaller's module graph resolves them when the
+        frozen runtime collects ``plugins.web.*``."""
         root = Path(__file__).resolve().parents[3]
         for init_file in (root / "plugins" / "web").glob("*/__init__.py"):
             text = init_file.read_text(encoding="utf-8", errors="replace")
-            assert "from plugins.web." not in text
-            assert "from .provider import " in text
+            assert "from plugins.web." in text
+            assert "from .provider import " not in text
 
     def test_check_fn_triggers_plugin_discovery_before_availability(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Tool schema gating must see plugin-registered web providers."""

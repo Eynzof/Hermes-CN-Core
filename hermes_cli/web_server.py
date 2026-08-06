@@ -6392,13 +6392,13 @@ async def update_memory_provider_config(
             if not isinstance(memory_config, dict):
                 memory_config = {}
                 config["memory"] = memory_config
-                if body.activate:
-                    _require_memory_provider_ready(name)
-                    memory_config["provider"] = name
-                    save_config(config)
-                _invalidate_plugins_hub_cache()
-                active = _normalize_memory_provider_name(memory_config.get("provider"))
-                return {"ok": True, "active": active}
+            if body.activate:
+                _require_memory_provider_ready(name)
+                memory_config["provider"] = name
+                save_config(config)
+            _invalidate_plugins_hub_cache()
+            active = _normalize_memory_provider_name(memory_config.get("provider"))
+            return {"ok": True, "active": active}
 
     try:
         return await asyncio.to_thread(_run)

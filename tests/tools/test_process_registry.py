@@ -776,7 +776,13 @@ class TestPopenLeakOnSetupFailure:
         # On Windows os.getpgid does not exist; the code already skips the
         # killpg branch, so we only mock it when available.
         ctx = [
-            patch("tools.process_registry._find_shell", return_value="/bin/bash"),
+            # spawn_local resolves the shell first (P-058 follows the resolved
+            # shell on Windows); pin it so the leak path is exercised directly
+            # instead of probing the real system for git-bash/pwsh.
+            patch(
+                "tools.process_registry._resolve_shell",
+                return_value=("powershell", r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"),
+            ),
             patch("subprocess.Popen", return_value=proc),
             patch("threading.Thread", side_effect=boom),
             patch.object(registry, "_write_checkpoint"),

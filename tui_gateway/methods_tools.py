@@ -1627,20 +1627,31 @@ def _(rid, params: dict) -> dict:
         if action == "list":
             return _ok(rid, json.loads(cronjob(action="list")))
         if action == "add":
-            return _ok(
-                rid,
-                json.loads(
-                    cronjob(
-                        action="create",
-                        name=jid,
-                        schedule=params.get("schedule", ""),
-                        prompt=params.get("prompt", ""),
-                    )
-                ),
+            payload = json.loads(
+                cronjob(
+                    action="create",
+                    name=jid,
+                    schedule=params.get("schedule", ""),
+                    prompt=params.get("prompt", ""),
+                )
             )
+            # The cronjob tool reports validation failures (missing/invalid
+            # schedule, empty prompt, bad script path, ...) as a success=False
+            # payload rather than raising. Unwrap those into a client-visible
+            # RPC error instead of masquerading as a successful call.
+            if isinstance(payload, dict) and payload.get("success") is False:
+                return _err(rid, 4023, str(payload.get("error", "cron create failed")))
+            return _ok(rid, payload)
         if action in {"remove", "pause", "resume"}:
-            return _ok(rid, json.loads(cronjob(action=action, job_id=jid)))
+            payload = json.loads(cronjob(action=action, job_id=jid))
+            if isinstance(payload, dict) and payload.get("success") is False:
+                return _err(rid, 4023, str(payload.get("error", f"cron {action} failed")))
+            return _ok(rid, payload)
         return _err(rid, 4016, f"unknown cron action: {action}")
+    except ValueError as e:
+        # Invalid cron expressions / bad client input surface as ValueError
+        # from the schedule parser — a client error, not a server fault.
+        return _err(rid, 4023, str(e))
     except Exception as e:
         return _err(rid, 5023, str(e))
 

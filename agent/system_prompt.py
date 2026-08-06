@@ -409,7 +409,7 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
     active_home = get_hermes_home()
     hermes_root = get_default_hermes_root()
     if active_profile == "default":
-        stable_parts.append(
+        post_workspace_parts.append(
             f"Active Hermes profile: default. This session reads and writes {active_home}/. "
             f"Other profiles (if any) live under {hermes_root}/profiles/<name>/. "
             "Each profile has its own "
@@ -432,7 +432,7 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
         )
 
     if os.environ.get("HERMES_DESKTOP_MANAGED") == "1":
-        stable_parts.append(
+        post_workspace_parts.append(
             f"Managed Desktop scope: {active_home} is the authoritative HERMES_HOME "
             "for this session. Resolve config.yaml, .env, plugins/, memories/, and "
             "all Hermes state from that exact directory. Do not inspect or modify "

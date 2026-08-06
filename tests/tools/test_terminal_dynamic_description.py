@@ -244,7 +244,7 @@ def test_build_windows_bash_uses_git_bash_sentence():
     assert "bash (Git Bash / MSYS) environment on Windows" in desc
     assert "Linux environment" not in desc
     # bash syntax references stay intact (correct for git-bash)
-    assert "Do NOT use cat/head/tail to read files" in desc
+    assert "Do NOT use cat/head/tail (use read_file)" in desc
     assert "Get-Content/cat/type" not in desc
 
 

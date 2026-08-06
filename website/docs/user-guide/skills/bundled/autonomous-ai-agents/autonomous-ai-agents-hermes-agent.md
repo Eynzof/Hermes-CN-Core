@@ -851,7 +851,7 @@ Beyond the CLI and gateway, a few things worth knowing about:
 
 ## Windows-Specific Quirks
 
-Hermes runs natively on Windows. The default shell for running commands is **PowerShell** (pwsh 7.x preferred, with automatic fallback to Windows PowerShell 5.1). Git Bash (git-bash mintty) is available as an optional shell when explicitly configured (`terminal.shell: bash` in config.yaml) with a pre-installed Git for Windows. Most of it just works, but a handful
+Hermes runs natively on Windows. The default shell for running commands is **Git Bash** (when Git for Windows is pre-installed), falling back to **PowerShell** (pwsh 7.x preferred, with automatic fallback to Windows PowerShell 5.1). Force PowerShell with `terminal.shell: pwsh` / `terminal.shell: powershell`, or explicit Git Bash with `terminal.shell: bash` in config.yaml. Most of it just works, but a handful
 of differences between Win32 and POSIX have bitten us — document new ones
 here as you hit them so the next person (or the next session) doesn't
 rediscover them from scratch.

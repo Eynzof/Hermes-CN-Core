@@ -1002,10 +1002,17 @@ def _detect_shell_for_description() -> str:
 
     Returns ``"pwsh"``, ``"powershell"``, or ``"bash"``.
 
-    On Windows, probes for PowerShell 7 (pwsh) first; if found returns
-    ``"pwsh"``, otherwise returns ``"powershell"`` (Windows PowerShell
-    5.1, which ships with every Windows 10/11 system).
-    On non-Windows, returns ``"bash"``.
+    Mirrors ``_resolve_shell()`` in ``tools/environments/local.py``:
+
+    - Non-Windows: returns ``"bash"``.
+    - ``HERMES_SHELL_TYPE=bash`` (explicit): returns ``"bash"``.
+    - ``auto``/unset (default): git-bash if a working install exists
+      (``_find_bash(raise_if_missing=False)`` — discovery + smoke test),
+      else PowerShell 7 (``pwsh``), else Windows PowerShell 5.1.
+    - ``pwsh`` / ``powershell`` (explicit): PowerShell only — never git-bash.
+    - Unknown values: treated as ``auto`` (the description path must not
+      raise; ``_resolve_shell()`` still raises for unknown values at
+      execution time).
 
     Cached via ``@lru_cache`` so repeated calls are essentially free.
     """
@@ -1015,11 +1022,26 @@ def _detect_shell_for_description() -> str:
     shell_type = os.environ.get("HERMES_SHELL_TYPE", "auto").strip().lower() or "auto"
 
     if shell_type == "bash":
-        return "powershell"  # _resolve_shell() in local.py will raise RuntimeError
+        return "bash"
 
-    # Probe for pwsh (PowerShell 7)
+    if shell_type in ("pwsh", "powershell"):
+        # Explicit PowerShell: probe pwsh (PowerShell 7), never git-bash.
+        try:
+            from tools.environments.local import _find_pwsh
+
+            if _find_pwsh():
+                return "pwsh"
+        except Exception:
+            pass
+        return "powershell"
+
+    # auto / unset / unknown → git-bash-first default, mirroring
+    # ``_resolve_shell()`` (bash → pwsh → powershell).
     try:
-        from tools.environments.local import _find_pwsh
+        from tools.environments.local import _find_bash, _find_pwsh
+
+        if _find_bash(raise_if_missing=False):
+            return "bash"
         if _find_pwsh():
             return "pwsh"
     except Exception:
@@ -1042,6 +1064,10 @@ def _build_dynamic_terminal_description() -> dict:
         platform_env = "Execute powershell commands in a PowerShell 7 (pwsh) environment"
     elif shell_type == "powershell":
         platform_env = "Execute powershell commands on a Windows PowerShell environment"
+    elif platform.system() == "Windows":
+        # git-bash default on Windows — "Linux environment" would mislead the
+        # model about where commands run.
+        platform_env = "Execute shell commands in a bash (Git Bash / MSYS) environment on Windows"
     else:
         platform_env = "Execute shell commands on a Linux environment"
 

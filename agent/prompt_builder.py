@@ -1233,8 +1233,10 @@ def build_environment_hints() -> str:
             )
         hints.append("\n".join(host_lines))
 
-        # Windows-local terminal shell hint. The actual shell is still PS5.1
-        # by default; this only controls what the system prompt tells the model.
+        # Windows-local terminal shell hint. With `terminal.shell` unset
+        # (auto), the actual shell is git-bash first (when a working install
+        # exists), else PowerShell 7 / Windows PowerShell 5.1 — this block
+        # tells the model which syntax to expect.
         if sys.platform == "win32" and not is_wsl():
             shell = "auto"
             try:
@@ -1253,8 +1255,24 @@ def build_environment_hints() -> str:
             elif shell == "powershell":
                 hints.append(_WINDOWS_POWERSHELL_SHELL_HINT)
             else:
-                # auto (or any unknown value): preserve existing behavior
-                if shutil.which("pwsh") or shutil.which("pwsh.exe"):
+                # auto (or any unknown value): prefer the hint matching the
+                # new default — git-bash (if a working one exists), else
+                # pwsh, else Windows PowerShell 5.1.
+                try:
+                    from tools.environments.local import _IS_WINDOWS, _find_bash
+
+                    # Gate on local._IS_WINDOWS (not just sys.platform) so the
+                    # probe means "Git Bash" specifically — on non-Windows the
+                    # discovery returns any POSIX bash, which is irrelevant
+                    # here and would make CI results host-dependent.
+                    has_git_bash = bool(
+                        _IS_WINDOWS and _find_bash(raise_if_missing=False)
+                    )
+                except Exception:
+                    has_git_bash = False
+                if has_git_bash:
+                    hints.append(_WINDOWS_BASH_SHELL_HINT)
+                elif shutil.which("pwsh") or shutil.which("pwsh.exe"):
                     hints.append(_WINDOWS_PWSH_SHELL_HINT)
                 else:
                     hints.append(_WINDOWS_POWERSHELL_SHELL_HINT)

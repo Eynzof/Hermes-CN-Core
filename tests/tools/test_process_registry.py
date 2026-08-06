@@ -2339,6 +2339,93 @@ class TestSpawnLocalShellSelection:
         assert captured["kwargs"]["shell_path"] == r"C:\Program Files\PowerShell\7\pwsh.exe"
         assert captured["kwargs"]["command"] == "python"
 
+    def test_spawn_local_windows_bash_background_uses_bash_wrapper(self, monkeypatch, registry):
+        """Windows non-PTY background spawn under the git-bash default uses bash -lc."""
+        monkeypatch.setattr("tools.process_registry._IS_WINDOWS", True)
+        bash_path = r"C:\Program Files\Git\bin\bash.exe"
+        monkeypatch.setattr(
+            "tools.process_registry._resolve_shell",
+            lambda: ("bash", bash_path),
+        )
+        monkeypatch.setattr(
+            "tools.process_registry._resolve_safe_cwd",
+            lambda cwd: cwd,
+        )
+
+        captured = {}
+
+        def fake_popen(cmd, **kwargs):
+            captured["cmd"] = cmd
+            captured["kwargs"] = kwargs
+            proc = MagicMock()
+            proc.pid = 12346
+            proc.stdout = iter([])
+            proc.stdin = MagicMock()
+            proc.poll.return_value = None
+            return proc
+
+        fake_thread = MagicMock()
+        with patch("subprocess.Popen", side_effect=fake_popen), \
+             patch("threading.Thread", return_value=fake_thread), \
+             patch.object(registry, "_write_checkpoint"):
+            session = registry.spawn_local(
+                "echo hello",
+                cwd=r"D:\test",
+                cwd_file="D:/tmp/hermes-cwd.txt",
+            )
+
+        assert session.pid == 12346
+        # bash invocation: [bash, -lc, script] — no PowerShell flags
+        assert captured["cmd"][0] == bash_path
+        assert captured["cmd"][1] == "-lc"
+        assert len(captured["cmd"]) == 3
+        assert "-NoProfile" not in captured["cmd"]
+        assert "-ExecutionPolicy" not in captured["cmd"]
+        bash_script = captured["cmd"][2]
+        # bash wrapper: cd (MSYS-rewritten) + command + cwd-file write + exit code
+        assert "builtin cd -- /d/test" in bash_script
+        assert "eval 'echo hello'" in bash_script
+        assert "D:/tmp/hermes-cwd.txt" in bash_script or "/d/tmp/hermes-cwd.txt" in bash_script
+        assert "exit $__hermes_ec" in bash_script
+        assert captured["kwargs"]["env"]["PYTHONUNBUFFERED"] == "1"
+
+    def test_spawn_local_windows_pty_uses_bash(self, monkeypatch, registry):
+        """Windows PTY background spawn under the git-bash default routes shell_type=bash."""
+        monkeypatch.setattr("tools.process_registry._IS_WINDOWS", True)
+        bash_path = r"C:\Program Files\Git\bin\bash.exe"
+        monkeypatch.setattr(
+            "tools.process_registry._resolve_shell",
+            lambda: ("bash", bash_path),
+        )
+
+        captured = {}
+
+        def fake_spawn_windows_pty_local(*args, **kwargs):
+            captured["kwargs"] = kwargs
+            fake_pty = MagicMock()
+            fake_pty.pid = 99998
+            return fake_pty
+
+        monkeypatch.setattr(
+            registry,
+            "_spawn_windows_pty_local",
+            fake_spawn_windows_pty_local,
+        )
+
+        fake_thread = MagicMock()
+        with patch("threading.Thread", return_value=fake_thread), \
+             patch.object(registry, "_write_checkpoint"):
+            session = registry.spawn_local(
+                "python",
+                cwd=r"D:\test",
+                use_pty=True,
+            )
+
+        assert session.pid == 99998
+        assert captured["kwargs"]["shell_type"] == "bash"
+        assert captured["kwargs"]["shell_path"] == bash_path
+        assert captured["kwargs"]["command"] == "python"
+
     def test_spawn_local_posix_unchanged(self, monkeypatch, registry):
         """On POSIX, background spawn keeps using _find_shell + -lic."""
         monkeypatch.setattr("tools.process_registry._IS_WINDOWS", False)

@@ -1310,10 +1310,11 @@ DEFAULT_CONFIG = {
         # [CN-fork] Shell selection for local terminal execution.
         # On Windows this controls both foreground and background terminal
         # processes and is bridged to HERMES_SHELL_TYPE.
-        # auto       - detect pwsh, otherwise fall back to Windows PowerShell 5.1
+        # auto       - git-bash when available (Git for Windows pre-installed),
+        #              else detect pwsh, else fall back to Windows PowerShell 5.1
         # powershell - force Windows PowerShell 5.1
         # pwsh       - force PowerShell 7 (falls back to 5.1 if not installed)
-        # bash       - Git Bash / MSYS; optional on Windows (user must have Git Bash pre-installed; no auto-download)
+        # bash       - Git Bash / MSYS; explicit (user must have Git Bash pre-installed; no auto-download)
         "shell": "auto",
         "modal_mode": "auto",
         "cwd": ".",  # Use current directory

@@ -42,6 +42,7 @@ import uuid
 
 _IS_WINDOWS = is_windows()
 from tools.environments.local import (
+    _build_bash_background_script,
     _build_powershell_background_script,
     _find_shell,
     _resolve_safe_cwd,
@@ -724,13 +725,35 @@ class ProcessRegistry:
         env_vars: dict,
         cwd_file: str | None = None,
     ) -> subprocess.Popen:
-        """Windows non-PTY background spawn using PowerShell."""
-        ps_script = _build_powershell_background_script(
-            command=command,
-            cwd=session.cwd,
-            shell_type=shell_type,
-            cwd_file=cwd_file,
-        )
+        """Windows non-PTY background spawn, following the resolved shell.
+
+        ``shell_type == "bash"`` (the git-bash default) builds a bash wrapper
+        and invokes ``[shell_path, "-lc", script]``; PowerShell shells keep
+        the ``-NoProfile``/``-Command`` invocation.
+        """
+        if shell_type == "bash":
+            script = _build_bash_background_script(
+                command=command,
+                cwd=session.cwd,
+                cwd_file=cwd_file,
+            )
+            shell_argv = [shell_path, "-lc", script]
+        else:
+            script = _build_powershell_background_script(
+                command=command,
+                cwd=session.cwd,
+                shell_type=shell_type,
+                cwd_file=cwd_file,
+            )
+            shell_argv = [
+                shell_path,
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                script,
+            ]
         bg_env = _sanitize_subprocess_env(os.environ, env_vars)
         bg_env["PYTHONUNBUFFERED"] = "1"
         _popen_kwargs = {
@@ -738,15 +761,7 @@ class ProcessRegistry:
             | getattr(subprocess, "CREATE_NO_WINDOW", 0)
         }
         proc = subprocess.Popen(
-            [
-                shell_path,
-                "-NoProfile",
-                "-NonInteractive",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-Command",
-                ps_script,
-            ],
+            shell_argv,
             text=True,
             cwd=session.cwd,
             env=bg_env,
@@ -769,27 +784,41 @@ class ProcessRegistry:
         env_vars: dict,
         cwd_file: str | None = None,
     ):
-        """Windows PTY background spawn using PowerShell via winpty."""
+        """Windows PTY background spawn via winpty, following the resolved shell.
+
+        ``shell_type == "bash"`` (the git-bash default) runs the bash wrapper
+        via winpty; PowerShell shells keep the ``-NoProfile``/``-Command``
+        invocation.
+        """
         from winpty import PtyProcess as _PtyProcessCls
 
-        ps_script = _build_powershell_background_script(
-            command=command,
-            cwd=session.cwd,
-            shell_type=shell_type,
-            cwd_file=cwd_file,
-        )
-        pty_env = _sanitize_subprocess_env(os.environ, env_vars)
-        pty_env["PYTHONUNBUFFERED"] = "1"
-        pty_proc = _PtyProcessCls.spawn(
-            [
+        if shell_type == "bash":
+            script = _build_bash_background_script(
+                command=command,
+                cwd=session.cwd,
+                cwd_file=cwd_file,
+            )
+            shell_argv = [shell_path, "-lc", script]
+        else:
+            script = _build_powershell_background_script(
+                command=command,
+                cwd=session.cwd,
+                shell_type=shell_type,
+                cwd_file=cwd_file,
+            )
+            shell_argv = [
                 shell_path,
                 "-NoProfile",
                 "-NonInteractive",
                 "-ExecutionPolicy",
                 "Bypass",
                 "-Command",
-                ps_script,
-            ],
+                script,
+            ]
+        pty_env = _sanitize_subprocess_env(os.environ, env_vars)
+        pty_env["PYTHONUNBUFFERED"] = "1"
+        pty_proc = _PtyProcessCls.spawn(
+            shell_argv,
             cwd=session.cwd,
             env=pty_env,
             dimensions=(30, 120),
@@ -816,9 +845,11 @@ class ProcessRegistry:
                      CLI tools (Codex, Claude Code, Python REPL). Falls back to
                      subprocess.Popen if ptyprocess is not installed.
             cwd_file: Optional path to write the final working directory to
-                      (PowerShell background path). When provided, the wrapper
-                      writes ``(Get-Location).Path`` to this file so subsequent
-                      foreground commands can pick up CWD changes.
+                      (Windows background path — PowerShell writes
+                      ``(Get-Location).Path``, bash writes ``pwd``). When
+                      provided, the wrapper writes the final CWD to this file
+                      so subsequent foreground commands can pick up CWD
+                      changes.
         """
         session = ProcessSession(
             id=f"proc_{uuid.uuid4().hex[:12]}",

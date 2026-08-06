@@ -1241,6 +1241,10 @@ class TestEnvironmentHints:
         # Force the PS5.1 hint so the test is deterministic regardless of
         # whether pwsh happens to be on the runner's PATH.
         monkeypatch.setattr("shutil.which", lambda name: None)
+        monkeypatch.setattr("tools.environments.local._IS_WINDOWS", True)
+        monkeypatch.setattr(
+            "tools.environments.local._find_bash", lambda **kw: None
+        )
         _pb._clear_backend_probe_cache()
         result = _pb.build_environment_hints()
         assert "Host: Windows" in result
@@ -1297,6 +1301,11 @@ class TestEnvironmentHints:
             lambda: {"terminal": {"shell": "auto"}},
         )
         monkeypatch.setattr("shutil.which", lambda name: "pwsh" if name == "pwsh" else None)
+        # no git-bash → pwsh hint
+        monkeypatch.setattr("tools.environments.local._IS_WINDOWS", True)
+        monkeypatch.setattr(
+            "tools.environments.local._find_bash", lambda **kw: None
+        )
         _pb._clear_backend_probe_cache()
         result = _pb.build_environment_hints()
         assert _WINDOWS_PWSH_SHELL_HINT in result
@@ -1314,11 +1323,39 @@ class TestEnvironmentHints:
             lambda: {"terminal": {"shell": "auto"}},
         )
         monkeypatch.setattr("shutil.which", lambda name: None)
+        # no git-bash, no pwsh → PS5.1 hint
+        monkeypatch.setattr("tools.environments.local._IS_WINDOWS", True)
+        monkeypatch.setattr(
+            "tools.environments.local._find_bash", lambda **kw: None
+        )
         _pb._clear_backend_probe_cache()
         result = _pb.build_environment_hints()
         assert _WINDOWS_POWERSHELL_SHELL_HINT in result
         assert _WINDOWS_PWSH_SHELL_HINT not in result
         assert _WINDOWS_BASH_SHELL_HINT not in result
+
+    def test_build_environment_hints_auto_with_git_bash_uses_bash_hint(self, monkeypatch):
+        """auto + working git-bash → bash hint (git-bash-first default)."""
+        import agent.prompt_builder as _pb
+        import sys
+        monkeypatch.setattr(_pb, "is_wsl", lambda: False)
+        monkeypatch.setattr(sys, "platform", "win32")
+        monkeypatch.delenv("TERMINAL_ENV", raising=False)
+        monkeypatch.setattr(
+            "hermes_cli.config.load_config",
+            lambda: {"terminal": {"shell": "auto"}},
+        )
+        monkeypatch.setattr("shutil.which", lambda name: None)
+        monkeypatch.setattr("tools.environments.local._IS_WINDOWS", True)
+        monkeypatch.setattr(
+            "tools.environments.local._find_bash",
+            lambda **kw: r"C:\Program Files\Git\bin\bash.exe",
+        )
+        _pb._clear_backend_probe_cache()
+        result = _pb.build_environment_hints()
+        assert _WINDOWS_BASH_SHELL_HINT in result
+        assert _WINDOWS_POWERSHELL_SHELL_HINT not in result
+        assert _WINDOWS_PWSH_SHELL_HINT not in result
 
     def test_build_environment_hints_shell_bash_is_ignored_on_non_windows(self, monkeypatch):
         import agent.prompt_builder as _pb
@@ -1347,9 +1384,13 @@ class TestEnvironmentHints:
             lambda: {"terminal": {"shell": "zsh"}},
         )
         monkeypatch.setattr("shutil.which", lambda name: None)
+        monkeypatch.setattr("tools.environments.local._IS_WINDOWS", True)
+        monkeypatch.setattr(
+            "tools.environments.local._find_bash", lambda **kw: None
+        )
         _pb._clear_backend_probe_cache()
         result = _pb.build_environment_hints()
-        # Unknown value should behave like auto when pwsh is absent.
+        # Unknown value should behave like auto when git-bash and pwsh are absent.
         assert _WINDOWS_POWERSHELL_SHELL_HINT in result
         assert _WINDOWS_BASH_SHELL_HINT not in result
 

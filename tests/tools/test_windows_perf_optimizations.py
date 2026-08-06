@@ -103,6 +103,9 @@ def test_persistent_powershell_session(tmp_path, monkeypatch):
     between them, and ``cleanup`` tears it down."""
     monkeypatch.setenv("HERMES_PWSH_SESSION_REUSE", "1")
     monkeypatch.delenv("HERMES_CMD_FAST_PATH", raising=False)
+    # P-058 made git-bash the Windows auto default; pin PowerShell so this
+    # PowerShell-feature test exercises the session path.
+    monkeypatch.setenv("HERMES_SHELL_TYPE", "pwsh")
     from tools.environments.local import LocalEnvironment
 
     env = LocalEnvironment(cwd=str(tmp_path), timeout=30)
@@ -232,6 +235,9 @@ def test_cmd_fallback_routes_live(tmp_path, monkeypatch):
     correctly on the PowerShell spawn path."""
     monkeypatch.setenv("HERMES_CMD_FAST_PATH", "1")
     monkeypatch.delenv("HERMES_PWSH_SESSION_REUSE", raising=False)
+    # P-058 made git-bash the Windows auto default; pin PowerShell so the
+    # cmd.exe fast path (Windows + PowerShell only) is actually reachable.
+    monkeypatch.setenv("HERMES_SHELL_TYPE", "pwsh")
     from tools.environments.local import LocalEnvironment
 
     env = LocalEnvironment(cwd=str(tmp_path), timeout=30)

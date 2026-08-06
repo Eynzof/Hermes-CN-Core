@@ -15,6 +15,14 @@ import pytest
 from tools.terminal_tool import terminal_tool
 
 
+@pytest.fixture(autouse=True)
+def _force_pwsh_shell(monkeypatch):
+    """The cwd-echo contract tests were written for the PowerShell Windows
+    default; pin the shell type so they stay deterministic under the
+    git-bash-first auto default (P-058)."""
+    monkeypatch.setenv("HERMES_SHELL_TYPE", "pwsh")
+
+
 @pytest.fixture
 def isolated_home(tmp_path, monkeypatch):
     monkeypatch.setenv("HERMES_HOME", str(tmp_path / ".hermes"))

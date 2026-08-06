@@ -13,6 +13,13 @@ import pytest
 from unittest.mock import MagicMock, patch, PropertyMock
 
 
+@pytest.fixture(autouse=True)
+def _force_pwsh_shell(monkeypatch):
+    """P-058 made git-bash the Windows auto default; these PowerShell-feature
+    tests must pin the shell type so they exercise the PowerShell path."""
+    monkeypatch.setenv("HERMES_SHELL_TYPE", "pwsh")
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

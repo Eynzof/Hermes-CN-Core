@@ -10,6 +10,15 @@ import pytest
 from tools.terminal_tool import terminal_tool
 
 
+@pytest.fixture(autouse=True)
+def _force_pwsh_shell(monkeypatch):
+    """The ``_PY`` prefix uses the PowerShell ``&`` call operator and the
+    wrapper runs commands via Invoke-Expression — pin the shell type so this
+    file exercises the PowerShell path regardless of the git-bash-first
+    Windows auto default (P-058)."""
+    monkeypatch.setenv("HERMES_SHELL_TYPE", "pwsh")
+
+
 # ``python3`` on Windows is often the Microsoft-Store app-execution-alias stub
 # ("Python was not found...", exit 9009) rather than a real interpreter. Use
 # the active interpreter explicitly so these tests run on the fork's Windows

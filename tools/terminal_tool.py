@@ -3261,15 +3261,6 @@ def terminal_tool(
                 "exit_code": returncode,
                 "error": None,
                 "command": exec_command,
-                # BaseEnvironment updates env.cwd from the shell wrapper's
-                # final marker, so dynamic commands such as `cd $(mktemp -d)`
-                # report the directory that actually executed the CLI.
-                "cwd": (
-                    getattr(env, "cwd", None)
-                    if isinstance(getattr(env, "cwd", None), str)
-                    and getattr(env, "cwd", None)
-                    else command_cwd
-                ),
             }
             # cwd echo: when the command changed the session's working
             # directory (cd, pushd, ...), tell the model where it ended up.

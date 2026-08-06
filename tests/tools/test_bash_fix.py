@@ -413,7 +413,12 @@ class TestWrapCommandBashFix:
 
     def test_unchanged_command_no_warning(self) -> None:
         env, wrapped = self._wrap("echo ok")
-        assert "eval 'echo ok'" in wrapped
+        # With P-058's git-bash-first Windows default the resolved shell path is
+        # a real Git Bash, so the P-052 MSYSTEM neutralization prepends
+        # ``export MSYSTEM=;`` inside the eval.  Assert the command still lands
+        # un-fixed in the eval region (the bash_fix contract), not the exact
+        # eval spelling.
+        assert "eval '" in wrapped and "echo ok" in wrapped
         assert getattr(env, "_bash_fix_warnings", None) is None
 
     def test_powershell_shell_skips_bash_fix(self) -> None:

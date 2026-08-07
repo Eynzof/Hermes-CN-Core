@@ -38,7 +38,7 @@ from __future__ import annotations
 
 
 import copy
-from typing import Any, Callable, Dict, List, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 #: Auto-migration support floor. Configs whose on-disk ``_config_version`` is
 #: below this are NOT auto-migrated any more (policy decision, July 2026):
@@ -667,6 +667,310 @@ def _migrate_to_33(results: Dict[str, Any], quiet: bool) -> None:
             )
 
 
+def _provider_key_from_inline_model_provider(raw_provider: str, base_url: str) -> str:
+    provider = str(raw_provider or "").strip().lower()
+    if provider.startswith("custom:"):
+        provider = provider.split(":", 1)[1].strip()
+    key = "".join(ch if ch.isalnum() else "-" for ch in provider)
+    while "--" in key:
+        key = key.replace("--", "-")
+    key = key.strip("-")
+    if key:
+        return key
+    try:
+        from urllib.parse import urlparse
+
+        host = (urlparse(base_url).hostname or "endpoint").lower()
+        key = "".join(ch if ch.isalnum() else "-" for ch in host)
+        while "--" in key:
+            key = key.replace("--", "-")
+        return key.strip("-") or "endpoint"
+    except Exception:
+        return "endpoint"
+
+
+def _inline_model_provider_aliases(value: str) -> set[str]:
+    from hermes_cli.providers import custom_provider_aliases
+
+    raw = str(value or "").strip().lower()
+    if not raw:
+        return set()
+    aliases = set(custom_provider_aliases(raw, raw))
+    if raw.startswith("custom:"):
+        suffix = raw.split(":", 1)[1].strip()
+        if suffix:
+            aliases.add(suffix)
+            aliases.add(f"custom:{suffix}")
+    else:
+        aliases.add(f"custom:{raw}")
+    return {alias.strip().lower() for alias in aliases if alias}
+
+
+def _inline_model_provider_should_recover(provider_value: str) -> bool:
+    provider_norm = str(provider_value or "").strip().lower()
+    if not provider_norm or provider_norm in {"auto", "custom", "openrouter", "moa"}:
+        return False
+    if provider_norm.startswith("custom:"):
+        return bool(provider_norm.split(":", 1)[1].strip())
+    try:
+        from hermes_cli import auth as auth_mod
+
+        if auth_mod.is_runtime_provider_routable(provider_norm):
+            return False
+    except Exception:
+        pass
+    return True
+
+
+def _inline_model_base_url(model_cfg: Dict[str, Any]) -> str:
+    for key in ("base_url", "url", "api"):
+        raw = model_cfg.get(key)
+        if isinstance(raw, str) and raw.strip():
+            return raw.strip().rstrip("/")
+    return ""
+
+
+def _has_usable_secret(value: Any) -> bool:
+    try:
+        from hermes_cli.auth import has_usable_secret
+
+        return has_usable_secret(value)
+    except Exception:
+        return isinstance(value, str) and bool(value.strip())
+
+
+def _provider_entry_has_secret(entry: Dict[str, Any]) -> bool:
+    api_key = entry.get("api_key")
+    if _has_usable_secret(api_key):
+        return True
+    key_env = entry.get("key_env") or entry.get("api_key_env")
+    return isinstance(key_env, str) and bool(key_env.strip())
+
+
+def _provider_env_name(value: str) -> str:
+    raw = str(value or "").strip().lower()
+    if raw.startswith("custom:"):
+        raw = raw.split(":", 1)[1].strip()
+    chars = [ch.upper() if ch.isalnum() else "_" for ch in raw]
+    name = "".join(chars).strip("_")
+    while "__" in name:
+        name = name.replace("__", "_")
+    if not name or not name[0].isalpha():
+        return ""
+    return f"{name}_API_KEY"
+
+
+def _inline_provider_env_candidates(raw_provider: str, provider_key: str) -> List[str]:
+    names: List[str] = []
+    for value in (raw_provider, provider_key):
+        env_name = _provider_env_name(value)
+        if env_name and env_name not in names:
+            names.append(env_name)
+    return names
+
+
+def _inline_model_provider_secret_patch(
+    model_cfg: Dict[str, Any],
+    *,
+    raw_provider: str,
+    provider_key: str,
+) -> Tuple[Dict[str, str], str]:
+    api_key = model_cfg.get("api_key")
+    if _has_usable_secret(api_key):
+        return {"api_key": str(api_key).strip()}, "api_key"
+
+    for key in ("key_env", "api_key_env"):
+        raw = model_cfg.get(key)
+        if isinstance(raw, str) and raw.strip():
+            return {"key_env": raw.strip()}, key
+
+    get_env_value = getattr(_cfg(), "get_env_value_prefer_dotenv", _cfg().get_env_value)
+    for env_name in _inline_provider_env_candidates(raw_provider, provider_key):
+        try:
+            value = get_env_value(env_name)
+        except Exception:
+            value = None
+        if _has_usable_secret(value):
+            return {"key_env": env_name}, env_name
+    return {}, ""
+
+
+def _matching_inline_provider_key(
+    providers: Dict[str, Any],
+    provider_value: str,
+    provider_key: str,
+) -> Optional[str]:
+    wanted_aliases = _inline_model_provider_aliases(
+        provider_value
+    ) | _inline_model_provider_aliases(provider_key)
+    if not wanted_aliases:
+        return None
+    for key, entry in providers.items():
+        aliases = _inline_model_provider_aliases(str(key or ""))
+        if isinstance(entry, dict):
+            aliases |= _inline_model_provider_aliases(str(entry.get("name") or ""))
+        if aliases & wanted_aliases:
+            return str(key)
+    return None
+
+
+def _legacy_inline_provider_already_configured(
+    config: Dict[str, Any],
+    provider_value: str,
+    provider_key: str,
+) -> bool:
+    wanted_aliases = _inline_model_provider_aliases(
+        provider_value
+    ) | _inline_model_provider_aliases(provider_key)
+    if not wanted_aliases:
+        return False
+    try:
+        compatible = _cfg().get_compatible_custom_providers(config)
+    except Exception:
+        compatible = []
+    for entry in compatible or []:
+        if not isinstance(entry, dict):
+            continue
+        aliases = _inline_model_provider_aliases(str(entry.get("name") or ""))
+        aliases |= _inline_model_provider_aliases(str(entry.get("provider_key") or ""))
+        if aliases & wanted_aliases:
+            return True
+    return False
+
+
+def _build_inline_model_provider_entry(
+    model_cfg: Dict[str, Any],
+    *,
+    raw_provider: str,
+    provider_key: str,
+    base_url: str,
+) -> Optional[Dict[str, Any]]:
+    entry: Dict[str, Any] = {
+        "name": provider_key,
+        "base_url": base_url,
+    }
+    secret_patch, _ = _inline_model_provider_secret_patch(
+        model_cfg,
+        raw_provider=raw_provider,
+        provider_key=provider_key,
+    )
+    entry.update(secret_patch)
+
+    api_mode = model_cfg.get("api_mode")
+    valid_api_modes = {
+        "chat_completions",
+        "codex_responses",
+        "anthropic_messages",
+        "bedrock_converse",
+        "codex_app_server",
+    }
+    if isinstance(api_mode, str) and api_mode.strip().lower() in valid_api_modes:
+        entry["api_mode"] = api_mode.strip().lower()
+
+    model_name = model_cfg.get("default") or model_cfg.get("model")
+    if isinstance(model_name, str) and model_name.strip():
+        entry["model"] = model_name.strip()
+
+    for key in (
+        "models",
+        "context_length",
+        "rate_limit_delay",
+        "discover_models",
+        "extra_body",
+        "extra_headers",
+        "ssl_ca_cert",
+        "ssl_verify",
+    ):
+        if key in model_cfg:
+            entry[key] = copy.deepcopy(model_cfg[key])
+
+    return _cfg()._custom_provider_entry_to_provider_config(
+        entry,
+        provider_key=provider_key,
+    )
+
+
+def _repair_inline_model_provider_config(
+    config: Dict[str, Any],
+) -> Optional[Tuple[str, str]]:
+    model_cfg = config.get("model")
+    if not isinstance(model_cfg, dict):
+        return None
+
+    raw_provider = model_cfg.get("provider")
+    if not isinstance(raw_provider, str) or not raw_provider.strip():
+        return None
+    if not _inline_model_provider_should_recover(raw_provider):
+        return None
+
+    base_url = _inline_model_base_url(model_cfg)
+    if not base_url:
+        return None
+
+    provider_key = _provider_key_from_inline_model_provider(raw_provider, base_url)
+    providers = config.get("providers")
+    if not isinstance(providers, dict):
+        providers = {}
+
+    matched_key = _matching_inline_provider_key(providers, raw_provider, provider_key)
+    if matched_key:
+        entry = providers.get(matched_key)
+        if not isinstance(entry, dict):
+            return None
+        if _provider_entry_has_secret(entry):
+            return None
+        secret_patch, source = _inline_model_provider_secret_patch(
+            model_cfg,
+            raw_provider=raw_provider,
+            provider_key=matched_key,
+        )
+        if not secret_patch:
+            return None
+        entry.update(secret_patch)
+        providers[matched_key] = entry
+        config["providers"] = providers
+        return matched_key, f"credential from {source}"
+
+    if _legacy_inline_provider_already_configured(config, raw_provider, provider_key):
+        return None
+
+    provider_entry = _build_inline_model_provider_entry(
+        model_cfg,
+        raw_provider=raw_provider,
+        provider_key=provider_key,
+        base_url=base_url,
+    )
+    if provider_entry is None:
+        return None
+    providers[provider_key] = provider_entry
+    config["providers"] = providers
+    return provider_key, "entry from model.provider"
+
+
+def _migrate_to_34(results: Dict[str, Any], quiet: bool) -> None:
+    # ── Version 33 → 34: recover Desktop inline named-custom model providers ──
+    # Desktop model selection could persist model.provider=packycode together
+    # with model.base_url/model.api_mode/model.api_key. Runtime resolution
+    # prefers providers.packycode when it exists, so repair both missing entries
+    # and existing entries that lack a credential source.
+    _c = _cfg()
+    read_raw_config = _c.read_raw_config
+    _persist_migration = _c._persist_migration
+
+    config = read_raw_config()
+    repaired = _repair_inline_model_provider_config(config)
+    if repaired is None:
+        return
+
+    provider_key, action = repaired
+    _persist_migration(config)
+    results["config_added"].append(
+        f"providers.{provider_key} ({action})"
+    )
+    if not quiet:
+        print(f"  ✓ Repaired providers.{provider_key} from inline model settings")
+
+
 #: Registry of (target_version, migration_fn), strictly ascending. The driver
 #: applies every entry whose target version is greater than the on-disk
 #: version captured before the ladder started. Order matters: later steps may
@@ -689,6 +993,7 @@ MIGRATIONS: Tuple[Tuple[int, Callable[[Dict[str, Any], bool], None]], ...] = (
     (31, _migrate_to_31),
     (32, _migrate_to_32),
     (33, _migrate_to_33),
+    (34, _migrate_to_34),
 )
 
 

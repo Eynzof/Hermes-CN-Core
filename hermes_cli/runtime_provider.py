@@ -635,6 +635,208 @@ def _try_resolve_from_custom_pool(
         return None
 
 
+def _inline_model_provider_aliases(value: str) -> set[str]:
+    normalized = _normalize_custom_provider_name(value or "")
+    if not normalized:
+        return set()
+    aliases = set(custom_provider_aliases(normalized, normalized))
+    if normalized.startswith("custom:"):
+        suffix = normalized.split(":", 1)[1].strip()
+        if suffix:
+            aliases.add(suffix)
+            aliases.add(f"custom:{suffix}")
+    else:
+        aliases.add(f"custom:{normalized}")
+    return {alias.strip().lower() for alias in aliases if alias}
+
+
+def _inline_model_provider_matches(requested_provider: str, configured_provider: str) -> bool:
+    requested_aliases = _inline_model_provider_aliases(requested_provider)
+    configured_aliases = _inline_model_provider_aliases(configured_provider)
+    return bool(
+        requested_aliases
+        and configured_aliases
+        and requested_aliases & configured_aliases
+    )
+
+
+def _inline_custom_pool_key(requested_provider: str) -> str:
+    requested_norm = _normalize_custom_provider_name(requested_provider or "")
+    if not requested_norm or requested_norm in {"auto", "custom", "moa"}:
+        return ""
+    if requested_norm.startswith("custom:"):
+        suffix = requested_norm.split(":", 1)[1].strip()
+        if not suffix:
+            return ""
+        return f"custom:{_normalize_custom_provider_name(suffix)}"
+    return f"custom:{requested_norm}"
+
+
+def _inline_provider_env_name(value: str) -> str:
+    raw = _normalize_custom_provider_name(value or "")
+    if raw.startswith("custom:"):
+        raw = raw.split(":", 1)[1].strip()
+    chars = [ch.upper() if ch.isalnum() else "_" for ch in raw]
+    name = "".join(chars).strip("_")
+    while "__" in name:
+        name = name.replace("__", "_")
+    if not name or not name[0].isalpha():
+        return ""
+    return f"{name}_API_KEY"
+
+
+def _inline_provider_env_candidates(requested_provider: str, configured_provider: str) -> list[str]:
+    names: list[str] = []
+    for value in (requested_provider, configured_provider):
+        env_name = _inline_provider_env_name(value)
+        if env_name and env_name not in names:
+            names.append(env_name)
+    return names
+
+
+def _inline_model_base_url(model_cfg: Dict[str, Any]) -> str:
+    for key in ("base_url", "url", "api"):
+        raw = model_cfg.get(key)
+        if isinstance(raw, str) and raw.strip():
+            return raw.strip().rstrip("/")
+    return ""
+
+
+def _inline_model_api_key_candidates(
+    *,
+    requested_provider: str,
+    base_url: str,
+) -> list[str]:
+    model_cfg = _get_model_config()
+    cfg_provider = str(model_cfg.get("provider") or "").strip()
+    if not _inline_model_provider_matches(requested_provider, cfg_provider):
+        return []
+
+    cfg_base_url = _inline_model_base_url(model_cfg)
+    if cfg_base_url and base_url and _normalize_base_url_for_match(cfg_base_url) != _normalize_base_url_for_match(base_url):
+        return []
+
+    key_env = ""
+    for key in ("key_env", "api_key_env"):
+        raw = model_cfg.get(key)
+        if isinstance(raw, str) and raw.strip():
+            key_env = raw.strip()
+            break
+
+    candidates = [
+        str(model_cfg.get("api_key") or "").strip(),
+        (_getenv(key_env, "").strip() if key_env else ""),
+    ]
+    for env_name in _inline_provider_env_candidates(requested_provider, cfg_provider):
+        candidates.append(_getenv(env_name, "").strip())
+    return candidates
+
+
+def _custom_endpoint_allows_no_key(base_url: str) -> bool:
+    host = base_url_hostname(base_url)
+    return bool(host and _loopback_hostname(host))
+
+
+def _raise_missing_named_custom_key(
+    *,
+    requested_provider: str,
+    provider_name: str,
+    base_url: str,
+) -> None:
+    raise AuthError(
+        f"Custom provider {provider_name!r} is missing api_key/key_env. "
+        f"Set providers.{requested_provider}.api_key or providers.{requested_provider}.key_env.",
+        provider=requested_provider,
+        code="missing_api_key",
+    )
+
+
+def _try_resolve_inline_model_custom_runtime(
+    *,
+    requested_provider: str,
+    explicit_api_key: Optional[str] = None,
+    explicit_base_url: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """Resolve legacy Desktop configs that stored a named custom endpoint inline."""
+    requested_norm = (requested_provider or "").strip().lower()
+    if not requested_norm or requested_norm in {"auto", "custom", "moa"}:
+        return None
+    if not requested_norm.startswith("custom:") and auth_mod.is_runtime_provider_routable(requested_norm):
+        return None
+
+    model_cfg = _get_model_config()
+    cfg_provider = str(model_cfg.get("provider") or "").strip()
+    if not _inline_model_provider_matches(requested_provider, cfg_provider):
+        return None
+
+    base_url = (explicit_base_url or "").strip().rstrip("/")
+    if not base_url:
+        base_url = _inline_model_base_url(model_cfg)
+    if not base_url:
+        return None
+
+    api_mode = (
+        _parse_api_mode(model_cfg.get("api_mode"))
+        or _detect_api_mode_for_url(base_url)
+        or "chat_completions"
+    )
+
+    pool_key = _inline_custom_pool_key(requested_provider)
+    if pool_key:
+        try:
+            pool = load_pool(pool_key)
+            if pool and pool.has_credentials():
+                entry = pool.select()
+                pool_api_key = ""
+                if entry is not None:
+                    pool_api_key = (
+                        getattr(entry, "runtime_api_key", None)
+                        or getattr(entry, "access_token", "")
+                    )
+                if pool_api_key:
+                    return {
+                        "provider": "custom",
+                        "api_mode": api_mode,
+                        "base_url": base_url,
+                        "api_key": pool_api_key,
+                        "source": f"pool:{pool_key}",
+                        "credential_pool": pool,
+                        "requested_provider": requested_provider,
+                    }
+        except Exception:
+            pass
+
+    api_key_candidates = [
+        (explicit_api_key or "").strip(),
+        *_inline_model_api_key_candidates(
+            requested_provider=requested_provider,
+            base_url=base_url,
+        ),
+        _host_derived_api_key(base_url),
+    ]
+    api_key = next(
+        (candidate for candidate in api_key_candidates if has_usable_secret(candidate)),
+        "",
+    )
+    if not api_key and api_mode == "anthropic_messages" and not _custom_endpoint_allows_no_key(base_url):
+        _raise_missing_named_custom_key(
+            requested_provider=requested_provider,
+            provider_name=requested_provider,
+            base_url=base_url,
+        )
+    if not api_key:
+        api_key = "no-key-required"
+
+    return {
+        "provider": "custom",
+        "api_mode": api_mode,
+        "base_url": base_url,
+        "api_key": api_key,
+        "source": "inline-model-provider",
+        "requested_provider": requested_provider,
+    }
+
+
 def _lift_max_output_tokens(entry: Dict[str, Any], result: Dict[str, Any]) -> None:
     """Propagate a per-provider output cap onto the resolved runtime dict.
 
@@ -1138,6 +1340,10 @@ def _resolve_named_custom_runtime(
         (explicit_api_key or "").strip(),
         str(custom_provider.get("api_key", "") or "").strip(),
         _getenv(str(custom_provider.get("key_env", "") or "").strip(), "").strip(),
+        *_inline_model_api_key_candidates(
+            requested_provider=requested_provider,
+            base_url=base_url,
+        ),
         # Gate provider env keys on their authoritative hosts — sending
         # OPENAI_API_KEY to a local-llm endpoint leaks credentials (#28660).
         (_getenv("OPENAI_API_KEY", "").strip()     if _cp_is_openai_url  else ""),
@@ -1147,12 +1353,21 @@ def _resolve_named_custom_runtime(
         _host_derived_api_key(base_url),
     ]
     api_key = next((candidate for candidate in api_key_candidates if has_usable_secret(candidate)), "")
+    api_mode = (
+        custom_provider.get("api_mode")
+        or _detect_api_mode_for_url(base_url)
+        or "chat_completions"
+    )
+    if not api_key and api_mode == "anthropic_messages" and not _custom_endpoint_allows_no_key(base_url):
+        _raise_missing_named_custom_key(
+            requested_provider=requested_provider,
+            provider_name=str(custom_provider.get("name") or requested_provider),
+            base_url=base_url,
+        )
 
     result = {
         "provider": "custom",
-        "api_mode": custom_provider.get("api_mode")
-        or _detect_api_mode_for_url(base_url)
-        or "chat_completions",
+        "api_mode": api_mode,
         "base_url": base_url,
         "api_key": api_key or "no-key-required",
         "source": f"custom_provider:{custom_provider.get('name', requested_provider)}",
@@ -1773,6 +1988,15 @@ def resolve_runtime_provider(
     if custom_runtime:
         custom_runtime["requested_provider"] = requested_provider
         return custom_runtime
+
+    inline_custom_runtime = _try_resolve_inline_model_custom_runtime(
+        requested_provider=requested_provider,
+        explicit_api_key=explicit_api_key,
+        explicit_base_url=explicit_base_url,
+    )
+    if inline_custom_runtime:
+        inline_custom_runtime["requested_provider"] = requested_provider
+        return inline_custom_runtime
 
     # If provider is "auto" (or unset) but config.yaml has an explicit base_url
     # pointing at a custom/local endpoint (e.g. Ollama at localhost:11434),

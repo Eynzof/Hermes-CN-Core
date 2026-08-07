@@ -122,6 +122,56 @@ class TestResolveProviderClientNamedCustom:
         assert client is not None
         # no-key-required should be used
 
+    def test_named_custom_provider_inherits_main_key_for_same_host(self, tmp_path):
+        _write_config(tmp_path, {
+            "model": {
+                "default": "claude-opus-5",
+                "provider": "packycode",
+                "base_url": "https://www.packyapi.ai",
+                "api_key": "sk-inline",
+            },
+            "providers": {
+                "packycode": {
+                    "name": "PackyCode",
+                    "api": "https://www.packyapi.ai",
+                    "transport": "chat_completions",
+                    "default_model": "claude-opus-5",
+                },
+            },
+        })
+        with patch("agent.auxiliary_client.OpenAI") as mock_openai:
+            mock_openai.return_value = MagicMock()
+            from agent.auxiliary_client import resolve_provider_client
+
+            client, model = resolve_provider_client("packycode", "claude-opus-5")
+
+        assert client is not None
+        assert model == "claude-opus-5"
+        assert mock_openai.call_args.kwargs["api_key"] == "sk-inline"
+
+    def test_named_custom_anthropic_messages_without_key_returns_none(self, tmp_path):
+        _write_config(tmp_path, {
+            "model": {
+                "default": "claude-opus-5",
+                "provider": "packycode",
+                "base_url": "https://www.packyapi.ai",
+            },
+            "providers": {
+                "packycode": {
+                    "name": "PackyCode",
+                    "api": "https://www.packyapi.ai",
+                    "transport": "anthropic_messages",
+                    "default_model": "claude-opus-5",
+                },
+            },
+        })
+        from agent.auxiliary_client import resolve_provider_client
+
+        client, model = resolve_provider_client("packycode", "claude-opus-5")
+
+        assert client is None
+        assert model is None
+
 
 
 class TestResolveProviderClientModelNormalization:

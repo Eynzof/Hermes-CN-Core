@@ -96,6 +96,7 @@ def test_qwen_oauth_auto_fallthrough_on_auth_failure(monkeypatch):
         "resolve_qwen_runtime_credentials",
         lambda **kw: (_ for _ in ()).throw(AuthError("stale", provider="qwen-oauth", code="qwen_auth_missing")),
     )
+    monkeypatch.setattr(rp, "load_pool", lambda _provider: SimpleNamespace(has_credentials=lambda: False))
     monkeypatch.setattr(rp, "_get_model_config", lambda: {})
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-or-key")
 
@@ -585,6 +586,119 @@ def test_named_custom_provider_uses_saved_credentials(monkeypatch):
     assert resolved["api_key"] == "local-provider-key"
     assert resolved["requested_provider"] == "local"
     assert resolved["source"] == "custom_provider:Local"
+
+
+def test_named_custom_provider_uses_inline_model_key_when_entry_missing_secret(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("PACKYCODE_API_KEY", raising=False)
+    monkeypatch.delenv("PACKYAPI_API_KEY", raising=False)
+    model_cfg = {
+        "provider": "packycode",
+        "default": "claude-opus-5",
+        "base_url": "https://www.packyapi.ai",
+        "api_key": "sk-inline",
+    }
+    cfg = {
+        "model": model_cfg,
+        "providers": {
+            "packycode": {
+                "name": "PackyCode",
+                "api": "https://www.packyapi.ai",
+                "transport": "anthropic_messages",
+                "default_model": "claude-opus-5",
+            }
+        },
+    }
+    monkeypatch.setattr(rp, "_get_model_config", lambda: model_cfg)
+    monkeypatch.setattr(rp, "load_config", lambda: cfg)
+    monkeypatch.setattr("hermes_cli.config.load_config", lambda: cfg)
+    monkeypatch.setattr(
+        rp,
+        "load_pool",
+        lambda provider: SimpleNamespace(provider=provider, has_credentials=lambda: False),
+    )
+
+    resolved = rp.resolve_runtime_provider(requested="packycode")
+
+    assert resolved["provider"] == "custom"
+    assert resolved["requested_provider"] == "packycode"
+    assert resolved["api_mode"] == "anthropic_messages"
+    assert resolved["base_url"] == "https://www.packyapi.ai"
+    assert resolved["api_key"] == "sk-inline"
+    assert resolved["source"] == "custom_provider:PackyCode"
+
+
+def test_named_custom_anthropic_messages_without_key_fails_locally(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("PACKYCODE_API_KEY", raising=False)
+    monkeypatch.delenv("PACKYAPI_API_KEY", raising=False)
+    model_cfg = {
+        "provider": "packycode",
+        "default": "claude-opus-5",
+        "base_url": "https://www.packyapi.ai",
+    }
+    cfg = {
+        "model": model_cfg,
+        "providers": {
+            "packycode": {
+                "name": "PackyCode",
+                "api": "https://www.packyapi.ai",
+                "transport": "anthropic_messages",
+                "default_model": "claude-opus-5",
+            }
+        },
+    }
+    monkeypatch.setattr(rp, "_get_model_config", lambda: model_cfg)
+    monkeypatch.setattr(rp, "load_config", lambda: cfg)
+    monkeypatch.setattr("hermes_cli.config.load_config", lambda: cfg)
+    monkeypatch.setattr(
+        rp,
+        "load_pool",
+        lambda provider: SimpleNamespace(provider=provider, has_credentials=lambda: False),
+    )
+
+    with pytest.raises(rp.AuthError, match="missing api_key/key_env"):
+        rp.resolve_runtime_provider(requested="packycode")
+
+
+def test_inline_unknown_model_provider_resolves_as_custom(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("PACKYCODE_API_KEY", raising=False)
+    monkeypatch.delenv("PACKYAPI_API_KEY", raising=False)
+    model_cfg = {
+        "provider": "packycode",
+        "default": "claude-opus-5",
+        "base_url": "https://www.packyapi.ai",
+        "api_mode": "anthropic_messages",
+        "api_key": "sk-packy",
+    }
+    monkeypatch.setattr(rp, "_get_model_config", lambda: model_cfg)
+    monkeypatch.setattr(rp, "load_config", lambda: {"model": model_cfg})
+    monkeypatch.setattr("hermes_cli.config.load_config", lambda: {"model": model_cfg})
+    monkeypatch.setattr(
+        rp,
+        "load_pool",
+        lambda provider: SimpleNamespace(provider=provider, has_credentials=lambda: False),
+    )
+    monkeypatch.setattr(
+        rp,
+        "resolve_provider",
+        lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("inline model provider recovery should run before resolve_provider")
+        ),
+    )
+
+    resolved = rp.resolve_runtime_provider()
+
+    assert resolved["provider"] == "custom"
+    assert resolved["requested_provider"] == "packycode"
+    assert resolved["api_mode"] == "anthropic_messages"
+    assert resolved["base_url"] == "https://www.packyapi.ai"
+    assert resolved["api_key"] == "sk-packy"
+    assert resolved["source"] == "inline-model-provider"
 
 
 def test_bare_custom_resolves_providers_dict_entry_named_custom(monkeypatch):

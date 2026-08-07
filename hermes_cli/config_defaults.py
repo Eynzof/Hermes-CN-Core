@@ -3151,7 +3151,7 @@ DEFAULT_CONFIG = {
         "subagent_type": "coder",
     },
     # Config schema version - bump this when adding new required fields
-    "_config_version": 33,
+    "_config_version": 34,
 }
 
 # Optional environment variables that enhance functionality

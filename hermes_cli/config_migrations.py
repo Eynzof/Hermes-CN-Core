@@ -38,7 +38,7 @@ from __future__ import annotations
 
 
 import copy
-from typing import Any, Callable, Dict, List, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 #: Auto-migration support floor. Configs whose on-disk ``_config_version`` is
 #: below this are NOT auto-migrated any more (policy decision, July 2026):
@@ -667,6 +667,197 @@ def _migrate_to_33(results: Dict[str, Any], quiet: bool) -> None:
             )
 
 
+def _provider_key_from_inline_model_provider(raw_provider: str, base_url: str) -> str:
+    provider = str(raw_provider or "").strip().lower()
+    if provider.startswith("custom:"):
+        provider = provider.split(":", 1)[1].strip()
+    key = "".join(ch if ch.isalnum() else "-" for ch in provider)
+    while "--" in key:
+        key = key.replace("--", "-")
+    key = key.strip("-")
+    if key:
+        return key
+    try:
+        from urllib.parse import urlparse
+
+        host = (urlparse(base_url).hostname or "endpoint").lower()
+        key = "".join(ch if ch.isalnum() else "-" for ch in host)
+        while "--" in key:
+            key = key.replace("--", "-")
+        return key.strip("-") or "endpoint"
+    except Exception:
+        return "endpoint"
+
+
+def _inline_model_provider_aliases(value: str) -> set[str]:
+    from hermes_cli.providers import custom_provider_aliases
+
+    raw = str(value or "").strip().lower()
+    if not raw:
+        return set()
+    aliases = set(custom_provider_aliases(raw, raw))
+    if raw.startswith("custom:"):
+        suffix = raw.split(":", 1)[1].strip()
+        if suffix:
+            aliases.add(suffix)
+            aliases.add(f"custom:{suffix}")
+    else:
+        aliases.add(f"custom:{raw}")
+    return {alias.strip().lower() for alias in aliases if alias}
+
+
+def _inline_model_provider_already_configured(
+    config: Dict[str, Any],
+    provider_value: str,
+    provider_key: str,
+) -> bool:
+    wanted_aliases = _inline_model_provider_aliases(
+        provider_value
+    ) | _inline_model_provider_aliases(provider_key)
+    if not wanted_aliases:
+        return False
+
+    providers = config.get("providers")
+    if isinstance(providers, dict):
+        for key in providers.keys():
+            if str(key or "").strip().lower() in wanted_aliases:
+                return True
+
+    try:
+        compatible = _cfg().get_compatible_custom_providers(config)
+    except Exception:
+        compatible = []
+    for entry in compatible or []:
+        if not isinstance(entry, dict):
+            continue
+        aliases = _inline_model_provider_aliases(str(entry.get("name") or ""))
+        aliases |= _inline_model_provider_aliases(str(entry.get("provider_key") or ""))
+        if aliases & wanted_aliases:
+            return True
+    return False
+
+
+def _inline_model_provider_should_recover(provider_value: str) -> bool:
+    provider_norm = str(provider_value or "").strip().lower()
+    if not provider_norm or provider_norm in {"auto", "custom", "openrouter", "moa"}:
+        return False
+    if provider_norm.startswith("custom:"):
+        return bool(provider_norm.split(":", 1)[1].strip())
+    try:
+        from hermes_cli import auth as auth_mod
+
+        if auth_mod.is_runtime_provider_routable(provider_norm):
+            return False
+    except Exception:
+        pass
+    return True
+
+
+def _recover_inline_model_provider_entry(
+    config: Dict[str, Any],
+) -> Optional[Tuple[str, Dict[str, Any]]]:
+    model_cfg = config.get("model")
+    if not isinstance(model_cfg, dict):
+        return None
+
+    raw_provider = model_cfg.get("provider")
+    if not isinstance(raw_provider, str) or not raw_provider.strip():
+        return None
+    if not _inline_model_provider_should_recover(raw_provider):
+        return None
+
+    base_url = ""
+    for key in ("base_url", "url", "api"):
+        raw = model_cfg.get(key)
+        if isinstance(raw, str) and raw.strip():
+            base_url = raw.strip().rstrip("/")
+            break
+    if not base_url:
+        return None
+
+    provider_key = _provider_key_from_inline_model_provider(raw_provider, base_url)
+    if _inline_model_provider_already_configured(config, raw_provider, provider_key):
+        return None
+
+    entry: Dict[str, Any] = {
+        "name": provider_key,
+        "base_url": base_url,
+    }
+
+    api_key = model_cfg.get("api_key")
+    if (
+        isinstance(api_key, str)
+        and api_key.strip()
+        and api_key.strip() not in {"no-key", "no-key-required"}
+    ):
+        entry["api_key"] = api_key.strip()
+
+    for key in ("key_env", "api_key_env"):
+        raw = model_cfg.get(key)
+        if isinstance(raw, str) and raw.strip():
+            entry["key_env"] = raw.strip()
+            break
+
+    api_mode = model_cfg.get("api_mode")
+    valid_api_modes = {
+        "chat_completions",
+        "codex_responses",
+        "anthropic_messages",
+        "bedrock_converse",
+        "codex_app_server",
+    }
+    if isinstance(api_mode, str) and api_mode.strip().lower() in valid_api_modes:
+        entry["api_mode"] = api_mode.strip().lower()
+
+    model_name = model_cfg.get("default") or model_cfg.get("model")
+    if isinstance(model_name, str) and model_name.strip():
+        entry["model"] = model_name.strip()
+
+    context_length = model_cfg.get("context_length")
+    if isinstance(context_length, int) and context_length > 0:
+        entry["context_length"] = context_length
+
+    provider_entry = _cfg()._custom_provider_entry_to_provider_config(
+        entry,
+        provider_key=provider_key,
+    )
+    if provider_entry is None:
+        return None
+    return provider_key, provider_entry
+
+
+def _migrate_to_34(results: Dict[str, Any], quiet: bool) -> None:
+    # ── Version 33 → 34: recover inline named-custom model providers ──
+    # Desktop model selection previously could persist an endpoint like
+    # model.provider=packycode together with model.base_url/model.api_mode but
+    # without the providers.packycode block that runtime resolution requires.
+    # Preserve the inline model settings and add only the missing providers
+    # entry, so rollback still has the original facts available.
+    _c = _cfg()
+    read_raw_config = _c.read_raw_config
+    _persist_migration = _c._persist_migration
+
+    config = read_raw_config()
+    recovered = _recover_inline_model_provider_entry(config)
+    if recovered is None:
+        return
+
+    provider_key, provider_entry = recovered
+    providers = config.get("providers")
+    if not isinstance(providers, dict):
+        providers = {}
+    providers[provider_key] = provider_entry
+    config["providers"] = providers
+    _persist_migration(config)
+    results["config_added"].append(
+        f"providers.{provider_key} (recovered from model.provider)"
+    )
+    if not quiet:
+        print(
+            f"  ✓ Recovered providers.{provider_key} from inline model provider settings"
+        )
+
+
 #: Registry of (target_version, migration_fn), strictly ascending. The driver
 #: applies every entry whose target version is greater than the on-disk
 #: version captured before the ladder started. Order matters: later steps may
@@ -689,6 +880,7 @@ MIGRATIONS: Tuple[Tuple[int, Callable[[Dict[str, Any], bool], None]], ...] = (
     (31, _migrate_to_31),
     (32, _migrate_to_32),
     (33, _migrate_to_33),
+    (34, _migrate_to_34),
 )
 
 

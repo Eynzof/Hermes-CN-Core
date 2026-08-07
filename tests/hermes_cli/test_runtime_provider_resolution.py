@@ -587,6 +587,95 @@ def test_named_custom_provider_uses_saved_credentials(monkeypatch):
     assert resolved["source"] == "custom_provider:Local"
 
 
+def test_inline_unknown_model_provider_resolves_as_custom(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("PACKYAPI_API_KEY", raising=False)
+    model_cfg = {
+        "provider": "packycode",
+        "default": "claude-opus-5",
+        "base_url": "https://www.packyapi.ai",
+        "api_mode": "anthropic_messages",
+        "api_key": "sk-packy",
+    }
+    monkeypatch.setattr(rp, "_get_model_config", lambda: model_cfg)
+    monkeypatch.setattr(rp, "load_config", lambda: {"model": model_cfg})
+    monkeypatch.setattr("hermes_cli.config.load_config", lambda: {"model": model_cfg})
+    monkeypatch.setattr(
+        rp,
+        "load_pool",
+        lambda provider: SimpleNamespace(provider=provider, has_credentials=lambda: False),
+    )
+    monkeypatch.setattr(
+        rp.auth_mod,
+        "resolve_provider",
+        lambda *a, **k: (_ for _ in ()).throw(rp.AuthError("unknown")),
+    )
+    monkeypatch.setattr(
+        rp,
+        "resolve_provider",
+        lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("inline model provider recovery should run before resolve_provider")
+        ),
+    )
+
+    resolved = rp.resolve_runtime_provider()
+
+    assert resolved["provider"] == "custom"
+    assert resolved["requested_provider"] == "packycode"
+    assert resolved["api_mode"] == "anthropic_messages"
+    assert resolved["base_url"] == "https://www.packyapi.ai"
+    assert resolved["api_key"] == "sk-packy"
+    assert resolved["source"] == "inline-model-provider"
+
+
+def test_inline_unknown_model_provider_uses_matching_custom_pool(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("PACKYAPI_API_KEY", raising=False)
+    model_cfg = {
+        "provider": "packycode",
+        "default": "claude-opus-5",
+        "base_url": "https://www.packyapi.ai",
+        "api_mode": "anthropic_messages",
+    }
+    pool = SimpleNamespace(
+        provider="custom:packycode",
+        has_credentials=lambda: True,
+        select=lambda: SimpleNamespace(runtime_api_key="sk-pooled", access_token=""),
+    )
+
+    def _load_pool(provider):
+        assert provider == "custom:packycode"
+        return pool
+
+    monkeypatch.setattr(rp, "_get_model_config", lambda: model_cfg)
+    monkeypatch.setattr(rp, "load_config", lambda: {"model": model_cfg})
+    monkeypatch.setattr("hermes_cli.config.load_config", lambda: {"model": model_cfg})
+    monkeypatch.setattr(rp, "load_pool", _load_pool)
+    monkeypatch.setattr(
+        rp.auth_mod,
+        "resolve_provider",
+        lambda *a, **k: (_ for _ in ()).throw(rp.AuthError("unknown")),
+    )
+    monkeypatch.setattr(
+        rp,
+        "resolve_provider",
+        lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("inline model provider recovery should run before resolve_provider")
+        ),
+    )
+
+    resolved = rp.resolve_runtime_provider()
+
+    assert resolved["provider"] == "custom"
+    assert resolved["requested_provider"] == "packycode"
+    assert resolved["base_url"] == "https://www.packyapi.ai"
+    assert resolved["api_key"] == "sk-pooled"
+    assert resolved["credential_pool"] is pool
+    assert resolved["source"] == "pool:custom:packycode"
+
+
 def test_bare_custom_resolves_providers_dict_entry_named_custom(monkeypatch):
     """A request for bare ``provider="custom"`` must resolve a literal
     ``providers.custom`` entry (e.g. a cliproxy endpoint) instead of falling

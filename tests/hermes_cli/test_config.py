@@ -1401,6 +1401,75 @@ class TestDelegationCapUnificationMigration:
         assert "delegation" not in raw
 
 
+class TestInlineModelProviderRecoveryMigration:
+    """v33 → v34: recover Desktop inline named-custom provider configs."""
+
+    def _write(self, tmp_path, data):
+        (tmp_path / "config.yaml").write_text(
+            yaml.safe_dump(data),
+            encoding="utf-8",
+        )
+
+    def test_recovers_packycode_provider_from_model_endpoint(self, tmp_path):
+        self._write(
+            tmp_path,
+            {
+                "_config_version": 33,
+                "model": {
+                    "provider": "packycode",
+                    "default": "claude-opus-5",
+                    "base_url": "https://www.packyapi.ai",
+                    "api_mode": "anthropic_messages",
+                    "api_key": "sk-packy",
+                    "context_length": 1000000,
+                },
+            },
+        )
+
+        with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
+            migrate_config(interactive=False, quiet=True)
+            raw = yaml.safe_load((tmp_path / "config.yaml").read_text(encoding="utf-8"))
+
+        assert raw["_config_version"] == DEFAULT_CONFIG["_config_version"]
+        assert raw["model"]["provider"] == "packycode"
+        assert raw["model"]["base_url"] == "https://www.packyapi.ai"
+        provider = raw["providers"]["packycode"]
+        assert provider["api"] == "https://www.packyapi.ai"
+        assert provider["transport"] == "anthropic_messages"
+        assert provider["default_model"] == "claude-opus-5"
+        assert provider["api_key"] == "sk-packy"
+        assert provider["context_length"] == 1000000
+
+    def test_does_not_overwrite_existing_provider_entry(self, tmp_path):
+        self._write(
+            tmp_path,
+            {
+                "_config_version": 33,
+                "model": {
+                    "provider": "packycode",
+                    "default": "claude-opus-5",
+                    "base_url": "https://www.packyapi.ai",
+                    "api_mode": "anthropic_messages",
+                    "api_key": "sk-inline",
+                },
+                "providers": {
+                    "packycode": {
+                        "api": "https://existing.example.com/v1",
+                        "api_key": "sk-existing",
+                    }
+                },
+            },
+        )
+
+        with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
+            migrate_config(interactive=False, quiet=True)
+            raw = yaml.safe_load((tmp_path / "config.yaml").read_text(encoding="utf-8"))
+
+        provider = raw["providers"]["packycode"]
+        assert provider["api"] == "https://existing.example.com/v1"
+        assert provider["api_key"] == "sk-existing"
+
+
 class TestConfigNormalizationDoesNotOverwriteUserValues:
     """Regression tests for #27354."""
 

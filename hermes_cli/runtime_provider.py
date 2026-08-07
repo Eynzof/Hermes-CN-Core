@@ -635,6 +635,139 @@ def _try_resolve_from_custom_pool(
         return None
 
 
+def _inline_model_provider_aliases(value: str) -> set[str]:
+    normalized = _normalize_custom_provider_name(value or "")
+    if not normalized:
+        return set()
+    aliases = set(custom_provider_aliases(normalized, normalized))
+    if normalized.startswith("custom:"):
+        suffix = normalized.split(":", 1)[1].strip()
+        if suffix:
+            aliases.add(suffix)
+            aliases.add(f"custom:{suffix}")
+    else:
+        aliases.add(f"custom:{normalized}")
+    return {alias.strip().lower() for alias in aliases if alias}
+
+
+def _inline_model_provider_matches(requested_provider: str, configured_provider: str) -> bool:
+    requested_aliases = _inline_model_provider_aliases(requested_provider)
+    configured_aliases = _inline_model_provider_aliases(configured_provider)
+    return bool(
+        requested_aliases
+        and configured_aliases
+        and requested_aliases & configured_aliases
+    )
+
+
+def _inline_custom_pool_key(requested_provider: str) -> str:
+    requested_norm = _normalize_custom_provider_name(requested_provider or "")
+    if not requested_norm or requested_norm in {"auto", "custom", "moa"}:
+        return ""
+    if requested_norm.startswith("custom:"):
+        suffix = requested_norm.split(":", 1)[1].strip()
+        if not suffix:
+            return ""
+        return f"custom:{_normalize_custom_provider_name(suffix)}"
+    return f"custom:{requested_norm}"
+
+
+def _try_resolve_inline_model_custom_runtime(
+    *,
+    requested_provider: str,
+    explicit_api_key: Optional[str] = None,
+    explicit_base_url: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """Recover legacy Desktop configs that stored a named custom endpoint inline.
+
+    Some Desktop builds persisted a provider such as ``packycode`` under
+    ``model.provider`` with ``model.base_url`` / ``model.api_mode`` but without
+    the matching ``providers.packycode`` block. That name is not a built-in
+    runtime provider, so normal resolution fails before the custom endpoint can
+    be used. Treat only that self-consistent shape as a custom runtime.
+    """
+    requested_norm = (requested_provider or "").strip().lower()
+    if not requested_norm or requested_norm in {"auto", "custom", "moa"}:
+        return None
+    named_custom = requested_norm.startswith("custom:")
+    if not named_custom and auth_mod.is_runtime_provider_routable(requested_norm):
+        return None
+
+    model_cfg = _get_model_config()
+    cfg_provider = str(model_cfg.get("provider") or "").strip()
+    if not _inline_model_provider_matches(requested_provider, cfg_provider):
+        return None
+
+    base_url = (explicit_base_url or "").strip()
+    if not base_url:
+        for key in ("base_url", "url", "api"):
+            raw = model_cfg.get(key)
+            if isinstance(raw, str) and raw.strip():
+                base_url = raw.strip()
+                break
+    base_url = base_url.rstrip("/")
+    if not base_url:
+        return None
+
+    api_mode = (
+        _parse_api_mode(model_cfg.get("api_mode"))
+        or _detect_api_mode_for_url(base_url)
+        or "chat_completions"
+    )
+
+    pool_key = _inline_custom_pool_key(requested_provider)
+    if pool_key:
+        try:
+            pool = load_pool(pool_key)
+            if pool and pool.has_credentials():
+                entry = pool.select()
+                pool_api_key = ""
+                if entry is not None:
+                    pool_api_key = (
+                        getattr(entry, "runtime_api_key", None)
+                        or getattr(entry, "access_token", "")
+                    )
+                if pool_api_key:
+                    return {
+                        "provider": "custom",
+                        "api_mode": api_mode,
+                        "base_url": base_url,
+                        "api_key": pool_api_key,
+                        "source": f"pool:{pool_key}",
+                        "credential_pool": pool,
+                        "requested_provider": requested_provider,
+                    }
+        except Exception:
+            pass
+
+    key_env = ""
+    for key in ("key_env", "api_key_env"):
+        raw = model_cfg.get(key)
+        if isinstance(raw, str) and raw.strip():
+            key_env = raw.strip()
+            break
+
+    api_key_candidates = [
+        (explicit_api_key or "").strip(),
+        str(model_cfg.get("api_key") or "").strip(),
+        (_getenv(key_env, "").strip() if key_env else ""),
+        _host_derived_api_key(base_url),
+    ]
+    api_key = next(
+        (candidate for candidate in api_key_candidates if has_usable_secret(candidate)),
+        "",
+    ) or "no-key-required"
+
+    return {
+        "provider": "custom",
+        "api_mode": api_mode,
+        "base_url": base_url,
+        "api_key": api_key,
+        "source": "inline-model-provider",
+        "requested_provider": requested_provider,
+    }
+
+
 def _lift_max_output_tokens(entry: Dict[str, Any], result: Dict[str, Any]) -> None:
     """Propagate a per-provider output cap onto the resolved runtime dict.
 
@@ -1773,6 +1906,15 @@ def resolve_runtime_provider(
     if custom_runtime:
         custom_runtime["requested_provider"] = requested_provider
         return custom_runtime
+
+    inline_custom_runtime = _try_resolve_inline_model_custom_runtime(
+        requested_provider=requested_provider,
+        explicit_api_key=explicit_api_key,
+        explicit_base_url=explicit_base_url,
+    )
+    if inline_custom_runtime:
+        inline_custom_runtime["requested_provider"] = requested_provider
+        return inline_custom_runtime
 
     # If provider is "auto" (or unset) but config.yaml has an explicit base_url
     # pointing at a custom/local endpoint (e.g. Ollama at localhost:11434),

@@ -36,6 +36,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from hermes_cli._subprocess_compat import windows_hide_flags
 from hermes_cli.config import get_hermes_home
 from hermes_constants import venv_python_path
 
@@ -1095,7 +1096,12 @@ def _stash_local_changes_if_needed(git_cmd: list[str], cwd: Path) -> Optional[st
     )
     if unmerged.stdout.strip():
         print("→ Clearing unmerged index entries from a previous conflict...")
-        subprocess.run(git_cmd + ["reset"], cwd=cwd, capture_output=True)
+        subprocess.run(
+            git_cmd + ["reset"],
+            cwd=cwd,
+            capture_output=True,
+            creationflags=windows_hide_flags(),
+        )
 
     from datetime import datetime, timezone
 

@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from hermes_cli._subprocess_compat import windows_hide_flags
 from hermes_constants import get_default_hermes_root
 
 _HEX32 = re.compile(r"[0-9a-f]{32}\Z")
@@ -365,7 +366,15 @@ def _resolve_direct_interpreter(python_entry: str) -> tuple[str, list[str]]:
         "print(json.dumps({'base':getattr(sys,'_base_executable','') or sys.executable,"
         "'path':[p for p in sys.path if p],'root':root}))"
     )
-    out = subprocess.run([python_entry, "-c", query], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
+    out = subprocess.run(
+        [python_entry, "-c", query],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=30,
+        creationflags=windows_hide_flags(),
+    )
     if out.returncode != 0:
         raise ValueError("could not resolve the base Python interpreter")
     info = json.loads(out.stdout.strip().splitlines()[-1])
@@ -440,8 +449,24 @@ def inspect_hermes(hermes_path: str) -> dict[str, Any]:
     path = os.path.abspath(hermes_path)
     if not os.path.isabs(hermes_path) or not os.path.isfile(path):
         raise ValueError("Hermes path is not an executable file")
-    version = subprocess.run([path, "--version"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20)
-    help_result = subprocess.run([path, "serve", "--help"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20)
+    version = subprocess.run(
+        [path, "--version"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=20,
+        creationflags=windows_hide_flags(),
+    )
+    help_result = subprocess.run(
+        [path, "serve", "--help"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=20,
+        creationflags=windows_hide_flags(),
+    )
     help_text = help_result.stdout + help_result.stderr
     return {
         "path": path,

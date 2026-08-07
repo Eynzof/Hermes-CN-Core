@@ -14,6 +14,7 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
+from hermes_cli._subprocess_compat import windows_hide_flags
 from hermes_constants import get_hermes_home
 from tools.environments.base import (
     BaseEnvironment,
@@ -225,7 +226,16 @@ class SingularityEnvironment(BaseEnvironment):
         cmd.extend([str(self.image), self.instance_id])
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=120, stdin=subprocess.DEVNULL)
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                encoding='utf-8',
+                errors='replace',
+                timeout=120,
+                stdin=subprocess.DEVNULL,
+                creationflags=windows_hide_flags(),
+            )
 
             if result.returncode != 0:
                 raise RuntimeError(f"Failed to start instance: {result.stderr}")

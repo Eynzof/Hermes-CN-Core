@@ -66,7 +66,7 @@ except ModuleNotFoundError:
 # any dependency touching ``platform.uname()`` at import time flashes a
 # visible console when this process is windowless (pythonw gateway + every
 # kanban worker).  No-op on POSIX; never raises.
-from hermes_cli._subprocess_compat import suppress_platform_ver_console
+from hermes_cli._subprocess_compat import suppress_platform_ver_console, windows_hide_flags
 
 suppress_platform_ver_console()
 
@@ -6775,7 +6775,12 @@ def _desktop_macos_local_codesign(
             # identifier-based DR so TCC has something stable to persist.
             args += ["--requirements", f'=designated => identifier "{identifier}"']
         args.append(str(path))
-        subprocess.run(args, check=True, capture_output=True)
+        subprocess.run(
+            args,
+            check=True,
+            capture_output=True,
+            creationflags=windows_hide_flags(),
+        )
 
     # 1) Standalone Mach-O files (native modules, dylibs, crashpad handler).
     #    Compare paths relative to the app root — the absolute path always

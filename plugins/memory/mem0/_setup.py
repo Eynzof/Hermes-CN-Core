@@ -229,7 +229,10 @@ def _save_mem0_json(hermes_home: str, data: dict) -> None:
         except Exception:
             pass
     existing.update(data)
-    config_path.write_text(orjson.dumps(existing, option=orjson.OPT_INDENT_2).decode('utf-8') + "\n")
+    config_path.write_text(
+        orjson.dumps(existing, option=orjson.OPT_INDENT_2).decode('utf-8') + "\n",
+        encoding="utf-8",
+    )
 
 
 def _setup_platform(hermes_home: str, config: dict, flags: dict[str, str]) -> None:

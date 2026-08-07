@@ -213,6 +213,7 @@ jobs:
           import plugins.platforms.wecom.adapter as wcm
           import plugins.platforms.wecom.callback_adapter as wc
           import gateway.platforms.weixin as wx
+          feishu_available = fs._load_lark_oapi()
           for m in (
               "tools.computer_use_tool",
               "tools.computer_use.tool",
@@ -232,7 +233,7 @@ jobs:
               except Exception as e:
                   missing.append(f"{m}: {type(e).__name__}: {e}")
           flags = {
-              "feishu.FEISHU_AVAILABLE": fs.FEISHU_AVAILABLE,
+              "feishu.FEISHU_AVAILABLE": feishu_available and fs.FEISHU_AVAILABLE,
               "dingtalk.DINGTALK_STREAM_AVAILABLE": dt.DINGTALK_STREAM_AVAILABLE,
               "dingtalk.CARD_SDK_AVAILABLE": dt.CARD_SDK_AVAILABLE,
               "wecom.AIOHTTP_AVAILABLE": wcm.AIOHTTP_AVAILABLE,

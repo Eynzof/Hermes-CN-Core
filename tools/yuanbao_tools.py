@@ -15,8 +15,8 @@ LLM 应先用 search_sticker 找到合适的 sticker_id（或直接传中文 nam
 The active adapter singleton lives in ``gateway.platforms.yuanbao`` and is
 accessed via ``get_active_adapter()``.
 """
-
 from __future__ import annotations
+
 
 import logging
 from pathlib import Path

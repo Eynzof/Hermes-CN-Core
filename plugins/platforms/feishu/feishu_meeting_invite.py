@@ -6,8 +6,8 @@ synthetic gateway ``MessageEvent``.  Unlike document comments, the response
 should go back to the inviter through the normal Hermes gateway pipeline, so
 this module does not instantiate an agent directly.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import logging

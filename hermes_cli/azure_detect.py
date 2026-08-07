@@ -34,8 +34,8 @@ broad try/except).  Callers get a :class:`DetectionResult` with whatever
 information could be gathered, and fall back to manual entry for the
 rest.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import logging

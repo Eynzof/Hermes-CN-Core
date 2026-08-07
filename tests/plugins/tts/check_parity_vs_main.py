@@ -36,8 +36,8 @@ of the worktree directory, or falls back to a sibling
 
     python tests/plugins/tts/check_parity_vs_main.py
 """
-
 from __future__ import annotations
+
 
 import orjson
 import subprocess

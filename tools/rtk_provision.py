@@ -12,8 +12,8 @@ Usage::
         rtk_path = _find_rtk()
         # use rtk_path to rewrite shell commands
 """
-
 from __future__ import annotations
+
 
 import functools
 import platform

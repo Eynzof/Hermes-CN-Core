@@ -10,8 +10,8 @@ that actually support the higher level).
 These tests pin that contract without going live, by stubbing the catalog
 lookup ``github_model_reasoning_efforts``.
 """
-
 from __future__ import annotations
+
 
 import pytest
 

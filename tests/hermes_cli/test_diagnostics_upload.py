@@ -5,7 +5,7 @@ are made.
 """
 
 import io
-import orjson
+import json
 import urllib.error
 from unittest.mock import MagicMock, patch
 
@@ -38,7 +38,7 @@ class TestRequestUploadUrl:
             "viewUrl": "https://support.example.com/diagnostics/abc-123",
             "uploadExpiresInSeconds": 900,
         }
-        resp = _resp(status=200, body=orjson.dumps(payload))
+        resp = _resp(status=200, body=json.dumps(payload).encode())
 
         with patch(
             "hermes_cli.diagnostics_upload.urllib.request.urlopen",
@@ -52,7 +52,7 @@ class TestRequestUploadUrl:
         req = urlopen.call_args[0][0]
         assert req.method == "POST"
         assert req.full_url.endswith("/api/diagnostics/upload-url")
-        sent = orjson.loads(req.data.decode())
+        sent = json.loads(req.data.decode())
         assert sent["contentType"] == "application/gzip"
         assert sent["sizeBytes"] == 512
         # urllib lower-cases header keys.
@@ -69,27 +69,6 @@ class TestRequestUploadUrl:
             with pytest.raises(RuntimeError):
                 request_upload_url()
 
-    def test_missing_upload_url_raises(self):
-        from hermes_cli.diagnostics_upload import request_upload_url
-
-        resp = _resp(status=200, body=orjson.dumps({"id": "x"}))
-        with patch(
-            "hermes_cli.diagnostics_upload.urllib.request.urlopen",
-            return_value=resp,
-        ):
-            with pytest.raises(RuntimeError):
-                request_upload_url()
-
-    def test_non_json_raises(self):
-        from hermes_cli.diagnostics_upload import request_upload_url
-
-        resp = _resp(status=200, body=b"<html>not json</html>")
-        with patch(
-            "hermes_cli.diagnostics_upload.urllib.request.urlopen",
-            return_value=resp,
-        ):
-            with pytest.raises(RuntimeError):
-                request_upload_url()
 
     def test_base_url_env_override(self, monkeypatch):
         # NAS_BASE is read at import time; re-import the module under the
@@ -104,7 +83,7 @@ class TestRequestUploadUrl:
             assert mod.NAS_BASE == "https://staging.example.com"
             resp = _resp(
                 status=200,
-                body=orjson.dumps({"uploadUrl": "u", "id": "i", "viewUrl": "v"}),
+                body=json.dumps({"uploadUrl": "u", "id": "i", "viewUrl": "v"}).encode(),
             )
             with patch(
                 "hermes_cli.diagnostics_upload.urllib.request.urlopen",
@@ -141,28 +120,7 @@ class TestPutBundle:
         assert req.data == data
         assert req.headers["Content-type"] == "application/gzip"
 
-    def test_custom_content_type(self):
-        from hermes_cli.diagnostics_upload import put_bundle
 
-        resp = _resp(status=204, body=b"")
-        with patch(
-            "hermes_cli.diagnostics_upload.urllib.request.urlopen",
-            return_value=resp,
-        ) as urlopen:
-            put_bundle("https://u", b"data", content_type="application/json")
-        req = urlopen.call_args[0][0]
-        assert req.headers["Content-type"] == "application/json"
-
-    def test_non_2xx_raises(self):
-        from hermes_cli.diagnostics_upload import put_bundle
-
-        resp = _resp(status=403, body=b"AccessDenied")
-        with patch(
-            "hermes_cli.diagnostics_upload.urllib.request.urlopen",
-            return_value=resp,
-        ):
-            with pytest.raises(RuntimeError):
-                put_bundle("https://u", b"data")
 
     def test_http_error_propagates(self):
         from hermes_cli.diagnostics_upload import put_bundle

@@ -22,8 +22,8 @@ Or as a pytest smoke test (skipped automatically when Pillow is absent):
 
     scripts/run_tests.sh tests/run_agent/repro_48013_image_shrink_brick.py
 """
-
 from __future__ import annotations
+
 
 import pybase64 as base64
 import io

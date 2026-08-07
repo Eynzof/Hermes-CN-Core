@@ -1,6 +1,6 @@
 """Thin Spotify Web API helper used by Hermes native tools."""
-
 from __future__ import annotations
+
 
 import orjson
 from typing import Any, Dict, Iterable, Optional

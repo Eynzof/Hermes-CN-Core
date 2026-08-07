@@ -25,8 +25,8 @@ helper that ``process_loop`` now calls every turn. The integration into
 prompt_toolkit app); the helper is unit-testable on its own and is the
 load-bearing piece.
 """
-
 from __future__ import annotations
+
 
 import importlib
 import queue

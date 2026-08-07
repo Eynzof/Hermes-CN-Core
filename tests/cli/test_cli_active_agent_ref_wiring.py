@@ -14,8 +14,8 @@ The fix writes the reference onto the ``cli`` module explicitly. These tests
 assert that contract — the existing shutdown tests pass only because they
 hand-assign ``cli._active_agent_ref``, which is exactly what masked the bug.
 """
-
 from __future__ import annotations
+
 
 import inspect
 

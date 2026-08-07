@@ -10,8 +10,8 @@ The verification_uri_complete is rendered as a QR code in the terminal so the
 user can scan it with DingTalk to authorize, yielding AppKey + AppSecret
 automatically.
 """
-
 from __future__ import annotations
+
 
 import os
 import sys

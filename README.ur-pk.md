@@ -57,7 +57,7 @@ iex (irm https://hermes-agent.nousresearch.com/install.ps1)
 
 </div>
 
-انسٹالر سب کچھ خود سنبھالتا ہے: uv، Python 3.14، Node.js، ripgrep، ffmpeg۔ Windows پر، کمانڈ چلانے کے لیے پہلے سے طے شدہ شیل **PowerShell** ہے (PowerShell 7+ ترجیح، خودکار طور پر Windows PowerShell 5.1 پر واپس آجاتا ہے)۔ Git Bash ایک اختیاری شیل کے طور پر دستیاب ہے — اگر آپ کے پاس Git for Windows پہلے سے انسٹال ہے تو config.yaml میں `terminal.shell: bash` سیٹ کریں۔ خودکار ڈاؤن لوڈ نہیں ہوتا۔
+انسٹالر سب کچھ خود سنبھالتا ہے: uv، Python 3.14، Node.js، ripgrep، ffmpeg۔ Windows پر، کمانڈ چلانے کے لیے پہلے سے طے شدہ شیل **Git Bash** ہے (اگر Git for Windows پہلے سے انسٹال ہو)، پھر PowerShell 7+ اور آخر میں Windows PowerShell 5.1 پر واپس آجاتا ہے۔ PowerShell زبردستی استعمال کرنے کے لیے config.yaml میں `terminal.shell: pwsh` / `terminal.shell: powershell` سیٹ کریں، یا واضح Git Bash کے لیے `terminal.shell: bash` سیٹ کریں۔ خودکار ڈاؤن لوڈ نہیں ہوتا۔
 
 اگر آپ کے پاس پہلے سے گٹ (Git) انسٹال ہے، تو انسٹالر اسے شناخت کر لیتا ہے اور اسے ہی استعمال کرتا ہے۔ بصورت دیگر آپ کو صرف ~45MB کے MinGit ڈاؤنلوڈ کی ضرورت ہوگی — یہ آپ کے سسٹم کے گٹ پر کوئی اثر نہیں ڈالے گا۔
 

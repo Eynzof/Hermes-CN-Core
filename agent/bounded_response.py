@@ -33,8 +33,8 @@ Ported and adapted from openclaw/openclaw#95108 ("bound Anthropic error
 streams"), generalized to cover Hermes's three streaming error-body sites
 (native Gemini, Gemini Cloud Code, Antigravity Cloud Code).
 """
-
 from __future__ import annotations
+
 
 import logging
 import threading

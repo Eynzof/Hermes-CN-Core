@@ -5,8 +5,8 @@
 前台委派两拍终态、后台委派绑定 process session、启动失败直接 failed、
 非 terminal / 非委派命令不产生事件、tool progress 关闭时整体静默。
 """
-
 from __future__ import annotations
+
 
 import json
 

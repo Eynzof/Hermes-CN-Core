@@ -11,8 +11,8 @@ Image generation is delegated to the active reference-capable
 :class:`~agent.image_gen_provider.ImageGenProvider` (OpenAI gpt-image-2 or Krea);
 atlas assembly is fully deterministic so it's testable without any API calls.
 """
-
 from __future__ import annotations
+
 
 from agent.pet.generate.imagegen import GenerationError
 from agent.pet.generate.orchestrate import (

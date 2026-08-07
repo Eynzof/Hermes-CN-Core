@@ -11,8 +11,8 @@ Subcommands:
 - delete: remove a bundle
 - reload: re-scan the bundles directory
 """
-
 from __future__ import annotations
+
 
 import sys
 from typing import List

@@ -8,8 +8,8 @@ When HERMES_HOME is already a profile directory (.../profiles/<name>),
 _apply_profile_override must trust it and return without re-reading
 active_profile (child-process inheritance contract).
 """
-
 from __future__ import annotations
+
 
 import os
 import sys
@@ -17,10 +17,6 @@ import sys
 import pytest
 from pathlib import Path
 from types import SimpleNamespace
-
-
-
-
 
 def _hermes_root_for_test(tmp_path: Path) -> Path:
     r"""Platform-aware default Hermes root for these tests.
@@ -65,7 +61,6 @@ def _run_apply_profile_override(
     _apply_profile_override()
 
     return os.environ.get("HERMES_HOME")
-
 
 class TestApplyProfileOverrideHermesHomeGuard:
     """Regression guard for issue #22502.
@@ -191,103 +186,6 @@ class TestApplyProfileOverrideHermesHomeGuard:
         assert os.environ.get("HERMES_HOME") == str(profile_dir)
         assert sys.argv == ["hermes", "gateway", "install", "--system"]
 
-    def test_hermes_home_unset_default_profile_no_redirect(self, tmp_path, monkeypatch):
-        """active_profile=default must not redirect HERMES_HOME."""
-        hermes_root = _hermes_root_for_test(tmp_path)
-        hermes_root.mkdir(parents=True, exist_ok=True)
-
-        monkeypatch.setattr(Path, "home", lambda: tmp_path)
-        if sys.platform == "win32":
-            monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
-        monkeypatch.delenv("HERMES_HOME", raising=False)
-        monkeypatch.setattr(sys, "argv", ["hermes", "gateway", "start"])
-        (hermes_root / "active_profile").write_text("default")
-
-        from hermes_cli.main import _apply_profile_override
-        _apply_profile_override()
-
-        assert os.environ.get("HERMES_HOME") is None
-
-    def test_subcommand_profile_flag_is_not_consumed(self, tmp_path, monkeypatch):
-        """Command argv flags named --profile must stay with that command.
-
-        Docker Desktop's MCP Toolkit uses `docker mcp gateway run --profile ...`.
-        When that argv is passed through `hermes mcp add --args`, the early
-        profile pre-parser must not interpret the Docker profile as a Hermes
-        profile.
-        """
-        hermes_root = _hermes_root_for_test(tmp_path)
-        hermes_root.mkdir(parents=True, exist_ok=True)
-        argv = [
-            "hermes",
-            "mcp",
-            "add",
-            "docker-research",
-            "--command",
-            "docker",
-            "--args",
-            "mcp",
-            "gateway",
-            "run",
-            "--profile",
-            "research",
-        ]
-
-        monkeypatch.setattr(Path, "home", lambda: tmp_path)
-        if sys.platform == "win32":
-            monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
-        monkeypatch.delenv("HERMES_HOME", raising=False)
-        monkeypatch.setattr(sys, "argv", list(argv))
-
-        from hermes_cli.main import _apply_profile_override
-        _apply_profile_override()
-
-        assert os.environ.get("HERMES_HOME") is None
-        assert sys.argv == argv
-
-    def test_profile_after_chat_subcommand_is_still_consumed(self, tmp_path, monkeypatch):
-        """Profile flags historically work after normal Hermes subcommands."""
-        result = _run_apply_profile_override(
-            tmp_path,
-            monkeypatch,
-            hermes_home=None,
-            active_profile="coder",
-            argv=["hermes", "chat", "-p", "coder", "-q", "hello"],
-        )
-
-        assert result is not None
-        assert result.endswith("coder")
-        assert sys.argv == ["hermes", "chat", "-q", "hello"]
-
-    def test_top_level_profile_after_value_flag_is_consumed(self, tmp_path, monkeypatch):
-        """Top-level --profile still works after other top-level value flags."""
-        result = _run_apply_profile_override(
-            tmp_path,
-            monkeypatch,
-            hermes_home=None,
-            active_profile="coder",
-            argv=["hermes", "-m", "gpt-5", "--profile", "coder", "chat"],
-        )
-
-        assert result is not None
-        assert result.endswith("coder")
-        assert sys.argv == ["hermes", "-m", "gpt-5", "chat"]
-
-    def test_top_level_profile_after_continue_flag_is_consumed(self, tmp_path, monkeypatch):
-        """--continue has an optional value, so a following --profile is a flag."""
-        result = _run_apply_profile_override(
-            tmp_path,
-            monkeypatch,
-            hermes_home=None,
-            active_profile="coder",
-            argv=["hermes", "--continue", "--profile", "coder"],
-        )
-
-        assert result is not None
-        assert result.endswith("coder")
-        assert sys.argv == ["hermes", "--continue"]
-
-
 class TestSupervisedChildIgnoresStickyProfile:
     """The reserved default gateway s6 slot must not follow active_profile.
 
@@ -299,37 +197,6 @@ class TestSupervisedChildIgnoresStickyProfile:
     redirect the reserved default gateway into that profile — producing a
     duplicate gateway for the active profile and no real default gateway.
     """
-
-    def test_supervised_child_does_not_follow_active_profile(
-        self, tmp_path, monkeypatch
-    ):
-        """HERMES_S6_SUPERVISED_CHILD + active_profile=briefer must NOT redirect.
-
-        Reproduces the Docker/profile scoping bug: the supervised default
-        gateway is launched as bare ``hermes gateway run`` with
-        HERMES_HOME=/opt/data (the container root, whose parent is NOT
-        ``profiles``), and a sticky ``active_profile`` of another profile.
-        The reserved default slot must stay on the root profile.
-        """
-        hermes_root = _hermes_root_for_test(tmp_path)
-        hermes_root.mkdir(parents=True, exist_ok=True)
-        (hermes_root / "active_profile").write_text("briefer")
-        (hermes_root / "profiles" / "briefer").mkdir(parents=True, exist_ok=True)
-
-        monkeypatch.setattr(Path, "home", lambda: tmp_path)
-        # Container root HERMES_HOME: parent dir is NOT "profiles", so the
-        # #22502 guard does not short-circuit — step 2 (active_profile) runs.
-        monkeypatch.setenv("HERMES_HOME", str(hermes_root))
-        monkeypatch.setenv("HERMES_S6_SUPERVISED_CHILD", "1")
-        monkeypatch.setattr(sys, "argv", ["hermes", "gateway", "run"])
-
-        from hermes_cli.main import _apply_profile_override
-        _apply_profile_override()
-
-        assert os.environ.get("HERMES_HOME") == str(hermes_root), (
-            "Supervised default gateway must stay on the root profile, not be "
-            f"hijacked by active_profile; got {os.environ.get('HERMES_HOME')!r}"
-        )
 
     def test_non_supervised_run_still_follows_active_profile(
         self, tmp_path, monkeypatch

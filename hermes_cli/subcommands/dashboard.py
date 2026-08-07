@@ -7,8 +7,8 @@ Both share one handler (``cmd_dashboard`` → ``start_server``). Extracted from
 ``hermes_cli/main.py:main()`` (god-file Phase 2); handler injected to avoid
 importing ``main``.
 """
-
 from __future__ import annotations
+
 
 import argparse
 from typing import Callable
@@ -148,6 +148,20 @@ def build_dashboard_parser(
     # desktop backend spawn) don't trip "unrecognized arguments".
     serve_parser.add_argument(
         "--no-open", action="store_true", help=argparse.SUPPRESS
+    )
+    serve_parser.add_argument(
+        "--ssh-session-token-file",
+        dest="ssh_session_token_file",
+        metavar="PATH",
+        default=None,
+        help="Read a one-shot Desktop SSH session token from PATH",
+    )
+    serve_parser.add_argument(
+        "--ssh-owner-nonce",
+        dest="ssh_owner_nonce",
+        metavar="NONCE",
+        default=None,
+        help="Identify a Desktop-owned SSH backend process",
     )
     # `headless_backend` marks the lean path: desktop/remote clients speak pure
     # JSON-RPC/WS, so `serve` skips the web UI build AND never serves the SPA

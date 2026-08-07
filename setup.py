@@ -1,3 +1,23 @@
+"""
+setup.py — wheel/sdist build that works from a read-only source tree.
+
+Hermes-CN is installable via ``pip install "git+https://github.com/Eynzof/Hermes-CN-Core.git"``
+(and editable installs), so unlike upstream this setup.py must produce working
+wheels. Two adaptations make that reliable on Windows/CI:
+
+* Read-only source trees (e.g. an installed package dir or a read-only
+  checkout) never fail the build: when the source tree is not writable,
+  the ``build`` and ``egg_info`` command bases are redirected to a
+  temporary directory instead of writing into the source tree.
+* Bundled content ships as ``data_files``: ``skills/`` and
+  ``optional-skills/`` are enumerated at build time so a wheel carries the
+  bundled skill packs that the source-checkout layout provides for free.
+
+PEP 517 ``build_wheel`` / ``build_sdist`` hooks in ``setuptools.build_meta``
+call these commands internally, so ``uv build``, ``pip wheel``, and
+``python -m build`` all go through the same read-only-safe path.
+"""
+
 from __future__ import annotations
 
 from collections import defaultdict

@@ -15,8 +15,8 @@ Frame decoding requires Pillow (a core Hermes dependency).  If Pillow or the
 spritesheet is unavailable the renderer degrades to ``unicode`` text or an
 empty string rather than raising.
 """
-
 from __future__ import annotations
+
 
 import pybase64 as base64
 import io

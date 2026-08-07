@@ -103,6 +103,12 @@ Create one git worktree per task and launch an independent `agy -p` in each
 uses for batch issue fixing. Bound concurrency to what the machine and your
 review capacity can absorb.
 
+> **⚠️ Dangerous git operations — the user decides; never auto-execute.**
+> `git worktree add` / `git worktree remove`, branch creation, `git commit`, `git push`,
+> and PR creation are **high-risk operations** (irreversible, and/or they change shared
+> remote state). Get the user's **explicit approval** before each one; never fan out
+> auto-commit / auto-push / auto-PR loops without per-action consent.
+
 ### Output + bounding caveat (differs from Claude Code)
 
 - `agy -p` returns **plain text** — there is **no `--output-format json`** and

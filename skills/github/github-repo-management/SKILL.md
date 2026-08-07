@@ -15,6 +15,12 @@ metadata:
 
 Create, clone, fork, configure, and manage GitHub repositories. Each section shows `gh` first, then the `git` + `curl` fallback.
 
+> **⚠️ Dangerous git operations — the user decides; never auto-execute.**
+> `git commit`, `git push`, branch creation/switching, and release/tag creation are
+> **high-risk operations** (irreversible, and/or they change shared remote state).
+> Before each one, explain the intent and consequences and get the user's
+> **explicit approval**; never auto-execute or loop them without per-action consent.
+
 ## Prerequisites
 
 - Authenticated with GitHub (see `github-auth` skill)
@@ -30,7 +36,7 @@ else
     if _hermes_env="${HERMES_HOME:-$HOME/.hermes}/.env"; [ -f "$_hermes_env" ] && grep -q "^GITHUB_TOKEN=" "$_hermes_env"; then
       GITHUB_TOKEN=$(grep "^GITHUB_TOKEN=" "$_hermes_env" | head -1 | cut -d= -f2 | tr -d '\n\r')
     elif grep -q "github.com" ~/.git-credentials 2>/dev/null; then
-      GITHUB_TOKEN=$(grep "github.com" ~/.git-credentials 2>/dev/null | head -1 | sed 's|https://[^:]*:\([^@]*\)@.*|\1|')
+      GITHUB_TOKEN=$(uv run python3 "${HERMES_HOME:-$HOME/.hermes}/skills/github/github-auth/scripts/git-credential-token.py")
     fi
   fi
 fi

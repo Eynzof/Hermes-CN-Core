@@ -1,8 +1,8 @@
-"""Tests for pwsh_transform warning propagation in proccess_pwsh.py."""
+"""Tests for pwsh_transform warning propagation in process_pwsh.py."""
 
 import pytest
 
-from tools.environments.proccess_pwsh import pwsh_transform
+from tools.environments.process_pwsh import pwsh_transform
 
 
 class TestPwshTransformReturnsTuple:

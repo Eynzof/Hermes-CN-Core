@@ -24,8 +24,8 @@ query string and the route handler authenticates it directly (the
 path is on :data:`hermes_cli.web_server._PUBLIC_API_PATHS` so the
 middleware doesn't 401 it first).
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import orjson

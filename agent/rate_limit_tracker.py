@@ -19,8 +19,8 @@ Header schema (12 headers total):
     x-ratelimit-reset-tokens            seconds until minute token window resets
     x-ratelimit-reset-tokens-1h         seconds until hour token window resets
 """
-
 from __future__ import annotations
+
 
 import time
 from dataclasses import dataclass, field

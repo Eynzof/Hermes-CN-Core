@@ -1,6 +1,6 @@
 """Fixtures shared across hermes_cli kanban tests."""
-
 from __future__ import annotations
+
 
 import pytest
 

@@ -39,8 +39,8 @@ Usage (see ``tools/mcp_tool.py::_run_stdio``)::
     python3 -m tools.mcp_stdio_watchdog \\
         --ppid <original_parent_pid> -- <real_command> <arg1> <arg2> ...
 """
-
 from __future__ import annotations
+
 
 import argparse
 import os

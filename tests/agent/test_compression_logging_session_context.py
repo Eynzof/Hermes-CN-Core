@@ -10,8 +10,8 @@ log lines emitted after a mid-turn compaction carried the STALE old id while the
 message body / session DB / gateway state carried the new one (see #34089). This
 asserts the logging context follows the rotation.
 """
-
 from __future__ import annotations
+
 
 import os
 from pathlib import Path

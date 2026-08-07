@@ -26,8 +26,8 @@ and the message text can be regression-tested for spelling and accuracy.
 
 Part 2 of Fixes #52310.
 """
-
 from __future__ import annotations
+
 
 from typing import Optional
 

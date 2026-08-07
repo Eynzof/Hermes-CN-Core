@@ -4,8 +4,8 @@ Supports Jupyter notebooks, DOCX, and XLSX without adding hard dependencies.
 Malformed documents raise :class:`ExtractionError`; callers can then fall back to
 normal text/binary handling.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import posixpath

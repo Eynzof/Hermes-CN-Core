@@ -6,8 +6,8 @@ into a neutral module so both ``main.py`` and every
 import cycle. ``main.py`` re-exports them for backwards compatibility, so
 existing references keep working.
 """
-
 from __future__ import annotations
+
 
 import argparse
 

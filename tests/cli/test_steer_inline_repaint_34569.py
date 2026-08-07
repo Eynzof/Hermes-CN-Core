@@ -18,8 +18,8 @@ inline-command early-return that resets the buffer must be followed by an
 ``event.app.invalidate()`` before its ``return``.  It is an *invariant*
 (every reset-then-return repaints), not a snapshot of current source.
 """
-
 from __future__ import annotations
+
 
 import ast
 from pathlib import Path

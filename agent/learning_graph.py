@@ -12,8 +12,8 @@ Run as a module to print edge-density stats against real data:
 
     python -m agent.learning_graph
 """
-
 from __future__ import annotations
+
 
 import orjson
 from agent.re_compat import re

@@ -6,8 +6,8 @@ Docker with workspace mounting still needs an explicit host path signal
 (``MESSAGING_CWD`` or an absolute config path) for ``terminal_tool`` to map
 ``/host/project`` → ``/workspace``.
 """
-
 from __future__ import annotations
+
 
 CWD_PLACEHOLDERS = frozenset({".", "auto", "cwd"})
 

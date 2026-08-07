@@ -22,8 +22,8 @@ Public surface
     NodeRegistry   — local JSON registry of approved nodes (name → url+token)
     protocol       — message envelope helpers (make_request, encode, decode, ...)
 """
-
 from __future__ import annotations
+
 
 from plugins.google_meet.node import protocol
 from plugins.google_meet.node.client import NodeClient

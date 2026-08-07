@@ -20,6 +20,10 @@
 <tr><td><b>本地与原生 Windows 友好</b></td><td>包含 PowerShell 安装器和桌面分发链路需要的 runtime 打包逻辑。</td></tr>
 <tr><td><b>真正可用的终端界面</b></td><td>完整 TUI，支持多行编辑、斜杠命令补全、会话历史、中断重定向和流式工具输出。</td></tr>
 <tr><td><b>能出现在你常用的平台里</b></td><td>Telegram、Discord、Slack、WhatsApp、Signal、Email 和 CLI 都可以通过同一个 gateway process 接入。</td></tr>
+<tr><td><b>闭环学习</b></td><td>智能体维护记忆并定期回顾；复杂任务后自动创建新技能，技能在使用中自我改进。FTS5 会话搜索配合 LLM 摘要实现跨会话回忆，支持 <a href="https://github.com/plastic-labs/honcho">Honcho</a> 对话式用户建模，兼容 <a href="https://agentskills.io">agentskills.io</a> 开放标准。</td></tr>
+<tr><td><b>定时自动化</b></td><td>内置 cron 调度器，可投递到任意平台。日报、夜间备份、每周审计——全部用自然语言描述、无人值守运行。</td></tr>
+<tr><td><b>委派与并行</b></td><td>派生隔离的子代理并行处理工作流。编写 Python 脚本通过 RPC 调用工具，把多步流水线折叠为零上下文成本的调用。</td></tr>
+<tr><td><b>随处运行</b></td><td>七种终端后端——local、Docker、SSH、Singularity、Modal、Daytona 和 Vercel Sandbox。Daytona 和 Modal 提供无服务器持久化——你的智能体环境空闲时休眠、按需唤醒，几乎不产生空闲成本。可以跑在 $5 VPS 或 GPU 集群上。</td></tr>
 <tr><td><b>保留研究能力</b></td><td>继续保留 batch trajectory generation 和 trajectory compression，方便工具调用模型训练与研究。</td></tr>
 </table>
 
@@ -79,7 +83,7 @@ pip install "git+https://github.com/Eynzof/Hermes-CN-Core.git"
 iex (irm https://raw.githubusercontent.com/Eynzof/Hermes-CN-Core/main/scripts/install.ps1)
 ```
 
-安装器会处理 uv、Python 3.14、Node.js、ripgrep、ffmpeg，以及仓库克隆、虚拟环境和 `hermes` 命令的配置。在 Windows 上，默认 shell 是 **PowerShell**（优先使用 pwsh 7.x，自动回退到 Windows PowerShell 5.1）。如果你已安装 Git for Windows，可在 config.yaml 中设置 `terminal.shell: bash` 使用 Git Bash 作为可选 shell。安装器还会安装 Microsoft Coreutils（提供 `cat`、`cp`、`mv`、`ls` 等 POSIX 命令行工具），确保跨平台脚本和技能能够正常工作。Git 仍用于仓库操作：如果系统里已经安装 Git，安装器会直接使用现有 Git；否则会把隔离的 PortableGit 下载到 `%LOCALAPPDATA%\hermes\git`，不需要管理员权限，也不会污染系统 Git。
+安装器会处理 uv、Python 3.14、Node.js、ripgrep、ffmpeg，以及仓库克隆、虚拟环境和 `hermes` 命令的配置。在 Windows 上，默认 shell 优先使用 **Git Bash**（如果已安装 Git for Windows），回退到 PowerShell 7（pwsh 7.x），最后是 Windows PowerShell 5.1。你可以在 config.yaml 中设置 `terminal.shell: pwsh` / `terminal.shell: powershell` 强制使用 PowerShell，或 `terminal.shell: bash` 显式指定 Git Bash。安装器还会安装 Microsoft Coreutils（提供 `cat`、`cp`、`mv`、`ls` 等 POSIX 命令行工具），确保跨平台脚本和技能能够正常工作。Git 仍用于仓库操作：如果系统里已经安装 Git，安装器会直接使用现有 Git；否则会把隔离的 PortableGit 下载到 `%LOCALAPPDATA%\hermes\git`，不需要管理员权限，也不会污染系统 Git。
 
 > **Android / Termux：** 已验证的手动安装路径见 [Termux guide](https://hermes-agent.nousresearch.com/docs/getting-started/termux)。在 Termux 上，Hermes 会安装裁剪后的 `.[termux]` extra，因为完整的 `.[all]` extra 目前会拉取 Android 不兼容的语音依赖。
 >

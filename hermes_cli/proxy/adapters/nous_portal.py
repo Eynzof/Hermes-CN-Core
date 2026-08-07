@@ -4,8 +4,8 @@ Reads the user's Nous OAuth state from ``~/.hermes/auth.json`` through the
 shared runtime resolver, validates or refreshes the inference JWT, then exposes
 the upstream base URL plus bearer for the proxy server to forward to.
 """
-
 from __future__ import annotations
+
 
 import logging
 import threading

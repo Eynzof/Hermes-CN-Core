@@ -12,8 +12,8 @@ appears when a CDP endpoint is reachable (Browserbase with a
 See ``website/docs/developer-guide/browser-supervisor.md`` for the full
 design.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import logging

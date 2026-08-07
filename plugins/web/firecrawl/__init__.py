@@ -17,10 +17,10 @@ The plugin re-exports ``Firecrawl`` (the lazy proxy) and
 ``check_firecrawl_api_key`` for backward-compatibility with tests and
 external code that imports those names from ``tools.web_tools``.
 """
-
 from __future__ import annotations
 
-from .provider import FirecrawlWebSearchProvider
+
+from plugins.web.firecrawl.provider import FirecrawlWebSearchProvider
 
 
 def register(ctx) -> None:

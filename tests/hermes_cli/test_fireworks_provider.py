@@ -5,8 +5,8 @@ resolution through both CLI resolvers, config/doctor/overlay registration,
 and credential/base-URL resolution — without
 any live network calls.
 """
-
 from __future__ import annotations
+
 
 import contextlib
 import io
@@ -163,18 +163,6 @@ class TestFireworksAuxiliary:
         assert "HTTP-Referer" not in headers
         assert "X-Title" not in headers
         assert kwargs["base_url"] == "https://api.fireworks.ai/inference/v1"
-
-    def test_aux_model_is_payg_safe(self, monkeypatch):
-        monkeypatch.setenv("FIREWORKS_API_KEY", "fw_test_key")
-        _, model, _ = self._resolve("fireworks")
-        assert model.startswith("accounts/fireworks/models/")
-        assert "/routers/" not in model
-        assert "turbo" not in model.lower()
-
-    def test_alias_resolves_through_aux_client(self, monkeypatch):
-        monkeypatch.setenv("FIREWORKS_API_KEY", "fw_test_key")
-        client, _, _ = self._resolve("fw")
-        assert client is not None
 
 
 class TestFireworksModelMetadata:

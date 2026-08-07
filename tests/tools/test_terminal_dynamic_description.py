@@ -74,17 +74,18 @@ def test_detect_macos_is_bash():
         assert _detect_shell_for_description() == "bash"
 
 
-def test_detect_windows_explicit_bash_returns_powershell():
-    # bash on Windows is no longer supported; _detect_shell_for_description()
-    # returns "powershell" so _resolve_shell() can raise RuntimeError.
+def test_detect_windows_explicit_bash_returns_bash():
+    # Explicit HERMES_SHELL_TYPE=bash → "bash" (git-bash selected; no probe).
     with mock.patch(SYSTEM, return_value="Windows"), _shell_type_env("bash"), mock.patch(SHUTIL_WHICH) as fp:
-        assert _detect_shell_for_description() == "powershell"
+        assert _detect_shell_for_description() == "bash"
         fp.assert_not_called()
 
 
 def test_detect_windows_auto_with_powershell_available():
     with mock.patch(SYSTEM, return_value="Windows"), _shell_type_env("auto"), mock.patch(
         SHUTIL_WHICH, side_effect=_which_matcher("powershell")
+    ), mock.patch(
+        "tools.environments.local._find_bash", side_effect=lambda **kw: None
     ), mock.patch(
         "tools.environments.local._find_pwsh", return_value=None
     ):
@@ -93,6 +94,8 @@ def test_detect_windows_auto_with_powershell_available():
 
 def test_detect_windows_auto_pwsh_available_returns_pwsh():
     with mock.patch(SYSTEM, return_value="Windows"), _shell_type_env("auto"), mock.patch(
+        "tools.environments.local._find_bash", side_effect=lambda **kw: None
+    ), mock.patch(
         "tools.environments.local._find_pwsh", return_value=r"C:\Program Files\PowerShell\7\pwsh.exe"
     ):
         assert _detect_shell_for_description() == "pwsh"
@@ -100,6 +103,8 @@ def test_detect_windows_auto_pwsh_available_returns_pwsh():
 
 def test_detect_windows_auto_pwsh_unavailable_returns_powershell():
     with mock.patch(SYSTEM, return_value="Windows"), _shell_type_env("auto"), mock.patch(
+        "tools.environments.local._find_bash", side_effect=lambda **kw: None
+    ), mock.patch(
         "tools.environments.local._find_pwsh", return_value=None
     ), mock.patch(
         SHUTIL_WHICH, return_value=None
@@ -108,13 +113,27 @@ def test_detect_windows_auto_pwsh_unavailable_returns_powershell():
 
 
 def test_detect_windows_default_unset_behaves_as_auto():
-    # HERMES_SHELL_TYPE unset → defaults to "auto" → powershell when available.
+    # HERMES_SHELL_TYPE unset → defaults to "auto" → git-bash probed, then
+    # powershell when neither bash nor pwsh is available.
     with mock.patch(SYSTEM, return_value="Windows"), _shell_type_env(None), mock.patch(
         SHUTIL_WHICH, side_effect=_which_matcher("powershell")
+    ), mock.patch(
+        "tools.environments.local._find_bash", side_effect=lambda **kw: None
     ), mock.patch(
         "tools.environments.local._find_pwsh", return_value=None
     ):
         assert _detect_shell_for_description() == "powershell"
+
+
+def test_detect_windows_auto_git_bash_available_returns_bash():
+    # auto + working git-bash → "bash", even when pwsh is available.
+    with mock.patch(SYSTEM, return_value="Windows"), _shell_type_env("auto"), mock.patch(
+        "tools.environments.local._find_bash",
+        side_effect=lambda **kw: r"C:\Program Files\Git\bin\bash.exe",
+    ), mock.patch(
+        "tools.environments.local._find_pwsh", return_value=r"C:\Program Files\PowerShell\7\pwsh.exe"
+    ):
+        assert _detect_shell_for_description() == "bash"
 
 
 def test_detect_windows_explicit_pwsh_reports_pwsh_if_available():
@@ -143,8 +162,12 @@ def test_detect_windows_powershell_alias_available():
 
 
 def test_detect_windows_unknown_shell_type_is_powershell():
-    # Any non-bash shell type on Windows → powershell (bash raises downstream).
+    # Unknown shell type on Windows → treated as auto → powershell when
+    # neither git-bash nor pwsh is available (description path never raises;
+    # _resolve_shell() still raises for unknown values at execution time).
     with mock.patch(SYSTEM, return_value="Windows"), _shell_type_env("fish"), mock.patch(SHUTIL_WHICH) as fp, mock.patch(
+        "tools.environments.local._find_bash", side_effect=lambda **kw: None
+    ), mock.patch(
         "tools.environments.local._find_pwsh", return_value=None
     ):
         assert _detect_shell_for_description() == "powershell"
@@ -156,6 +179,8 @@ def test_detect_is_cached_until_cleared():
     # platform.system() + HERMES_SHELL_TYPE (no PATH probe), so observe caching
     # via the number of platform.system() calls.
     with mock.patch(SYSTEM, return_value="Windows") as sysm, _shell_type_env("auto"), mock.patch(
+        "tools.environments.local._find_bash", side_effect=lambda **kw: None
+    ), mock.patch(
         "tools.environments.local._find_pwsh", return_value=None
     ):
         assert _detect_shell_for_description() == "powershell"
@@ -184,11 +209,11 @@ def test_build_powershell_uses_powershell_sentence_and_cmdlet_refs():
         desc = _build_dynamic_terminal_description()["description"]
     assert "Windows PowerShell environment" in desc
     # powershell-adapted forbidden-command references applied …
-    assert "Do NOT use Get-Content/cat/type to read files" in desc
-    assert "Do NOT use Select-String/findstr to search" in desc
+    assert "Do NOT use Get-Content/cat/type (use read_file)" in desc
+    assert "Select-String/findstr (use search_files)" in desc
     assert "Out-Host -Paging" in desc
     # … and the Linux/bash-only phrasings are gone.
-    assert "Do NOT use cat/head/tail to read files" not in desc
+    assert "Do NOT use cat/head/tail (use read_file)" not in desc
     assert "Execute shell commands on a Linux environment." not in desc
 
 
@@ -197,8 +222,8 @@ def test_build_pwsh_uses_pwsh_sentence():
         desc = _build_dynamic_terminal_description()["description"]
     assert "PowerShell 7 (pwsh)" in desc
     # pwsh still gets cmdlet-adapted references
-    assert "Do NOT use Get-Content/cat/type to read files" in desc
-    assert "Do NOT use Select-String/findstr to search" in desc
+    assert "Do NOT use Get-Content/cat/type (use read_file)" in desc
+    assert "Select-String/findstr (use search_files)" in desc
     assert "Out-Host -Paging" in desc
 
 
@@ -206,8 +231,20 @@ def test_build_non_windows_leaves_linux_references_intact():
     with mock.patch(DETECT, return_value="bash"), mock.patch(SYSTEM, return_value="Linux"):
         desc = _build_dynamic_terminal_description()["description"]
     assert "Linux environment" in desc
-    assert "Do NOT use cat/head/tail to read files" in desc
+    assert "Do NOT use cat/head/tail (use read_file)" in desc
     # no powershell cmdlet substitutions on the bash/Linux path
+    assert "Get-Content/cat/type" not in desc
+
+
+def test_build_windows_bash_uses_git_bash_sentence():
+    # git-bash default on Windows: the platform sentence must say Git
+    # Bash/MSYS, not mislead with "Linux environment".
+    with mock.patch(DETECT, return_value="bash"), mock.patch(SYSTEM, return_value="Windows"):
+        desc = _build_dynamic_terminal_description()["description"]
+    assert "bash (Git Bash / MSYS) environment on Windows" in desc
+    assert "Linux environment" not in desc
+    # bash syntax references stay intact (correct for git-bash)
+    assert "Do NOT use cat/head/tail (use read_file)" in desc
     assert "Get-Content/cat/type" not in desc
 
 
@@ -217,8 +254,8 @@ def test_static_description_contains_phrases_the_powershell_path_rewrites():
     # no-op rewrite would otherwise pass the powershell test above only by luck).
     for phrase in (
         "Execute shell commands on a Linux environment.",
-        "Do NOT use cat/head/tail to read files",
-        "Do NOT use grep/rg/find to search",
+        "Do NOT use cat/head/tail (use read_file)",
+        "grep/rg/find/ls (use search_files)",
         "Pipe git output to cat if it might page.",
     ):
         assert phrase in TERMINAL_TOOL_DESCRIPTION

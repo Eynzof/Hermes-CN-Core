@@ -22,8 +22,8 @@ Design notes
   that need the URL can use :func:`build_trace_jsonl` + :func:`_do_upload`
   directly.
 """
-
 from __future__ import annotations
+
 
 import json
 import logging

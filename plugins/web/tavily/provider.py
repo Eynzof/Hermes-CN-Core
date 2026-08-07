@@ -20,8 +20,8 @@ Env vars::
     TAVILY_API_KEY=...           # https://app.tavily.com/home (required)
     TAVILY_BASE_URL=...          # optional override of https://api.tavily.com
 """
-
 from __future__ import annotations
+
 
 import logging
 import os

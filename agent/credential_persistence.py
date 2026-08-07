@@ -6,8 +6,8 @@ runtime secrets and strip raw values before those entries are written to
 both the pool model and the final auth-store write boundary can share the same
 policy without import cycles.
 """
-
 from __future__ import annotations
+
 
 import hashlib
 from agent.re_compat import re

@@ -4,8 +4,8 @@ The relay stub connector lives under tests/ and exists only to prove the
 gateway side of the relay without the real (Node) connector. If it ever appears
 under gateway/ or plugins/, that's a production leak — fail loudly.
 """
-
 from __future__ import annotations
+
 
 import pathlib
 from agent.re_compat import re

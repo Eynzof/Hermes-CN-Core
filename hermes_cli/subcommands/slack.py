@@ -3,8 +3,8 @@
 Extracted verbatim from ``hermes_cli/main.py:main()`` (god-file Phase 2).
 Handler injected to avoid importing ``main``.
 """
-
 from __future__ import annotations
+
 
 from typing import Callable
 
@@ -50,6 +50,22 @@ def build_slack_parser(subparsers, *, cmd_slack: Callable) -> None:
         "--description",
         default=None,
         help="Bot description shown in Slack's app directory.",
+    )
+    slack_long_description = slack_manifest.add_mutually_exclusive_group()
+    slack_long_description.add_argument(
+        "--long-description",
+        default=None,
+        metavar="TEXT",
+        help="Set Slack's long app description (175-4,000 characters).",
+    )
+    slack_long_description.add_argument(
+        "--long-description-file",
+        default=None,
+        metavar="PATH",
+        help=(
+            "Read Slack's long app description from a UTF-8 text file "
+            "(175-4,000 characters)."
+        ),
     )
     slack_manifest.add_argument(
         "--slashes-only",

@@ -7,8 +7,8 @@ inside the threaded streaming request path.  Loading it once during agent
 package import avoids that import-order failure while preserving the normal
 SDK error path for genuinely missing or broken installs.
 """
-
 from __future__ import annotations
+
 
 import importlib
 

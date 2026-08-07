@@ -4,8 +4,8 @@ The MCP SDK remains responsible for discovery, DCR, PKCE, state validation and
 token exchange. This module only moves the two human/browser callbacks from a
 loopback listener into the already-authenticated dashboard session.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import contextvars

@@ -11,8 +11,8 @@ next time the catalog is fetched without a patch.
 Mirrors ``plugins/image_gen/deepinfra`` (which does the same for
 ``/v1/openai/images/generations``).
 """
-
 from __future__ import annotations
+
 
 import logging
 from typing import Any, Dict, List

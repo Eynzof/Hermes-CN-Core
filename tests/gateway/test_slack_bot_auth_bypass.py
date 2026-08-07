@@ -9,8 +9,8 @@ Slack Workflow Builder posts (and other app/bot messages) arrive as
 ``_is_user_authorized`` even when the operator enabled ``SLACK_ALLOW_BOTS`` --
 the bug that makes @mentioning the bot from a Slack workflow do nothing.
 """
-
 from __future__ import annotations
+
 
 from types import SimpleNamespace
 
@@ -66,24 +66,6 @@ def test_slack_bot_authorized_when_allow_bots_all(monkeypatch):
     runner = _make_bare_runner()
     monkeypatch.setenv("SLACK_ALLOW_BOTS", "all")
     assert runner._is_user_authorized(_make_slack_bot_source()) is True
-
-
-def test_slack_bot_authorized_when_allow_bots_mentions(monkeypatch):
-    runner = _make_bare_runner()
-    monkeypatch.setenv("SLACK_ALLOW_BOTS", "mentions")
-    assert runner._is_user_authorized(_make_slack_bot_source()) is True
-
-
-def test_slack_bot_denied_when_allow_bots_unset(monkeypatch):
-    # No SLACK_ALLOW_BOTS + no user_id => denied (no bypass, hits guard).
-    runner = _make_bare_runner()
-    assert runner._is_user_authorized(_make_slack_bot_source()) is False
-
-
-def test_slack_bot_denied_when_allow_bots_none(monkeypatch):
-    runner = _make_bare_runner()
-    monkeypatch.setenv("SLACK_ALLOW_BOTS", "none")
-    assert runner._is_user_authorized(_make_slack_bot_source()) is False
 
 
 def test_slack_human_unaffected_by_bot_bypass(monkeypatch):

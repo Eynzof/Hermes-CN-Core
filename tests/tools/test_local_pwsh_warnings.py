@@ -13,6 +13,13 @@ import pytest
 from unittest.mock import MagicMock, patch, PropertyMock
 
 
+@pytest.fixture(autouse=True)
+def _force_pwsh_shell(monkeypatch):
+    """P-058 made git-bash the Windows auto default; these PowerShell-feature
+    tests must pin the shell type so they exercise the PowerShell path."""
+    monkeypatch.setenv("HERMES_SHELL_TYPE", "pwsh")
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -293,7 +300,7 @@ class TestPwshTransformAndUtf8Compose:
 
     def test_transform_applied_before_preamble(self):
         """Encoding preamble must NOT be transformed by pwsh_transform."""
-        from tools.environments.proccess_pwsh import pwsh_transform
+        from tools.environments.process_pwsh import pwsh_transform
         preamble = (
             "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8;"
             "$OutputEncoding=[System.Text.Encoding]::UTF8;"

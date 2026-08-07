@@ -31,8 +31,8 @@ probe would fail by design. Instead the final SETUP COMPLETE block
 prints the exact curl command the user can run from a third terminal
 to verify the loop end-to-end once everything's running.
 """
-
 from __future__ import annotations
+
 from agent.re_compat import re
 import secrets
 import sys

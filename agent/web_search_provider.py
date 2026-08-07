@@ -48,8 +48,8 @@ On failure (either capability)::
 
     {"success": False, "error": str}
 """
-
 from __future__ import annotations
+
 
 import abc
 import os

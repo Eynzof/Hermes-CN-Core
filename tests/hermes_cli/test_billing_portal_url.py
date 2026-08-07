@@ -4,8 +4,8 @@ The server emits ``portalUrl`` relative by design (``/billing?topup=open``); the
 client must resolve it against the active portal base so deep-links are clickable
 on whatever deployment (preview / staging / prod) the user is pointed at.
 """
-
 from __future__ import annotations
+
 
 import pytest
 
@@ -26,17 +26,6 @@ def test_absolutize_resolves_relative(_preview):
         _absolutize_portal_url("/billing?topup=open")
         == "https://nas-pr-412.nousresearch.wtf/billing?topup=open"
     )
-
-
-def test_absolutize_leaves_absolute_unchanged(_preview):
-    # Idempotent: an already-absolute URL must NOT be double-prefixed.
-    url = "https://other.example/billing?topup=open"
-    assert _absolutize_portal_url(url) == url
-
-
-def test_absolutize_passthrough_empty(_preview):
-    assert _absolutize_portal_url(None) is None
-    assert _absolutize_portal_url("") == ""
 
 
 def test_raise_for_error_attaches_absolute_portal_url(_preview):

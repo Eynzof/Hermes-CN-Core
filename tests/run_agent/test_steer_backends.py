@@ -8,8 +8,8 @@ For each backend, we run a two-iteration tool-call conversation and assert:
   * The persisted ``messages`` list is unchanged (only the api copy is augmented).
   * The system prompt is byte-identical across iterations.
 """
-
 from __future__ import annotations
+
 
 import copy
 import sys

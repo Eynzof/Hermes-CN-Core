@@ -18,8 +18,8 @@ backend: each animation row must stay the same character as the chosen base
 frame, which only works on models that accept image input. Gemini Flash Image
 ("nano-banana") does, so both providers advertise image-to-image support.
 """
-
 from __future__ import annotations
+
 
 import pybase64 as base64
 import logging

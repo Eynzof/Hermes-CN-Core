@@ -23,8 +23,8 @@ subagent timeout wrappers.  Do NOT use it for work that must complete
 before exit (durable writes) — those belong on foreground threads with
 explicit bounded joins.
 """
-
 from __future__ import annotations
+
 
 import threading
 import weakref

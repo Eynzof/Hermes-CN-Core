@@ -8,8 +8,8 @@ that case; both installer scripts must do the same.
 Fixes the bootstrap failure seen in #53257 and desktop update paths that run
 ``install.ps1`` / ``install.sh`` non-interactively.
 """
-
 from __future__ import annotations
+
 from agent.re_compat import re
 from pathlib import Path
 

@@ -27,8 +27,8 @@ Design notes (parity with the Cline port):
 Config: ``logging.memory_monitor`` in ``config.yaml`` — see
 ``hermes_cli/config.py`` for the defaults block.
 """
-
 from __future__ import annotations
+
 
 import gc
 import logging

@@ -1,6 +1,6 @@
 """Expensive-model confirmation helpers for model selection surfaces."""
-
 from __future__ import annotations
+
 
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation

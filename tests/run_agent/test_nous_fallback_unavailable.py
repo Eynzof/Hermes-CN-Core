@@ -4,8 +4,8 @@ Blocker if Nous token material is missing locally: the fallback chain
 should not repeatedly attempt Nous resolution; it must skip and continue
 to the next provider.
 """
-
 from __future__ import annotations
+
 
 from unittest.mock import patch
 

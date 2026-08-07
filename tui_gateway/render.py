@@ -3,8 +3,8 @@
 When agent.rich_output exists, its functions are used. When it doesn't,
 everything returns None and the TUI falls back to its own markdown.tsx.
 """
-
 from __future__ import annotations
+
 
 
 def render_message(text: str, cols: int = 80) -> str | None:

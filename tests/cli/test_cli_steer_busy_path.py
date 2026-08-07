@@ -18,8 +18,8 @@ reaches ``agent.steer()`` (thread-safe) without touching the queue.
 These tests exercise the detector + inline dispatch without starting a
 prompt_toolkit app.
 """
-
 from __future__ import annotations
+
 
 import importlib
 import sys

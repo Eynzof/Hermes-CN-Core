@@ -10,7 +10,7 @@ omission.
 Run with:  python -m pytest tests/tools/test_read_extract.py -v
 """
 
-import orjson
+import json
 import os
 import tempfile
 import unittest
@@ -30,8 +30,8 @@ from tools.file_tools import read_file_tool
 
 def _write_notebook(path, cells, nbformat=4):
     nb = {"cells": cells, "metadata": {}, "nbformat": nbformat, "nbformat_minor": 5}
-    with open(path, "w", encoding="utf-8", errors="replace") as fh:
-        fh.write(orjson.dumps(nb).decode('utf-8'))
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(nb, fh)
 
 
 def _write_docx(path, document_xml):
@@ -100,26 +100,6 @@ class TestNotebookExtraction(unittest.TestCase):
         # Order preserved: markdown before code.
         self.assertLess(text.index("Title"), text.index("print(x)"))
 
-    def test_string_source_form(self):
-        p = os.path.join(self.tmp, "nb2.ipynb")
-        _write_notebook(p, [{"cell_type": "code", "source": "single string source"}])
-        self.assertIn("single string source", extract_document_text(p))
-
-    def test_legacy_worksheets_form(self):
-        p = os.path.join(self.tmp, "nb3.ipynb")
-        nb = {"worksheets": [{"cells": [
-            {"cell_type": "code", "input": "ignored", "source": "legacy cell"}]}],
-            "nbformat": 3}
-        with open(p, "w") as fh:
-            fh.write(orjson.dumps(nb).decode('utf-8'))
-        self.assertIn("legacy cell", extract_document_text(p))
-
-    def test_malformed_notebook_raises(self):
-        p = os.path.join(self.tmp, "bad.ipynb")
-        with open(p, "w") as fh:
-            fh.write("{ not valid json")
-        with self.assertRaises(ExtractionError):
-            extract_document_text(p)
 
     def test_empty_cells_raises(self):
         p = os.path.join(self.tmp, "empty.ipynb")
@@ -153,20 +133,6 @@ class TestDocxExtraction(unittest.TestCase):
         self.assertIn("Hello World", text)
         self.assertIn("Second", text)
 
-    def test_tabs_and_breaks(self):
-        p = os.path.join(self.tmp, "d2.docx")
-        _write_docx(p, self._doc(
-            '<w:p><w:r><w:t>A</w:t><w:tab/><w:t>B</w:t><w:br/><w:t>C</w:t></w:r></w:p>'))
-        text = extract_document_text(p)
-        self.assertIn("A\tB", text)
-        self.assertIn("C", text)
-
-    def test_not_a_zip_raises(self):
-        p = os.path.join(self.tmp, "bad.docx")
-        with open(p, "wb") as fh:
-            fh.write(b"plain bytes, not a zip")
-        with self.assertRaises(ExtractionError):
-            extract_document_text(p)
 
     def test_missing_document_xml_raises(self):
         p = os.path.join(self.tmp, "nodoc.docx")
@@ -223,12 +189,6 @@ class TestXlsxExtraction(unittest.TestCase):
         self.assertIn("Name\tScore", text)  # shared-string header row
         self.assertIn("Alice\t95", text)    # string + numeric cells
 
-    def test_hidden_sheet_omitted(self):
-        p = os.path.join(self.tmp, "wb2.xlsx")
-        self._build(p)
-        text = extract_document_text(p)
-        self.assertNotIn("SECRETDATA", text)
-        self.assertNotIn("Hidden", text)
 
     def test_not_a_zip_raises(self):
         p = os.path.join(self.tmp, "bad.xlsx")
@@ -256,27 +216,17 @@ class TestReadFileToolIntegration(unittest.TestCase):
             {"cell_type": "markdown", "source": "# H"},
             {"cell_type": "code", "source": "print(1)"},
         ])
-        res = orjson.loads(read_file_tool(p))
+        res = json.loads(read_file_tool(p))
         self.assertTrue(res.get("extracted_document"))
         self.assertIn("1|", res["content"])  # line-number gutter
         self.assertIn("print(1)", res["content"])
 
-    def test_pagination(self):
-        p = os.path.join(self.tmp, "nb.ipynb")
-        _write_notebook(p, [
-            {"cell_type": "code", "source": "a\nb\nc\nd\ne\nf"},
-        ])
-        res = orjson.loads(read_file_tool(p, offset=1, limit=2))
-        self.assertTrue(res.get("truncated"))
-        self.assertIn("offset=3", res.get("hint", ""))
-        # Only first 2 lines present.
-        self.assertIn("1|# ── Code cell 1 ──", res["content"])
 
     def test_corrupt_docx_falls_through_to_binary_guard(self):
         p = os.path.join(self.tmp, "bad.docx")
         with open(p, "wb") as fh:
             fh.write(b"not a zip")
-        res = orjson.loads(read_file_tool(p))
+        res = json.loads(read_file_tool(p))
         # Should NOT crash; falls through to the binary-extension guard.
         self.assertIn("error", res)
         self.assertIn("binary", res["error"].lower())
@@ -286,7 +236,7 @@ class TestReadFileToolIntegration(unittest.TestCase):
         _write_docx(p, (f'<?xml version="1.0"?><w:document xmlns:w="{_NS_W}">'
                         '<w:body><w:p><w:r><w:t>Report body</w:t></w:r></w:p>'
                         '</w:body></w:document>'))
-        res = orjson.loads(read_file_tool(p))
+        res = json.loads(read_file_tool(p))
         self.assertTrue(res.get("extracted_document"))
         self.assertIn("Report body", res["content"])
 

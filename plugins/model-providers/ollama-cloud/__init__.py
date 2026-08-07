@@ -14,8 +14,8 @@ When reasoning is explicitly disabled (``enabled: false`` or
 ``effort: "none"``), ``reasoning_effort`` is omitted entirely so the
 model runs in non-thinking mode.
 """
-
 from __future__ import annotations
+
 
 from typing import Any
 

@@ -8,8 +8,8 @@ Wires ``hermes meet <subcommand>``:
   transcript  — print the transcript
   stop        — leave the current meeting
 """
-
 from __future__ import annotations
+
 
 import argparse
 import orjson
@@ -293,7 +293,7 @@ def _cmd_install(*, realtime: bool, assume_yes: bool) -> int:
         elif system == "Darwin":
             have_bh = False
             try:
-                out = _sp.check_output(["system_profiler", "SPAudioDataType"], text=True, encoding="utf-8", errors="replace",)
+                out = _sp.check_output(["system_profiler", "SPAudioDataType"], text=True, encoding='utf-8', errors='replace')
                 have_bh = "BlackHole" in out
             except Exception:
                 pass

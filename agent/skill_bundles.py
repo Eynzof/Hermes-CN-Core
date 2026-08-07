@@ -39,8 +39,8 @@ Public API
 - :func:`list_bundles` — return rich info for display (``hermes bundles``)
 - :func:`save_bundle` / :func:`delete_bundle` — file-level operations
 """
-
 from __future__ import annotations
+
 
 import logging
 import os

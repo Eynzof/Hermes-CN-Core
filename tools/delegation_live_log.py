@@ -26,8 +26,8 @@ Design constraints:
 * **No config knobs.** Retention is a module constant (7 days), pruned
   opportunistically on each new dispatch.
 """
-
 from __future__ import annotations
+
 
 import json
 import logging

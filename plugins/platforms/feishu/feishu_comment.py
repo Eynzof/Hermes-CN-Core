@@ -19,8 +19,8 @@ Flow:
        Whole -> add_whole_comment
        Local -> reply_to_comment (fallback to add_whole_comment on 1069302)
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import orjson

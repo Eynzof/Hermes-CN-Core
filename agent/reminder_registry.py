@@ -4,8 +4,8 @@ Both system reminders (e.g. compact reminders) and out-of-band user steers
 (prefix: ``User injection prompt:``) are collected here and injected into the
 current turn's user/tool message copy at API-call time.
 """
-
 from __future__ import annotations
+
 
 import logging
 from typing import Any, List, Optional

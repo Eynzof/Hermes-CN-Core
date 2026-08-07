@@ -31,8 +31,8 @@ invariants):
     callbacks into these events at the boundary; adapters that don't opt into
     event-native rendering get identical behavior via the base-class default.
 """
-
 from __future__ import annotations
+
 
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Union

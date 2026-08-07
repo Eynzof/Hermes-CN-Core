@@ -23,8 +23,8 @@ to the built-in if Chronos is unavailable, so cron never loses its trigger.
 
 Wire contract: ``docs/chronos-managed-cron-contract.md``.
 """
-
 from __future__ import annotations
+
 
 import logging
 import threading

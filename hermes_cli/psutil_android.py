@@ -1,6 +1,6 @@
 """Helpers for the temporary psutil-on-Android compatibility installer."""
-
 from __future__ import annotations
+
 
 import shutil
 import tarfile

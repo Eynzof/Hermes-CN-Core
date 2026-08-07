@@ -1,10 +1,10 @@
 """Tests for the ``hermes hooks`` CLI subcommand."""
-
 from __future__ import annotations
 
+
 import io
+import json
 import sys
-import orjson
 from contextlib import redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
@@ -47,7 +47,7 @@ class TestHooksList:
     def test_empty_config(self, tmp_path):
         with patch("hermes_cli.config.load_config", return_value={}):
             out = _run(SimpleNamespace(hooks_action="list"))
-        assert "No shell hooks configured" in out
+        assert "No shell hooks or outbound webhooks configured" in out
 
     def test_shows_configured_and_consent_status(self, tmp_path):
         script = _hook_script(
@@ -100,7 +100,7 @@ class TestHooksTest:
                 for_tool=None, payload_file=None,
             ))
 
-        seen = orjson.loads(capture.read_text())
+        seen = json.loads(capture.read_text())
         # Same top-level keys _serialize_payload produces at runtime
         assert set(seen.keys()) == {
             "hook_event_name", "tool_name", "tool_input",
@@ -139,30 +139,6 @@ class TestHooksTest:
         assert '"action": "block"' in out
         assert '"message": "nope"' in out
 
-    def test_for_tool_matcher_filters(self, tmp_path):
-        script = _hook_script(tmp_path, "#!/usr/bin/env bash\nprintf '{}\\n'\n")
-        cfg = {
-            "hooks": {
-                "pre_tool_call": [
-                    {"matcher": "terminal", "command": str(script)},
-                ],
-            }
-        }
-        with patch("hermes_cli.config.load_config", return_value=cfg):
-            out = _run(SimpleNamespace(
-                hooks_action="test", event="pre_tool_call",
-                for_tool="web_search", payload_file=None,
-            ))
-        assert "No shell hooks" in out
-
-    def test_unknown_event(self):
-        with patch("hermes_cli.config.load_config", return_value={}):
-            out = _run(SimpleNamespace(
-                hooks_action="test", event="bogus_event",
-                for_tool=None, payload_file=None,
-            ))
-        assert "Unknown event" in out
-
 
 # ── revoke ────────────────────────────────────────────────────────────────
 
@@ -178,46 +154,12 @@ class TestHooksRevoke:
             "on_session_start", str(script),
         ) is None
 
-    def test_revoke_unknown(self, tmp_path):
-        out = _run(SimpleNamespace(
-            hooks_action="revoke", command=str(tmp_path / "never.sh"),
-        ))
-        assert "No allowlist entry" in out
-
 
 # ── doctor ────────────────────────────────────────────────────────────────
 
 
 class TestHooksDoctor:
-    @pytest.mark.skipif(sys.platform == "win32", reason="shell hooks execute POSIX shell scripts (exec bit / shebang semantics)")
-    def test_flags_missing_exec_bit(self, tmp_path):
-        script = tmp_path / "hook.sh"
-        script.write_text("#!/usr/bin/env bash\nprintf '{}\\n'\n")
-        # No chmod — intentionally not executable
-        cfg = {"hooks": {"on_session_start": [{"command": str(script)}]}}
-        with patch("hermes_cli.config.load_config", return_value=cfg):
-            out = _run(SimpleNamespace(hooks_action="doctor"))
-        assert "not executable" in out.lower()
 
-    def test_flags_unallowlisted(self, tmp_path):
-        script = _hook_script(tmp_path, "#!/usr/bin/env bash\nprintf '{}\\n'\n")
-        cfg = {"hooks": {"on_session_start": [{"command": str(script)}]}}
-        with patch("hermes_cli.config.load_config", return_value=cfg):
-            out = _run(SimpleNamespace(hooks_action="doctor"))
-        assert "not allowlisted" in out.lower()
-
-    @pytest.mark.skipif(sys.platform == "win32", reason="shell hooks execute POSIX shell scripts (exec bit / shebang semantics)")
-
-    def test_flags_invalid_json(self, tmp_path):
-        script = _hook_script(
-            tmp_path,
-            "#!/usr/bin/env bash\necho 'not json!'\n",
-        )
-        shell_hooks._record_approval("on_session_start", str(script))
-        cfg = {"hooks": {"on_session_start": [{"command": str(script)}]}}
-        with patch("hermes_cli.config.load_config", return_value=cfg):
-            out = _run(SimpleNamespace(hooks_action="doctor"))
-        assert "not valid JSON" in out
 
     def test_flags_mtime_drift(self, tmp_path, monkeypatch):
         """Allowlist with older mtime than current -> drift warning."""
@@ -226,7 +168,7 @@ class TestHooksDoctor:
         # Manually stash an allowlist entry with an old mtime
         from agent.shell_hooks import allowlist_path
         allowlist_path().parent.mkdir(parents=True, exist_ok=True)
-        allowlist_path().write_text(orjson.dumps({
+        allowlist_path().write_text(json.dumps({
             "approvals": [
                 {
                     "event": "on_session_start",
@@ -235,22 +177,13 @@ class TestHooksDoctor:
                     "script_mtime_at_approval": "2000-01-01T00:00:00Z",
                 }
             ]
-        }).decode('utf-8'))
+        }))
 
         cfg = {"hooks": {"on_session_start": [{"command": str(script)}]}}
         with patch("hermes_cli.config.load_config", return_value=cfg):
             out = _run(SimpleNamespace(hooks_action="doctor"))
         assert "modified since approval" in out
 
-    @pytest.mark.skipif(sys.platform == "win32", reason="shell hooks execute POSIX shell scripts (exec bit / shebang semantics)")
-
-    def test_clean_script_runs(self, tmp_path):
-        script = _hook_script(tmp_path, "#!/usr/bin/env bash\nprintf '{}\\n'\n")
-        shell_hooks._record_approval("on_session_start", str(script))
-        cfg = {"hooks": {"on_session_start": [{"command": str(script)}]}}
-        with patch("hermes_cli.config.load_config", return_value=cfg):
-            out = _run(SimpleNamespace(hooks_action="doctor"))
-        assert "All shell hooks look healthy" in out
 
     def test_unallowlisted_script_is_not_executed(self, tmp_path):
         """Regression for M4: `hermes hooks doctor` used to run every

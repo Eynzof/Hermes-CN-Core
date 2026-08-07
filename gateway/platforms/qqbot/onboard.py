@@ -12,8 +12,8 @@ scanner's *user_openid* — enough to fully configure the QQBot gateway.
 
 Reference: https://bot.q.qq.com/wiki/develop/api-v2/
 """
-
 from __future__ import annotations
+
 
 import logging
 import time
@@ -100,7 +100,7 @@ def _create_bind_task(timeout: float = ONBOARD_API_TIMEOUT) -> Tuple[str, str]:
     if data.get("retcode") != 0:
         raise RuntimeError(data.get("msg", "create_bind_task failed"))
 
-    task_id = data.get("data", {}).get("task_id")
+    task_id = (data.get("data") or {}).get("task_id")
     if not task_id:
         raise RuntimeError("create_bind_task: missing task_id in response")
 

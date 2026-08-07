@@ -11,8 +11,8 @@ Subcommands:
   /suggestions catalog         seed the curated starter automations as pending
   /suggestions clear           drop accepted records (housekeeping)
 """
-
 from __future__ import annotations
+
 
 import logging
 from typing import Any, Dict, Optional

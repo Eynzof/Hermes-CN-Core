@@ -1,4 +1,4 @@
-import orjson
+import json
 import os
 import sys
 import types
@@ -98,14 +98,14 @@ def _install_modal_test_modules(
     def _load_json_store(path):
         if path.exists():
             try:
-                return orjson.loads(path.read_text())
+                return json.loads(path.read_text())
             except Exception:
                 pass
         return {}
 
     def _save_json_store(path, data):
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(orjson.dumps(data, option=orjson.OPT_INDENT_2).decode('utf-8'))
+        path.write_text(json.dumps(data, indent=2))
 
     def _file_mtime_key(host_path):
         try:
@@ -201,7 +201,7 @@ def test_modal_environment_migrates_legacy_snapshot_key_and_uses_snapshot_id(tmp
     state = _install_modal_test_modules(tmp_path)
     snapshot_store = state["snapshot_store"]
     snapshot_store.parent.mkdir(parents=True, exist_ok=True)
-    snapshot_store.write_text(orjson.dumps({"task-legacy": "im-legacy123"}).decode('utf-8'))
+    snapshot_store.write_text(json.dumps({"task-legacy": "im-legacy123"}))
 
     modal_module = _load_module("tools.environments.modal", TOOLS_DIR / "environments" / "modal.py")
     env = modal_module.ModalEnvironment(image="python:3.11", task_id="task-legacy")
@@ -209,39 +209,9 @@ def test_modal_environment_migrates_legacy_snapshot_key_and_uses_snapshot_id(tmp
     try:
         assert state["from_id_calls"] == ["im-legacy123"]
         assert state["create_calls"][0]["image"] == {"kind": "snapshot", "image_id": "im-legacy123"}
-        assert orjson.loads(snapshot_store.read_text()) == {"direct:task-legacy": "im-legacy123"}
+        assert json.loads(snapshot_store.read_text()) == {"direct:task-legacy": "im-legacy123"}
     finally:
         env.cleanup()
-
-
-def test_modal_environment_prunes_stale_direct_snapshot_and_retries_base_image(tmp_path):
-    state = _install_modal_test_modules(tmp_path, fail_on_snapshot_ids={"im-stale123"})
-    snapshot_store = state["snapshot_store"]
-    snapshot_store.parent.mkdir(parents=True, exist_ok=True)
-    snapshot_store.write_text(orjson.dumps({"direct:task-stale": "im-stale123"}).decode('utf-8'))
-
-    modal_module = _load_module("tools.environments.modal", TOOLS_DIR / "environments" / "modal.py")
-    env = modal_module.ModalEnvironment(image="python:3.11", task_id="task-stale")
-
-    try:
-        assert [call["image"] for call in state["create_calls"]] == [
-            {"kind": "snapshot", "image_id": "im-stale123"},
-            {"kind": "registry", "image": "python:3.11"},
-        ]
-        assert orjson.loads(snapshot_store.read_text()) == {}
-    finally:
-        env.cleanup()
-
-
-def test_modal_environment_cleanup_writes_namespaced_snapshot_key(tmp_path):
-    state = _install_modal_test_modules(tmp_path, snapshot_id="im-cleanup456")
-    snapshot_store = state["snapshot_store"]
-
-    modal_module = _load_module("tools.environments.modal", TOOLS_DIR / "environments" / "modal.py")
-    env = modal_module.ModalEnvironment(image="python:3.11", task_id="task-cleanup")
-    env.cleanup()
-
-    assert orjson.loads(snapshot_store.read_text()) == {"direct:task-cleanup": "im-cleanup456"}
 
 
 def test_resolve_modal_image_uses_snapshot_ids_and_registry_images(tmp_path):

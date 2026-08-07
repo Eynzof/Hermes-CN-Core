@@ -21,8 +21,8 @@ Why a plugin instead of a top-level ``tools/`` file?
 The Spotify auth flow (``hermes auth spotify``), CLI plumbing, and docs
 are unchanged. This move is purely structural.
 """
-
 from __future__ import annotations
+
 
 from plugins.spotify.tools import (
     SPOTIFY_ALBUMS_SCHEMA,

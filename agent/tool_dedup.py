@@ -4,8 +4,8 @@ Detects and stops consecutive identical tool calls across API iterations
 to prevent infinite loops where the agent calls the same tool with the
 same arguments repeatedly without making progress.
 """
-
 from __future__ import annotations
+
 
 import orjson
 from typing import Any, Optional, NamedTuple

@@ -26,8 +26,8 @@ tool.complete。本模块在 gateway 侧补齐这一语义：
 显式非目标：tmux 交互式委派（无稳定进程可绑）不产生 delegation 事件；
 ``process(action="submit")`` 的输入不回显进事件流。
 """
-
 from __future__ import annotations
+
 
 import json
 import re

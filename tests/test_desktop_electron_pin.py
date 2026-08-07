@@ -21,8 +21,8 @@ specific version (which is allowed to move):
 2. the dependency, ``build.electronVersion``, and the resolved lockfile entry
    all agree — so ``npm ci`` installs exactly what the build packages.
 """
-
 from __future__ import annotations
+
 
 import orjson
 from agent.re_compat import re

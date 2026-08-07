@@ -30,8 +30,8 @@ The check is invoked from three places:
 This module is intentionally dependency-free beyond the stdlib so it can
 run in environments where the rest of Hermes failed to import.
 """
-
 from __future__ import annotations
+
 
 import logging
 import os

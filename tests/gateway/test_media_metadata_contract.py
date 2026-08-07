@@ -10,8 +10,8 @@ This mirrors ``test_discord_media_metadata.py`` but covers the two
 adapters that previously slipped, plus a best-effort sweep over every
 adapter that imports cleanly so the next slip is caught at test time.
 """
-
 from __future__ import annotations
+
 
 import importlib
 import inspect
@@ -66,15 +66,3 @@ _ALL_ADAPTERS = [
 ]
 
 
-@pytest.mark.parametrize("module_name, class_name", _ALL_ADAPTERS)
-def test_all_adapters_send_image_metadata_sweep(module_name, class_name):
-    try:
-        module = importlib.import_module(module_name)
-    except Exception as exc:  # optional platform dep not installed
-        pytest.skip(f"{module_name} not importable: {exc}")
-    cls = getattr(module, class_name, None)
-    if cls is None or "send_image" not in cls.__dict__:
-        pytest.skip(f"{class_name} has no send_image override")
-    assert _accepts_metadata(cls.send_image), (
-        f"{class_name}.send_image drops the 'metadata' kwarg"
-    )

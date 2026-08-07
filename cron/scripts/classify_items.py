@@ -32,8 +32,8 @@ object. A "title"/"subject"/"summary"/"text" field helps it judge. An "id"
 field (any of id/guid/message_id/url) is echoed back so duplicates can be
 deduped upstream.
 """
-
 from __future__ import annotations
+
 
 import argparse
 import orjson

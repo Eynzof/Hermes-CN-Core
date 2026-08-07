@@ -10,8 +10,8 @@ We generate the full petdex/Codex nine-state set (see
 :data:`agent.pet.generate.atlas.ROW_SPECS`) so a hatched pet is a valid
 ``petdex submit`` spritesheet.
 """
-
 from __future__ import annotations
+
 
 # What each petdex/Codex state should depict (kept short — these go straight into
 # the row prompt). Phrased to avoid the common sprite-gen failure modes (detached

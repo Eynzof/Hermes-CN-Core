@@ -29,8 +29,8 @@ Selection precedence for the active family:
 Authentication via ``FAL_KEY`` or the managed Nous gateway. Output is an
 HTTPS URL from FAL's CDN; the gateway downloads and delivers it.
 """
-
 from __future__ import annotations
+
 
 import logging
 import os

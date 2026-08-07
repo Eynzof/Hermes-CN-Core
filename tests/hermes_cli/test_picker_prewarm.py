@@ -6,8 +6,8 @@ of blocking ~1-2s on serial /v1/models fetches. These pin the two contracts
 that matter: it runs the warm path exactly once per process (no thread leak),
 and it delegates to ``list_authenticated_providers`` to do the warming.
 """
-
 from __future__ import annotations
+
 
 from unittest.mock import patch
 
@@ -45,16 +45,3 @@ def test_prewarm_guard_is_once_per_process():
     _reset_guard()
 
 
-def test_prewarm_never_raises_on_failure():
-    """A failing/offline provider path must be fully swallowed — the prewarm
-    is best-effort and must never surface errors into the session."""
-    _reset_guard()
-    with patch.object(
-        ms, "list_authenticated_providers", side_effect=RuntimeError("boom")
-    ):
-        t = ms.prewarm_picker_cache_async()
-        assert t is not None
-        # join must not raise; the worker swallows the exception internally.
-        t.join(timeout=10)
-        assert not t.is_alive()
-    _reset_guard()

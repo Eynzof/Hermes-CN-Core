@@ -20,8 +20,8 @@ in ``schedule_template`` and parameterizes only the human-friendly parts
 (time-of-day, weekday set). Blueprints needing full flexibility expose a ``text``
 slot named ``schedule`` that passes through verbatim.
 """
-
 from __future__ import annotations
+
 from agent.re_compat import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional

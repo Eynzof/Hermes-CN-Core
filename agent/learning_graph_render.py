@@ -12,8 +12,8 @@ consumer maps the semantic style + brightness onto its own palette; the
 optional 4th element overrides the base color (category heatmap). Pure,
 stdlib-only.
 """
-
 from __future__ import annotations
+
 
 import math
 from datetime import datetime, timezone
@@ -403,7 +403,6 @@ def _category_counts(payload: dict[str, Any]) -> list[tuple[str, int]]:
 def category_color_map(payload: dict[str, Any]) -> dict[str, str]:
     """Deterministic, evenly-spread hue per skill category (theme-independent)."""
     clusters = _category_counts(payload)
-    n = max(1, len(clusters))
     # Golden-angle hue spacing so adjacent categories never collide in color.
     return {cat: rgb_to_hex(_hsl_to_rgb((i * 137.508) % 360, 0.55, 0.62)) for i, (cat, _c) in enumerate(clusters)}
 

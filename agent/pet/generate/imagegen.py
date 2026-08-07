@@ -10,8 +10,8 @@ Reference grounding only works on providers that support it — currently OpenAI
 those and surface a clear, actionable error otherwise rather than silently
 producing an ungrounded, drifting pet.
 """
-
 from __future__ import annotations
+
 
 import logging
 import os

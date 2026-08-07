@@ -5,8 +5,8 @@ handler was promoted to top-level and the parser block extracted into a builder.
 Confirms each builder attaches its subcommand and wires func to the injected
 handler.
 """
-
 from __future__ import annotations
+
 
 import argparse
 

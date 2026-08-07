@@ -12,8 +12,8 @@ Config: Uses the existing Honcho config chain:
   2. ~/.honcho/config.json (legacy global)
   3. Environment variables
 """
-
 from __future__ import annotations
+
 
 import json
 import orjson
@@ -24,7 +24,7 @@ import time
 from typing import Any, Callable, Dict, List, Optional
 
 from agent.memory_manager import sanitize_context
-from agent.memory_provider import MemoryProvider
+from agent.memory_provider import TRIVIAL_PROMPT_RE, MemoryProvider, is_trivial_prompt
 from tools.registry import tool_error
 
 logger = logging.getLogger(__name__)
@@ -318,7 +318,7 @@ class HonchoMemoryProvider(MemoryProvider):
         existing = {}
         if config_path.exists():
             try:
-                existing = orjson.loads(config_path.read_text())
+                existing = json.loads(config_path.read_text(encoding="utf-8"))
             except Exception:
                 pass
         existing.update(values)
@@ -1197,28 +1197,17 @@ class HonchoMemoryProvider(MemoryProvider):
                 return r
         return ""
 
-    # Prompts that carry no semantic signal — trivial acknowledgements, slash
-    # commands, empty input. Skipping injection here saves tokens and prevents
-    # stale user-model context from derailing one-word replies.
-    _TRIVIAL_PROMPT_RE = re.compile(
-        r'^(yes|no|ok|okay|sure|thanks|thank you|y|n|yep|nope|yeah|nah|'
-        r'continue|go ahead|do it|proceed|got it|cool|nice|great|done|next|lgtm|k)$',
-        re.IGNORECASE,
-    )
+    # Prompts that carry no semantic signal — trivial acknowledgements, greetings,
+    # slash commands, empty input. Skipping injection here saves tokens and prevents
+    # stale user-model context from derailing one-word replies. Classification is
+    # fully delegated to the shared agent/memory_provider.is_trivial_prompt so the
+    # provider-side classifier and the core prefetch gate can never drift apart.
+    _TRIVIAL_PROMPT_RE = TRIVIAL_PROMPT_RE
 
     @classmethod
     def _is_trivial_prompt(cls, text: str) -> bool:
         """Return True if the prompt is too trivial to warrant context injection."""
-        if not text:
-            return True
-        stripped = text.strip()
-        if not stripped:
-            return True
-        if stripped.startswith("/"):
-            return True
-        if cls._TRIVIAL_PROMPT_RE.match(stripped):
-            return True
-        return False
+        return is_trivial_prompt(text)
 
     def on_turn_start(self, turn_number: int, message: str, **kwargs) -> None:
         """Track turn count for cadence and injection_frequency logic."""

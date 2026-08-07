@@ -7,8 +7,8 @@ mascot (writes ``display.pet.*`` to config.yaml), and runs a doctor check.
 No side effects at import time — ``main.py`` wires the argparse subparsers on
 demand via :func:`register_cli`.
 """
-
 from __future__ import annotations
+
 
 import argparse
 import sys

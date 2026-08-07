@@ -33,8 +33,8 @@ This module is Windows-oriented but has **no** hard Windows import, so its pure
 logic (marker parsing, command combining) is unit-testable on any host, and the
 live-session tests ``skipif`` when PowerShell is absent.
 """
-
 from __future__ import annotations
+
 
 import pybase64 as base64
 import logging

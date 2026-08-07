@@ -28,14 +28,14 @@ actionable guidance the model can relay to the user.
 import orjson
 import json
 import logging
-import os
 import threading
 import urllib.error
 import urllib.parse
 import urllib.request
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-from tools.registry import registry
+from agent.secret_scope import get_secret
+from tools.registry import registry, tool_error
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -73,8 +73,8 @@ def _read_limited_response_body(source: Any, limit: int, *, label: str) -> bytes
 
 
 def _get_bot_token() -> Optional[str]:
-    """Resolve the Discord bot token from environment."""
-    return os.getenv("DISCORD_BOT_TOKEN", "").strip() or None
+    """Resolve the Discord bot token under the active profile secret scope."""
+    return (get_secret("DISCORD_BOT_TOKEN", "") or "").strip() or None
 
 
 def _discord_request(
@@ -173,7 +173,6 @@ _capability_bg_lock = threading.Lock()
 
 
 def _capability_disk_cache_path() -> "Path":
-    from pathlib import Path
 
     from hermes_constants import get_hermes_home
 
@@ -1004,26 +1003,26 @@ def _run_discord_action(
     """Shared handler logic for both discord tools."""
     token = _get_bot_token()
     if not token:
-        return orjson.dumps({"error": "DISCORD_BOT_TOKEN not configured."}).decode('utf-8')
+        return tool_error("DISCORD_BOT_TOKEN not configured.")
 
     action_fn = valid_actions.get(action)
     if not action_fn:
-        return orjson.dumps({
-            "error": f"Unknown action: {action}",
-            "available_actions": list(valid_actions.keys()),
-        }).decode('utf-8')
+        return tool_error(
+            f"Unknown action: {action}",
+            available_actions=list(valid_actions.keys()),
+        )
+
 
     # Config-level allowlist gate (defense in depth — schema already filtered,
     # but a stale cached schema from a prior config should not let denied
     # actions through).
     allowlist = _load_allowed_actions_config()
     if allowlist is not None and action not in allowlist:
-        return orjson.dumps({
-            "error": (
-                f"Action '{action}' is disabled by config (discord.server_actions). "
-                f"Allowed: {', '.join(allowlist) if allowlist else '<none>'}"
-            ),
-        }).decode('utf-8')
+        return tool_error(
+            f"Action '{action}' is disabled by config (discord.server_actions). "
+            f"Allowed: {', '.join(allowlist) if allowlist else '<none>'}"
+        )
+
 
     local_vars = {
         "guild_id": guild_id,
@@ -1037,9 +1036,10 @@ def _run_discord_action(
 
     missing = [p for p in _REQUIRED_PARAMS.get(action, []) if not local_vars.get(p)]
     if missing:
-        return orjson.dumps({
-            "error": f"Missing required parameters for '{action}': {', '.join(missing)}",
-        }).decode('utf-8')
+        return tool_error(
+            f"Missing required parameters for '{action}': {', '.join(missing)}"
+        )
+
 
     try:
         return action_fn(
@@ -1059,11 +1059,12 @@ def _run_discord_action(
     except DiscordAPIError as e:
         logger.warning("Discord API error in %s action '%s': %s", tool_label, action, e)
         if e.status == 403:
-            return orjson.dumps({"error": _enrich_403(action, e.body)}).decode('utf-8')
-        return orjson.dumps({"error": str(e)}).decode('utf-8')
+            return tool_error(_enrich_403(action, e.body))
+        return tool_error(str(e))
     except Exception as e:
         logger.exception("Unexpected error in %s action '%s'", tool_label, action)
-        return orjson.dumps({"error": f"Unexpected error: {e}"}).decode('utf-8')
+        return tool_error(f"Unexpected error: {e}")
+
 
 
 def discord_core(action: str, **kwargs) -> str:

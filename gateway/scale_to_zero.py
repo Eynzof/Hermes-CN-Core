@@ -25,8 +25,8 @@ The pure helpers (``parse_idle_timeout_seconds``, ``scale_to_zero_enabled``,
 ``messaging_is_relay_only_or_absent``, ``is_idle``, ``should_arm``) take plain
 inputs so they unit-test without a live gateway.
 """
-
 from __future__ import annotations
+
 
 import os
 from typing import Any, Iterable, Optional

@@ -5,8 +5,8 @@ so the path can be handed to vision backends.  If `base64.b64decode` raises on
 a corrupt/unsupported data URL the temp file would otherwise persist forever
 on disk, leaking once per failed call.
 """
-
 from __future__ import annotations
+
 
 import pybase64 as base64
 import os

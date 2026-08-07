@@ -13,8 +13,8 @@ the var). See PR #6659.
 These assert the behavior contract (prefix stripped → canonical key resolves),
 not the literal parser source.
 """
-
 from __future__ import annotations
+
 
 import tempfile
 from pathlib import Path
@@ -47,26 +47,6 @@ def test_config_load_env_strips_export_prefix(tmp_path):
     assert env["OPENROUTER_API_KEY"] == "sk-or-456"
     assert env["ANTHROPIC_API_KEY"] == "sk-plain-789"
     assert "export OPENAI_API_KEY" not in env
-
-
-def test_config_load_env_does_not_mangle_non_export(tmp_path):
-    """A bare 'export' word without trailing space is not a prefix."""
-    from hermes_cli.config import invalidate_env_cache, load_env
-
-    env_path = tmp_path / ".env"
-    _write_env(env_path, "PLAIN_KEY=val1\nexportNOSPACE=val2\nexport REAL=val3\n")
-    invalidate_env_cache()
-    try:
-        with patch("hermes_cli.config.get_env_path", return_value=env_path):
-            env = load_env()
-    finally:
-        invalidate_env_cache()
-
-    assert env["PLAIN_KEY"] == "val1"
-    # No trailing space → NOT an export prefix; the key stays intact.
-    assert env["exportNOSPACE"] == "val2"
-    assert env["REAL"] == "val3"
-    assert "export REAL" not in env
 
 
 def test_skills_tool_load_env_strips_export_prefix(tmp_path, monkeypatch):

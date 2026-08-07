@@ -15,8 +15,8 @@ idempotently, and is never uninstalled (uninstalling would race other threads
 mid-write), so the only observable effect for unregistered threads is one extra
 attribute lookup per write.
 """
-
 from __future__ import annotations
+
 
 import contextlib
 import os

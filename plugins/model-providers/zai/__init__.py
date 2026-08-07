@@ -23,8 +23,8 @@ two enabled levels — ``high`` and ``max`` — on the OpenAI-compatible endpoin
 those two so the user's effort preference actually reaches the model instead
 of being silently dropped.
 """
-
 from __future__ import annotations
+
 from agent.re_compat import re
 from typing import Any
 

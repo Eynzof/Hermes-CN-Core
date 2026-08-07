@@ -58,6 +58,8 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional, Set
 from hermes_cli._subprocess_compat import windows_detach_flags_without_breakaway
 from urllib.parse import quote, unquote
 
+from hermes_cli._subprocess_compat import windows_hide_flags
+
 from agent.lsp.protocol import (
     ERROR_CONTENT_MODIFIED,
     ERROR_METHOD_NOT_FOUND,
@@ -303,7 +305,6 @@ class LSPClient:
         cmd = self._command
         if sys.platform == "win32":
             cmd = self._win_wrap_cmd(cmd)
-
         try:
             # Detach the LSP server into its own process group / session.
             # Without this, the LSP server inherits the gateway's pgid (= TUI
@@ -313,9 +314,11 @@ class LSPClient:
             # the TUI parent itself. See tui_gateway_crash.log "killpg →
             # SIGTERM received" stacks. POSIX uses start_new_session (setsid);
             # [CN-fork] P-038 does the equivalent on Windows via creationflags.
-            _subprocess_kwargs: Dict[str, Any] = {}
+            _subprocess_kwargs: Dict[str, Any] = {
+                "creationflags": windows_hide_flags(),
+            }
             if sys.platform == "win32":
-                _subprocess_kwargs["creationflags"] = windows_detach_flags_without_breakaway()
+                _subprocess_kwargs["creationflags"] |= windows_detach_flags_without_breakaway()
             else:
                 _subprocess_kwargs["start_new_session"] = True
             self._proc = await asyncio.create_subprocess_exec(

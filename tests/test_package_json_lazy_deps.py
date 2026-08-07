@@ -27,8 +27,8 @@ to root ``dependencies``, this test fails — read the lazy-install
 guidance in the ``hermes-agent-dev`` skill before changing the
 expectations.
 """
-
 from __future__ import annotations
+
 
 import orjson
 from pathlib import Path

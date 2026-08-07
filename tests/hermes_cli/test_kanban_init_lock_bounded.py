@@ -13,8 +13,8 @@ Two fixes, both covered here:
    non-blocking acquire up to a deadline, then proceeds (with a WARNING) rather
    than hanging.
 """
-
 from __future__ import annotations
+
 
 import threading
 import time

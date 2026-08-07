@@ -7,6 +7,7 @@ import subprocess
 import sys
 import textwrap
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -137,3 +138,99 @@ def test_frozen_entry_runs_before_dotenv_loading(tmp_path):
 
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "ABSENT"
+
+
+def _patch_frozen_scheduler(monkeypatch, hermes_home: Path, runtime: Path, output: str):
+    from cron import scheduler
+    from tools.environments import local
+
+    captured = {}
+
+    def fake_run(argv, **kwargs):
+        captured["argv"] = argv
+        captured["kwargs"] = kwargs
+        return SimpleNamespace(returncode=0, stdout=output, stderr="")
+
+    monkeypatch.setattr(scheduler, "_get_hermes_home", lambda: hermes_home)
+    monkeypatch.setattr(scheduler.sys, "executable", str(runtime))
+    monkeypatch.setattr(scheduler.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(scheduler.subprocess, "run", fake_run)
+    monkeypatch.setattr(local, "build_subprocess_env", lambda: {})
+    return scheduler, captured
+
+
+def test_frozen_scheduler_routes_python_script_through_internal_runner(
+    tmp_path, monkeypatch
+):
+    hermes_home, scripts_dir = _scripts_home(tmp_path)
+    script = scripts_dir / "probe.py"
+    script.write_text('print("ok")\n', encoding="utf-8")
+    runtime = tmp_path / "hermes-agent-cn-runtime.exe"
+    runtime.write_text("", encoding="utf-8")
+    scheduler, captured = _patch_frozen_scheduler(
+        monkeypatch, hermes_home, runtime, "ok\n"
+    )
+
+    success, output = scheduler._run_job_script("probe.py")
+
+    assert success is True
+    assert output == "ok"
+    assert captured["argv"] == [
+        str(runtime),
+        INTERNAL_CRON_SCRIPT_ARG,
+        str(script.resolve()),
+    ]
+    assert captured["kwargs"]["env"]["HERMES_HOME"] == str(hermes_home.resolve())
+
+
+def test_frozen_prerun_script_output_is_injected(tmp_path, monkeypatch):
+    hermes_home, scripts_dir = _scripts_home(tmp_path)
+    script = scripts_dir / "data.py"
+    script.write_text('print("new PR: #123 fix typo")\n', encoding="utf-8")
+    runtime = tmp_path / "hermes-agent-cn-runtime.exe"
+    runtime.write_text("", encoding="utf-8")
+    scheduler, captured = _patch_frozen_scheduler(
+        monkeypatch, hermes_home, runtime, "new PR: #123 fix typo\n"
+    )
+
+    prompt = scheduler._build_job_prompt(
+        {"prompt": "Report notable changes.", "script": "data.py"}
+    )
+
+    assert "new PR: #123 fix typo" in prompt
+    assert "Report notable changes." in prompt
+    assert captured["argv"] == [
+        str(runtime),
+        INTERNAL_CRON_SCRIPT_ARG,
+        str(script.resolve()),
+    ]
+
+
+def test_frozen_no_agent_job_delivers_script_output(tmp_path, monkeypatch):
+    hermes_home, scripts_dir = _scripts_home(tmp_path)
+    script = scripts_dir / "alert.py"
+    script.write_text('print("RAM 92% on host")\n', encoding="utf-8")
+    runtime = tmp_path / "hermes-agent-cn-runtime.exe"
+    runtime.write_text("", encoding="utf-8")
+    scheduler, captured = _patch_frozen_scheduler(
+        monkeypatch, hermes_home, runtime, "RAM 92% on host\n"
+    )
+
+    success, doc, final_response, error = scheduler.run_job(
+        {
+            "id": "frozen-no-agent",
+            "name": "Runtime watchdog",
+            "script": "alert.py",
+            "no_agent": True,
+        }
+    )
+
+    assert success is True
+    assert error is None
+    assert final_response == "RAM 92% on host"
+    assert "RAM 92% on host" in doc
+    assert captured["argv"] == [
+        str(runtime),
+        INTERNAL_CRON_SCRIPT_ARG,
+        str(script.resolve()),
+    ]

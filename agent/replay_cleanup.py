@@ -14,8 +14,8 @@ messaging-gateway path) and are extracted here so every resume surface — the
 messaging gateway AND the TUI/WebUI gateway — shares the same cleanup instead
 of the WebUI path silently skipping it.
 """
-
 from __future__ import annotations
+
 
 import logging
 from typing import Any, Dict, List

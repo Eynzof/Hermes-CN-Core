@@ -5,8 +5,8 @@ plugin); both share the FIRECRAWL_API_KEY but speak to different endpoints
 (``/v2/browser`` here vs ``/v2/search`` / ``/v2/scrape`` / ``/v2/crawl``
 over there).
 """
-
 from __future__ import annotations
+
 
 from plugins.browser.firecrawl.provider import FirecrawlBrowserProvider
 

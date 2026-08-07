@@ -9,8 +9,8 @@ The installer should discard that generated churn before its stash/checkout
 logic, while still preserving intentional package edits where ``package.json``
 and ``package-lock.json`` changed together.
 """
-
 from __future__ import annotations
+
 from agent.re_compat import re
 import shutil
 import subprocess

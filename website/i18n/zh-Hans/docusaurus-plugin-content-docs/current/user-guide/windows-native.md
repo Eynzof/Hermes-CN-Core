@@ -102,11 +102,11 @@ Dashboard 的 `/chat` 标签页通过 POSIX PTY（`ptyprocess`）内嵌了真实
 
 ## Hermes 如何在 Windows 上运行 shell 命令
 
-Hermes 的终端工具优先使用 **PowerShell 7（pwsh）** 运行命令，当不可用时回退到 **Windows PowerShell 5.1**（`powershell.exe`）——两者均可轻松安装或随每套 Windows 10/11 系统自带。当检测到 pwsh 时，所有现代 PowerShell 语法（三元 `?:`、空合并 `??`、管道链 `&&`/`||`、null-条件 `?.`/`?[`）原生支持，无需任何兼容层。
+Hermes 的终端工具在检测到可用安装时，优先使用 **Git Bash**（Git for Windows 自带的 bash）运行命令，回退到 **PowerShell 7（pwsh）**，最后是 **Windows PowerShell 5.1**（`powershell.exe`）。Git Bash 存在时会自动启用——无需任何配置——因此 POSIX 语法（`pwd -P`、`sed`/`awk`/`grep` 管道、`&&`/`||` 链、`cat`/`head`/`tail`）在 Windows 上开箱即用。
 
-如果未安装 pwsh，Hermes 自动回退到 Windows PowerShell 5.1（`powershell.exe`），每套 Windows 系统自带——无需额外安装、无需下载、无需 Git Bash。
+如果未安装 Git Bash，Hermes 自动使用 PowerShell 7（pwsh，若可用），否则使用 Windows PowerShell 5.1——每套 Windows 10/11 系统自带，因此始终有一个可用的 shell：无需额外安装、无需下载。
 
-在 `.env` 中设置 `HERMES_SHELL_TYPE=pwsh`（优先使用 PowerShell 7）、`powershell`（强制使用 Windows PowerShell 5.1）、`bash`（使用预安装的 Git Bash——需要从 https://git-scm.com/download/win 安装 Git for Windows），或保持默认 `auto`。
+在 `.env` 中设置 `HERMES_SHELL_TYPE=bash`（强制使用预安装的 Git Bash——需要从 https://git-scm.com/download/win 安装 Git for Windows）、`pwsh`（优先使用 PowerShell 7）、`powershell`（强制使用 Windows PowerShell 5.1），或保持默认 `auto`（Git Bash → PowerShell 7 → Windows PowerShell 5.1）。
 
 ## Windows 上的 UTF-8 控制台
 
@@ -241,7 +241,7 @@ TELEGRAM_BOT_TOKEN=...
 
 | 变量                          | 效果                                                                                                                                |
 | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `HERMES_SHELL_TYPE`           | `auto`（默认→Windows 上使用 PowerShell）、`powershell`（显式指定）。Windows 不支持 `bash`。 |
+| `HERMES_SHELL_TYPE`           | `auto`（默认→Git Bash → PowerShell 7 → Windows PowerShell 5.1）、`pwsh` / `powershell`（显式指定 PowerShell，绝不使用 Git Bash）、`bash`（显式指定 Git Bash，需要预装 Git for Windows）。 |
 | `HERMES_DISABLE_WINDOWS_UTF8` | 设为 `1` 可禁用 UTF-8 stdio 垫片，回退到区域设置代码页。用于排查编码 bug。                                                          |
 | `EDITOR` / `VISUAL`           | 用于 `/edit` 和 `Ctrl-X Ctrl-E` 的编辑器。如果两者均未设置，Hermes 默认使用 `notepad`。                                             |
 

@@ -16,8 +16,8 @@ avoid surprising the user's system audio state.
 
 Windows: not supported in v2.
 """
-
 from __future__ import annotations
+
 
 import platform
 import subprocess
@@ -111,7 +111,7 @@ class AudioBridge:
                 ],
                 check=True,
                 capture_output=True,
-                text=True, encoding="utf-8", errors="replace",
+                text=True, encoding='utf-8', errors='replace',
                 stdin=subprocess.DEVNULL,
             )
         except FileNotFoundError as exc:
@@ -136,7 +136,7 @@ class AudioBridge:
                 ],
                 check=True,
                 capture_output=True,
-                text=True, encoding="utf-8", errors="replace",
+                text=True, encoding='utf-8', errors='replace',
                 stdin=subprocess.DEVNULL,
             )
         except subprocess.CalledProcessError as exc:
@@ -172,7 +172,7 @@ class AudioBridge:
         try:
             out = subprocess.check_output(
                 ["system_profiler", "SPAudioDataType"],
-                text=True, encoding="utf-8", errors="replace",
+                text=True, encoding='utf-8', errors='replace',
                 stderr=subprocess.STDOUT,
             )
         except FileNotFoundError as exc:

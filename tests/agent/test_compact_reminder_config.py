@@ -1,6 +1,6 @@
 """Tests for compact_reminder config loading from config.yaml."""
-
 from __future__ import annotations
+
 
 import os
 import tempfile

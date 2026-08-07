@@ -1,6 +1,6 @@
 """Integration coverage for profile-local MCP discovery in slash workers."""
-
 from __future__ import annotations
+
 
 import json
 import os

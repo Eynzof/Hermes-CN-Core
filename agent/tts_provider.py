@@ -42,8 +42,8 @@ failure — the dispatcher converts exceptions into the standard
 ``{success: False, error: …}`` JSON envelope the rest of Hermes
 expects.
 """
-
 from __future__ import annotations
+
 
 import abc
 import logging

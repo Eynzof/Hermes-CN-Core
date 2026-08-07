@@ -1,6 +1,6 @@
 """QQBot package-level constants shared across adapter, onboard, and other modules."""
-
 from __future__ import annotations
+
 
 import os
 

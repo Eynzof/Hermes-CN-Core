@@ -1,6 +1,6 @@
 """Durable local state for the Teams pipeline plugin."""
-
 from __future__ import annotations
+
 
 import hashlib
 import orjson

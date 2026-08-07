@@ -12,8 +12,8 @@ This module covers all three affected functions: ``run_setup_wizard()``
 (the reproducer in #16746), ``install_system_packages()`` (the apt sudo
 prompt fallback), and ``maybe_start_gateway()`` (the gateway-install gate).
 """
-
 from __future__ import annotations
+
 from agent.re_compat import re
 from pathlib import Path
 

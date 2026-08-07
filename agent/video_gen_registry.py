@@ -21,8 +21,8 @@ that has credentials for only one backend (e.g. DeepInfra, while the
 ``fal``/``xai`` plugins also register unconditionally) auto-selects it
 instead of returning ``None``.
 """
-
 from __future__ import annotations
+
 
 import logging
 import threading
@@ -84,9 +84,9 @@ def get_active_provider() -> Optional[VideoGenProvider]:
     """
     configured: Optional[str] = None
     try:
-        from hermes_cli.config import load_config
+        from hermes_cli.config import load_config_readonly
 
-        cfg = load_config()
+        cfg = load_config_readonly()
         section = cfg.get("video_gen") if isinstance(cfg, dict) else None
         if isinstance(section, dict):
             raw = section.get("provider")

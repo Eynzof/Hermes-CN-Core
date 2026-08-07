@@ -1,6 +1,6 @@
 """Tests for agent/compact_reminder.py — CompactReminderProvider logic."""
-
 from __future__ import annotations
+
 
 from types import SimpleNamespace
 from typing import Any, Dict

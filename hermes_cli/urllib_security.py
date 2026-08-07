@@ -1,6 +1,6 @@
 """Security policy for credential-bearing stdlib urllib requests."""
-
 from __future__ import annotations
+
 
 import copy
 import urllib.parse

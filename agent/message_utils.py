@@ -24,8 +24,8 @@ compatibility (``AIAgent._VALID_API_ROLES`` / ``_get_tool_call_id_static`` /
 
 Everything here is intentionally pure and allocation-light.
 """
-
 from __future__ import annotations
+
 
 from typing import Any, Dict, Tuple
 

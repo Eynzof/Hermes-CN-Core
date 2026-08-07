@@ -285,7 +285,7 @@ Automatically falls back to the specified model when the default is overloaded (
 | Flag | Effect |
 |------|--------|
 | `--model <alias>` | Model selection: `sonnet`, `opus`, `haiku`, or full name like `claude-sonnet-4-6` |
-| `--effort <level>` | Reasoning depth: `low`, `medium`, `high`, `max`, `auto` | Both |
+| `--effort <level>` | Reasoning depth: `low`, `medium`, `high`, `xhigh`, `max` |
 | `--max-turns <n>` | Limit agentic loops (print mode only; prevents runaway) |
 | `--max-budget-usd <n>` | Cap API spend in dollars (print mode only) |
 | `--fallback-model <model>` | Auto-fallback when default model is overloaded (print mode only) |
@@ -366,11 +366,18 @@ mcp__<server>__<tool>   # Specific MCP tool
 {
   "permissions": {
     "allow": ["Bash(npm run lint:*)", "WebSearch", "Read"],
-    "ask": ["Write(*.ts)", "Bash(git push*)"],
+    "ask": ["Write(*.ts)", "Bash(git push*)", "Bash(git commit*)", "Bash(git worktree*)", "Bash(git checkout*)", "Bash(gh pr create*)", "Bash(gh pr merge*)"],
     "deny": ["Read(.env)", "Bash(rm -rf *)"]
   }
 }
 ```
+
+> **⚠️ Dangerous git operations — the user decides; never auto-execute.**
+> `git worktree add` / `git worktree remove`, branch creation/switching, `git commit`,
+> `git push`, and PR creation/merge are **high-risk operations** (irreversible, and/or
+> they change shared remote state). Keep them under `ask` (never `allow`): the agent
+> must explain the intent and get the user's **explicit approval** before each one, and
+> must not batch/loop them (auto-commit, auto-push, auto-PR) without per-action consent.
 
 ### Memory Files (CLAUDE.md) Hierarchy
 1. **Global:** `~/.claude/CLAUDE.md` — applies to all projects
@@ -409,7 +416,7 @@ Use the `#` prefix in interactive mode to quickly add to memory: `# Always use 2
 | Command | Purpose |
 |---------|---------|
 | `/model [model]` | Switch models mid-session (use arrow keys to adjust effort) |
-| `/effort [level]` | Set reasoning effort: `low`, `medium`, `high`, `max`, or `auto` |
+| `/effort [level]` | Set reasoning effort: `low`, `medium`, `high`, `xhigh`, or `max` |
 | `/init` | Create a CLAUDE.md file for project memory |
 | `/memory` | Open CLAUDE.md for editing |
 | `/config` | Open interactive settings configuration |

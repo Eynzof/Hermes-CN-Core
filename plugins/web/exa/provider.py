@@ -21,8 +21,8 @@ The previous in-tree implementation lived at
 canonical replacement. Behavior is bit-for-bit identical aside from the
 ABC method-name change.
 """
-
 from __future__ import annotations
+
 
 import logging
 import os

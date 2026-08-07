@@ -26,6 +26,7 @@ Session metadata contract (preserved from the legacy ``CloudBrowserProvider``)::
         "session_name": str,        # unique name for agent-browser --session
         "bb_session_id": str,       # provider session ID (for close/cleanup)
         "cdp_url": str,             # CDP websocket URL
+        "expires_at": str,          # optional provider-authoritative ISO timestamp
         "features": dict,           # feature flags that were enabled
         "external_call_id": str,    # optional, managed-gateway billing key
     }
@@ -34,8 +35,8 @@ Session metadata contract (preserved from the legacy ``CloudBrowserProvider``)::
 :mod:`tools.browser_tool` — it holds the provider's session ID regardless of
 which provider is in use.
 """
-
 from __future__ import annotations
+
 
 import abc
 from typing import Any, Dict
@@ -96,6 +97,7 @@ class BrowserProvider(abc.ABC):
                 "session_name": str,    # unique name for agent-browser --session
                 "bb_session_id": str,   # provider session ID (for close/cleanup)
                 "cdp_url": str,         # CDP websocket URL
+                "expires_at": str,      # optional provider-authoritative ISO timestamp
                 "features": dict,       # feature flags that were enabled
             }
 

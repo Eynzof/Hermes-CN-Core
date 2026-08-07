@@ -9,8 +9,8 @@ on unrelated skill content.
 
 Regression for issue #15305.
 """
-
 from __future__ import annotations
+
 
 import importlib.util
 from pathlib import Path

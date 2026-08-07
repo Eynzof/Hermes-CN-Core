@@ -1519,6 +1519,13 @@ class TestToolsetInjection:
             broken_fixed = True
             call_count = 0
 
+            # The failed server is now serving a post-failure backoff
+            # (#50394: prevents a tight re-spawn storm across the frequent
+            # per-worker-session discovery passes). Expire that cooldown to
+            # simulate the retry window having elapsed.
+            import tools.mcp_tool as _mcp_mod
+            _mcp_mod._server_connect_retry_after.pop("broken", None)
+
             # Second call: should retry broken, skip good
             result2 = discover_mcp_tools()
             assert "mcp__good__ping" in result2
@@ -4171,8 +4178,14 @@ class TestMCPBuiltinCollisionGuard:
 
         _servers.pop("minimax", None)
 
-    def test_mcp_tool_allowed_when_collision_is_another_mcp(self):
-        """Collision between two MCP toolsets is allowed (last wins)."""
+    def test_mcp_tool_rejected_when_collision_is_another_mcp(self):
+        """Cross-server MCP collisions preserve the existing owner (fail closed).
+
+        Upstream deliberately changed this from the old fork "last wins"
+        behavior: a normalized-name collision between two MCP servers must
+        not silently swap which server owns the tool, so the existing owner
+        stays active and the new candidate is skipped.
+        """
         from tools.registry import ToolRegistry
         from tools.mcp_tool import _discover_and_register_server, _servers, MCPServerTask
 
@@ -4204,9 +4217,13 @@ class TestMCPBuiltinCollisionGuard:
                 _discover_and_register_server("srv", {"command": "test", "args": []})
             )
 
-        # MCP-to-MCP collision is allowed — the new server wins.
-        assert "mcp__srv__do_thing" in registered
-        assert mock_registry.get_toolset_for_tool("mcp__srv__do_thing") == "mcp-srv"
+        # Cross-server MCP collisions fail closed: the existing owner stays active.
+        assert "mcp__srv__do_thing" not in registered
+        entry = mock_registry.get_entry("mcp__srv__do_thing")
+        assert entry is not None
+        assert entry.toolset == "mcp-old"
+        assert entry.schema["description"] == "From another MCP server"
+        assert mock_registry.get_toolset_for_tool("mcp__srv__do_thing") == "mcp-old"
 
         _servers.pop("srv", None)
 

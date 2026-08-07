@@ -5,8 +5,8 @@ Both parsers are built together because they shared one inline block (the
 ``gateway`` section also defined ``proxy``). Handlers injected to avoid
 importing ``main``.
 """
-
 from __future__ import annotations
+
 
 import argparse
 from typing import Callable

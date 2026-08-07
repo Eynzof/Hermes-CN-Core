@@ -23,8 +23,8 @@ Design notes
   find later that memory adds signal we can wire it; for now,
   skills + name + model is plenty.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import logging

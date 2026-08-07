@@ -303,7 +303,7 @@ def main(argv: list[str] | None = None) -> int:
         out = orjson.dumps(schema, default=str, option=orjson.OPT_INDENT_2).decode('utf-8')
 
     if args.output:
-        Path(args.output).write_text(out)
+        Path(args.output).write_text(out, encoding="utf-8")
         print(f"Schema written to {args.output}", file=sys.stderr)
     else:
         print(out)

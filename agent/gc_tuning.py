@@ -41,8 +41,8 @@ modules, tool schemas) into the permanent generation the collector never
 scans.  It is opt-in only — freezing objects that later become garbage would
 pin them for the process lifetime — so nothing here calls it automatically.
 """
-
 from __future__ import annotations
+
 
 import contextlib
 import functools

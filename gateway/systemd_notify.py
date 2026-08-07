@@ -1,6 +1,6 @@
 """Minimal, optional systemd ``sd_notify`` support for the gateway."""
-
 from __future__ import annotations
+
 
 import asyncio
 import math

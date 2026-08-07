@@ -1,6 +1,6 @@
 """Sanitize user prompt text leaked from terminal / paste control sequences."""
-
 from __future__ import annotations
+
 
 import re
 

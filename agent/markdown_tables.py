@@ -26,8 +26,8 @@ emoji-with-variation-selector sequences (e.g. ``⚠️``); we clamp those to
 those specific glyphs is preferable to silently widening every table
 that contains one.
 """
-
 from __future__ import annotations
+
 from agent.re_compat import re
 from typing import List
 

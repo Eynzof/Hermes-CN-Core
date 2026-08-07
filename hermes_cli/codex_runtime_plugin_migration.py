@@ -33,8 +33,8 @@ What's NOT migrated (intentional):
   AGENTS.md (project-level) is already in the worktree, so codex picks
   it up without translation. No code needed.
 """
-
 from __future__ import annotations
+
 
 import logging
 import os

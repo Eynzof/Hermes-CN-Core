@@ -23,8 +23,8 @@ The ``#/definitions/...`` → ``#/$defs/...`` rewrite for draft-07 refs is
 handled separately in ``tools/mcp_tool._normalize_mcp_input_schema`` so it
 applies at MCP registration time for all providers.
 """
-
 from __future__ import annotations
+
 
 import copy
 from typing import Any, Dict, List

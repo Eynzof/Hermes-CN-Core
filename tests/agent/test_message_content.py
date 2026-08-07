@@ -1,5 +1,5 @@
-from __future__ import annotations
 
+from __future__ import annotations
 from types import SimpleNamespace
 
 from agent.message_content import flatten_message_text

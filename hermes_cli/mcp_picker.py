@@ -15,8 +15,8 @@ to act on it. The action depends on current status:
 The picker loops until the user hits ESC/q so they can manage multiple
 entries in one session.
 """
-
 from __future__ import annotations
+
 
 import sys
 from dataclasses import dataclass

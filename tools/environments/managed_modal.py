@@ -1,6 +1,6 @@
 """Managed Modal environment backed by tool-gateway."""
-
 from __future__ import annotations
+
 
 import orjson
 import logging

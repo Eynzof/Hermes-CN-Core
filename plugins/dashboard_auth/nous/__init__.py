@@ -66,8 +66,8 @@ Skip reasons:
   ("Set HERMES_DASHBOARD_OAUTH_CLIENT_ID …") instead of the bare "no
   providers registered" the gate would otherwise emit.
 """
-
 from __future__ import annotations
+
 
 import pybase64 as base64
 import hashlib
@@ -420,6 +420,10 @@ class NousDashboardAuthProvider(DashboardAuthProvider):
                 self._jwks_url,
                 cache_keys=True,
                 lifespan=_JWKS_CACHE_SECONDS,
+                headers={
+                    "Accept": "application/json",
+                    "User-Agent": "HermesAgent/1.0",
+                },
             )
         return self._jwks_client
 

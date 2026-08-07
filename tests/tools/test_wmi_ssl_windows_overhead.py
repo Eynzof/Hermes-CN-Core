@@ -16,8 +16,8 @@ Behavioural guards for the agent-init hotspots the plan targets:
 The pure-Python contracts run on every host; the live ``_wmi`` import-cascade
 guard is Windows-only (the ``_wmi`` builtin only exists there).
 """
-
 from __future__ import annotations
+
 
 import importlib.util
 import orjson

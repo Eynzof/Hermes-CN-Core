@@ -14,8 +14,8 @@ timeout>" wrapper.
 The fixed loop must surface the real exception once, promptly -- long before
 the outer deadline.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import time

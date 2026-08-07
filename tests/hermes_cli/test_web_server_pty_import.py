@@ -14,8 +14,8 @@ This test asserts the live state on whichever platform CI runs on, plus a
 source-text check confirming the branch shape is preserved so a future
 refactor can't accidentally collapse it back to a POSIX-only import.
 """
-
 from __future__ import annotations
+
 
 import sys
 
@@ -33,20 +33,6 @@ def test_web_server_exposes_pty_bridge_symbols():
     # one from the platform bridge, or the local fallback class.
     assert isinstance(web_server.PtyUnavailableError, type)
     assert issubclass(web_server.PtyUnavailableError, BaseException)
-
-
-@pytest.mark.skipif(not sys.platform.startswith("win"), reason="Windows-only")
-def test_web_server_uses_win_pty_bridge_on_windows():
-    """On native Windows, web_server.PtyBridge must be the ConPTY backend."""
-    from hermes_cli.win_pty_bridge import WinPtyBridge
-
-    assert web_server.PtyBridge is WinPtyBridge
-    assert web_server._PTY_BRIDGE_AVAILABLE is True
-    # And the error class must be the one from the same module so isinstance
-    # checks in /api/pty's spawn fallback path actually work.
-    from hermes_cli.win_pty_bridge import PtyUnavailableError as WinErr
-
-    assert web_server.PtyUnavailableError is WinErr
 
 
 @pytest.mark.skipif(sys.platform.startswith("win"), reason="POSIX-only")

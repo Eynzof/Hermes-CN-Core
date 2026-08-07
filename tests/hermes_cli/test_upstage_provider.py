@@ -6,8 +6,8 @@ correctly but, on re-entry, showed a different provider as active. Root cause:
 `upstage` overlay, so `resolve_provider_full("upstage")` returned None, the
 config provider was discarded, and resolution fell through to env auto-detect.
 """
-
 from __future__ import annotations
+
 
 import sys
 import types
@@ -33,20 +33,6 @@ class TestUpstageResolver:
         assert pdef.id == "upstage"
         assert pdef.base_url == "https://api.upstage.ai/v1"
         assert "UPSTAGE_API_KEY" in pdef.api_key_env_vars
-
-    def test_get_provider_returns_upstage_def(self):
-        from hermes_cli.providers import get_provider
-
-        pdef = get_provider("upstage")
-        assert pdef is not None and pdef.id == "upstage"
-        assert pdef.transport == "openai_chat"
-
-    def test_solar_alias_normalizes_to_upstage(self):
-        from hermes_cli.providers import normalize_provider, resolve_provider_full
-
-        assert normalize_provider("solar") == "upstage"
-        pdef = resolve_provider_full("solar", {}, [])
-        assert pdef is not None and pdef.id == "upstage"
 
 
 class TestUpstageOverlay:

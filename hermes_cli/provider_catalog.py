@@ -32,8 +32,8 @@ longer decide which providers exist.
 Parity contract (locked by tests): the union of the two tabs equals the
 ``CANONICAL_PROVIDERS`` universe, i.e. exactly what ``hermes model`` shows.
 """
-
 from __future__ import annotations
+
 
 from dataclasses import dataclass
 

@@ -7,8 +7,8 @@ layout, and the (ported-from-desktop) palette all live in
 ``agent.learning_graph`` / ``agent.learning_graph_render`` so the CLI, the TUI
 ``/journey`` overlay, and the desktop panel draw the same data.
 """
-
 from __future__ import annotations
+
 
 import argparse
 import shutil

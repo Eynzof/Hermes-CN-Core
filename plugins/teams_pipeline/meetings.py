@@ -1,6 +1,6 @@
 """Graph-backed Teams meeting helpers for the plugin runtime."""
-
 from __future__ import annotations
+
 
 import tempfile
 from pathlib import Path

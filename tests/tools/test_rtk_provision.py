@@ -5,8 +5,8 @@ Tests cover:
 - ``_rtk_available`` — cached availability detection (fails gracefully)
 - ``_find_rtk`` — search order: managed -> legacy -> PATH
 """
-
 from __future__ import annotations
+
 
 import platform
 from pathlib import Path

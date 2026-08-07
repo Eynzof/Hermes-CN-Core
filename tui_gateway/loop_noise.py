@@ -14,8 +14,8 @@ collapses exactly this class of teardown error to one debug line and forwards
 everything else to asyncio's default handler unchanged, so genuine loop bugs
 still surface.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import logging

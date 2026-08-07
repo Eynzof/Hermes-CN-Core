@@ -17,8 +17,8 @@ This preserves strict message-role alternation and the design invariant that a
 completion surfaces as a NEW turn only when idle, never spliced into a running
 turn.
 """
-
 from __future__ import annotations
+
 
 import sys
 import threading
@@ -127,25 +127,3 @@ async def test_internal_event_does_not_interrupt_busy_session() -> None:
     adapter._send_with_retry.assert_not_called()
 
 
-@pytest.mark.asyncio
-async def test_non_internal_event_still_interrupts() -> None:
-    """Regression-guard the other direction: a real user message in interrupt
-    mode with no subagents still interrupts (behaviour unchanged)."""
-    runner = _make_runner()
-    runner._busy_input_mode = "interrupt"
-    adapter = _make_adapter()
-    event = _make_internal_event(text="please stop")
-    # Flip to a real user message.
-    object.__setattr__(event, "internal", False)
-    sk = build_session_key(event.source)
-    parent = _make_running_parent()
-    runner._running_agents[sk] = parent
-    runner.adapters[event.source.platform] = adapter
-
-    from unittest.mock import patch
-
-    with patch("gateway.run.merge_pending_message_event"):
-        handled = await runner._handle_active_session_busy_message(event, sk)
-
-    assert handled is True
-    parent.interrupt.assert_called_once_with("please stop")

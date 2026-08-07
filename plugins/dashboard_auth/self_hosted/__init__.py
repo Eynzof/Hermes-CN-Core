@@ -72,8 +72,8 @@ client_id), it writes a human-readable reason to the module-level
 :data:`LAST_SKIP_REASON` so the gate's fail-closed branch can surface a useful
 operator error instead of the bare "no providers registered".
 """
-
 from __future__ import annotations
+
 
 import pybase64 as base64
 import hashlib
@@ -601,6 +601,10 @@ class SelfHostedOIDCProvider(DashboardAuthProvider):
                 disco["jwks_uri"],
                 cache_keys=True,
                 lifespan=_JWKS_CACHE_SECONDS,
+                headers={
+                    "Accept": "application/json",
+                    "User-Agent": "HermesAgent/1.0",
+                },
             )
         return self._jwks_client
 

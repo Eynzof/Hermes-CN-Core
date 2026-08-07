@@ -6,8 +6,8 @@ the previous loose substring match (``"... gateway" in cmdline``) false-matched
 ``python -m tui_gateway``, which let ``restart()`` race a still-draining old
 process and ``status``/``start`` report false positives.
 """
-
 from __future__ import annotations
+
 
 import pytest
 

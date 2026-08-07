@@ -6,8 +6,8 @@ sends a deterministic userId derived from the active profile so that
 Camofox can map it to the same persistent browser profile directory
 across restarts.
 """
-
 from __future__ import annotations
+
 
 import uuid
 from pathlib import Path

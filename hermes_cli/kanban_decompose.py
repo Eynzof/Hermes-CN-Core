@@ -33,8 +33,8 @@ Design notes
   rewrite it to the configured ``default_assignee`` (or the default
   profile if unset). A child task NEVER ends up with ``assignee=None``.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import logging

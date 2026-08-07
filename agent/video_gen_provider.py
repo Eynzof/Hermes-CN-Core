@@ -43,8 +43,8 @@ All providers return a dict built by :func:`success_response` /
     error           str             only when success=False
     error_type      str             only when success=False
 """
-
 from __future__ import annotations
+
 
 import abc
 import pybase64 as base64

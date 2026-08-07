@@ -1,6 +1,6 @@
 """Tests for macOS PyInstaller runtime framework normalization."""
-
 from __future__ import annotations
+
 
 import importlib.util
 import os

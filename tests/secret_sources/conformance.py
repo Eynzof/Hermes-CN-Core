@@ -17,8 +17,8 @@ when violated: never raising, never prompting (stdin closed), respecting
 disabled config, valid identity attributes, and orchestrator
 compatibility.
 """
-
 from __future__ import annotations
+
 
 from pathlib import Path
 

@@ -1,6 +1,6 @@
 """Normalized models for the Teams meeting pipeline plugin."""
-
 from __future__ import annotations
+
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone

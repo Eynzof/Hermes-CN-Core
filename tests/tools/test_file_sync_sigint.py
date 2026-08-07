@@ -11,8 +11,8 @@ Unlike ``test_file_sync_back.py`` this module does not depend on ``fcntl`` (the
 locked sync body is stubbed), so it runs on Windows too — the platform the bug
 actually manifests on.
 """
-
 from __future__ import annotations
+
 
 import os
 import signal

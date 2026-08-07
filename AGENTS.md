@@ -225,6 +225,9 @@ main checkout).
 
 Hermes CN 的需求与 bug 修复通常**同时横跨 Core 与 [Desktop](https://github.com/Eynzof/Hermes-CN-Desktop) 两个仓库**。正式动手写代码前，两个仓库都必须先过这道预检，**不要直接在 `main` 上改**：
 
+> **⚠️ 危险操作警示——必须由用户决定，Agent 不得自动执行。**
+> 创建/切换分支、`git worktree add` / `git worktree remove`、`git commit`、`git push`、创建/合并 PR 都属于**高风险操作**（不可逆，或直接影响远端共享状态）。执行前必须先向用户说明操作意图、具体命令与后果，获得用户的**明确同意**后才可执行；用户未同意时保持现状、什么都不做。批量或循环自动触发这些操作（例如"自动为每个 issue 开分支并 push、开 PR"）同样禁止，必须逐项征得用户同意。
+
 1. **确认主分支已与远端同步**。对 Core 与 Desktop 分别 `git fetch origin`，确认本地 `main` 与 `origin/main` 一致（`git rev-list --left-right --count main...origin/main` 应为 `0  0`）；落后就先快进，工作区脏就先收拾干净。Core 是 fork——**永远不要把 `upstream/main` 直接并进 `main`**，上游同步走 `./scripts/sync-upstream.sh`。
 2. **为每个仓库开独立的功能分支 + git worktree**，让 Core 与 Desktop 的改动互不干扰、可并行：
    ```bash
@@ -234,7 +237,7 @@ Hermes CN 的需求与 bug 修复通常**同时横跨 Core 与 [Desktop](https:/
    分支命名沿用各仓库既有约定：Core 的 fork 行为补丁用 `cn/P-xxx-*`（并登记进 `FORK_NOTES.md`），干净上游 PR 用 `upstream-pr/*`，文档/杂项用 `docs/` `chore/`；Desktop 沿用 Conventional 风格。注意 worktree 默认共享主 checkout 的 venv（见上一段的 venv 探测顺序），不必每个 worktree 重装依赖。
 3. 不要在同一个工作目录里来回 `git checkout` 切分支——双仓并行时极易串味；每条线一个 worktree。
 
-**收尾流程（每个仓库都要走完，缺一不可）**：改完 → 跑各自校验（Core：`scripts/run_tests.sh` 全套 + `ruff check .`；Desktop：`pnpm typecheck && pnpm test:unit && cargo check`）→ commit → push → 开 PR → **盯 PR 上 GitHub Actions 全绿**（Core：`lint.yml` + 测试切片），没过就回去修，别把任务当完成。
+**收尾流程（每个仓库都要走完，缺一不可）**：改完 → 跑各自校验（Core：`scripts/run_tests.sh` 全套 + `ruff check .`；Desktop：`pnpm typecheck && pnpm test:unit && cargo check`）→ commit → push → 开 PR → **盯 PR 上 GitHub Actions 全绿**（Core：`lint.yml` + 测试切片），没过就回去修，别把任务当完成。其中 **commit、push、开 PR 每一步都属于危险操作，必须先向用户说明并取得明确同意**，Agent 不得擅自自动执行。
 
 ## Project Structure
 
@@ -340,7 +343,7 @@ class AIAgent:
         provider: str = None,
         api_mode: str = None,              # "chat_completions" | "codex_responses" | ...
         model: str = "",                   # empty → resolved from config/provider later
-        max_iterations: int = 90,          # tool-calling iterations (shared with subagents)
+        max_iterations: int = 500,         # tool-calling iterations (shared with subagents)
         enabled_toolsets: list = None,
         disabled_toolsets: list = None,
         quiet_mode: bool = False,
@@ -1014,7 +1017,8 @@ Two shapes:
 Roles:
 
 - `role="leaf"` (default) — focused worker. Cannot call `delegate_task`,
-  `clarify`, `memory`, `send_message`, `execute_code`.
+  `clarify`, `memory`, `send_message`, `cronjob`. Retains `execute_code`
+  (programmatic tool calling).
 - `role="orchestrator"` — retains `delegate_task` so it can spawn its
   own workers. Gated by `delegation.orchestrator_enabled` (default true)
   and bounded by `delegation.max_spawn_depth` (default 2).
@@ -1301,14 +1305,15 @@ def profile_env(tmp_path, monkeypatch):
 hermetic environment parity with CI (clean env via `env -i`, credential vars unset, TZ=UTC,
 LANG/LC_ALL=C.UTF-8, PYTHONHASHSEED=0) and runs each test file in its own
 `python -m pytest <file>` subprocess via `scripts/run_tests_parallel.py` (no xdist, no shared
-workers). Direct `pytest` on a 16+ core developer machine with API keys set diverges from CI
-in ways that have caused multiple "works locally, fails in CI" incidents (and the reverse).
+workers; worker count auto-scaled from CPU count). Direct `pytest` on a 16+ core developer
+machine with API keys set diverges from CI in ways that have caused multiple
+"works locally, fails in CI" incidents (and the reverse).
 
 ```bash
 scripts/run_tests.sh                                  # full suite, CI-parity
 scripts/run_tests.sh tests/gateway/                   # one directory
-scripts/run_tests.sh tests/agent/test_foo.py::test_x  # one test
-scripts/run_tests.sh tests/foo.py -- --tb=long        # path + pass-through pytest flags (after `--`)
+scripts/run_tests.sh tests/agent/test_foo.py -k test_x  # one test (file + -k; the runner is file-granular)
+scripts/run_tests.sh -v --tb=long                     # pass-through pytest flags
 ```
 
 ### Subprocess-per-file isolation

@@ -4,8 +4,8 @@ The interactive CLI captures Rich output and re-renders it through
 prompt_toolkit, so it needs forced ANSI (``--force-color``); chat surfaces
 render plain text, so the default captured path must stay escape-free.
 """
-
 from __future__ import annotations
+
 
 import argparse
 import contextlib

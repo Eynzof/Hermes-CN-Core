@@ -16,8 +16,8 @@ Auth env var::
 
     BRAVE_SEARCH_API_KEY=...    # https://brave.com/search/api/ (free tier)
 """
-
 from __future__ import annotations
+
 
 import logging
 import os

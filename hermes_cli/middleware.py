@@ -4,13 +4,13 @@ Observer hooks report what happened. Middleware can change what happens by
 rewriting a request or wrapping the actual execution callback. Keep the small
 contract helpers here so agent-loop call sites and plugins share one vocabulary.
 """
-
 from __future__ import annotations
+
 
 import logging
 from agent.fast_deepcopy import orjson_roundtrip_copy as _orjson_copy
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List
 
 logger = logging.getLogger(__name__)
 
@@ -125,17 +125,31 @@ def apply_tool_request_middleware(
     Middleware may return ``{"args": {...}}`` to replace the effective tool
     arguments before hooks, guardrails, approvals, and execution see them.
     """
-    if not _has_middleware(TOOL_REQUEST_MIDDLEWARE):
-        return RequestMiddlewareResult(
-            payload=args,
-            original_payload=args,
-            changed=False,
-            trace=[],
-        )
-
     original_args = _safe_copy(args)
     current_args = _safe_copy(original_args)
     trace: List[Dict[str, Any]] = []
+
+    session_id = str(context.get("session_id") or "")
+    skip_relay = bool(context.pop("skip_relay", False))
+    if session_id and not skip_relay:
+        from agent import relay_runtime
+
+        relay_args = relay_runtime.apply_tool_request_intercepts(
+            session_id=session_id,
+            tool_name=tool_name,
+            args=current_args,
+        )
+        if relay_args != current_args:
+            current_args = _safe_copy(relay_args)
+            trace.append({"source": "nemo_relay"})
+
+    if not _has_middleware(TOOL_REQUEST_MIDDLEWARE):
+        return RequestMiddlewareResult(
+            payload=args if not trace else current_args,
+            original_payload=args,
+            changed=bool(trace),
+            trace=trace,
+        )
 
     for result in _invoke_middleware(
         TOOL_REQUEST_MIDDLEWARE,

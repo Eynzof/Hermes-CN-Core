@@ -6,8 +6,8 @@ gateway/Desktop UI a clean boundary for turns whose first assistant payload is
 a tool call with no preceding text, preventing the state machine from getting
 stuck between ``message.start`` and the first ``tool.start``.
 """
-
 from __future__ import annotations
+
 
 from types import SimpleNamespace
 from unittest.mock import MagicMock, Mock, patch

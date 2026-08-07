@@ -13,8 +13,8 @@ placeholder, 404'd three times, then fell back to a reference model.
 ``provider == "moa"``; ``switch_model`` (the live in-place swap) must do the
 same so the primary call always routes through ``MoAClient.chat.completions``.
 """
-
 from __future__ import annotations
+
 
 import types
 

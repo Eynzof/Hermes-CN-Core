@@ -13,8 +13,8 @@ per-skill source links and a cleaned-up category sidebar:
    sidebar doesn't fill with one-off junk like version strings or brand
    names.
 """
-
 from __future__ import annotations
+
 
 import importlib.util
 from pathlib import Path
@@ -65,14 +65,32 @@ def test_source_url_synthesizes_github_root_when_no_subpath(mod):
 
 
 def test_source_url_synthesizes_clawhub(mod):
-    assert mod._source_url("clawhub", "go-music-skill", {}) == "https://clawhub.ai/skills/go-music-skill"
+    # ClawHub URLs require the owner handle; without it we cannot build a
+    # valid URL, so the result is "" (better than a broken 404 link).
+    assert mod._source_url("clawhub", "go-music-skill", {}) == ""
 
 
 def test_source_url_synthesizes_clawhub_strips_prefix(mod):
     # identifier may arrive already prefixed; we must not double-prefix.
     assert (
         mod._source_url("clawhub", "clawhub/go-music-skill", {})
-        == "https://clawhub.ai/skills/go-music-skill"
+        == ""
+    )
+
+
+def test_source_url_synthesizes_clawhub_with_owner(mod):
+    # When the owner handle is available in extra, the URL includes it.
+    assert (
+        mod._source_url("clawhub", "go-music-skill", {"owner": "somepublisher"})
+        == "https://clawhub.ai/somepublisher/skills/go-music-skill"
+    )
+
+
+def test_source_url_synthesizes_clawhub_with_owner_strips_prefix(mod):
+    # Owner + prefixed identifier: prefix is stripped, owner is used.
+    assert (
+        mod._source_url("clawhub", "clawhub/go-music-skill", {"owner": "somepublisher"})
+        == "https://clawhub.ai/somepublisher/skills/go-music-skill"
     )
 
 

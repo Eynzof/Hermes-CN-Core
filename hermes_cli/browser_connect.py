@@ -1,10 +1,11 @@
 """Shared helpers for attaching Hermes to a local Chromium-family CDP port."""
-
 from __future__ import annotations
+
 
 import logging
 import os
 import platform
+import posixpath
 import shlex
 import shutil
 import subprocess
@@ -95,12 +96,10 @@ def get_chrome_debug_candidates(system: str) -> list[str]:
         for _, group in install_groups:
             for base in filter(None, bases):
                 for parts in group:
-                    path = os.path.join(base, *parts)
-                    # On Windows, os.path.join uses backslashes, but WSL
-                    # /mnt/ paths need forward slashes for isfile to resolve.
-                    if os.name == "nt" and path.startswith("/mnt/"):
-                        path = path.replace("\\", "/")
-                    add(path)
+                    # Only called with WSL ``/mnt/c/...`` bases — those are
+                    # POSIX paths regardless of the host OS, so join with
+                    # posixpath (os.path.join would emit backslashes on nt).
+                    add(posixpath.join(base, *parts))
 
     if system == "Darwin":
         for app in _DARWIN_APPS:

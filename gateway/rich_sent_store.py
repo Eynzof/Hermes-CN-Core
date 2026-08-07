@@ -12,8 +12,8 @@ index.
 Best-effort and dependency-free: every operation swallows errors and degrades
 to a no-op / ``None`` so it can never break a send or an inbound message.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import os

@@ -10,8 +10,8 @@ first" -- surfacing to GUI/bootstrap users as ``git checkout main failed
 The ``hermes update`` Python path already clears the conflict with ``git reset``
 before stashing (#4735); both installer scripts must do the same.
 """
-
 from __future__ import annotations
+
 from agent.re_compat import re
 import shutil
 import subprocess

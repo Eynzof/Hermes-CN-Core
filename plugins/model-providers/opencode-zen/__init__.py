@@ -6,8 +6,8 @@ Both use per-model api_mode routing:
   - OpenCode Go: MiniMax → anthropic_messages, GLM/Kimi → chat_completions
     (this profile)
 """
-
 from __future__ import annotations
+
 
 from typing import Any
 

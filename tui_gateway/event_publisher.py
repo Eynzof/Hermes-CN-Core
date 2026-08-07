@@ -16,8 +16,8 @@ sidecar to drain.  A dead WS short-circuits all subsequent writes.
 Actual ``send`` calls run on a daemon thread so the TeeTransport's
 ``write`` returns after enqueueing (best-effort; drop when the queue is full).
 """
-
 from __future__ import annotations
+
 
 import orjson
 import logging

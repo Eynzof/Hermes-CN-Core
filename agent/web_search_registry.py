@@ -29,8 +29,8 @@ applied at every step so a search-only provider (``brave-free``)
 configured as ``web.extract_backend`` correctly falls through to an
 extract-capable backend.
 """
-
 from __future__ import annotations
+
 
 import logging
 import threading
@@ -98,9 +98,9 @@ def get_provider(name: str) -> Optional[WebSearchProvider]:
 def _read_config_key(*path: str) -> Optional[str]:
     """Resolve a dotted config key from ``config.yaml``. Returns None on miss."""
     try:
-        from hermes_cli.config import load_config
+        from hermes_cli.config import load_config_readonly
 
-        cfg = load_config()
+        cfg = load_config_readonly()
         cur = cfg
         for segment in path:
             if not isinstance(cur, dict):

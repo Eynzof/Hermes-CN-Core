@@ -10,8 +10,8 @@ Resolution order for host-specific settings:
   2. Flat/global fields from config root
   3. Defaults (host name as workspace/peer)
 """
-
 from __future__ import annotations
+
 
 import json
 import orjson
@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlparse
 
+from agent.secret_scope import get_secret
 from hermes_constants import get_hermes_home
 from hermes_cli.profiles import _get_default_hermes_home
 from plugins.plugin_utils import SingletonSlot
@@ -470,7 +471,7 @@ class HonchoClientConfig:
     ) -> HonchoClientConfig:
         """Create config from environment variables (fallback)."""
         resolved_host = host or resolve_active_host()
-        api_key = os.environ.get("HONCHO_API_KEY")
+        api_key = get_secret("HONCHO_API_KEY")
         base_url = os.environ.get("HONCHO_BASE_URL", "").strip() or None
         timeout = _resolve_optional_float(os.environ.get("HONCHO_TIMEOUT"))
         return cls(
@@ -526,7 +527,7 @@ class HonchoClientConfig:
         api_key = (
             host_block.get("apiKey")
             or raw.get("apiKey")
-            or os.environ.get("HONCHO_API_KEY")
+            or get_secret("HONCHO_API_KEY")
         )
 
         environment = (
@@ -743,7 +744,7 @@ class HonchoClientConfig:
         try:
             root = subprocess.run(
                 ["git", "rev-parse", "--show-toplevel"],
-                capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=cwd, timeout=5,
+                capture_output=True, text=True, encoding='utf-8', errors='replace', cwd=cwd, timeout=5,
                 stdin=subprocess.DEVNULL,
             )
             if root.returncode == 0:

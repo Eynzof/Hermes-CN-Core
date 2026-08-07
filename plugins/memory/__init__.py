@@ -18,8 +18,8 @@ Usage:
     available = discover_memory_providers()   # [(name, desc, available), ...]
     provider = load_memory_provider("mnemosyne")  # MemoryProvider instance
 """
-
 from __future__ import annotations
+
 
 import importlib
 import importlib.machinery
@@ -81,7 +81,7 @@ def _is_memory_provider_dir(path: Path) -> bool:
     if not init_file.exists():
         return False
     try:
-        source = init_file.read_text(errors="replace")[:8192]
+        source = init_file.read_text(errors="replace", encoding="utf-8")[:8192]
         return "register_memory_provider" in source or "MemoryProvider" in source
     except Exception:
         return False

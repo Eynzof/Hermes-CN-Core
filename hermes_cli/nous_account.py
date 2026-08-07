@@ -1,6 +1,6 @@
 """Normalized Nous Portal account entitlement helpers."""
-
 from __future__ import annotations
+
 
 import hashlib
 import orjson

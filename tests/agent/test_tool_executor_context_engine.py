@@ -27,6 +27,7 @@ def agent():
     a = MagicMock()
     a._context_engine_tool_names = {"context_usage", "compact"}
     a._interrupt_requested = False
+    a._incremental_persistence_failed = False
     a.tool_delay = 0
     a._quiet_mode = True
     a._cached_system_prompt = "You are helpful."

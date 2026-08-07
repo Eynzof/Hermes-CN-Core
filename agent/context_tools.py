@@ -4,8 +4,8 @@ This module keeps schema definitions and mode guidance logic out of the
 2972-line ContextCompressor and provides a single import point for both
 the context_usage and compact tools.
 """
-
 from __future__ import annotations
+
 
 from enum import Enum
 from typing import Any, Dict

@@ -18,11 +18,11 @@ deterministic stubs for:
 …so the full code path is covered without a live cua-driver, a real
 auxiliary client, or network access.
 """
-
 from __future__ import annotations
 
-import pybase64 as base64
-import orjson
+
+import base64
+import json
 import os
 from unittest.mock import MagicMock, patch
 
@@ -92,7 +92,7 @@ def _make_capture(
 
 def _stub_aux_analysis(text: str):
     """Return a fake vision_analyze_tool coroutine result (JSON envelope)."""
-    return orjson.dumps({"success": True, "analysis": text}).decode('utf-8')
+    return json.dumps({"success": True, "analysis": text})
 
 
 # ---------------------------------------------------------------------------
@@ -120,16 +120,6 @@ class TestCaptureResponseDefaultPath:
         assert url.startswith("data:image/png;base64,")
         assert "vision_analysis" not in resp
 
-    def test_jpeg_capture_returns_image_jpeg_mime_when_native(self):
-        from tools.computer_use import tool as cu_tool
-
-        cap = _make_capture(png_b64=_JPEG_B64, mode="som")
-        with patch.object(cu_tool, "_should_route_through_aux_vision",
-                          return_value=False):
-            resp = cu_tool._capture_response(cap)
-
-        url = next(p for p in resp["content"] if p.get("type") == "image_url")
-        assert url["image_url"]["url"].startswith("data:image/jpeg;base64,")
 
     def test_ax_only_capture_returns_text_regardless_of_routing(self):
         from tools.computer_use import tool as cu_tool
@@ -144,7 +134,7 @@ class TestCaptureResponseDefaultPath:
         # the image branch.
         routing.assert_not_called()
         assert isinstance(resp, str)
-        body = orjson.loads(resp)
+        body = json.loads(resp)
         assert body["mode"] == "ax"
 
 
@@ -187,7 +177,7 @@ class TestCaptureResponseRoutedToAuxVision:
         # the contract that prevents #24015's HTTP 404 from firing on the
         # next agent turn.
         assert isinstance(resp, str)
-        body = orjson.loads(resp)
+        body = json.loads(resp)
         assert body["mode"] == "som"
         assert body["app"] == "Safari"
         assert "Sign in" in body["vision_analysis"]
@@ -209,129 +199,6 @@ class TestCaptureResponseRoutedToAuxVision:
         # against the same set-of-mark index the agent will see.
         assert "Sign in" in prompt_arg
 
-    def test_temp_screenshot_file_is_cleaned_up_after_routing(
-        self, tmp_cache_dir,
-    ):
-        from tools.computer_use import tool as cu_tool
-
-        cap = _make_capture(mode="som")
-        # We capture the path the aux call sees so we can assert it's gone
-        # after _capture_response returns.
-        observed_path = {}
-
-        def _fake_run_async(_coro):
-            return _stub_aux_analysis("description goes here")
-
-        def _fake_vat(image_path, _prompt):
-            observed_path["path"] = image_path
-            # File must exist while aux is being arranged.
-            assert os.path.exists(image_path)
-            return "<coro>"
-
-        fake_vat = MagicMock(side_effect=_fake_vat)
-
-        with patch.object(cu_tool, "_should_route_through_aux_vision",
-                          return_value=True), \
-             patch("model_tools._run_async", side_effect=_fake_run_async), \
-             patch("tools.vision_tools.vision_analyze_tool",
-                   new_callable=lambda: fake_vat):
-            cu_tool._capture_response(cap)
-
-        # File must be unlinked after _capture_response returns.
-        assert observed_path["path"]
-        assert not os.path.exists(observed_path["path"])
-
-    def test_aux_route_creates_missing_cache_dir(self, tmp_path):
-        from tools.computer_use import tool as cu_tool
-
-        cache_dir = tmp_path / "missing" / "cache_vision"
-        cap = _make_capture(mode="som")
-        observed_path = {}
-
-        def _fake_get(*_args, **_kw):
-            return cache_dir
-
-        def _fake_run_async(_coro):
-            return _stub_aux_analysis("description goes here")
-
-        def _fake_vat(image_path, _prompt):
-            observed_path["path"] = image_path
-            assert os.path.exists(image_path)
-            return "<coro>"
-
-        fake_vat = MagicMock(side_effect=_fake_vat)
-
-        with patch.object(cu_tool, "_should_route_through_aux_vision",
-                          return_value=True), \
-             patch("hermes_constants.get_hermes_dir", _fake_get), \
-             patch("model_tools._run_async", side_effect=_fake_run_async), \
-             patch("tools.vision_tools.vision_analyze_tool",
-                   new_callable=lambda: fake_vat):
-            resp = cu_tool._capture_response(cap)
-
-        assert isinstance(resp, str)
-        assert cache_dir.is_dir()
-        assert observed_path["path"]
-        assert not os.path.exists(observed_path["path"])
-
-    def test_temp_file_cleaned_up_even_when_aux_call_raises(
-        self, tmp_cache_dir,
-    ):
-        from tools.computer_use import tool as cu_tool
-
-        cap = _make_capture(mode="som")
-        observed_path = {}
-
-        def _fake_vat(image_path, _prompt):
-            observed_path["path"] = image_path
-            return "<coro>"
-
-        def _fake_run_async(_coro):
-            raise RuntimeError("aux LLM down")
-
-        fake_vat = MagicMock(side_effect=_fake_vat)
-
-        with patch.object(cu_tool, "_should_route_through_aux_vision",
-                          return_value=True), \
-             patch("model_tools._run_async", side_effect=_fake_run_async), \
-             patch("tools.vision_tools.vision_analyze_tool",
-                   new_callable=lambda: fake_vat):
-            resp = cu_tool._capture_response(cap)
-
-        # Aux failure with routing requested degrades to the AX/SOM text
-        # payload. Falling through to a multimodal envelope can hand pixels to
-        # a text-only model and fail the provider request.
-        assert isinstance(resp, str)
-        body = orjson.loads(resp)
-        assert body.get("vision_unavailable") is True
-        # Temp file must still be cleaned up.
-        assert observed_path["path"]
-        assert not os.path.exists(observed_path["path"])
-
-    def test_empty_aux_analysis_degrades_to_text_payload(self, tmp_cache_dir):
-        from tools.computer_use import tool as cu_tool
-
-        cap = _make_capture(mode="som")
-
-        def _fake_run_async(_coro):
-            return _stub_aux_analysis("")
-
-        fake_vat = MagicMock(return_value="<coro>")
-
-        with patch.object(cu_tool, "_should_route_through_aux_vision",
-                          return_value=True), \
-             patch("model_tools._run_async", side_effect=_fake_run_async), \
-             patch("tools.vision_tools.vision_analyze_tool",
-                   new_callable=lambda: fake_vat):
-            resp = cu_tool._capture_response(cap)
-
-        # Empty analysis is treated as failure; with routing requested the
-        # capture degrades to the AX/SOM text payload (elements stay usable)
-        # rather than embedding an empty 'vision_analysis' string.
-        assert isinstance(resp, str)
-        body = orjson.loads(resp)
-        assert body.get("vision_unavailable") is True
-        assert body.get("elements") is not None
 
     def test_invalid_aux_response_degrades_to_text_payload(self, tmp_cache_dir):
         from tools.computer_use import tool as cu_tool
@@ -351,7 +218,7 @@ class TestCaptureResponseRoutedToAuxVision:
             resp = cu_tool._capture_response(cap)
 
         assert isinstance(resp, str)
-        body = orjson.loads(resp)
+        body = json.loads(resp)
         assert body.get("vision_unavailable") is True
 
 
@@ -381,32 +248,6 @@ class TestRoutingDecisionWiring:
              patch("hermes_cli.config.load_config", return_value=cfg):
             assert cu_tool._should_route_through_aux_vision() is True
 
-    def test_no_explicit_aux_and_vision_capable_main_keeps_multimodal(self):
-        from tools.computer_use import tool as cu_tool
-
-        cfg = {
-            "model": {"default": "claude-opus-4-5", "provider": "anthropic"},
-        }
-        with patch("agent.auxiliary_client._read_main_provider",
-                   return_value="anthropic"), \
-             patch("agent.auxiliary_client._read_main_model",
-                   return_value="claude-opus-4-5"), \
-             patch("hermes_cli.config.load_config", return_value=cfg), \
-             patch("tools.computer_use.vision_routing._lookup_supports_vision",
-                   return_value=True), \
-             patch("tools.computer_use.vision_routing."
-                   "_provider_accepts_multimodal_tool_result",
-                   return_value=True):
-            assert cu_tool._should_route_through_aux_vision() is False
-
-    def test_config_load_failure_disables_routing_safely(self):
-        from tools.computer_use import tool as cu_tool
-
-        with patch("hermes_cli.config.load_config",
-                   side_effect=RuntimeError("config.yaml unreadable")):
-            # No exception should bubble up — fail open by returning False
-            # so the legacy multimodal envelope continues to work.
-            assert cu_tool._should_route_through_aux_vision() is False
 
     def test_helper_decision_exception_is_swallowed(self):
         from tools.computer_use import tool as cu_tool

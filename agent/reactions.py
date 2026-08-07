@@ -13,8 +13,8 @@ string, so new kinds (other emoji reactions, etc.) can be added here without
 touching any caller. We match affection specifically — not general positive
 sentiment — so "this is great" does NOT fire, but "good bot" / "❤️" do.
 """
-
 from __future__ import annotations
+
 
 import re
 

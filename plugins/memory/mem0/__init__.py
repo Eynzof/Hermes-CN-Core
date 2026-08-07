@@ -29,10 +29,11 @@ The matching MEM0_MODE / MEM0_USER_ID / MEM0_AGENT_ID environment variables are
 still read as a backward-compatible fallback, but mem0.json is the canonical
 home for these non-secret settings.
 """
-
 from __future__ import annotations
 
+
 import atexit
+import importlib.util
 import orjson
 import logging
 import os
@@ -41,6 +42,7 @@ import time
 from typing import Any, Dict, List
 
 from agent.memory_provider import MemoryProvider
+from agent.secret_scope import get_secret
 from tools.registry import tool_error
 
 logger = logging.getLogger(__name__)
@@ -85,7 +87,7 @@ def _load_config() -> dict:
 
     config = {
         "mode": os.environ.get("MEM0_MODE", "platform"),
-        "api_key": os.environ.get("MEM0_API_KEY", ""),
+        "api_key": get_secret("MEM0_API_KEY", ""),
         "host": os.environ.get("MEM0_HOST", ""),
         "agent_id": os.environ.get("MEM0_AGENT_ID", "hermes"),
         "oss": {},
@@ -227,10 +229,26 @@ class Mem0MemoryProvider(MemoryProvider):
         cfg = _load_config()
         mode = cfg.get("mode", "platform")
         if mode == "oss":
-            return bool(cfg.get("oss", {}).get("vector_store"))
-        # Platform needs an api_key; self-hosted needs a host (api_key optional
-        # when the server runs with AUTH_DISABLED).
-        return bool(cfg.get("api_key") or cfg.get("host"))
+            has_config = bool(cfg.get("oss", {}).get("vector_store"))
+        else:
+            # Platform needs an api_key; self-hosted needs a host (api_key optional
+            # when the server runs with AUTH_DISABLED).
+            has_config = bool(cfg.get("api_key") or cfg.get("host"))
+
+        if not has_config:
+            return False
+
+        # In a normal Python env with lazy_deps available, config-only check is
+        # correct because ensure() can install the SDK on demand later.
+        # But in the PyInstaller frozen runtime (CN Desktop), lazy_deps is not
+        # available and the SDK must be pre-baked — fall back to checking
+        # actual SDK importability to avoid a false green light.
+        try:
+            from tools.lazy_deps import ensure as _lazy_ensure
+            return True
+        except ImportError:
+            # Frozen runtime: tools.lazy_deps is not bundled.
+            return importlib.util.find_spec("mem0") is not None
 
     def save_config(self, values, hermes_home):
         """Write config to $HERMES_HOME/mem0.json."""
@@ -240,7 +258,7 @@ class Mem0MemoryProvider(MemoryProvider):
         existing = {}
         if config_path.exists():
             try:
-                existing = orjson.loads(config_path.read_text())
+                existing = orjson.loads(config_path.read_text(encoding="utf-8"))
             except Exception:
                 pass
         existing.update(values)
@@ -517,7 +535,13 @@ class Mem0MemoryProvider(MemoryProvider):
         if self._backend is None:
             err = getattr(self, "_init_error", "unknown error")
             hint = ""
-            if self._mode == "oss":
+            if "No module" in err or "ModuleNotFoundError" in err:
+                hint = (
+                    " The mem0 SDK is not available in this runtime. "
+                    "It must be bundled in the desktop installer; "
+                    "installed Python packages are not visible to the frozen runtime."
+                )
+            elif self._mode == "oss":
                 vs = self._config.get("oss", {}).get("vector_store", {})
                 provider = vs.get("provider", "vector store")
                 hint = f" Check that {provider} is running and reachable."

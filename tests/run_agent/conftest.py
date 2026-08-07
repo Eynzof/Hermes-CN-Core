@@ -17,8 +17,8 @@ fast-path direct ``time.sleep(N)`` calls in production code should
 monkeypatch ``run_agent.time.sleep`` locally (see
 ``test_anthropic_error_handling.py`` for the pattern).
 """
-
 from __future__ import annotations
+
 
 import pytest
 

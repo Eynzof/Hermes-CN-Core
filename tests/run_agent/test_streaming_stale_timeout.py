@@ -13,8 +13,8 @@ These tests assert:
   * a wedged Anthropic stream is aborted (on the Anthropic client) and the
     turn surfaces a ``TimeoutError`` in bounded time rather than hanging.
 """
-
 from __future__ import annotations
+
 
 import threading
 import time

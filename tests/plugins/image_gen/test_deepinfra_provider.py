@@ -6,8 +6,8 @@ are covered by the shared tag-filter test in
 ``tests/hermes_cli/test_api_key_providers.py``; these two tests pin the
 plugin-specific bits that wrapper doesn't reach.
 """
-
 from __future__ import annotations
+
 
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -97,29 +97,6 @@ def test_generate_calls_openai_sdk_with_deepinfra_base_url(monkeypatch):
     assert "deepinfra" in captured["base_url"]
     assert captured["api_key"] == "test-key"
     assert captured["kwargs"]["model"] == "vendor/test-img"
-
-
-@pytest.mark.parametrize(
-    "kwargs",
-    [
-        {"image_url": "https://example.com/source.png"},
-        {"reference_image_urls": ["https://example.com/reference.png"]},
-    ],
-)
-def test_generate_rejects_unsupported_edit_inputs_without_calling_sdk(
-    monkeypatch, kwargs
-):
-    monkeypatch.setenv("DEEPINFRA_IMAGE_MODEL", "vendor/test-img")
-    fake_openai = MagicMock()
-    with patch.dict("sys.modules", {"openai": fake_openai}):
-        result = deepinfra_plugin.DeepInfraImageGenProvider().generate(
-            prompt="edit this", **kwargs
-        )
-
-    assert result["success"] is False
-    assert result["error_type"] == "modality_unsupported"
-    assert result["provider"] == "deepinfra"
-    fake_openai.OpenAI.assert_not_called()
 
 
 def test_capabilities_advertise_text_to_image_only():

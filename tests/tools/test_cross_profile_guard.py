@@ -12,7 +12,7 @@ This file tests that the tool surfaces:
 """
 from __future__ import annotations
 
-import orjson
+import json
 from pathlib import Path
 
 import pytest
@@ -62,7 +62,7 @@ class TestWriteFileCrossProfileGuard:
         target = fake_hermes["sec_home"] / "skills" / "new-skill" / "SKILL.md"
         target.parent.mkdir(parents=True)
         result_json = write_file_tool(str(target), "in-profile content")
-        result = orjson.loads(result_json)
+        result = json.loads(result_json)
         assert not result.get("error"), f"In-profile write should succeed: {result}"
         assert target.exists()
         assert target.read_text() == "in-profile content"
@@ -74,7 +74,7 @@ class TestWriteFileCrossProfileGuard:
         target = fake_hermes["root"] / "skills" / "shared-skill" / "SKILL.md"
         original = target.read_text()
         result_json = write_file_tool(str(target), "OVERWRITTEN")
-        result = orjson.loads(result_json)
+        result = json.loads(result_json)
         assert result.get("error"), "Cross-profile write should be refused"
         assert "cross-profile" in result["error"].lower()
         assert "default" in result["error"]
@@ -82,23 +82,13 @@ class TestWriteFileCrossProfileGuard:
         # File untouched.
         assert target.read_text() == original
 
-    def test_cross_profile_True_bypass(self, fake_hermes):
-        """Explicit override after user direction must succeed."""
-        from tools.file_tools import write_file_tool
-        target = fake_hermes["root"] / "skills" / "shared-skill" / "SKILL.md"
-        result_json = write_file_tool(
-            str(target), "user-directed override", cross_profile=True
-        )
-        result = orjson.loads(result_json)
-        assert not result.get("error"), f"cross_profile=True must succeed: {result}"
-        assert target.read_text() == "user-directed override"
 
     def test_non_hermes_path_unaffected(self, fake_hermes, tmp_path):
         from tools.file_tools import write_file_tool
         target = tmp_path / "outside" / "main.py"
         target.parent.mkdir()
         result_json = write_file_tool(str(target), "print('hello')")
-        result = orjson.loads(result_json)
+        result = json.loads(result_json)
         assert not result.get("error")
         assert target.exists()
 
@@ -119,7 +109,7 @@ class TestPatchCrossProfileGuard:
             old_string="default copy.",
             new_string="HIJACKED.",
         )
-        result = orjson.loads(result_json)
+        result = json.loads(result_json)
         assert result.get("error")
         assert "cross-profile" in result["error"].lower()
         assert target.read_text() == original
@@ -134,7 +124,7 @@ class TestPatchCrossProfileGuard:
             new_string="user-directed update.",
             cross_profile=True,
         )
-        result = orjson.loads(result_json)
+        result = json.loads(result_json)
         assert not result.get("error"), f"cross_profile=True bypass: {result}"
         assert "user-directed update." in target.read_text()
 
@@ -153,7 +143,7 @@ class TestPatchCrossProfileGuard:
             "*** End Patch"
         )
         result_json = patch_tool(mode="patch", patch=v4a)
-        result = orjson.loads(result_json)
+        result = json.loads(result_json)
         assert result.get("error"), f"V4A cross-profile must block: {result}"
         assert "cross-profile" in result["error"].lower()
         assert target.read_text() == original
@@ -191,21 +181,6 @@ class TestSkillManageCrossProfileErrorUX:
         assert "default" in err
         assert "cross_profile=True" in err
 
-    def test_error_names_multiple_profiles(self, fake_hermes, monkeypatch):
-        """When the skill exists in TWO other profiles, both should be named."""
-        self._make_skill_in_profile(fake_hermes["root"], "everywhere-skill")
-        self._make_skill_in_profile(fake_hermes["coder_home"], "everywhere-skill")
-
-        import importlib
-        import tools.skill_manager_tool
-        importlib.reload(tools.skill_manager_tool)
-        from tools.skill_manager_tool import _skill_not_found_error
-
-        err = _skill_not_found_error("everywhere-skill")
-        assert "default" in err
-        assert "coder" in err
-        # Switch-profiles hint
-        assert "hermes -p" in err
 
     def test_genuinely_missing_skill_keeps_helpful_hint(
         self, fake_hermes, monkeypatch

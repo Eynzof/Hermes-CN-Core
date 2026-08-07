@@ -30,8 +30,8 @@ Exceptions:
 Ported from WideLee's qqbot-agent-sdk v1.2.2 (``media_loader.py::ChunkedUploader``)
 so the heavy-upload path stays in-tree. Authorship preserved via Co-authored-by.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import functools

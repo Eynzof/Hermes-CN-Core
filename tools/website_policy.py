@@ -7,8 +7,8 @@ tools can enforce URL policy without pulling in the heavier CLI config stack.
 Policy is cached in memory with a short TTL so config changes take effect
 quickly without re-reading the file on every URL check.
 """
-
 from __future__ import annotations
+
 
 import fnmatch
 import logging

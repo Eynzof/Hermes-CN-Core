@@ -11,8 +11,8 @@ api.telegram.org is blocked (e.g. RU) the send would just time out with
 These tests verify that the standalone path now honours ``TELEGRAM_PROXY``
 the same way the gateway adapter (and the Discord standalone path) do.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import sys

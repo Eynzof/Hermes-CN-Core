@@ -7,8 +7,8 @@ Requires DEEPSEEK_API_KEY in the process environment. The key is captured at
 module import time because tests/conftest.py intentionally removes credential
 environment variables before each test body runs.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import os

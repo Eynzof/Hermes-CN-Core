@@ -26,8 +26,8 @@ profile-scoped and survives process death.  It is intentionally tiny and
 best-effort: any read/write failure fails OPEN (no false trip) because a
 broken breaker must never wedge a healthy gateway.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import logging

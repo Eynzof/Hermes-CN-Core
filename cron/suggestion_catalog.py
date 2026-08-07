@@ -14,8 +14,8 @@ Adding a catalog entry: append a CatalogEntry. Keep prompts self-contained
 (cron jobs run with no chat context) and schedules sensible. The ``job_spec``
 is passed verbatim to ``create_job`` on accept.
 """
-
 from __future__ import annotations
+
 
 from dataclasses import dataclass
 from pathlib import Path

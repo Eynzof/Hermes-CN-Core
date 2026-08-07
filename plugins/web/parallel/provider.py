@@ -25,8 +25,8 @@ Env vars::
     PARALLEL_API_KEY=...             # https://parallel.ai (required)
     PARALLEL_SEARCH_MODE=agentic     # optional: agentic|fast|one-shot
 """
-
 from __future__ import annotations
+
 
 import logging
 import os

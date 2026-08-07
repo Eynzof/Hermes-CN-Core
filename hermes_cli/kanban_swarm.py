@@ -13,8 +13,8 @@ the root task. That keeps all state in existing task_comments/task_events rows,
 so the dashboard, notifier, slash command, and dispatcher keep working without a
 new service.
 """
-
 from __future__ import annotations
+
 
 from dataclasses import dataclass, field
 import orjson

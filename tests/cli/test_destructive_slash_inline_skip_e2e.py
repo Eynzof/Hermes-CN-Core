@@ -10,8 +10,8 @@ and verifies:
 This is the regression test for issue #30768 — the inline-skip escape hatch
 must work without ever touching the modal, on every platform.
 """
-
 from __future__ import annotations
+
 
 from types import SimpleNamespace
 from unittest.mock import patch

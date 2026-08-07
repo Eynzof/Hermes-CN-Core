@@ -5,8 +5,8 @@ The dashboard process owns sockets and JSON-RPC dispatch.  When
 ``python -m tui_gateway.compute_host`` child so compute-heavy agent threads do
 not contend with the serving process' event loop for the same GIL.
 """
-
 from __future__ import annotations
+
 
 import json
 import logging
@@ -32,6 +32,7 @@ MUTATOR_ROUTE_TABLE: dict[str, str] = {
     "prompt.submit": "turn-path",
     "session.interrupt": "turn-path",
     "reload.mcp": "run-concurrent",
+    "session.save": "run-concurrent",
     "session.compress": "idle-gated",
     "prompt.submit.truncate": "idle-gated",
     "slash.model": "idle-gated",
@@ -123,6 +124,7 @@ def _pid_command(pid: int) -> str:
         return subprocess.check_output(
             ["ps", "-p", str(pid), "-o", "command="],
             text=True,
+            encoding="utf-8",
             errors="replace",
             stderr=subprocess.DEVNULL,
             timeout=2,
@@ -339,6 +341,9 @@ class HostSupervisor:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            # Lossy UTF-8 decode — the compute host emits UTF-8; a
+            # locale-mismatched byte must not raise inside the drain
+            # threads and kill the supervisor (#52649).
             encoding="utf-8",
             errors="replace",
             bufsize=1,

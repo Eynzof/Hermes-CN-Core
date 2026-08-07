@@ -41,8 +41,8 @@ Run with: python -m agent.transports.hermes_tools_mcp_server
 Spawned by: CodexAppServerSession.ensure_started() when the runtime is
             active and config opts in.
 """
-
 from __future__ import annotations
+
 
 import inspect
 import orjson

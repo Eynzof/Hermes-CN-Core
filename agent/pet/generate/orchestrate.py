@@ -12,8 +12,8 @@ Splitting it this way bounds cost (4 cheap base calls per round; the ~6 row
 calls happen once, on the pet you actually keep) and gives each UI a natural
 preview/loading point.
 """
-
 from __future__ import annotations
+
 
 import logging
 import time

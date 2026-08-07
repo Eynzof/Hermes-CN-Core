@@ -23,8 +23,8 @@ Auth env vars::
     FIRECRAWL_API_URL=...           # optional override (default https://api.firecrawl.dev)
     FIRECRAWL_BROWSER_TTL=...       # optional, default 300 seconds
 """
-
 from __future__ import annotations
+
 
 import logging
 import os
@@ -34,6 +34,7 @@ from typing import Any, Dict
 import requests
 
 from agent.browser_provider import BrowserProvider
+from agent.secret_scope import get_secret
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +57,7 @@ class FirecrawlBrowserProvider(BrowserProvider):
         return "Firecrawl"
 
     def is_available(self) -> bool:
-        return bool(os.environ.get("FIRECRAWL_API_KEY"))
+        return bool(get_secret("FIRECRAWL_API_KEY"))
 
     # ------------------------------------------------------------------
     # Session lifecycle
@@ -66,7 +67,7 @@ class FirecrawlBrowserProvider(BrowserProvider):
         return os.environ.get("FIRECRAWL_API_URL", _BASE_URL)
 
     def _headers(self) -> Dict[str, str]:
-        api_key = os.environ.get("FIRECRAWL_API_KEY")
+        api_key = get_secret("FIRECRAWL_API_KEY")
         if not api_key:
             raise ValueError(
                 "FIRECRAWL_API_KEY environment variable is required. "
@@ -167,5 +168,7 @@ class FirecrawlBrowserProvider(BrowserProvider):
                     "url": "https://firecrawl.dev",
                 },
             ],
-            "post_setup": "agent_browser",
+            # Cloud-scoped hook: installs the agent-browser CLI only (no
+            # local Chromium — Firecrawl hosts the browser).
+            "post_setup": "browserbase",
         }

@@ -3,8 +3,8 @@
 Extracted from ``hermes_cli/main.py:main()`` (god-file Phase 2 follow-up).
 Handler injected to avoid importing ``main``.
 """
-
 from __future__ import annotations
+
 
 from typing import Callable
 
@@ -312,4 +312,5 @@ def build_skills_parser(subparsers, *, cmd_skills: Callable) -> None:
         "config",
         help="Interactive skill configuration — enable/disable individual skills",
     )
+
     skills_parser.set_defaults(func=cmd_skills)

@@ -5,8 +5,8 @@ steers, etc.) that are injected into the *current turn's user/tool message copy*
 before it is sent to the model. They are never persisted to the message
 history, so the upstream prompt-cache prefix stays stable.
 """
-
 from __future__ import annotations
+
 
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Literal, Optional

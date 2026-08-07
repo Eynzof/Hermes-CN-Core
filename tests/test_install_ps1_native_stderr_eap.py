@@ -5,8 +5,8 @@ records when ``$ErrorActionPreference = "Stop"``.  ``scripts/install.ps1`` has a
 few git/uv calls where stderr can be normal progress output, so those calls must
 run with EAP temporarily relaxed and then inspect ``$LASTEXITCODE``.
 """
-
 from __future__ import annotations
+
 from agent.re_compat import re
 from pathlib import Path
 

@@ -14,8 +14,8 @@ the broad catch so cancellation propagates cleanly to asyncio's task
 machinery and ``MCPServerTask.shutdown()``'s ``await self._task`` completes
 without hanging the reconnect loop.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 from unittest.mock import patch

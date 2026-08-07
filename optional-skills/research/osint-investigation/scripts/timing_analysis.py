@@ -198,7 +198,7 @@ def analyze(
         "results": results,
     }
 
-    Path(out_path).write_text(orjson.dumps(payload, option=orjson.OPT_INDENT_2).decode('utf-8'))
+    Path(out_path).write_text(orjson.dumps(payload, option=orjson.OPT_INDENT_2).decode('utf-8'), encoding="utf-8")
     return payload
 
 

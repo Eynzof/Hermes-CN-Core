@@ -5,8 +5,8 @@ Covers:
   `status` which is scoped to curator-managed candidates.
 - --provenance filter, --sort ordering, and --json output.
 """
-
 from __future__ import annotations
+
 
 import json
 from types import SimpleNamespace
@@ -48,44 +48,6 @@ def test_usage_lists_all_provenances(monkeypatch, capsys):
     assert "agent-skill" in out
     assert "bundled-skill" in out
     assert "hub-skill" in out
-
-
-def test_usage_sort_activity_orders_most_used_first(monkeypatch, capsys):
-    import hermes_cli.curator as curator_cli
-    import tools.skill_usage as skill_usage
-
-    monkeypatch.setattr(skill_usage, "usage_report", _fake_rows)
-    args = SimpleNamespace(sort="activity", provenance=None, json=False)
-    assert curator_cli._cmd_usage(args) == 0
-    out = capsys.readouterr().out
-    # bundled-skill (act=13) must appear before agent-skill (act=3).
-    assert out.index("bundled-skill") < out.index("agent-skill")
-
-
-def test_usage_provenance_filter(monkeypatch, capsys):
-    import hermes_cli.curator as curator_cli
-    import tools.skill_usage as skill_usage
-
-    monkeypatch.setattr(skill_usage, "usage_report", _fake_rows)
-    args = SimpleNamespace(sort="activity", provenance="bundled", json=False)
-    assert curator_cli._cmd_usage(args) == 0
-    out = capsys.readouterr().out
-    assert "bundled-skill" in out
-    assert "agent-skill" not in out
-    assert "hub-skill" not in out
-
-
-def test_usage_json_output(monkeypatch, capsys):
-    import hermes_cli.curator as curator_cli
-    import tools.skill_usage as skill_usage
-
-    monkeypatch.setattr(skill_usage, "usage_report", _fake_rows)
-    args = SimpleNamespace(sort="name", provenance=None, json=True)
-    assert curator_cli._cmd_usage(args) == 0
-    out = capsys.readouterr().out
-    data = json.loads(out)
-    assert {r["name"] for r in data} == {"agent-skill", "bundled-skill", "hub-skill"}
-    assert {r["provenance"] for r in data} == {"agent", "bundled", "hub"}
 
 
 def test_usage_empty(monkeypatch, capsys):

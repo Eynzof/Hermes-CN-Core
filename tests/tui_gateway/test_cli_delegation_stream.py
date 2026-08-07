@@ -5,8 +5,8 @@
 ANSI 剥离、进程退出状态映射（completed/failed/killed/lost）、进程消失
 判 lost、死会话静默清理。
 """
-
 from __future__ import annotations
+
 
 import json
 from dataclasses import dataclass, field

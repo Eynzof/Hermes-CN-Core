@@ -5,13 +5,20 @@ cover the flag resolver (cross-platform, mocked) and the live execute() path
 (Windows only), including output/exit-code/cwd parity with the spawn path and
 the stdin fallback.
 """
-
 from __future__ import annotations
+
 
 import shutil
 import sys
 
 import pytest
+
+
+@pytest.fixture(autouse=True)
+def _force_pwsh_shell(monkeypatch):
+    """P-058 made git-bash the Windows auto default; these PowerShell-feature
+    tests must pin the shell type so they exercise the PowerShell path."""
+    monkeypatch.setenv("HERMES_SHELL_TYPE", "pwsh")
 
 
 # --------------------------------------------------------------------------

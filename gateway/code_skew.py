@@ -14,8 +14,8 @@ gateway" message instead of crashing on a cryptic import error.
 If the revision can't be read (non-git install, IO error), the boot snapshot
 stays ``None`` and skew detection no-ops — it never produces a false positive.
 """
-
 from __future__ import annotations
+
 
 from pathlib import Path
 

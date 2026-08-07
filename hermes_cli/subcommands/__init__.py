@@ -14,5 +14,5 @@ dependency-injected into the builders so these modules never import ``main``
 
 Part of the god-file decomposition plan (Phase 2).
 """
-
 from __future__ import annotations
+

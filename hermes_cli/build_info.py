@@ -22,8 +22,8 @@ Behaviour:
 - Truncates to ``short`` characters (default 8) to match the format used by
   ``git rev-parse --short=8`` throughout the codebase.
 """
-
 from __future__ import annotations
+
 
 from pathlib import Path
 from typing import Optional

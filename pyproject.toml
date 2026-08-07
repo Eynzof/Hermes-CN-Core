@@ -379,6 +379,8 @@ cn-desktop = [
   "qrcode==7.4.2",
   "cryptography==48.0.1",
   "hermes-agent[hindsight]",  # long-term memory: hindsight-client (frozen runtime cannot lazy-install)
+  "hermes-agent[supermemory]", # long-term memory: supermemory SDK (frozen runtime cannot lazy-install)
+  "hermes-agent[mem0]",       # long-term memory: mem0ai SDK (frozen runtime cannot lazy-install)
 ]
 
 [build-system]

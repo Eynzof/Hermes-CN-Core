@@ -193,7 +193,7 @@ jobs:
                     "alibabacloud_tea_openapi", "alibabacloud_tea_util",
                     "aiohttp", "qrcode", "defusedxml", "certifi", "typer",
                     "hindsight_client", "hindsight_client_api", "aiohttp_retry",
-                    "ddgs", "exa_py", "firecrawl", "parallel"):
+                    "supermemory", "mem0", "ddgs", "exa_py", "firecrawl", "parallel"):
               try:
                   importlib.import_module(m)
               except Exception as e:
@@ -326,7 +326,7 @@ jobs:
             --collect-submodules aiohttp_retry \
             --hidden-import tools.lazy_deps \
             --collect-submodules supermemory \
-            --collect-submodules mem0ai \
+            --collect-submodules mem0 \
             --collect-submodules plugins.memory \
             --collect-data hermes_cli \
             --collect-data gateway \
@@ -350,6 +350,8 @@ jobs:
             --copy-metadata typer \
             --copy-metadata hindsight-client \
             --copy-metadata aiohttp-retry \
+            --copy-metadata supermemory \
+            --copy-metadata mem0ai \
             --copy-metadata lark_oapi \
             --copy-metadata dingtalk_stream \
             --copy-metadata alibabacloud_dingtalk \

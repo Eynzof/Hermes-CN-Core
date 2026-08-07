@@ -427,6 +427,42 @@ def test_runtime_workflow_freezes_hindsight_client_api_and_aiohttp_retry():
     )
 
 
+def test_runtime_workflow_freezes_cloud_memory_provider_sdks():
+    """The CN desktop frozen runtime pre-bakes hosted memory provider SDKs."""
+    workflow = _workflow_text()
+    extra = _cn_desktop_extra()
+
+    for sub in ("supermemory", "mem0"):
+        assert any(f"[{sub}]" in e for e in extra), (
+            f"cn-desktop extra is missing hermes-agent[{sub}] "
+            "(frozen runtime cannot lazy-install memory provider SDKs)"
+        )
+
+    text = workflow
+    start = text.index("for m in (") + len("for m in (")
+    body = text[start : text.index("):", start)]
+    import_list = body.replace("\n", " ").replace('"', " ").split()
+    for mod in ("supermemory", "mem0"):
+        assert mod in import_list, (
+            f"release-runtime.yml build-env import smoke test does not "
+            f"check {mod}; PyInstaller may bundle a missing SDK."
+        )
+
+    assert "--collect-submodules supermemory" in workflow
+    assert "--collect-submodules mem0" in workflow
+    assert "--collect-submodules mem0ai" not in workflow, (
+        "mem0ai is the distribution name; the importable package is mem0."
+    )
+    assert "--copy-metadata supermemory" in workflow
+    assert "--copy-metadata mem0ai" in workflow
+
+    verified = _frozen_verify_packages()
+    for pkg in ("supermemory", "mem0ai"):
+        assert pkg in verified, (
+            f"frozen-output verify list does not assert {pkg} dist-info"
+        )
+
+
 def test_runtime_workflow_signs_and_preserves_macos_frameworks():
     workflow = _workflow_text()
 

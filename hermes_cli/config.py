@@ -611,9 +611,9 @@ def recommended_update_command_for_method(method: str) -> str:
     if method == "pip":
         if is_uv_tool_install():
             return "uv tool upgrade hermes-agent"
-        import shutil
+        from hermes_cli.managed_uv import resolve_uv
 
-        if shutil.which("uv"):
+        if resolve_uv():
             return "uv pip install --upgrade hermes-agent"
         return "pip install --upgrade hermes-agent"
     return "hermes update"

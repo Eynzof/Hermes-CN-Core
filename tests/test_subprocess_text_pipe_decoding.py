@@ -30,7 +30,6 @@ from __future__ import annotations
 
 
 import ast
-import subprocess
 import sys
 
 import pytest
@@ -140,16 +139,17 @@ _CHILD_SCRIPT = (
 
 def test_coding_context_git_decodes_utf8_and_survives_hostile_bytes(monkeypatch):
     from agent import coding_context
+    from hermes_cli import _subprocess_compat
 
     captured: dict = {}
-    real_run = subprocess.run
+    real_popen = _subprocess_compat.subprocess.Popen
 
-    def fake_run(argv, **kwargs):
+    def fake_popen(argv, **kwargs):
         captured.update(kwargs)
         # Swap git for a child that emits hostile bytes on stdout.
-        return real_run([sys.executable, "-c", _CHILD_SCRIPT], **kwargs)
+        return real_popen([sys.executable, "-c", _CHILD_SCRIPT], **kwargs)
 
-    monkeypatch.setattr(coding_context.subprocess, "run", fake_run)
+    monkeypatch.setattr(_subprocess_compat.subprocess, "Popen", fake_popen)
 
     result = coding_context._git(Path("C:/repo"), "log", "-3")
 

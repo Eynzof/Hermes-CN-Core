@@ -49,6 +49,7 @@ from tools.environments.local import (
     _resolve_safe_cwd,
     _resolve_shell,
     _sanitize_subprocess_env,
+    _windows_to_msys_path,
 )
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
@@ -735,8 +736,8 @@ class ProcessRegistry:
         if shell_type == "bash":
             script = _build_bash_background_script(
                 command=command,
-                cwd=session.cwd,
-                cwd_file=cwd_file,
+                cwd=_windows_to_msys_path(session.cwd, force=_IS_WINDOWS),
+                cwd_file=_windows_to_msys_path(cwd_file, force=_IS_WINDOWS) if cwd_file else None,
             )
             shell_argv = [shell_path, "-lc", script]
         else:
@@ -796,8 +797,8 @@ class ProcessRegistry:
         if shell_type == "bash":
             script = _build_bash_background_script(
                 command=command,
-                cwd=session.cwd,
-                cwd_file=cwd_file,
+                cwd=_windows_to_msys_path(session.cwd, force=_IS_WINDOWS),
+                cwd_file=_windows_to_msys_path(cwd_file, force=_IS_WINDOWS) if cwd_file else None,
             )
             shell_argv = [shell_path, "-lc", script]
         else:

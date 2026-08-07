@@ -433,7 +433,7 @@ class TestWrapCommandWindowsNativeCwd:
         wrapped = env._wrap_command("pwd", r"C:\Users\liush")
 
         assert env._shell_type == "bash"
-        # foreground bash wrapper cd's to the native path (MSYS converts at
-        # exec time); the point is it is the BASH wrapper, not PowerShell's.
-        assert "builtin cd -- " in wrapped and r"'C:\Users\liush'" in wrapped
+        # foreground bash wrapper cd's to the MSYS path; the point is it is the
+        # BASH wrapper, not PowerShell's.
+        assert "builtin cd -- " in wrapped and "/c/Users/liush" in wrapped
         assert "Set-Location" not in wrapped

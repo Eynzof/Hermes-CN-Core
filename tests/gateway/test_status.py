@@ -316,7 +316,15 @@ class TestTerminatePid:
         monkeypatch.setattr(status, "_IS_WINDOWS", True)
 
         def fake_run(cmd, capture_output=False, text=False, timeout=None, creationflags=0, **kwargs):
-            calls.append((cmd, capture_output, text, timeout, creationflags))
+            calls.append((
+                cmd,
+                capture_output,
+                text,
+                timeout,
+                creationflags,
+                kwargs.get("encoding"),
+                kwargs.get("errors"),
+            ))
             return SimpleNamespace(returncode=0, stdout="", stderr="")
 
         monkeypatch.setattr(status.subprocess, "run", fake_run)
@@ -1130,4 +1138,3 @@ class TestResolveGatewayLiveness:
         # expected_home is what stops a recycled PID belonging to another
         # profile's live gateway from being reported as this profile's.
         assert seen["expected_home"] == profile_dir
-

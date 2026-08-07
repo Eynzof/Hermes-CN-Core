@@ -305,13 +305,6 @@ class LSPClient:
         cmd = self._command
         if sys.platform == "win32":
             cmd = self._win_wrap_cmd(cmd)
-        # Suppress the cmd.exe console window that would otherwise flash
-        # every time we launch a ``.cmd``-wrapped language server
-        # (e.g. pyright-langserver.CMD) from a console-less host such as
-        # a VS Code/Zed extension running the ACP adapter.
-        # windows_hide_flags() is CREATE_NO_WINDOW on Windows, 0 on POSIX.
-        creationflags = windows_hide_flags()
-
         try:
             # Detach the LSP server into its own process group / session.
             # Without this, the LSP server inherits the gateway's pgid (= TUI
@@ -321,9 +314,11 @@ class LSPClient:
             # the TUI parent itself. See tui_gateway_crash.log "killpg →
             # SIGTERM received" stacks. POSIX uses start_new_session (setsid);
             # [CN-fork] P-038 does the equivalent on Windows via creationflags.
-            _subprocess_kwargs: Dict[str, Any] = {}
+            _subprocess_kwargs: Dict[str, Any] = {
+                "creationflags": windows_hide_flags(),
+            }
             if sys.platform == "win32":
-                _subprocess_kwargs["creationflags"] = windows_detach_flags_without_breakaway()
+                _subprocess_kwargs["creationflags"] |= windows_detach_flags_without_breakaway()
             else:
                 _subprocess_kwargs["start_new_session"] = True
             self._proc = await asyncio.create_subprocess_exec(

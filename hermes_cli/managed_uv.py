@@ -477,6 +477,8 @@ def _list_available_patches(
             env=env,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             check=False,
             timeout=15,
         )
@@ -569,6 +571,8 @@ def _attempt_install_generation(
         env=env,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
     if found.returncode != 0 or not found.stdout.strip():
@@ -762,6 +766,8 @@ def _stage_candidate_venv(
         env=env,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
     if created.returncode != 0:

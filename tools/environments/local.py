@@ -29,6 +29,13 @@ _IS_WINDOWS = is_windows()
 logger = logging.getLogger(__name__)
 
 
+def _safe_which(cmd: str) -> str | None:
+    try:
+        return shutil.which(cmd)
+    except AttributeError:
+        return None
+
+
 def _msys_to_windows_path(cwd: str) -> str:
     """Translate an MSYS/legacy POSIX path (``/c/Users/x``) to the native
     Windows form (``C:\\Users\\x``) so ``os.path.isdir`` and
@@ -97,7 +104,7 @@ def _resolve_local_initial_cwd(cwd: str) -> str:
     return candidate
 
 
-def _windows_to_msys_path(cwd: str) -> str:
+def _windows_to_msys_path(cwd: str, *, force: bool = False) -> str:
     """Translate a native Windows path (``C:\\Users\\x``) to Git Bash /
     MSYS form (``/c/Users/x``) so ``builtin cd`` resolves it reliably.
 
@@ -106,7 +113,7 @@ def _windows_to_msys_path(cwd: str) -> str:
     native Windows paths. Returns the input unchanged when no translation
     applies.
     """
-    if not _IS_WINDOWS or not cwd:
+    if not (force or _IS_WINDOWS) or not cwd:
         return cwd
     m = re.match(r'^([a-zA-Z]):[\\/]*(.*)$', cwd)
     if not m:
@@ -896,6 +903,8 @@ def _where_git_executables() -> list[str]:
             ["where.exe", "git"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             check=False,
             creationflags=windows_hide_flags() if _IS_WINDOWS else 0,
         )
@@ -908,6 +917,8 @@ def _where_git_executables() -> list[str]:
 
 def _git_bash_candidate_from_git_path(git_path: str) -> Path:
     """Derive ``<gitRoot>/bin/bash.exe`` from the path to ``git.exe``."""
+    if "/" in git_path and "\\" not in git_path:
+        return Path(git_path).parent.parent / "bin" / "bash.exe"
     normalized = ntpath.normpath(
         ntpath.join(ntpath.dirname(git_path), "..", "bin", "bash.exe")
     )
@@ -921,6 +932,8 @@ def _git_exec_path(git_path: str) -> str | None:
             [git_path, "--exec-path"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             check=False,
             timeout=5,
             creationflags=windows_hide_flags() if _IS_WINDOWS else 0,
@@ -938,6 +951,12 @@ def _git_exec_path(git_path: str) -> str | None:
 
 def _git_install_root_from_exec_path(exec_path: str) -> str | None:
     """Return the Git for Windows install root given a ``mingw*/libexec/git-core`` path."""
+    if "/" in exec_path and "\\" not in exec_path:
+        current_path = Path(exec_path)
+        for parent in (current_path, *current_path.parents):
+            if parent.name.casefold() in {"mingw32", "mingw64"}:
+                return str(parent.parent)
+        return None
     current = ntpath.normpath(exec_path)
     while True:
         parent, name = ntpath.split(current)
@@ -950,6 +969,12 @@ def _git_install_root_from_exec_path(exec_path: str) -> str | None:
 
 def _git_bash_candidates_from_exec_path(exec_path: str) -> list[Path]:
     """Return candidate ``bash.exe`` paths derived from ``git --exec-path``."""
+    if "/" in exec_path and "\\" not in exec_path:
+        normalized_exec_path = Path(exec_path)
+        install_root = _git_install_root_from_exec_path(exec_path)
+        if install_root is not None:
+            return [Path(install_root) / "bin" / "bash.exe"]
+        return [normalized_exec_path.parent.parent / "bin" / "bash.exe"]
     normalized_exec_path = ntpath.normpath(exec_path)
     install_root = _git_install_root_from_exec_path(normalized_exec_path)
     if install_root is not None:
@@ -988,7 +1013,7 @@ def _git_bash_for_macos() -> str | None:
     Git installer ships a bash under ``<gitRoot>/bin/bash`` or
     ``<gitRoot>/usr/bin/bash``.
     """
-    git_path = shutil.which("git")
+    git_path = _safe_which("git")
     if not git_path:
         return None
     git_exe = Path(git_path).resolve()
@@ -1017,8 +1042,9 @@ def _find_bash_posix() -> str:
         git_bash = _git_bash_for_macos()
         if git_bash:
             return git_bash
+    bash_on_path = _safe_which("bash")
     return (
-        shutil.which("bash")
+        bash_on_path
         or ("/usr/bin/bash" if os.path.isfile("/usr/bin/bash") else None)
         or ("/bin/bash" if os.path.isfile("/bin/bash") else None)
         or os.environ.get("SHELL")
@@ -1086,7 +1112,7 @@ def _find_bash(raise_if_missing: bool = True) -> str | None:
         if candidate and os.path.isfile(candidate) and candidate not in candidates:
             candidates.append(candidate)
 
-    found = shutil.which("bash")
+    found = _safe_which("bash")
     if found and found not in candidates:
         candidates.append(found)
 
@@ -1162,6 +1188,15 @@ def _is_git_bash_install(bash_path: str) -> bool:
     """
     if not bash_path:
         return False
+    if "/" in bash_path and "\\" not in bash_path:
+        path = Path(bash_path)
+        if path.name.casefold() != "bash.exe" or path.parent.name.casefold() != "bin":
+            return False
+        if path.parent.parent.name.casefold() == "usr":
+            root_path = path.parent.parent.parent
+        else:
+            root_path = path.parent.parent
+        return (root_path / "cmd" / "git.exe").is_file()
     text = ntpath.normpath(bash_path)
     drive, tail = ntpath.splitdrive(text)
     parts = [p.lower() for p in tail.split("\\") if p]
@@ -1210,7 +1245,7 @@ def _find_powershell() -> str:
     and is always on PATH.  No probing needed — just return the first
     ``powershell.exe`` found via ``shutil.which``.
     """
-    return shutil.which("powershell.exe") or "powershell.exe"
+    return _safe_which("powershell.exe") or "powershell.exe"
 
 
 def _find_pwsh() -> str | None:
@@ -1223,7 +1258,7 @@ def _find_pwsh() -> str | None:
     # are reparse points that can fail in non-interactive / service contexts
     # (``CreateProcessAsUserW`` error 1312).  Prefer real PE binaries from
     # subsequent strategies.
-    path = shutil.which("pwsh") or shutil.which("pwsh.exe")
+    path = _safe_which("pwsh") or _safe_which("pwsh.exe")
     if path and "WindowsApps" not in path:
         return path
 
@@ -1480,7 +1515,7 @@ def _mandatory_aslr_enabled() -> "bool | None":
         return _mandatory_aslr_enabled_cache
 
     try:
-        powershell = shutil.which("powershell.exe") or "powershell.exe"
+        powershell = _safe_which("powershell.exe") or "powershell.exe"
         result = subprocess.run(
             [
                 powershell,
@@ -1748,7 +1783,7 @@ def _resolve_hermes_bin_dir() -> str | None:
 
     candidate: str | None = None
 
-    which = shutil.which("hermes")
+    which = _safe_which("hermes")
     if which:
         candidate = os.path.dirname(which)
 
@@ -2657,7 +2692,7 @@ class LocalEnvironment(BaseEnvironment):
         For **bash**: unchanged — captures env vars, functions, aliases
         into a snapshot file that subsequent commands source.
         """
-        if self._shell_type in ("powershell", "pwsh"):
+        if getattr(self, "_shell_type", "bash") in ("powershell", "pwsh"):
             # Simple CWD marker write — no snapshot needed for powershell.
             self._snapshot_ready = False
             try:
@@ -2677,7 +2712,17 @@ class LocalEnvironment(BaseEnvironment):
             )
             return
 
-        # --- bash path (unchanged from BaseEnvironment) ---
+        # --- bash path ---
+        if _IS_WINDOWS:
+            native_snapshot_path = self._snapshot_path
+            native_cwd_file = self._cwd_file
+            self._snapshot_path = _windows_to_msys_path(native_snapshot_path)
+            self._cwd_file = _windows_to_msys_path(native_cwd_file)
+            try:
+                return super().init_session()
+            finally:
+                self._snapshot_path = native_snapshot_path
+                self._cwd_file = native_cwd_file
         return super().init_session()
 
     # ------------------------------------------------------------------
@@ -2687,6 +2732,10 @@ class LocalEnvironment(BaseEnvironment):
     def _quote_shell_path(self, path: str) -> str:
         """Rewrite native/mixed Windows paths before quoting for Git Bash."""
         return _quote_bash_path(path)
+
+    def _quote_cwd_for_cd(self, cwd: str) -> str:
+        """Rewrite native/mixed Windows CWD paths before quoting for Git Bash."""
+        return _quote_bash_path(cwd)
 
     def _run_bash(self, cmd_string: str, *, login: bool = False,
                   timeout: int = 120,

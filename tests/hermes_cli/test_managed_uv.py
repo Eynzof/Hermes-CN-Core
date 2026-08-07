@@ -265,15 +265,19 @@ class TestUpdateManagedUv:
     def test_self_update_success(self, tmp_path):
         _make_executable(tmp_path / "bin" / "uv")
         with patch("hermes_cli.managed_uv.get_hermes_home", return_value=tmp_path), \
+             patch("hermes_constants.get_hermes_home", return_value=tmp_path), \
+             patch("hermes_cli.managed_uv.repair_vulnerable_runtime", return_value=_RRR("not-applicable")), \
              patch("hermes_cli.managed_uv.subprocess.run") as mock_run:
             # uv self update succeeds
             mock_run.return_value = MagicMock(returncode=0, stdout="uv 0.2.0")
             from hermes_cli.managed_uv import update_managed_uv
             result = update_managed_uv()
             assert result == str(tmp_path / "bin" / "uv")
-            # First call is self update, second is --version
-            assert mock_run.call_count == 2
             assert mock_run.call_args_list[0][0][0] == [str(tmp_path / "bin" / "uv"), "self", "update"]
+            assert [call[0][0] for call in mock_run.call_args_list] == [
+                [str(tmp_path / "bin" / "uv"), "self", "update"],
+                [str(tmp_path / "bin" / "uv"), "--version"],
+            ]
 
     @pytest.mark.skipif(sys.platform == "win32", reason="assumes POSIX uv layout (bin/uv, exec bit, shell installer); Windows uses uv.exe + install.ps1")
     def test_fresh_stamp_skips_network_self_update_but_not_repair(self, tmp_path, monkeypatch):
@@ -1125,4 +1129,3 @@ class TestVenvPythonUpdateBoundary:
         assert _venv_python(Path("/opt/hermes/venv")) == Path(
             "/opt/hermes/venv/bin/python"
         )
-

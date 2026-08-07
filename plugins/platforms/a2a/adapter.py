@@ -876,7 +876,12 @@ class A2AAdapter(BasePlatformAdapter):
             start = time.time()
             try:
                 proc = subprocess.run(
-                    cmd, capture_output=True, text=True, timeout=timeout,
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    timeout=timeout,
                     env=env, check=False, stdin=subprocess.DEVNULL,
                 )
             except subprocess.TimeoutExpired:

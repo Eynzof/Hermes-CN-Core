@@ -34,7 +34,7 @@ def _run(args: List[str], cwd: str, timeout: int = _GIT_TIMEOUT):
     """Run git, returning (returncode, stdout). Never raises on git failure."""
     proc = subprocess.run(
         ["git", "-c", "core.quotePath=false", *args],
-        cwd=cwd, capture_output=True, text=True, timeout=timeout,
+        cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout,
     )
     return proc.returncode, proc.stdout
 

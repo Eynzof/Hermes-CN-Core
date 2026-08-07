@@ -799,10 +799,14 @@ def get_tool_definitions(
         # cache; the schema dicts themselves are treated as read-only. (#17335)
         return list(cached_result)
 
-    result, status_lines = _compute_tool_definitions(
+    computed = _compute_tool_definitions(
         enabled_toolsets, disabled_toolsets, quiet_mode,
         skip_tool_search_assembly=skip_tool_search_assembly,
     )
+    if isinstance(computed, tuple) and len(computed) == 2:
+        result, status_lines = computed
+    else:
+        result, status_lines = computed, []
     if not quiet_mode and status_lines:
         print("\n".join(status_lines))
 

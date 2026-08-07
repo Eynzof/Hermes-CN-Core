@@ -677,6 +677,8 @@ STEER_MARKER_CLOSE = "[/OUT-OF-BAND USER MESSAGE]"
 
 def format_steer_marker(steer_text: str) -> str:
     """Wrap a mid-turn steer for appending to a tool result (see module note)."""
+    if not steer_text.startswith("User injection prompt:"):
+        steer_text = f"User injection prompt: {steer_text}"
     return f"\n\n{STEER_MARKER_OPEN}\n{steer_text}\n{STEER_MARKER_CLOSE}"
 
 

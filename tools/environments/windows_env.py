@@ -15,8 +15,15 @@ import threading
 import time
 
 if sys.platform == "win32":
-    import ctypes
-    import winreg
+    try:
+        import ctypes
+        import winreg
+    except ImportError:
+        ctypes = None
+        winreg = None
+else:
+    ctypes = None
+    winreg = None
 
 
 def ps_with_utf8(command: str) -> str:
@@ -58,6 +65,8 @@ def _expand_registry_string(value: str) -> str:
     """
     if "%" not in value:
         return value
+    if ctypes is None:
+        return os.path.expandvars(value)
     try:
         _ExpandEnvironmentStringsW = (
             ctypes.windll.kernel32.ExpandEnvironmentStringsW
@@ -82,6 +91,8 @@ def _read_registry_value(
     registry type constant (e.g. ``winreg.REG_SZ``).
     """
     try:
+        if winreg is None:
+            return None, None
         with winreg.OpenKey(hive, subkey, 0, winreg.KEY_READ) as key:
             val, reg_type = winreg.QueryValueEx(key, name)
             if isinstance(val, str):
@@ -144,7 +155,7 @@ def _registry_env_signature() -> tuple | None:
     or a permission error), which makes the caller fall through to a full,
     uncached refresh — never a silent skip.
     """
-    if sys.platform != "win32":
+    if sys.platform != "win32" or winreg is None:
         return None
     sig: list = []
     for hive, subkey in (
@@ -223,7 +234,7 @@ def _do_refresh_env_from_registry() -> None:
     Split out so the cache wrapper can skip it on a hit and tests can count how
     often the underlying registry read actually runs.
     """
-    if sys.platform != "win32":
+    if sys.platform != "win32" or winreg is None:
         return
 
     # --- PATH ---

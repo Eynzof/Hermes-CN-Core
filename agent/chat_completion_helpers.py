@@ -4310,17 +4310,6 @@ def interruptible_streaming_api_call(agent, api_kwargs: dict, *, on_first_delta=
                 # sockets down; the worker performs the eventual SDK close.
                 _cancel_current_stream_attempt("stale_stream_kill")
                 _close_request_client_once("stale_stream_kill")
-                if agent.api_mode != "anthropic_messages":
-                    # Rebuild the shared OpenAI client too — its connection
-                    # pool may hold dead sockets from the same outage.  The
-                    # Anthropic primary is deliberately left untouched; its
-                    # stream uses the request-local client above.
-                    try:
-                        agent._replace_primary_openai_client(
-                            reason="stale_stream_pool_cleanup"
-                        )
-                    except Exception:
-                        pass
             except Exception:
                 pass
             agent._touch_activity(

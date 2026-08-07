@@ -459,6 +459,8 @@ class _EmbeddedCuaDaemon:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             env=env,
         )
         self._stderr_thread = threading.Thread(
@@ -482,6 +484,8 @@ class _EmbeddedCuaDaemon:
                     stdin=subprocess.DEVNULL,
                     capture_output=True,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     timeout=2.0,
                     env=env,
                 )

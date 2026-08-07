@@ -2,6 +2,7 @@
 
 import json
 import os
+import shlex
 import sys
 from pathlib import Path
 
@@ -25,7 +26,11 @@ def _force_pwsh_shell(monkeypatch):
 # host. ``& <quoted-path>`` (PowerShell call operator) is required because the
 # terminal wrapper runs the command via ``Invoke-Expression`` and a bare
 # quoted string literal cannot start a command there.
-_PY = "& '" + sys.executable.replace("'", "''") + "'"
+_PY = (
+    "& '" + sys.executable.replace("'", "''") + "'"
+    if sys.platform == "win32"
+    else shlex.quote(sys.executable)
+)
 
 
 @pytest.fixture

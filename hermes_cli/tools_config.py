@@ -1341,6 +1341,7 @@ def _repair_cua_driver_autostart_windows(driver_cmd: str, *, verbose: bool) -> b
             [ps, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_cmd],
             capture_output=True,
             text=True,
+            errors="replace",
             timeout=300,
             env=_cua_driver_env(),
         )

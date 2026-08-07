@@ -6707,7 +6707,12 @@ def _desktop_macos_has_valid_real_signature(app: Path) -> bool:
         return False
     try:
         info = subprocess.run(
-            [codesign, "-dv", str(app)], check=False, capture_output=True, text=True
+            [codesign, "-dv", str(app)],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         output = f"{info.stdout}\n{info.stderr}"
         if info.returncode != 0 or "TeamIdentifier=" not in output \

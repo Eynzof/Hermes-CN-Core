@@ -167,7 +167,9 @@ class TestFindPwsh:
 
 class TestResolveShell:
     """_resolve_shell() on Windows prefers pwsh, falls back to powershell.
-    When HERMES_SHELL_TYPE=bash, resolves to pre-installed Git Bash (no auto-download).
+    When HERMES_SHELL_TYPE=bash, resolves to pre-installed Git Bash
+    (no auto-download); a missing/broken Git Bash falls back to the
+    PowerShell chain (pwsh → powershell.exe).
     """
 
     def test_windows_auto_pwsh_available_returns_pwsh(self, monkeypatch):
@@ -214,22 +216,55 @@ class TestResolveShell:
                     assert _resolve_shell() == ("powershell", ps_path)
 
     def test_windows_bash_found_returns_bash(self, monkeypatch):
-        """HERMES_SHELL_TYPE=bash returns bash when a pre-installed bash is found."""
+        """HERMES_SHELL_TYPE=bash returns bash when a usable bash is found."""
         monkeypatch.setattr("tools.environments.local._IS_WINDOWS", True)
         bash_path = r"C:\Program Files\Git\bin\bash.exe"
         env = {"HERMES_SHELL_TYPE": "bash"}
         with mock.patch.dict(os.environ, env, clear=True):
             with mock.patch("tools.environments.local._find_bash", return_value=bash_path):
-                assert _resolve_shell() == ("bash", bash_path)
+                with mock.patch("tools.environments.local._bash_starts", return_value=True):
+                    assert _resolve_shell() == ("bash", bash_path)
 
-    def test_windows_bash_not_found_raises_helpful_error(self, monkeypatch):
-        """HERMES_SHELL_TYPE=bash raises a helpful error when bash is not installed."""
+    def test_windows_bash_missing_falls_back_to_pwsh(self, monkeypatch):
+        """HERMES_SHELL_TYPE=bash with Git Bash missing falls back to pwsh."""
         monkeypatch.setattr("tools.environments.local._IS_WINDOWS", True)
+        pwsh_path = r"C:\Program Files\PowerShell\7\pwsh.exe"
+        env = {"HERMES_SHELL_TYPE": "bash"}
+        with mock.patch.dict(os.environ, env, clear=True):
+            with mock.patch(
+                "tools.environments.local._find_bash",
+                side_effect=RuntimeError(
+                    "Git Bash is not found on this system. "
+                    "It was explicitly selected via HERMES_SHELL_TYPE=bash; "
+                    "install Git for Windows or use PowerShell."
+                ),
+            ):
+                with mock.patch("tools.environments.local._find_pwsh", return_value=pwsh_path):
+                    assert _resolve_shell() == ("pwsh", pwsh_path)
+
+    def test_windows_bash_missing_falls_back_to_powershell(self, monkeypatch):
+        """HERMES_SHELL_TYPE=bash with Git Bash missing falls back to powershell.exe."""
+        monkeypatch.setattr("tools.environments.local._IS_WINDOWS", True)
+        ps_path = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
         env = {"HERMES_SHELL_TYPE": "bash"}
         with mock.patch.dict(os.environ, env, clear=True):
             with mock.patch("tools.environments.local._find_bash", return_value=None):
-                with pytest.raises(RuntimeError, match="Git Bash is not found"):
-                    _resolve_shell()
+                with mock.patch("tools.environments.local._find_pwsh", return_value=None):
+                    with mock.patch("tools.environments.local._find_powershell", return_value=ps_path):
+                        assert _resolve_shell() == ("powershell", ps_path)
+
+    def test_windows_bash_broken_falls_back_to_powershell(self, monkeypatch):
+        """A probe-failed Git Bash is treated as unavailable and falls back."""
+        monkeypatch.setattr("tools.environments.local._IS_WINDOWS", True)
+        bash_path = r"C:\Program Files\Git\bin\bash.exe"
+        ps_path = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
+        env = {"HERMES_SHELL_TYPE": "bash"}
+        with mock.patch.dict(os.environ, env, clear=True):
+            with mock.patch("tools.environments.local._find_bash", return_value=bash_path):
+                with mock.patch("tools.environments.local._bash_starts", return_value=False):
+                    with mock.patch("tools.environments.local._find_pwsh", return_value=None):
+                        with mock.patch("tools.environments.local._find_powershell", return_value=ps_path):
+                            assert _resolve_shell() == ("powershell", ps_path)
 
     def test_windows_unknown_shell_type_raises(self, monkeypatch):
         monkeypatch.setattr("tools.environments.local._IS_WINDOWS", True)

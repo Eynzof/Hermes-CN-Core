@@ -1000,7 +1000,11 @@ def _detect_shell_for_description() -> str:
 
     On Windows, probes for PowerShell 7 (pwsh) first; if found returns
     ``"pwsh"``, otherwise returns ``"powershell"`` (Windows PowerShell
-    5.1, which ships with every Windows 10/11 system).
+    5.1, which ships with every Windows 10/11 system).  When
+    ``HERMES_SHELL_TYPE=bash`` is configured, returns ``"bash"`` only
+    when a usable Git Bash was found — otherwise the terminal falls back
+    to PowerShell (see ``_resolve_shell``), so ``"powershell"`` is
+    reported.
     On non-Windows, returns ``"bash"``.
 
     Cached via ``@lru_cache`` so repeated calls are essentially free.
@@ -1011,7 +1015,20 @@ def _detect_shell_for_description() -> str:
     shell_type = os.environ.get("HERMES_SHELL_TYPE", "auto").strip().lower() or "auto"
 
     if shell_type == "bash":
-        return "powershell"  # _resolve_shell() in local.py will raise RuntimeError
+        # bash mode: describe the shell the terminal actually runs.  Git
+        # Bash present and usable → "bash"; missing/broken → _resolve_shell()
+        # falls back to PowerShell, so describe that instead.  The probe is
+        # gated on the real OS flag (_IS_WINDOWS) so a mocked
+        # platform.system() in tests never triggers an actual bash search.
+        try:
+            from tools.environments.local import _IS_WINDOWS, _bash_starts, _find_bash
+            if _IS_WINDOWS:
+                bash_path = _find_bash()
+                if bash_path and _bash_starts(bash_path):
+                    return "bash"
+        except Exception:
+            pass
+        return "powershell"
 
     # Probe for pwsh (PowerShell 7)
     try:

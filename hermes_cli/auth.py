@@ -1253,7 +1253,15 @@ def _save_auth_store(auth_store: Dict[str, Any], target_path: Optional[Path] = N
     secure_parent_dir(auth_file)
     auth_store["version"] = AUTH_STORE_VERSION
     auth_store["updated_at"] = datetime.now(timezone.utc).isoformat()
-    payload = orjson.dumps(auth_store, option=orjson.OPT_INDENT_2).decode('utf-8') + "\n"
+    # Use stdlib json.dumps with ensure_ascii=True (NOT orjson, which never
+    # escapes non-ASCII). orjson writes raw UTF-8 bytes; on Chinese Windows
+    # the default locale codec is GBK, so a later reader that does not pass
+    # encoding="utf-8" crashes with "'gbk' codec can't decode byte ..." and
+    # the store is treated as corrupt (see hermes_cli.auth._load_auth_store).
+    # auth.json is a low-frequency credential store — stdlib serialization
+    # cost is irrelevant, and pure-ASCII output is parseable under every
+    # codec (UTF-8, GBK, ASCII).
+    payload = json.dumps(auth_store, ensure_ascii=True, indent=2) + "\n"
     tmp_path = auth_file.with_name(f"{auth_file.name}.tmp.{os.getpid()}.{uuid.uuid4().hex}")
     try:
         # Create with 0o600 atomically via os.open(O_EXCL) + fdopen to close

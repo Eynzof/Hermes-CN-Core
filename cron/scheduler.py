@@ -2228,6 +2228,118 @@ def _windows_cron_python_invocation(python_exe: str) -> tuple[str, dict[str, str
     return str(interpreter), env_overlay
 
 
+def _is_frozen_runtime() -> bool:
+    """True when running inside the PyInstaller-frozen CN portable runtime.
+
+    The desktop runtime ships as a frozen ``hermes-agent-cn-runtime-*.exe``
+    with no standalone ``python.exe`` — inside it ``sys.executable`` IS the
+    Hermes CLI binary itself. Spawning it with a script path would run
+    ``hermes <script>.py`` and make argparse reject the path as an invalid
+    subcommand ("invalid choice: 'whitecat_inspect.py'"). Cron scripts must
+    therefore be executed in-process under this runtime.
+    """
+    return bool(getattr(sys, "frozen", False))
+
+
+def _redact_script_output(stdout: str, stderr: str) -> tuple[str, str]:
+    """Redact Hermes-managed secrets from cron script stdout/stderr.
+
+    Mirrors the subprocess-path redaction so the in-process frozen-runtime
+    path cannot leak provider credentials (SECURITY.md §2.3).
+    """
+    try:
+        from agent.redact import redact_sensitive_text
+
+        return redact_sensitive_text(stdout), redact_sensitive_text(stderr)
+    except Exception as e:
+        logger.warning("Failed to redact sensitive text from output: %s", e)
+        return "[REDACTED - redaction failed]", "[REDACTED - redaction failed]"
+
+
+def _run_python_script_in_process(script_path: Path, timeout: int) -> tuple[bool, str]:
+    """Execute a cron script with the current interpreter, capturing output.
+
+    Used ONLY under a PyInstaller-frozen runtime (see ``_is_frozen_runtime``),
+    where ``sys.executable`` is the Hermes CLI binary and spawning it with a
+    script path would run ``hermes <script>.py`` — argparse then rejects the
+    path as an invalid subcommand ("invalid choice: 'whitecat_inspect.py'")
+    and every ``no_agent`` / data-collection cron job fails at first tick.
+
+    The trusted script (resolved inside HERMES_HOME/scripts/ by the caller)
+    runs in-process with ``runpy.run_path`` so ``if __name__ == "__main__":``
+    and ``sys.argv`` behave exactly like ``python script.py``. Python-level
+    stdout/stderr is captured, ``sys.exit`` codes are honoured, and output is
+    secret-redacted before returning. Execution is bounded by ``timeout`` on
+    a best-effort basis: a hung script is abandoned (the daemon thread leaks
+    but the cron pool thread is returned), matching the subprocess timeout
+    contract without being able to kill the work.
+
+    Security note: in-process execution shares the gateway environment, so
+    the subprocess env sanitisation (SECURITY.md §2.3) cannot apply here —
+    scripts are still confined to the trusted HERMES_HOME/scripts/ directory.
+    """
+    import io
+    import runpy
+    from contextlib import redirect_stderr, redirect_stdout
+
+    out_buf = io.StringIO()
+    err_buf = io.StringIO()
+    state = {"exit_code": 0}
+
+    prior_argv = sys.argv
+    sys.argv = [str(script_path)]
+
+    def _exec() -> None:
+        try:
+            with redirect_stdout(out_buf), redirect_stderr(err_buf):
+                runpy.run_path(str(script_path), run_name="__main__")
+        except SystemExit as exc:
+            code = exc.code
+            if code is None:
+                state["exit_code"] = 0
+            elif isinstance(code, int):
+                state["exit_code"] = code
+            else:
+                state["exit_code"] = 1
+                err_buf.write(f"{code}\n")
+        except BaseException as exc:  # noqa: BLE001 — a script crash is a job failure
+            state["exit_code"] = 1
+            err_buf.write(f"{type(exc).__name__}: {exc}\n")
+
+    thread = threading.Thread(
+        target=_exec,
+        name="cron-inprocess-script",
+        daemon=True,
+    )
+    try:
+        thread.start()
+    except Exception as exc:
+        sys.argv = prior_argv
+        return False, f"Script execution failed: {exc}"
+
+    thread.join(timeout)
+    timed_out = thread.is_alive()
+    sys.argv = prior_argv
+
+    stdout, stderr = _redact_script_output(
+        out_buf.getvalue().strip(),
+        err_buf.getvalue().strip(),
+    )
+
+    if timed_out:
+        return False, f"Script timed out after {timeout}s: {script_path}"
+
+    if state["exit_code"] != 0:
+        parts = [f"Script exited with code {state['exit_code']}"]
+        if stderr:
+            parts.append(f"stderr:\n{stderr}")
+        if stdout:
+            parts.append(f"stdout:\n{stdout}")
+        return False, "\n".join(parts)
+
+    return True, stdout
+
+
 def _run_job_script(script_path: str) -> tuple[bool, str]:
     """Execute a cron job's data-collection script and capture its output.
 
@@ -2306,6 +2418,13 @@ def _run_job_script(script_path: str) -> tuple[bool, str]:
         argv = [_bash, str(path)]
         env_overlay: dict[str, str] = {}
     else:
+        # PyInstaller-frozen runtime (CN portable desktop): sys.executable is
+        # the Hermes CLI binary itself, so spawning it with the script path
+        # would run `hermes <script>.py` and die with argparse's "invalid
+        # choice" error (#whitecat_inspect). Execute the script in-process
+        # with the current interpreter instead.
+        if _is_frozen_runtime():
+            return _run_python_script_in_process(path, script_timeout)
         python_exe, env_overlay = _windows_cron_python_invocation(sys.executable)
         argv = [python_exe, str(path)]
 
@@ -2332,14 +2451,7 @@ def _run_job_script(script_path: str) -> tuple[bool, str]:
         stderr = (result.stderr or "").strip()
 
         # Redact secrets from both stdout and stderr before any return path.
-        try:
-            from agent.redact import redact_sensitive_text
-            stdout = redact_sensitive_text(stdout)
-            stderr = redact_sensitive_text(stderr)
-        except Exception as e:
-            logger.warning("Failed to redact sensitive text from output: %s", e)
-            stdout = "[REDACTED - redaction failed]"
-            stderr = "[REDACTED - redaction failed]"
+        stdout, stderr = _redact_script_output(stdout, stderr)
 
         if result.returncode != 0:
             parts = [f"Script exited with code {result.returncode}"]

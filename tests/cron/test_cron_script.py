@@ -321,6 +321,140 @@ class TestRunJobScript:
         assert parsed["new_prs"][0]["number"] == 42
 
 
+class TestRunJobScriptFrozenRuntime:
+    """PyInstaller-frozen CN portable runtime: ``sys.executable`` is the CLI.
+
+    Regression for the reported no_agent cron bug ("invalid choice:
+    'whitecat_inspect.py'"): the CN portable runtime ships as a
+    PyInstaller-frozen binary (``hermes-agent-cn-runtime-*.exe``) with no
+    standalone ``python.exe``. Inside it ``sys.executable`` IS the Hermes CLI
+    itself, so ``_run_job_script`` must NOT spawn ``sys.executable`` with the
+    script path — that would run ``hermes <script>.py`` and make argparse
+    reject the script path as an invalid subcommand. The script must instead
+    be executed in-process with the current interpreter.
+    """
+
+    @pytest.fixture
+    def frozen_runtime(self, monkeypatch):
+        from cron import scheduler as sched_mod
+
+        # PyInstaller sets sys.frozen=True; sys.executable is the frozen
+        # Hermes CLI binary (e.g. hermes-agent-cn-runtime-win32-x64.exe).
+        monkeypatch.setattr(sched_mod.sys, "frozen", True, raising=False)
+        monkeypatch.setattr(
+            sched_mod.sys,
+            "executable",
+            "C:/Portable/hermes-agent-cn-runtime-win32-x64.exe",
+        )
+        return sched_mod
+
+    def test_frozen_runtime_py_script_runs_in_process_without_spawning_cli(
+        self, cron_env, frozen_runtime, monkeypatch
+    ):
+        """The .py script executes and its stdout is returned; sys.executable
+        (the Hermes CLI binary) is never spawned with the script path."""
+        from cron.scheduler import _run_job_script
+
+        script = cron_env / "scripts" / "whitecat_inspect.py"
+        script.write_text(
+            textwrap.dedent(
+                """\
+                import sys
+                print(f"argv0={sys.argv[0]!r}")
+                print("RAM 91% on host")
+                """
+            )
+        )
+
+        def _forbid_subprocess(*args, **kwargs):
+            raise AssertionError(
+                "frozen runtime must not spawn sys.executable with the script "
+                "path (would be `hermes whitecat_inspect.py` -> invalid choice)"
+            )
+
+        monkeypatch.setattr(frozen_runtime.subprocess, "run", _forbid_subprocess)
+
+        success, output = _run_job_script("whitecat_inspect.py")
+
+        assert success is True
+        assert "RAM 91% on host" in output
+        # sys.argv behaves like `python script.py` (argv[0] is the script).
+        assert "argv0=" in output
+        assert "whitecat_inspect.py" in output
+
+    def test_frozen_runtime_no_agent_job_runs_py_script(
+        self, cron_env, frozen_runtime, monkeypatch
+    ):
+        """End-to-end: a no_agent cron job with a .py script succeeds and its
+        stdout is delivered verbatim (the user-reported scenario)."""
+        from cron.jobs import create_job
+        from cron.scheduler import run_job
+
+        script = cron_env / "scripts" / "whitecat_inspect.py"
+        script.write_text('print("RAM 91% on host")\n')
+
+        job = create_job(
+            prompt=None,
+            schedule="every 5m",
+            script="whitecat_inspect.py",
+            no_agent=True,
+            deliver="local",
+        )
+        success, doc, final_response, error = run_job(job)
+        assert success is True
+        assert error is None
+        assert "RAM 91% on host" in final_response
+        assert "RAM 91% on host" in doc
+
+    def test_frozen_runtime_script_nonzero_exit_fails(self, cron_env, frozen_runtime):
+        """sys.exit(nonzero) + stderr -> failure with the same error shape as
+        the subprocess path."""
+        from cron.scheduler import _run_job_script
+
+        script = cron_env / "scripts" / "broken.py"
+        script.write_text(
+            textwrap.dedent(
+                """\
+                import sys
+                print("partial")
+                print("oops", file=sys.stderr)
+                sys.exit(3)
+                """
+            )
+        )
+
+        success, output = _run_job_script("broken.py")
+        assert success is False
+        assert "exited with code 3" in output
+        assert "oops" in output
+        assert "partial" in output
+
+    def test_frozen_runtime_script_sys_exit_zero_succeeds(self, cron_env, frozen_runtime):
+        """sys.exit(0) is a clean success, like the subprocess path."""
+        from cron.scheduler import _run_job_script
+
+        script = cron_env / "scripts" / "clean_exit.py"
+        script.write_text('import sys\nprint("clean")\nsys.exit(0)\n')
+
+        success, output = _run_job_script("clean_exit.py")
+        assert success is True
+        assert output == "clean"
+
+    def test_frozen_runtime_script_timeout(self, cron_env, frozen_runtime, monkeypatch):
+        """In-process execution still honours the script timeout."""
+        from cron import scheduler as sched_mod
+        from cron.scheduler import _run_job_script
+
+        monkeypatch.setattr(sched_mod, "_SCRIPT_TIMEOUT", 1)
+
+        script = cron_env / "scripts" / "slow.py"
+        script.write_text("import time; time.sleep(30)\n")
+
+        success, output = _run_job_script("slow.py")
+        assert success is False
+        assert "timed out" in output.lower()
+
+
 class TestBuildJobPromptWithScript:
     """Test that script output is injected into the prompt."""
 

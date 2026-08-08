@@ -31,6 +31,10 @@ the SPA should bootstrap it after login instead.
 from __future__ import annotations
 
 PUBLIC_API_PATHS: frozenset[str] = frozenset({
+    # Public version probe. Used by the desktop shell to verify frontend/
+    # backend compatibility before the SPA has a session token. Exposes only
+    # the package name and version — no secrets.
+    "/api/version",
     # Liveness probe target. Returns version, gateway state, active
     # session count, and the dashboard auth-gate shape. No bodies, no
     # session content, no secrets. Documented as the portal's wildcard

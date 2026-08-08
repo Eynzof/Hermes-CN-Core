@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import orjson
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -13,6 +14,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 import yaml
 
+from hermes_cli import __version__
 from hermes_cli.config import (
     reload_env,
     redact_key,
@@ -239,6 +241,24 @@ class TestSessionTokenInjection:
 # ---------------------------------------------------------------------------
 
 
+def test_version_matches_pyproject_toml():
+    """``hermes_cli.__version__`` must stay in sync with pyproject.toml.
+
+    The desktop shell reads /api/version and compares it against a frontend
+    literal, so version drift between the package and the build manifest
+    breaks compatibility checks.
+    """
+    repo_root = Path(__file__).resolve().parent.parent.parent
+    pyproject = repo_root / "pyproject.toml"
+    assert pyproject.exists(), f"pyproject.toml not found at {pyproject}"
+    text = pyproject.read_text(encoding="utf-8")
+    match = re.search(r'^version\s*=\s*"([^"]+)"', text, re.MULTILINE)
+    assert match, "project version not found in pyproject.toml"
+    assert match.group(1) == __version__, (
+        f"pyproject.toml version {match.group(1)!r} != hermes_cli.__version__ {__version__!r}"
+    )
+
+
 class TestWebServerEndpoints:
     """Test the FastAPI REST endpoints using Starlette TestClient."""
 
@@ -258,6 +278,28 @@ class TestWebServerEndpoints:
 
         self.client = TestClient(app)
         self.client.headers[_SESSION_HEADER_NAME] = _SESSION_TOKEN
+
+    def test_get_api_version(self):
+        resp = self.client.get("/api/version")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["version"] == __version__
+        assert data["name"] == "hermes-agent"
+
+    def test_get_api_version_is_public(self):
+        """The version endpoint must be reachable without a session token."""
+        from hermes_cli.web_server import _SESSION_HEADER_NAME
+        # Temporarily remove the auth header the fixture injects.
+        original = self.client.headers.pop(_SESSION_HEADER_NAME, None)
+        try:
+            resp = self.client.get("/api/version")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert "version" in data
+            assert data["name"] == "hermes-agent"
+        finally:
+            if original is not None:
+                self.client.headers[_SESSION_HEADER_NAME] = original
 
     def test_get_status(self):
         resp = self.client.get("/api/status")

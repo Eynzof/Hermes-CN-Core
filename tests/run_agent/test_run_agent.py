@@ -3352,7 +3352,9 @@ class TestConcurrentToolExecution:
             agent._execute_tool_calls_sequential(mock_msg, messages, "task-1")
 
         assert seen["middleware_args"] == {"todos": [], "request_rewritten": True}
-        mock_todo.assert_called_once_with(todos=[], merge=True, store=agent._todo_store)
+        mock_todo.assert_called_once_with(
+            todos=[], merge=True, auto_fix=True, store=agent._todo_store
+        )
         post_call = next(call for call in hook_calls if call[0] == "post_tool_call")
         assert post_call[1]["tool_name"] == "todo"
         assert post_call[1]["args"] == {"todos": [], "request_rewritten": True, "merge": True}

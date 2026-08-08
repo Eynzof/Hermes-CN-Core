@@ -2990,6 +2990,21 @@ def _collect_profile_gateway_topology() -> Dict[str, Any]:
     return {"profiles": profile_names, "gateway_mode": mode, "gateways": gateways}
 
 
+@app.get("/api/version")
+async def api_version() -> JSONResponse:
+    """Return the running dashboard/backend package version.
+
+    The version is read from the installed ``hermes_cli`` package metadata
+    (``pyproject.toml`` at build time), surfaced through ``__version__``.
+    This endpoint is intentionally public and auth-free so the desktop shell
+    can verify compatibility before it has finished bootstrapping the session.
+    """
+    return JSONResponse({
+        "version": __version__,
+        "name": "hermes-agent",
+    })
+
+
 @app.get("/api/status")
 async def get_status(profile: Optional[str] = None):
     status_scope = None

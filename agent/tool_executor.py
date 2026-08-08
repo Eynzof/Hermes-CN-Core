@@ -1493,6 +1493,7 @@ def execute_tool_calls_sequential(
                 return _todo_tool(
                     todos=next_args.get("todos"),
                     merge=next_args.get("merge", False),
+                    auto_fix=next_args.get("auto_fix", True),
                     store=agent._todo_store,
                 )
 

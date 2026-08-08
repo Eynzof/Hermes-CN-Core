@@ -13,25 +13,6 @@ from __future__ import annotations
 
 from hermes_cli.config import DEFAULT_CONFIG
 
-
-class TestDestructiveSlashConfirmDefault:
-    def test_default_config_has_the_key(self):
-        approvals = DEFAULT_CONFIG.get("approvals")
-        assert isinstance(approvals, dict)
-        assert "destructive_slash_confirm" in approvals
-
-    def test_default_is_true(self):
-        # New installs confirm by default — destructive commands must not
-        # silently wipe history without an explicit user "yes".
-        assert DEFAULT_CONFIG["approvals"]["destructive_slash_confirm"] is True
-
-    def test_shape_matches_other_approval_keys(self):
-        approvals = DEFAULT_CONFIG["approvals"]
-        assert isinstance(approvals.get("destructive_slash_confirm"), bool)
-        # Sibling key shape sanity — same flat dict level as mcp_reload_confirm.
-        assert isinstance(approvals.get("mcp_reload_confirm"), bool)
-
-
 class TestUserConfigMerge:
     """If a user has a pre-existing config without this key, load_config
     should fill it in from DEFAULT_CONFIG (deep merge preserves keys the

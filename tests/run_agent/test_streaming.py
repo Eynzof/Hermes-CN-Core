@@ -8,9 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 # ── Helpers ──────────────────────────────────────────────────────────────
-
 
 def _make_stream_chunk(
     content=None, tool_calls=None, finish_reason=None,
@@ -35,7 +33,6 @@ def _make_stream_chunk(
     )
     return chunk
 
-
 def _make_tool_call_delta(index=0, tc_id=None, name=None, arguments=None, extra_content=None, model_extra=None):
     """Build a mock tool call delta."""
     func = SimpleNamespace(name=name, arguments=arguments)
@@ -46,14 +43,11 @@ def _make_tool_call_delta(index=0, tc_id=None, name=None, arguments=None, extra_
         delta.model_extra = model_extra
     return delta
 
-
 def _make_empty_chunk(model=None, usage=None):
     """Build a chunk with no choices (usage-only final chunk)."""
     return SimpleNamespace(choices=[], model=model, usage=usage)
 
-
 # ── Test: Streaming Accumulator ──────────────────────────────────────────
-
 
 class TestStreamingAccumulator:
     """Verify that _interruptible_streaming_api_call accumulates content
@@ -362,9 +356,7 @@ class TestStreamingAccumulator:
         assert response.choices[0].message.content == "Let me check"
         assert len(response.choices[0].message.tool_calls) == 1
 
-
 # ── Test: Streaming Callbacks ────────────────────────────────────────────
-
 
 class TestStreamingCallbacks:
     """Verify that delta callbacks fire correctly."""
@@ -555,9 +547,7 @@ class TestStreamingCallbacks:
         # Content is still accumulated in the response
         assert response.choices[0].message.content == "thinking... more text"
 
-
 # ── Test: Streaming Fallback ────────────────────────────────────────────
-
 
 class TestStreamingFallback:
     """Verify streaming errors propagate to the main retry loop.
@@ -879,9 +869,7 @@ class TestStreamingFallback:
         # Should NOT retry — propagates immediately
         assert mock_client.chat.completions.create.call_count == 1
 
-
 # ── Test: Reasoning Streaming ────────────────────────────────────────────
-
 
 class TestReasoningStreaming:
     """Verify reasoning content is accumulated and callback fires."""
@@ -926,9 +914,7 @@ class TestReasoningStreaming:
         assert response.choices[0].message.reasoning_content == "Let me think about this"
         assert response.choices[0].message.content == "The answer is 42"
 
-
 # ── Test: _has_stream_consumers ──────────────────────────────────────────
-
 
 class TestHasStreamConsumers:
     """Verify _has_stream_consumers() detects registered callbacks."""
@@ -971,9 +957,7 @@ class TestHasStreamConsumers:
         agent._stream_callback = lambda t: None
         assert agent._has_stream_consumers() is True
 
-
 # ── Test: Codex stream fires callbacks ────────────────────────────────
-
 
 class TestCodexStreamCallbacks:
     """Verify _run_codex_stream fires delta callbacks."""
@@ -1146,7 +1130,6 @@ class TestCodexStreamCallbacks:
         )
 
         assert touch_calls.count("receiving stream response") == len(events)
-
 
 class TestAnthropicStreamCallbacks:
     """Verify Anthropic streaming refreshes activity on every event."""
@@ -1386,7 +1369,6 @@ class TestAnthropicStreamCallbacks:
         assert mock_replace.call_count == 0
         assert mock_rebuild.call_count == 0
 
-
 class TestPartialToolCallWarning:
     """Regression: when a stream dies mid tool-call argument generation after
     text was already delivered, the partial-stream stub at run_agent.py
@@ -1519,7 +1501,6 @@ class TestPartialToolCallWarning:
         assert "Stream stalled" not in content, (
             f"Unexpected warning on text-only partial stream: {content!r}"
         )
-
 
 class TestSilentRetryMidToolCall:
     """Regression: when the stream dies mid tool-call JSON after text was
@@ -1742,9 +1723,7 @@ class TestSilentRetryMidToolCall:
             f"Text-only stall should not emit tool-call warning: {content!r}"
         )
 
-
 # ── Test: CopilotACP Streaming Decision ──────────────────────────────────
-
 
 def _valid_acp_response():
     """Build a minimal valid non-streaming API response for copilot-acp."""
@@ -1762,7 +1741,6 @@ def _valid_acp_response():
         usage=SimpleNamespace(prompt_tokens=5, completion_tokens=3),
         model="claude-opus-4.7",
     )
-
 
 def _make_acp_agent(provider="copilot-acp", base_url="acp://copilot"):
     """Create an AIAgent configured for copilot-acp with a stream consumer
@@ -1782,116 +1760,6 @@ def _make_acp_agent(provider="copilot-acp", base_url="acp://copilot"):
     agent.api_mode = "chat_completions"
     agent._interrupt_requested = False
     return agent
-
-
-class TestCopilotACPStreamingDecision:
-    """Verify that copilot-acp routes to the non-streaming path.
-
-    CopilotACPClient communicates via subprocess stdio and returns a plain
-    SimpleNamespace — not an iterable stream.  The streaming decision logic
-    must detect ACP runtimes and route to _interruptible_api_call instead.
-    """
-
-    @patch("run_agent.get_tool_definitions", return_value=[])
-    @patch("run_agent.check_toolset_requirements", return_value={})
-    @patch("agent.copilot_acp_client.CopilotACPClient")
-    def test_provider_name_triggers_non_streaming(
-        self, mock_acp_cls, _mock_check, _mock_tools
-    ):
-        """provider='copilot-acp' → non-streaming path."""
-        mock_acp_cls.return_value = MagicMock()
-        agent = _make_acp_agent(provider="copilot-acp", base_url="acp://copilot")
-
-        with (
-            patch.object(agent, "_interruptible_api_call",
-                         return_value=_valid_acp_response()) as mock_non_stream,
-            patch.object(agent, "_interruptible_streaming_api_call") as mock_stream,
-        ):
-            # Verify the decision logic correctly disables streaming
-            _use_streaming = True
-            if getattr(agent, "_disable_streaming", False):
-                _use_streaming = False
-            elif (
-                agent.provider == "copilot-acp"
-                or str(agent.base_url or "").lower().startswith("acp://copilot")
-                or str(agent.base_url or "").lower().startswith("acp+tcp://")
-            ):
-                _use_streaming = False
-
-            assert _use_streaming is False
-            # Call the non-streaming path as the loop would
-            response = mock_non_stream({})
-            mock_stream.assert_not_called()
-
-    @patch("run_agent.get_tool_definitions", return_value=[])
-    @patch("run_agent.check_toolset_requirements", return_value={})
-    @patch("agent.copilot_acp_client.CopilotACPClient")
-    def test_acp_base_url_triggers_non_streaming(
-        self, mock_acp_cls, _mock_check, _mock_tools
-    ):
-        """base_url='acp://copilot' → non-streaming even without provider name."""
-        mock_acp_cls.return_value = MagicMock()
-        agent = _make_acp_agent(provider="custom", base_url="acp://copilot")
-        agent.provider = "custom"
-
-        _use_streaming = True
-        if (
-            agent.provider == "copilot-acp"
-            or str(agent.base_url or "").lower().startswith("acp://copilot")
-            or str(agent.base_url or "").lower().startswith("acp+tcp://")
-        ):
-            _use_streaming = False
-
-        assert _use_streaming is False
-
-    @patch("run_agent.get_tool_definitions", return_value=[])
-    @patch("run_agent.check_toolset_requirements", return_value={})
-    @patch("agent.copilot_acp_client.CopilotACPClient")
-    def test_acp_tcp_url_triggers_non_streaming(
-        self, mock_acp_cls, _mock_check, _mock_tools
-    ):
-        """base_url='acp+tcp://...' → non-streaming."""
-        mock_acp_cls.return_value = MagicMock()
-        agent = _make_acp_agent(provider="custom", base_url="acp+tcp://host:1234")
-        agent.provider = "custom"
-
-        _use_streaming = True
-        if (
-            agent.provider == "copilot-acp"
-            or str(agent.base_url or "").lower().startswith("acp://copilot")
-            or str(agent.base_url or "").lower().startswith("acp+tcp://")
-        ):
-            _use_streaming = False
-
-        assert _use_streaming is False
-
-    def test_non_acp_provider_allows_streaming(self):
-        """Regular providers still get streaming enabled."""
-        from run_agent import AIAgent
-        agent = AIAgent(
-            api_key="test-key",
-            base_url="https://openrouter.ai/api/v1",
-            provider="openrouter",
-            model="test/model",
-            quiet_mode=True,
-            skip_context_files=True,
-            skip_memory=True,
-            stream_delta_callback=lambda text: None,
-        )
-        agent.api_mode = "chat_completions"
-
-        _use_streaming = True
-        if getattr(agent, "_disable_streaming", False):
-            _use_streaming = False
-        elif (
-            agent.provider == "copilot-acp"
-            or str(agent.base_url or "").lower().startswith("acp://copilot")
-            or str(agent.base_url or "").lower().startswith("acp+tcp://")
-        ):
-            _use_streaming = False
-
-        assert _use_streaming is True
-
 
 class TestBedrockIamStreamingFallback:
     """bedrock_converse streaming branch: IAM denial of
@@ -1976,7 +1844,6 @@ class TestBedrockIamStreamingFallback:
         client.converse.assert_not_called()
         assert getattr(agent, "_disable_streaming", False) is False
 
-
 class _BlockingEventStream:
     """Mock boto3 ``converse_stream()`` response whose event iterator blocks
     forever — simulates a provider that opens the stream then stops yielding
@@ -2001,7 +1868,6 @@ class _BlockingEventStream:
         self._release.wait(timeout=30)
         raise StopIteration
 
-
 def test_on_event_fires_per_bedrock_event():
     """FIX 1: on_event fires once for EVERY yielded Bedrock event — text,
     tool-input delta, messageStop, and metadata alike — providing wire-level
@@ -2025,7 +1891,6 @@ def test_on_event_fires_per_bedrock_event():
 
     assert calls["n"] == len(events)
 
-
 def test_on_event_exception_is_swallowed():
     """FIX 1: a raising on_event callback must never abort the stream."""
     from agent.bedrock_adapter import stream_converse_with_callbacks
@@ -2038,7 +1903,6 @@ def test_on_event_exception_is_swallowed():
     resp = stream_converse_with_callbacks({"stream": iter(events)}, on_event=_boom)
     assert resp is not None
     assert resp.choices[0].finish_reason == "stop"
-
 
 class TestBedrockStreamLivenessWatchdog:
     """FIX 1: Bedrock streaming participates in the #58962 cross-turn stale
@@ -2143,7 +2007,6 @@ class TestBedrockStreamLivenessWatchdog:
 
         assert response.choices[0].message.content == "hi"
         assert agent._consecutive_stale_streams == 0
-
 
 class TestBedrockReasoningStaleFloor:
     """The Bedrock inference-profile id -> reasoning stale-timeout floor

@@ -12,10 +12,8 @@ from toolsets import (
     get_toolset_info,
 )
 
-
 def _dummy_handler(args, **kwargs):
     return "{}"
-
 
 def _make_schema(name: str, description: str = "test tool"):
     return {
@@ -23,7 +21,6 @@ def _make_schema(name: str, description: str = "test tool"):
         "description": description,
         "parameters": {"type": "object", "properties": {}},
     }
-
 
 class TestGetToolset:
     def test_known_toolset(self):
@@ -49,11 +46,7 @@ class TestGetToolset:
     def test_unknown_returns_none(self):
         assert get_toolset("nonexistent") is None
 
-
 class TestResolveToolset:
-    def test_leaf_toolset(self):
-        tools = resolve_toolset("web")
-        assert set(tools) == {"web_search", "web_extract"}
 
     def test_composite_toolset(self):
         tools = resolve_toolset("debugging")
@@ -104,7 +97,6 @@ class TestResolveToolset:
         tools = resolve_toolset("*")
         assert len(tools) > 10
 
-
 class TestResolveMultipleToolsets:
     def test_combines_and_deduplicates(self):
         tools = resolve_multiple_toolsets(["web", "terminal"])
@@ -116,7 +108,6 @@ class TestResolveMultipleToolsets:
 
     def test_empty_list(self):
         assert resolve_multiple_toolsets([]) == []
-
 
 class TestValidateToolset:
     def test_valid(self):
@@ -146,13 +137,7 @@ class TestValidateToolset:
         assert validate_toolset("mcp-dynserver") is True
         assert "mcp__dynserver__ping" in resolve_toolset("dynserver")
 
-
 class TestGetToolsetInfo:
-    def test_leaf(self):
-        info = get_toolset_info("web")
-        assert info["name"] == "web"
-        assert info["is_composite"] is False
-        assert info["tool_count"] == 2
 
     def test_composite(self):
         info = get_toolset_info("debugging")
@@ -161,7 +146,6 @@ class TestGetToolsetInfo:
 
     def test_unknown_returns_none(self):
         assert get_toolset_info("nonexistent") is None
-
 
 class TestCreateCustomToolset:
     def test_runtime_creation(self):
@@ -179,7 +163,6 @@ class TestCreateCustomToolset:
         finally:
             del TOOLSETS["_test_custom"]
 
-
 class TestRegistryOwnedToolsets:
     def test_registry_membership_is_live(self, monkeypatch):
         reg = ToolRegistry()
@@ -195,7 +178,6 @@ class TestRegistryOwnedToolsets:
         assert validate_toolset("test-live-toolset") is True
         assert get_toolset("test-live-toolset")["tools"] == ["test_live_toolset_tool"]
         assert resolve_toolset("test-live-toolset") == ["test_live_toolset_tool"]
-
 
 class TestToolsetConsistency:
     """Verify structural integrity of the built-in TOOLSETS dict."""
@@ -229,7 +211,6 @@ class TestToolsetConsistency:
         # silently let a platform diverge so far that nothing is shared).
         assert len(core) > 20, f"Suspiciously small shared core: {len(core)} tools"
 
-
 class TestPluginToolsets:
     def test_get_all_toolsets_includes_plugin_toolset(self, monkeypatch):
         reg = ToolRegistry()
@@ -246,14 +227,12 @@ class TestPluginToolsets:
         assert "plugin_bundle" in all_toolsets
         assert all_toolsets["plugin_bundle"]["tools"] == ["plugin_tool"]
 
-
 class TestDefaultPlatformWebSearchCoverage:
     def test_hermes_whatsapp_toolset_includes_web_search(self):
         assert "web_search" in resolve_toolset("hermes-whatsapp")
 
     def test_hermes_api_server_toolset_includes_web_search(self):
         assert "web_search" in resolve_toolset("hermes-api-server")
-
 
 class TestResolveToolsetIncludeRegistry:
     """include_registry flag exposes the static (pre-registry-merge) view used

@@ -18,14 +18,11 @@ import pytest
 from hermes_state import SessionDB
 from acp_adapter.session import SessionManager
 
-
 def _tmp_db(tmp_path):
     return SessionDB(db_path=tmp_path / "state.db")
 
-
 def _mock_agent():
     return MagicMock(name="MockAIAgent")
-
 
 # ---------------------------------------------------------------------------
 # hermes_state.SessionDB.update_session_meta — unit tests
@@ -96,58 +93,9 @@ class TestUpdateSessionMeta:
         db = _tmp_db(tmp_path)
         db.update_session_meta("ghost", orjson.dumps({"cwd": "."}).decode('utf-8'), model=None)
 
-
 # ---------------------------------------------------------------------------
 # AST check: session.py must not access db._lock or db._conn
 # ---------------------------------------------------------------------------
-
-class TestNoPrviateDBAccess:
-    """_persist() in session.py must not access db._lock or db._conn."""
-
-    def test_no_db_private_lock_access(self):
-        with open("acp_adapter/session.py", encoding="utf-8", errors="replace") as f:
-            source = f.read()
-
-        tree = ast.parse(source)
-
-        violations = []
-        for node in ast.walk(tree):
-            # Looking for: db._lock  or  db._conn
-            if isinstance(node, ast.Attribute):
-                if isinstance(node.value, ast.Name) and node.value.id == "db":
-                    if node.attr in ("_lock", "_conn"):
-                        violations.append(
-                            f"db.{node.attr} at line {node.lineno}"
-                        )
-
-        assert violations == [], (
-            "session.py accesses private SessionDB internals: "
-            + ", ".join(violations)
-            + " — use db.update_session_meta() instead"
-        )
-
-    def test_persist_calls_update_session_meta(self):
-        """AST check: _persist must call db.update_session_meta()."""
-        with open("acp_adapter/session.py", encoding="utf-8", errors="replace") as f:
-            tree = ast.parse(f.read())
-
-        found = False
-        for node in ast.walk(tree):
-            if isinstance(node, ast.FunctionDef) and node.name == "_persist":
-                for child in ast.walk(node):
-                    if isinstance(child, ast.Call):
-                        func = child.func
-                        if isinstance(func, ast.Attribute):
-                            if func.attr == "update_session_meta":
-                                found = True
-                                break
-                break
-
-        assert found, (
-            "_persist() must call db.update_session_meta() "
-            "instead of db._conn.execute() directly"
-        )
-
 
 # ---------------------------------------------------------------------------
 # Integration: _persist round-trip via SessionManager

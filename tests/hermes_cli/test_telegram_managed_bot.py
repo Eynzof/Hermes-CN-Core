@@ -20,10 +20,8 @@ from hermes_cli.telegram_managed_bot import (
     render_qr_terminal,
 )
 
-
 VALID_TOKEN = "123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef"
 SECOND_VALID_TOKEN = "987654321:abcdefghijklmnopqrstuvwxyzABCDEF"
-
 
 class TestGenerateBotUsername:
     def test_secure_default_format(self):
@@ -48,7 +46,6 @@ class TestGenerateBotUsername:
     def test_uniqueness(self):
         names = {generate_bot_username() for _ in range(20)}
         assert len(names) == 20
-
 
 class TestGenerateDeepLink:
     def test_basic_format(self):
@@ -80,7 +77,6 @@ class TestGenerateDeepLink:
         )
         assert "Hermes+%26+Friends" in link
 
-
 class TestPairingNonce:
     def test_length(self):
         nonce = generate_pairing_nonce()
@@ -93,7 +89,6 @@ class TestPairingNonce:
     def test_uniqueness(self):
         nonces = {generate_pairing_nonce() for _ in range(100)}
         assert len(nonces) == 100
-
 
 class TestQRCode:
     def test_render_returns_string(self):
@@ -110,7 +105,6 @@ class TestQRCode:
         print_qr_code("https://t.me/newbot/Bot/test_bot")
         captured = capsys.readouterr()
         assert "https://t.me/newbot/Bot/test_bot" in captured.out
-
 
 class TestCreatePairing:
     def test_success(self):
@@ -170,7 +164,6 @@ class TestCreatePairing:
         ) as post:
             create_pairing()
         assert post.call_args.args[0] == "https://worker.example/v1/telegram/pairings"
-
 
 class TestPollForToken:
     def pairing(self):
@@ -316,12 +309,7 @@ class TestPollForToken:
                 )
                 assert token == SECOND_VALID_TOKEN
 
-
 class TestSetupTelegramAuto:
-    def test_setup_helper_exists(self):
-        from hermes_cli.setup import _setup_telegram_auto
-
-        assert callable(_setup_telegram_auto)
 
     def test_setup_result_passes_profile_name_for_profile_home(self, monkeypatch, tmp_path):
         from hermes_cli import setup

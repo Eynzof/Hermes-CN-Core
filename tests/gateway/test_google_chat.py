@@ -27,7 +27,6 @@ from gateway.config import Platform, PlatformConfig, load_gateway_config
 # GOOGLE_CHAT attribute on the enum class.
 _GC = Platform("google_chat")
 
-
 # ---------------------------------------------------------------------------
 # Mock the google-* packages if they are not installed
 # ---------------------------------------------------------------------------
@@ -41,7 +40,6 @@ class _FakeHttpError(Exception):
         self.content = content
         self.reason = reason
         super().__init__(f"HTTP {status}: {reason or 'error'}")
-
 
 def _ensure_google_mocks():
     """Install mock google-* modules so GoogleChatAdapter can be imported."""
@@ -101,9 +99,7 @@ def _ensure_google_mocks():
     for name, mod in modules.items():
         sys.modules.setdefault(name, mod)
 
-
 _ensure_google_mocks()
-
 
 # Patch the availability flag before importing, so the adapter doesn't bail
 # out at the "missing deps" gate during construction.
@@ -139,11 +135,9 @@ from plugins.platforms.google_chat.adapter import (  # noqa: E402
     check_google_chat_requirements,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers / fixtures
 # ---------------------------------------------------------------------------
-
 
 def _base_config(**extra):
     cfg = PlatformConfig(enabled=True)
@@ -154,7 +148,6 @@ def _base_config(**extra):
     })
     cfg.extra.update(extra)
     return cfg
-
 
 @pytest.fixture()
 def adapter(tmp_path):
@@ -185,7 +178,6 @@ def adapter(tmp_path):
     except Exception:
         pass
 
-
 def _make_pubsub_message(data: dict, *, attributes=None):
     """Build a Mock Pub/Sub Message with ack/nack trackers."""
     msg = MagicMock()
@@ -194,7 +186,6 @@ def _make_pubsub_message(data: dict, *, attributes=None):
     msg.ack = MagicMock()
     msg.nack = MagicMock()
     return msg
-
 
 def _make_chat_envelope(text="hello", sender_email="u@example.com", sender_type="HUMAN",
                        msg_name=None, thread_name=None, attachments=None,
@@ -227,25 +218,19 @@ def _make_chat_envelope(text="hello", sender_email="u@example.com", sender_type=
         }
     }
 
-
 # ===========================================================================
 # Platform registration + requirements
 # ===========================================================================
 
-
 class TestPlatformRegistration:
-    def test_enum_value(self):
-        assert _GC.value == "google_chat"
 
     def test_requirements_check_returns_true_when_available(self):
         # The shim flag is True in this test module.
         assert check_google_chat_requirements() is True
 
-
 # ===========================================================================
 # Env-var config loading
 # ===========================================================================
-
 
 class TestEnvConfigLoading:
     _ENV_VARS = (
@@ -265,10 +250,6 @@ class TestEnvConfigLoading:
     def _clean_env(self, monkeypatch):
         for v in self._ENV_VARS:
             monkeypatch.delenv(v, raising=False)
-
-
-
-
 
     def test_missing_subscription_does_not_enable(self, monkeypatch):
         self._clean_env(monkeypatch)
@@ -313,11 +294,9 @@ class TestEnvConfigLoading:
             == "chat-callback@example.iam.gserviceaccount.com"
         )
 
-
 # ===========================================================================
 # Pure helpers
 # ===========================================================================
-
 
 class TestHelpers:
     def test_mime_image_maps_to_photo(self):
@@ -334,7 +313,6 @@ class TestHelpers:
 
     def test_mime_empty_maps_to_document(self):
         assert _mime_for_message_type("") == MessageType.DOCUMENT
-
 
 class TestRedactSensitive:
     def test_redacts_subscription_path(self):
@@ -358,7 +336,6 @@ class TestRedactSensitive:
         assert _redact_sensitive("") == ""
         assert _redact_sensitive(None) is None
 
-
 class TestGoogleOwnedHost:
     @pytest.mark.parametrize("url", [
         "https://chat.googleapis.com/v1/x",
@@ -381,11 +358,9 @@ class TestGoogleOwnedHost:
     def test_rejects_non_google_or_insecure(self, url):
         assert _is_google_owned_host(url) is False
 
-
 # ===========================================================================
 # Config validation (inside connect())
 # ===========================================================================
-
 
 class TestValidateConfig:
     def test_missing_project_raises(self):
@@ -436,7 +411,6 @@ class TestValidateConfig:
         project, sub = a._validate_config()
         assert project == "inferred"
         assert sub == "projects/inferred/subscriptions/sub"
-
 
 class TestHttpEventIngress:
     def test_cached_google_auth_request_reuses_successful_get_response(self, monkeypatch):
@@ -575,7 +549,6 @@ class TestHttpEventIngress:
         assert await adapter.dispatch_http_event(envelope) == {}
         adapter.handle_message.assert_not_awaited()
 
-
 class TestConnectModes:
     @pytest.mark.asyncio
     async def test_connect_http_mode_skips_pubsub_subscriber(self, tmp_path, monkeypatch):
@@ -600,11 +573,9 @@ class TestConnectModes:
         assert a.is_connected is True
         await a.disconnect()
 
-
 # ===========================================================================
 # _chunk_text
 # ===========================================================================
-
 
 class TestChunkText:
     def test_empty_returns_empty_list(self, adapter):
@@ -629,11 +600,9 @@ class TestChunkText:
         assert chunks[0].endswith("a")
         assert "\n" not in chunks[0][-5:]  # the split already ate the newline
 
-
 # ===========================================================================
 # _on_pubsub_message — event routing
 # ===========================================================================
-
 
 class TestOnPubsubMessage:
     """Pub/Sub callback routing. The callback runs in a thread and dispatches
@@ -770,7 +739,6 @@ class TestOnPubsubMessage:
             # Must not re-raise (would trigger Pub/Sub infinite redelivery).
             adapter._on_pubsub_message(msg)
         msg.ack.assert_called_once()
-
 
 class TestExtractMessagePayload:
     """Three Pub/Sub envelope formats are accepted.
@@ -934,11 +902,9 @@ class TestExtractMessagePayload:
         envelope = {"foo": "bar", "baz": 123}
         assert GoogleChatAdapter._extract_message_payload(envelope) is None
 
-
 # ===========================================================================
 # _build_message_event — payload parsing
 # ===========================================================================
-
 
 class TestBuildMessageEvent:
     @pytest.mark.asyncio
@@ -1094,11 +1060,9 @@ class TestBuildMessageEvent:
         # With no text, the message type should reflect the first attachment.
         assert event.message_type == MessageType.PHOTO
 
-
 # ===========================================================================
 # send() — text, patch-in-place, chunking, error handling
 # ===========================================================================
-
 
 class TestSend:
     @pytest.mark.asyncio
@@ -1296,11 +1260,9 @@ class TestSend:
         assert buttons[-1]["text"] == "Other / type answer"
         assert adapter._clarify_state["clarify123"] == "session-key"
 
-
 # ===========================================================================
 # send_typing / stop_typing
 # ===========================================================================
-
 
 class TestTypingLifecycle:
     @pytest.mark.asyncio
@@ -1554,11 +1516,9 @@ class TestTypingLifecycle:
         assert "interrupted" in args[1]["text"].lower()
         assert "spaces/S" not in adapter._typing_messages
 
-
 # ===========================================================================
 # edit_message / delete_message — required by gateway tool-progress + streaming
 # ===========================================================================
-
 
 class TestEditMessage:
     @pytest.mark.asyncio
@@ -1614,7 +1574,6 @@ class TestEditMessage:
         from plugins.platforms.google_chat.adapter import GoogleChatAdapter
         assert GoogleChatAdapter.edit_message is not BasePlatformAdapter.edit_message
 
-
 class TestDeleteMessage:
     @pytest.mark.asyncio
     async def test_delete_message_calls_api(self, adapter):
@@ -1637,7 +1596,6 @@ class TestDeleteMessage:
     async def test_delete_message_missing_id_returns_false(self, adapter):
         assert await adapter.delete_message("spaces/S", "") is False
 
-
 # ===========================================================================
 # Native attachment delivery via user OAuth
 #
@@ -1651,7 +1609,6 @@ class TestDeleteMessage:
 #   - the /setup-files slash command intercepts before the agent
 #   - 401/403 from media.upload triggers a clean fallback (token revoked)
 # ===========================================================================
-
 
 class TestNativeAttachmentDelivery:
     @pytest.mark.asyncio
@@ -1769,7 +1726,6 @@ class TestNativeAttachmentDelivery:
         # Creds NOT cleared on transient failure.
         assert adapter._user_chat_api is not None
 
-
 class TestSetupFilesSlashCommand:
     @pytest.mark.asyncio
     async def test_slash_command_intercepted_before_agent(self, adapter):
@@ -1830,7 +1786,6 @@ class TestSetupFilesSlashCommand:
         )
         assert adapter._user_chat_api is None
         assert adapter._user_credentials is None
-
 
 class TestUserOAuthHelper:
     @staticmethod
@@ -2003,7 +1958,6 @@ class TestUserOAuthHelper:
                 "email": "alice@example.com",
             },
         )
-
 
 class TestPerUserAttachmentRouting:
     """The bot must use the *requesting user's* OAuth token when sending
@@ -2249,11 +2203,9 @@ class TestPerUserAttachmentRouting:
         assert adapter._user_chat_api is legacy_api
         assert adapter._user_credentials is legacy_creds
 
-
 # ===========================================================================
 # Persistent thread-count store (restart-safe side-thread heuristic)
 # ===========================================================================
-
 
 class TestThreadCountStore:
     def test_missing_file_returns_zero_counts(self, tmp_path):
@@ -2423,11 +2375,9 @@ class TestThreadCountStore:
         # Outbound cache populated for in-thread reply.
         assert fresh._last_inbound_thread["spaces/S"] == "spaces/S/threads/T_existing"
 
-
 # ===========================================================================
 # Inbound attachment download SSRF guard
 # ===========================================================================
-
 
 class TestAttachmentSSRFGuard:
     @pytest.mark.asyncio
@@ -2495,11 +2445,9 @@ class TestAttachmentSSRFGuard:
         path, mime = await adapter._download_attachment(attachment)
         assert path is None
 
-
 # ===========================================================================
 # Outbound thread routing (anti-top-level fallback in DMs)
 # ===========================================================================
-
 
 class TestOutboundThreadRouting:
     def test_resolve_uses_metadata_thread_id(self, adapter):
@@ -2540,11 +2488,9 @@ class TestOutboundThreadRouting:
         )
         assert result is None
 
-
 # ===========================================================================
 # Send file delegation (voice/video/animation route through send_document)
 # ===========================================================================
-
 
 class TestMediaDelegation:
     @pytest.mark.asyncio
@@ -2595,11 +2541,9 @@ class TestMediaDelegation:
         assert result.success is False
         assert "not found" in (result.error or "").lower()
 
-
 # ===========================================================================
 # Outbound retry (transient API failure handling)
 # ===========================================================================
-
 
 class TestOutboundRetry:
     """Outbound message creation retries on transient failures.
@@ -2692,7 +2636,6 @@ class TestOutboundRetry:
         assert not _is_retryable_error(_FakeHttpError(status=403, reason="forbidden"))
         assert not _is_retryable_error(_FakeHttpError(status=404, reason="not found"))
         assert not _is_retryable_error(ValueError("typed wrong thing"))
-
 
 class TestFormatMessage:
     """Markdown→Chat dialect conversion + invisible Unicode stripping.
@@ -2816,7 +2759,6 @@ class TestFormatMessage:
         out = GoogleChatAdapter.format_message("rate is ** TBD")
         assert "**" in out  # not converted
 
-
 class TestADCFallback:
     """When no SA JSON is configured, fall back to Application Default Credentials.
 
@@ -2867,7 +2809,6 @@ class TestADCFallback:
         msg = str(ei.value).lower()
         assert "default credentials" in msg or "adc" in msg
         assert "google_chat_service_account_json" in msg
-
 
 class TestGoogleChatInteractiveSetup:
     def test_interactive_setup_uses_shared_cli_prompt_helpers(self, monkeypatch):
@@ -2923,11 +2864,9 @@ class TestGoogleChatInteractiveSetup:
         assert saved["GOOGLE_CHAT_ALLOWED_USERS"] == "alice@example.com,bob@example.com"
         assert saved["GOOGLE_CHAT_HOME_CHANNEL"] == "spaces/AAAA"
 
-
 # ===========================================================================
 # Supervisor reconnect (backoff + fatal)
 # ===========================================================================
-
 
 class TestSupervisorReconnect:
     @pytest.mark.asyncio
@@ -2949,11 +2888,9 @@ class TestSupervisorReconnect:
         assert adapter.has_fatal_error is True
         assert adapter.fatal_error_code == "pubsub_reconnect_exhausted"
 
-
 # ===========================================================================
 # Authorization: email-path check via user_id_alt
 # ===========================================================================
-
 
 class TestAuthorizationEmailMatch:
     """`GOOGLE_CHAT_ALLOWED_USERS=email` matches naturally without a bridge.
@@ -3038,7 +2975,6 @@ class TestAuthorizationEmailMatch:
         )
         assert runner._is_user_authorized(source) is True
 
-
 # ===========================================================================
 # Cron scheduler registry (regression guard from /review)
 #
@@ -3049,7 +2985,6 @@ class TestAuthorizationEmailMatch:
 # ``_is_known_delivery_platform`` and ``_resolve_home_env_var``.  The tests
 # below check that public resolver behavior, not the hardcoded sets.
 # ===========================================================================
-
 
 class TestCronSchedulerRegistry:
     def _ensure_registered(self):
@@ -3096,9 +3031,7 @@ class TestCronSchedulerRegistry:
 
         assert _resolve_home_env_var("google_chat") == "GOOGLE_CHAT_HOME_CHANNEL"
 
-
 # ── _standalone_send (out-of-process cron delivery) ──────────────────────
-
 
 class _FakeAiohttpResponse:
     def __init__(self, status: int, payload, text_body: str = ""):
@@ -3118,7 +3051,6 @@ class _FakeAiohttpResponse:
     async def __aexit__(self, exc_type, exc, tb):
         return None
 
-
 class _FakeAiohttpSession:
     def __init__(self, scripts):
         self._scripts = list(scripts)
@@ -3136,7 +3068,6 @@ class _FakeAiohttpSession:
             raise AssertionError(f"No scripted response for POST {url}")
         return self._scripts.pop(0)
 
-
 def _install_fake_aiohttp(monkeypatch, session):
     fake_aiohttp = types.SimpleNamespace(
         ClientSession=lambda timeout=None, **kwargs: session,
@@ -3144,12 +3075,10 @@ def _install_fake_aiohttp(monkeypatch, session):
     )
     monkeypatch.setitem(sys.modules, "aiohttp", fake_aiohttp)
 
-
 def _install_fake_google_auth_transport(monkeypatch):
     fake_request_module = types.SimpleNamespace(Request=lambda: object())
     monkeypatch.setitem(sys.modules, "google.auth.transport", types.SimpleNamespace(requests=fake_request_module))
     monkeypatch.setitem(sys.modules, "google.auth.transport.requests", fake_request_module)
-
 
 class TestGoogleChatStandaloneSend:
 

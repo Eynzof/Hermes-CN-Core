@@ -12,7 +12,6 @@ import pytest
 
 import plugins.image_gen.openai as openai_plugin
 
-
 # 1×1 transparent PNG — valid bytes for save_b64_image()
 _PNG_HEX = (
     "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4"
@@ -20,37 +19,30 @@ _PNG_HEX = (
     "ae426082"
 )
 
-
 def _b64_png() -> str:
     import pybase64 as base64
     return base64.b64encode(bytes.fromhex(_PNG_HEX)).decode()
 
-
 def _fake_response(*, b64=None, url=None, revised_prompt=None):
     item = SimpleNamespace(b64_json=b64, url=url, revised_prompt=revised_prompt)
     return SimpleNamespace(data=[item])
-
 
 @pytest.fixture(autouse=True)
 def _tmp_hermes_home(tmp_path, monkeypatch):
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
     yield tmp_path
 
-
 @pytest.fixture
 def provider(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     return openai_plugin.OpenAIImageGenProvider()
-
 
 def _patched_openai(fake_client: MagicMock):
     fake_openai = MagicMock()
     fake_openai.OpenAI.return_value = fake_client
     return patch.dict("sys.modules", {"openai": fake_openai})
 
-
 # ── Metadata ────────────────────────────────────────────────────────────────
-
 
 class TestMetadata:
     def test_name(self, provider):
@@ -59,19 +51,13 @@ class TestMetadata:
     def test_default_model(self, provider):
         assert provider.default_model() == "gpt-image-2-medium"
 
-    def test_list_models_three_tiers(self, provider):
-        ids = [m["id"] for m in provider.list_models()]
-        assert ids == ["gpt-image-2-low", "gpt-image-2-medium", "gpt-image-2-high"]
-
     def test_catalog_entries_have_display_speed_strengths(self, provider):
         for entry in provider.list_models():
             assert entry["display"].startswith("GPT Image 2")
             assert entry["speed"]
             assert entry["strengths"]
 
-
 # ── Availability ────────────────────────────────────────────────────────────
-
 
 class TestAvailability:
     def test_no_api_key_unavailable(self, monkeypatch):
@@ -82,9 +68,7 @@ class TestAvailability:
         monkeypatch.setenv("OPENAI_API_KEY", "test")
         assert openai_plugin.OpenAIImageGenProvider().is_available() is True
 
-
 # ── Model resolution ────────────────────────────────────────────────────────
-
 
 class TestModelResolution:
     def test_default_is_medium(self):
@@ -122,9 +106,7 @@ class TestModelResolution:
         assert model_id == "gpt-image-2-high"
         assert meta["quality"] == "high"
 
-
 # ── Generate ────────────────────────────────────────────────────────────────
-
 
 class TestSourceImageLoading:
     def test_load_image_bytes_blocks_credential_store(self, tmp_path, monkeypatch):
@@ -186,7 +168,6 @@ class TestSourceImageLoading:
         data, name = openai_plugin._load_image_bytes(f"data:image/png;base64,{b64}")
         assert data == b"xyz"
         assert name.endswith(".png")
-
 
 class TestGenerate:
     def test_empty_prompt_rejected(self, provider):

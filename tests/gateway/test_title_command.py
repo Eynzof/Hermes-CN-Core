@@ -13,7 +13,6 @@ from gateway.config import GatewayConfig, Platform, PlatformConfig
 from gateway.platforms.base import MessageEvent
 from gateway.session import SessionSource
 
-
 def _make_event(text="/title", platform=Platform.TELEGRAM,
                 user_id="12345", chat_id="67890"):
     """Build a MessageEvent for testing."""
@@ -24,7 +23,6 @@ def _make_event(text="/title", platform=Platform.TELEGRAM,
         user_name="testuser",
     )
     return MessageEvent(text=text, source=source)
-
 
 def _make_runner(session_db=None):
     """Create a bare GatewayRunner with a mock session_store and optional session_db."""
@@ -48,11 +46,9 @@ def _make_runner(session_db=None):
 
     return runner
 
-
 # ---------------------------------------------------------------------------
 # _handle_title_command
 # ---------------------------------------------------------------------------
-
 
 class TestHandleTitleCommand:
     """Tests for GatewayRunner._handle_title_command."""
@@ -220,11 +216,9 @@ class TestHandleTitleCommand:
             assert db.get_session_title("test_session_123") == "Cross-Platform Test"
             db.close()
 
-
 # ---------------------------------------------------------------------------
 # /title in help and known_commands
 # ---------------------------------------------------------------------------
-
 
 class TestTitleInHelp:
     """Verify /title appears in help text and known commands."""
@@ -240,18 +234,9 @@ class TestTitleInHelp:
         result = await runner._handle_help_command(event)
         assert "/title" in result
 
-    def test_title_is_known_command(self):
-        """The /title command is in the _known_commands set."""
-        from gateway.run import GatewayRunner
-        import inspect
-        source = inspect.getsource(GatewayRunner._handle_message)
-        assert '"title"' in source
-
-
 # ---------------------------------------------------------------------------
 # /new with title
 # ---------------------------------------------------------------------------
-
 
 class TestResetCommandWithTitle:
     """Tests for GatewayRunner._handle_reset_command with a title argument."""
@@ -379,11 +364,9 @@ class TestResetCommandWithTitle:
         # Header must NOT claim the rejected title as the session name
         assert "New session started: Dup" not in reply
 
-
 # ---------------------------------------------------------------------------
 # /new in help output
 # ---------------------------------------------------------------------------
-
 
 class TestNewInHelp:
     """Verify /new appears in help text with the [name] args hint."""

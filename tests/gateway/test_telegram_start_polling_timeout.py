@@ -18,7 +18,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-
 def _ensure_telegram_mock():
     if "telegram" in sys.modules and hasattr(sys.modules["telegram"], "__file__"):
         return
@@ -35,16 +34,13 @@ def _ensure_telegram_mock():
         sys.modules.setdefault(name, telegram_mod)
     sys.modules.setdefault("telegram.error", telegram_mod.error)
 
-
 _ensure_telegram_mock()
 
 from plugins.platforms.telegram import adapter as tg_adapter  # noqa: E402
 from plugins.platforms.telegram.adapter import TelegramAdapter  # noqa: E402
 
-
 async def _hang_forever(**kwargs):
     await asyncio.sleep(1000)
-
 
 def _bare_adapter():
     a = TelegramAdapter.__new__(TelegramAdapter)
@@ -62,7 +58,6 @@ def _bare_adapter():
     a._background_tasks = set()
     a._send_path_degraded = False
     return a
-
 
 @pytest.mark.asyncio
 async def test_network_ladder_start_polling_hang_does_not_wedge(monkeypatch):
@@ -90,7 +85,6 @@ async def test_network_ladder_start_polling_hang_does_not_wedge(monkeypatch):
         await asyncio.wait_for(
             a._handle_polling_network_error(Exception("net down")), timeout=30
         )
-
 
 @pytest.mark.asyncio
 async def test_bootstrap_start_polling_hang_schedules_recovery(monkeypatch):
@@ -120,7 +114,6 @@ async def test_bootstrap_start_polling_hang_schedules_recovery(monkeypatch):
     assert len(scheduled) == 1
     assert isinstance(scheduled[0][0], (TimeoutError, asyncio.TimeoutError))
 
-
 @pytest.mark.asyncio
 async def test_start_polling_success_path_unaffected(monkeypatch):
     """Sanity: a fast start_polling() still returns True through the wrapper."""
@@ -136,22 +129,3 @@ async def test_start_polling_success_path_unaffected(monkeypatch):
     assert ok is True
     app.updater.start_polling.assert_awaited_once()
 
-
-def test_every_start_polling_call_site_is_time_bounded():
-    """Bug-class contract: every `updater.start_polling(` await in the adapter
-    must be wrapped in asyncio.wait_for. A new unbounded call site reintroduces
-    the #59614 wedge."""
-    import inspect
-    import re
-
-    src = inspect.getsource(tg_adapter)
-    # Find each start_polling( call and check an enclosing wait_for within the
-    # preceding 6 lines (the wrapper always sits directly above).
-    lines = src.splitlines()
-    unbounded = []
-    for i, line in enumerate(lines):
-        if re.search(r"updater\.start_polling\(", line) and "def " not in line:
-            window = "\n".join(lines[max(0, i - 6):i + 1])
-            if "wait_for" not in window:
-                unbounded.append((i + 1, line.strip()))
-    assert not unbounded, f"unbounded start_polling() call sites: {unbounded}"

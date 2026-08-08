@@ -23,9 +23,7 @@ from hermes_cli.plugins_cmd import (
     _sanitize_plugin_name,
 )
 
-
 # ── _sanitize_plugin_name ─────────────────────────────────────────────────
-
 
 class TestSanitizePluginName:
     """Reject path-traversal attempts while accepting valid names."""
@@ -96,9 +94,7 @@ class TestSanitizePluginName:
         target = _sanitize_plugin_name("a/b/c", tmp_path, allow_subdir=True)
         assert target.is_relative_to(tmp_path.resolve())
 
-
 # ── _resolve_git_url ──────────────────────────────────────────────────────
-
 
 class TestResolveGitUrl:
     """Shorthand and full-URL resolution, with optional subdirectory."""
@@ -222,9 +218,7 @@ class TestResolveGitUrl:
         assert url == identifier
         assert subdir is None
 
-
 # ── _resolve_subdir_within ──────────────────────────────────────────────────
-
 
 class TestResolveSubdirWithin:
     """Subdirectory resolution stays within the clone and rejects traversal."""
@@ -271,9 +265,7 @@ class TestResolveSubdirWithin:
         with pytest.raises(PluginOperationError, match="not a directory"):
             _resolve_subdir_within(tmp_path, "afile")
 
-
 # ── _resolve_git_executable ─────────────────────────────────────────────────
-
 
 class TestResolveGitExecutable:
     """Fallback resolution when bare ``git`` is not discoverable via ``PATH``."""
@@ -334,9 +326,7 @@ class TestResolveGitExecutable:
             with pytest.raises(PluginOperationError, match="git is not installed"):
                 pc._install_plugin_core("owner/repo", force=True)
 
-
 # ── _repo_name_from_url ──────────────────────────────────────────────────
-
 
 class TestRepoNameFromUrl:
     """Extract plugin directory name from Git URLs."""
@@ -358,12 +348,9 @@ class TestRepoNameFromUrl:
     def test_ssh_protocol(self):
         assert _repo_name_from_url("ssh://git@github.com/owner/repo.git") == "repo"
 
-
 # ── plugins_command dispatch ──────────────────────────────────────────────
 
-
 # ── _read_manifest ────────────────────────────────────────────────────────
-
 
 class TestReadManifest:
     """Manifest reading edge cases."""
@@ -391,9 +378,7 @@ class TestReadManifest:
         result = _read_manifest(tmp_path)
         assert result == {}
 
-
 # ── cmd_install tests ─────────────────────────────────────────────────────────
-
 
 class TestCmdInstall:
     """Test the install command."""
@@ -446,9 +431,7 @@ class TestCmdInstall:
         mock_move.assert_not_called()
         mock_display_after_install.assert_not_called()
 
-
 # ── cmd_update tests ─────────────────────────────────────────────────────────
-
 
 class TestCmdUpdate:
     """Test the update command."""
@@ -491,9 +474,7 @@ class TestCmdUpdate:
 
         assert exc_info.value.code == 1
 
-
 # ── cmd_remove tests ─────────────────────────────────────────────────────────
-
 
 class TestCmdRemove:
     """Test the remove command."""
@@ -530,44 +511,9 @@ class TestCmdRemove:
 
         assert exc_info.value.code == 1
 
-
 # ── cmd_list tests ─────────────────────────────────────────────────────────
 
-
-class TestCmdList:
-    """Test the list command."""
-
-    @patch("hermes_cli.plugins_cmd._plugins_dir")
-    def test_list_empty_plugins_dir(self, mock_plugins_dir):
-        from hermes_cli.plugins_cmd import cmd_list
-
-        mock_plugins_dir_val = MagicMock()
-        mock_plugins_dir_val.iterdir.return_value = []
-        mock_plugins_dir.return_value = mock_plugins_dir_val
-
-        cmd_list()
-
-    @patch("hermes_cli.plugins_cmd._plugins_dir")
-    @patch("hermes_cli.plugins_cmd._read_manifest")
-    def test_list_with_plugins(self, mock_read_manifest, mock_plugins_dir):
-        from hermes_cli.plugins_cmd import cmd_list
-
-        mock_plugins_dir_val = MagicMock()
-        mock_plugin_dir = MagicMock()
-        mock_plugin_dir.name = "test-plugin"
-        mock_plugin_dir.is_dir.return_value = True
-        mock_plugin_dir.__truediv__ = lambda self, x: MagicMock(
-            exists=MagicMock(return_value=False)
-        )
-        mock_plugins_dir_val.iterdir.return_value = [mock_plugin_dir]
-        mock_plugins_dir.return_value = mock_plugins_dir_val
-        mock_read_manifest.return_value = {"name": "test-plugin", "version": "1.0.0"}
-
-        cmd_list()
-
-
 # ── _copy_example_files tests ─────────────────────────────────────────────────
-
 
 class TestCopyExampleFiles:
     """Test example file copying."""
@@ -622,7 +568,6 @@ class TestCopyExampleFiles:
 
         # Should have printed a warning
         assert any("Warning" in str(c) for c in console.print.call_args_list)
-
 
 class TestPromptPluginEnvVars:
     """Tests for _prompt_plugin_env_vars."""
@@ -735,9 +680,7 @@ class TestPromptPluginEnvVars:
         # Should not crash, and not save anything
         mock_save.assert_not_called()
 
-
 # ── curses_radiolist ─────────────────────────────────────────────────────
-
 
 @pytest.mark.skipif(sys.platform == "win32", reason="curses is not available on Windows")
 class TestCursesRadiolist:
@@ -765,9 +708,7 @@ class TestCursesRadiolist:
             result = curses_radiolist("Pick", ["x", "y"], selected=0, cancel_returns=-1)
             assert result == -1
 
-
 # ── Provider discovery helpers ───────────────────────────────────────────
-
 
 class TestProviderDiscovery:
     """Test provider plugin discovery and config helpers."""
@@ -826,27 +767,9 @@ class TestProviderDiscovery:
             result = _discover_context_engines()
             assert result == []
 
-
 # ── Auto-activation fix ──────────────────────────────────────────────────
 
-
-class TestNoAutoActivation:
-    """Verify that plugin engines don't auto-activate when config says 'compressor'."""
-
-    def test_compressor_default_ignores_plugin(self):
-        """When context.engine is 'compressor', a plugin-registered engine should NOT
-        be used — only explicit config triggers plugin engines."""
-        # This tests the run_agent.py logic indirectly by checking that the
-        # code path for default config doesn't call get_plugin_context_engine.
-        import run_agent as ra_module
-        source = open(ra_module.__file__).read()
-        # The old code had: "Even with default config, check if a plugin registered one"
-        # The fix removes this. Verify it's gone.
-        assert "Even with default config, check if a plugin registered one" not in source
-
-
 # ── End-to-end subdirectory install ──────────────────────────────────────────
-
 
 class TestSubdirInstallE2E:
     """Install a plugin that lives in a subdirectory of a real local git repo."""

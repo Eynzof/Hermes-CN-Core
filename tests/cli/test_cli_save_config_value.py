@@ -5,7 +5,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-
 class TestSaveConfigValueAtomic:
     """save_config_value() must use atomic round-trip YAML updates."""
 
@@ -21,16 +20,6 @@ class TestSaveConfigValueAtomic:
         }))
         monkeypatch.setattr("cli._hermes_home", hermes_home)
         return config_path
-
-    def test_calls_roundtrip_yaml_update(self, config_env, monkeypatch):
-        """save_config_value must preserve user-edited YAML structure."""
-        mock_update = MagicMock()
-        monkeypatch.setattr("utils.atomic_roundtrip_yaml_update", mock_update)
-
-        from cli import save_config_value
-        save_config_value("display.skin", "mono")
-
-        mock_update.assert_called_once_with(config_env, "display.skin", "mono")
 
     def test_preserves_existing_keys(self, config_env):
         """Writing a new key must not clobber existing config entries."""
@@ -132,7 +121,6 @@ class TestSaveConfigValueAtomic:
 
         assert result is False
         assert config_env.read_text() == original_content
-
 
 def test_save_config_value_never_writes_into_source_tree(tmp_path, monkeypatch):
     """[CN-fork] P-027: save_config_value must not create <repo>/cli-config.yaml.

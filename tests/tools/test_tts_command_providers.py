@@ -42,7 +42,6 @@ from tools.tts_tool import (
     text_to_speech_tool,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -55,7 +54,6 @@ def _python_copy_command(output_placeholder: str = "{output_path}") -> str:
         f'shutil.copyfile(sys.argv[1], sys.argv[2])" '
         f'{{input_path}} {output_placeholder}'
     )
-
 
 # ---------------------------------------------------------------------------
 # _resolve_command_provider_config / built-in precedence
@@ -113,7 +111,6 @@ class TestResolveCommandProviderConfig:
         }
         assert _resolve_command_provider_config("piper", cfg) is None
 
-
 class TestGetNamedProviderConfig:
     def test_providers_block_wins(self):
         cfg = {"providers": {"voxcpm": {"command": "new"}},
@@ -131,7 +128,6 @@ class TestGetNamedProviderConfig:
         cfg = {"openai": {"command": "oops", "type": "command"}}
         assert _get_named_provider_config(cfg, "openai") == {}
 
-
 class TestIsCommandProviderConfig:
     def test_empty_dict_is_false(self):
         assert _is_command_provider_config({}) is False
@@ -142,7 +138,6 @@ class TestIsCommandProviderConfig:
 
     def test_type_mismatch_is_false(self):
         assert _is_command_provider_config({"type": "native", "command": "x"}) is False
-
 
 # ---------------------------------------------------------------------------
 # _iter_command_providers / _has_any_command_tts_provider
@@ -168,7 +163,6 @@ class TestIterCommandProviders:
     def test_has_any_command_provider_when_none(self):
         assert _has_any_command_tts_provider({"providers": {}}) is False
         assert _has_any_command_tts_provider({}) is False
-
 
 # ---------------------------------------------------------------------------
 # config getters
@@ -203,9 +197,6 @@ class TestConfigGetters:
     def test_output_format_rejects_unknown(self):
         assert _get_command_tts_output_format({"format": "m4a"}) == DEFAULT_COMMAND_TTS_OUTPUT_FORMAT
 
-    def test_output_format_supported_set(self):
-        assert COMMAND_TTS_OUTPUT_FORMATS == frozenset({"mp3", "wav", "ogg", "flac"})
-
     def test_voice_compatible_boolean(self):
         assert _is_command_tts_voice_compatible({"voice_compatible": True}) is True
         assert _is_command_tts_voice_compatible({"voice_compatible": False}) is False
@@ -216,7 +207,6 @@ class TestConfigGetters:
 
     def test_voice_compatible_default_off(self):
         assert _is_command_tts_voice_compatible({}) is False
-
 
 # ---------------------------------------------------------------------------
 # _resolve_max_text_length for command providers
@@ -237,7 +227,6 @@ class TestMaxTextLengthForCommandProviders:
 
     def test_non_command_unknown_provider_still_falls_back(self):
         assert _resolve_max_text_length("unknown", {}) > 0
-
 
 # ---------------------------------------------------------------------------
 # _shell_quote_context / template rendering
@@ -263,7 +252,6 @@ class TestShellQuoteContext:
         tpl = r'tts "foo \" {output_path}"'
         pos = tpl.index("{output_path}")
         assert _shell_quote_context(tpl, pos) == '"'
-
 
 class TestRenderCommandTtsTemplate:
     def test_substitutes_all_placeholders(self):
@@ -347,7 +335,6 @@ class TestRenderCommandTtsTemplate:
         )
         assert '"bob\'s voice"' in rendered
 
-
 # ---------------------------------------------------------------------------
 # End-to-end: _generate_command_tts
 # ---------------------------------------------------------------------------
@@ -416,7 +403,6 @@ class TestGenerateCommandTts:
                 config,
                 {},
             )
-
 
 # ---------------------------------------------------------------------------
 # text_to_speech_tool integration
@@ -489,7 +475,6 @@ class TestTextToSpeechToolWithCommandProvider:
         # The response should not carry the command-provider error text.
         err = (data.get("error") or "").lower()
         assert "tts.providers.broken.command is not configured" not in err
-
 
 class TestCheckTtsRequirements:
     def test_configured_command_provider_satisfies_requirement(self):

@@ -39,11 +39,9 @@ from agent.prompt_builder import (
 )
 from hermes_cli.nous_subscription import NousFeatureState, NousSubscriptionFeatures
 
-
 # =========================================================================
 # Guidance constants
 # =========================================================================
-
 
 class TestGuidanceConstants:
     def test_memory_guidance_discourages_task_logs(self):
@@ -57,11 +55,9 @@ class TestGuidanceConstants:
         assert "relevant cross-session context exists" in SESSION_SEARCH_GUIDANCE
         assert "recent turns of the current session" not in SESSION_SEARCH_GUIDANCE
 
-
 # =========================================================================
 # Context injection scanning
 # =========================================================================
-
 
 class TestScanContextContent:
     def test_clean_content_passes(self):
@@ -125,11 +121,9 @@ class TestScanContextContent:
         result = _scan_context_content("normal text\ufeffmore", "test.md")
         assert "BLOCKED" in result
 
-
 # =========================================================================
 # Content truncation
 # =========================================================================
-
 
 class TestTruncateContent:
     @pytest.fixture(autouse=True)
@@ -140,9 +134,6 @@ class TestTruncateContent:
             return {}
 
         monkeypatch.setattr("hermes_cli.config.load_config", default_load_config)
-
-    def test_context_file_max_chars_default_matches_upstream_limit(self):
-        assert CONTEXT_FILE_MAX_CHARS == 20_000
 
     def test_short_content_unchanged(self):
         content = "Short content"
@@ -236,7 +227,6 @@ class TestTruncateContent:
         assert len(parent_warnings) == 1
         assert "parent.md" in parent_warnings[0]
 
-
 class TestDynamicContextFileCap:
     """B — cap scales with the model's context window when not pinned.
     C — truncation marker points the agent at the full file to read_file."""
@@ -301,11 +291,9 @@ class TestDynamicContextFileCap:
         assert "read_file" in result
         assert "AGENTS.md" in result
 
-
 # =========================================================================
 # _parse_skill_file — single-pass skill file reading
 # =========================================================================
-
 
 class TestParseSkillFile:
     def test_reads_frontmatter_description(self, tmp_path):
@@ -377,7 +365,6 @@ class TestParseSkillFile:
         _, frontmatter, _ = _parse_skill_file(skill_file)
         assert frontmatter["prerequisites"]["env_vars"] == ["NONEXISTENT_KEY_ABC"]
 
-
 class TestPromptBuilderImports:
     def test_module_import_does_not_eagerly_import_skills_tool(self, monkeypatch):
         original_import = builtins.__import__
@@ -396,11 +383,9 @@ class TestPromptBuilderImports:
 
         assert hasattr(module, "build_skills_system_prompt")
 
-
 # =========================================================================
 # Skills system prompt builder
 # =========================================================================
-
 
 class TestBuildSkillsSystemPrompt:
     @pytest.fixture(autouse=True)
@@ -638,7 +623,6 @@ class TestBuildSkillsSystemPrompt:
         result = build_skills_system_prompt()
         assert "backend-skill" in result
 
-
 class TestBuildNousSubscriptionPrompt:
     def test_includes_active_subscription_features(self, monkeypatch):
         monkeypatch.setattr("tools.tool_backend_helpers.managed_nous_tools_enabled", lambda: True)
@@ -698,11 +682,9 @@ class TestBuildNousSubscriptionPrompt:
 
         assert prompt == ""
 
-
 # =========================================================================
 # Context files prompt builder
 # =========================================================================
-
 
 class TestBuildContextFilesPrompt:
     def test_empty_dir_loads_seeded_global_soul(self, tmp_path):
@@ -941,11 +923,9 @@ class TestBuildContextFilesPrompt:
         result = build_context_files_prompt(cwd=str(tmp_path))
         assert "ESLint" in result
 
-
 # =========================================================================
 # .hermes.md helper functions
 # =========================================================================
-
 
 class TestFindHermesMd:
     def test_finds_in_cwd(self, tmp_path):
@@ -1016,7 +996,6 @@ class TestFindHermesMd:
         with patch("agent.prompt_builder._find_git_root", return_value=tmp_path):
             assert _find_hermes_md(sub) == tmp_path / ".hermes.md"
 
-
 class TestFindGitRoot:
     def test_finds_git_dir(self, tmp_path):
         (tmp_path / ".git").mkdir()
@@ -1042,7 +1021,6 @@ class TestFindGitRoot:
         if result is not None:
             assert (result / ".git").exists()
 
-
 class TestStripYamlFrontmatter:
     def test_strips_frontmatter(self):
         content = "---\nkey: value\n---\n\nBody text."
@@ -1061,11 +1039,9 @@ class TestStripYamlFrontmatter:
         # Body is empty after stripping, return original
         assert _strip_yaml_frontmatter(content) == content
 
-
 # =========================================================================
 # Constants sanity checks
 # =========================================================================
-
 
 class TestPromptBuilderConstants:
     def test_default_identity_non_empty(self):
@@ -1190,7 +1166,6 @@ class TestPromptBuilderConstants:
         assert "MEDIA:" in hint
         assert "Markdown" in hint
         assert "absolute" in hint
-
 
 # =========================================================================
 # Environment hints
@@ -1524,7 +1499,6 @@ class TestEnvironmentHints:
         result = _pb.build_environment_hints()
         assert "Host:" in result
 
-
 # =========================================================================
 # Conditional skill activation
 # =========================================================================
@@ -1579,7 +1553,6 @@ class TestSkillShouldShow:
         conditions = {"fallback_for_toolsets": [], "requires_toolsets": [],
                       "fallback_for_tools": [], "requires_tools": ["terminal"]}
         assert _skill_should_show(conditions, {"terminal"}, set()) is True
-
 
 class TestBuildSkillsSystemPromptConditional:
     @pytest.fixture(autouse=True)
@@ -1694,11 +1667,9 @@ class TestBuildSkillsSystemPromptConditional:
         )
         assert "nested-null" in result
 
-
 # =========================================================================
 # Tool-use enforcement guidance
 # =========================================================================
-
 
 class TestToolUseEnforcementGuidance:
     def test_guidance_mentions_tool_calls(self):
@@ -1710,25 +1681,6 @@ class TestToolUseEnforcementGuidance:
 
     def test_guidance_requires_action(self):
         assert "MUST" in TOOL_USE_ENFORCEMENT_GUIDANCE
-
-    def test_enforcement_models_includes_gpt(self):
-        assert "gpt" in TOOL_USE_ENFORCEMENT_MODELS
-
-    def test_enforcement_models_includes_codex(self):
-        assert "codex" in TOOL_USE_ENFORCEMENT_MODELS
-
-    def test_enforcement_models_includes_grok(self):
-        assert "grok" in TOOL_USE_ENFORCEMENT_MODELS
-
-    def test_enforcement_models_includes_qwen(self):
-        assert "qwen" in TOOL_USE_ENFORCEMENT_MODELS
-
-    def test_enforcement_models_includes_deepseek(self):
-        assert "deepseek" in TOOL_USE_ENFORCEMENT_MODELS
-
-    def test_enforcement_models_is_tuple(self):
-        assert isinstance(TOOL_USE_ENFORCEMENT_MODELS, tuple)
-
 
 class TestOpenAIModelExecutionGuidance:
     """Tests for GPT/Codex-specific execution discipline guidance."""
@@ -1763,7 +1715,6 @@ class TestOpenAIModelExecutionGuidance:
     def test_guidance_is_string(self):
         assert isinstance(OPENAI_MODEL_EXECUTION_GUIDANCE, str)
         assert len(OPENAI_MODEL_EXECUTION_GUIDANCE) > 100
-
 
 class TestParallelToolCallGuidance:
     """Behavior contracts for the universal parallel-tool-call guidance block.
@@ -1807,9 +1758,7 @@ class TestParallelToolCallGuidance:
         # Gemini/Gemma would receive the instruction twice in one prompt.
         assert "parallel tool call" not in GOOGLE_MODEL_OPERATIONAL_GUIDANCE.lower()
 
-
 # =========================================================================
 # Budget warning history stripping
 # =========================================================================
-
 

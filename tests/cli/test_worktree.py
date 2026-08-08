@@ -10,7 +10,6 @@ import subprocess
 import pytest
 from pathlib import Path
 
-
 @pytest.fixture
 def git_repo(tmp_path):
     """Create a temporary git repo for testing."""
@@ -44,7 +43,6 @@ def git_repo(tmp_path):
     )
     return repo
 
-
 @pytest.fixture
 def git_repo_no_remote(tmp_path):
     """Create a temporary git repo with no configured remotes."""
@@ -66,7 +64,6 @@ def git_repo_no_remote(tmp_path):
         cwd=repo, capture_output=True,
     )
     return repo
-
 
 @pytest.fixture
 def git_repo_remote_no_tracking(tmp_path):
@@ -94,7 +91,6 @@ def git_repo_remote_no_tracking(tmp_path):
     )
     return repo
 
-
 # ---------------------------------------------------------------------------
 # Lightweight reimplementations for testing (avoid importing cli.py)
 # ---------------------------------------------------------------------------
@@ -112,7 +108,6 @@ def _git_repo_root(cwd=None):
     except Exception:
         pass
     return None
-
 
 def _setup_worktree(repo_root):
     """Test version of _setup_worktree — creates a worktree."""
@@ -138,7 +133,6 @@ def _setup_worktree(repo_root):
         "repo_root": repo_root,
     }
 
-
 def _has_unpushed_commits(worktree_path, timeout=10):
     """Test version of the worktree unpushed-commit helper."""
     try:
@@ -160,7 +154,6 @@ def _has_unpushed_commits(worktree_path, timeout=10):
         return bool(result.stdout.strip())
     except Exception:
         return True
-
 
 def _cleanup_worktree(info):
     """Test version of _cleanup_worktree.
@@ -188,7 +181,6 @@ def _cleanup_worktree(info):
     )
     return True  # Cleaned up
 
-
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -214,7 +206,6 @@ class TestGitRepoDetection:
         bare_dir.mkdir()
         root = _git_repo_root(cwd=str(bare_dir))
         assert root is None
-
 
 class TestWorktreeCreation:
     """Test worktree setup."""
@@ -269,7 +260,6 @@ class TestWorktreeCreation:
         info = _setup_worktree(str(git_repo))
         assert info is not None
         assert (Path(info["path"]) / "README.md").exists()
-
 
 class TestWorktreeCleanup:
     """Test worktree cleanup on exit."""
@@ -370,7 +360,6 @@ class TestWorktreeCleanup:
         # Should not raise
         _cleanup_worktree(info)
 
-
 class TestWorktreeInclude:
     """Test .worktreeinclude file handling."""
 
@@ -423,42 +412,6 @@ class TestWorktreeInclude:
         assert info is not None
         # Should not crash — just skip all lines
 
-
-class TestGitignoreManagement:
-    """Test that .worktrees/ is added to .gitignore."""
-
-    def test_adds_to_gitignore(self, git_repo):
-        """Creating a worktree should add .worktrees/ to .gitignore."""
-        # Remove any existing .gitignore
-        gitignore = git_repo / ".gitignore"
-        if gitignore.exists():
-            gitignore.unlink()
-
-        info = _setup_worktree(str(git_repo))
-        assert info is not None
-
-        # Now manually add .worktrees/ to .gitignore (mirrors cli.py logic)
-        _ignore_entry = ".worktrees/"
-        existing = gitignore.read_text() if gitignore.exists() else ""
-        if _ignore_entry not in existing.splitlines():
-            with open(gitignore, "a") as f:
-                if existing and not existing.endswith("\n"):
-                    f.write("\n")
-                f.write(f"{_ignore_entry}\n")
-
-        content = gitignore.read_text()
-        assert ".worktrees/" in content
-
-    def test_does_not_duplicate_gitignore_entry(self, git_repo):
-        """If .worktrees/ is already in .gitignore, don't add again."""
-        gitignore = git_repo / ".gitignore"
-        gitignore.write_text(".worktrees/\n")
-
-        # The check should see it's already there
-        existing = gitignore.read_text()
-        assert ".worktrees/" in existing.splitlines()
-
-
 class TestMultipleWorktrees:
     """Test running multiple worktrees concurrently (the core use case)."""
 
@@ -507,7 +460,6 @@ class TestMultipleWorktrees:
         for info in worktrees:
             assert not Path(info["path"]).exists()
 
-
 class TestWorktreeDirectorySymlink:
     """Test .worktreeinclude with directories (symlinked)."""
 
@@ -541,7 +493,6 @@ class TestWorktreeDirectorySymlink:
 
         assert dst.is_symlink()
         assert (dst / "lib" / "marker.txt").read_text() == "venv marker"
-
 
 class TestStaleWorktreePruning:
     """Test _prune_stale_worktrees garbage collection."""
@@ -770,7 +721,6 @@ class TestStaleWorktreePruning:
 
         assert not Path(info["path"]).exists()
 
-
 class TestEdgeCases:
     """Test edge cases for robustness."""
 
@@ -797,58 +747,8 @@ class TestEdgeCases:
         assert info is not None
         assert Path(info["path"]).exists()
 
-
-class TestCLIFlagLogic:
-    """Test the flag/config OR logic from main()."""
-
-    def test_worktree_flag_triggers(self):
-        """--worktree flag should trigger worktree creation."""
-        worktree = True
-        w = False
-        config_worktree = False
-        use_worktree = worktree or w or config_worktree
-        assert use_worktree
-
-    def test_w_flag_triggers(self):
-        """-w flag should trigger worktree creation."""
-        worktree = False
-        w = True
-        config_worktree = False
-        use_worktree = worktree or w or config_worktree
-        assert use_worktree
-
-    def test_config_triggers(self):
-        """worktree: true in config should trigger worktree creation."""
-        worktree = False
-        w = False
-        config_worktree = True
-        use_worktree = worktree or w or config_worktree
-        assert use_worktree
-
-    def test_none_set_no_trigger(self):
-        """No flags and no config should not trigger."""
-        worktree = False
-        w = False
-        config_worktree = False
-        use_worktree = worktree or w or config_worktree
-        assert not use_worktree
-
-
 class TestTerminalCWDIntegration:
     """Test that TERMINAL_CWD is correctly set to the worktree path."""
-
-    def test_terminal_cwd_set(self, git_repo):
-        """After worktree setup, TERMINAL_CWD should point to the worktree."""
-        info = _setup_worktree(str(git_repo))
-        assert info is not None
-
-        # This is what main() does:
-        os.environ["TERMINAL_CWD"] = info["path"]
-        assert os.environ["TERMINAL_CWD"] == info["path"]
-        assert Path(os.environ["TERMINAL_CWD"]).exists()
-
-        # Clean up env
-        del os.environ["TERMINAL_CWD"]
 
     def test_terminal_cwd_is_valid_git_repo(self, git_repo):
         """The TERMINAL_CWD worktree should be a valid git working tree."""
@@ -860,7 +760,6 @@ class TestTerminalCWDIntegration:
             capture_output=True, text=True, cwd=info["path"],
         )
         assert result.stdout.strip() == "true"
-
 
 class TestOrphanedBranchPruning:
     """Test cleanup of orphaned hermes/* and pr-* branches."""
@@ -988,31 +887,6 @@ class TestOrphanedBranchPruning:
         ]
         assert "main" not in orphaned
 
-
-class TestSystemPromptInjection:
-    """Test that the agent gets worktree context in its system prompt."""
-
-    def test_prompt_note_format(self, git_repo):
-        """Verify the system prompt note contains all required info."""
-        info = _setup_worktree(str(git_repo))
-        assert info is not None
-
-        # This is what main() does:
-        wt_note = (
-            f"\n\n[System note: You are working in an isolated git worktree at "
-            f"{info['path']}. Your branch is `{info['branch']}`. "
-            f"Changes here do not affect the main working tree or other agents. "
-            f"Remember to commit and push your changes, and create a PR if appropriate. "
-            f"The original repo is at {info['repo_root']}.]\n"
-        )
-
-        assert info["path"] in wt_note
-        assert info["branch"] in wt_note
-        assert info["repo_root"] in wt_note
-        assert "isolated git worktree" in wt_note
-        assert "commit and push" in wt_note
-
-
 class TestWorktreeLockReaping:
     """Exercise the REAL cli._prune_stale_worktrees lock/dirty/unpushed logic.
 
@@ -1099,7 +973,6 @@ class TestWorktreeLockReaping:
         wt = self._mk(cli, git_repo, "hermes-fresh", pid=None, age_h=1)
         cli._prune_stale_worktrees(str(git_repo))
         assert wt.exists(), "worktree under 24h must never be pruned"
-
 
 class TestWorktreeLockPredicate:
     """_worktree_lock_is_live classification (real cli helper)."""

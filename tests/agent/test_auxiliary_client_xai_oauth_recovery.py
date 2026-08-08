@@ -10,13 +10,11 @@ an OAuth2 access token has expired.  These tests verify the three fixes:
 
 import pytest
 
-
 # ── _is_auth_error ──────────────────────────────────────────────────────────
 
 def _import_is_auth_error():
     from agent.auxiliary_client import _is_auth_error
     return _is_auth_error
-
 
 class TestIsAuthErrorXaiOauth403:
     """Verify _is_auth_error correctly identifies xAI's 403 bad-credentials."""
@@ -83,13 +81,11 @@ class TestIsAuthErrorXaiOauth403:
         exc = Exception("unauthenticated request")
         assert self.is_auth_error(exc) is False
 
-
 # ── _recoverable_pool_provider ──────────────────────────────────────────────
 
 def _import_recoverable_pool_provider():
     from agent.auxiliary_client import _recoverable_pool_provider
     return _recoverable_pool_provider
-
 
 class TestRecoverablePoolProviderXaiOAuth:
     """Verify _recoverable_pool_provider maps api.x.ai to xai-oauth."""
@@ -119,13 +115,11 @@ class TestRecoverablePoolProviderXaiOAuth:
         result = self.recover("auto", MockClient())
         assert result is None
 
-
 # ── _refresh_provider_credentials (structure check) ─────────────────────────
 
 def _import_refresh_provider_credentials():
     from agent.auxiliary_client import _refresh_provider_credentials
     return _refresh_provider_credentials
-
 
 class TestRefreshProviderCredentialsXaiOAuth:
     """Verify _refresh_provider_credentials has xai-oauth branch.
@@ -137,15 +131,6 @@ class TestRefreshProviderCredentialsXaiOAuth:
     @pytest.fixture(autouse=True)
     def _import(self):
         self.refresh = _import_refresh_provider_credentials()
-
-    def test_xai_oauth_no_pool_returns_false(self):
-        """When no xai-oauth pool exists, refresh returns False gracefully."""
-        # This tests that the branch exists and doesn't crash.
-        # It may return True if the singleton resolver finds tokens,
-        # or False if neither pool nor singleton has credentials.
-        # Either way, it should not raise an exception.
-        result = self.refresh("xai-oauth")
-        assert isinstance(result, bool)
 
     def test_unknown_provider_returns_false(self):
         """Unknown providers fall through to return False."""

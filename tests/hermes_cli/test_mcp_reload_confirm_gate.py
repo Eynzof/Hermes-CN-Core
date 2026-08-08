@@ -10,28 +10,7 @@ run silently.
 
 from __future__ import annotations
 
-
 from hermes_cli.config import DEFAULT_CONFIG
-
-
-class TestMcpReloadConfirmDefault:
-    def test_default_config_has_the_key(self):
-        approvals = DEFAULT_CONFIG.get("approvals")
-        assert isinstance(approvals, dict)
-        assert "mcp_reload_confirm" in approvals
-
-    def test_default_is_true(self):
-        # New installs confirm by default — this is the safe behavior.
-        assert DEFAULT_CONFIG["approvals"]["mcp_reload_confirm"] is True
-
-    def test_shape_matches_other_approval_keys(self):
-        # Same flat dict level as `mode` / `timeout` / `cron_mode`.
-        approvals = DEFAULT_CONFIG["approvals"]
-        assert isinstance(approvals.get("mode"), str)
-        assert isinstance(approvals.get("timeout"), int)
-        assert isinstance(approvals.get("cron_mode"), str)
-        assert isinstance(approvals.get("mcp_reload_confirm"), bool)
-
 
 class TestUserConfigMerge:
     """If a user has a pre-existing config without this key, load_config

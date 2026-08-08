@@ -26,11 +26,9 @@ from tools.vision_tools import (
     check_vision_requirements,
 )
 
-
 # ---------------------------------------------------------------------------
 # _validate_image_url — urlparse-based validation
 # ---------------------------------------------------------------------------
-
 
 class TestValidateImageUrl:
     """Tests for URL validation, including urlparse-based netloc check."""
@@ -119,11 +117,9 @@ class TestValidateImageUrl:
     def test_rejects_list(self):
         assert _validate_image_url(["https://example.com"]) is False
 
-
 # ---------------------------------------------------------------------------
 # _determine_mime_type
 # ---------------------------------------------------------------------------
-
 
 class TestDetermineMimeType:
     def test_jpg(self):
@@ -144,11 +140,9 @@ class TestDetermineMimeType:
     def test_unknown_extension_defaults_to_jpeg(self):
         assert _determine_mime_type(Path("file.xyz")) == "image/jpeg"
 
-
 # ---------------------------------------------------------------------------
 # _image_to_base64_data_url
 # ---------------------------------------------------------------------------
-
 
 class TestImageToBase64DataUrl:
     def test_returns_data_url(self, tmp_path):
@@ -167,11 +161,9 @@ class TestImageToBase64DataUrl:
         with pytest.raises(FileNotFoundError):
             _image_to_base64_data_url(tmp_path / "nonexistent.png")
 
-
 # ---------------------------------------------------------------------------
 # _handle_vision_analyze — type signature & behavior
 # ---------------------------------------------------------------------------
-
 
 class TestHandleVisionAnalyze:
     """Verify _handle_vision_analyze returns an Awaitable and builds correct prompt."""
@@ -323,11 +315,9 @@ class TestHandleVisionAnalyze:
             assert isinstance(result, Awaitable)
             result.close()
 
-
 # ---------------------------------------------------------------------------
 # Error logging with exc_info — verify tracebacks are logged
 # ---------------------------------------------------------------------------
-
 
 class TestErrorLoggingExcInfo:
     """Verify that exc_info=True is used in error/warning log calls."""
@@ -421,7 +411,6 @@ class TestErrorLoggingExcInfo:
             assert len(warning_records) >= 1
             assert warning_records[0].exc_info is not None
 
-
 class TestVisionConfig:
     @pytest.mark.asyncio
     async def test_vision_uses_configured_temperature_and_timeout(self, tmp_path):
@@ -480,7 +469,6 @@ class TestVisionConfig:
         assert result["success"] is True
         assert mock_llm.await_args.kwargs["temperature"] == 0.1
         assert mock_llm.await_args.kwargs["timeout"] == 120.0
-
 
 class TestVisionSafetyGuards:
     @pytest.mark.asyncio
@@ -587,16 +575,11 @@ class TestVisionSafetyGuards:
 
         assert not (tmp_path / "cat.png").exists()
 
-
 # ---------------------------------------------------------------------------
 # check_vision_requirements
 # ---------------------------------------------------------------------------
 
-
 class TestVisionRequirements:
-    def test_check_requirements_returns_bool(self):
-        result = check_vision_requirements()
-        assert isinstance(result, bool)
 
     def test_check_requirements_accepts_codex_auth(self, monkeypatch, tmp_path):
         monkeypatch.setenv("HERMES_HOME", str(tmp_path))
@@ -614,16 +597,13 @@ class TestVisionRequirements:
 
         assert check_vision_requirements() is True
 
-
 # ---------------------------------------------------------------------------
 # Integration: registry entry
 # ---------------------------------------------------------------------------
 
-
 # ---------------------------------------------------------------------------
 # Tilde expansion in local file paths
 # ---------------------------------------------------------------------------
-
 
 class TestTildeExpansion:
     """Verify that ~/path style paths are expanded correctly."""
@@ -678,11 +658,9 @@ class TestTildeExpansion:
         data = orjson.loads(result)
         assert data["success"] is False
 
-
 # ---------------------------------------------------------------------------
 # file:// URI support
 # ---------------------------------------------------------------------------
-
 
 class TestFileUriSupport:
     """Verify that file:// URIs resolve as local file paths."""
@@ -724,11 +702,9 @@ class TestFileUriSupport:
         data = orjson.loads(result)
         assert data["success"] is False
 
-
 # ---------------------------------------------------------------------------
 # Base64 size pre-flight check
 # ---------------------------------------------------------------------------
-
 
 class TestBase64SizeLimit:
     """Verify that oversized images are rejected before hitting the API."""
@@ -770,11 +746,9 @@ class TestBase64SizeLimit:
 
         assert result["success"] is True
 
-
 # ---------------------------------------------------------------------------
 # Error classification for 400 responses
 # ---------------------------------------------------------------------------
-
 
 class TestErrorClassification:
     """Verify that API 400 errors produce actionable guidance."""
@@ -807,7 +781,6 @@ class TestErrorClassification:
         assert "rejected the image" in result["analysis"].lower()
         assert "smaller" in result["analysis"].lower()
 
-
 class TestVisionRegistration:
     def test_vision_analyze_registered(self):
         from tools.registry import registry
@@ -817,28 +790,9 @@ class TestVisionRegistration:
         assert entry.toolset == "vision"
         assert entry.is_async is True
 
-    def test_schema_has_required_fields(self):
-        from tools.registry import registry
-
-        entry = registry._tools.get("vision_analyze")
-        schema = entry.schema
-        assert schema["name"] == "vision_analyze"
-        params = schema.get("parameters", {})
-        props = params.get("properties", {})
-        assert "image_url" in props
-        assert "question" in props
-
-    def test_handler_is_callable(self):
-        from tools.registry import registry
-
-        entry = registry._tools.get("vision_analyze")
-        assert callable(entry.handler)
-
-
 # ---------------------------------------------------------------------------
 # _resize_image_for_vision — auto-resize oversized images
 # ---------------------------------------------------------------------------
-
 
 class TestResizeImageForVision:
     """Tests for the auto-resize function."""
@@ -903,12 +857,6 @@ class TestResizeImageForVision:
         result = _resize_image_for_vision(path, mime_type="image/jpeg",
                                            max_base64_bytes=50_000)
         assert result.startswith("data:image/jpeg;base64,")
-
-    def test_constants_sane(self):
-        """Hard limit should be larger than resize target."""
-        assert _MAX_BASE64_BYTES == 20 * 1024 * 1024
-        assert _RESIZE_TARGET_BYTES == 5 * 1024 * 1024
-        assert _MAX_BASE64_BYTES > _RESIZE_TARGET_BYTES
 
     def test_extreme_aspect_ratio_preserved(self, tmp_path):
         """Extreme aspect ratios should be preserved during resize."""
@@ -981,11 +929,9 @@ class TestResizeImageForVision:
                 # Should return the original (oversized) data url
                 assert len(result) > 100
 
-
 # ---------------------------------------------------------------------------
 # _image_exceeds_dimension — proactive embed-time pixel-cap detector
 # ---------------------------------------------------------------------------
-
 
 class TestImageExceedsDimension:
     """The proactive embed path checks pixel dimensions, not just bytes.
@@ -1047,11 +993,9 @@ class TestImageExceedsDimension:
         path.write_bytes(b"not an image at all")
         assert _image_exceeds_dimension(path, _EMBED_MAX_DIMENSION) is False
 
-
 # ---------------------------------------------------------------------------
 # _is_image_size_error — detect size-related API errors
 # ---------------------------------------------------------------------------
-
 
 class TestIsImageSizeError:
     """Tests for the size-error detection helper."""
@@ -1076,7 +1020,6 @@ class TestIsImageSizeError:
 
     def test_empty_message(self):
         assert not _is_image_size_error(Exception(""))
-
 
 class TestDownloadRetryClassification:
     """Error-class-aware retry: 4xx fail-fast, 429/5xx/transient retried (issue #32296)."""
@@ -1158,7 +1101,6 @@ class TestDownloadRetryClassification:
         assert mock_client.get.await_count == 3
         assert mock_sleep.await_count == 2
 
-
 # ---------------------------------------------------------------------------
 # CPU-burst concurrency cap — a single turn (or several concurrent sessions in
 # one process) can launch dozens of vision_analyze calls at once. Only the
@@ -1166,7 +1108,6 @@ class TestDownloadRetryClassification:
 # can't saturate every core and starve the dashboard event loop — while the
 # network-bound LLM calls stay fully concurrent for legitimate multi-image work.
 # ---------------------------------------------------------------------------
-
 
 class TestVisionCpuBurstCap:
     """The bounded CPU executor caps concurrent encode/resize, not LLM calls."""

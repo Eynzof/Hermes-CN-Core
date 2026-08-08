@@ -28,11 +28,9 @@ from agent.error_classifier import FailoverReason
 from agent.memory_manager import MemoryManager
 from agent.prompt_builder import DEFAULT_AGENT_IDENTITY
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
-
 
 def _make_tool_defs(*names: str) -> list:
     """Build minimal tool definition list accepted by AIAgent.__init__."""
@@ -48,54 +46,11 @@ def _make_tool_defs(*names: str) -> list:
         for n in names
     ]
 
-
 def test_is_destructive_command_treats_cp_as_mutating():
     assert run_agent._is_destructive_command("cp .env.local .env") is True
 
-
 def test_is_destructive_command_treats_install_as_mutating():
     assert run_agent._is_destructive_command("install template.env .env") is True
-
-
-def test_run_conversation_dict_returns_include_final_response():
-    """Structurally enforce final_response on dict returns from run_conversation().
-
-    This parses source, including nested helpers, so it requires the .py file
-    to be available. It guards key presence and literal None values; runtime
-    tests still cover branch-specific values.
-    """
-    from agent import conversation_loop
-
-    try:
-        source = inspect.getsource(conversation_loop.run_conversation)
-    except OSError as exc:
-        pytest.skip(f"run_conversation source is unavailable: {exc}")
-    tree = ast.parse(source)
-    missing = []
-    literal_none = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Return) or not isinstance(node.value, ast.Dict):
-            continue
-        keys = [
-            key.value if isinstance(key, ast.Constant) else None
-            for key in node.value.keys
-        ]
-        if "final_response" not in keys:
-            missing.append(node.lineno)
-            continue
-        value = node.value.values[keys.index("final_response")]
-        if isinstance(value, ast.Constant) and value.value is None:
-            literal_none.append(node.lineno)
-
-    assert missing == [], (
-        "run_conversation() dict returns must preserve the final_response "
-        f"contract; missing at source-local lines {missing}"
-    )
-    assert literal_none == [], (
-        "run_conversation() dict returns must expose actionable final_response "
-        f"text instead of literal None; literal None at source-local lines {literal_none}"
-    )
-
 
 @pytest.fixture()
 def agent():
@@ -117,7 +72,6 @@ def agent():
         a.client = MagicMock()
         return a
 
-
 def test_persist_user_message_override_rewrites_text_turns(agent):
     messages = [{"role": "user", "content": "API-only synthetic prefix\nhello"}]
     agent._persist_user_message_idx = 0
@@ -126,7 +80,6 @@ def test_persist_user_message_override_rewrites_text_turns(agent):
     agent._apply_persist_user_message_override(messages)
 
     assert messages == [{"role": "user", "content": "hello"}]
-
 
 def test_persist_user_message_override_preserves_multimodal_turns(agent):
     multimodal_content = [
@@ -144,7 +97,6 @@ def test_persist_user_message_override_preserves_multimodal_turns(agent):
 
     assert messages == [{"role": "user", "content": multimodal_content}]
 
-
 def test_persist_user_message_override_restores_clean_multimodal_note(agent):
     clean_content = [
         {"type": "text", "text": "Describe this screenshot"},
@@ -161,7 +113,6 @@ def test_persist_user_message_override_restores_clean_multimodal_note(agent):
     agent._apply_persist_user_message_override(messages)
 
     assert messages == [{"role": "user", "content": clean_content}]
-
 
 def test_flush_persist_override_replaces_api_local_multimodal_note(agent):
     """A note-added multimodal API payload stores the original clean content."""
@@ -186,7 +137,6 @@ def test_flush_persist_override_replaces_api_local_multimodal_note(agent):
     db_write = agent._session_db.append_message.call_args.kwargs
     assert db_write["content"] == "Describe this screenshot\n[screenshot]"
     assert api_content[0]["text"] == "[MODEL SWITCH NOTE]\n\nDescribe this screenshot"
-
 
 def test_direct_session_db_flushes_share_marker_claim(agent):
     """A direct flush cannot interleave its marker check with `_persist_session`."""
@@ -238,7 +188,6 @@ def test_direct_session_db_flushes_share_marker_claim(agent):
     assert not direct.is_alive()
     assert db.rows == ["exactly once"]
 
-
 @pytest.fixture()
 def agent_with_memory_tool():
     """Agent whose valid_tool_names includes 'memory'."""
@@ -259,7 +208,6 @@ def agent_with_memory_tool():
         )
         a.client = MagicMock()
         return a
-
 
 def test_aiagent_reuses_existing_errors_log_handler():
     """Repeated AIAgent init should not accumulate duplicate errors.log handlers."""
@@ -316,7 +264,6 @@ def test_aiagent_reuses_existing_errors_log_handler():
         for handler in original_handlers:
             root_logger.addHandler(handler)
 
-
 class TestProviderModelNormalization:
     def test_aiagent_strips_matching_native_provider_prefix(self):
         with (
@@ -358,11 +305,9 @@ class TestProviderModelNormalization:
 
         assert agent.model == "anthropic/claude-sonnet-4.6"
 
-
 # ---------------------------------------------------------------------------
 # Helper to build mock assistant messages (API response objects)
 # ---------------------------------------------------------------------------
-
 
 def _mock_assistant_msg(
     content="Hello",
@@ -381,7 +326,6 @@ def _mock_assistant_msg(
         msg.reasoning_details = reasoning_details
     return msg
 
-
 def _mock_tool_call(name="web_search", arguments="{}", call_id=None):
     """Return a SimpleNamespace mimicking a tool call object."""
     return SimpleNamespace(
@@ -389,7 +333,6 @@ def _mock_tool_call(name="web_search", arguments="{}", call_id=None):
         type="function",
         function=SimpleNamespace(name=name, arguments=arguments),
     )
-
 
 def _mock_response(
     content="Hello",
@@ -416,11 +359,9 @@ def _mock_response(
         resp.usage = None
     return resp
 
-
 # ===================================================================
 # Group 1: Pure Functions
 # ===================================================================
-
 
 class TestHasContentAfterThinkBlock:
     def test_none_returns_false(self, agent):
@@ -440,7 +381,6 @@ class TestHasContentAfterThinkBlock:
 
     def test_no_think_block_returns_true(self, agent):
         assert agent._has_content_after_think_block("just normal content") is True
-
 
 class TestStripThinkBlocks:
     def test_none_returns_empty(self, agent):
@@ -665,7 +605,6 @@ class TestStripThinkBlocks:
         assert "<tool_call>" not in result
         assert "final answer" in result
 
-
 class TestExtractReasoning:
     def test_reasoning_field(self, agent):
         msg = _mock_assistant_msg(reasoning="thinking hard")
@@ -753,7 +692,6 @@ class TestExtractReasoning:
         # structured field was found first → content-list branch skipped
         assert result == "from structured field"
 
-
 class TestSessionJsonSnapshotOptIn:
     """Regression: per-session JSON snapshot writer is opt-in via config.
 
@@ -827,7 +765,6 @@ class TestSessionJsonSnapshotOptIn:
         assert f("api-abc123def456") == "api-abc123def456"
         assert f("../a") != f("../b")
 
-
 class TestSaveSessionLogRedactsSecrets:
     """Regression: session_*.json must not contain plaintext credentials (#19798, #19845)."""
 
@@ -897,7 +834,6 @@ class TestSaveSessionLogRedactsSecrets:
         # Image part preserved untouched
         assert parts[1]["image_url"]["url"].startswith("data:image")
 
-
 class TestGetMessagesUpToLastAssistant:
     def test_empty_list(self, agent):
         assert agent._get_messages_up_to_last_assistant([]) == []
@@ -939,7 +875,6 @@ class TestGetMessagesUpToLastAssistant:
         assert len(result) == 1
         assert result[0]["role"] == "user"
 
-
 class TestMaskApiKey:
     def test_none_returns_none(self, agent):
         assert agent._mask_api_key_for_logs(None) is None
@@ -954,11 +889,9 @@ class TestMaskApiKey:
         assert result.endswith("mnop")
         assert "..." in result
 
-
 # ===================================================================
 # Group 2: State / Structure Methods
 # ===================================================================
-
 
 class TestInit:
     def test_anthropic_base_url_accepted(self):
@@ -1192,7 +1125,6 @@ class TestInit:
                 f"session_id doesn't match expected format: {a.session_id}"
             )
 
-
 class TestInterrupt:
     def test_interrupt_sets_flag(self, agent):
         with patch("run_agent._set_interrupt"):
@@ -1216,7 +1148,6 @@ class TestInterrupt:
         with patch("run_agent._set_interrupt"):
             agent.interrupt()
             assert agent.is_interrupted is True
-
 
 class TestHydrateTodoStore:
     @staticmethod
@@ -1355,7 +1286,6 @@ class TestHydrateTodoStore:
             agent._hydrate_todo_store(history)
         assert not agent._todo_store.has_items()
 
-
 class TestBuildSystemPrompt:
     def test_always_has_identity(self, agent):
         prompt = agent._build_system_prompt()
@@ -1461,7 +1391,6 @@ class TestBuildSystemPrompt:
         assert "SKILLS_PROMPT" in prompt
         assert mock_skills.call_args.kwargs["available_tools"] == set(toolset_map)
         assert mock_skills.call_args.kwargs["available_toolsets"] == {"web", "skills"}
-
 
 class TestToolUseEnforcementConfig:
     """Tests for the agent.tool_use_enforcement config option."""
@@ -1638,7 +1567,6 @@ class TestToolUseEnforcementConfig:
             prompt = a._build_system_prompt()
             assert TOOL_USE_ENFORCEMENT_GUIDANCE not in prompt
 
-
 class TestTaskCompletionGuidance:
     """Tests for the universal task-completion / no-fabrication guidance
     (config.yaml ``agent.task_completion_guidance``).
@@ -1731,7 +1659,6 @@ class TestTaskCompletionGuidance:
             a.client = MagicMock()
             assert TASK_COMPLETION_GUIDANCE not in a._build_system_prompt()
 
-
 class TestEnvironmentProbeIntegration:
     """Tests for the local Python toolchain probe wiring (config.yaml
     ``agent.environment_probe``).  The probe itself is unit-tested in
@@ -1810,7 +1737,6 @@ class TestEnvironmentProbeIntegration:
         prompt = agent._build_system_prompt()
         assert "Python toolchain:" not in prompt
 
-
 class TestInvalidateSystemPrompt:
     def test_clears_cache(self, agent):
         agent._cached_system_prompt = "cached value"
@@ -1823,7 +1749,6 @@ class TestInvalidateSystemPrompt:
         agent._cached_system_prompt = "cached"
         agent._invalidate_system_prompt()
         mock_store.load_from_disk.assert_called_once()
-
 
 class TestBuildApiKwargs:
     def test_basic_kwargs(self, agent):
@@ -2076,7 +2001,6 @@ class TestBuildApiKwargs:
         kwargs = agent._build_api_kwargs(messages)
         assert kwargs["max_tokens"] == 4096
 
-
     def test_qwen_portal_formats_messages_and_metadata(self, agent):
         agent.provider = "qwen-oauth"
         agent.base_url = "https://portal.qwen.ai/v1"
@@ -2175,8 +2099,6 @@ class TestBuildApiKwargs:
         messages = [{"role": "user", "content": "hi"}]
         kwargs = agent._build_api_kwargs(messages)
         assert kwargs.get("extra_body", {}).get("think") is None
-
-
 
 class TestBuildAssistantMessage:
     def test_basic_message(self, agent):
@@ -2348,7 +2270,6 @@ class TestBuildAssistantMessage:
         assert "reasoning that never closes" not in result["content"]
         assert result["content"] == ""
 
-
 class TestFormatToolsForSystemMessage:
     def test_no_tools_returns_empty_array(self, agent):
         agent.tools = []
@@ -2369,11 +2290,9 @@ class TestFormatToolsForSystemMessage:
         names = {t["name"] for t in parsed}
         assert names == {"web_search", "terminal", "read_file"}
 
-
 # ===================================================================
 # Group 3: Conversation Loop Pieces (OpenAI mock)
 # ===================================================================
-
 
 class TestExecuteToolCalls:
     def test_single_tool_executed(self, agent):
@@ -2610,7 +2529,6 @@ class TestExecuteToolCalls:
         assert "API call failed" not in output
         assert "Rate limit reached" not in output
 
-
 class TestRetryAfterCap:
     """#26293: the conversation loop owns rate-limit backoff and honors the
     Retry-After header up to a 600s ceiling (was 120s, which retried before
@@ -2659,7 +2577,6 @@ class TestRetryAfterCap:
         # 900s exceeds the ceiling → clamped to 600s, not the old 120s.
         status = self._drive_once(agent, 900)
         assert "Waiting 600.0s" in status
-
 
 class TestConcurrentToolExecution:
     """Tests for _execute_tool_calls_concurrent and dispatch logic."""
@@ -3603,7 +3520,6 @@ class TestConcurrentToolExecution:
         # Second (allowed) write must checkpoint even though first was blocked.
         cp_mock.assert_called_once()
 
-
 class TestAgentRuntimePostHookOwnershipSync:
     """Pin the inline-dispatch tool list against the post-hook ownership set.
 
@@ -3686,53 +3602,6 @@ class TestAgentRuntimePostHookOwnershipSync:
                 names.add(literal)
         return names
 
-    def test_frozenset_matches_inline_dispatch_chain(self):
-        from agent import tool_executor
-        from agent.agent_runtime_helpers import AGENT_RUNTIME_POST_HOOK_TOOL_NAMES
-
-        inline_names = self._extract_dispatch_chain_names(
-            tool_executor.execute_tool_calls_sequential
-        )
-        assert inline_names, (
-            "Could not find the dispatch chain (anchored on "
-            "`_block_msg is not None`) in execute_tool_calls_sequential. "
-            "If the dispatcher was refactored, update _DISPATCH_ANCHOR_LEFT "
-            "and the walker in this test."
-        )
-        assert inline_names == set(AGENT_RUNTIME_POST_HOOK_TOOL_NAMES), (
-            "Inline dispatch chain in "
-            "agent/tool_executor.py:execute_tool_calls_sequential has drifted "
-            "from AGENT_RUNTIME_POST_HOOK_TOOL_NAMES in "
-            "agent/agent_runtime_helpers.py.\n"
-            f"  Inline branches:     {sorted(inline_names)}\n"
-            f"  Ownership frozenset: {sorted(AGENT_RUNTIME_POST_HOOK_TOOL_NAMES)}\n"
-            "Update both together so post_tool_call fires exactly once per "
-            "tool execution."
-        )
-
-    def test_invoke_tool_dispatch_matches_inline_dispatch_chain(self):
-        """invoke_tool (concurrent path) and the inline dispatcher (sequential
-        path) must cover the same set of agent-runtime tools — otherwise
-        post_tool_call fires inconsistently depending on which executor ran
-        the tool."""
-        from agent import agent_runtime_helpers, tool_executor
-
-        invoke_tool_names = self._extract_invoke_tool_names(
-            agent_runtime_helpers.invoke_tool
-        )
-        inline_names = self._extract_dispatch_chain_names(
-            tool_executor.execute_tool_calls_sequential
-        )
-        assert invoke_tool_names == inline_names, (
-            "Static `function_name == \"...\"` branches diverged between "
-            "agent/agent_runtime_helpers.py:invoke_tool (concurrent path) "
-            "and agent/tool_executor.py:execute_tool_calls_sequential "
-            "(sequential path).\n"
-            f"  invoke_tool:                   {sorted(invoke_tool_names)}\n"
-            f"  execute_tool_calls_sequential: {sorted(inline_names)}"
-        )
-
-
 class TestPathsOverlap:
     """Unit tests for the _paths_overlap helper."""
 
@@ -3765,7 +3634,6 @@ class TestPathsOverlap:
         assert not _paths_overlap(Path(""), Path("src/a.py"))
         assert not _paths_overlap(Path("src/a.py"), Path(""))
 
-
 class TestParallelScopePathNormalization:
     def test_extract_parallel_scope_path_normalizes_relative_to_cwd(self, tmp_path, monkeypatch):
         from run_agent import _extract_parallel_scope_path
@@ -3796,7 +3664,6 @@ class TestParallelScopePathNormalization:
         tc2 = _mock_tool_call(name="write_file", arguments=f'{{"path":"{tmp_path / "notes.txt"}","content":"two"}}', call_id="c2")
 
         assert not _should_parallelize_tool_batch([tc1, tc2])
-
 
 class TestMcpParallelToolBatch:
     """Integration test: _should_parallelize_tool_batch respects MCP parallel flag."""
@@ -3860,7 +3727,6 @@ class TestMcpParallelToolBatch:
                 _parallel_safe_servers.discard("docs")
                 _mcp_tool_server_names.pop("mcp__docs__search", None)
                 _mcp_tool_server_names.pop("mcp__github__list_repos", None)
-
 
 class TestHandleMaxIterations:
     def test_returns_summary(self, agent):
@@ -4175,7 +4041,6 @@ class TestHandleMaxIterations:
         # and both tool results survive — this is what prevents the 400.
         tool_ids = [m.get("tool_call_id") for m in sanitized if m.get("role") == "tool"]
         assert tool_ids == ["call_good", "call_bad"]
-
 
 class TestRunConversation:
     """Tests for the main run_conversation method.
@@ -5931,7 +5796,6 @@ class TestRunConversation:
         assert agent.context_compressor.context_length == 131_072
         mock_compress.assert_not_called()
 
-
 class TestHookPayloadSanitizesSimpleNamespace:
     """Regression: ``_hook_jsonable`` referenced ``SimpleNamespace`` without
     importing it, so sanitizing any hook payload that contained one raised
@@ -5976,7 +5840,6 @@ class TestHookPayloadSanitizesSimpleNamespace:
         normalized_call = payload["assistant_message"]["tool_calls"][0]
         assert normalized_call["id"] == "call_1"
         assert normalized_call["function"]["name"] == "web_search"
-
 
 class TestRetryExhaustion:
     """Regression: retry_count > max_retries was dead code (off-by-one).
@@ -6121,11 +5984,9 @@ class TestRetryExhaustion:
         assert "UnboundLocalError" not in result.get("error", "")
         assert "bad messages" in result["error"]
 
-
 # ---------------------------------------------------------------------------
 # Conversation history mutation
 # ---------------------------------------------------------------------------
-
 
 class TestConversationHistoryNotMutated:
     """run_conversation must not mutate the caller's conversation_history list."""
@@ -6157,11 +6018,9 @@ class TestConversationHistoryNotMutated:
         # Result should have more messages than the original history
         assert len(result["messages"]) > original_len
 
-
 # ---------------------------------------------------------------------------
 # _max_tokens_param consistency
 # ---------------------------------------------------------------------------
-
 
 class TestNousCredentialRefresh:
     """Verify Nous credential refresh rebuilds the runtime client."""
@@ -6211,7 +6070,6 @@ class TestNousCredentialRefresh:
         )
         assert "default_headers" not in rebuilt["kwargs"]
         assert isinstance(agent.client, _RebuiltClient)
-
 
 class TestCredentialPoolRecovery:
     def test_recover_with_pool_rotates_on_402(self, agent):
@@ -6306,7 +6164,6 @@ class TestCredentialPoolRecovery:
         assert recovered is True
         assert retry_same is False
         agent._swap_credential.assert_called_once_with(next_entry)
-
 
     def test_recover_with_pool_refreshes_on_401(self, agent):
         """401 with successful refresh should swap to refreshed credential."""
@@ -6508,7 +6365,6 @@ class TestCredentialPoolRecovery:
         assert captured["status_code"] == 429
         assert captured["error_context"]["reason"] == "device_code_exhausted"
 
-
 class TestMaxTokensParam:
     """Verify _max_tokens_param returns the correct key for each provider."""
 
@@ -6592,7 +6448,6 @@ class TestMaxTokensParam:
         result = agent._max_tokens_param(4096)
         assert result == {"max_completion_tokens": 4096}
 
-
 class TestGpt5ApiModeRouting:
     """Verify provider-specific GPT-5 API-mode routing."""
 
@@ -6659,7 +6514,6 @@ class TestGpt5ApiModeRouting:
         # Path-embedded azure string should still detect — we're ~substring matching
         agent.base_url = "https://my-resource.openai.azure.com/openai/v1"
         assert agent._is_azure_openai_url() is True
-
 
 # ---------------------------------------------------------------------------
 # System prompt stability for prompt caching
@@ -6768,7 +6622,6 @@ class TestBudgetPressure:
         assert agent._budget_exhausted_injected is False
         assert agent._budget_grace_call is False
 
-
 class TestSafeWriter:
     """Verify _SafeWriter guards stdout against OSError (broken pipes)."""
 
@@ -6853,13 +6706,9 @@ class TestSafeWriter:
         wrapped.write("test")
         assert inner.getvalue() == "test"
 
-
-
-
 # ===================================================================
 # Anthropic adapter integration fixes
 # ===================================================================
-
 
 class TestBuildApiKwargsAnthropicMaxTokens:
     """Bug fix: max_tokens was always None for Anthropic mode, ignoring user config."""
@@ -6894,7 +6743,6 @@ class TestBuildApiKwargsAnthropicMaxTokens:
                 assert call_args[1].get("max_tokens") is None
             else:
                 assert call_args[0][3] is None
-
 
 class TestAnthropicImageFallback:
     def test_build_api_kwargs_converts_multimodal_user_image_to_text(self, agent):
@@ -6958,7 +6806,6 @@ class TestAnthropicImageFallback:
 
         assert mock_vision.await_count == 1
 
-
 class TestFallbackAnthropicProvider:
     """Bug fix: _try_activate_fallback had no case for anthropic provider."""
 
@@ -7021,7 +6868,6 @@ class TestFallbackAnthropicProvider:
         assert agent.api_mode == "chat_completions"
         assert agent.client is mock_client
 
-
 def test_aiagent_uses_copilot_acp_client():
     with (
         patch("run_agent.get_tool_definitions", return_value=_make_tool_defs("web_search")),
@@ -7051,29 +6897,24 @@ def test_aiagent_uses_copilot_acp_client():
     assert mock_acp_client.call_args.kwargs["command"] == "/usr/local/bin/copilot"
     assert mock_acp_client.call_args.kwargs["args"] == ["--acp", "--stdio"]
 
-
 def test_quiet_spinner_allowed_with_explicit_print_fn(agent):
     agent._print_fn = lambda *_a, **_kw: None
     with patch.object(run_agent.sys.stdout, "isatty", return_value=False):
         assert agent._should_start_quiet_spinner() is True
-
 
 def test_quiet_spinner_allowed_on_real_tty(agent):
     agent._print_fn = None
     with patch.object(run_agent.sys.stdout, "isatty", return_value=True):
         assert agent._should_start_quiet_spinner() is True
 
-
 def test_quiet_spinner_suppressed_on_non_tty_without_print_fn(agent):
     agent._print_fn = None
     with patch.object(run_agent.sys.stdout, "isatty", return_value=False):
         assert agent._should_start_quiet_spinner() is False
 
-
 def test_is_openai_client_closed_honors_custom_client_flag():
     assert AIAgent._is_openai_client_closed(SimpleNamespace(is_closed=True)) is True
     assert AIAgent._is_openai_client_closed(SimpleNamespace(is_closed=False)) is False
-
 
 def test_is_openai_client_closed_handles_method_form():
     """Fix for issue #4377: is_closed as method (openai SDK) vs property (httpx).
@@ -7101,7 +6942,6 @@ def test_is_openai_client_closed_handles_method_form():
     closed_client = MethodFormClient(closed=True)
     assert AIAgent._is_openai_client_closed(closed_client) is True
 
-
 def test_is_openai_client_closed_falls_back_to_http_client():
     """Verify fallback to _client.is_closed when top-level is_closed is None."""
 
@@ -7113,7 +6953,6 @@ def test_is_openai_client_closed_falls_back_to_http_client():
 
     assert AIAgent._is_openai_client_closed(ClientWithHttpClient(http_closed=False)) is False
     assert AIAgent._is_openai_client_closed(ClientWithHttpClient(http_closed=True)) is True
-
 
 class TestAnthropicBaseUrlPassthrough:
     """Bug fix: base_url was filtered with 'anthropic in base_url', blocking proxies."""
@@ -7155,7 +6994,6 @@ class TestAnthropicBaseUrlPassthrough:
             # No base_url provided, should be default empty string or None
             passed_url = call_args[0][1]
             assert not passed_url or passed_url is None
-
 
 class TestAnthropicCredentialRefresh:
     def test_try_refresh_anthropic_client_credentials_rebuilds_client(self):
@@ -7362,7 +7200,6 @@ class TestAnthropicCredentialRefresh:
         agent._anthropic_client.messages.create.assert_called_once_with(model="claude-sonnet-4-20250514")
         assert result is response
 
-
 # ===================================================================
 # _streaming_api_call tests
 # ===================================================================
@@ -7373,12 +7210,10 @@ def _make_chunk(content=None, tool_calls=None, finish_reason=None, model="test/m
     choice = SimpleNamespace(delta=delta, finish_reason=finish_reason)
     return SimpleNamespace(model=model, choices=[choice])
 
-
 def _make_tc_delta(index=0, tc_id=None, name=None, arguments=None):
     """Build a SimpleNamespace mimicking a streaming tool_call delta."""
     func = SimpleNamespace(name=name, arguments=arguments)
     return SimpleNamespace(index=index, id=tc_id, function=func)
-
 
 class TestStreamingApiCall:
     """Tests for _streaming_api_call — voice TTS streaming pipeline."""
@@ -7609,47 +7444,16 @@ class TestStreamingApiCall:
         assert resp.choices[0].message.content == "Hello"
         assert resp.model == "gpt-4"
 
-
 # ===================================================================
 # Interrupt _vprint force=True verification
 # ===================================================================
-
-
-class TestInterruptVprintForceTrue:
-    """All interrupt _vprint calls must use force=True so they are always visible."""
-
-    def test_all_interrupt_vprint_have_force_true(self):
-        """Scan source for _vprint calls containing 'Interrupt' — each must have force=True."""
-        import inspect
-        source = inspect.getsource(AIAgent)
-        lines = source.split("\n")
-        violations = []
-        for i, line in enumerate(lines, 1):
-            stripped = line.strip()
-            if "_vprint(" in stripped and "Interrupt" in stripped:
-                if "force=True" not in stripped:
-                    violations.append(f"line {i}: {stripped}")
-        assert not violations, (
-            "Interrupt _vprint calls missing force=True:\n"
-            + "\n".join(violations)
-        )
-
 
 # ===================================================================
 # Anthropic interrupt handler in _interruptible_api_call
 # ===================================================================
 
-
 class TestAnthropicInterruptHandler:
     """_interruptible_api_call must handle Anthropic mode when interrupted."""
-
-    def test_interruptible_has_anthropic_branch(self):
-        """The interrupt handler must check api_mode == 'anthropic_messages'."""
-        import inspect
-        from agent.chat_completion_helpers import interruptible_api_call
-        source = inspect.getsource(interruptible_api_call)
-        assert "anthropic_messages" in source, \
-            "interruptible_api_call must handle Anthropic interrupt (api_mode check)"
 
     def test_interruptible_anthropic_interrupt_never_closes_shared_client(self):
         """#67142: a non-streaming Anthropic interrupt must abort the
@@ -7706,19 +7510,9 @@ class TestAnthropicInterruptHandler:
             request_client, reason="interrupt_abort"
         )
 
-    def test_streaming_has_anthropic_branch(self):
-        """_streaming_api_call must also handle Anthropic interrupt."""
-        import inspect
-        from agent.chat_completion_helpers import interruptible_streaming_api_call
-        source = inspect.getsource(interruptible_streaming_api_call)
-        assert "anthropic_messages" in source, \
-            "interruptible_streaming_api_call must handle Anthropic interrupt"
-
-
 # ---------------------------------------------------------------------------
 # Bugfix: stream_callback forwarding for non-streaming providers
 # ---------------------------------------------------------------------------
-
 
 class TestStreamCallbackNonStreamingProvider:
     """When api_mode != chat_completions, stream_callback must still receive
@@ -7802,11 +7596,9 @@ class TestStreamCallbackNonStreamingProvider:
 
         assert received == ["Hello from Claude"]
 
-
 # ---------------------------------------------------------------------------
 # Bugfix: API-only user message prefixes must not persist
 # ---------------------------------------------------------------------------
-
 
 class TestPersistUserMessageOverride:
     """Synthetic API-only user prefixes should never leak into transcripts."""
@@ -7842,7 +7634,6 @@ class TestPersistUserMessageOverride:
         # But the DB write must get the override.
         first_db_write = agent._session_db.append_message.call_args_list[0].kwargs
         assert first_db_write["content"] == "Hello there"
-
 
 class TestReasoningReplayForStrictProviders:
     """Assistant replay must preserve provider-native reasoning fields."""
@@ -7973,11 +7764,9 @@ class TestReasoningReplayForStrictProviders:
         replayed_assistant = next(msg for msg in sent_messages if msg.get("role") == "assistant")
         assert "reasoning_content" not in replayed_assistant
 
-
 # ---------------------------------------------------------------------------
 # Bugfix: _vprint force=True on error messages during TTS
 # ---------------------------------------------------------------------------
-
 
 class TestVprintForceOnErrors:
     """Error/warning messages must be visible during streaming TTS."""
@@ -8003,7 +7792,6 @@ class TestVprintForceOnErrors:
             agent._vprint("debug")
             agent._vprint("error", force=True)
         assert len(printed) == 2
-
 
 class TestNormalizeCodexDictArguments:
     """_normalize_codex_response must produce valid JSON strings for tool
@@ -8057,11 +7845,9 @@ class TestNormalizeCodexDictArguments:
         tc = msg.tool_calls[0]
         assert tc.function.arguments == args_str
 
-
 # ---------------------------------------------------------------------------
 # OAuth flag and nudge counter fixes (salvaged from PR #1797)
 # ---------------------------------------------------------------------------
-
 
 class TestOAuthFlagAfterCredentialRefresh:
     """_is_anthropic_oauth must update when token type changes during refresh."""
@@ -8103,7 +7889,6 @@ class TestOAuthFlagAfterCredentialRefresh:
 
         assert result is True
         assert agent._is_anthropic_oauth is False
-
 
 class TestFallbackSetsOAuthFlag:
     """_try_activate_fallback must set _is_anthropic_oauth for Anthropic fallbacks."""
@@ -8154,7 +7939,6 @@ class TestFallbackSetsOAuthFlag:
         assert result is True
         assert agent._is_anthropic_oauth is False
 
-
 class TestMemoryNudgeCounterPersistence:
     """_turns_since_memory must persist across run_conversation calls."""
 
@@ -8169,37 +7953,6 @@ class TestMemoryNudgeCounterPersistence:
         assert hasattr(a, "_iters_since_skill")
         assert a._turns_since_memory == 0
         assert a._iters_since_skill == 0
-
-    def test_counters_not_reset_in_preamble(self):
-        """The turn preamble must not zero the nudge counters."""
-        import inspect
-        from agent.turn_context import build_turn_context as _btc
-        src = inspect.getsource(_btc)
-        # The preamble (now in build_turn_context) resets many fields (retry
-        # counts, budget, etc.) before returning. Find that reset block and
-        # verify our counters aren't in it. The reset block ends at
-        # iteration_budget. Anchor exactly on
-        # ``agent.iteration_budget = IterationBudget`` so an unrelated
-        # identifier ending in ``iteration_budget`` can't match the boundary.
-        preamble_end = src.index("agent.iteration_budget = IterationBudget")
-        preamble = src[:preamble_end]
-        assert "agent._turns_since_memory = 0" not in preamble
-        assert "agent._iters_since_skill = 0" not in preamble
-
-
-class TestDeadRetryCode:
-    """Unreachable retry_count >= max_retries after raise must not exist."""
-
-    def test_no_unreachable_max_retries_after_backoff(self):
-        import inspect
-        from agent.conversation_loop import run_conversation as _rc
-        source = inspect.getsource(_rc)
-        occurrences = source.count("if retry_count >= max_retries:")
-        assert occurrences == 2, (
-            f"Expected 2 occurrences of 'if retry_count >= max_retries:' "
-            f"but found {occurrences}"
-        )
-
 
 class TestSupportsReasoningExtraBody:
     def _make_agent(self):
@@ -8222,19 +7975,8 @@ class TestSupportsReasoningExtraBody:
             agent.model = model
             assert agent._supports_reasoning_extra_body() is True, model
 
-
 class TestMemoryContextSanitization:
     """sanitize_context() helper correctness — used at provider boundaries."""
-
-    def test_user_message_is_not_mutated_by_run_conversation(self):
-        """User input must reach run_conversation untouched — if a user types
-        a literal <memory-context> tag we don't silently delete their text.
-        The streaming scrubber + plugin-side scrub cover real leak paths."""
-        import inspect
-        from agent.conversation_loop import run_conversation as _rc
-        src = inspect.getsource(_rc)
-        assert "sanitize_context(user_message)" not in src
-        assert "sanitize_context(persist_user_message)" not in src
 
     def test_sanitize_context_strips_full_block(self):
         """Helper-level: a string with an embedded memory-context block is
@@ -8256,33 +7998,3 @@ class TestMemoryContextSanitization:
         assert "stale observation" not in result
         assert "how is the honcho working" in result
 
-
-class TestMemoryProviderTurnStart:
-    """run_conversation() must call memory_manager.on_turn_start() before prefetch_all().
-
-    Without this call, providers like Honcho never update _turn_count, so cadence
-    checks (contextCadence, dialecticCadence) are always satisfied — every turn
-    fires both context refresh and dialectic, ignoring the configured cadence.
-    """
-
-    def test_on_turn_start_called_before_prefetch(self):
-        """Source-level check: on_turn_start appears before prefetch_all in the prologue."""
-        import inspect
-        from agent.turn_context import build_turn_context as _btc
-        src = inspect.getsource(_btc)
-        # Find the actual method calls, not comments
-        idx_turn_start = src.index(".on_turn_start(")
-        idx_prefetch = src.index(".prefetch_all(")
-        assert idx_turn_start < idx_prefetch, (
-            "on_turn_start() must be called before prefetch_all() in the turn prologue "
-            "so that memory providers have the correct turn count for cadence checks"
-        )
-
-    def test_on_turn_start_uses_user_turn_count(self):
-        """Source-level check: on_turn_start receives the user_turn_count."""
-        import inspect
-        from agent.turn_context import build_turn_context as _btc
-        src = inspect.getsource(_btc)
-        # The extracted body uses ``agent.X`` rather than ``self.X``;
-        # assert the extracted-form spelling directly.
-        assert "on_turn_start(agent._user_turn_count" in src

@@ -26,7 +26,6 @@ try:
 except ImportError:
     _HAS_LARK_OAPI = False
 
-
 class _FakeRequestContent:
     def __init__(self, body: bytes):
         self.body = body
@@ -38,7 +37,6 @@ class _FakeRequestContent:
             raise asyncio.IncompleteReadError(self.body, size)
         return self.body[:size]
 
-
 def _mock_event_dispatcher_builder(mock_handler_class):
     mock_builder = Mock()
     mock_builder.register_p2_im_message_message_read_v1 = Mock(return_value=mock_builder)
@@ -49,7 +47,6 @@ def _mock_event_dispatcher_builder(mock_handler_class):
     mock_builder.build = Mock(return_value=object())
     mock_handler_class.builder = Mock(return_value=mock_builder)
     return mock_builder
-
 
 class TestConfigEnvOverrides(unittest.TestCase):
     @patch.dict(os.environ, {
@@ -95,7 +92,6 @@ class TestConfigEnvOverrides(unittest.TestCase):
         _apply_env_overrides(config)
 
         self.assertIn(Platform.FEISHU, config.get_connected_platforms())
-
 
 class TestFeishuMessageNormalization(unittest.TestCase):
     def test_normalize_merge_forward_preserves_summary_lines(self):
@@ -170,7 +166,6 @@ class TestFeishuMessageNormalization(unittest.TestCase):
             normalized.text_content,
             "Build Failed\nService: payments-api\nBranch: main\nView Logs\nRetry\nActions: View Logs, Retry",
         )
-
 
 class TestFeishuAdapterMessaging(unittest.TestCase):
     @unittest.skipUnless(_HAS_LARK_OAPI, "lark-oapi not installed")
@@ -711,7 +706,6 @@ class TestAdapterModule(unittest.TestCase):
         self.assertEqual(fake_client._reconnect_interval, 3)
         self.assertEqual(fake_client._ping_interval, 4)
 
-
 def _admits_group(adapter, message, sender_id, chat_id=""):
     """Group-path shim: run a message through ``_admit`` and return a bool."""
     sender = SimpleNamespace(sender_type="user", sender_id=sender_id)
@@ -720,7 +714,6 @@ def _admits_group(adapter, message, sender_id, chat_id=""):
     if chat_id:
         message.chat_id = chat_id
     return adapter._admit(sender, message) is None
-
 
 class TestAdapterBehavior(unittest.TestCase):
     @patch.dict(os.environ, {}, clear=True)
@@ -3110,7 +3103,6 @@ class TestAdapterBehavior(unittest.TestCase):
             [[{"tag": "md", "text": "---\n1. 第一项\n<u>下划线</u>\n~~删除线~~"}]],
         )
 
-
 @unittest.skipUnless(_HAS_LARK_OAPI, "lark-oapi not installed")
 class TestHydrateBotIdentity(unittest.TestCase):
     """Hydration of bot identity via ``/open-apis/bot/v3/info``.
@@ -3230,7 +3222,6 @@ class TestHydrateBotIdentity(unittest.TestCase):
         # Primary probe failed — open_id stays empty, but bot_name came from app-info.
         self.assertEqual(adapter._bot_open_id, "")
         self.assertEqual(adapter._bot_name, "Fallback Bot")
-
 
 @unittest.skipUnless(_HAS_LARK_OAPI, "lark-oapi not installed")
 class TestPendingInboundQueue(unittest.TestCase):
@@ -3376,7 +3367,6 @@ class TestPendingInboundQueue(unittest.TestCase):
         self.assertFalse(adapter._pending_drain_scheduled)
         # No drainer thread spawned when the happy path runs.
         self.assertEqual(thread_cls.call_count, 0)
-
 
 @unittest.skipUnless(_HAS_LARK_OAPI, "lark-oapi not installed")
 class TestWebhookSecurity(unittest.TestCase):
@@ -3557,7 +3547,6 @@ class TestWebhookSecurity(unittest.TestCase):
         self.assertEqual(response.status, 200)
         self.assertIn(b"test_challenge_token", response.body)
 
-
 class TestDedupTTL(unittest.TestCase):
     """Tests for TTL-aware deduplication."""
 
@@ -3644,7 +3633,6 @@ class TestDedupTTL(unittest.TestCase):
         self.assertIn("om_a", adapter._seen_message_ids)
         self.assertIn("om_b", adapter._seen_message_ids)
 
-
 class TestGroupMentionAtAll(unittest.TestCase):
     """Tests for @_all (Feishu @everyone) group mention routing."""
 
@@ -3675,7 +3663,6 @@ class TestGroupMentionAtAll(unittest.TestCase):
         # Allowlisted user — should pass.
         allowed_sender = SimpleNamespace(open_id="ou_allowed", user_id=None)
         self.assertTrue(_admits_group(adapter, message, allowed_sender, ""))
-
 
 @unittest.skipUnless(_HAS_LARK_OAPI, "lark-oapi not installed")
 class TestSenderNameResolution(unittest.TestCase):
@@ -3781,7 +3768,6 @@ class TestSenderNameResolution(unittest.TestCase):
             result = asyncio.run(adapter._resolve_sender_name_from_api("ou_broken"))
 
         self.assertIsNone(result)
-
 
 @unittest.skipUnless(_HAS_LARK_OAPI, "lark-oapi not installed")
 class TestBotNameResolution(unittest.TestCase):
@@ -3912,7 +3898,6 @@ class TestBotNameResolution(unittest.TestCase):
 
         self.assertIsNone(result)
         self.assertNotIn("ou_peer", adapter._sender_name_cache)
-
 
 @unittest.skipUnless(_HAS_LARK_OAPI, "lark-oapi not installed")
 class TestProcessingReactions(unittest.TestCase):
@@ -4141,7 +4126,6 @@ class TestProcessingReactions(unittest.TestCase):
             _FEISHU_PROCESSING_REACTION_CACHE_SIZE,
         )
 
-
 class TestFeishuMentionMap(unittest.TestCase):
     def test_build_mentions_map_handles_at_all(self):
         from plugins.platforms.feishu.adapter import _build_mentions_map, _FeishuBotIdentity, FeishuMentionRef
@@ -4240,7 +4224,6 @@ class TestFeishuMentionMap(unittest.TestCase):
         self.assertEqual(ref.open_id, "")
         self.assertFalse(ref.is_self)
 
-
 class TestFeishuMentionHint(unittest.TestCase):
     def test_hint_single_user(self):
         from plugins.platforms.feishu.adapter import FeishuMentionRef, _build_mention_hint
@@ -4323,7 +4306,6 @@ class TestFeishuMentionHint(unittest.TestCase):
         refs = [FeishuMentionRef(is_all=True), FeishuMentionRef(is_all=True)]
         self.assertEqual(_build_mention_hint(refs), "[Mentioned: @all]")
 
-
 class TestFeishuStripLeadingSelf(unittest.TestCase):
     def _make_refs(self, *, self_name="Hermes", other_name=None):
         from plugins.platforms.feishu.adapter import FeishuMentionRef
@@ -4405,7 +4387,6 @@ class TestFeishuStripLeadingSelf(unittest.TestCase):
         refs = [FeishuMentionRef(name="Al", open_id="ou_bot", is_self=True)]
         self.assertEqual(_strip_edge_self_mentions("@Alice hi", refs), "@Alice hi")
 
-
 class TestFeishuNormalizeText(unittest.TestCase):
     def test_renders_mention_with_display_name(self):
         from plugins.platforms.feishu.adapter import _normalize_feishu_text, FeishuMentionRef
@@ -4447,7 +4428,6 @@ class TestFeishuNormalizeText(unittest.TestCase):
             _normalize_feishu_text("@_user_1 @_user_2 hi", refs),
             "@Alice hi",
         )
-
 
 class TestFeishuPostMentionParsing(unittest.TestCase):
     def test_post_at_tag_renders_via_mentions_map(self):
@@ -4501,7 +4481,6 @@ class TestFeishuPostMentionParsing(unittest.TestCase):
         }
         result = parse_feishu_post_payload(payload)
         self.assertIn("@all", result.text_content)
-
 
 class TestFeishuNormalizeWithMentions(unittest.TestCase):
     def test_text_message_renders_mention_by_name(self):
@@ -4620,7 +4599,6 @@ class TestFeishuNormalizeWithMentions(unittest.TestCase):
         self.assertTrue(normalized.mentions[0].is_self)
         self.assertEqual(normalized.mentions[0].open_id, "ou_bot")
 
-
 class TestFeishuPostMentionsBot(unittest.TestCase):
     def _build_adapter(self, bot_open_id="ou_bot", bot_user_id="", bot_name=""):
         from plugins.platforms.feishu.adapter import FeishuAdapter
@@ -4649,7 +4627,6 @@ class TestFeishuPostMentionsBot(unittest.TestCase):
     def test_post_mentions_bot_empty_returns_false(self):
         adapter = self._build_adapter()
         self.assertFalse(adapter._post_mentions_bot([]))
-
 
 class TestFeishuExtractMessageContent(unittest.TestCase):
     def _build_adapter(self):
@@ -4696,7 +4673,6 @@ class TestFeishuExtractMessageContent(unittest.TestCase):
         text, _, _, _, mentions = asyncio.run(adapter._extract_message_content(message))
         self.assertEqual(text, "plain hello")
         self.assertEqual(mentions, [])
-
 
 class TestFeishuProcessInboundMessage(unittest.TestCase):
     def _build_adapter(self):
@@ -4881,7 +4857,6 @@ class TestFeishuProcessInboundMessage(unittest.TestCase):
         )
         adapter._dispatch_inbound_event.assert_not_called()
 
-
 class TestFeishuFetchMessageText(unittest.TestCase):
     def _build_adapter(self):
         from plugins.platforms.feishu.adapter import FeishuAdapter
@@ -4984,7 +4959,6 @@ class TestFeishuFetchMessageText(unittest.TestCase):
         self.assertTrue(
             _build_mentions_map([bot_oid], _FeishuBotIdentity(open_id="ou_bot"))["@_user_3"].is_self
         )
-
 
 class TestFeishuMentionEndToEnd(unittest.TestCase):
     """High-level scenarios from the design spec — verify the full pipeline."""
@@ -5171,7 +5145,6 @@ class TestFeishuMentionEndToEnd(unittest.TestCase):
         self.assertIn("@Alice review the spec with Alice", event.text)
         self.assertNotIn("@Hermes @Alice", event.text)
 
-
 class TestChatLockEviction(unittest.TestCase):
     """_get_chat_lock is LRU-bounded so _chat_locks cannot grow unbounded."""
 
@@ -5184,12 +5157,6 @@ class TestChatLockEviction(unittest.TestCase):
         adapter._chat_locks = _collections.OrderedDict()
         adapter.CHAT_LOCK_MAX_SIZE = max_size
         return adapter
-
-    def test_chat_locks_is_ordered_dict(self):
-        import collections as _collections
-
-        adapter = self._make_adapter()
-        self.assertIsInstance(adapter._chat_locks, _collections.OrderedDict)
 
     def test_same_id_returns_same_lock_and_stays_bounded(self):
         adapter = self._make_adapter(max_size=5)

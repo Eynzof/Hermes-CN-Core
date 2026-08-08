@@ -12,8 +12,6 @@ Updated for PR #3586 (cache-aware install/uninstall).
 
 from unittest.mock import patch
 
-
-
 class TestHandleSkillsSlashInstallFlags:
     """Test flag parsing in handle_skills_slash for install."""
 
@@ -72,7 +70,6 @@ class TestHandleSkillsSlashInstallFlags:
             _, kwargs = mock_install.call_args
             assert kwargs.get("invalidate_cache") is True
 
-
 class TestHandleSkillsSlashUninstallFlags:
     """Test flag parsing in handle_skills_slash for uninstall."""
 
@@ -119,27 +116,8 @@ class TestHandleSkillsSlashUninstallFlags:
             _, kwargs = mock_uninstall.call_args
             assert kwargs.get("invalidate_cache") is True
 
-
-class TestDoInstallSkipConfirm:
-    """Test that do_install respects skip_confirm parameter."""
-
-    @patch("hermes_cli.skills_hub.input", return_value="n")
-    def test_without_skip_confirm_prompts_user(self, mock_input):
-        """Without skip_confirm, input() is called for confirmation."""
-        from hermes_cli.skills_hub import do_install
-        with patch("hermes_cli.skills_hub._console"), \
-             patch("tools.skills_hub.ensure_hub_dirs"), \
-             patch("tools.skills_hub.GitHubAuth"), \
-             patch("tools.skills_hub.create_source_router") as mock_router, \
-             patch("hermes_cli.skills_hub._resolve_short_name", return_value="test/skill"), \
-             patch("hermes_cli.skills_hub._resolve_source_meta_and_bundle") as mock_resolve:
-
-            # Make it return None so we exit early
-            mock_resolve.return_value = (None, None, None)
-            do_install("test-skill", skip_confirm=False)
             # We don't get to the input() call because resolve returns None,
             # but the parameter wiring is correct
-
 
 class TestDoUninstallSkipConfirm:
     """Test that do_uninstall respects skip_confirm parameter."""

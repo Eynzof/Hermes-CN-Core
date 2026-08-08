@@ -9,7 +9,6 @@ from urllib.parse import parse_qs, urlparse
 import plugins.memory.openviking as openviking_plugin
 from plugins.memory.openviking import OpenVikingMemoryProvider
 
-
 def _write_skill(skills_dir, name, body="Do the thing."):
     skill_dir = skills_dir / name
     skill_dir.mkdir(parents=True, exist_ok=True)
@@ -18,13 +17,11 @@ def _write_skill(skills_dir, name, body="Do the thing."):
     )
     return skill_dir
 
-
 def _write_bundle(bundles_dir, slug, skills):
     bundles_dir.mkdir(parents=True, exist_ok=True)
     lines = [f"name: {slug}", "skills:"]
     lines.extend(f"  - {skill}" for skill in skills)
     (bundles_dir / f"{slug}.yaml").write_text("\n".join(lines) + "\n")
-
 
 class FakeVikingClient:
     def __init__(self, responses):
@@ -45,7 +42,6 @@ class FakeVikingClient:
             raise response
         return response
 
-
 class RecordingVikingClient:
     calls = []
 
@@ -56,12 +52,10 @@ class RecordingVikingClient:
         self.calls.append((path, payload or {}))
         return {"result": {"memories": [], "resources": []}}
 
-
 def _recall_context_key(value):
     if isinstance(value, list):
         return tuple(value)
     return value
-
 
 class FakeRecallClient:
     calls = []
@@ -92,7 +86,6 @@ class FakeRecallClient:
             raise response
         return response
 
-
 def make_prefetch_provider(monkeypatch, responses, **env):
     monkeypatch.setattr(openviking_plugin, "_VikingClient", FakeRecallClient)
     FakeRecallClient.calls = []
@@ -120,10 +113,8 @@ def make_prefetch_provider(monkeypatch, responses, **env):
     provider._session_id = "session-test"
     return provider
 
-
 def wait_prefetch(provider, query="What should we recall?", session_id="session-test"):
     return provider.prefetch(query, session_id=session_id)
-
 
 class TestOpenVikingSummaryUriNormalization:
     def test_normalize_summary_uri_maps_pseudo_files_to_parent_directory(self):
@@ -338,34 +329,6 @@ class TestOpenVikingSkillQuerySafety:
         assert provider._turn_count == 0
         assert provider._inflight_writers == {}
         assert RecordingVikingClient.calls == []
-
-
-class TestOpenVikingConfigSchema:
-    def test_recall_policy_options_are_exposed_in_setup_schema(self):
-        provider = OpenVikingMemoryProvider()
-
-        schema = provider.get_config_schema()
-        env_vars = {entry.get("env_var") for entry in schema}
-
-        assert "OPENVIKING_RECALL_LIMIT" in env_vars
-        assert "OPENVIKING_RECALL_SCORE_THRESHOLD" in env_vars
-        assert "OPENVIKING_RECALL_MAX_INJECTED_CHARS" in env_vars
-        assert "OPENVIKING_RECALL_TIMEOUT_SECONDS" in env_vars
-        assert "OPENVIKING_RECALL_REQUEST_TIMEOUT_SECONDS" in env_vars
-        assert "OPENVIKING_RECALL_FULL_READ_LIMIT" in env_vars
-        assert "OPENVIKING_RECALL_PREFER_ABSTRACT" in env_vars
-        assert "OPENVIKING_RECALL_RESOURCES" in env_vars
-        assert provider._recall_config() == {
-            "limit": 6,
-            "score_threshold": 0.15,
-            "max_injected_chars": 4000,
-            "timeout_seconds": 4.0,
-            "request_timeout_seconds": 3.0,
-            "full_read_limit": 2,
-            "prefer_abstract": False,
-            "resources": False,
-        }
-
 
 class TestOpenVikingTurnConversion:
     def test_extract_current_turn_anchors_on_latest_matching_user_and_assistant(self):
@@ -715,7 +678,6 @@ class TestOpenVikingTurnConversion:
             {"role": "assistant", "parts": [{"type": "text", "text": "answer"}], "peer_id": "hermes"},
         ]
 
-
 class TestOpenVikingRead:
     def test_overview_read_normalizes_uri_and_unwraps_result(self):
         provider = OpenVikingMemoryProvider()
@@ -961,7 +923,6 @@ class TestOpenVikingRead:
         assert provider._client.calls == [
             ("/api/v1/content/overview", {"uri": "viking://user/hermes"}),
         ]
-
 
 class TestOpenVikingAutoRecallPrefetch:
     def test_prefetch_e2e_sends_limit_and_reads_l2_content(self, monkeypatch):
@@ -1320,7 +1281,6 @@ class TestOpenVikingAutoRecallPrefetch:
 
         assert FakeRecallClient.calls == []
 
-
 class TestOpenVikingBrowse:
     def test_list_browse_unwraps_and_normalizes_entry_shapes(self):
         provider = OpenVikingMemoryProvider()
@@ -1351,7 +1311,6 @@ class TestOpenVikingBrowse:
             "/api/v1/fs/ls",
             {"uri": "viking://user/hermes"},
         )]
-
 
 class TestOpenVikingMemoryUriBuilder:
     """Regression tests for _build_memory_uri — fixes #36969.

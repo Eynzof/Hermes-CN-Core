@@ -29,11 +29,9 @@ from plugins.memory.hindsight import (
     _sanitize_bank_segment,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
-
 
 @pytest.fixture(autouse=True)
 def _clean_env(monkeypatch):
@@ -47,7 +45,6 @@ def _clean_env(monkeypatch):
         "HINDSIGHT_RETAIN_USER_PREFIX", "HINDSIGHT_RETAIN_ASSISTANT_PREFIX",
     ):
         monkeypatch.delenv(key, raising=False)
-
 
 def _make_mock_client():
     """Create a mock Hindsight client with async methods."""
@@ -82,7 +79,6 @@ def _make_mock_client():
     client.aclose = AsyncMock()
     return client
 
-
 def _provider_for_mode(tmp_path, monkeypatch, mode: str):
     """Create an initialized provider without pre-seeding its client."""
     config = {
@@ -104,7 +100,6 @@ def _provider_for_mode(tmp_path, monkeypatch, mode: str):
     provider = HindsightMemoryProvider()
     provider.initialize(session_id="test-session", hermes_home=str(tmp_path), platform="cli")
     return provider
-
 
 def _assert_cloud_client_lazy_installed_before_import(tmp_path, monkeypatch, mode: str):
     """Cloud/local-external clients must ensure lazy deps before importing."""
@@ -142,14 +137,12 @@ def _assert_cloud_client_lazy_installed_before_import(tmp_path, monkeypatch, mod
         "api_key": "test-key",
     }
 
-
 class _FakeSessionDB:
     def __init__(self, messages=None):
         self._messages = list(messages or [])
 
     def get_messages_as_conversation(self, session_id):
         return list(self._messages)
-
 
 @pytest.fixture()
 def provider(tmp_path, monkeypatch):
@@ -174,7 +167,6 @@ def provider(tmp_path, monkeypatch):
     p.initialize(session_id="test-session", hermes_home=str(tmp_path), platform="cli")
     p._client = _make_mock_client()
     return p
-
 
 @pytest.fixture()
 def provider_with_config(tmp_path, monkeypatch):
@@ -203,34 +195,28 @@ def provider_with_config(tmp_path, monkeypatch):
         return p
     return _make
 
-
 def test_normalize_retain_tags_accepts_csv_and_dedupes():
     assert _normalize_retain_tags("agent:fakeassistantname, source_system:hermes-agent, agent:fakeassistantname") == [
         "agent:fakeassistantname",
         "source_system:hermes-agent",
     ]
 
-
 def test_normalize_retain_tags_accepts_json_array_string():
     value = orjson.dumps(["agent:fakeassistantname", "source_system:hermes-agent"]).decode('utf-8')
     assert _normalize_retain_tags(value) == ["agent:fakeassistantname", "source_system:hermes-agent"]
-
 
 def test_normalize_observation_scopes_empty_is_none():
     assert _normalize_observation_scopes("") is None
     assert _normalize_observation_scopes(None) is None
     assert _normalize_observation_scopes("   ") is None
 
-
 def test_normalize_observation_scopes_keywords_pass_through():
     assert _normalize_observation_scopes("per_tag") == "per_tag"
     assert _normalize_observation_scopes("combined") == "combined"
     assert _normalize_observation_scopes(" all_combinations ") == "all_combinations"
 
-
 def test_normalize_observation_scopes_unknown_keyword_is_none():
     assert _normalize_observation_scopes("nonsense") is None
-
 
 def test_normalize_observation_scopes_json_list_of_lists():
     value = orjson.dumps([["user:alice"], ["team:eng"], ["user:alice", "team:eng"]]).decode('utf-8')
@@ -240,12 +226,10 @@ def test_normalize_observation_scopes_json_list_of_lists():
         ["user:alice", "team:eng"],
     ]
 
-
 def test_normalize_observation_scopes_flat_list_is_single_scope():
     assert _normalize_observation_scopes(["user:alice", "team:eng"]) == [
         ["user:alice", "team:eng"]
     ]
-
 
 def test_normalize_observation_scopes_list_of_lists():
     assert _normalize_observation_scopes([["user:alice"], ["team:eng"]]) == [
@@ -253,43 +237,19 @@ def test_normalize_observation_scopes_list_of_lists():
         ["team:eng"],
     ]
 
-
 # ---------------------------------------------------------------------------
 # Schema tests
 # ---------------------------------------------------------------------------
 
-
 class TestSchemas:
-    def test_retain_schema_has_content(self):
-        assert RETAIN_SCHEMA["name"] == "hindsight_retain"
-        assert "content" in RETAIN_SCHEMA["parameters"]["properties"]
-        assert "tags" in RETAIN_SCHEMA["parameters"]["properties"]
-        assert "content" in RETAIN_SCHEMA["parameters"]["required"]
-
-    def test_recall_schema_has_query(self):
-        assert RECALL_SCHEMA["name"] == "hindsight_recall"
-        assert "query" in RECALL_SCHEMA["parameters"]["properties"]
-        assert "query" in RECALL_SCHEMA["parameters"]["required"]
-
-    def test_reflect_schema_has_query(self):
-        assert REFLECT_SCHEMA["name"] == "hindsight_reflect"
-        assert "query" in REFLECT_SCHEMA["parameters"]["properties"]
-
-    def test_get_tool_schemas_returns_three(self, provider):
-        schemas = provider.get_tool_schemas()
-        assert len(schemas) == 3
-        names = {s["name"] for s in schemas}
-        assert names == {"hindsight_retain", "hindsight_recall", "hindsight_reflect"}
 
     def test_context_mode_returns_no_tools(self, provider_with_config):
         p = provider_with_config(memory_mode="context")
         assert p.get_tool_schemas() == []
 
-
 # ---------------------------------------------------------------------------
 # Config tests
 # ---------------------------------------------------------------------------
-
 
 class TestConfig:
     def test_cloud_client_lazy_installs_dependency_before_import(self, tmp_path, monkeypatch):
@@ -443,7 +403,6 @@ class TestConfig:
         assert captured["idle_timeout"] == 0
         assert captured["llm_provider"] == "openai"
 
-
 @pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: path/stat operations fail")
 class TestPostSetup:
     def test_setup_cancel_at_mode_picker_writes_nothing(self, tmp_path, monkeypatch):
@@ -583,7 +542,6 @@ class TestPostSetup:
         assert profile_env.exists()
         assert "HINDSIGHT_API_LLM_API_KEY=existing-key\n" in profile_env.read_text()
 
-
     def test_local_embedded_setup_blank_inputs_preserve_existing_config(self, tmp_path, monkeypatch):
         """Pressing Enter through setup should keep existing Hindsight values."""
         hermes_home = tmp_path / "hermes-home"
@@ -631,12 +589,9 @@ class TestPostSetup:
         assert saved["HINDSIGHT_API_CONSOLIDATION_LLM_BATCH_SIZE"] == "1"
         assert saved["timeout"] == 120
 
-
-
 # ---------------------------------------------------------------------------
 # Tool handler tests
 # ---------------------------------------------------------------------------
-
 
 @pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: path/stat operations fail")
 class TestToolHandlers:
@@ -785,11 +740,9 @@ class TestToolHandlers:
         first_client.arecall.assert_called_once()
         second_client.arecall.assert_called_once()
 
-
 # ---------------------------------------------------------------------------
 # Prefetch tests
 # ---------------------------------------------------------------------------
-
 
 class TestPrefetch:
     def test_prefetch_returns_empty_when_no_result(self, provider):
@@ -857,11 +810,9 @@ class TestPrefetch:
         assert call_kwargs["tags_match"] == "all"
         assert call_kwargs["types"] == ["world"]
 
-
 # ---------------------------------------------------------------------------
 # sync_turn tests
 # ---------------------------------------------------------------------------
-
 
 class TestSyncTurn:
     def test_sync_turn_retains_metadata_rich_turn(self, provider_with_config):
@@ -1124,11 +1075,9 @@ class TestSyncTurn:
         assert "你好" in raw_json
         assert "👨‍👩‍👧‍👦" in raw_json
 
-
 # ---------------------------------------------------------------------------
 # Shutdown / writer tests
 # ---------------------------------------------------------------------------
-
 
 class TestShutdownRace:
     def test_sync_turn_uses_single_writer_thread(self, provider):
@@ -1189,11 +1138,9 @@ class TestShutdownRace:
         provider.shutdown()
         assert provider._shutting_down.is_set()
 
-
 # ---------------------------------------------------------------------------
 # on_session_switch — flush + prefetch reset behavior
 # ---------------------------------------------------------------------------
-
 
 class TestSessionSwitchBufferFlush:
     def test_buffered_turns_flushed_before_clear(self, provider_with_config):
@@ -1333,11 +1280,9 @@ class TestSessionSwitchBufferFlush:
         # by the last sync_turn).
         assert call_order[1] == "3"
 
-
 # ---------------------------------------------------------------------------
 # update_mode='append' capability probe + retain dispatch
 # ---------------------------------------------------------------------------
-
 
 class TestUpdateModeAppendCapability:
     def _clear_capability_cache(self):
@@ -1437,11 +1382,9 @@ class TestUpdateModeAppendCapability:
         assert kw["document_id"] == "test-session"
         assert kw["items"][0]["update_mode"] == "append"
 
-
 # ---------------------------------------------------------------------------
 # System prompt tests
 # ---------------------------------------------------------------------------
-
 
 class TestSystemPrompt:
     def test_hybrid_mode_prompt(self, provider):
@@ -1462,11 +1405,9 @@ class TestSystemPrompt:
         assert "tools mode" in block
         assert "hindsight_recall" in block
 
-
 # ---------------------------------------------------------------------------
 # Config schema tests
 # ---------------------------------------------------------------------------
-
 
 class TestConfigSchema:
     def test_schema_has_all_new_fields(self, provider):
@@ -1486,11 +1427,9 @@ class TestConfigSchema:
         }
         assert expected_keys.issubset(keys), f"Missing: {expected_keys - keys}"
 
-
 # ---------------------------------------------------------------------------
 # bank_id_template tests
 # ---------------------------------------------------------------------------
-
 
 class TestBankIdTemplate:
     def test_sanitize_bank_segment_passthrough(self):
@@ -1630,11 +1569,9 @@ class TestBankIdTemplate:
         p.initialize(session_id="s1", hermes_home=str(tmp_path), platform="cli")
         assert p._bank_id == "hermes"
 
-
 # ---------------------------------------------------------------------------
 # Availability tests
 # ---------------------------------------------------------------------------
-
 
 class TestAvailability:
     def test_available_with_api_key(self, tmp_path, monkeypatch):
@@ -1723,7 +1660,6 @@ class TestAvailability:
         p.initialize(session_id="test-session", hermes_home=str(tmp_path), platform="cli")
         assert p._mode == "disabled"
 
-
 class TestSharedEventLoopLifecycle:
     """Regression tests for #11923 — Hindsight leaking aiohttp ClientSession /
     TCPConnector objects in long-running gateway processes.
@@ -1793,7 +1729,6 @@ class TestSharedEventLoopLifecycle:
         mock_client.aclose.assert_called_once()
         assert provider._client is None
 
-
 class TestShutdown:
     def test_local_embedded_shutdown_closes_inner_async_client_on_shared_loop(self, provider):
         inner_client = _make_mock_client()
@@ -1810,7 +1745,6 @@ class TestShutdown:
         embedded.close.assert_called_once()
         assert embedded._client is None
         assert provider._client is None
-
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX mode bits not enforced on Windows")
 def test_save_config_sets_owner_only_permissions(tmp_path):

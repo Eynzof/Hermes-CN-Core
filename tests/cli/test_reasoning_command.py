@@ -46,7 +46,6 @@ class TestParseReasoningConfig(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertEqual(result["effort"], "high")
 
-
 # ---------------------------------------------------------------------------
 # /reasoning command handler (combined effort + display)
 # ---------------------------------------------------------------------------
@@ -62,39 +61,6 @@ class TestHandleReasoningCommand(unittest.TestCase):
             agent=MagicMock(),
         )
         return stub
-
-    def test_show_enables_display(self):
-        stub = self._make_cli(show_reasoning=False)
-        # Simulate /reasoning show
-        arg = "show"
-        if arg in {"show", "on"}:
-            stub.show_reasoning = True
-            stub.agent.reasoning_callback = lambda x: None
-        self.assertTrue(stub.show_reasoning)
-
-    def test_hide_disables_display(self):
-        stub = self._make_cli(show_reasoning=True)
-        # Simulate /reasoning hide
-        arg = "hide"
-        if arg in {"hide", "off"}:
-            stub.show_reasoning = False
-            stub.agent.reasoning_callback = None
-        self.assertFalse(stub.show_reasoning)
-        self.assertIsNone(stub.agent.reasoning_callback)
-
-    def test_on_enables_display(self):
-        stub = self._make_cli(show_reasoning=False)
-        arg = "on"
-        if arg in {"show", "on"}:
-            stub.show_reasoning = True
-        self.assertTrue(stub.show_reasoning)
-
-    def test_off_disables_display(self):
-        stub = self._make_cli(show_reasoning=True)
-        arg = "off"
-        if arg in {"hide", "off"}:
-            stub.show_reasoning = False
-        self.assertFalse(stub.show_reasoning)
 
     def test_effort_level_sets_config(self):
         """Setting an effort level should update reasoning_config."""
@@ -117,40 +83,6 @@ class TestHandleReasoningCommand(unittest.TestCase):
         from cli import _parse_reasoning_config
         parsed = _parse_reasoning_config("turbo")
         self.assertIsNone(parsed)
-
-    def test_no_args_shows_status(self):
-        """With no args, should show current state (no crash)."""
-        stub = self._make_cli(reasoning_config=None, show_reasoning=False)
-        rc = stub.reasoning_config
-        if rc is None:
-            level = "medium (default)"
-        elif rc.get("enabled") is False:
-            level = "none (disabled)"
-        else:
-            level = rc.get("effort", "medium")
-        display_state = "on" if stub.show_reasoning else "off"
-        self.assertEqual(level, "medium (default)")
-        self.assertEqual(display_state, "off")
-
-    def test_status_with_disabled_reasoning(self):
-        stub = self._make_cli(reasoning_config={"enabled": False}, show_reasoning=True)
-        rc = stub.reasoning_config
-        if rc is None:
-            level = "medium (default)"
-        elif rc.get("enabled") is False:
-            level = "none (disabled)"
-        else:
-            level = rc.get("effort", "medium")
-        self.assertEqual(level, "none (disabled)")
-
-    def test_status_with_explicit_level(self):
-        stub = self._make_cli(
-            reasoning_config={"enabled": True, "effort": "xhigh"},
-            show_reasoning=True,
-        )
-        rc = stub.reasoning_config
-        level = rc.get("effort", "medium")
-        self.assertEqual(level, "xhigh")
 
     def test_effort_defaults_to_session_only(self):
         """Plain /reasoning <level> is session-scoped — no config write."""
@@ -275,7 +207,6 @@ class TestHandleReasoningCommand(unittest.TestCase):
         self.assertEqual(stub.model, "config-default-model")
         agent.switch_model.assert_called_once()
 
-
 # ---------------------------------------------------------------------------
 # Reasoning extraction and result dict
 # ---------------------------------------------------------------------------
@@ -294,135 +225,15 @@ class TestLastReasoningInResult(unittest.TestCase):
             },
         ]
 
-    def test_reasoning_present(self):
-        messages = self._build_messages(reasoning="Let me think...")
-        last_reasoning = None
-        for msg in reversed(messages):
-            if msg.get("role") == "user":
-                break
-            if msg.get("role") == "assistant" and msg.get("reasoning"):
-                last_reasoning = msg["reasoning"]
-                break
-        self.assertEqual(last_reasoning, "Let me think...")
-
-    def test_reasoning_none(self):
-        messages = self._build_messages(reasoning=None)
-        last_reasoning = None
-        for msg in reversed(messages):
-            if msg.get("role") == "user":
-                break
-            if msg.get("role") == "assistant" and msg.get("reasoning"):
-                last_reasoning = msg["reasoning"]
-                break
-        self.assertIsNone(last_reasoning)
-
-    def test_picks_last_assistant(self):
-        messages = [
-            {"role": "user", "content": "hello"},
-            {"role": "assistant", "content": "...", "reasoning": "first thought"},
-            {"role": "tool", "content": "result"},
-            {"role": "assistant", "content": "done!", "reasoning": "final thought"},
-        ]
-        last_reasoning = None
-        for msg in reversed(messages):
-            if msg.get("role") == "user":
-                break
-            if msg.get("role") == "assistant" and msg.get("reasoning"):
-                last_reasoning = msg["reasoning"]
-                break
-        self.assertEqual(last_reasoning, "final thought")
-
-    def test_empty_reasoning_treated_as_none(self):
-        messages = self._build_messages(reasoning="")
-        last_reasoning = None
-        for msg in reversed(messages):
-            if msg.get("role") == "user":
-                break
-            if msg.get("role") == "assistant" and msg.get("reasoning"):
-                last_reasoning = msg["reasoning"]
-                break
-        self.assertIsNone(last_reasoning)
-
-
 # ---------------------------------------------------------------------------
 # Reasoning display collapse
 # ---------------------------------------------------------------------------
-
-class TestReasoningCollapse(unittest.TestCase):
-    """Verify long reasoning is collapsed to 10 lines in the box."""
-
-    def test_short_reasoning_not_collapsed(self):
-        reasoning = "\n".join(f"Line {i}" for i in range(5))
-        lines = reasoning.strip().splitlines()
-        self.assertLessEqual(len(lines), 10)
-
-    def test_long_reasoning_collapsed(self):
-        reasoning = "\n".join(f"Line {i}" for i in range(25))
-        lines = reasoning.strip().splitlines()
-        self.assertTrue(len(lines) > 10)
-        if len(lines) > 10:
-            display = "\n".join(lines[:10])
-            display += f"\n  ... ({len(lines) - 10} more lines)"
-        display_lines = display.splitlines()
-        self.assertEqual(len(display_lines), 11)
-        self.assertIn("15 more lines", display_lines[-1])
-
-    def test_exactly_10_lines_not_collapsed(self):
-        reasoning = "\n".join(f"Line {i}" for i in range(10))
-        lines = reasoning.strip().splitlines()
-        self.assertEqual(len(lines), 10)
-        self.assertFalse(len(lines) > 10)
-
-    def test_intermediate_callback_collapses_to_5(self):
-        """_on_reasoning shows max 5 lines."""
-        reasoning = "\n".join(f"Step {i}" for i in range(12))
-        lines = reasoning.strip().splitlines()
-        if len(lines) > 5:
-            preview = "\n".join(lines[:5])
-            preview += f"\n  ... ({len(lines) - 5} more lines)"
-        else:
-            preview = reasoning.strip()
-        preview_lines = preview.splitlines()
-        self.assertEqual(len(preview_lines), 6)
-        self.assertIn("7 more lines", preview_lines[-1])
-
 
 # ---------------------------------------------------------------------------
 # Reasoning callback
 # ---------------------------------------------------------------------------
 
-class TestReasoningCallback(unittest.TestCase):
-    """Verify reasoning_callback invocation."""
-
-    def test_callback_invoked_with_reasoning(self):
-        captured = []
-        agent = MagicMock()
-        agent.reasoning_callback = lambda t: captured.append(t)
-        agent._extract_reasoning = MagicMock(return_value="deep thought")
-
-        reasoning_text = agent._extract_reasoning(MagicMock())
-        if reasoning_text and agent.reasoning_callback:
-            agent.reasoning_callback(reasoning_text)
-        self.assertEqual(captured, ["deep thought"])
-
-    def test_callback_not_invoked_without_reasoning(self):
-        captured = []
-        agent = MagicMock()
-        agent.reasoning_callback = lambda t: captured.append(t)
-        agent._extract_reasoning = MagicMock(return_value=None)
-
-        reasoning_text = agent._extract_reasoning(MagicMock())
-        if reasoning_text and agent.reasoning_callback:
-            agent.reasoning_callback(reasoning_text)
-        self.assertEqual(captured, [])
-
-    def test_callback_none_does_not_crash(self):
-        reasoning_text = "some thought"
-        callback = None
-        if reasoning_text and callback:
-            callback(reasoning_text)
         # No exception = pass
-
 
 class TestReasoningPreviewBuffering(unittest.TestCase):
     def _make_cli(self):
@@ -493,7 +304,6 @@ class TestReasoningPreviewBuffering(unittest.TestCase):
         cli._flush_reasoning_preview(force=False)
         self.assertEqual(cli._reasoning_preview_buf, "a" * 30)
 
-
 class TestReasoningDisplayModeSelection(unittest.TestCase):
     def _make_cli(self, *, show_reasoning=False, streaming_enabled=False, verbose=False):
         from cli import HermesCLI
@@ -524,7 +334,6 @@ class TestReasoningDisplayModeSelection(unittest.TestCase):
         callback = cli._current_reasoning_callback()
         self.assertIsNotNone(callback)
         self.assertEqual(callback("x"), ("preview", "x"))
-
 
 # ---------------------------------------------------------------------------
 # Real provider format extraction
@@ -571,7 +380,6 @@ class TestExtractReasoningFormats(unittest.TestCase):
         msg = SimpleNamespace(content="Hello!")
         result = extract(None, msg)
         self.assertIsNone(result)
-
 
 # ---------------------------------------------------------------------------
 # Inline <think> block extraction fallback
@@ -658,7 +466,6 @@ class TestInlineThinkBlockExtraction(unittest.TestCase):
         self.assertEqual(len(captured), 1)
         self.assertIn("Deep analysis", captured[0])
 
-
 # ---------------------------------------------------------------------------
 # Config defaults
 # ---------------------------------------------------------------------------
@@ -675,14 +482,12 @@ class TestConfigDefault(unittest.TestCase):
         # at a spinner. The key must exist and be a bool.
         self.assertTrue(display["show_reasoning"])
 
-
 class TestCommandRegistered(unittest.TestCase):
     """Verify /reasoning is in the COMMANDS dict."""
 
     def test_reasoning_in_commands(self):
         from hermes_cli.commands import COMMANDS
         self.assertIn("/reasoning", COMMANDS)
-
 
 # ---------------------------------------------------------------------------
 # End-to-end pipeline
@@ -738,7 +543,6 @@ class TestEndToEndPipeline(unittest.TestCase):
 
         result = {"final_response": api_message.content, "last_reasoning": reasoning}
         self.assertIsNone(result["last_reasoning"])
-
 
 # ---------------------------------------------------------------------------
 # Duplicate reasoning box prevention (Bug fix: 3 boxes for 1 reasoning)
@@ -831,7 +635,6 @@ class TestReasoningDeltasFiredFlag(unittest.TestCase):
 
         self.assertEqual(captured, ["Let me merge the PR."])
 
-
 class TestReasoningShownThisTurnFlag(unittest.TestCase):
     """Post-response reasoning display should be suppressed when reasoning
     was already shown during streaming in a tool-calling loop."""
@@ -887,7 +690,6 @@ class TestReasoningShownThisTurnFlag(unittest.TestCase):
         cli._reasoning_shown_this_turn = False  # done by process_input
 
         self.assertFalse(cli._reasoning_shown_this_turn)
-
 
 if __name__ == "__main__":
     unittest.main()

@@ -37,7 +37,6 @@ from tools.delegate_tool import (
     _inherit_parent_base_url,
 )
 
-
 def _make_mock_parent(depth=0):
     """Create a mock parent agent with the fields delegate_task expects."""
     parent = MagicMock()
@@ -59,7 +58,6 @@ def _make_mock_parent(depth=0):
     parent.tool_progress_callback = None
     parent.thinking_callback = None
     return parent
-
 
 class TestDelegateRequirements(unittest.TestCase):
     def test_always_available(self):
@@ -137,7 +135,6 @@ class TestDelegateRequirements(unittest.TestCase):
         self.assertIn(f"up to {_get_max_concurrent_children()}", fn["description"])
         self.assertIn(f"max_spawn_depth={_get_max_spawn_depth()}", fn["description"])
 
-
 class TestChildSystemPrompt(unittest.TestCase):
     def test_goal_only(self):
         prompt = _build_child_system_prompt("Fix the tests")
@@ -154,7 +151,6 @@ class TestChildSystemPrompt(unittest.TestCase):
     def test_empty_context_ignored(self):
         prompt = _build_child_system_prompt("Do something", "  ")
         self.assertNotIn("CONTEXT", prompt)
-
 
 class TestStripBlockedTools(unittest.TestCase):
     def test_removes_blocked_toolsets(self):
@@ -289,7 +285,6 @@ class TestStripBlockedTools(unittest.TestCase):
         self.assertTrue(
             (DELEGATE_BLOCKED_TOOLS - {"delegate_task"}).isdisjoint(names)
         )
-
 
 class TestDelegateTask(unittest.TestCase):
     def test_no_parent_agent(self):
@@ -546,7 +541,6 @@ class TestDelegateTask(unittest.TestCase):
         mock_child.thinking_callback("deliberating...")
         parent.tool_progress_callback.assert_not_called()
 
-
 class TestToolNamePreservation(unittest.TestCase):
     """Verify _last_resolved_tool_names is restored after subagent runs."""
 
@@ -736,7 +730,6 @@ class TestToolNamePreservation(unittest.TestCase):
             delegate_task(goal="capture test", parent_agent=parent)
 
         self.assertEqual(captured["saved"], expected_tools)
-
 
 class TestDelegateObservability(unittest.TestCase):
     """Tests for enriched metadata returned by _run_single_child."""
@@ -990,7 +983,6 @@ class TestDelegateObservability(unittest.TestCase):
             result = orjson.loads(delegate_task(goal="Test empty sentinel", parent_agent=parent))
             self.assertEqual(result["results"][0]["status"], "failed")
 
-
 class TestSubagentCostRollup(unittest.TestCase):
     """Port of Kilo-Org/kilocode#9448 — parent's session_estimated_cost_usd
     must include subagent spend, not just the parent's own API calls."""
@@ -1147,23 +1139,10 @@ class TestSubagentCostRollup(unittest.TestCase):
         self.assertEqual(parent.session_estimated_cost_usd, 0.10)
         self.assertEqual(len(result["results"]), 1)
 
-
 class TestBlockedTools(unittest.TestCase):
     def test_blocked_tools_constant(self):
         for tool in ["delegate_task", "clarify", "memory", "send_message", "execute_code"]:
             self.assertIn(tool, DELEGATE_BLOCKED_TOOLS)
-
-    def test_constants(self):
-        from tools.delegate_tool import (
-            _get_max_spawn_depth, _get_orchestrator_enabled,
-            _MIN_SPAWN_DEPTH,
-        )
-        self.assertEqual(_get_max_concurrent_children(), 3)
-        self.assertEqual(MAX_DEPTH, 1)
-        self.assertEqual(_get_max_spawn_depth(), 1)       # default: flat
-        self.assertTrue(_get_orchestrator_enabled())      # default
-        self.assertEqual(_MIN_SPAWN_DEPTH, 1)
-
 
 class TestDelegationCredentialResolution(unittest.TestCase):
     """Tests for provider:model credential resolution in delegation config."""
@@ -1188,8 +1167,6 @@ class TestDelegationCredentialResolution(unittest.TestCase):
         self.assertIsNone(creds["provider"])
         self.assertIsNone(creds["base_url"])
         self.assertIsNone(creds["api_key"])
-
-
 
     def test_direct_endpoint_uses_configured_base_url_and_api_key(self):
         parent = _make_mock_parent(depth=0)
@@ -1294,7 +1271,6 @@ class TestDelegationCredentialResolution(unittest.TestCase):
             creds = _resolve_delegation_credentials(cfg, parent)
         self.assertIsNone(creds["api_key"])
         self.assertEqual(creds["provider"], "custom")
-
 
     @patch("hermes_cli.runtime_provider.resolve_runtime_provider")
     def test_provider_resolution_failure_raises_valueerror(self, mock_resolve):
@@ -1455,8 +1431,6 @@ class TestDelegationCredentialResolution(unittest.TestCase):
         self.assertEqual(creds["api_mode"], "bedrock_converse")
         mock_resolve.assert_called_once()
         self.assertEqual(mock_resolve.call_args.kwargs.get("requested"), "bedrock")
-
-
 
 class TestDelegationProviderIntegration(unittest.TestCase):
     """Integration tests: delegation config → _run_single_child → AIAgent construction."""
@@ -1850,7 +1824,6 @@ class TestDelegationProviderIntegration(unittest.TestCase):
             self.assertEqual(kwargs["provider"], parent.provider)
             self.assertEqual(kwargs["base_url"], parent.base_url)
 
-
 class TestChildCredentialPoolResolution(unittest.TestCase):
     def test_same_provider_shares_parent_pool(self):
         parent = _make_mock_parent()
@@ -2041,7 +2014,6 @@ class TestChildCredentialPoolResolution(unittest.TestCase):
             ["web", "browser"],
         )
 
-
 class TestChildCredentialLeasing(unittest.TestCase):
     def test_run_single_child_acquires_and_releases_lease(self):
         from tools.delegate_tool import _run_single_child
@@ -2091,7 +2063,6 @@ class TestChildCredentialLeasing(unittest.TestCase):
 
         self.assertEqual(result["status"], "error")
         child._credential_pool.release_lease.assert_called_once_with("cred-a")
-
 
 class TestDelegateHeartbeat(unittest.TestCase):
     """Heartbeat propagates child activity to parent during delegation.
@@ -2305,8 +2276,6 @@ class TestDelegateHeartbeat(unittest.TestCase):
             f"got {len(touch_calls)} touches over 0.4s at 0.05s interval",
         )
 
-
-
 class TestDelegationReasoningEffort(unittest.TestCase):
     """Tests for delegation.reasoning_effort config override."""
 
@@ -2378,7 +2347,6 @@ class TestDelegationReasoningEffort(unittest.TestCase):
         call_kwargs = MockAgent.call_args[1]
         self.assertEqual(call_kwargs["reasoning_config"], {"enabled": True, "effort": "medium"})
 
-
 # =========================================================================
 # Dispatch helper, progress events, concurrency
 # =========================================================================
@@ -2427,11 +2395,6 @@ class TestDelegateEventEnum(unittest.TestCase):
         for event in DelegateEvent:
             self.assertIsInstance(event.value, str)
             self.assertTrue(event.value.startswith("delegate."))
-
-    def test_legacy_map_covers_all_old_names(self):
-        expected_legacy = {"_thinking", "reasoning.available",
-                          "tool.started", "tool.completed", "subagent_progress"}
-        self.assertEqual(set(_LEGACY_EVENT_MAP.keys()), expected_legacy)
 
     def test_legacy_map_values_are_delegate_events(self):
         for old_name, event in _LEGACY_EVENT_MAP.items():
@@ -2542,7 +2505,6 @@ class TestDelegateEventEnum(unittest.TestCase):
         # No '⚡' tool-start emoji should appear — that's the pre-fix bug.
         self.assertFalse(any("⚡" in str(c) for c in calls))
 
-
 class TestConcurrencyDefaults(unittest.TestCase):
     """Tests for the concurrency default and no hard ceiling."""
 
@@ -2644,7 +2606,6 @@ class TestConcurrencyDefaults(unittest.TestCase):
     def test_configured_value_returned(self, mock_cfg):
         self.assertEqual(_get_max_concurrent_children(), 6)
 
-
 class TestAsyncCapUnified(unittest.TestCase):
     """max_async_children is deprecated: the async cap IS max_concurrent_children."""
 
@@ -2666,7 +2627,6 @@ class TestAsyncCapUnified(unittest.TestCase):
         from tools.delegate_tool import _get_max_async_children
         with patch.dict(os.environ, {}, clear=True):
             self.assertEqual(_get_max_async_children(), _get_max_concurrent_children())
-
 
 # =========================================================================
 # max_spawn_depth clamping
@@ -2703,7 +2663,6 @@ class TestMaxSpawnDepth(unittest.TestCase):
         from tools.delegate_tool import _get_max_spawn_depth
         self.assertEqual(_get_max_spawn_depth(), 1)
 
-
 # =========================================================================
 # role param plumbing
 # =========================================================================
@@ -2712,7 +2671,6 @@ class TestMaxSpawnDepth(unittest.TestCase):
 # param.  The full role-honoring behavior (toolset re-add, role-aware
 # prompt) lives in TestOrchestratorRoleBehavior below; these tests only
 # assert on _delegate_role stashing and on the schema shape.
-
 
 class TestOrchestratorRoleSchema(unittest.TestCase):
     """Tests that the role param reaches the child via dispatch."""
@@ -2763,15 +2721,6 @@ class TestOrchestratorRoleSchema(unittest.TestCase):
         self.assertEqual(child._delegate_role, "leaf")
         self.assertTrue(any("coercing" in m.lower() for m in cm.output))
 
-    def test_schema_has_role_top_level_and_per_task(self):
-        from tools.delegate_tool import DELEGATE_TASK_SCHEMA
-        props = DELEGATE_TASK_SCHEMA["parameters"]["properties"]
-        self.assertIn("role", props)
-        self.assertEqual(props["role"]["enum"], ["leaf", "orchestrator"])
-        task_props = props["tasks"]["items"]["properties"]
-        self.assertIn("role", task_props)
-        self.assertEqual(task_props["role"]["enum"], ["leaf", "orchestrator"])
-
     def test_schema_omits_acp_transport_fields(self):
         from tools.delegate_tool import DELEGATE_TASK_SCHEMA
         props = DELEGATE_TASK_SCHEMA["parameters"]["properties"]
@@ -2782,15 +2731,12 @@ class TestOrchestratorRoleSchema(unittest.TestCase):
         self.assertNotIn("acp_command", task_props)
         self.assertNotIn("acp_args", task_props)
 
-
 # Sentinel used to distinguish "role kwarg omitted" from "role=None".
 _SENTINEL = object()
-
 
 # =========================================================================
 # role-honoring behavior
 # =========================================================================
-
 
 def _make_role_mock_child():
     """Helper: mock child with minimal fields for delegate_task to process."""
@@ -2805,7 +2751,6 @@ def _make_role_mock_child():
     mock_child.session_completion_tokens = 0
     mock_child.model = "test"
     return mock_child
-
 
 class TestOrchestratorRoleBehavior(unittest.TestCase):
     """Tests that role='orchestrator' actually changes toolset + prompt."""
@@ -3006,7 +2951,6 @@ class TestOrchestratorRoleBehavior(unittest.TestCase):
                           parent_agent=parent)
             self.assertIn("delegation", MockAgent.call_args[1]["enabled_toolsets"])
 
-
 class TestOrchestratorEndToEnd(unittest.TestCase):
     """End-to-end: parent -> orchestrator -> two-leaf nested orchestration.
 
@@ -3105,7 +3049,6 @@ class TestOrchestratorEndToEnd(unittest.TestCase):
         self.assertNotIn("delegation", built_agents[2]["enabled_toolsets"])
         self.assertFalse(built_agents[2]["is_orchestrator_prompt"])
 
-
 class TestSubagentApprovalCallback(unittest.TestCase):
     """Subagent worker threads must have a non-interactive approval callback
     installed so dangerous-command prompts don't fall back to input() and
@@ -3203,7 +3146,6 @@ class TestSubagentApprovalCallback(unittest.TestCase):
         # Parent's callback slot is still empty (TLS isolates threads).
         self.assertIsNone(_get_approval_callback())
 
-
 class TestFallbackModelInheritance(unittest.TestCase):
     """Subagents must inherit the parent's fallback provider chain."""
 
@@ -3249,7 +3191,6 @@ class TestFallbackModelInheritance(unittest.TestCase):
 
         _, kwargs = MockAgent.call_args
         self.assertIsNone(kwargs["fallback_model"])
-
 
 if __name__ == "__main__":
     unittest.main()

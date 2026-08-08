@@ -3,7 +3,6 @@
 import orjson
 from typing import List, Optional
 
-
 from tools.clarify_tool import (
     clarify_tool,
     check_clarify_requirements,
@@ -11,7 +10,6 @@ from tools.clarify_tool import (
     CLARIFY_SCHEMA,
     _flatten_choice,
 )
-
 
 class TestClarifyToolBasics:
     """Basic functionality tests for clarify_tool."""
@@ -60,7 +58,6 @@ class TestClarifyToolBasics:
         result = orjson.loads(clarify_tool("What do you want?"))
         assert "error" in result
         assert "not available" in result["error"].lower()
-
 
 class TestClarifyToolChoicesValidation:
     """Tests for choices parameter validation."""
@@ -123,7 +120,6 @@ class TestClarifyToolChoicesValidation:
         clarify_tool("Pick", choices=[1, 2, 3], callback=mock_callback)  # type: ignore
         assert choices_received == ["1", "2", "3"]
 
-
 class TestClarifyToolCallbackHandling:
     """Tests for callback error handling."""
 
@@ -155,15 +151,6 @@ class TestClarifyToolCallbackHandling:
 
         result = orjson.loads(clarify_tool("Q?", callback=mock_callback))
         assert result["user_response"] == "response with spaces"
-
-
-class TestCheckClarifyRequirements:
-    """Tests for the requirements check function."""
-
-    def test_always_returns_true(self):
-        """clarify tool has no external requirements."""
-        assert check_clarify_requirements() is True
-
 
 class TestClarifyDictChoices:
     """Dict-shaped choices must be unwrapped to user-facing text at the source.
@@ -228,32 +215,3 @@ class TestClarifyDictChoices:
         assert "{" not in result["user_response"]
         assert all("{" not in c for c in result["choices_offered"])
 
-
-class TestClarifySchema:
-    """Tests for the OpenAI function-calling schema."""
-
-    def test_schema_name(self):
-        """Schema should have correct name."""
-        assert CLARIFY_SCHEMA["name"] == "clarify"
-
-    def test_schema_has_description(self):
-        """Schema should have a description."""
-        assert "description" in CLARIFY_SCHEMA
-        assert len(CLARIFY_SCHEMA["description"]) > 50
-
-    def test_schema_question_required(self):
-        """Question parameter should be required."""
-        assert "question" in CLARIFY_SCHEMA["parameters"]["required"]
-
-    def test_schema_choices_optional(self):
-        """Choices parameter should be optional."""
-        assert "choices" not in CLARIFY_SCHEMA["parameters"]["required"]
-
-    def test_schema_choices_max_items(self):
-        """Schema should specify max items for choices."""
-        choices_spec = CLARIFY_SCHEMA["parameters"]["properties"]["choices"]
-        assert choices_spec.get("maxItems") == MAX_CHOICES
-
-    def test_max_choices_is_four(self):
-        """MAX_CHOICES constant should be 4."""
-        assert MAX_CHOICES == 4

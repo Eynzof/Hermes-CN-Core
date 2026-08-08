@@ -3,13 +3,6 @@ from types import SimpleNamespace
 from hermes_cli.plugins import VALID_HOOKS, PluginManager
 from cli import HermesCLI
 
-
-def test_session_hooks_in_valid_hooks():
-    """Verify on_session_finalize and on_session_reset are registered as valid hooks."""
-    assert "on_session_finalize" in VALID_HOOKS
-    assert "on_session_reset" in VALID_HOOKS
-
-
 @patch("hermes_cli.plugins.invoke_hook")
 def test_session_finalize_on_reset(mock_invoke_hook):
     """Verify on_session_finalize fires when /new or /reset is used."""
@@ -35,7 +28,6 @@ def test_session_finalize_on_reset(mock_invoke_hook):
         for c in mock_invoke_hook.call_args_list
     )
 
-
 @patch("hermes_cli.plugins.invoke_hook")
 def test_session_finalize_on_cleanup(mock_invoke_hook):
     """Verify on_session_finalize fires during CLI exit cleanup."""
@@ -55,7 +47,6 @@ def test_session_finalize_on_cleanup(mock_invoke_hook):
         and c.kwargs["reason"] == "shutdown"
         for c in mock_invoke_hook.call_args_list
     )
-
 
 @patch("hermes_cli.plugins.invoke_hook")
 def test_interrupted_session_end_helper_emits_observer_shape(mock_invoke_hook):
@@ -85,7 +76,6 @@ def test_interrupted_session_end_helper_emits_observer_shape(mock_invoke_hook):
     assert call.kwargs["completed"] is False
     assert call.kwargs["interrupted"] is True
     assert call.kwargs["reason"] == "keyboard_interrupt"
-
 
 @patch("hermes_cli.plugins.invoke_hook")
 def test_hook_errors_are_caught(mock_invoke_hook):

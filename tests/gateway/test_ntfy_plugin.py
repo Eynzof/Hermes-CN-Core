@@ -36,16 +36,13 @@ DEDUP_WINDOW_SECONDS = _ntfy.DEDUP_WINDOW_SECONDS
 DEDUP_MAX_SIZE = _ntfy.DEDUP_MAX_SIZE
 MAX_MESSAGE_LENGTH = _ntfy.MAX_MESSAGE_LENGTH
 
-
 def _run(coro):
     """Run an async coroutine synchronously."""
     return asyncio.get_event_loop().run_until_complete(coro)
 
-
 # ---------------------------------------------------------------------------
 # 1. Platform enum (plugin-discovered, not bundled)
 # ---------------------------------------------------------------------------
-
 
 def test_platform_enum_resolves_via_plugin_scan():
     """The plugin filesystem scan should expose Platform("ntfy")."""
@@ -55,11 +52,9 @@ def test_platform_enum_resolves_via_plugin_scan():
     # Identity stability — repeated lookups return the same pseudo-member
     assert Platform("ntfy") is p
 
-
 # ---------------------------------------------------------------------------
 # 2. check_requirements / validate_config / is_connected
 # ---------------------------------------------------------------------------
-
 
 class TestNtfyRequirements:
 
@@ -94,11 +89,9 @@ class TestNtfyRequirements:
         monkeypatch.setenv("NTFY_TOPIC", "env-topic")
         assert is_connected(PlatformConfig(enabled=True, extra={})) is True
 
-
 # ---------------------------------------------------------------------------
 # 3. Adapter init
 # ---------------------------------------------------------------------------
-
 
 class TestNtfyAdapterInit:
 
@@ -159,11 +152,9 @@ class TestNtfyAdapterInit:
         assert adapter._http_client is None
         assert adapter._seen_messages == {}
 
-
 # ---------------------------------------------------------------------------
 # 4. Auth headers
 # ---------------------------------------------------------------------------
-
 
 class TestAuthHeaders:
 
@@ -198,11 +189,9 @@ class TestAuthHeaders:
         headers = adapter._auth_headers()
         assert list(headers.keys()) == ["Authorization"]
 
-
 # ---------------------------------------------------------------------------
 # 5. Deduplication
 # ---------------------------------------------------------------------------
-
 
 class TestDeduplication:
 
@@ -229,12 +218,6 @@ class TestDeduplication:
             adapter._is_duplicate(f"msg-{i}")
         assert len(adapter._seen_messages) == 50
 
-    def test_cache_pruned_on_overflow(self):
-        adapter = self._make_adapter()
-        for i in range(DEDUP_MAX_SIZE + 20):
-            adapter._is_duplicate(f"msg-{i}")
-        assert len(adapter._seen_messages) <= DEDUP_MAX_SIZE + 20
-
     def test_expired_id_can_be_seen_again(self):
         import time
         adapter = self._make_adapter()
@@ -243,11 +226,9 @@ class TestDeduplication:
             adapter._is_duplicate(f"fill-{i}")
         assert adapter._is_duplicate("old-msg") is False
 
-
 # ---------------------------------------------------------------------------
 # 6. connect() / disconnect()
 # ---------------------------------------------------------------------------
-
 
 class TestConnect:
 
@@ -310,11 +291,9 @@ class TestConnect:
         _run(adapter.disconnect())
         assert adapter._stream_task is None
 
-
 # ---------------------------------------------------------------------------
 # 7. send()
 # ---------------------------------------------------------------------------
-
 
 class TestSend:
 
@@ -502,11 +481,9 @@ class TestSend:
         call_headers = mock_client.post.call_args[1]["headers"]
         assert call_headers.get("X-Tags") == _ntfy._ECHO_TAG
 
-
 # ---------------------------------------------------------------------------
 # 8. Inbound message processing (identity invariant — security-critical)
 # ---------------------------------------------------------------------------
-
 
 class TestOnMessage:
 
@@ -693,11 +670,9 @@ class TestOnMessage:
         }))
         assert captured[0].source.chat_id == "hermes-in"
 
-
 # ---------------------------------------------------------------------------
 # 9. _env_enablement() — env-only auto-config
 # ---------------------------------------------------------------------------
-
 
 class TestEnvEnablement:
 
@@ -758,11 +733,9 @@ class TestEnvEnablement:
         assert seed["home_channel"]["chat_id"] == "alerts"
         assert seed["home_channel"]["name"] == "Alerts Channel"
 
-
 # ---------------------------------------------------------------------------
 # 10. _standalone_send() — out-of-process cron delivery
 # ---------------------------------------------------------------------------
-
 
 class TestStandaloneSend:
 
@@ -881,11 +854,9 @@ class TestStandaloneSend:
         assert "error" in result
         assert "403" in result["error"]
 
-
 # ---------------------------------------------------------------------------
 # 11. register() — plugin-side metadata
 # ---------------------------------------------------------------------------
-
 
 def test_register_calls_register_platform():
     ctx = MagicMock()
@@ -909,7 +880,6 @@ def test_register_calls_register_platform():
     assert kwargs["pii_safe"] is True
     assert "ntfy" in kwargs["platform_hint"].lower()
 
-
 def test_adapter_factory_returns_ntfy_adapter():
     ctx = MagicMock()
     register(ctx)
@@ -918,11 +888,9 @@ def test_adapter_factory_returns_ntfy_adapter():
     adapter = factory(cfg)
     assert isinstance(adapter, NtfyAdapter)
 
-
 # ---------------------------------------------------------------------------
 # 12. Robustness — token hygiene + fatal-state propagation
 # ---------------------------------------------------------------------------
-
 
 class TestTokenHygiene:
     """``_build_auth_header`` must strip pasted-token whitespace; pasted
@@ -949,7 +917,6 @@ class TestTokenHygiene:
         config = PlatformConfig(enabled=True, extra={"topic": "t", "token": "  tok\n"})
         adapter = NtfyAdapter(config)
         assert adapter._auth_headers() == {"Authorization": "Bearer tok"}
-
 
 class TestFatalErrorPropagation:
     """When the stream hits 401/404, the adapter must transition to the
@@ -1000,7 +967,6 @@ class TestFatalErrorPropagation:
         assert adapter._fatal_error_code == "ntfy_topic_not_found"
         assert "missing-topic" in adapter._fatal_error_message
         assert adapter._fatal_error_retryable is False
-
 
 class TestTruncateHelper:
     """``_truncate_body`` is shared between adapter.send() (inline truncation

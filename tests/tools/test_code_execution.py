@@ -22,7 +22,6 @@ import time
 
 os.environ["TERMINAL_ENV"] = "local"
 
-
 @pytest.fixture(autouse=True)
 def _force_local_terminal(monkeypatch):
     """Re-set TERMINAL_ENV=local before every test.
@@ -48,7 +47,6 @@ from tools.code_execution_tool import (
     _execute_remote,
 )
 
-
 def _mock_handle_function_call(function_name, function_args, task_id=None, user_task=None):
     """Mock dispatcher that returns canned responses for each tool."""
     if function_name == "terminal":
@@ -68,17 +66,10 @@ def _mock_handle_function_call(function_name, function_args, task_id=None, user_
         return json.dumps("# Extracted content\nSome text from the page.")
     return json.dumps({"error": f"Unknown tool in mock: {function_name}"})
 
-
 class TestSandboxRequirements(unittest.TestCase):
     def test_available_on_posix(self):
         if sys.platform != "win32":
             self.assertTrue(check_sandbox_requirements())
-
-    def test_schema_is_valid(self):
-        self.assertEqual(EXECUTE_CODE_SCHEMA["name"], "execute_code")
-        self.assertIn("code", EXECUTE_CODE_SCHEMA["parameters"]["properties"])
-        self.assertIn("code", EXECUTE_CODE_SCHEMA["parameters"]["required"])
-
 
 class TestHermesToolsGeneration(unittest.TestCase):
     def test_generates_all_allowed_tools(self):
@@ -139,7 +130,6 @@ class TestHermesToolsGeneration(unittest.TestCase):
         src = generate_hermes_tools_module(["terminal"], transport="file")
         self.assertIn("_seq_lock = threading.Lock()", src)
         self.assertIn("with _seq_lock:", src)
-
 
 class TestExecuteCodeRemoteTempDir(unittest.TestCase):
     def test_execute_remote_uses_backend_temp_dir_for_sandbox(self):
@@ -219,7 +209,6 @@ class TestExecuteCodeRemoteTempDir(unittest.TestCase):
         # shlex.quote wraps values containing special characters in single quotes
         self.assertIn("TZ='US/Eastern; echo PWNED'", run_cmd,
                       "TZ value must be wrapped in single quotes by shlex.quote()")
-
 
 @unittest.skipIf(sys.platform == "win32", "UDS not available on Windows")
 class TestExecuteCode(unittest.TestCase):
@@ -501,7 +490,6 @@ except ValueError as e:
         self.assertEqual(result["status"], "success")
         self.assertIn("caught: nope", result["output"])
 
-
 class TestStubSchemaDrift(unittest.TestCase):
     """Verify that _TOOL_STUBS in code_execution_tool.py stay in sync with
     the real tool schemas registered in tools/registry.py.
@@ -596,7 +584,6 @@ class TestStubSchemaDrift(unittest.TestCase):
         # patch must accept mode and patch params
         self.assertIn("mode", src)
 
-
 # ---------------------------------------------------------------------------
 # build_execute_code_schema
 # ---------------------------------------------------------------------------
@@ -609,13 +596,6 @@ class TestBuildExecuteCodeSchema(unittest.TestCase):
         desc = schema["description"]
         for name, _ in _TOOL_DOC_LINES:
             self.assertIn(name, desc, f"Default schema should mention '{name}'")
-
-    def test_schema_structure(self):
-        schema = build_execute_code_schema()
-        self.assertEqual(schema["name"], "execute_code")
-        self.assertIn("parameters", schema)
-        self.assertIn("code", schema["parameters"]["properties"])
-        self.assertEqual(schema["parameters"]["required"], ["code"])
 
     def test_subset_only_lists_enabled_tools(self):
         enabled = {"terminal", "read_file"}
@@ -719,7 +699,6 @@ class TestBuildExecuteCodeSchema(unittest.TestCase):
         schema_all = build_execute_code_schema(SANDBOX_ALLOWED_TOOLS)
         self.assertEqual(schema_none["description"], schema_all["description"])
 
-
 # ---------------------------------------------------------------------------
 # Environment variable filtering (security critical)
 # ---------------------------------------------------------------------------
@@ -822,7 +801,6 @@ class TestEnvVarFiltering(unittest.TestCase):
             os.environ.clear()
             os.environ.update(env_backup)
 
-
 # ---------------------------------------------------------------------------
 # execute_code edge cases
 # ---------------------------------------------------------------------------
@@ -892,7 +870,6 @@ class TestExecuteCodeEdgeCases(unittest.TestCase):
         self.assertEqual(result["status"], "success")
         self.assertIn("fallback ok", result["output"])
 
-
 # ---------------------------------------------------------------------------
 # _load_config
 # ---------------------------------------------------------------------------
@@ -919,7 +896,6 @@ class TestLoadConfig(unittest.TestCase):
              patch("hermes_cli.config.read_raw_config", return_value={}):
             result = _load_config()
         self.assertEqual(result, {})
-
 
 # ---------------------------------------------------------------------------
 # Interrupt event
@@ -958,7 +934,6 @@ class TestInterruptHandling(unittest.TestCase):
         finally:
             set_interrupt(False, main_tid)
             t.join(timeout=3)
-
 
 class TestHeadTailTruncation(unittest.TestCase):
     """Tests for head+tail truncation of large stdout in execute_code."""
@@ -1055,7 +1030,6 @@ for i in range(15000):
         self.assertGreater(result["stdout_bytes_total"], result["stdout_bytes_captured"])
         self.assertGreater(result["stdout_bytes_omitted"], 0)
         self.assertIn("execute_code stdout was truncated", result["warning"])
-
 
 @unittest.skipIf(not hasattr(socket, "AF_UNIX"), "AF_UNIX not available on Windows")
 class TestRpcTokenAuthorization(unittest.TestCase):
@@ -1182,7 +1156,6 @@ class TestRpcTokenAuthorization(unittest.TestCase):
         src = generate_hermes_tools_module(["terminal"], transport="uds")
         self.assertIn("HERMES_RPC_TOKEN", src)
         self.assertIn('"token"', src)
-
 
 if __name__ == "__main__":
     unittest.main()

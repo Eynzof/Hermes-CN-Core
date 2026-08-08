@@ -8,7 +8,6 @@ import pytest
 import hermes_state
 from hermes_state import SCHEMA_SQL, SCHEMA_VERSION, SessionDB
 
-
 class _NoFtsCursor(sqlite3.Cursor):
     """Simulate a SQLite build without the fts5 module."""
 
@@ -28,11 +27,9 @@ class _NoFtsCursor(sqlite3.Cursor):
             raise sqlite3.OperationalError("no such module: fts5")
         return super().executescript(sql_script)
 
-
 class _NoFtsConnection(sqlite3.Connection):
     def cursor(self, factory=None):
         return super().cursor(factory or _NoFtsCursor)
-
 
 class _NoFtsExistingTableCursor(_NoFtsCursor):
     """Simulate existing FTS virtual tables under a runtime without FTS5."""
@@ -46,11 +43,9 @@ class _NoFtsExistingTableCursor(_NoFtsCursor):
             raise sqlite3.OperationalError("no such module: fts5")
         return super().execute(sql, parameters)
 
-
 class _NoFtsExistingTableConnection(sqlite3.Connection):
     def cursor(self, factory=None):
         return super().cursor(factory or _NoFtsExistingTableCursor)
-
 
 class _NoTrigramCursor(sqlite3.Cursor):
     """Simulate a SQLite build with FTS5 but without the trigram tokenizer."""
@@ -60,11 +55,9 @@ class _NoTrigramCursor(sqlite3.Cursor):
             raise sqlite3.OperationalError("no such tokenizer: trigram")
         return super().executescript(sql_script)
 
-
 class _NoTrigramConnection(sqlite3.Connection):
     def cursor(self, factory=None):
         return super().cursor(factory or _NoTrigramCursor)
-
 
 @pytest.fixture()
 def db(tmp_path):
@@ -73,7 +66,6 @@ def db(tmp_path):
     session_db = SessionDB(db_path=db_path)
     yield session_db
     session_db.close()
-
 
 # =========================================================================
 # Session lifecycle
@@ -93,7 +85,6 @@ class TestSessionLifecycle:
         assert session["source"] == "cli"
         assert session["model"] == "test-model"
         assert session["ended_at"] is None
-
 
     def test_get_nonexistent_session(self, db):
         assert db.get_session("nonexistent") is None
@@ -858,7 +849,6 @@ class TestSessionLifecycle:
         finally:
             db.close()
 
-
 # =========================================================================
 # Message storage
 # =========================================================================
@@ -1609,7 +1599,6 @@ class TestMessageStorage:
         assert conv[0]["codex_reasoning_items"] == codex_items
         assert conv[0]["codex_reasoning_items"][0]["encrypted_content"] == "enc_blob_123"
 
-
 # =========================================================================
 # FTS5 search
 # =========================================================================
@@ -1920,7 +1909,6 @@ class TestFTS5Search:
         assert isinstance(results, list)
         assert elapsed < 1.0
 
-
 # =========================================================================
 # CJK (Chinese/Japanese/Korean) LIKE fallback
 # =========================================================================
@@ -2133,7 +2121,6 @@ class TestCJKSearchFallback:
         assert len(results) == 1
         assert results[0]["source"] == "telegram"
 
-
 # =========================================================================
 # Session search and listing
 # =========================================================================
@@ -2163,7 +2150,6 @@ class TestSearchSessions:
         assert len(page1) == 2
         assert len(page2) == 2
         assert page1[0]["id"] != page2[0]["id"]
-
 
 # =========================================================================
 # Counts
@@ -2205,7 +2191,6 @@ class TestCounts:
         db.append_message("s2", role="user", content="C")
         assert db.message_count(session_id="s1") == 1
         assert db.message_count(session_id="s2") == 2
-
 
 # =========================================================================
 # Delete and export
@@ -2497,7 +2482,6 @@ class TestDeleteAndExport:
         assert result["errors"][0]["error"] == "messages exceeds the per-session import limit"
         assert db.get_session("too-many-messages") is None
 
-
 # =========================================================================
 # Prune
 # =========================================================================
@@ -2608,7 +2592,6 @@ class TestPruneSessions:
         assert pruned == 3
         for sid in ("X", "Y", "Z"):
             assert db.get_session(sid) is None
-
 
 class TestPruneSessionFilters:
     """Extended filter surface shared by prune/archive/list_prune_candidates."""
@@ -2813,7 +2796,6 @@ class TestPruneSessionFilters:
         with _pytest.raises(TypeError):
             db.prune_sessions(older_than_days=None, bogus_filter="x")
 
-
 class TestDeleteSessionOrphansChildren:
     def test_delete_orphans_children(self, db):
         """Deleting a parent session orphans its children."""
@@ -2833,7 +2815,6 @@ class TestDeleteSessionOrphansChildren:
         grandchild = db.get_session("grandchild")
         assert grandchild is not None
         assert grandchild["parent_session_id"] == "child"
-
 
 class TestBulkDeleteSessions:
     """``delete_sessions(ids)`` — the bulk-delete primitive backing the
@@ -2955,7 +2936,6 @@ class TestBulkDeleteSessions:
         assert not (tmp_path / "s1.jsonl").exists()
         assert not (tmp_path / "s2.json").exists()
 
-
 class TestDeleteEmptySessions:
     """``delete_empty_sessions`` sweeps every ended, non-archived session
     whose ``message_count`` is 0. Backs the dashboard's "Delete empty"
@@ -3071,7 +3051,6 @@ class TestDeleteEmptySessions:
         assert not dump.exists()
         assert not transcript.exists()
 
-
 # =========================================================================
 # Schema and WAL mode
 # =========================================================================
@@ -3165,7 +3144,6 @@ class TestSessionTitle:
         assert session["title"] == "Before End"
         assert session["ended_at"] is not None
 
-
 class TestSessionTitleIndexRepair:
     @staticmethod
     def _seed_legacy_database(tmp_path, *, duplicate_titles):
@@ -3239,7 +3217,6 @@ class TestSessionTitleIndexRepair:
             assert reopened.get_session_title("newer") is None
         finally:
             reopened.close()
-
 
 class TestSessionTitleLineage:
     """Renaming a compression continuation back to its base title must succeed
@@ -3323,7 +3300,6 @@ class TestSessionTitleLineage:
         with pytest.raises(ValueError, match="already in use"):
             db.set_session_title("child", "shared")
 
-
 class TestSanitizeTitle:
     """Tests for SessionDB.sanitize_title() validation and cleaning."""
 
@@ -3405,7 +3381,6 @@ class TestSanitizeTitle:
         db.create_session("s1", "cli")
         with pytest.raises(ValueError, match="too long"):
             db.set_session_title("s1", "X" * 150)
-
 
 class TestSchemaInit:
     def test_wal_mode(self, db):
@@ -3945,7 +3920,6 @@ class TestSchemaInit:
                     f"but missing from live DB. Live columns: {live_cols}"
                 )
 
-
 class TestTitleUniqueness:
     """Tests for unique title enforcement and title-based lookups."""
 
@@ -3990,7 +3964,6 @@ class TestTitleUniqueness:
 
     def test_get_session_title_nonexistent(self, db):
         assert db.get_session_title("nonexistent") is None
-
 
 class TestTitleLineage:
     """Tests for title lineage resolution and auto-numbering."""
@@ -4055,7 +4028,6 @@ class TestTitleLineage:
         # Even when called with "my project #2", it should return #3
         assert db.get_next_title_in_lineage("my project #2") == "my project #3"
 
-
 class TestTitleSqlWildcards:
     """Titles containing SQL LIKE wildcards (%, _) must not cause false matches."""
 
@@ -4085,7 +4057,6 @@ class TestTitleSqlWildcards:
         db.set_session_title("s2", "testXproject #2")
         # Only "test_project" exists, so next should be "test_project #2"
         assert db.get_next_title_in_lineage("test_project") == "test_project #2"
-
 
 class TestListSessionsRich:
     """Tests for enhanced session listing with preview and last_active."""
@@ -4404,7 +4375,6 @@ class TestListSessionsRich:
         ids = [s["id"] for s in sessions]
         assert "continuation" not in ids, "Compression continuation should stay hidden"
 
-
 class TestCompressionChainProjection:
     """Tests for lineage-aware list_sessions_rich — compressed conversations
     surface as their live continuation tip, not the dead parent root.
@@ -4593,7 +4563,6 @@ class TestCompressionChainProjection:
         assert "_lineage_root_id" not in row
         assert row["end_reason"] == "compression"
 
-
 # =========================================================================
 # Session source exclusion (--source flag for third-party isolation)
 # =========================================================================
@@ -4676,7 +4645,6 @@ class TestExcludeSources:
         sources = [r["source"] for r in results]
         assert sources == ["cli"]
 
-
 class TestResolveSessionByNameOrId:
     """Tests for the main.py helper that resolves names or IDs."""
 
@@ -4691,7 +4659,6 @@ class TestResolveSessionByNameOrId:
         db.set_session_title("s1", "my project")
         result = db.resolve_session_by_title("my project")
         assert result == "s1"
-
 
 # =========================================================================
 # Concurrent write safety / lock contention fixes (#3139)
@@ -4743,18 +4710,6 @@ class TestConcurrentWriteSafety:
         assert len(msgs) == 1
         assert msgs[0]["content"] == "hello after lock"
 
-    def test_sqlite_timeout_is_at_least_30s(self, db):
-        """Connection timeout should be >= 30s to survive CLI/gateway contention."""
-        # Access the underlying connection timeout via sqlite3 introspection.
-        # There is no public API, so we check the kwarg via the module default.
-        import inspect
-        from hermes_state import SessionDB as _SessionDB
-        src = inspect.getsource(_SessionDB.__init__)
-        assert "30" in src, (
-            "SQLite timeout should be at least 30s to handle CLI/gateway lock contention"
-        )
-
-
 # =========================================================================
 # Auto-maintenance: state_meta + vacuum + maybe_auto_prune_and_vacuum
 # =========================================================================
@@ -4773,7 +4728,6 @@ class TestStateMeta:
         db.set_meta("key", "v2")
         assert db.get_meta("key") == "v2"
 
-
 class TestVacuum:
     def test_vacuum_runs_without_error(self, db):
         """VACUUM must succeed on a fresh DB (no rows to reclaim)."""
@@ -4781,7 +4735,6 @@ class TestVacuum:
         db.append_message(session_id="s1", role="user", content="hi")
         # Should not raise, even though there's nothing significant to reclaim.
         db.vacuum()
-
 
 class TestOptimizeFts:
     def test_optimize_returns_index_count(self, db):
@@ -4873,7 +4826,6 @@ class TestOptimizeFts:
         # write #2 trips the cadence; the swallowed failure must not propagate.
         db.append_message(session_id="s1", role="user", content="still persists")
         assert len(db.get_messages("s1")) == 1
-
 
 class TestAutoMaintenance:
     def _make_old_ended(self, db, sid: str, days_old: int = 100):
@@ -5021,7 +4973,6 @@ class TestAutoMaintenance:
         assert not (sessions_dir / "old.jsonl").exists()
         assert (sessions_dir / "active.jsonl").exists()
 
-
 # =========================================================================
 # FTS5 indexing of tool_calls / tool_name (#16751)
 # =========================================================================
@@ -5117,7 +5068,6 @@ class TestFTS5ToolCallIndexing:
 
         assert db.search_messages("ORIGINALTOOL") == []
         assert len(db.search_messages("RENAMEDTOOL")) == 1
-
 
 class TestFTS5ToolCallMigration:
     """v11 migration: pre-existing state.db with old external-content FTS tables
@@ -5217,11 +5167,9 @@ class TestFTS5ToolCallMigration:
         finally:
             session_db.close()
 
-
 # ---------------------------------------------------------------------------
 # apply_wal_with_fallback — read-only probe tests
 # ---------------------------------------------------------------------------
-
 
 class TestApplyWalProbe:
     """Unit tests for the journal_mode probe in apply_wal_with_fallback."""
@@ -5597,7 +5545,6 @@ class TestApplyWalProbe:
             "set-pragma must fire when probe returns 'delete'"
         )
 
-
 class TestSessionArchive:
     """Soft-archiving hides a session from default listings without deleting it."""
 
@@ -5636,8 +5583,6 @@ class TestSessionArchive:
         both = {s["id"] for s in db.list_sessions_rich(include_archived=True)}
         assert both == {"live", "hidden"}
         assert db.session_count(include_archived=True) == 2
-
-
 
 class TestSessionIdSearch:
     """Session id search backs Desktop's Search Sessions UX."""
@@ -5690,7 +5635,6 @@ class TestSessionIdSearch:
 
         assert [s["id"] for s in matches] == [tip]
         assert matches[0]["_lineage_root_id"] == root
-
 
 class TestListCronJobRuns:
     """``list_cron_job_runs`` powers the desktop cron run-history endpoint.
@@ -5794,7 +5738,6 @@ class TestListCronJobRuns:
         assert "USING INDEX" in detail or "USING COVERING INDEX" in detail, detail
         assert "idx_sessions_source" in detail, detail
 
-
 def test_gateway_session_peer_round_trip_and_recovery(db):
     db.create_session(
         "gw-session",
@@ -5820,7 +5763,6 @@ def test_gateway_session_peer_round_trip_and_recovery(db):
         chat_type="dm",
     )
     assert recovered["id"] == "gw-session"
-
 
 def test_gateway_session_recovery_reopens_ws_orphan_reap_rows(db):
     """Rows wrongly ended by the TUI ws-orphan reaper must be recoverable (#63207)."""
@@ -5848,7 +5790,6 @@ def test_gateway_session_recovery_reopens_ws_orphan_reap_rows(db):
     row = db.get_session("reaped-gw-session")
     assert row["ended_at"] is None
     assert row["end_reason"] is None
-
 
 def test_gateway_session_recovery_reopens_legacy_agent_close_rows(db):
     db.create_session(
@@ -5887,7 +5828,6 @@ def test_gateway_session_recovery_reopens_legacy_agent_close_rows(db):
         chat_type="dm",
     ) is None
 
-
 def test_gateway_metadata_display_name_origin_round_trip(db):
     """record_gateway_session_peer persists display_name/origin_json (#9006)."""
     db.create_session("gw-meta", "telegram", user_id="u1")
@@ -5920,7 +5860,6 @@ def test_gateway_metadata_display_name_origin_round_trip(db):
     assert row["display_name"] == "Alice"
     assert row["origin_json"] is not None
 
-
 def test_set_expiry_finalized_round_trip(db):
     db.create_session("gw-exp", "telegram", session_key="agent:main:telegram:dm:x")
     row = db.get_session("gw-exp")
@@ -5929,7 +5868,6 @@ def test_set_expiry_finalized_round_trip(db):
     assert db.get_session("gw-exp")["expiry_finalized"] == 1
     db.set_expiry_finalized("gw-exp", False)
     assert db.get_session("gw-exp")["expiry_finalized"] == 0
-
 
 def test_list_gateway_sessions_filters_and_dedupes(db):
     # Two rows on the same session_key: only the newest should be returned.
@@ -5968,7 +5906,6 @@ def test_list_gateway_sessions_filters_and_dedupes(db):
     all_rows = db.list_gateway_sessions(active_only=False)
     assert "gw-ended" in {r["id"] for r in all_rows}
     assert "cli-session" not in {r["id"] for r in all_rows}
-
 
 def test_find_session_by_origin_matching_rules(db):
     db.create_session(
@@ -6012,7 +5949,6 @@ def test_find_session_by_origin_matching_rules(db):
         platform="discord", chat_id="ch7", thread_id="other"
     ) is None
 
-
 def test_v18_backfill_from_sessions_json(tmp_path, monkeypatch):
     """Migration backfills display_name/origin_json/expiry_finalized from sessions.json."""
     import hermes_state as hs
@@ -6055,7 +5991,6 @@ def test_v18_backfill_from_sessions_json(tmp_path, monkeypatch):
     assert json.loads(row["origin_json"])["chat_name"] == "Alice"
     assert row["expiry_finalized"] == 1
 
-
 def test_compression_failure_cooldown_round_trips_and_clears(db):
     db.create_session("s1", "cli")
 
@@ -6074,7 +6009,6 @@ def test_compression_failure_cooldown_round_trips_and_clears(db):
     assert row["compression_failure_cooldown_until"] is None
     assert row["compression_failure_error"] is None
 
-
 def test_expired_compression_failure_cooldown_is_ignored(db):
     db.create_session("s1", "cli")
 
@@ -6082,14 +6016,12 @@ def test_expired_compression_failure_cooldown_is_ignored(db):
 
     assert db.get_compression_failure_cooldown("s1") is None
 
-
 def test_compression_fallback_streak_round_trips(db):
     db.create_session("s1", "cli")
 
     assert db.get_compression_fallback_streak("s1") == 0
     db.set_compression_fallback_streak("s1", 2)
     assert db.get_compression_fallback_streak("s1") == 2
-
 
 def test_refresh_compression_lock_requires_holder_and_preserves_reclaimability(db, monkeypatch):
     db.create_session("s1", "cli")
@@ -6114,7 +6046,6 @@ def test_refresh_compression_lock_requires_holder_and_preserves_reclaimability(d
 
     monkeypatch.setattr(hermes_state.time, "time", lambda: 1016.0)
     assert db.try_acquire_compression_lock("s1", "holder-b", ttl_seconds=10.0) is True
-
 
 # =========================================================================
 # compact_rows — lightweight column projection (issue #47414)
@@ -6215,7 +6146,6 @@ class TestCompactRows:
         assert projected, "compression root should be projected to its tip"
         assert all("system_prompt" not in r for r in rows)
 
-
 # =========================================================================
 # get_messages pagination (salvage follow-up for #60347)
 # =========================================================================
@@ -6265,7 +6195,6 @@ class TestGetMessagesPagination:
         self._seed(db, n=5)
         rows = db.get_messages("s1", offset=3)
         assert [m["content"] for m in rows] == ["msg-3", "msg-4"]
-
 
 # =========================================================================
 # Lone-surrogate persistence

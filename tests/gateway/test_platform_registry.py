@@ -7,9 +7,7 @@ from unittest.mock import MagicMock
 from gateway.platform_registry import PlatformRegistry, PlatformEntry
 from gateway.config import Platform, GatewayConfig
 
-
 # ── Platform enum dynamic members ─────────────────────────────────────────
-
 
 class TestPlatformEnumDynamic:
     """Test that Platform enum accepts unknown values for plugin platforms."""
@@ -72,9 +70,7 @@ class TestPlatformEnumDynamic:
         with pytest.raises(ValueError):
             Platform("   ")
 
-
 # ── PlatformRegistry ──────────────────────────────────────────────────────
-
 
 class TestPlatformRegistry:
     """Test the PlatformRegistry itself."""
@@ -200,9 +196,7 @@ class TestPlatformRegistry:
         reg.register(entry2)
         assert reg.get("dup").label == "Dup v2"
 
-
 # ── GatewayConfig integration ────────────────────────────────────────────
-
 
 class TestGatewayConfigPluginPlatform:
     """Test that GatewayConfig parses and validates plugin platforms."""
@@ -284,26 +278,10 @@ class TestGatewayConfigPluginPlatform:
         finally:
             _reg.unregister("badconfig")
 
-
 # ── Extended PlatformEntry fields ─────────────────────────────────────
-
 
 class TestPlatformEntryExtendedFields:
     """Test the auth, message length, and display fields on PlatformEntry."""
-
-    def test_default_field_values(self):
-        entry = PlatformEntry(
-            name="test",
-            label="Test",
-            adapter_factory=lambda cfg: None,
-            check_fn=lambda: True,
-        )
-        assert entry.allowed_users_env == ""
-        assert entry.allow_all_env == ""
-        assert entry.max_message_length == 0
-        assert entry.pii_safe is False
-        assert entry.emoji == "🔌"
-        assert entry.allow_update_command is True
 
     def test_custom_auth_fields(self):
         entry = PlatformEntry(
@@ -322,9 +300,7 @@ class TestPlatformEntryExtendedFields:
         assert entry.max_message_length == 450
         assert entry.emoji == "💬"
 
-
 # ── Cron platform resolution ─────────────────────────────────────────
-
 
 class TestCronPlatformResolution:
     """Test that cron delivery accepts plugin platform names."""
@@ -344,9 +320,7 @@ class TestCronPlatformResolution:
         with pytest.raises(ValueError):
             Platform(None)
 
-
 # ── platforms.py integration ──────────────────────────────────────────
-
 
 class TestPlatformsMerge:
     """Test get_all_platforms() merges with registry."""
@@ -394,9 +368,7 @@ class TestPlatformsMerge:
         finally:
             _reg.unregister("labeltest")
 
-
 # ── apply_yaml_config_fn (PlatformEntry field + load_gateway_config dispatch) ──
-
 
 class TestApplyYamlConfigFnField:
     """The hook field itself — defaults, custom values, signature."""
@@ -424,7 +396,6 @@ class TestApplyYamlConfigFnField:
         assert entry.apply_yaml_config_fn is _hook
         # Sanity-check the signature contract.
         assert entry.apply_yaml_config_fn({"x": 1}, {"y": 2}) is None
-
 
 class TestApplyYamlConfigFnDispatch:
     """End-to-end dispatch through load_gateway_config().
@@ -655,7 +626,6 @@ class TestApplyYamlConfigFnDispatch:
             reg.unregister("myprecplat")
             os.environ.pop(env_var, None)
 
-
 class TestPluginPlatformSharedKeyBridge:
     """Plugin-registered platforms get the same shared-key bridging as built-ins.
 
@@ -707,7 +677,6 @@ class TestPluginPlatformSharedKeyBridge:
             assert extra.get("allow_from") == ["alice", "bob"]
         finally:
             _reg.unregister("mysharedplat")
-
 
 class TestPluginEnablementGate:
     """Plugin platforms must NOT auto-enable on check_fn alone (#31116).

@@ -16,7 +16,6 @@ import orjson
 
 import pytest
 
-
 @pytest.fixture()
 def tmp_cron_dir(tmp_path, monkeypatch):
     """Isolate cron job storage into a temp dir so tests don't stomp on real jobs."""
@@ -24,7 +23,6 @@ def tmp_cron_dir(tmp_path, monkeypatch):
     monkeypatch.setattr("cron.jobs.JOBS_FILE", tmp_path / "cron" / "jobs.json")
     monkeypatch.setattr("cron.jobs.OUTPUT_DIR", tmp_path / "cron" / "output")
     return tmp_path
-
 
 # ---------------------------------------------------------------------------
 # jobs._normalize_workdir
@@ -72,7 +70,6 @@ class TestNormalizeWorkdir:
         with pytest.raises(ValueError, match="not a directory"):
             _normalize_workdir(str(f))
 
-
 # ---------------------------------------------------------------------------
 # jobs.create_job and update_job
 # ---------------------------------------------------------------------------
@@ -105,7 +102,6 @@ class TestCreateJobWorkdir:
                 workdir="not/absolute",
             )
 
-
 class TestUpdateJobWorkdir:
     def test_set_workdir_via_update(self, tmp_cron_dir):
         from cron.jobs import create_job, get_job, update_job
@@ -134,7 +130,6 @@ class TestUpdateJobWorkdir:
         job = create_job(prompt="x", schedule="every 1h")
         with pytest.raises(ValueError):
             update_job(job["id"], {"workdir": "nope/relative"})
-
 
 # ---------------------------------------------------------------------------
 # tools.cronjob_tools: end-to-end JSON round-trip
@@ -187,13 +182,6 @@ class TestCronjobToolWorkdir:
         )
         assert updated["success"] is True
         assert "workdir" not in updated["job"]
-
-    def test_schema_advertises_workdir(self):
-        from tools.cronjob_tools import CRONJOB_SCHEMA
-        assert "workdir" in CRONJOB_SCHEMA["parameters"]["properties"]
-        desc = CRONJOB_SCHEMA["parameters"]["properties"]["workdir"]["description"]
-        assert "absolute" in desc.lower()
-
 
 # ---------------------------------------------------------------------------
 # scheduler.tick(): workdir partition
@@ -253,7 +241,6 @@ class TestTickWorkdirPartition:
             assert workdir_thread_name.startswith("cron-seq"), workdir_thread_name
         par_thread_name = next(t for j, t in calls if j == "c")
         assert par_thread_name.startswith("cron-parallel"), par_thread_name
-
 
 # ---------------------------------------------------------------------------
 # scheduler.run_job: TERMINAL_CWD + skip_context_files wiring

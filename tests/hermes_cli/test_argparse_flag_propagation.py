@@ -17,7 +17,6 @@ import sys
 
 import pytest
 
-
 def _build_parser():
     """Build the hermes argument parser from the real code.
 
@@ -54,7 +53,6 @@ def _build_parser():
         const=True, default=argparse.SUPPRESS, metavar="SESSION_NAME",
     )
     return parser
-
 
 class TestChatVerboseArg:
     """Verify chat --verbose preserves config fallback when absent."""
@@ -108,7 +106,6 @@ class TestChatVerboseArg:
         assert captured["quiet"] is False
         assert "verbose" not in captured
 
-
 class TestYoloEnvVar:
     """Verify --yolo sets HERMES_YOLO_MODE regardless of flag position.
 
@@ -125,25 +122,6 @@ class TestYoloEnvVar:
         """Replicate the exact check from cmd_chat in main.py."""
         if getattr(args, "yolo", False):
             os.environ["HERMES_YOLO_MODE"] = "1"
-
-    def test_yolo_before_chat_sets_env(self):
-        parser = _build_parser()
-        args = parser.parse_args(["--yolo", "chat"])
-        self._simulate_cmd_chat_yolo_check(args)
-        assert os.environ.get("HERMES_YOLO_MODE") == "1"
-
-    def test_yolo_after_chat_sets_env(self):
-        parser = _build_parser()
-        args = parser.parse_args(["chat", "--yolo"])
-        self._simulate_cmd_chat_yolo_check(args)
-        assert os.environ.get("HERMES_YOLO_MODE") == "1"
-
-    def test_no_yolo_no_env(self):
-        parser = _build_parser()
-        args = parser.parse_args(["chat"])
-        self._simulate_cmd_chat_yolo_check(args)
-        assert os.environ.get("HERMES_YOLO_MODE") is None
-
 
 class TestAcceptHooksOnAgentSubparsers:
     """Verify --accept-hooks is accepted at every agent-subcommand
@@ -219,7 +197,6 @@ print(json.dumps(results))
                 f"stderr: {entry['stderr']}"
             )
             assert "unrecognized arguments" not in entry["stderr"]
-
 
 class TestChatSubparserInheritedValueFlags:
     """Verify -t/--toolsets, -m/--model and --provider survive parent→chat

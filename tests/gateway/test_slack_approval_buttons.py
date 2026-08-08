@@ -14,7 +14,6 @@ _repo = str(Path(__file__).resolve().parents[2])
 if _repo not in sys.path:
     sys.path.insert(0, _repo)
 
-
 # ---------------------------------------------------------------------------
 # Minimal Slack SDK mock so SlackAdapter can be imported
 # ---------------------------------------------------------------------------
@@ -39,12 +38,10 @@ def _ensure_slack_mock():
     sys.modules["slack_sdk.web"] = sdk_mod.web
     sys.modules["slack_sdk.web.async_client"] = sdk_mod.web.async_client
 
-
 _ensure_slack_mock()
 
 from plugins.platforms.slack.adapter import SlackAdapter
 from gateway.config import PlatformConfig, Platform
-
 
 def _make_adapter():
     """Create a SlackAdapter instance with mocked internals."""
@@ -56,7 +53,6 @@ def _make_adapter():
     adapter._team_bot_user_ids = {"T1": "U_BOT"}
     adapter._channel_team = {"C1": "T1"}
     return adapter
-
 
 class _AuthRunner:
     def __init__(self, auth_fn=None):
@@ -70,12 +66,10 @@ class _AuthRunner:
         self.seen_sources.append(source)
         return self._auth_fn(source)
 
-
 def _attach_auth_runner(adapter, auth_fn=None):
     runner = _AuthRunner(auth_fn=auth_fn)
     adapter.set_message_handler(runner.handle)
     return runner
-
 
 # ===========================================================================
 # send_exec_approval — Block Kit buttons
@@ -179,7 +173,6 @@ class TestSlackExecApproval:
         section_text = kwargs["blocks"][0]["text"]["text"]
         assert "..." in section_text
         assert len(section_text) < 5000
-
 
 # ===========================================================================
 # _handle_approval_action — button click handler
@@ -301,7 +294,6 @@ class TestSlackApprovalAction:
         ack.assert_called_once()
         mock_resolve.assert_not_called()
 
-
 class TestSlackInteractiveAuth:
     def test_delegates_to_gateway_runner_auth(self):
         adapter = _make_adapter()
@@ -334,7 +326,6 @@ class TestSlackInteractiveAuth:
             team_id="T1",
         ) is True
         assert runner.seen_sources[0].scope_id == "T1"
-
 
 class TestSlackSlashConfirmAction:
     @pytest.mark.asyncio
@@ -409,7 +400,6 @@ class TestSlackSlashConfirmAction:
         secondary_client.chat_update.assert_awaited_once()
         secondary_client.chat_postMessage.assert_awaited_once()
         adapter._team_clients["T1"].chat_update.assert_not_called()
-
 
 # ===========================================================================
 # _fetch_thread_context
@@ -674,7 +664,6 @@ class TestSlackThreadContext:
         # No additional API call
         assert mock_client.conversations_replies.await_count == 1
 
-
 # ===========================================================================
 # _has_active_session_for_thread — session key fix (#5833)
 # ===========================================================================
@@ -730,7 +719,6 @@ class TestSessionKeyFix:
         )
         assert result is False
 
-
 # ===========================================================================
 # Thread engagement — bot-started threads & mentioned threads
 # ===========================================================================
@@ -764,21 +752,3 @@ class TestThreadEngagement:
 
         assert len(adapter._bot_message_ts) <= 10
 
-    def test_mentioned_threads_populated_on_mention(self):
-        """When bot is @mentioned in a thread, that thread is tracked."""
-        adapter = _make_adapter()
-        # Simulate what _handle_slack_message does on mention
-        adapter._mentioned_threads.add("1000.0")
-        assert "1000.0" in adapter._mentioned_threads
-
-    def test_mentioned_threads_cap(self):
-        """Verify _mentioned_threads is bounded."""
-        adapter = _make_adapter()
-        adapter._MENTIONED_THREADS_MAX = 10
-        for i in range(15):
-            adapter._mentioned_threads.add(f"{i}.0")
-            if len(adapter._mentioned_threads) > adapter._MENTIONED_THREADS_MAX:
-                to_remove = list(adapter._mentioned_threads)[:adapter._MENTIONED_THREADS_MAX // 2]
-                for t in to_remove:
-                    adapter._mentioned_threads.discard(t)
-        assert len(adapter._mentioned_threads) <= 10

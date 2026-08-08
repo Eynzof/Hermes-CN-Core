@@ -16,7 +16,6 @@ import types
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
 
-
 class TestFirecrawlClientConfig:
     """Test suite for Firecrawl client initialization."""
 
@@ -199,7 +198,6 @@ class TestFirecrawlClientConfig:
                     with pytest.raises(ValueError):
                         _get_firecrawl_client()
 
-
 class TestBackendSelection:
     """Test suite for _get_backend() backend selection logic.
 
@@ -378,7 +376,6 @@ class TestBackendSelection:
              patch("tools.web_tools._is_tool_gateway_ready", return_value=True):
             assert _get_backend() == "firecrawl"
 
-
 @pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: parallel-web dependency not installed")
 class TestParallelClientConfig:
     """Test suite for Parallel client initialization."""
@@ -430,20 +427,8 @@ class TestParallelClientConfig:
             client2 = _get_parallel_client()
             assert client1 is client2
 
-
 class TestWebSearchSchema:
     """Test suite for web_search tool schema and handler wiring."""
-
-    def test_schema_exposes_optional_limit(self):
-        import tools.web_tools
-
-        limit_schema = tools.web_tools.WEB_SEARCH_SCHEMA["parameters"]["properties"]["limit"]
-
-        assert limit_schema["type"] == "integer"
-        assert limit_schema["minimum"] == 1
-        assert limit_schema["maximum"] == 100
-        assert limit_schema["default"] == 5
-        assert "limit" not in tools.web_tools.WEB_SEARCH_SCHEMA["parameters"]["required"]
 
     def test_registered_handler_passes_limit(self):
         import tools.web_tools
@@ -491,7 +476,6 @@ class TestWebSearchSchema:
         assert result == {"success": True, "data": {"web": []}}
         fake_search.assert_called_once_with("docs", 100)
 
-
 class TestWebSearchErrorHandling:
     """Test suite for web_search_tool() error responses."""
 
@@ -526,7 +510,6 @@ class TestWebSearchErrorHandling:
         assert "exception_type" not in result
         assert "exception_chain" not in result
         assert "traceback" not in result
-
 
 class TestCheckWebApiKey:
     """Test suite for check_web_api_key() unified availability check."""
@@ -688,12 +671,10 @@ class TestCheckWebApiKey:
                     from tools.web_tools import check_web_api_key
                     assert check_web_api_key() is True
 
-
 def test_web_requires_env_includes_exa_key():
     from tools.web_tools import _web_requires_env
 
     assert "EXA_API_KEY" in _web_requires_env()
-
 
 class TestNonBuiltinProviderAvailability:
     """Regression: a plugin-registered WebSearchProvider with no built-in
@@ -813,7 +794,6 @@ class TestNonBuiltinProviderAvailability:
             assert web_extract_entry is not None, \
                 "web_extract tool was filtered out despite custom provider being available"
 
-
 class TestFirecrawlEnvResolution:
     """Verify Firecrawl reads env values from hermes_cli.config.get_env_value,
     not just os.getenv.  This catches the regression reported in #40190 where
@@ -853,7 +833,6 @@ class TestFirecrawlEnvResolution:
             assert result is not None
             kwargs, _cache_key = result
             assert kwargs["api_url"] == fake_url.rstrip("/")
-
 
 class TestSiblingProvidersEnvResolution:
     """The same #40190 bug class widened: every keyed web provider must

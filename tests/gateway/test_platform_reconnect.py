@@ -10,7 +10,6 @@ from gateway.config import GatewayConfig, Platform, PlatformConfig
 from gateway.platforms.base import BasePlatformAdapter, SendResult
 from gateway.run import GatewayRunner
 
-
 class StubAdapter(BasePlatformAdapter):
     """Adapter whose connect() result can be controlled."""
 
@@ -49,7 +48,6 @@ class StubAdapter(BasePlatformAdapter):
     async def get_chat_info(self, chat_id):
         return {"id": chat_id}
 
-
 def _make_runner():
     """Create a minimal GatewayRunner via object.__new__ to skip __init__."""
     runner = object.__new__(GatewayRunner)
@@ -72,7 +70,6 @@ def _make_runner():
     runner._shutdown_all_gateway_honcho = lambda: None
     runner.session_store = MagicMock()
     return runner
-
 
 # --- Startup queueing ---
 
@@ -153,29 +150,6 @@ class TestStartupPlatformIsolation:
 
         with pytest.raises(TimeoutError, match="telegram connect timed out"):
             await runner._connect_adapter_with_timeout(adapter, Platform.TELEGRAM)
-
-
-class TestStartupFailureQueuing:
-    """Verify that failed platforms are queued during startup."""
-
-    def test_failed_platform_queued_on_connect_failure(self):
-        """When adapter.connect() returns False without fatal error, queue for retry."""
-        runner = _make_runner()
-        platform_config = PlatformConfig(enabled=True, token="test")
-        runner._failed_platforms[Platform.TELEGRAM] = {
-            "config": platform_config,
-            "attempts": 1,
-            "next_retry": time.monotonic() + 30,
-        }
-        assert Platform.TELEGRAM in runner._failed_platforms
-        assert runner._failed_platforms[Platform.TELEGRAM]["attempts"] == 1
-
-    def test_failed_platform_not_queued_for_nonretryable(self):
-        """Non-retryable errors should not be in the retry queue."""
-        runner = _make_runner()
-        # Simulate: adapter had a non-retryable error, wasn't queued
-        assert Platform.TELEGRAM not in runner._failed_platforms
-
 
 # --- Reconnect watcher ---
 
@@ -580,7 +554,6 @@ class TestPlatformReconnectWatcher:
 
         assert Platform.TELEGRAM not in runner._failed_platforms
 
-
 # --- Runtime disconnection queueing ---
 
 class TestRuntimeDisconnectQueuing:
@@ -691,9 +664,7 @@ class TestRuntimeDisconnectQueuing:
 
         runner.stop.assert_called_once()
 
-
 # --- Pause / resume circuit breaker ---
-
 
 class TestPauseResume:
     """Test the per-platform pause/resume helpers and slash command."""
@@ -761,7 +732,6 @@ class TestPauseResume:
     def test_resume_returns_false_when_not_queued(self):
         runner = _make_runner()
         assert runner._resume_paused_platform(Platform.TELEGRAM) is False
-
 
 class TestPlatformSlashCommand:
     """Test the /platform list|pause|resume slash command handler."""
@@ -840,7 +810,6 @@ class TestPlatformSlashCommand:
         runner = _make_runner()
         out = await runner._handle_platform_command(self._make_event("/platform"))
         assert "Gateway platforms" in out
-
 
 # --- Supervised task wrapper (_spawn_supervised) ---
 

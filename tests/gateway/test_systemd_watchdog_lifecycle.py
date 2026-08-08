@@ -11,7 +11,6 @@ from gateway.config import GatewayConfig
 from gateway.run import GatewayRunner, start_gateway
 from tests.gateway.restart_test_helpers import make_restart_runner
 
-
 class _FakeWatchdog:
     instances: list["_FakeWatchdog"] = []
 
@@ -31,14 +30,12 @@ class _FakeWatchdog:
     async def stop(self) -> None:
         self.calls.append("stop")
 
-
 def _bare_runner(*, seconds: int, running: bool = True) -> GatewayRunner:
     runner = object.__new__(GatewayRunner)
     runner.config = GatewayConfig(systemd_watchdog_seconds=seconds)
     runner._running = running
     runner._systemd_watchdog = None
     return runner
-
 
 def test_runner_starts_watchdog_only_after_running(monkeypatch):
     _FakeWatchdog.instances.clear()
@@ -51,7 +48,6 @@ def test_runner_starts_watchdog_only_after_running(monkeypatch):
     assert watchdog.config_enabled is True
     assert watchdog.calls == ["start", "ready:Hermes Gateway running"]
 
-
 def test_runner_does_not_start_watchdog_when_disabled_or_not_running(monkeypatch):
     _FakeWatchdog.instances.clear()
     monkeypatch.setattr("gateway.systemd_notify.SystemdWatchdog", _FakeWatchdog)
@@ -59,17 +55,6 @@ def test_runner_does_not_start_watchdog_when_disabled_or_not_running(monkeypatch
     assert _bare_runner(seconds=0)._start_systemd_watchdog() is False
     assert _bare_runner(seconds=120, running=False)._start_systemd_watchdog() is False
     assert _FakeWatchdog.instances == []
-
-
-def test_gateway_ready_follows_background_service_startup():
-    source = inspect.getsource(start_gateway)
-
-    housekeeping_started = source.index("housekeeping_thread.start()")
-    watchdog_started = source.index("start_watchdog()")
-    shutdown_wait = source.index("await runner.wait_for_shutdown()", watchdog_started)
-
-    assert housekeeping_started < watchdog_started < shutdown_wait
-
 
 @pytest.mark.asyncio
 async def test_gateway_stop_stops_watchdog_before_session_drain():

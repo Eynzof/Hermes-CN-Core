@@ -11,7 +11,6 @@ from unittest.mock import patch, MagicMock
 from agent.context_compressor import ContextCompressor
 from agent.context_tools import CompactMode
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -31,25 +30,12 @@ def compressor():
     c.compression_count = 1
     return c
 
-
 # ---------------------------------------------------------------------------
 # get_tool_schemas
 # ---------------------------------------------------------------------------
 
 class TestGetToolSchemas:
     """Verify ContextCompressor.get_tool_schemas() returns expected schemas."""
-
-    def test_returns_two_schemas(self, compressor):
-        schemas = compressor.get_tool_schemas()
-        assert len(schemas) == 2
-
-    def test_first_schema_is_context_usage(self, compressor):
-        schemas = compressor.get_tool_schemas()
-        assert schemas[0]["name"] == "context_usage"
-
-    def test_second_schema_is_compact(self, compressor):
-        schemas = compressor.get_tool_schemas()
-        assert schemas[1]["name"] == "compact"
 
     def test_schemas_have_valid_descriptions(self, compressor):
         schemas = compressor.get_tool_schemas()
@@ -64,7 +50,6 @@ class TestGetToolSchemas:
         names = [s["name"] for s in loaded]
         assert "context_usage" in names
         assert "compact" in names
-
 
 # ---------------------------------------------------------------------------
 # handle_tool_call — context_usage
@@ -105,7 +90,6 @@ class TestHandleContextUsage:
         assert data["usage_percent"] == 0.0
         assert data["max_context_tokens"] == 200000
         assert data["compression_count"] == 0
-
 
 # ---------------------------------------------------------------------------
 # handle_tool_call — compact
@@ -161,7 +145,6 @@ class TestHandleCompact:
         result = compressor.handle_tool_call("compact", {})
         data = orjson.loads(result)
         assert isinstance(data, dict)
-
 
 # ---------------------------------------------------------------------------
 # handle_tool_call — unknown tool

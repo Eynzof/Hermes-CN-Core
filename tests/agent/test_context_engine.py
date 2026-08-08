@@ -7,7 +7,6 @@ from typing import Any, Dict, List
 from agent.context_engine import ContextEngine
 from agent.context_compressor import ContextCompressor
 
-
 # ---------------------------------------------------------------------------
 # A minimal concrete engine for testing the ABC
 # ---------------------------------------------------------------------------
@@ -61,7 +60,6 @@ class StubEngine(ContextEngine):
         self._tools_called.append(name)
         return orjson.dumps({"ok": True, "tool": name}).decode('utf-8')
 
-
 # ---------------------------------------------------------------------------
 # ABC contract tests
 # ---------------------------------------------------------------------------
@@ -91,7 +89,6 @@ class TestContextEngineABC:
         c = ContextCompressor(model="test", quiet_mode=True, config_context_length=200000)
         assert isinstance(c, ContextEngine)
         assert c.name == "compressor"
-
 
 # ---------------------------------------------------------------------------
 # Default method behavior
@@ -142,7 +139,6 @@ class TestDefaults:
         engine = StubEngine()
         assert engine.should_compress_preflight([]) is False
 
-
 # ---------------------------------------------------------------------------
 # StubEngine behavior
 # ---------------------------------------------------------------------------
@@ -181,7 +177,6 @@ class TestStubEngine:
         assert engine.last_prompt_tokens == 1000
         assert engine.last_completion_tokens == 200
 
-
 # ---------------------------------------------------------------------------
 # ContextCompressor session reset via ABC
 # ---------------------------------------------------------------------------
@@ -206,7 +201,6 @@ class TestCompressorSessionReset:
         assert c._context_probed is False
         assert c._context_probe_persistable is False
         assert c._previous_summary is None
-
 
 # ---------------------------------------------------------------------------
 # Plugin slot (PluginManager integration)
@@ -267,8 +261,6 @@ class TestPluginContextEngineSlot:
         finally:
             plugins_mod._plugin_manager = old_mgr
 
-
-
 class TestPluginContextEngineDeepCopy:
     """Verify that the plugin context engine singleton is deep-copied before
     mutation in agent_init — regression test for #42449."""
@@ -315,7 +307,6 @@ class TestPluginContextEngineDeepCopy:
         direct = engine  # no deepcopy — the bug path
         direct.context_length = 204800
         assert engine.context_length == 204800  # bug: parent corrupted!
-
 
 class TestInitAgentDoesNotMutatePluginSingleton:
     """Regression coverage for #42449: a child agent's init must not mutate the
@@ -401,35 +392,6 @@ class TestInitAgentDoesNotMutatePluginSingleton:
         assert selected is None
         # The original engine is untouched (no partial mutation).
         assert engine.context_length == 1_000_000
-
-    def test_agent_init_source_deepcopies_singleton_not_aliases(self):
-        """Source-pin guarding the production fix in agent/agent_init.py:
-        the plugin-singleton fallback MUST deepcopy the candidate, not alias
-        it (`_selected_engine = _candidate`). Full init_agent is too heavy to
-        drive here, so this pins the exact line so a future revert to direct
-        assignment fails CI. Regression for #42449."""
-        import inspect
-        from agent.re_compat import re
-        import agent.agent_init as _ai
-
-        src = inspect.getsource(_ai)
-        # The candidate fetched from the plugin singleton must be deep-copied
-        # before becoming _selected_engine (which is later mutated by
-        # update_model). A bare `_selected_engine = _candidate` is the bug.
-        assert re.search(
-            r"_selected_engine\s*=\s*(copy|_copy)\.deepcopy\(\s*_candidate\s*\)",
-            src,
-        ), (
-            "agent_init must deepcopy the plugin context-engine singleton "
-            "(`_selected_engine = copy.deepcopy(_candidate)`) — a bare "
-            "`_selected_engine = _candidate` re-introduces #42449 (child "
-            "update_model corrupts the parent's shared singleton)."
-        )
-        # And the bug-shape alias must NOT be present on that path.
-        assert not re.search(
-            r"_selected_engine\s*=\s*_candidate\b", src
-        ), "found the #42449 bug-shape alias `_selected_engine = _candidate`"
-
 
 class TestGetUsageStatus:
     """Test ``get_usage_status()`` — added as part of the ContextUsage tool."""

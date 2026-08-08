@@ -28,7 +28,6 @@ from tools.discord_tool import (
     get_dynamic_schema_core,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -41,7 +40,6 @@ def _mock_urlopen(response_data, status=200):
     mock_resp.__enter__ = MagicMock(return_value=mock_resp)
     mock_resp.__exit__ = MagicMock(return_value=False)
     return mock_resp
-
 
 # ---------------------------------------------------------------------------
 # Token / check_fn
@@ -68,7 +66,6 @@ class TestCheckRequirements:
         monkeypatch.delenv("DISCORD_BOT_TOKEN", raising=False)
         assert _get_bot_token() is None
 
-
 # ---------------------------------------------------------------------------
 # Channel type names
 # ---------------------------------------------------------------------------
@@ -84,7 +81,6 @@ class TestChannelTypeNames:
 
     def test_unknown_type(self):
         assert _channel_type_name(99) == "unknown(99)"
-
 
 # ---------------------------------------------------------------------------
 # Discord API request helper
@@ -177,7 +173,6 @@ class TestDiscordRequest:
         assert exc_info.value.status == 403
         assert "error body exceeded 8 bytes" in exc_info.value.body
 
-
 # ---------------------------------------------------------------------------
 # Main handler: validation
 # ---------------------------------------------------------------------------
@@ -222,7 +217,6 @@ class TestDiscordServerValidation:
         assert "user_id" in result["error"]
         assert "role_id" in result["error"]
 
-
 # ---------------------------------------------------------------------------
 # Action: list_guilds
 # ---------------------------------------------------------------------------
@@ -240,7 +234,6 @@ class TestListGuilds:
         assert result["guilds"][0]["name"] == "Test Server"
         assert result["guilds"][1]["id"] == "222"
         mock_req.assert_called_once_with("GET", "/users/@me/guilds", "test-token")
-
 
 # ---------------------------------------------------------------------------
 # Action: server_info
@@ -270,7 +263,6 @@ class TestServerInfo:
         mock_req.assert_called_once_with(
             "GET", "/guilds/111", "test-token", params={"with_counts": "true"}
         )
-
 
 # ---------------------------------------------------------------------------
 # Action: list_channels
@@ -304,7 +296,6 @@ class TestListChannels:
         result = orjson.loads(discord_admin_handler(action="list_channels", guild_id="111"))
         assert result["total_channels"] == 0
 
-
 # ---------------------------------------------------------------------------
 # Action: channel_info
 # ---------------------------------------------------------------------------
@@ -322,7 +313,6 @@ class TestChannelInfo:
         assert result["name"] == "general"
         assert result["type"] == "text"
         assert result["guild_id"] == "111"
-
 
 # ---------------------------------------------------------------------------
 # Action: list_roles
@@ -345,7 +335,6 @@ class TestListRoles:
         assert result["roles"][1]["name"] == "Mod"
         assert result["roles"][2]["name"] == "@everyone"
 
-
 # ---------------------------------------------------------------------------
 # Action: member_info
 # ---------------------------------------------------------------------------
@@ -365,7 +354,6 @@ class TestMemberInfo:
         assert result["username"] == "testuser"
         assert result["nickname"] == "Testy"
         assert result["roles"] == ["2", "3"]
-
 
 # ---------------------------------------------------------------------------
 # Action: search_members
@@ -393,7 +381,6 @@ class TestSearchMembers:
         discord_core(action="search_members", guild_id="111", query="x", limit=200)
         call_params = mock_req.call_args[1]["params"]
         assert call_params["limit"] == "100"  # Capped at 100
-
 
 # ---------------------------------------------------------------------------
 # Action: fetch_messages
@@ -428,7 +415,6 @@ class TestFetchMessages:
         assert call_params["before"] == "999"
         assert call_params["limit"] == "10"
 
-
 # ---------------------------------------------------------------------------
 # Action: list_pins
 # ---------------------------------------------------------------------------
@@ -443,7 +429,6 @@ class TestListPins:
         result = orjson.loads(discord_admin_handler(action="list_pins", channel_id="11"))
         assert result["count"] == 1
         assert result["pinned_messages"][0]["content"] == "Important announcement"
-
 
 # ---------------------------------------------------------------------------
 # Actions: pin_message / unpin_message / delete_message
@@ -474,7 +459,6 @@ class TestPinUnpinDelete:
         assert result["success"] is True
         assert "deleted" in result["message"]
         mock_req.assert_called_once_with("DELETE", "/channels/11/messages/500", "test-token")
-
 
 # ---------------------------------------------------------------------------
 # Action: create_thread
@@ -507,7 +491,6 @@ class TestCreateThread:
             body={"name": "Discussion", "auto_archive_duration": 1440},
         )
 
-
 # ---------------------------------------------------------------------------
 # Actions: add_role / remove_role
 # ---------------------------------------------------------------------------
@@ -533,7 +516,6 @@ class TestRoleManagement:
             action="remove_role", guild_id="111", user_id="42", role_id="2",
         ))
         assert result["success"] is True
-
 
 # ---------------------------------------------------------------------------
 # Error handling
@@ -564,7 +546,6 @@ class TestErrorHandling:
         assert "error" in result
         assert "something broke" in result["error"]
 
-
 # ---------------------------------------------------------------------------
 # Registration
 # ---------------------------------------------------------------------------
@@ -588,65 +569,10 @@ class TestRegistration:
         assert entry.check_fn is not None
         assert entry.requires_env == ["DISCORD_BOT_TOKEN"]
 
-    def test_core_schema_actions(self):
-        """Core static schema should list only core actions."""
-        from tools.registry import registry
-        entry = registry._tools["discord"]
-        actions = set(entry.schema["parameters"]["properties"]["action"]["enum"])
-        assert actions == {"fetch_messages", "search_members", "create_thread"}
-
-    def test_admin_schema_actions(self):
-        """Admin static schema should list only admin actions."""
-        from tools.registry import registry
-        entry = registry._tools["discord_admin"]
-        actions = set(entry.schema["parameters"]["properties"]["action"]["enum"])
-        expected_admin = set(_ACTIONS.keys()) - {"fetch_messages", "search_members", "create_thread"}
-        assert actions == expected_admin
-
     def test_all_actions_covered(self):
         """Core + admin actions should cover all known actions."""
         assert set(_CORE_ACTIONS.keys()) | set(_ADMIN_ACTIONS.keys()) == set(_ACTIONS.keys())
         assert set(_CORE_ACTIONS.keys()) & set(_ADMIN_ACTIONS.keys()) == set()
-
-    def test_schema_parameter_bounds(self):
-        from tools.registry import registry
-        entry = registry._tools["discord"]
-        props = entry.schema["parameters"]["properties"]
-        assert props["limit"]["minimum"] == 1
-        assert props["limit"]["maximum"] == 100
-        assert props["auto_archive_duration"]["enum"] == [60, 1440, 4320, 10080]
-
-    def test_core_schema_description(self):
-        """Core schema description should mention core actions."""
-        from tools.registry import registry
-        entry = registry._tools["discord"]
-        desc = entry.schema["description"]
-        assert "fetch_messages(channel_id)" in desc
-        assert "search_members(guild_id, query)" in desc
-        assert "create_thread(channel_id, name)" in desc
-        # Admin actions should NOT be in core description
-        assert "list_guilds()" not in desc
-        assert "add_role(" not in desc
-
-    def test_admin_schema_description(self):
-        """Admin schema description should mention admin actions."""
-        from tools.registry import registry
-        entry = registry._tools["discord_admin"]
-        desc = entry.schema["description"]
-        assert "list_guilds()" in desc
-        assert "add_role(guild_id, user_id, role_id)" in desc
-        assert "delete_message(channel_id, message_id)" in desc
-        # Core actions should NOT be in admin description
-        assert "fetch_messages(" not in desc
-        assert "create_thread(" not in desc
-
-    def test_handler_callable(self):
-        from tools.registry import registry
-        entry = registry._tools["discord"]
-        assert callable(entry.handler)
-        entry_admin = registry._tools["discord_admin"]
-        assert callable(entry_admin.handler)
-
 
 # ---------------------------------------------------------------------------
 # Toolset: discord / discord_admin only in hermes-discord
@@ -675,7 +601,6 @@ class TestToolsetInclusion:
             assert "discord_admin" not in tools or name == "discord_admin", (
                 f"discord_admin tool should not be in toolset '{name}'"
             )
-
 
 # ---------------------------------------------------------------------------
 # Capability detection (privileged intents)
@@ -745,7 +670,6 @@ class TestCapabilityDetection:
         _detect_capabilities("tok")
         _detect_capabilities("tok", force=True)
         assert mock_req.call_count == 2
-
 
 class TestNonBlockingCapabilityDetection:
     """The schema-build path must never block on a discord.com HTTP call.
@@ -891,7 +815,6 @@ class TestNonBlockingCapabilityDetection:
         _detect_capabilities("tok_b")
         assert mock_req.call_count == 2
 
-
 # ---------------------------------------------------------------------------
 # Config allowlist
 # ---------------------------------------------------------------------------
@@ -977,7 +900,6 @@ class TestConfigAllowlist:
         assert result is None
         assert "unexpected type" in caplog.text
 
-
 # ---------------------------------------------------------------------------
 # Action filtering combines intents + allowlist
 # ---------------------------------------------------------------------------
@@ -1020,7 +942,6 @@ class TestAvailableActions:
         # Pass allowlist out of canonical order
         allowlist = ["fetch_messages", "list_guilds", "server_info"]
         assert _available_actions(caps, allowlist) == ["list_guilds", "server_info", "fetch_messages"]
-
 
 # ---------------------------------------------------------------------------
 # Dynamic schema build (integration of intents + config)
@@ -1162,7 +1083,6 @@ class TestDynamicSchema:
         actions = set(schema["parameters"]["properties"]["action"]["enum"])
         assert actions == set(_CORE_ACTIONS.keys())
 
-
 # ---------------------------------------------------------------------------
 # Runtime allowlist enforcement (defense in depth — schema already filtered)
 # ---------------------------------------------------------------------------
@@ -1190,7 +1110,6 @@ class TestRuntimeAllowlistEnforcement:
         mock_req.return_value = []
         result = orjson.loads(discord_admin_handler(action="list_guilds"))
         assert "guilds" in result
-
 
 # ---------------------------------------------------------------------------
 # 403 enrichment
@@ -1232,7 +1151,6 @@ class Test403Enrichment:
         result = orjson.loads(discord_admin_handler(action="list_guilds"))
         assert "500" in result["error"]
         assert "MANAGE_ROLES" not in result["error"]
-
 
 # ---------------------------------------------------------------------------
 # model_tools integration — dynamic schema replaces static

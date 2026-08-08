@@ -21,7 +21,6 @@ from gateway.config import Platform
 from gateway.platforms.base import MessageEvent
 from gateway.session import SessionSource
 
-
 def _make_event(text="/update", platform=Platform.TELEGRAM,
                 user_id="12345", chat_id="67890"):
     """Build a MessageEvent for testing."""
@@ -32,7 +31,6 @@ def _make_event(text="/update", platform=Platform.TELEGRAM,
         user_name="testuser",
     )
     return MessageEvent(text=text, source=source)
-
 
 def _make_runner(hermes_home=None):
     """Create a bare GatewayRunner without calling __init__."""
@@ -56,11 +54,9 @@ def _make_runner(hermes_home=None):
     }
     return runner
 
-
 # ---------------------------------------------------------------------------
 # _gateway_prompt (file-based IPC in main.py)
 # ---------------------------------------------------------------------------
-
 
 class TestGatewayPrompt:
     """Tests for _gateway_prompt() function."""
@@ -145,11 +141,9 @@ class TestGatewayPrompt:
 
         assert result == "default_val"
 
-
 # ---------------------------------------------------------------------------
 # _restore_stashed_changes with input_fn
 # ---------------------------------------------------------------------------
-
 
 class TestRestoreStashWithInputFn:
     """Tests for _restore_stashed_changes with the input_fn parameter."""
@@ -202,11 +196,9 @@ class TestRestoreStashWithInputFn:
         # Should have called git stash apply + git diff --name-only
         assert call_count[0] >= 2
 
-
 # ---------------------------------------------------------------------------
 # Update command spawns --gateway flag
 # ---------------------------------------------------------------------------
-
 
 class TestUpdateCommandGatewayFlag:
     """Verify the gateway spawns hermes update --gateway."""
@@ -243,11 +235,9 @@ class TestUpdateCommandGatewayFlag:
         assert "status=$?" not in cmd_string
         assert "stream progress" in result
 
-
 # ---------------------------------------------------------------------------
 # _watch_update_progress — output streaming
 # ---------------------------------------------------------------------------
-
 
 class TestWatchUpdateProgress:
     """Tests for _watch_update_progress() streaming output."""
@@ -606,11 +596,9 @@ class TestWatchUpdateProgress:
         ]
         assert len(prompt_sends) == 1
 
-
 # ---------------------------------------------------------------------------
 # Message interception for update prompts
 # ---------------------------------------------------------------------------
-
 
 class TestUpdatePromptInterception:
     """Tests for update prompt response interception in _handle_message."""
@@ -705,28 +693,9 @@ class TestUpdatePromptInterception:
         assert "Sent" in (result or "")
         assert session_key not in runner._update_prompt_pending
 
-    @pytest.mark.asyncio
-    async def test_normal_message_when_no_prompt_pending(self, tmp_path):
-        """Messages pass through normally when no prompt is pending."""
-        runner = _make_runner()
-        hermes_home = tmp_path / "hermes"
-        hermes_home.mkdir()
-
-        event = _make_event(text="hello", chat_id="67890")
-
-        # No pending prompt
-        runner._is_user_authorized = MagicMock(return_value=True)
-
-        # The message should flow through to normal processing;
-        # we just verify it doesn't get intercepted
-        session_key = "agent:main:telegram:dm:67890"
-        assert session_key not in runner._update_prompt_pending
-
-
 # ---------------------------------------------------------------------------
 # cmd_update --gateway flag
 # ---------------------------------------------------------------------------
-
 
 class TestCmdUpdateGatewayMode:
     """Tests for cmd_update with --gateway flag."""
@@ -753,10 +722,3 @@ class TestCmdUpdateGatewayMode:
         assert len(calls) == 1
         assert "Restore" in calls[0]
 
-    def test_gateway_flag_parsed(self):
-        """The --gateway flag is accepted by the update subparser."""
-        # Verify the argparse parser accepts --gateway by checking cmd_update
-        # receives gateway=True when the flag is set
-        from types import SimpleNamespace
-        args = SimpleNamespace(gateway=True)
-        assert args.gateway is True

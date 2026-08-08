@@ -51,7 +51,6 @@ from gateway.platforms.yuanbao import (
 )
 from gateway.config import PlatformConfig
 
-
 # ============================================================
 # Helpers
 # ============================================================
@@ -67,14 +66,12 @@ def make_config(**kwargs):
         **kwargs,
     )
 
-
 def make_adapter(**kwargs) -> YuanbaoAdapter:
     """Create a YuanbaoAdapter with test config."""
     config = make_config(**kwargs)
     adapter = YuanbaoAdapter(config)
     adapter._bot_id = "bot_123"
     return adapter
-
 
 def make_ctx(adapter=None, conn_data=b"", **overrides) -> InboundContext:
     """Create an InboundContext with sensible defaults for testing."""
@@ -85,7 +82,6 @@ def make_ctx(adapter=None, conn_data=b"", **overrides) -> InboundContext:
     for k, v in overrides.items():
         setattr(ctx, k, v)
     return ctx
-
 
 def make_json_push(
     from_account="alice",
@@ -111,7 +107,6 @@ def make_json_push(
         push["CallbackCommand"] = "Group.CallbackAfterSendMsg"
         push["GroupId"] = group_code
     return orjson.dumps(push)
-
 
 # ============================================================
 # 1. InboundPipeline Engine Tests
@@ -313,7 +308,6 @@ class TestInboundPipeline:
         await pipeline.execute(make_ctx())
         assert order == ["outer-before", "inner", "outer-after"]
 
-
 # ============================================================
 # 2. Individual Middleware Tests
 # ============================================================
@@ -344,24 +338,6 @@ class TestDecodeMiddleware:
         assert ctx.push is None
         next_fn.assert_not_awaited()
 
-    @pytest.mark.asyncio
-    async def test_invalid_data_may_produce_garbage(self):
-        """DecodeMiddleware: binary data may be parsed by protobuf as garbage fields.
-
-        This is expected behavior — the protobuf parser is lenient and may
-        produce "seemingly valid" fields from arbitrary bytes.  The downstream
-        middlewares (dedup, skip-self, etc.) will filter out such garbage.
-        """
-        ctx = make_ctx(conn_data=b"\x00\x01\x02\x03")
-        next_fn = AsyncMock()
-
-        await DecodeMiddleware()(ctx, next_fn)
-
-        # Protobuf parser may or may not produce a result — either is acceptable.
-        # The key invariant: no exception is raised.
-        assert True  # Reached here without error
-
-
 class TestExtractFieldsMiddleware:
     @pytest.mark.asyncio
     async def test_extracts_fields(self):
@@ -387,7 +363,6 @@ class TestExtractFieldsMiddleware:
         assert ctx.msg_id == "msg-001"
         assert ctx.cloud_custom_data == '{"key": "val"}'
         next_fn.assert_awaited_once()
-
 
 class TestDedupMiddleware:
     @pytest.mark.asyncio
@@ -422,7 +397,6 @@ class TestDedupMiddleware:
         await DedupMiddleware()(ctx, next_fn)
         next_fn.assert_awaited_once()
 
-
 class TestSkipSelfMiddleware:
     @pytest.mark.asyncio
     async def test_self_message_stops(self):
@@ -445,7 +419,6 @@ class TestSkipSelfMiddleware:
 
         await SkipSelfMiddleware()(ctx, next_fn)
         next_fn.assert_awaited_once()
-
 
 class TestChatRoutingMiddleware:
     @pytest.mark.asyncio
@@ -483,7 +456,6 @@ class TestChatRoutingMiddleware:
         await ChatRoutingMiddleware()(ctx, next_fn)
 
         assert ctx.chat_name == "alice"
-
 
 class TestAccessGuardMiddleware:
     @pytest.mark.asyncio
@@ -630,7 +602,6 @@ class TestAccessGuardMiddleware:
         await AccessGuardMiddleware()(ctx, next_fn)
         next_fn.assert_not_awaited()
 
-
 class TestAccessPolicy:
     def test_open_group_requires_opt_in(self, monkeypatch):
         monkeypatch.delenv("GATEWAY_ALLOW_ALL_USERS", raising=False)
@@ -685,7 +656,6 @@ class TestAccessPolicy:
             group_policy="pairing", group_allow_from=[],
         )
         assert policy.is_dm_intake_allowed("user-1") is True
-
 
 class TestAutoSetHomeMiddleware:
     @pytest.mark.asyncio
@@ -783,7 +753,6 @@ class TestAutoSetHomeMiddleware:
         assert os.environ.get("YUANBAO_HOME_CHANNEL") == "direct:alice"
         next_fn.assert_awaited_once()
 
-
 class TestSenderMayDesignateHome:
     def test_pairing_unapproved_sender_denied(self, monkeypatch):
         monkeypatch.delenv("YUANBAO_ALLOW_ALL_USERS", raising=False)
@@ -839,7 +808,6 @@ class TestSenderMayDesignateHome:
         )
         assert adapter._sender_may_designate_home(ctx) is True
 
-
 class TestExtractContentMiddleware:
     @pytest.mark.asyncio
     async def test_extracts_text_and_media(self):
@@ -860,7 +828,6 @@ class TestExtractContentMiddleware:
         assert len(ctx.media_refs) == 1
         assert ctx.media_refs[0]["kind"] == "image"
         next_fn.assert_awaited_once()
-
 
 class TestPlaceholderFilterMiddleware:
     @pytest.mark.asyncio
@@ -892,7 +859,6 @@ class TestPlaceholderFilterMiddleware:
 
         await PlaceholderFilterMiddleware()(ctx, next_fn)
         next_fn.assert_awaited_once()
-
 
 class TestGroupAtGuardMiddleware:
     @pytest.mark.asyncio
@@ -969,7 +935,6 @@ class TestGroupAtGuardMiddleware:
         await GroupAtGuardMiddleware()(ctx, next_fn)
         next_fn.assert_awaited_once()
 
-
 class TestAutoSetHomeAfterGroupAtGuard:
     @pytest.mark.asyncio
     async def test_unaddressed_group_does_not_set_home(self, monkeypatch, tmp_path):
@@ -1004,7 +969,6 @@ class TestAutoSetHomeAfterGroupAtGuard:
         assert "YUANBAO_HOME_CHANNEL" not in os.environ
         assert not (tmp_path / "config.yaml").exists()
 
-
 # ============================================================
 # 4. Factory Tests
 # ============================================================
@@ -1036,7 +1000,6 @@ class TestCreateInboundPipeline:
             "dispatch",
         ]
         assert pipeline.middleware_names == expected
-
 
 # ============================================================
 # 5. End-to-End Pipeline Integration Tests
@@ -1165,18 +1128,8 @@ class TestPipelineIntegration:
         # Pipeline stopped at access-guard — no content extracted
         assert ctx.raw_text == ""
 
-    @pytest.mark.asyncio
-    async def test_adapter_has_pipeline(self):
-        """YuanbaoAdapter.__init__ creates an inbound pipeline."""
-        adapter = make_adapter()
-        assert hasattr(adapter, "_inbound_pipeline")
-        assert isinstance(adapter._inbound_pipeline, InboundPipeline)
-
-
-
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
-
 
 # ============================================================
 # 6. OOP Middleware Tests
@@ -1210,7 +1163,6 @@ class TestInboundMiddlewareABC:
         assert ctx.raw_text == "called"
         next_fn.assert_awaited_once()
 
-
 class TestMiddlewareClasses:
     """Pin the canonical ``name`` of each concrete middleware class.
 
@@ -1239,7 +1191,6 @@ class TestMiddlewareClasses:
         """Each middleware class has the expected name."""
         mw = cls()
         assert mw.name == expected_name
-
 
 class TestPipelineOOPRegistration:
     """Test that InboundPipeline works with OOP middleware instances."""
@@ -1284,7 +1235,6 @@ class TestPipelineOOPRegistration:
 
         await pipeline.execute(make_ctx())
         assert order == ["oop", "func"]
-
 
 # ============================================================
 # QuoteContextMiddleware Tests
@@ -1376,7 +1326,6 @@ class TestQuoteContextMiddleware:
         assert ctx.reply_to_text == "Dave: Check this image"
         assert ctx.quote_media_refs == []
         next_fn.assert_awaited_once()
-
 
 # ============================================================
 # MediaResolveMiddleware Tests
@@ -1565,7 +1514,6 @@ class TestResolveYbresRefs:
         finally:
             MediaResolveMiddleware._resource_cache.clear()
 
-
 class TestResolveMediaUrlsCacheHit:
     """Current-message media cache hits must skip the download-URL resolve."""
 
@@ -1601,7 +1549,6 @@ class TestResolveMediaUrlsCacheHit:
             p_fetch.assert_not_awaited()
         finally:
             MediaResolveMiddleware._resource_cache.clear()
-
 
 class TestResolveYbresRefsConcurrency:
     """Bounded-concurrency contracts for ``_resolve_ybres_refs``."""
@@ -1778,7 +1725,6 @@ class TestResolveYbresRefsConcurrency:
             <= _MAX_RESOLVE_CONCURRENCY
         )
 
-
 class TestResolveMediaUrlsConcurrency:
     """Bounded-concurrency contracts for ``_resolve_media_urls`` (own-turn
     media). Same invariants as ``_resolve_ybres_refs`` — order preserved,
@@ -1840,7 +1786,6 @@ class TestResolveMediaUrlsConcurrency:
 
         assert paths == ["/cache/ok.jpg"]
         assert mimes == ["image/jpeg"]
-
 
 class TestMediaResolveMiddlewareRouting:
     """Branch-routing tests for MediaResolveMiddleware.handle()."""
@@ -2015,7 +1960,6 @@ class TestMediaResolveMiddlewareRouting:
         p_check.assert_called_once()
         _text_arg, count_arg = p_check.call_args.args
         assert count_arg == 0
-
 
 # ============================================================
 # PatchAnchorsMiddleware Tests

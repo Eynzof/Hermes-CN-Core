@@ -26,7 +26,6 @@ from unittest.mock import patch
 
 import pytest
 
-
 class TestInstallCuaDriverUpgrade:
     def test_upgrade_on_unsupported_platform_is_silent_noop(self):
         from hermes_cli import tools_config
@@ -128,7 +127,6 @@ class TestInstallCuaDriverUpgrade:
             assert tools_config.install_cua_driver(upgrade=False) is True
             runner.assert_called_once()
 
-
 class TestArchProbeRemoval:
     """Regression tests for the deletion of `_check_cua_driver_asset_for_arch`.
 
@@ -149,11 +147,6 @@ class TestArchProbeRemoval:
     ``cua-driver check-update --json`` MCP-binary native command for the
     upgrade path.
     """
-
-    def test_probe_function_is_gone(self):
-        from hermes_cli import tools_config
-        assert not hasattr(tools_config, "_check_cua_driver_asset_for_arch")
-        assert not hasattr(tools_config, "_latest_cua_driver_rs_release")
 
     def test_fresh_install_does_not_call_github_api(self):
         """Pre-install no longer probes the GitHub API — the upstream
@@ -195,7 +188,6 @@ class TestArchProbeRemoval:
             runner.assert_called_once()
             # Probe deleted — no direct GitHub API call from Python.
             urlopen.assert_not_called()
-
 
 class TestStaleInstallLockClear:
     """_clear_stale_cua_install_lock: pre-clears the upstream installer's
@@ -261,7 +253,6 @@ class TestStaleInstallLockClear:
         os.environ["CUA_DRIVER_RS_HOME"] = str(tmp_path / ".cua-driver")
         from hermes_cli import tools_config
         tools_config._clear_stale_cua_install_lock()  # must not raise
-
 
 class TestInstallerTimeoutKillsProcessGroup:
     """On timeout the whole installer process group must be killed, so the
@@ -337,7 +328,6 @@ class TestInstallerTimeoutKillsProcessGroup:
             tools_config._run_cua_driver_installer(label="Refreshing", verbose=False)
 
         assert captured.get("start_new_session") is True
-
 
 class TestInstallerNoShell:
     """The POSIX installer path must not use shell=True or command

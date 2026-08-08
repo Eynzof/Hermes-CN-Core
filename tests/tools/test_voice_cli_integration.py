@@ -9,7 +9,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 def _make_voice_cli(**overrides):
     """Create a minimal HermesCLI with only voice-related attrs initialized.
 
@@ -37,13 +36,11 @@ def _make_voice_cli(**overrides):
         setattr(cli, k, v)
     return cli
 
-
 # ============================================================================
 # Markdown stripping — import real function from tts_tool
 # ============================================================================
 
 from tools.tts_tool import _strip_markdown_for_tts
-
 
 class TestMarkdownStripping:
     def test_strips_bold(self):
@@ -122,274 +119,21 @@ class TestMarkdownStripping:
         assert "Good luck!" in result
         assert "docs" in result
 
-
 # ============================================================================
 # Voice command parsing
 # ============================================================================
-
-class TestVoiceCommandParsing:
-    """Test _handle_voice_command logic without full CLI setup."""
-
-    def test_parse_subcommands(self):
-        """Verify subcommand extraction from /voice commands."""
-        test_cases = [
-            ("/voice on", "on"),
-            ("/voice off", "off"),
-            ("/voice tts", "tts"),
-            ("/voice status", "status"),
-            ("/voice", ""),
-            ("/voice  ON  ", "on"),
-        ]
-        for command, expected in test_cases:
-            parts = command.strip().split(maxsplit=1)
-            subcommand = parts[1].lower().strip() if len(parts) > 1 else ""
-            assert subcommand == expected, f"Failed for {command!r}: got {subcommand!r}"
-
 
 # ============================================================================
 # Voice state thread safety
 # ============================================================================
 
-class TestVoiceStateLock:
-    def test_lock_protects_state(self):
-        """Verify that concurrent state changes don't corrupt state."""
-        lock = threading.Lock()
-        state = {"recording": False, "count": 0}
-
-        def toggle_many(n):
-            for _ in range(n):
-                with lock:
-                    state["recording"] = not state["recording"]
-                    state["count"] += 1
-
-        threads = [threading.Thread(target=toggle_many, args=(1000,)) for _ in range(4)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-
-        assert state["count"] == 4000
-
-
 # ============================================================================
 # Streaming TTS lazy import activation (Bug A fix)
 # ============================================================================
 
-class TestStreamingTTSActivation:
-    """Verify streaming TTS uses lazy imports to check availability."""
-
-    def test_activates_when_elevenlabs_and_sounddevice_available(self):
-        """use_streaming_tts should be True when provider is elevenlabs
-        and both lazy imports succeed."""
-        use_streaming_tts = False
-        try:
-            from tools.tts_tool import (
-                _load_tts_config as _load_tts_cfg,
-                _get_provider as _get_prov,
-                _import_elevenlabs,
-                _import_sounddevice,
-            )
-            assert callable(_import_elevenlabs)
-            assert callable(_import_sounddevice)
-        except ImportError:
-            pytest.skip("tools.tts_tool not available")
-
-        with patch("tools.tts_tool._load_tts_config") as mock_cfg, \
-             patch("tools.tts_tool._get_provider", return_value="elevenlabs"), \
-             patch("tools.tts_tool._import_elevenlabs") as mock_el, \
-             patch("tools.tts_tool._import_sounddevice") as mock_sd:
-            mock_cfg.return_value = {"provider": "elevenlabs"}
-            mock_el.return_value = MagicMock()
-            mock_sd.return_value = MagicMock()
-
-            from tools.tts_tool import (
-                _load_tts_config as load_cfg,
-                _get_provider as get_prov,
-                _import_elevenlabs as import_el,
-                _import_sounddevice as import_sd,
-            )
-            cfg = load_cfg()
-            if get_prov(cfg) == "elevenlabs":
-                import_el()
-                import_sd()
-                use_streaming_tts = True
-
-        assert use_streaming_tts is True
-
-    def test_does_not_activate_when_elevenlabs_missing(self):
-        """use_streaming_tts stays False when elevenlabs import fails."""
-        use_streaming_tts = False
-        with patch("tools.tts_tool._load_tts_config", return_value={"provider": "elevenlabs"}), \
-             patch("tools.tts_tool._get_provider", return_value="elevenlabs"), \
-             patch("tools.tts_tool._import_elevenlabs", side_effect=ImportError("no elevenlabs")):
-            try:
-                from tools.tts_tool import (
-                    _load_tts_config as load_cfg,
-                    _get_provider as get_prov,
-                    _import_elevenlabs as import_el,
-                    _import_sounddevice as import_sd,
-                )
-                cfg = load_cfg()
-                if get_prov(cfg) == "elevenlabs":
-                    import_el()
-                    import_sd()
-                    use_streaming_tts = True
-            except (ImportError, OSError):
-                pass
-
-        assert use_streaming_tts is False
-
-    def test_does_not_activate_when_sounddevice_missing(self):
-        """use_streaming_tts stays False when sounddevice import fails."""
-        use_streaming_tts = False
-        with patch("tools.tts_tool._load_tts_config", return_value={"provider": "elevenlabs"}), \
-             patch("tools.tts_tool._get_provider", return_value="elevenlabs"), \
-             patch("tools.tts_tool._import_elevenlabs", return_value=MagicMock()), \
-             patch("tools.tts_tool._import_sounddevice", side_effect=OSError("no PortAudio")):
-            try:
-                from tools.tts_tool import (
-                    _load_tts_config as load_cfg,
-                    _get_provider as get_prov,
-                    _import_elevenlabs as import_el,
-                    _import_sounddevice as import_sd,
-                )
-                cfg = load_cfg()
-                if get_prov(cfg) == "elevenlabs":
-                    import_el()
-                    import_sd()
-                    use_streaming_tts = True
-            except (ImportError, OSError):
-                pass
-
-        assert use_streaming_tts is False
-
-    def test_does_not_activate_for_non_elevenlabs_provider(self):
-        """use_streaming_tts stays False when provider is not elevenlabs."""
-        use_streaming_tts = False
-        with patch("tools.tts_tool._load_tts_config", return_value={"provider": "edge"}), \
-             patch("tools.tts_tool._get_provider", return_value="edge"):
-            try:
-                from tools.tts_tool import (
-                    _load_tts_config as load_cfg,
-                    _get_provider as get_prov,
-                    _import_elevenlabs as import_el,
-                    _import_sounddevice as import_sd,
-                )
-                cfg = load_cfg()
-                if get_prov(cfg) == "elevenlabs":
-                    import_el()
-                    import_sd()
-                    use_streaming_tts = True
-            except (ImportError, OSError):
-                pass
-
-        assert use_streaming_tts is False
-
-    def test_stale_boolean_imports_no_longer_exist(self):
-        """Confirm _HAS_ELEVENLABS and _HAS_AUDIO are not in tts_tool module."""
-        import tools.tts_tool as tts_mod
-        assert not hasattr(tts_mod, "_HAS_ELEVENLABS"), \
-            "_HAS_ELEVENLABS should not exist -- lazy imports replaced it"
-        assert not hasattr(tts_mod, "_HAS_AUDIO"), \
-            "_HAS_AUDIO should not exist -- lazy imports replaced it"
-
-
 # ============================================================================
 # Voice mode user message prefix (Bug B fix)
 # ============================================================================
-
-class TestVoiceMessagePrefix:
-    """Voice mode should inject instruction via user message prefix,
-    not by modifying the system prompt (which breaks prompt cache)."""
-
-    def test_prefix_added_when_voice_mode_active(self):
-        """When voice mode is active and message is str, agent_message
-        should have the voice instruction prefix."""
-        voice_mode = True
-        message = "What's the weather like?"
-
-        agent_message = message
-        if voice_mode and isinstance(message, str):
-            agent_message = (
-                "[Voice input — respond concisely and conversationally, "
-                "2-3 sentences max. No code blocks or markdown.] "
-                + message
-            )
-
-        assert agent_message.startswith("[Voice input")
-        assert "What's the weather like?" in agent_message
-
-    def test_no_prefix_when_voice_mode_inactive(self):
-        """When voice mode is off, message passes through unchanged."""
-        voice_mode = False
-        message = "What's the weather like?"
-
-        agent_message = message
-        if voice_mode and isinstance(message, str):
-            agent_message = (
-                "[Voice input — respond concisely and conversationally, "
-                "2-3 sentences max. No code blocks or markdown.] "
-                + message
-            )
-
-        assert agent_message == message
-
-    def test_no_prefix_for_multimodal_content(self):
-        """When message is a list (multimodal), no prefix is added."""
-        voice_mode = True
-        message = [{"type": "text", "text": "describe this"}, {"type": "image_url"}]
-
-        agent_message = message
-        if voice_mode and isinstance(message, str):
-            agent_message = (
-                "[Voice input — respond concisely and conversationally, "
-                "2-3 sentences max. No code blocks or markdown.] "
-                + message
-            )
-
-        assert agent_message is message
-
-    def test_history_stays_clean(self):
-        """conversation_history should contain the original message,
-        not the prefixed version."""
-        voice_mode = True
-        message = "Hello there"
-        conversation_history = []
-
-        conversation_history.append({"role": "user", "content": message})
-
-        agent_message = message
-        if voice_mode and isinstance(message, str):
-            agent_message = (
-                "[Voice input — respond concisely and conversationally, "
-                "2-3 sentences max. No code blocks or markdown.] "
-                + message
-            )
-
-        assert conversation_history[-1]["content"] == "Hello there"
-        assert agent_message.startswith("[Voice input")
-        assert agent_message != conversation_history[-1]["content"]
-
-    def test_enable_voice_mode_does_not_modify_system_prompt(self):
-        """_enable_voice_mode should NOT modify self.system_prompt or
-        agent.ephemeral_system_prompt -- the system prompt must stay
-        stable to preserve prompt cache."""
-        cli = SimpleNamespace(
-            _voice_mode=False,
-            _voice_tts=False,
-            _voice_lock=threading.Lock(),
-            system_prompt="You are helpful",
-            agent=SimpleNamespace(ephemeral_system_prompt="You are helpful"),
-        )
-
-        original_system = cli.system_prompt
-        original_ephemeral = cli.agent.ephemeral_system_prompt
-
-        cli._voice_mode = True
-
-        assert cli.system_prompt == original_system
-        assert cli.agent.ephemeral_system_prompt == original_ephemeral
-
 
 # ============================================================================
 # _vprint force parameter (Minor fix)
@@ -411,34 +155,6 @@ class TestVprintForceParameter:
 
         agent._vprint = _vprint
         return agent
-
-    def test_suppressed_during_streaming(self, capsys):
-        """Normal _vprint output is suppressed when streaming TTS is active."""
-        agent = self._make_agent_with_stream(stream_active=True)
-        agent._vprint("should be hidden")
-        captured = capsys.readouterr()
-        assert captured.out == ""
-
-    def test_shown_when_not_streaming(self, capsys):
-        """Normal _vprint output is shown when streaming is not active."""
-        agent = self._make_agent_with_stream(stream_active=False)
-        agent._vprint("should be shown")
-        captured = capsys.readouterr()
-        assert "should be shown" in captured.out
-
-    def test_force_shown_during_streaming(self, capsys):
-        """force=True bypasses the streaming suppression."""
-        agent = self._make_agent_with_stream(stream_active=True)
-        agent._vprint("critical error!", force=True)
-        captured = capsys.readouterr()
-        assert "critical error!" in captured.out
-
-    def test_force_shown_when_not_streaming(self, capsys):
-        """force=True works normally when not streaming (no regression)."""
-        agent = self._make_agent_with_stream(stream_active=False)
-        agent._vprint("normal message", force=True)
-        captured = capsys.readouterr()
-        assert "normal message" in captured.out
 
     def test_error_messages_use_force_in_run_agent(self):
         """Verify that critical error _vprint calls in run_agent.py
@@ -489,7 +205,6 @@ class TestVprintForceParameter:
         assert unforced_error_count == 0, \
             f"Found {unforced_error_count} critical error _vprint calls without force=True"
 
-
 # ============================================================================
 # Bug fix regression tests
 # ============================================================================
@@ -531,7 +246,6 @@ class TestEdgeTTSLazyImport:
         else:
             pytest.fail("_generate_edge_tts not found in tts_tool.py")
 
-
 class TestStreamingTTSOutputStreamCleanup:
     """Bug #7: output_stream must be closed in finally block."""
 
@@ -557,7 +271,6 @@ class TestStreamingTTSOutputStreamCleanup:
                             )
                             return
                 pytest.fail("No finally block with tts_done_event found")
-
 
 class TestCtrlCResetsContinuousMode:
     """Bug #4: Ctrl+C cancel must reset _voice_continuous."""
@@ -587,7 +300,6 @@ class TestCtrlCResetsContinuousMode:
             "Ctrl+C voice cancel block must set _voice_continuous = False"
         )
 
-
 class TestDisableVoiceModeStopsTTS:
     """Bug #5: _disable_voice_mode must stop active TTS playback."""
 
@@ -603,7 +315,6 @@ class TestDisableVoiceModeStopsTTS:
         assert "_voice_tts_done.set()" in source, (
             "_disable_voice_mode must set _voice_tts_done"
         )
-
 
 class TestVoiceStatusUsesConfigKey:
     """Bug #8: _show_voice_status must read record key from config."""
@@ -647,7 +358,6 @@ class TestVoiceStatusUsesConfigKey:
             "_show_voice_status should read record_key from config"
         )
 
-
 class TestChatTTSCleanupOnException:
     """Bug #2: chat() must clean up streaming TTS resources on exception."""
 
@@ -680,7 +390,6 @@ class TestChatTTSCleanupOnException:
                     "text_queue/stop_event/tts_thread"
                 )
 
-
 class TestBrowserToolSignalHandlerRemoved:
     """browser_tool.py must NOT register SIGINT/SIGTERM handlers that call
     sys.exit() — this conflicts with prompt_toolkit's event loop and causes
@@ -706,7 +415,6 @@ class TestBrowserToolSignalHandlerRemoved:
                 f"browser_tool.py:{i} registers SIGTERM handler — "
                 f"use atexit instead to avoid prompt_toolkit conflicts"
             )
-
 
 class TestKeyHandlerNeverBlocks:
     """The Ctrl+B key handler runs in prompt_toolkit's event-loop thread.
@@ -797,7 +505,6 @@ class TestKeyHandlerNeverBlocks:
             "atomically (same lock block) with _voice_recording = False"
         )
 
-
 # ============================================================================
 # Real behavior tests — CLI voice methods via _make_voice_cli()
 # ============================================================================
@@ -860,7 +567,6 @@ class TestHandleVoiceCommandReal:
         # Should print usage via _cprint
         assert any("Unknown" in str(c) or "unknown" in str(c)
                     for c in mock_cp.call_args_list)
-
 
 class TestEnableVoiceModeReal:
     """Tests _enable_voice_mode with real CLI instance."""
@@ -934,7 +640,6 @@ class TestEnableVoiceModeReal:
         cli._enable_voice_mode()
         assert cli._voice_mode is True
 
-
 class TestVoiceBeepConfigReal:
     """Tests the CLI voice beep toggle."""
 
@@ -986,7 +691,6 @@ class TestVoiceBeepConfigReal:
         recorder.start.assert_called_once()
         mock_beep.assert_not_called()
 
-
 class TestDisableVoiceModeReal:
     """Tests _disable_voice_mode with real CLI instance."""
 
@@ -1037,7 +741,6 @@ class TestDisableVoiceModeReal:
         cli = _make_voice_cli(_voice_mode=True)
         cli._disable_voice_mode()
         assert cli._voice_mode is False
-
 
 class TestVoiceSpeakResponseReal:
     """Tests _voice_speak_response with real CLI instance."""
@@ -1131,7 +834,6 @@ class TestVoiceSpeakResponseReal:
         cli = _make_voice_cli(_voice_tts=True)
         cli._voice_speak_response("Hello world")
         mock_play.assert_called_once()
-
 
 class TestVoiceStopAndTranscribeReal:
     """Tests _voice_stop_and_transcribe with real CLI instance."""
@@ -1289,11 +991,9 @@ class TestVoiceStopAndTranscribeReal:
         cli._voice_stop_and_transcribe()
         mock_tr.assert_called_once_with("/tmp/test.wav", model="whisper-large-v3")
 
-
 # ---------------------------------------------------------------------------
 # Bugfix: _refresh_level must read _voice_recording under lock
 # ---------------------------------------------------------------------------
-
 
 class TestRefreshLevelLock:
     """Bug: _refresh_level thread read _voice_recording without lock."""

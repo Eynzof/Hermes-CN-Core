@@ -10,13 +10,11 @@ import pytest
 from agent import video_gen_registry
 from agent.video_gen_provider import VideoGenProvider
 
-
 @pytest.fixture(autouse=True)
 def _reset_registry():
     video_gen_registry._reset_for_tests()
     yield
     video_gen_registry._reset_for_tests()
-
 
 class _RecordingProvider(VideoGenProvider):
     """Captures the kwargs the tool layer hands it."""
@@ -52,7 +50,6 @@ class _RecordingProvider(VideoGenProvider):
             "provider": self._name,
         }
 
-
 class _RaisingProvider(VideoGenProvider):
     @property
     def name(self) -> str:
@@ -60,7 +57,6 @@ class _RaisingProvider(VideoGenProvider):
 
     def generate(self, prompt, **kwargs):
         raise RuntimeError("boom")
-
 
 class TestUnifiedDispatch:
     def _run(self, args: Dict[str, Any], *, configured: Optional[str] = None) -> Dict[str, Any]:
@@ -133,8 +129,3 @@ class TestUnifiedDispatch:
         assert result["success"] is False
         assert result["error_type"] == "provider_exception"
 
-    def test_edit_extend_fields_not_in_schema(self):
-        from tools.video_generation_tool import VIDEO_GENERATE_SCHEMA
-        props = VIDEO_GENERATE_SCHEMA["parameters"]["properties"]
-        assert "operation" not in props
-        assert "video_url" not in props

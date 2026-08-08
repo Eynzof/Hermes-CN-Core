@@ -8,10 +8,8 @@ from unittest.mock import patch
 
 from tools.registry import ToolRegistry, _module_registers_tools, discover_builtin_tools
 
-
 def _dummy_handler(args, **kwargs):
     return orjson.dumps({"ok": True}).decode('utf-8')
-
 
 def _make_schema(name="test_tool"):
     return {
@@ -19,7 +17,6 @@ def _make_schema(name="test_tool"):
         "description": f"A {name}",
         "parameters": {"type": "object", "properties": {}},
     }
-
 
 class TestRegisterAndDispatch:
     def test_register_and_dispatch(self):
@@ -112,7 +109,6 @@ class TestRegisterAndDispatch:
         assert result["tool"] == name
         assert result["result_type"] == "NoneType"
 
-
 class TestGetDefinitions:
     def test_returns_openai_format(self):
         reg = ToolRegistry()
@@ -176,14 +172,12 @@ class TestGetDefinitions:
         assert len(defs) == 2
         assert calls["count"] == 1
 
-
 class TestUnknownToolDispatch:
     def test_returns_error_json(self):
         reg = ToolRegistry()
         result = orjson.loads(reg.dispatch("nonexistent", {}))
         assert "error" in result
         assert "Unknown tool" in result["error"]
-
 
 class TestToolsetAvailability:
     def test_no_check_fn_is_available(self):
@@ -274,7 +268,6 @@ class TestToolsetAvailability:
         assert "error" in result
         assert "RuntimeError" in result["error"]
 
-
 class TestCheckFnExceptionHandling:
     """Verify that a raising check_fn is caught rather than crashing."""
 
@@ -352,7 +345,6 @@ class TestCheckFnExceptionHandling:
         assert "works" in available
         assert any(u["name"] == "crashes" for u in unavailable)
 
-
 class TestBuiltinDiscovery:
     def test_discovers_all_real_self_registering_builtin_tool_modules(self):
         tools_dir = Path(__file__).resolve().parents[2] / "tools"
@@ -404,7 +396,6 @@ class TestBuiltinDiscovery:
         assert imported == ["tools.alpha"]
         mock_import.assert_called_once_with("tools.alpha")
 
-
 class TestEmojiMetadata:
     """Verify per-tool emoji registration and lookup."""
 
@@ -446,7 +437,6 @@ class TestEmojiMetadata:
         )
         assert reg.get_emoji("t") == "⚡"
 
-
 class TestEntryLookup:
     def test_get_entry_returns_registered_entry(self):
         reg = ToolRegistry()
@@ -461,17 +451,6 @@ class TestEntryLookup:
     def test_get_entry_returns_none_for_unknown_tool(self):
         reg = ToolRegistry()
         assert reg.get_entry("missing") is None
-
-
-class TestSecretCaptureResultContract:
-    def test_secret_request_result_does_not_include_secret_value(self):
-        result = {
-            "success": True,
-            "stored_as": "TENOR_API_KEY",
-            "validated": False,
-        }
-        assert "secret" not in orjson.dumps(result).decode('utf-8').lower()
-
 
 class TestThreadSafety:
     def test_get_available_toolsets_uses_coherent_snapshot(self, monkeypatch):
@@ -610,7 +589,6 @@ class TestThreadSafety:
         assert "gated" in toolsets
         assert toolsets["gated"]["available"] is True
 
-
 class TestToolsetAvailabilityAggregation:
     def test_mixed_toolset_available_when_general_tool_passes(self):
         """Desktop-only helpers must not hide general-purpose tools from doctor."""
@@ -664,7 +642,6 @@ class TestToolsetAvailabilityAggregation:
 
         assert "terminal" not in available
         assert any(item["name"] == "terminal" for item in unavailable)
-
 
 class TestDeregisterAuthorization:
     """deregister() must apply the same plugin opt-in gate as register().

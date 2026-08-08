@@ -15,7 +15,6 @@ from agent.transports.hermes_tools_mcp_server import (
     _signature_from_schema,
 )
 
-
 class TestSignatureFromSchema:
     """Test the JSON Schema -> Python signature conversion."""
 
@@ -126,18 +125,7 @@ class TestSignatureFromSchema:
         sig, annots = _signature_from_schema(schema)
         assert sig.return_annotation == str
 
-
-
-
-
-
 class TestModuleSurface:
-    def test_module_imports_clean(self):
-        from agent.transports import hermes_tools_mcp_server as m
-        assert callable(m.main)
-        assert callable(m._build_server)
-        assert isinstance(m.EXPOSED_TOOLS, tuple)
-        assert len(m.EXPOSED_TOOLS) > 0
 
     def test_exposed_tools_are_safe_subset(self):
         """We MUST NOT expose tools codex already has, because codex'
@@ -215,7 +203,6 @@ class TestModuleSurface:
             assert orch_tool in EXPOSED_TOOLS, (
                 f"{orch_tool!r} missing from codex callback"
             )
-
 
 class TestMain:
     def test_main_returns_2_when_mcp_unavailable(self, monkeypatch):

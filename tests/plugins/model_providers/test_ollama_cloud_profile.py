@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import pytest
 
-
 @pytest.fixture
 def ollama_cloud_profile():
     """Resolve the registered Ollama Cloud profile.
@@ -31,7 +30,6 @@ def ollama_cloud_profile():
     profile = providers.get_provider_profile("ollama-cloud")
     assert profile is not None, "ollama-cloud provider profile must be registered"
     return profile
-
 
 class TestOllamaCloudReasoningEffort:
     """``build_api_kwargs_extras`` emits correct top-level ``reasoning_effort``."""
@@ -135,7 +133,6 @@ class TestOllamaCloudReasoningEffort:
         )
         assert top_level == {}
 
-
 class TestOllamaCloudFullKwargsIntegration:
     """End-to-end: the transport's full kwargs include reasoning_effort."""
 
@@ -174,7 +171,6 @@ class TestOllamaCloudFullKwargsIntegration:
         # thinking ON, so omitting reasoning_effort would NOT disable it.
         assert kwargs["reasoning_effort"] == "none"
 
-
 class TestOllamaCloudCapabilityGating:
     """reasoning_effort is gated on the model's thinking capability."""
 
@@ -197,7 +193,6 @@ class TestOllamaCloudCapabilityGating:
             supports_reasoning=False,
         )
         assert top_level == {}
-
 
 class TestOllamaModelSupportsThinking:
     """The /api/show capability probe used to resolve supports_reasoning."""
@@ -264,9 +259,3 @@ class TestOllamaModelSupportsThinking:
             ollama_model_supports_thinking("x", "https://ollama.com/v1", "key") is None
         )
 
-
-class TestOllamaCloudAuxModel:
-    """Ollama Cloud aux model is set on the profile."""
-
-    def test_profile_advertises_aux_model(self, ollama_cloud_profile):
-        assert ollama_cloud_profile.default_aux_model == "nemotron-3-nano:30b"

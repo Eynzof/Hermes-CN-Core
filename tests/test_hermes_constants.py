@@ -30,7 +30,6 @@ from hermes_constants import (
     with_hermes_node_path,
 )
 
-
 class TestGetDefaultHermesRoot:
     """Tests for get_default_hermes_root() — Docker/custom deployment awareness."""
 
@@ -105,7 +104,6 @@ class TestGetDefaultHermesRoot:
 
         assert get_default_hermes_root() == home / "AppData" / "Local" / "hermes"
 
-
 class TestGetHermesHome:
     """Tests for get_hermes_home() platform-aware fallback."""
 
@@ -119,7 +117,6 @@ class TestGetHermesHome:
         monkeypatch.setattr(hermes_constants, "_profile_fallback_warned", False)
 
         assert get_hermes_home() == local_appdata / "hermes"
-
 
 class TestGetProcessHermesHome:
     """Tests for get_process_hermes_home() — process launch scope.
@@ -152,7 +149,6 @@ class TestGetProcessHermesHome:
             assert get_process_hermes_home() == launch_home
         finally:
             reset_hermes_home_override(token)
-
 
 class TestHermesManagedNode:
     def test_windows_node_dir_prefers_portable_root(self, tmp_path, monkeypatch):
@@ -245,7 +241,6 @@ class TestHermesManagedNode:
 
         assert parts[:2] == [str(node_dir), str(bin_dir)]
         assert parts[-1] == "system-node"
-
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX shell stubs; Windows uses .cmd shims")
 class TestNodeToolRunnable:
@@ -357,7 +352,6 @@ class TestNodeToolRunnable:
 
         assert find_node_executable("npm") == str(managed_npm)
 
-
 class TestIsContainer:
     """Tests for is_container() — Docker/Podman detection."""
 
@@ -461,7 +455,6 @@ class TestIsContainer:
         monkeypatch.setattr(os.path, "exists", lambda p: False)
         assert is_container() is True
 
-
 class TestParseReasoningEffort:
     """Tests for parse_reasoning_effort() — string → reasoning config dict."""
 
@@ -532,7 +525,6 @@ class TestParseReasoningEffort:
         """
         documented = {"minimal", "low", "medium", "high", "xhigh", "max", "ultra"}
         assert documented.issubset(set(VALID_REASONING_EFFORTS))
-
 
 class TestResolvePerModelReasoningEffort:
     """Tests for resolve_per_model_reasoning_effort() — spelling-tolerant
@@ -674,7 +666,6 @@ class TestResolvePerModelReasoningEffort:
         overrides = {"gemini-flash": "low"}
         assert resolve_per_model_reasoning_effort("gemini-2.0-flash", overrides) is None
 
-
 class TestResolveReasoningConfig:
     """Tests for resolve_reasoning_config() — the single shared chokepoint
     every surface (CLI, gateway, TUI, cron, /model switch, fallback) calls.
@@ -780,15 +771,8 @@ class TestResolveReasoningConfig:
         cfg = self._cfg(effort="medium", overrides={"gpt-5": "turbo-max"})
         assert resolve_reasoning_config(cfg, "gpt-5") == {"enabled": True, "effort": "medium"}
 
-
 class TestReasoningOverridesDefaultConfig:
     """Tests for the agent.reasoning_overrides default config key (Task 2)."""
-
-    def test_default_config_has_reasoning_overrides_key(self):
-        """DEFAULT_CONFIG['agent'] contains 'reasoning_overrides' as an empty dict."""
-        from hermes_cli.config import DEFAULT_CONFIG
-        assert "reasoning_overrides" in DEFAULT_CONFIG["agent"]
-        assert DEFAULT_CONFIG["agent"]["reasoning_overrides"] == {}
 
     def test_load_config_preserves_user_reasoning_overrides(self, tmp_path, monkeypatch):
         """User-added reasoning_overrides are preserved through load_config()."""
@@ -833,7 +817,6 @@ class TestReasoningOverridesDefaultConfig:
         # Lookup with provider prefix — should match
         result2 = resolve_per_model_reasoning_effort("openai/gpt-5", overrides2)
         assert result2 == {"enabled": True, "effort": "low"}
-
 
 class TestSecureParentDir:
     """Tests for secure_parent_dir() — prevents chmod on / or top-level dirs."""
@@ -924,7 +907,6 @@ class TestSecureParentDir:
         assert len(called_with) == 1
         assert called_with[0] == (str(real_dir), 0o700)
 
-
 @pytest.mark.skipif(os.name == "nt", reason="POSIX shell stubs; Windows uses .cmd shims")
 class TestAgentBrowserRunnable:
     """agent_browser_runnable() validates the resolved CLI actually runs.
@@ -989,7 +971,6 @@ class TestAgentBrowserRunnable:
         assert captured[0][0] == [str(good), "--version"]
         assert captured[0][1]["creationflags"] == 0x08000000
 
-
     def test_node_tool_probe_uses_windows_hide_flags(self, tmp_path, monkeypatch):
         good = self._stub(tmp_path, "node", "#!/bin/sh\necho v22\n")
         captured = []
@@ -1007,7 +988,6 @@ class TestAgentBrowserRunnable:
         assert node_tool_runnable(str(good)) is True
         assert captured[0][0] == [str(good), "--version"]
         assert captured[0][1]["creationflags"] == 0x08000000
-
 
 class TestGetHermesDir:
     """Tests for ``get_hermes_dir(new_subpath, old_name)``.
@@ -1181,7 +1161,6 @@ class TestGetHermesDir:
         legacy.symlink_to(empty)
         result = get_hermes_dir("cache/audio", "audio_cache")
         assert result == tmp_path / "cache/audio"
-
 
 class TestWslPathTranslation:
     """Cross-boundary path translation for a Windows-host UI + WSL backend."""

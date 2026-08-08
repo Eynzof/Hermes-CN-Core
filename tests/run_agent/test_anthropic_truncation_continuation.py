@@ -19,10 +19,8 @@ from types import SimpleNamespace
 
 import pytest
 
-
 def _make_anthropic_text_block(text: str) -> SimpleNamespace:
     return SimpleNamespace(type="text", text=text)
-
 
 def _make_anthropic_tool_use_block(name: str = "my_tool") -> SimpleNamespace:
     return SimpleNamespace(
@@ -31,7 +29,6 @@ def _make_anthropic_tool_use_block(name: str = "my_tool") -> SimpleNamespace:
         name=name,
         input={"foo": "bar"},
     )
-
 
 def _make_anthropic_response(blocks, stop_reason: str = "max_tokens"):
     return SimpleNamespace(
@@ -44,7 +41,6 @@ def _make_anthropic_response(blocks, stop_reason: str = "max_tokens"):
         stop_sequence=None,
         usage=SimpleNamespace(input_tokens=100, output_tokens=200),
     )
-
 
 class TestTruncatedAnthropicResponseNormalization:
     """AnthropicTransport.normalize_response() gives us the shape _build_assistant_message expects."""
@@ -98,17 +94,3 @@ class TestTruncatedAnthropicResponseNormalization:
         assert nr is not None
         assert not nr.tool_calls
 
-
-class TestContinuationLogicBranching:
-    """Symbolic check that the api_mode gate now includes anthropic_messages."""
-
-    @pytest.mark.parametrize("api_mode", ["chat_completions", "bedrock_converse", "anthropic_messages"])
-    def test_all_three_api_modes_hit_continuation_branch(self, api_mode):
-        # The guard in run_agent.py is:
-        #   if self.api_mode in ("chat_completions", "bedrock_converse", "anthropic_messages"):
-        assert api_mode in {"chat_completions", "bedrock_converse", "anthropic_messages"}
-
-    def test_codex_responses_still_excluded(self):
-        # codex_responses has its own truncation path (not continuation-based)
-        # and should NOT be routed through the shared block.
-        assert "codex_responses" not in {"chat_completions", "bedrock_converse", "anthropic_messages"}

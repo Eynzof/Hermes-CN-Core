@@ -49,7 +49,6 @@ from gateway.platforms.yuanbao_proto import (
     next_seq_no,
 )
 
-
 # ===========================================================
 # 1. varint 编解码
 # ===========================================================
@@ -91,7 +90,6 @@ class TestVarint:
         v, pos = _decode_varint(data, 1)
         assert v == 300
         assert pos == 3  # 1 + 2 bytes for 300
-
 
 # ===========================================================
 # 2. conn 层 round-trip
@@ -157,7 +155,6 @@ class TestConnCodec:
         expected = bytes([0x0a, len(head_content)]) + head_content
         assert enc == expected, f"got: {enc.hex()}, expected: {expected.hex()}"
 
-
 # ===========================================================
 # 3. biz 层 round-trip
 # ===========================================================
@@ -196,7 +193,6 @@ class TestBizCodec:
         dec = decode_biz_msg(enc)
         assert dec["body"] == b""
         assert dec["method"] == "method"
-
 
 # ===========================================================
 # 4. MsgContent / MsgBodyElement 编解码
@@ -296,7 +292,6 @@ class TestMsgBodyElement:
         )
         assert enc == expected, f"got {enc.hex()}, expected {expected.hex()}"
 
-
 # ===========================================================
 # 5. decode_inbound_push 测试
 # ===========================================================
@@ -363,12 +358,6 @@ class TestDecodeInboundPush:
         assert result["group_code"] == "group-789"
         assert result["msg_body"][0]["msg_content"]["text"] == "group msg"
 
-    def test_returns_none_on_empty(self):
-        # 空 bytes 应返回空字段 dict，而不是 None
-        result = decode_inbound_push(b"")
-        # 空消息解析结果是 {}（无字段），过滤后 msg_body=[] 也会保留
-        assert result is not None or result is None  # 不崩溃即可
-
     def test_multiple_msg_body_elements(self):
         from gateway.platforms.yuanbao_proto import (
             _encode_field, _encode_message, WT_LEN,
@@ -389,7 +378,6 @@ class TestDecodeInboundPush:
         assert len(result["msg_body"]) == 2
         assert result["msg_body"][0]["msg_content"]["text"] == "part1"
         assert result["msg_body"][1]["msg_content"]["text"] == "part2"
-
 
 # ===========================================================
 # 6. 出站消息编码
@@ -456,7 +444,6 @@ class TestEncodeOutbound:
         grp = _get_string(fdict, 2)  # SendGroupMessageReq.group_code = field 2
         assert grp == "group-xyz"
 
-
 # ===========================================================
 # 7. AuthBind / Ping 编码
 # ===========================================================
@@ -503,7 +490,6 @@ class TestAuthAndPing:
         assert dec["head"]["cmd"] == "some-push"
         assert dec["head"]["msg_id"] == "push-001"
 
-
 # ===========================================================
 # 8. 常量验证
 # ===========================================================
@@ -531,7 +517,6 @@ class TestConstants:
         for k, v in BIZ_SERVICES.items():
             assert v.startswith("yuanbao_openclaw_proxy"), \
                 f"{k}: unexpected prefix in {v}"
-
 
 # ===========================================================
 # 9. seq_no 生成
@@ -564,7 +549,6 @@ class TestSeqNo:
 
         # 无重复
         assert len(results) == len(set(results)), "duplicate seq_no detected"
-
 
 # ===========================================================
 # 10. 完整端到端流程（模拟 send -> recv）
@@ -643,7 +627,6 @@ class TestEndToEnd:
         assert msg["msg_seq"] == 555
         assert msg["msg_key"] == "msg-key-xyz"
         assert msg["msg_body"][0]["msg_content"]["text"] == "server push"
-
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

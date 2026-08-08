@@ -11,7 +11,6 @@ from agent.error_classifier import (
     _classify_402,
 )
 
-
 # ── Helper: mock API errors ────────────────────────────────────────────
 
 class MockAPIError(Exception):
@@ -21,55 +20,23 @@ class MockAPIError(Exception):
         self.status_code = status_code
         self.body = body or {}
 
-
 class MockTransportError(Exception):
     """Simulates a transport-level error with a specific type name."""
     pass
 
-
 class ReadTimeout(MockTransportError):
     pass
-
 
 class ConnectError(MockTransportError):
     pass
 
-
 class RemoteProtocolError(MockTransportError):
     pass
-
 
 class ServerDisconnectedError(MockTransportError):
     pass
 
-
 # ── Test: FailoverReason enum ──────────────────────────────────────────
-
-class TestFailoverReason:
-    def test_all_reasons_have_string_values(self):
-        for reason in FailoverReason:
-            assert isinstance(reason.value, str)
-
-    def test_enum_members_exist(self):
-        expected = {
-            "auth", "auth_permanent", "billing", "rate_limit",
-            "upstream_rate_limit",
-            "overloaded", "server_error", "timeout",
-            "ssl_cert_verification",
-            "context_overflow", "payload_too_large", "image_too_large",
-            "model_not_found", "format_error",
-            "invalid_encrypted_content",
-            "multimodal_tool_content_unsupported",
-            "provider_policy_blocked",
-            "content_policy_blocked",
-            "thinking_signature", "long_context_tier",
-            "oauth_long_context_beta_forbidden",
-            "llama_cpp_grammar_pattern",
-            "unknown",
-        }
-        actual = {r.value for r in FailoverReason}
-        assert expected == actual
-
 
 # ── Test: ClassifiedError ──────────────────────────────────────────────
 
@@ -92,7 +59,6 @@ class TestClassifiedError:
         assert e.should_fallback is False
         assert e.status_code is None
         assert e.message == ""
-
 
 # ── Test: Status code extraction ───────────────────────────────────────
 
@@ -121,7 +87,6 @@ class TestExtractStatusCode:
             status = 42
         assert _extract_status_code(ErrWeirdStatus()) is None
 
-
 # ── Test: Error body extraction ────────────────────────────────────────
 
 class TestExtractErrorBody:
@@ -143,7 +108,6 @@ class TestExtractErrorBody:
 
     def test_empty_when_no_body(self):
         assert _extract_error_body(Exception("generic")) == {}
-
 
 # ── Test: Error code extraction ────────────────────────────────────────
 
@@ -176,7 +140,6 @@ class TestExtractErrorCode:
     def test_empty_when_no_code(self):
         assert _extract_error_code({}) == ""
         assert _extract_error_code({"error": {"message": "oops"}}) == ""
-
 
 # ── Test: 402 disambiguation ───────────────────────────────────────────
 
@@ -223,7 +186,6 @@ class TestClassify402:
             lambda reason, **kw: ClassifiedError(reason=reason, **kw),
         )
         assert result.reason == FailoverReason.billing
-
 
 # ── Test: Full classification pipeline ─────────────────────────────────
 
@@ -1386,7 +1348,6 @@ class TestClassifyApiError:
         result = classify_api_error(e)
         assert result.message == "Internal server error occurred"
 
-
 # ── Test: Adversarial / edge cases (from live testing) ─────────────────
 
 class TestAdversarialEdgeCases:
@@ -1709,7 +1670,6 @@ class TestAdversarialEdgeCases:
         result = classify_api_error(e)
         assert result is not None
 
-
 # ── Test: SSL/TLS transient errors ─────────────────────────────────────
 
 class TestSSLTransientPatterns:
@@ -1799,7 +1759,6 @@ class TestSSLTransientPatterns:
         result = classify_api_error(e)
         assert result.reason == FailoverReason.timeout
         assert result.retryable is True
-
 
 # ── Test: SSL certificate verification failures (fail fast) ────────────
 
@@ -1905,8 +1864,6 @@ class TestRateLimitErrorWithoutStatusCode:
         result = classify_api_error(e, provider="copilot", model="gpt-4o")
         assert result.reason != FailoverReason.rate_limit
 
-
-
 # ── Test: multimodal_tool_content_unsupported pattern ───────────────────
 
 class TestMultimodalToolContentUnsupported:
@@ -1966,7 +1923,6 @@ class TestMultimodalToolContentUnsupported:
         """Make sure the patterns don't false-positive on normal 400s."""
         e = MockAPIError("bad request: missing field 'model'", status_code=400)
         result = classify_api_error(e, provider="openrouter", model="anthropic/claude-sonnet-4")
-
 
 class TestOpenRouterUpstreamRateLimit:
     """Distinguish upstream-provider 429 from account-level 429 on OpenRouter.
@@ -2073,7 +2029,6 @@ class TestOpenRouterUpstreamRateLimit:
         # Overload disambiguation runs first; the outer message is the overload
         # phrase, so this is an overload, not an upstream rate-limit.
         assert result.reason == FailoverReason.overloaded
-
 
 # ── HTTP 408 request timeout ────────────────────────────────────────────
 

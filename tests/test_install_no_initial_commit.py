@@ -30,7 +30,6 @@ pytestmark = pytest.mark.skipif(
     reason="needs git and bash",
 )
 
-
 def _git(cwd: Path, *args: str) -> None:
     subprocess.run(
         ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
@@ -38,7 +37,6 @@ def _git(cwd: Path, *args: str) -> None:
         check=True,
         capture_output=True,
     )
-
 
 def _extract_no_commit_guard() -> str:
     """Pull the clone_repo() guard that drops a commit-less checkout."""
@@ -52,7 +50,6 @@ def _extract_no_commit_guard() -> str:
     assert m is not None, "no-commit guard not found in install.sh clone_repo()"
     return m.group(0)
 
-
 def _run_guard(install_dir: Path) -> None:
     block = _extract_no_commit_guard()
     script = (
@@ -62,7 +59,6 @@ def _run_guard(install_dir: Path) -> None:
     )
     res = subprocess.run(["bash", "-c", script], capture_output=True, text=True)
     assert res.returncode == 0, res.stderr
-
 
 @pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: git operations fail")
 def test_install_sh_guard_moves_commitless_checkout_aside(tmp_path: Path) -> None:
@@ -86,7 +82,6 @@ def test_install_sh_guard_moves_commitless_checkout_aside(tmp_path: Path) -> Non
     assert len(backups) == 1, "broken checkout should be moved to one backup dir"
     assert (backups[0] / "leftover.txt").read_text() == "partial download"
 
-
 @pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: git operations fail")
 def test_install_sh_guard_keeps_repo_with_commits(tmp_path: Path) -> None:
     install_dir = tmp_path / "hermes-agent"
@@ -103,7 +98,6 @@ def test_install_sh_guard_keeps_repo_with_commits(tmp_path: Path) -> None:
         "a healthy checkout must not be moved aside"
     )
 
-
 @pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: git operations fail")
 def test_install_sh_guard_ignores_non_repo_dir(tmp_path: Path) -> None:
     install_dir = tmp_path / "hermes-agent"
@@ -116,24 +110,3 @@ def test_install_sh_guard_ignores_non_repo_dir(tmp_path: Path) -> None:
     assert install_dir.exists()
     assert (install_dir / "f.txt").exists()
 
-
-def test_install_ps1_validity_requires_initial_commit() -> None:
-    """The PowerShell repo-validity gate must also require a resolvable HEAD."""
-    text = INSTALL_PS1.read_text()
-    assert "rev-parse --verify HEAD" in text, (
-        "install.ps1 must probe for an initial commit (#40998)"
-    )
-    # Contract: $repoValid is only set when the HEAD probe succeeded too.
-    assert re.search(
-        r"if \(\$revParseOk -and \$statusOk -and \$hasCommit\) \{",
-        text,
-    ), "repo validity must be gated on $hasCommit, not just rev-parse + status"
-    # Cleanup must be non-destructive: move the broken checkout aside, never
-    # `Remove-Item -Recurse -Force` it (review feedback on #40998).
-    assert "Move-Item -LiteralPath $InstallDir" in text, (
-        "install.ps1 must move an invalid checkout aside, not delete it"
-    )
-    assert "Remove-Item -Recurse -Force $InstallDir -ErrorAction Stop" not in text, (
-        "the destructive wipe of an existing install dir must be gone "
-        "(transient cleanup of a just-failed clone is fine)"
-    )

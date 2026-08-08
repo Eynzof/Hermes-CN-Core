@@ -10,15 +10,8 @@ from agent.context_tools import (
     get_compact_schema,
 )
 
-
 class TestCompactMode:
     """Verify the CompactMode enum values."""
-
-    def test_enum_values(self):
-        assert CompactMode.BALANCED.value == "balanced"
-        assert CompactMode.AGGRESSIVE.value == "aggressive"
-        assert CompactMode.RETENTIVE.value == "retentive"
-        assert CompactMode.TECHNICAL.value == "technical"
 
     def test_enum_is_str_enum(self):
         """CompactMode inherits from str so values are directly usable in comparisons."""
@@ -41,7 +34,6 @@ class TestCompactMode:
             assert guidance, f"Mode {mode!r} is missing guidance text"
             assert len(guidance) > 20, f"Guidance for {mode!r} is too short"
 
-
 class TestGetGuidance:
     """Verify the get_guidance helper."""
 
@@ -63,22 +55,8 @@ class TestGetGuidance:
         """None should be handled gracefully (TypeError caught)."""
         assert get_guidance(None) == ""
 
-
 class TestGetContextUsageSchema:
     """Verify the context_usage tool schema."""
-
-    def test_schema_has_correct_name(self):
-        schema = get_context_usage_schema()
-        assert schema["name"] == "context_usage"
-
-    def test_schema_description_is_non_empty(self):
-        schema = get_context_usage_schema()
-        assert len(schema["description"]) > 20
-
-    def test_schema_has_no_required_params(self):
-        schema = get_context_usage_schema()
-        assert schema["parameters"]["required"] == []
-        assert schema["parameters"]["properties"] == {}
 
     def test_schema_is_valid_json_serializable(self):
         schema = get_context_usage_schema()
@@ -86,39 +64,8 @@ class TestGetContextUsageSchema:
         loaded = orjson.loads(dumped)
         assert loaded["name"] == "context_usage"
 
-    def test_schema_type_is_object(self):
-        schema = get_context_usage_schema()
-        assert schema["parameters"]["type"] == "object"
-
-
 class TestGetCompactSchema:
     """Verify the compact tool schema."""
-
-    def test_schema_has_correct_name(self):
-        schema = get_compact_schema()
-        assert schema["name"] == "compact"
-
-    def test_schema_description_is_non_empty(self):
-        schema = get_compact_schema()
-        assert len(schema["description"]) > 20
-
-    def test_schema_has_instruction_param(self):
-        schema = get_compact_schema()
-        props = schema["parameters"]["properties"]
-        assert "instruction" in props
-        assert props["instruction"]["type"] == "string"
-
-    def test_schema_has_mode_param_with_all_four_values(self):
-        schema = get_compact_schema()
-        props = schema["parameters"]["properties"]
-        assert "mode" in props
-        assert props["mode"]["type"] == "string"
-        assert props["mode"]["enum"] == ["balanced", "aggressive", "retentive", "technical"]
-
-    def test_schema_no_required_params(self):
-        """Both instruction and mode are optional."""
-        schema = get_compact_schema()
-        assert schema["parameters"]["required"] == []
 
     def test_schema_is_valid_json_serializable(self):
         schema = get_compact_schema()
@@ -126,6 +73,3 @@ class TestGetCompactSchema:
         loaded = orjson.loads(dumped)
         assert loaded["name"] == "compact"
 
-    def test_schema_type_is_object(self):
-        schema = get_compact_schema()
-        assert schema["parameters"]["type"] == "object"

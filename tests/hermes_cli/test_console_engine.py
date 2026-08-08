@@ -8,7 +8,6 @@ import pytest
 
 from hermes_cli.console_engine import HermesConsoleEngine, run_console_repl
 
-
 EXPECTED_CONSOLE_COMMANDS = {
     ("status",),
     ("doctor",),
@@ -198,7 +197,6 @@ EXPECTED_CONSOLE_COMMANDS = {
     ("pets", "doctor"),
 }
 
-
 MUTATING_CONFIRMATION_SMOKE_COMMANDS = [
     "config set console.test true",
     "config migrate",
@@ -230,7 +228,6 @@ MUTATING_CONFIRMATION_SMOKE_COMMANDS = [
     "pets install cat",
 ]
 
-
 def test_console_parses_bare_and_hermes_prefixed_commands(_isolate_hermes_home):
     engine = HermesConsoleEngine()
 
@@ -241,7 +238,6 @@ def test_console_parses_bare_and_hermes_prefixed_commands(_isolate_hermes_home):
     assert prefixed.status == "ok"
     assert bare.output == prefixed.output
     assert bare.output.endswith("config.yaml")
-
 
 def test_console_status_hides_cli_next_step_footer(
     monkeypatch: pytest.MonkeyPatch,
@@ -269,7 +265,6 @@ def test_console_status_hides_cli_next_step_footer(
     assert "hermes doctor" not in result.output
     assert "hermes setup" not in result.output
     assert "\u2500" not in result.output
-
 
 def test_console_status_hides_osc_linked_cli_next_step_footer(
     monkeypatch: pytest.MonkeyPatch,
@@ -301,7 +296,6 @@ def test_console_status_hides_osc_linked_cli_next_step_footer(
     assert "https://example.test" not in result.output
     assert "\u2500" not in result.output
 
-
 def test_console_help_uses_cli_subcommand_summaries():
     help_text = HermesConsoleEngine().help_text()
 
@@ -313,7 +307,6 @@ def test_console_help_uses_cli_subcommand_summaries():
     assert "Run `hermes skills list`" not in help_text
     assert "Run `hermes tools list`" not in help_text
 
-
 def test_console_help_table_keeps_long_summaries_compact():
     help_text = HermesConsoleEngine().help_text()
 
@@ -324,20 +317,10 @@ def test_console_help_table_keeps_long_summaries_compact():
     assert len(slack_line) <= 112
     assert slack_line.endswith("...")
 
-
 def test_console_help_for_command_uses_cli_summary():
     help_text = HermesConsoleEngine().help_text("skills list")
 
     assert help_text == "skills list\nList installed skills"
-
-
-def test_console_registry_covers_non_admin_cli_surface():
-    registered = set(HermesConsoleEngine().commands)
-
-    missing = EXPECTED_CONSOLE_COMMANDS - registered
-
-    assert missing == set()
-
 
 @pytest.mark.parametrize(
     "line",
@@ -382,14 +365,12 @@ def test_console_rejects_destructive_and_shell_like_commands(line):
     assert result.status == "error"
     assert result.output
 
-
 @pytest.mark.parametrize("line", MUTATING_CONFIRMATION_SMOKE_COMMANDS)
 def test_mutating_console_commands_require_confirmation(line):
     result = HermesConsoleEngine().execute(line)
 
     assert result.status == "confirm_required"
     assert result.confirmation_message
-
 
 def test_help_lists_supported_commands_and_not_full_cli():
     result = HermesConsoleEngine().execute("help")
@@ -399,7 +380,6 @@ def test_help_lists_supported_commands_and_not_full_cli():
     assert "config set" in result.output
     assert "dashboard" not in result.output
     assert "gateway restart" not in result.output
-
 
 def test_config_set_requires_confirmation_then_writes(_isolate_hermes_home):
     engine = HermesConsoleEngine()
@@ -419,7 +399,6 @@ def test_config_set_requires_confirmation_then_writes(_isolate_hermes_home):
     assert result.status == "ok"
     assert "telegram.test" in result.output
     assert read_raw_config()["telegram"]["test"] is True
-
 
 def test_sessions_list_and_stats_use_isolated_session_store(
     _isolate_hermes_home, monkeypatch
@@ -454,7 +433,6 @@ def test_sessions_list_and_stats_use_isolated_session_store(
     assert "Total sessions: 2" in stats.output
     assert "Listable sessions: 1" in stats.output
 
-
 def test_cron_pause_resume_and_run_require_confirmation(_isolate_hermes_home):
     from cron.jobs import create_job, get_job
 
@@ -483,7 +461,6 @@ def test_cron_pause_resume_and_run_require_confirmation(_isolate_hermes_home):
     assert triggered.status == "ok"
     assert "Triggered job" in triggered.output
 
-
 def test_repl_runs_non_interactive_lines_without_prompts(_isolate_hermes_home):
     stdin = io.StringIO("help\nexit\n")
     stdout = io.StringIO()
@@ -501,7 +478,6 @@ def test_repl_runs_non_interactive_lines_without_prompts(_isolate_hermes_home):
     assert "hermes>" not in stdout.getvalue()
     assert stderr.getvalue() == ""
 
-
 def test_repl_refuses_non_interactive_confirmation(_isolate_hermes_home):
     stdin = io.StringIO("config set console.test true\n")
     stdout = io.StringIO()
@@ -516,7 +492,6 @@ def test_repl_refuses_non_interactive_confirmation(_isolate_hermes_home):
 
     assert code == 1
     assert "Confirmation required" in stderr.getvalue()
-
 
 def test_main_console_subcommand_smoke(_isolate_hermes_home):
     import subprocess

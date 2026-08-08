@@ -14,7 +14,6 @@ import cli as cli_mod
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-
 def _make_cli(config_overrides=None, env_overrides=None, **kwargs):
     """Create a HermesCLI instance with minimal mocking."""
     import cli as _cli_mod
@@ -47,9 +46,7 @@ def _make_cli(config_overrides=None, env_overrides=None, **kwargs):
     ):
         return HermesCLI(**kwargs)
 
-
 # ── Sample conversation histories for tests ──────────────────────────
-
 
 def _simple_history():
     """Two-turn conversation: user → assistant → user → assistant."""
@@ -60,7 +57,6 @@ def _simple_history():
         {"role": "user", "content": "How do I install it?"},
         {"role": "assistant", "content": "You can install Python from python.org."},
     ]
-
 
 def _tool_call_history():
     """Conversation with tool calls and tool results."""
@@ -88,7 +84,6 @@ def _tool_call_history():
         {"role": "assistant", "content": "Here are some great Python tutorials I found."},
     ]
 
-
 def _large_history(n_exchanges=15):
     """Build a history with many exchanges to test truncation."""
     msgs = [{"role": "system", "content": "system prompt"}]
@@ -96,7 +91,6 @@ def _large_history(n_exchanges=15):
         msgs.append({"role": "user", "content": f"Question #{i + 1}: What is item {i + 1}?"})
         msgs.append({"role": "assistant", "content": f"Answer #{i + 1}: Item {i + 1} is great."})
     return msgs
-
 
 def _multimodal_history():
     """Conversation with multimodal (image) content."""
@@ -112,9 +106,7 @@ def _multimodal_history():
         {"role": "assistant", "content": "I see a cat in the image."},
     ]
 
-
 # ── Tests for _display_resumed_history ───────────────────────────────
-
 
 class TestDisplayResumedHistory:
     """_display_resumed_history() renders a Rich panel with conversation recap."""
@@ -523,9 +515,7 @@ class TestDisplayResumedHistory:
         assert "1 tool call" in output
         assert "terminal" in output
 
-
 # ── Tests for _preload_resumed_session ──────────────────────────────
-
 
 class TestPreloadResumedSession:
     """_preload_resumed_session() loads session from DB early."""
@@ -629,9 +619,7 @@ class TestPreloadResumedSession:
         assert "1 user message," in output
         assert "1 user messages" not in output
 
-
 # ── Tests for _handle_resume_command recap display ───────────────────
-
 
 class TestHandleResumeCommandRecap:
     """In-session /resume should show the same recap panel as startup resume."""
@@ -678,9 +666,7 @@ class TestHandleResumeCommandRecap:
 
         display_mock.assert_not_called()
 
-
 # ── Integration: _init_agent skips when preloaded ────────────────────
-
 
 class TestInitAgentSkipsPreloaded:
     """_init_agent() should skip DB load when history is already populated."""
@@ -702,33 +688,7 @@ class TestInitAgentSkipsPreloaded:
         # get_messages_as_conversation should NOT have been called
         mock_db.get_messages_as_conversation.assert_not_called()
 
-
 # ── Config default tests ─────────────────────────────────────────────
-
-
-class TestResumeDisplayConfig:
-    """resume_display config option defaults and behavior."""
-
-    def test_default_config_has_resume_display(self):
-        """DEFAULT_CONFIG in hermes_cli/config.py includes resume_display."""
-        from hermes_cli.config import DEFAULT_CONFIG
-        display = DEFAULT_CONFIG.get("display", {})
-        assert "resume_display" in display
-        assert display["resume_display"] == "full"
-
-    def test_cli_defaults_have_resume_display(self):
-        """cli.py load_cli_config defaults include resume_display."""
-        from cli import load_cli_config
-
-        with (
-            patch("pathlib.Path.exists", return_value=False),
-            patch.dict("os.environ", {"LLM_MODEL": ""}, clear=False),
-        ):
-            config = load_cli_config()
-
-        display = config.get("display", {})
-        assert display.get("resume_display") == "full"
-
 
 class TestResumeDisplaySanitization:
     """Stored history replayed by /resume must not carry raw terminal

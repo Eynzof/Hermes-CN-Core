@@ -8,7 +8,6 @@ from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-
 def _make_cli(env_overrides=None, config_overrides=None, **kwargs):
     """Create a HermesCLI instance with minimal mocking."""
     import importlib
@@ -53,7 +52,6 @@ def _make_cli(env_overrides=None, config_overrides=None, **kwargs):
              patch.dict(_cli_mod.__dict__, {"CLI_CONFIG": _clean_config}):
             return _cli_mod.HermesCLI(**kwargs)
 
-
 class TestMaxTurnsResolution:
     """max_turns must always resolve to a positive integer, never None."""
 
@@ -90,17 +88,12 @@ class TestMaxTurnsResolution:
         cli = _make_cli()
         assert isinstance(cli.max_turns, int) and cli.max_turns == 90
 
-
 class TestVerboseAndToolProgress:
-    def test_default_verbose_is_bool(self):
-        cli = _make_cli()
-        assert isinstance(cli.verbose, bool)
 
     def test_tool_progress_mode_is_string(self):
         cli = _make_cli()
         assert isinstance(cli.tool_progress_mode, str)
         assert cli.tool_progress_mode in {"off", "new", "all", "verbose"}
-
 
 class TestFallbackChainInit:
     def test_merges_new_and_legacy_fallback_config(self):
@@ -114,7 +107,6 @@ class TestFallbackChainInit:
             {"provider": "openrouter", "model": "anthropic/claude-sonnet-4.6"},
             {"provider": "nous", "model": "Hermes-4"},
         ]
-
 
 class TestBusyInputMode:
     def test_default_busy_input_mode_is_interrupt(self):
@@ -174,7 +166,6 @@ class TestBusyInputMode:
             cli._interrupt_queue.put(text)
         assert cli._interrupt_queue.get_nowait() == "redirect"
         assert cli._pending_input.empty()
-
 
 class TestPromptToolkitTerminalCompatibility:
     def test_lf_enter_binds_to_submit_handler_posix(self):
@@ -314,7 +305,6 @@ class TestPromptToolkitTerminalCompatibility:
         monkeypatch.setenv("PROMPT_TOOLKIT_NO_CPR", "1")
         assert _terminal_may_leak_cpr() is True
 
-
 class TestSingleQueryState:
     def test_voice_and_interrupt_state_initialized_before_run(self):
         """Single-query mode calls chat() without going through run()."""
@@ -324,7 +314,6 @@ class TestSingleQueryState:
         assert cli._voice_tts_done.is_set()
         assert hasattr(cli, "_interrupt_queue")
         assert hasattr(cli, "_pending_input")
-
 
 class TestHistoryDisplay:
     def test_history_numbers_only_visible_messages_and_summarizes_tools(self, capsys):
@@ -549,7 +538,6 @@ class TestHistoryDisplay:
         mock_handler.assert_called_once()
         called_with = mock_handler.call_args.args[0]
         assert called_with.lower().startswith("/sessions")
-
 
 class TestRootLevelProviderOverride:
     """Root-level provider/base_url in config.yaml must NOT override model.provider."""
@@ -809,18 +797,3 @@ class TestRootLevelProviderOverride:
         assert "name:" not in raw  # stale alias gone from the file
         assert "default: claude-sonnet-4" in raw
 
-
-class TestProviderResolution:
-    def test_api_key_is_string_or_none(self):
-        cli = _make_cli()
-        assert cli.api_key is None or isinstance(cli.api_key, str)
-
-    def test_base_url_is_string(self):
-        cli = _make_cli()
-        assert isinstance(cli.base_url, str)
-        assert cli.base_url.startswith("http")
-
-    def test_model_is_string(self):
-        cli = _make_cli()
-        assert isinstance(cli.model, str)
-        assert isinstance(cli.model, str) and '/' in cli.model

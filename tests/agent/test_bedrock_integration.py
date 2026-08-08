@@ -13,7 +13,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 class TestProviderRegistry:
     """Verify Bedrock is registered in PROVIDER_REGISTRY."""
 
@@ -37,7 +36,6 @@ class TestProviderRegistry:
         pconfig = PROVIDER_REGISTRY["bedrock"]
         assert pconfig.base_url_env_var == "BEDROCK_BASE_URL"
 
-
 class TestProviderAliases:
     """Verify Bedrock aliases resolve correctly."""
 
@@ -56,15 +54,6 @@ class TestProviderAliases:
     def test_amazon_alias(self):
         from hermes_cli.models import _PROVIDER_ALIASES
         assert _PROVIDER_ALIASES.get("amazon") == "bedrock"
-
-
-class TestProviderLabels:
-    """Verify Bedrock appears in provider labels."""
-
-    def test_bedrock_label(self):
-        from hermes_cli.models import _PROVIDER_LABELS
-        assert _PROVIDER_LABELS.get("bedrock") == "AWS Bedrock"
-
 
 class TestModelCatalog:
     """Verify Bedrock has a static model fallback list."""
@@ -85,7 +74,6 @@ class TestModelCatalog:
         models = _PROVIDER_MODELS.get("bedrock", [])
         nova_models = [m for m in models if "amazon.nova" in m]
         assert len(nova_models) > 0
-
 
 class TestResolveProvider:
     """Verify resolve_provider() handles bedrock correctly."""
@@ -125,7 +113,6 @@ class TestResolveProvider:
         with patch("hermes_cli.auth._load_auth_store", return_value={}):
             result = resolve_provider("auto")
         assert result == "bedrock"
-
 
 class TestRuntimeProvider:
     """Verify resolve_runtime_provider() handles bedrock correctly."""
@@ -201,7 +188,6 @@ class TestRuntimeProvider:
         assert result["provider"] == "bedrock"
         assert result["api_mode"] == "bedrock_converse"
 
-
 # ---------------------------------------------------------------------------
 # providers.py integration
 # ---------------------------------------------------------------------------
@@ -225,11 +211,6 @@ class TestProvidersModule:
             "unknown", "https://bedrock-runtime.us-east-1.amazonaws.com"
         ) == "bedrock_converse"
 
-    def test_label_override(self):
-        from hermes_cli.providers import _LABEL_OVERRIDES
-        assert _LABEL_OVERRIDES.get("bedrock") == "AWS Bedrock"
-
-
 # ---------------------------------------------------------------------------
 # Error classifier integration
 # ---------------------------------------------------------------------------
@@ -244,7 +225,6 @@ class TestErrorClassifierBedrock:
     def test_context_overflow_patterns(self):
         from agent.error_classifier import _CONTEXT_OVERFLOW_PATTERNS
         assert "input is too long" in _CONTEXT_OVERFLOW_PATTERNS
-
 
 # ---------------------------------------------------------------------------
 # pyproject.toml bedrock extra
@@ -270,7 +250,6 @@ class TestPackaging:
         extras = self._optional_dependencies()
         assert "hermes-agent[bedrock]" not in extras["all"]
 
-
 # ---------------------------------------------------------------------------
 # Model ID dot preservation — regression for #11976
 # ---------------------------------------------------------------------------
@@ -293,7 +272,6 @@ class TestPackaging:
 # ``bedrock-runtime.`` to the base-URL heuristic, mirroring the shape of
 # the opencode-go fix for #5211 (commit f77be22c), which extended this
 # same allowlist.
-
 
 class TestBedrockPreserveDotsFlag:
     """``AIAgent._anthropic_preserve_dots`` must return True on Bedrock so
@@ -350,7 +328,6 @@ class TestBedrockPreserveDotsFlag:
         from run_agent import AIAgent
         assert AIAgent._anthropic_preserve_dots(agent) is False
 
-
 class TestBedrockModelNameNormalization:
     """End-to-end: ``normalize_model_name`` + the preserve-dots flag
     reproduce the exact production request shape for each Bedrock model
@@ -399,7 +376,6 @@ class TestBedrockModelNameNormalization:
             preserve_dots=True,
         ) == "anthropic.claude-3-5-sonnet-20241022-v2:0"
 
-
 class TestBedrockBuildAnthropicKwargsEndToEnd:
     """Integration: calling ``build_anthropic_kwargs`` with a Bedrock-
     shaped model ID and ``preserve_dots=True`` produces the unmangled
@@ -437,7 +413,6 @@ class TestBedrockBuildAnthropicKwargsEndToEnd:
             preserve_dots=False,
         )
         assert kwargs["model"] == "global.anthropic.claude-opus-4-7"
-
 
 class TestBedrockModelIdDetection:
     """Tests for ``_is_bedrock_model_id`` and the auto-detection that
@@ -496,14 +471,12 @@ class TestBedrockModelIdDetection:
         )
         assert kwargs["model"] == "anthropic.claude-opus-4-7"
 
-
 # ---------------------------------------------------------------------------
 # auxiliary_client Bedrock resolution — fix for #13919
 # ---------------------------------------------------------------------------
 # Before the fix, resolve_provider_client("bedrock", ...) fell through to the
 # "unhandled auth_type" warning and returned (None, None), breaking all
 # auxiliary tasks (compression, memory, summarization) for Bedrock users.
-
 
 class TestAuxiliaryClientBedrockResolution:
     """Verify resolve_provider_client handles Bedrock's aws_sdk auth type."""

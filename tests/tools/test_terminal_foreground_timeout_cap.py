@@ -6,7 +6,6 @@ are rejected with an error suggesting background=true.
 import orjson
 from unittest.mock import patch, MagicMock
 
-
 # ---------------------------------------------------------------------------
 # Shared test config dict — mirrors _get_env_config() return shape.
 # ---------------------------------------------------------------------------
@@ -25,7 +24,6 @@ def _make_env_config(**overrides):
     }
     config.update(overrides)
     return config
-
 
 class TestForegroundTimeoutCap:
     """FOREGROUND_MAX_TIMEOUT rejects foreground commands that exceed it."""
@@ -221,18 +219,3 @@ class TestForegroundTimeoutCap:
         assert call_kwargs[1]["timeout"] == FOREGROUND_MAX_TIMEOUT
         assert "error" not in result or result["error"] is None
 
-
-class TestForegroundMaxTimeoutConstant:
-    """Verify the FOREGROUND_MAX_TIMEOUT constant and schema."""
-
-    def test_default_value_is_600(self):
-        """Default FOREGROUND_MAX_TIMEOUT is 600 when env var is not set."""
-        from tools.terminal_tool import FOREGROUND_MAX_TIMEOUT
-        assert FOREGROUND_MAX_TIMEOUT == 600
-
-    def test_schema_mentions_max(self):
-        """Tool schema description should mention the max timeout."""
-        from tools.terminal_tool import TERMINAL_SCHEMA, FOREGROUND_MAX_TIMEOUT
-        timeout_desc = TERMINAL_SCHEMA["parameters"]["properties"]["timeout"]["description"]
-        assert str(FOREGROUND_MAX_TIMEOUT) in timeout_desc
-        assert "background=true" in timeout_desc

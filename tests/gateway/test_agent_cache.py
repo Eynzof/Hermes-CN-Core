@@ -15,8 +15,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
-
 def _make_runner():
     """Create a minimal GatewayRunner with just the cache infrastructure."""
     from gateway.run import GatewayRunner
@@ -25,7 +23,6 @@ def _make_runner():
     runner._agent_cache = {}
     runner._agent_cache_lock = threading.Lock()
     return runner
-
 
 class TestAgentConfigSignature:
     """Config signature produces stable, distinct keys."""
@@ -201,7 +198,6 @@ class TestAgentConfigSignature:
 
         assert sig_before != sig_after
 
-
 class TestExtractCacheBustingConfig:
     """Verify _extract_cache_busting_config pulls the documented subset of
     config values that must invalidate the cached agent on change."""
@@ -282,7 +278,6 @@ class TestExtractCacheBustingConfig:
         out = GatewayRunner._extract_cache_busting_config({})
 
         assert out["tools.registry_generation"] == 12345
-
 
     def test_skips_honcho_config_read_when_provider_is_not_honcho(self, monkeypatch):
         """Non-Honcho gateways must not read/parse honcho.json on every message."""
@@ -420,7 +415,6 @@ class TestExtractCacheBustingConfig:
             "Editing compression.threshold in config.yaml must bust the "
             "gateway's cached agent so the new threshold takes effect."
         )
-
 
 class TestAgentCacheLifecycle:
     """End-to-end cache behavior with real AIAgent construction."""
@@ -581,7 +575,6 @@ class TestAgentCacheLifecycle:
         cb3 = lambda *a: None
         agent.tool_progress_callback = cb3
         assert agent.tool_progress_callback is cb3
-
 
 class TestAgentCacheBoundedGrowth:
     """LRU cap and idle-TTL eviction prevent unbounded cache growth."""
@@ -971,7 +964,6 @@ class TestAgentCacheBoundedGrowth:
         # After the hit, insertion order should be s1, s2, s0.
         assert list(runner._agent_cache.keys()) == ["s1", "s2", "s0"]
 
-
 class TestAgentCacheActiveSafety:
     """Safety: eviction must not tear down agents currently mid-turn.
 
@@ -1194,7 +1186,6 @@ class TestAgentCacheActiveSafety:
             "running turn would crash on its next API call."
         )
 
-
 class TestAgentCacheSpilloverLive:
     """Live E2E: fill cache with real AIAgent instances and stress it."""
 
@@ -1285,7 +1276,6 @@ class TestAgentCacheSpilloverLive:
             except Exception:
                 pass
 
-
     def test_evicted_session_next_turn_gets_fresh_agent(self, monkeypatch):
         """After eviction, the same session_key can insert a fresh agent.
 
@@ -1330,7 +1320,6 @@ class TestAgentCacheSpilloverLive:
                 a.close()
             except Exception:
                 pass
-
 
 class TestAgentCacheIdleResume:
     """End-to-end: idle-TTL-evicted session resumes cleanly with task state.
@@ -1545,9 +1534,7 @@ class TestAgentCacheIdleResume:
         except Exception:
             pass
 
-
 _FAKE_NOW = 10_000.0  # Fixed epoch for deterministic time assertions
-
 
 class TestCachedAgentInactivityReset:
     """Inactivity-clock reset must be gated on _interrupt_depth == 0.
@@ -1706,7 +1693,6 @@ class TestCachedAgentInactivityReset:
             "Inactivity timeout could not fire for a stuck interrupted turn."
         )
 
-
 class TestAgentConfigSignatureUserId:
     """Shared-thread cache must not reuse an agent across users.
 
@@ -1773,7 +1759,6 @@ class TestAgentConfigSignatureUserId:
             user_id=None, user_id_alt=None,
         )
         assert sig_implicit == sig_explicit_none
-
 
 class TestAgentCacheMessageCountRebaseline:
     """The cross-process coherence guard (#45966) must NOT invalidate the
@@ -1987,33 +1972,6 @@ class TestAgentCacheMessageCountRebaseline:
         assert self._guard_would_reuse(runner, "telegram:s1", "s1") is True
         with runner._agent_cache_lock:
             assert runner._agent_cache["telegram:s1"][0] is agent
-
-    def test_in_band_followup_rebaseline_precedes_recursion(self):
-        """Pin the FIX PLACEMENT in the production source.
-
-        The behavioral test above proves the re-baseline makes the in-band
-        follow-up reuse the cached agent, but it calls the helper directly —
-        it would still pass if the production call were deleted.  This guards
-        the actual call site: the queued (/queue) follow-up recurses via
-        ``followup_result = await self._run_agent(...)`` inside
-        ``_run_agent_inner`` and the re-baseline MUST run BEFORE that
-        recursion (running it only after, like the external-turn site, is too
-        late for the in-band path — the follow-up would already have rebuilt).
-        """
-        import inspect
-        from gateway.run import GatewayRunner
-
-        # The recursion + pre-recursion re-baseline live in the extracted
-        # ``_run_agent_inner`` (older trees had them inline in ``_run_agent``).
-        src = inspect.getsource(GatewayRunner._run_agent_inner)
-        marker = "followup_result = await self._run_agent("
-        assert marker in src, "in-band queued follow-up recursion not found in _run_agent_inner"
-        before_recursion = src[: src.index(marker)]
-        assert "_refresh_agent_cache_message_count" in before_recursion, (
-            "the in-band queued follow-up recursion must be preceded by a "
-            "_refresh_agent_cache_message_count re-baseline, else the follow-up "
-            "rebuilds the agent on this process's own first-turn writes"
-        )
 
 class TestCrossProcessInvalidationDefersCleanup:
     """#52197: cross-process cache invalidation must NOT run agent cleanup

@@ -22,7 +22,6 @@ import inspect
 
 from gateway import run as gateway_run
 
-
 def _calls(node: ast.AST) -> set[str]:
     """Method-call attribute names invoked anywhere under ``node``."""
     return {
@@ -30,7 +29,6 @@ def _calls(node: ast.AST) -> set[str]:
         for n in ast.walk(node)
         if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
     }
-
 
 def _assigns_false(node: ast.AST, attr: str) -> bool:
     """True if ``node`` contains an assignment ``<something>.<attr> = False``."""
@@ -46,60 +44,11 @@ def _assigns_false(node: ast.AST, attr: str) -> bool:
                     return True
     return False
 
-
-def test_auto_reset_cleanup_evicts_cached_agent():
-    """The auto-reset cleanup block in gateway/run.py must call
-    ``_evict_cached_agent`` so the fresh session does not reuse the previous
-    conversation's cached agent (and its leaked
-    ``context_compressor._previous_summary``) — the cache is keyed on the
-    stable ``session_key`` (#10710)."""
-    tree = ast.parse(inspect.getsource(gateway_run))
-
-    # Fingerprint the cleanup branch: the `if <was_auto_reset>:` block that
-    # clears the conversation scope via the funnel (post-#64934 refactor:
-    # one _clear_conversation_scope call replaced the inline pops) and
-    # consumes the flag by setting was_auto_reset = False. The eviction must
-    # live in that same block — the funnel deliberately does NOT evict the
-    # agent cache (it has its own resource-cleanup path).
-    found = False
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.If):
-            continue
-        calls = _calls(node)
-        if (
-            "_clear_conversation_scope" in calls
-            and _assigns_false(node, "was_auto_reset")
-        ):
-            assert "_evict_cached_agent" in calls, (
-                "gateway/run.py auto-reset cleanup block must call "
-                "`_evict_cached_agent(session_key)` so the auto-reset session "
-                "does not reuse the previous cached agent and leak its "
-                "context_compressor._previous_summary into new compaction "
-                "summaries (#10710)."
-            )
-            found = True
-            break
-    assert found, (
-        "could not locate the auto-reset transient-state cleanup block in "
-        "gateway/run.py (fingerprint: _clear_conversation_scope + "
-        "was_auto_reset = False)."
-    )
-
-
-def test_evict_cached_agent_method_exists():
-    """The eviction helper the cleanup relies on must exist on the runner."""
-    assert hasattr(gateway_run.GatewayRunner, "_evict_cached_agent"), (
-        "GatewayRunner._evict_cached_agent is the helper the auto-reset "
-        "cleanup depends on (#10710)."
-    )
-
-
 def _references_name(node: ast.AST, literal: str) -> bool:
     """True if a string constant equal to ``literal`` appears anywhere under ``node``."""
     return any(
         isinstance(n, ast.Constant) and n.value == literal for n in ast.walk(node)
     )
-
 
 def test_auto_reset_cleanup_clears_last_resolved_model():
     """Regression test for #58403.

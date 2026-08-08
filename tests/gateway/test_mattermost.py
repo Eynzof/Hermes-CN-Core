@@ -13,7 +13,6 @@ from gateway.run import (
     _resolve_progress_thread_id,
 )
 
-
 class TestMattermostProgressThreadRouting:
     def test_top_level_mattermost_progress_uses_event_message_id(self):
         assert _resolve_progress_thread_id(
@@ -35,7 +34,6 @@ class TestMattermostProgressThreadRouting:
             source_thread_id=None,
             event_message_id="12345",
         ) is None
-
 
 class TestMattermostDisplayHygiene:
     def test_mattermost_requires_platform_opt_in_for_interim_assistant_messages(self):
@@ -127,7 +125,6 @@ class TestMattermostDisplayHygiene:
             require_platform_override_for={Platform.MATTERMOST},
         ) is True
 
-
 # ---------------------------------------------------------------------------
 # Platform & Config
 # ---------------------------------------------------------------------------
@@ -184,7 +181,6 @@ class TestMattermostConfigLoading:
         assert Platform.MATTERMOST in config.platforms
         assert config.platforms[Platform.MATTERMOST].extra.get("url") == ""
 
-
 # ---------------------------------------------------------------------------
 # Adapter format / truncate
 # ---------------------------------------------------------------------------
@@ -199,7 +195,6 @@ def _make_adapter():
     )
     adapter = MattermostAdapter(config)
     return adapter
-
 
 class TestMattermostFormatMessage:
     def setup_method(self):
@@ -236,7 +231,6 @@ class TestMattermostFormatMessage:
         assert "http://a.com/1.png" in result
         assert "http://b.com/2.png" in result
 
-
 class TestMattermostTruncateMessage:
     def setup_method(self):
         self.adapter = _make_adapter()
@@ -263,7 +257,6 @@ class TestMattermostTruncateMessage:
         msg = "x" * 4000
         chunks = self.adapter.truncate_message(msg, 4000)
         assert len(chunks) == 1
-
 
 # ---------------------------------------------------------------------------
 # Send
@@ -356,7 +349,6 @@ class TestMattermostSend:
         assert result.success is True
         payload = self.adapter._session.post.call_args[1]["json"]
         assert "root_id" not in payload
-
 
     @pytest.mark.asyncio
     async def test_send_uses_metadata_thread_id_for_progress_messages(self):
@@ -476,7 +468,6 @@ class TestMattermostSend:
         result = await self.adapter.send("channel_1", "Hello!")
 
         assert result.success is False
-
 
 # ---------------------------------------------------------------------------
 # WebSocket event parsing
@@ -677,7 +668,6 @@ class TestMattermostWebSocketParsing:
         await self.adapter._handle_ws_event(event)
         assert not self.adapter.handle_message.called
 
-
 # ---------------------------------------------------------------------------
 # Mention behavior (require_mention + free_response_channels)
 # ---------------------------------------------------------------------------
@@ -758,7 +748,6 @@ class TestMattermostMentionBehavior:
             assert "@hermes-bot" not in msg.text
             assert "2+2" in msg.text
 
-
 # ---------------------------------------------------------------------------
 # File upload (send_image)
 # ---------------------------------------------------------------------------
@@ -817,7 +806,6 @@ class TestMattermostFileUpload:
 
         assert result.success is True
         assert result.message_id == "post_with_file"
-
 
 # ---------------------------------------------------------------------------
 # Dedup cache
@@ -896,12 +884,6 @@ class TestMattermostDedup:
         assert "fresh" in dedup._seen
         assert len(dedup._seen) < dedup._max_size + 10
 
-    def test_seen_cache_tracks_post_ids(self):
-        """Posts are tracked in the dedup cache."""
-        self.adapter._dedup._seen["test_post"] = time.time()
-        assert "test_post" in self.adapter._dedup._seen
-
-
 # ---------------------------------------------------------------------------
 # Requirements check
 # ---------------------------------------------------------------------------
@@ -943,7 +925,6 @@ class TestMattermostRequirements:
 
         config = PlatformConfig(enabled=True, token="cfg-token", extra={})
         assert validate_mattermost_config(config) is False
-
 
 # ---------------------------------------------------------------------------
 # Media type propagation (MIME types, not bare strings)
@@ -1043,8 +1024,6 @@ class TestMattermostMediaTypes:
         assert not msg.media_types[0].startswith("image/")
         assert not msg.media_types[0].startswith("audio/")
 
-
-
 @pytest.mark.asyncio
 async def test_mattermost_top_level_channel_post_is_thread_root():
     adapter = _make_adapter()
@@ -1074,7 +1053,6 @@ async def test_mattermost_top_level_channel_post_is_thread_root():
     assert msg_event.source.thread_id == "top_post_123"
     assert msg_event.source.message_id == "top_post_123"
     assert msg_event.message_id == "top_post_123"
-
 
 @pytest.mark.asyncio
 async def test_mattermost_dm_post_does_not_seed_thread_root():

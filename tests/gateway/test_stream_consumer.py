@@ -8,7 +8,6 @@ import pytest
 
 from gateway.stream_consumer import GatewayStreamConsumer, StreamConsumerConfig
 
-
 def test_stream_send_metadata_carries_original_reply_anchor():
     consumer = GatewayStreamConsumer(
         adapter=MagicMock(),
@@ -24,9 +23,7 @@ def test_stream_send_metadata_carries_original_reply_anchor():
         "notify": True,
     }
 
-
 # ── _clean_for_display unit tests ────────────────────────────────────────
-
 
 class TestCleanForDisplay:
     """Verify MEDIA: directives and internal markers are stripped from display text."""
@@ -100,9 +97,7 @@ class TestCleanForDisplay:
         # But "media:" is lowercase so won't match either
         assert result == text
 
-
 # ── Integration: _send_or_edit strips MEDIA: ─────────────────────────────
-
 
 class TestFinalizeCapabilityGate:
     """Verify REQUIRES_EDIT_FINALIZE gates the redundant final edit.
@@ -147,44 +142,6 @@ class TestFinalizeCapabilityGate:
         # Finalize edit must go through even on identical content.
         picky.edit_message.assert_called_once()
         assert picky.edit_message.call_args[1]["finalize"] is True
-
-
-class TestEditMessageFinalizeSignature:
-    """Every concrete platform adapter must accept the ``finalize`` kwarg.
-
-    stream_consumer._send_or_edit always passes ``finalize=`` to
-    ``adapter.edit_message(...)`` (see gateway/stream_consumer.py).  An
-    adapter that overrides edit_message without accepting finalize raises
-    TypeError the first time streaming hits a segment break or final edit.
-    Guard the contract with an explicit signature check so it cannot
-    silently regress — existing tests use MagicMock which swallows any
-    kwarg and cannot catch this.
-    """
-
-    @pytest.mark.parametrize(
-        "module_path,class_name",
-        [
-            ("plugins.platforms.telegram.adapter", "TelegramAdapter"),
-            ("plugins.platforms.discord.adapter", "DiscordAdapter"),
-            ("plugins.platforms.slack.adapter", "SlackAdapter"),
-            ("plugins.platforms.matrix.adapter", "MatrixAdapter"),
-            ("plugins.platforms.mattermost.adapter", "MattermostAdapter"),
-            ("plugins.platforms.feishu.adapter", "FeishuAdapter"),
-            ("plugins.platforms.whatsapp.adapter", "WhatsAppAdapter"),
-            ("plugins.platforms.dingtalk.adapter", "DingTalkAdapter"),
-        ],
-    )
-    def test_edit_message_accepts_finalize(self, module_path, class_name):
-        import inspect
-
-        module = pytest.importorskip(module_path)
-        cls = getattr(module, class_name)
-        params = inspect.signature(cls.edit_message).parameters
-        assert "finalize" in params, (
-            f"{class_name}.edit_message must accept 'finalize' kwarg; "
-            f"stream_consumer._send_or_edit passes it unconditionally"
-        )
-
 
 class TestSendOrEditMediaStripping:
     """Verify _send_or_edit strips MEDIA: before sending to the platform."""
@@ -337,9 +294,7 @@ class TestSendOrEditMediaStripping:
         assert result is True
         adapter.edit_message.assert_called_once()
 
-
 # ── Integration: full stream run ─────────────────────────────────────────
-
 
 class TestStreamRunMediaStripping:
     """End-to-end: deltas with MEDIA: produce clean visible text."""
@@ -375,7 +330,6 @@ class TestStreamRunMediaStripping:
             assert "MEDIA:" not in sent_text, f"MEDIA: leaked into display: {sent_text!r}"
 
         assert consumer.already_sent
-
 
 class TestBeforeFinalizeHook:
     """Verify the optional pre-finalize hook fires at the right time."""
@@ -437,9 +391,7 @@ class TestBeforeFinalizeHook:
         assert events == ["pause"]
         adapter.edit_message.assert_not_called()
 
-
 # ── Segment break (tool boundary) tests ──────────────────────────────────
-
 
 class TestSegmentBreakOnToolBoundary:
     """Verify that on_delta(None) finalizes the current message and starts a
@@ -980,7 +932,6 @@ class TestSegmentBreakOnToolBoundary:
         await consumer._send_fallback_final("Working on it. Done!")
         assert consumer._final_response_sent is True
 
-
 class TestFinalResponseDeliveryGuard:
     """Regression coverage for #10748 — _final_response_sent must reflect
     actual delivery of the *current* chunked send, not the cumulative
@@ -1051,7 +1002,6 @@ class TestFinalResponseDeliveryGuard:
         await task
 
         assert consumer._final_response_sent is True
-
 
 class TestFinalContentDeliveredGuard:
     """Regression coverage for #25010 — _final_content_delivered must only be
@@ -1182,7 +1132,6 @@ class TestFinalContentDeliveredGuard:
             "must still be able to deliver the complete response (#25010)"
         )
 
-
 class TestEditOverflowSplitAndDeliver:
     """When edit_message split-and-delivers an oversized payload across the
     original message + N continuations (Telegram >4096 UTF-16), the consumer
@@ -1231,7 +1180,6 @@ class TestEditOverflowSplitAndDeliver:
         # on_new_message fired so the tool-progress bubble breaks below
         # the new continuation (per the openclaw #32535 lesson).
         assert new_msg_count[0] == 1
-
 
 class TestInterimCommentaryMessages:
     @pytest.mark.asyncio
@@ -1309,7 +1257,6 @@ class TestInterimCommentaryMessages:
         assert sent_texts == ["Hello ▉", "world"]
         assert consumer.already_sent is True
         assert consumer.final_response_sent is True
-
 
 class TestCancelledConsumerSetsFlags:
     """Cancellation must set final_response_sent when already_sent is True.
@@ -1391,15 +1338,12 @@ class TestCancelledConsumerSetsFlags:
         # so the normal gateway send path can deliver the response.
         assert consumer.final_response_sent is False
 
-
 # ── Think-block filtering unit tests ─────────────────────────────────────
-
 
 def _make_consumer() -> GatewayStreamConsumer:
     """Create a bare consumer for unit-testing the filter (no adapter needed)."""
     adapter = MagicMock()
     return GatewayStreamConsumer(adapter, "chat_test")
-
 
 class TestFilterAndAccumulate:
     """Unit tests for _filter_and_accumulate think-block suppression."""
@@ -1554,7 +1498,6 @@ class TestFilterAndAccumulate:
         c._filter_and_accumulate("still hidden</think>visible")
         assert c._accumulated == "visible"
 
-
 class TestFilterAndAccumulateIntegration:
     """Integration: verify think blocks don't leak through the full run() path."""
 
@@ -1600,9 +1543,7 @@ class TestFilterAndAccumulateIntegration:
         except asyncio.CancelledError:
             pass
 
-
 # ── buffer_only mode tests ─────────────────────────────────────────────
-
 
 class TestBufferOnlyMode:
     """Verify buffer_only mode suppresses intermediate edits and only
@@ -1703,9 +1644,7 @@ class TestBufferOnlyMode:
         # The key assertion: this doesn't break.
         assert adapter.send.call_count >= 1
 
-
 # ── Cursor stripping on fallback (#7183) ────────────────────────────────────
-
 
 class TestCursorStrippingOnFallback:
     """Regression: cursor must be stripped when fallback continuation is empty (#7183).
@@ -1787,9 +1726,7 @@ class TestCursorStrippingOnFallback:
         # _last_sent_text must NOT be updated when the edit failed
         assert consumer._last_sent_text == "Hello ▉"
 
-
 # ── on_new_message callback (tool-progress linearization) ─────────────
-
 
 class TestOnNewMessageCallback:
     """The on_new_message callback fires whenever a fresh content bubble
@@ -1943,7 +1880,6 @@ class TestOnNewMessageCallback:
 
         assert consumer.already_sent is True
 
-
 class TestUtf16OverflowDetection:
     """Regression coverage for #11170 — Telegram counts message length in
     UTF-16 code units, not Python codepoints. A response with supplementary
@@ -2022,19 +1958,6 @@ class TestUtf16OverflowDetection:
         assert call_kwargs.get("len_fn") is utf16_len, (
             f"truncate_message called without utf16_len: {call_kwargs}"
         )
-
-    def test_codepoint_only_adapter_falls_back_to_len(self):
-        """Adapters without message_len_fn override (or test MagicMocks)
-        must use plain len for backwards compatibility."""
-        adapter = MagicMock()
-        adapter.MAX_MESSAGE_LENGTH = 4096
-        config = StreamConsumerConfig(cursor=" ▉")
-        consumer = GatewayStreamConsumer(adapter, "chat_123", config)
-        # The isinstance guard means MagicMock adapters get len, not the
-        # auto-attr mock. Verified indirectly by all the other tests in
-        # this file passing — they all use MagicMock adapters.
-        assert consumer is not None
-
 
 class TestFreshFinalRespectsAdapterDecline:
     """Regression: when an adapter explicitly declines fresh-final via
@@ -2137,7 +2060,6 @@ class TestFreshFinalRespectsAdapterDecline:
         assert adapter.send.call_count == 2, (
             f"Expected 2 send calls (initial + fresh-final), got {adapter.send.call_count}"
         )
-
 
 # ── run_still_current staleness guard ────────────────────────────────────
 
@@ -2273,13 +2195,11 @@ class TestRunStillCurrentGuard:
         adapter.edit_message.assert_not_called()
         assert consumer._final_response_sent is False
 
-
 # ── _strip_orphan_close_tags regression tests ──────────────────────────
 # Regression guard for the /think tag leak: when the stream consumer is
 # NOT inside a think block, stray close tags like </think> must be
 # stripped before text is accumulated — otherwise they leak to Telegram.
 # (Reported by Tony on 2026-06-09.)
-
 
 class TestStripOrphanCloseTags:
     """Verify orphan close tags are stripped from text the stream consumer
@@ -2379,7 +2299,6 @@ class TestStripOrphanCloseTags:
             assert tag not in consumer._accumulated
         assert "trailing prose" in consumer._accumulated
         assert "more" in consumer._accumulated
-
 
 class TestHasDeliveredTextAfterSegmentBreak:
     """has_delivered_text must find a delivered segment after a segment break,

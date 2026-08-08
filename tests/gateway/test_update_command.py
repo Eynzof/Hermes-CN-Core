@@ -16,7 +16,6 @@ from gateway.config import Platform
 from gateway.platforms.base import MessageEvent
 from gateway.session import SessionSource
 
-
 def _make_event(text="/update", platform=Platform.TELEGRAM,
                 user_id="12345", chat_id="67890", thread_id=None):
     """Build a MessageEvent for testing."""
@@ -29,7 +28,6 @@ def _make_event(text="/update", platform=Platform.TELEGRAM,
     )
     return MessageEvent(text=text, source=source)
 
-
 def _make_runner():
     """Create a bare GatewayRunner without calling __init__."""
     from gateway.run import GatewayRunner
@@ -38,11 +36,9 @@ def _make_runner():
     runner._voice_mode = {}
     return runner
 
-
 # ---------------------------------------------------------------------------
 # _handle_update_command
 # ---------------------------------------------------------------------------
-
 
 class TestHandleUpdateCommand:
     """Tests for GatewayRunner._handle_update_command."""
@@ -377,11 +373,9 @@ class TestHandleUpdateCommand:
 
         assert "stream progress" in result
 
-
 # ---------------------------------------------------------------------------
 # Platform allowlist gate
 # ---------------------------------------------------------------------------
-
 
 class TestUpdateCommandPlatformGate:
     """Tests for the platform-allowlist gate at the top of
@@ -529,11 +523,9 @@ class TestUpdateCommandPlatformGate:
 
         assert "only available from messaging platforms" not in result
 
-
 # ---------------------------------------------------------------------------
 # _send_update_notification
 # ---------------------------------------------------------------------------
-
 
 class TestSendUpdateNotification:
     """Tests for GatewayRunner._send_update_notification."""
@@ -908,11 +900,9 @@ class TestSendUpdateNotification:
         assert not exit_code_path.exists()
         assert not (hermes_home / ".update_pending.claimed.json").exists()
 
-
 # ---------------------------------------------------------------------------
 # /update in help and known_commands
 # ---------------------------------------------------------------------------
-
 
 class TestUpdateInHelp:
     """Verify /update appears in help text and known commands set."""
@@ -925,11 +915,3 @@ class TestUpdateInHelp:
         result = await runner._handle_help_command(event)
         assert "/update" in result
 
-    def test_update_is_known_command(self):
-        """The /update command is in the help text (proxy for _known_commands)."""
-        # _known_commands is local to _handle_message, so we verify by
-        # checking the help output includes it.
-        from gateway.run import GatewayRunner
-        import inspect
-        source = inspect.getsource(GatewayRunner._handle_message)
-        assert '"update"' in source

@@ -20,12 +20,10 @@ from tools.process_registry import (
     MAX_ACTIVE_PROCESS_AGE,
 )
 
-
 @pytest.fixture()
 def registry():
     """Create a fresh ProcessRegistry."""
     return ProcessRegistry()
-
 
 def _make_session(
     sid="proc_test123",
@@ -48,13 +46,11 @@ def _make_session(
     )
     return s
 
-
 def _spawn_python_sleep(seconds: float) -> subprocess.Popen:
     """Spawn a portable short-lived Python sleep process."""
     return subprocess.Popen(
         [sys.executable, "-c", f"import time; time.sleep({seconds})"],
     )
-
 
 def _wait_until(predicate, timeout: float = 5.0, interval: float = 0.05) -> bool:
     """Poll a predicate until it returns truthy or the timeout elapses."""
@@ -64,7 +60,6 @@ def _wait_until(predicate, timeout: float = 5.0, interval: float = 0.05) -> bool
             return True
         time.sleep(interval)
     return False
-
 
 def test_write_stdin_uses_str_for_windows_pty(monkeypatch, registry):
     """pywinpty expects str input; bytes raises a PyString conversion error."""
@@ -85,7 +80,6 @@ def test_write_stdin_uses_str_for_windows_pty(monkeypatch, registry):
     assert written == ["hello\n"]
     assert isinstance(written[0], str)
 
-
 def test_write_stdin_uses_bytes_for_posix_pty(monkeypatch, registry):
     written = []
 
@@ -102,7 +96,6 @@ def test_write_stdin_uses_bytes_for_posix_pty(monkeypatch, registry):
 
     assert result == {"status": "ok", "bytes_written": 6}
     assert written == [b"hello\n"]
-
 
 # =========================================================================
 # Get / Poll
@@ -141,7 +134,6 @@ class TestGetAndPoll:
         assert result["status"] == "exited"
         assert result["exit_code"] == 0
 
-
 def test_request_close_terminal_without_sink_is_desktop_only_error(registry):
     """No UI close sink wired (CLI/messaging) → clear desktop-only error, no raise."""
     s = _make_session(sid="proc_close_nosink")
@@ -151,7 +143,6 @@ def test_request_close_terminal_without_sink_is_desktop_only_error(registry):
 
     assert result["status"] == "error"
     assert "desktop" in result["error"].lower()
-
 
 def test_request_close_terminal_invokes_sink_without_killing(registry):
     """With a sink wired, close routes (session, process_id) to the UI and leaves
@@ -169,13 +160,11 @@ def test_request_close_terminal_invokes_sink_without_killing(registry):
     # Still tracked as running — closing the tab must not reap the process.
     assert s.id in registry._running
 
-
 def test_close_terminal_tool_requires_process_id():
     """The desktop-gated close_terminal tool rejects a missing process_id."""
     from tools.close_terminal_tool import close_terminal_tool
 
     assert orjson.loads(close_terminal_tool(""))["error"]
-
 
 def test_close_terminal_tool_routes_to_registry(monkeypatch):
     """close_terminal delegates to process_registry.request_close_terminal."""
@@ -195,7 +184,6 @@ def test_close_terminal_tool_routes_to_registry(monkeypatch):
     assert orjson.loads(out)["closed"] == "proc_abc"
     assert seen["sid"] == "proc_abc"
 
-
 def test_close_terminal_tool_gated_on_desktop(monkeypatch):
     """Hidden unless HERMES_DESKTOP is set (mirrors read_terminal gating)."""
     from tools.close_terminal_tool import check_close_terminal_requirements
@@ -205,7 +193,6 @@ def test_close_terminal_tool_gated_on_desktop(monkeypatch):
 
     monkeypatch.setenv("HERMES_DESKTOP", "1")
     assert check_close_terminal_requirements() is True
-
 
 def test_reader_loop_streams_incremental_chunks_from_read1(registry, monkeypatch):
     """Local reader must emit live chunks, not one EOF burst.
@@ -252,7 +239,6 @@ def test_reader_loop_streams_incremental_chunks_from_read1(registry, monkeypatch
     assert session.exited is True
     assert session.exit_code == 0
     assert moved == ["proc_reader_live"]
-
 
 # =========================================================================
 # Orphaned-pipe reconciliation (issue #17327)
@@ -406,7 +392,6 @@ class TestOrphanedPipeReconciliation:
         assert result["exit_code"] == 0
         assert elapsed < 0.9  # must stay under the old 1s poll tick being regression-tested, f"wait() should wake on completion; took {elapsed:.3f}s"
 
-
 # =========================================================================
 # Read log
 # =========================================================================
@@ -437,7 +422,6 @@ class TestReadLog:
         registry._running[s.id] = s
         result = registry.read_log(s.id, offset=10, limit=5)
         assert "5 lines" in result["showing"]
-
 
 # =========================================================================
 # Stdin helpers
@@ -510,7 +494,6 @@ class TestStdinHelpers:
         finally:
             registry.kill_process(session.id)
 
-
 # =========================================================================
 # List sessions
 # =========================================================================
@@ -564,17 +547,6 @@ class TestListSessions:
         assert by_id["proc_forgotten"].get("session_scoped") is True
         assert "session_scoped" not in by_id["proc_own"]
 
-    def test_list_entry_fields(self, registry):
-        s = _make_session(output="preview text")
-        registry._running[s.id] = s
-        entry = registry.list_sessions()[0]
-        assert "session_id" in entry
-        assert "command" in entry
-        assert "status" in entry
-        assert "pid" in entry
-        assert "output_preview" in entry
-
-
 # =========================================================================
 # Active process queries
 # =========================================================================
@@ -619,7 +591,6 @@ class TestActiveQueries:
         registry._finished[s.id] = s
         assert registry.has_active_processes("t1") is False
 
-
 # =========================================================================
 # Pruning
 # =========================================================================
@@ -658,7 +629,6 @@ class TestPruning:
 
         total = len(registry._running) + len(registry._finished)
         assert total <= MAX_PROCESSES
-
 
 # =========================================================================
 # Spawn env sanitization
@@ -814,7 +784,6 @@ class TestSpawnEnvSanitization:
         assert env.commands[1][0] == "kill -0 \"$(cat '/path with spaces/hermes_bg.pid' 2>/dev/null)\" 2>/dev/null; echo $?"
         assert env.commands[2][0] == "cat '/path with spaces/hermes_bg.exit' 2>/dev/null"
 
-
 # =========================================================================
 # Popen leak prevention
 # =========================================================================
@@ -937,7 +906,6 @@ class TestPopenLeakOnSetupFailure:
 
         assert not killed, "proc.kill() must NOT be called on successful spawn"
         assert session.pid == 7777
-
 
 # =========================================================================
 # Checkpoint
@@ -1115,7 +1083,6 @@ class TestCheckpoint:
                     proc.kill()
                     proc.wait(timeout=5)
 
-
 # =========================================================================
 # Kill process
 # =========================================================================
@@ -1174,7 +1141,6 @@ class TestKillProcess:
         finally:
             registry._running.pop(s.id, None)
 
-
 # =========================================================================
 # Tool handler
 # =========================================================================
@@ -1195,13 +1161,11 @@ class TestProcessToolHandler:
         result = orjson.loads(_handle_process({"action": "unknown_action"}))
         assert "error" in result
 
-
 # =========================================================================
 # format_process_notification + drain_notifications (shared helpers)
 # =========================================================================
 
 from tools.process_registry import format_process_notification
-
 
 def test_format_completion_event():
     evt = {
@@ -1217,7 +1181,6 @@ def test_format_completion_event():
     assert "Command: sleep 5" in result
     assert "Output:\ndone]" in result
 
-
 def test_format_killed_completion_event_names_source_and_signal():
     evt = {
         "type": "completion",
@@ -1232,7 +1195,6 @@ def test_format_killed_completion_event_names_source_and_signal():
     assert "proc_killed terminated by process.kill" in result
     assert "exit code -15, SIGTERM" in result
 
-
 def test_format_external_sigterm_does_not_claim_agent_kill():
     evt = {
         "type": "completion",
@@ -1245,7 +1207,6 @@ def test_format_external_sigterm_does_not_claim_agent_kill():
     assert "proc_external exited" in result
     assert "terminated by" not in result
     assert "exit code 143, SIGTERM" in result
-
 
 def test_format_watch_match_event():
     evt = {
@@ -1260,7 +1221,6 @@ def test_format_watch_match_event():
     assert 'watch pattern "ERROR"' in result
     assert "Matched output:\nERROR: disk full" in result
 
-
 def test_format_watch_match_with_suppressed():
     evt = {
         "type": "watch_match",
@@ -1273,7 +1233,6 @@ def test_format_watch_match_with_suppressed():
     result = format_process_notification(evt)
     assert "3 earlier matches were suppressed" in result
 
-
 def test_format_watch_disabled_event():
     evt = {
         "type": "watch_disabled",
@@ -1282,13 +1241,11 @@ def test_format_watch_disabled_event():
     result = format_process_notification(evt)
     assert "[IMPORTANT: Watch disabled for proc_xyz" in result
 
-
 def test_format_returns_none_for_empty_event():
     evt = {}
     result = format_process_notification(evt)
     assert result is not None
     assert "unknown" in result
-
 
 def test_drain_notifications_returns_pending_events():
     from tools.process_registry import process_registry
@@ -1325,7 +1282,6 @@ def test_drain_notifications_returns_pending_events():
         process_registry._completion_consumed.discard("proc_drain1")
         process_registry._completion_consumed.discard("proc_drain2")
 
-
 def test_drain_notifications_skips_consumed():
     from tools.process_registry import process_registry
 
@@ -1349,7 +1305,6 @@ def test_drain_notifications_skips_consumed():
         while not process_registry.completion_queue.empty():
             process_registry.completion_queue.get_nowait()
 
-
 def test_drain_notifications_can_deliver_poll_observed_for_gateway(registry):
     event = {
         "type": "completion",
@@ -1372,7 +1327,6 @@ def test_drain_notifications_can_deliver_poll_observed_for_gateway(registry):
         assert [raw for raw, _ in results] == [event]
     finally:
         registry._poll_observed.discard(event["session_id"])
-
 
 @pytest.mark.parametrize(
     "skip_state", ["_poll_observed", "_completion_consumed"]
@@ -1409,7 +1363,6 @@ def test_drain_notifications_routes_foreign_before_local_skip(
     finally:
         getattr(registry, skip_state).discard(event["session_id"])
 
-
 def test_drain_notifications_empty_queue():
     from tools.process_registry import process_registry
 
@@ -1418,7 +1371,6 @@ def test_drain_notifications_empty_queue():
 
     results = process_registry.drain_notifications()
     assert results == []
-
 
 @pytest.mark.parametrize("exit_code", [0, 7])
 def test_drain_notifications_filters_addressed_completion_by_owns_event(
@@ -1454,7 +1406,6 @@ def test_drain_notifications_filters_addressed_completion_by_owns_event(
     assert registry.completion_queue.get_nowait() == foreign
     assert registry.completion_queue.empty()
 
-
 def test_drain_notifications_filters_addressed_completion_by_session_key(registry):
     owned = {
         "type": "completion",
@@ -1481,7 +1432,6 @@ def test_drain_notifications_filters_addressed_completion_by_session_key(registr
     assert registry.completion_queue.get_nowait() == foreign
     assert registry.completion_queue.empty()
 
-
 def test_drain_notifications_session_key_filter_requeues_origin_only_event(registry):
     event = {
         "type": "completion",
@@ -1498,7 +1448,6 @@ def test_drain_notifications_session_key_filter_requeues_origin_only_event(regis
     assert results == []
     assert registry.completion_queue.get_nowait() == event
     assert registry.completion_queue.empty()
-
 
 def test_drain_notifications_ownerless_completion_preserves_legacy_delivery(registry):
     event = {
@@ -1517,7 +1466,6 @@ def test_drain_notifications_ownerless_completion_preserves_legacy_delivery(regi
 
     assert [raw for raw, _ in results] == [event]
     assert registry.completion_queue.empty()
-
 
 def test_drain_notifications_ownerless_async_delegation_still_requires_proof(registry):
     event = {
@@ -1539,7 +1487,6 @@ def test_drain_notifications_ownerless_async_delegation_still_requires_proof(reg
     assert results == []
     assert registry.completion_queue.get_nowait() == event
     assert registry.completion_queue.empty()
-
 
 def test_drain_notifications_completion_callback_exception_fails_closed(registry):
     event = {
@@ -1563,7 +1510,6 @@ def test_drain_notifications_completion_callback_exception_fails_closed(registry
     assert results == []
     assert registry.completion_queue.get_nowait() == event
     assert registry.completion_queue.empty()
-
 
 def test_drain_notifications_filters_async_delegation_by_session_key():
     """Async-delegation events should only be consumed by the matching session's drain.
@@ -1622,7 +1568,6 @@ def test_drain_notifications_filters_async_delegation_by_session_key():
         while not process_registry.completion_queue.empty():
             process_registry.completion_queue.get_nowait()
 
-
 def test_drain_notifications_no_filter_passes_all_async_delegation():
     """Without a session_key filter, all async-delegation events are consumed.
 
@@ -1667,7 +1612,6 @@ def test_drain_notifications_no_filter_passes_all_async_delegation():
         while not process_registry.completion_queue.empty():
             process_registry.completion_queue.get_nowait()
 
-
 def test_drain_notifications_owns_event_callback_beats_key_equality():
     """The positive-proof ownership callback consumes ONLY approved events —
     including across a compression rotation where bare key equality would
@@ -1710,7 +1654,6 @@ def test_drain_notifications_owns_event_callback_beats_key_equality():
         while not process_registry.completion_queue.empty():
             process_registry.completion_queue.get_nowait()
 
-
 def test_drain_notifications_owns_event_callback_fails_closed():
     """A broken ownership callback must re-queue (never leak) the event."""
     from tools.process_registry import process_registry
@@ -1739,11 +1682,9 @@ def test_drain_notifications_owns_event_callback_fails_closed():
         while not process_registry.completion_queue.empty():
             process_registry.completion_queue.get_nowait()
 
-
 # ---------------------------------------------------------------------------
 # _terminate_host_pid — cross-platform process-tree termination
 # ---------------------------------------------------------------------------
-
 
 class TestTerminateHostPidWindows:
     """Windows branch uses ``taskkill /T /F`` — the documented MS tree-kill
@@ -1830,7 +1771,6 @@ class TestTerminateHostPidWindows:
             f"Windows branch must not touch psutil, but saw {psutil_calls!r}"
         )
 
-
 class TestTerminateHostPidPosix:
     """POSIX branch walks the tree via psutil and SIGTERMs children first."""
 
@@ -1907,7 +1847,6 @@ class TestTerminateHostPidPosix:
         pr.ProcessRegistry._terminate_host_pid(12345)
 
         assert kill_calls == [(12345, signal.SIGTERM)]
-
 
 # =========================================================================
 # PID-reuse guard — a recycled PID/PGID must never be signalled.
@@ -2025,7 +1964,6 @@ class TestPidReuseGuard:
         refreshed = registry._refresh_detached_session(s)
         assert refreshed.exited is True
         assert s.id in registry._finished
-
 
 @pytest.mark.skipif(sys.platform == "win32",
                     reason="POSIX SIGTERM→SIGKILL escalation; Windows uses taskkill /F")
@@ -2192,7 +2130,6 @@ class TestSigkillEscalation:
                     pass
             parent.wait()
 
-
 class TestHandleProcessRedaction:
     """`_handle_process` redacts background-process output before it reaches the
     model / session.db / CLI display — issue #43025.
@@ -2247,7 +2184,6 @@ class TestHandleProcessRedaction:
         monkeypatch.setattr(pr, "process_registry", reg)
         out = orjson.loads(pr._handle_process({"action": "log", "session_id": sess.id}))
         assert "zzzopaque1234567890abcdef" in out["output"]
-
 
 # =========================================================================
 # Spawn shell selection

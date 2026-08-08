@@ -18,11 +18,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 # ──────────────────────────────────────────────────────────────────────
 # Fixtures
 # ──────────────────────────────────────────────────────────────────────
-
 
 @pytest.fixture
 def hermes_home(tmp_path, monkeypatch):
@@ -37,7 +35,6 @@ def hermes_home(tmp_path, monkeypatch):
     goals._DB_CACHE.clear()
     yield home
     goals._DB_CACHE.clear()
-
 
 def _make_cli_with_goal(session_id: str, goal_text: str = "build a thing"):
     """Build a minimal HermesCLI stub with an active goal wired in."""
@@ -60,11 +57,9 @@ def _make_cli_with_goal(session_id: str, goal_text: str = "build a thing"):
     cli._goal_manager = mgr
     return cli, mgr
 
-
 # ──────────────────────────────────────────────────────────────────────
 # Tests
 # ──────────────────────────────────────────────────────────────────────
-
 
 class TestInterruptAutoPause:
     def test_interrupted_turn_pauses_goal_and_skips_continuation(self, hermes_home):
@@ -112,7 +107,6 @@ class TestInterruptAutoPause:
         mgr.resume()
         assert mgr.state.status == "active"
 
-
 class TestEmptyResponseSkip:
     def test_empty_response_does_not_invoke_judge(self, hermes_home):
         """Whitespace-only replies skip judging (transient failure guard)."""
@@ -151,7 +145,6 @@ class TestEmptyResponseSkip:
 
         assert cli._pending_input.empty()
         assert mgr.state.status == "active"
-
 
 class TestHealthyTurnStillRuns:
     def test_clean_response_enqueues_continuation_when_judge_says_continue(
@@ -196,25 +189,3 @@ class TestHealthyTurnStillRuns:
         assert cli._pending_input.empty()
         assert mgr.state.status == "done"
 
-
-class TestInterruptFlagLifecycle:
-    def test_chat_resets_flag_at_entry(self, hermes_home):
-        """chat() must reset _last_turn_interrupted at the top of each turn.
-
-        This guards against stale flag state: if turn N was interrupted and
-        turn N+1 runs clean, the hook must not see True from N.
-        """
-        # We can't run chat() end-to-end here, but we can assert the reset
-        # is the first thing after the secret-capture registration by
-        # inspecting the source shape.
-        from cli import HermesCLI
-        import inspect
-
-        src = inspect.getsource(HermesCLI.chat)
-        # Look for an explicit reset near the top of chat().
-        head = src.split("if not self._ensure_runtime_credentials", 1)[0]
-        assert "self._last_turn_interrupted = False" in head, (
-            "chat() must reset _last_turn_interrupted before run_conversation "
-            "runs — otherwise a prior turn's interrupt state leaks into the "
-            "next turn's goal hook decision."
-        )

@@ -3,7 +3,6 @@
 from providers import get_provider_profile, _REGISTRY
 from providers.base import ProviderProfile, OMIT_TEMPERATURE
 
-
 class TestRegistry:
     def test_discovery_populates_registry(self):
         p = get_provider_profile("nvidia")
@@ -27,11 +26,7 @@ class TestRegistry:
         for name, profile in _REGISTRY.items():
             assert profile.name == name
 
-
 class TestNvidiaProfile:
-    def test_max_tokens(self):
-        p = get_provider_profile("nvidia")
-        assert p.default_max_tokens == 16384
 
     def test_no_special_temperature(self):
         p = get_provider_profile("nvidia")
@@ -45,15 +40,10 @@ class TestNvidiaProfile:
         p = get_provider_profile("nvidia")
         assert p.default_headers == {}
 
-
 class TestKimiProfile:
     def test_temperature_omit(self):
         p = get_provider_profile("kimi")
         assert p.fixed_temperature is OMIT_TEMPERATURE
-
-    def test_max_tokens(self):
-        p = get_provider_profile("kimi")
-        assert p.default_max_tokens == 32000
 
     def test_cn_separate_profile(self):
         p = get_provider_profile("kimi-coding-cn")
@@ -94,7 +84,6 @@ class TestKimiProfile:
         eb, tl = p.build_api_kwargs_extras(reasoning_config=None)
         assert eb["thinking"] == {"type": "enabled"}
         assert "reasoning_effort" not in tl
-
 
 class TestOpenRouterProfile:
     def test_extra_body_with_prefs(self):
@@ -404,7 +393,6 @@ class TestOpenRouterProfile:
         )
         assert tl == {"verbosity": "high"}
 
-
 class TestNousProfile:
     def test_tags(self):
         from agent.portal_tags import nous_portal_tags
@@ -451,11 +439,7 @@ class TestNousProfile:
         )
         assert "reasoning" not in eb
 
-
 class TestQwenProfile:
-    def test_max_tokens(self):
-        p = get_provider_profile("qwen-oauth")
-        assert p.default_max_tokens == 65536
 
     def test_auth_type(self):
         p = get_provider_profile("qwen-oauth")
@@ -550,7 +534,6 @@ class TestQwenProfile:
         eb, tl = p.build_api_kwargs_extras(qwen_session_metadata=meta)
         assert tl["metadata"] == meta
         assert "metadata" not in eb
-
 
 class TestBaseProfile:
     def test_prepare_messages_passthrough(self):

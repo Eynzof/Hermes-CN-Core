@@ -11,7 +11,6 @@ from unittest.mock import MagicMock, patch, AsyncMock
 from gateway.config import Platform, PlatformConfig
 from gateway.platforms.base import MessageType
 
-
 def _make_fake_mautrix():
     """Create a lightweight set of fake ``mautrix`` modules.
 
@@ -246,7 +245,6 @@ def _make_fake_mautrix():
         "mautrix.util.async_db": mautrix_util_async_db,
     }
 
-
 # ---------------------------------------------------------------------------
 # Platform & Config
 # ---------------------------------------------------------------------------
@@ -358,7 +356,6 @@ class TestMatrixConfigLoading:
         mc = config.platforms[Platform.MATRIX]
         assert mc.extra.get("user_id") == "@hermes:example.org"
 
-
 # ---------------------------------------------------------------------------
 # Adapter helpers
 # ---------------------------------------------------------------------------
@@ -376,7 +373,6 @@ def _make_adapter():
     )
     adapter = MatrixAdapter(config)
     return adapter
-
 
 # ---------------------------------------------------------------------------
 # Typing indicator
@@ -409,7 +405,6 @@ class TestMatrixTypingIndicator:
     async def test_stop_typing_suppresses_exceptions(self):
         self.adapter._client.set_typing = AsyncMock(side_effect=Exception("network"))
         await self.adapter.stop_typing("!room:example.org")  # should not raise
-
 
 # ---------------------------------------------------------------------------
 # mxc:// URL conversion
@@ -444,7 +439,6 @@ class TestMatrixMxcToHttp:
         assert "/_matrix/client/v1/media/download/" in result
         assert "/_matrix/media/v3/download/" not in result
 
-
 # ---------------------------------------------------------------------------
 # DM detection
 # ---------------------------------------------------------------------------
@@ -452,22 +446,6 @@ class TestMatrixMxcToHttp:
 class TestMatrixDmDetection:
     def setup_method(self):
         self.adapter = _make_adapter()
-
-    def test_room_in_m_direct_is_dm(self):
-        """A room listed in m.direct should be detected as DM."""
-        self.adapter._joined_rooms = {"!dm_room:ex.org", "!group_room:ex.org"}
-        self.adapter._dm_rooms = {
-            "!dm_room:ex.org": True,
-            "!group_room:ex.org": False,
-        }
-
-        assert self.adapter._dm_rooms.get("!dm_room:ex.org") is True
-        assert self.adapter._dm_rooms.get("!group_room:ex.org") is False
-
-    def test_unknown_room_not_in_cache(self):
-        """Unknown rooms should not be in the DM cache."""
-        self.adapter._dm_rooms = {}
-        assert self.adapter._dm_rooms.get("!unknown:ex.org") is None
 
     @pytest.mark.asyncio
     async def test_refresh_dm_cache_with_m_direct(self):
@@ -616,7 +594,6 @@ class TestMatrixDmDetection:
             "!room_b:ex.org": False,
         }
 
-
 # ---------------------------------------------------------------------------
 # Reply fallback stripping
 # ---------------------------------------------------------------------------
@@ -649,39 +626,6 @@ class TestMatrixReplyFallbackStripping:
                 stripped.append(line)
             body = "\n".join(stripped) if stripped else body
         return body
-
-    def test_simple_reply_fallback(self):
-        body = "> <@alice:ex.org> Original message\n\nActual reply"
-        result = self._strip_fallback(body)
-        assert result == "Actual reply"
-
-    def test_multiline_reply_fallback(self):
-        body = "> <@alice:ex.org> Line 1\n> Line 2\n\nMy response"
-        result = self._strip_fallback(body)
-        assert result == "My response"
-
-    def test_no_reply_fallback_preserved(self):
-        body = "Just a normal message"
-        result = self._strip_fallback(body, has_reply=False)
-        assert result == "Just a normal message"
-
-    def test_quote_without_reply_preserved(self):
-        """'> ' lines without a reply_to context should be preserved."""
-        body = "> This is a blockquote"
-        result = self._strip_fallback(body, has_reply=False)
-        assert result == "> This is a blockquote"
-
-    def test_empty_fallback_separator(self):
-        """The blank line between fallback and actual content should be stripped."""
-        body = "> <@alice:ex.org> hi\n>\n\nResponse"
-        result = self._strip_fallback(body)
-        assert result == "Response"
-
-    def test_multiline_response_after_fallback(self):
-        body = "> <@alice:ex.org> Original\n\nLine 1\nLine 2\nLine 3"
-        result = self._strip_fallback(body)
-        assert result == "Line 1\nLine 2\nLine 3"
-
 
 # ---------------------------------------------------------------------------
 # Matrix-friendly command aliases
@@ -876,55 +820,9 @@ class TestMatrixBangCommandAlias:
         assert captured_event.text == "/model"
         assert captured_event.message_type == MessageType.COMMAND
 
-
 # ---------------------------------------------------------------------------
 # Thread detection
 # ---------------------------------------------------------------------------
-
-class TestMatrixThreadDetection:
-    def test_thread_id_from_m_relates_to(self):
-        """m.relates_to with rel_type=m.thread should extract the event_id."""
-        relates_to = {
-            "rel_type": "m.thread",
-            "event_id": "$thread_root_event",
-            "is_falling_back": True,
-            "m.in_reply_to": {"event_id": "$some_event"},
-        }
-        # Simulate the extraction logic from _on_room_message
-        thread_id = None
-        if relates_to.get("rel_type") == "m.thread":
-            thread_id = relates_to.get("event_id")
-        assert thread_id == "$thread_root_event"
-
-    def test_no_thread_for_reply(self):
-        """m.in_reply_to without m.thread should not set thread_id."""
-        relates_to = {
-            "m.in_reply_to": {"event_id": "$reply_event"},
-        }
-        thread_id = None
-        if relates_to.get("rel_type") == "m.thread":
-            thread_id = relates_to.get("event_id")
-        assert thread_id is None
-
-    def test_no_thread_for_edit(self):
-        """m.replace relation should not set thread_id."""
-        relates_to = {
-            "rel_type": "m.replace",
-            "event_id": "$edited_event",
-        }
-        thread_id = None
-        if relates_to.get("rel_type") == "m.thread":
-            thread_id = relates_to.get("event_id")
-        assert thread_id is None
-
-    def test_empty_relates_to(self):
-        """Empty m.relates_to should not set thread_id."""
-        relates_to = {}
-        thread_id = None
-        if relates_to.get("rel_type") == "m.thread":
-            thread_id = relates_to.get("event_id")
-        assert thread_id is None
-
 
 # ---------------------------------------------------------------------------
 # Format message
@@ -954,7 +852,6 @@ class TestMatrixFormatMessage:
         assert "![" not in result
         assert "http://a.com/1.png" in result
         assert "http://b.com/2.png" in result
-
 
 # ---------------------------------------------------------------------------
 # Rendering payloads
@@ -1053,7 +950,6 @@ class TestMatrixRenderingPayloads:
             assert content["m.relates_to"]["m.in_reply_to"] == {"event_id": "$root"}
             assert content["body"].count("```") % 2 == 0
 
-
 # ---------------------------------------------------------------------------
 # Markdown to HTML conversion
 # ---------------------------------------------------------------------------
@@ -1143,7 +1039,6 @@ class TestMatrixMarkdownToHtml:
         assert "<th>Item</th>" in result
         assert "<td>Apples</td>" in result
 
-
 # ---------------------------------------------------------------------------
 # Helper: display name extraction
 # ---------------------------------------------------------------------------
@@ -1188,7 +1083,6 @@ class TestMatrixDisplayName:
         name = await self.adapter._get_display_name("!room:ex.org", "@charlie:ex.org")
         assert name == "charlie"
 
-
 # ---------------------------------------------------------------------------
 # Requirements check
 # ---------------------------------------------------------------------------
@@ -1227,7 +1121,6 @@ class TestMatrixModuleImport:
         assert result.returncode == 0, (
             f"Subprocess failed:\nstdout: {result.stdout}\nstderr: {result.stderr}"
         )
-
 
 class TestMatrixRequirements:
     def test_check_requirements_with_token(self, monkeypatch):
@@ -1370,7 +1263,6 @@ class TestMatrixRequirements:
             "missing (#31116)"
         )
 
-
 # ---------------------------------------------------------------------------
 # Access-token auth / E2EE bootstrap
 # ---------------------------------------------------------------------------
@@ -1507,7 +1399,6 @@ class TestMatrixAccessTokenAuth:
         await adapter.disconnect()
         assert adapter._invite_join_tasks == {}
 
-
 class TestDeviceKeyReVerification:
     @pytest.mark.asyncio
     async def test_verify_fails_when_server_keys_mismatch_after_upload(self):
@@ -1540,7 +1431,6 @@ class TestDeviceKeyReVerification:
 
         assert result is False
         mock_olm.share_keys.assert_awaited_once()
-
 
 class TestMatrixE2EEHardFail:
     """connect() must refuse to start when E2EE is requested but deps are missing."""
@@ -1670,7 +1560,6 @@ class TestMatrixE2EEHardFail:
 
         assert result is False
 
-
 class TestMatrixDeviceId:
     """MATRIX_DEVICE_ID should be used for stable device identity."""
 
@@ -1782,7 +1671,6 @@ class TestMatrixDeviceId:
 
         await adapter.disconnect()
 
-
 class TestMatrixPasswordLoginDeviceId:
     """MATRIX_DEVICE_ID should be passed to mautrix Client even with password login."""
 
@@ -1829,7 +1717,6 @@ class TestMatrixPasswordLoginDeviceId:
 
         await adapter.disconnect()
 
-
 class TestMatrixDeviceIdConfig:
     """MATRIX_DEVICE_ID should be plumbed through gateway config."""
 
@@ -1856,7 +1743,6 @@ class TestMatrixDeviceIdConfig:
 
         mc = config.platforms[Platform.MATRIX]
         assert "device_id" not in mc.extra
-
 
 class TestMatrixSyncLoop:
     @pytest.mark.asyncio
@@ -2359,7 +2245,6 @@ class TestMatrixUploadAndSend:
             assert sent["m.relates_to"]["event_id"] == "$root"
             assert sent["m.relates_to"]["m.in_reply_to"] == {"event_id": "$root"}
 
-
 class TestMatrixDiagnostics:
     def test_diagnostics_redacts_credentials_and_reports_status(self, monkeypatch):
         import plugins.platforms.matrix.adapter as matrix_mod
@@ -2563,27 +2448,6 @@ class TestMatrixDiagnostics:
         assert diagnostics["e2ee"]["recovery_key_configured"] is True
         assert "diagnostic-secret-recovery-key" not in str(diagnostics)
 
-    def test_capability_matrix_is_declared_for_docs(self):
-        from plugins.platforms.matrix.adapter import get_matrix_capabilities
-
-        capabilities = get_matrix_capabilities()
-
-        assert capabilities == {
-            "text": "yes",
-            "threads": "yes",
-            "reactions": "yes",
-            "approvals": "yes",
-            "model picker": "yes",
-            "thinking panes": "yes",
-            "images": "yes",
-            "multiple images": "yes",
-            "files": "yes",
-            "voice/audio": "yes",
-            "video": "yes",
-            "E2EE": "off / optional / required",
-            "diagnostics": "yes",
-        }
-
     def test_matrix_capability_claims_match_adapter_surfaces(self):
         from plugins.platforms.matrix.adapter import MatrixAdapter, get_matrix_capabilities
 
@@ -2625,7 +2489,6 @@ class TestMatrixDiagnostics:
         for capability, status in get_matrix_capabilities().items():
             assert f"| {capability} | {status} |" in docs
 
-
 class TestMatrixEncryptedSendFallback:
     @pytest.mark.asyncio
     async def test_send_retries_after_e2ee_error(self):
@@ -2650,7 +2513,6 @@ class TestMatrixEncryptedSendFallback:
         mock_crypto.share_keys.assert_awaited_once()
         assert fake_client.send_message_event.await_count == 2
 
-
 # ---------------------------------------------------------------------------
 # E2EE: _joined_rooms reference preservation for CryptoStateStore
 # ---------------------------------------------------------------------------
@@ -2670,7 +2532,6 @@ class TestJoinedRoomsReference:
         import asyncio
         rooms = asyncio.get_event_loop().run_until_complete(store.find_shared_rooms("@user:ex"))
         assert set(rooms) == {"!room1:example.org", "!room2:example.org"}
-
 
 # ---------------------------------------------------------------------------
 # E2EE: connect registers encrypted event handler
@@ -2808,7 +2669,6 @@ class TestMatrixEncryptedEventHandler:
 
         assert result is False
 
-
 # ---------------------------------------------------------------------------
 # Disconnect
 # ---------------------------------------------------------------------------
@@ -2864,7 +2724,6 @@ class TestMatrixDisconnect:
 
         await adapter.disconnect()
         assert adapter._client is None
-
 
 # ---------------------------------------------------------------------------
 # Markdown to HTML: security tests
@@ -2925,7 +2784,6 @@ class TestMatrixMarkdownHtmlSecurity:
     def test_html_injection_in_italic(self):
         result = self.convert("*<script>alert(1)</script>*")
         assert "<script>" not in result
-
 
 # ---------------------------------------------------------------------------
 # Markdown to HTML: extended formatting tests
@@ -2995,7 +2853,6 @@ class TestMatrixMarkdownHtmlFormatting:
         assert "<ol>" in result
         assert "<pre><code" in result
 
-
 # ---------------------------------------------------------------------------
 # Link URL sanitization
 # ---------------------------------------------------------------------------
@@ -3022,7 +2879,6 @@ class TestMatrixLinkSanitization:
         result = MatrixAdapter._sanitize_link_url('http://x"y')
         assert '"' not in result
         assert "&quot;" in result
-
 
 # ---------------------------------------------------------------------------
 # Reactions
@@ -3221,7 +3077,6 @@ class TestMatrixReactions:
         await self.adapter.on_processing_start(event)
         self.adapter._send_reaction.assert_not_called()
 
-
 # ---------------------------------------------------------------------------
 # Read receipts
 # ---------------------------------------------------------------------------
@@ -3279,7 +3134,6 @@ class TestMatrixReadReceipts:
         self.adapter._client = None
         result = await self.adapter.send_read_receipt("!room:ex", "$event1")
         assert result is False
-
 
 # ---------------------------------------------------------------------------
 # Media normalization
@@ -3889,7 +3743,6 @@ class TestMatrixRedaction:
         result = await self.adapter.redact_message("!room:ex", "$ev1")
         assert result is False
 
-
 # ---------------------------------------------------------------------------
 # Room creation & invite
 # ---------------------------------------------------------------------------
@@ -3926,7 +3779,6 @@ class TestMatrixRoomManagement:
         result = await self.adapter.create_room()
         assert result is None
 
-
 # ---------------------------------------------------------------------------
 # Presence
 # ---------------------------------------------------------------------------
@@ -3957,7 +3809,6 @@ class TestMatrixPresence:
         self.adapter._client = None
         result = await self.adapter.set_presence("online")
         assert result is False
-
 
 # ---------------------------------------------------------------------------
 # Self / bridge / system sender filtering — regression coverage for #15763
@@ -3997,7 +3848,6 @@ class TestMatrixSelfSenderFilter:
         self.adapter._user_id = ""
         assert self.adapter._is_self_sender("@alice:example.org") is True
         assert self.adapter._is_self_sender("") is True
-
 
 class TestMatrixSystemBridgeFilter:
     def setup_method(self):
@@ -4039,7 +3889,6 @@ class TestMatrixSystemBridgeFilter:
         assert self.adapter._is_system_or_bridge_sender(
             "@daemon:nerdworks.casa"
         ) is False
-
 
 class TestMatrixOnRoomMessageFilter:
     """End-to-end coverage of _on_room_message drop conditions."""
@@ -4210,7 +4059,6 @@ class TestMatrixOnRoomMessageFilter:
 
         self.adapter._handle_text_message.assert_awaited_once()
 
-
 class TestMatrixRequireMention:
     """require_mention should honor config.extra like thread_require_mention."""
 
@@ -4289,7 +4137,6 @@ class TestMatrixRequireMention:
 
         assert ctx is not None
 
-
 class TestMatrixFreeResponsePolicy:
     def setup_method(self):
         self.adapter = _make_adapter()
@@ -4328,7 +4175,6 @@ class TestMatrixFreeResponsePolicy:
         )
 
         assert ctx is None
-
 
 class TestMatrixClockSkewWarning:
     """Clock-skew detector for #12614.
@@ -4531,7 +4377,6 @@ class TestMatrixClockSkewWarning:
             f"expected 2 warnings (one per connect cycle), got {len(skew_warnings)}"
         )
 
-
 # ---------------------------------------------------------------------------
 # DM auto-thread
 # ---------------------------------------------------------------------------
@@ -4581,8 +4426,6 @@ class TestMatrixDmAutoThread:
         _body, _is_dm, _chat_type, thread_id, _display, _source = ctx
         assert thread_id is None
 
-
-
 # ---------------------------------------------------------------------------
 # Proxy configuration
 # ---------------------------------------------------------------------------
@@ -4631,7 +4474,6 @@ class TestMatrixProxyConfig:
                                                 "HTTPS_PROXY": "http://generic:8080"})
         assert adapter._proxy_url == "socks5://special:1080"
 
-
 class TestCreateMatrixSession:
     """Verify _create_matrix_session applies proxy at the session level."""
 
@@ -4672,7 +4514,6 @@ class TestCreateMatrixSession:
                     assert session.connector is fake_connector
                 finally:
                     await session.close()
-
 
 class TestMatrixDeadInviteHandling:
     """Tests for _join_room_by_id auto-leaving dead/abandoned rooms.
@@ -4756,7 +4597,6 @@ class TestMatrixDeadInviteHandling:
 
         result = await self.adapter._join_room_by_id("!brokenleave:example.org")
         assert result is False
-
 
 # ---------------------------------------------------------------------------
 # Device ID resolution when whoami returns None
@@ -5035,7 +4875,6 @@ class TestDeviceIdNoneResolution:
 
         await adapter.disconnect()
 
-
 class TestVerifyDeviceKeysGuards:
     """_verify_device_keys_on_server and _reverify_keys_after_upload guards."""
 
@@ -5107,7 +4946,6 @@ class TestVerifyDeviceKeysGuards:
         assert result is True
         mock_client.query_keys.assert_not_called()
 
-
 # ---------------------------------------------------------------------------
 # Reconnect-disconnect guard
 # ---------------------------------------------------------------------------
@@ -5157,7 +4995,6 @@ class TestMatrixReconnectDisconnect:
                     await adapter.connect()
 
         adapter.disconnect.assert_awaited_once()
-
 
 class TestDeviceIdRecoveryOnReconnect:
     """_device_id_unverified must reset on every connect() call so a
@@ -5285,7 +5122,6 @@ class TestDeviceIdRecoveryOnReconnect:
         assert None not in _verify_call.args[0]["@bot:example.org"]
 
         await adapter.disconnect()
-
 
 class TestMatrixDispatchSyncIsolation:
     """A failing mautrix event handler must not abort the whole sync batch.

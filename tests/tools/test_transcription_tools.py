@@ -25,7 +25,6 @@ if "faster_whisper" not in sys.modules:
     faster_whisper_stub.__spec__ = ModuleSpec("faster_whisper", loader=None)
     sys.modules["faster_whisper"] = faster_whisper_stub
 
-
 # ============================================================================
 # Fixtures
 # ============================================================================
@@ -45,7 +44,6 @@ def sample_wav(tmp_path):
 
     return str(wav_path)
 
-
 @pytest.fixture
 def sample_ogg(tmp_path):
     """Create a fake OGG file for validation tests."""
@@ -53,9 +51,7 @@ def sample_ogg(tmp_path):
     ogg_path.write_bytes(b"fake audio data")
     return str(ogg_path)
 
-
 pytestmark = pytest.mark.usefixtures("disable_lazy_stt_install")
-
 
 @pytest.fixture(autouse=True)
 def clean_env(monkeypatch):
@@ -67,7 +63,6 @@ def clean_env(monkeypatch):
     monkeypatch.delenv("ELEVENLABS_API_KEY", raising=False)
     monkeypatch.delenv("HERMES_LOCAL_STT_COMMAND", raising=False)
     monkeypatch.delenv("HERMES_LOCAL_STT_LANGUAGE", raising=False)
-
 
 # ============================================================================
 # _get_provider — full permutation matrix
@@ -97,7 +92,6 @@ class TestGetProviderGroq:
              patch("tools.transcription_tools._HAS_OPENAI", False):
             from tools.transcription_tools import _get_provider
             assert _get_provider({"provider": "groq"}) == "none"
-
 
 class TestGetProviderFallbackPriority:
     """Auto-detect fallback priority and explicit provider behaviour."""
@@ -135,7 +129,6 @@ class TestGetProviderFallbackPriority:
         with patch("tools.transcription_tools._HAS_FASTER_WHISPER", True):
             from tools.transcription_tools import _get_provider
             assert _get_provider({}) == "local"
-
 
 # ============================================================================
 # Explicit provider config respected  (GH-1774)
@@ -217,7 +210,6 @@ class TestExplicitProviderRespected:
             from tools.transcription_tools import _get_provider
             result = _get_provider({})
             assert result == "groq"
-
 
 # ============================================================================
 # _transcribe_groq
@@ -311,7 +303,6 @@ class TestTranscribeGroq:
         assert result["success"] is False
         assert "Permission denied" in result["error"]
 
-
 # ============================================================================
 # _transcribe_openai — additional tests
 # ============================================================================
@@ -368,7 +359,6 @@ class TestTranscribeOpenAIExtended:
         assert "Permission denied" in result["error"]
         mock_client.close.assert_called_once()
 
-
 class TestTranscribeLocalCommand:
     def test_auto_detects_local_whisper_binary(self, monkeypatch):
         monkeypatch.delenv("HERMES_LOCAL_STT_COMMAND", raising=False)
@@ -424,7 +414,6 @@ class TestTranscribeLocalCommand:
         assert result["success"] is True
         assert result["transcript"] == "hello from local command"
         assert result["provider"] == "local_command"
-
 
 # ============================================================================
 # _transcribe_local — additional tests
@@ -620,7 +609,6 @@ class TestTranscribeLocalExtended:
         assert result["success"] is False
         assert "CUDA out of memory" in result["error"]
 
-
 # ============================================================================
 # Model auto-correction
 # ============================================================================
@@ -739,17 +727,11 @@ class TestModelAutoCorrection:
         call_kwargs = mock_client.audio.transcriptions.create.call_args
         assert call_kwargs.kwargs["model"] == "my-custom-model"
 
-
 # ============================================================================
 # _load_stt_config
 # ============================================================================
 
 class TestLoadSttConfig:
-    def test_returns_dict_when_import_fails(self):
-        with patch("tools.transcription_tools._load_stt_config") as mock_load:
-            mock_load.return_value = {}
-            from tools.transcription_tools import _load_stt_config
-            assert _load_stt_config() == {}
 
     def test_real_load_returns_dict(self):
         """_load_stt_config should always return a dict, even on import error."""
@@ -757,7 +739,6 @@ class TestLoadSttConfig:
             from tools.transcription_tools import _load_stt_config
             result = _load_stt_config()
         assert isinstance(result, dict)
-
 
 # ============================================================================
 # _validate_audio_file — edge cases
@@ -816,7 +797,6 @@ class TestValidateAudioFileEdgeCases:
         f = tmp_path / "test.MP3"
         f.write_bytes(b"data")
         assert _validate_audio_file(str(f)) is None
-
 
 # ============================================================================
 # transcribe_audio — end-to-end dispatch
@@ -941,11 +921,9 @@ class TestTranscribeAudioDispatch:
 
         assert mock_openai.call_args[0][1] == "gpt-4o-transcribe"
 
-
 # ============================================================================
 # _transcribe_mistral
 # ============================================================================
-
 
 @pytest.fixture
 def mock_mistral_module():
@@ -958,7 +936,6 @@ def mock_mistral_module():
     fake_module.Mistral = mock_mistral_cls
     with patch.dict("sys.modules", {"mistralai": fake_module, "mistralai.client": fake_module}):
         yield mock_client
-
 
 class TestTranscribeMistral:
     def test_no_key(self, monkeypatch):
@@ -1004,7 +981,6 @@ class TestTranscribeMistral:
 
         assert result["success"] is False
         assert "Permission denied" in result["error"]
-
 
 # ============================================================================
 # _get_provider — Mistral
@@ -1082,7 +1058,6 @@ class TestGetProviderMistral:
             from tools.transcription_tools import _get_provider
             assert _get_provider({}) == "none"
 
-
 # ============================================================================
 # transcribe_audio — Mistral dispatch
 # ============================================================================
@@ -1121,11 +1096,9 @@ class TestTranscribeAudioMistralDispatch:
 
         assert mock_mistral.call_args[0][1] == "voxtral-mini-2602"
 
-
 # ============================================================================
 # _transcribe_xai
 # ============================================================================
-
 
 @pytest.fixture
 def mock_xai_http_module():
@@ -1134,7 +1107,6 @@ def mock_xai_http_module():
     fake_module.hermes_xai_user_agent = MagicMock(return_value="hermes-xai/test")
     with patch.dict("sys.modules", {"tools.xai_http": fake_module}):
         yield fake_module
-
 
 class TestTranscribeXAI:
     def test_no_key(self, monkeypatch):
@@ -1285,7 +1257,6 @@ class TestTranscribeXAI:
         data = mock_post.call_args.kwargs.get("data", mock_post.call_args[1].get("data", {}))
         assert data.get("diarize") == "true"
 
-
 # ============================================================================
 # _get_provider — xAI
 # ============================================================================
@@ -1342,7 +1313,6 @@ class TestGetProviderXAI:
             from tools.transcription_tools import _get_provider
             assert _get_provider({}) == "none"
 
-
 # ============================================================================
 # transcribe_audio — xAI dispatch
 # ============================================================================
@@ -1379,7 +1349,6 @@ class TestTranscribeAudioXAIDispatch:
             transcribe_audio(sample_ogg, model="custom-stt")
 
         assert mock_xai.call_args[0][1] == "custom-stt"
-
 
 # ============================================================================
 # _transcribe_elevenlabs
@@ -1454,7 +1423,6 @@ class TestTranscribeElevenLabs:
         assert result["success"] is False
         assert "empty transcript" in result["error"]
 
-
 # ============================================================================
 # _get_provider — ElevenLabs
 # ============================================================================
@@ -1499,7 +1467,6 @@ class TestGetProviderElevenLabs:
             from tools.transcription_tools import _get_provider
             assert _get_provider({}) == "xai"
 
-
 # ============================================================================
 # transcribe_audio — ElevenLabs dispatch
 # ============================================================================
@@ -1537,7 +1504,6 @@ class TestTranscribeAudioElevenLabsDispatch:
             transcribe_audio(sample_ogg, model="scribe_v2")
 
         assert mock_elevenlabs.call_args[0][1] == "scribe_v2"
-
 
 # Shell safety — shlex.split on auto-detected templates
 # ============================================================================

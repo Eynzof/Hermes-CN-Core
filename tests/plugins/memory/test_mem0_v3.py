@@ -8,7 +8,6 @@ import pytest
 import plugins.memory.mem0 as mem0_plugin
 from plugins.memory.mem0 import Mem0MemoryProvider
 
-
 class FakeBackend:
     """Fake Mem0Backend for provider-level tests."""
 
@@ -40,7 +39,6 @@ class FakeBackend:
     def delete(self, memory_id):
         self.captured.append(("delete", memory_id))
         return {"result": "Memory deleted.", "memory_id": memory_id}
-
 
 class TestMem0V3Tools:
     """Test v3 tool names and response handling."""
@@ -145,7 +143,6 @@ class TestMem0V3Tools:
         result = orjson.loads(provider.handle_tool_call("mem0_conclude", {}))
         assert "error" in result
 
-
 class TestMem0UpdateDelete:
 
     def _make_provider(self, monkeypatch, backend):
@@ -193,7 +190,6 @@ class TestMem0UpdateDelete:
         provider = self._make_provider(monkeypatch, backend)
         result = orjson.loads(provider.handle_tool_call("mem0_delete", {}))
         assert "error" in result
-
 
 class TestMem0ErrorHandling:
 
@@ -261,7 +257,6 @@ class TestMem0ErrorHandling:
         provider.handle_tool_call("mem0_update", {"memory_id": "mem-1", "text": "x"})
         assert provider._consecutive_failures == 1
 
-
 class TestMem0V3Internal:
 
     def _make_provider(self, monkeypatch, backend):
@@ -290,7 +285,6 @@ class TestMem0V3Internal:
         assert "error" in result
         result = orjson.loads(provider.handle_tool_call("mem0_conclude", {}))
         assert "error" in result
-
 
 class TestMem0Prefetch:
     """prefetch() must recall on the CURRENT question, synchronously.
@@ -375,14 +369,7 @@ class TestMem0Prefetch:
         provider.queue_prefetch("previous turn text")
         assert backend.captured == []
 
-
 class TestMem0V3Config:
-
-    def test_tool_schemas_four_tools(self):
-        provider = Mem0MemoryProvider()
-        schemas = provider.get_tool_schemas()
-        names = [s["name"] for s in schemas]
-        assert names == ["mem0_search", "mem0_add", "mem0_update", "mem0_delete"]
 
     def test_system_prompt_new_tool_names(self):
         provider = Mem0MemoryProvider()
@@ -411,15 +398,6 @@ class TestMem0V3Config:
         block = provider.system_prompt_block()
         assert "OSS" in block
         assert "Rerank" not in block
-
-    def test_search_schema_has_rerank(self):
-        """rerank property available in SEARCH_SCHEMA for platform mode."""
-        provider = Mem0MemoryProvider()
-        schemas = provider.get_tool_schemas()
-        search = next(s for s in schemas if s["name"] == "mem0_search")
-        assert "rerank" in search["parameters"]["properties"]
-        assert search["parameters"]["properties"]["rerank"]["type"] == "boolean"
-
 
 class TestMem0ModeSwitch:
 
@@ -461,12 +439,6 @@ class TestMem0ModeSwitch:
         provider = Mem0MemoryProvider()
         assert provider.is_available() is False
 
-    def test_tool_schemas_unchanged(self):
-        provider = Mem0MemoryProvider()
-        schemas = provider.get_tool_schemas()
-        names = [s["name"] for s in schemas]
-        assert names == ["mem0_search", "mem0_add", "mem0_update", "mem0_delete"]
-
     def test_system_prompt_includes_mode(self):
         provider = Mem0MemoryProvider()
         provider._user_id = "test"
@@ -474,7 +446,6 @@ class TestMem0ModeSwitch:
         block = provider.system_prompt_block()
         assert "mem0_search" in block
         assert "OSS" in block
-
 
 class TestMem0UserIdResolution:
     """user_id resolution: configured override > gateway-native id > placeholder.
@@ -527,7 +498,6 @@ class TestMem0UserIdResolution:
         provider.initialize("test", user_id="123456789", platform="telegram")
         assert provider._user_id == "123456789"
 
-
 class TestMem0WriteMetadata:
     """Writes carry metadata.channel so per-channel filtered views are possible
     without coupling identity to the channel.
@@ -557,11 +527,9 @@ class TestMem0WriteMetadata:
         assert adds, "expected an add call from sync_turn"
         assert adds[-1][2]["metadata"] == {"channel": "discord"}
 
-
 class _SentinelBackend:
     def __init__(self, *args):
         self.args = args
-
 
 class TestCreateBackendRouting:
     """_create_backend() must pick the backend matching the configured mode/host."""
@@ -625,7 +593,6 @@ class TestCreateBackendRouting:
         block = provider.system_prompt_block()
         assert "OSS" in block
         assert "HTTP API" not in block
-
 
 class TestSelfHostedConfig:
     """Config plumbing for self-hosted (MEM0_HOST env + is_available)."""

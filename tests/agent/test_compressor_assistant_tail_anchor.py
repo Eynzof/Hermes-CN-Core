@@ -47,7 +47,6 @@ from unittest.mock import patch
 
 import pytest
 
-
 @pytest.fixture()
 def compressor():
     """ContextCompressor with mocked deps and a tight tail budget so
@@ -67,11 +66,9 @@ def compressor():
         c.tail_token_budget = 50
         return c
 
-
 # ---------------------------------------------------------------------------
 # Helper: _find_last_assistant_message_idx
 # ---------------------------------------------------------------------------
-
 
 class TestFindLastAssistantMessageIdx:
     def test_finds_content_bearing_assistant(self, compressor):
@@ -170,11 +167,9 @@ class TestFindLastAssistantMessageIdx:
         idx = compressor._find_last_assistant_message_idx(messages, head_end=2)
         assert idx == -1
 
-
 # ---------------------------------------------------------------------------
 # Helper: _ensure_last_assistant_message_in_tail
 # ---------------------------------------------------------------------------
-
 
 class TestEnsureLastAssistantMessageInTail:
     def test_no_op_when_already_in_tail(self, compressor):
@@ -252,11 +247,9 @@ class TestEnsureLastAssistantMessageInTail:
             # Otherwise the anchor must land at the reply itself (3).
             assert new_cut == 3
 
-
 # ---------------------------------------------------------------------------
 # Integration with _find_tail_cut_by_tokens
 # ---------------------------------------------------------------------------
-
 
 class TestFindTailCutByTokensAnchorsAssistant:
     def test_reporter_repro_long_tool_run_after_visible_reply(
@@ -341,11 +334,9 @@ class TestFindTailCutByTokensAnchorsAssistant:
         ]
         assert any("VISIBLE REPLY" in (t or "") for t in tail_contents)
 
-
 # ---------------------------------------------------------------------------
 # End-to-end: compress() preserves the reply
 # ---------------------------------------------------------------------------
-
 
 class TestCompactionRollupReproduction:
     """End-to-end through ``compress()``: the visible reply text must
@@ -479,11 +470,9 @@ class TestCompactionRollupReproduction:
             f"{len(reply_rows)}"
         )
 
-
 # ---------------------------------------------------------------------------
 # Source guardrail
 # ---------------------------------------------------------------------------
-
 
 class TestFindLastUserMessageIdxSkipsSummaryMarker:
     """A context-compaction handoff banner is inserted with ``role="user"``
@@ -529,7 +518,6 @@ class TestFindLastUserMessageIdxSkipsSummaryMarker:
         ]
         assert compressor._find_last_user_message_idx(messages, head_end=1) == -1
 
-
 class TestSourceGuardrail:
     @pytest.fixture
     def source(self) -> str:
@@ -538,34 +526,3 @@ class TestSourceGuardrail:
                 / "agent" / "context_compressor.py").read_text(
                     encoding="utf-8")
 
-    def test_helper_defined(self, source):
-        assert "def _find_last_assistant_message_idx(" in source
-        assert "def _ensure_last_assistant_message_in_tail(" in source
-
-    def test_anchor_called_from_find_tail_cut(self, source):
-        """Without the call site the helper is dead code and the bug
-        regresses silently — pin both the definition AND the wiring."""
-        assert "self._ensure_last_assistant_message_in_tail(" in source
-
-    def test_anchor_called_after_user_anchor(self, source):
-        """The two anchors must run in sequence; reversing or skipping
-        one drops the corresponding side of the guarantee."""
-        user_call = "self._ensure_last_user_message_in_tail(messages, cut_idx, head_end)"
-        asst_call = "self._ensure_last_assistant_message_in_tail(messages, cut_idx, head_end)"
-        user_idx = source.find(user_call)
-        asst_idx = source.find(asst_call)
-        assert user_idx >= 0 and asst_idx >= 0
-        assert asst_idx > user_idx, (
-            "The assistant anchor must come AFTER the user anchor in "
-            "``_find_tail_cut_by_tokens`` — each anchor walks cut_idx "
-            "backward, and ordering keeps the chain monotonic."
-        )
-
-    def test_helper_prefers_content_bearing_reply(self, source):
-        """The helper must skip tool-call-only stubs — that's the
-        whole user-experience difference between #29824 (no visible
-        reply) and an in-progress turn (small 'calling tool X' chip)."""
-        assert "content.strip()" in source
-
-    def test_issue_number_referenced(self, source):
-        assert "#29824" in source

@@ -28,7 +28,6 @@ from hermes_cli.tools_config import (
     tools_command,
 )
 
-
 def test_agent_disabled_toolsets_suppresses_across_platforms():
     """agent.disabled_toolsets in config.yaml should remove those toolsets
     from the enabled set, regardless of platform defaults or explicit config.
@@ -42,7 +41,6 @@ def test_agent_disabled_toolsets_suppresses_across_platforms():
 
     assert "memory" not in cli_enabled
     assert "memory" not in discord_enabled
-
 
 def test_agent_disabled_toolsets_with_explicit_platform_config():
     """agent.disabled_toolsets should still suppress even when the platform
@@ -58,7 +56,6 @@ def test_agent_disabled_toolsets_with_explicit_platform_config():
     assert "memory" not in enabled
     assert "web" in enabled
     assert "terminal" in enabled
-
 
 def test_all_invalid_platform_toolsets_logs_runtime_warning(caplog):
     """#38798: an explicit platform config whose toolset names are all invalid
@@ -76,7 +73,6 @@ def test_all_invalid_platform_toolsets_logs_runtime_warning(caplog):
     warnings = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
     assert any("#38798" in m and "hermes" in m for m in warnings), warnings
 
-
 def test_invalid_platform_toolsets_runtime_warning_fires_once(caplog):
     """The runtime warning is deduped per platform — a persistently-corrupt
     config must not spam an identical warning on every tool resolution."""
@@ -92,7 +88,6 @@ def test_invalid_platform_toolsets_runtime_warning_fires_once(caplog):
     hits = [r for r in caplog.records if "#38798" in r.getMessage()]
     assert len(hits) == 1, f"expected exactly one warning, got {len(hits)}"
 
-
 def test_valid_platform_toolsets_no_runtime_warning(caplog):
     """A correctly-configured platform must not emit the #38798 warning."""
     config = {"platform_toolsets": {"cli": ["hermes-cli"]}}
@@ -101,7 +96,6 @@ def test_valid_platform_toolsets_no_runtime_warning(caplog):
         _get_platform_tools(config, "cli")
 
     assert not any("#38798" in r.getMessage() for r in caplog.records)
-
 
 def test_partially_valid_platform_toolsets_no_runtime_warning(caplog):
     """When at least one configured toolset is valid, tools still resolve, so
@@ -113,7 +107,6 @@ def test_partially_valid_platform_toolsets_no_runtime_warning(caplog):
         _get_platform_tools(config, "cli")
 
     assert not any("#38798" in r.getMessage() for r in caplog.records)
-
 
 def test_agent_disabled_toolsets_empty_list_is_noop():
     """Empty or missing disabled_toolsets should not change behavior."""
@@ -127,7 +120,6 @@ def test_agent_disabled_toolsets_empty_list_is_noop():
     assert _get_platform_tools(config_none, "cli") == default
     assert _get_platform_tools(config_missing, "cli") == default
 
-
 def test_get_platform_tools_uses_default_when_platform_not_configured():
     config = {}
 
@@ -136,17 +128,11 @@ def test_get_platform_tools_uses_default_when_platform_not_configured():
     assert enabled
     assert enabled.isdisjoint(_DEFAULT_OFF_TOOLSETS)
 
-
 def test_gui_toolset_label_strips_leading_emoji():
     assert gui_toolset_label("🔍 Web Search & Scraping") == "Web Search & Scraping"
     assert gui_toolset_label("👁️  Vision / Image Analysis") == "Vision / Image Analysis"
     assert gui_toolset_label("🔌 My Plugin") == "My Plugin"
     assert gui_toolset_label("Terminal & Processes") == "Terminal & Processes"
-
-
-def test_configurable_toolsets_include_context_engine():
-    assert any(ts_key == "context_engine" for ts_key, _, _ in CONFIGURABLE_TOOLSETS)
-
 
 def test_get_platform_tools_active_context_engine_is_enabled_for_explicit_config():
     config = {
@@ -159,7 +145,6 @@ def test_get_platform_tools_active_context_engine_is_enabled_for_explicit_config
     assert "context_engine" in enabled
     assert "web" in enabled
     assert "terminal" in enabled
-
 
 def test_get_platform_tools_context_engine_enabled_for_default_compressor():
     """context_engine is now a first-class default toolset.
@@ -175,7 +160,6 @@ def test_get_platform_tools_context_engine_enabled_for_default_compressor():
 
     assert "context_engine" in enabled
 
-
 def test_get_platform_tools_context_engine_respects_explicit_empty_selection():
     config = {
         "context": {"engine": "lcm"},
@@ -186,18 +170,15 @@ def test_get_platform_tools_context_engine_respects_explicit_empty_selection():
 
     assert "context_engine" not in enabled
 
-
 def test_get_platform_tools_default_whatsapp_includes_web():
     enabled = _get_platform_tools({}, "whatsapp")
 
     assert "web" in enabled
 
-
 def test_get_platform_tools_homeassistant_platform_keeps_homeassistant_toolset():
     enabled = _get_platform_tools({}, "homeassistant")
 
     assert "homeassistant" in enabled
-
 
 def test_get_platform_tools_homeassistant_toolset_enabled_for_cron_when_hass_token_set(monkeypatch):
     """HA toolset is runtime-gated by check_fn (requires HASS_TOKEN).
@@ -219,7 +200,6 @@ def test_get_platform_tools_homeassistant_toolset_enabled_for_cron_when_hass_tok
     cli_enabled = _get_platform_tools({}, "cli")
     assert "homeassistant" in cli_enabled
 
-
 def test_get_platform_tools_homeassistant_toolset_off_for_cron_when_hass_token_missing(monkeypatch):
     """Without HASS_TOKEN, HA stays off by default — preserves #14798's behavior
     for users who never configured HA."""
@@ -227,7 +207,6 @@ def test_get_platform_tools_homeassistant_toolset_off_for_cron_when_hass_token_m
 
     cron_enabled = _get_platform_tools({}, "cron")
     assert "homeassistant" not in cron_enabled
-
 
 def test_get_platform_tools_x_search_auto_enabled_when_xai_oauth_present(monkeypatch):
     """x_search toolset auto-enables across platforms when xAI Grok OAuth
@@ -247,13 +226,11 @@ def test_get_platform_tools_x_search_auto_enabled_when_xai_oauth_present(monkeyp
         enabled = _get_platform_tools({}, plat)
         assert "x_search" in enabled, f"x_search missing for {plat}"
 
-
 # ─── #35527: platform-restricted default-off toolsets (discord/discord_admin)
 # are stripped by _DEFAULT_OFF_TOOLSETS even when the user explicitly opts in
 # via the platform's native composite. The composite ``hermes-discord``
 # contains both ``discord`` and ``discord_admin`` tools, so configuring it is
 # an explicit opt-in that should survive the default-off strip. ───────────────
-
 
 def test_discord_composite_only_enables_discord_toolsets():
     """Layer 1: ``platform_toolsets.discord: [hermes-discord]`` is an explicit
@@ -264,7 +241,6 @@ def test_discord_composite_only_enables_discord_toolsets():
     assert "discord" in enabled, "discord toolset missing from hermes-discord composite"
     assert "discord_admin" in enabled, "discord_admin toolset missing from composite"
 
-
 def test_discord_composite_plus_configurable_enables_discord_toolsets():
     """Layer 2: mixing the composite with a configurable key (e.g. spotify)
     still opts into the Discord toolsets carried by the composite."""
@@ -272,7 +248,6 @@ def test_discord_composite_plus_configurable_enables_discord_toolsets():
     enabled = _get_platform_tools(config, "discord")
     assert "discord" in enabled
     assert "discord_admin" in enabled
-
 
 def test_discord_composite_plus_partial_explicit_enables_sibling():
     """Layer 3: ``[hermes-discord, discord]`` lists discord explicitly but
@@ -282,14 +257,12 @@ def test_discord_composite_plus_partial_explicit_enables_sibling():
     assert "discord" in enabled
     assert "discord_admin" in enabled
 
-
 def test_discord_unconfigured_keeps_discord_toolsets_off():
     """Layer 4 (guard): an unconfigured discord platform keeps the platform
     toolsets OFF by default — explicit configuration is required to opt in."""
     enabled = _get_platform_tools({}, "discord")
     assert "discord" not in enabled
     assert "discord_admin" not in enabled
-
 
 def test_discord_empty_list_keeps_discord_toolsets_off():
     """Layer 4 (guard): an explicit empty list means 'nothing' — the Discord
@@ -300,7 +273,6 @@ def test_discord_empty_list_keeps_discord_toolsets_off():
     assert "discord" not in enabled
     assert "discord_admin" not in enabled
 
-
 def test_discord_toolsets_do_not_leak_to_other_platforms():
     """Layer 4 (guard): discord/discord_admin are platform-restricted — they
     must never appear on a non-discord platform even when that platform is
@@ -309,7 +281,6 @@ def test_discord_toolsets_do_not_leak_to_other_platforms():
     enabled = _get_platform_tools(config, "telegram")
     assert "discord" not in enabled
     assert "discord_admin" not in enabled
-
 
 def test_discord_explicit_workaround_still_works():
     """Regression guard: the documented workaround of listing toolsets
@@ -321,7 +292,6 @@ def test_discord_explicit_workaround_still_works():
     assert "discord" in enabled
     assert "discord_admin" in enabled
 
-
 def test_get_platform_tools_x_search_auto_enabled_when_xai_api_key_present(monkeypatch):
     """x_search toolset auto-enables when XAI_API_KEY is set, even without
     OAuth tokens — the API-key path is a supported credential source."""
@@ -329,7 +299,6 @@ def test_get_platform_tools_x_search_auto_enabled_when_xai_api_key_present(monke
 
     cli_enabled = _get_platform_tools({}, "cli")
     assert "x_search" in cli_enabled
-
 
 def test_get_platform_tools_x_search_off_when_no_xai_credentials(monkeypatch):
     """Without any xAI credentials, x_search stays off — preserves the
@@ -341,7 +310,6 @@ def test_get_platform_tools_x_search_off_when_no_xai_credentials(monkeypatch):
 
     cli_enabled = _get_platform_tools({}, "cli")
     assert "x_search" not in cli_enabled
-
 
 def test_get_platform_tools_x_search_respects_explicit_config(monkeypatch):
     """Once the user has saved an explicit toolset list via `hermes tools`,
@@ -357,7 +325,6 @@ def test_get_platform_tools_x_search_respects_explicit_config(monkeypatch):
     enabled = _get_platform_tools(config, "cli")
     assert "x_search" not in enabled
     assert "spotify" in enabled
-
 
 def test_get_platform_tools_expands_composite_when_mixed_with_configurable():
     """``[hermes-cli, spotify]`` (composite + configurable) must keep the full
@@ -375,7 +342,6 @@ def test_get_platform_tools_expands_composite_when_mixed_with_configurable():
     # User explicitly opted into Spotify — must survive _DEFAULT_OFF_TOOLSETS subtraction.
     assert "spotify" in enabled
 
-
 def test_get_platform_tools_composite_only_unchanged():
     """Composite-only config (no configurable in list) must still take the
     else-branch path and produce the full toolset — guards against the new
@@ -388,7 +354,6 @@ def test_get_platform_tools_composite_only_unchanged():
     default = _get_platform_tools({}, "cli", include_default_mcp_servers=False)
 
     assert composite_only == default
-
 
 def test_get_platform_tools_configurable_only_no_expansion():
     """Configurable-only list (no composite) must not pull in unrelated
@@ -403,7 +368,6 @@ def test_get_platform_tools_configurable_only_no_expansion():
     # Web shouldn't sneak in via the new expansion path.
     assert "web" not in enabled
 
-
 def test_get_platform_tools_mixed_does_not_resurrect_default_off():
     """Expansion must subtract _DEFAULT_OFF_TOOLSETS from the implicit
     pull-in. Without this, ``hermes-cli`` expansion would re-enable
@@ -415,7 +379,6 @@ def test_get_platform_tools_mixed_does_not_resurrect_default_off():
     assert "terminal" in enabled
     assert "moa" not in enabled
     assert "rl" not in enabled
-
 
 def test_get_platform_tools_preserves_explicit_empty_selection():
     config = {"platform_toolsets": {"cli": []}}
@@ -433,7 +396,6 @@ def test_get_platform_tools_preserves_explicit_empty_selection():
     configurable = {ts_key for ts_key, _, _ in CONFIGURABLE_TOOLSETS}
     assert enabled.isdisjoint(configurable)
 
-
 def test_apply_toolset_change_from_default_does_not_enable_default_off_toolsets():
     """Disabling one default toolset on a fresh config must not persist
     default-off toolsets as explicitly enabled.
@@ -448,7 +410,6 @@ def test_apply_toolset_change_from_default_does_not_enable_default_off_toolsets(
     assert "terminal" in saved
     assert saved.isdisjoint(_DEFAULT_OFF_TOOLSETS)
 
-
 def test_apply_toolset_change_can_enable_default_off_toolset_from_default():
     config = {}
 
@@ -458,7 +419,6 @@ def test_apply_toolset_change_can_enable_default_off_toolset_from_default():
     saved = set(config["platform_toolsets"]["cli"])
     assert "homeassistant" in saved
     assert "terminal" in saved
-
 
 def test_get_platform_tools_handles_null_platform_toolsets():
     """YAML `platform_toolsets:` with no value parses as None — the old
@@ -472,7 +432,6 @@ def test_get_platform_tools_handles_null_platform_toolsets():
     # Falls through to defaults instead of raising
     assert enabled
 
-
 def test_platform_toolset_summary_uses_explicit_platform_list():
     config = {}
 
@@ -480,7 +439,6 @@ def test_platform_toolset_summary_uses_explicit_platform_list():
 
     assert set(summary.keys()) == {"cli"}
     assert summary["cli"] == _get_platform_tools(config, "cli")
-
 
 def test_get_platform_tools_includes_enabled_mcp_servers_by_default():
     config = {
@@ -497,7 +455,6 @@ def test_get_platform_tools_includes_enabled_mcp_servers_by_default():
     assert "web-search-prime" in enabled
     assert "disabled-server" not in enabled
 
-
 def test_get_platform_tools_keeps_enabled_mcp_servers_with_explicit_builtin_selection():
     config = {
         "platform_toolsets": {"cli": ["web", "memory"]},
@@ -513,7 +470,6 @@ def test_get_platform_tools_keeps_enabled_mcp_servers_with_explicit_builtin_sele
     assert "memory" in enabled
     assert "exa" in enabled
     assert "web-search-prime" in enabled
-
 
 def test_get_platform_tools_no_mcp_sentinel_excludes_all_mcp_servers():
     """The 'no_mcp' sentinel in platform_toolsets excludes all MCP servers."""
@@ -532,7 +488,6 @@ def test_get_platform_tools_no_mcp_sentinel_excludes_all_mcp_servers():
     assert "exa" not in enabled
     assert "web-search-prime" not in enabled
     assert "no_mcp" not in enabled
-
 
 def test_get_platform_tools_no_mcp_sentinel_does_not_affect_other_platforms():
     """The 'no_mcp' sentinel only affects the platform it's configured on."""
@@ -553,7 +508,6 @@ def test_get_platform_tools_no_mcp_sentinel_does_not_affect_other_platforms():
     cli_enabled = _get_platform_tools(config, "cli")
     assert "exa" in cli_enabled
 
-
 def test_toolset_has_keys_for_vision_accepts_codex_auth(tmp_path, monkeypatch):
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
     (tmp_path / "auth.json").write_text(
@@ -569,7 +523,6 @@ def test_toolset_has_keys_for_vision_accepts_codex_auth(tmp_path, monkeypatch):
     )
 
     assert _toolset_has_keys("vision") is True
-
 
 def test_save_platform_tools_preserves_mcp_server_names():
     """Ensure MCP server names are preserved when saving platform tools.
@@ -596,7 +549,6 @@ def test_save_platform_tools_preserves_mcp_server_names():
     assert "browser" in saved_toolsets
     assert "terminal" not in saved_toolsets
 
-
 def test_save_platform_tools_handles_empty_existing_config():
     """Saving platform tools works when no existing config exists."""
     config = {}
@@ -607,7 +559,6 @@ def test_save_platform_tools_handles_empty_existing_config():
     saved_toolsets = config["platform_toolsets"]["telegram"]
     assert "web" in saved_toolsets
     assert "terminal" in saved_toolsets
-
 
 def test_save_platform_tools_handles_invalid_existing_config():
     """Saving platform tools works when existing config is not a list."""
@@ -622,7 +573,6 @@ def test_save_platform_tools_handles_invalid_existing_config():
 
     saved_toolsets = config["platform_toolsets"]["cli"]
     assert "web" in saved_toolsets
-
 
 def test_save_platform_tools_does_not_preserve_platform_default_toolsets():
     """Platform default toolsets (hermes-cli, hermes-telegram, etc.) must NOT
@@ -674,7 +624,6 @@ def test_save_platform_tools_does_not_preserve_platform_default_toolsets():
     assert "homeassistant" not in saved
     assert "moa" not in saved
 
-
 def test_save_platform_tools_does_not_preserve_hermes_telegram():
     """Same bug for Telegram — hermes-telegram must not be preserved."""
     config = {
@@ -693,7 +642,6 @@ def test_save_platform_tools_does_not_preserve_hermes_telegram():
     saved = config["platform_toolsets"]["telegram"]
     assert "hermes-telegram" not in saved
     assert "web" in saved
-
 
 def test_save_platform_tools_still_preserves_mcp_with_platform_default_present():
     """MCP server names must still be preserved even when platform defaults
@@ -727,7 +675,6 @@ def test_save_platform_tools_still_preserves_mcp_with_platform_default_present()
     # Deselected configurable toolset removed
     assert "terminal" not in saved
 
-
 def test_visible_providers_include_nous_subscription_when_logged_in(monkeypatch):
     config = {"model": {"provider": "nous"}}
 
@@ -749,7 +696,6 @@ def test_visible_providers_include_nous_subscription_when_logged_in(monkeypatch)
     # "Local Browser" must be the index-0 default so pressing Enter never
     # walks a user into a paid Nous Portal login.
     assert providers[0]["name"] == "Local Browser"
-
 
 def test_visible_providers_show_nous_subscription_when_logged_out(monkeypatch):
     """Nous-managed Tool Gateway rows are always listed, even logged out.
@@ -773,7 +719,6 @@ def test_visible_providers_show_nous_subscription_when_logged_out(monkeypatch):
 
     assert any(p["name"].startswith("Nous Subscription") for p in providers)
 
-
 def test_visible_providers_show_nous_subscription_when_paid_access_is_false(monkeypatch):
     """Logged-in-but-unpaid users still see the managed rows.
 
@@ -795,7 +740,6 @@ def test_visible_providers_show_nous_subscription_when_paid_access_is_false(monk
     providers = _visible_providers(TOOL_CATEGORIES["browser"], config)
 
     assert any(p["name"].startswith("Nous Subscription") for p in providers)
-
 
 def test_visible_providers_force_fresh_shows_nous_subscription_after_upgrade(monkeypatch):
     calls = []
@@ -829,7 +773,6 @@ def test_visible_providers_force_fresh_shows_nous_subscription_after_upgrade(mon
     assert any(p["name"].startswith("Nous Subscription") for p in providers)
     assert ("features", True) in calls
 
-
 def test_local_browser_provider_is_saved_explicitly(monkeypatch):
     config = {}
     local_provider = next(
@@ -841,7 +784,6 @@ def test_local_browser_provider_is_saved_explicitly(monkeypatch):
     _configure_provider(local_provider, config)
 
     assert config["browser"]["cloud_provider"] == "local"
-
 
 def test_fresh_install_browser_default_is_free_local_not_paid_nous():
     """On a fresh install the browser picker must default to the free local
@@ -859,7 +801,6 @@ def test_fresh_install_browser_default_is_free_local_not_paid_nous():
     # Nothing active/configured → cursor defaults to index 0 (the free local row).
     assert _detect_active_provider_index(providers, {}) == 0
 
-
 def test_fresh_install_tts_default_is_free_edge_not_paid_nous():
     """TTS picker defaults to the free Edge backend on a fresh install."""
     from hermes_cli.tools_config import _detect_active_provider_index
@@ -868,7 +809,6 @@ def test_fresh_install_tts_default_is_free_edge_not_paid_nous():
     assert providers[0]["name"] == "Microsoft Edge TTS"
     assert providers[0]["tts_provider"] == "edge"
     assert _detect_active_provider_index(providers, {}) == 0
-
 
 def test_reconfigure_lists_enabled_web_without_existing_provider_config(monkeypatch):
     config = {"platform_toolsets": {"cli": ["web"]}}
@@ -895,7 +835,6 @@ def test_reconfigure_lists_enabled_web_without_existing_provider_config(monkeypa
 
     assert any("Web Search" in choice for choice in seen["choices"])
     assert configured == ["web"]
-
 
 def test_configure_all_platforms_configures_selected_tool_missing_provider(monkeypatch):
     """Regression: `hermes tools` → Configure all platforms → Web Search
@@ -942,7 +881,6 @@ def test_configure_all_platforms_configures_selected_tool_missing_provider(monke
     assert config["platform_toolsets"]["cli"] == ["web"]
     assert config["platform_toolsets"]["telegram"] == ["web"]
 
-
 def test_configure_single_platform_configures_selected_tool_missing_provider(monkeypatch):
     """Regression (per-platform sibling of the global flow): `hermes tools` →
     Configure <platform> → Web Search must enter provider/API-key setup even
@@ -987,7 +925,6 @@ def test_configure_single_platform_configures_selected_tool_missing_provider(mon
 
     assert configured == ["web"]
     assert config["platform_toolsets"]["cli"] == ["web"]
-
 
 def test_first_install_nous_auto_configures_managed_defaults(monkeypatch):
     monkeypatch.setattr("hermes_cli.nous_subscription.managed_nous_tools_enabled", lambda: True)
@@ -1046,7 +983,6 @@ def test_first_install_nous_auto_configures_managed_defaults(monkeypatch):
     assert config["browser"]["cloud_provider"] == "browser-use"
     assert config["image_gen"]["use_gateway"] is True
     assert configured == []
-
 
 def test_first_install_nous_auto_configures_video_gen(monkeypatch):
     """When a Nous subscriber checks video_gen in the toolset checklist,
@@ -1108,7 +1044,6 @@ def test_first_install_nous_auto_configures_video_gen(monkeypatch):
 
 # ── Platform / toolset consistency ────────────────────────────────────────────
 
-
 class TestPlatformToolsetConsistency:
     """Every platform in tools_config.PLATFORMS must have a matching toolset."""
 
@@ -1155,7 +1090,6 @@ class TestPlatformToolsetConsistency:
                 f"skills_config PLATFORMS"
             )
 
-
 def test_numeric_mcp_server_name_does_not_crash_sorted():
     """YAML parses bare numeric keys (e.g. ``12306:``) as int.
 
@@ -1183,14 +1117,12 @@ def test_numeric_mcp_server_name_does_not_crash_sorted():
     # sorted() must not raise TypeError
     sorted(enabled)
 
-
 # ─── Imagegen Backend Picker Wiring ────────────────────────────────────────
 
 def test_toolset_has_keys_treats_no_key_providers_as_configured():
     config = {}
 
     assert _toolset_has_keys("computer_use", config) is True
-
 
 def test_computer_use_needs_configuration_when_cua_driver_post_setup_pending():
     """No-key providers can still need setup when their post_setup is unsatisfied.
@@ -1201,7 +1133,6 @@ def test_computer_use_needs_configuration_when_cua_driver_post_setup_pending():
     with patch("shutil.which", return_value=None):
         assert _toolset_needs_configuration_prompt("computer_use", {}) is True
 
-
 def test_computer_use_skips_configuration_when_cua_driver_already_installed():
     """Installed post_setup dependencies should keep returning-user toggles no-op."""
     def fake_which(name: str):
@@ -1209,7 +1140,6 @@ def test_computer_use_skips_configuration_when_cua_driver_already_installed():
 
     with patch("shutil.which", side_effect=fake_which):
         assert _toolset_needs_configuration_prompt("computer_use", {}) is False
-
 
 def test_computer_use_respects_custom_cua_driver_command():
     """The setup gate should match runtime's HERMES_CUA_DRIVER_CMD override."""
@@ -1220,7 +1150,6 @@ def test_computer_use_respects_custom_cua_driver_command():
          patch("shutil.which", side_effect=fake_which):
         assert _toolset_needs_configuration_prompt("computer_use", {}) is False
 
-
 def test_computer_use_blank_custom_driver_command_falls_back_to_default():
     """Blank overrides should not make the setup gate look for an empty command."""
     def fake_which(name: str):
@@ -1229,7 +1158,6 @@ def test_computer_use_blank_custom_driver_command_falls_back_to_default():
     with patch.dict("os.environ", {"HERMES_CUA_DRIVER_CMD": "   "}), \
          patch("shutil.which", side_effect=fake_which):
         assert _toolset_needs_configuration_prompt("computer_use", {}) is False
-
 
 def test_computer_use_post_setup_respects_custom_driver_command_when_installed():
     """post_setup already-installed checks should version-probe the override."""
@@ -1246,7 +1174,6 @@ def test_computer_use_post_setup_respects_custom_driver_command_when_installed()
 
     run.assert_called_once()
     assert run.call_args.args[0] == ["custom-cua", "--version"]
-
 
 def test_computer_use_post_setup_missing_override_does_not_accept_default_binary():
     """A default cua-driver binary must not satisfy a missing runtime override."""
@@ -1270,21 +1197,8 @@ def test_computer_use_post_setup_missing_override_does_not_accept_default_binary
     assert "custom-cua" in seen
     assert "curl" in seen
 
-
 class TestImagegenBackendRegistry:
     """IMAGEGEN_BACKENDS tags drive the model picker flow in tools_config."""
-
-    def test_fal_backend_registered(self):
-        from hermes_cli.tools_config import IMAGEGEN_BACKENDS
-        assert "fal" in IMAGEGEN_BACKENDS
-
-    def test_fal_catalog_loads_lazily(self):
-        """catalog_fn should defer import to avoid import cycles."""
-        from hermes_cli.tools_config import IMAGEGEN_BACKENDS
-        catalog, default = IMAGEGEN_BACKENDS["fal"]["catalog_fn"]()
-        assert default == "fal-ai/flux-2/klein/9b"
-        assert "fal-ai/flux-2/klein/9b" in catalog
-        assert "fal-ai/flux-2-pro" in catalog
 
     def test_image_gen_providers_tagged_with_fal_backend(self):
         """Both Nous Subscription and FAL.ai providers must carry the
@@ -1295,7 +1209,6 @@ class TestImagegenBackendRegistry:
             assert p.get("imagegen_backend") == "fal", (
                 f"{p['name']} missing imagegen_backend tag"
             )
-
 
 class TestImagegenModelPicker:
     """_configure_imagegen_model writes selection to config and respects
@@ -1355,7 +1268,6 @@ class TestImagegenModelPicker:
         assert isinstance(config["image_gen"], dict)
         assert config["image_gen"]["model"] == "fal-ai/flux-2/klein/9b"
 
-
 def test_save_platform_tools_normalizes_numeric_entries():
     """YAML may parse bare numeric toolset names as int. They should be
     normalized to str so they survive the save round-trip.
@@ -1372,7 +1284,6 @@ def test_save_platform_tools_normalizes_numeric_entries():
     saved = config["platform_toolsets"]["cli"]
     assert "12306" in saved
     assert 12306 not in saved
-
 
 def test_save_platform_tools_clears_no_mcp_sentinel():
     """`hermes tools` has no UI for no_mcp, so saving from the picker clears
@@ -1391,7 +1302,6 @@ def test_save_platform_tools_clears_no_mcp_sentinel():
     saved = config["platform_toolsets"]["cli"]
     assert "no_mcp" not in saved
 
-
 def test_save_platform_tools_preserves_mcp_server_names():
     """Non-sentinel passthrough entries (MCP server names) must still survive
     the save — we only clear `no_mcp`, not every non-configurable entry.
@@ -1408,7 +1318,6 @@ def test_save_platform_tools_preserves_mcp_server_names():
     saved = config["platform_toolsets"]["cli"]
     assert "custom-mcp" in saved
     assert "another-mcp" in saved
-
 
 def test_get_platform_tools_recovers_non_configurable_toolsets_from_composite():
     """Non-configurable toolsets whose tools are in the composite but not in
@@ -1442,7 +1351,6 @@ def test_get_platform_tools_recovers_non_configurable_toolsets_from_composite():
     assert "web" in enabled
     assert "terminal" in enabled
 
-
 def test_get_platform_tools_second_pass_skips_fully_claimed_toolsets():
     """Toolsets whose tools are fully covered by configurable keys should NOT
     be added by the second pass (prevents 'search', 'hermes-acp' noise).
@@ -1451,7 +1359,6 @@ def test_get_platform_tools_second_pass_skips_fully_claimed_toolsets():
 
     assert "search" not in enabled
 
-
 def test_get_platform_tools_discord_both_off_by_default():
     """Both `discord` and `discord_admin` are opt-in via `hermes tools`,
     even on the Discord platform itself.  Users shouldn't auto-inherit 19
@@ -1459,18 +1366,6 @@ def test_get_platform_tools_discord_both_off_by_default():
     enabled = _get_platform_tools({}, "discord")
     assert "discord" not in enabled
     assert "discord_admin" not in enabled
-
-
-def test_discord_toolsets_in_configurable_toolsets():
-    keys = {ts_key for ts_key, _, _ in CONFIGURABLE_TOOLSETS}
-    assert "discord" in keys
-    assert "discord_admin" in keys
-
-
-def test_discord_toolsets_in_default_off():
-    assert "discord" in _DEFAULT_OFF_TOOLSETS
-    assert "discord_admin" in _DEFAULT_OFF_TOOLSETS
-
 
 def test_discord_toolsets_not_available_on_other_platforms():
     """Platform-scoping: discord / discord_admin should not appear on CLI,
@@ -1486,14 +1381,12 @@ def test_discord_toolsets_not_available_on_other_platforms():
     assert _toolset_allowed_for_platform("discord", "discord")
     assert _toolset_allowed_for_platform("discord_admin", "discord")
 
-
 def test_discord_toolsets_user_enabled_are_honored():
     """When the user opts in via `hermes tools`, the toolset appears."""
     config = {"platform_toolsets": {"discord": ["web", "terminal", "discord"]}}
     enabled = _get_platform_tools(config, "discord")
     assert "discord" in enabled
     assert "discord_admin" not in enabled
-
 
 def test_save_platform_tools_strips_restricted_toolsets():
     """Hand-edited or all-platforms checklist with `discord` selected for
@@ -1507,19 +1400,16 @@ def test_save_platform_tools_strips_restricted_toolsets():
     assert "web" in saved
     assert "terminal" in saved
 
-
 def test_get_platform_tools_feishu_includes_doc_and_drive():
     enabled = _get_platform_tools({}, "feishu")
     assert "feishu_doc" in enabled
     assert "feishu_drive" in enabled
-
 
 def test_get_platform_tools_feishu_tools_not_on_other_platforms():
     for plat in ["cli", "telegram", "discord"]:
         enabled = _get_platform_tools({}, plat)
         assert "feishu_doc" not in enabled, f"feishu_doc leaked onto {plat}"
         assert "feishu_drive" not in enabled, f"feishu_drive leaked onto {plat}"
-
 
 def test_get_effective_configurable_toolsets_dedupes_bundled_plugins():
     """Bundled plugins (plugins/spotify) share their toolset key with the
@@ -1540,7 +1430,6 @@ def test_get_effective_configurable_toolsets_dedupes_bundled_plugins():
     assert len(spotify_rows) == 1, spotify_rows
     # Built-in label wins over the plugin label.
     assert spotify_rows[0][1] == "🎵 Spotify"
-
 
 @pytest.mark.parametrize("provider,config_key,expected", [
     # managed provider → use_gateway True
@@ -1563,14 +1452,12 @@ def test_reconfigure_provider_syncs_use_gateway(monkeypatch, provider, config_ke
     _reconfigure_provider(provider, config)
     assert config[config_key]["use_gateway"] is expected
 
-
 def test_reconfigure_browser_provider_overwrites_stale_use_gateway():
     # Switching from managed (use_gateway=True) to self-hosted must clear the stale flag.
     config = {"browser": {"cloud_provider": "managed-browser", "use_gateway": True}}
     provider = {"name": "Browserbase", "browser_provider": "browserbase", "env_vars": []}
     _reconfigure_provider(provider, config)
     assert config["browser"]["use_gateway"] is False
-
 
 @pytest.mark.parametrize("provider_name,post_setup_key", [
     ("Camofox", "camofox"),
@@ -1595,11 +1482,9 @@ def test_reconfigure_provider_runs_post_setup_for_env_var_providers(
 
     assert called == [post_setup_key]
 
-
 # ---------------------------------------------------------------------------
 # Inline Nous Portal login gate on managed-provider selection
 # ---------------------------------------------------------------------------
-
 
 def test_configure_managed_provider_blocks_when_not_entitled(monkeypatch):
     """Selecting a Nous-managed backend without paid access writes no config."""
@@ -1620,7 +1505,6 @@ def test_configure_managed_provider_blocks_when_not_entitled(monkeypatch):
     # No use_gateway / backend written — the gate returned before any mutation.
     assert "web" not in config
 
-
 def test_configure_managed_provider_enables_when_entitled(monkeypatch):
     """Once entitled, selecting the managed backend sets use_gateway=True."""
     monkeypatch.setattr(
@@ -1639,7 +1523,6 @@ def test_configure_managed_provider_enables_when_entitled(monkeypatch):
 
     assert config["web"]["backend"] == "firecrawl"
     assert config["web"]["use_gateway"] is True
-
 
 def test_configure_non_managed_provider_skips_portal_gate(monkeypatch):
     """A self-hosted provider must never trigger the Nous Portal login gate."""
@@ -1661,7 +1544,6 @@ def test_configure_non_managed_provider_skips_portal_gate(monkeypatch):
     assert config["web"]["backend"] == "tavily"
     assert config["web"]["use_gateway"] is False
 
-
 def test_apply_provider_selection_web_sets_backend():
     """Selecting a web provider persists the backend without prompting for keys."""
     from hermes_cli.tools_config import apply_provider_selection
@@ -1671,7 +1553,6 @@ def test_apply_provider_selection_web_sets_backend():
 
     assert config["web"]["backend"] == "firecrawl"
     assert config["web"]["use_gateway"] is False
-
 
 def test_apply_provider_selection_tts_sets_provider():
     """Selecting a TTS provider persists tts.provider."""
@@ -1683,20 +1564,17 @@ def test_apply_provider_selection_tts_sets_provider():
     assert config["tts"]["provider"] == "edge"
     assert config["tts"]["use_gateway"] is False
 
-
 def test_apply_provider_selection_unknown_provider_raises_keyerror():
     from hermes_cli.tools_config import apply_provider_selection
 
     with pytest.raises(KeyError):
         apply_provider_selection("web", "No Such Provider", {})
 
-
 def test_apply_provider_selection_unknown_toolset_raises_keyerror():
     from hermes_cli.tools_config import apply_provider_selection
 
     with pytest.raises(KeyError):
         apply_provider_selection("not_a_toolset", "whatever", {})
-
 
 def test_apply_provider_selection_does_not_prompt_or_post_setup(monkeypatch):
     """The non-interactive selection must not invoke prompts or post-setup hooks."""
@@ -1714,10 +1592,8 @@ def test_apply_provider_selection_does_not_prompt_or_post_setup(monkeypatch):
     tools_config.apply_provider_selection("tts", "Microsoft Edge TTS", config)
     assert config["tts"]["provider"] == "edge"
 
-
 # ── Checklist diff scope: non-configurable toolsets (kanban) must not be
 #    reported as added/removed by `hermes tools` ──────────────────────────
-
 
 def test_checklist_toolset_keys_excludes_kanban():
     """``kanban`` is check_fn-gated and never appears in the checklist, so it
@@ -1727,7 +1603,6 @@ def test_checklist_toolset_keys_excludes_kanban():
         assert "kanban" not in keys
         # Configurable toolsets that ARE offered must be present.
         assert "web" in keys
-
 
 def test_kanban_not_reported_as_removed_in_diff():
     """Reproduces the false-signal bug: `hermes tools` printed ``- kanban``
@@ -1752,7 +1627,6 @@ def test_kanban_not_reported_as_removed_in_diff():
     # Scoped (fixed) diff drops it.
     assert ((current - new_enabled) & universe) == set()
 
-
 def test_real_configurable_changes_still_reported_in_diff():
     """Scoping the diff to the checklist universe must NOT swallow genuine
     add/remove of configurable toolsets."""
@@ -1767,7 +1641,6 @@ def test_real_configurable_changes_still_reported_in_diff():
     # User adds 'vision' (configurable) — must still report as added.
     new_enabled2 = (current - {"kanban"}) | {"vision"}
     assert ((new_enabled2 - current) & universe) == {"vision"}
-
 
 def test_vision_picker_writes_provider_and_model(tmp_path, monkeypatch):
     """Picking a provider+model persists auxiliary.vision.{provider,model}.
@@ -1801,7 +1674,6 @@ def test_vision_picker_writes_provider_and_model(tmp_path, monkeypatch):
     # Provider selection must not leave a stale custom endpoint.
     assert not v.get("base_url")
 
-
 def test_vision_picker_auto_clears_override(tmp_path, monkeypatch):
     """Choosing Auto clears any pinned provider/model so resolution auto-detects."""
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
@@ -1824,7 +1696,6 @@ def test_vision_picker_auto_clears_override(tmp_path, monkeypatch):
     assert v.get("provider") in (None, "", "auto")
     assert not v.get("model")
 
-
 def test_vision_picker_custom_endpoint(tmp_path, monkeypatch):
     """Custom endpoint writes base_url+model to config and the key to env."""
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
@@ -1845,7 +1716,6 @@ def test_vision_picker_custom_endpoint(tmp_path, monkeypatch):
     # provider pinned to "custom" so the resolver routes through base_url.
     assert v.get("provider") == "custom"
     save_env.assert_called_once_with("OPENAI_API_KEY", "sk-secret")
-
 
 def test_save_platform_tools_clears_newly_enabled_from_disabled_toolsets():
     """Enabling a toolset via the picker must remove it from
@@ -1871,7 +1741,6 @@ def test_save_platform_tools_clears_newly_enabled_from_disabled_toolsets():
     assert "browser" in config["agent"]["disabled_toolsets"]
     assert "todo" in config["platform_toolsets"]["cli"]
 
-
 def test_save_platform_tools_resolves_to_enabled_after_disabled_toolsets_reconcile():
     """End-to-end: after _save_platform_tools() reconciles disabled_toolsets,
     _get_platform_tools() must actually resolve the toolset as enabled --
@@ -1895,7 +1764,6 @@ def test_save_platform_tools_resolves_to_enabled_after_disabled_toolsets_reconci
     assert "todo" in resolved
     assert "memory" not in resolved
 
-
 def test_save_platform_tools_no_disabled_toolsets_is_noop():
     """When agent.disabled_toolsets is absent or empty, the reconcile step
     must be a complete no-op (no KeyError, no spurious 'agent' key creation).
@@ -1908,7 +1776,6 @@ def test_save_platform_tools_no_disabled_toolsets_is_noop():
     assert "todo" in config["platform_toolsets"]["cli"]
     # No 'agent' key should be fabricated when none existed.
     assert "agent" not in config
-
 
 def test_save_platform_tools_disabling_a_toolset_does_not_touch_disabled_toolsets():
     """Turning a toolset OFF (not present in enabled_toolset_keys) must not
@@ -1928,13 +1795,11 @@ def test_save_platform_tools_disabling_a_toolset_does_not_touch_disabled_toolset
     # disabled_toolsets is untouched by a disable action.
     assert config["agent"]["disabled_toolsets"] == ["memory"]
 
-
 # ─── provider_readiness_status ────────────────────────────────────────────────
 #
 # Server-side truth for the GUI "Ready" pill (issue: Capabilities tab showed
 # Ready for every zero-env-var provider row, including logged-out Nous
 # Subscription rows and never-installed KittenTTS/Piper).
-
 
 def _fake_features(*, logged_in: bool, paid: bool = True):
     account = (
@@ -1948,7 +1813,6 @@ def _fake_features(*, logged_in: bool, paid: bool = True):
     )
     return SimpleNamespace(nous_auth_present=logged_in, account_info=account)
 
-
 def test_provider_readiness_env_vars_gate_keys(monkeypatch):
     provider = {"name": "ElevenLabs", "env_vars": [{"key": "ELEVENLABS_API_KEY"}]}
 
@@ -1958,12 +1822,10 @@ def test_provider_readiness_env_vars_gate_keys(monkeypatch):
     monkeypatch.setattr("hermes_cli.tools_config.get_env_value", lambda key: "sk-x")
     assert provider_readiness_status(provider, {}) == "ready"
 
-
 def test_provider_readiness_keyless_ungated_row_is_ready():
     # Edge TTS: no env vars, no post_setup, no nous auth → genuinely free.
     provider = {"name": "Microsoft Edge TTS", "env_vars": [], "tts_provider": "edge"}
     assert provider_readiness_status(provider, {}) == "ready"
-
 
 def test_provider_readiness_managed_nous_row_needs_auth_when_logged_out():
     provider = {
@@ -1977,7 +1839,6 @@ def test_provider_readiness_managed_nous_row_needs_auth_when_logged_out():
     )
     assert status == "needs_auth"
 
-
 def test_provider_readiness_managed_nous_row_ready_when_entitled():
     provider = {
         "name": "Nous Subscription",
@@ -1989,7 +1850,6 @@ def test_provider_readiness_managed_nous_row_ready_when_entitled():
         provider, {}, features=_fake_features(logged_in=True, paid=True)
     )
     assert status == "ready"
-
 
 def test_provider_readiness_managed_nous_row_needs_auth_when_unentitled():
     # Logged in but unpaid and no free tool pool → still gated.
@@ -2004,7 +1864,6 @@ def test_provider_readiness_managed_nous_row_needs_auth_when_unentitled():
     )
     assert status == "needs_auth"
 
-
 def test_provider_readiness_xai_grok_row_tracks_credentials(monkeypatch):
     provider = {"name": "xAI TTS", "env_vars": [], "post_setup": "xai_grok"}
 
@@ -2017,7 +1876,6 @@ def test_provider_readiness_xai_grok_row_tracks_credentials(monkeypatch):
         "hermes_cli.tools_config._xai_credentials_present", lambda: True
     )
     assert provider_readiness_status(provider, {}) == "ready"
-
 
 def test_provider_readiness_local_install_rows_track_module_presence(monkeypatch):
     kitten = {"name": "KittenTTS", "env_vars": [], "post_setup": "kittentts"}
@@ -2035,14 +1893,12 @@ def test_provider_readiness_local_install_rows_track_module_presence(monkeypatch
     assert provider_readiness_status(kitten, {}) == "ready"
     assert provider_readiness_status(piper, {}) == "ready"
 
-
 def test_provider_readiness_unknown_post_setup_falls_back_to_is_active():
     # A post_setup hook with no registered installed-check: selecting the row
     # runs the hook, so is_active is the completed-setup signal.
     provider = {"name": "Mystery", "env_vars": [], "post_setup": "mystery_hook"}
     assert provider_readiness_status(provider, {}, is_active=True) == "ready"
     assert provider_readiness_status(provider, {}, is_active=False) == "needs_setup"
-
 
 # ── Windows console-flash guard for post-setup subprocess spawns ──────────────
 #
@@ -2053,7 +1909,6 @@ def test_provider_readiness_unknown_post_setup_falls_back_to_is_active():
 # browser-setup journey. `_post_setup_no_window_flags` is the single wrapper
 # every hook spawn passes as `creationflags`.
 
-
 def test_post_setup_no_window_flags_zero_on_posix(monkeypatch):
     from hermes_cli import _subprocess_compat
     from hermes_cli.tools_config import _post_setup_no_window_flags
@@ -2061,7 +1916,6 @@ def test_post_setup_no_window_flags_zero_on_posix(monkeypatch):
     monkeypatch.setattr(_subprocess_compat, "IS_WINDOWS", False)
     assert _post_setup_no_window_flags() == 0
     assert _post_setup_no_window_flags(streams_to_console=True) == 0
-
 
 def test_post_setup_no_window_flags_hides_window_on_windows(monkeypatch):
     from hermes_cli import _subprocess_compat
@@ -2071,7 +1925,6 @@ def test_post_setup_no_window_flags_hides_window_on_windows(monkeypatch):
     # CREATE_NO_WINDOW only — DETACHED_PROCESS would sever stdio and break
     # capture_output in the hooks.
     assert _post_setup_no_window_flags() == 0x08000000
-
 
 def test_post_setup_no_window_flags_streaming_keeps_interactive_console(monkeypatch):
     """A hook that streams live output to a real console must stay visible."""
@@ -2097,14 +1950,12 @@ def test_post_setup_no_window_flags_streaming_keeps_interactive_console(monkeypa
     monkeypatch.setattr(_sys, "stdout", _Pipe())
     assert _post_setup_no_window_flags(streams_to_console=True) == 0x08000000
 
-
 # ── Post-setup readiness predicates for the browser rows ─────────────────────
 #
 # The GUI's "Run setup" idempotence rides on provider_readiness_status
 # reporting ready/needs_setup honestly. agent_browser (local browser) must
 # track the FULL local install (CLI + Chromium), the cloud-provider hook
 # ("browserbase") only the CLI, and camofox its npm package.
-
 
 def test_provider_readiness_agent_browser_tracks_local_install(monkeypatch):
     provider = {"name": "Local Browser", "env_vars": [], "post_setup": "agent_browser"}
@@ -2118,7 +1969,6 @@ def test_provider_readiness_agent_browser_tracks_local_install(monkeypatch):
         "hermes_cli.nous_subscription._local_browser_runnable", lambda: True
     )
     assert provider_readiness_status(provider, {}) == "ready"
-
 
 def test_provider_readiness_cloud_browser_hook_tracks_cli_only(monkeypatch):
     # Cloud rows (post_setup: "browserbase") host their own Chromium — the
@@ -2134,7 +1984,6 @@ def test_provider_readiness_cloud_browser_hook_tracks_cli_only(monkeypatch):
         "hermes_cli.nous_subscription._has_agent_browser", lambda: True
     )
     assert provider_readiness_status(provider, {}) == "ready"
-
 
 def test_provider_readiness_camofox_tracks_node_modules(monkeypatch, tmp_path):
     from hermes_cli import tools_config

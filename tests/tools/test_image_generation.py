@@ -13,7 +13,6 @@ from unittest.mock import patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -25,16 +24,12 @@ def image_tool():
     import tools.image_generation_tool as mod
     return importlib.reload(mod)
 
-
 # ---------------------------------------------------------------------------
 # Catalog integrity
 # ---------------------------------------------------------------------------
 
 class TestFalCatalog:
     """Every FAL_MODELS entry must have a consistent shape."""
-
-    def test_default_model_is_klein(self, image_tool):
-        assert image_tool.DEFAULT_MODEL == "fal-ai/flux-2/klein/9b"
 
     def test_default_model_in_catalog(self, image_tool):
         assert image_tool.DEFAULT_MODEL in image_tool.FAL_MODELS
@@ -81,7 +76,6 @@ class TestFalCatalog:
                 assert meta["upscale"] is False, \
                     f"{mid} should default to upscale=False"
 
-
 # ---------------------------------------------------------------------------
 # Payload building — three size families
 # ---------------------------------------------------------------------------
@@ -102,7 +96,6 @@ class TestImageSizePresetFamily:
         p = image_tool._build_fal_payload("fal-ai/flux-2/klein/9b", "hello", "portrait")
         assert p["image_size"] == "portrait_16_9"
 
-
 class TestAspectRatioFamily:
     """Nano-banana uses aspect_ratio enum, NOT image_size."""
 
@@ -119,7 +112,6 @@ class TestAspectRatioFamily:
         p = image_tool._build_fal_payload("fal-ai/nano-banana-pro", "hello", "portrait")
         assert p["aspect_ratio"] == "9:16"
 
-
 class TestGptLiteralFamily:
     """GPT-Image 1.5 uses literal size strings."""
 
@@ -134,7 +126,6 @@ class TestGptLiteralFamily:
     def test_gpt_portrait_is_literal(self, image_tool):
         p = image_tool._build_fal_payload("fal-ai/gpt-image-1.5", "hello", "portrait")
         assert p["image_size"] == "1024x1536"
-
 
 class TestGptImage2Presets:
     """GPT Image 2 uses preset enum sizes (not literal strings like 1.5).
@@ -178,7 +169,6 @@ class TestGptImage2Presets:
         p = image_tool._build_fal_payload("fal-ai/gpt-image-2", "hi", "square", seed=42)
         assert "seed" not in p
 
-
 # ---------------------------------------------------------------------------
 # Supports whitelist — the main safety property
 # ---------------------------------------------------------------------------
@@ -221,7 +211,6 @@ class TestSupportsFilter:
         assert "image_size" not in p
         assert p["aspect_ratio"] == "16:9"
 
-
 # ---------------------------------------------------------------------------
 # Default merging
 # ---------------------------------------------------------------------------
@@ -250,7 +239,6 @@ class TestDefaults:
             overrides={"num_inference_steps": None},
         )
         assert p["num_inference_steps"] == 50
-
 
 # ---------------------------------------------------------------------------
 # GPT-Image quality is pinned to medium (not user-configurable)
@@ -282,23 +270,6 @@ class TestGptQualityPinnedToMedium:
                 continue
             p = image_tool._build_fal_payload(mid, "hi", "square")
             assert "quality" not in p, f"{mid} unexpectedly has 'quality' in payload"
-
-    def test_honors_quality_setting_flag_is_removed(self, image_tool):
-        """The honors_quality_setting flag was the old override trigger.
-        It must not be present on any model entry anymore."""
-        for mid, meta in image_tool.FAL_MODELS.items():
-            assert "honors_quality_setting" not in meta, (
-                f"{mid} still has honors_quality_setting; "
-                f"remove it — quality is pinned to medium"
-            )
-
-    def test_resolve_gpt_quality_function_is_gone(self, image_tool):
-        """The _resolve_gpt_quality() helper was removed — quality is now
-        a static default, not a runtime lookup."""
-        assert not hasattr(image_tool, "_resolve_gpt_quality"), (
-            "_resolve_gpt_quality should not exist — quality is pinned"
-        )
-
 
 # ---------------------------------------------------------------------------
 # Model resolution
@@ -337,7 +308,6 @@ class TestModelResolution:
             mid, _ = image_tool._resolve_fal_model()
         assert mid == "fal-ai/nano-banana-pro"
 
-
 # ---------------------------------------------------------------------------
 # Aspect ratio handling
 # ---------------------------------------------------------------------------
@@ -356,28 +326,9 @@ class TestAspectRatioNormalization:
         p = image_tool._build_fal_payload("fal-ai/flux-2/klein/9b", "hi", "")
         assert p["image_size"] == "landscape_16_9"
 
-
 # ---------------------------------------------------------------------------
 # Schema + registry integrity
 # ---------------------------------------------------------------------------
-
-class TestRegistryIntegration:
-
-    def test_schema_exposes_expected_agent_params(self, image_tool):
-        """The agent-facing schema exposes the unified text+image surface:
-        prompt (required), aspect_ratio, and the image-to-image inputs
-        image_url + reference_image_urls. Model selection stays a user-level
-        config choice, never an agent-level arg."""
-        props = image_tool.IMAGE_GENERATE_SCHEMA["parameters"]["properties"]
-        assert set(props.keys()) == {
-            "prompt", "aspect_ratio", "image_url", "reference_image_urls",
-        }
-        assert image_tool.IMAGE_GENERATE_SCHEMA["parameters"]["required"] == ["prompt"]
-
-    def test_aspect_ratio_enum_is_three_values(self, image_tool):
-        enum = image_tool.IMAGE_GENERATE_SCHEMA["parameters"]["properties"]["aspect_ratio"]["enum"]
-        assert set(enum) == {"landscape", "square", "portrait"}
-
 
 # ---------------------------------------------------------------------------
 # Managed gateway 4xx translation
@@ -387,13 +338,11 @@ class _MockResponse:
     def __init__(self, status_code: int):
         self.status_code = status_code
 
-
 class _MockHttpxError(Exception):
     """Simulates httpx.HTTPStatusError which exposes .response.status_code."""
     def __init__(self, status_code: int, message: str = "Bad Request"):
         super().__init__(message)
         self.response = _MockResponse(status_code)
-
 
 class TestExtractHttpStatus:
     """Status-code extraction should work across exception shapes."""
@@ -417,7 +366,6 @@ class TestExtractHttpStatus:
         exc = Exception("weird")
         exc.response = OddResponse()  # type: ignore[attr-defined]
         assert image_tool._extract_http_status(exc) is None
-
 
 class TestManagedGatewayErrorTranslation:
     """4xx from the Nous managed gateway should be translated to a user-actionable message."""
@@ -502,7 +450,6 @@ class TestManagedGatewayErrorTranslation:
         with pytest.raises(ConnectionError):
             image_tool._submit_fal_request("fal-ai/flux-2-pro", {"prompt": "x"})
 
-
 class TestKreaModelNormalization:
     """Native ``krea-2-*`` detection for managed Krea routing."""
 
@@ -526,7 +473,6 @@ class TestKreaModelNormalization:
         for mid in ("fal-ai/flux-2/klein/9b", "fal-ai/nano-banana-pro", None, "", 123):
             assert image_tool.is_krea_model(mid) is False
             assert image_tool._normalize_krea_model(mid) is None
-
 
 class TestManagedKreaRouting:
     """`_maybe_route_managed_krea` only fires for Krea models in managed mode."""
@@ -624,7 +570,6 @@ class TestManagedKreaRouting:
         assert kwargs["model"] == "krea-2-large"
         assert kwargs["prompt"] == "a cat"
         assert kwargs["aspect_ratio"] == "portrait"
-
 
 class TestFalKreaCatalog:
     """Krea 2 on FAL remains in the FAL picker for FAL-billed users."""

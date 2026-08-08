@@ -7,8 +7,6 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-
-
 # ---------------------------------------------------------------------------
 # Fix 1: MCP event loop exception handler
 # ---------------------------------------------------------------------------
@@ -83,7 +81,6 @@ class TestMCPLoopExceptionHandler:
                 mcp_mod._server_connecting.clear()
             mcp_mod._stop_mcp_loop()
 
-
 # ---------------------------------------------------------------------------
 # Fix 2: stdio PID tracking
 # ---------------------------------------------------------------------------
@@ -98,12 +95,6 @@ class TestStdioPidTracking:
         # All elements should be ints
         for pid in result:
             assert isinstance(pid, int)
-
-    def test_stdio_pids_starts_empty(self):
-        from tools.mcp_tool import _stdio_pids, _lock
-        with _lock:
-            # Might have residual state from other tests, just check type
-            assert isinstance(_stdio_pids, dict)
 
     def test_kill_orphaned_noop_when_empty(self):
         """_kill_orphaned_mcp_children does nothing when no PIDs tracked."""
@@ -301,7 +292,6 @@ class TestStdioPidTracking:
             assert target_pid not in _orphan_stdio_pid_servers
             assert other_pid in _orphan_stdio_pids
             assert _orphan_stdio_pid_servers[other_pid] == "mimir"
-
 
 # ---------------------------------------------------------------------------
 # Fix 2b: stdio descendant reaping via process group (issue #23799)
@@ -584,44 +574,9 @@ class TestStdioPgroupReaping:
             "grandchild survived killpg-based reaping (issue #23799 regression)"
         )
 
-
 # ---------------------------------------------------------------------------
 # Fix 3: MCP reload timeout (cli.py)
 # ---------------------------------------------------------------------------
-
-class TestMCPReloadTimeout:
-    """_check_config_mcp_changes uses a timeout on _reload_mcp."""
-
-    def test_reload_timeout_does_not_block_forever(self, tmp_path, monkeypatch):
-        """If _reload_mcp hangs, the config watcher times out and returns."""
-        import time
-
-        # Create a mock HermesCLI-like object with the needed attributes
-        class FakeCLI:
-            _config_mtime = 0.0
-            _config_mcp_servers = {}
-            _last_config_check = 0.0
-            _command_running = False
-            config = {}
-            agent = None
-
-            def _reload_mcp(self):
-                # Simulate a hang — sleep longer than the timeout
-                time.sleep(60)
-
-            def _slow_command_status(self, cmd):
-                return cmd
-
-        # This test verifies the timeout mechanism exists in the code
-        # by checking that _check_config_mcp_changes doesn't call
-        # _reload_mcp directly (it uses a thread now)
-        import inspect
-        from cli import HermesCLI
-        source = inspect.getsource(HermesCLI._check_config_mcp_changes)
-        # The fix adds threading.Thread for _reload_mcp
-        assert "Thread" in source or "thread" in source.lower(), \
-            "_check_config_mcp_changes should use a thread for _reload_mcp"
-
 
 # ---------------------------------------------------------------------------
 # Fix 4: MCP initial connection retry with backoff

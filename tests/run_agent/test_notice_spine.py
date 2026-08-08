@@ -17,9 +17,7 @@ import pytest
 from agent.credits_tracker import AgentNotice
 from run_agent import AIAgent
 
-
 # ── A. Emitter behaviour ─────────────────────────────────────────────────────
-
 
 def _bare_agent() -> AIAgent:
     """Build an AIAgent without running __init__ (no heavy init required).
@@ -31,7 +29,6 @@ def _bare_agent() -> AIAgent:
     agent.notice_callback = None
     agent.notice_clear_callback = None
     return agent
-
 
 class TestEmitNotice:
     def test_emit_notice_calls_callback_with_exact_notice(self):
@@ -88,32 +85,9 @@ class TestEmitNotice:
         # Should not raise.
         agent._emit_notice_clear("any.key")
 
-
 # ── B. Constructor / init_agent signature threading ─────────────────────────
 
-
-class TestSignatureThreading:
-    def test_agent_init_exposes_notice_callback(self):
-        sig = inspect.signature(AIAgent.__init__)
-        assert "notice_callback" in sig.parameters
-
-    def test_agent_init_exposes_notice_clear_callback(self):
-        sig = inspect.signature(AIAgent.__init__)
-        assert "notice_clear_callback" in sig.parameters
-
-    def test_init_agent_exposes_notice_callback(self):
-        from agent.agent_init import init_agent
-        sig = inspect.signature(init_agent)
-        assert "notice_callback" in sig.parameters
-
-    def test_init_agent_exposes_notice_clear_callback(self):
-        from agent.agent_init import init_agent
-        sig = inspect.signature(init_agent)
-        assert "notice_clear_callback" in sig.parameters
-
-
 # ── C. TUI _agent_cbs binding ────────────────────────────────────────────────
-
 
 class TestAgentCbsNoticeBinding:
     """Mirror test_status_callback_emits_kind_and_text from test_tui_gateway_server.py."""

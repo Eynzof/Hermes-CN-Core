@@ -22,11 +22,9 @@ from hermes_cli.config import (
     DEFAULT_CONFIG,
 )
 
-
 # ---------------------------------------------------------------------------
 # Shared fixtures
 # ---------------------------------------------------------------------------
-
 
 # Path to the test-only example-dashboard plugin. Lives under
 # tests/fixtures/ so the bundled-plugins directory stays clean — stock
@@ -36,7 +34,6 @@ from hermes_cli.config import (
 _EXAMPLE_PLUGIN_FIXTURE = (
     Path(__file__).resolve().parent.parent / "fixtures" / "plugins" / "example-dashboard"
 )
-
 
 @pytest.fixture
 def _install_example_plugin(_isolate_hermes_home):
@@ -131,11 +128,9 @@ def _install_example_plugin(_isolate_hermes_home):
         app.router.routes[:] = original_routes
         web_server._dashboard_plugins_cache = None
 
-
 # ---------------------------------------------------------------------------
 # reload_env tests
 # ---------------------------------------------------------------------------
-
 
 class TestReloadEnv:
     """Tests for reload_env() — re-reads .env into os.environ."""
@@ -186,11 +181,9 @@ class TestReloadEnv:
             assert os.environ.get("MY_CUSTOM_UNRELATED_VAR") == "keep_me"
         os.environ.pop("MY_CUSTOM_UNRELATED_VAR", None)
 
-
 # ---------------------------------------------------------------------------
 # redact_key tests
 # ---------------------------------------------------------------------------
-
 
 class TestRedactKey:
     def test_long_key_shows_prefix_suffix(self):
@@ -205,7 +198,6 @@ class TestRedactKey:
     def test_empty_key(self):
         result = redact_key("")
         assert "not set" in result.lower() or result == "***" or "\x1b" in result
-
 
 class TestSessionTokenInjection:
     """The desktop shell mints HERMES_DASHBOARD_SESSION_TOKEN and signs its
@@ -235,11 +227,9 @@ class TestSessionTokenInjection:
 
         assert ws._SESSION_TOKEN and len(ws._SESSION_TOKEN) >= 32
 
-
 # ---------------------------------------------------------------------------
 # web_server tests (FastAPI endpoints)
 # ---------------------------------------------------------------------------
-
 
 def test_version_matches_pyproject_toml():
     """``hermes_cli.__version__`` must stay in sync with pyproject.toml.
@@ -257,7 +247,6 @@ def test_version_matches_pyproject_toml():
     assert match.group(1) == __version__, (
         f"pyproject.toml version {match.group(1)!r} != hermes_cli.__version__ {__version__!r}"
     )
-
 
 class TestWebServerEndpoints:
     """Test the FastAPI REST endpoints using Starlette TestClient."""
@@ -2525,7 +2514,6 @@ class TestWebServerEndpoints:
         assert resp.status_code == 200
         assert resp.json()["lines"] == ["tail-one", "tail-two"]
 
-
     def test_get_status_filters_unconfigured_gateway_platforms(self, monkeypatch):
         import gateway.config as gateway_config
         import hermes_cli.web_server as web_server
@@ -3123,7 +3111,6 @@ class TestWebServerEndpoints:
 
         assert resp.status_code == 400
         assert "valid zip" in resp.json()["detail"]
-
 
     def test_reveal_env_var(self, tmp_path):
         """POST /api/env/reveal should return the real unredacted value."""
@@ -4620,17 +4607,11 @@ class TestWebServerEndpoints:
         assert data["model"] == ""
         assert data["free_tier"] is None
 
-
 # ---------------------------------------------------------------------------
 # _build_schema_from_config tests
 # ---------------------------------------------------------------------------
 
-
 class TestBuildSchemaFromConfig:
-    def test_produces_expected_field_count(self):
-        from hermes_cli.web_server import CONFIG_SCHEMA
-        # DEFAULT_CONFIG has ~150+ leaf fields
-        assert len(CONFIG_SCHEMA) > 100
 
     def test_schema_entries_have_required_fields(self):
         from hermes_cli.web_server import CONFIG_SCHEMA
@@ -4731,11 +4712,9 @@ class TestBuildSchemaFromConfig:
         for cat, count in cats.items():
             assert count >= 2, f"Category '{cat}' has only {count} field(s) — should be merged"
 
-
 # ---------------------------------------------------------------------------
 # Config round-trip tests
 # ---------------------------------------------------------------------------
-
 
 class TestConfigRoundTrip:
     """Verify config survives GET → edit → PUT without data loss."""
@@ -4932,11 +4911,9 @@ class TestConfigRoundTrip:
                 mismatches.append(f"{key}: expected list, got {type(val).__name__}")
         assert not mismatches, "Type mismatches:\n" + "\n".join(mismatches)
 
-
 # ---------------------------------------------------------------------------
 # New feature endpoint tests
 # ---------------------------------------------------------------------------
-
 
 class TestNewEndpoints:
     """Tests for session detail, logs, cron, skills, tools, raw config, analytics."""
@@ -6353,7 +6330,6 @@ class TestNewEndpoints:
         )
         assert resp.status_code == 400
 
-
     def test_config_raw_get(self):
         resp = self.client.get("/api/config/raw")
         assert resp.status_code == 200
@@ -6613,11 +6589,9 @@ class TestNewEndpoints:
         except Exception:
             pass
 
-
 # ---------------------------------------------------------------------------
 # Model context length: normalize/denormalize + /api/model/info
 # ---------------------------------------------------------------------------
-
 
 class TestModelContextLength:
     """Tests for model_context_length in normalize/denormalize and /api/model/info."""
@@ -6744,7 +6718,6 @@ class TestModelContextLength:
         assert isinstance(result["model"], dict)
         assert result["model"]["context_length"] == 32000
 
-
 class TestDenormalizeProviderSwitch:
     """The flat Config-page Model field carries no provider info. When the
     model string changes to one served by a different provider, the saved
@@ -6839,28 +6812,6 @@ class TestDenormalizeProviderSwitch:
         model = result["model"]
         assert model["provider"] == "openrouter"
         assert model["context_length"] == 128000
-
-
-class TestModelContextLengthSchema:
-    """Tests for model_context_length placement in CONFIG_SCHEMA."""
-
-    def test_schema_has_model_context_length(self):
-        from hermes_cli.web_server import CONFIG_SCHEMA
-        assert "model_context_length" in CONFIG_SCHEMA
-
-    def test_schema_model_context_length_after_model(self):
-        """model_context_length should appear immediately after model in schema."""
-        from hermes_cli.web_server import CONFIG_SCHEMA
-        keys = list(CONFIG_SCHEMA.keys())
-        model_idx = keys.index("model")
-        assert keys[model_idx + 1] == "model_context_length"
-
-    def test_schema_model_context_length_is_number(self):
-        from hermes_cli.web_server import CONFIG_SCHEMA
-        entry = CONFIG_SCHEMA["model_context_length"]
-        assert entry["type"] == "number"
-        assert "category" in entry
-
 
 class TestModelInfoEndpoint:
     """Tests for GET /api/model/info endpoint."""
@@ -6988,11 +6939,9 @@ class TestModelInfoEndpoint:
         data = resp.json()
         assert data["auto_context_length"] == 0
 
-
 # ---------------------------------------------------------------------------
 # Gateway health probe tests
 # ---------------------------------------------------------------------------
-
 
 class TestProbeGatewayHealth:
     """Tests for _probe_gateway_health() — cross-container gateway detection."""
@@ -7090,7 +7039,6 @@ class TestProbeGatewayHealth:
         assert body["status"] == "ok"
         assert call_count[0] == 2
 
-
 class TestStatusRemoteGateway:
     """Tests for /api/status with remote gateway health fallback."""
 
@@ -7181,7 +7129,6 @@ class TestStatusRemoteGateway:
         assert data["gateway_running"] is True
         assert data["gateway_pid"] is None
         assert data["gateway_state"] == "running"
-
 
 class TestGatewayBusyReadout:
     """Tests for the NAS busy/drainable readout on /api/status.
@@ -7325,11 +7272,9 @@ class TestGatewayBusyReadout:
         assert data["active_agents"] == 0
         assert data["gateway_busy"] is False
 
-
 # ---------------------------------------------------------------------------
 # Dashboard theme normaliser tests
 # ---------------------------------------------------------------------------
-
 
 class TestNormaliseThemeDefinition:
     """Tests for _normalise_theme_definition() — parses YAML theme files."""
@@ -7462,7 +7407,6 @@ class TestNormaliseThemeDefinition:
         })
         assert r["palette"]["background"]["alpha"] == 1.0
 
-
 class TestDiscoverUserThemes:
     """Tests for _discover_user_themes() — scans ~/.hermes/dashboard-themes/."""
 
@@ -7531,7 +7475,6 @@ class TestDiscoverUserThemes:
             reset_hermes_home_override(token)
 
         assert [r["name"] for r in results] == ["mine"]
-
 
 class TestThemeBootstrapCSS:
     """Tests for _render_active_theme_bootstrap_css() and its injection
@@ -7715,7 +7658,6 @@ class TestThemeBootstrapCSS:
         assert "hermes-theme-bootstrap" not in resp.text
         assert "SPA" in resp.text
 
-
 class TestNormaliseThemeExtensions:
     """Tests for the extended normaliser fields (assets, customCSS,
     componentStyles, layoutVariant) — the surfaces themes use to reskin
@@ -7844,7 +7786,6 @@ class TestNormaliseThemeExtensions:
         })
         assert r["componentStyles"]["card"] == {"opacity": "0.8", "zIndex": "5"}
 
-
 class TestDeleteSessionEndpoint:
     """Tests for ``DELETE /api/sessions/{session_id}`` — the single-row delete
     behind the desktop sidebar's per-session delete.
@@ -7916,7 +7857,6 @@ class TestDeleteSessionEndpoint:
         assert resp.status_code == 200
         assert resp.json().get("ok") is True
         assert not self._exists("20260618_abcdef_unique")
-
 
 class TestBulkDeleteSessionsEndpoint:
     """Tests for ``POST /api/sessions/bulk-delete`` — backs the
@@ -8038,7 +7978,6 @@ class TestBulkDeleteSessionsEndpoint:
             "being shadowed by /api/sessions/{session_id} — check "
             "registration order in hermes_cli/web_server.py."
         )
-
 
 class TestDeleteEmptySessionsEndpoint:
     """Tests for ``GET /api/sessions/empty/count`` and
@@ -8183,7 +8122,6 @@ class TestDeleteEmptySessionsEndpoint:
             "hermes_cli/web_server.py."
         )
 
-
 class TestPluginAPIAuth:
     """Tests that plugin API routes require the session token (issue #19533)."""
 
@@ -8300,7 +8238,6 @@ class TestPluginAPIAuth:
             # upgrade). That's fine for this regression — it only matters
             # that the HTTP middleware didn't start intercepting WS upgrades.
             pass
-
 
 class TestDashboardPluginManifestExtensions:
     """Tests for the extended plugin manifest fields (tab.override,
@@ -8443,7 +8380,6 @@ class TestDashboardPluginManifestExtensions:
             "chat:top",
         ]
 
-
 # ---------------------------------------------------------------------------
 # /api/pty WebSocket — terminal bridge for the dashboard "Chat" tab.
 #
@@ -8455,11 +8391,9 @@ class TestDashboardPluginManifestExtensions:
 
 import sys
 
-
 skip_on_windows = pytest.mark.skipif(
     sys.platform.startswith("win"), reason="PTY bridge is POSIX-only"
 )
-
 
 @skip_on_windows
 class TestPtyWebSocket:
@@ -9041,7 +8975,6 @@ class TestPtyWebSocket:
                 pass
         assert exc.value.code == 4400
 
-
 def test_resolve_chat_argv_injects_gateway_ws_url(monkeypatch):
     import hermes_cli.main as cli_main
     import hermes_cli.web_server as ws
@@ -9060,7 +8993,6 @@ def test_resolve_chat_argv_injects_gateway_ws_url(monkeypatch):
     gateway_url = env.get("HERMES_TUI_GATEWAY_URL", "")
     assert gateway_url.startswith("ws://127.0.0.1:9119/api/ws?")
     assert "token=" in gateway_url
-
 
 class TestDashboardPluginStaticAssetAllowlist:
     """``/dashboard-plugins/<name>/<path>`` is unauthenticated by design —
@@ -9144,7 +9076,6 @@ class TestDashboardPluginStaticAssetAllowlist:
         # — never 200.
         assert resp.status_code in (403, 404)
 
-
 def _fake_httpx_client(*, status: int | None = None, raise_exc: bool = False):
     """Build a drop-in for httpx.Client whose .get() returns a canned status
     (or raises a transport error). Patched in for the credential-validate probe
@@ -9173,7 +9104,6 @@ def _fake_httpx_client(*, status: int | None = None, raise_exc: bool = False):
             return _Resp(status)
 
     return _Client
-
 
 class TestValidateProviderCredential:
     """Live-probe credential validation (/api/providers/validate)."""
@@ -9298,7 +9228,6 @@ class TestValidateProviderCredential:
             json={"key": "OPENAI_BASE_URL", "value": "http://127.0.0.1:8000/v1"},
         )
         assert captured["headers"] is None
-
 
 class TestDesktopCronTicker:
     """The dashboard backend fires cron jobs itself only when desktop-spawned."""

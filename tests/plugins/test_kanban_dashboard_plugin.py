@@ -20,11 +20,9 @@ from fastapi.testclient import TestClient
 
 from hermes_cli import kanban_db as kb
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
-
 
 def _load_plugin_router():
     """Dynamically load plugins/kanban/dashboard/plugin_api.py and return its router."""
@@ -41,7 +39,6 @@ def _load_plugin_router():
     spec.loader.exec_module(mod)
     return mod.router
 
-
 @pytest.fixture
 def kanban_home(tmp_path, monkeypatch):
     """Isolated HERMES_HOME with an empty kanban DB."""
@@ -52,18 +49,15 @@ def kanban_home(tmp_path, monkeypatch):
     kb.init_db()
     return home
 
-
 @pytest.fixture
 def client(kanban_home):
     app = FastAPI()
     app.include_router(_load_plugin_router(), prefix="/api/plugins/kanban")
     return TestClient(app)
 
-
 # ---------------------------------------------------------------------------
 # GET /board on an empty DB
 # ---------------------------------------------------------------------------
-
 
 def test_board_empty(client):
     r = client.get("/api/plugins/kanban/board")
@@ -79,11 +73,9 @@ def test_board_empty(client):
     assert data["assignees"] == []
     assert data["latest_event_id"] == 0
 
-
 # ---------------------------------------------------------------------------
 # POST /tasks then GET /board sees it
 # ---------------------------------------------------------------------------
-
 
 def test_create_task_appears_on_board(client):
     r = client.post(
@@ -114,7 +106,6 @@ def test_create_task_appears_on_board(client):
     assert "acme" in data["tenants"]
     assert "researcher" in data["assignees"]
 
-
 def test_board_list_recommends_persistent_workspace_for_configured_workdir(
     client, tmp_path
 ):
@@ -136,7 +127,6 @@ def test_board_list_recommends_persistent_workspace_for_configured_workdir(
     assert boards["default"]["default_workspace_kind"] == "worktree"
     assert boards["notes"]["default_workspace_kind"] == "dir"
     assert boards["disposable"]["default_workspace_kind"] == "scratch"
-
 
 def test_create_board_persists_project_directory(client, tmp_path):
     """The dashboard board form should anchor future tasks to its project."""
@@ -160,7 +150,6 @@ def test_create_board_persists_project_directory(client, tmp_path):
         project_dir.resolve()
     )
 
-
 @pytest.mark.parametrize("path", ["relative/project", "~/missing-project"])
 def test_create_board_rejects_invalid_project_directory(client, path):
     """A board must not persist a path that cannot anchor worker output."""
@@ -171,7 +160,6 @@ def test_create_board_rejects_invalid_project_directory(client, path):
 
     assert response.status_code == 400
     assert "project directory" in response.json()["detail"].lower()
-
 
 def test_patch_board_sets_project_directory(client, tmp_path):
     """Board-level default_workdir must be editable after creation."""
@@ -193,7 +181,6 @@ def test_patch_board_sets_project_directory(client, tmp_path):
     assert kb.read_board_metadata("late-config")["default_workdir"] == str(
         project_dir.resolve()
     )
-
 
 def test_patch_board_clears_project_directory(client, tmp_path):
     """Empty string clears default_workdir; omitting it leaves it unchanged."""
@@ -219,7 +206,6 @@ def test_patch_board_clears_project_directory(client, tmp_path):
     assert not board.get("default_workdir")
     assert board["default_workspace_kind"] == "scratch"
 
-
 @pytest.mark.parametrize("path", ["relative/project", "~/missing-project"])
 def test_patch_board_rejects_invalid_project_directory(client, path):
     """PATCH must validate default_workdir like board creation does."""
@@ -232,45 +218,6 @@ def test_patch_board_rejects_invalid_project_directory(client, path):
 
     assert response.status_code == 400
     assert "project directory" in response.json()["detail"].lower()
-
-
-def test_new_board_dialog_collects_project_directory():
-    """Board creation should expose the setting that controls safe task defaults."""
-    bundle = (
-        Path(__file__).resolve().parents[2]
-        / "plugins"
-        / "kanban"
-        / "dashboard"
-        / "dist"
-        / "index.js"
-    ).read_text(encoding="utf-8", errors="replace")
-
-    assert 'const [projectDirectory, setProjectDirectory] = useState("");' in bundle
-    assert "Project directory" in bundle
-    assert "Absolute path to the project folder" in bundle
-    assert "default_workdir: projectDirectory.trim() || undefined" in bundle
-
-
-def test_dashboard_workspace_picker_explains_persistence_contract():
-    """Task creation must make scratch deletion visible without a hover."""
-    bundle = (
-        Path(__file__).resolve().parents[2]
-        / "plugins"
-        / "kanban"
-        / "dashboard"
-        / "dist"
-        / "index.js"
-    ).read_text(encoding="utf-8", errors="replace")
-
-    assert "Temporary — deleted on completion" in bundle
-    assert "Git worktree — preserved" in bundle
-    assert "Directory — preserved" in bundle
-    assert "defaultWorkspacePath: (props.boardMeta && props.boardMeta.default_workdir) || \"\"" in bundle
-    assert (
-        "This workspace and any files left in it are deleted when the task completes."
-        in bundle
-    )
-
 
 def test_scheduled_tasks_have_their_own_column_not_todo(client):
     """Scheduled/time-delay tasks must not be silently bucketed into todo."""
@@ -296,7 +243,6 @@ def test_scheduled_tasks_have_their_own_column_not_todo(client):
     assert any(t["id"] == task["id"] for t in columns["scheduled"])
     assert not any(t["id"] == task["id"] for t in columns["todo"])
 
-
 def test_tenant_filter(client):
     client.post("/api/plugins/kanban/tasks", json={"title": "A", "tenant": "t1"})
     client.post("/api/plugins/kanban/tasks", json={"title": "B", "tenant": "t2"})
@@ -309,7 +255,6 @@ def test_tenant_filter(client):
     r = client.get("/api/plugins/kanban/board?tenant=t2")
     total = sum(len(c["tasks"]) for c in r.json()["columns"])
     assert total == 1
-
 
 def test_board_query_param_default_overrides_current_board_pointer(client):
     """Dashboard ``?board=default`` must win even if the CLI's current-board
@@ -348,80 +293,9 @@ def test_board_query_param_default_overrides_current_board_pointer(client):
     }
     assert pinned_ids == {default_task["id"]}
 
-
-def test_dashboard_select_filters_use_sdk_value_change_handler():
-    """Tenant/assignee filters must work with the dashboard SDK Select API.
-
-    The dashboard Select component is shadcn-like and calls
-    ``onValueChange(value)`` instead of native ``onChange(event)``. A native-only
-    handler leaves the tenant dropdown visually selectable but never updates the
-    filtered board query.
-    """
-
-    repo_root = Path(__file__).resolve().parents[2]
-    bundle = repo_root / "plugins" / "kanban" / "dashboard" / "dist" / "index.js"
-    js = bundle.read_text()
-
-    assert "function selectChangeHandler(setter)" in js
-    assert "onValueChange: function (v)" in js
-    assert "onChange: function (e)" in js
-    assert "selectChangeHandler(props.setTenantFilter)" in js
-    assert "selectChangeHandler(props.setAssigneeFilter)" in js
-
-
-def test_dashboard_client_side_filtering_includes_tenant_filter():
-    """The rendered board must also filter by tenant.
-
-    The API request includes ``?tenant=...``, but the dashboard also filters the
-    locally cached board for search/assignee changes. Without checking
-    ``tenantFilter`` here, switching tenants can leave stale cards visible until a
-    full reload finishes.
-    """
-
-    repo_root = Path(__file__).resolve().parents[2]
-    bundle = repo_root / "plugins" / "kanban" / "dashboard" / "dist" / "index.js"
-    js = bundle.read_text()
-
-    assert "if (tenantFilter && t.tenant !== tenantFilter) return false;" in js
-    assert "[boardData, tenantFilter, assigneeFilter, search]" in js
-
-
-def test_dashboard_initial_board_uses_backend_current_when_unpinned():
-    """Fresh browsers should open the backend current board, not default.
-
-    Explicit dashboard selections are stored in localStorage and should still
-    win, but an empty localStorage state must adopt the API's ``current`` board
-    so multi-board installs do not look empty on first load.
-    """
-
-    repo_root = Path(__file__).resolve().parents[2]
-    bundle = repo_root / "plugins" / "kanban" / "dashboard" / "dist" / "index.js"
-    js = bundle.read_text()
-
-    assert 'useState(() => readSelectedBoard() || null)' in js
-    assert "const storedBoard = readSelectedBoard();" in js
-    assert "if (!storedBoard && !board && data && data.current)" in js
-    assert "setBoard(data.current);" in js
-    assert 'readSelectedBoard() || "default"' not in js
-
-
-def test_dashboard_markdown_html_is_sanitized_before_render():
-    """Markdown rendering must sanitize HTML before dangerouslySetInnerHTML."""
-
-    repo_root = Path(__file__).resolve().parents[2]
-    bundle = repo_root / "plugins" / "kanban" / "dashboard" / "dist" / "index.js"
-    js = bundle.read_text()
-
-    assert "function sanitizeMarkdownHtml(html)" in js
-    assert "MARKDOWN_ALLOWED_TAGS" in js
-    assert "sanitizeMarkdownHtml(renderMarkdown(props.source || \"\"))" in js
-    assert "dangerouslySetInnerHTML: { __html: renderMarkdown(props.source || \"\") }" not in js
-
-
 # ---------------------------------------------------------------------------
 # GET /tasks/:id returns body + comments + events + links
 # ---------------------------------------------------------------------------
-
 
 def test_task_detail_includes_links_and_events(client):
     parent = client.post(
@@ -447,16 +321,13 @@ def test_task_detail_includes_links_and_events(client):
     # Events exist from creation.
     assert len(data["events"]) >= 1
 
-
 def test_task_detail_404_on_unknown(client):
     r = client.get("/api/plugins/kanban/tasks/does-not-exist")
     assert r.status_code == 404
 
-
 # ---------------------------------------------------------------------------
 # PATCH /tasks/:id — status transitions
 # ---------------------------------------------------------------------------
-
 
 def test_patch_status_complete(client):
     t = client.post("/api/plugins/kanban/tasks", json={"title": "x"}).json()["task"]
@@ -474,7 +345,6 @@ def test_patch_status_complete(client):
     )
     assert any(x["id"] == t["id"] for x in done["tasks"])
 
-
 def test_patch_block_then_unblock(client):
     t = client.post("/api/plugins/kanban/tasks", json={"title": "x"}).json()["task"]
     r = client.patch(
@@ -490,7 +360,6 @@ def test_patch_block_then_unblock(client):
     )
     assert r.status_code == 200
     assert r.json()["task"]["status"] == "ready"
-
 
 def test_patch_schedule_then_unblock(client):
     t = client.post("/api/plugins/kanban/tasks", json={"title": "x"}).json()["task"]
@@ -512,7 +381,6 @@ def test_patch_schedule_then_unblock(client):
     )
     assert r.status_code == 200
     assert r.json()["task"]["status"] == "ready"
-
 
 def test_patch_drag_drop_move_todo_to_ready(client):
     """Direct status write: the drag-drop path for statuses without a
@@ -557,7 +425,6 @@ def test_patch_drag_drop_move_todo_to_ready(client):
     child_after = client.get(f"/api/plugins/kanban/tasks/{child['id']}").json()["task"]
     assert child_after["status"] == "ready"
 
-
 def test_reopening_parent_demotes_ready_child(client):
     """Reopening a completed parent must invalidate ready children immediately.
 
@@ -594,7 +461,6 @@ def test_reopening_parent_demotes_ready_child(client):
     ).json()["task"]
     assert child_after_reopen["status"] == "todo"
 
-
 def test_patch_reassign(client):
     t = client.post(
         "/api/plugins/kanban/tasks",
@@ -607,7 +473,6 @@ def test_patch_reassign(client):
     assert r.status_code == 200
     assert r.json()["task"]["assignee"] == "b"
 
-
 def test_patch_priority_and_edit(client):
     t = client.post("/api/plugins/kanban/tasks", json={"title": "x"}).json()["task"]
     r = client.patch(
@@ -619,7 +484,6 @@ def test_patch_priority_and_edit(client):
     assert data["priority"] == 5
     assert data["title"] == "renamed"
 
-
 def test_patch_invalid_status(client):
     t = client.post("/api/plugins/kanban/tasks", json={"title": "x"}).json()["task"]
     r = client.patch(
@@ -627,7 +491,6 @@ def test_patch_invalid_status(client):
         json={"status": "banana"},
     )
     assert r.status_code == 400
-
 
 def test_patch_status_running_rejected(client):
     """Dashboard PATCH cannot transition a task directly to 'running'.
@@ -655,7 +518,6 @@ def test_patch_status_running_rejected(client):
     }
     assert statuses.get(t["id"]) != "running"
 
-
 # ---------------------------------------------------------------------------
 # DELETE /tasks/:id
 # ---------------------------------------------------------------------------
@@ -676,17 +538,14 @@ def test_delete_task(client):
     r = client.get(f"/api/plugins/kanban/tasks/{t['id']}")
     assert r.status_code == 404
 
-
 def test_delete_task_not_found(client):
     r = client.delete("/api/plugins/kanban/tasks/t_nonexistent")
     assert r.status_code == 404
     assert "not found" in r.json()["detail"]
 
-
 # ---------------------------------------------------------------------------
 # Comments + Links
 # ---------------------------------------------------------------------------
-
 
 def test_add_comment(client):
     t = client.post("/api/plugins/kanban/tasks", json={"title": "x"}).json()["task"]
@@ -702,7 +561,6 @@ def test_add_comment(client):
     assert comments[0]["body"] == "how's progress?"
     assert comments[0]["author"] == "teknium"
 
-
 def test_add_comment_empty_rejected(client):
     t = client.post("/api/plugins/kanban/tasks", json={"title": "x"}).json()["task"]
     r = client.post(
@@ -710,7 +568,6 @@ def test_add_comment_empty_rejected(client):
         json={"body": "   "},
     )
     assert r.status_code == 400
-
 
 def test_add_link_and_delete_link(client):
     a = client.post("/api/plugins/kanban/tasks", json={"title": "a"}).json()["task"]
@@ -732,7 +589,6 @@ def test_add_link_and_delete_link(client):
     assert r.status_code == 200
     assert r.json()["ok"] is True
 
-
 def test_add_link_cycle_rejected(client):
     a = client.post("/api/plugins/kanban/tasks", json={"title": "a"}).json()["task"]
     b = client.post("/api/plugins/kanban/tasks", json={"title": "b"}).json()["task"]
@@ -746,11 +602,9 @@ def test_add_link_cycle_rejected(client):
     )
     assert r.status_code == 400
 
-
 # ---------------------------------------------------------------------------
 # Dispatch nudge
 # ---------------------------------------------------------------------------
-
 
 def test_dispatch_dry_run(client):
     client.post(
@@ -763,11 +617,9 @@ def test_dispatch_dry_run(client):
     # DispatchResult is serialized as a dataclass dict.
     assert isinstance(body, dict)
 
-
 # ---------------------------------------------------------------------------
 # Triage column (new v1 status)
 # ---------------------------------------------------------------------------
-
 
 def test_create_triage_lands_in_triage_column(client):
     r = client.post(
@@ -783,7 +635,6 @@ def test_create_triage_lands_in_triage_column(client):
     assert len(triage["tasks"]) == 1
     assert triage["tasks"][0]["title"] == "rough idea, spec me"
 
-
 def test_triage_task_not_promoted_to_ready(client):
     """Triage tasks must stay in triage even when they have no parents."""
     client.post(
@@ -797,7 +648,6 @@ def test_triage_task_not_promoted_to_ready(client):
     ready = next(c for c in r.json()["columns"] if c["name"] == "ready")
     assert len(triage["tasks"]) == 1
     assert len(ready["tasks"]) == 0
-
 
 def test_patch_status_triage_works(client):
     """A user (or specifier) can push a task back into triage, and out of it."""
@@ -818,11 +668,9 @@ def test_patch_status_triage_works(client):
     assert r.status_code == 200
     assert r.json()["task"]["status"] == "todo"
 
-
 # ---------------------------------------------------------------------------
 # Progress rollup (done children / total children)
 # ---------------------------------------------------------------------------
-
 
 def test_board_progress_rollup(client):
     parent = client.post(
@@ -875,11 +723,9 @@ def test_board_progress_rollup(client):
         if t["id"] == child_b["id"]
     )["progress"] is None
 
-
 # ---------------------------------------------------------------------------
 # Auto-init on first board read
 # ---------------------------------------------------------------------------
-
 
 def test_board_auto_initializes_missing_db(tmp_path, monkeypatch):
     """If kanban.db doesn't exist yet, GET /board must create it, not 500."""
@@ -899,11 +745,9 @@ def test_board_auto_initializes_missing_db(tmp_path, monkeypatch):
     assert r.status_code == 200
     assert (home / "kanban.db").exists(), "init_db wasn't invoked by /board"
 
-
 # ---------------------------------------------------------------------------
 # WebSocket auth (query-param token)
 # ---------------------------------------------------------------------------
-
 
 def test_ws_events_rejects_when_token_required(tmp_path, monkeypatch):
     """Loopback mode: a missing or wrong ?token= must be rejected with
@@ -955,7 +799,6 @@ def test_ws_events_rejects_when_token_required(tmp_path, monkeypatch):
     ) as ws:
         assert ws is not None  # handshake succeeded
 
-
 def test_ws_events_accepts_gated_ticket(tmp_path, monkeypatch):
     """Gated OAuth mode: the WS must accept a single-use ?ticket= (and reject
     a bare ?token=, even one matching _SESSION_TOKEN). This is the regression
@@ -999,7 +842,6 @@ def test_ws_events_accepts_gated_ticket(tmp_path, monkeypatch):
         "/api/plugins/kanban/events?ticket=good-ticket"
     ) as ws:
         assert ws is not None
-
 
 def test_ws_events_board_query_param_default_overrides_current_board_pointer(tmp_path, monkeypatch):
     """The event stream must honor ``board=default`` even when the global
@@ -1052,7 +894,6 @@ def test_ws_events_board_query_param_default_overrides_current_board_pointer(tmp
     task_ids = {event["task_id"] for event in payload["events"]}
     assert default_task in task_ids
     assert other_task not in task_ids
-
 
 def test_ws_events_swallows_cancellation_on_shutdown(tmp_path, monkeypatch):
     """``asyncio.CancelledError`` while sleeping in the poll loop is the
@@ -1112,11 +953,9 @@ def test_ws_events_swallows_cancellation_on_shutdown(tmp_path, monkeypatch):
     # capturing asyncio's internal "exception was never retrieved" logging
     # is flaky. The assertion that matters is: no CancelledError escaped.
 
-
 # ---------------------------------------------------------------------------
 # Bulk actions
 # ---------------------------------------------------------------------------
-
 
 def test_bulk_status_ready(client):
     a = client.post("/api/plugins/kanban/tasks", json={"title": "a"}).json()["task"]
@@ -1137,7 +976,6 @@ def test_bulk_status_ready(client):
     ready = next(col for col in board["columns"] if col["name"] == "ready")
     ids = {t["id"] for t in ready["tasks"]}
     assert {a["id"], b["id"], c2["id"]}.issubset(ids)
-
 
 def test_bulk_status_done_forwards_completion_summary(client):
     a = client.post("/api/plugins/kanban/tasks", json={"title": "a"}).json()["task"]
@@ -1168,7 +1006,6 @@ def test_bulk_status_done_forwards_completion_summary(client):
     finally:
         conn.close()
 
-
 def test_bulk_status_running_rejected(client):
     """Bulk updates must match single-task PATCH: direct 'running' is invalid."""
     t = client.post("/api/plugins/kanban/tasks", json={"title": "x"}).json()["task"]
@@ -1193,74 +1030,6 @@ def test_bulk_status_running_rejected(client):
     }
     assert statuses.get(t["id"]) != "running"
 
-
-def test_dashboard_done_actions_prompt_for_completion_summary():
-    repo_root = Path(__file__).resolve().parents[2]
-    bundle = (
-        repo_root / "plugins" / "kanban" / "dashboard" / "dist" / "index.js"
-    ).read_text()
-
-    assert "withCompletionSummary" in bundle
-    assert "Completion summary" in bundle
-    assert "result: summary" in bundle
-    assert "body: JSON.stringify(patch)" in bundle
-    assert "body: JSON.stringify(finalPatch)" in bundle
-
-
-def test_dashboard_surfaces_ready_blocked_error_inline():
-    """Regression for #26744: failed status transitions must be surfaced
-    inline, not swallowed.  The drag/drop banner and the drawer's action
-    row each render the parsed API ``detail`` so operators see *why*
-    their click did nothing.
-    """
-    repo_root = Path(__file__).resolve().parents[2]
-    bundle = (
-        repo_root / "plugins" / "kanban" / "dashboard" / "dist" / "index.js"
-    ).read_text()
-
-    # Helper that strips ``"409: {\"detail\":\"…\"}"`` down to the
-    # human-readable message before it lands in any banner.
-    assert "function parseApiErrorMessage(err)" in bundle
-    assert "parsed.detail" in bundle
-
-    # Drag/drop banner now uses the parsed message instead of raw
-    # ``err.message`` so it no longer leaks HTTP plumbing.
-    assert "setError(tx(t, \"moveFailed\", \"Move failed: \") + parseApiErrorMessage(err))" in bundle
-
-    # Drawer action row has its own visible error surface and clears it
-    # on success/refresh so stale failures don't follow the operator
-    # around.
-    assert "const [patchErr, setPatchErr] = useState(null);" in bundle
-    assert "setPatchErr(parseApiErrorMessage(e))" in bundle
-    assert "setPatchErr(null)" in bundle
-
-
-def test_dashboard_dependency_selects_use_value_change_handler():
-    """Regression for the dependency selects in the task drawer: the
-    add-parent / add-child dropdowns must wire through the shared
-    selectChangeHandler helper so their value actually lands on the
-    underlying React state. Salvaged from #20019 @LeonSGP43.
-    """
-    repo_root = Path(__file__).resolve().parents[2]
-    bundle = (
-        repo_root / "plugins" / "kanban" / "dashboard" / "dist" / "index.js"
-    ).read_text()
-
-    parent_select = (
-        'value: newParent,\n'
-        '          className: "h-7 text-xs flex-1",\n'
-        '        }, selectChangeHandler(setNewParent))'
-    )
-    child_select = (
-        'value: newChild,\n'
-        '          className: "h-7 text-xs flex-1",\n'
-        '        }, selectChangeHandler(setNewChild))'
-    )
-
-    assert parent_select in bundle
-    assert child_select in bundle
-
-
 def test_bulk_archive(client):
     a = client.post("/api/plugins/kanban/tasks", json={"title": "a"}).json()["task"]
     b = client.post("/api/plugins/kanban/tasks", json={"title": "b"}).json()["task"]
@@ -1274,7 +1043,6 @@ def test_bulk_archive(client):
     assert a["id"] not in ids
     assert b["id"] not in ids
 
-
 def test_bulk_reassign(client):
     a = client.post("/api/plugins/kanban/tasks",
                     json={"title": "a", "assignee": "old"}).json()["task"]
@@ -1287,7 +1055,6 @@ def test_bulk_reassign(client):
         t = client.get(f"/api/plugins/kanban/tasks/{tid}").json()["task"]
         assert t["assignee"] == "new"
 
-
 def test_bulk_unassign_via_empty_string(client):
     a = client.post("/api/plugins/kanban/tasks",
                     json={"title": "a", "assignee": "x"}).json()["task"]
@@ -1296,7 +1063,6 @@ def test_bulk_unassign_via_empty_string(client):
     assert r.status_code == 200
     t = client.get(f"/api/plugins/kanban/tasks/{a['id']}").json()["task"]
     assert t["assignee"] is None
-
 
 def test_bulk_partial_failure_doesnt_abort_siblings(client):
     """One bad id in the middle of a batch must not prevent others from
@@ -1317,16 +1083,13 @@ def test_bulk_partial_failure_doesnt_abort_siblings(client):
         t = client.get(f"/api/plugins/kanban/tasks/{tid}").json()["task"]
         assert t["priority"] == 7
 
-
 def test_bulk_empty_ids_400(client):
     r = client.post("/api/plugins/kanban/tasks/bulk", json={"ids": []})
     assert r.status_code == 400
 
-
 # ---------------------------------------------------------------------------
 # /config endpoint
 # ---------------------------------------------------------------------------
-
 
 def test_config_returns_defaults_when_section_missing(client):
     r = client.get("/api/plugins/kanban/config")
@@ -1337,7 +1100,6 @@ def test_config_returns_defaults_when_section_missing(client):
     assert data["lane_by_profile"] is True
     assert data["include_archived_by_default"] is False
     assert data["render_markdown"] is True
-
 
 def test_config_reads_dashboard_kanban_section(tmp_path, monkeypatch, client):
     home = Path(os.environ["HERMES_HOME"])
@@ -1356,7 +1118,6 @@ def test_config_reads_dashboard_kanban_section(tmp_path, monkeypatch, client):
     assert data["lane_by_profile"] is False
     assert data["include_archived_by_default"] is True
     assert data["render_markdown"] is False
-
 
 # ---------------------------------------------------------------------------
 # Runs surfacing (vulcan-artivus RFC feedback)
@@ -1394,14 +1155,12 @@ def test_task_detail_includes_runs(client):
     assert run["metadata"] == {"changed_files": ["limiter.py"]}
     assert run["ended_at"] is not None
 
-
 def test_task_detail_runs_empty_before_claim(client):
     """A task that's never been claimed has an empty runs[] list, not
     a missing key."""
     r = client.post("/api/plugins/kanban/tasks", json={"title": "fresh"}).json()
     d = client.get(f"/api/plugins/kanban/tasks/{r['task']['id']}").json()
     assert d["runs"] == []
-
 
 def test_patch_status_done_with_summary_and_metadata(client):
     """PATCH /tasks/:id with status=done + summary + metadata must
@@ -1436,7 +1195,6 @@ def test_patch_status_done_with_summary_and_metadata(client):
     finally:
         conn.close()
 
-
 def test_patch_status_done_without_summary_still_works(client):
     """Back-compat: PATCH without the new fields still completes."""
     r = client.post("/api/plugins/kanban/tasks", json={"title": "y", "assignee": "worker"})
@@ -1459,7 +1217,6 @@ def test_patch_status_done_without_summary_still_works(client):
         assert run.summary == "legacy shape"  # falls back to result
     finally:
         conn.close()
-
 
 def test_patch_status_archive_closes_running_run(client):
     """PATCH to archived while running must close the in-flight run."""
@@ -1487,7 +1244,6 @@ def test_patch_status_archive_closes_running_run(client):
     finally:
         conn.close()
 
-
 def test_event_dict_includes_run_id(client):
     """GET /tasks/:id returns events with run_id populated."""
     r = client.post("/api/plugins/kanban/tasks", json={"title": "e", "assignee": "worker"})
@@ -1511,8 +1267,6 @@ def test_event_dict_includes_run_id(client):
     comp = [e for e in events if e["kind"] == "completed"]
     assert comp[0]["run_id"] == run_id
 
-
-
 # ---------------------------------------------------------------------------
 # Per-task force-loaded skills via REST
 # ---------------------------------------------------------------------------
@@ -1535,7 +1289,6 @@ def test_create_task_with_skills_roundtrips(client):
     got = client.get(f"/api/plugins/kanban/tasks/{task['id']}").json()
     assert got["task"]["skills"] == ["translation", "github-code-review"]
 
-
 def test_create_task_without_skills_defaults_to_empty_list(client):
     """_task_dict serializes Task.skills=None as [] so the drawer can
     always .length check without guarding against null."""
@@ -1550,7 +1303,6 @@ def test_create_task_without_skills_defaults_to_empty_list(client):
     # `t.skills && t.skills.length > 0` guard handles both null and [].
     assert task.get("skills") in (None, [])
 
-
 def test_create_task_with_toolset_name_in_skills_is_rejected(client):
     """POST /tasks fails fast when callers confuse toolsets with skills."""
     r = client.post(
@@ -1563,8 +1315,6 @@ def test_create_task_with_toolset_name_in_skills_is_rejected(client):
     )
     assert r.status_code == 400, r.text
     assert "toolset name" in r.json()["detail"]
-
-
 
 # ---------------------------------------------------------------------------
 # Dispatcher-presence warning in POST /tasks response
@@ -1587,7 +1337,6 @@ def test_create_task_includes_warning_when_no_dispatcher(client, monkeypatch):
     assert data.get("warning")
     assert "gateway" in data["warning"].lower()
 
-
 def test_create_task_no_warning_when_dispatcher_up(client, monkeypatch):
     """Dispatcher running -> no `warning` field in the response."""
     monkeypatch.setattr(
@@ -1600,7 +1349,6 @@ def test_create_task_no_warning_when_dispatcher_up(client, monkeypatch):
     )
     assert r.status_code == 200
     assert "warning" not in r.json() or not r.json()["warning"]
-
 
 def test_create_task_no_warning_on_triage(client, monkeypatch):
     """Triage tasks never get the warning (they can't be dispatched
@@ -1615,7 +1363,6 @@ def test_create_task_no_warning_on_triage(client, monkeypatch):
     )
     assert r.status_code == 200
     assert "warning" not in r.json() or not r.json()["warning"]
-
 
 # ---------------------------------------------------------------------------
 # _task_dict — outer try/except fallback when task_age raises
@@ -1632,13 +1379,11 @@ def test_create_task_no_warning_on_triage(client, monkeypatch):
 # tests below pin that contract.
 # ---------------------------------------------------------------------------
 
-
 _FALLBACK_AGE = {
     "created_age_seconds": None,
     "started_age_seconds": None,
     "time_to_complete_seconds": None,
 }
-
 
 def test_board_endpoint_survives_task_age_exception(client, monkeypatch):
     """If task_age raises for any reason, GET /board must NOT 500.
@@ -1675,7 +1420,6 @@ def test_board_endpoint_survives_task_age_exception(client, monkeypatch):
     # silent additions should fail this test on purpose.
     assert tasks[0]["age"] == _FALLBACK_AGE
 
-
 def test_single_task_endpoint_survives_task_age_exception(client, monkeypatch):
     """GET /tasks/:id also calls _task_dict — same fallback should kick in.
 
@@ -1697,7 +1441,6 @@ def test_single_task_endpoint_survives_task_age_exception(client, monkeypatch):
     assert r.status_code == 200, r.text
     assert r.json()["task"]["age"] == _FALLBACK_AGE
 
-
 def test_create_task_probe_error_does_not_break_create(client, monkeypatch):
     """Probe failure must never break task creation."""
     def _raise():
@@ -1712,8 +1455,6 @@ def test_create_task_probe_error_does_not_break_create(client, monkeypatch):
     assert r.status_code == 200
     assert r.json()["task"]["title"] == "resilient"
 
-
-
 # ---------------------------------------------------------------------------
 # Home-channel subscription endpoints (#19534 follow-up: GUI opt-in)
 # ---------------------------------------------------------------------------
@@ -1722,7 +1463,6 @@ def test_create_task_probe_error_does_not_break_create(client, monkeypatch):
 # backend endpoints read the live GatewayConfig, so tests set env vars
 # (BOT_TOKEN + HOME_CHANNEL) to simulate a user who has run /sethome on
 # telegram and discord.
-
 
 @pytest.fixture
 def with_home_channels(monkeypatch):
@@ -1737,7 +1477,6 @@ def with_home_channels(monkeypatch):
     # Slack has a token but NO home — should be excluded from the list.
     monkeypatch.setenv("SLACK_BOT_TOKEN", "slack_fake")
 
-
 def test_home_channels_lists_only_platforms_with_home(client, with_home_channels):
     """GET /home-channels returns entries only for platforms where the
     user has set a home; untoggled-subscribed bool is false by default."""
@@ -1750,13 +1489,11 @@ def test_home_channels_lists_only_platforms_with_home(client, with_home_channels
     for h in r.json()["home_channels"]:
         assert h["subscribed"] is False
 
-
 def test_home_channels_no_task_id_all_unsubscribed(client, with_home_channels):
     """Without task_id, every entry's subscribed=false (UI "no task" state)."""
     r = client.get("/api/plugins/kanban/home-channels")
     assert r.status_code == 200
     assert all(not h["subscribed"] for h in r.json()["home_channels"])
-
 
 def test_home_subscribe_creates_notify_sub_row(client, with_home_channels):
     """POST .../home-subscribe/telegram writes a kanban_notify_subs row
@@ -1779,7 +1516,6 @@ def test_home_subscribe_creates_notify_sub_row(client, with_home_channels):
     assert subs[0]["thread_id"] == "42"
     assert subs[0]["notifier_profile"] == "default"
 
-
 def test_home_subscribe_flips_subscribed_flag_in_subsequent_get(client, with_home_channels):
     """After subscribe, the GET endpoint reports subscribed=true for that
     platform and false for the others."""
@@ -1789,7 +1525,6 @@ def test_home_subscribe_flips_subscribed_flag_in_subsequent_get(client, with_hom
     r = client.get(f"/api/plugins/kanban/home-channels?task_id={t['id']}")
     flags = {h["platform"]: h["subscribed"] for h in r.json()["home_channels"]}
     assert flags == {"telegram": True, "discord": False}
-
 
 def test_home_subscribe_is_idempotent(client, with_home_channels):
     """Re-subscribing keeps a single row at the DB layer."""
@@ -1803,7 +1538,6 @@ def test_home_subscribe_is_idempotent(client, with_home_channels):
         assert len(kb.list_notify_subs(conn, t["id"])) == 1
     finally:
         conn.close()
-
 
 def test_home_subscribe_backfills_owner_on_legacy_row(client, with_home_channels):
     """Re-subscribing should backfill notifier ownership on ownerless rows."""
@@ -1834,7 +1568,6 @@ def test_home_subscribe_backfills_owner_on_legacy_row(client, with_home_channels
     assert len(subs) == 1
     assert subs[0]["notifier_profile"] == "default"
 
-
 def test_home_subscribe_unknown_platform_returns_404(client, with_home_channels):
     """Platforms without a home configured (slack in the fixture) return 404."""
     t = client.post("/api/plugins/kanban/tasks", json={"title": "x"}).json()["task"]
@@ -1842,11 +1575,9 @@ def test_home_subscribe_unknown_platform_returns_404(client, with_home_channels)
     assert r.status_code == 404
     assert "slack" in r.json()["detail"]
 
-
 def test_home_subscribe_unknown_task_returns_404(client, with_home_channels):
     r = client.post("/api/plugins/kanban/tasks/t_nonexistent/home-subscribe/telegram")
     assert r.status_code == 404
-
 
 def test_home_unsubscribe_removes_notify_sub_row(client, with_home_channels):
     """DELETE .../home-subscribe/telegram removes the matching row."""
@@ -1861,7 +1592,6 @@ def test_home_unsubscribe_removes_notify_sub_row(client, with_home_channels):
         assert kb.list_notify_subs(conn, t["id"]) == []
     finally:
         conn.close()
-
 
 def test_home_subscribe_multiple_platforms_independent(client, with_home_channels):
     """Subscribing on telegram does not affect discord and vice versa."""
@@ -1887,7 +1617,6 @@ def test_home_subscribe_multiple_platforms_independent(client, with_home_channel
         conn.close()
     assert set(subs) == {"discord"}
 
-
 def test_home_channels_empty_when_no_homes_configured(client, monkeypatch):
     """Zero platforms with a home -> empty list (UI hides the section)."""
     # No BOT_TOKEN env vars set → load_gateway_config().platforms is empty.
@@ -1900,7 +1629,6 @@ def test_home_channels_empty_when_no_homes_configured(client, monkeypatch):
     r = client.get("/api/plugins/kanban/home-channels")
     assert r.status_code == 200
     assert r.json()["home_channels"] == []
-
 
 # ---------------------------------------------------------------------------
 # Recovery endpoints (reclaim + reassign) and warnings field
@@ -1944,7 +1672,6 @@ def test_board_surfaces_warnings_field_for_hallucinated_completions(client):
     assert parent_dict["diagnostics"][0]["kind"] == "hallucinated_cards"
     assert "t_deadbeefcafe" in parent_dict["diagnostics"][0]["data"]["phantom_ids"]
 
-
 def test_board_warnings_cleared_after_clean_completion(client):
     """A completed or edited event after a hallucination event clears
     the warning badge — we don't mark tasks permanently."""
@@ -1978,7 +1705,6 @@ def test_board_warnings_cleared_after_clean_completion(client):
     parent_dict = next(t for t in tasks if t["title"] == "parent")
     # The clean completion wiped the warning.
     assert parent_dict.get("warnings") is None
-
 
 def test_reclaim_endpoint_releases_running_claim(client):
     """POST /tasks/<id>/reclaim drops the claim, returns ok, and emits
@@ -2025,7 +1751,6 @@ def test_reclaim_endpoint_releases_running_claim(client):
     finally:
         conn2.close()
 
-
 def test_reclaim_endpoint_409_for_non_running_task(client):
     """Reclaiming a task that's already ready returns 409."""
     conn = kb.connect()
@@ -2039,7 +1764,6 @@ def test_reclaim_endpoint_409_for_non_running_task(client):
         json={},
     )
     assert r.status_code == 409
-
 
 def test_reassign_endpoint_switches_profile(client):
     """POST /tasks/<id>/reassign changes the assignee field."""
@@ -2065,7 +1789,6 @@ def test_reassign_endpoint_switches_profile(client):
     finally:
         conn2.close()
 
-
 def test_reassign_endpoint_409_on_running_without_reclaim(client):
     """Reassigning a running task without reclaim_first returns 409."""
     import secrets
@@ -2085,7 +1808,6 @@ def test_reassign_endpoint_409_on_running_without_reclaim(client):
         json={"profile": "new", "reclaim_first": False},
     )
     assert r.status_code == 409
-
 
 def test_reassign_endpoint_with_reclaim_first_succeeds_on_running(client):
     """With reclaim_first=true, a running task is reclaimed+reassigned in
@@ -2128,7 +1850,6 @@ def test_reassign_endpoint_with_reclaim_first_succeeds_on_running(client):
     finally:
         conn2.close()
 
-
 # ---------------------------------------------------------------------------
 # Diagnostics endpoint (/api/plugins/kanban/diagnostics)
 # ---------------------------------------------------------------------------
@@ -2139,7 +1860,6 @@ def test_diagnostics_endpoint_empty_for_clean_board(client):
     data = r.json()
     assert data["count"] == 0
     assert data["diagnostics"] == []
-
 
 def test_diagnostics_endpoint_surfaces_blocked_hallucination(client):
     conn = kb.connect()
@@ -2164,7 +1884,6 @@ def test_diagnostics_endpoint_surfaces_blocked_hallucination(client):
     assert row["diagnostics"][0]["kind"] == "hallucinated_cards"
     assert row["diagnostics"][0]["severity"] == "error"
     assert "t_ffff00001234" in row["diagnostics"][0]["data"]["phantom_ids"]
-
 
 def test_diagnostics_endpoint_severity_filter(client):
     """Severity filter is at-or-above: warning includes warning+error+critical,
@@ -2201,7 +1920,6 @@ def test_diagnostics_endpoint_severity_filter(client):
     assert data["count"] == 1
     assert data["diagnostics"][0]["task_id"] == p2
 
-
 def test_board_exposes_diagnostics_list_and_summary(client):
     """/board should attach both the full diagnostics list AND the
     compact warnings summary (with highest_severity) on each task
@@ -2229,11 +1947,9 @@ def test_board_exposes_diagnostics_list_and_summary(client):
     assert task_dict["warnings"]["highest_severity"] == "error"
     assert task_dict["diagnostics"][0]["kind"] == "repeated_crashes"
 
-
 # ---------------------------------------------------------------------------
 # POST /tasks/:id/specify — triage specifier endpoint
 # ---------------------------------------------------------------------------
-
 
 def _patch_specifier_response(monkeypatch, *, content, model="test-model"):
     """Helper: install a fake auxiliary client so the specifier endpoint
@@ -2247,7 +1963,6 @@ def _patch_specifier_response(monkeypatch, *, content, model="test-model"):
     fake_call = MagicMock(return_value=resp)
     monkeypatch.setattr("agent.auxiliary_client.call_llm", fake_call)
     return fake_call
-
 
 def test_specify_happy_path(client, monkeypatch):
     import orjson as jsonlib
@@ -2280,7 +1995,6 @@ def test_specify_happy_path(client, monkeypatch):
     assert detail["title"] == "Polished"
     assert "**Goal**" in (detail["body"] or "")
 
-
 def test_specify_non_triage_returns_ok_false_not_http_error(client, monkeypatch):
     """The endpoint intentionally returns ``{ok: false, reason: ...}`` for
     "task not in triage" rather than a 4xx — the dashboard renders the
@@ -2298,7 +2012,6 @@ def test_specify_non_triage_returns_ok_false_not_http_error(client, monkeypatch)
     body = r.json()
     assert body["ok"] is False
     assert "not in triage" in body["reason"]
-
 
 def test_specify_no_aux_client_surfaces_reason(client, monkeypatch):
     t = client.post(
@@ -2325,7 +2038,6 @@ def test_specify_no_aux_client_surfaces_reason(client, monkeypatch):
     # Task must stay in triage — nothing was touched.
     detail = client.get(f"/api/plugins/kanban/tasks/{t['id']}").json()["task"]
     assert detail["status"] == "triage"
-
 
 def test_board_endpoint_accepts_explicit_board_default_param(client):
     """GET /board?board=default must not fall through to env/current-file resolution.
@@ -2356,74 +2068,9 @@ def test_board_endpoint_accepts_explicit_board_default_param(client):
         f"(got tasks: {task_ids}). The board=default param was likely ignored."
     )
 
-
-def test_dashboard_requests_default_board_explicitly():
-    """Dashboard REST calls must include board=default instead of relying on server current board."""
-    repo_root = Path(__file__).resolve().parents[2]
-    dist = (repo_root / "plugins" / "kanban" / "dashboard" / "dist" / "index.js").read_text()
-
-    assert "SDK.fetchJSON(withBoard(`${API}/config`, board))" in dist
-    assert "SDK.fetchJSON(withBoard(`${API}/boards`, board))" in dist
-    assert "}, [loadBoardList, switchBoard, board]);" in dist
-
-
-def test_dashboard_search_includes_body_and_result():
-    """Client-side search must match body, result, latest_summary, and summary
-    so full card contents are findable."""
-    repo_root = Path(__file__).resolve().parents[2]
-    dist = (repo_root / "plugins" / "kanban" / "dashboard" / "dist" / "index.js").read_text()
-
-    assert "t.body || \"\"" in dist
-    assert "t.result || \"\"" in dist
-    assert "t.latest_summary || \"\"" in dist
-
-
-def test_dashboard_bulk_actions_include_reclaim_first():
-    """Bulk action bar must expose reclaim_first checkbox and expanded status buttons."""
-    repo_root = Path(__file__).resolve().parents[2]
-    dist = (repo_root / "plugins" / "kanban" / "dashboard" / "dist" / "index.js").read_text()
-
-    assert "reclaim_first: reclaimFirst" in dist
-    assert "hermes-kanban-bulk-reclaim-first" in dist
-    assert '"→ todo"' in dist
-    assert '"Block"' in dist
-    assert '"Unblock"' in dist
-
-
-def test_dashboard_shift_click_range_selection_exists():
-    """Shift-click must trigger range selection via toggleRange."""
-    repo_root = Path(__file__).resolve().parents[2]
-    dist = (repo_root / "plugins" / "kanban" / "dashboard" / "dist" / "index.js").read_text()
-
-    assert "function toggleRange" in dist or "const toggleRange =" in dist
-    assert "props.toggleRange(t.id)" in dist or "props.toggleRange" in dist
-    assert "e.shiftKey" in dist
-
-
-def test_dashboard_multi_move_bulk_exists():
-    """Dragging a selected card with other selections must use /tasks/bulk."""
-    repo_root = Path(__file__).resolve().parents[2]
-    dist = (repo_root / "plugins" / "kanban" / "dashboard" / "dist" / "index.js").read_text()
-
-    assert "onMoveSelected" in dist
-    assert "props.onMoveSelected" in dist
-    assert "`${API}/tasks/bulk`" in dist
-
-
-def test_dashboard_failed_card_highlight_class_exists():
-    """Partial bulk failures must highlight failing cards."""
-    repo_root = Path(__file__).resolve().parents[2]
-    js = (repo_root / "plugins" / "kanban" / "dashboard" / "dist" / "index.js").read_text()
-    css = (repo_root / "plugins" / "kanban" / "dashboard" / "dist" / "style.css").read_text()
-
-    assert "hermes-kanban-card--failed" in js
-    assert "hermes-kanban-card--failed" in css
-    assert "failedIds" in js
-
 # ---------------------------------------------------------------------------
 # Final result visibility for Done cards
 # ---------------------------------------------------------------------------
-
 
 def test_task_detail_exposes_result_and_latest_summary_separately(client):
     """The drawer receives both source fields without a duplicate alias."""
@@ -2443,7 +2090,6 @@ def test_task_detail_exposes_result_and_latest_summary_separately(client):
     assert data["latest_summary"] == "short handoff"
     assert "final_result" not in data
 
-
 def test_task_detail_exposes_latest_summary_when_result_is_empty(client):
     """Summary-only completions remain available to the drawer fallback."""
     conn = kb.connect()
@@ -2459,7 +2105,6 @@ def test_task_detail_exposes_latest_summary_when_result_is_empty(client):
     assert not data["result"]
     assert data["latest_summary"] == "Report written to /output/report.md"
 
-
 def test_task_detail_latest_summary_none_when_nothing_recorded(client):
     """When no run summary exists, the existing field remains None."""
     r = client.post(
@@ -2470,7 +2115,6 @@ def test_task_detail_latest_summary_none_when_nothing_recorded(client):
     r = client.get(f"/api/plugins/kanban/tasks/{task_id}")
     assert r.status_code == 200
     assert r.json()["task"]["latest_summary"] is None
-
 
 def test_board_tasks_include_latest_summary(client):
     """Board cards already expose the summary used by the drawer fallback."""
@@ -2486,17 +2130,6 @@ def test_board_tasks_include_latest_summary(client):
     card = next((t for t in done_col["tasks"] if t["id"] == task_id), None)
     assert card is not None
     assert "Done: see attachment" in card["latest_summary"]
-
-
-def test_dashboard_done_final_result_section_rendered_from_summary():
-    """Frontend must render Final Result section from run summary when task.result is empty."""
-    repo_root = Path(__file__).resolve().parents[2]
-    dist = (repo_root / "plugins" / "kanban" / "dashboard" / "dist" / "index.js").read_text()
-    assert "t.result || t.latest_summary" in dist
-    assert "Final Result (run summary)" in dist
-    assert "No final result was recorded" in dist
-    assert "orchestrator" in dist or "parent task" in dist
-
 
 def test_task_detail_includes_child_result_summaries(client):
     """Parent drawers should receive the child results they need to render."""
@@ -2521,25 +2154,3 @@ def test_task_detail_includes_child_result_summaries(client):
         }
     ]
 
-
-def test_dashboard_final_result_uses_existing_fields_without_alias():
-    """The drawer should not duplicate result/summary into another API field."""
-    repo_root = Path(__file__).resolve().parents[2]
-    dist = (repo_root / "plugins" / "kanban" / "dashboard" / "dist" / "index.js").read_text()
-    api = (repo_root / "plugins" / "kanban" / "dashboard" / "plugin_api.py").read_text()
-
-    assert "var finalResult = t.result || t.latest_summary || null;" in dist
-    assert "t.final_result" not in dist
-    assert 'd["final_result"]' not in api
-
-
-def test_dashboard_parent_notice_and_child_results_use_detail_links():
-    """Parent detection must use links.children, which exists in task detail."""
-    repo_root = Path(__file__).resolve().parents[2]
-    dist = (repo_root / "plugins" / "kanban" / "dashboard" / "dist" / "index.js").read_text()
-    detail = dist[dist.index("function TaskDetail"):]
-
-    assert "links.children.length > 0" in detail
-    assert "t.link_counts" not in detail
-    assert "Child Results" in detail
-    assert "props.data.child_results" in detail

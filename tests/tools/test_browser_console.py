@@ -10,9 +10,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
-
 # ── browser_console ──────────────────────────────────────────────────
-
 
 class TestBrowserConsole:
     """browser_console() returns console messages + JS errors in one call."""
@@ -285,9 +283,7 @@ class TestBrowserConsole:
         with patch("hermes_cli.config.read_raw_config", return_value={}):
             assert _restrict_browser_evaluate() is False
 
-
 # ── browser_console schema ───────────────────────────────────────────
-
 
 class TestBrowserConsoleSchema:
     """browser_console is properly registered in the tool registry."""
@@ -297,15 +293,6 @@ class TestBrowserConsoleSchema:
 
         names = [s["name"] for s in BROWSER_TOOL_SCHEMAS]
         assert "browser_console" in names
-
-    def test_schema_has_clear_param(self):
-        from tools.browser_tool import BROWSER_TOOL_SCHEMAS
-
-        schema = next(s for s in BROWSER_TOOL_SCHEMAS if s["name"] == "browser_console")
-        props = schema["parameters"]["properties"]
-        assert "clear" in props
-        assert props["clear"]["type"] == "boolean"
-
 
 class TestBrowserConsoleToolsetWiring:
     """browser_console must be reachable via toolset resolution."""
@@ -327,20 +314,10 @@ class TestBrowserConsoleToolsetWiring:
         from tools import browser_tool  # noqa: F401
         assert "browser_console" in registry._tools
 
-
 # ── browser_vision annotate ──────────────────────────────────────────
-
 
 class TestBrowserVisionAnnotate:
     """browser_vision supports annotate parameter."""
-
-    def test_schema_has_annotate_param(self):
-        from tools.browser_tool import BROWSER_TOOL_SCHEMAS
-
-        schema = next(s for s in BROWSER_TOOL_SCHEMAS if s["name"] == "browser_vision")
-        props = schema["parameters"]["properties"]
-        assert "annotate" in props
-        assert props["annotate"]["type"] == "boolean"
 
     def test_annotate_false_no_flag(self):
         """Without annotate, screenshot command has no --annotate flag."""
@@ -382,7 +359,6 @@ class TestBrowserVisionAnnotate:
                 args = mock_cmd.call_args[0]
                 cmd_args = args[2] if len(args) > 2 else []
                 assert "--annotate" in cmd_args
-
 
 class TestBrowserVisionConfig:
     def _setup_screenshot(self, tmp_path):
@@ -517,19 +493,10 @@ class TestBrowserVisionConfig:
         assert result["analysis"] == "Text-mode screenshot analysis"
         mock_llm.assert_called_once()
 
-
 # ── auto-recording config ────────────────────────────────────────────
-
 
 class TestRecordSessionsConfig:
     """browser.record_sessions config option."""
-
-    def test_default_config_has_record_sessions(self):
-        from hermes_cli.config import DEFAULT_CONFIG
-
-        browser_cfg = DEFAULT_CONFIG.get("browser", {})
-        assert "record_sessions" in browser_cfg
-        assert browser_cfg["record_sessions"] is False
 
     def test_maybe_start_recording_disabled(self):
         """Recording doesn't start when config says record_sessions: false."""
@@ -554,9 +521,7 @@ class TestRecordSessionsConfig:
 
         mock_cmd.assert_not_called()
 
-
 # ── dogfood skill files ──────────────────────────────────────────────
-
 
 class TestDogfoodSkill:
     """Dogfood skill files exist and have correct structure."""

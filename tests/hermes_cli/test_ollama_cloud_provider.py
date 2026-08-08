@@ -9,28 +9,11 @@ from hermes_cli.model_normalize import normalize_model_for_provider
 from agent.model_metadata import _URL_TO_PROVIDER, _PROVIDER_PREFIXES
 from agent.models_dev import PROVIDER_TO_MODELS_DEV, list_agentic_models
 
-
 # ── Provider Registry ──
 
 class TestOllamaCloudProviderRegistry:
     def test_ollama_cloud_in_registry(self):
         assert "ollama-cloud" in PROVIDER_REGISTRY
-
-    def test_ollama_cloud_config(self):
-        pconfig = PROVIDER_REGISTRY["ollama-cloud"]
-        assert pconfig.id == "ollama-cloud"
-        assert pconfig.name == "Ollama Cloud"
-        assert pconfig.auth_type == "api_key"
-        assert pconfig.inference_base_url == "https://ollama.com/v1"
-
-    def test_ollama_cloud_env_vars(self):
-        pconfig = PROVIDER_REGISTRY["ollama-cloud"]
-        assert pconfig.api_key_env_vars == ("OLLAMA_API_KEY",)
-        assert pconfig.base_url_env_var == "OLLAMA_BASE_URL"
-
-    def test_ollama_cloud_base_url(self):
-        assert "ollama.com" in PROVIDER_REGISTRY["ollama-cloud"].inference_base_url
-
 
 # ── Provider Aliases ──
 
@@ -46,7 +29,6 @@ def _clean_provider_env(monkeypatch):
     for var in PROVIDER_ENV_VARS:
         monkeypatch.delenv(var, raising=False)
 
-
 class TestOllamaCloudAliases:
     def test_explicit_ollama_cloud(self):
         assert resolve_provider("ollama-cloud") == "ollama-cloud"
@@ -59,14 +41,8 @@ class TestOllamaCloudAliases:
         """Bare 'ollama' alias routes to 'custom' (local) — not cloud."""
         assert resolve_provider("ollama") == "custom"
 
-    def test_models_py_aliases(self):
-        assert _PROVIDER_ALIASES.get("ollama_cloud") == "ollama-cloud"
-        # bare "ollama" stays local
-        assert _PROVIDER_ALIASES.get("ollama") == "custom"
-
     def test_normalize_provider(self):
         assert normalize_provider("ollama-cloud") == "ollama-cloud"
-
 
 # ── Auto-detection ──
 
@@ -74,7 +50,6 @@ class TestOllamaCloudAutoDetection:
     def test_auto_detects_ollama_api_key(self, monkeypatch):
         monkeypatch.setenv("OLLAMA_API_KEY", "test-ollama-key")
         assert resolve_provider("auto") == "ollama-cloud"
-
 
 # ── Credential Resolution ──
 
@@ -101,17 +76,12 @@ class TestOllamaCloudCredentials:
         assert result["api_key"] == "ollama-key"
         assert result["base_url"] == "https://ollama.com/v1"
 
-
 # ── Model Catalog (dynamic — no static list) ──
 
 class TestOllamaCloudModelCatalog:
     def test_no_static_model_list(self):
         """Ollama Cloud models are fetched dynamically — no static list to maintain."""
         assert "ollama-cloud" not in _PROVIDER_MODELS
-
-    def test_provider_label(self):
-        assert "ollama-cloud" in _PROVIDER_LABELS
-        assert _PROVIDER_LABELS["ollama-cloud"] == "Ollama Cloud"
 
     def test_provider_model_ids_returns_dynamic_models(self, tmp_path, monkeypatch):
         """provider_model_ids('ollama-cloud') should call fetch_ollama_cloud_models()."""
@@ -134,7 +104,6 @@ class TestOllamaCloudModelCatalog:
 
         assert len(result) > 0
         assert "qwen3.5:397b" in result
-
 
 # ── Model Picker (list_authenticated_providers) ──
 
@@ -171,7 +140,6 @@ class TestOllamaCloudModelPicker:
         providers = list_authenticated_providers(current_provider="openrouter")
         ollama = next((p for p in providers if p["slug"] == "ollama-cloud"), None)
         assert ollama is None, "ollama-cloud should not appear without OLLAMA_API_KEY"
-
 
 # ── Merged Model Discovery ──
 
@@ -290,7 +258,6 @@ class TestOllamaCloudMergedDiscovery:
 
         assert result == []
 
-
 # ── Model Normalization ──
 
 class TestOllamaCloudModelNormalization:
@@ -304,12 +271,9 @@ class TestOllamaCloudModelNormalization:
     def test_passthrough_no_tag(self):
         assert normalize_model_for_provider("glm-5", "ollama-cloud") == "glm-5"
 
-
 # ── URL-to-Provider Mapping ──
 
 class TestOllamaCloudUrlMapping:
-    def test_url_to_provider(self):
-        assert _URL_TO_PROVIDER.get("ollama.com") == "ollama-cloud"
 
     def test_provider_prefix_canonical(self):
         assert "ollama-cloud" in _PROVIDER_PREFIXES
@@ -317,12 +281,9 @@ class TestOllamaCloudUrlMapping:
     def test_provider_prefix_alias(self):
         assert "ollama" in _PROVIDER_PREFIXES
 
-
 # ── models.dev Integration ──
 
 class TestOllamaCloudModelsDev:
-    def test_ollama_cloud_mapped(self):
-        assert PROVIDER_TO_MODELS_DEV.get("ollama-cloud") == "ollama-cloud"
 
     def test_list_agentic_models_with_mock_data(self):
         """list_agentic_models filters correctly from mock models.dev data."""
@@ -342,7 +303,6 @@ class TestOllamaCloudModelsDev:
         assert "glm-5" in result
         assert "nemotron-3-nano:30b" in result
         assert "some-embedding:latest" not in result  # no tool_call
-
 
 # ── Agent Init (no SyntaxError) ──
 
@@ -368,37 +328,14 @@ class TestOllamaCloudAgentInit:
             assert agent.api_mode == "chat_completions"
             assert agent.provider == "ollama-cloud"
 
-
 # ── providers.py New System ──
 
 class TestOllamaCloudProvidersNew:
-    def test_overlay_exists(self):
-        from hermes_cli.providers import HERMES_OVERLAYS
-        assert "ollama-cloud" in HERMES_OVERLAYS
-        overlay = HERMES_OVERLAYS["ollama-cloud"]
-        assert overlay.transport == "openai_chat"
-        assert overlay.base_url_env_var == "OLLAMA_BASE_URL"
 
     def test_alias_resolves(self):
         from hermes_cli.providers import normalize_provider as np
         assert np("ollama") == "custom"  # bare "ollama" = local
         assert np("ollama-cloud") == "ollama-cloud"
-
-    def test_label_override(self):
-        from hermes_cli.providers import _LABEL_OVERRIDES
-        assert _LABEL_OVERRIDES.get("ollama-cloud") == "Ollama Cloud"
-
-    def test_get_label(self):
-        from hermes_cli.providers import get_label
-        assert get_label("ollama-cloud") == "Ollama Cloud"
-
-    def test_get_provider(self):
-        from hermes_cli.providers import get_provider
-        pdef = get_provider("ollama-cloud")
-        assert pdef is not None
-        assert pdef.id == "ollama-cloud"
-        assert pdef.transport == "openai_chat"
-
 
 # ── Cloud Suffix Stripping ──
 

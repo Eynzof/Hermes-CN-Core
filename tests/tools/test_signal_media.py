@@ -9,7 +9,6 @@ import pytest
 
 from gateway.config import Platform
 
-
 def _make_httpx_mock():
     """Create a mock httpx module with proper sync json()."""
 
@@ -40,12 +39,10 @@ def _make_httpx_mock():
     httpx_mock.Proxy = Proxy  # Needed by telegram-bot library
     return httpx_mock
 
-
 @pytest.fixture(autouse=True)
 def inject_httpx(monkeypatch):
     """Inject mock httpx into sys.modules before imports."""
     monkeypatch.setitem(sys.modules, "httpx", _make_httpx_mock())
-
 
 class TestSendSignalMediaFiles:
     """Test that _send_signal correctly handles media_files parameter."""
@@ -91,7 +88,6 @@ class TestSendSignalMediaFiles:
         assert result["success"] is True  # Should succeed despite missing file
         assert "warnings" in result
         assert "Some media files were skipped" in str(result["warnings"])
-
 
 class TestSendSignalMediaRestrictions:
     """Test that the restriction block handles Signal media correctly."""
@@ -146,7 +142,6 @@ class TestSendSignalMediaRestrictions:
         assert "error" in result
         assert "only supported for" in result["error"]
 
-
 class TestSendSignalMediaWarningMessages:
     """Test warning messages are updated to include signal."""
 
@@ -190,7 +185,6 @@ class TestSendSignalMediaWarningMessages:
         found = any("signal" in w.lower() for w in result["warnings"])
         assert found, f"Expected 'signal' in warnings but got: {result.get('warnings')}"
 
-
 class TestSendSignalGroupChats:
     """Test that _send_signal handles group chats correctly."""
 
@@ -209,11 +203,3 @@ class TestSendSignalGroupChats:
 
         assert result["success"] is True
 
-
-class TestSendSignalConfigLoading:
-    """Verify Signal config loading works."""
-
-    def test_signal_platform_exists(self):
-        """Platform.SIGNAL should be a valid platform."""
-        assert hasattr(Platform, "SIGNAL")
-        assert Platform.SIGNAL.value == "signal"

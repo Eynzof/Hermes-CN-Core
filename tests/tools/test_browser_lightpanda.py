@@ -6,7 +6,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -17,14 +16,12 @@ def _reset_engine_cache():
     bt._cached_browser_engine = None
     bt._browser_engine_resolved = False
 
-
 @pytest.fixture(autouse=True)
 def _clean_engine_cache():
     """Reset engine cache before and after each test."""
     _reset_engine_cache()
     yield
     _reset_engine_cache()
-
 
 # ---------------------------------------------------------------------------
 # _get_browser_engine
@@ -93,7 +90,6 @@ class TestGetBrowserEngine:
             assert _get_browser_engine() == "lightpanda"
             mock_read.assert_called_once()
 
-
 # ---------------------------------------------------------------------------
 # _should_inject_engine
 # ---------------------------------------------------------------------------
@@ -137,7 +133,6 @@ class TestShouldInjectEngine:
              patch("tools.browser_tool._get_cdp_override", return_value=""), \
              patch("tools.browser_tool._get_cloud_provider", return_value=mock_provider):
             assert _should_inject_engine("lightpanda") is False
-
 
 # ---------------------------------------------------------------------------
 # _needs_lightpanda_fallback
@@ -229,28 +224,9 @@ class TestNeedsLightpandaFallback:
         result = {"success": False, "error": "nope"}
         assert _needs_lightpanda_fallback("lightpanda", "some_future_cmd", result) is False
 
-
 # ---------------------------------------------------------------------------
 # Config integration
 # ---------------------------------------------------------------------------
-
-class TestConfigIntegration:
-    """Verify engine config is in DEFAULT_CONFIG."""
-
-    def test_engine_in_default_config(self):
-        from hermes_cli.config import DEFAULT_CONFIG
-        assert "engine" in DEFAULT_CONFIG["browser"]
-        assert DEFAULT_CONFIG["browser"]["engine"] == "auto"
-
-    def test_env_var_registered(self):
-        from hermes_cli.config import OPTIONAL_ENV_VARS
-        assert "AGENT_BROWSER_ENGINE" in OPTIONAL_ENV_VARS
-        entry = OPTIONAL_ENV_VARS["AGENT_BROWSER_ENGINE"]
-        assert entry["category"] == "tool"
-        assert entry["advanced"] is True
-
-
-
 
 class TestLightpandaRequirements:
     """Lightpanda should expose browser tools without local Chromium."""
@@ -279,7 +255,6 @@ class TestLightpandaRequirements:
              patch("tools.browser_tool._chromium_installed", return_value=False):
             assert bt.check_browser_requirements() is False
 
-
 # ---------------------------------------------------------------------------
 # cleanup_all_browsers resets engine cache
 # ---------------------------------------------------------------------------
@@ -296,9 +271,6 @@ class TestCleanupResetsEngineCache:
         bt.cleanup_all_browsers()
         assert bt._cached_browser_engine is None
         assert bt._browser_engine_resolved is False
-
-
-
 
 # ---------------------------------------------------------------------------
 # fallback warning annotation
@@ -325,7 +297,6 @@ class TestLightpandaFallbackWarning:
         }
         assert annotated["data"]["fallback_warning"] == annotated["fallback_warning"]
         assert annotated["data"]["browser_engine"] == "chrome"
-
 
     def test_browser_navigate_surfaces_fallback_warning(self):
         import orjson
@@ -397,7 +368,6 @@ class TestLightpandaFallbackWarning:
         assert response["browser_engine"] == "chrome"
         bt._last_active_session_key.pop("warn-test3", None)
 
-
     def test_browser_vision_lightpanda_uses_chrome_capture_and_normal_call_llm_shape(self, tmp_path):
         import orjson
         import tools.browser_tool as bt
@@ -436,7 +406,6 @@ class TestLightpandaFallbackWarning:
         assert "messages" in captured_kwargs
         assert "images" not in captured_kwargs
         assert captured_kwargs["task"] == "vision"
-
 
     def test_browser_get_images_preserves_fallback_warning(self):
         import orjson

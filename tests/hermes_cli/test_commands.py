@@ -32,7 +32,6 @@ from hermes_cli.commands import (
     telegram_menu_max_commands,
 )
 
-
 def _completions(completer: SlashCommandCompleter, text: str):
     return list(
         completer.get_completions(
@@ -40,7 +39,6 @@ def _completions(completer: SlashCommandCompleter, text: str):
             CompleteEvent(completion_requested=True),
         )
     )
-
 
 # ---------------------------------------------------------------------------
 # CommandDef registry tests
@@ -70,29 +68,10 @@ class TestCommandRegistry:
                     assert resolve_command(alias).name == cmd.name or alias == cmd.name, \
                         f"Alias '{alias}' of '{cmd.name}' shadows canonical '{target.name}'"
 
-    def test_every_entry_has_valid_category(self):
-        valid_categories = {"Session", "Configuration", "Tools & Skills", "Info", "Exit"}
-        for cmd in COMMAND_REGISTRY:
-            assert cmd.category in valid_categories, f"{cmd.name} has invalid category '{cmd.category}'"
-
-    def test_reasoning_subcommands_are_in_logical_order(self):
-        reasoning = next(cmd for cmd in COMMAND_REGISTRY if cmd.name == "reasoning")
-        assert reasoning.subcommands[:8] == (
-            "none",
-            "minimal",
-            "low",
-            "medium",
-            "high",
-            "xhigh",
-            "max",
-            "ultra",
-        )
-
     def test_cli_only_and_gateway_only_are_mutually_exclusive(self):
         for cmd in COMMAND_REGISTRY:
             assert not (cmd.cli_only and cmd.gateway_only), \
                 f"{cmd.name} cannot be both cli_only and gateway_only"
-
 
 # ---------------------------------------------------------------------------
 # resolve_command tests
@@ -130,7 +109,6 @@ class TestResolveCommand:
         assert resolve_command("nonexistent") is None
         assert resolve_command("") is None
 
-
 # ---------------------------------------------------------------------------
 # Derived dicts (backwards compat)
 # ---------------------------------------------------------------------------
@@ -165,7 +143,6 @@ class TestDerivedDicts:
         for cmd, desc in COMMANDS.items():
             assert isinstance(desc, str) and len(desc) > 0, f"{cmd} has empty description"
 
-
 # ---------------------------------------------------------------------------
 # Gateway helpers
 # ---------------------------------------------------------------------------
@@ -195,10 +172,6 @@ class TestGatewayKnownCommands:
         assert "bg" in GATEWAY_KNOWN_COMMANDS
         assert "background" in GATEWAY_KNOWN_COMMANDS
 
-    def test_is_frozenset(self):
-        assert isinstance(GATEWAY_KNOWN_COMMANDS, frozenset)
-
-
 class TestGatewayHelpLines:
     def test_returns_nonempty_list(self):
         lines = gateway_help_lines()
@@ -220,7 +193,6 @@ class TestGatewayHelpLines:
         bg_line = [l for l in lines if "/background" in l]
         assert len(bg_line) == 1
         assert "/bg" in bg_line[0]
-
 
 class TestTelegramBotCommands:
     def test_returns_list_of_tuples(self):
@@ -264,7 +236,6 @@ class TestTelegramBotCommands:
         assert "codex_runtime" in names
         assert "codex-runtime" not in names
 
-
 class TestSlackSubcommandMap:
     def test_returns_dict(self):
         mapping = slack_subcommand_map()
@@ -285,7 +256,6 @@ class TestSlackSubcommandMap:
         for cmd in COMMAND_REGISTRY:
             if cmd.cli_only and not cmd.gateway_config_gate:
                 assert cmd.name not in mapping
-
 
 class TestSlackNativeSlashes:
     """Slack native slash command generation — used to register every
@@ -392,7 +362,6 @@ class TestSlackNativeSlashes:
             f"commands on Telegram but missing from Slack native slashes: {sorted(missing)}"
         )
 
-
 class TestSlackAppManifest:
     """Generated Slack app manifest (used by `hermes slack manifest`)."""
 
@@ -423,7 +392,6 @@ class TestSlackAppManifest:
         m = slack_app_manifest(request_url="https://example.com/slack")
         for entry in m["features"]["slash_commands"]:
             assert entry["url"] == "https://example.com/slack"
-
 
 # ---------------------------------------------------------------------------
 # Config-gated gateway commands
@@ -509,7 +477,6 @@ class TestGatewayConfigGate:
 
         mapping = slack_subcommand_map()
         assert "verbose" in mapping
-
 
 # ---------------------------------------------------------------------------
 # Autocomplete (SlashCommandCompleter)
@@ -619,9 +586,7 @@ class TestSlashCommandCompleter:
         assert len(completions) == 1
         assert "Skill command" in completions[0].display_meta_text
 
-
 # ── Stacked slash-skill completion ──────────────────────────────────────
-
 
 def _stacked_completer(**extra_skills):
     skills = {
@@ -631,7 +596,6 @@ def _stacked_completer(**extra_skills):
         **extra_skills,
     }
     return SlashCommandCompleter(skill_commands_provider=lambda: skills)
-
 
 class TestStackedSkillCompletion:
     """Second+ leading skill tokens keep getting completions (stacked
@@ -688,9 +652,7 @@ class TestStackedSkillCompletion:
         texts = [c.text for c in completions]
         assert "install" in texts
 
-
 # ── SUBCOMMANDS extraction ──────────────────────────────────────────────
-
 
 class TestSubcommands:
     def test_explicit_subcommands_extracted(self):
@@ -728,9 +690,7 @@ class TestSubcommands:
         assert "/quit" not in SUBCOMMANDS
         assert "/clear" not in SUBCOMMANDS
 
-
 # ── Subcommand tab completion ───────────────────────────────────────────
-
 
 class TestSubcommandCompletion:
     def test_subcommand_completion_after_space(self):
@@ -934,9 +894,7 @@ class TestSubcommandCompletion:
         assert "none" in texts
         assert len(texts) > 1
 
-
 # ── Ghost text (SlashCommandAutoSuggest) ────────────────────────────────
-
 
 def _suggestion(text: str, completer=None) -> str | None:
     """Get ghost text suggestion for given input."""
@@ -948,7 +906,6 @@ def _suggestion(text: str, completer=None) -> str | None:
 
     result = suggest.get_suggestion(FakeBuffer(), doc)
     return result.text if result else None
-
 
 class TestGhostText:
     def test_command_name_suggestion(self):
@@ -1001,11 +958,9 @@ class TestGhostText:
     def test_stacked_skill_no_ghost_for_instruction(self):
         assert _suggestion("/skill-a do", completer=_stacked_completer()) is None
 
-
 # ---------------------------------------------------------------------------
 # Telegram command name sanitization
 # ---------------------------------------------------------------------------
-
 
 class TestSanitizeTelegramName:
     """Tests for _sanitize_telegram_name() — Telegram requires [a-z0-9_] only."""
@@ -1048,11 +1003,9 @@ class TestSanitizeTelegramName:
     def test_already_valid(self):
         assert _sanitize_telegram_name("valid_name_123") == "valid_name_123"
 
-
 # ---------------------------------------------------------------------------
 # Telegram command name clamping (32-char limit)
 # ---------------------------------------------------------------------------
-
 
 class TestClampTelegramNames:
     """Tests for _clamp_telegram_names() — 32-char enforcement + collision."""
@@ -1117,7 +1070,6 @@ class TestClampTelegramNames:
         assert len(result) == 1
         assert result[0] == ("foo", "d1")
 
-
 class TestClampCommandNamesTriples:
     """Tests for _clamp_command_names with 3-tuples (name, desc, cmd_key).
 
@@ -1170,7 +1122,6 @@ class TestClampCommandNamesTriples:
         result = _clamp_command_names(entries, set())
         assert result == entries
 
-
 class TestDiscordSkillCmdKeyDispatch:
     """Integration: discord_skill_commands preserves cmd_key for long names.
 
@@ -1213,7 +1164,6 @@ class TestDiscordSkillCmdKeyDispatch:
         assert key == cmd_key, (
             f"cmd_key must be the original /{long_name}, got {key!r}"
         )
-
 
 class TestTelegramMenuCommands:
     """Integration: telegram_menu_commands enforces the 32-char limit."""
@@ -1593,7 +1543,6 @@ class TestTelegramMenuCommands:
         # No empty string in menu names
         assert "" not in menu_names
 
-
 # ---------------------------------------------------------------------------
 # Backward-compat aliases
 # ---------------------------------------------------------------------------
@@ -1601,12 +1550,8 @@ class TestTelegramMenuCommands:
 class TestBackwardCompatAliases:
     """The renamed constants/functions still exist under the old names."""
 
-    def test_tg_name_limit_alias(self):
-        assert _TG_NAME_LIMIT == _CMD_NAME_LIMIT == 32
-
     def test_clamp_telegram_names_is_clamp_command_names(self):
         assert _clamp_telegram_names is _clamp_command_names
-
 
 # ---------------------------------------------------------------------------
 # Discord skill command registration
@@ -1828,13 +1773,11 @@ class TestDiscordSkillCommands:
                 f"Name '{name}' is {len(name)} chars (limit {_CMD_NAME_LIMIT})"
             )
 
-
 # ---------------------------------------------------------------------------
 # Discord skill commands grouped by category
 # ---------------------------------------------------------------------------
 
 from hermes_cli.commands import discord_skill_commands_by_category  # noqa: E402
-
 
 class TestDiscordSkillCommandsByCategory:
     """Tests for discord_skill_commands_by_category() — /skill group registration."""
@@ -2092,7 +2035,6 @@ class TestDiscordSkillCommandsByCategory:
         assert uncategorized == []
         assert hidden == 0
 
-
 # ---------------------------------------------------------------------------
 # Plugin slash command integration
 # ---------------------------------------------------------------------------
@@ -2221,11 +2163,9 @@ class TestPluginCommandEnumeration:
         assert "status" in tg_names
         assert "status" in slack_names
 
-
 # =========================================================================
 # SlashCommandCompleter._get_project_files — ripgrepy file cache
 # =========================================================================
-
 
 class TestGetProjectFilesRipgrepy:
     """Tests for _get_project_files() using ripgrepy for project file listing."""

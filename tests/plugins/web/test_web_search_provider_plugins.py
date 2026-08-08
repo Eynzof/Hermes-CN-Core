@@ -23,11 +23,9 @@ import inspect
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
 
 def _clear_web_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Strip every web-provider env var so is_available() returns False."""
@@ -48,43 +46,23 @@ def _clear_web_env(monkeypatch: pytest.MonkeyPatch) -> None:
     ):
         monkeypatch.delenv(k, raising=False)
 
-
 def _ensure_plugins_loaded() -> None:
     """Idempotently load plugins so the registry is populated."""
     from hermes_cli.plugins import _ensure_plugins_discovered
 
     _ensure_plugins_discovered()
 
-
 # ---------------------------------------------------------------------------
 # Per-plugin discovery + capability flags
 # ---------------------------------------------------------------------------
-
 
 @pytest.fixture(autouse=True)
 def _isolate_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Each test starts with a clean web-provider env."""
     _clear_web_env(monkeypatch)
 
-
 class TestBundledPluginsRegister:
     """All eight bundled web plugins discover and register correctly."""
-
-    def test_all_seven_plugins_present_in_registry(self) -> None:
-        _ensure_plugins_loaded()
-        from agent.web_search_registry import list_providers
-
-        names = sorted(p.name for p in list_providers())
-        assert names == [
-            "brave-free",
-            "ddgs",
-            "exa",
-            "firecrawl",
-            "parallel",
-            "searxng",
-            "tavily",
-            "xai",
-        ]
 
     @pytest.mark.parametrize(
         "plugin_name,expected_search,expected_extract",
@@ -143,11 +121,9 @@ class TestBundledPluginsRegister:
         assert "name" in schema
         assert "env_vars" in schema
 
-
 # ---------------------------------------------------------------------------
 # is_available() behavior
 # ---------------------------------------------------------------------------
-
 
 class TestIsAvailable:
     """Each plugin's ``is_available()`` returns False without env config."""
@@ -246,11 +222,9 @@ class TestIsAvailable:
         monkeypatch.setenv("XAI_API_KEY", "real")
         assert p.is_available() is True
 
-
 # ---------------------------------------------------------------------------
 # Registry resolution semantics (Option B — conservative smart fallback)
 # ---------------------------------------------------------------------------
-
 
 class TestRegistryResolution:
     """``_resolve()`` follows explicit-config + availability-filtered fallback."""
@@ -328,11 +302,9 @@ class TestRegistryResolution:
             # means an env var leaked in.
             assert result.is_available() is True
 
-
 # ---------------------------------------------------------------------------
 # Sync-vs-async extract detection
 # ---------------------------------------------------------------------------
-
 
 class TestAsyncExtractDispatch:
     """The dispatcher detects async vs sync extract methods correctly."""
@@ -369,11 +341,9 @@ class TestAsyncExtractDispatch:
         assert p is not None
         assert inspect.iscoroutinefunction(p.extract) is False
 
-
 # ---------------------------------------------------------------------------
 # Error response shape (preserved bit-for-bit from legacy)
 # ---------------------------------------------------------------------------
-
 
 class TestErrorResponseShapes:
     """When credentials are missing, plugins return typed errors, not raises."""

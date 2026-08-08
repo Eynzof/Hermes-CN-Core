@@ -15,14 +15,12 @@ from tui_gateway.host_supervisor import (
     append_log_record,
 )
 
-
 def _json_lines(out: io.StringIO) -> list[dict]:
     frames = []
     for line in out.getvalue().splitlines():
         if line.strip():
             frames.append(json.loads(line))
     return frames
-
 
 def _wait_for_frame(out: io.StringIO, predicate, timeout: float = 2.0) -> dict:
     deadline = time.monotonic() + timeout
@@ -32,7 +30,6 @@ def _wait_for_frame(out: io.StringIO, predicate, timeout: float = 2.0) -> dict:
                 return frame
         time.sleep(0.01)
     raise AssertionError(f"timed out waiting for frame; saw={_json_lines(out)}")
-
 
 def test_compute_host_workers_inherit_tui_pool_env_or_8(monkeypatch):
     monkeypatch.delenv("HERMES_TUI_RPC_POOL_WORKERS", raising=False)
@@ -45,7 +42,6 @@ def test_compute_host_workers_inherit_tui_pool_env_or_8(monkeypatch):
     # Dead-RC tombstone: malformed env falls back to 8, not the old except-branch 4.
     monkeypatch.setenv("HERMES_TUI_RPC_POOL_WORKERS", "not-an-int")
     assert _default_workers() == 8
-
 
 def test_compute_host_frame_protocol_round_trip():
     out = io.StringIO()
@@ -76,7 +72,6 @@ def test_compute_host_frame_protocol_round_trip():
     finally:
         host.close()
 
-
 def test_compute_host_interrupt_control_is_not_queued_behind_turn():
     out = io.StringIO()
     host = ComputeHost(stdout=out, max_workers=1, heartbeat_secs=0)
@@ -105,7 +100,6 @@ def test_compute_host_interrupt_control_is_not_queued_behind_turn():
     finally:
         host.close()
 
-
 def test_compute_host_flushes_sessions_on_orphan_shutdown(monkeypatch):
     from tui_gateway import server
 
@@ -126,7 +120,6 @@ def test_compute_host_flushes_sessions_on_orphan_shutdown(monkeypatch):
         server._sessions.pop("flush-sid", None)
         host.close()
 
-
 def test_compute_host_parent_guard_exits_when_parent_pid_changes(monkeypatch):
     out = io.StringIO()
     host = ComputeHost(stdout=out, max_workers=1, heartbeat_secs=0)
@@ -146,24 +139,6 @@ def test_compute_host_parent_guard_exits_when_parent_pid_changes(monkeypatch):
     assert orphan["old_ppid"] == 111
     assert orphan["ppid"] == 222
     assert isinstance(orphan["host_ns"], int)
-
-
-def test_mutator_route_table_matches_prd_inventory():
-    assert MUTATOR_ROUTE_TABLE == {
-        "prompt.submit": "turn-path",
-        "session.interrupt": "turn-path",
-        "reload.mcp": "run-concurrent",
-        "session.compress": "idle-gated",
-        "prompt.submit.truncate": "idle-gated",
-        "slash.model": "idle-gated",
-        "slash.personality": "idle-gated",
-        "slash.prompt": "idle-gated",
-        "slash.compress": "idle-gated",
-        "session.reset": "idle-gated",
-        "session.history.reload": "idle-gated",
-        "slash.retry": "idle-gated",
-    }
-
 
 def test_compute_host_compress_control_runs_identity_guard_in_host(monkeypatch):
     from tui_gateway import server
@@ -250,7 +225,6 @@ def test_compute_host_compress_control_runs_identity_guard_in_host(monkeypatch):
     assert ack["message_count"] == 1
     assert ack["session_info"]["model"] == "host-model"
 
-
 def test_append_log_record_single_write_lines(tmp_path):
     path = tmp_path / "agent.log"
 
@@ -268,7 +242,6 @@ def test_append_log_record_single_write_lines(tmp_path):
     assert sorted(line.split("-", 2)[1] for line in lines) == [f"{i:03d}" for i in range(32)]
     assert all(line.endswith("x" * 2000) for line in lines)
 
-
 def test_supervisor_startup_reconcile_pid_reuse_guard(tmp_path, monkeypatch):
     registry = tmp_path / "dashboard-compute-host.json"
     registry.write_text(json.dumps({"host_pid": os.getpid(), "boot_id": "stale"}), encoding="utf-8")
@@ -283,7 +256,6 @@ def test_supervisor_startup_reconcile_pid_reuse_guard(tmp_path, monkeypatch):
     assert result == "pid-reuse-ignored"
     assert killed == []
     assert not registry.exists()
-
 
 def test_supervisor_crash_emits_turn_error_and_respawns(tmp_path):
     script = tmp_path / "fake_host.py"

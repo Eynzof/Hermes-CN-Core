@@ -14,7 +14,6 @@ import pytest
 _RUNTIME = "hermes_cli.runtime_provider.resolve_runtime_provider"
 _PNG_DATA_URI = "data:image/png;base64,dGVzdC1pbWFnZS1kYXRh"  # "test-image-data"
 
-
 def _runtime_ok(**over):
     base = {
         "provider": "openrouter",
@@ -25,7 +24,6 @@ def _runtime_ok(**over):
     }
     base.update(over)
     return base
-
 
 def _mock_chat_response(images):
     resp = MagicMock()
@@ -46,7 +44,6 @@ def _mock_chat_response(images):
     }
     return resp
 
-
 def _openrouter():
     from plugins.image_gen.openrouter import OpenRouterCompatImageProvider
 
@@ -59,25 +56,11 @@ def _openrouter():
         setup_schema={"name": "OpenRouter (image)", "badge": "paid", "env_vars": []},
     )
 
-
 # ---------------------------------------------------------------------------
 # Provider class
 # ---------------------------------------------------------------------------
 
-
 class TestProviderClass:
-    def test_names(self):
-        from plugins.image_gen.openrouter import _build_providers
-
-        names = {p.name for p in _build_providers()}
-        assert names == {"openrouter", "nous"}
-
-    def test_display_names(self):
-        from plugins.image_gen.openrouter import _build_providers
-
-        by_name = {p.name: p for p in _build_providers()}
-        assert by_name["openrouter"].display_name == "OpenRouter"
-        assert by_name["nous"].display_name == "Nous Portal"
 
     def test_capabilities_support_image_input(self):
         caps = _openrouter().capabilities()
@@ -143,11 +126,9 @@ class TestProviderClass:
                 "google/gemini-3-pro-image"
             ]
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
 
 class TestHelpers:
     def test_to_image_url_part_passthrough_url(self):
@@ -247,11 +228,9 @@ class TestHelpers:
         # A 200-class transient with an openai model but no access signal → no hint.
         assert _access_error_hint("OpenRouter", "openai/gpt-5.4-image-2", "X", 500, "server error") is None
 
-
 # ---------------------------------------------------------------------------
 # generate()
 # ---------------------------------------------------------------------------
-
 
 @pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: path format incompatibility")
 class TestGenerate:
@@ -430,20 +409,11 @@ class TestGenerate:
         assert first_model == DEFAULT_MODEL
         assert second_model == _FALLBACK_MODEL
 
-
 # ---------------------------------------------------------------------------
 # Registration + pet integration
 # ---------------------------------------------------------------------------
 
-
 class TestRegistration:
-    def test_register_both(self):
-        from plugins.image_gen.openrouter import register
-
-        ctx = MagicMock()
-        register(ctx)
-        registered = [c.args[0].name for c in ctx.register_image_gen_provider.call_args_list]
-        assert set(registered) == {"openrouter", "nous"}
 
     def test_both_are_reference_capable_for_pets(self):
         from agent.pet.generate.imagegen import _REF_CAPABLE

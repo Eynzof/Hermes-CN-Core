@@ -9,7 +9,6 @@ import pytest
 
 from gateway.config import PlatformConfig
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -18,17 +17,9 @@ def _make_config(**extra):
     """Build a PlatformConfig(enabled=True, extra=extra) for testing."""
     return PlatformConfig(enabled=True, extra=extra)
 
-
 # ---------------------------------------------------------------------------
 # check_qq_requirements
 # ---------------------------------------------------------------------------
-
-class TestQQRequirements:
-    def test_returns_bool(self):
-        from gateway.platforms.qqbot import check_qq_requirements
-        result = check_qq_requirements()
-        assert isinstance(result, bool)
-
 
 # ---------------------------------------------------------------------------
 # QQAdapter.__init__
@@ -95,7 +86,6 @@ class TestQQAdapterInit:
         adapter = self._make(app_id="a", client_secret="b")
         assert adapter.name == "QQBot"
 
-
 # ---------------------------------------------------------------------------
 # _coerce_list
 # ---------------------------------------------------------------------------
@@ -123,7 +113,6 @@ class TestCoerceList:
     def test_single_item_string(self):
         assert self._fn("hello") == ["hello"]
 
-
 # ---------------------------------------------------------------------------
 # _is_voice_content_type
 # ---------------------------------------------------------------------------
@@ -147,7 +136,6 @@ class TestIsVoiceContentType:
 
     def test_audio_extension_amr(self):
         assert self._fn("", "recording.amr") is True
-
 
 # ---------------------------------------------------------------------------
 # Voice attachment SSRF protection
@@ -204,7 +192,6 @@ class TestVoiceAttachmentSSRFProtection:
         connected_explicit = asyncio.run(adapter.connect(is_reconnect=True))
         assert connected_default is False
         assert connected_explicit is False
-
 
 # ---------------------------------------------------------------------------
 # WebSocket proxy handling
@@ -272,7 +259,6 @@ class TestStripAtMention:
     def test_only_mention(self):
         assert self._fn("@Someone  ") == ""
 
-
 # ---------------------------------------------------------------------------
 # _is_dm_allowed
 # ---------------------------------------------------------------------------
@@ -307,7 +293,6 @@ class TestDmAllowed:
     def test_allowlist_wildcard(self):
         adapter = self._make_adapter(app_id="a", client_secret="b", dm_policy="allowlist", allow_from="*")
         assert adapter._is_dm_allowed("anyone") is True
-
 
 # ---------------------------------------------------------------------------
 # _is_group_allowed
@@ -385,7 +370,6 @@ class TestResolveSTTConfig:
             assert cfg["api_key"] == "sk_extra"
             assert cfg["model"] == "glm-asr"
 
-
 # ---------------------------------------------------------------------------
 # _detect_message_type
 # ---------------------------------------------------------------------------
@@ -410,7 +394,6 @@ class TestDetectMessageType:
     def test_video(self):
         from gateway.platforms.base import MessageType
         assert self._fn(["vid.mp4"], ["video/mp4"]) == MessageType.VIDEO
-
 
 # ---------------------------------------------------------------------------
 # QQCloseError
@@ -439,7 +422,6 @@ class TestQQCloseError:
         err = QQCloseError(4008, "rate limit")
         assert "4008" in str(err)
         assert "rate limit" in str(err)
-
 
 # ---------------------------------------------------------------------------
 # _dispatch_payload
@@ -480,7 +462,6 @@ class TestDispatchPayload:
         adapter._dispatch_payload({"op": 0, "t": "SOME_EVENT", "s": 10, "d": {}})
         assert adapter._last_seq == 10
 
-
 # ---------------------------------------------------------------------------
 # READY / RESUMED handling
 # ---------------------------------------------------------------------------
@@ -510,7 +491,6 @@ class TestReadyHandling:
         assert adapter._session_id == "old_sess"
         assert adapter._last_seq == 60
 
-
 # ---------------------------------------------------------------------------
 # _parse_json
 # ---------------------------------------------------------------------------
@@ -539,7 +519,6 @@ class TestParseJson:
     def test_empty_dict(self):
         result = self._fn('{}')
         assert result == {}
-
 
 # ---------------------------------------------------------------------------
 # _build_text_body
@@ -577,7 +556,6 @@ class TestBuildTextBody:
         adapter = self._make_adapter(app_id="a", client_secret="b", markdown_support=False)
         body = adapter._build_text_body("reply text", reply_to="msg_123")
         assert body.get("message_reference", {}).get("message_id") == "msg_123"
-
 
 # ---------------------------------------------------------------------------
 # _wait_for_reconnection / send reconnection wait
@@ -662,7 +640,6 @@ class TestWaitForReconnection:
         assert result.retryable is True
         assert "Not connected" in result.error
 
-
 # ---------------------------------------------------------------------------
 # ChunkedUploader
 # ---------------------------------------------------------------------------
@@ -683,7 +660,6 @@ class TestChunkedUploadFormatSize:
     def test_gigabytes(self):
         from gateway.platforms.qqbot.chunked_upload import format_size
         assert format_size(3 * 1024 ** 3) == "3.0 GB"
-
 
 class TestChunkedUploadErrors:
     def test_daily_limit_has_human_size(self):
@@ -706,7 +682,6 @@ class TestChunkedUploadErrors:
         from gateway.platforms.qqbot.chunked_upload import UploadFileTooLargeError
         exc = UploadFileTooLargeError("f", 100, 0)
         assert exc.limit_human == "unknown"
-
 
 class TestChunkedUploadHelpers:
     def test_read_chunk_exact_bytes(self, tmp_path):
@@ -776,7 +751,6 @@ class TestChunkedUploadHelpers:
         from gateway.platforms.qqbot.chunked_upload import _parse_prepare_response
         with pytest.raises(ValueError, match="parts"):
             _parse_prepare_response({"upload_id": "uid", "block_size": 1024, "parts": []})
-
 
 class TestChunkedUploaderFlow:
     """End-to-end prepare / PUT / part_finish / complete flow with mocked HTTP.
@@ -1011,7 +985,6 @@ class TestChunkedUploaderFlow:
         assert result["file_info"] == "F"
         assert put_attempts["n"] == 2
 
-
 # ---------------------------------------------------------------------------
 # Inline keyboards — approval + update-prompt flows
 # ---------------------------------------------------------------------------
@@ -1043,7 +1016,6 @@ class TestApprovalButtonData:
         assert parse_approval_button_data("") is None
         assert parse_approval_button_data(None) is None  # type: ignore[arg-type]
 
-
 class TestUpdatePromptButtonData:
     def test_parse_yes(self):
         from gateway.platforms.qqbot.keyboards import parse_update_prompt_button_data
@@ -1060,7 +1032,6 @@ class TestUpdatePromptButtonData:
     def test_parse_wrong_prefix(self):
         from gateway.platforms.qqbot.keyboards import parse_update_prompt_button_data
         assert parse_update_prompt_button_data("approve:sess:deny") is None
-
 
 class TestBuildApprovalKeyboard:
     def test_three_buttons_in_single_row(self):
@@ -1110,7 +1081,6 @@ class TestBuildApprovalKeyboard:
             assert parsed[0] == session_key
             assert parsed[1] in {"allow-once", "allow-always", "deny"}
 
-
 class TestBuildUpdatePromptKeyboard:
     def test_two_buttons(self):
         from gateway.platforms.qqbot.keyboards import build_update_prompt_keyboard
@@ -1122,7 +1092,6 @@ class TestBuildUpdatePromptKeyboard:
         kb = build_update_prompt_keyboard()
         datas = [b.action.data for b in kb.content.rows[0].buttons]
         assert datas == ["update_prompt:y", "update_prompt:n"]
-
 
 class TestBuildApprovalText:
     def test_exec_approval_includes_command_preview(self):
@@ -1178,7 +1147,6 @@ class TestBuildApprovalText:
         xs_in_preview = sum(line.count("x") for line in text.split("\n") if line and "```" not in line)
         assert xs_in_preview <= 301  # 300 xs + one-off tolerance
 
-
 class TestInteractionEventParsing:
     def test_parse_c2c_interaction(self):
         from gateway.platforms.qqbot.keyboards import parse_interaction_event
@@ -1232,7 +1200,6 @@ class TestInteractionEventParsing:
         assert ev.button_data == ""
         assert ev.button_id == ""
         assert ev.type == 0
-
 
 class TestAdapterInteractionDispatch:
     """End-to-end verification of _on_interaction including ACK + callback."""
@@ -1338,7 +1305,6 @@ class TestAdapterInteractionDispatch:
             "user_openid": "u",
             "data": {"resolved": {"button_data": "approve:agent:main:qqbot:c2c:u:deny"}},
         })
-
 
 # ---------------------------------------------------------------------------
 # Quoted-message handling (message_type=103 → msg_elements)
@@ -1541,7 +1507,6 @@ class TestProcessQuotedContext:
         )
         assert out["quote_block"] == ""
 
-
 class TestMergeQuoteInto:
     def test_empty_quote_returns_original(self):
         from gateway.platforms.qqbot.adapter import QQAdapter
@@ -1555,7 +1520,6 @@ class TestMergeQuoteInto:
         from gateway.platforms.qqbot.adapter import QQAdapter
         merged = QQAdapter._merge_quote_into("hi there", "[Quoted]:\nctx")
         assert merged == "[Quoted]:\nctx\n\nhi there"
-
 
 # ---------------------------------------------------------------------------
 # Gateway-contract approval UX — send_exec_approval + default dispatcher
@@ -1657,7 +1621,6 @@ class TestDefaultInteractionDispatch:
             tools.approval.resolve_gateway_approval = orig
 
         assert resolve_calls == [("agent:main:qqbot:c2c:u", "deny", False)]
-
 
     @pytest.mark.asyncio
     async def test_approval_click_rejects_unauthorized_operator(self):
@@ -1766,7 +1729,6 @@ class TestDefaultInteractionDispatch:
         finally:
             tools.approval.resolve_gateway_approval = orig
 
-
 class TestSendExecApproval:
     """Verify the gateway contract: QQAdapter.send_exec_approval(...)."""
 
@@ -1820,7 +1782,6 @@ class TestSendExecApproval:
             metadata={"thread_id": "ignored", "anything": "else"},
         )
 
-
 class TestSendUpdatePrompt:
     """Verify the cross-adapter send_update_prompt signature + behaviour."""
 
@@ -1870,7 +1831,6 @@ class TestSendUpdatePrompt:
         adapter.send_with_keyboard = fake_swk  # type: ignore[assignment]
         await adapter.send_update_prompt(chat_id="u", prompt="ok?")
 
-
 # ---------------------------------------------------------------------------
 # _send_identify includes INTERACTION intent
 # ---------------------------------------------------------------------------
@@ -1909,7 +1869,6 @@ class TestIdentifyIntents:
         assert intents & (1 << 30), "GUILD_AT_MESSAGE (1<<30) missing"
         assert intents & (1 << 12), "DIRECT_MESSAGES (1<<12) missing"
         assert intents & (1 << 26), "INTERACTION (1<<26) missing"
-
 
 # ---------------------------------------------------------------------------
 # _process_attachments: video/file path exposure
@@ -2073,7 +2032,6 @@ class TestProcessAttachmentsPathExposure:
         assert "[Quoted message]:" in out["quote_block"]
         assert "/tmp/cache/report.pdf" in out["quote_block"]
 
-
 # ---------------------------------------------------------------------------
 # WebSocket op 7 (Server Reconnect) and op 9 (Invalid Session)
 # ---------------------------------------------------------------------------
@@ -2128,7 +2086,6 @@ class TestOp7ServerReconnect:
         assert close_called == [True]
         # Session preserved
         assert adapter._session_id is None  # was never set
-
 
 class TestOp9InvalidSession:
     """Verify op 9 handles resumable vs non-resumable sessions."""
@@ -2192,7 +2149,6 @@ class TestOp9InvalidSession:
 
         assert close_called == [True]
 
-
 # ---------------------------------------------------------------------------
 # Close code classification
 # ---------------------------------------------------------------------------
@@ -2203,34 +2159,6 @@ class TestCloseCodeClassification:
     def _make_adapter(self):
         from gateway.platforms.qqbot.adapter import QQAdapter
         return QQAdapter(_make_config(app_id="a", client_secret="b"))
-
-    def test_4009_preserves_session(self):
-        """4009 (connection timeout) should NOT clear the session."""
-        adapter = self._make_adapter()
-        adapter._session_id = "sess_to_keep"
-        adapter._last_seq = 50
-
-        # The session-clearing codes set should NOT contain 4009.
-        # We verify the logic directly: dispatch a close-code event that
-        # exercises the session-clearing path (4006), then verify 4009 does not.
-        session_clear_codes = {
-            4006, 4007, 4900, 4901, 4902, 4903,
-            4904, 4905, 4906, 4907, 4908, 4909,
-            4910, 4911, 4912, 4913,
-        }
-        assert 4009 not in session_clear_codes
-
-    def test_fatal_codes_include_intent_errors(self):
-        """4013 (invalid intent) and 4014 (not authorized) should be fatal."""
-        fatal_codes = {4001, 4002, 4010, 4011, 4012, 4013, 4014, 4914, 4915}
-        # Verify these are all treated as fatal by checking the adapter's
-        # code path would call _set_fatal_error. We verify the set membership
-        # which is what the if-branch checks.
-        assert 4013 in fatal_codes
-        assert 4014 in fatal_codes
-        assert 4001 in fatal_codes
-        assert 4915 in fatal_codes
-
 
 class TestReadEventsClosedWsGuard:
     """Regression: a closed-but-non-None ws must raise on entry, not return

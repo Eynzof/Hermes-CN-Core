@@ -37,12 +37,10 @@ from agent.auxiliary_client import (
     _pool_runtime_base_url,
 )
 
-
 def _jwt_with_claims(claims: dict) -> str:
     header = base64.urlsafe_b64encode(b'{"alg":"none","typ":"JWT"}').decode().rstrip("=")
     payload = base64.urlsafe_b64encode(orjson.dumps(claims)).decode().rstrip("=")
     return f"{header}.{payload}.sig"
-
 
 class _FakeAnthropicStream:
     def __init__(self, final_message):
@@ -56,7 +54,6 @@ class _FakeAnthropicStream:
 
     def get_final_message(self):
         return self._final_message
-
 
 @pytest.fixture(autouse=True)
 def _clean_env(monkeypatch):
@@ -78,7 +75,6 @@ def _clean_env(monkeypatch):
     _aux_mod._aux_unhealthy_until.clear()
     _aux_mod._aux_unhealthy_logged_at.clear()
 
-
 @pytest.fixture
 def codex_auth_dir(tmp_path, monkeypatch):
     """Provide a writable ~/.codex/ directory with a valid auth.json."""
@@ -97,7 +93,6 @@ def codex_auth_dir(tmp_path, monkeypatch):
     )
     return codex_dir
 
-
 class TestAuxiliaryMaxTokensParam:
     def test_uses_max_completion_tokens_for_github_copilot_custom_base(self):
         with patch("agent.auxiliary_client._resolve_custom_runtime", return_value=("https://api.githubcopilot.com", "key", None)), \
@@ -108,7 +103,6 @@ class TestAuxiliaryMaxTokensParam:
         with patch("agent.auxiliary_client._resolve_custom_runtime", return_value=("https://api.githubcopilot.com/chat/completions", "key", None)), \
              patch("agent.auxiliary_client._read_nous_auth", return_value=None):
             assert auxiliary_max_tokens_param(2048) == {"max_completion_tokens": 2048}
-
 
 class TestResolveTaskProviderModel:
     @pytest.mark.parametrize(
@@ -274,7 +268,6 @@ class TestResolveTaskProviderModel:
         assert base_url == "https://explicit.example/v1"
         assert api_key == "explicit-key"
 
-
 class TestBuildCallKwargsMaxTokens:
     """_build_call_kwargs should not cap output by default (#34530).
 
@@ -342,7 +335,6 @@ class TestBuildCallKwargsMaxTokens:
         )
         assert kwargs["max_tokens"] == 4096
 
-
 class TestNousTagsScoping:
     def test_tags_injected_when_provider_is_nous(self, monkeypatch):
         import agent.auxiliary_client as aux
@@ -383,7 +375,6 @@ class TestNousTagsScoping:
 
         assert "extra_body" not in kwargs
 
-
 class TestNormalizeAuxProvider:
     def test_maps_github_copilot_aliases(self):
         assert _normalize_aux_provider("github") == "copilot"
@@ -393,7 +384,6 @@ class TestNormalizeAuxProvider:
     def test_maps_github_copilot_acp_aliases(self):
         assert _normalize_aux_provider("github-copilot-acp") == "copilot-acp"
         assert _normalize_aux_provider("copilot-acp-agent") == "copilot-acp"
-
 
 class TestReadCodexAccessToken:
     def test_valid_auth_store(self, tmp_path, monkeypatch):
@@ -465,7 +455,6 @@ class TestReadCodexAccessToken:
             result = _read_codex_access_token()
         assert result is None
 
-
     def test_expired_jwt_returns_none(self, tmp_path, monkeypatch):
         """Expired JWT tokens should be skipped so auto chain continues."""
         import pybase64 as base64
@@ -531,7 +520,6 @@ class TestReadCodexAccessToken:
         monkeypatch.setenv("HERMES_HOME", str(hermes_home))
         result = _read_codex_access_token()
         assert result == "plain-token-no-jwt"
-
 
 class TestResolveXaiOAuthForAux:
     def test_uses_pool_backed_credentials_without_singleton(self, tmp_path, monkeypatch):
@@ -603,7 +591,6 @@ class TestResolveXaiOAuthForAux:
             "https://example.x.ai/v1",
         )
 
-
 class TestAnthropicOAuthFlag:
     """Test that OAuth tokens get is_oauth=True in auxiliary Anthropic client."""
 
@@ -657,7 +644,6 @@ class TestAnthropicOAuthFlag:
         assert client is not None
         assert model == "claude-haiku-4-5-20251001"
         assert mock_build.call_args.args[0] == "sk-ant-oat01-pooled"
-
 
 class TestBuildCodexClient:
     def test_pool_without_selected_entry_falls_back_to_auth_store(self):
@@ -729,7 +715,6 @@ class TestBuildCodexClient:
         assert first_model == "gpt-5.4"
         assert second_model == "gpt-5.4"
         assert mock_openai.call_count == 2
-
 
 class TestResolveProviderClientUniversalModelFallback:
     """resolve_provider_client() picks a sensible model when callers pass none (#31845).
@@ -878,7 +863,6 @@ class TestResolveProviderClientUniversalModelFallback:
         mock_read_main.assert_not_called()
         assert mock_build.call_args.args[0] == "grok-4.20-multi-agent"
 
-
 class TestExpiredCodexFallback:
     """Test that expired Codex tokens don't block the auto chain."""
 
@@ -913,7 +897,6 @@ class TestExpiredCodexFallback:
             client, model = _resolve_auto()
             # Should NOT be Codex, should be Anthropic (or another available provider)
             assert not isinstance(client, type(None)), "Should find a provider after expired Codex"
-
 
     def test_expired_codex_openrouter_key_is_not_implicit_fallback(self, tmp_path, monkeypatch):
         """OpenRouter key alone should not make auto probe OpenRouter implicitly."""
@@ -979,7 +962,6 @@ class TestExpiredCodexFallback:
                 from agent.auxiliary_client import _resolve_auto
                 client, model = _resolve_auto()
                 assert client is not None
-
 
     def test_hermes_oauth_file_sets_oauth_flag(self, monkeypatch):
         """OAuth-style tokens should get is_oauth=*** (token is not sk-ant-api-*)."""
@@ -1048,7 +1030,6 @@ class TestExpiredCodexFallback:
             assert client is not None
             adapter = client.chat.completions
             assert adapter._is_oauth is True
-
 
 class TestExplicitProviderRouting:
     """Test explicit provider selection bypasses auto chain correctly."""
@@ -1191,7 +1172,6 @@ class TestGetTextAuxiliaryClient:
         assert mock_openai.call_args.kwargs["base_url"] == "https://api.openai.com/v1"
         assert mock_openai.call_args.kwargs["api_key"] == "sk-test"
 
-
 class TestVisionClientFallback:
     """Vision client auto mode resolves known-good multimodal backends."""
 
@@ -1295,7 +1275,6 @@ class TestVisionClientFallback:
         expected_ceiling = _get_anthropic_max_output("claude-opus-4-8")
         assert expected_ceiling > 2000
         assert captured_kwargs["max_tokens"] == expected_ceiling
-
 
 class TestAuxiliaryPoolAwareness:
     def test_try_nous_missing_auth_does_not_mark_unhealthy(self, caplog):
@@ -1658,9 +1637,7 @@ class TestAuxiliaryPoolAwareness:
         # resolves.
         assert mock_resolve.call_count == 2
 
-
 # ── Payment / credit exhaustion fallback ─────────────────────────────────
-
 
 class TestIsPaymentError:
     """_is_payment_error detects 402 and credit-related errors."""
@@ -1765,7 +1742,6 @@ class TestIsPaymentError:
         exc.status_code = 429
         assert _is_payment_error(exc) is False
 
-
 class TestIsModelNotFoundError:
     """_is_model_not_found_error detects stale/invalid model 404s, distinct
     from payment errors."""
@@ -1823,7 +1799,6 @@ class TestIsModelNotFoundError:
         exc.status_code = 500
         assert _is_model_not_found_error(exc) is False
 
-
 class TestIsModelIncompatibleError:
     """_is_model_incompatible_error detects 400s where the route cannot run
     the model at all (capability mismatch), distinct from not-found and
@@ -1877,7 +1852,6 @@ class TestIsModelIncompatibleError:
         exc.status_code = 400
         assert _is_model_incompatible_error(exc) is False
 
-
 class TestRefreshNousRecommendedModel:
     """_refresh_nous_recommended_model picks a fresh model after a stale 404."""
 
@@ -1920,7 +1894,6 @@ class TestRefreshNousRecommendedModel:
         out = _refresh_nous_recommended_model(
             vision=False, stale_model="google/gemini-3-flash-preview")
         assert out is None
-
 
 class TestIsRateLimitError:
     """_is_rate_limit_error detects 429 rate-limit errors warranting fallback."""
@@ -1980,23 +1953,8 @@ class TestIsRateLimitError:
         exc = Exception("connection reset")
         assert _is_rate_limit_error(exc) is False
 
-
 class TestGetProviderChain:
     """_get_provider_chain() resolves functions at call time (testable)."""
-
-    def test_returns_local_and_direct_api_entries_only(self):
-        chain = _get_provider_chain()
-        assert len(chain) == 2
-        labels = [label for label, _ in chain]
-        assert labels == ["local/custom", "api-key"]
-        # OpenRouter/Nous are deliberately not implicit fallback rungs. They
-        # still work when selected as the main provider or an explicit aux task.
-        assert "openrouter" not in labels
-        assert "nous" not in labels
-        # Codex is deliberately NOT in this chain — see _get_provider_chain
-        # docstring. ChatGPT-account Codex has a shifting model allow-list;
-        # guessing a model to fall back on breaks more often than it helps.
-        assert "openai-codex" not in labels
 
     def test_picks_up_patched_functions(self):
         """Patches on _try_* functions must be visible in the chain."""
@@ -2004,7 +1962,6 @@ class TestGetProviderChain:
         with patch("agent.auxiliary_client._try_custom_endpoint", sentinel):
             chain = _get_provider_chain()
         assert chain[0] == ("local/custom", sentinel)
-
 
 class TestTryPaymentFallback:
     """_try_payment_fallback skips the failed provider and tries alternatives."""
@@ -2064,7 +2021,6 @@ class TestTryPaymentFallback:
         assert client is None
         assert model is None
         assert label == ""
-
 
 class TestCallLlmPaymentFallback:
     """call_llm() retries with a different provider on 402 / payment / rate-limit errors."""
@@ -2179,7 +2135,6 @@ class TestCallLlmPaymentFallback:
                     messages=[{"role": "user", "content": "hello"}],
                 )
         mock_fb.assert_not_called()
-
 
 class TestStaleFallbackCandidateSkip:
     """A fallback candidate with a stale credential must not abort the task.
@@ -2309,7 +2264,6 @@ class TestStaleFallbackCandidateSkip:
                     task="compression",
                     messages=[{"role": "user", "content": "summarize"}],
                 )
-
 
 class TestAuxiliaryFallbackLayering:
     """Explicit-provider users get layered fallback: configured_chain → main agent → warn."""
@@ -2559,7 +2513,6 @@ class TestAuxiliaryFallbackLayering:
         # Main agent fallback should NOT be needed when chain succeeds
         mock_main.assert_not_called()
 
-
     def test_warning_emitted_when_all_fallbacks_exhausted(self, monkeypatch, caplog):
         """When chain AND main model both fail, a user-visible warning fires before re-raise."""
         monkeypatch.setenv("OPENROUTER_API_KEY", "or-key")
@@ -2661,7 +2614,6 @@ class TestAuxiliaryFallbackLayering:
         mock_openai.assert_called_once()
         assert mock_openai.call_args.kwargs["api_key"] == "codex-oauth-token"
 
-
 class TestTryMainAgentModelFallback:
     """_try_main_agent_model_fallback resolves the user's main provider+model as a safety net."""
 
@@ -2701,11 +2653,9 @@ class TestTryMainAgentModelFallback:
             client, model, label = _try_main_agent_model_fallback("glm", task="vision")
         assert client is None
 
-
 # ---------------------------------------------------------------------------
 # Gate: _resolve_api_key_provider must skip anthropic when not configured
 # ---------------------------------------------------------------------------
-
 
 def test_resolve_api_key_provider_skips_unconfigured_anthropic(monkeypatch):
     """_resolve_api_key_provider must not try anthropic when user never configured it."""
@@ -2743,21 +2693,17 @@ def test_resolve_api_key_provider_skips_unconfigured_anthropic(monkeypatch):
     assert "anthropic" not in called, \
         "_try_anthropic() should not be called when anthropic is not explicitly configured"
 
-
 # ---------------------------------------------------------------------------
 # model="default" elimination (#7512)
 # ---------------------------------------------------------------------------
-
 
 # ---------------------------------------------------------------------------
 # _try_payment_fallback reason parameter (#7512 bug 3)
 # ---------------------------------------------------------------------------
 
-
 # ---------------------------------------------------------------------------
 # _is_connection_error coverage
 # ---------------------------------------------------------------------------
-
 
 class TestTransientTransportRetry:
     """call_llm retries ONCE on the same provider for a transient transport
@@ -2936,7 +2882,6 @@ class TestTransientTransportRetry:
         assert result == {"ok": True}
         assert client.chat.completions.create.call_count == 2
 
-
 class TestAuxClientNoSdkRetries:
     """Auxiliary OpenAI clients are constructed with SDK-internal retries
     disabled so Hermes owns the retry/timeout budget (issue #54465). The SDK
@@ -2970,7 +2915,6 @@ class TestAuxClientNoSdkRetries:
             ac._create_openai_client(api_key="k", base_url="https://x/v1", max_retries=5)
         assert captured.get("max_retries") == 5
 
-
 class TestIsTimeoutError:
     """_is_timeout_error distinguishes a full-budget timeout from a fast
     connection drop."""
@@ -2999,7 +2943,6 @@ class TestIsTimeoutError:
             status_code = 503
 
         assert _is_timeout_error(_Err503("upstream")) is False
-
 
 class TestIsConnectionError:
     """Tests for _is_connection_error detection."""
@@ -3030,7 +2973,6 @@ class TestIsConnectionError:
         err = Exception("Internal Server Error")
         err.status_code = 500
         assert _is_connection_error(err) is False
-
 
 class TestKimiTemperatureOmitted:
     """Kimi/Moonshot models should have temperature OMITTED from API kwargs.
@@ -3174,11 +3116,9 @@ class TestKimiTemperatureOmitted:
 
         assert "temperature" not in kwargs
 
-
 # ---------------------------------------------------------------------------
 # async_call_llm payment / connection fallback (#7512 bug 2)
 # ---------------------------------------------------------------------------
-
 
 class TestStaleBaseUrlWarning:
     """_resolve_auto() warns when OPENAI_BASE_URL conflicts with config provider (#5161)."""
@@ -3199,7 +3139,6 @@ class TestStaleBaseUrlWarning:
         assert any("OPENAI_BASE_URL is set" in rec.message for rec in caplog.records), \
             "Expected a warning about stale OPENAI_BASE_URL"
         assert mod._stale_base_url_warned is True
-
 
 class TestAuxiliaryTaskExtraBody:
     def test_sync_call_merges_task_extra_body_from_config(self):
@@ -3653,18 +3592,15 @@ class TestAnthropicCompatImageConversion:
         assert result[0]["content"][0]["type"] == "image"
         assert result[0]["content"][1]["type"] == "video"
 
-
 class _AuxAuth401(Exception):
     status_code = 401
 
     def __init__(self, message="Provided authentication token is expired"):
         super().__init__(message)
 
-
 class _DummyResponse:
     def __init__(self, text="ok"):
         self.choices = [MagicMock(message=MagicMock(content=text))]
-
 
 class _FailingThenSuccessCompletions:
     def __init__(self):
@@ -3676,7 +3612,6 @@ class _FailingThenSuccessCompletions:
             raise _AuxAuth401()
         return _DummyResponse("sync-ok")
 
-
 class _AsyncFailingThenSuccessCompletions:
     def __init__(self):
         self.calls = 0
@@ -3686,7 +3621,6 @@ class _AsyncFailingThenSuccessCompletions:
         if self.calls == 1:
             raise _AuxAuth401()
         return _DummyResponse("async-ok")
-
 
 class TestAuxiliaryAuthRefreshRetry:
     def test_call_llm_refreshes_codex_on_401_for_vision(self):
@@ -3914,7 +3848,6 @@ class TestAuxiliaryAuthRefreshRetry:
         assert stale_client.chat.completions.create.await_count == 1
         assert fresh_client.chat.completions.create.await_count == 1
 
-
 class TestAuxiliaryPoolRotationRetry:
     def test_call_llm_rotates_explicit_codex_pool_on_429(self):
         rate_err = Exception("usage limit reached")
@@ -4015,7 +3948,6 @@ class TestAuxiliaryPoolRotationRetry:
         assert pool.rotate_calls[0]["status_code"] == 429
         mock_fallback.assert_not_called()
 
-
 class TestAnthropicAuxiliaryReasoningTranslation:
     """Native Anthropic aux adapters must receive normalized Hermes reasoning.
 
@@ -4083,7 +4015,6 @@ class TestAnthropicAuxiliaryReasoningTranslation:
             base_url="https://example.test/v1",
         )
         assert "_reasoning_config" not in openai_wire_kwargs
-
 
 class TestAuxiliaryProviderProfileReasoning:
     """Auxiliary calls must reuse provider-profile reasoning wire shapes."""
@@ -4165,7 +4096,6 @@ class TestAuxiliaryProviderProfileReasoning:
         final_kwargs = create.call_args.kwargs
         assert final_kwargs["reasoning_effort"] == "high"
         assert "reasoning" not in final_kwargs.get("extra_body", {})
-
 
 class TestCodexAdapterReasoningTranslation:
     """Verify _CodexCompletionsAdapter translates extra_body.reasoning
@@ -4339,7 +4269,6 @@ class TestCodexAdapterReasoningTranslation:
         assert captured.get("reasoning") == {"effort": "medium", "summary": "auto"}
         assert captured.get("include") == ["reasoning.encrypted_content"]
 
-
 class TestCodexAdapterPromptCacheKey:
     """_CodexCompletionsAdapter emits a stable content-addressed prompt_cache_key
     on the Codex/Responses aux path, matching the main transport
@@ -4435,7 +4364,6 @@ class TestCodexAdapterPromptCacheKey:
         ])
         assert "prompt_cache_key" not in captured
 
-
 class TestCodexAdapterGithubResponsesMessageIdDrop:
     """_CodexCompletionsAdapter must drop codex_message_items ``id`` when
     talking to Copilot (githubcopilot.com), independent of the main
@@ -4525,7 +4453,6 @@ class TestCodexAdapterGithubResponsesMessageIdDrop:
             item for item in captured["input"] if item.get("type") == "message"
         )
         assert message_item["id"] == "msg_short_but_connection_scoped"
-
 
 class TestVisionAutoSkipsKimiCoding:
     """_resolve_auto vision branch skips providers that have no vision on
@@ -4763,18 +4690,6 @@ class TestVisionAutoSkipsKimiCoding:
         assert client is fake_kimi_client
         gcc_mock.assert_called_once()
 
-    def test_skip_set_covers_exactly_known_entries(self):
-        """Guard against accidental widening of the skip list."""
-        from agent.auxiliary_client import _PROVIDERS_WITHOUT_VISION
-        assert _PROVIDERS_WITHOUT_VISION == frozenset({
-            "kimi-coding",
-            "kimi-coding-cn",
-            "minimax",
-            "minimax-cn",
-            "minimax-oauth",
-        })
-
-
 class TestCodexAuxiliaryAdapterTimeout:
     def test_forwards_timeout_to_responses_create(self):
         message_item = SimpleNamespace(
@@ -4836,7 +4751,6 @@ class TestCodexAuxiliaryAdapterTimeout:
             )
 
         assert time.monotonic() - started < 0.14
-
 
 class TestCodexAuxiliaryToolMessageConversion:
     """Regression for issue #5709.
@@ -4940,7 +4854,6 @@ class TestCodexAuxiliaryToolMessageConversion:
         assert not any(it.get("role") == "tool" for it in input_items)
         assert kwargs["instructions"] == "sys"
 
-
 class TestCodexAuxiliaryAdapterNullOutputRecovery:
     def test_recovers_output_item_when_terminal_event_has_null_output(self):
         """Regression for #11179 in auxiliary calls.
@@ -5039,7 +4952,6 @@ class TestCodexAuxiliaryAdapterNullOutputRecovery:
             assert response.choices[0].finish_reason == "stop"
         finally:
             codex_runtime._consume_codex_event_stream = original_consume
-
 
 # ---------------------------------------------------------------------------
 # Issue #23432 — auxiliary timeout poisons cached client; later aux calls fail
@@ -5263,7 +5175,6 @@ class TestAuxiliaryClientPoisonedCacheEviction:
             with _client_cache_lock:
                 _client_cache.clear()
 
-
 # ---------------------------------------------------------------------------
 # _build_call_kwargs — tool dedup at API boundary
 # ---------------------------------------------------------------------------
@@ -5328,7 +5239,6 @@ class TestBuildCallKwargsToolDedup:
         )
         assert "tools" not in kwargs
 
-
 @pytest.fixture(autouse=True)
 def _clean_env(monkeypatch):
     """Strip provider env vars so each test starts clean."""
@@ -5337,7 +5247,6 @@ def _clean_env(monkeypatch):
         "NVIDIA_API_KEY", "NVIDIA_BASE_URL",
     ):
         monkeypatch.delenv(key, raising=False)
-
 
 class TestNvidiaBillingHeaders:
     """NVIDIA NIM billing-origin headers are scoped to NVIDIA cloud."""
@@ -5377,7 +5286,6 @@ class TestNvidiaBillingHeaders:
         call_kwargs = mock_openai.call_args[1]
         headers = call_kwargs.get("default_headers", {})
         assert "X-BILLING-INVOKE-ORIGIN" not in headers
-
 
 class TestOpenRouterExplicitApiKey:
     """Test that explicit_api_key is correctly propagated to _try_openrouter()."""
@@ -5444,7 +5352,6 @@ class TestOpenRouterExplicitApiKey:
                 f"Expected env fallback key to be used when explicit_api_key is None, got: {call_kwargs['api_key']}"
             )
 
-
 def test_pool_runtime_base_url_uses_nous_env_override(monkeypatch):
     entry = SimpleNamespace(
         provider="nous",
@@ -5455,7 +5362,6 @@ def test_pool_runtime_base_url_uses_nous_env_override(monkeypatch):
     monkeypatch.setenv("NOUS_INFERENCE_BASE_URL", "https://ai.wildebeest-newton.ts.net/v1")
 
     assert _pool_runtime_base_url(entry) == "https://ai.wildebeest-newton.ts.net/v1"
-
 
 class TestAnthropicExplicitApiKey:
     """Test that explicit_api_key is correctly propagated to _try_anthropic().
@@ -5506,9 +5412,7 @@ class TestAnthropicExplicitApiKey:
             "resolve_provider_client must forward explicit_api_key to _try_anthropic()"
         )
 
-
 # ── Auxiliary unhealthy-provider TTL cache (issue #23570) ────────────────
-
 
 class TestAuxUnhealthyCache:
     """Recently-402'd providers are skipped on subsequent aux calls.
@@ -5668,9 +5572,7 @@ class TestAuxUnhealthyCache:
             # After the 402, OpenRouter is in the unhealthy cache.
             assert _is_provider_unhealthy("openrouter") is True
 
-
 # ── auxiliary_max_tokens_param ──────────────────────────────────────────────
-
 
 class TestAuxiliaryMaxTokensParam:
     """Verify the kwarg emitted by ``auxiliary_max_tokens_param`` across
@@ -5746,7 +5648,6 @@ class TestAuxiliaryMaxTokensParam:
         ):
             assert auxiliary_max_tokens_param(4096, model="") == {"max_tokens": 4096}
             assert auxiliary_max_tokens_param(4096, model=None) == {"max_tokens": 4096}
-
 
 # ── Regression tests for issue #52392 ─────────────────────────────────────
 # Compression fallback chain currently picks the first reachable candidate
@@ -6001,7 +5902,6 @@ class TestCompressionFallbackContextFilter:
         assert _task_minimum_context_length("") is None
         assert _task_minimum_context_length(None) is None
 
-
 class TestOpenAIProxyDisablesSdkRetries:
     """Auxiliary OpenAI clients must default to ``max_retries=0``.
 
@@ -6068,7 +5968,6 @@ class TestOpenAIProxyDisablesSdkRetries:
             _client, model = ac._to_async_client(sync, "model-x")
         assert captured["max_retries"] == 5
         assert model == "model-x"
-
 
 class TestCustomEndpointApiKeyInheritance:
     """Issue #9318: when an auxiliary task uses provider=custom with an

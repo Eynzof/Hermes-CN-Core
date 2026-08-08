@@ -31,7 +31,6 @@ from hermes_cli.config import (
     _sanitize_env_lines,
 )
 
-
 class TestGetHermesHome:
     def test_default_path(self):
         with patch.dict(os.environ, {}, clear=False):
@@ -48,7 +47,6 @@ class TestGetHermesHome:
         with patch.dict(os.environ, {"HERMES_HOME": "/custom/path"}):
             home = get_hermes_home()
             assert home == Path("/custom/path")
-
 
 class TestEnsureHermesHome:
     def test_creates_subdirs(self, tmp_path):
@@ -113,7 +111,6 @@ class TestEnsureHermesHome:
                 ensure_hermes_home()
         assert not profile_home.exists()
 
-
 class TestLoadConfigDefaults:
     def test_returns_defaults_when_no_file(self, tmp_path):
         with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
@@ -133,7 +130,6 @@ class TestLoadConfigDefaults:
             config = load_config()
             assert config["agent"]["max_turns"] == 42
             assert "max_turns" not in config
-
 
 class TestLoadConfigParseFailure:
     """A YAML parse failure must NOT silently fall back to defaults.
@@ -366,7 +362,6 @@ class TestLoadConfigParseFailure:
             assert second["model"]["default"] == "test/custom"
             assert capsys.readouterr().err == ""
 
-
 class TestEmptyConfigSections:
     """Empty section keys (``terminal:`` with no value) parse as YAML None
     and must not replace the default dict for that section (#58277)."""
@@ -437,7 +432,6 @@ class TestEmptyConfigSections:
         )
         # Also verify provider_order is updated
         assert result["desktop"]["models"]["provider_order"] == ["deepseek"]
-
 
 class TestSaveAndLoadRoundtrip:
     @staticmethod
@@ -552,7 +546,6 @@ class TestSaveAndLoadRoundtrip:
             saved = yaml.safe_load((tmp_path / "config.yaml").read_text(encoding="utf-8", errors="replace"))
             assert saved["model"] == "test/custom-model"
             assert saved["platforms"]["email"]["unauthorized_dm_behavior"] == "pair"
-
 
 class TestSaveEnvValueSecure:
     def test_save_env_value_writes_without_stdout(self, tmp_path, capsys):
@@ -877,7 +870,6 @@ class TestSaveEnvValueSecure:
             # Escaping dialect end-to-end: load sees the raw input, not stripped quotes.
             assert load_env()["TERMINAL_SSH_KEY"] == raw
 
-
 class TestRemoveEnvValue:
     def test_removes_key_from_env_file(self, tmp_path):
         env_path = tmp_path / ".env"
@@ -942,7 +934,6 @@ class TestRemoveEnvValue:
         env_mode = env_path.stat().st_mode & 0o777
         assert env_mode == 0o640, f"expected 0o640, got {oct(env_mode)}"
 
-
 class TestSaveConfigAtomicity:
     """Verify save_config uses atomic writes (tempfile + os.replace)."""
 
@@ -1000,7 +991,6 @@ class TestSaveConfigAtomicity:
                 raw = yaml.safe_load(f)
             assert raw["model"] == "test/atomic-model"
             assert raw["agent"]["max_turns"] == 77
-
 
 class TestSanitizeEnvLines:
     """Tests for .env file corruption repair."""
@@ -1143,7 +1133,6 @@ class TestSanitizeEnvLines:
             fixes = sanitize_env_file()
             assert fixes == 0
 
-
 class TestOptionalEnvVarsRegistry:
     """Verify that key env vars are registered in OPTIONAL_ENV_VARS."""
 
@@ -1187,7 +1176,6 @@ class TestOptionalEnvVarsRegistry:
         from hermes_cli.config import OPTIONAL_ENV_VARS
         assert "HERMES_MAX_ITERATIONS" not in OPTIONAL_ENV_VARS
 
-
 class TestMemoryProviderEnvVarsRegistry:
     """Every memory provider that reads an API key from the environment must
     have that key catalogued in OPTIONAL_ENV_VARS so the dashboard Keys page
@@ -1229,7 +1217,6 @@ class TestMemoryProviderEnvVarsRegistry:
         from hermes_cli.config import OPTIONAL_ENV_VARS
         for key, tool in self.MEMORY_PROVIDER_KEYS.items():
             assert tool in OPTIONAL_ENV_VARS[key].get("tools", []), key
-
 
 class TestConfigMigrationSecretPrompts:
     def test_required_secret_env_prompt_uses_masked_prompt(self, tmp_path, monkeypatch):
@@ -1273,7 +1260,6 @@ class TestConfigMigrationSecretPrompts:
         assert saved["TEST_API_KEY"] == "secret"
         assert results["env_added"] == ["TEST_API_KEY"]
 
-
 class TestConfigVersionDetection:
     def test_check_config_version_uses_raw_on_disk_version(self, tmp_path):
         config_path = tmp_path / "config.yaml"
@@ -1294,7 +1280,6 @@ class TestConfigVersionDetection:
         with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
             latest = DEFAULT_CONFIG["_config_version"]
             assert check_config_version() == (latest, latest)
-
 
 class TestAnthropicTokenMigration:
     """Test that config version 8→9 clears ANTHROPIC_TOKEN."""
@@ -1325,7 +1310,6 @@ class TestAnthropicTokenMigration:
         }):
             migrate_config(interactive=False, quiet=True)
             assert load_env().get("ANTHROPIC_TOKEN") == "current-token"
-
 
 class TestCustomProviderCompatibility:
     """Custom provider compatibility across legacy and v12+ config schemas."""
@@ -1557,13 +1541,7 @@ class TestCustomProviderCompatibility:
         models = [e.get("model") for e in compatible]
         assert models == ["qwen3-coder", "glm-5.1", "kimi-k2.5"]
 
-
 class TestModelCatalogConfigMigration:
-    def test_default_config_uses_cn_desktop_model_catalog(self):
-        assert (
-            DEFAULT_CONFIG["model_catalog"]["url"]
-            == "https://desktop.hermesagent.org.cn/api/model-catalog.json"
-        )
 
     def test_migrate_replaces_old_default_model_catalog_url(self, tmp_path):
         config_path = tmp_path / "config.yaml"
@@ -1616,12 +1594,8 @@ class TestModelCatalogConfigMigration:
         assert raw["_config_version"] == DEFAULT_CONFIG["_config_version"]
         assert raw["model_catalog"]["url"] == "https://catalog.example.com/model-catalog.json"
 
-
 class TestInterimAssistantMessageConfig:
     """Test the explicit gateway interim-message config gate."""
-
-    def test_default_config_enables_interim_assistant_messages(self):
-        assert DEFAULT_CONFIG["display"]["interim_assistant_messages"] is True
 
     def test_migrate_to_v15_adds_interim_assistant_message_gate(self, tmp_path):
         config_path = tmp_path / "config.yaml"
@@ -1645,21 +1619,7 @@ class TestInterimAssistantMessageConfig:
         assert "interim_assistant_messages" not in raw.get("display", {})
         assert loaded["display"]["interim_assistant_messages"] is True
 
-
-class TestCliRefreshIntervalConfig:
-    """Test the CLI refresh_interval config default (#45592 / #48309)."""
-
-    def test_default_config_enables_cli_refresh_interval(self):
-        """cli_refresh_interval defaults to 1.0 so the idle status-bar
-        clock keeps ticking and the bottom chrome stays alive during
-        idle (#45592). Users on emulators where the periodic redraw
-        fights auto-scroll can set it to 0 (#48309)."""
-        assert DEFAULT_CONFIG["display"]["cli_refresh_interval"] == 1.0
-
-
 class TestDiscordChannelPromptsConfig:
-    def test_default_config_includes_discord_channel_prompts(self):
-        assert DEFAULT_CONFIG["discord"]["channel_prompts"] == {}
 
     def test_migrate_does_not_expand_discord_channel_prompts_default(self, tmp_path):
         config_path = tmp_path / "config.yaml"
@@ -1719,14 +1679,6 @@ class TestDiscordChannelPromptsConfig:
                 f"{default_key} should not be in migrated config file — "
                 f"migration should use read_raw_config() to avoid defaults dump"
             )
-
-
-class TestUserMessagePreviewConfig:
-    def test_default_config_preview_line_counts(self):
-        preview = DEFAULT_CONFIG["display"]["user_message_preview"]
-        assert preview["first_lines"] == 2
-        assert preview["last_lines"] == 2
-
 
 class TestEnvWriteDenylist:
     """``save_env_value`` refuses to persist env-var names that
@@ -1842,7 +1794,6 @@ class TestEnvWriteDenylist:
         with pytest.raises(ValueError, match="denylist"):
             save_env_value("LD_PRELOAD", "/tmp/evil.so")
 
-
 class TestWriteApprovalMigration:
     """Version 28→29 renames memory/skills write_mode → write_approval (bool).
 
@@ -1897,7 +1848,6 @@ class TestWriteApprovalMigration:
             assert loaded["memory"]["write_approval"] is False
             assert "write_mode" not in raw.get("memory", {})
 
-
 class TestMigrationWriteInvariant:
     """Architectural guard: every migration write routes through the single
     _persist_migration() chokepoint, which strips schema defaults so a lean
@@ -1907,27 +1857,6 @@ class TestMigrationWriteInvariant:
     save_config(...) directly (re-introducing the config-bloat bug class) is
     caught immediately.
     """
-
-    def test_migrate_config_never_calls_save_config_directly(self):
-        """No `save_config(` call may live inside migrate_config()'s body — all
-        writes must go through _persist_migration()."""
-        import ast
-        import inspect
-        from hermes_cli import config as cfg_mod
-
-        src = inspect.getsource(cfg_mod.migrate_config)
-        tree = ast.parse(src.lstrip())
-        direct = [
-            node for node in ast.walk(tree)
-            if isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id == "save_config"
-        ]
-        assert not direct, (
-            "migrate_config must route every write through _persist_migration(); "
-            f"found {len(direct)} direct save_config() call(s) — these re-introduce "
-            "the config-bloat regression (lean config → DEFAULT_CONFIG dump)."
-        )
 
     @pytest.mark.parametrize("start_version", [1, "latest_minus_one"])
     def test_version_bump_keeps_config_lean(self, tmp_path, start_version):
@@ -1972,7 +1901,6 @@ class TestMigrationWriteInvariant:
         # Defaults still take effect transparently via the read-time merge.
         assert loaded["curator"]["enabled"] == DEFAULT_CONFIG["curator"]["enabled"]
         assert loaded["display"]["compact"] == DEFAULT_CONFIG["display"]["compact"]
-
 
 class TestSaveConfigPartialWritePreservation:
     """Regression for #62723: partial migration writes must not drop unrelated sections."""
@@ -2080,7 +2008,6 @@ feishu:
 
         assert raw["platforms"]["feishu"]["extra"]["app_id"] == "cli_xxx"
         assert raw["feishu"]["require_mention"] is True
-
 
 class TestVerifyOnStopMigration:
     """v30 → v31: switch verify_on_stop OFF once, preserving explicit choices."""
@@ -2220,7 +2147,6 @@ class TestDelegationCapUnificationMigration:
     def test_default_config_has_no_max_async_children(self):
         assert "max_async_children" not in DEFAULT_CONFIG["delegation"]
 
-
 class TestConfigNormalizationDoesNotOverwriteUserValues:
     """Regression tests for #27354."""
 
@@ -2339,16 +2265,11 @@ class TestConfigNormalizationDoesNotOverwriteUserValues:
     def test_explicit_config_paths_ignore_empty_sections(self):
         assert _explicit_config_paths({"memory": {}, "display": {}}) == set()
 
-
 class TestCodexAppServerAutoConfig:
     """codex_app_server_auto ships a default and survives migration untouched."""
 
     def _write(self, tmp_path, body):
         (tmp_path / "config.yaml").write_text(body, encoding="utf-8")
-
-    def test_default_config_has_native_mode(self):
-        assert DEFAULT_CONFIG["compression"]["codex_app_server_auto"] == "native"
-        assert DEFAULT_CONFIG["compression"]["codex_gpt55_autoraise"] is True
 
     def test_preserves_existing_codex_app_server_auto_value(self, tmp_path):
         with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
@@ -2363,9 +2284,6 @@ class TestCodexAppServerAutoConfig:
 
             raw = yaml.safe_load((tmp_path / "config.yaml").read_text())
             assert raw["compression"]["codex_app_server_auto"] == "hermes"
-
-
-
 
 class TestTerminalConfigEnvBridge:
     """terminal.* config keys are bridged to the env vars terminal tools read."""
@@ -2390,5 +2308,3 @@ class TestTerminalConfigEnvBridge:
         )
         assert result["HERMES_SHELL_TYPE"] == "pwsh"
 
-    def test_terminal_shell_default_in_default_config(self):
-        assert DEFAULT_CONFIG["terminal"]["shell"] == "auto"

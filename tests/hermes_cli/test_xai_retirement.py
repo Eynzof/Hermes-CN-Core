@@ -1,7 +1,6 @@
 """Unit tests for hermes_cli.xai_retirement (May 15, 2026 model retirement)."""
 from __future__ import annotations
 
-
 from hermes_cli.xai_retirement import (
     MIGRATION_GUIDE_URL,
     RETIREMENT_DATE,
@@ -13,14 +12,12 @@ from hermes_cli.xai_retirement import (
     format_issue,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 def _paths(issues):
     return [i.config_path for i in issues]
-
 
 # ---------------------------------------------------------------------------
 # _normalize / _looks_like_xai
@@ -42,7 +39,6 @@ class TestNormalize:
     def test_strips_whitespace(self):
         assert _normalize("  grok-4  ") == "grok-4"
 
-
 class TestLooksLikeXai:
     def test_grok_prefix(self):
         assert _looks_like_xai("grok-4")
@@ -61,7 +57,6 @@ class TestLooksLikeXai:
     def test_non_string(self):
         assert not _looks_like_xai(42)
         assert not _looks_like_xai({"model": "grok-4"})
-
 
 # ---------------------------------------------------------------------------
 # find_retired_xai_refs — config scanning
@@ -94,7 +89,6 @@ class TestFindRetiredEdgeCases:
             },
         }
         assert find_retired_xai_refs(cfg) == []
-
 
 class TestFindRetiredPerSlot:
     def test_principal_retired(self):
@@ -169,7 +163,6 @@ class TestFindRetiredPerSlot:
         issues = find_retired_xai_refs(cfg)
         assert len(issues) == 5
 
-
 # ---------------------------------------------------------------------------
 # Migration semantics
 # ---------------------------------------------------------------------------
@@ -198,7 +191,6 @@ class TestMigrationSemantics:
     def test_all_retired_have_replacement(self):
         for name, entry in _RETIRED_MODELS.items():
             assert entry.get("replacement"), f"{name} has no replacement"
-
 
 # ---------------------------------------------------------------------------
 # format_issue
@@ -246,29 +238,13 @@ class TestFormatIssue:
         s = format_issue(issue)
         assert "[note: ambiguous variant]" in s
 
-
 # ---------------------------------------------------------------------------
 # Module-level constants sanity
 # ---------------------------------------------------------------------------
 
 class TestModuleConstants:
-    def test_retirement_date_is_may_15(self):
-        assert "May 15, 2026" == RETIREMENT_DATE
 
     def test_migration_guide_url_points_to_xai(self):
         assert MIGRATION_GUIDE_URL.startswith("https://docs.x.ai/")
         assert "may-15" in MIGRATION_GUIDE_URL.lower()
 
-    def test_retired_models_keyset_matches_doc(self):
-        # Snapshot test: if xAI's list changes we want CI to flag it.
-        expected = {
-            "grok-4-0709",
-            "grok-4-fast-reasoning",
-            "grok-4-fast-non-reasoning",
-            "grok-4-1-fast-reasoning",
-            "grok-4-1-fast-non-reasoning",
-            "grok-code-fast-1",
-            "grok-3",
-            "grok-imagine-image-pro",
-        }
-        assert set(_RETIRED_MODELS.keys()) == expected

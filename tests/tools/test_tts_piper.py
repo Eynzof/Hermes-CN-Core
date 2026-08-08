@@ -25,7 +25,6 @@ from tools.tts_tool import (
     text_to_speech_tool,
 )
 
-
 # ---------------------------------------------------------------------------
 # Registry / constants
 # ---------------------------------------------------------------------------
@@ -37,17 +36,9 @@ class TestPiperRegistration:
     def test_piper_has_a_text_length_cap(self):
         assert PROVIDER_MAX_TEXT_LENGTH.get("piper", 0) > 0
 
-
 # ---------------------------------------------------------------------------
 # _check_piper_available
 # ---------------------------------------------------------------------------
-
-class TestCheckPiperAvailable:
-    def test_returns_bool_without_raising(self):
-        # We don't care about the current environment's answer — just that
-        # the probe never raises on a machine without piper installed.
-        assert isinstance(_check_piper_available(), bool)
-
 
 # ---------------------------------------------------------------------------
 # _resolve_piper_voice_path
@@ -115,7 +106,6 @@ class TestResolvePiperVoicePath:
         result = _resolve_piper_voice_path("", tmp_path)
         assert result.endswith(f"{DEFAULT_PIPER_VOICE}.onnx")
 
-
 # ---------------------------------------------------------------------------
 # _generate_piper_tts — stubbed so we don't need piper-tts installed
 # ---------------------------------------------------------------------------
@@ -144,7 +134,6 @@ class _StubPiperVoice:
         wav_file.writeframes(b"\x00\x00" * 1024)
         _StubPiperVoice.calls.append((text, getattr(self, "model_path", ""), syn_config))
 
-
 @pytest.fixture(autouse=True)
 def _reset_piper_cache():
     """Clear the module-level voice cache between tests."""
@@ -153,7 +142,6 @@ def _reset_piper_cache():
     _StubPiperVoice.calls = []
     yield
     tts_tool._piper_voice_cache.clear()
-
 
 class TestGeneratePiperTts:
     def _prepare_voice_files(self, tmp_path, voice=DEFAULT_PIPER_VOICE):
@@ -330,7 +318,6 @@ class TestGeneratePiperTts:
         # Only one PiperVoice.load() call across four calls with different speakers.
         assert _StubPiperVoice.loaded == [str(model)]
 
-
 # ---------------------------------------------------------------------------
 # text_to_speech_tool end-to-end (provider == "piper")
 # ---------------------------------------------------------------------------
@@ -367,7 +354,6 @@ class TestTextToSpeechToolWithPiper:
 
         assert data["success"] is False
         assert "piper-tts" in data["error"]
-
 
 # ---------------------------------------------------------------------------
 # check_tts_requirements

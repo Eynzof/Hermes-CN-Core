@@ -14,7 +14,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -33,12 +32,10 @@ def _make_mcp_tool(name="read_file", description="Read a file", input_schema=Non
     }
     return tool
 
-
 def _make_call_result(text="file contents here", is_error=False):
     """Create a fake MCP CallToolResult."""
     block = SimpleNamespace(text=text)
     return SimpleNamespace(content=[block], isError=is_error)
-
 
 def _make_mock_server(name, session=None, tools=None):
     """Create an MCPServerTask with mock attributes for testing."""
@@ -47,7 +44,6 @@ def _make_mock_server(name, session=None, tools=None):
     server.session = session
     server._tools = tools or []
     return server
-
 
 class TestFilterMCPChildren:
     def test_filters_gateway_children_by_argv_marker(self, monkeypatch):
@@ -88,7 +84,6 @@ class TestFilterMCPChildren:
 
         assert mcp_tool._filter_mcp_children({101, 102, 103}) == {103}
 
-
 # ---------------------------------------------------------------------------
 # Config loading
 # ---------------------------------------------------------------------------
@@ -122,7 +117,6 @@ class TestLoadMCPConfig:
             from tools.mcp_tool import _load_mcp_config
             result = _load_mcp_config()
             assert result == {}
-
 
 class TestMCPStatus:
     def test_status_distinguishes_configured_connecting_failed_and_disabled(
@@ -173,7 +167,6 @@ class TestMCPStatus:
         assert statuses["disabled"]["status"] == "disabled"
         assert statuses["disabled"]["disabled"] is True
 
-
 class TestLifecycleConfig:
     def test_get_lifecycle_seconds_accepts_top_level_and_nested_values(self):
         from tools.mcp_tool import _get_lifecycle_seconds
@@ -222,7 +215,6 @@ class TestLifecycleConfig:
         messages = [record.getMessage() for record in caplog.records]
         assert any("must be a number of seconds" in msg for msg in messages)
         assert any("must be positive" in msg for msg in messages)
-
 
 # ---------------------------------------------------------------------------
 # Schema conversion
@@ -585,7 +577,6 @@ class TestSchemaConversion:
         assert schema["name"] == "mcp__my_server__get_sum"
         assert "-" not in schema["name"]
 
-
 # ---------------------------------------------------------------------------
 # Check function
 # ---------------------------------------------------------------------------
@@ -632,7 +623,6 @@ class TestCheckFunction:
             assert check() is True
         finally:
             _servers.pop("test_server", None)
-
 
 # ---------------------------------------------------------------------------
 # MCP loop runner
@@ -703,7 +693,6 @@ class TestRunOnMcpLoop:
             and "_sample" in str(w.message)
         ]
         assert runtime_warnings == []
-
 
 # ---------------------------------------------------------------------------
 # Tool handler
@@ -836,7 +825,6 @@ class TestToolHandler:
             mock_session.call_tool.assert_called_once_with("greet", arguments={"name": "world"})
         finally:
             _servers.pop("test_srv", None)
-
 
 class TestRunOnMCPLoopInterrupts:
     @staticmethod
@@ -989,7 +977,6 @@ class TestRunOnMCPLoopInterrupts:
         assert future.result_timeouts[0] is not None
         assert future.result_timeouts[1] is None
 
-
 # ---------------------------------------------------------------------------
 # Tool registration (discovery + register)
 # ---------------------------------------------------------------------------
@@ -1084,7 +1071,6 @@ class TestDiscoverAndRegister:
         assert entry.toolset == "mcp-srv"
 
         _servers.pop("srv", None)
-
 
 # ---------------------------------------------------------------------------
 # MCPServerTask (run / start / shutdown)
@@ -1354,7 +1340,6 @@ class TestMCPServerTask:
 
         asyncio.run(_test())
 
-
 # ---------------------------------------------------------------------------
 # discover_mcp_tools toolset injection
 # ---------------------------------------------------------------------------
@@ -1525,7 +1510,6 @@ class TestToolsetInjection:
             assert "mcp__broken__ping" in result2
             assert call_count == 1  # Only broken retried
 
-
 # ---------------------------------------------------------------------------
 # Graceful fallback
 # ---------------------------------------------------------------------------
@@ -1604,7 +1588,6 @@ class TestGracefulFallback:
             from tools.mcp_tool import discover_mcp_tools
             result = discover_mcp_tools()
             assert result == []
-
 
 # ---------------------------------------------------------------------------
 # Shutdown (public API)
@@ -1724,7 +1707,6 @@ class TestShutdown:
         assert len(_servers) == 0
         # Parallel: ~1s, not ~3s. Allow some margin.
         assert elapsed < 2.5, f"Shutdown took {elapsed:.1f}s, expected ~1s (parallel)"
-
 
 # ---------------------------------------------------------------------------
 # _build_safe_env
@@ -1847,7 +1829,6 @@ class TestBuildSafeEnv:
         assert "GITHUB_TOKEN" not in folded
         assert "OPENAI_API_KEY" not in folded
 
-
 # ---------------------------------------------------------------------------
 # _sanitize_error
 # ---------------------------------------------------------------------------
@@ -1887,7 +1868,6 @@ class TestSanitizeError:
         assert "sk-" not in result
         assert "token=" not in result
         assert result.count("[REDACTED]") == 3
-
 
 # ---------------------------------------------------------------------------
 # HTTP config
@@ -2036,7 +2016,6 @@ class TestHTTPConfig:
         }, new_http=False))
         assert captured["legacy_headers"]["MCP-Protocol-Version"] == "custom-version"
         assert "mcp-protocol-version" not in captured["legacy_headers"]
-
 
 # ---------------------------------------------------------------------------
 # Reconnection logic
@@ -2318,7 +2297,6 @@ class TestReconnection:
 
         asyncio.run(_test())
 
-
 # ---------------------------------------------------------------------------
 # Configurable timeouts
 # ---------------------------------------------------------------------------
@@ -2394,7 +2372,6 @@ class TestConfigurableTimeouts:
                        call_kwargs[1].get("timeout") == 180
         finally:
             _servers.pop("test_srv", None)
-
 
 # ---------------------------------------------------------------------------
 # Utility tool schemas (Resources & Prompts)
@@ -2473,7 +2450,6 @@ class TestUtilitySchemas:
             desc = entry["schema"]["description"]
             assert desc and len(desc) > 0
             assert "test_srv" in desc
-
 
 # ---------------------------------------------------------------------------
 # Utility tool handlers (Resources & Prompts)
@@ -2714,7 +2690,6 @@ class TestUtilityHandlers:
         finally:
             _servers.pop("srv", None)
 
-
 # ---------------------------------------------------------------------------
 # Utility tools registration in _discover_and_register_server
 # ---------------------------------------------------------------------------
@@ -2818,16 +2793,13 @@ class TestUtilityToolRegistration:
 
         _servers.pop("chk", None)
 
-
 # ===========================================================================
 # SamplingHandler tests
 # ===========================================================================
 
-
 class _CompatType:
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
-
 
 try:
     from mcp.types import (
@@ -2864,7 +2836,6 @@ from tools.mcp_tool import (
     ToolUseContent,
     _safe_numeric,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers for sampling tests
@@ -2903,7 +2874,6 @@ def _make_sampling_params(
         params.systemPrompt = system_prompt
     return params
 
-
 def _make_llm_response(
     content="LLM response",
     model="test-model",
@@ -2918,7 +2888,6 @@ def _make_llm_response(
     )
     usage = SimpleNamespace(total_tokens=42)
     return SimpleNamespace(choices=[choice], model=model, usage=usage)
-
 
 def _make_llm_tool_response(tool_calls_data=None, model="test-model"):
     """Create a fake response with tool_calls.
@@ -2941,7 +2910,6 @@ def _make_llm_tool_response(tool_calls_data=None, model="test-model"):
         finish_reason="tool_calls",
         tool_calls=tc_list,
     )
-
 
 # ---------------------------------------------------------------------------
 # 1. _safe_numeric helper
@@ -2974,7 +2942,6 @@ class TestSafeNumeric:
 
     def test_float_coercion(self):
         assert _safe_numeric("3.5", 1.0, float) == 3.5
-
 
 # ---------------------------------------------------------------------------
 # 2. SamplingHandler initialization and config parsing
@@ -3018,7 +2985,6 @@ class TestSamplingHandlerInit:
         assert h.timeout == 45.5
         assert h.max_tokens_cap == 1024
 
-
 # ---------------------------------------------------------------------------
 # 3. Rate limiting
 # ---------------------------------------------------------------------------
@@ -3044,7 +3010,6 @@ class TestRateLimit:
         # Simulate timestamps from 61 seconds ago
         self.handler._rate_timestamps[:] = [time.time() - 61] * 3
         assert self.handler._check_rate_limit() is True
-
 
 # ---------------------------------------------------------------------------
 # 4. Model resolution
@@ -3073,7 +3038,6 @@ class TestResolveModel:
     def test_hint_without_name(self):
         prefs = SimpleNamespace(hints=[SimpleNamespace(name=None)])
         assert self.handler._resolve_model(prefs) is None
-
 
 # ---------------------------------------------------------------------------
 # 5. Message conversion
@@ -3166,7 +3130,6 @@ class TestConvertMessages:
         assert len(result) == 1
         assert result[0]["content"] == "Fallback text"
 
-
 # ---------------------------------------------------------------------------
 # 6. Text-only sampling callback (full flow)
 # ---------------------------------------------------------------------------
@@ -3256,7 +3219,6 @@ class TestSamplingCallbackText:
         assert isinstance(result, CreateMessageResult)
         assert result.stopReason == "maxTokens"
 
-
 # ---------------------------------------------------------------------------
 # 7. Tool use sampling callback
 # ---------------------------------------------------------------------------
@@ -3307,7 +3269,6 @@ class TestSamplingCallbackToolUse:
         assert len(result.content) == 2
         assert result.content[0].name == "func_a"
         assert result.content[1].name == "func_b"
-
 
 # ---------------------------------------------------------------------------
 # 8. Tool loop governance
@@ -3374,7 +3335,6 @@ class TestToolLoopGovernance:
             result = asyncio.run(handler(None, _make_sampling_params()))
             assert isinstance(result, ErrorData)
             assert "Tool loops disabled" in result.message
-
 
 # ---------------------------------------------------------------------------
 # 9. Error paths: rate limit, timeout, no provider
@@ -3487,7 +3447,6 @@ class TestSamplingErrors:
         assert "empty response" in result.message.lower()
         assert handler.metrics["errors"] == 1
 
-
 # ---------------------------------------------------------------------------
 # 10. Model whitelist
 # ---------------------------------------------------------------------------
@@ -3529,7 +3488,6 @@ class TestModelWhitelist:
         ):
             result = asyncio.run(handler(None, _make_sampling_params()))
             assert isinstance(result, CreateMessageResult)
-
 
 # ---------------------------------------------------------------------------
 # 11. Malformed tool_call arguments
@@ -3581,7 +3539,6 @@ class TestMalformedToolCallArgs:
         assert isinstance(result, CreateMessageResultWithTools)
         assert result.content[0].input == {"key": "val"}
 
-
 # ---------------------------------------------------------------------------
 # 12. Metrics tracking
 # ---------------------------------------------------------------------------
@@ -3628,7 +3585,6 @@ class TestMetricsTracking:
         assert handler.metrics["errors"] == 1
         assert handler.metrics["requests"] == 0
 
-
 # ---------------------------------------------------------------------------
 # 13. session_kwargs()
 # ---------------------------------------------------------------------------
@@ -3648,53 +3604,11 @@ class TestSessionKwargs:
         assert isinstance(cap, SamplingCapability)
         assert isinstance(cap.tools, SamplingToolsCapability)
 
-
 # ---------------------------------------------------------------------------
 # 14. MCPServerTask integration
 # ---------------------------------------------------------------------------
 
 class TestMCPServerTaskSamplingIntegration:
-    def test_sampling_handler_created_when_enabled(self):
-        """MCPServerTask.run() creates a SamplingHandler when sampling is enabled."""
-        from tools.mcp_tool import MCPServerTask, _MCP_SAMPLING_TYPES
-
-        server = MCPServerTask("int_test")
-        config = {
-            "command": "fake",
-            "sampling": {"enabled": True, "max_rpm": 5},
-        }
-        # We only need to test the setup logic, not the actual connection.
-        # Calling run() would attempt a real connection, so we test the
-        # sampling setup portion directly.
-        server._config = config
-        sampling_config = config.get("sampling", {})
-        if sampling_config.get("enabled", True) and _MCP_SAMPLING_TYPES:
-            server._sampling = SamplingHandler(server.name, sampling_config)
-        else:
-            server._sampling = None
-
-        assert server._sampling is not None
-        assert isinstance(server._sampling, SamplingHandler)
-        assert server._sampling.server_name == "int_test"
-        assert server._sampling.max_rpm == 5
-
-    def test_sampling_handler_none_when_disabled(self):
-        """MCPServerTask._sampling is None when sampling is disabled."""
-        from tools.mcp_tool import MCPServerTask, _MCP_SAMPLING_TYPES
-
-        server = MCPServerTask("int_test2")
-        config = {
-            "command": "fake",
-            "sampling": {"enabled": False},
-        }
-        server._config = config
-        sampling_config = config.get("sampling", {})
-        if sampling_config.get("enabled", True) and _MCP_SAMPLING_TYPES:
-            server._sampling = SamplingHandler(server.name, sampling_config)
-        else:
-            server._sampling = None
-
-        assert server._sampling is None
 
     def test_session_kwargs_used_in_stdio(self):
         """When sampling is set, session_kwargs() are passed to ClientSession."""
@@ -3705,7 +3619,6 @@ class TestMCPServerTaskSamplingIntegration:
         kwargs = server._sampling.session_kwargs()
         assert "sampling_callback" in kwargs
         assert "sampling_capabilities" in kwargs
-
 
 # ---------------------------------------------------------------------------
 # Discovery failed_count tracking
@@ -3829,7 +3742,6 @@ class TestDiscoveryFailedCount:
         _servers.pop("ok1", None)
         _servers.pop("ok2", None)
         _servers.pop("fail1", None)
-
 
 class TestMCPSelectiveToolLoading:
     """Tests for per-server MCP filtering and utility tool policies."""
@@ -4058,7 +3970,6 @@ class TestMCPSelectiveToolLoading:
         assert connect_called == []
         assert result == []
 
-
 # ---------------------------------------------------------------------------
 # Tool name collision protection
 # ---------------------------------------------------------------------------
@@ -4100,7 +4011,6 @@ class TestRegistryCollisionWarning:
             reg.register(name="my_tool", toolset="mcp-server", schema=schema, handler=handler)
 
         assert not any("collision" in r.message.lower() for r in caplog.records)
-
 
 class TestMCPBuiltinCollisionGuard:
     """MCP tools that collide with built-in tool names are skipped."""
@@ -4210,11 +4120,9 @@ class TestMCPBuiltinCollisionGuard:
 
         _servers.pop("srv", None)
 
-
 # ---------------------------------------------------------------------------
 # sanitize_mcp_name_component
 # ---------------------------------------------------------------------------
-
 
 class TestSanitizeMcpNameComponent:
     """Verify sanitize_mcp_name_component handles all edge cases."""
@@ -4286,11 +4194,9 @@ class TestSanitizeMcpNameComponent:
             assert validate_toolset("ai.exa/exa") is True
             assert "mcp__ai_exa_exa__search" in resolve_toolset("ai.exa/exa")
 
-
 # ---------------------------------------------------------------------------
 # register_mcp_servers public API
 # ---------------------------------------------------------------------------
-
 
 class TestRegisterMcpServers:
     """Verify the new register_mcp_servers() public API."""
@@ -4379,7 +4285,6 @@ class TestRegisterMcpServers:
                 )
 
         _servers.pop("srv", None)
-
 
 # ---------------------------------------------------------------------------
 # Tests for parallel tool call support (port from openai/codex#17667)

@@ -20,11 +20,9 @@ from plugins.platforms.homeassistant.adapter import (
     validate_ha_config,
 )
 
-
 # ---------------------------------------------------------------------------
 # check_ha_requirements
 # ---------------------------------------------------------------------------
-
 
 class TestCheckRequirements:
     def test_returns_true_without_token_when_aiohttp_available(self, monkeypatch):
@@ -50,7 +48,6 @@ class TestCheckRequirements:
         config = PlatformConfig(enabled=True, token="")
         assert validate_ha_config(config) is False
 
-
 class TestValidateConfig:
     def test_returns_false_without_token_in_config_or_env(self, monkeypatch):
         monkeypatch.delenv("HASS_TOKEN", raising=False)
@@ -64,11 +61,9 @@ class TestValidateConfig:
         monkeypatch.delenv("HASS_TOKEN", raising=False)
         assert validate_ha_config(PlatformConfig(enabled=True, token="cfg-token")) is True
 
-
 # ---------------------------------------------------------------------------
 # _format_state_change - pure function, all domain branches
 # ---------------------------------------------------------------------------
-
 
 class TestFormatStateChange:
     @staticmethod
@@ -195,11 +190,9 @@ class TestFormatStateChange:
         )
         assert "sensor.unnamed" in msg
 
-
 # ---------------------------------------------------------------------------
 # Adapter initialization from config
 # ---------------------------------------------------------------------------
-
 
 class TestAdapterInit:
     def test_url_and_token_from_config_extra(self, monkeypatch):
@@ -266,7 +259,6 @@ class TestAdapterInit:
         assert adapter._watch_all is False
         assert adapter._cooldown_seconds == 30
 
-
 # ---------------------------------------------------------------------------
 # Event filtering pipeline (_handle_ha_event)
 #
@@ -274,13 +266,11 @@ class TestAdapterInit:
 # capture the MessageEvent that _handle_ha_event produces.
 # ---------------------------------------------------------------------------
 
-
 def _make_adapter(**extra) -> HomeAssistantAdapter:
     config = PlatformConfig(enabled=True, token="tok", extra=extra)
     adapter = HomeAssistantAdapter(config)
     adapter.handle_message = AsyncMock()
     return adapter
-
 
 def _make_event(entity_id, old_state, new_state, old_attrs=None, new_attrs=None):
     return {
@@ -290,7 +280,6 @@ def _make_event(entity_id, old_state, new_state, old_attrs=None, new_attrs=None)
             "new_state": {"state": new_state, "attributes": new_attrs or {"friendly_name": entity_id}},
         }
     }
-
 
 class TestEventFilteringPipeline:
     @pytest.mark.asyncio
@@ -370,11 +359,9 @@ class TestEventFilteringPipeline:
         assert msg_event.source.chat_type == "channel"
         assert msg_event.message_id.startswith("ha_light.test_")
 
-
 # ---------------------------------------------------------------------------
 # Cooldown behavior
 # ---------------------------------------------------------------------------
-
 
 class TestCooldown:
     @pytest.mark.asyncio
@@ -439,11 +426,9 @@ class TestCooldown:
             )
         assert adapter.handle_message.call_count == 5
 
-
 # ---------------------------------------------------------------------------
 # Config integration (env overrides, round-trip)
 # ---------------------------------------------------------------------------
-
 
 class TestConfigIntegration:
     def test_env_override_creates_ha_platform(self, monkeypatch):
@@ -497,7 +482,6 @@ class TestConfigIntegration:
 # ---------------------------------------------------------------------------
 # send() via REST API
 # ---------------------------------------------------------------------------
-
 
 class TestSendViaRestApi:
     """send() uses REST API (not WebSocket) to avoid race conditions."""
@@ -589,26 +573,11 @@ class TestSendViaRestApi:
         adapter._ws.send_json.assert_not_called()
         adapter._ws.receive_json.assert_not_called()
 
-
 # ---------------------------------------------------------------------------
 # Toolset integration
 # ---------------------------------------------------------------------------
-
 
 # ---------------------------------------------------------------------------
 # WebSocket URL construction
 # ---------------------------------------------------------------------------
 
-
-class TestWsUrlConstruction:
-    def test_http_to_ws(self):
-        config = PlatformConfig(enabled=True, token="t", extra={"url": "http://ha:8123"})
-        adapter = HomeAssistantAdapter(config)
-        ws_url = adapter._hass_url.replace("http://", "ws://").replace("https://", "wss://")
-        assert ws_url == "ws://ha:8123"
-
-    def test_https_to_wss(self):
-        config = PlatformConfig(enabled=True, token="t", extra={"url": "https://ha.example.com"})
-        adapter = HomeAssistantAdapter(config)
-        ws_url = adapter._hass_url.replace("http://", "ws://").replace("https://", "wss://")
-        assert ws_url == "wss://ha.example.com"

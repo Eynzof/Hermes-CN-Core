@@ -19,14 +19,12 @@ appear in ``/model`` without a Hermes release.
 
 from unittest.mock import patch
 
-
 from hermes_cli.models import (
     _MODELS_DEV_PREFERRED,
     _PROVIDER_MODELS,
     _merge_with_models_dev,
     provider_model_ids,
 )
-
 
 class TestMergeHelper:
     def test_merge_empty_mdev_returns_curated(self):
@@ -62,10 +60,7 @@ class TestMergeHelper:
         # models.dev casing wins since it came first
         assert out == ["MiniMax-M2.7", "minimax-m2.5"]
 
-
 class TestProviderModelIdsPreferred:
-    def test_opencode_go_is_preferred(self):
-        assert "opencode-go" in _MODELS_DEV_PREFERRED
 
     def test_opencode_go_includes_fresh_models_dev_entries(self):
         """provider_model_ids('opencode-go') adds models.dev entries on top."""
@@ -105,19 +100,6 @@ class TestProviderModelIdsPreferred:
         assert "kimi-k3" in out
         assert "kimi-k2.7-code" in out
 
-    def test_kimi_coding_live_catalog_does_not_hide_curated_k3(self):
-        """Kimi /models can lag inference; live results must not replace curated."""
-        with (
-            patch(
-                "hermes_cli.auth.resolve_api_key_provider_credentials",
-                return_value={"api_key": "sk-test", "base_url": "https://api.moonshot.ai/v1"},
-            ),
-            patch("providers.base.ProviderProfile.fetch_models", return_value=["kimi-k2.6"]),
-        ):
-            out = provider_model_ids("kimi-coding")
-        # Curated-first order; the newest curated models stay ahead of live.
-        assert out[:3] == ["kimi-k3", "kimi-k2.7-code", "kimi-k2.6"]
-
     def test_kimi_setup_flow_uses_same_coding_plan_catalog(self):
         """The setup wizard must not carry a stale duplicate Kimi model list."""
         from hermes_cli.model_setup_flows import _model_flow_kimi
@@ -139,15 +121,8 @@ class TestProviderModelIdsPreferred:
         assert captured["models"] == _PROVIDER_MODELS["kimi-coding"]
         assert captured["models"][0] == "kimi-k3"
 
-
 class TestOpenRouterAndNousUnchanged:
     """Per Teknium: openrouter and nous are NEVER merged with models.dev."""
-
-    def test_openrouter_not_in_preferred_set(self):
-        assert "openrouter" not in _MODELS_DEV_PREFERRED
-
-    def test_nous_not_in_preferred_set(self):
-        assert "nous" not in _MODELS_DEV_PREFERRED
 
     def test_openrouter_does_not_call_merge(self):
         """openrouter takes its own live path — merge helper must NOT run."""

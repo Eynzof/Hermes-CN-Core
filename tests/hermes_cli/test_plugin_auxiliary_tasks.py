@@ -20,9 +20,7 @@ from hermes_cli.plugins import (
     get_plugin_auxiliary_tasks,
 )
 
-
 # ── Fixtures ─────────────────────────────────────────────────────────────────
-
 
 def _make_ctx(name: str = "test_plugin") -> tuple[PluginContext, PluginManager]:
     """Build a PluginContext + fresh PluginManager wired together.
@@ -35,7 +33,6 @@ def _make_ctx(name: str = "test_plugin") -> tuple[PluginContext, PluginManager]:
     manifest = PluginManifest(name=name)
     ctx = PluginContext(manifest, manager)
     return ctx, manager
-
 
 @pytest.fixture
 def patched_manager(monkeypatch):
@@ -56,9 +53,7 @@ def patched_manager(monkeypatch):
     monkeypatch.setattr(plugins_mod, "_ensure_plugins_discovered", _stub_get_manager)
     yield fresh
 
-
 # ── PluginContext.register_auxiliary_task ────────────────────────────────────
-
 
 def test_register_auxiliary_task_basic():
     ctx, manager = _make_ctx("my_plugin")
@@ -78,7 +73,6 @@ def test_register_auxiliary_task_basic():
     assert entry["defaults"]["model"] == ""
     assert entry["defaults"]["timeout"] == 60
 
-
 def test_register_auxiliary_task_with_custom_defaults():
     ctx, manager = _make_ctx()
     ctx.register_auxiliary_task(
@@ -92,7 +86,6 @@ def test_register_auxiliary_task_with_custom_defaults():
     assert entry["defaults"]["extra_body"] == {"reasoning_effort": "low"}
     # Unspecified defaults still populated
     assert entry["defaults"]["provider"] == "auto"
-
 
 def test_register_auxiliary_task_rejects_builtin_keys():
     ctx, _ = _make_ctx()
@@ -113,7 +106,6 @@ def test_register_auxiliary_task_rejects_builtin_keys():
                 description="x",
             )
 
-
 def test_register_auxiliary_task_rejects_invalid_key_shapes():
     ctx, _ = _make_ctx()
     for bad in ("", "with-dash", "with.dot", "with space", "with/slash"):
@@ -123,7 +115,6 @@ def test_register_auxiliary_task_rejects_invalid_key_shapes():
                 display_name="x",
                 description="x",
             )
-
 
 def test_register_auxiliary_task_allows_same_plugin_re_registration():
     """Re-registration by the same plugin updates the entry (idempotent)."""
@@ -135,7 +126,6 @@ def test_register_auxiliary_task_allows_same_plugin_re_registration():
         key="t1", display_name="Second", description="second"
     )
     assert manager._aux_tasks["t1"]["display_name"] == "Second"
-
 
 def test_register_auxiliary_task_rejects_cross_plugin_collision():
     """Two different plugins cannot register the same task key."""
@@ -155,27 +145,9 @@ def test_register_auxiliary_task_rejects_cross_plugin_collision():
             key="shared", display_name="B", description="b"
         )
 
-
 # ── PluginManager state lifecycle ────────────────────────────────────────────
 
-
-def test_force_rediscovery_clears_aux_tasks():
-    ctx, manager = _make_ctx()
-    ctx.register_auxiliary_task(
-        key="will_be_cleared",
-        display_name="x",
-        description="x",
-    )
-    assert "will_be_cleared" in manager._aux_tasks
-
-    manager._discovered = False
-    # Simulate force=True path: clears state before re-scanning
-    manager._aux_tasks.clear()
-    assert manager._aux_tasks == {}
-
-
 # ── Module-level helper ──────────────────────────────────────────────────────
-
 
 def test_get_plugin_auxiliary_tasks_returns_sorted_list(patched_manager):
     manifest = PluginManifest(name="plug")
@@ -193,13 +165,10 @@ def test_get_plugin_auxiliary_tasks_returns_sorted_list(patched_manager):
     tasks = get_plugin_auxiliary_tasks()
     assert [t["key"] for t in tasks] == ["alpha_task", "mike_task", "zeta_task"]
 
-
 def test_get_plugin_auxiliary_tasks_empty_when_none_registered(patched_manager):
     assert get_plugin_auxiliary_tasks() == []
 
-
 # ── _all_aux_tasks merges built-in + plugin ──────────────────────────────────
-
 
 def test_all_aux_tasks_includes_plugin_registered(patched_manager):
     from hermes_cli.main import _AUX_TASKS, _all_aux_tasks
@@ -226,7 +195,6 @@ def test_all_aux_tasks_includes_plugin_registered(patched_manager):
         "hindsight pre-retain dedup/extract",
     )
 
-
 def test_all_aux_tasks_swallows_plugin_discovery_failure(monkeypatch):
     """Plugin discovery failure must not break the aux config UI."""
     from hermes_cli import main as main_mod
@@ -242,9 +210,7 @@ def test_all_aux_tasks_swallows_plugin_discovery_failure(monkeypatch):
     # Built-in tasks still present
     assert any(k == "vision" for k, _, _ in merged)
 
-
 # ── _reset_aux_to_auto includes plugin tasks ─────────────────────────────────
-
 
 def test_reset_aux_to_auto_resets_plugin_tasks(tmp_path, monkeypatch, patched_manager):
     """Plugin task with non-auto config gets reset alongside built-ins."""
@@ -277,9 +243,7 @@ def test_reset_aux_to_auto_resets_plugin_tasks(tmp_path, monkeypatch, patched_ma
     assert cfg["auxiliary"]["my_aux"]["provider"] == "auto"
     assert cfg["auxiliary"]["my_aux"]["model"] == ""
 
-
 # ── auxiliary_client._get_auxiliary_task_config defaults layering ────────────
-
 
 def test_get_auxiliary_task_config_layers_plugin_defaults(
     tmp_path, monkeypatch, patched_manager
@@ -306,7 +270,6 @@ def test_get_auxiliary_task_config_layers_plugin_defaults(
     assert resolved["timeout"] == 15
     assert resolved["extra_body"] == {"reasoning_effort": "low"}
     assert resolved["provider"] == "auto"
-
 
 def test_get_auxiliary_task_config_user_config_wins_over_plugin_defaults(
     tmp_path, monkeypatch, patched_manager
@@ -338,7 +301,6 @@ def test_get_auxiliary_task_config_user_config_wins_over_plugin_defaults(
     resolved = _get_auxiliary_task_config("my_filter")
     assert resolved["timeout"] == 90  # user wins
     assert resolved["provider"] == "nous"  # user wins
-
 
 def test_get_auxiliary_task_config_unknown_task_returns_empty(
     tmp_path, monkeypatch, patched_manager

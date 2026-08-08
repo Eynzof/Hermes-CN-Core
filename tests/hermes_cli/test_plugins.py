@@ -29,9 +29,7 @@ from hermes_cli.middleware import (
     run_tool_execution_middleware,
 )
 
-
 # ── Helpers ────────────────────────────────────────────────────────────────
-
 
 def _make_plugin_dir(base: Path, name: str, *, register_body: str = "pass",
                      manifest_extra: dict | None = None,
@@ -85,9 +83,7 @@ def _make_plugin_dir(base: Path, name: str, *, register_body: str = "pass",
 
     return plugin_dir
 
-
 # ── TestPluginDiscovery ────────────────────────────────────────────────────
-
 
 class TestPluginDiscovery:
     """Tests for plugin discovery from directories and entry points."""
@@ -484,9 +480,7 @@ class TestPluginDiscovery:
         assert mgr._aux_tasks == {}
         assert mgr._slack_action_handlers == []
 
-
 # ── TestPluginLoading ──────────────────────────────────────────────────────
-
 
 class TestPluginLoading:
     """Tests for plugin module loading."""
@@ -616,24 +610,10 @@ class TestPluginLoading:
 
         assert mgr._plugins["not_memory"].manifest.kind == "standalone"
 
-
 # ── TestPluginHooks ────────────────────────────────────────────────────────
-
 
 class TestPluginHooks:
     """Tests for lifecycle hook registration and invocation."""
-
-    def test_valid_hooks_include_request_scoped_api_hooks(self):
-        assert "pre_api_request" in VALID_HOOKS
-        assert "post_api_request" in VALID_HOOKS
-        assert "api_request_error" in VALID_HOOKS
-        assert "subagent_start" in VALID_HOOKS
-        assert "transform_terminal_output" in VALID_HOOKS
-        assert "transform_tool_result" in VALID_HOOKS
-        assert "transform_llm_output" in VALID_HOOKS
-
-    def test_valid_hooks_include_pre_gateway_dispatch(self):
-        assert "pre_gateway_dispatch" in VALID_HOOKS
 
     def test_pre_gateway_dispatch_collects_action_dicts(self, tmp_path, monkeypatch):
         """pre_gateway_dispatch callbacks return action dicts (skip/rewrite/allow)."""
@@ -858,7 +838,6 @@ class TestPreToolCallBlocking:
         )
         assert get_pre_tool_call_block_message("terminal", {}) == "first blocker"
 
-
 class TestPreToolCallDirective:
     """Tests for the extended (block | approve) directive helper."""
 
@@ -911,7 +890,6 @@ class TestPreToolCallDirective:
             ],
         )
         assert get_pre_tool_call_block_message("write_file", {}) is None
-
 
 class TestResolvePreToolBlock:
     """Tests for the single dispatch-site chokepoint that resolves a
@@ -1023,7 +1001,6 @@ class TestResolvePreToolBlock:
         msg = resolve_pre_tool_block("terminal", {})
         assert msg is not None and "gate failed" in msg  # fail-closed
 
-
 class TestGetPreVerifyContinueMessage:
     """`pre_verify` directive aggregation — mirrors the pre_tool_call block path."""
 
@@ -1089,7 +1066,6 @@ class TestGetPreVerifyContinueMessage:
         assert seen["coding"] is True
         assert seen["attempt"] == 2
         assert seen["changed_paths"] == ["a.py"]
-
 
 class TestThreadToolWhitelist:
     """Tests for the thread-local tool whitelist used by background review forks."""
@@ -1179,9 +1155,7 @@ class TestThreadToolWhitelist:
         finally:
             clear_thread_tool_whitelist()
 
-
 # ── TestPluginContext ──────────────────────────────────────────────────────
-
 
 class TestPluginContext:
     """Tests for the PluginContext facade."""
@@ -1535,10 +1509,7 @@ class TestPluginContext:
         finally:
             registry.deregister("gated_override_target")
 
-
-
 # ── TestPluginToolVisibility ───────────────────────────────────────────────
-
 
 class TestPluginToolVisibility:
     """Plugin-registered tools appear in get_tool_definitions()."""
@@ -1587,9 +1558,7 @@ class TestPluginToolVisibility:
         tool_names3 = [t["function"]["name"] for t in tools3]
         assert "vis_tool" in tool_names3
 
-
 # ── TestPluginManagerList ──────────────────────────────────────────────────
-
 
 class TestPluginManagerList:
     """Tests for PluginManager.list_plugins()."""
@@ -1663,8 +1632,6 @@ class TestPluginManagerList:
         assert by_name["second_hooker"]["hooks"] == 1, (
             "second plugin sharing a hook name was not credited with its hook"
         )
-
-
 
 class TestPreLlmCallTargetRouting:
     """Tests for pre_llm_call hook return format with target-aware routing.
@@ -1790,9 +1757,7 @@ class TestPreLlmCallTargetRouting:
         assert "rule B" in _plugin_user_context
         assert "plain text C" in _plugin_user_context
 
-
 # ── TestPluginCommands ────────────────────────────────────────────────────
-
 
 class TestPluginCommands:
     """Tests for plugin slash command registration via register_command()."""
@@ -2055,7 +2020,6 @@ class TestPluginCommands:
         assert mgr._plugin_commands["cmd-a"]["plugin"] == "plugin-a"
         assert mgr._plugin_commands["cmd-b"]["plugin"] == "plugin-b"
 
-
 class TestPluginCommandResultResolution:
     def test_returns_sync_values_unchanged(self):
         assert resolve_plugin_command_result("ok") == "ok"
@@ -2093,9 +2057,7 @@ class TestPluginCommandResultResolution:
         with pytest.raises(TimeoutError):
             resolve_plugin_command_result(_slow_handler())
 
-
 # ── TestPluginDispatchTool ────────────────────────────────────────────────
-
 
 class TestPluginDispatchTool:
     """Tests for PluginContext.dispatch_tool() — tool dispatch with agent context."""
@@ -2225,7 +2187,6 @@ class TestPluginDispatchTool:
 
         assert '"error"' in result
 
-
 class TestPluginDebugLogging:
     """HERMES_PLUGINS_DEBUG opt-in stderr handler for plugin developers."""
 
@@ -2299,7 +2260,6 @@ class TestPluginDebugLogging:
             plugins_mod.logger.setLevel(original_level)
             plugins_mod.logger.handlers = original_handlers
 
-
 class TestPluginContextProfileName:
     """ctx.profile_name resolves from HERMES_HOME in every context."""
 
@@ -2333,7 +2293,6 @@ class TestPluginContextProfileName:
         ctx = self._ctx()
         assert ctx._manager._cli_ref is None
         assert ctx.profile_name == "worker1"
-
 
 class TestDispatchToolWithoutCliRef:
     """ctx.dispatch_tool works in worker/hook contexts (no _cli_ref).

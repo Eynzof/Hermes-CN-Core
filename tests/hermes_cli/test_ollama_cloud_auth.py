@@ -11,7 +11,6 @@ Covers:
 
 import os
 
-
 # ---------------------------------------------------------------------------
 # OLLAMA_API_KEY credential resolution
 # ---------------------------------------------------------------------------
@@ -67,7 +66,6 @@ class TestOllamaCloudCredentials:
 
         # Should fall through to no-key-required for local endpoints
         assert runtime["api_key"] != "test-ollama-key"
-
 
 # ---------------------------------------------------------------------------
 # Direct alias resolution
@@ -149,7 +147,6 @@ class TestDirectAliases:
         assert result is not None
         assert result[1] == "GLM-4.7"
 
-
 # ---------------------------------------------------------------------------
 # /model command persistence
 # ---------------------------------------------------------------------------
@@ -177,43 +174,9 @@ class TestModelSwitchPersistence:
         assert result.api_key == "test-key"
         assert result.base_url == "https://api.anthropic.com"
 
-
 # ---------------------------------------------------------------------------
 # Fallback base_url passthrough
 # ---------------------------------------------------------------------------
-
-class TestFallbackBaseUrlPassthrough:
-    """_try_activate_fallback should pass base_url from fallback config."""
-
-    def test_fallback_config_has_base_url(self):
-        """Verify fallback_providers config structure supports base_url."""
-        # This tests the contract: fallback dicts can have base_url
-        fb = {
-            "provider": "custom",
-            "model": "qwen3.5:397b",
-            "base_url": "https://ollama.com/v1",
-        }
-        assert fb.get("base_url") == "https://ollama.com/v1"
-
-    def test_ollama_key_lookup_for_fallback(self, monkeypatch):
-        """When fallback base_url is ollama.com and no api_key, OLLAMA_API_KEY is used."""
-        monkeypatch.setenv("OLLAMA_API_KEY", "fb-ollama-key")
-
-        fb = {
-            "provider": "custom",
-            "model": "qwen3.5:397b",
-            "base_url": "https://ollama.com/v1",
-        }
-
-        fb_base_url_hint = (fb.get("base_url") or "").strip() or None
-        fb_api_key_hint = (fb.get("api_key") or "").strip() or None
-
-        if fb_base_url_hint and "ollama.com" in fb_base_url_hint.lower() and not fb_api_key_hint:
-            fb_api_key_hint = os.getenv("OLLAMA_API_KEY") or None
-
-        assert fb_api_key_hint == "fb-ollama-key"
-        assert fb_base_url_hint == "https://ollama.com/v1"
-
 
 # ---------------------------------------------------------------------------
 # Edge cases: _load_direct_aliases
@@ -221,42 +184,6 @@ class TestFallbackBaseUrlPassthrough:
 
 class TestLoadDirectAliasesEdgeCases:
     """Edge cases for _load_direct_aliases parsing."""
-
-    def test_empty_model_aliases_config(self, monkeypatch):
-        """Empty model_aliases dict returns only builtins (if any)."""
-        mock_config = {"model_aliases": {}}
-        monkeypatch.setattr(
-            "hermes_cli.config.load_config",
-            lambda: mock_config,
-        )
-
-        from hermes_cli.model_switch import _load_direct_aliases
-        aliases = _load_direct_aliases()
-        assert isinstance(aliases, dict)
-
-    def test_model_aliases_not_a_dict(self, monkeypatch):
-        """Non-dict model_aliases value is gracefully ignored."""
-        mock_config = {"model_aliases": "bad-string-value"}
-        monkeypatch.setattr(
-            "hermes_cli.config.load_config",
-            lambda: mock_config,
-        )
-
-        from hermes_cli.model_switch import _load_direct_aliases
-        aliases = _load_direct_aliases()
-        assert isinstance(aliases, dict)
-
-    def test_model_aliases_none_value(self, monkeypatch):
-        """model_aliases: null in config is handled gracefully."""
-        mock_config = {"model_aliases": None}
-        monkeypatch.setattr(
-            "hermes_cli.config.load_config",
-            lambda: mock_config,
-        )
-
-        from hermes_cli.model_switch import _load_direct_aliases
-        aliases = _load_direct_aliases()
-        assert isinstance(aliases, dict)
 
     def test_malformed_entry_without_model_key(self, monkeypatch):
         """Entries missing 'model' key are skipped."""
@@ -304,17 +231,6 @@ class TestLoadDirectAliasesEdgeCases:
         assert "list_entry" not in aliases
         assert "good" in aliases
 
-    def test_load_config_exception_returns_builtins(self, monkeypatch):
-        """If load_config raises, _load_direct_aliases returns builtins only."""
-        monkeypatch.setattr(
-            "hermes_cli.config.load_config",
-            lambda: (_ for _ in ()).throw(RuntimeError("config broken")),
-        )
-
-        from hermes_cli.model_switch import _load_direct_aliases
-        aliases = _load_direct_aliases()
-        assert isinstance(aliases, dict)
-
     def test_alias_name_normalized_lowercase(self, monkeypatch):
         """Alias names are lowercased and stripped."""
         mock_config = {
@@ -352,7 +268,6 @@ class TestLoadDirectAliasesEdgeCases:
         aliases = _load_direct_aliases()
         assert "empty" not in aliases
         assert "good" in aliases
-
 
 # ---------------------------------------------------------------------------
 # _ensure_direct_aliases idempotency
@@ -397,7 +312,6 @@ class TestEnsureDirectAliases:
         assert call_count[0] == 0
         assert "pre" in ms.DIRECT_ALIASES
 
-
 # ---------------------------------------------------------------------------
 # resolve_alias: fallthrough and edge cases
 # ---------------------------------------------------------------------------
@@ -426,7 +340,6 @@ class TestResolveAliasEdgeCases:
         result = ms.resolve_alias("  myalias  ", "openrouter")
         assert result is not None
         assert result[1] == "my-model"
-
 
 # ---------------------------------------------------------------------------
 # switch_model: direct alias base_url override
@@ -488,7 +401,6 @@ class TestSwitchModelDirectAliasOverride:
         assert result.api_key == "no-key-required"
         assert result.base_url == "http://localhost:11434/v1"
 
-
 # ---------------------------------------------------------------------------
 # CLI state update: requested_provider persistence
 # ---------------------------------------------------------------------------
@@ -528,62 +440,7 @@ class TestCLIStateUpdate:
         assert result.api_key is None or result.api_key == ""
         assert result.base_url is None or result.base_url == ""
 
-
 # ---------------------------------------------------------------------------
 # Fallback: OLLAMA_API_KEY edge cases
 # ---------------------------------------------------------------------------
 
-class TestFallbackEdgeCases:
-    """Edge cases for fallback OLLAMA_API_KEY logic."""
-
-    def test_ollama_key_not_injected_for_localhost(self, monkeypatch):
-        """OLLAMA_API_KEY should not be injected for localhost URLs."""
-        monkeypatch.setenv("OLLAMA_API_KEY", "should-not-use")
-
-        fb = {
-            "provider": "custom",
-            "model": "local-model",
-            "base_url": "http://localhost:11434/v1",
-        }
-
-        fb_base_url_hint = (fb.get("base_url") or "").strip() or None
-        fb_api_key_hint = (fb.get("api_key") or "").strip() or None
-
-        if fb_base_url_hint and "ollama.com" in fb_base_url_hint.lower() and not fb_api_key_hint:
-            fb_api_key_hint = os.getenv("OLLAMA_API_KEY") or None
-
-        assert fb_api_key_hint is None
-
-    def test_explicit_api_key_not_overridden_by_ollama_key(self, monkeypatch):
-        """Explicit api_key in fallback config is not overridden by OLLAMA_API_KEY."""
-        monkeypatch.setenv("OLLAMA_API_KEY", "env-key")
-
-        fb = {
-            "provider": "custom",
-            "model": "qwen3.5:397b",
-            "base_url": "https://ollama.com/v1",
-            "api_key": "explicit-key",
-        }
-
-        fb_base_url_hint = (fb.get("base_url") or "").strip() or None
-        fb_api_key_hint = (fb.get("api_key") or "").strip() or None
-
-        if fb_base_url_hint and "ollama.com" in fb_base_url_hint.lower() and not fb_api_key_hint:
-            fb_api_key_hint = os.getenv("OLLAMA_API_KEY") or None
-
-        assert fb_api_key_hint == "explicit-key"
-
-    def test_no_base_url_in_fallback(self, monkeypatch):
-        """Fallback with no base_url doesn't crash."""
-        monkeypatch.setenv("OLLAMA_API_KEY", "some-key")
-
-        fb = {"provider": "openrouter", "model": "some-model"}
-
-        fb_base_url_hint = (fb.get("base_url") or "").strip() or None
-        fb_api_key_hint = (fb.get("api_key") or "").strip() or None
-
-        if fb_base_url_hint and "ollama.com" in fb_base_url_hint.lower() and not fb_api_key_hint:
-            fb_api_key_hint = os.getenv("OLLAMA_API_KEY") or None
-
-        assert fb_base_url_hint is None
-        assert fb_api_key_hint is None

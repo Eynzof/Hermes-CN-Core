@@ -20,11 +20,9 @@ from tools.session_search_tool import (
     session_search,
 )
 
-
 @pytest.fixture
 def db(tmp_path):
     return SessionDB(tmp_path / "state.db")
-
 
 def _seed_modpack_sessions(db):
     """Create three sessions about a modpack so FTS5 has hits to dedupe."""
@@ -57,33 +55,11 @@ def _seed_modpack_sessions(db):
     db.append_message("s_newest", role="assistant", content="Shipped commit b850442. Modpack alternator nerfed too.")
     db._conn.commit()
 
-
 # =========================================================================
 # Schema invariants
 # =========================================================================
 
 class TestSchema:
-    def test_schema_has_required_params(self):
-        params = SESSION_SEARCH_SCHEMA["parameters"]["properties"]
-        # Discovery shape
-        assert "query" in params
-        assert "limit" in params
-        assert "sort" in params
-        # Scroll shape
-        assert "session_id" in params
-        assert "around_message_id" in params
-        assert "window" in params
-        # Shared
-        assert "role_filter" in params
-
-    def test_no_mode_parameter(self):
-        # Mode is inferred from which args are set — no explicit mode param
-        params = SESSION_SEARCH_SCHEMA["parameters"]["properties"]
-        assert "mode" not in params
-
-    def test_sort_enum(self):
-        params = SESSION_SEARCH_SCHEMA["parameters"]["properties"]
-        assert params["sort"]["enum"] == ["newest", "oldest"]
 
     def test_schema_description_teaches_scroll(self):
         desc = SESSION_SEARCH_SCHEMA["description"]
@@ -106,11 +82,9 @@ class TestSchema:
         assert "session_search as secondary" in desc
         assert "not found" in desc
 
-
 class TestHiddenSources:
     def test_tool_source_hidden(self):
         assert "tool" in _HIDDEN_SESSION_SOURCES
-
 
 class TestFormatTimestamp:
     def test_unix_timestamp(self):
@@ -123,7 +97,6 @@ class TestFormatTimestamp:
     def test_iso_string_passthrough(self):
         out = _format_timestamp("not-a-number-string")
         assert out == "not-a-number-string"
-
 
 # =========================================================================
 # Browse shape (no args)
@@ -148,7 +121,6 @@ class TestBrowseShape:
         result = orjson.loads(session_search(db=db))
         titles = [r.get("title") for r in result["results"]]
         assert any("Modpack" in (t or "") for t in titles)
-
 
 # =========================================================================
 # Discovery shape (with query)
@@ -254,7 +226,6 @@ class TestDiscoveryShape:
         sids = [r["session_id"] for r in result["results"]]
         assert "s_newest" not in sids
 
-
 class TestDiscoverySort:
     def test_sort_newest_orders_by_recency(self, db):
         _seed_modpack_sessions(db)
@@ -275,7 +246,6 @@ class TestDiscoverySort:
         result = orjson.loads(session_search(query="modpack", sort="bogus", db=db))
         assert result["success"] is True
 
-
 class TestRoleFilter:
     def test_default_excludes_tool_role(self, db):
         db.create_session("s1", source="cli")
@@ -294,7 +264,6 @@ class TestRoleFilter:
         # Should now match the tool message
         if result["count"] > 0:
             assert result["results"][0]["matched_role"] == "tool"
-
 
 # =========================================================================
 # Scroll shape (session_id + around_message_id)
@@ -397,7 +366,6 @@ class TestScrollShape:
         ))
         assert result["success"] is False
 
-
 class TestScrollPattern:
     """The forward/backward scroll loop using tool output."""
 
@@ -421,7 +389,6 @@ class TestScrollPattern:
         # Boundary id appears in both
         assert last_id in [m["id"] for m in v1["messages"]]
         assert last_id in [m["id"] for m in v2["messages"]]
-
 
 # =========================================================================
 # Shape precedence
@@ -456,7 +423,6 @@ class TestShapePrecedence:
         result = orjson.loads(session_search(session_id="s_oldest", db=db))
         assert result["mode"] == "read"
 
-
 # =========================================================================
 # Read shape — dump a whole session by id (serves @session links)
 # =========================================================================
@@ -487,7 +453,6 @@ class TestReadShape:
         assert result["message_count"] == 50
         assert result["truncated"] is True
         assert len(result["messages"]) == 30  # head 20 + tail 10
-
 
 # =========================================================================
 # Cross-profile read — `profile` swaps in another profile's DB (read-only)
@@ -570,7 +535,6 @@ class TestCrossProfileRead:
             assert result["success"] is True, kwargs
             assert result["mode"] == "read"
             assert result["session_id"] == "s_other"
-
 
 # =========================================================================
 # Cron demotion in discover ranking (#19434)

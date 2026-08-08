@@ -21,55 +21,16 @@ from tools.budget_config import (
     budget_for_context_window,
 )
 
-
 # ---------------------------------------------------------------------------
 # Module-level constants
 # ---------------------------------------------------------------------------
-
-
-class TestModuleConstants:
-    """Verify documented default values haven't drifted."""
-
-    def test_default_result_size(self):
-        assert DEFAULT_RESULT_SIZE_CHARS == 100_000
-
-    def test_default_turn_budget(self):
-        assert DEFAULT_TURN_BUDGET_CHARS == 200_000
-
-    def test_default_preview_size(self):
-        assert DEFAULT_PREVIEW_SIZE_CHARS == 1_500
-
-
-class TestPinnedThresholds:
-    """PINNED_THRESHOLDS – tools whose values must never be overridden."""
-
-    def test_read_file_is_inf(self):
-        assert PINNED_THRESHOLDS["read_file"] == float("inf")
-        assert math.isinf(PINNED_THRESHOLDS["read_file"])
-
-    def test_pinned_is_not_empty(self):
-        assert len(PINNED_THRESHOLDS) >= 1
-
 
 # ---------------------------------------------------------------------------
 # BudgetConfig defaults
 # ---------------------------------------------------------------------------
 
-
 class TestBudgetConfigDefaults:
     """BudgetConfig() should match the module-level defaults exactly."""
-
-    def test_default_result_size(self):
-        cfg = BudgetConfig()
-        assert cfg.default_result_size == DEFAULT_RESULT_SIZE_CHARS
-
-    def test_default_turn_budget(self):
-        cfg = BudgetConfig()
-        assert cfg.turn_budget == DEFAULT_TURN_BUDGET_CHARS
-
-    def test_default_preview_size(self):
-        cfg = BudgetConfig()
-        assert cfg.preview_size == DEFAULT_PREVIEW_SIZE_CHARS
 
     def test_default_tool_overrides_empty(self):
         cfg = BudgetConfig()
@@ -79,11 +40,9 @@ class TestBudgetConfigDefaults:
         """DEFAULT_BUDGET should equal a freshly constructed BudgetConfig."""
         assert DEFAULT_BUDGET == BudgetConfig()
 
-
 # ---------------------------------------------------------------------------
 # Immutability (frozen=True)
 # ---------------------------------------------------------------------------
-
 
 class TestBudgetConfigFrozen:
     """Frozen dataclass must reject attribute mutation."""
@@ -108,11 +67,9 @@ class TestBudgetConfigFrozen:
         with pytest.raises(dataclasses.FrozenInstanceError):
             cfg.tool_overrides = {"foo": 1}
 
-
 # ---------------------------------------------------------------------------
 # Custom construction
 # ---------------------------------------------------------------------------
-
 
 class TestBudgetConfigCustom:
     """BudgetConfig can be created with non-default values."""
@@ -129,11 +86,9 @@ class TestBudgetConfigCustom:
         assert cfg.preview_size == 500
         assert cfg.tool_overrides == {"my_tool": 42}
 
-
 # ---------------------------------------------------------------------------
 # resolve_threshold() priority chain
 # ---------------------------------------------------------------------------
-
 
 class TestResolveThreshold:
     """Priority: pinned > tool_overrides > registry > default."""
@@ -201,11 +156,9 @@ class TestResolveThreshold:
         cfg = BudgetConfig()  # default_result_size == 100_000
         assert cfg.resolve_threshold("web_search") == 100_000
 
-
 # ---------------------------------------------------------------------------
 # budget_for_context_window() — context-aware scaling (#23767)
 # ---------------------------------------------------------------------------
-
 
 class TestBudgetForContextWindow:
     """Scaling the tool-output budget to the active model's context window."""

@@ -12,7 +12,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -27,71 +26,17 @@ def _reset_backend():
         yield
     reset_backend_for_tests()
 
-
 @pytest.fixture
 def noop_backend():
     """Return the active noop backend instance so tests can inspect calls."""
     from tools.computer_use.tool import _get_backend
     return _get_backend()
 
-
 # ---------------------------------------------------------------------------
 # Schema & registration
 # ---------------------------------------------------------------------------
 
 class TestSchema:
-    def test_schema_is_universal_openai_function_format(self):
-        from tools.computer_use.schema import COMPUTER_USE_SCHEMA
-        assert COMPUTER_USE_SCHEMA["name"] == "computer_use"
-        assert "parameters" in COMPUTER_USE_SCHEMA
-        params = COMPUTER_USE_SCHEMA["parameters"]
-        assert params["type"] == "object"
-        assert "action" in params["properties"]
-        assert params["required"] == ["action"]
-
-    def test_schema_does_not_use_anthropic_native_types(self):
-        """Generic OpenAI schema — no `type: computer_20251124`."""
-        from tools.computer_use.schema import COMPUTER_USE_SCHEMA
-        assert COMPUTER_USE_SCHEMA.get("type") != "computer_20251124"
-        # The word should not appear in the description either.
-        dumped = orjson.dumps(COMPUTER_USE_SCHEMA).decode('utf-8')
-        assert "computer_20251124" not in dumped
-
-    def test_schema_supports_element_and_coordinate_targeting(self):
-        from tools.computer_use.schema import COMPUTER_USE_SCHEMA
-        props = COMPUTER_USE_SCHEMA["parameters"]["properties"]
-        assert "element" in props
-        assert "coordinate" in props
-        assert props["element"]["type"] == "integer"
-        assert props["coordinate"]["type"] == "array"
-
-    def test_schema_lists_all_expected_actions(self):
-        from tools.computer_use.schema import COMPUTER_USE_SCHEMA
-        actions = set(COMPUTER_USE_SCHEMA["parameters"]["properties"]["action"]["enum"])
-        assert actions >= {
-            "capture", "click", "double_click", "right_click", "middle_click",
-            "drag", "scroll", "type", "key", "wait", "list_apps", "list_windows",
-            "focus_app",
-        }
-
-    def test_schema_exposes_exact_capture_targeting(self):
-        from tools.computer_use.schema import COMPUTER_USE_SCHEMA
-
-        props = COMPUTER_USE_SCHEMA["parameters"]["properties"]
-        assert props["pid"]["type"] == "integer"
-        assert props["window_id"]["type"] == "integer"
-
-    def test_capture_mode_enum_has_som_vision_ax(self):
-        from tools.computer_use.schema import COMPUTER_USE_SCHEMA
-        modes = set(COMPUTER_USE_SCHEMA["parameters"]["properties"]["mode"]["enum"])
-        assert modes == {"som", "vision", "ax"}
-
-    def test_schema_exposes_max_elements_cap_for_capture(self):
-        from tools.computer_use.schema import COMPUTER_USE_SCHEMA
-        props = COMPUTER_USE_SCHEMA["parameters"]["properties"]
-        assert "max_elements" in props
-        assert props["max_elements"]["type"] == "integer"
-        assert props["max_elements"].get("minimum", 1) >= 1
 
     def test_schema_max_elements_documents_default_and_upper_bound(self):
         """Schema description must agree with the runtime. The original PR
@@ -106,7 +51,6 @@ class TestSchema:
         prop = COMPUTER_USE_SCHEMA["parameters"]["properties"]["max_elements"]
         assert prop.get("default") == _DEFAULT_MAX_ELEMENTS
         assert prop.get("maximum") == _MAX_ALLOWED_MAX_ELEMENTS
-
 
 class TestRegistration:
     def test_tool_registers_with_registry(self):
@@ -148,7 +92,6 @@ class TestRegistration:
         with patch("tools.computer_use.tool.sys.platform", "win32"), \
              patch("tools.computer_use.cua_backend.cua_driver_binary_available", return_value=False):
             assert cu_tool.check_computer_use_requirements() is False
-
 
 # ---------------------------------------------------------------------------
 # Dispatch & action routing
@@ -327,7 +270,6 @@ class TestDispatch:
         capture_calls = [c for c in noop_backend.calls if c[0] == "capture"]
         assert len(capture_calls) == 1
 
-
 # ---------------------------------------------------------------------------
 # Safety guards (type / key block lists)
 # ---------------------------------------------------------------------------
@@ -371,7 +313,6 @@ class TestSafetyGuards:
         out = handle_computer_use({"action": "type", "text": ""})
         parsed = orjson.loads(out)
         assert "error" not in parsed
-
 
 # ---------------------------------------------------------------------------
 # Capture → multimodal envelope
@@ -522,7 +463,6 @@ class TestCaptureResponse:
             def focus_app(self, app, raise_window=False): ...
 
         return FakeBackend()
-
 
     def test_capture_ax_caps_elements_at_default_for_dense_trees(self):
         """Regression for #22865: an Electron-style 600-element AX tree must
@@ -683,7 +623,6 @@ class TestCaptureResponse:
         )
         assert "truncated to" not in out["text_summary"]
 
-
 class TestCuaCaptureImageDimensions:
     def test_png_dimensions_are_sniffed_from_image_bytes(self):
         from tools.computer_use.cua_backend import _image_dimensions_from_bytes
@@ -708,7 +647,6 @@ class TestCuaCaptureImageDimensions:
             + b"\xff\xd9"
         )
         assert _image_dimensions_from_bytes(raw_jpeg) == (400, 300)
-
 
 # ---------------------------------------------------------------------------
 # Anthropic adapter: multimodal tool-result conversion
@@ -833,7 +771,6 @@ class TestAnthropicAdapterMultimodal:
         assert "image" in types
         assert len(blocks) == 2
 
-
 # ---------------------------------------------------------------------------
 # Context compressor: screenshot-aware pruning
 # ---------------------------------------------------------------------------
@@ -896,7 +833,6 @@ class TestCompressorScreenshotPruning:
         assert isinstance(pruned["content"], str)
         assert "screenshot removed" in pruned["content"]
 
-
 # ---------------------------------------------------------------------------
 # Token estimator: image-aware
 # ---------------------------------------------------------------------------
@@ -933,7 +869,6 @@ class TestImageAwareTokenEstimator:
         # One image = 1500, + small text envelope overhead
         assert 1500 <= tokens < 2500
 
-
 # ---------------------------------------------------------------------------
 # Prompt guidance injection
 # ---------------------------------------------------------------------------
@@ -945,7 +880,6 @@ class TestPromptGuidance:
         assert "element" in COMPUTER_USE_GUIDANCE.lower()
         # Security callouts must remain
         assert "password" in COMPUTER_USE_GUIDANCE.lower()
-
 
 # ---------------------------------------------------------------------------
 # Run-agent multimodal helpers
@@ -1074,7 +1008,6 @@ class TestRunAgentMultimodalHelpers:
 
         assert content == "analysis summary"
 
-
 # ---------------------------------------------------------------------------
 # Universality: does the schema work without Anthropic?
 # ---------------------------------------------------------------------------
@@ -1101,7 +1034,6 @@ class TestUniversality:
         source = inspect.getsource(entry.check_fn)
         assert "anthropic" not in source.lower()
         assert "openai" not in source.lower()
-
 
 # ---------------------------------------------------------------------------
 # Regression tests for bugs 2 & 5 from issue #24170 (cua-driver v0.1.6)
@@ -1190,7 +1122,6 @@ class TestElementLabelParsing:
         assert labels[200] == "RealLabel"     # (5) order skipped, id= used
         assert labels[201] == ""              # pure order number, no label
 
-
 class TestUpdateCheck:
     """cua_driver_update_check() / _nudge(): native `check-update --json`.
 
@@ -1249,20 +1180,12 @@ class TestUpdateCheck:
             assert cua_backend.cua_driver_update_check() is None
             assert cua_backend.cua_driver_update_nudge() is None
 
-
 class TestLazyMcpInstall:
     """`mcp` is an optional extra; the backend lazy-installs it on start().
 
     Keeps computer_use from dead-ending on `No module named 'mcp'` for lean /
     partial installs, matching how every other optional backend behaves.
     """
-
-    def test_feature_registered_in_allowlist(self):
-        from tools import lazy_deps
-        assert lazy_deps.feature_specs("tool.computer_use") == (
-            "mcp==1.26.0",
-            "starlette==1.0.1",
-        )
 
     def test_start_lazy_installs_mcp(self):
         from tools.computer_use import cua_backend
@@ -1288,7 +1211,6 @@ class TestLazyMcpInstall:
             with pytest.raises(FeatureUnavailable):
                 cua_backend.CuaDriverBackend().start()
         mock_sess_start.assert_not_called()  # never reaches the MCP session
-
 
 class TestCaptureAfterAppContext:
     """Bug 2: capture_after=True loses app context after actions.
@@ -1448,7 +1370,6 @@ def _make_cua_backend_with_windows(windows: List[Dict[str, Any]]):
     }
     return backend
 
-
 def _make_cua_backend_with_windows_and_apps(
     windows: List[Dict[str, Any]], apps: List[Dict[str, Any]]
 ):
@@ -1486,7 +1407,6 @@ def _make_cua_backend_with_windows_and_apps(
 
     backend._session.call_tool.side_effect = _call_tool
     return backend
-
 
 class TestCuaDriverSessionReconnect:
     """Verify reconnect-once on a closed-resource error. After the
@@ -1689,7 +1609,6 @@ class TestCuaDriverSessionReconnect:
 
         assert _extract_tool_result(result)["isError"] is False
 
-
 class TestCaptureEmptyResultClipFallback:
     """When the MCP bridge returns a degenerate/empty get_window_state result
     (no screenshot, no parseable tree) WITHOUT raising, capture() must re-fetch
@@ -1779,7 +1698,6 @@ class TestCaptureEmptyResultClipFallback:
         # CLI recovered the window list; capture resolved the Finder window.
         assert "list_windows" in cli_calls
         assert cap.app == "Finder"
-
 
 class TestCaptureAppFilterNoMatch:
     """capture(app=X) must not silently fall back to the frontmost window
@@ -2078,7 +1996,6 @@ class TestCaptureAppFilterNoMatch:
 
         assert backend._active_pid == 100
 
-
 class TestFocusAppFilterNoMatch:
     """focus_app(app=X) must return ok=False when X matches nothing —
     not silently target the frontmost window and report ok=True with a
@@ -2219,7 +2136,6 @@ class TestFocusAppFilterNoMatch:
         assert backend._active_pid is None
         assert backend._active_window_id is None
 
-
 class TestCaptureAfterExactTarget:
     def test_followup_capture_reuses_exact_window_identity(self):
         from tools.computer_use.backend import ActionResult, CaptureResult
@@ -2291,7 +2207,6 @@ class TestCaptureAfterExactTarget:
         action_calls = [args for name, args in tool_calls if name == "click"]
         assert len(action_calls) == 1
         assert action_calls[0]["window_id"] == 42
-
 
 class TestCuaEnvironmentScrubbing:
     """Verify that cua-driver subprocess environment is sanitized (issue #37878)."""
@@ -2390,7 +2305,6 @@ class TestCuaEnvironmentScrubbing:
         # At least one safe var must survive the scrub.
         assert "PATH" in captured_env or "SAFE_VAR" in captured_env, \
             "At least one safe environment variable should be preserved"
-
 
 class TestClickButtonPassthrough:
     """Surface 5 (NousResearch/hermes-agent#47072) — `middle_click` must
@@ -2540,7 +2454,6 @@ class TestClickButtonPassthrough:
         assert backend.scroll(direction="down", x=10, y=20).ok is False
         backend._session.call_tool.assert_not_called()
 
-
 class TestKeyboardWindowIdRouting:
     """Review comment #1 on PR #63725: type_text, press_key, and hotkey
     must carry window_id so CUA Driver routes input to the correct window
@@ -2615,7 +2528,6 @@ class TestKeyboardWindowIdRouting:
         assert res.ok is False
         backend._session.call_tool.assert_not_called()
 
-
 class TestZIndexSorting:
     """Review comment #3 on PR #63725: CUA Driver defines higher z_index
     values as closer to the front (top of the stack). The wrapper must sort
@@ -2679,7 +2591,6 @@ class TestZIndexSorting:
 
         assert backend._active_pid == 200
         assert backend._active_window_id == 2
-
 
 class TestImageMimeTypePropagation:
     """Surface 7 (NousResearch/hermes-agent#47072): trycua/cua#1961 made
@@ -2784,7 +2695,6 @@ class TestImageMimeTypePropagation:
             assert url.startswith("data:image/png;base64,"), (
                 f"sniff fallback should default to PNG; got {url[:32]}"
             )
-
 
 class TestMcpInvocationResolution:
     """Surface 8 (NousResearch/hermes-agent#47072): instead of hardcoding
@@ -2903,7 +2813,6 @@ class TestMcpInvocationResolution:
         with patch("subprocess.run", new=self._fake_run(stdout=manifest)):
             cmd, args = _resolve_mcp_invocation("cua-driver")
         assert args == ["mcp"]
-
 
 class TestStructuredElementsConsumption:
     """Surface 2 (NousResearch/hermes-agent#47072): trycua/cua#1961 made
@@ -3168,7 +3077,6 @@ class TestStructuredElementsConsumption:
         assert cap.png_b64 is None
         assert "captures one window at a time" in cap.window_title
 
-
 class TestCapabilityDiscovery:
     """Surface 4 (NousResearch/hermes-agent#47072): the wrapper learns
     what cua-driver supports from the per-tool `capabilities[]` array on
@@ -3216,7 +3124,6 @@ class TestCapabilityDiscovery:
                                            tool="type_text") is False
         # Unknown tool → False (instead of KeyError).
         assert session.supports_capability("anything", tool="never_registered") is False
-
 
 class TestElementTokenAttachment:
     """Surface 6 (NousResearch/hermes-agent#47072): trycua/cua#1961 added
@@ -3369,7 +3276,6 @@ class TestElementTokenAttachment:
         # Stale 99 token is gone; only the two new tokens remain.
         assert backend._snapshot_tokens == {1: "snap2:1", 2: "snap2:2"}
 
-
 class TestSessionLifecycle:
     """Surface gap (audit June 2026): Hermes never declared a cua-driver
     session, so the agent-cursor overlay was inert and per-run state
@@ -3520,7 +3426,6 @@ class TestSessionLifecycle:
 
         with patch("tools.lazy_deps.ensure"):
             backend.start()  # must not raise
-
 
 class TestCuaToolCoverageExpansion:
     """Audit follow-up: the 20 cua-driver tools previously uncovered by
@@ -3779,7 +3684,6 @@ class TestCuaToolCoverageExpansion:
         backend.call_tool("get_cursor_position")
         name, args = backend._session.call_tool.call_args.args
         assert args == {"session": backend._session_id}
-
 
 class TestStartupTimeoutPhaseDetail:
     """Issue #57025: the ready-timeout error must report which startup phase

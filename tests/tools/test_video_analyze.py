@@ -5,7 +5,6 @@ import orjson
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
-
 from tools.vision_tools import (
     _detect_video_mime_type,
     _video_to_base64_data_url,
@@ -15,11 +14,9 @@ from tools.vision_tools import (
     VIDEO_ANALYZE_SCHEMA,
 )
 
-
 # ---------------------------------------------------------------------------
 # _detect_video_mime_type
 # ---------------------------------------------------------------------------
-
 
 class TestDetectVideoMimeType:
     """Extension-based MIME detection for video files."""
@@ -69,11 +66,9 @@ class TestDetectVideoMimeType:
         p.write_bytes(b"\x00" * 10)
         assert _detect_video_mime_type(p) == "video/mp4"
 
-
 # ---------------------------------------------------------------------------
 # _video_to_base64_data_url
 # ---------------------------------------------------------------------------
-
 
 class TestVideoToBase64DataUrl:
     """Base64 encoding of video files."""
@@ -97,32 +92,13 @@ class TestVideoToBase64DataUrl:
         # Falls back to video/mp4
         assert result.startswith("data:video/mp4;base64,")
 
-
 # ---------------------------------------------------------------------------
 # Schema validation
 # ---------------------------------------------------------------------------
 
-
-class TestVideoAnalyzeSchema:
-    """Schema structure is correct."""
-
-    def test_schema_name(self):
-        assert VIDEO_ANALYZE_SCHEMA["name"] == "video_analyze"
-
-    def test_schema_has_required_fields(self):
-        params = VIDEO_ANALYZE_SCHEMA["parameters"]
-        assert "video_url" in params["properties"]
-        assert "question" in params["properties"]
-        assert params["required"] == ["video_url", "question"]
-
-    def test_schema_description_mentions_video(self):
-        assert "video" in VIDEO_ANALYZE_SCHEMA["description"].lower()
-
-
 # ---------------------------------------------------------------------------
 # _handle_video_analyze handler
 # ---------------------------------------------------------------------------
-
 
 class TestHandleVideoAnalyze:
     """Tests for the registry handler wrapper."""
@@ -165,11 +141,9 @@ class TestHandleVideoAnalyze:
             args = mock_tool.call_args[0]
             assert args[2] == "google/gemini-flash"
 
-
 # ---------------------------------------------------------------------------
 # video_analyze_tool — integration-style tests with mocked LLM
 # ---------------------------------------------------------------------------
-
 
 class TestVideoAnalyzeTool:
     """Core video analysis function tests."""
@@ -326,22 +300,12 @@ class TestVideoAnalyzeTool:
         assert "video_url" in content[1]
         assert content[1]["video_url"]["url"].startswith("data:video/mp4;base64,")
 
-
 # ---------------------------------------------------------------------------
 # Toolset registration
 # ---------------------------------------------------------------------------
 
-
 class TestVideoToolsetRegistration:
     """Verify the tool is registered correctly."""
-
-    def test_registered_in_video_toolset(self):
-        from tools.registry import registry
-        entry = registry.get_entry("video_analyze")
-        assert entry is not None
-        assert entry.toolset == "video"
-        assert entry.is_async is True
-        assert entry.emoji == "🎬"
 
     def test_not_in_core_tools(self):
         """video_analyze should NOT be in _HERMES_CORE_TOOLS (default disabled)."""

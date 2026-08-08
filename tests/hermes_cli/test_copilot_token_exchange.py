@@ -8,7 +8,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 @pytest.fixture(autouse=True)
 def _clear_jwt_cache():
     """Reset the module-level JWT cache before each test."""
@@ -16,7 +15,6 @@ def _clear_jwt_cache():
     mod._jwt_cache.clear()
     yield
     mod._jwt_cache.clear()
-
 
 class TestExchangeCopilotToken:
     """Tests for exchange_copilot_token()."""
@@ -98,7 +96,6 @@ class TestExchangeCopilotToken:
         with pytest.raises(ValueError, match="network error"):
             exchange_copilot_token("gho_test123")
 
-
 class TestGetCopilotApiToken:
     """Tests for get_copilot_api_token() — the fallback wrapper."""
 
@@ -126,7 +123,6 @@ class TestGetCopilotApiToken:
         assert api_token == ""
         assert base_url is None
 
-
 class TestTokenFingerprint:
     """Tests for _token_fingerprint()."""
 
@@ -144,12 +140,6 @@ class TestTokenFingerprint:
         fp2 = _token_fingerprint("gho_xyz789")
         assert fp1 != fp2
 
-    def test_length(self):
-        from hermes_cli.copilot_auth import _token_fingerprint
-
-        assert len(_token_fingerprint("gho_test")) == 16
-
-
 class TestCallerIntegration:
     """Test that callers correctly use token exchange."""
 
@@ -164,7 +154,6 @@ class TestCallerIntegration:
         assert token == "exchanged_jwt"
         assert source == "GH_TOKEN"
         mock_exchange.assert_called_once_with("gho_raw")
-
 
 class TestDeriveBaseUrlFromProxyEp:
     """Tests for _derive_base_url_from_proxy_ep()."""

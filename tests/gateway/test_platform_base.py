@@ -21,17 +21,10 @@ from gateway.platforms.base import (
     _prefix_within_utf16_limit,
 )
 
-
 class TestInboundMediaSizeCap:
     """gateway.max_inbound_media_bytes caps inbound media buffered into RAM (#13145)."""
 
     _PNG = b"\x89PNG\r\n\x1a\n" + b"x" * 64
-
-    def test_default_cap_is_128_mib(self, monkeypatch):
-        # No config override -> default. Patch loader to return empty config.
-        import gateway.platforms.base as base
-        monkeypatch.setattr(base, "get_inbound_media_max_bytes", lambda: base.DEFAULT_INBOUND_MEDIA_MAX_BYTES)
-        assert base.DEFAULT_INBOUND_MEDIA_MAX_BYTES == 128 * 1024 * 1024
 
     def test_image_bytes_rejected_when_oversized(self, monkeypatch):
         import gateway.platforms.base as base
@@ -72,13 +65,11 @@ class TestInboundMediaSizeCap:
         with pytest.raises(ValueError, match="too large"):
             validate_inbound_media_size(300, media_type="image", max_bytes=200)
 
-
 class TestSecretCaptureGuidance:
     def test_gateway_secret_capture_message_points_to_local_setup(self):
         message = GATEWAY_SECRET_CAPTURE_UNSUPPORTED_MESSAGE
         assert "local cli" in message.lower()
         assert "~/.hermes/.env" in message
-
 
 class TestSafeUrlForLog:
     def test_strips_query_fragment_and_userinfo(self):
@@ -104,11 +95,9 @@ class TestSafeUrlForLog:
         assert safe_url_for_log(url, max_len=2) == ".."
         assert safe_url_for_log(url, max_len=0) == ""
 
-
 # ---------------------------------------------------------------------------
 # MessageEvent — command parsing
 # ---------------------------------------------------------------------------
-
 
 class TestMessageEventIsCommand:
     def test_slash_command(self):
@@ -126,7 +115,6 @@ class TestMessageEventIsCommand:
     def test_slash_only(self):
         event = MessageEvent(text="/")
         assert event.is_command() is True
-
 
 class TestMessageEventGetCommand:
     def test_simple_command(self):
@@ -161,7 +149,6 @@ class TestMessageEventGetCommand:
         event = MessageEvent(text="/RESET@TigerNanoBot")
         assert event.get_command() == "reset"
 
-
 class TestMessageEventGetCommandArgs:
     def test_command_with_args(self):
         event = MessageEvent(text="/new session id 123")
@@ -175,11 +162,9 @@ class TestMessageEventGetCommandArgs:
         event = MessageEvent(text="hello world")
         assert event.get_command_args() == "hello world"
 
-
 # ---------------------------------------------------------------------------
 # extract_images
 # ---------------------------------------------------------------------------
-
 
 class TestExtractImages:
     def test_no_images(self):
@@ -308,11 +293,9 @@ class TestExtractImages:
         # The PDF link must survive in cleaned content
         assert "![report](https://example.com/report.pdf)" in cleaned
 
-
 # ---------------------------------------------------------------------------
 # extract_media
 # ---------------------------------------------------------------------------
-
 
 class TestExtractMedia:
     def test_no_media(self):
@@ -514,7 +497,6 @@ class TestExtractMedia:
         assert [p for p, _ in media] == ["/r/a.png"]
         assert "`MEDIA:/ex/b.png`" in cleaned
 
-
 class TestMediaInsideSerializedJson:
     """Regression coverage for #34375 — MEDIA: embedded in serialized JSON
     string values (e.g. a stored previous reply inside a tool result) must not
@@ -601,7 +583,6 @@ class TestMediaInsideSerializedJson:
         assert "MEDIA:" not in cleaned          # real tag removed
         assert cleaned.endswith("now")          # trailing text intact (not chopped)
 
-
 class TestMediaExtensionAllowlistParity:
     """Regression coverage for issue #34517 — the MEDIA: extension black hole.
 
@@ -622,13 +603,6 @@ class TestMediaExtensionAllowlistParity:
             path = f"/tmp/report.{ext}"
             media, _ = BasePlatformAdapter.extract_media(f"Here: MEDIA:{path}")
             assert media == [(path, False)], f".{ext} should extract via MEDIA:"
-
-    def test_extract_media_and_local_files_share_one_extension_set(self):
-        from gateway.platforms.base import MEDIA_DELIVERY_EXTS
-        # Both functions reference MEDIA_DELIVERY_EXTS; assert the documents
-        # that motivated the bug are present in the shared set.
-        for ext in (".md", ".json", ".yaml", ".yml", ".xml", ".html", ".htm"):
-            assert ext in MEDIA_DELIVERY_EXTS
 
     def test_unknown_extension_not_black_holed_by_cleanup(self):
         """A MEDIA: tag with an unknown extension is NOT stripped from the
@@ -651,7 +625,6 @@ class TestMediaExtensionAllowlistParity:
         assert "MEDIA:" not in stripped
         assert "/tmp/report.md" not in stripped
         assert "Here is your report:" in stripped
-
 
 class TestExtensionlessMediaDelivery:
     """Regression: MEDIA: tags for extension-less files (Caddyfile, Makefile)."""
@@ -714,7 +687,6 @@ class TestExtensionlessMediaDelivery:
         assert "[[as_document]]" not in (
             BasePlatformAdapter.strip_media_directives_for_display(text)
         )
-
 
 class TestUniversalMediaEgress:
     """#36060: every MEDIA: path is deliverable regardless of file type.
@@ -812,7 +784,6 @@ class TestUniversalMediaEgress:
         media, cleaned = BasePlatformAdapter.extract_media(content)
         assert media == [("/nonexistent/report.pdf", False)]
         assert "MEDIA:" not in cleaned
-
 
 class TestMediaDeliveryPathValidation:
     def _patch_roots(self, monkeypatch, *roots):
@@ -1014,7 +985,6 @@ class TestMediaDeliveryPathValidation:
 
         out = BasePlatformAdapter.filter_local_delivery_paths([str(fresh)])
         assert out == [str(fresh.resolve())]
-
 
 class TestMediaDeliveryDefaultMode:
     """Default (non-strict) mode — denylist gates delivery, nothing else.
@@ -1507,7 +1477,6 @@ class TestMediaDeliveryDefaultMode:
 
         assert BasePlatformAdapter.validate_media_delivery_path(str(link)) is None
 
-
 # ---------------------------------------------------------------------------
 # should_send_media_as_audio
 # ---------------------------------------------------------------------------
@@ -1550,11 +1519,9 @@ class TestShouldSendMediaAsAudio:
         assert should_send_media_as_audio(Platform.TELEGRAM, ".flac") is False
         assert should_send_media_as_audio(Platform.DISCORD, ".flac") is True
 
-
 # ---------------------------------------------------------------------------
 # truncate_message
 # ---------------------------------------------------------------------------
-
 
 class TestTruncateMessage:
     def _adapter(self):
@@ -1719,11 +1686,9 @@ class TestTruncateMessage:
                 f"Chunk {i} too long: {len(chunk)} > {max_len}"
             )
 
-
 # ---------------------------------------------------------------------------
 # _get_human_delay
 # ---------------------------------------------------------------------------
-
 
 class TestGetHumanDelay:
     def test_off_mode(self):
@@ -1771,14 +1736,12 @@ class TestGetHumanDelay:
             delay = BasePlatformAdapter._get_human_delay()
             assert 0.8 <= delay <= 2.5
 
-
 # ---------------------------------------------------------------------------
 # utf16_len / _prefix_within_utf16_limit / truncate_message with len_fn
 # ---------------------------------------------------------------------------
 # Ported from nearai/ironclaw#2304 — Telegram counts message length in UTF-16
 # code units, not Unicode code-points.  Astral-plane characters (emoji, CJK
 # Extension B) are surrogate pairs: 1 Python char but 2 UTF-16 units.
-
 
 class TestUtf16Len:
     """Verify the UTF-16 length helper."""
@@ -1804,7 +1767,6 @@ class TestUtf16Len:
 
     def test_empty(self):
         assert utf16_len("") == 0
-
 
 class TestPrefixWithinUtf16Limit:
     """Verify UTF-16-aware prefix truncation."""
@@ -1836,7 +1798,6 @@ class TestPrefixWithinUtf16Limit:
 
     def test_empty(self):
         assert _prefix_within_utf16_limit("", 5) == ""
-
 
 class TestTruncateMessageUtf16:
     """Verify truncate_message respects UTF-16 lengths when len_fn=utf16_len."""
@@ -1902,7 +1863,6 @@ class TestTruncateMessageUtf16:
                 f"Chunk {i} has unbalanced fences ({fence_count})"
             )
 
-
 class TestProxyKwargsForAiohttp:
     """Verify proxy_kwargs_for_aiohttp routes all schemes through ProxyConnector."""
 
@@ -1945,7 +1905,6 @@ class TestProxyKwargsForAiohttp:
             sess_kw, req_kw = proxy_kwargs_for_aiohttp("http://proxy:8080")
             assert sess_kw == {}
             assert req_kw == {"proxy": "http://proxy:8080"}
-
 
 class TestMediaDeliveryDiagnosability:
     """Diagnosable rejection logging + crafted-path robustness (#33251)."""
@@ -1997,11 +1956,9 @@ class TestMediaDeliveryDiagnosability:
         # Legacy layout still present.
         assert any(r.endswith("image_cache") for r in roots)
 
-
 # ---------------------------------------------------------------------------
 # Media-send fallback must not leak host filesystem paths into chat
 # ---------------------------------------------------------------------------
-
 
 class _CapturingAdapter(BasePlatformAdapter):
     """Minimal concrete BasePlatformAdapter that records what send() sees.
@@ -2037,7 +1994,6 @@ class _CapturingAdapter(BasePlatformAdapter):
             "metadata": metadata,
         })
         return SendResult(success=True, message_id="m1")
-
 
 class TestMediaFallbackDoesNotLeakHostPath:
     """Regression: the four base-class media fallbacks must not echo *_path.

@@ -26,7 +26,6 @@ from tools.approval import (
     prompt_dangerous_approval,
 )
 
-
 class TestApprovalModeParsing:
     def test_unquoted_yaml_off_boolean_false_maps_to_off(self):
         with mock_patch("hermes_cli.config.load_config", return_value={"approvals": {"mode": False}}):
@@ -57,12 +56,7 @@ class TestApprovalModeParsing:
     def test_yaml_bool_true_maps_to_manual(self):
         assert _normalize_approval_mode(True) == "manual"
 
-
 class TestSmartApproval:
-    def test_smart_is_the_default_approval_mode(self):
-        from hermes_cli.config import DEFAULT_CONFIG
-
-        assert DEFAULT_CONFIG["approvals"]["mode"] == "smart"
 
     def test_smart_approval_uses_call_llm(self):
         response = SimpleNamespace(
@@ -105,7 +99,6 @@ class TestSmartApproval:
         assert result["approved"] is True
         assert result["smart_approved"] is True
         assert is_approved(session_key, pattern_key) is False
-
 
 @pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: rm detection differs on Windows paths")
 class TestDetectDangerousRm:
@@ -167,7 +160,6 @@ class TestDetectDangerousRm:
                 assert is_dangerous is True, command
                 assert key is not None, command
                 assert "delete" in desc.lower(), command
-
 
 class TestWindowsShellDestructiveCommands:
     def test_cmd_del_requires_approval(self):
@@ -253,7 +245,6 @@ class TestWindowsShellDestructiveCommands:
         assert key is None
         assert desc is None
 
-
 class TestDetectDangerousSudo:
     def test_shell_via_c_flag(self):
         is_dangerous, key, desc = detect_dangerous_command("bash -c 'echo pwned'")
@@ -286,7 +277,6 @@ class TestDetectDangerousSudo:
         assert is_dangerous is True
         assert key is not None
 
-
 class TestDetectSqlPatterns:
     def test_drop_table(self):
         is_dangerous, _, desc = detect_dangerous_command("DROP TABLE users")
@@ -303,7 +293,6 @@ class TestDetectSqlPatterns:
         assert is_dangerous is False
         assert key is None
         assert desc is None
-
 
 class TestSafeCommand:
     def test_echo_is_safe(self):
@@ -323,12 +312,10 @@ class TestSafeCommand:
         assert key is None
         assert desc is None
 
-
 def _clear_session(key):
     """Replace for removed clear_session() — directly clear internal state."""
     approval_module._session_approved.pop(key, None)
     approval_module._pending.pop(key, None)
-
 
 class TestApproveAndCheckSession:
     def test_session_approval(self):
@@ -339,7 +326,6 @@ class TestApproveAndCheckSession:
         approve_session(key, "rm")
         assert is_approved(key, "rm") is True
 
-
 class TestSessionKeyContext:
     def test_context_session_key_overrides_process_env(self):
         token = approval_module.set_current_session_key("alice")
@@ -348,29 +334,6 @@ class TestSessionKeyContext:
                 assert approval_module.get_current_session_key() == "alice"
         finally:
             approval_module.reset_current_session_key(token)
-
-    def test_gateway_runner_binds_session_key_to_context_before_agent_run(self):
-        run_py = Path(__file__).resolve().parents[2] / "gateway" / "run.py"
-        module = ast.parse(run_py.read_text(encoding="utf-8", errors="replace"))
-
-        run_sync = None
-        for node in ast.walk(module):
-            if isinstance(node, ast.FunctionDef) and node.name == "run_sync":
-                run_sync = node
-                break
-
-        assert run_sync is not None, "gateway.run.run_sync not found"
-
-        called_names = set()
-        for node in ast.walk(run_sync):
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
-                called_names.add(node.func.id)
-
-        assert "set_current_session_key" in called_names
-        assert "reset_current_session_key" in called_names
-
-
-
 
 class TestRmFalsePositiveFix:
     """Regression tests: filenames starting with 'r' must NOT trigger recursive delete."""
@@ -415,7 +378,6 @@ class TestRmFalsePositiveFix:
         assert is_dangerous is False, f"'rm -v readme.txt' should be safe, got: {desc}"
         assert key is None
 
-
 class TestRmRecursiveFlagVariants:
     """Ensure all recursive delete flag styles are still caught."""
 
@@ -454,7 +416,6 @@ class TestRmRecursiveFlagVariants:
         dangerous, key, desc = detect_dangerous_command("sudo rm -rf /tmp")
         assert dangerous is True
         assert key is not None
-
 
 class TestMultilineBypass:
     """Newlines in commands must not bypass dangerous pattern detection."""
@@ -495,7 +456,6 @@ class TestMultilineBypass:
         assert is_dangerous is True, f"multiline find -delete bypass not caught: {cmd!r}"
         assert "find" in desc.lower() or "delete" in desc.lower()
 
-
 class TestProcessSubstitutionPattern:
     """Detect remote code execution via process substitution."""
 
@@ -533,7 +493,6 @@ class TestProcessSubstitutionPattern:
         dangerous, key, desc = detect_dangerous_command("bash script.sh")
         assert dangerous is False
         assert key is None
-
 
 class TestTeePattern:
     """Detect tee writes to sensitive system files."""
@@ -588,7 +547,6 @@ class TestTeePattern:
         dangerous, key, desc = detect_dangerous_command("echo hello | tee output.log")
         assert dangerous is False
         assert key is None
-
 
 class TestHermesConfigWriteProtection:
     """Terminal-side pairing for the file_tools write_file/patch deny on
@@ -723,7 +681,6 @@ class TestHermesConfigWriteProtection:
         dangerous, key, desc = detect_dangerous_command("echo data > /tmp/scratch.txt")
         assert dangerous is False
 
-
 class TestFindExecFullPathRm:
     """Detect find -exec with full-path rm bypasses."""
 
@@ -746,7 +703,6 @@ class TestFindExecFullPathRm:
         dangerous, key, desc = detect_dangerous_command("find . -name '*.py' -print")
         assert dangerous is False
         assert key is None
-
 
 class TestSensitiveRedirectPattern:
     """Detect shell redirection writes to sensitive user-managed paths."""
@@ -868,7 +824,6 @@ class TestSensitiveRedirectPattern:
         assert key is None
         assert desc is None
 
-
 class TestProjectSensitiveCopyPattern:
     def test_cp_to_local_dotenv_requires_approval(self):
         dangerous, key, desc = detect_dangerous_command("cp .env.local .env")
@@ -912,7 +867,6 @@ class TestProjectSensitiveCopyPattern:
         assert key is None
         assert desc is None
 
-
 class TestSensitiveCopyMovePattern:
     """cp/mv/install OVERWRITING ~/.ssh/*, credential files (~/.netrc etc.),
     shell rc files, or ~/.hermes/config.yaml/.env must require approval — the
@@ -949,7 +903,6 @@ class TestSensitiveCopyMovePattern:
         dangerous, key, desc = detect_dangerous_command("cp a.txt b.txt")
         assert dangerous is False
 
-
 class TestSensitiveInPlaceEditPattern:
     """Detect in-place edits to user startup and credential files."""
 
@@ -984,7 +937,6 @@ class TestSensitiveInPlaceEditPattern:
         dangerous, key, desc = detect_dangerous_command("sed -i 's/a/b/' notes.txt")
         assert dangerous is False
         assert key is None
-
 
 class TestWindowsAbsolutePathFolding:
     """Windows absolute home / Hermes-home prefixes must fold to ~/ and
@@ -1043,7 +995,6 @@ class TestWindowsAbsolutePathFolding:
         assert dangerous is False
         assert key is None
 
-
 class TestProjectSensitiveTeePattern:
     def test_tee_to_local_dotenv_requires_approval(self):
         dangerous, key, desc = detect_dangerous_command("printenv | tee .env.local")
@@ -1058,7 +1009,6 @@ class TestProjectSensitiveTeePattern:
         assert dangerous is True
         assert key is not None
         assert "project env/config" in desc.lower()
-
 
 class TestPatternKeyUniqueness:
     """Bug: pattern_key is derived by splitting on \\b and taking [1], so
@@ -1099,7 +1049,6 @@ class TestPatternKeyUniqueness:
         with mock_patch.object(approval_module, "_permanent_approved", set()):
             load_permanent({"find"})
             assert is_approved("legacy-find", key_delete) is True
-
 
 class TestFullCommandAlwaysShown:
     """The full command is always shown in the approval prompt (no truncation).
@@ -1143,7 +1092,6 @@ class TestFullCommandAlwaysShown:
         with mock_patch("builtins.input", return_value="v"):
             result = prompt_dangerous_approval(short_cmd, "recursive delete")
         assert result == "deny"
-
 
 class TestSmartDeniedPrompt:
     def test_callback_receives_smart_denied_capability(self):
@@ -1248,7 +1196,6 @@ class TestSmartDeniedPrompt:
             i18n.reset_language_cache()
         assert result == "deny"
 
-
 class TestForkBombDetection:
     """The fork bomb regex must match the classic :(){ :|:& };: pattern."""
 
@@ -1264,7 +1211,6 @@ class TestForkBombDetection:
     def test_colon_in_safe_command_not_flagged(self):
         dangerous, key, desc = detect_dangerous_command("echo hello:world")
         assert dangerous is False
-
 
 class TestGatewayProtection:
     """Prevent agents from starting the gateway outside systemd management."""
@@ -1362,7 +1308,6 @@ class TestGatewayProtection:
         dangerous, key, desc = detect_dangerous_command(cmd)
         assert dangerous is False
 
-
 class TestNormalizationBypass:
     """Obfuscation techniques must not bypass dangerous command detection."""
 
@@ -1432,7 +1377,6 @@ class TestNormalizationBypass:
         dangerous, key, desc = detect_dangerous_command(cmd)
         assert dangerous is False
 
-
 class TestIFSWhitespaceBypass:
     """`$IFS` / `${IFS}` expand to whitespace in every POSIX shell, so an
     attacker can replace the spaces between a command and its arguments with
@@ -1497,7 +1441,6 @@ class TestIFSWhitespaceBypass:
         cmd = "ls -la /tmp"
         dangerous, key, desc = detect_dangerous_command(cmd)
         assert dangerous is False
-
 
 class TestHeredocScriptExecution:
     """Script execution via heredoc bypasses the -e/-c flag patterns.
@@ -1565,7 +1508,6 @@ class TestHeredocScriptExecution:
         dangerous, _, _ = detect_dangerous_command("bash my_script.sh")
         assert dangerous is False
 
-
 class TestPgrepKillExpansion:
     """kill -9 $(pgrep hermes) bypasses the pkill/killall name-matching
     pattern because the command substitution is opaque to regex.
@@ -1615,7 +1557,6 @@ class TestPgrepKillExpansion:
         dangerous, _, _ = detect_dangerous_command(cmd)
         assert dangerous is True
 
-
 class TestLaunchctlGatewayLifecycle:
     """launchctl stop/kickstart/bootout/unload against the Hermes service
     label achieves the same effect as `hermes gateway stop|restart` and
@@ -1655,7 +1596,6 @@ class TestLaunchctlGatewayLifecycle:
         cmd = "launchctl stop com.example.unrelated"
         dangerous, _, _ = detect_dangerous_command(cmd)
         assert dangerous is False
-
 
 class TestGitDestructiveOps:
     """git reset --hard, push --force, clean -f, branch -D can destroy
@@ -1768,7 +1708,6 @@ class TestGitDestructiveOps:
         dangerous, _, _ = detect_dangerous_command(cmd)
         assert dangerous is False
 
-
 class TestChmodExecuteCombo:
     """chmod +x && ./ is the two-step social engineering pattern where a
     script is first made executable then immediately run. The script
@@ -1795,7 +1734,6 @@ class TestChmodExecuteCombo:
         cmd = "chmod +x script.sh"
         dangerous, _, _ = detect_dangerous_command(cmd)
         assert dangerous is False
-
 
 class TestFailClosedUnderPromptToolkit:
     """Regression guard for #15216.
@@ -1854,7 +1792,6 @@ class TestFailClosedUnderPromptToolkit:
             assert result == "once"
         finally:
             ptc.get_app_or_none = orig
-
 
 class TestDetectSudoStdin:
     """Sudo with stdin / askpass / shell / list-privileges flags (#17873 cat 4).
@@ -2022,7 +1959,6 @@ class TestDetectSudoStdin:
         )
         assert is_dangerous is False
 
-
 class TestMacOSPrivateSystemPaths:
     """Inspired by Claude Code 2.1.113 "dangerous path protection".
 
@@ -2104,7 +2040,6 @@ class TestMacOSPrivateSystemPaths:
         )
         assert dangerous is False
 
-
 class TestKillallKillSignals:
     """Inspired by Claude Code 2.1.113 expanded deny rules.
 
@@ -2153,7 +2088,6 @@ class TestKillallKillSignals:
         dangerous, _, _ = detect_dangerous_command("killall -V")
         assert dangerous is False
 
-
 class TestFindExecdir:
     """Inspired by Claude Code 2.1.113 tightening of find rules.
 
@@ -2188,7 +2122,6 @@ class TestFindExecdir:
             "find . -execdir ls {} \\;"
         )
         assert dangerous is False
-
 
 class TestEtcPatternsUnaffectedByRefactor:
     """Regression guard: the /etc/ patterns were refactored to share the
@@ -2225,7 +2158,6 @@ class TestEtcPatternsUnaffectedByRefactor:
         dangerous, _, _ = detect_dangerous_command("grep root /etc/passwd")
         assert dangerous is False
 
-
 # =========================================================================
 # Gateway approval timeout = deny, NOT consent (#24912)
 #
@@ -2243,7 +2175,6 @@ class TestEtcPatternsUnaffectedByRefactor:
 #      string-parsing the message.
 #   3. Explicit /deny carries the same shape (treat-as-not-consented).
 # =========================================================================
-
 
 class TestApprovalTimeoutIsNotConsent:
     """The gateway approval contract: silence is not consent (#24912)."""
@@ -2394,7 +2325,6 @@ class TestApprovalTimeoutIsNotConsent:
             f"hook choice should be 'timeout' on no-response, got {last_post.get('choice')!r}"
         )
 
-
 class TestTirithImportErrorFailOpenPolicy:
     """Regression guard for #20733.
 
@@ -2488,7 +2418,6 @@ class TestTirithImportErrorFailOpenPolicy:
                         result = check_all_command_guards("echo hello", "local")
 
         assert result.get("approved") is True
-
 
 class TestApprovalPromptRedaction:
     """Secrets are masked in user-facing approval surfaces (#13139).

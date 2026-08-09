@@ -45,3 +45,24 @@ def test_wrap_command_uses_stable_parent_pid_and_preserves_command_tail():
         *command_args,
     ]
     assert "--create-time" not in wrapped_args
+
+
+@pytest.mark.skipif(os.name != "posix", reason="watchdog wrapping is POSIX-only")
+def test_wrap_command_skips_watchdog_under_frozen_runtime(monkeypatch):
+    """PyInstaller-frozen CN portable runtime: sys.executable is the CLI
+    binary, so the watchdog wrapper must be skipped (spawning it with the
+    watchdog script would run `hermes mcp_stdio_watchdog.py` → argparse
+    "invalid choice")."""
+    monkeypatch.setattr(mcp_tool.sys, "frozen", True, raising=False)
+    command = "/opt/hermes/bin/mcp-server"
+    command_args = ["--flag"]
+
+    wrapped_command, wrapped_args = mcp_tool._wrap_command_with_watchdog(
+        command,
+        command_args,
+    )
+
+    # Watchdog skipped: command + args pass through unchanged.
+    assert wrapped_command == command
+    assert wrapped_args == command_args
+

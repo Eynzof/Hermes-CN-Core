@@ -7991,8 +7991,12 @@ def _module_hermes_argv() -> list[str]:
     """Return the interpreter-bound Hermes CLI invocation."""
     # ``hermes_cli.main`` is the console-script target declared in
     # pyproject.toml, NOT a top-level ``hermes`` package — there is no
-    # ``hermes`` package to import.
-    return [sys.executable, "-m", "hermes_cli.main"]
+    # ``hermes`` package to import.  Under the PyInstaller-frozen CN portable
+    # runtime, ``sys.executable`` IS the CLI binary, so the ``-m`` prefix is
+    # dropped (see tools.runtime_compat.hermes_cli_argv).
+    from tools.runtime_compat import hermes_cli_argv
+
+    return hermes_cli_argv()
 
 
 def _absolute_hermes_path(path: str) -> str:

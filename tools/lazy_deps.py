@@ -660,6 +660,20 @@ def _venv_pip_install(specs: tuple[str, ...], *, timeout: int = 300) -> _Install
         uv_env = hermes_subprocess_env(inherit_credentials=False)
         uv_env["VIRTUAL_ENV"] = str(venv_root)
 
+        # PyInstaller-frozen CN portable runtime: sys.executable IS the Hermes
+        # CLI binary (no pip inside it; ``hermes -m pip`` fails with argparse's
+        # "invalid choice").  lazy_deps is deliberately NOT bundled in the
+        # frozen runtime (P-040) and deps are pre-baked — refuse clearly.
+        from tools.runtime_compat import is_frozen_runtime
+
+        if is_frozen_runtime():
+            return _InstallResult(
+                False,
+                "",
+                "lazy dependency install is not available in the portable "
+                "desktop runtime; dependencies are pre-baked into the bundle.",
+            )
+
         # Tier 1: uv (preferred — fast, doesn't need pip in the venv)
         uv_bin = shutil.which("uv")
         if uv_bin:

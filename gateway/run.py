@@ -2707,7 +2707,13 @@ def _resolve_hermes_bin() -> Optional[list[str]]:
         import importlib.util
 
         if importlib.util.find_spec("hermes_cli") is not None:
-            return [sys.executable, "-m", "hermes_cli.main"]
+            # PyInstaller-frozen CN portable runtime: sys.executable IS the
+            # Hermes CLI binary itself, so ``-m hermes_cli.main`` must be
+            # dropped (spawning ``hermes -m ...`` fails with argparse's
+            # "invalid choice").
+            from tools.runtime_compat import hermes_cli_argv
+
+            return hermes_cli_argv()
     except Exception:
         pass
 
@@ -6786,8 +6792,29 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                 if watcher_env.get("PYTHONPATH"):
                     pythonpath.append(watcher_env["PYTHONPATH"])
                 watcher_env["PYTHONPATH"] = os.pathsep.join(dict.fromkeys(pythonpath))
+            # PyInstaller-frozen CN portable runtime: sys.executable IS the
+            # Hermes CLI binary itself, so ``[sys.executable, "-c", watcher,
+            # ...]`` would run `hermes -c ...` and fail with argparse's
+            # "invalid choice".  Dispatch through the hidden
+            # ``__gateway-restart-watch`` CLI subcommand instead (it runs the
+            # same poll-old-PID-then-respawn logic in-process).
+            from tools.runtime_compat import hermes_cli_argv, is_frozen_runtime
+
+            if is_frozen_runtime():
+                watcher_argv = hermes_cli_argv(
+                    "__gateway-restart-watch",
+                    "--deadline", str(restart_after_s),
+                    str(current_pid),
+                    "--",
+                    *cmd_argv,
+                )
+            else:
+                watcher_argv = [
+                    watcher_python, "-c", watcher, str(current_pid),
+                    str(restart_after_s), *cmd_argv,
+                ]
             subprocess.Popen(
-                [watcher_python, "-c", watcher, str(current_pid), str(restart_after_s), *cmd_argv],
+                watcher_argv,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 env=watcher_env,

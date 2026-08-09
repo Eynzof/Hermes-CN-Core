@@ -141,7 +141,12 @@ def build_relaunch_argv(
     if bin_path:
         argv = [bin_path]
     else:
-        argv = [sys.executable, "-m", "hermes_cli.main"]
+        # PyInstaller-frozen CN portable runtime: sys.executable IS the CLI
+        # binary itself, so no ``-m hermes_cli.main`` prefix (spawning it with
+        # ``-m`` would make argparse reject the flag as an invalid subcommand).
+        from tools.runtime_compat import hermes_cli_argv
+
+        argv = hermes_cli_argv()
 
     src = list(original_argv) if original_argv is not None else list(sys.argv[1:])
 

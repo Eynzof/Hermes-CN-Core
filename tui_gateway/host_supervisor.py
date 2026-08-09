@@ -24,6 +24,7 @@ from typing import Any
 
 from hermes_constants import get_hermes_home
 from tools.environments.local import hermes_subprocess_env
+from tools.runtime_compat import hermes_cli_argv
 
 logger = logging.getLogger(__name__)
 _Thread = threading.Thread
@@ -154,7 +155,7 @@ class HostSupervisor:
         autostart: bool = True,
     ) -> None:
         self.registry_path = Path(registry_path) if registry_path is not None else _default_registry_path()
-        self.argv = argv or [sys.executable, "-m", "tui_gateway.compute_host"]
+        self.argv = argv or hermes_cli_argv("__compute-host")
         self.cwd = Path(cwd) if cwd is not None else _repo_root()
         self.env = env
         self.rpc_sink = rpc_sink or (lambda _obj: None)

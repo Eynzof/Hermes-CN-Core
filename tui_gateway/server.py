@@ -32,6 +32,7 @@ from hermes_constants import (
 from hermes_cli.env_loader import load_hermes_dotenv
 from utils import is_truthy_value
 from tools.environments.local import hermes_subprocess_env
+from tools.runtime_compat import hermes_cli_argv
 from agent.replay_cleanup import sanitize_replay_history
 from tui_gateway import cli_delegation, git_probe
 from tui_gateway.transport import (
@@ -366,13 +367,11 @@ class _SlashWorker:
         self.stderr_tail: list[str] = []
         self.stdout_queue: queue.Queue[dict | None] = queue.Queue()
 
-        argv = [
-            sys.executable,
-            "-m",
-            "tui_gateway.slash_worker",
+        argv = hermes_cli_argv(
+            "__slash-worker",
             "--session-key",
             session_key,
-        ]
+        )
         if model:
             argv += ["--model", model]
 
@@ -13296,7 +13295,7 @@ def _(rid, params: dict) -> dict:
         return _ok(rid, {"blocked": True, "hint": hint, "code": -1, "output": ""})
     try:
         r = subprocess.run(
-            [sys.executable, "-m", "hermes_cli.main", *argv],
+            hermes_cli_argv(*argv),
             capture_output=True,
             text=True, encoding="utf-8", errors="replace",
             timeout=min(int(params.get("timeout", 240)), 600),

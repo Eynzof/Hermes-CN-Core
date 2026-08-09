@@ -248,16 +248,37 @@ class WebhookRouteProcessor:
             from tools.environments.local import _sanitize_subprocess_env
 
             popen_kwargs = {"creationflags": 0x08000000} if sys.platform == "win32" else {}
-            result = subprocess.run(
-                argv,
-                input=json.dumps(payload),
-                capture_output=True,
-                text=True, encoding="utf-8", errors="replace",
-                timeout=self.script_timeout_seconds,
-                cwd=str(path.parent),
-                env=_sanitize_subprocess_env(os.environ.copy()),
-                **popen_kwargs,
+            # PyInstaller-frozen runtime (CN portable desktop): sys.executable
+            # is the Hermes CLI binary itself, so spawning it with the script
+            # path would run `hermes <script>.py` and die with argparse's
+            # "invalid choice" error — same class of bug as the cron fix. Run
+            # the route script in-process with the current interpreter instead.
+            from tools.runtime_compat import (
+                is_frozen_runtime,
+                run_python_script_in_process,
             )
+
+            if is_frozen_runtime():
+                exit_code, stdout, stderr = run_python_script_in_process(
+                    str(path),
+                    self.script_timeout_seconds,
+                    stdin_text=json.dumps(payload),
+                )
+                result = None
+            else:
+                result = subprocess.run(
+                    argv,
+                    input=json.dumps(payload),
+                    capture_output=True,
+                    text=True, encoding="utf-8", errors="replace",
+                    timeout=self.script_timeout_seconds,
+                    cwd=str(path.parent),
+                    env=_sanitize_subprocess_env(os.environ.copy()),
+                    **popen_kwargs,
+                )
+                exit_code = result.returncode
+                stdout = (result.stdout or "").strip()
+                stderr = (result.stderr or "").strip()
         except subprocess.TimeoutExpired:
             logger.warning("[webhook] script timed out: %s", path)
             return False, None
@@ -265,8 +286,6 @@ class WebhookRouteProcessor:
             logger.warning("[webhook] script execution failed: %s", exc)
             return False, None
 
-        stdout = (result.stdout or "").strip()
-        stderr = (result.stderr or "").strip()
         try:
             from agent.redact import redact_sensitive_text
 
@@ -276,11 +295,11 @@ class WebhookRouteProcessor:
             logger.warning("[webhook] Failed to redact script output: %s", exc)
             stdout = "[REDACTED - redaction failed]"
             stderr = "[REDACTED - redaction failed]"
-        if result.returncode != 0:
+        if exit_code != 0:
             logger.info(
                 "[webhook] script ignored webhook path=%s code=%s stderr=%s",
                 path.name,
-                result.returncode,
+                exit_code,
                 stderr[:200],
             )
             return False, None

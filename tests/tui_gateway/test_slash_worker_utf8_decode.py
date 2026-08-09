@@ -39,8 +39,11 @@ def _make_worker(monkeypatch):
     def fake_popen(argv, **kwargs):
         # NOTE: server.subprocess is the global subprocess module — only
         # hijack the slash-worker spawn; pass everything else (e.g. the
-        # update-check daemon's git calls) through untouched.
-        if "tui_gateway.slash_worker" not in argv:
+        # update-check daemon's git calls) through untouched.  The worker is
+        # spawned through the hidden ``__slash-worker`` CLI subcommand (frozen
+        # portable runtime has no standalone python), so match that token
+        # instead of the old ``-m tui_gateway.slash_worker`` shape.
+        if "__slash-worker" not in argv:
             return real_popen(argv, **kwargs)
         captured.update(kwargs)
         # Swap the real slash_worker for a tiny child that emits hostile bytes.

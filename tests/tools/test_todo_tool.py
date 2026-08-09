@@ -463,6 +463,27 @@ class TestRunVerificationCode:
         assert success is False
         assert "timed out after 1s" in output
 
+    def test_frozen_runtime_runs_inline_python_in_process(self, monkeypatch):
+        """PyInstaller-frozen CN portable runtime: sys.executable is the CLI
+        binary, so python verification runs in-process instead of spawning
+        ``[sys.executable, "-c", ...]`` (argparse "invalid choice")."""
+        import tools.todo_tool as todo_mod
+
+        monkeypatch.setattr(todo_mod.sys, "frozen", True, raising=False)
+        success, output = run_verification_code("print('frozen ok')")
+        assert success is True
+        assert "frozen ok" in output
+
+    def test_frozen_runtime_runs_py_file_in_process(self, monkeypatch, tmp_path):
+        import tools.todo_tool as todo_mod
+
+        monkeypatch.setattr(todo_mod.sys, "frozen", True, raising=False)
+        py_file = tmp_path / "verify.py"
+        py_file.write_text("print('from file')", encoding="utf-8")
+        success, output = run_verification_code(str(py_file))
+        assert success is True
+        assert "from file" in output
+
 
 class TestRegressionGuard:
     def test_completed_cannot_reopen(self):

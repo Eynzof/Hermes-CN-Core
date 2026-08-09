@@ -935,6 +935,51 @@ class TestPayloadFilters:
         adapter.handle_message.assert_not_called()
         assert "script-nonzero-1" not in adapter._seen_deliveries
 
+    @pytest.mark.asyncio
+    async def test_script_runs_in_process_under_frozen_runtime(self, tmp_path, monkeypatch):
+        """PyInstaller-frozen CN portable runtime: the route script runs
+        in-process (sys.executable is the CLI binary, not a standalone
+        python — same bug class as the cron fix)."""
+        import gateway.platforms.webhook_filters as whf
+
+        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setattr(whf.sys, "frozen", True, raising=False)
+        scripts = tmp_path / "scripts"
+        scripts.mkdir()
+        script = scripts / "frozen_route.py"
+        script.write_text(
+            "import json, sys\n"
+            "payload = json.load(sys.stdin)\n"
+            "payload['body'] = payload['task']['content'].upper()\n"
+            "print(json.dumps(payload))\n",
+            encoding="utf-8",
+        )
+        routes = {
+            "todoist": {
+                "secret": _INSECURE_NO_AUTH,
+                "script": "frozen_route.py",
+                "prompt": "Task: {body}",
+            }
+        }
+        adapter = _make_adapter(routes=routes)
+        captured = []
+
+        async def _capture(event):
+            captured.append(event)
+
+        adapter.handle_message = _capture
+        app = _create_app(adapter)
+        async with TestClient(TestServer(app)) as cli:
+            resp = await cli.post(
+                "/webhooks/todoist",
+                json={"task": {"content": "pay bills"}},
+                headers={"X-GitHub-Delivery": "frozen-script-1"},
+            )
+            assert resp.status == 202
+        await asyncio.sleep(0.05)
+        assert captured[0].text == "Task: PAY BILLS"
+        assert captured[0].raw_message["body"] == "PAY BILLS"
+
 
 # ===================================================================
 # HTTP handling

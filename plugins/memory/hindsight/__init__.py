@@ -839,21 +839,29 @@ class HindsightMemoryProvider(MemoryProvider):
             provider_config["llm_provider"] = llm_provider
 
         print("\n  Checking dependencies...")
-        uv_path = shutil.which("uv")
-        if not uv_path:
-            print("  ⚠ uv not found — install it: curl -LsSf https://astral.sh/uv/install.sh | sh")
-            print(f"  Then run manually: uv pip install --python {sys.executable} {' '.join(deps_to_install)}")
+        # PyInstaller-frozen CN portable runtime: sys.executable IS the Hermes
+        # CLI binary and there is no standalone python for uv to target — the
+        # SDK must be pre-baked into the bundle (P-015).  Skip the install.
+        from tools.runtime_compat import is_frozen_runtime
+
+        if is_frozen_runtime():
+            print("  ℹ Dependencies are pre-baked in the portable runtime; nothing to install.")
         else:
-            try:
-                subprocess.run(
-                    [uv_path, "pip", "install", "--python", sys.executable, "--quiet", "--upgrade"] + deps_to_install,
-                    check=True, timeout=120, capture_output=True,
-                    stdin=subprocess.DEVNULL,
-                )
-                print("  ✓ Dependencies up to date")
-            except Exception as e:
-                print(f"  ⚠ Install failed: {e}")
-                print(f"  Run manually: uv pip install --python {sys.executable} {' '.join(deps_to_install)}")
+            uv_path = shutil.which("uv")
+            if not uv_path:
+                print("  ⚠ uv not found — install it: curl -LsSf https://astral.sh/uv/install.sh | sh")
+                print(f"  Then run manually: uv pip install --python {sys.executable} {' '.join(deps_to_install)}")
+            else:
+                try:
+                    subprocess.run(
+                        [uv_path, "pip", "install", "--python", sys.executable, "--quiet", "--upgrade"] + deps_to_install,
+                        check=True, timeout=120, capture_output=True,
+                        stdin=subprocess.DEVNULL,
+                    )
+                    print("  ✓ Dependencies up to date")
+                except Exception as e:
+                    print(f"  ⚠ Install failed: {e}")
+                    print(f"  Run manually: uv pip install --python {sys.executable} {' '.join(deps_to_install)}")
 
         # Step 3: Mode-specific config
         if mode == "cloud":
@@ -1239,6 +1247,17 @@ class HindsightMemoryProvider(MemoryProvider):
                 import shutil
                 import subprocess
                 import sys
+                # PyInstaller-frozen CN portable runtime: sys.executable IS the
+                # Hermes CLI binary — no standalone python for uv to target, and
+                # the SDK is pre-baked into the bundle (P-015).  Skip upgrade.
+                from tools.runtime_compat import is_frozen_runtime
+
+                if is_frozen_runtime():
+                    logger.warning(
+                        "hindsight-client is outdated but auto-upgrade is not "
+                        "available in the portable runtime (deps are pre-baked)."
+                    )
+                    return
                 uv_path = shutil.which("uv")
                 if uv_path:
                     try:

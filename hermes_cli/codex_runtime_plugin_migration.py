@@ -597,6 +597,18 @@ def _build_hermes_tools_mcp_entry() -> dict:
         "command": sys.executable,
         "args": ["-m", "agent.transports.hermes_tools_mcp_server"],
     }
+    # PyInstaller-frozen CN portable runtime: sys.executable IS the Hermes CLI
+    # binary, so ``-m agent.transports.hermes_tools_mcp_server`` would run
+    # `hermes -m ...` and fail with argparse's "invalid choice".  There is no
+    # standalone python for codex to launch; refuse the migration with a clear
+    # message instead of writing a broken config.toml entry.
+    from tools.runtime_compat import is_frozen_runtime
+
+    if is_frozen_runtime():
+        raise RuntimeError(
+            "Codex plugin migration is not supported in the portable desktop "
+            "runtime (no standalone python to run the Hermes MCP server)."
+        )
     if env:
         out["env"] = env
     # Generous timeouts — browser_navigate or delegate_task can take a

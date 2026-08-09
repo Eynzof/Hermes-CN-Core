@@ -454,6 +454,11 @@ def _verification_argv(code: str) -> List[str]:
 
     Existing .py files run under sys.executable; .sh under bash (fallback
     sh); .ps1 under powershell -File. Anything else is inline Python.
+
+    Under the PyInstaller-frozen CN portable runtime (where sys.executable
+    is the Hermes CLI binary, not a standalone python), the returned argv is
+    only used for .sh/.ps1; python verification runs in-process via
+    ``run_verification_code`` (see ``tools.runtime_compat``).
     """
     lowered = code.lower()
     if lowered.endswith(".py") and os.path.isfile(code):
@@ -502,6 +507,50 @@ def run_verification_code(code: str, timeout: int = 30) -> tuple[bool, str]:
                 timeout=timeout,
             )
         else:
+            lowered = stripped.lower()
+            is_py_file = lowered.endswith(".py") and os.path.isfile(stripped)
+            # PyInstaller-frozen runtime (CN portable desktop): sys.executable
+            # is the Hermes CLI binary, not a standalone python.  Spawning it
+            # with a .py path or ``-c`` would run `hermes <script>.py` and die
+            # with argparse's "invalid choice" error — same class of bug as the
+            # cron fix.  Run python verification in-process instead.
+            from tools.runtime_compat import (
+                is_frozen_runtime,
+                run_python_script_in_process,
+            )
+
+            if is_frozen_runtime() and (
+                is_py_file or _verification_argv(stripped)[0] == sys.executable
+            ):
+                if is_py_file:
+                    exit_code, stdout, stderr = run_python_script_in_process(
+                        stripped, timeout
+                    )
+                else:
+                    # Inline python: write to a temp file then run in-process
+                    # (runpy.run_path needs a real path, not ``-c`` source).
+                    import tempfile
+
+                    with tempfile.NamedTemporaryFile(
+                        "w", suffix=".py", delete=False, encoding="utf-8"
+                    ) as tf:
+                        tf.write(stripped)
+                        tmp_path = tf.name
+                    try:
+                        exit_code, stdout, stderr = run_python_script_in_process(
+                            tmp_path, timeout
+                        )
+                    finally:
+                        try:
+                            os.unlink(tmp_path)
+                        except OSError:
+                            pass
+                output = stdout or ""
+                if stderr:
+                    output = (output + "\n" + stderr) if output else stderr
+                if exit_code == 0:
+                    return True, output
+                return False, f"Code failed (exit code {exit_code}):\n{output}"
             proc = subprocess.run(
                 _verification_argv(stripped),
                 capture_output=True,

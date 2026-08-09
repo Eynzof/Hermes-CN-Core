@@ -691,6 +691,23 @@ def _pip_install(
     Returns the ``subprocess.CompletedProcess`` from whichever tier succeeded
     (or the last failure for the caller to inspect).
     """
+    # PyInstaller-frozen CN portable runtime (CN desktop): there is no venv/pip
+    # to install into (sys.executable IS the frozen CLI binary; running
+    # `hermes -m pip` fails with argparse's "invalid choice").  Tool deps are
+    # pre-baked into the runtime bundle instead (see FORK_NOTES P-014/P-015).
+    from tools.runtime_compat import is_frozen_runtime
+
+    if is_frozen_runtime():
+        return subprocess.CompletedProcess(
+            [sys.executable, "-m", "pip", "install", *args],
+            returncode=1,
+            stdout="",
+            stderr=(
+                "pip install is not available in the portable desktop runtime; "
+                "tool dependencies are pre-baked into the bundle."
+            ),
+        )
+
     venv_root = Path(sys.executable).parent.parent
     uv_env = {**os.environ, "VIRTUAL_ENV": str(venv_root)}
 

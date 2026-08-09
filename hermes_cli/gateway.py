@@ -658,7 +658,11 @@ def find_profile_gateway_processes(
 
 
 def _gateway_run_args_for_profile(profile: str) -> list[str]:
-    args = [get_python_path(), "-m", "hermes_cli.main"]
+    # PyInstaller-frozen CN portable runtime: sys.executable IS the Hermes CLI
+    # binary, so the ``-m hermes_cli.main`` prefix must be dropped.
+    from tools.runtime_compat import hermes_cli_argv
+
+    args = hermes_cli_argv()
     if profile != "default":
         args.extend(["--profile", profile])
     args.extend(["gateway", "run", "--replace"])
@@ -873,15 +877,39 @@ def _spawn_gateway_restart_watcher(old_pid: int, run_argv: list[str]) -> bool:
         str(old_pid),
         *run_argv,
     ]
+    # PyInstaller-frozen CN portable runtime: sys.executable IS the CLI binary,
+    # so spawning ``[sys.executable, "-c", watcher, ...]`` would run
+    # `hermes -c ...` and die with argparse's "invalid choice".  The hidden
+    # ``__gateway-restart-watch`` CLI subcommand plays the same watcher role.
+    from tools.runtime_compat import hermes_cli_argv, is_frozen_runtime
+
+    watcher_env = None
+    if is_frozen_runtime():
+        watcher_argv = hermes_cli_argv(
+            "__gateway-restart-watch",
+            str(old_pid),
+            "--",
+            *run_argv,
+        )
+        watcher_env = dict(os.environ)
+        if respawn_cwd:
+            watcher_env["HERMES_RESTART_WATCH_CWD"] = respawn_cwd
+        if respawn_env_overlay:
+            watcher_env["HERMES_RESTART_WATCH_ENV"] = orjson.dumps(
+                respawn_env_overlay
+            ).decode("utf-8")
 
     # Same platform-aware detach for the watcher process itself — so
     # closing the user's terminal doesn't kill the watcher.
+    _watcher_popen_kwargs = dict(windows_detach_popen_kwargs())
+    if watcher_env is not None:
+        _watcher_popen_kwargs["env"] = watcher_env
     try:
         subprocess.Popen(
             watcher_argv,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            **windows_detach_popen_kwargs(),
+            **_watcher_popen_kwargs,
         )
     except OSError:
         # CREATE_BREAKAWAY_FROM_JOB rejected by the parent job object
@@ -895,6 +923,8 @@ def _spawn_gateway_restart_watcher(old_pid: int, run_argv: list[str]) -> bool:
                 if sys.platform == "win32"
                 else {"start_new_session": True}
             )
+            if watcher_env is not None:
+                fallback_kwargs["env"] = watcher_env
             subprocess.Popen(
                 watcher_argv,
                 stdout=subprocess.DEVNULL,
@@ -3882,7 +3912,11 @@ def _gateway_run_command() -> list[str]:
     Profile-aware: honors the active HERMES_HOME via `_profile_arg()` so the
     detached fallback launches into the same profile as the CLI invocation.
     """
-    cmd = [get_python_path(), "-m", "hermes_cli.main"]
+    # PyInstaller-frozen CN portable runtime: sys.executable IS the Hermes CLI
+    # binary, so the ``-m hermes_cli.main`` prefix must be dropped.
+    from tools.runtime_compat import hermes_cli_argv
+
+    cmd = hermes_cli_argv()
     profile_arg = _profile_arg()
     if profile_arg:
         cmd.extend(profile_arg.split())

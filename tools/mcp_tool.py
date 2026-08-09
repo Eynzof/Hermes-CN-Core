@@ -697,6 +697,15 @@ def _wrap_command_with_watchdog(command: str, args: list) -> tuple[str, list]:
         # orphan cleanup's platform scope (Windows falls back to plain
         # os.kill there too).
         return command, args
+    # PyInstaller-frozen runtime (CN portable desktop): sys.executable is the
+    # Hermes CLI binary, not a standalone python — spawning it with the
+    # watchdog script would run `hermes mcp_stdio_watchdog.py` and die with
+    # argparse's "invalid choice". Skip the watchdog wrapper (the killpg-based
+    # orphan cleanup still applies).
+    from tools.runtime_compat import is_frozen_runtime
+
+    if is_frozen_runtime():
+        return command, args
     try:
         my_pid = os.getpid()
     except Exception:

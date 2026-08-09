@@ -114,10 +114,11 @@ def test_slash_worker_inherits_argv_correctly():
             
             call_args = mock_popen.call_args[0][0]
             
-            # Verify argv structure
+            # Verify argv structure — the worker is spawned through the
+            # hidden ``__slash-worker`` CLI subcommand (frozen portable
+            # runtime has no standalone python).
             assert sys.executable in call_args
-            assert "-m" in call_args
-            assert "tui_gateway.slash_worker" in call_args
+            assert "__slash-worker" in call_args
             assert "--session-key" in call_args
             assert "my_session" in call_args
             assert "--model" in call_args

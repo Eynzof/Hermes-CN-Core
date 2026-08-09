@@ -105,6 +105,19 @@ def install_deps():
 
     print("Installing Google API dependencies...")
 
+    # PyInstaller-frozen CN portable runtime: sys.executable IS the Hermes CLI
+    # binary, so ``sys.executable -m pip`` would run `hermes -m pip` and fail
+    # with argparse's "invalid choice".  Deps must be pre-baked into the bundle.
+    from tools.runtime_compat import is_frozen_runtime
+
+    if is_frozen_runtime():
+        print(
+            "ERROR: dependency install is not available in the portable desktop "
+            "runtime (no standalone python/pip).  Google Workspace deps must be "
+            "pre-baked into the bundle."
+        )
+        return False
+
     # First choice: pip in the current interpreter. Works for most installs.
     try:
         subprocess.check_call(

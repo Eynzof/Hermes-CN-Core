@@ -411,5 +411,6 @@ def test_tui_slash_worker_hides_python_window(monkeypatch):
 
     server._SlashWorker("session-key", "model-x")
 
-    assert captured[0][0][:3] == [server.sys.executable, "-m", "tui_gateway.slash_worker"]
+    assert captured[0][0][0] == server.sys.executable
+    assert "__slash-worker" in captured[0][0]
     assert captured[0][1]["creationflags"] == _CREATE_NO_WINDOW

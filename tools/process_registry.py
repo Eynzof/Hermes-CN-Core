@@ -2355,11 +2355,9 @@ from tools.registry import registry, tool_error
 PROCESS_SCHEMA = {
     "name": "process",
     "description": (
-        "Manage background processes started with terminal(background=true). "
-        "Actions: 'list' (show all), 'poll' (check status + new output), "
-        "'log' (full output with pagination), 'wait' (block until done or timeout), "
-        "'kill' (terminate), 'write' (send raw stdin data without newline), "
-        "'submit' (send data + Enter, for answering prompts), 'close' (close stdin/send EOF)."
+        "Manage background processes (terminal background=true). Actions: list all; "
+        "poll status+new output; log full output (paginated); wait until done/timeout; "
+        "kill; write stdin (no newline); submit data+Enter (prompts); close stdin."
     ),
     "parameters": {
         "type": "object",
@@ -2371,20 +2369,20 @@ PROCESS_SCHEMA = {
             },
             "session_id": {
                 "type": "string",
-                "description": "Process session ID (from terminal background output). Required for all actions except 'list'."
+                "description": "Process session ID (from terminal background). Required except for 'list'."
             },
             "data": {
                 "type": "string",
-                "description": "Text to send to process stdin (for 'write' and 'submit' actions)"
+                "description": "Text to send to process stdin (for 'write'/'submit')"
             },
             "timeout": {
                 "type": "integer",
-                "description": "Max seconds to block for 'wait' action. Returns partial output on timeout.",
+                "description": "Max seconds to block for 'wait'; returns partial output on timeout.",
                 "minimum": 1
             },
             "offset": {
                 "type": "integer",
-                "description": "Line offset for 'log' action (default: last 200 lines)"
+                "description": "Line offset for 'log' (default: last 200 lines)"
             },
             "limit": {
                 "type": "integer",

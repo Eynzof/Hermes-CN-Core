@@ -667,22 +667,22 @@ def check_todo_requirements() -> bool:
 TODO_SCHEMA = {
     "name": "todo",
     "description": (
-        "Manage the current session's task list. Use for complex tasks (3+ steps) "
-        "or multiple user tasks; no args = read.\n\n"
+        "Manage the session's task list. Use for complex tasks (3+ steps) or "
+        "multiple user tasks; no args = read.\n\n"
         "Writing: 'todos' items ({id, content, status: "
         "pending|in_progress|completed|cancelled, notes?, code?}). "
         "merge=false (default) replaces the list; merge=true updates by id, adds "
-        "new. Order = priority; only ONE in_progress at a time; complete items "
-        "when done; cancel failed ones and add revised.\n\n"
+        "new. Order = priority; ONE in_progress at a time; complete items when "
+        "done; cancel failed ones and add revised.\n\n"
         "Behavior:\n"
         "- auto_fix=true (default) auto-completes extra in_progress; false "
         "rejects the write\n"
         "- Done items cannot be re-opened (clamped)\n"
         "- Replace-dropped done items are archived\n"
-        "- `code` items are verified on completion; failure reverts to pending "
+        "- `code` items verified on completion; failure reverts to pending "
         "with error in notes\n"
         "- All-done returns a reminder in 'message'\n\n"
-        "Always returns the full current list + 'warnings' and 'message'."
+        "Always returns the full list + 'warnings' and 'message'."
     ),
     "parameters": {
         "type": "object",
@@ -716,11 +716,10 @@ TODO_SCHEMA = {
                         "code": {
                             "type": "string",
                             "description": (
-                                "Optional verification: inline Python, a .py "
-                                "path, a `!`-prefixed shell command, or a "
-                                ".sh/.ps1 path. Runs when the item is marked "
-                                "completed; on failure the item reverts to "
-                                "pending with the error in notes"
+                                "Optional verification: inline Python, .py path, "
+                                "`!`-prefixed shell command, or .sh/.ps1 "
+                                "path. Runs on completion; failure reverts "
+                                "to pending"
                             )
                         }
                     },
@@ -730,7 +729,7 @@ TODO_SCHEMA = {
             "merge": {
                 "type": "boolean",
                 "description": (
-                    "true: update existing items by id, add new ones. "
+                    "true: update items by id, add new; "
                     "false (default): replace the entire list."
                 ),
                 "default": False
@@ -739,7 +738,7 @@ TODO_SCHEMA = {
                 "type": "boolean",
                 "default": True,
                 "description": (
-                    "When multiple items are in_progress, auto-complete the "
+                    "Auto-complete extra in_progress items "
                     "extras (true, default) or error (false)"
                 )
             }

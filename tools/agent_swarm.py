@@ -27,15 +27,14 @@ AGENT_SWARM_SCHEMA = {
                 "type": "string",
                 "description": (
                     "Subagent profile; defaults to the configured "
-                    "subagent type"
+                    "type"
                 ),
             },
             "prompt_template": {
                 "type": "string",
                 "description": (
-                    "Prompt template with {{item}} placeholder. "
-                    "Each item replaces {{item}} to create one "
-                    "subagent's goal."
+                    "Prompt template with {{item}} placeholder; each item "
+                    "creates one subagent's goal."
                 ),
             },
             "items": {
@@ -43,8 +42,8 @@ AGENT_SWARM_SCHEMA = {
                 "items": {"type": "string"},
                 "maxItems": 128,
                 "description": (
-                    "Values for {{item}} placeholder. "
-                    "Each item spawns one subagent."
+                    "Values for {{item}}; "
+                    "each spawns one subagent."
                 ),
             },
             "resume_agent_ids": {
@@ -52,7 +51,7 @@ AGENT_SWARM_SCHEMA = {
                 "additionalProperties": {"type": "string"},
                 "description": (
                     "Map of existing subagent agent_id → prompt "
-                    "(e.g. 'continue') to resume failed subagents."
+                    "(e.g. 'continue') to resume failed runs."
                 ),
             },
         },

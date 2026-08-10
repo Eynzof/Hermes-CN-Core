@@ -1861,11 +1861,11 @@ def _resolve_child_cwd(mode: str, staging_dir: str, task_id: str = "") -> str:
 # Ordered to match the canonical display order.
 _TOOL_DOC_LINES = [
     ("web_search",
-     "  web_search(query, limit=5) -> dict: {\"data\": {\"web\": [{url, title, description}, ...]}}"),
+     "  web_search(query, limit=5) -> dict: {\"data\": {\"web\": [{url, title, description}]}}"),
     ("web_extract",
-     "  web_extract(urls: list, char_limit=None) -> dict: {\"results\": [{url, title, content, error}, ...]} "
-     "(markdown, no LLM). Over char_limit (15000 default) head+tail truncated; full text on disk "
-     "(path in content footer)."),
+     "  web_extract(urls, char_limit=None) -> dict: {\"results\": [{url, title, content, error}]} "
+     "(markdown, no LLM). Over 15000 chars head+tail truncated; full text on disk "
+     "(path in footer)."),
     ("read_file",
      "  read_file(path, offset=1, limit=500) -> dict: 1-indexed lines; {\"content\", \"total_lines\"}"),
     ("write_file",
@@ -1876,7 +1876,7 @@ _TOOL_DOC_LINES = [
     ("patch",
      "  patch(path, old_string, new_string, replace_all=False) -> dict: replaces old_string with new_string."),
     ("terminal",
-     "  terminal(command, timeout=None, workdir=None) -> dict: foreground only (no background/pty); "
+     "  terminal(command, timeout=None, workdir=None) -> dict: foreground only (no bg/pty); "
      "{\"output\", \"exit_code\"}"),
 ]
 
@@ -1919,31 +1919,31 @@ def build_execute_code_schema(enabled_sandbox_tools: set = None,
     # temp-dir staging and hermes-agent's own python.
     if mode == "strict":
         cwd_note = (
-            "Scripts run in their own temp dir, not the session's CWD — use absolute paths "
-            "(os.path.expanduser('~/.hermes/.env')) or terminal()/read_file() for user files."
+            "Scripts run in their own temp dir, not the session's CWD — use "
+            "absolute paths or terminal()/read_file() for user files."
         )
     else:
         cwd_note = (
-            "Scripts run in the session's working directory with the active venv's python, "
-            "so project deps (pandas, etc.) and relative paths work like in terminal()."
+            "Scripts run in the session's working directory with the active "
+            "venv's python, so project deps and relative paths work like in "
+            "terminal()."
         )
 
     description = (
-        "Run a Python script that calls Hermes tools programmatically. Use for 3+ "
-        "tool calls with logic between them, filtering/reducing large tool "
-        "outputs, conditional branching, or loops.\n\n"
-        "Prefer normal tool calls for: a single call with no processing, "
-        "full-result reasoning, or interactive input.\n\n"
+        "Run a Python script that calls Hermes tools programmatically. Use for "
+        "3+ tool calls with logic between them, filtering outputs, "
+        "branching, or loops.\n\n"
+        "Prefer normal tool calls for one call with no processing, "
+        "full-result reasoning.\n\n"
         f"Available via `from hermes_tools import ...`:\n\n"
         f"{tool_lines}\n\n"
         "Limits: 5-minute timeout, 50KB stdout cap, 50 tool calls max. "
         "terminal() is foreground-only (no bg/pty).\n\n"
         f"{cwd_note}\n\n"
-        "Print the final result to stdout; use Python stdlib for processing.\n\n"
-        "Built-in helpers (no import):\n"
+        "Built-in helpers:\n"
         "  json_parse(text) — json.loads(strict=False); for output with control chars\n"
         "  shell_quote(s) — shlex.quote(); for dynamic strings in shell commands\n"
-        "  retry(fn, max_attempts=3, delay=2) — exponential backoff for transient failures"
+        "  retry(fn, max_attempts=3, delay=2) — backoff for transient failures"
     )
 
     return {

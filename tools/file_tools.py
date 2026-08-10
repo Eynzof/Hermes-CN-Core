@@ -1957,13 +1957,13 @@ def _check_file_reqs():
 
 READ_FILE_SCHEMA = {
     "name": "read_file",
-    "description": "Read a text file with line numbers and pagination. Use this instead of cat/head/tail in terminal. Output format: 'LINE_NUM|CONTENT'. Suggests similar filenames if not found. Use offset and limit for large files. Reads exceeding ~100K characters are truncated on a line boundary and return a next_offset; continue with offset to read the rest. Jupyter notebooks (.ipynb), Word documents (.docx), and Excel workbooks (.xlsx) are auto-extracted to readable text. NOTE: Cannot read images or other binary files — use vision_analyze for images.",
+    "description": "Read a text file with line numbers and pagination. Use instead of cat/head/tail. Output: 'LINE_NUM|CONTENT'; suggests similar filenames when missing. offset/limit paginate large files; >100K chars truncate on a line boundary and return next_offset. Auto-extracts .ipynb/.docx/.xlsx. Cannot read images/binary — use vision_analyze.",
     "parameters": {
         "type": "object",
         "properties": {
             "path": {"type": "string", "description": "Path to the file to read (absolute, relative, or ~/path)"},
-            "offset": {"type": "integer", "description": "Line number to start reading from (1-indexed, default: 1)", "default": 1, "minimum": 1},
-            "limit": {"type": "integer", "description": "Maximum number of lines to read (default: 500, max: 2000)", "default": 500, "maximum": 2000}
+            "offset": {"type": "integer", "description": "Line to start reading from (1-indexed, default 1)", "default": 1, "minimum": 1},
+            "limit": {"type": "integer", "description": "Max lines to read (default: 500, max: 2000)", "default": 500, "maximum": 2000}
         },
         "required": ["path"]
     }
@@ -1971,15 +1971,15 @@ READ_FILE_SCHEMA = {
 
 WRITE_FILE_SCHEMA = {
     "name": "write_file",
-    "description": "Write content to a file, completely replacing existing content. Use this instead of echo/cat heredoc in terminal. Creates parent directories automatically. OVERWRITES the entire file — use 'patch' for targeted edits. Auto-runs syntax checks on .py/.json/.yaml/.toml and other linted languages; only NEW errors introduced by this write are surfaced (pre-existing errors are filtered out).",
+    "description": "Write content to a file, replacing existing content. Use instead of echo/cat heredoc in terminal. Creates parent dirs. OVERWRITES the whole file — use 'patch' for targeted edits. Auto-runs syntax checks; only NEW errors from this write are surfaced.",
     "parameters": {
         "type": "object",
         "properties": {
-            "path": {"type": "string", "description": "Path to the file to write (will be created if it doesn't exist, overwritten if it does)"},
+            "path": {"type": "string", "description": "Path to the file to write (created if missing, overwritten if it exists)"},
             "content": {"type": "string", "description": "Complete content to write to the file"},
             "cross_profile": {
                 "type": "boolean",
-                "description": "Opt out of the cross-profile soft guard. Defaults to false. Set true ONLY after explicit user direction to edit another Hermes profile's skills/plugins/cron/memories — by default these writes are blocked with a warning because they affect a different profile than the one this session is running under.",
+                "description": "Opt out of the cross-profile soft guard (false by default); set true ONLY on explicit user direction to edit another profile.",
                 "default": False,
             },
         },
@@ -1990,13 +1990,11 @@ WRITE_FILE_SCHEMA = {
 PATCH_SCHEMA = {
     "name": "patch",
     "description": (
-        "Targeted find-and-replace edits in files. Use this instead of sed/awk in terminal. "
-        "Uses fuzzy matching (9 strategies) so minor whitespace/indentation differences won't break it. "
-        "Returns a unified diff. Auto-runs syntax checks after editing.\n\n"
-        "REPLACE MODE (mode='replace', default): find a unique string and replace it. "
-        "REQUIRED PARAMETERS: mode, path, old_string, new_string.\n"
-        "PATCH MODE (mode='patch'): apply V4A multi-file patches for bulk changes. "
-        "REQUIRED PARAMETERS: mode, patch."
+        "Targeted find-and-replace edits. Use instead of sed/awk in terminal. "
+        "Fuzzy matching (9 strategies) tolerates minor whitespace/indentation "
+        "diffs; returns a unified diff; auto-runs syntax checks.\n\n"
+        "REPLACE MODE (default): path + old_string + new_string required.\n"
+        "PATCH MODE: V4A multi-file patches; patch content required."
     ),
     "parameters": {
         "type": "object",
@@ -2004,7 +2002,7 @@ PATCH_SCHEMA = {
             "mode": {
                 "type": "string",
                 "enum": ["replace", "patch"],
-                "description": "Edit mode. 'replace' (default): requires path + old_string + new_string. 'patch': requires patch content only.",
+                "description": "Edit mode. 'replace' (default): path + old_string + new_string. 'patch': patch content only.",
                 "default": "replace",
             },
             "path": {
@@ -2013,11 +2011,11 @@ PATCH_SCHEMA = {
             },
             "old_string": {
                 "type": "string",
-                "description": "REQUIRED when mode='replace'. Exact text to find and replace. Must be unique in the file unless replace_all=true. Include surrounding context lines to ensure uniqueness.",
+                "description": "REQUIRED when mode='replace'. Exact text to find/replace; unique unless replace_all=true.",
             },
             "new_string": {
                 "type": "string",
-                "description": "REQUIRED when mode='replace'. Replacement text. Pass empty string '' to delete the matched text.",
+                "description": "REQUIRED when mode='replace'. Replacement text; empty string '' deletes the matched text.",
             },
             "replace_all": {
                 "type": "boolean",
@@ -2026,11 +2024,11 @@ PATCH_SCHEMA = {
             },
             "patch": {
                 "type": "string",
-                "description": "REQUIRED when mode='patch'. V4A format patch content. Format:\n*** Begin Patch\n*** Update File: path/to/file\n@@ context hint @@\n context line\n-removed line\n+added line\n*** End Patch",
+                "description": "REQUIRED when mode='patch'. V4A: Begin Patch / Update File: path / @@ context @@ / -removed / +added / End Patch",
             },
             "cross_profile": {
                 "type": "boolean",
-                "description": "Opt out of the cross-profile soft guard. Defaults to false. Set true ONLY after explicit user direction to edit another Hermes profile's skills/plugins/cron/memories.",
+                "description": "Opt out of the cross-profile soft guard (false by default); set true ONLY on explicit user direction to edit another profile's files.",
                 "default": False,
             },
         },
@@ -2040,18 +2038,18 @@ PATCH_SCHEMA = {
 
 SEARCH_FILES_SCHEMA = {
     "name": "search_files",
-    "description": "Search file contents or find files by name. Use this instead of grep/rg/find/ls in terminal. Ripgrep-backed, faster than shell equivalents.\n\nContent search (target='content'): Regex search inside files. Output modes: full matches with line numbers, file paths only, or match counts.\n\nFile search (target='files'): Find files by glob pattern (e.g., '*.py', '*config*'). Also use this instead of ls — results sorted by modification time.",
+    "description": "Search file contents or find files by name. Use instead of grep/rg/find/ls. Ripgrep-backed.\n\nContent search (target='content'): regex inside files; output = full matches, paths only, or counts.\nFile search (target='files'): glob patterns (e.g. '*.py'); also replaces ls — sorted by mtime.",
     "parameters": {
         "type": "object",
         "properties": {
-            "pattern": {"type": "string", "description": "Regex pattern for content search, or glob pattern (e.g., '*.py') for file search"},
-            "target": {"type": "string", "enum": ["content", "files"], "description": "'content' searches inside file contents, 'files' searches for files by name", "default": "content"},
-            "path": {"type": "string", "description": "Directory or file to search in (default: current working directory)", "default": "."},
-            "file_glob": {"type": "string", "description": "Filter files by pattern in grep mode (e.g., '*.py' to only search Python files)"},
-            "limit": {"type": "integer", "description": "Maximum number of results to return (default: 50)", "default": 50},
-            "offset": {"type": "integer", "description": "Skip first N results for pagination (default: 0)", "default": 0},
-            "output_mode": {"type": "string", "enum": ["content", "files_only", "count"], "description": "Output format for grep mode: 'content' shows matching lines with line numbers, 'files_only' lists file paths, 'count' shows match counts per file", "default": "content"},
-            "context": {"type": "integer", "description": "Number of context lines before and after each match (grep mode only)", "default": 0}
+            "pattern": {"type": "string", "description": "Regex pattern (content) or glob pattern (files), e.g. '*.py'"},
+            "target": {"type": "string", "enum": ["content", "files"], "description": "'content' searches inside files, 'files' finds files by name", "default": "content"},
+            "path": {"type": "string", "description": "Directory or file to search (default: current working directory)", "default": "."},
+            "file_glob": {"type": "string", "description": "Filter files by pattern in grep mode (e.g. '*.py')"},
+            "limit": {"type": "integer", "description": "Max results to return (default: 50)", "default": 50},
+            "offset": {"type": "integer", "description": "Skip first N results (default: 0)", "default": 0},
+            "output_mode": {"type": "string", "enum": ["content", "files_only", "count"], "description": "Grep output: 'content' (lines + numbers), 'files_only' (paths), 'count' (per-file counts)", "default": "content"},
+            "context": {"type": "integer", "description": "Context lines before/after each match (grep mode only)", "default": 0}
         },
         "required": ["pattern"]
     }

@@ -1443,19 +1443,19 @@ SKILL_MANAGE_SCHEMA = {
     "name": "skill_manage",
     "description": (
         "Manage skills (create, update, delete) — procedural memory for "
-        "recurring task types. "
-        f"New skills go to {display_hermes_home()}/skills/; existing ones "
-        "can be modified in place.\n\n"
+        "recurring tasks. "
+        f"New skills go to {display_hermes_home()}/skills/. "
+        "\n\n"
         "Actions: create (full SKILL.md + optional category), patch "
         "(old_string/new_string, preferred for fixes), edit (full rewrite, "
         "major overhauls), delete, write_file, remove_file.\n\n"
         "On delete, `absorbed_into=<umbrella>` = consolidation (target must "
-        "already exist — create/patch it first); `absorbed_into=\"\"` = "
-        "pruning. Tells the curator intent so downstream consumers (cron "
-        "jobs referencing the old name) update correctly.\n\n"
-        "Create after complex tasks succeed (5+ calls) or user asks to "
-        "remember a procedure; update when instructions are stale/wrong or "
-        "pitfalls surface — patch immediately.\n\n"
+        "exist — create/patch it first); `absorbed_into=\"\"` = pruning; tells "
+        "the curator intent so cron jobs referencing the old name update "
+        "correctly.\n\n"
+        "Create after complex tasks succeed (5+ calls) or user asks; update "
+        "when instructions are stale/wrong or pitfalls surface — patch "
+        "immediately.\n\n"
         "Offer to save after difficult/iterative tasks; skip one-offs. "
         "Confirm with user before creating/deleting.\n"
         "Good skills: trigger conditions, numbered steps, pitfalls, "
@@ -1475,24 +1475,22 @@ SKILL_MANAGE_SCHEMA = {
             "name": {
                 "type": "string",
                 "description": (
-                    "Skill name (lowercase, hyphens/underscores, max 64 chars). "
-                    "Must match an existing skill for patch/edit/delete/write_file/remove_file."
+                    "Skill name (lowercase, hyphens/underscores, max 64). "
+                    "Must already exist for patch/edit/delete/write_file/remove_file."
                 )
             },
             "content": {
                 "type": "string",
                 "description": (
-                    "Full SKILL.md content (YAML frontmatter + markdown body). "
-                    "Required for 'create' and 'edit'. For 'edit', read the skill "
-                    "first with skill_view() and provide the complete updated text."
+                    "Full SKILL.md content (YAML frontmatter + markdown). "
+                    "Required for 'create'/'edit'."
                 )
             },
             "old_string": {
                 "type": "string",
                 "description": (
-                    "Text to find in the file (required for 'patch'). Must be unique "
-                    "unless replace_all=true. Include enough surrounding context to "
-                    "ensure uniqueness."
+                    "Text to find (required for 'patch'); unique unless "
+                    "replace_all=true."
                 )
             },
             "new_string": {
@@ -1509,18 +1507,16 @@ SKILL_MANAGE_SCHEMA = {
             "category": {
                 "type": "string",
                 "description": (
-                    "Optional category/domain for organizing the skill (e.g., 'devops', "
-                    "'data-science', 'mlops'). Creates a subdirectory grouping. "
-                    "Only used with 'create'."
+                    "Optional category/domain (e.g. 'devops', 'mlops'); creates "
+                    "a subdirectory. Only used with 'create'."
                 )
             },
             "file_path": {
                 "type": "string",
                 "description": (
-                    "Path to a supporting file within the skill directory. "
-                    "For 'write_file'/'remove_file': required, must be under references/, "
-                    "templates/, scripts/, or assets/. "
-                    "For 'patch': optional, defaults to SKILL.md if omitted."
+                    "Path to a supporting file in the skill dir. "
+                    "'write_file'/'remove_file': required, under references/, "
+                    "templates/, scripts/, assets/."
                 )
             },
             "file_content": {
@@ -1530,13 +1526,10 @@ SKILL_MANAGE_SCHEMA = {
             "absorbed_into": {
                 "type": "string",
                 "description": (
-                    "For 'delete' only — declares intent: pass the umbrella "
-                    "skill name when this skill's content was merged into "
-                    "another (target must already exist), or an empty string "
-                    "when truly stale/pruned with no forwarding target. "
-                    "Omitting is supported for backward compatibility but "
-                    "downstream tooling (cron-job reference rewriting) will "
-                    "have to guess at intent."
+                    "For 'delete' only — intent marker: umbrella name when "
+                    "merged into another (target must exist), empty string "
+                    "when stale/pruned. Omitting works. tooling "
+                    "must guess."
                 )
             },
         },

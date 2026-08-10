@@ -1444,14 +1444,11 @@ from tools.registry import registry, tool_error
 VISION_ANALYZE_SCHEMA = {
     "name": "vision_analyze",
     "description": (
-        "Load an image into the conversation so you can see it. Accepts a "
-        "URL, local file path, or data URL. When your active model has "
-        "native vision, the image is attached to your context directly "
-        "and you read the pixels yourself on the next turn — call this "
-        "any time the user references an image (filepath in their message, "
-        "URL in tool output, screenshot from the browser, etc.). For "
-        "non-vision models, falls back to an auxiliary vision model that "
-        "returns a text description."
+        "Load an image so you can see it (URL, local file path, or data URL). "
+        "Native-vision models get it attached to read next turn; "
+        "otherwise an auxiliary vision model returns text. Call "
+        "whenever the user references an image (message filepath, tool URL, "
+        "screenshot)."
     ),
     "parameters": {
         "type": "object",
@@ -1462,7 +1459,7 @@ VISION_ANALYZE_SCHEMA = {
             },
             "question": {
                 "type": "string",
-                "description": "Your specific question or request about the image. Optional context the model uses on the next turn after seeing the image."
+                "description": "Your question/request about the image; optional context used after seeing it."
             }
         },
         "required": ["image_url", "question"]

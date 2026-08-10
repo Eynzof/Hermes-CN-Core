@@ -1077,12 +1077,11 @@ MEMORY_SCHEMA = {
     "name": "memory",
     "description": (
         "Save durable, high-signal facts that survive across sessions "
-        "(injected into every turn).\n\n"
+        "(injected every turn).\n\n"
         "HOW: batch ALL changes in ONE call via 'operations' "
-        "({action, content?, old_text?} each) — atomic, char limit checked "
-        "on the FINAL result only, so one call can remove/replace stale "
-        "entries to free room and add new ones. Don't repeat it; bare "
-        "action/content/old_text for one change.\n\n"
+        "({action, content?, old_text?}) — atomic; char limit checked on the "
+        "FINAL result only, so one call can remove/replace stale entries to "
+        "free room and add. Don't repeat it; bare fields for one change.\n\n"
         "WHEN: save proactively on stated preferences, corrections, personal "
         "details, or stable facts about environment/conventions/workflow.\n\n"
         "IF FULL: add is rejected showing current entries — reissue as ONE "
@@ -1091,7 +1090,7 @@ MEMORY_SCHEMA = {
         "(environment, conventions, tool quirks, lessons).\n\n"
         "SKIP: trivial info, re-discoverable facts, raw dumps, task progress, "
         "completed-work logs, temporary todo state (use session_search). "
-        "Reusable procedures belong in a skill, not memory."
+        "Procedures belong in a skill, not memory."
     ),
     "parameters": {
         "type": "object",
@@ -1108,20 +1107,15 @@ MEMORY_SCHEMA = {
             },
             "content": {
                 "type": "string",
-                "description": "The entry content. Required for 'add' and 'replace' (single-op shape)."
+                "description": "The entry content. Required for 'add'/'replace' (single-op)."
             },
             "old_text": {
                 "type": "string",
-                "description": "REQUIRED for 'replace' and 'remove' (single-op shape): a short unique substring identifying the existing entry to modify. Omit only for 'add'."
+                "description": "REQUIRED for 'replace'/'remove' (single-op): a short unique substring identifying the entry; omit for 'add'."
             },
             "operations": {
                 "type": "array",
-                "description": (
-                    "Batch shape: operations applied atomically in one call "
-                    "against the final char budget. Preferred for multiple "
-                    "changes or consolidating to make room. Each item: "
-                    "{action, content?, old_text?}."
-                ),
+                "description": "Batch shape: operations applied atomically against the final char budget; preferred for multiple changes. Each: {action, content?, old_text?}.",
                 "items": {
                     "type": "object",
                     "properties": {

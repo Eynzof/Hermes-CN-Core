@@ -3475,43 +3475,39 @@ def _build_top_level_description() -> str:
     else:
         nesting_clause = (
             f"Nesting OFF (max_spawn_depth={max_depth}): every child is a "
-            f"leaf; raise delegation.max_spawn_depth to enable."
+            f"leaf; raise delegation.max_spawn_depth."
         )
 
     return (
         "Spawn subagents in isolated contexts. Each gets its own "
-        "conversation, terminal, and toolset; only the summary returns — "
-        "intermediate results never enter your context.\n\n"
-        "MODES (goal or tasks required):\n"
+        "conversation/terminal/toolset; only the summary returns — "
+        "intermediates never enter your context.\n\n"
+        "MODES (goal or tasks):\n"
         "1. Single: 'goal' + optional context/role.\n"
         f"2. Batch: 'tasks' — up to {max_children} concurrent "
         f"(delegation.max_concurrent_children). {nesting_clause}\n\n"
         "RUNS IN BACKGROUND: returns immediately; the result re-enters as a "
-        "new message when done. Do NOT poll; keep working. Batch joins all "
-        "tasks into ONE consolidated result. 'live_transcripts' lists "
-        "per-task log paths (cache/delegation/live/<delegation_id>/) to "
-        "tail -f.\n\n"
+        "new message when done. Do NOT poll. Batch joins all "
+        "tasks into ONE result. 'live_transcripts' lists per-task "
+        "log paths.\n\n"
         "USE FOR: reasoning-heavy subtasks; context-flooding work; parallel "
-        "independent streams.\n"
-        "NOT FOR: mechanical multi-step work -> execute_code; one tool call "
-        "-> call it directly; user-interaction (subagents cannot clarify); "
-        "durable work -> cronjob or terminal(background=True, "
-        "notify_on_complete=True). Not durable: /new, exit, or /stop "
-        "discards them.\n\n"
+        "streams.\n"
+        "NOT FOR: mechanical multi-step work -> execute_code; a single tool "
+        "call -> call it directly; user-interaction (subagents can't "
+        "clarify); durable work -> cronjob or terminal(background=True, "
+        "notify_on_complete=True) — not durable (/new, exit, /stop).\n\n"
         "IMPORTANT:\n"
-        "- No memory of your conversation: pass paths, errors, constraints, "
-        "and language/tone via 'context' (children default to English).\n"
-        "- Summaries are SELF-REPORTS: for side-effectful ops (HTTP POST/PUT, "
-        "remote writes, publishing), require a verifiable handle "
-        "(URL/ID/path/status) and verify it yourself.\n"
+        "- No memory of your chat: pass info + language/tone via "
+        "'context' (children default to English).\n"
+        "- Summaries are SELF-REPORTS: for side-effectful ops require a "
+        "verifiable handle (URL/ID/path/status).\n"
         "- Leaf (default) lacks: delegate_task, clarify, memory, "
         "send_message, execute_code.\n"
         f"- Orchestrator retains delegate_task to spawn workers; bounded by "
         f"max_spawn_depth={max_depth}; disable via "
-        "delegation.orchestrator_enabled=false.\n"
-        "- Children inherit the parent model (not selectable per call) "
-        "unless delegation.provider/model pins them.\n"
-        "- Each child gets its own terminal session (separate cwd/state).\n"
+        "delegation.orchestrator_enabled.\n"
+        "- Children inherit the parent model unless delegation.provider/model "
+        "pins them.\n"
         "- Results return as an array, one entry per task."
     )
 
@@ -3523,10 +3519,9 @@ def _build_tasks_param_description() -> str:
     except Exception:
         max_children = _DEFAULT_MAX_CONCURRENT_CHILDREN
     return (
-        f"Batch mode: tasks to run in parallel, up to {max_children} for "
-        f"this user (delegation.max_concurrent_children). Each gets its own "
-        "isolated subagent + terminal session. When tasks is set, top-level "
-        "goal/context/role are ignored."
+        f"Batch: tasks in parallel, up to {max_children} "
+        f"(delegation.max_concurrent_children). Each gets its own subagent + "
+        "terminal. When set, top-level goal/context/role ignored."
     )
 
 
@@ -3553,14 +3548,14 @@ def _build_role_param_description() -> str:
         )
     else:
         nesting_note = (
-            f"Nesting OFF (max_spawn_depth={max_depth}); 'orchestrator' is "
-            "forced to 'leaf'. Raise delegation.max_spawn_depth to enable."
+            f"Nesting OFF (max_spawn_depth={max_depth}): 'orchestrator' is "
+            "forced to 'leaf'."
         )
 
     return (
-        "Child agent role. 'leaf' (default) = focused worker, cannot "
-        "delegate further. 'orchestrator' = may call delegate_task to spawn "
-        f"its own workers. {nesting_note}"
+        "Child role: 'leaf' = worker, cannot delegate; "
+        "'orchestrator' = may spawn workers. "
+        f"{nesting_note}"
     )
 
 
@@ -3609,16 +3604,14 @@ DELEGATE_TASK_SCHEMA = {
                 "type": "string",
                 "description": (
                     "What the subagent should accomplish. Be specific and "
-                    "self-contained — the subagent knows nothing of your "
-                    "conversation history."
+                    "self-contained — it knows nothing of your chat."
                 ),
             },
             "context": {
                 "type": "string",
                 "description": (
-                    "Background the subagent needs: file paths, error "
-                    "messages, project structure, constraints. More "
-                    "specificity = better results."
+                    "Background the subagent needs: paths, errors, "
+                    "constraints."
                 ),
             },
             "tasks": {
@@ -3652,10 +3645,9 @@ DELEGATE_TASK_SCHEMA = {
             "background": {
                 "type": "boolean",
                 "description": (
-                    "DEPRECATED / IGNORED. All delegations run in the "
-                    "background automatically; the result re-enters the "
-                    "conversation when done. Kept only for backward "
-                    "compatibility."
+                    "DEPRECATED / IGNORED. Delegations always run in the "
+                    "background; the result re-enters when done. Backward-compat "
+                    "only."
                 ),
             },
         },

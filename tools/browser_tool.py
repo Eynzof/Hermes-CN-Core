@@ -1883,7 +1883,7 @@ atexit.register(_stop_browser_cleanup_thread)
 BROWSER_TOOL_SCHEMAS = [
     {
         "name": "browser_navigate",
-        "description": "Navigate to a URL in the browser. Initializes the session and loads the page. Must be called before other browser tools. For simple information retrieval, prefer web_search or web_extract (faster, cheaper). For plain-text endpoints — URLs ending in .md, .txt, .json, .yaml, .yml, .csv, .xml, raw.githubusercontent.com, or any documented API endpoint — prefer curl via the terminal tool or web_extract; the browser stack is overkill and much slower for these. Use browser tools when you need to interact with a page (click, fill forms, dynamic content). Returns a compact page snapshot with interactive elements and ref IDs — no need to call browser_snapshot separately after navigating.",
+        "description": "Navigate to a URL (starts the session); call before other browser tools. Prefer web_search/web_extract for simple retrieval; curl or web_extract for plain-text endpoints (.md/.txt/.json/.csv/.xml, raw.githubusercontent.com, APIs) — the browser stack is slower. Use it to interact (click, forms, dynamic content). Returns a compact snapshot with interactive ref IDs — no separate browser_snapshot call needed.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -1897,13 +1897,13 @@ BROWSER_TOOL_SCHEMAS = [
     },
     {
         "name": "browser_snapshot",
-        "description": "Get a text-based snapshot of the current page's accessibility tree. Returns interactive elements with ref IDs (like @e1, @e2) for browser_click and browser_type. full=false (default): compact view with interactive elements. full=true: complete page content. Snapshots over 15000 chars are truncated or LLM-summarized; when that happens the complete snapshot is saved to a file and the output includes its path so you can page through the rest with read_file. Requires browser_navigate first. Note: browser_navigate already returns a compact snapshot — use this to refresh after interactions that change the page, or with full=true for complete content.",
+        "description": "Text snapshot of the page's accessibility tree with ref IDs (@e1, @e2) for click/type. full=false (default): compact; full=true: complete content. Over 15000 chars it's truncated/summarized; full copy saved to a file (path included) for read_file. Requires browser_navigate first (navigate already returns a compact snapshot) — refresh after page-changing interactions or use full=true.",
         "parameters": {
             "type": "object",
             "properties": {
                 "full": {
                     "type": "boolean",
-                    "description": "If true, returns complete page content. If false (default), returns compact view with interactive elements only.",
+                    "description": "true = complete page content; false (default) = compact view with interactive elements.",
                     "default": False
                 }
             },
@@ -1912,7 +1912,7 @@ BROWSER_TOOL_SCHEMAS = [
     },
     {
         "name": "browser_click",
-        "description": "Click on an element identified by its ref ID from the snapshot (e.g., '@e5'). The ref IDs are shown in square brackets in the snapshot output. Requires browser_navigate and browser_snapshot to be called first.",
+        "description": "Click an element by its ref ID from the snapshot (e.g. '@e5'). Requires browser_navigate and browser_snapshot first.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -1926,7 +1926,7 @@ BROWSER_TOOL_SCHEMAS = [
     },
     {
         "name": "browser_type",
-        "description": "Type text into an input field identified by its ref ID. Clears the field first, then types the new text. Requires browser_navigate and browser_snapshot to be called first.",
+        "description": "Type into an input by ref ID; clears the field first. Requires browser_navigate and browser_snapshot first.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -1944,7 +1944,7 @@ BROWSER_TOOL_SCHEMAS = [
     },
     {
         "name": "browser_scroll",
-        "description": "Scroll the page in a direction. Use this to reveal more content that may be below or above the current viewport. Requires browser_navigate to be called first.",
+        "description": "Scroll the page up/down to reveal more content. Requires browser_navigate first.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -1959,7 +1959,7 @@ BROWSER_TOOL_SCHEMAS = [
     },
     {
         "name": "browser_back",
-        "description": "Navigate back to the previous page in browser history. Requires browser_navigate to be called first.",
+        "description": "Back to the previous page. Requires browser_navigate first.",
         "parameters": {
             "type": "object",
             "properties": {},
@@ -1968,7 +1968,7 @@ BROWSER_TOOL_SCHEMAS = [
     },
     {
         "name": "browser_press",
-        "description": "Press a keyboard key. Useful for submitting forms (Enter), navigating (Tab), or keyboard shortcuts. Requires browser_navigate to be called first.",
+        "description": "Press a keyboard key (Enter, Tab, shortcuts). Requires browser_navigate first.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -1982,7 +1982,7 @@ BROWSER_TOOL_SCHEMAS = [
     },
     {
         "name": "browser_get_images",
-        "description": "Get a list of all images on the current page with their URLs and alt text. Useful for finding images to analyze with the vision tool. Requires browser_navigate to be called first.",
+        "description": "List page images with URLs and alt text — e.g. for the vision tool. Requires browser_navigate first.",
         "parameters": {
             "type": "object",
             "properties": {},
@@ -1991,18 +1991,18 @@ BROWSER_TOOL_SCHEMAS = [
     },
     {
         "name": "browser_vision",
-        "description": "Take a screenshot of the current page so you can inspect it visually. Use this when you need to understand what the page looks like - especially for CAPTCHAs, visual verification challenges, complex layouts, or cases where the text snapshot misses important visual information. When your active model has native vision, the screenshot is attached to your context directly and you inspect it on the next turn; otherwise Hermes falls back to an auxiliary vision model and returns a text analysis. Includes a screenshot_path that you can share with the user by including MEDIA:<screenshot_path> in your response. Requires browser_navigate to be called first.",
+        "description": "Screenshot the current page to inspect it visually — CAPTCHAs, visual verification, complex layouts, or when the text snapshot misses visual info. Native-vision models get the image attached and inspect it next turn; otherwise Hermes falls back to an auxiliary vision model returning a text analysis. Includes screenshot_path — share it via MEDIA:<path>. Requires browser_navigate first.",
         "parameters": {
             "type": "object",
             "properties": {
                 "question": {
                     "type": "string",
-                    "description": "What you want to know about the page visually. Be specific about what you're looking for."
+                    "description": "What you want to know about the page visually; be specific."
                 },
                 "annotate": {
                     "type": "boolean",
                     "default": False,
-                    "description": "If true, overlay numbered [N] labels on interactive elements. Each [N] maps to ref @eN for subsequent browser commands. Useful for QA and spatial reasoning about page layout."
+                    "description": "Overlay numbered [N] labels on interactive elements; each [N] maps to ref @eN for later commands."
                 }
             },
             "required": ["question"]
@@ -2010,7 +2010,7 @@ BROWSER_TOOL_SCHEMAS = [
     },
     {
         "name": "browser_console",
-        "description": "Get browser console output and JavaScript errors from the current page. Returns console.log/warn/error/info messages and uncaught JS exceptions. Use this to detect silent JavaScript errors, failed API calls, and application warnings. Requires browser_navigate to be called first. When 'expression' is provided, evaluates JavaScript in the page context and returns the result — use this for DOM inspection, reading page state, or extracting data programmatically.",
+        "description": "Read console output and JS errors (log/warn/error/info + uncaught) — for silent JS errors, failed API calls, app warnings. With 'expression', evaluates JS in the page. Requires browser_navigate first.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -2021,7 +2021,7 @@ BROWSER_TOOL_SCHEMAS = [
                 },
                 "expression": {
                     "type": "string",
-                    "description": "JavaScript expression to evaluate in the page context. Runs in the browser like DevTools console — full access to DOM, window, document. Return values are serialized to JSON. Example: 'document.title' or 'document.querySelectorAll(\"a\").length'"
+                    "description": "JavaScript to evaluate in the page (DOM/window access; JSON-serialized result). E.g. 'document.title' or querySelectorAll('a').length"
                 }
             },
             "required": []

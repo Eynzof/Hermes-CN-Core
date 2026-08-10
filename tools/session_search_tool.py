@@ -756,60 +756,43 @@ SESSION_SEARCH_SCHEMA = {
         "inside one. FTS5-backed; no LLM calls — every shape returns real "
         "messages.\n\n"
         "SOURCE-FIRST LIMIT\n"
-        "This tool searches conversation history only — not current external "
-        "state. If the user provided a direct source (URL, contact, file path, "
-        "account, website, live system), inspect it first when accessible; use "
-        "session_search as secondary context for what was said before, not "
-        "proof of what the source contains now. If the source is inaccessible, "
-        "say so. Never conclude \"not found\" from session_search alone when "
-        "a direct source was given.\n\n"
+        "Searches conversation history only — not current external state. If "
+        "the user provided a direct source (URL, contact, file path, account, "
+        "live system), inspect it first when accessible; use session_search as "
+        "secondary context, not proof of what the source contains now. If "
+        "inaccessible, say so. Never conclude \"not found\" from session_search "
+        "alone when a direct source was given.\n\n"
         "FOUR CALLING SHAPES\n"
-        "1) DISCOVERY — pass `query`: FTS5 search deduped by session lineage. "
-        "Each hit: session_id, title, snippet, bookend_start/end (first/last 3 "
-        "messages), ±5 messages around the match (anchor flagged), "
-        "match_message_id.\n"
-        "2) SCROLL — pass `session_id` + `around_message_id` (window optional): "
-        "returns ±window messages around the anchor. To scroll FORWARD pass "
-        "messages[-1].id; BACKWARD pass messages[0].id.\n"
-        "3) READ — pass `session_id` only: dumps the whole session (first 20 + "
-        "last 10 if large). Resolves @session:<profile>/<id> links: split on "
-        "\"/\" into profile + id.\n"
-        "4) BROWSE — no args: recent sessions chronologically (titles, "
+        "1) DISCOVERY — pass `query`: FTS5 search deduped by lineage. Hits: "
+        "session_id, title, snippet, bookend_start/end (first/last 3 msgs), ±5 "
+        "msgs around match, match_message_id.\n"
+        "2) SCROLL — `session_id` + `around_message_id` (window optional): "
+        "±window msgs around the anchor. FORWARD = messages[-1].id; BACKWARD = "
+        "messages[0].id.\n"
+        "3) READ — `session_id` only: dumps whole session (first 20 + last 10 "
+        "if large). Resolves @session:<profile>/<id> links .\n"
+        "4) BROWSE — no args: recent sessions (titles, "
         "previews, timestamps).\n\n"
-        "FTS5 SYNTAX: AND default — multi-word queries need all terms. Use OR, "
-        "quoted phrases, NOT, or prefix wildcards (deploy*) for broader/exact "
-        "recall.\n\n"
-        "WHEN: questions about past conversation (\"what did we do about X\"). "
-        "Prefer direct sources first; session_search supplies historical "
-        "context."
+        "FTS5: AND default (all terms required); OR, quoted "
+        "phrases, NOT, or prefix wildcards (deploy*).\n\n"
+        "WHEN: questions about past conversation (\"what did we do about X\")."
     ),
     "parameters": {
         "type": "object",
         "properties": {
             "query": {
                 "type": "string",
-                "description": (
-                    "Search query (discovery shape): keywords, phrases, or boolean "
-                    "expressions. Omit to browse recent sessions. Ignored in "
-                    "scroll shape."
-                ),
+                "description": "Search query (discovery): keywords/phrases/boolean. Omit to browse recent sessions.",
             },
             "limit": {
                 "type": "integer",
-                "description": (
-                    "Discovery only. Max sessions to return (default 3, max 10). "
-                    "Bump to 5–10 when the topic likely spans several sessions."
-                ),
+                "description": "Discovery only. Max sessions (default 3, max 10); bump to 5–10 when the topic spans several sessions.",
                 "default": 3,
             },
             "sort": {
                 "type": "string",
                 "enum": ["newest", "oldest"],
-                "description": (
-                    "Discovery only. Temporal bias on top of FTS5 ranking: omit for "
-                    "relevance, 'newest' for recency (\"where did we leave X\"), "
-                    "'oldest' for origins (\"how did X start\"). Ignored elsewhere."
-                ),
+                "description": "Discovery only. Temporal bias: omit for relevance, 'newest' for recency, 'oldest' for origins.",
             },
             "session_id": {
                 "type": "string",
@@ -820,11 +803,7 @@ SESSION_SEARCH_SCHEMA = {
             },
             "around_message_id": {
                 "type": "integer",
-                "description": (
-                    "Scroll shape. Message id to center the window on: use "
-                    "match_message_id from discovery, or any id from a prior window. "
-                    "Forward = last window id; backward = first."
-                ),
+                "description": "Scroll shape. Message id to center on: match_message_id from discovery or a prior window id; forward = last id, backward = first.",
             },
             "window": {
                 "type": "integer",
@@ -836,19 +815,11 @@ SESSION_SEARCH_SCHEMA = {
             },
             "role_filter": {
                 "type": "string",
-                "description": (
-                    "Optional. Comma-separated roles. Discovery defaults to "
-                    "'user,assistant'; add 'tool' to include tool output or pass "
-                    "'tool' to search tool output only."
-                ),
+                "description": "Optional. Comma-separated roles; discovery defaults to 'user,assistant', add 'tool' for tool output.",
             },
             "profile": {
                 "type": "string",
-                "description": (
-                    "Optional. Read from another Hermes profile's DB (read-only). "
-                    "Resolves @session:<profile>/<id> links: pass the profile here, "
-                    "id in session_id. Omit for current profile."
-                ),
+                "description": "Optional. Read another profile's DB (read-only). For @session:<profile>/<id>: profile here, id in session_id.",
             },
         },
         "required": [],

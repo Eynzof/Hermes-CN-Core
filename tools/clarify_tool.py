@@ -140,23 +140,17 @@ CLARIFY_SCHEMA = {
         "properties": {
             "question": {
                 "type": "string",
-                "description": (
-                    "The question itself, and ONLY the question (e.g. 'Which "
-                    "deployment target?'). Do NOT embed the answer options here "
-                    "— pass them as separate elements in `choices`."
-                ),
+                "description": "The question, and ONLY the question (e.g. 'Which target?'). Do NOT embed options — pass them in `choices`.",
             },
             "choices": {
                 "type": "array",
                 "items": {"type": "string"},
                 "maxItems": MAX_CHOICES,
-                "description": (
-                    "REQUIRED for selectable options: each distinct option is "
-                    "its own array element (up to 4). UI renders them as "
-                    "pickable rows and auto-appends 'Other (type your "
-                    "answer)'. Omit ONLY for a truly open-ended free-text "
-                    "question."
-                ),
+        "description": (
+            "REQUIRED for selectable options: each distinct option is its own "
+            "element (up to 4); UI renders pickable rows with an auto 'Other' "
+            "option. Omit for open-ended."
+        ),
             },
         },
         "required": ["question"],

@@ -970,19 +970,19 @@ import sys
 # Tool description for LLM
 TERMINAL_TOOL_DESCRIPTION = """Execute shell commands on a Linux environment. Filesystem, cwd, and exported environment variables persist between calls.
 
-Reserve terminal for builds, installs, git, processes, scripts, network, package managers — anything needing a shell.
+Reserve terminal for builds, installs, git, processes, scripts, network, package managers.
 Do NOT use cat/head/tail to read files — use read_file.
 Do NOT use grep/rg/find to search — use search_files.
 Do NOT use ls to list directories — use search_files(target='files').
 Do NOT use sed/awk to edit files — use patch.
 Do NOT use echo/cat heredoc to create files — use write_file.
-Exported state persists: activate a virtualenv or export setup vars once per session; do not re-source the same environment before every command unless a command proves the shell state was reset.
+State persists: activate a virtualenv or export setup vars once per session; do not re-source the same environment before every command unless a command proves the shell state was reset.
 
-Foreground (default): returns instantly when done even with a high timeout; set it high for long builds.
-Background: background=true returns a session_id. For bounded jobs (tests, builds, deploys) set notify_on_complete=true — bg without it runs silently (poll via process). Silent fits only long-lived servers/watchers/daemons (no exit to notify on).
-Do NOT wrap servers in nohup/disown/setsid/'&' — use background=true so Hermes tracks lifecycle. Verify server readiness (health check/log signal); avoid blind sleep loops.
-process(action='poll') checks progress; process(action='wait') blocks until done.
-workdir sets per-command cwd. pty=true for interactive CLIs (Codex, Claude Code, Python REPL); vim/nano need it or they hang. Pipe git output to cat if it might page.
+Foreground (default): returns instantly when done even with a high timeout.
+Background: background=true returns a session_id. Bounded jobs need notify_on_complete=true — bg without it is silent (poll via process). Silent fits only long-lived servers/watchers/daemons.
+Do NOT wrap servers in nohup/disown/setsid/'&' — use background=true so Hermes tracks lifecycle. Verify server readiness.
+process(action='poll') checks progress; 'wait' blocks.
+workdir sets per-command cwd. pty=true for interactive CLIs (Codex, Claude Code, REPL); vim/nano need it or hang. Pipe git output to cat if it might page.
 """
 
 
@@ -3255,41 +3255,41 @@ TERMINAL_SCHEMA = {
             },
             "background": {
                 "type": "boolean",
-                "description": "Run the command in the background. Pair with notify_on_complete=true for bounded jobs (tests, builds, deploys) — bg without it runs silently and you'd have to poll. Keep silent for long-lived servers/watchers/daemons (no exit to notify on). Prefer foreground + generous timeout for short commands.",
+                "description": "Run in background. Pair with notify_on_complete=true for bounded jobs — without it the run is silent (poll via process). Silent fits long-lived servers.",
                 "default": False
             },
             "timeout": {
                 "type": "integer",
-                "description": f"Max seconds to wait (default: 180, foreground max: {FOREGROUND_MAX_TIMEOUT}). Returns instantly when the command finishes — set high for long tasks. Foreground timeout above {FOREGROUND_MAX_TIMEOUT}s is rejected; use background=true for longer.",
+                "description": f"Max seconds to wait (default: 180, foreground max: {FOREGROUND_MAX_TIMEOUT}). Returns instantly when done; above {FOREGROUND_MAX_TIMEOUT}s needs background=true.",
                 "minimum": 1
             },
             "workdir": {
                 "type": "string",
-                "description": "Working directory for this command (absolute path). Defaults to the session working directory."
+                "description": "Working directory for this command (absolute path); defaults to the session cwd."
             },
             "pty": {
                 "type": "boolean",
-                "description": "Run in PTY mode for interactive CLI tools (Codex, Claude Code, Python REPL). Local/SSH backends only. Default: false.",
+                "description": "Run in PTY mode for interactive CLIs (Codex, Claude Code, REPL). Local/SSH backends only.",
                 "default": False
             },
             "notify_on_complete": {
                 "type": "boolean",
-                "description": "When true (with background=true), you're notified once when the process finishes. Right choice for almost every long-running task (tests, builds, deploys, batch jobs) — set it and keep working. Mutually exclusive with watch_patterns: when both are set, watch_patterns is dropped.",
+                "description": "When true (with background=true), you're notified once when the process finishes — right for most long-running tasks. Mutually exclusive with watch_patterns.",
                 "default": False
             },
             "watch_patterns": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "Strings to watch for in background output — rare one-shot mid-process signals on long-lived processes (e.g. ['Application startup complete']). HARD RATE LIMIT: max 1 notification per 15s per process; after 3 windows of dropped matches it auto-upgrades to notify_on_complete behavior. DO NOT use for: end-of-run markers ('DONE'/'PASS'), error patterns ('ERROR'/'Traceback') in loops or batch jobs, or anything you'd combine with notify_on_complete — when in doubt choose notify_on_complete. Mutually exclusive with notify_on_complete."
+                "description": "Watch for rare one-shot signals in background output (e.g. ['Application startup complete']). HARD RATE LIMIT: 1 per 15s; after 3 drops upgrades to notify_on_complete. Not for end-of-run markers."
             },
             "token_kill": {
                 "type": "boolean",
-                "description": "When true (default), known commands are rewritten to use the rtk binary which collapses repeated lines to save tokens. Set false to preserve raw command output.",
+                "description": "When true (default), known commands use the rtk binary (collapses repeated lines to save tokens). Set false to preserve raw output.",
                 "default": True
             },
             "max_lines": {
                 "type": "integer",
-                "description": "Maximum number of output lines to return. When set, keeps the first floor(max_lines/2) and last ceil(max_lines/2)-1 lines with an omitted-lines marker between them. When unset, all lines are returned (subject to the byte cap).",
+                "description": "Max output lines: first floor(max_lines/2) + last ceil(max_lines/2)-1, omitted-lines marker. Unset = all lines (byte cap).",
                 "minimum": 10
             }
         },

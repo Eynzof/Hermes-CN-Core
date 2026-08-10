@@ -86,7 +86,57 @@ try:
 except ImportError:
     websockets = None  # type: ignore[assignment]
 
+# lark_oapi is deferred to first use. ``import lark_oapi`` alone costs ~2.5s
+# on a warm cache because the SDK's __init__ eagerly pulls ``lark_oapi.ws``
+# and the entire ``lark_oapi.api`` package (hundreds of model modules). The
+# desktop dashboard warms every bundled IM adapter at startup (P-040), so an
+# eager module-level import here would tax every launch even for users who
+# never connect to Feishu. We detect availability cheaply via find_spec and
+# import the SDK lazily (module __getattr__, PEP 562) on first real use.
 try:
+    import importlib.util as _importlib_util
+
+    FEISHU_AVAILABLE = _importlib_util.find_spec("lark_oapi") is not None
+except Exception:
+    FEISHU_AVAILABLE = False
+
+_LARK_BOUND_NAMES = frozenset({
+    "lark",
+    "GetApplicationRequest",
+    "CreateFileRequest",
+    "CreateFileRequestBody",
+    "CreateImageRequest",
+    "CreateImageRequestBody",
+    "CreateMessageRequest",
+    "CreateMessageRequestBody",
+    "GetChatRequest",
+    "GetMessageRequest",
+    "GetMessageResourceRequest",
+    "P2ImMessageMessageReadV1",
+    "ReplyMessageRequest",
+    "ReplyMessageRequestBody",
+    "UpdateMessageRequest",
+    "UpdateMessageRequestBody",
+    "AccessTokenType",
+    "HttpMethod",
+    "FEISHU_DOMAIN",
+    "LARK_DOMAIN",
+    "BaseRequest",
+    "CallBackCard",
+    "P2CardActionTriggerResponse",
+    "EventDispatcherHandler",
+    "FeishuWSClient",
+})
+
+
+def _lark_bindings() -> dict:
+    """Import lark_oapi + the model classes the adapter needs.
+
+    Returns a ``{name: value}`` dict suitable for ``ensure_and_bind`` and for
+    the module-level lazy ``__getattr__``. Costs ~2.5s the first time it runs
+    (the SDK eagerly imports its whole ``api`` package); afterwards all names
+    are cached in ``sys.modules`` and this returns in microseconds.
+    """
     import lark_oapi as lark
     from lark_oapi.api.application.v6 import GetApplicationRequest
     from lark_oapi.api.im.v1 import (
@@ -115,16 +165,47 @@ try:
     from lark_oapi.event.dispatcher_handler import EventDispatcherHandler
     from lark_oapi.ws import Client as FeishuWSClient
 
-    FEISHU_AVAILABLE = True
-except ImportError:
-    FEISHU_AVAILABLE = False
-    lark = None  # type: ignore[assignment]
-    CallBackCard = None  # type: ignore[assignment]
-    P2CardActionTriggerResponse = None  # type: ignore[assignment]
-    EventDispatcherHandler = None  # type: ignore[assignment]
-    FeishuWSClient = None  # type: ignore[assignment]
-    FEISHU_DOMAIN = None  # type: ignore[assignment]
-    LARK_DOMAIN = None  # type: ignore[assignment]
+    return {
+        "lark": lark,
+        "GetApplicationRequest": GetApplicationRequest,
+        "CreateFileRequest": CreateFileRequest,
+        "CreateFileRequestBody": CreateFileRequestBody,
+        "CreateImageRequest": CreateImageRequest,
+        "CreateImageRequestBody": CreateImageRequestBody,
+        "CreateMessageRequest": CreateMessageRequest,
+        "CreateMessageRequestBody": CreateMessageRequestBody,
+        "GetChatRequest": GetChatRequest,
+        "GetMessageRequest": GetMessageRequest,
+        "GetMessageResourceRequest": GetMessageResourceRequest,
+        "P2ImMessageMessageReadV1": P2ImMessageMessageReadV1,
+        "ReplyMessageRequest": ReplyMessageRequest,
+        "ReplyMessageRequestBody": ReplyMessageRequestBody,
+        "UpdateMessageRequest": UpdateMessageRequest,
+        "UpdateMessageRequestBody": UpdateMessageRequestBody,
+        "AccessTokenType": AccessTokenType,
+        "HttpMethod": HttpMethod,
+        "FEISHU_DOMAIN": FEISHU_DOMAIN,
+        "LARK_DOMAIN": LARK_DOMAIN,
+        "BaseRequest": BaseRequest,
+        "CallBackCard": CallBackCard,
+        "P2CardActionTriggerResponse": P2CardActionTriggerResponse,
+        "EventDispatcherHandler": EventDispatcherHandler,
+        "FeishuWSClient": FeishuWSClient,
+        "FEISHU_AVAILABLE": True,
+    }
+
+
+def _bind_lark_globals() -> None:
+    """Import lark_oapi lazily and bind all adapter-level names."""
+    globals().update(_lark_bindings())
+
+
+def __getattr__(name: str):
+    """PEP 562 lazy module attribute: resolve lark names on first access."""
+    if name in _LARK_BOUND_NAMES:
+        _bind_lark_globals()
+        return globals()[name]
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 FEISHU_WEBSOCKET_AVAILABLE = websockets is not None
 FEISHU_WEBHOOK_AVAILABLE = aiohttp is not None
@@ -1403,57 +1484,9 @@ def check_feishu_requirements() -> bool:
     if FEISHU_AVAILABLE:
         return True
 
-    def _import():
-        import lark_oapi as lark
-        from lark_oapi.api.application.v6 import GetApplicationRequest
-        from lark_oapi.api.im.v1 import (
-            CreateFileRequest, CreateFileRequestBody,
-            CreateImageRequest, CreateImageRequestBody,
-            CreateMessageRequest, CreateMessageRequestBody,
-            GetChatRequest, GetMessageRequest, GetMessageResourceRequest,
-            P2ImMessageMessageReadV1,
-            ReplyMessageRequest, ReplyMessageRequestBody,
-            UpdateMessageRequest, UpdateMessageRequestBody,
-        )
-        from lark_oapi.core import AccessTokenType, HttpMethod
-        from lark_oapi.core.const import FEISHU_DOMAIN, LARK_DOMAIN
-        from lark_oapi.core.model import BaseRequest
-        from lark_oapi.event.callback.model.p2_card_action_trigger import (
-            CallBackCard, P2CardActionTriggerResponse,
-        )
-        from lark_oapi.event.dispatcher_handler import EventDispatcherHandler
-        from lark_oapi.ws import Client as FeishuWSClient
-        return {
-            "lark": lark,
-            "GetApplicationRequest": GetApplicationRequest,
-            "CreateFileRequest": CreateFileRequest,
-            "CreateFileRequestBody": CreateFileRequestBody,
-            "CreateImageRequest": CreateImageRequest,
-            "CreateImageRequestBody": CreateImageRequestBody,
-            "CreateMessageRequest": CreateMessageRequest,
-            "CreateMessageRequestBody": CreateMessageRequestBody,
-            "GetChatRequest": GetChatRequest,
-            "GetMessageRequest": GetMessageRequest,
-            "GetMessageResourceRequest": GetMessageResourceRequest,
-            "P2ImMessageMessageReadV1": P2ImMessageMessageReadV1,
-            "ReplyMessageRequest": ReplyMessageRequest,
-            "ReplyMessageRequestBody": ReplyMessageRequestBody,
-            "UpdateMessageRequest": UpdateMessageRequest,
-            "UpdateMessageRequestBody": UpdateMessageRequestBody,
-            "AccessTokenType": AccessTokenType,
-            "HttpMethod": HttpMethod,
-            "FEISHU_DOMAIN": FEISHU_DOMAIN,
-            "LARK_DOMAIN": LARK_DOMAIN,
-            "BaseRequest": BaseRequest,
-            "CallBackCard": CallBackCard,
-            "P2CardActionTriggerResponse": P2CardActionTriggerResponse,
-            "EventDispatcherHandler": EventDispatcherHandler,
-            "FeishuWSClient": FeishuWSClient,
-            "FEISHU_AVAILABLE": True,
-        }
-
     from tools.lazy_deps import ensure_and_bind
-    return ensure_and_bind("platform.feishu", _import, globals(), prompt=False)
+
+    return ensure_and_bind("platform.feishu", _lark_bindings, globals(), prompt=False)
 
 
 class FeishuAdapter(BasePlatformAdapter):

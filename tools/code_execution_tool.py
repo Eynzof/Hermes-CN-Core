@@ -1861,27 +1861,23 @@ def _resolve_child_cwd(mode: str, staging_dir: str, task_id: str = "") -> str:
 # Ordered to match the canonical display order.
 _TOOL_DOC_LINES = [
     ("web_search",
-     "  web_search(query: str, limit: int = 5) -> dict\n"
-     "    Returns {\"data\": {\"web\": [{\"url\", \"title\", \"description\"}, ...]}}"),
+     "  web_search(query, limit=5) -> dict: {\"data\": {\"web\": [{url, title, description}, ...]}}"),
     ("web_extract",
-     "  web_extract(urls: list[str], char_limit: int = None) -> dict\n"
-     "    Returns {\"results\": [{\"url\", \"title\", \"content\", \"error\"}, ...]} where content is markdown.\n"
-     "    No LLM summarization. Pages over char_limit (default 15000) are head+tail truncated; full text stored on disk (path in the content footer)."),
+     "  web_extract(urls: list, char_limit=None) -> dict: {\"results\": [{url, title, content, error}, ...]} "
+     "(markdown, no LLM). Over char_limit (15000 default) head+tail truncated; full text on disk "
+     "(path in content footer)."),
     ("read_file",
-     "  read_file(path: str, offset: int = 1, limit: int = 500) -> dict\n"
-     "    Lines are 1-indexed. Returns {\"content\": \"...\", \"total_lines\": N}"),
+     "  read_file(path, offset=1, limit=500) -> dict: 1-indexed lines; {\"content\", \"total_lines\"}"),
     ("write_file",
-     "  write_file(path: str, content: str) -> dict\n"
-     "    Always overwrites the entire file."),
+     "  write_file(path, content) -> dict: always overwrites the entire file."),
     ("search_files",
-     "  search_files(pattern: str, target=\"content\", path=\".\", file_glob=None, limit=50) -> dict\n"
-     "    target: \"content\" (search inside files) or \"files\" (find files by name). Returns {\"matches\": [...]}"),
+     "  search_files(pattern, target=\"content\", path=\".\", file_glob=None, limit=50) -> dict: "
+     "{\"matches\": [...]}; target: \"content\"=in files, \"files\"=by name."),
     ("patch",
-     "  patch(path: str, old_string: str, new_string: str, replace_all: bool = False) -> dict\n"
-     "    Replaces old_string with new_string in the file."),
+     "  patch(path, old_string, new_string, replace_all=False) -> dict: replaces old_string with new_string."),
     ("terminal",
-     "  terminal(command: str, timeout=None, workdir=None) -> dict\n"
-     "    Foreground only (no background/pty). Returns {\"output\": \"...\", \"exit_code\": N}"),
+     "  terminal(command, timeout=None, workdir=None) -> dict: foreground only (no background/pty); "
+     "{\"output\", \"exit_code\"}"),
 ]
 
 
@@ -1933,25 +1929,21 @@ def build_execute_code_schema(enabled_sandbox_tools: set = None,
         )
 
     description = (
-        "Run a Python script that can call Hermes tools programmatically. "
-        "Use this when you need 3+ tool calls with processing logic between them, "
-        "need to filter/reduce large tool outputs before they enter your context, "
-        "need conditional branching (if X then Y else Z), or need to loop "
-        "(fetch N pages, process N files, retry on failure).\n\n"
-        "Use normal tool calls instead when: single tool call with no processing, "
-        "you need to see the full result and apply complex reasoning, "
-        "or the task requires interactive user input.\n\n"
+        "Run a Python script that calls Hermes tools programmatically. Use for 3+ "
+        "tool calls with logic between them, filtering/reducing large tool "
+        "outputs, conditional branching, or loops.\n\n"
+        "Prefer normal tool calls for: a single call with no processing, "
+        "full-result reasoning, or interactive input.\n\n"
         f"Available via `from hermes_tools import ...`:\n\n"
         f"{tool_lines}\n\n"
-        "Limits: 5-minute timeout, 50KB stdout cap, max 50 tool calls per script. "
-        "terminal() is foreground-only (no background or pty).\n\n"
+        "Limits: 5-minute timeout, 50KB stdout cap, 50 tool calls max. "
+        "terminal() is foreground-only (no bg/pty).\n\n"
         f"{cwd_note}\n\n"
-        "Print your final result to stdout. Use Python stdlib (json, re, math, csv, "
-        "datetime, collections, etc.) for processing between tool calls.\n\n"
-        "Also available (no import needed — built into hermes_tools):\n"
-        "  json_parse(text: str) — json.loads with strict=False; use for terminal() output with control chars\n"
-        "  shell_quote(s: str) — shlex.quote(); use when interpolating dynamic strings into shell commands\n"
-        "  retry(fn, max_attempts=3, delay=2) — retry with exponential backoff for transient failures"
+        "Print the final result to stdout; use Python stdlib for processing.\n\n"
+        "Built-in helpers (no import):\n"
+        "  json_parse(text) — json.loads(strict=False); for output with control chars\n"
+        "  shell_quote(s) — shlex.quote(); for dynamic strings in shell commands\n"
+        "  retry(fn, max_attempts=3, delay=2) — exponential backoff for transient failures"
     )
 
     return {

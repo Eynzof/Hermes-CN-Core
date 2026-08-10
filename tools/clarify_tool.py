@@ -119,26 +119,21 @@ def check_clarify_requirements() -> bool:
 CLARIFY_SCHEMA = {
     "name": "clarify",
     "description": (
-        "Ask the user a question when you need clarification, feedback, or a "
-        "decision before proceeding. Supports two modes:\n\n"
-        "1. **Multiple choice** — provide up to 4 choices. The user picks one "
-        "or types their own answer via a 5th 'Other' option.\n"
-        "2. **Open-ended** — omit choices entirely. The user types a free-form "
-        "response.\n\n"
-        "CRITICAL: when you are offering options, put each option ONLY in the "
-        "`choices` array — NEVER enumerate the options inside the `question` "
-        "text. The UI renders `choices` as selectable rows; options written "
-        "into the question string render as dead prose the user can't pick. "
-        "Right: question='Which deployment target?', choices=['staging', "
-        "'prod']. Wrong: question='Which target? 1) staging 2) prod', choices=[].\n\n"
-        "Use this tool when:\n"
-        "- The task is ambiguous and you need the user to choose an approach\n"
-        "- You want post-task feedback ('How did that work out?')\n"
-        "- You want to offer to save a skill or update memory\n"
-        "- A decision has meaningful trade-offs the user should weigh in on\n\n"
-        "Do NOT use this tool for simple yes/no confirmation of dangerous "
-        "commands (the terminal tool handles that). Prefer making a reasonable "
-        "default choice yourself when the decision is low-stakes."
+        "Ask the user for clarification, feedback, or a decision before "
+        "proceeding. Two modes:\n\n"
+        "1. Multiple choice — up to 4 choices; user picks one or types their "
+        "own.\n"
+        "2. Open-ended — omit choices for a free-form response.\n\n"
+        "CRITICAL: options go ONLY in `choices`, NEVER in the `question` "
+        "text — UI renders choices as selectable rows; options in the "
+        "question are dead prose. Right: question='Which target?', "
+        "choices=['staging','prod']. Wrong: question='1) staging 2) prod', "
+        "choices=[].\n\n"
+        "Use when: task ambiguous and the user should choose; post-task "
+        "feedback; offering to save a skill / update memory; decisions with "
+        "real trade-offs.\n"
+        "Do NOT use for yes/no confirmation of dangerous commands (terminal "
+        "handles that); default sensibly for low-stakes calls."
     ),
     "parameters": {
         "type": "object",
@@ -156,11 +151,11 @@ CLARIFY_SCHEMA = {
                 "items": {"type": "string"},
                 "maxItems": MAX_CHOICES,
                 "description": (
-                    "REQUIRED whenever you are presenting selectable options: "
-                    "each distinct option is its own array element (up to 4). "
-                    "The UI renders these as pickable rows and auto-appends an "
-                    "'Other (type your answer)' option. Omit this parameter "
-                    "entirely ONLY for a genuinely open-ended free-text question."
+                    "REQUIRED for selectable options: each distinct option is "
+                    "its own array element (up to 4). UI renders them as "
+                    "pickable rows and auto-appends 'Other (type your "
+                    "answer)'. Omit ONLY for a truly open-ended free-text "
+                    "question."
                 ),
             },
         },

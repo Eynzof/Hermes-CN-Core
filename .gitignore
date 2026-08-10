@@ -165,3 +165,4 @@ apps/desktop/demo/
 # pr-infographic-workflow reference (storage rule + lapse #8 / #COMMIT-1).
 infographic/
 build/
+_esc_probe.py

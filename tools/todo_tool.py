@@ -667,34 +667,22 @@ def check_todo_requirements() -> bool:
 TODO_SCHEMA = {
     "name": "todo",
     "description": (
-        "Manage your task list for the current session. Use for complex tasks "
-        "with 3+ steps or when the user provides multiple tasks. "
-        "Call with no parameters to read the current list.\n\n"
-        "Writing:\n"
-        "- Provide 'todos' array to create/update items\n"
-        "- merge=false (default): replace the entire list with a fresh plan\n"
-        "- merge=true: update existing items by id, add any new ones\n\n"
-        "Each item: {id: string, content: string, "
-        "status: pending|in_progress|completed|cancelled, "
-        "notes?: string, code?: string}\n"
-        "List order is priority. Only ONE item in_progress at a time.\n"
-        "Mark items completed immediately when done. If something fails, "
-        "cancel it and add a revised item.\n\n"
+        "Manage the current session's task list. Use for complex tasks (3+ steps) "
+        "or multiple user tasks; no args = read.\n\n"
+        "Writing: 'todos' items ({id, content, status: "
+        "pending|in_progress|completed|cancelled, notes?, code?}). "
+        "merge=false (default) replaces the list; merge=true updates by id, adds "
+        "new. Order = priority; only ONE in_progress at a time; complete items "
+        "when done; cancel failed ones and add revised.\n\n"
         "Behavior:\n"
-        "- Only one item may be in_progress: with auto_fix=true (default) "
-        "the extras are auto-completed; with auto_fix=false the write is "
-        "rejected\n"
-        "- Completed/cancelled items cannot be re-opened; such requests are "
-        "clamped back to their terminal status\n"
-        "- Completed/cancelled items dropped by a replace are archived "
-        "(summary 'archived')\n"
-        "- Items with `code` are verified when marked completed: the code "
-        "runs, and on failure the item reverts to pending with the error in "
-        "notes\n"
-        "- When every item is completed/cancelled, the result carries an "
-        "all-done reminder in 'message'\n\n"
-        "Always returns the full current list plus 'warnings' (non-blocking "
-        "notes) and 'message'."
+        "- auto_fix=true (default) auto-completes extra in_progress; false "
+        "rejects the write\n"
+        "- Done items cannot be re-opened (clamped)\n"
+        "- Replace-dropped done items are archived\n"
+        "- `code` items are verified on completion; failure reverts to pending "
+        "with error in notes\n"
+        "- All-done returns a reminder in 'message'\n\n"
+        "Always returns the full current list + 'warnings' and 'message'."
     ),
     "parameters": {
         "type": "object",
@@ -721,19 +709,18 @@ TODO_SCHEMA = {
                         "notes": {
                             "type": "string",
                             "description": (
-                                "Optional notes/details for this item; updated "
-                                "on merge only when provided"
+                                "Optional notes/details; updated on merge "
+                                "only when provided"
                             )
                         },
                         "code": {
                             "type": "string",
                             "description": (
-                                "Optional verification code: inline Python, a "
-                                ".py file path, a `!`-prefixed shell command, "
-                                "or a .sh/.ps1 file path. When an item is "
-                                "marked completed with `code` set, the code "
-                                "runs; on failure the item reverts to pending "
-                                "with the error in notes"
+                                "Optional verification: inline Python, a .py "
+                                "path, a `!`-prefixed shell command, or a "
+                                ".sh/.ps1 path. Runs when the item is marked "
+                                "completed; on failure the item reverts to "
+                                "pending with the error in notes"
                             )
                         }
                     },

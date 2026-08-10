@@ -1076,26 +1076,22 @@ def apply_memory_pending(payload: Dict[str, Any], store: "MemoryStore") -> Dict[
 MEMORY_SCHEMA = {
     "name": "memory",
     "description": (
-        "Save durable facts to persistent memory that survive across sessions. Memory is "
-        "injected into every future turn, so keep entries compact and high-signal.\n\n"
-        "HOW: make ALL your changes in ONE call via an 'operations' array (each item: "
-        "{action, content?, old_text?}). The batch applies atomically and the char limit is "
-        "checked only on the FINAL result — so a single call can remove/replace stale entries "
-        "to free room AND add new ones, even when an add alone would overflow. The response "
-        "reports current/limit chars and confirms completion; one batch call finishes the "
-        "update, so don't repeat it. Use the bare action/content/old_text fields only for a "
-        "single lone change.\n\n"
-        "WHEN: save proactively when the user states a preference, correction, or personal "
-        "detail, or you learn a stable fact about their environment, conventions, or workflow. "
-        "Priority: user preferences & corrections > environment facts > procedures. The best "
-        "memory stops the user repeating themselves.\n\n"
-        "IF FULL: an add is rejected with the current entries shown. Reissue as ONE batch that "
-        "removes or shortens enough stale entries and adds the new one together.\n\n"
-        "TARGETS: 'user' = who the user is (name, role, preferences, style). 'memory' = your "
-        "notes (environment, conventions, tool quirks, lessons).\n\n"
-        "SKIP: trivial/obvious info, easily re-discovered facts, raw data dumps, task progress, "
-        "completed-work logs, temporary TODO state (use session_search for those). Reusable "
-        "procedures belong in a skill, not memory."
+        "Save durable, high-signal facts that survive across sessions "
+        "(injected into every turn).\n\n"
+        "HOW: batch ALL changes in ONE call via 'operations' "
+        "({action, content?, old_text?} each) — atomic, char limit checked "
+        "on the FINAL result only, so one call can remove/replace stale "
+        "entries to free room and add new ones. Don't repeat it; bare "
+        "action/content/old_text for one change.\n\n"
+        "WHEN: save proactively on stated preferences, corrections, personal "
+        "details, or stable facts about environment/conventions/workflow.\n\n"
+        "IF FULL: add is rejected showing current entries — reissue as ONE "
+        "batch that removes/shortens stale entries and adds the new one.\n\n"
+        "TARGETS: 'user' = who the user is; 'memory' = your notes "
+        "(environment, conventions, tool quirks, lessons).\n\n"
+        "SKIP: trivial info, re-discoverable facts, raw dumps, task progress, "
+        "completed-work logs, temporary todo state (use session_search). "
+        "Reusable procedures belong in a skill, not memory."
     ),
     "parameters": {
         "type": "object",
@@ -1121,9 +1117,10 @@ MEMORY_SCHEMA = {
             "operations": {
                 "type": "array",
                 "description": (
-                    "Batch shape: a list of operations applied atomically in one call "
-                    "against the final char budget. Preferred when making multiple changes "
-                    "or consolidating to make room. Each item is {action, content?, old_text?}."
+                    "Batch shape: operations applied atomically in one call "
+                    "against the final char budget. Preferred for multiple "
+                    "changes or consolidating to make room. Each item: "
+                    "{action, content?, old_text?}."
                 ),
                 "items": {
                     "type": "object",

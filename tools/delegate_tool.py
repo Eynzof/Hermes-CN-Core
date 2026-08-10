@@ -3462,89 +3462,57 @@ def _build_top_level_description() -> str:
 
     if max_depth >= 2 and orchestrator_on:
         nesting_clause = (
-            f"Nested delegation IS enabled for this user "
-            f"(max_spawn_depth={max_depth}): pass role='orchestrator' on a "
-            f"child to let it spawn its own workers, up to {max_depth - 1} "
-            f"additional level(s) deep."
+            f"Nesting IS enabled (max_spawn_depth={max_depth}): pass "
+            f"role='orchestrator' on a child to let it spawn its own "
+            f"workers, up to {max_depth - 1} level(s) deeper."
         )
     elif max_depth >= 2 and not orchestrator_on:
         nesting_clause = (
-            f"Nested delegation is DISABLED on this install "
-            f"(delegation.orchestrator_enabled=false), even though "
-            f"max_spawn_depth={max_depth}. role='orchestrator' is silently "
-            f"forced to 'leaf'."
+            f"Nesting DISABLED here (delegation.orchestrator_enabled=false) "
+            f"despite max_spawn_depth={max_depth}; 'orchestrator' is "
+            f"silently forced to 'leaf'."
         )
     else:
         nesting_clause = (
-            f"Nested delegation is OFF for this user "
-            f"(max_spawn_depth={max_depth}): every child is a leaf and "
-            f"cannot delegate further. Raise delegation.max_spawn_depth in "
-            f"config.yaml to enable nesting."
+            f"Nesting OFF (max_spawn_depth={max_depth}): every child is a "
+            f"leaf; raise delegation.max_spawn_depth to enable."
         )
 
     return (
-        "Spawn one or more subagents to work on tasks in isolated contexts. "
-        "Each subagent gets its own conversation, terminal session, and toolset. "
-        "Only the final summary is returned -- intermediate tool results "
-        "never enter your context window.\n\n"
-        "TWO MODES (one of 'goal' or 'tasks' is required):\n"
-        "1. Single task: provide 'goal' (+ optional context and role).\n"
-        f"2. Batch (parallel): provide 'tasks' array with up to {max_children} "
-        f"items concurrently for this user (configured via "
-        f"delegation.max_concurrent_children in config.yaml). {nesting_clause}\n\n"
-        "BOTH MODES RUN IN THE BACKGROUND. delegate_task returns immediately — "
-        "you and the user keep working, and the completed result re-enters "
-        "the conversation as a new message. A "
-        "batch returns one handle, runs N subagents concurrently, and delivers "
-        "one consolidated result after ALL of them finish. Do NOT wait or poll; "
-        "just continue with other work after dispatching.\n\n"
-        "LIVE TRANSCRIPTS: the dispatch response includes 'live_transcripts' — "
-        "one append-only human-readable log file per task (under "
-        "cache/delegation/live/<delegation_id>/). Each child streams its "
-        "assistant text, tool calls, and tool results there while it runs. "
-        "Read (or `tail -f` in a terminal) those paths any time you or the "
-        "user want to see what a subagent is actually doing instead of "
-        "waiting for the final summary.\n\n"
-        "WHEN TO USE delegate_task:\n"
-        "- Reasoning-heavy subtasks (debugging, code review, research synthesis)\n"
-        "- Tasks that would flood your context with intermediate data\n"
-        "- Parallel independent workstreams (research A and B simultaneously)\n\n"
-        "WHEN NOT TO USE (use these instead):\n"
-        "- Mechanical multi-step work with no reasoning needed -> use execute_code\n"
-        "- Single tool call -> just call the tool directly\n"
-        "- Tasks needing user interaction -> subagents cannot use clarify\n"
-        "- Durable long-running work that must outlive the current turn -> "
-        "use cronjob (action='create') or terminal(background=True, "
-        "notify_on_complete=True) instead. Background delegations are NOT "
-        "durable: if the parent session is closed (/new) or the process exits "
-        "before a subagent finishes, that subagent's work is discarded, and "
-        "/stop cancels every running background subagent.\n\n"
+        "Spawn subagents in isolated contexts. Each gets its own "
+        "conversation, terminal, and toolset; only the summary returns — "
+        "intermediate results never enter your context.\n\n"
+        "MODES (goal or tasks required):\n"
+        "1. Single: 'goal' + optional context/role.\n"
+        f"2. Batch: 'tasks' — up to {max_children} concurrent "
+        f"(delegation.max_concurrent_children). {nesting_clause}\n\n"
+        "RUNS IN BACKGROUND: returns immediately; the result re-enters as a "
+        "new message when done. Do NOT poll; keep working. Batch joins all "
+        "tasks into ONE consolidated result. 'live_transcripts' lists "
+        "per-task log paths (cache/delegation/live/<delegation_id>/) to "
+        "tail -f.\n\n"
+        "USE FOR: reasoning-heavy subtasks; context-flooding work; parallel "
+        "independent streams.\n"
+        "NOT FOR: mechanical multi-step work -> execute_code; one tool call "
+        "-> call it directly; user-interaction (subagents cannot clarify); "
+        "durable work -> cronjob or terminal(background=True, "
+        "notify_on_complete=True). Not durable: /new, exit, or /stop "
+        "discards them.\n\n"
         "IMPORTANT:\n"
-        "- Subagents have NO memory of your conversation. Pass all relevant "
-        "info (file paths, error messages, constraints) via the 'context' field.\n"
-        "- If the user is writing in a non-English language, or asked for "
-        "output in a specific language / tone / style, say so in 'context' "
-        "(e.g. \"respond in Chinese\", \"return output in Japanese\"). "
-        "Otherwise subagents default to English and their summaries will "
-        "contaminate your final reply with the wrong language.\n"
-        "- Subagent summaries are SELF-REPORTS, not verified facts. A subagent "
-        "that claims \"uploaded successfully\" or \"file written\" may be wrong. "
-        "For operations with external side-effects (HTTP POST/PUT, remote "
-        "writes, file creation at shared paths, publishing), require the "
-        "subagent to return a verifiable handle (URL, ID, absolute path, HTTP "
-        "status) and verify it yourself — fetch the URL, stat the file, read "
-        "back the content — before telling the user the operation succeeded.\n"
-        "- Leaf subagents (role='leaf', the default) CANNOT call: "
-        "delegate_task, clarify, memory, send_message, execute_code.\n"
-        "- Orchestrator subagents (role='orchestrator') retain "
-        "delegate_task so they can spawn their own workers, but still "
-        "cannot use clarify, memory, send_message, or execute_code. "
-        f"Orchestrators are bounded by max_spawn_depth={max_depth} for this "
-        f"user and can be disabled globally via "
+        "- No memory of your conversation: pass paths, errors, constraints, "
+        "and language/tone via 'context' (children default to English).\n"
+        "- Summaries are SELF-REPORTS: for side-effectful ops (HTTP POST/PUT, "
+        "remote writes, publishing), require a verifiable handle "
+        "(URL/ID/path/status) and verify it yourself.\n"
+        "- Leaf (default) lacks: delegate_task, clarify, memory, "
+        "send_message, execute_code.\n"
+        f"- Orchestrator retains delegate_task to spawn workers; bounded by "
+        f"max_spawn_depth={max_depth}; disable via "
         "delegation.orchestrator_enabled=false.\n"
-        "- Subagent model is NOT selectable per call: children inherit the parent model (plus its fallback chain) unless you pin all subagents to a model via delegation.provider / delegation.model in config.yaml.\n"
-        "- Each subagent gets its own terminal session (separate working directory and state).\n"
-        "- Results are always returned as an array, one entry per task."
+        "- Children inherit the parent model (not selectable per call) "
+        "unless delegation.provider/model pins them.\n"
+        "- Each child gets its own terminal session (separate cwd/state).\n"
+        "- Results return as an array, one entry per task."
     )
 
 
@@ -3555,10 +3523,10 @@ def _build_tasks_param_description() -> str:
     except Exception:
         max_children = _DEFAULT_MAX_CONCURRENT_CHILDREN
     return (
-        f"Batch mode: tasks to run in parallel (up to {max_children} for this "
-        f"user, set via delegation.max_concurrent_children). Each gets "
-        "its own subagent with isolated context and terminal session. "
-        "When provided, top-level goal/context/role are ignored."
+        f"Batch mode: tasks to run in parallel, up to {max_children} for "
+        f"this user (delegation.max_concurrent_children). Each gets its own "
+        "isolated subagent + terminal session. When tasks is set, top-level "
+        "goal/context/role are ignored."
     )
 
 
@@ -3575,27 +3543,24 @@ def _build_role_param_description() -> str:
 
     if max_depth >= 2 and orchestrator_on:
         nesting_note = (
-            f"Nesting IS enabled for this user (max_spawn_depth={max_depth}): "
-            f"orchestrator children can themselves delegate up to {max_depth - 1} "
-            "more level(s) deep."
+            f"Nesting IS enabled (max_spawn_depth={max_depth}): orchestrator "
+            f"children can delegate up to {max_depth - 1} more level(s) deep."
         )
     elif max_depth >= 2 and not orchestrator_on:
         nesting_note = (
-            "Nesting is currently disabled "
-            "(delegation.orchestrator_enabled=false); 'orchestrator' is "
-            "silently forced to 'leaf'."
+            f"Nesting disabled (delegation.orchestrator_enabled=false) despite "
+            f"max_spawn_depth={max_depth}; 'orchestrator' is forced to 'leaf'."
         )
     else:
         nesting_note = (
-            f"Nesting is OFF for this user (max_spawn_depth={max_depth}); "
-            "'orchestrator' is silently forced to 'leaf'. Raise "
-            "delegation.max_spawn_depth in config.yaml to enable."
+            f"Nesting OFF (max_spawn_depth={max_depth}); 'orchestrator' is "
+            "forced to 'leaf'. Raise delegation.max_spawn_depth to enable."
         )
 
     return (
-        "Role of the child agent. 'leaf' (default) = focused "
-        "worker, cannot delegate further. 'orchestrator' = can "
-        f"use delegate_task to spawn its own workers. {nesting_note}"
+        "Child agent role. 'leaf' (default) = focused worker, cannot "
+        "delegate further. 'orchestrator' = may call delegate_task to spawn "
+        f"its own workers. {nesting_note}"
     )
 
 
@@ -3634,8 +3599,8 @@ DELEGATE_TASK_SCHEMA = {
     # redirect HERMES_HOME.
     "description": (
         "Spawn one or more subagents in isolated contexts. "
-        "Description is rebuilt at every get_definitions() call to reflect "
-        "the user's current delegation limits."
+        "Rebuilt at every get_definitions() call to reflect the user's "
+        "current delegation limits."
     ),
     "parameters": {
         "type": "object",
@@ -3644,16 +3609,16 @@ DELEGATE_TASK_SCHEMA = {
                 "type": "string",
                 "description": (
                     "What the subagent should accomplish. Be specific and "
-                    "self-contained -- the subagent knows nothing about your "
+                    "self-contained — the subagent knows nothing of your "
                     "conversation history."
                 ),
             },
             "context": {
                 "type": "string",
                 "description": (
-                    "Background information the subagent needs: file paths, "
-                    "error messages, project structure, constraints. The more "
-                    "specific you are, the better the subagent performs."
+                    "Background the subagent needs: file paths, error "
+                    "messages, project structure, constraints. More "
+                    "specificity = better results."
                 ),
             },
             "tasks": {
@@ -3669,7 +3634,7 @@ DELEGATE_TASK_SCHEMA = {
                         "role": {
                             "type": "string",
                             "enum": ["leaf", "orchestrator"],
-                            "description": "Per-task role override. See top-level 'role' for semantics.",
+                            "description": "Per-task role override. See top-level 'role'.",
                         },
                     },
                     "required": ["goal"],
@@ -3687,13 +3652,10 @@ DELEGATE_TASK_SCHEMA = {
             "background": {
                 "type": "boolean",
                 "description": (
-                    "DEPRECATED / IGNORED. Top-level single and batch "
-                    "delegations run in the background automatically — you do "
-                    "not need to (and cannot) opt in or out. A single result or "
-                    "consolidated batch result re-enters the conversation when "
-                    "the work finishes; just continue working in the meantime. "
-                    "Setting this has no effect; the parameter remains only for "
-                    "backward compatibility."
+                    "DEPRECATED / IGNORED. All delegations run in the "
+                    "background automatically; the result re-enters the "
+                    "conversation when done. Kept only for backward "
+                    "compatibility."
                 ),
             },
         },

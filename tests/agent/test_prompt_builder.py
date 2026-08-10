@@ -52,7 +52,8 @@ class TestGuidanceConstants:
         assert ">80%" not in MEMORY_GUIDANCE
 
     def test_session_search_guidance_is_simple_cross_session_recall(self):
-        assert "relevant cross-session context exists" in SESSION_SEARCH_GUIDANCE
+        assert "cross-session context" in SESSION_SEARCH_GUIDANCE
+        assert "repeat themselves" in SESSION_SEARCH_GUIDANCE
         assert "recent turns of the current session" not in SESSION_SEARCH_GUIDANCE
 
 # =========================================================================
@@ -411,7 +412,7 @@ class TestBuildSkillsSystemPrompt:
         result = build_skills_system_prompt()
         assert "python-debug" in result
         assert "Debug Python scripts" in result
-        assert "available_skills" in result
+        assert "skill_view" in result
 
     def test_deduplicates_skills(self, monkeypatch, tmp_path):
         monkeypatch.setenv("HERMES_HOME", str(tmp_path))
@@ -1063,8 +1064,8 @@ class TestPromptBuilderConstants:
         the session, so the agent must be told up front not to promise it."""
         for key in ("cli", "tui"):
             hint = PLATFORM_HINTS[key]
-            assert "LOCAL-ONLY" in hint
-            assert "deliver" in hint
+            assert "local-only" in hint.lower()
+            assert "deliver" in hint.lower()
 
     def test_whatsapp_cloud_hint_mentions_24h_window(self):
         """The Cloud API's 24-hour conversation window is a hard rule the
@@ -1220,11 +1221,14 @@ class TestEnvironmentHints:
         result = _pb.build_environment_hints()
         assert "Host: Windows" in result
         assert "User home directory:" in result
-        # Two Windows-specific callouts that must ALWAYS appear together:
-        # hostname warning + bash-not-PowerShell warning.
+        # Windows host block must include the hostname warning and a shell hint.
         assert "hostname" in result
         assert "NOT the username" in result
-        assert "bash" in result
+        assert (
+            _WINDOWS_POWERSHELL_SHELL_HINT in result
+            or _WINDOWS_PWSH_SHELL_HINT in result
+            or _WINDOWS_BASH_SHELL_HINT in result
+        )
         assert "PowerShell" in result
 
     def test_build_environment_hints_shell_bash_uses_bash_hint(self, monkeypatch):
@@ -1677,44 +1681,47 @@ class TestToolUseEnforcementGuidance:
 
     def test_guidance_forbids_description_only(self):
         assert "describe" in TOOL_USE_ENFORCEMENT_GUIDANCE.lower()
-        assert "promise" in TOOL_USE_ENFORCEMENT_GUIDANCE.lower()
+        assert "plans" in TOOL_USE_ENFORCEMENT_GUIDANCE.lower()
+        assert "summaries" in TOOL_USE_ENFORCEMENT_GUIDANCE.lower()
 
-    def test_guidance_requires_action(self):
-        assert "MUST" in TOOL_USE_ENFORCEMENT_GUIDANCE
+    def test_guidance_starts_with_enforcement_heading(self):
+        assert TOOL_USE_ENFORCEMENT_GUIDANCE.startswith("## Tool-use enforcement")
+
+    def test_guidance_requires_action_not_just_plans(self):
+        text = TOOL_USE_ENFORCEMENT_GUIDANCE.lower()
+        assert "make the tool call" in text
+        assert "work remains" in text
 
 class TestOpenAIModelExecutionGuidance:
-    """Tests for GPT/Codex-specific execution discipline guidance."""
+    """Behavioral invariants for the concise execution-discipline guidance."""
+
+    def test_guidance_starts_with_execution_discipline_heading(self):
+        assert OPENAI_MODEL_EXECUTION_GUIDANCE.startswith("## Execution discipline")
+
+    def test_guidance_is_nonempty_string(self):
+        assert isinstance(OPENAI_MODEL_EXECUTION_GUIDANCE, str)
+        assert len(OPENAI_MODEL_EXECUTION_GUIDANCE) > 100
 
     def test_guidance_covers_tool_persistence(self):
         text = OPENAI_MODEL_EXECUTION_GUIDANCE.lower()
-        assert "tool_persistence" in text
-        assert "retry" in text
-        assert "empty" in text or "partial" in text
+        assert "tool" in text
+        assert "verified" in text
 
     def test_guidance_covers_prerequisite_checks(self):
         text = OPENAI_MODEL_EXECUTION_GUIDANCE.lower()
-        assert "prerequisite" in text
-        assert "dependency" in text
-
-    def test_guidance_covers_verification(self):
-        text = OPENAI_MODEL_EXECUTION_GUIDANCE.lower()
-        assert "verification" in text or "verify" in text
-        assert "correctness" in text
+        assert "memory" in text
+        assert "arithmetic" in text
+        assert "file contents" in text
+        assert "git history" in text
 
     def test_guidance_covers_missing_context(self):
         text = OPENAI_MODEL_EXECUTION_GUIDANCE.lower()
-        assert "missing_context" in text or "missing context" in text
-        assert "hallucinate" in text or "guess" in text
+        assert "look it up" in text
+        assert "assumptions" in text
 
-    def test_guidance_uses_xml_tags(self):
-        assert "<tool_persistence>" in OPENAI_MODEL_EXECUTION_GUIDANCE
-        assert "</tool_persistence>" in OPENAI_MODEL_EXECUTION_GUIDANCE
-        assert "<verification>" in OPENAI_MODEL_EXECUTION_GUIDANCE
-        assert "</verification>" in OPENAI_MODEL_EXECUTION_GUIDANCE
-
-    def test_guidance_is_string(self):
-        assert isinstance(OPENAI_MODEL_EXECUTION_GUIDANCE, str)
-        assert len(OPENAI_MODEL_EXECUTION_GUIDANCE) > 100
+    def test_guidance_does_not_use_xml_tags(self):
+        assert "<tool_persistence>" not in OPENAI_MODEL_EXECUTION_GUIDANCE
+        assert "<verification>" not in OPENAI_MODEL_EXECUTION_GUIDANCE
 
 class TestParallelToolCallGuidance:
     """Behavior contracts for the universal parallel-tool-call guidance block.

@@ -117,7 +117,7 @@ class TestTelegramRichMessagesHint:
             }
             stable = _stable_prompt(agent)
         # Base hint should be present
-        assert "Standard Markdown is automatically converted" in stable
+        assert "Markdown is converted automatically" in stable
         # Rich-messages extension should NOT be present
         assert "lean into it" not in stable
         assert "task lists" not in stable
@@ -131,7 +131,7 @@ class TestTelegramRichMessagesHint:
             }
             stable = _stable_prompt(agent)
         # Base hint should be present
-        assert "Standard Markdown is automatically converted" in stable
+        assert "Markdown is converted automatically" in stable
         # Rich-messages extension should be present
         assert "lean into it" in stable
         assert "task lists" in stable
@@ -143,5 +143,5 @@ class TestTelegramRichMessagesHint:
         with patch("hermes_cli.config.load_config_readonly") as mock_cfg:
             mock_cfg.return_value = {}
             stable = _stable_prompt(agent)
-        assert "Standard Markdown is automatically converted" in stable
+        assert "Markdown is converted automatically" in stable
         assert "lean into it" not in stable

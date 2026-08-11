@@ -1,5 +1,6 @@
 """Tests for the todo tool module."""
 
+import orjson
 import json
 
 from tools.todo_tool import TodoStore, todo_tool

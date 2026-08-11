@@ -1099,18 +1099,28 @@ class HindsightMemoryProvider(MemoryProvider):
             provider_config["llm_provider"] = llm_provider
 
         print("\n  Checking dependencies...")
-        # Environment-aware install: sealed hosted venvs redirect to the durable
-        # data-volume target instead of writing to /opt/hermes (NS-605).
-        from tools.lazy_deps import install_specs
 
-        outcome = install_specs(deps_to_install, timeout=120)
-        if outcome.ok:
-            print("  ✓ Dependencies up to date")
-        elif outcome.blocked:
-            print(f"  ⚠ Cannot install dependencies: {outcome.reason}")
+        # PyInstaller-frozen CN portable runtime: sys.executable IS the Hermes
+        # CLI binary and there is no standalone python for uv to target — the
+        # SDK must be pre-baked into the bundle (P-015).  Skip the install.
+        from tools.runtime_compat import is_frozen_runtime
+
+        if is_frozen_runtime():
+            print("  ℹ Dependencies are pre-baked in the portable runtime; nothing to install.")
         else:
-            print(f"  ⚠ Install failed:\n{(outcome.stderr or '').strip()}")
-            print(f"  Run manually: uv pip install --python {sys.executable} {' '.join(deps_to_install)}")
+            # Environment-aware install: sealed hosted venvs redirect to the durable
+            # data-volume target instead of writing to /opt/hermes (NS-605).
+            from tools.lazy_deps import install_specs
+
+            outcome = install_specs(deps_to_install, timeout=120)
+            if outcome.ok:
+                print("  ✓ Dependencies up to date")
+            elif outcome.blocked:
+                print(f"  ⚠ Cannot install dependencies: {outcome.reason}")
+            else:
+                print(f"  ⚠ Install failed:\n{(outcome.stderr or '').strip()}")
+                print(f"  Run manually: uv pip install --python {sys.executable} {' '.join(deps_to_install)}")
+
 
         # Step 3: Mode-specific config
         if mode == "cloud":
@@ -1663,9 +1673,22 @@ class HindsightMemoryProvider(MemoryProvider):
             if Version(installed) < Version(_MIN_CLIENT_VERSION):
                 logger.warning("hindsight-client %s is outdated (need >=%s), attempting upgrade...",
                                installed, _MIN_CLIENT_VERSION)
+
+                # PyInstaller-frozen CN portable runtime: sys.executable IS the
+                # Hermes CLI binary — no standalone python for uv to target, and
+                # the SDK is pre-baked into the bundle (P-015).  Skip upgrade.
+                from tools.runtime_compat import is_frozen_runtime
+
+                if is_frozen_runtime():
+                    logger.warning(
+                        "hindsight-client is outdated but auto-upgrade is not "
+                        "available in the portable runtime (deps are pre-baked)."
+                    )
+                    return
                 # Environment-aware install: sealed hosted venvs redirect to the
                 # durable data-volume target instead of /opt/hermes (NS-605).
                 from tools.lazy_deps import install_specs
+
                 outcome = install_specs([f"hindsight-client>={_MIN_CLIENT_VERSION}"], timeout=120)
                 if outcome.ok:
                     logger.info("hindsight-client upgraded to >=%s", _MIN_CLIENT_VERSION)

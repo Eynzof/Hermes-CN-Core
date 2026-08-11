@@ -262,6 +262,15 @@ def _cmd_install(*, realtime: bool, assume_yes: bool) -> int:
 
     # 2) Playwright browsers — pulls chromium (~300MB first run).
     print("\n[2/3] python -m playwright install chromium")
+    # PyInstaller-frozen CN portable runtime: sys.executable IS the Hermes CLI
+    # binary, so ``-m playwright`` would run `hermes -m playwright` and fail
+    # with argparse's "invalid choice".
+    from tools.runtime_compat import is_frozen_runtime
+
+    if is_frozen_runtime():
+        print("  playwright install requires a standalone python interpreter,"
+              " which is not available in the portable desktop runtime")
+        return 1
     try:
         res = _sp.run(
             [sys.executable, "-m", "playwright", "install", "chromium"],

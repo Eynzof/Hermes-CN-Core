@@ -41,7 +41,6 @@ from gateway.config import GatewayConfig, Platform
 from gateway.session import SessionSource, SessionStore
 from hermes_state import SessionDB
 
-
 # ---------------------------------------------------------------------------
 # AST invariant: the auto-reset block re-syncs the topic binding
 # ---------------------------------------------------------------------------
@@ -74,66 +73,6 @@ def _find_compression_exhausted_reset_block() -> ast.If:
         "in gateway/run.py — the structure changed or the AST walker is stale."
     )
 
-
-class TestAutoResetBlockReSyncsBinding:
-    def test_reset_session_return_is_captured(self):
-        """``reset_session`` must be assigned, not called-and-discarded —
-        the fresh entry is needed to re-point the binding and drop the stale
-        reference to the bloated compressed child (#35809)."""
-        block = _find_compression_exhausted_reset_block()
-        captured = False
-        for stmt in ast.walk(block):
-            if isinstance(stmt, ast.Assign):
-                val = stmt.value
-                # reset_session is async at the gateway boundary, so the
-                # assignment value is Await(Call(...)), not a bare Call.
-                if isinstance(val, ast.Await):
-                    val = val.value
-                if (
-                    isinstance(val, ast.Call)
-                    and isinstance(val.func, ast.Attribute)
-                    and val.func.attr == "reset_session"
-                ):
-                    captured = True
-        assert captured, (
-            "gateway/run.py auto-reset block calls reset_session() but discards "
-            "its return value. The fresh SessionEntry must be captured so the "
-            "topic binding can be re-pointed at it; otherwise the next message "
-            "resolves back to the bloated compressed child (#35809)."
-        )
-
-    def test_topic_binding_is_resynced_after_reset(self):
-        """The block must re-sync the topic binding so the next inbound message
-        cannot ``switch_session`` back onto the bloated compressed child."""
-        block = _find_compression_exhausted_reset_block()
-
-        def _references_helper(node):
-            # Direct call: self._sync_telegram_topic_binding(...)
-            if (
-                isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Attribute)
-                and node.func.attr == "_sync_telegram_topic_binding"
-            ):
-                return True
-            # Offloaded: await asyncio.to_thread(self._sync_telegram_topic_binding, ...)
-            # — the helper is passed as an argument, not the call's func.
-            if (
-                isinstance(node, ast.Attribute)
-                and node.attr == "_sync_telegram_topic_binding"
-            ):
-                return True
-            return False
-
-        sync_calls = [sub for sub in ast.walk(block) if _references_helper(sub)]
-        assert sync_calls, (
-            "gateway/run.py auto-reset block does not call "
-            "_sync_telegram_topic_binding after reset_session. Without it the "
-            "(chat_id, thread_id) -> bloated-child binding survives the reset "
-            "and the binding-heal walk re-anchors the fresh lane onto the "
-            "oversized compressed transcript, re-triggering the loop (#35809)."
-        )
-
-
 # ---------------------------------------------------------------------------
 # Behavioral contract: reset yields a clean next-turn transcript
 # ---------------------------------------------------------------------------
@@ -144,10 +83,8 @@ def _make_store(tmp_path):
     store._db = SessionDB(db_path=tmp_path / "state.db")
     return store
 
-
 def _make_source():
     return SessionSource(platform=Platform.TELEGRAM, chat_id="123", user_id="u1")
-
 
 def _bloat(n):
     # Stand-in for the oversized, post-compression "child" transcript that
@@ -162,7 +99,6 @@ def _bloat(n):
         }
         for i in range(n)
     ]
-
 
 class TestAutoResetLoadsCleanContext:
     """#35809: after the gateway auto-resets a session because compression

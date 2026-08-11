@@ -125,27 +125,30 @@ class TestBashFixFallbacks:
             ("printf text | wl-copy", "wl-copy"),
             ("python3 --version", "python3"),
             ("pip3 list", "pip3"),
-            ("copy src dst", "copy"),
-            ("move src dst", "move"),
-            ("del file", "del"),
-            ("erase file", "erase"),
-            ("ren a b", "ren"),
-            ("rename a b", "rename"),
-            ("rd dir", "rd"),
-            ("md dir", "md"),
-            ("chdir dir", "chdir"),
+
+            ("copy src.txt dst.txt", "copy"),
+            ("move src.txt dst.txt", "move"),
+            ("del temp.txt", "del"),
+            ("erase temp.txt", "erase"),
+            ("ren old.txt new.txt", "ren"),
+            ("rename old.txt new.txt", "rename"),
+            ("rd emptydir", "rd"),
+            ("md newdir", "md"),
+            ("chdir subdir", "chdir"),
             ("cls", "cls"),
-            ("xcopy src dst", "xcopy"),
-            ("mklink link target", "mklink"),
-            ("findstr pattern file", "findstr"),
-            ("fc file1 file2", "fc"),
+            ("xcopy srcdir dstdir", "xcopy"),
+            ("mklink link.txt target.txt", "mklink"),
+            ("findstr pattern file.txt", "findstr"),
+            ("fc a.txt b.txt", "fc"),
             ("where cmd", "where"),
             ("tasklist", "tasklist"),
-            ("taskkill /PID 123 /F", "taskkill"),
+            ("taskkill /PID 1234 /F", "taskkill"),
+            ("taskkill /IM notepad.exe", "taskkill"),
             ("systeminfo", "systeminfo"),
-            ("watch date", "watch"),
-            ("killall name", "killall"),
-            ("pidof name", "pidof"),
+            ("watch -n 1 date", "watch"),
+            ("killall notepad", "killall"),
+            ("pidof notepad", "pidof"),
+
             ("column -t file", "column"),
             ("netcat -z example.com 80", "netcat"),
         ],
@@ -214,6 +217,83 @@ class TestBashFixFallbacks:
             "apt-get update",
         ):
             assert _fix_for_windows(command) == BashFix(command), command
+
+    def test_netcat_aliases_nc_fallback(self) -> None:
+        result = _fix_for_windows("netcat -z example.com 80")
+        assert "/dev/tcp" in result.command
+
+    def test_column_falls_back_to_perl(self) -> None:
+        result = _fix_for_windows("column -t file")
+        assert "perl" in result.command
+
+    def test_tasklist_falls_back_to_get_process(self) -> None:
+        result = _fix_for_windows("tasklist")
+        assert "Get-Process" in result.command
+
+    def test_taskkill_falls_back_to_stop_process(self) -> None:
+        result = _fix_for_windows("taskkill /PID 1234 /F")
+        assert "Stop-Process" in result.command
+
+    def test_killall_falls_back_to_stop_process(self) -> None:
+        result = _fix_for_windows("killall notepad")
+        assert "Stop-Process" in result.command
+
+    def test_watch_falls_back_to_loop(self) -> None:
+        result = _fix_for_windows("watch date")
+        assert "sleep" in result.command
+
+    def test_mklink_falls_back_to_ln(self) -> None:
+        result = _fix_for_windows("mklink link.txt target.txt")
+        assert "ln -s" in result.command
+
+
+# ============================================================================
+# Heredoc trailing control operators are moved to the redirection line
+# ============================================================================
+
+class TestBashFixHeredocTrailingOperators:
+    @pytest.mark.parametrize(
+        "source,expected",
+        [
+            (
+                "cat <<EOF\nhi\nEOF\n&& echo done\n",
+                "cat <<EOF && echo done\nhi\nEOF\n",
+            ),
+            (
+                "cat <<'EOF'\nhi $HOME\nEOF\n|| echo failed\n",
+                "cat <<'EOF' || echo failed\nhi $HOME\nEOF\n",
+            ),
+            (
+                "cat <<-EOF\n\thi\n\tEOF\n;\necho after\n",
+                "cat <<-EOF ; echo after\n\thi\n\tEOF\n",
+            ),
+            (
+                "cat <<EOF\nhi\nEOF\n| wc -l\n",
+                "cat <<EOF | wc -l\nhi\nEOF\n",
+            ),
+        ],
+    )
+    def test_operator_moved_to_redirection_line(
+        self, source: str, expected: str
+    ) -> None:
+        result = _fix_for_windows(source)
+        assert result.command == expected
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            # No trailing operator: untouched.
+            "cat <<EOF\nhi\nEOF\necho after\n",
+            # Unterminated heredoc: untouched.
+            "cat <<EOF\nhi\n",
+            # ``&>`` is a redirection, not a list terminator: untouched.
+            "cat <<EOF\nhi\nEOF\n&> log\n",
+            # Operator already on the redirection line: untouched.
+            "cat <<EOF && echo done\nhi\nEOF\n",
+        ],
+    )
+    def test_without_trailing_operator_unchanged(self, source: str) -> None:
+        assert _fix_for_windows(source) == BashFix(source)
 
 
 # ============================================================================

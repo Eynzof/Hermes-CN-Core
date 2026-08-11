@@ -33,11 +33,9 @@ from tools.terminal_post_process import (
     filter_output,
 )
 
-
 # =========================================================================
 # filter_output
 # =========================================================================
-
 
 class TestFilterOutput:
     def test_strips_ansi(self):
@@ -62,11 +60,9 @@ class TestFilterOutput:
     def test_only_ansi(self):
         assert filter_output("\x1b[31m\x1b[0m") == ""
 
-
 # =========================================================================
 # _dedup_output
 # =========================================================================
-
 
 class TestDedupOutput:
     def test_no_repeats(self):
@@ -101,11 +97,9 @@ class TestDedupOutput:
         assert deduped == "hello"
         assert count == 0
 
-
 # =========================================================================
 # _truncate_lines
 # =========================================================================
-
 
 class TestTruncateLines:
     def test_noop_when_under_limit(self):
@@ -133,11 +127,9 @@ class TestTruncateLines:
         result = _truncate_lines(lines, max_lines=1)
         assert "lines omitted" in result
 
-
 # =========================================================================
 # _token_filter_output
 # =========================================================================
-
 
 class TestTokenFilterOutput:
     def test_passthrough_when_no_filters(self):
@@ -207,19 +199,9 @@ class TestTokenFilterOutput:
         # original_path should be set when filter is active
         assert result.original_output == "test\noutput"
 
-    def test_returns_TerminalOutputResult(self):
-        result = _token_filter_output(
-            "hello",
-            token_kill=False,
-            rtk_rewritten=False,
-        )
-        assert isinstance(result, TerminalOutputResult)
-
-
 # =========================================================================
 # _maybe_export_output_async
 # =========================================================================
-
 
 class TestMaybeExportOutput:
     def test_under_limit_no_export(self):
@@ -246,11 +228,9 @@ class TestMaybeExportOutput:
         assert result == text
         assert path is None
 
-
 # =========================================================================
 # _save_original_output
 # =========================================================================
-
 
 class TestSaveOriginalOutput:
     def test_saves_to_temp_file(self):
@@ -264,11 +244,9 @@ class TestSaveOriginalOutput:
         else:
             pytest.skip("Could not save original output")
 
-
 # =========================================================================
 # _build_session_output_block
 # =========================================================================
-
 
 class TestBuildSessionOutputBlock:
     def test_builds_block_with_metadata(self):

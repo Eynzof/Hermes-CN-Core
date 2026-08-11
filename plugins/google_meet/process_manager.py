@@ -174,6 +174,17 @@ def start(
     log_path = out / "bot.log"
     # Detach: stdin=devnull, stdout/stderr → log file, new session so parent
     # signals don't propagate.
+    # PyInstaller-frozen CN portable runtime: sys.executable IS the Hermes CLI
+    # binary, so ``-m plugins.google_meet.meet_bot`` would run `hermes -m ...`
+    # and fail with argparse's "invalid choice".  The meet bot needs a
+    # standalone python; refuse with a clear error instead of spawning garbage.
+    from tools.runtime_compat import is_frozen_runtime
+
+    if is_frozen_runtime():
+        raise RuntimeError(
+            "Google Meet bot requires a standalone python interpreter, which "
+            "is not available in the portable desktop runtime."
+        )
     log_fh = open(log_path, "ab", buffering=0)
     try:
         proc = subprocess.Popen(

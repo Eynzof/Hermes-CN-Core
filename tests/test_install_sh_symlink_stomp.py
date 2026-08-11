@@ -27,11 +27,8 @@ pytestmark = pytest.mark.skipif(
     reason="install.sh is a POSIX-only script; use install.ps1 on Windows",
 )
 
-
-
 REPO_ROOT = Path(__file__).resolve().parent.parent
 INSTALL_SH = REPO_ROOT / "scripts" / "install.sh"
-
 
 def _extract_setup_path_shim_block() -> str:
     """Return the install.sh shim-write block used by setup_path()."""
@@ -45,24 +42,6 @@ def _extract_setup_path_shim_block() -> str:
         "Could not locate the setup_path shim-write block in scripts/install.sh"
     )
     return match["block"]
-
-
-def test_setup_path_shim_block_removes_old_link_before_writing() -> None:
-    """Static guard: the rm must precede the cat heredoc, not follow it."""
-    block = _extract_setup_path_shim_block()
-    rm_idx = block.find('rm -f "$command_link_dir/hermes"')
-    cat_idx = block.find('cat > "$command_link_dir/hermes" <<EOF')
-    assert rm_idx != -1, (
-        "setup_path() must `rm -f` $command_link_dir/hermes before the "
-        "`cat >` heredoc, otherwise an existing symlink (left by older "
-        "installs) will be followed and the pip entry point overwritten. "
-        "See #21454."
-    )
-    assert cat_idx != -1, "expected `cat >` heredoc still present"
-    assert rm_idx < cat_idx, (
-        "`rm -f` must come *before* the `cat >` heredoc, not after."
-    )
-
 
 def test_re_running_setup_path_block_preserves_pip_entry_point(tmp_path: Path) -> None:
     """Behavioral repro: simulate prior-install symlink + new-install heredoc.

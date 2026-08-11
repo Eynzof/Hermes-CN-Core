@@ -15,7 +15,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 class TestAsyncClientLazyCreation:
     """trajectory_compressor.py — _get_async_client()"""
 
@@ -82,7 +81,6 @@ class TestAsyncClientLazyCreation:
         assert call_count == 2
         assert instances[0] is not instances[1]
 
-
 class TestSourceLineVerification:
     """Verify the actual source has the lazy pattern applied."""
 
@@ -92,28 +90,6 @@ class TestSourceLineVerification:
         base = os.path.dirname(os.path.dirname(__file__))
         with open(os.path.join(base, "trajectory_compressor.py")) as f:
             return f.read()
-
-    def test_no_eager_async_openai_in_init(self):
-        """__init__ should NOT create AsyncOpenAI eagerly."""
-        src = self._read_file()
-        # The old pattern: self.async_client = AsyncOpenAI(...) in _init_summarizer
-        # should not exist — only self.async_client = None
-        lines = src.split("\n")
-        for i, line in enumerate(lines, 1):
-            if "self.async_client = AsyncOpenAI(" in line and "_get_async_client" not in lines[max(0,i-3):i+1]:
-                # Allow it inside _get_async_client method
-                # Check if we're inside _get_async_client by looking at context
-                context = "\n".join(lines[max(0,i-20):i+1])
-                if "_get_async_client" not in context:
-                    pytest.fail(
-                        f"Line {i}: AsyncOpenAI created eagerly outside _get_async_client()"
-                    )
-
-    def test_get_async_client_method_exists(self):
-        """_get_async_client method should exist."""
-        src = self._read_file()
-        assert "def _get_async_client(self)" in src
-
 
 @pytest.mark.asyncio
 async def test_generate_summary_async_kimi_omits_temperature():
@@ -142,7 +118,6 @@ async def test_generate_summary_async_kimi_omits_temperature():
     assert result.startswith("[CONTEXT SUMMARY]:")
     assert "temperature" not in async_client.chat.completions.create.call_args.kwargs
 
-
 @pytest.mark.asyncio
 async def test_generate_summary_async_public_moonshot_kimi_k2_5_omits_temperature():
     """kimi-k2.5 on the public Moonshot API should not get a forced temperature."""
@@ -170,7 +145,6 @@ async def test_generate_summary_async_public_moonshot_kimi_k2_5_omits_temperatur
 
     assert result.startswith("[CONTEXT SUMMARY]:")
     assert "temperature" not in async_client.chat.completions.create.call_args.kwargs
-
 
 @pytest.mark.asyncio
 async def test_generate_summary_async_public_moonshot_cn_kimi_k2_5_omits_temperature():

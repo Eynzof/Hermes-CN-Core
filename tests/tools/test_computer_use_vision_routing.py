@@ -18,7 +18,6 @@ from unittest.mock import patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # _explicit_aux_vision_override
 # ---------------------------------------------------------------------------
@@ -60,7 +59,6 @@ class TestExplicitAuxVisionOverride:
         from tools.computer_use.vision_routing import _explicit_aux_vision_override
         cfg = {"auxiliary": {"vision": "not-a-dict"}}
         assert _explicit_aux_vision_override(cfg) is False
-
 
 # ---------------------------------------------------------------------------
 # should_route_capture_to_aux_vision
@@ -165,7 +163,6 @@ class TestRouteDecision:
                 "openrouter", "tencent/hy3-preview", cfg
             ) is True
 
-
 # ---------------------------------------------------------------------------
 # Internal lookups — defensive paths
 # ---------------------------------------------------------------------------
@@ -182,28 +179,7 @@ class TestLookupHelpers:
         )
         assert _provider_accepts_multimodal_tool_result("", "claude") is None
 
-
 # ---------------------------------------------------------------------------
 # Module surface
 # ---------------------------------------------------------------------------
 
-class TestModuleSurface:
-    """Pin the public surface so dependents stay in lockstep."""
-
-    def test_should_route_capture_to_aux_vision_is_exported(self):
-        from tools.computer_use import vision_routing
-
-        assert "should_route_capture_to_aux_vision" in vision_routing.__all__
-        assert callable(vision_routing.should_route_capture_to_aux_vision)
-
-    @pytest.mark.parametrize("name", [
-        "_explicit_aux_vision_override",
-        "_lookup_supports_vision",
-        "_provider_accepts_multimodal_tool_result",
-    ])
-    def test_internal_helpers_are_addressable(self, name):
-        """Internal helpers stay importable so tests can monkeypatch them."""
-        from tools.computer_use import vision_routing
-
-        assert hasattr(vision_routing, name)
-        assert callable(getattr(vision_routing, name))

@@ -192,6 +192,7 @@ infographic/
 infographics/
 infograficos/
 infografico/
+build/
 native/fts5_cjk/*.so
 # Runtime marker written by hermes update when a lazy dependency refresh is
 # interrupted; consumed by launch-time recovery. Never commit it (was tracked

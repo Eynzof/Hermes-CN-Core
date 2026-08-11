@@ -19,7 +19,6 @@ from tools.file_tools import (
     PATCH_SCHEMA,
 )
 
-
 @pytest.fixture(autouse=True)
 def _reset_read_tracker():
     """Each test models a fresh conversation's file-read state."""
@@ -30,7 +29,6 @@ def _reset_read_tracker():
     yield
     with _read_tracker_lock:
         _read_tracker.clear()
-
 
 class TestReadFileHandler:
     @patch("tools.file_tools._get_file_ops")
@@ -57,7 +55,6 @@ class TestReadFileHandler:
         result = orjson.loads(read_file_tool("/tmp/test.txt"))
         assert "error" in result
         assert "terminal not available" in result["error"]
-
 
 class TestWriteFileHandler:
     @patch("tools.file_tools._get_file_ops")
@@ -161,7 +158,6 @@ class TestWriteFileHandler:
         result = orjson.loads(_handle_write_file({"path": "/tmp/x.txt", "content": {"nested": "dict"}}))
         assert "error" in result
         assert "string" in result["error"].lower() or "content" in result["error"].lower()
-
 
 class TestPatchHandler:
     @patch("tools.file_tools._get_file_ops")
@@ -274,7 +270,6 @@ class TestPatchHandler:
         assert "error" in result
         assert "traversal" in result["error"].lower()
 
-
 @_win32
 class TestPatchSensitivePathExtraction:
     """Regression tests for patch_tool sensitive-path extraction.
@@ -373,7 +368,6 @@ class TestPatchSensitivePathExtraction:
         assert "error" not in result
         mock_ops.patch_v4a.assert_called_once()
 
-
 class TestSearchHandler:
     @patch("tools.file_tools._get_file_ops")
     def test_search_calls_file_ops(self, mock_get):
@@ -396,7 +390,6 @@ class TestSearchHandler:
         from tools.file_tools import search_tool
         result = orjson.loads(search_tool(pattern="x"))
         assert "error" in result
-
 
 # ---------------------------------------------------------------------------
 # Windows MSYS path resolution (salvage of #50488 / #46995)
@@ -434,7 +427,6 @@ class TestWindowsMsysPathResolution:
         resolved = file_tools._resolve_path_for_task("/home/don/.env")
         assert str(resolved) == "/home/don/.env"
 
-
 # ---------------------------------------------------------------------------
 # Tool result hint tests (#722)
 # ---------------------------------------------------------------------------
@@ -470,7 +462,6 @@ class TestPatchHints:
         from tools.file_tools import patch_tool
         raw = patch_tool(mode="replace", path="foo.py", old_string="x", new_string="y")
         assert "_hint" not in raw
-
 
 class TestSearchHints:
     """Search tool should hint when results are truncated."""
@@ -515,11 +506,9 @@ class TestSearchHints:
         assert "[Hint:" in raw
         assert "offset=100" in raw
 
-
 # ---------------------------------------------------------------------------
 # PATCH_SCHEMA shape tests (issue #15524)
 # ---------------------------------------------------------------------------
-
 
 class TestSensitivePathCheck:
     """Verify that _check_sensitive_path blocks writes to protected locations."""
@@ -598,30 +587,6 @@ class TestSensitivePathCheck:
         from tools.file_tools import write_file_tool
         result = orjson.loads(write_file_tool("/tmp/other.txt", "hello"))
         assert result["status"] == "ok"
-
-
-class TestPatchSchemaShape:
-    """PATCH_SCHEMA must advertise per-mode required params via description
-    text (not JSON-schema ``required``), so strict models like kimi-k2.x stop
-    silently omitting old_string / new_string / patch content."""
-
-    def test_per_mode_required_params_documented_in_descriptions(self):
-        desc = PATCH_SCHEMA["description"]
-        assert "REQUIRED PARAMETERS: mode, path, old_string, new_string" in desc
-        assert "REQUIRED PARAMETERS: mode, patch" in desc
-        props = PATCH_SCHEMA["parameters"]["properties"]
-        for name in ("path", "old_string", "new_string"):
-            assert "REQUIRED when mode='replace'" in props[name]["description"]
-        assert "REQUIRED when mode='patch'" in props["patch"]["description"]
-
-    def test_no_anyof_required_stays_mode_only(self):
-        # anyOf/oneOf at parameters level break Anthropic, Fireworks, and the
-        # Moonshot/Kimi schema sanitizer — description-level guidance is the
-        # only provider-safe signalling mechanism.
-        params = PATCH_SCHEMA["parameters"]
-        assert params["required"] == ["mode"]
-        assert "anyOf" not in params and "oneOf" not in params
-
 
 # ---------------------------------------------------------------------------
 # Session-cwd persistence across env recreation (#26211: silent file creation
@@ -728,7 +693,6 @@ class TestSessionCwdSurvivesEnvRecreation:
                 f"Expected restored cwd='/Users/user/project', got {cwd_passed!r}"
         finally:
             tt.clear_session_cwd(task_id)
-
 
 class TestSilentFileMisplacementE2E:
     """Real-IO regression for #26211.

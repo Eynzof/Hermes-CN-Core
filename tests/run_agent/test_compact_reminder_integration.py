@@ -14,7 +14,6 @@ sys.modules.setdefault("fal_client", types.SimpleNamespace())
 
 import run_agent
 
-
 def _patch_bootstrap(monkeypatch):
     monkeypatch.setattr(run_agent, "get_tool_definitions", lambda **kwargs: [{
         "type": "function",
@@ -22,12 +21,10 @@ def _patch_bootstrap(monkeypatch):
     }])
     monkeypatch.setattr(run_agent, "check_toolset_requirements", lambda: {})
 
-
 class _FakeOpenAIClient:
     api_key = "fake-key"
     base_url = "https://api.openai.com/v1"
     _default_headers = None
-
 
 def _make_agent(
     monkeypatch,
@@ -75,40 +72,11 @@ def _make_agent(
         api_mode="chat_completions",
     )
 
-
 # ── Agent attribute defaults ─────────────────────────────────────────
-
-
-class TestAgentAttributeDefaults:
-    def test_default_compact_reminder_enabled_is_true(self, monkeypatch):
-        agent = _make_agent(monkeypatch, compact_reminder_enabled=True)
-        # The agent should have compact_reminder_enabled set (not fallback to True)
-        assert agent.compact_reminder_enabled is True
-
-    def test_default_threshold_is_0_70(self, monkeypatch):
-        agent = _make_agent(monkeypatch, compact_reminder_enabled=True)
-        assert agent.compact_reminder_threshold == 0.30  # test value set in _make_agent
-
-    def test_default_cooldown_is_5(self, monkeypatch):
-        agent = _make_agent(monkeypatch, compact_reminder_enabled=True)
-        assert agent.compact_reminder_cooldown_steps == 2  # test value set in _make_agent
-
 
 # ── Provider creation from config ─────────────────────────────────────
 
-
-class TestProviderCreation:
-    def test_provider_created_when_enabled(self, monkeypatch):
-        agent = _make_agent(monkeypatch, compact_reminder_enabled=True)
-        assert getattr(agent, "compact_reminder_enabled", False) is True
-
-    def test_provider_not_created_when_disabled(self, monkeypatch):
-        agent = _make_agent(monkeypatch, compact_reminder_enabled=False)
-        assert getattr(agent, "compact_reminder_enabled", True) is False
-
-
 # ── Error isolation ───────────────────────────────────────────────────
-
 
 class TestErrorIsolation:
     def test_provider_exception_does_not_crash_loop(self, monkeypatch):

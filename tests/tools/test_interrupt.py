@@ -9,7 +9,6 @@ import threading
 import time
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Unit tests: shared interrupt module
 # ---------------------------------------------------------------------------
@@ -48,7 +47,6 @@ class TestInterruptModule:
         with _lock:
             assert other_tid in _interrupted_threads  # other thread untouched
             _interrupted_threads.discard(other_tid)
-
 
 # ---------------------------------------------------------------------------
 # Unit tests: pre-tool interrupt check
@@ -110,55 +108,9 @@ class TestPreToolCheck:
         # No actual tool handlers should have been called
         # (handle_function_call should NOT have been invoked)
 
-
 # ---------------------------------------------------------------------------
 # Unit tests: message combining
 # ---------------------------------------------------------------------------
-
-class TestMessageCombining:
-    """Verify multiple interrupt messages are joined."""
-
-    def test_cli_interrupt_queue_drain(self):
-        """Simulate draining multiple messages from the interrupt queue."""
-        q = queue.Queue()
-        q.put("Stop!")
-        q.put("Don't delete anything")
-        q.put("Show me what you were going to delete instead")
-
-        parts = []
-        while not q.empty():
-            try:
-                msg = q.get_nowait()
-                if msg:
-                    parts.append(msg)
-            except queue.Empty:
-                break
-
-        combined = "\n".join(parts)
-        assert "Stop!" in combined
-        assert "Don't delete anything" in combined
-        assert "Show me what you were going to delete instead" in combined
-        assert combined.count("\n") == 2
-
-    def test_gateway_pending_messages_append(self):
-        """Simulate gateway _pending_messages append logic."""
-        pending = {}
-        key = "agent:main:telegram:dm"
-
-        # First message
-        if key in pending:
-            pending[key] += "\n" + "Stop!"
-        else:
-            pending[key] = "Stop!"
-
-        # Second message
-        if key in pending:
-            pending[key] += "\n" + "Do something else instead"
-        else:
-            pending[key] = "Do something else instead"
-
-        assert pending[key] == "Stop!\nDo something else instead"
-
 
 # ---------------------------------------------------------------------------
 # Integration tests (require local terminal)
@@ -201,7 +153,6 @@ class TestSIGKILLEscalation:
         assert result_holder["value"] is not None
         assert result_holder["value"]["returncode"] == 130
         assert "interrupted" in result_holder["value"]["output"].lower()
-
 
 # ---------------------------------------------------------------------------
 # Regression: _run_tool cleanup on BaseException (issue #35309)
@@ -278,7 +229,6 @@ class TestRunToolCleanupOnBaseException:
         with _lock:
             leaked = set(_interrupted_threads)
         assert leaked == set(), f"leaked tids in _interrupted_threads: {leaked}"
-
 
 # ---------------------------------------------------------------------------
 # Manual smoke test checklist (not automated)

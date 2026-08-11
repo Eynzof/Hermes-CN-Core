@@ -1083,7 +1083,7 @@ import sys
 
 
 # Tool description for LLM
-TERMINAL_TOOL_DESCRIPTION = """Execute shell commands on a Linux environment. Filesystem, current working directory, and exported environment variables persist between calls.
+TERMINAL_TOOL_DESCRIPTION = """Execute shell commands on a Linux environment. Filesystem, cwd, and exported environment variables persist between calls.
 
 Do NOT use cat/head/tail (use read_file), grep/rg/find/ls (use search_files), sed/awk (use patch), or echo/heredoc file creation (use write_file). Reserve terminal for: builds, installs, git, processes, scripts, network, package managers, and anything that needs a shell.
 Environment state persists: activate a virtualenv or export variables once per session, not before every command.
@@ -1104,7 +1104,10 @@ def _detect_shell_for_description() -> str:
     Mirrors ``_resolve_shell()`` in ``tools/environments/local.py``:
 
     - Non-Windows: returns ``"bash"``.
-    - ``HERMES_SHELL_TYPE=bash`` (explicit): returns ``"bash"``.
+    - ``HERMES_SHELL_TYPE=bash`` (explicit): returns ``"bash"`` only when
+      a usable Git Bash was found (discovery + ``_bash_starts()`` smoke
+      test) — otherwise the terminal falls back to PowerShell, so
+      ``"powershell"`` is reported.
     - ``auto``/unset (default): git-bash if a working install exists
       (``_find_bash(raise_if_missing=False)`` — discovery + smoke test),
       else PowerShell 7 (``pwsh``), else Windows PowerShell 5.1.
@@ -1121,7 +1124,20 @@ def _detect_shell_for_description() -> str:
     shell_type = os.environ.get("HERMES_SHELL_TYPE", "auto").strip().lower() or "auto"
 
     if shell_type == "bash":
-        return "bash"
+        # bash mode: describe the shell the terminal actually runs.  Git
+        # Bash present and usable → "bash"; missing/broken → _resolve_shell()
+        # falls back to PowerShell, so describe that instead.  The probe is
+        # gated on the real OS flag (_IS_WINDOWS) so a mocked
+        # platform.system() in tests never triggers an actual bash search.
+        try:
+            from tools.environments.local import _IS_WINDOWS, _bash_starts, _find_bash
+            if _IS_WINDOWS:
+                bash_path = _find_bash()
+                if bash_path and _bash_starts(bash_path):
+                    return "bash"
+        except Exception:
+            pass
+        return "powershell"
 
     if shell_type in ("pwsh", "powershell"):
         # Explicit PowerShell: probe pwsh (PowerShell 7), never git-bash.
@@ -3545,43 +3561,39 @@ TERMINAL_SCHEMA = {
                 "type": "string",
                 "description": "The command to execute on the VM"
             },
-            "background": {
-                "type": "boolean",
-                "description": "Run in the background, returning a session_id. Pair with notify_on_complete=true for anything with a defined end (tests, builds, deploys) — without it the process runs silently. Only servers/watchers/daemons that never exit should stay silent. Short commands: prefer foreground with a generous timeout.",
+                "description": "Run in the background, returning a session_id. Pair with notify_on_complete=true for anything with a defined end (tests, builds, deploys) — without it the process runs silently. Only servers/watchers/daemons that never exit should stay silent. Short commands: prefer foreground with a generous timeout."
                 "default": False
             },
             "timeout": {
                 "type": "integer",
-                "description": f"Max seconds to wait (default: 180, foreground max: {FOREGROUND_MAX_TIMEOUT}). Returns INSTANTLY when command finishes — set high for long tasks, you won't wait unnecessarily. Foreground timeout above {FOREGROUND_MAX_TIMEOUT}s is rejected; use background=true for longer commands.",
+                "description": f"Max seconds to wait (default: 180, foreground max: {FOREGROUND_MAX_TIMEOUT}). Returns instantly when done; above {FOREGROUND_MAX_TIMEOUT}s needs background=true.",
                 "minimum": 1
             },
             "workdir": {
                 "type": "string",
-                "description": "Working directory for this command (absolute path). Defaults to the session working directory."
+                "description": "Working directory for this command (absolute path); defaults to the session cwd."
             },
             "pty": {
                 "type": "boolean",
-                "description": "Run in pseudo-terminal (PTY) mode for interactive CLI tools like Codex, Claude Code, or Python REPL. Only works with local and SSH backends. Default: false.",
+                "description": "Run in PTY mode for interactive CLIs (Codex, Claude Code, REPL). Local/SSH backends only.",
                 "default": False
             },
-            "notify_on_complete": {
-                "type": "boolean",
-                "description": "With background=true: get exactly one notification when the process exits. The right choice for nearly every bounded long task — set it and keep working. MUTUALLY EXCLUSIVE with watch_patterns (watch_patterns is dropped when both are set).",
+                "description": "With background=true: get exactly one notification when the process exits. The right choice for nearly every bounded long task — set it and keep working. MUTUALLY EXCLUSIVE with watch_patterns (watch_patterns is dropped when both are set)."
                 "default": False
             },
             "watch_patterns": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "Strings to watch for in background process output. HARD RATE LIMIT: at most 1 notification per 15 seconds per process — matches arriving inside the cooldown are dropped. After 3 consecutive 15-second windows with dropped matches, watch_patterns is automatically disabled for that process and promoted to notify_on_complete behavior (one notification on exit, no more mid-process spam). USE ONLY for truly rare, one-shot mid-process signals on LONG-LIVED processes that will never exit on their own — e.g. ['Application startup complete'] on a server so you know when to hit its endpoint, or ['migration done'] on a daemon. DO NOT use for: (1) end-of-run markers like 'DONE'/'PASS' — use notify_on_complete instead; (2) error patterns like 'ERROR'/'Traceback' in loops or multi-item batch jobs — they fire on every iteration and you'll hit the strike limit fast; (3) anything you'd ever combine with notify_on_complete. When in doubt, choose notify_on_complete. MUTUALLY EXCLUSIVE with notify_on_complete — set one, not both."
+                "description": "Watch for rare one-shot signals in background output (e.g. ['Application startup complete']). HARD RATE LIMIT: 1 per 15s; after 3 drops upgrades to notify_on_complete. Not for end-of-run markers."
             },
             "token_kill": {
                 "type": "boolean",
-                "description": "When true (default), known commands are rewritten to use the rtk binary which collapses repeated lines to save tokens. Set false to preserve raw command output.",
+                "description": "When true (default), known commands use the rtk binary (collapses repeated lines to save tokens). Set false to preserve raw output.",
                 "default": True
             },
             "max_lines": {
                 "type": "integer",
-                "description": "Maximum number of output lines to return. When set, keeps the first floor(max_lines/2) and last ceil(max_lines/2)-1 lines with an omitted-lines marker between them. When unset, all lines are returned (subject to the byte cap).",
+                "description": "Max output lines: first floor(max_lines/2) + last ceil(max_lines/2)-1, omitted-lines marker. Unset = all lines (byte cap).",
                 "minimum": 10
             }
         },

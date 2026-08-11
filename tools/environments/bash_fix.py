@@ -127,6 +127,43 @@ _POWERSHELL_PASTE = (
     "[Console]::Out.Write((Get-Clipboard -Raw))'"
 )
 
+# Windows cmd-style command fallbacks.  These names are not part of the Git
+# Bash POSIX userland and are commonly emitted by agents accustomed to cmd.exe
+# or cross-platform documentation.  Each fallback is only installed when Git
+# Bash cannot already resolve the command via ``command -v``.
+
+_TASKLIST_PS = (
+    "Get-Process | Select-Object Name, Id, CPU, WorkingSet | Format-Table -AutoSize"
+)
+
+_TASKKILL_PS = (
+    "$force = $env:__HERMES_FORCE -eq '1'; "
+    "if ($env:__HERMES_PID) { Stop-Process -Id $env:__HERMES_PID -Force:$force; exit 0 } "
+    "$procs = Get-Process | Where-Object { $_.Name -eq $env:__HERMES_IM }; "
+    "if ($procs) { $procs | Stop-Process -Force:$force; exit 0 } else { exit 1 }"
+)
+
+_SYSTEMINFO_PS = "Get-ComputerInfo | Format-List"
+
+_KILLALL_PS = (
+    "$procs = Get-Process | Where-Object { $_.Name -eq $env:__HERMES_NAME }; "
+    "if ($procs) { $procs | Stop-Process -Force; exit 0 } else { exit 1 }"
+)
+
+_PIDOF_PS = (
+    "$ids = (Get-Process | Where-Object { $_.Name -eq $env:__HERMES_NAME }).Id; "
+    "if ($ids) { $ids -join \" \"; exit 0 } else { exit 1 }"
+)
+
+_COLUMN_PERL = (
+    "perl -e '"
+    "my $sep = shift @ARGV; $sep = qr/\\s+/ if $sep eq \"DEFAULT\"; "
+    "my @rows; my @max; "
+    "while (<>) { chomp; my @c = split $sep; push @rows, \\@c; "
+    "for my $i (0..$#c) { $max[$i] = length($c[$i]) if !defined $max[$i] || length($c[$i]) > $max[$i]; } } "
+    "for my $r (@rows) { print join(\"  \", map { sprintf(\"%-*s\", $max[$_]//0, $r->[$_]) } 0..$#$r), \"\\n\"; }'"
+)
+
 _FALLBACK_BODIES = {
     "gtimeout": "timeout \"$@\"",
     "rev": (
@@ -327,6 +364,105 @@ _FALLBACK_BODIES = {
     ),
     "python3": 'python "$@"',
     "pip3": 'pip "$@"',
+    # Windows cmd-style commands -> POSIX/Git Bash equivalents.
+    "copy": (
+        "if [[ $# -lt 2 ]]; then "
+        "printf '%s\\n' 'copy: missing source or destination' >&2; return 1; fi; "
+        "cp -R -- \"$@\""
+    ),
+    "move": (
+        "if [[ $# -lt 2 ]]; then "
+        "printf '%s\\n' 'move: missing source or destination' >&2; return 1; fi; "
+        "mv -- \"$@\""
+    ),
+    "del": "rm -- \"$@\"",
+    "erase": "rm -- \"$@\"",
+    "ren": (
+        "if [[ $# -ne 2 ]]; then "
+        "printf '%s\\n' 'ren: exactly two arguments required' >&2; return 1; fi; "
+        "mv -- \"$1\" \"$2\""
+    ),
+    "rename": (
+        "if [[ $# -ne 2 ]]; then "
+        "printf '%s\\n' 'rename: exactly two arguments required' >&2; return 1; fi; "
+        "mv -- \"$1\" \"$2\""
+    ),
+    "rd": "rmdir -- \"$@\"",
+    "md": "mkdir -p -- \"$@\"",
+    "chdir": "cd -- \"$@\"",
+    "cls": "clear",
+    "xcopy": "cp -r -- \"$@\"",
+    "mklink": (
+        "local __hermes_hard=0 __hermes_link='' __hermes_target=''; "
+        "while (( $# )); do case $1 in "
+        "/D|/d|/J|/j) shift;; "
+        "/H|/h) __hermes_hard=1; shift;; "
+        "*) if [[ -z $__hermes_link ]]; then __hermes_link=$1; "
+        "elif [[ -z $__hermes_target ]]; then __hermes_target=$1; "
+        "else printf '%s\\n' 'mklink: too many arguments' >&2; return 1; fi; "
+        "shift;; esac; done; "
+        "if [[ -z $__hermes_link || -z $__hermes_target ]]; then "
+        "printf '%s\\n' 'mklink: missing link name or target' >&2; return 1; fi; "
+        "if (( __hermes_hard )); then ln -f -- \"$__hermes_target\" \"$__hermes_link\"; "
+        "else ln -s -- \"$__hermes_target\" \"$__hermes_link\"; fi"
+    ),
+    "findstr": "grep \"$@\"",
+    "fc": "diff \"$@\"",
+    "where": "which \"$@\"",
+    "tasklist": (
+        "powershell.exe -NoProfile -NonInteractive -Command '" + _TASKLIST_PS + "'"
+    ),
+    "taskkill": (
+        "local __hermes_force=0 __hermes_pid='' __hermes_im=''; "
+        "while (( $# )); do case $1 in "
+        "/F|/f) __hermes_force=1; shift;; "
+        "/IM|/im) __hermes_im=$2; shift 2;; "
+        "/PID|/pid) __hermes_pid=$2; shift 2;; "
+        "/*) printf '%s\\n' \"taskkill: unsupported option: $1\" >&2; return 1;; "
+        "*) printf '%s\\n' \"taskkill: unsupported argument: $1\" >&2; return 1;; esac; done; "
+        "if [[ -n $__hermes_pid ]]; then "
+        "__HERMES_FORCE=$__hermes_force __HERMES_PID=$__hermes_pid "
+        "powershell.exe -NoProfile -NonInteractive -Command '" + _TASKKILL_PS + "'; "
+        "elif [[ -n $__hermes_im ]]; then "
+        "__HERMES_FORCE=$__hermes_force __HERMES_IM=$__hermes_im "
+        "powershell.exe -NoProfile -NonInteractive -Command '" + _TASKKILL_PS + "'; "
+        "else printf '%s\\n' 'taskkill: missing /PID or /IM' >&2; return 1; fi"
+    ),
+    "systeminfo": (
+        "powershell.exe -NoProfile -NonInteractive -Command '" + _SYSTEMINFO_PS + "'"
+    ),
+    # POSIX utilities often absent from a bare Git Bash userland.
+    "watch": (
+        "local __hermes_interval=2; "
+        "while (( $# )); do case $1 in "
+        "-n) __hermes_interval=$2; shift 2;; "
+        "-n?*) __hermes_interval=${1#-n}; shift;; "
+        "-t|-d|--no-title|--color) shift;; "
+        "--) shift; break;; "
+        "-*) printf '%s\\n' \"watch: unsupported option: $1\" >&2; return 1;; "
+        "*) break;; esac; done; "
+        "if [[ $# -eq 0 ]]; then printf '%s\\n' 'watch: missing command' >&2; return 1; fi; "
+        "while true; do clear; \"$@\"; sleep \"$__hermes_interval\"; done"
+    ),
+    "killall": (
+        "if [[ $# -eq 0 ]]; then printf '%s\\n' 'killall: missing process name' >&2; return 1; fi; "
+        "__HERMES_NAME=$1 powershell.exe -NoProfile -NonInteractive -Command '" + _KILLALL_PS + "'"
+    ),
+    "pidof": (
+        "if [[ $# -eq 0 ]]; then printf '%s\\n' 'pidof: missing process name' >&2; return 1; fi; "
+        "__HERMES_NAME=$1 powershell.exe -NoProfile -NonInteractive -Command '" + _PIDOF_PS + "'"
+    ),
+    "column": (
+        "local __hermes_sep='DEFAULT'; "
+        "while (( $# )); do case $1 in "
+        "-t) shift;; "
+        "-s) __hermes_sep=$2; shift 2;; "
+        "-s?*) __hermes_sep=${1#-s}; shift;; "
+        "-*) printf '%s\\n' \"column: unsupported option for perl fallback: $1\" >&2; return 1;; "
+        "*) break;; esac; done; "
+        + _COLUMN_PERL
+        + " \"$__hermes_sep\" \"$@\""
+    ),
 }
 
 
@@ -374,6 +510,11 @@ def _wrapper_runner(name: str) -> str:
     script = _fallback_definition(name) + f"; {name} \"$@\""
     return "/usr/bin/bash -c " + _single_quote(script) + " --"
 
+
+# ``netcat`` is a common synonym for ``nc`` on systems where the binary is
+# spelled with the longer name; both are absent from Git Bash, so share the
+# same ``/dev/tcp`` zero-I/O fallback.
+_FALLBACK_BODIES.setdefault("netcat", _FALLBACK_BODIES["nc"])
 
 _FALLBACKS = {name: _fallback_definition(name) for name in _FALLBACK_BODIES}
 
@@ -536,7 +677,7 @@ class _HereDoc:
 class _Scanner:
     """Conservative scanner for Bash executable command positions."""
 
-    __slots__ = ("s", "n", "edits", "names", "path_notes", "nest_depth")
+    __slots__ = ("s", "n", "edits", "names", "path_notes", "heredoc_events", "nest_depth")
 
     def __init__(self, command: str) -> None:
         self.s = command
@@ -544,6 +685,7 @@ class _Scanner:
         self.edits: list[tuple[int, int, str]] = []
         self.names: list[str] = []
         self.path_notes: list[str] = []
+        self.heredoc_events: list[tuple[int, int]] = []
         self.nest_depth = 0
 
     def fix(self) -> BashFix:
@@ -568,6 +710,7 @@ class _Scanner:
             source = "".join(pieces)
         else:
             source = self.s
+        source = _fix_heredoc_trailing_operators(source)
         prefix = definitions + "\n" if definitions else ""
         return BashFix(prefix + source, tuple(self.names), tuple(self.path_notes))
 
@@ -1630,8 +1773,11 @@ class _Scanner:
         scan_expansions: bool = True,
     ) -> int:
         s = self.s
+        redir_line_end = -1
         for document in documents:
             body_start = i
+            if redir_line_end < 0:
+                redir_line_end = body_start - 1
             logical_line = ""
             logical_start = i
             while i < end:
@@ -1659,6 +1805,8 @@ class _Scanner:
             else:
                 if scan_expansions and document.expands:
                     self._scan_heredoc_expansions(body_start, end)
+        if redir_line_end >= 0:
+            self.heredoc_events.append((redir_line_end, i))
         return i
 
     @staticmethod
@@ -1846,6 +1994,139 @@ def bash_compatibility_prelude() -> str:
     return definitions + "\n" + exports
 
 
+_HEREDOC_TRAILING_OPERATORS = frozenset({"&&", "||", "|", "|&", ";", "&"})
+
+
+def _read_shell_control_operator(s: str, i: int, n: int) -> tuple[str, int]:
+    """Return the control operator at position *i* and the index after it."""
+    if i >= n:
+        return "", i
+    ch = s[i]
+    if ch == ";":
+        if s.startswith(";;&", i):
+            return ";;&", i + 3
+        if s.startswith(";;", i):
+            return ";;", i + 2
+        if s.startswith(";&", i):
+            return ";&", i + 2
+        return ";", i + 1
+    if ch == "&":
+        if s.startswith("&&", i):
+            return "&&", i + 2
+        return "&", i + 1
+    if ch == "|":
+        if s.startswith("||", i):
+            return "||", i + 2
+        if s.startswith("|&", i):
+            return "|&", i + 2
+        return "|", i + 1
+    return "", i
+
+
+def _apply_heredoc_operator_move(
+    source: str, redir_line_end: int, terminator_end: int
+) -> str:
+    """Move a control-operator line following a heredoc terminator to the redirection line.
+
+    Bash requires a control operator that continues a heredoc-delimited command
+    to appear on the same line as the ``<<`` redirection.  A common model
+    mistake is to place the operator on the line after the closing delimiter,
+    which produces ``syntax error near unexpected token `&&'``.  This helper
+    repairs that pattern while leaving the heredoc body and delimiter intact.
+    """
+    n = len(source)
+    if redir_line_end < 0 or redir_line_end >= n or source[redir_line_end] != "\n":
+        return source
+    if terminator_end < 0 or terminator_end > n:
+        return source
+
+    i = terminator_end
+    while i < n:
+        ch = source[i]
+        if ch in " \t\r":
+            i += 1
+            continue
+        if ch == "\n":
+            i += 1
+            continue
+        if ch == "#":
+            nl = source.find("\n", i, n)
+            i = n if nl < 0 else nl + 1
+            continue
+        break
+    if i >= n:
+        return source
+
+    op, op_end = _read_shell_control_operator(source, i, n)
+    if op not in _HEREDOC_TRAILING_OPERATORS:
+        return source
+    # ``&>`` / ``&>>`` are redirections, not list terminators.
+    if op == "&" and op_end < n and source[op_end] == ">":
+        return source
+
+    move_start = i
+    line_end = source.find("\n", i, n)
+    if line_end < 0:
+        line_end = n
+        move_end = n
+    else:
+        move_end = line_end + 1
+
+    rest = source[op_end:line_end].lstrip(" \t\r")
+    if not rest or rest.startswith("#"):
+        k = move_end
+        while k < n:
+            if source[k] in " \t\r":
+                k += 1
+                continue
+            if source[k] == "\n":
+                k += 1
+                continue
+            if source[k] == "#":
+                nl = source.find("\n", k, n)
+                k = n if nl < 0 else nl + 1
+                continue
+            break
+        if k >= n:
+            return source
+        next_line_end = source.find("\n", k, n)
+        if next_line_end < 0:
+            move_end = n
+        else:
+            move_end = next_line_end + 1
+
+    lines = source[move_start:move_end].splitlines()
+    parts: list[str] = []
+    if lines:
+        parts.append(lines[0][len(op):].strip())
+        parts.extend(line.strip() for line in lines[1:])
+    joined = " ".join(part for part in parts if part and not part.startswith("#"))
+    moved = f"{op} {joined}\n" if joined else f"{op}\n"
+
+    return (
+        source[:redir_line_end]
+        + " "
+        + moved
+        + source[redir_line_end + 1 : move_start]
+        + source[move_end:]
+    )
+
+
+def _fix_heredoc_trailing_operators(source: str) -> str:
+    """Repair heredoc commands whose trailing control operator is on the wrong line."""
+    try:
+        scanner = _Scanner(source)
+        scanner._scan_range(0, scanner.n)
+    except RecursionError:
+        return source
+    events = scanner.heredoc_events
+    if not events:
+        return source
+    for redir_line_end, terminator_end in reversed(events):
+        source = _apply_heredoc_operator_move(source, redir_line_end, terminator_end)
+    return source
+
+
 def fix_bash_command(command: str) -> BashFix:
     """Rewrite selected native POSIX commands for Windows Git Bash.
 
@@ -1859,4 +2140,6 @@ def fix_bash_command(command: str) -> BashFix:
     # containing it contiguously (for example ``r""ev`` or ``\rev``), so a
     # substring fast path would miss legal executable words.  The scanner is
     # linear and exits without allocating generated shell code when unchanged.
-    return _Scanner(command).fix()
+    result = _Scanner(command).fix()
+    fixed = _fix_heredoc_trailing_operators(result.command)
+    return BashFix(fixed, result.replacements, result.path_changes)

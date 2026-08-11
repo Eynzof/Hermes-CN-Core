@@ -1506,11 +1506,29 @@ def _load_lark_oapi() -> bool:
     if FEISHU_AVAILABLE:
         return True
 
-
     from tools.lazy_deps import ensure_and_bind
 
     return ensure_and_bind("platform.feishu", _lark_bindings, globals(), prompt=False)
 
+
+def check_feishu_requirements() -> bool:
+    """Ensure Feishu dependencies are installed without importing the SDK.
+
+    A pure availability check: installs lark-oapi via ``tools.lazy_deps.ensure``
+    when missing, but never binds/imports the SDK here — actual imports happen
+    lazily on first real use (``_load_lark_oapi`` / module ``__getattr__``), so
+    a gateway config validation cannot pay the ~2.5s SDK import.
+    """
+    if FEISHU_AVAILABLE:
+        return True
+
+    from tools.lazy_deps import ensure
+
+    try:
+        ensure("platform.feishu", prompt=False)
+        return True
+    except Exception:
+        return False
 
 
 class FeishuAdapter(BasePlatformAdapter):

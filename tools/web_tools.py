@@ -1171,13 +1171,13 @@ from tools.registry import registry, tool_error
 
 WEB_SEARCH_SCHEMA = {
     "name": "web_search",
-    "description": "Search the web for information. Returns up to 5 results by default with titles, URLs, and descriptions. The query is passed through to the configured backend, so operators such as site:domain, filetype:pdf, intitle:word, -term, and \"exact phrase\" may work when the backend supports them.",
+    "description": "Search the web — up to 5 results (title/URL/description). Operators (site:, filetype:pdf, intitle:, -term, \"exact phrase\") work if the backend supports them.",
     "parameters": {
         "type": "object",
         "properties": {
             "query": {
                 "type": "string",
-                "description": "The search query to look up on the web. You may include backend-supported operators such as site:example.com, filetype:pdf, intitle:word, -term, or \"exact phrase\"."
+                "description": "The search query. May include backend-supported operators: site:example.com, filetype:pdf, intitle:word, -term, or \"exact phrase\"."
             },
             "limit": {
                 "type": "integer",
@@ -1193,7 +1193,7 @@ WEB_SEARCH_SCHEMA = {
 
 WEB_EXTRACT_SCHEMA = {
     "name": "web_extract",
-    "description": "Extract content from web page URLs. Returns clean page content in markdown/text (no LLM summarization — fast). Also works with PDF URLs (arxiv papers, documents) — pass the PDF link directly. Pages within the char budget (default 15000) return whole; larger pages return a head+tail window with a footer telling you the full text's saved file path and the read_file call to page through the omitted middle. Inline images appear as [IMAGE: alt] placeholders; real image URLs are kept as links. If a URL fails or times out, use the browser tool instead.",
+    "description": "Extract page content from URLs as markdown/text (no LLM). PDF URLs work — pass the PDF link. Within char budget (default 15000) pages return whole; larger pages head+tail truncate, footer points to the full text's saved file path (page with read_file). On failure/timeout use the browser tool.",
     "parameters": {
         "type": "object",
         "properties": {
@@ -1205,7 +1205,7 @@ WEB_EXTRACT_SCHEMA = {
             },
             "char_limit": {
                 "type": "integer",
-                "description": "Optional per-page character budget sent back (default 15000). Pages larger than this are head+tail truncated with the full text stored to disk. Raise it when you need more of a long page inline.",
+                "description": "Per-page character budget (default 15000). Larger pages head+tail truncate with the full text stored to disk. Raise for more of a long page inline.",
                 "minimum": 2000
             }
         },

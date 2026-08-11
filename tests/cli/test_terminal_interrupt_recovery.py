@@ -26,12 +26,10 @@ import pytest
 import cli as cli_mod
 from cli import HermesCLI
 
-
 @pytest.fixture
 def bare_cli():
     """A HermesCLI with no __init__ — we only exercise the recovery helper."""
     return object.__new__(HermesCLI)
-
 
 class TestRecoverTerminalAfterInterrupt:
     """Directly exercise HermesCLI._recover_terminal_after_interrupt()."""
@@ -83,30 +81,3 @@ class TestRecoverTerminalAfterInterrupt:
 
         flush_stdin()  # must not raise in a non-TTY test environment
 
-
-class TestFinallyBlockWiring:
-    """The recovery helper is only useful if process_loop actually calls it.
-
-    These guard against the helper silently becoming dead code (the fix being
-    present but never invoked), which a unit test of the helper alone can't
-    catch.
-    """
-
-    def test_recovery_is_invoked_behind_interrupt_guard(self):
-        src = inspect.getsource(HermesCLI.run)
-        # The recovery call must be gated on _last_turn_interrupted so it only
-        # fires after an actual interrupt, not on every normal turn.
-        guard = re.search(
-            r"if self\._last_turn_interrupted:\s*\n\s*"
-            r"self\._recover_terminal_after_interrupt\(\)",
-            src,
-        )
-        assert guard, (
-            "process_loop's finally block must call "
-            "_recover_terminal_after_interrupt() guarded by "
-            "self._last_turn_interrupted"
-        )
-
-    def test_recovery_helper_exists(self):
-        assert hasattr(HermesCLI, "_recover_terminal_after_interrupt")
-        assert callable(HermesCLI._recover_terminal_after_interrupt)

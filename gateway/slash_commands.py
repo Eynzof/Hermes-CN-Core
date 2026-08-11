@@ -5502,12 +5502,29 @@ class GatewaySlashCommandsMixin:
                         f.write(str(rc))
                     """
                 ).strip()
-                subprocess.Popen(
-                    [
+                # PyInstaller-frozen CN portable runtime: sys.executable IS the
+                # Hermes CLI binary, so ``[sys.executable, "-c", helper, ...]``
+                # would run `hermes -c ...` and fail with argparse's "invalid
+                # choice".  Dispatch through the hidden
+                # ``__update-gateway-helper`` CLI subcommand instead (it runs
+                # the same capture-and-exit-code logic in-process).
+                from tools.runtime_compat import hermes_cli_argv, is_frozen_runtime
+
+                if is_frozen_runtime():
+                    helper_argv = hermes_cli_argv(
+                        "__update-gateway-helper",
+                        str(output_path), str(exit_code_path),
+                        "--",
+                        *hermes_cmd, "update", "--gateway",
+                    )
+                else:
+                    helper_argv = [
                         sys.executable, "-c", helper,
                         str(output_path), str(exit_code_path),
                         *hermes_cmd, "update", "--gateway",
-                    ],
+                    ]
+                subprocess.Popen(
+                    helper_argv,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     **windows_detach_popen_kwargs(),

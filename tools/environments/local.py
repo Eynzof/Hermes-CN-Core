@@ -1313,8 +1313,9 @@ def _resolve_shell() -> tuple[str, str]:
       ``HERMES_SHELL_TYPE`` — ``"powershell"``, ``"pwsh"``, ``"bash"``,
       or ``"auto"`` (default: ``"auto"`` on Windows, ``"bash"`` otherwise).
       ``HERMES_SHELL_TYPE=bash`` on Windows selects pre-installed Git Bash
-      via ``_find_bash()`` (no auto-install) and raises a helpful error when
-      it is missing.
+      via ``_find_bash()`` (no auto-install); when Git Bash is missing or
+      cannot start, it degrades gracefully to the PowerShell chain
+      (``pwsh`` → ``powershell.exe``) instead of failing startup.
       ``HERMES_SHELL_TYPE=pwsh`` / ``powershell`` select PowerShell only
       (pwsh → 5.1 fallback) and never probe for git-bash.
 
@@ -1349,15 +1350,40 @@ def _resolve_shell() -> tuple[str, str]:
             logger.info("Selected shell: powershell at %s", ps_path)
             return ("powershell", ps_path)
         if shell_type == "bash":
-            bash_path = _find_bash()
+            bash_path = None
+            bash_reason = ""
+            try:
+                bash_path = _find_bash()
+            except RuntimeError as exc:
+                # _find_bash raises when Git Bash is not installed at all, or
+                # when every discovered candidate fails its start probe (the
+                # Mandatory-ASLR failure class carries its own remediation
+                # text).  None of these should brick the terminal tool —
+                # degrade to PowerShell instead.
+                bash_reason = f" ({exc})"
+            if bash_path and not _bash_starts(bash_path):
+                # _find_bash preserves the first candidate's launch error for
+                # failures outside the known MSYS/ASLR class instead of
+                # raising; treat a probe-failed bash as unavailable too.
+                bash_reason = f" (Git Bash at {bash_path} failed its start probe)"
+                bash_path = None
             if bash_path:
                 logger.info("Selected shell: bash at %s", bash_path)
                 return ("bash", bash_path)
-            raise RuntimeError(
-                "Git Bash is not found on this system. "
-                "Set HERMES_SHELL_TYPE=auto/pwsh/powershell to use PowerShell, "
-                "or install Git Bash manually from https://git-scm.com/download/win."
+            logger.warning(
+                "HERMES_SHELL_TYPE=bash requested Git Bash on Windows but it is "
+                "not usable; falling back to PowerShell.%s",
+                bash_reason,
             )
+            pwsh_path = _find_pwsh()
+            if pwsh_path:
+                logger.info("Selected shell: pwsh at %s (Git Bash fallback)", pwsh_path)
+                return ("pwsh", pwsh_path)
+            ps_path = _find_powershell()
+            logger.info(
+                "Selected shell: powershell at %s (Git Bash fallback)", ps_path
+            )
+            return ("powershell", ps_path)
         raise RuntimeError(
             f"Unknown HERMES_SHELL_TYPE={shell_type!r} on Windows. "
             "Supported values: 'auto' (default → bash/pwsh/powershell), 'pwsh', "

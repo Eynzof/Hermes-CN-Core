@@ -3527,6 +3527,21 @@ def _collect_profile_gateway_topology() -> Dict[str, Any]:
     return {"profiles": profile_names, "gateway_mode": mode, "gateways": gateways}
 
 
+@app.get("/api/version")
+async def api_version() -> JSONResponse:
+    """Return the running dashboard/backend package version.
+
+    The version is read from the installed ``hermes_cli`` package metadata
+    (``pyproject.toml`` at build time), surfaced through ``__version__``.
+    This endpoint is intentionally public and auth-free so the desktop shell
+    can verify compatibility before it has finished bootstrapping the session.
+    """
+    return JSONResponse({
+        "version": __version__,
+        "name": "hermes-agent",
+    })
+
+
 # /api/status is polled ~1/s by the desktop app while it waits for the backend
 # (and again by the dashboard badge). Each uncached call above walks 7+ profile
 # homes (yaml.safe_load with the pure-Python loader + psutil process-table
@@ -4383,7 +4398,16 @@ def _spawn_hermes_action(
         f"\n=== {name} started {time.strftime('%Y-%m-%d %H:%M:%S')} ===\n".encode()
     )
 
-    cmd = [_dashboard_spawn_executable(), "-m", "hermes_cli.main", *subcommand]
+    # PyInstaller-frozen CN portable runtime: sys.executable IS the Hermes CLI
+    # binary, so spawning ``[exe, "-m", "hermes_cli.main", ...]`` would run
+    # `hermes -m hermes_cli.main` and die with argparse's "invalid choice".
+    # The frozen binary takes the subcommand directly.
+    from tools.runtime_compat import is_frozen_runtime
+
+    if is_frozen_runtime():
+        cmd = [sys.executable, *subcommand]
+    else:
+        cmd = [_dashboard_spawn_executable(), "-m", "hermes_cli.main", *subcommand]
 
     # A detached ``hermes <subcommand>`` child is a fresh, external CLI
     # invocation — never the running gateway itself. ``gateway/run.py`` sets
@@ -6004,6 +6028,25 @@ def _install_memory_provider_pip_dependencies(dependencies: List[str]) -> List[D
     if not missing:
         return [
             _command_result(kind="pip", name=", ".join(dependencies), status="already_installed")
+        ]
+
+    # PyInstaller-frozen CN portable runtime: sys.executable IS the frozen CLI
+    # binary — spawning `hermes -m pip` fails with argparse's "invalid choice".
+    # Memory provider deps are pre-baked into the runtime bundle (P-015).
+    from tools.runtime_compat import is_frozen_runtime
+
+    if is_frozen_runtime():
+        return [
+            _command_result(
+                kind="pip",
+                name=", ".join(missing),
+                status="failed",
+                command="pip install",
+                error=(
+                    "pip install is not available in the portable desktop runtime; "
+                    "memory provider dependencies are pre-baked into the bundle."
+                ),
+            )
         ]
 
     # Route through the lazy-install pipeline (tools.lazy_deps.install_specs)

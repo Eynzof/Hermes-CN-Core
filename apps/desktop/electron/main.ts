@@ -4196,23 +4196,25 @@ async function ensureRuntime(backend) {
   }
 
   // On Windows, preflight the configured shell. When the user has set
-  // shell:bash, verify Git Bash is installed (no auto-download). Otherwise
+  // shell:bash, verify Git Bash is installed (no auto-download); a missing
+  // Git Bash is NOT fatal — the core terminal falls back to PowerShell
+  // (pwsh → powershell.exe), so warn and continue. Otherwise
   // (auto/pwsh/powershell), check that PowerShell is available — it ships
   // with every Windows 10/11 system so the check is confirmatory.
   if (IS_WINDOWS) {
     const configShell = (process.env.HERMES_SHELL_TYPE || 'auto').toLowerCase().trim()
     const useBash = configShell === 'bash'
 
-    if (useBash) {
-      if (!findGitBash()) {
-        throw new Error(
-          'You have configured shell:bash, but Git for Windows (Git Bash) was not found. ' +
-            'Install it from https://git-scm.com/download/win and ensure it is on your PATH, ' +
-            'then relaunch Hermes. Alternatively, set shell to "auto", "pwsh", or "powershell" ' +
-            'to use PowerShell (the default shell on Windows).'
+    if (useBash && findGitBash()) {
+      // Git Bash found — it will be used, nothing more to verify.
+    } else {
+      if (useBash) {
+        console.warn(
+          '[hermes] You have configured shell:bash, but Git for Windows (Git Bash) was not found. ' +
+            'Hermes will fall back to PowerShell. Install it from https://git-scm.com/download/win ' +
+            'and ensure it is on your PATH to use Git Bash, or keep the default shell "auto".'
         )
       }
-    } else {
       // Verify at least one PowerShell is available (ships with every Windows system).
       const hasPowerShell =
         findOnPath('pwsh.exe') ||

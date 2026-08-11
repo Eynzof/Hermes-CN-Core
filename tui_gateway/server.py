@@ -41,6 +41,7 @@ from hermes_constants import (
 from hermes_cli.env_loader import load_hermes_dotenv
 from utils import is_truthy_value
 from tools.environments.local import hermes_subprocess_env
+from tools.runtime_compat import hermes_cli_argv
 from agent.replay_cleanup import sanitize_replay_history
 from agent.skill_commands import describe_skill_invocation
 from agent.conversation_loop import INTERRUPT_WAITING_FOR_MODEL_PREFIX
@@ -392,13 +393,11 @@ class _SlashWorker:
         self.stderr_tail: list[str] = []
         self.stdout_queue: queue.Queue[dict | None] = queue.Queue()
 
-        argv = [
-            sys.executable,
-            "-m",
-            "tui_gateway.slash_worker",
+        argv = hermes_cli_argv(
+            "__slash-worker",
             "--session-key",
             session_key,
-        ]
+        )
         if model:
             argv += ["--model", model]
 
@@ -12215,6 +12214,60 @@ def _cli_exec_blocked(argv: list[str]) -> str | None:
     if a0 == "config" and len(argv) > 1 and argv[1].lower() == "edit":
         return "`hermes config edit` needs $EDITOR in a real terminal"
     return None
+
+
+
+@method("cli.exec")
+def _(rid, params: dict) -> dict:
+    """Run `python -m hermes_cli.main` with argv; capture stdout/stderr (non-interactive only)."""
+    argv = params.get("argv", [])
+    if not isinstance(argv, list) or not all(isinstance(x, str) for x in argv):
+        return _err(rid, 4003, "argv must be list[str]")
+    hint = _cli_exec_blocked(argv)
+    if hint:
+        return _ok(rid, {"blocked": True, "hint": hint, "code": -1, "output": ""})
+    try:
+        r = subprocess.run(
+            hermes_cli_argv(*argv),
+            capture_output=True,
+            text=True, encoding="utf-8", errors="replace",
+            timeout=min(int(params.get("timeout", 240)), 600),
+            cwd=os.getcwd(),
+            # cli.exec runs `python -m hermes_cli.main` (can drive the agent) →
+            # needs provider credentials. Tier-1 secrets still stripped (#29157).
+            env=hermes_subprocess_env(inherit_credentials=True),
+            stdin=subprocess.DEVNULL,
+        )
+        parts = [r.stdout or "", r.stderr or ""]
+        out = "\n".join(p for p in parts if p).strip() or "(no output)"
+        return _ok(
+            rid, {"blocked": False, "code": r.returncode, "output": out[:48_000]}
+        )
+    except subprocess.TimeoutExpired:
+        return _err(rid, 5016, "cli.exec: timeout")
+    except Exception as e:
+        return _err(rid, 5017, str(e))
+
+
+@method("command.resolve")
+def _(rid, params: dict) -> dict:
+    try:
+        from hermes_cli.commands import resolve_command
+
+        r = resolve_command(params.get("name", ""))
+        if r:
+            return _ok(
+                rid,
+                {
+                    "canonical": r.name,
+                    "description": r.description,
+                    "category": r.category,
+                },
+            )
+        return _err(rid, 4011, f"unknown command: {params.get('name')}")
+    except Exception as e:
+        return _err(rid, 5012, str(e))
+
 
 
 def _resolve_name(name: str) -> str:

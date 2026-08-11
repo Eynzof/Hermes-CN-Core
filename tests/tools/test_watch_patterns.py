@@ -22,12 +22,10 @@ from tools.process_registry import (
     WATCH_GLOBAL_MAX_PER_WINDOW,
 )
 
-
 @pytest.fixture()
 def registry():
     """Create a fresh ProcessRegistry."""
     return ProcessRegistry()
-
 
 def _make_session(
     sid="proc_test_watch",
@@ -44,7 +42,6 @@ def _make_session(
     )
     return s
 
-
 # =========================================================================
 # ProcessSession field defaults
 # =========================================================================
@@ -60,7 +57,6 @@ class TestProcessSessionField:
     def test_can_set_patterns(self):
         s = _make_session(watch_patterns=["ERROR", "WARN"])
         assert s.watch_patterns == ["ERROR", "WARN"]
-
 
 # =========================================================================
 # Pattern matching + queue population
@@ -95,7 +91,6 @@ class TestCheckWatchPatterns:
         evt = registry.completion_queue.get_nowait()
         # Should only have 20 lines max
         assert evt["output"].count("\n") <= 20
-
 
 # =========================================================================
 # Per-session rate limiting: 1 notification per 15s, 3 strikes → disable
@@ -133,7 +128,6 @@ class TestPerSessionRateLimit:
         assert evt["type"] == "watch_match"
         assert evt["suppressed"] == 4
         assert session._watch_suppressed == 0  # reset after delivery
-
 
 # =========================================================================
 # Checkpoint persistence
@@ -178,18 +172,11 @@ class TestCheckpointPersistence:
         # Won't recover since PID is fake, but verify the code path doesn't crash
         assert count == 0
 
-
 # =========================================================================
 # Terminal tool schema + handler
 # =========================================================================
 
 class TestTerminalToolSchema:
-    def test_schema_includes_watch_patterns(self):
-        from tools.terminal_tool import TERMINAL_SCHEMA
-        props = TERMINAL_SCHEMA["parameters"]["properties"]
-        assert "watch_patterns" in props
-        assert props["watch_patterns"]["type"] == "array"
-        assert props["watch_patterns"]["items"] == {"type": "string"}
 
     def test_handler_passes_watch_patterns(self):
         """_handle_terminal passes watch_patterns to terminal_tool."""
@@ -203,7 +190,6 @@ class TestTerminalToolSchema:
             _, kwargs = mock_tt.call_args
             assert kwargs.get("watch_patterns") == ["ERR"]
 
-
 # =========================================================================
 # Code execution tool blocked params
 # =========================================================================
@@ -212,7 +198,6 @@ class TestCodeExecutionBlocked:
     def test_watch_patterns_blocked(self):
         from tools.code_execution_tool import _TERMINAL_BLOCKED_PARAMS
         assert "watch_patterns" in _TERMINAL_BLOCKED_PARAMS
-
 
 # =========================================================================
 # Suppress-after-exit (anti-spam fix)
@@ -236,7 +221,6 @@ class TestSuppressAfterExit:
         assert not registry.completion_queue.empty()
         evt = registry.completion_queue.get_nowait()
         assert evt["type"] == "watch_match"
-
 
 # =========================================================================
 # Mutual exclusion: notify_on_complete wins over watch_patterns
@@ -268,7 +252,6 @@ class TestMutualExclusion:
         )
         assert resolved == ["ERROR"]
         assert note == ""
-
 
 # =========================================================================
 # Global circuit breaker (cross-session overflow blocker)

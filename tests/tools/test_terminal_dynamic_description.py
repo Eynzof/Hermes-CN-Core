@@ -74,10 +74,32 @@ def test_detect_macos_is_bash():
         assert _detect_shell_for_description() == "bash"
 
 
-def test_detect_windows_explicit_bash_returns_bash():
-    # Explicit HERMES_SHELL_TYPE=bash → "bash" (git-bash selected; no probe).
-    with mock.patch(SYSTEM, return_value="Windows"), _shell_type_env("bash"), mock.patch(SHUTIL_WHICH) as fp:
+
+def test_detect_windows_explicit_bash_returns_bash_when_found():
+    # bash mode with a usable Git Bash → the description reports "bash" so
+    # the model emits POSIX syntax into the shell it will actually run.
+    with mock.patch(SYSTEM, return_value="Windows"), _shell_type_env("bash"), mock.patch(
+        "tools.environments.local._IS_WINDOWS", True
+    ), mock.patch(
+        "tools.environments.local._find_bash",
+        return_value=r"C:\Program Files\Git\bin\bash.exe",
+    ), mock.patch("tools.environments.local._bash_starts", return_value=True):
         assert _detect_shell_for_description() == "bash"
+
+
+def test_detect_windows_explicit_bash_returns_powershell_when_bash_unavailable():
+    # bash on Windows with no usable Git Bash → the terminal falls back to
+    # PowerShell (_resolve_shell), so the description reports "powershell".
+    # _find_bash is mocked to raise (deterministic on hosts where a real Git
+    # Bash exists); shutil.which must never be probed on this path.
+    with mock.patch(SYSTEM, return_value="Windows"), _shell_type_env("bash"), mock.patch(
+        "tools.environments.local._IS_WINDOWS", True
+    ), mock.patch(
+        "tools.environments.local._find_bash",
+        side_effect=RuntimeError("Git Bash is not found on this system."),
+    ), mock.patch(SHUTIL_WHICH) as fp:
+        assert _detect_shell_for_description() == "powershell"
+
         fp.assert_not_called()
 
 
@@ -162,9 +184,10 @@ def test_detect_windows_powershell_alias_available():
 
 
 def test_detect_windows_unknown_shell_type_is_powershell():
-    # Unknown shell type on Windows → treated as auto → powershell when
-    # neither git-bash nor pwsh is available (description path never raises;
-    # _resolve_shell() still raises for unknown values at execution time).
+
+    # Any non-bash shell type on Windows → powershell (unknown types are
+    # treated like auto and resolve through the PowerShell chain).
+
     with mock.patch(SYSTEM, return_value="Windows"), _shell_type_env("fish"), mock.patch(SHUTIL_WHICH) as fp, mock.patch(
         "tools.environments.local._find_bash", side_effect=lambda **kw: None
     ), mock.patch(

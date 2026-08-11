@@ -171,7 +171,7 @@ class TestContradictionGone:
         desktop_hint = PLATFORM_HINTS["desktop"]
         tui_hint = PLATFORM_HINTS["tui"]
         assert "terminal UI" not in desktop_hint
-        assert "terminal UI" in tui_hint
+        assert "TUI" in tui_hint
 
     def test_tui_hint_does_not_carry_desktop_marker(self):
         tui_hint = PLATFORM_HINTS["tui"]

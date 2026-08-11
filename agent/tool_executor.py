@@ -1609,6 +1609,7 @@ def execute_tool_calls_sequential(
                 return _todo_tool(
                     todos=next_args.get("todos"),
                     merge=next_args.get("merge", False),
+                    auto_fix=next_args.get("auto_fix", True),
                     store=agent._todo_store,
                 )
             function_result, function_args, middleware_trace, _execution_blocked, _execution_dispatched = _managed_values(_run_agent_tool_execution_middleware(

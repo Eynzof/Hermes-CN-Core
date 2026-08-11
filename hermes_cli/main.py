@@ -7793,6 +7793,15 @@ def _recover_from_interrupted_install() -> None:
         _clear_lazy_refresh_incomplete_marker()
         return
 
+    # PyInstaller-frozen CN portable runtime: there is no venv/pip to repair
+    # (sys.executable IS the frozen CLI binary), so a stray marker is not for
+    # us to act on. Just clear it.
+    from tools.runtime_compat import is_frozen_runtime
+
+    if is_frozen_runtime():
+        _clear_update_incomplete_marker()
+        return
+
     # Single-flight guard: atomically claim the recovery lock. If another
     # process holds it, skip — it is running the same reinstall into the same
     # shared venv right now. A crashed holder leaves a stale lock; break it
@@ -9152,6 +9161,21 @@ def cmd_update(args):
         managed_error("update Hermes Agent")
         return
 
+    # PyInstaller-frozen CN portable runtime: the desktop app manages its own
+    # runtime updates (manifest + hot-swap).  ``hermes update`` here would try
+    # to spawn ``[sys.executable, "-m", "pip"]`` — but sys.executable IS the
+    # frozen CLI binary, so that would run `hermes -m pip` and fail with
+    # argparse's "invalid choice".  Refuse with clear guidance instead.
+    from tools.runtime_compat import is_frozen_runtime
+
+    if is_frozen_runtime():
+        print(
+            "This Hermes build is the CN portable desktop runtime, which is "
+            "updated by the desktop app itself (Settings → Check for updates). "
+            "`hermes update` is not supported here."
+        )
+        sys.exit(0)
+
     # Docker users can't ``git pull`` — the image excludes ``.git`` from
     # the build context.  Bail with a friendly explanation pointing at
     # ``docker pull`` BEFORE any of the apply-path / check-path branches
@@ -10372,8 +10396,9 @@ def cmd_dashboard(args):
             f"Routing to the machine dashboard (profile '{_launch_profile}' "
             f"preselected). Use --isolated for a dedicated per-profile server."
         )
-        reexec_argv = [
-            sys.executable, "-m", "hermes_cli.main",
+        from tools.runtime_compat import hermes_cli_argv
+
+        reexec_argv = hermes_cli_argv(
             "-p", "default",
             # Preserve the lean serve path across the re-exec so a named-profile
             # `serve` doesn't silently rebuild the UI as `dashboard`.
@@ -10381,7 +10406,7 @@ def cmd_dashboard(args):
             "--port", str(args.port),
             "--host", args.host,
             "--open-profile", _launch_profile,
-        ]
+        )
         if _ssh_owner_nonce:
             reexec_argv.extend(["--ssh-owner-nonce", _ssh_owner_nonce])
         if _token_file:
@@ -10786,6 +10811,12 @@ _BUILTIN_SUBCOMMANDS = frozenset(
         "send", "sessions", "setup",
         "skin", "skills", "slack", "status", "sync", "tools", "uninstall", "update",
         "version", "webhook", "whatsapp", "whatsapp-cloud", "chat", "secrets", "security",
+        # Internal worker subcommands (hidden from --help): the frozen CN
+        # portable runtime has no standalone python, so tui_gateway workers
+        # and the gateway restart-watcher are dispatched through the CLI
+        # binary via these names.
+        "__slash-worker", "__compute-host", "__gateway-restart-watch",
+        "__update-gateway-helper",
         # Help-ish invocations — plugin commands not being listed in
         # top-level --help is an acceptable trade-off for skipping an
         # expensive eager import of every bundled plugin module.
@@ -11349,6 +11380,167 @@ def cmd_claw(args):
     from hermes_cli.claw import claw_command
 
     claw_command(args)
+
+
+def _register_internal_worker_subcommands(subparsers) -> None:
+    """Register hidden internal worker subcommands on the top-level parser.
+
+    The PyInstaller-frozen CN portable runtime ships no standalone
+    ``python.exe`` — ``sys.executable`` IS the Hermes CLI binary.  Code that
+    previously spawned workers with ``[sys.executable, "-m", module]`` or
+    ``[sys.executable, "-c", code]`` would run ``hermes <arg>`` and die with
+    argparse's "invalid choice".  These hidden subcommands let the frozen CLI
+    dispatch straight to the worker mains / watcher logic instead, and are a
+    no-op on source checkouts (where the plain spawn paths remain).
+
+    Subcommands:
+      __slash-worker        — run tui_gateway.slash_worker.main()
+      __compute-host        — run tui_gateway.compute_host.main()
+      __gateway-restart-watch  — poll a PID then respawn the gateway
+      __update-gateway-helper  — run `hermes update --gateway` detached
+    """
+
+    # tui_gateway.server / host_supervisor spawn slash-worker and compute-host
+    # children with ``python -m tui_gateway.slash_worker`` / ``-m
+    # tui_gateway.compute_host``.  The worker mains parse their own argv, so
+    # the handlers rebuild it and delegate.
+    def _cmd_slash_worker(args):
+        import sys as _sys
+        from tui_gateway.slash_worker import main as _slash_worker_main
+
+        # The worker main parses its own argv (--session-key / --model).
+        rebuilt = ["tui_gateway.slash_worker"]
+        if getattr(args, "session_key", None):
+            rebuilt += ["--session-key", args.session_key]
+        if getattr(args, "model", None):
+            rebuilt += ["--model", args.model]
+        _sys.argv = rebuilt
+        _slash_worker_main()
+
+    def _cmd_compute_host(args):
+        import sys as _sys
+        from tui_gateway.compute_host import main as _compute_host_main
+
+        _sys.argv = ["tui_gateway.compute_host"]
+        _compute_host_main()
+
+    slash_worker_parser = subparsers.add_parser(
+        "__slash-worker",
+        help=argparse.SUPPRESS,
+        description="Internal: run the TUI slash-worker process (hidden).",
+    )
+    slash_worker_parser.add_argument("--session-key", required=True)
+    slash_worker_parser.add_argument("--model", default="")
+    slash_worker_parser.set_defaults(func=_cmd_slash_worker)
+
+    compute_host_parser = subparsers.add_parser(
+        "__compute-host",
+        help=argparse.SUPPRESS,
+        description="Internal: run the dashboard compute-host process (hidden).",
+    )
+    compute_host_parser.set_defaults(func=_cmd_compute_host)
+
+    # ``hermes update`` / ``/restart`` respawn a running gateway through a tiny
+    # detached *watcher* process that polls the old PID and re-launches the
+    # gateway once it exits.  In a source checkout the watcher is spawned as
+    # ``[sys.executable, "-c", ...]``; under the frozen runtime this hidden
+    # subcommand lets the frozen CLI play the watcher role directly.
+    #
+    # Signature:  hermes __gateway-restart-watch <old_pid> [--deadline <secs>] -- <cmd...>
+    #
+    # Optional env the caller may set on the spawned watcher process:
+    #   HERMES_RESTART_WATCH_CWD  — cwd for the respawned gateway
+    #   HERMES_RESTART_WATCH_ENV  — JSON object overlaid on the respawn env
+    def _cmd_gateway_restart_watch(args):
+        import time as _time
+        from hermes_cli._subprocess_compat import (
+            windows_detach_flags,
+            windows_detach_flags_without_breakaway,
+        )
+        from gateway.status import _pid_exists
+
+        pid = int(args.pid)
+        cmd = list(args.cmd)
+        deadline_secs = float(getattr(args, "deadline", 0) or 120)
+        _respawn_cwd = os.environ.get("HERMES_RESTART_WATCH_CWD", "") or ""
+        _respawn_env_overlay = {}
+        _env_raw = os.environ.get("HERMES_RESTART_WATCH_ENV", "") or ""
+        if _env_raw:
+            try:
+                _respawn_env_overlay = orjson.loads(_env_raw)
+            except Exception:
+                _respawn_env_overlay = {}
+        deadline = _time.monotonic() + max(deadline_secs, 1.0)
+        while _time.monotonic() < deadline:
+            if not _pid_exists(pid):
+                break
+            _time.sleep(0.2)
+
+        _popen_kwargs = {
+            "stdout": subprocess.DEVNULL,
+            "stderr": subprocess.DEVNULL,
+        }
+        if _respawn_cwd:
+            _popen_kwargs["cwd"] = _respawn_cwd
+        if _respawn_env_overlay:
+            _popen_kwargs["env"] = {**os.environ, **_respawn_env_overlay}
+        if sys.platform == "win32":
+            try:
+                _popen_kwargs["creationflags"] = windows_detach_flags()
+                subprocess.Popen(cmd, **_popen_kwargs)
+            except OSError:
+                _popen_kwargs["creationflags"] = windows_detach_flags_without_breakaway()
+                subprocess.Popen(cmd, **_popen_kwargs)
+        else:
+            _popen_kwargs["start_new_session"] = True
+            subprocess.Popen(cmd, **_popen_kwargs)
+
+    gateway_restart_watch_parser = subparsers.add_parser(
+        "__gateway-restart-watch",
+        help=argparse.SUPPRESS,
+        description="Internal: poll a PID then respawn the gateway (hidden).",
+    )
+    # NOTE: --deadline must be declared BEFORE the pid positional — the cmd
+    # REMAINDER grabs every token after the first positional, so any option
+    # placed after ``pid`` would be swallowed into the respawn command.
+    gateway_restart_watch_parser.add_argument("--deadline", default="120")
+    gateway_restart_watch_parser.add_argument("pid")
+    gateway_restart_watch_parser.add_argument("cmd", nargs=argparse.REMAINDER)
+    gateway_restart_watch_parser.set_defaults(func=_cmd_gateway_restart_watch)
+
+    # The gateway's /update slash command spawns a detached helper that runs
+    # ``hermes update --gateway``, captures its output to a file, and writes
+    # the exit code to a second file.  In a source checkout the helper is
+    # spawned as ``[sys.executable, "-c", ...]``; under the frozen runtime
+    # this hidden subcommand lets the frozen CLI play the helper role directly.
+    #
+    # Signature:
+    #   hermes __update-gateway-helper <output_path> <exit_code_path> -- <cmd...>
+    def _cmd_update_gateway_helper(args):
+        output_path = args.output_path
+        exit_code_path = args.exit_code_path
+        cmd = list(args.cmd)
+        env = dict(os.environ)
+        env["PYTHONUNBUFFERED"] = "1"
+        with open(output_path, "wb") as f:
+            proc = subprocess.Popen(cmd, stdout=f, stderr=subprocess.STDOUT, env=env)
+            try:
+                rc = proc.wait(timeout=3600)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                rc = proc.wait()
+        with open(exit_code_path, "w", encoding="utf-8") as f:
+            f.write(str(rc))
+
+    update_gateway_helper_parser = subparsers.add_parser(
+        "__update-gateway-helper",
+        help=argparse.SUPPRESS,
+        description="Internal: run hermes update --gateway detached (hidden).",
+    )
+    update_gateway_helper_parser.add_argument("output_path")
+    update_gateway_helper_parser.add_argument("exit_code_path")
+    update_gateway_helper_parser.add_argument("cmd", nargs=argparse.REMAINDER)
+    update_gateway_helper_parser.set_defaults(func=_cmd_update_gateway_helper)
 
 
 def main():
@@ -12591,6 +12783,8 @@ def main():
         help="Shell type (default: bash)",
     )
     completion_parser.set_defaults(func=lambda args: cmd_completion(args, parser))
+
+    _register_internal_worker_subcommands(subparsers)
 
     # =========================================================================
     # dashboard command  (parser built in hermes_cli/subcommands/dashboard.py)

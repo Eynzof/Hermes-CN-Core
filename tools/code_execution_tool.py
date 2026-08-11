@@ -59,8 +59,18 @@ logger = logging.getLogger(__name__)
 
 SANDBOX_AVAILABLE = True
 
-# The 7 tools allowed inside the sandbox. The intersection of this list
-# and the session's enabled tools determines which stubs are generated.
+# PyInstaller-frozen runtime (CN portable desktop): sys.executable is the
+# Hermes CLI binary itself, and there is no standalone python.exe to spawn
+# as the sandbox child ([sys.executable, script.py] would run
+# hermes script.py and die with argparse invalid choice). The sandbox
+# is an isolation boundary - it must stay a separate process, so under the
+# frozen runtime execute_code reports unavailable with a clear message
+# instead of degrading to in-process execution.
+from tools.runtime_compat import is_frozen_runtime  # noqa: E402  (after logger)
+
+if is_frozen_runtime():
+    SANDBOX_AVAILABLE = False
+
 SANDBOX_ALLOWED_TOOLS = frozenset([
     "web_search",
     "web_extract",

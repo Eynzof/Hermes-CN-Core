@@ -865,6 +865,16 @@ def _install_provider_deps(llm_id: str, embedder_id: str, vector_id: str) -> Non
         if dep:
             deps.add(dep)
     for dep in sorted(deps):
+        # PyInstaller-frozen CN portable runtime: sys.executable IS the Hermes
+        # CLI binary — no standalone python for uv to target, and provider deps
+        # are pre-baked into the bundle (P-015).  Skip the install.
+        from tools.runtime_compat import is_frozen_runtime
+
+        if is_frozen_runtime():
+            print(
+                f"  ℹ {dep} is pre-baked in the portable runtime; nothing to install."
+            )
+            continue
         try:
             print(f"  Installing {dep}...")
             # Environment-aware install: sealed hosted venvs redirect to the

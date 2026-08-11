@@ -2483,12 +2483,40 @@ def _generate_neutts(text: str, output_path: str, tts_config: Dict[str, Any]) ->
         "--device", device,
     ]
 
-    result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120, stdin=subprocess.DEVNULL, creationflags=windows_hide_flags())  # windows-footgun: ok
-    if result.returncode != 0:
-        stderr = result.stderr.strip()
-        # Filter out the "OK:" line from stderr
-        error_lines = [l for l in stderr.splitlines() if not l.startswith("OK:")]
-        raise RuntimeError(f"NeuTTS synthesis failed: {chr(10).join(error_lines) or 'unknown error'}")
+    # PyInstaller-frozen runtime (CN portable desktop): sys.executable is the
+    # Hermes CLI binary, not a standalone python — spawning it with the synth
+    # script would run `hermes neutts_synth.py` and fail with argparse's
+    # "invalid choice". Run the synth script in-process instead (same fix
+    # class as the cron in-process runner).
+    from tools.runtime_compat import is_frozen_runtime, run_python_script_in_process
+
+    if is_frozen_runtime():
+        exit_code, stdout, stderr = run_python_script_in_process(
+            synth_script,
+            120,
+            argv=[
+                "--text", text,
+                "--out", wav_path,
+                "--ref-audio", ref_audio,
+                "--ref-text", ref_text,
+                "--model", model,
+                "--device", device,
+            ],
+        )
+        if exit_code != 0:
+            error_lines = [
+                l for l in stderr.splitlines() if not l.startswith("OK:")
+            ]
+            raise RuntimeError(
+                f"NeuTTS synthesis failed: {chr(10).join(error_lines) or 'unknown error'}"
+            )
+    else:
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120, stdin=subprocess.DEVNULL, creationflags=windows_hide_flags())  # windows-footgun: ok
+        if result.returncode != 0:
+            stderr = result.stderr.strip()
+            # Filter out the "OK:" line from stderr
+            error_lines = [l for l in stderr.splitlines() if not l.startswith("OK:")]
+            raise RuntimeError(f"NeuTTS synthesis failed: {chr(10).join(error_lines) or 'unknown error'}")
 
     # If the caller wanted .mp3 or .ogg, convert from WAV
     if wav_path != output_path:
@@ -2587,23 +2615,50 @@ def _resolve_piper_voice_path(voice: str, download_dir: Path) -> str:
     # Case 3: download the voice. piper ships a download helper module.
     import sys as _sys
     logger.info("[Piper] Downloading voice '%s' to %s (first use)", voice, download_dir)
-    try:
-        result = subprocess.run(
-            [_sys.executable, "-m", "piper.download_voices", voice,
-             "--download-dir", str(download_dir)],
-            capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=300,
-            stdin=subprocess.DEVNULL,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(
-            f"Piper voice download timed out after 300s for '{voice}'"
-        ) from exc
+    # PyInstaller-frozen runtime (CN portable desktop): sys.executable is the
+    # Hermes CLI binary, not a standalone python — spawning it with
+    # ``-m piper.download_voices`` would run `hermes -m ...` and die with
+    # argparse's "invalid choice". Run the download module in-process instead.
+    from tools.runtime_compat import is_frozen_runtime
 
-    if result.returncode != 0:
-        stderr = (result.stderr or "").strip() or "no stderr output"
-        raise RuntimeError(
-            f"Piper voice download failed for '{voice}': {stderr[:400]}"
-        )
+    if is_frozen_runtime():
+        try:
+            import runpy
+
+            prior_argv = _sys.argv
+            _sys.argv = ["piper.download_voices", voice, "--download-dir", str(download_dir)]
+            try:
+                runpy.run_module("piper.download_voices", run_name="__main__")
+            finally:
+                _sys.argv = prior_argv
+        except SystemExit as exc:
+            code = exc.code if isinstance(exc.code, int) else 1
+            if code != 0:
+                raise RuntimeError(
+                    f"Piper voice download failed for '{voice}': exit {code}"
+                )
+        except BaseException as exc:  # noqa: BLE001 — a download failure is user-visible
+            raise RuntimeError(
+                f"Piper voice download failed for '{voice}': {exc}"
+            ) from exc
+    else:
+        try:
+            result = subprocess.run(
+                [_sys.executable, "-m", "piper.download_voices", voice,
+                 "--download-dir", str(download_dir)],
+                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300,
+                stdin=subprocess.DEVNULL,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(
+                f"Piper voice download timed out after 300s for '{voice}'"
+            ) from exc
+
+        if result.returncode != 0:
+            stderr = (result.stderr or "").strip() or "no stderr output"
+            raise RuntimeError(
+                f"Piper voice download failed for '{voice}': {stderr[:400]}"
+            )
 
     if not cached.exists():
         raise RuntimeError(

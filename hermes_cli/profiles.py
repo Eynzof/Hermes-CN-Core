@@ -1208,6 +1208,28 @@ def seed_profile_skills(profile_dir: Path, quiet: bool = False) -> Optional[dict
         }
     project_root = Path(__file__).parent.parent.resolve()
     try:
+        # PyInstaller-frozen CN portable runtime: sys.executable IS the CLI
+        # binary, so ``sys.executable -c ...`` would run `hermes -c ...` and
+        # fail with argparse's "invalid choice".  Run the skill seeding
+        # in-process instead (sync_skills is importable from the bundle).
+        from tools.runtime_compat import is_frozen_runtime
+
+        if is_frozen_runtime():
+            from tools.skills_sync import sync_skills
+
+            import orjson as _orjson
+
+            saved_home = os.environ.get("HERMES_HOME")
+            try:
+                os.environ["HERMES_HOME"] = str(profile_dir)
+                r = sync_skills(quiet=True)
+                return _orjson.loads(_orjson.dumps(r).decode("utf-8"))
+            finally:
+                if saved_home is None:
+                    os.environ.pop("HERMES_HOME", None)
+                else:
+                    os.environ["HERMES_HOME"] = saved_home
+
         result = subprocess.run(
             [sys.executable, "-c",
              "import json; from tools.skills_sync import sync_skills; "

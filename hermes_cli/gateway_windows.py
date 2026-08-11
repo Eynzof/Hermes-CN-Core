@@ -421,7 +421,16 @@ def _build_gateway_cmd_script(
     ]
     lines.append(f'set "PYTHONPATH={";".join([*pythonpath_entries, "%PYTHONPATH%"])}"')
 
-    prog_args = [python_exe_path, "-m", "hermes_cli.main"]
+    # PyInstaller-frozen CN portable runtime: sys.executable IS the frozen CLI
+    # binary (no pythonw sibling) — ``[exe, "-m", "hermes_cli.main"]`` would
+    # run `hermes -m hermes_cli.main` and fail with argparse's "invalid choice".
+    # The frozen binary takes the gateway subcommand directly.
+    from tools.runtime_compat import is_frozen_runtime
+
+    if is_frozen_runtime():
+        prog_args = [sys.executable]
+    else:
+        prog_args = [python_exe_path, "-m", "hermes_cli.main"]
     if profile_arg:
         prog_args.extend(profile_arg.split())
     prog_args.extend(["gateway", "run"])
@@ -475,7 +484,16 @@ def _build_gateway_vbs_script(
     """
     python_exe_path, venv_dir, extra_pythonpath = _resolve_detached_python(python_path)
 
-    prog_args = [python_exe_path, "-m", "hermes_cli.main"]
+    # PyInstaller-frozen CN portable runtime: sys.executable IS the frozen CLI
+    # binary (no pythonw sibling) — ``[exe, "-m", "hermes_cli.main"]`` would
+    # run `hermes -m hermes_cli.main` and fail with argparse's "invalid choice".
+    # The frozen binary takes the gateway subcommand directly.
+    from tools.runtime_compat import is_frozen_runtime
+
+    if is_frozen_runtime():
+        prog_args = [sys.executable]
+    else:
+        prog_args = [python_exe_path, "-m", "hermes_cli.main"]
     if profile_arg:
         prog_args.extend(profile_arg.split())
     prog_args.extend(["gateway", "run"])
@@ -801,10 +819,23 @@ def _build_gateway_argv() -> tuple[list[str], str, dict[str, str]]:
     hermes_home = str(Path(get_hermes_home()))
     profile_arg = _profile_arg(hermes_home)
 
-    argv = [python_exe, "-m", "hermes_cli.main"]
-    if profile_arg:
-        argv.extend(profile_arg.split())
-    argv.extend(["gateway", "run"])
+    # PyInstaller-frozen CN portable runtime: sys.executable IS the Hermes CLI
+    # binary itself (GUI-subsystem, no python.exe sibling).  Spawning
+    # ``[exe, "-m", "hermes_cli.main"]`` would run `hermes -m hermes_cli.main`
+    # and fail with argparse's "invalid choice".  The frozen binary takes the
+    # gateway subcommand directly.
+    from tools.runtime_compat import is_frozen_runtime
+
+    if is_frozen_runtime():
+        argv = [sys.executable]
+        if profile_arg:
+            argv.extend(profile_arg.split())
+        argv.extend(["gateway", "run"])
+    else:
+        argv = [python_exe, "-m", "hermes_cli.main"]
+        if profile_arg:
+            argv.extend(profile_arg.split())
+        argv.extend(["gateway", "run"])
 
     env_overlay = {
         "HERMES_HOME": hermes_home,

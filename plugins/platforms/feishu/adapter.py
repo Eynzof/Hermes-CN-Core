@@ -5143,19 +5143,19 @@ class FeishuAdapter(BasePlatformAdapter):
 
     @staticmethod
     def _build_get_chat_request(chat_id: str) -> Any:
-        if GetChatRequest is not None:
+        if "GetChatRequest" in globals():
             return GetChatRequest.builder().chat_id(chat_id).build()
         return SimpleNamespace(chat_id=chat_id)
 
     @staticmethod
     def _build_get_message_request(message_id: str) -> Any:
-        if GetMessageRequest is not None:
+        if "GetMessageRequest" in globals():
             return GetMessageRequest.builder().message_id(message_id).build()
         return SimpleNamespace(message_id=message_id)
 
     @staticmethod
     def _build_message_resource_request(*, message_id: str, file_key: str, resource_type: str) -> Any:
-        if GetMessageResourceRequest is not None:
+        if "GetMessageResourceRequest" in globals():
             return (
                 GetMessageResourceRequest.builder()
                 .message_id(message_id)
@@ -5167,7 +5167,7 @@ class FeishuAdapter(BasePlatformAdapter):
 
     @staticmethod
     def _build_get_application_request(*, app_id: str, lang: str) -> Any:
-        if GetApplicationRequest is not None:
+        if "GetApplicationRequest" in globals():
             return (
                 GetApplicationRequest.builder()
                 .app_id(app_id)
@@ -5178,7 +5178,7 @@ class FeishuAdapter(BasePlatformAdapter):
 
     @staticmethod
     def _build_reply_message_body(*, content: str, msg_type: str, reply_in_thread: bool, uuid_value: str) -> Any:
-        if ReplyMessageRequestBody is not None:
+        if "ReplyMessageRequestBody" in globals():
             return (
                 ReplyMessageRequestBody.builder()
                 .content(content)
@@ -5196,7 +5196,7 @@ class FeishuAdapter(BasePlatformAdapter):
 
     @staticmethod
     def _build_reply_message_request(message_id: str, request_body: Any) -> Any:
-        if ReplyMessageRequest is not None:
+        if "ReplyMessageRequest" in globals():
             return (
                 ReplyMessageRequest.builder()
                 .message_id(message_id)
@@ -5207,7 +5207,7 @@ class FeishuAdapter(BasePlatformAdapter):
 
     @staticmethod
     def _build_update_message_body(*, msg_type: str, content: str) -> Any:
-        if UpdateMessageRequestBody is not None:
+        if "UpdateMessageRequestBody" in globals():
             return (
                 UpdateMessageRequestBody.builder()
                 .msg_type(msg_type)
@@ -5218,7 +5218,7 @@ class FeishuAdapter(BasePlatformAdapter):
 
     @staticmethod
     def _build_update_message_request(message_id: str, request_body: Any) -> Any:
-        if UpdateMessageRequest is not None:
+        if "UpdateMessageRequest" in globals():
             return (
                 UpdateMessageRequest.builder()
                 .message_id(message_id)
@@ -5229,7 +5229,7 @@ class FeishuAdapter(BasePlatformAdapter):
 
     @staticmethod
     def _build_create_message_body(*, receive_id: str, msg_type: str, content: str, uuid_value: str) -> Any:
-        if CreateMessageRequestBody is not None:
+        if "CreateMessageRequestBody" in globals():
             return (
                 CreateMessageRequestBody.builder()
                 .receive_id(receive_id)
@@ -5247,7 +5247,7 @@ class FeishuAdapter(BasePlatformAdapter):
 
     @staticmethod
     def _build_create_message_request(receive_id_type: str, request_body: Any) -> Any:
-        if CreateMessageRequest is not None:
+        if "CreateMessageRequest" in globals():
             return (
                 CreateMessageRequest.builder()
                 .receive_id_type(receive_id_type)
@@ -5258,7 +5258,7 @@ class FeishuAdapter(BasePlatformAdapter):
 
     @staticmethod
     def _build_image_upload_body(*, image_type: str, image: Any) -> Any:
-        if CreateImageRequestBody is not None:
+        if "CreateImageRequestBody" in globals():
             return (
                 CreateImageRequestBody.builder()
                 .image_type(image_type)
@@ -5269,13 +5269,13 @@ class FeishuAdapter(BasePlatformAdapter):
 
     @staticmethod
     def _build_image_upload_request(request_body: Any) -> Any:
-        if CreateImageRequest is not None:
+        if "CreateImageRequest" in globals():
             return CreateImageRequest.builder().request_body(request_body).build()
         return SimpleNamespace(request_body=request_body)
 
     @staticmethod
     def _build_file_upload_body(*, file_type: str, file_name: str, file: Any, duration: int = 0) -> Any:
-        if CreateFileRequestBody is not None:
+        if "CreateFileRequestBody" in globals():
             builder = (
                 CreateFileRequestBody.builder()
                 .file_type(file_type)
@@ -5289,7 +5289,7 @@ class FeishuAdapter(BasePlatformAdapter):
 
     @staticmethod
     def _build_file_upload_request(request_body: Any) -> Any:
-        if CreateFileRequest is not None:
+        if "CreateFileRequest" in globals():
             return CreateFileRequest.builder().request_body(request_body).build()
         return SimpleNamespace(request_body=request_body)
 

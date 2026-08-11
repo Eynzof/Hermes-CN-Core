@@ -3561,7 +3561,9 @@ TERMINAL_SCHEMA = {
                 "type": "string",
                 "description": "The command to execute on the VM"
             },
-                "description": "Run in the background, returning a session_id. Pair with notify_on_complete=true for anything with a defined end (tests, builds, deploys) — without it the process runs silently. Only servers/watchers/daemons that never exit should stay silent. Short commands: prefer foreground with a generous timeout."
+            "background": {
+                "type": "boolean",
+                "description": "Run in the background, returning a session_id. Pair with notify_on_complete=true for anything with a defined end (tests, builds, deploys) — without it the process runs silently. Only servers/watchers/daemons that never exit should stay silent. Short commands: prefer foreground with a generous timeout.",
                 "default": False
             },
             "timeout": {
@@ -3578,7 +3580,9 @@ TERMINAL_SCHEMA = {
                 "description": "Run in PTY mode for interactive CLIs (Codex, Claude Code, REPL). Local/SSH backends only.",
                 "default": False
             },
-                "description": "With background=true: get exactly one notification when the process exits. The right choice for nearly every bounded long task — set it and keep working. MUTUALLY EXCLUSIVE with watch_patterns (watch_patterns is dropped when both are set)."
+            "notify_on_complete": {
+                "type": "boolean",
+                "description": "With background=true: get exactly one notification when the process exits. The right choice for nearly every bounded long task — set it and keep working. MUTUALLY EXCLUSIVE with watch_patterns (watch_patterns is dropped when both are set).",
                 "default": False
             },
             "watch_patterns": {

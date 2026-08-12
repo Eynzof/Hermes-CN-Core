@@ -237,6 +237,12 @@ TOOL_SPECIFIC_ALIASES: Dict[str, Dict[str, str]] = {
         "background": "no_agent",
         "message": "prompt",
     },
+    # process: a kimi-style boolean `wait` means "block" (action='poll' +
+    # block=true == action='wait'). The global alias would map it to the
+    # integer `timeout`, which is wrong for the process tool.
+    "process": {
+        "wait": "block",
+    },
 }
 
 logger = logging.getLogger(__name__)

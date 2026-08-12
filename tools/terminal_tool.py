@@ -2383,6 +2383,111 @@ def _resolve_command_cwd(
     return get_session_cwd(session_key) or default_cwd
 
 
+def _normalize_terminal_mode(
+    mode: Optional[str],
+    interactive: bool,
+    background: bool,
+) -> tuple[bool, bool]:
+    """Normalize a kimi-style ``mode`` value into (background, interactive).
+
+    ``"run"``/``"execute"``/``"foreground"``/``"fg"`` → foreground.
+    ``"background"``/``"bg"``/``"async"``/``"detach"`` → background.
+    ``"interactive"``/``"repl"``/``"shell"`` → background + interactive.
+
+    Unknown modes fall back to the explicit ``background``/``interactive``
+    flags (LLM-friendly: never hard-fail on a synonym).
+    """
+    if not mode:
+        return background, interactive
+    m = str(mode).strip().lower()
+    if m in ("run", "execute", "foreground", "fg"):
+        return False, interactive
+    if m in ("background", "bg", "async", "detach"):
+        return True, interactive
+    if m in ("interactive", "repl", "shell"):
+        return True, True
+    logger.warning(
+        "Unknown terminal mode %r — falling back to explicit flags "
+        "(background=%s, interactive=%s)",
+        mode, background, interactive,
+    )
+    return background, interactive
+
+
+def _interactive_shell_command() -> str:
+    """Return the shell command that starts a persistent interactive session.
+
+    Used when ``terminal(mode='interactive')`` is called without an explicit
+    command — the model can also pass its own REPL (e.g. ``python``).
+    """
+    import sys
+
+    if sys.platform == "win32":
+        try:
+            from tools.environments.local import _resolve_shell
+
+            shell_type, _ = _resolve_shell()
+        except Exception:
+            shell_type = "powershell"
+        if shell_type == "bash":
+            return "bash -i"
+        if shell_type == "pwsh":
+            return "pwsh -NoLogo -NoExit"
+        return "powershell -NoLogo -NoExit"
+    return "bash -i"
+
+
+def _continue_background_session(
+    process_id: str,
+    command: str,
+    timeout: int,
+    wait_for_pattern: Optional[str] = None,
+    inactivity_timeout: Optional[int] = None,
+) -> str:
+    """Send ``command`` to an existing background process's stdin and wait for
+    its new output — kimi-style ``Bash(task_id=...)`` session continuation.
+
+    Returns a JSON string (registry wait result, redacted).
+    """
+    try:
+        from tools.process_registry import _redact_process_result, process_registry
+
+        proc = process_registry.get(process_id)
+        if proc is None:
+            return tool_error(
+                f"No background process with session_id {process_id}. "
+                "Start one with terminal(background=true) (or mode='interactive')."
+            )
+        if proc.exited:
+            return tool_error(
+                f"Process {process_id} already exited "
+                f"(exit_code={proc.exit_code}, reason={proc.completion_reason}). "
+                "Start a new one with terminal(background=true)."
+            )
+
+        baseline = len(proc.output_buffer or "")
+        write_result = process_registry.submit_stdin(process_id, command)
+        if write_result.get("status") != "ok":
+            return orjson.dumps(write_result).decode('utf-8')
+
+        wait_result = process_registry.wait(
+            process_id,
+            timeout=timeout,
+            pattern=wait_for_pattern,
+            inactivity_timeout=inactivity_timeout,
+            since_chars=baseline,
+        )
+        return orjson.dumps(_redact_process_result(wait_result)).decode('utf-8')
+    except Exception as e:
+        logger.error("Session continuation failed: %s", e, exc_info=True)
+        return orjson.dumps({
+            "output": "",
+            "exit_code": -1,
+            "error": f"Session continuation failed: {e}",
+            "status": "error",
+        }).decode('utf-8')
+
+
 def terminal_tool(
     command: str,
     background: bool = False,
@@ -2397,19 +2502,48 @@ def terminal_tool(
     token_kill: bool = True,
     max_lines: Optional[int] = None,
     tool_call_id: Optional[str] = None,
+    mode: Optional[str] = None,
+    interactive: bool = False,
+    promote_on_timeout: bool = False,
+    wait_for_pattern: Optional[str] = None,
+    inactivity_timeout: Optional[int] = None,
+    process_id: Optional[str] = None,
 ) -> str:
     """
     Execute a command in the configured terminal environment.
 
     Args:
-        command: The command to execute
+        command: The command to execute. Optional when ``mode="interactive"``
+            (defaults to a persistent shell session).
         background: Whether to run in background (default: False)
+        mode: kimi-style execution mode — ``"run"``/``"execute"``/``"foreground"``
+            (foreground, default), ``"background"`` (== background=true),
+            ``"interactive"`` (start a persistent shell/REPL session you can
+            continue later via ``process_id``). Overrides ``background`` when set.
+        interactive: Start a persistent interactive shell/REPL (local backend,
+            PTY). Equivalent to ``mode="interactive"``. Continue the session
+            later by passing its session_id as ``process_id`` with new commands.
         timeout: Command timeout in seconds (default: from config)
         task_id: Unique identifier for environment isolation (optional)
         session_id: Conversation/session identifier for durable observability
+        process_id: Session id of an existing BACKGROUND process (from
+            terminal background or process list) to CONTINUE: sends `command`
+            to its stdin and waits for new output (kimi-style session
+            continuation). Requires the process to accept stdin (PTY/pipe).
         force: If True, skip dangerous command check (use after user confirms)
         workdir: Working directory for this command (optional, uses session cwd if not set)
         pty: If True, use pseudo-terminal for interactive CLI tools (local backend only)
+        promote_on_timeout: Foreground only (local backend): if the command
+            exceeds `timeout`, DON'T kill it — keep it running and hand back a
+            background ``session_id`` you can poll/wait/log/kill. Also enables
+            ``wait_for_pattern`` early-return. Long work is never lost.
+        wait_for_pattern: Regex. With ``promote_on_timeout=true`` (foreground):
+            return as soon as the pattern appears in output — the process keeps
+            running as a background session. On continuation (``process_id``):
+            wait for new output matching this regex.
+        inactivity_timeout: Seconds of output silence before a wait returns
+            early with partial output (continuation waits; default 120 when
+            ``wait_for_pattern`` is set).
         notify_on_complete: If True and background=True, you'll be notified exactly once when the process exits. The right choice for almost every long task. MUTUALLY EXCLUSIVE with watch_patterns.
         watch_patterns: List of strings to watch for in background output. HARD rate limit: 1 notification per 15s per process. After 3 strike windows in a row, watch_patterns is disabled and the session is auto-promoted to notify_on_complete. Use ONLY for rare, one-shot mid-process signals on long-lived processes (server readiness, migration-done markers). NEVER use in loops/batch jobs — error patterns there will hit the strike limit and get disabled. MUTUALLY EXCLUSIVE with notify_on_complete — set one, not both.
         token_kill: When True (default), known commands are rewritten to use the rtk binary which collapses repeated output lines to save tokens. Set False to preserve raw command output.
@@ -2438,6 +2572,10 @@ def terminal_tool(
         >>> result = terminal_tool(command="dmesg", max_lines=100)
     """
     try:
+        # Interactive mode may omit `command` — default to a persistent shell.
+        if command is None and interactive:
+            command = _interactive_shell_command()
+
         if not isinstance(command, str):
             logger.warning(
                 "Rejected invalid terminal command value: %s",
@@ -2453,6 +2591,19 @@ def terminal_tool(
         # Get configuration
         config = _get_env_config()
         env_type = config["env_type"]
+
+        # Interactive mode is a persistent shell/REPL session: force
+        # background + PTY so stdin stays open for later continuation
+        # (terminal(command=..., process_id=<session_id>)).
+        if interactive:
+            if env_type != "local":
+                return tool_error(
+                    "interactive mode requires the local backend (TERMINAL_ENV=local). "
+                    "For remote backends, use background=true with pty=true and a "
+                    "REPL command, then continue via process(action='submit')."
+                )
+            background = True
+            pty = True
 
         # Use task_id for environment isolation. By default all subagent
         # task_ids collapse back to "default" so the top-level agent and
@@ -2513,6 +2664,19 @@ def terminal_tool(
             )
         effective_timeout = timeout or default_timeout
 
+        # Session continuation (kimi-style Bash(task_id=...) follow-up): the
+        # `command` is sent to an EXISTING background process's stdin and we
+        # wait for its new output. No env creation, no security re-check — the
+        # process was already vetted at spawn.
+        if process_id:
+            return _continue_background_session(
+                process_id=str(process_id),
+                command=command,
+                timeout=effective_timeout,
+                wait_for_pattern=wait_for_pattern,
+                inactivity_timeout=inactivity_timeout,
+            )
+
         # Reject foreground commands where the model explicitly requests
         # a timeout above FOREGROUND_MAX_TIMEOUT — nudge it toward background.
         if not background and timeout and timeout > FOREGROUND_MAX_TIMEOUT:
@@ -2523,8 +2687,11 @@ def terminal_tool(
             )
 
         # Guardrail: long-lived server/watch commands should run as managed
-        # background sessions, not foreground shell hacks.
-        if not background:
+        # background sessions, not foreground shell hacks. Skipped when the
+        # model explicitly opted into promote_on_timeout / wait_for_pattern —
+        # the whole point is "run it; if it doesn't finish, keep it running as
+        # a background session instead of killing it".
+        if not background and not (promote_on_timeout or wait_for_pattern):
             guidance = _foreground_background_guidance(command)
             if guidance:
                 return orjson.dumps({
@@ -3072,7 +3239,56 @@ def terminal_tool(
             max_retries = 3
             retry_count = 0
             result = None
-            command_cwd = None
+            exec_command = command
+            _foreground_t0 = time.monotonic()
+            command_cwd = _resolve_command_cwd(
+                workdir=workdir,
+                default_cwd=cwd,
+                session_key=session_key,
+            )
+
+            # Foreground→background promotion (promote_on_timeout /
+            # wait_for_pattern): prepare an unregistered registry session UP
+            # FRONT and stream output into it, so when the timeout/pattern
+            # fires the still-running process can be adopted with its buffer
+            # already warm. Local backend only (adoption needs a host Popen).
+            adopt_session = None
+            if (promote_on_timeout or wait_for_pattern) and env_type == "local":
+                try:
+                    from tools.process_registry import process_registry as _proc_registry
+
+                    adopt_session = _proc_registry.prepare_adopt_local(
+                        command=command,
+                        task_id=effective_task_id,
+                        session_key=session_key,
+                        cwd=command_cwd,
+                    )
+                except Exception:
+                    logger.warning(
+                        "promote_on_timeout requested but adopt session could not "
+                        "be prepared; falling back to kill-on-timeout", exc_info=True
+                    )
+                    adopt_session = None
+
+            def _promote_cb(proc):
+                nonlocal adopt_session
+                if adopt_session is None:
+                    return None
+                try:
+                    from tools.process_registry import process_registry as _proc_registry
+
+                    return _proc_registry.adopt_local(adopt_session, proc)
+                except Exception as e:
+                    logger.warning("Foreground→background promotion failed: %s", e)
+                    return None
+
+            def _session_sink(chunk: str):
+                if adopt_session is not None:
+                    from tools.process_registry import _buffer_append as _proc_buf_append
+
+                    _proc_buf_append(adopt_session, chunk)
+                if tool_call_id and has_foreground_output_sink():
+                    emit_foreground_output(tool_call_id or "", chunk)
 
             # Clean interrupt slate for an approved command, ONCE before the
             # retry loop: drop a stale bit that landed on this thread during the
@@ -3086,11 +3302,6 @@ def terminal_tool(
 
             while retry_count <= max_retries:
                 try:
-                    command_cwd = _resolve_command_cwd(
-                        workdir=workdir,
-                        default_cwd=cwd,
-                        session_key=session_key,
-                    )
                     execute_kwargs = {
                         "timeout": effective_timeout,
                         "cwd": command_cwd,
@@ -3101,7 +3312,11 @@ def terminal_tool(
                         # reads, RPC reads) intentionally stay unbounded.
                         "bounded_capture": True,
                     }
-                    if tool_call_id and has_foreground_output_sink():
+                    if adopt_session is not None:
+                        execute_kwargs["output_callback"] = _session_sink
+                        execute_kwargs["wait_for_pattern"] = wait_for_pattern
+                        execute_kwargs["promote_callback"] = _promote_cb
+                    elif tool_call_id and has_foreground_output_sink():
                         execute_kwargs["output_callback"] = (
                             lambda chunk: emit_foreground_output(
                                 tool_call_id or "", chunk
@@ -3148,6 +3363,36 @@ def terminal_tool(
                 
                 # Got a result
                 break
+
+            # Foreground → background promotion result: the command outlived
+            # the timeout (or matched wait_for_pattern) and is now tracked as a
+            # background session. Return the session_id so the model can
+            # poll/wait/log/kill it — long work is never lost.
+            if result and result.get("promoted"):
+                promoted_result = {
+                    "output": result.get("output", ""),
+                    "exit_code": None,
+                    "error": None,
+                    "command": exec_command,
+                    "status": "promoted",
+                    "session_id": result.get("session_id"),
+                    "timed_out": result.get("timed_out", False),
+                    "pattern_matched": result.get("pattern_matched", False),
+                    "matched_pattern": result.get("matched_pattern"),
+                    "elapsed_seconds": result.get("elapsed_seconds"),
+                    "hint": (
+                        "The command exceeded the foreground timeout and was NOT "
+                        "killed — it is now a tracked background process "
+                        f"(session_id={result.get('session_id')}). Use "
+                        "process(action='poll'/'log'/'wait') to check on it, "
+                        "process(action='wait', pattern=...) to wait for a "
+                        "signal, or process(action='kill') to stop it."
+                    ),
+                }
+                promoted_cwd = getattr(env, "cwd", None)
+                if promoted_cwd:
+                    promoted_result["cwd"] = str(promoted_cwd)
+                return orjson.dumps(promoted_result).decode('utf-8')
 
             # Dual-write (cwd rearch step 1): the env's post-command tracking
             # (marker parse / local sync) has just updated env.cwd with the
@@ -3277,6 +3522,9 @@ def terminal_tool(
                 "exit_code": returncode,
                 "error": None,
                 "command": exec_command,
+                "elapsed_seconds": round(time.monotonic() - _foreground_t0, 2),
+                "output_truncated": bool(spill_file_path),
+                "wait_matched": bool(result.get("pattern_matched", False)),
             }
             # cwd echo: when the command changed the session's working
             # directory (cd, pushd, ...), tell the model where it ended up.
@@ -3363,6 +3611,11 @@ def terminal_tool(
                 result_dict["sudo_auth_failed"] = True
             if sudo_cache_cleared:
                 result_dict["sudo_cache_cleared"] = True
+            # rtk/original preservation: the token filter may have folded or
+            # truncated the output; the unfiltered original is saved so the
+            # model can page it instead of re-running the command.
+            if post_result.original_path:
+                result_dict["original_path"] = post_result.original_path
 
             return orjson.dumps(result_dict).decode('utf-8')
 
@@ -3559,7 +3812,21 @@ TERMINAL_SCHEMA = {
         "properties": {
             "command": {
                 "type": "string",
-                "description": "The command to execute on the VM"
+                "description": "The command to execute. Optional when mode='interactive' (defaults to a persistent shell session)."
+            },
+            "mode": {
+                "type": "string",
+                "enum": ["run", "execute", "foreground", "background", "interactive"],
+                "description": "Execution mode: 'run'/'execute'/'foreground' (default, blocks until done), 'background' (== background=true, returns a session_id), 'interactive' (start a persistent shell/REPL session you continue later via process_id). Overrides `background` when set."
+            },
+            "interactive": {
+                "type": "boolean",
+                "description": "Start a persistent interactive shell/REPL (local backend, PTY). Equivalent to mode='interactive'. Continue it later with terminal(command=..., process_id=<session_id>).",
+                "default": False
+            },
+            "process_id": {
+                "type": "string",
+                "description": "Continue an existing background process (session_id from terminal background or process(action='list')): send `command` to its stdin and wait for its NEW output (kimi-style session continuation). Requires the process to accept stdin (PTY/pipe)."
             },
             "background": {
                 "type": "boolean",
@@ -3568,7 +3835,21 @@ TERMINAL_SCHEMA = {
             },
             "timeout": {
                 "type": "integer",
-                "description": f"Max seconds to wait (default: 180, foreground max: {FOREGROUND_MAX_TIMEOUT}). Returns instantly when done; above {FOREGROUND_MAX_TIMEOUT}s needs background=true.",
+                "description": f"Max seconds to wait (default: 180, foreground max: {FOREGROUND_MAX_TIMEOUT}). Returns instantly when done; above {FOREGROUND_MAX_TIMEOUT}s needs background=true. With promote_on_timeout=true the command is NOT killed on timeout — it becomes a background session.",
+                "minimum": 1
+            },
+            "promote_on_timeout": {
+                "type": "boolean",
+                "description": "Foreground only (local backend): if the command exceeds `timeout`, DON'T kill it — keep it running and return a background session_id you can poll/wait/log/kill. Long work is never lost. Also enables wait_for_pattern early-return.",
+                "default": False
+            },
+            "wait_for_pattern": {
+                "type": "string",
+                "description": "Regex. With promote_on_timeout=true (foreground): return as soon as it appears in output; the process keeps running as a background session. With process_id (continuation): wait for new output matching this regex. Use for server-readiness signals instead of polling."
+            },
+            "inactivity_timeout": {
+                "type": "integer",
+                "description": "Seconds of output silence before a wait returns early with partial output (process_id continuation waits; default 120 when wait_for_pattern is set).",
                 "minimum": 1
             },
             "workdir": {
@@ -3588,7 +3869,7 @@ TERMINAL_SCHEMA = {
             "watch_patterns": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "Watch for rare one-shot signals in background output (e.g. ['Application startup complete']). HARD RATE LIMIT: 1 per 15s; after 3 drops upgrades to notify_on_complete. Not for end-of-run markers."
+                "description": "Watch for rare one-shot signals in background output (e.g. ['Application startup complete']). HARD RATE LIMIT: 1 per 15s; after 3 drops upgrades to notify_on_complete. Not for end-of-run markers. For a BLOCKING wait on a signal, use process(action='wait', pattern=...) instead."
             },
             "token_kill": {
                 "type": "boolean",
@@ -3607,9 +3888,15 @@ TERMINAL_SCHEMA = {
 
 
 def _handle_terminal(args, **kw):
+    background = args.get("background", False)
+    interactive = bool(args.get("interactive", False))
+    background, interactive = _normalize_terminal_mode(
+        args.get("mode"), interactive, background
+    )
     return terminal_tool(
         command=args.get("command"),
-        background=args.get("background", False),
+        background=background,
+        interactive=interactive,
         timeout=args.get("timeout"),
         task_id=kw.get("task_id"),
         session_id=kw.get("session_id"),
@@ -3620,6 +3907,10 @@ def _handle_terminal(args, **kw):
         token_kill=args.get("token_kill", True),
         max_lines=args.get("max_lines"),
         tool_call_id=kw.get("tool_call_id"),
+        promote_on_timeout=args.get("promote_on_timeout", False),
+        wait_for_pattern=args.get("wait_for_pattern"),
+        inactivity_timeout=args.get("inactivity_timeout"),
+        process_id=args.get("process_id"),
     )
 
 

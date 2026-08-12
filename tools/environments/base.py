@@ -105,7 +105,12 @@ class _BoundedOutputCollector:
             self._spill_capped = True
 
     def close_spill(self) -> "str | None":
-        """Close the spill file and return its path if it was used."""
+        """Close the spill file and return its path if it was used.
+
+        Also caps future appends: after the caller has consumed the rendered
+        output, any straggler chunks (e.g. the drain thread of a promoted
+        foreground run) must NOT reopen and truncate the file.
+        """
         with self._lock:
             if self._spill_fh is None:
                 return None
@@ -114,6 +119,7 @@ class _BoundedOutputCollector:
             except OSError:
                 pass
             self._spill_fh = None
+            self._spill_capped = True
             return str(self._spill_path)
 
     @property
@@ -900,6 +906,8 @@ class BaseEnvironment(ABC):
         *,
         bounded_capture: bool = False,
         output_callback: Callable[[str], None] | None = None,
+        wait_for_pattern: str | None = None,
+        promote_callback: Callable[[Any], str | None] | None = None,
     ) -> dict:
         """Poll-based wait with interrupt checking and stdout draining.
 
@@ -913,6 +921,18 @@ class BaseEnvironment(ABC):
         engine, code-execution RPC reads, log reads — where truncation would
         corrupt data.
 
+        ``wait_for_pattern`` (regex): when set, the drain thread scans each
+        chunk and the wait returns as soon as the pattern appears in output —
+        via ``promote_callback`` when one is supplied (the still-running
+        process is adopted into the background registry so the agent can
+        poll/wait/kill it), otherwise the wait simply continues to exit.
+
+        ``promote_callback(proc) -> session_id | None``: on pattern match or
+        timeout (instead of the historical kill), hand the LIVE process to the
+        caller (the background process registry) and return early. When it
+        returns a session id the drain thread is deliberately left running so
+        output keeps streaming into the adopted session's buffer.
+
         Fires the ``activity_callback`` (if set on this instance) every 10s
         while the process is running so the gateway's inactivity timeout
         doesn't kill long-running commands.
@@ -924,6 +944,7 @@ class BaseEnvironment(ABC):
         an orphan with ``PPID=1`` when python is shut down mid-tool — the
         ``sleep 300``-survives-30-min bug Physikal and I both hit.
         """
+        _t0 = time.monotonic()
         if bounded_capture:
             try:
                 from tools.tool_output_limits import get_max_bytes
@@ -957,7 +978,25 @@ class BaseEnvironment(ABC):
                 spill_path = None
         output = _BoundedOutputCollector(capture_limit, spill_path=spill_path)
 
+        # Pattern-wait support: the drain thread scans each chunk against the
+        # regex (keeping a rolling tail so matches spanning chunk boundaries
+        # still hit). A match sets ``_pattern_hit`` which the poll loop picks
+        # up on its next iteration.
+        _pattern_re = None
+        _pattern_tail = ""
+        _pattern_hit: dict = {"matched": False, "text": ""}
+        if wait_for_pattern:
+            try:
+                _pattern_re = re.compile(wait_for_pattern)
+            except re.error:
+                logger.warning(
+                    "Invalid wait_for_pattern %r ignored (bad regex)",
+                    wait_for_pattern,
+                )
+                _pattern_re = None
+
         def _append_output(text: str) -> None:
+            nonlocal _pattern_tail
             if not text:
                 return
             output.append(text)
@@ -967,6 +1006,12 @@ class BaseEnvironment(ABC):
                 except Exception:
                     # Live observation must never be able to fail a command.
                     pass
+            if _pattern_re is not None and not _pattern_hit["matched"]:
+                _pattern_tail = (_pattern_tail + text)[-4096:]
+                m = _pattern_re.search(_pattern_tail)
+                if m:
+                    _pattern_hit["matched"] = True
+                    _pattern_hit["text"] = m.group(0)
 
         # Non-blocking drain via select().
         #
@@ -1137,8 +1182,57 @@ class BaseEnvironment(ABC):
                         output,
                         output.render(suffix="\n[Command interrupted]"),
                         130,
+                        elapsed_seconds=time.monotonic() - _t0,
                     )
+                # Pattern match while the process still runs: promote the live
+                # process to the background registry (when a callback is
+                # available) and return early with the match.
+                if _pattern_hit["matched"]:
+                    if promote_callback is not None:
+                        try:
+                            _sid = promote_callback(proc)
+                        except Exception:
+                            _sid = None
+                        if _sid:
+                            return self._finalize_wait_result(
+                                output,
+                                output.render(
+                                    suffix=(
+                                        f"\n[Pattern '{_pattern_hit['text']}' matched — "
+                                        f"process kept running as background session {_sid}]"
+                                    )
+                                ),
+                                None,
+                                elapsed_seconds=time.monotonic() - _t0,
+                                promoted_session_id=_sid,
+                                pattern_matched=True,
+                                matched_pattern=_pattern_hit["text"],
+                            )
+                    # No promotion available — keep waiting for natural exit.
                 if time.monotonic() > deadline:
+                    if promote_callback is not None:
+                        try:
+                            _sid = promote_callback(proc)
+                        except Exception:
+                            _sid = None
+                        if _sid:
+                            # Foreground timeout → keep running: adopt into the
+                            # background registry instead of killing. The drain
+                            # thread keeps streaming into the adopted session's
+                            # buffer via the caller's output_callback.
+                            return self._finalize_wait_result(
+                                output,
+                                output.render(
+                                    suffix=(
+                                        f"\n[Command timed out after {timeout}s — kept "
+                                        f"running as background session {_sid}]"
+                                    )
+                                ),
+                                None,
+                                elapsed_seconds=time.monotonic() - _t0,
+                                promoted_session_id=_sid,
+                                timed_out=True,
+                            )
                     if _DEBUG_INTERRUPT:
                         logger.info(
                             "[interrupt-debug] _wait_for_process TIMEOUT "
@@ -1154,6 +1248,7 @@ class BaseEnvironment(ABC):
                         if output.total_chars == 0
                         else output.render(suffix=timeout_msg),
                         124,
+                        elapsed_seconds=time.monotonic() - _t0,
                     )
                 # Periodic activity touch so the gateway knows we're alive
                 touch_activity_if_due(_activity_state, "terminal command running")
@@ -1228,13 +1323,35 @@ class BaseEnvironment(ABC):
                 proc.returncode,
             )
 
-        return self._finalize_wait_result(output, output.render(), proc.returncode)
+        return self._finalize_wait_result(
+            output, output.render(), proc.returncode,
+            elapsed_seconds=time.monotonic() - _t0,
+        )
 
     @staticmethod
     def _finalize_wait_result(collector: "_BoundedOutputCollector",
-                              rendered: str, returncode: int | None) -> dict:
-        """Assemble a wait result, attaching spill metadata when overflow occurred."""
+                              rendered: str, returncode: int | None,
+                              *,
+                              elapsed_seconds: float | None = None,
+                              promoted_session_id: str | None = None,
+                              timed_out: bool = False,
+                              pattern_matched: bool = False,
+                              matched_pattern: str | None = None) -> dict:
+        """Assemble a wait result, attaching spill metadata when overflow occurred.
+
+        ``promoted_session_id`` marks a foreground→background promotion: the
+        process is still running under the registry and ``returncode`` is None.
+        """
         result = {"output": rendered, "returncode": returncode}
+        if elapsed_seconds is not None:
+            result["elapsed_seconds"] = round(elapsed_seconds, 2)
+        if promoted_session_id:
+            result["promoted"] = True
+            result["session_id"] = promoted_session_id
+            result["timed_out"] = timed_out
+            result["pattern_matched"] = pattern_matched
+            if matched_pattern:
+                result["matched_pattern"] = matched_pattern
         spill = collector.close_spill()
         if spill:
             result["output_total_chars"] = collector.total_chars
@@ -1318,6 +1435,8 @@ class BaseEnvironment(ABC):
         rewrite_compound_background: bool = True,
         bounded_capture: bool = False,
         output_callback: Callable[[str], None] | None = None,
+        wait_for_pattern: str | None = None,
+        promote_callback: Callable[[Any], str | None] | None = None,
     ) -> dict:
         """Execute a command, return {"output": str, "returncode": int}.
 
@@ -1329,6 +1448,10 @@ class BaseEnvironment(ABC):
         full-fidelity consumers — file operations ``cat`` reads that feed
         the patch engine, code-execution RPC reads, log reads — MUST leave
         it False: truncating those corrupts data, not just display.
+
+        ``wait_for_pattern`` / ``promote_callback`` are forwarded to
+        ``_wait_for_process`` (foreground→background promotion + pattern
+        wait; see there for semantics).
         """
         self._before_execute()
 
@@ -1369,6 +1492,8 @@ class BaseEnvironment(ABC):
             timeout=effective_timeout,
             bounded_capture=bounded_capture,
             output_callback=output_callback,
+            wait_for_pattern=wait_for_pattern,
+            promote_callback=promote_callback,
         )
         self._update_cwd(result)
 

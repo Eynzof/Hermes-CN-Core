@@ -46,7 +46,12 @@ _RTK_KNOWN_COMMANDS: frozenset[str] = frozenset({
     "ls",
     "grep",
     "rg",
-    "find",
+    # NOTE: `find` is intentionally NOT wrapped by rtk: rtk's find
+    # emulation is not a drop-in for the standard find(1) and refuses
+    # common predicates (`-not`, `-exec`, compound expressions) with a
+    # hard error, breaking legitimate agent usage. The faithful local
+    # dedup pipeline (_token_filter_output) still collapses repeated
+    # find output, so no token-saving benefit is lost.
     "cat",
     "head",
     "tail",
@@ -528,6 +533,14 @@ def _maybe_rewrite_shell_command_with_rtk(
     Otherwise splits into segments, rewrites each known command segment, and
     returns ``(rewritten_command, True)``.
 
+    Multi-segment commands (containing top-level ``;``/``&&``/``||``) are
+    intentionally NOT rewritten: rtk cannot guarantee newline-terminated
+    output (its git-specific re-annotation, for example, strips the trailing
+    newline), so a wrapped segment followed by more output glues the next
+    command's text onto the same line (``git status --short; echo x`` renders
+    as `` M f.txtx``).  Glued structured output silently misleads the model,
+    so such commands fall back to the faithful local dedup pipeline.
+
     Args:
         command: The original shell command string.
         token_kill: Whether token-kill rewriting is enabled.
@@ -554,6 +567,17 @@ def _maybe_rewrite_shell_command_with_rtk(
 
     segments = _split_shell_segments(command)
     if not segments:
+        return command, False
+
+    # Safety guard: rtk's per-segment output is not guaranteed to end with a
+    # newline (its git status re-annotation strips it), so when several
+    # commands share one output stream the next command's text gets glued
+    # onto the previous line (``rtk git status --short; echo x`` ->
+    # `` M f.txtx``).  A glued line reads as one unit and has repeatedly
+    # misled the agent into misreading structured output (e.g. a clean/dirty
+    # git status).  Multi-segment commands therefore skip rtk entirely and
+    # use the faithful local dedup pipeline (_token_filter_output).
+    if len(segments) > 1:
         return command, False
 
     # Find all separators using a quote-aware scanner (not a blind regex).

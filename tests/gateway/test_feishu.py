@@ -201,7 +201,7 @@ class TestFeishuAdapterMessaging(unittest.TestCase):
         )
 
         with (
-            patch("plugins.platforms.feishu.adapter.FEISHU_AVAILABLE", True),
+            patch("plugins.platforms.feishu.adapter._load_lark_oapi", return_value=True),
             patch("plugins.platforms.feishu.adapter.FEISHU_WEBHOOK_AVAILABLE", True),
             patch("plugins.platforms.feishu.adapter.EventDispatcherHandler") as mock_handler_class,
             patch("plugins.platforms.feishu.adapter.acquire_scoped_lock", return_value=(True, None)),
@@ -229,7 +229,7 @@ class TestFeishuAdapterMessaging(unittest.TestCase):
         ws_client = SimpleNamespace()
 
         with (
-            patch("plugins.platforms.feishu.adapter.FEISHU_AVAILABLE", True),
+            patch("plugins.platforms.feishu.adapter._load_lark_oapi", return_value=True),
             patch("plugins.platforms.feishu.adapter.FEISHU_WEBSOCKET_AVAILABLE", True),
             patch("plugins.platforms.feishu.adapter.lark", SimpleNamespace(LogLevel=SimpleNamespace(INFO="INFO", WARNING="WARNING"))),
             patch("plugins.platforms.feishu.adapter.EventDispatcherHandler") as mock_handler_class,
@@ -351,7 +351,7 @@ class TestFeishuAdapterMessaging(unittest.TestCase):
         adapter = FeishuAdapter(PlatformConfig())
 
         with (
-            patch("plugins.platforms.feishu.adapter.FEISHU_AVAILABLE", True),
+            patch("plugins.platforms.feishu.adapter._load_lark_oapi", return_value=True),
             patch("plugins.platforms.feishu.adapter.FEISHU_WEBSOCKET_AVAILABLE", True),
             patch(
                 "plugins.platforms.feishu.adapter.acquire_scoped_lock",
@@ -378,7 +378,7 @@ class TestFeishuAdapterMessaging(unittest.TestCase):
         sleeps = []
 
         with (
-            patch("plugins.platforms.feishu.adapter.FEISHU_AVAILABLE", True),
+            patch("plugins.platforms.feishu.adapter._load_lark_oapi", return_value=True),
             patch("plugins.platforms.feishu.adapter.FEISHU_WEBSOCKET_AVAILABLE", True),
             patch("plugins.platforms.feishu.adapter.lark", SimpleNamespace(LogLevel=SimpleNamespace(INFO="INFO", WARNING="WARNING"))),
             patch("plugins.platforms.feishu.adapter.EventDispatcherHandler") as mock_handler_class,
@@ -437,7 +437,7 @@ class TestFeishuAdapterMessaging(unittest.TestCase):
         ws_client = SimpleNamespace()
 
         with (
-            patch("plugins.platforms.feishu.adapter.FEISHU_AVAILABLE", True),
+            patch("plugins.platforms.feishu.adapter._load_lark_oapi", return_value=True),
             patch("plugins.platforms.feishu.adapter.FEISHU_WEBSOCKET_AVAILABLE", True),
             patch("plugins.platforms.feishu.adapter.lark",
                   SimpleNamespace(LogLevel=SimpleNamespace(INFO="INFO", WARNING="WARNING"))),
@@ -1478,7 +1478,9 @@ class TestAdapterBehavior(unittest.TestCase):
         text, msg_type, media_urls, media_types, _mentions = asyncio.run(adapter._extract_message_content(message))
 
         self.assertEqual(text, "")
-        self.assertEqual(msg_type.value, "audio")
+        # Lark's native audio message is a voice note and must enter the
+        # gateway's transcription path rather than remain a generic file.
+        self.assertEqual(msg_type.value, "voice")
         self.assertEqual(media_urls, ["/tmp/feishu-audio.ogg"])
         self.assertEqual(media_types, ["audio/ogg"])
 

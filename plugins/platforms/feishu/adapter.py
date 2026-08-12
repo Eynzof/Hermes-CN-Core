@@ -92,8 +92,8 @@ except ImportError:
 # and the entire ``lark_oapi.api`` package (hundreds of model modules). The
 # desktop dashboard warms every bundled IM adapter at startup (P-040), so an
 # eager module-level import here would tax every launch even for users who
-# never connect to Feishu. We detect availability cheaply via find_spec and
-# import the SDK lazily (module __getattr__, PEP 562) on first real use.
+# never connect to Feishu. We detect installation cheaply via find_spec and
+# bind the SDK names lazily on the first explicit connection or probe.
 try:
     import importlib.util as _importlib_util
 
@@ -101,42 +101,44 @@ try:
 except Exception:
     FEISHU_AVAILABLE = False
 
-_LARK_BOUND_NAMES = frozenset({
-    "lark",
-    "GetApplicationRequest",
-    "CreateFileRequest",
-    "CreateFileRequestBody",
-    "CreateImageRequest",
-    "CreateImageRequestBody",
-    "CreateMessageRequest",
-    "CreateMessageRequestBody",
-    "GetChatRequest",
-    "GetMessageRequest",
-    "GetMessageResourceRequest",
-    "P2ImMessageMessageReadV1",
-    "ReplyMessageRequest",
-    "ReplyMessageRequestBody",
-    "UpdateMessageRequest",
-    "UpdateMessageRequestBody",
-    "AccessTokenType",
-    "HttpMethod",
-    "FEISHU_DOMAIN",
-    "LARK_DOMAIN",
-    "BaseRequest",
-    "CallBackCard",
-    "P2CardActionTriggerResponse",
-    "EventDispatcherHandler",
-    "FeishuWSClient",
-})
+# Stable placeholders keep optional-SDK imports and test patching side-effect
+# free.  ``FEISHU_AVAILABLE`` means installed; ``lark is not None`` means the
+# symbols below have actually been imported and bound.
+lark = None  # type: ignore[assignment]
+GetApplicationRequest = None  # type: ignore[assignment]
+CreateFileRequest = None  # type: ignore[assignment]
+CreateFileRequestBody = None  # type: ignore[assignment]
+CreateImageRequest = None  # type: ignore[assignment]
+CreateImageRequestBody = None  # type: ignore[assignment]
+CreateMessageRequest = None  # type: ignore[assignment]
+CreateMessageRequestBody = None  # type: ignore[assignment]
+GetChatRequest = None  # type: ignore[assignment]
+GetMessageRequest = None  # type: ignore[assignment]
+GetMessageResourceRequest = None  # type: ignore[assignment]
+P2ImMessageMessageReadV1 = None  # type: ignore[assignment]
+ReplyMessageRequest = None  # type: ignore[assignment]
+ReplyMessageRequestBody = None  # type: ignore[assignment]
+UpdateMessageRequest = None  # type: ignore[assignment]
+UpdateMessageRequestBody = None  # type: ignore[assignment]
+AccessTokenType = None  # type: ignore[assignment]
+HttpMethod = None  # type: ignore[assignment]
+FEISHU_DOMAIN = None  # type: ignore[assignment]
+LARK_DOMAIN = None  # type: ignore[assignment]
+BaseRequest = None  # type: ignore[assignment]
+CallBackCard = None  # type: ignore[assignment]
+P2CardActionTriggerResponse = None  # type: ignore[assignment]
+EventDispatcherHandler = None  # type: ignore[assignment]
+FeishuWSClient = None  # type: ignore[assignment]
+_lark_import_lock = threading.Lock()
 
 
 def _lark_bindings() -> dict:
     """Import lark_oapi + the model classes the adapter needs.
 
-    Returns a ``{name: value}`` dict suitable for ``ensure_and_bind`` and for
-    the module-level lazy ``__getattr__``. Costs ~2.5s the first time it runs
-    (the SDK eagerly imports its whole ``api`` package); afterwards all names
-    are cached in ``sys.modules`` and this returns in microseconds.
+    Returns a ``{name: value}`` dict suitable for ``ensure_and_bind``. Costs
+    ~2.5s the first time it runs (the SDK eagerly imports its whole ``api``
+    package); afterwards all names are cached in ``sys.modules`` and this
+    returns in microseconds.
     """
     import lark_oapi as lark
     from lark_oapi.api.application.v6 import GetApplicationRequest
@@ -194,21 +196,6 @@ def _lark_bindings() -> dict:
         "FeishuWSClient": FeishuWSClient,
         "FEISHU_AVAILABLE": True,
     }
-
-
-def _bind_lark_globals() -> None:
-    """Import lark_oapi lazily and bind all adapter-level names."""
-    globals().update(_lark_bindings())
-
-
-def __getattr__(name: str):
-    """PEP 562 lazy module attribute: resolve lark names on first access."""
-    if name in _LARK_BOUND_NAMES:
-        _bind_lark_globals()
-        return globals()[name]
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-
 FEISHU_WEBSOCKET_AVAILABLE = websockets is not None
 FEISHU_WEBHOOK_AVAILABLE = aiohttp is not None
 
@@ -1503,12 +1490,15 @@ def _run_official_feishu_ws_client(ws_client: Any, adapter: Any) -> None:
 
 def _load_lark_oapi() -> bool:
     """Import and bind the Feishu SDK after an explicit connection request."""
-    if FEISHU_AVAILABLE:
+    if lark is not None:
         return True
 
     from tools.lazy_deps import ensure_and_bind
 
-    return ensure_and_bind("platform.feishu", _lark_bindings, globals(), prompt=False)
+    with _lark_import_lock:
+        if lark is not None:
+            return True
+        return ensure_and_bind("platform.feishu", _lark_bindings, globals(), prompt=False)
 
 
 def check_feishu_requirements() -> bool:
@@ -1516,8 +1506,8 @@ def check_feishu_requirements() -> bool:
 
     A pure availability check: installs lark-oapi via ``tools.lazy_deps.ensure``
     when missing, but never binds/imports the SDK here — actual imports happen
-    lazily on first real use (``_load_lark_oapi`` / module ``__getattr__``), so
-    a gateway config validation cannot pay the ~2.5s SDK import.
+    lazily on first real use via ``_load_lark_oapi``, so a gateway config
+    validation cannot pay the ~2.5s SDK import.
     """
     if FEISHU_AVAILABLE:
         return True

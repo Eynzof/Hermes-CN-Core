@@ -54,6 +54,28 @@ def test_preinstalled_feishu_sdk_is_still_bound_on_first_use():
     ensure_and_bind.assert_called_once()
 
 
+def test_request_builders_fall_back_when_sdk_is_not_bound():
+    """Stable None placeholders must still select the test-safe fallback."""
+    feishu_adapter = _feishu_adapter_module()
+
+    with (
+        patch.object(feishu_adapter, "CreateMessageRequestBody", None),
+        patch.object(feishu_adapter, "CreateMessageRequest", None),
+    ):
+        body = feishu_adapter.FeishuAdapter._build_create_message_body(
+            receive_id="oc_chat",
+            msg_type="text",
+            content='{"text":"hello"}',
+            uuid_value="uuid-1",
+        )
+        request = feishu_adapter.FeishuAdapter._build_create_message_request("chat_id", body)
+
+    assert body.receive_id == "oc_chat"
+    assert body.uuid == "uuid-1"
+    assert request.receive_id_type == "chat_id"
+    assert request.request_body is body
+
+
 def test_feishu_connect_loads_sdk_on_worker_thread():
     """The first SDK import is deferred until a configured adapter connects."""
     from gateway.config import PlatformConfig

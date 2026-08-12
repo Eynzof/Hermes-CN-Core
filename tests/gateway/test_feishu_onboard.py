@@ -150,8 +150,8 @@ class TestRenderQr:
 class TestProbeBot:
     """Tests for bot connectivity verification."""
 
-    @patch("plugins.platforms.feishu.adapter.FEISHU_AVAILABLE", True)
-    def test_probe_returns_bot_info_on_success(self):
+    @patch("plugins.platforms.feishu.adapter._load_lark_oapi", return_value=True)
+    def test_probe_returns_bot_info_on_success(self, _load_sdk):
         from plugins.platforms.feishu.adapter import probe_bot
 
         with patch("plugins.platforms.feishu.adapter._probe_bot_sdk") as mock_sdk:

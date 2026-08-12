@@ -359,11 +359,20 @@ class TestOrphanedPipeReconciliation:
         """Direct child exited but reader thread is blocked on orphaned pipe."""
         # Simulate the orphaned-pipe scenario: direct child exited, but a
         # descendant holds stdout open so the reader never sees EOF.
-        # Approach: spawn `sh -c 'sleep 10 &'` with setsid — sh forks the
-        # sleep into a new session group, exits immediately, but sleep
-        # inherits the stdout pipe and keeps it open.
+        # Approach: the direct Python child forks a sleeper, writes pending
+        # output, then exits. The sleeper inherits the stdout pipe and keeps
+        # it open, deterministically exercising the final non-blocking drain.
         proc = subprocess.Popen(
-            ["sh", "-c", "exec 1>&2; ( sleep 30 ) & disown; exit 0"],
+            [
+                sys.executable,
+                "-c",
+                (
+                    "import os, time; "
+                    "print('pending output', flush=True); "
+                    "pid = os.fork(); "
+                    "os._exit(0) if pid else time.sleep(30)"
+                ),
+            ],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             preexec_fn=os.setsid,
@@ -381,24 +390,42 @@ class TestOrphanedPipeReconciliation:
             "holds the pipe open)"
         )
 
-        # Before the fix: poll would return "running" forever.
-        # After the fix: poll reconciles against proc.poll() and flips.
-        assert s.exited is False  # Precondition: reader hasn't updated it.
-        result = registry.poll(s.id)
-        assert result["status"] == "exited", (
-            f"Expected reconciled 'exited' status; got {result!r}. "
-            "This is issue #17327 — reader is blocked on orphaned pipe."
-        )
-        assert result["exit_code"] == 0
-        assert s.exited is True
-        assert s.id in registry._finished
-        assert s.id not in registry._running
+        result_box = {}
 
-        # Clean up the orphaned descendant.
+        def _poll():
+            try:
+                result_box["result"] = registry.poll(s.id)
+            except BaseException as exc:  # surface worker failures in the test
+                result_box["error"] = exc
+
+        # Before the fix, poll() deadlocked while re-acquiring session._lock.
+        # Run it in a daemon thread so the regression fails quickly instead of
+        # consuming the CI job's five-minute per-file timeout.
+        worker = threading.Thread(target=_poll, daemon=True)
         try:
-            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-        except (ProcessLookupError, PermissionError):
-            pass
+            assert s.exited is False  # Precondition: reader hasn't updated it.
+            worker.start()
+            worker.join(timeout=1.0)
+            assert not worker.is_alive(), "poll() deadlocked while draining orphaned stdout"
+            if "error" in result_box:
+                raise result_box["error"]
+
+            result = result_box["result"]
+            assert result["status"] == "exited", (
+                f"Expected reconciled 'exited' status; got {result!r}. "
+                "This is issue #17327 — reader is blocked on orphaned pipe."
+            )
+            assert result["exit_code"] == 0
+            assert "pending output" in s.output_buffer
+            assert s.exited is True
+            assert s.id in registry._finished
+            assert s.id not in registry._running
+        finally:
+            # Clean up the orphaned descendant even when the assertion fails.
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass
 
     def test_wait_returns_when_reader_blocked(self, registry):
         """wait() must also reconcile — not just poll()."""

@@ -653,8 +653,21 @@ def _call(tool_name, args):
 # RPC server (runs in a thread inside the parent process)
 # ---------------------------------------------------------------------------
 
-# Terminal parameters that must not be used from ephemeral sandbox scripts
-_TERMINAL_BLOCKED_PARAMS = {"background", "pty", "notify_on_complete", "watch_patterns"}
+# Terminal parameters that must not be used from ephemeral sandbox scripts.
+# execute_code's terminal contract is foreground-only: it must not create,
+# promote, watch, or continue persistent process sessions.
+_TERMINAL_BLOCKED_PARAMS = {
+    "background",
+    "inactivity_timeout",
+    "interactive",
+    "mode",
+    "notify_on_complete",
+    "process_id",
+    "promote_on_timeout",
+    "pty",
+    "wait_for_pattern",
+    "watch_patterns",
+}
 
 
 def _rpc_server_loop(

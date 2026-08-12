@@ -1665,9 +1665,11 @@ class ProcessRegistry:
             except Exception as e:
                 logger.debug("Non-blocking drain failed for %s: %s", session.id, e)
 
+        # _buffer_append() owns session._lock.  Append before taking the lock
+        # for the exit-state transition; threading.Lock is not re-entrant.
+        if drained:
+            _buffer_append(session, drained)
         with session._lock:
-            if drained:
-                _buffer_append(session, drained)
             session.exited = True
             if session.completion_reason != "killed":
                 session.exit_code = rc

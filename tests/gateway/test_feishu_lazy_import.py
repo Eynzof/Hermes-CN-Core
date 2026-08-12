@@ -28,6 +28,32 @@ def test_configured_feishu_dependency_check_does_not_load_sdk():
     ensure.assert_called_once_with("platform.feishu", prompt=False)
 
 
+def test_preinstalled_feishu_sdk_is_still_bound_on_first_use():
+    """Installed and imported are distinct states for the deferred SDK."""
+    feishu_adapter = _feishu_adapter_module()
+    fake_lark = object()
+
+    def _ensure_and_bind(_feature, importer, target_globals, *, prompt):
+        assert prompt is False
+        target_globals.update(importer())
+        return True
+
+    with (
+        patch.object(feishu_adapter, "FEISHU_AVAILABLE", True),
+        patch.object(feishu_adapter, "lark", None),
+        patch.object(
+            feishu_adapter,
+            "_lark_bindings",
+            return_value={"lark": fake_lark, "FEISHU_AVAILABLE": True},
+        ),
+        patch("tools.lazy_deps.ensure_and_bind", side_effect=_ensure_and_bind) as ensure_and_bind,
+    ):
+        assert feishu_adapter._load_lark_oapi() is True
+        assert feishu_adapter.lark is fake_lark
+
+    ensure_and_bind.assert_called_once()
+
+
 def test_feishu_connect_loads_sdk_on_worker_thread():
     """The first SDK import is deferred until a configured adapter connects."""
     from gateway.config import PlatformConfig

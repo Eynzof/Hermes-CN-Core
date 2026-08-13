@@ -600,16 +600,15 @@ def fetch_models_dev(
             return data
         except Exception as e:
             _note_refresh_failure(e, where="foreground")
-        # Stage 5: network failed. Return any stale memory/disk cache; when no
-        # cache exists fall back to the bundled snapshot (P-028) so the
-        # registry is never empty — offline-first model resolution must not
-        # depend on a successful foreground refresh. Cache freshness remains
-        # expired; the retry-after timestamp controls when the next automatic
-        # request is allowed.
+        # Stage 5: network failed. Return any stale memory/disk cache; on a
+        # forced refresh (prewarm / `hermes config refresh`) fall back to the
+        # bundled snapshot (P-028) so the registry is never empty. Cache
+        # freshness remains expired; the retry-after timestamp controls when
+        # the next automatic request is allowed.
         if not _models_dev_cache:
             _models_dev_cache = _load_disk_cache()
             _models_dev_cache_time = 0
-        if not _models_dev_cache:
+        if force_refresh:
             return _serve_offline_fallback()
         return _models_dev_cache
 

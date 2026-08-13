@@ -202,3 +202,4 @@ build/
 %SystemDrive%/
 .kimix_cache/
 reports/
+/agent.py

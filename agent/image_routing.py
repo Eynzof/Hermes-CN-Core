@@ -432,7 +432,7 @@ def _lookup_supports_vision(
     caps = None
     try:
         from agent.models_dev import get_model_capabilities
-        caps = get_model_capabilities(provider, model)
+        caps = get_model_capabilities(provider, model, allow_network=False)
     except Exception as exc:  # pragma: no cover - defensive
         logger.debug("image_routing: caps lookup failed for %s:%s — %s", provider, model, exc)
     if caps is not None:

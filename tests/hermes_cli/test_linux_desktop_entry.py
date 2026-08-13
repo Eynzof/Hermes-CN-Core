@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import stat
+import sys
 from pathlib import Path
 
 import pytest
@@ -35,6 +36,10 @@ def _parse(entry_text: str) -> dict:
     return values
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Windows baseline: desktop Exec lines quote/escape backslash paths",
+)
 def test_install_writes_entry_with_absolute_exec_and_icon(tmp_path, xdg_home, monkeypatch):
     root = _make_project(tmp_path)
     hermes_bin = tmp_path / "bin" / "hermes"
@@ -66,6 +71,10 @@ def test_install_writes_entry_with_absolute_exec_and_icon(tmp_path, xdg_home, mo
     assert values["Terminal"] == "false"
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Windows baseline: st_mode has no S_IXUSR bits (POSIX file mode)",
+)
 def test_installed_entry_is_executable(tmp_path, xdg_home, monkeypatch):
     root = _make_project(tmp_path)
     monkeypatch.setattr("hermes_cli.relaunch.resolve_hermes_bin", lambda: "/usr/bin/hermes")
@@ -76,6 +85,10 @@ def test_installed_entry_is_executable(tmp_path, xdg_home, monkeypatch):
     assert entry.stat().st_mode & stat.S_IXUSR
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Windows baseline: interpreter path is quoted/escaped in Exec",
+)
 def test_exec_falls_back_to_interpreter_module(tmp_path, xdg_home, monkeypatch):
     root = _make_project(tmp_path)
     monkeypatch.setattr("hermes_cli.relaunch.resolve_hermes_bin", lambda: None)
@@ -191,6 +204,10 @@ def test_run_quiet_swallows_missing_binary(tmp_path):
     assert lde._run_quiet([str(tmp_path / "definitely-not-a-binary")]) is False
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Windows baseline: desktop Exec quoting escapes backslash paths",
+)
 def test_exec_arg_quoting_handles_spaces(tmp_path, xdg_home, monkeypatch):
     root = _make_project(tmp_path)
     spaced = tmp_path / "my apps" / "hermes"

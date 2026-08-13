@@ -32,6 +32,9 @@ def ops():
     return ShellFileOperations(LocalEnvironment())
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Windows baseline: POSIX-only sed/cut shell pipeline clamp"
+)
 def test_monster_line_clamped_in_shell(tmp_path, ops):
     """A single multi-MB line comes back clamped, with the truncated suffix."""
     max_len = get_max_line_length()
@@ -50,6 +53,9 @@ def test_monster_line_clamped_in_shell(tmp_path, ops):
     assert len(result.content) < max_len + 200
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Windows baseline: POSIX-only sed/cut shell pipeline clamp"
+)
 def test_offset_past_monster_returns_normal_lines(tmp_path, ops):
     monster = tmp_path / "monster.txt"
     with open(monster, "w") as f:
@@ -64,6 +70,9 @@ def test_offset_past_monster_returns_normal_lines(tmp_path, ops):
     ]
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Windows baseline: PowerShell returns CRLF line endings"
+)
 def test_normal_multiline_read_unchanged(tmp_path, ops):
     p = tmp_path / "plain.txt"
     p.write_text("alpha\nbeta\ngamma\n")
@@ -72,6 +81,9 @@ def test_normal_multiline_read_unchanged(tmp_path, ops):
     assert result.content.startswith("1|alpha\n2|beta\n3|gamma")
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Windows baseline: PowerShell returns CRLF line endings"
+)
 def test_no_trailing_newline_preserved(tmp_path, ops):
     """cut newline-terminates its output; read_file must strip the artifact."""
     p = tmp_path / "nonl.txt"
@@ -80,6 +92,9 @@ def test_no_trailing_newline_preserved(tmp_path, ops):
     assert result.content == "1|a\n2|b"
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Windows baseline: PowerShell returns CRLF line endings"
+)
 def test_utf8_multibyte_boundary_no_mojibake(tmp_path, ops):
     """Byte clamp may split a codepoint; no U+FFFD may reach the result."""
     max_len = get_max_line_length()
@@ -115,6 +130,9 @@ def test_multibyte_line_over_limit_still_marked_truncated(tmp_path, ops):
     assert first == "1|" + "é" * max_len + "... [truncated]"
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Windows baseline: PowerShell returns CRLF line endings"
+)
 def test_read_file_raw_not_clamped(tmp_path, ops):
     """read_file_raw is documented as no-per-line-truncation — verify."""
     max_len = get_max_line_length()

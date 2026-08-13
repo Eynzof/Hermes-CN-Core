@@ -3569,7 +3569,7 @@ def terminal_tool(
                     "error": _redact_terminal_error_text(
                         f"Failed to start background process: {e}"
                     )
-                }, ensure_ascii=False)
+                }).decode('utf-8')
         else:
             # Run foreground command with retry logic
             max_retries = 3
@@ -3703,7 +3703,7 @@ def terminal_tool(
                         "error": _redact_terminal_error_text(
                             f"Command execution failed: {type(e).__name__}: {e}"
                         )
-                    }, ensure_ascii=False)
+                    }).decode('utf-8')
                 
                 # Got a result
                 break
@@ -4014,7 +4014,7 @@ def terminal_tool(
             "error": _redact_terminal_error_text(f"Failed to execute command: {e}"),
             "traceback": _redact_terminal_error_text(tb_str),
             "status": "error"
-        }).decode('utf-8')
+        })
 
 
 def _evict_environment_for_task(task_id: Optional[str]) -> None:

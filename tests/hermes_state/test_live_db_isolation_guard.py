@@ -27,6 +27,10 @@ from hermes_state import SessionDB
 REAL_ROOT = (Path.home() / ".hermes").resolve()
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Windows baseline: production root is %LOCALAPPDATA%\\hermes, not ~/.hermes (POSIX layout)",
+)
 class TestProductionPathRefused:
     def test_explicit_production_db_path_raises(self):
         """SessionDB pointed at the real ~/.hermes/state.db must fail hard."""

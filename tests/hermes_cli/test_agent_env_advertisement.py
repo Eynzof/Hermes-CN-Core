@@ -62,6 +62,13 @@ class TestWrapCommandAdvertisesHarness:
         env._cwd_marker = "__HERMES_CWD_testsession0__"
         env._snapshot_path = "/tmp/hermes-snap-testsession0.sh"
         env._snapshot_passthrough_names = set()
+        # Fork's merged LocalEnvironment._wrap_command dispatches on
+        # ``_shell_type`` (PowerShell native path) and the base wrapper
+        # quotes ``_cwd_file``; a __new__-constructed instance needs the
+        # same attrs __init__/init_session would set for a bash shell.
+        env._cwd_file = "/tmp/hermes-cwd-testsession0.txt"
+        env._shell_type = "bash"
+        env._shell_path = "/bin/bash"
         return env._wrap_command(command, "/tmp")
 
     def test_wrap_command_contains_export(self):

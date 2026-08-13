@@ -21,15 +21,18 @@ from tools.delegate_tool import (
     DELEGATE_BLOCKED_TOOLS,
     DELEGATE_TASK_SCHEMA,
     DelegateEvent,
-    _get_max_concurrent_children,
-    _load_config,
-    delegate_task,
+    _LEGACY_EVENT_MAP,
     _build_child_agent,
     _build_child_progress_callback,
     _build_child_system_prompt,
-    _strip_blocked_tools,
+    _extract_output_tail,
+    _get_max_concurrent_children,
+    _inherit_parent_base_url,
+    _load_config,
     _resolve_child_credential_pool,
     _resolve_delegation_credentials,
+    _strip_blocked_tools,
+    delegate_task,
 )
 
 def _make_mock_parent(depth=0):
@@ -403,12 +406,15 @@ class TestDelegateTask(unittest.TestCase):
         parent = _make_mock_parent()
         result = orjson.loads(delegate_task(
             goal="This should be ignored",
-            tasks=[{"goal": "Actual task"}],
+            tasks=[
+                {"goal": "Actual task A"},
+                {"goal": "Actual task B"},
+            ],
             parent_agent=parent,
         ))
         # The mock was called with the tasks array item, not the top-level goal
         call_args = mock_run.call_args
-        self.assertEqual(call_args.kwargs.get("goal") or call_args[1].get("goal", call_args[0][1] if len(call_args[0]) > 1 else None), "Actual task")
+        self.assertEqual(call_args.kwargs.get("goal") or call_args[1].get("goal", call_args[0][1] if len(call_args[0]) > 1 else None), "Actual task B")
 
     @patch("tools.delegate_tool._run_single_child")
     def test_failed_child_included_in_results(self, mock_run):
@@ -1700,8 +1706,10 @@ class TestDelegationProviderIntegration(unittest.TestCase):
                 "task_index": 0, "status": "completed",
                 "summary": "Done", "api_calls": 1, "duration_seconds": 1.0
             }
-
-            tasks = [{"goal": "Task A"}, {"goal": "Task B"}]
+            tasks = [
+                {"goal": "Complete task A"},
+                {"goal": "Complete task B"},
+            ]
             delegate_task(tasks=tasks, parent_agent=parent)
 
             self.assertEqual(mock_build.call_count, 2)
@@ -2632,9 +2640,9 @@ class TestOrchestratorRoleBehavior(unittest.TestCase):
         with patch("run_agent.AIAgent", side_effect=_factory):
             delegate_task(
                 tasks=[
-                    {"goal": "A", "role": "orchestrator"},
-                    {"goal": "B", "role": "leaf"},
-                    {"goal": "C"},  # no role → falls back to top_role (leaf)
+                    {"goal": "Orchestrate task A", "role": "orchestrator"},
+                    {"goal": "Execute task B as leaf", "role": "leaf"},
+                    {"goal": "Task C with no explicit role"},  # no role → falls back to top_role (leaf)
                 ],
                 parent_agent=parent,
             )

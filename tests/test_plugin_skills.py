@@ -6,9 +6,11 @@ Covers:
 - tools/skills_tool qualified name dispatch in skill_view
 """
 
-import orjson
+import json
 import logging
+import sys
 
+import orjson
 import pytest
 
 
@@ -219,6 +221,10 @@ class TestSkillViewQualifiedName:
         assert result["success"] is True
         assert result["content"] == "API details."
 
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="Windows baseline: a platforms:[windows] skill IS supported on the Windows host; gate is exercised on POSIX hosts",
+    )
     def test_platform_gate_applies_before_supporting_file(self, tmp_path):
         from tools.skills_tool import skill_view
 

@@ -1066,7 +1066,10 @@ def _plugin_skill_linked_files(skill_root: Path) -> Dict[str, List[str]] | None:
         if not base.is_dir():
             continue
         files = [
-            str(path.relative_to(skill_root))
+            # Windows-compat: linked paths are skill-relative logical paths
+            # (passed back as ``file_path``), so always use forward slashes
+            # regardless of the host separator.
+            str(path.relative_to(skill_root)).replace("\\", "/")
             for path in sorted(base.rglob("*"))
             if path.is_file()
             and validate_within_dir(path, skill_root) is None

@@ -6,7 +6,7 @@ handler is injected by ``main.py`` so this module never imports ``main``
 """
 from __future__ import annotations
 
-
+import argparse
 from typing import Callable
 
 

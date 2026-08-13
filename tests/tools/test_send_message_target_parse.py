@@ -5,6 +5,7 @@ skips wholesale when optional Telegram dependencies are not installed.
 """
 
 import asyncio
+import json
 import orjson
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch

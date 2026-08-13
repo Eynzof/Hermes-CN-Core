@@ -1196,10 +1196,10 @@ def _set_status_direct(
                         "status": effective_status,
                         "requested_status": new_status,
                     }
-                ),
+                ).decode('utf-8'),
                 int(time.time()),
             ),
-        ).decode('utf-8')
+        )
         if reopening_satisfied_parent:
             _invalidate_descendants_for_parent_reopen(
                 conn,

@@ -11,6 +11,7 @@ import os
 from unittest.mock import MagicMock, patch
 
 import pytest
+import sys
 
 from hermes_cli.bang_shell import (
     USAGE_HINT,
@@ -89,6 +90,7 @@ class TestBangContextGating:
 # ── execution ──────────────────────────────────────────────────────────────
 
 class TestBangExecution:
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: MSYS bash path mangling (/c/ vs C:\\, CRLF)")
     def test_output_is_streamed_to_writer(self):
         lines = []
         code = run_bang_command("echo bang-one; echo bang-two", writer=lines.append)
@@ -96,6 +98,7 @@ class TestBangExecution:
         assert "bang-one" in lines
         assert "bang-two" in lines
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: MSYS bash path mangling (/c/ vs C:\\, CRLF)")
     def test_stderr_is_merged_into_output(self):
         lines = []
         run_bang_command("echo to-stderr >&2", writer=lines.append)
@@ -106,6 +109,7 @@ class TestBangExecution:
         code = run_bang_command("exit 42", writer=lines.append)
         assert code == 42
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: MSYS bash path mangling (/c/ vs C:\\, CRLF)")
     def test_runs_in_requested_cwd(self, tmp_path):
         lines = []
         code = run_bang_command("pwd", cwd=str(tmp_path), writer=lines.append)

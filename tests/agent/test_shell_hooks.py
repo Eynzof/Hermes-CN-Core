@@ -640,6 +640,7 @@ class TestEvaluateResult:
 # ── exit-2 / fail_closed end-to-end ──────────────────────────────────────
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: .sh scripts cannot run on Windows")
 class TestFailSemanticsEndToEnd:
     def test_exit_2_script_blocks(self, tmp_path):
         script = _write_script(

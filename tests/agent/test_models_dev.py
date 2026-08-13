@@ -27,11 +27,19 @@ def _restore_models_dev_cache():
     restore the cache state around each test."""
     saved_cache = _md._models_dev_cache
     saved_time = _md._models_dev_cache_time
+    saved_retry_after = _md._models_dev_retry_after
+    saved_in_flight = _md._models_dev_refresh_in_flight
     try:
         yield
     finally:
         _md._models_dev_cache = saved_cache
         _md._models_dev_cache_time = saved_time
+        # Also reset cross-test refresh state: a background worker started by
+        # an earlier test (or a stuck retry backoff) would otherwise consume
+        # later tests' mocked ``requests.get`` side effects or suppress their
+        # network calls (fork Windows/order-stability fix).
+        _md._models_dev_retry_after = saved_retry_after
+        _md._models_dev_refresh_in_flight = saved_in_flight
 
 
 SAMPLE_REGISTRY = {
@@ -427,7 +435,8 @@ class TestModelsDevOfflineFirst:
 
         md._models_dev_cache = cache
         md._models_dev_cache_time = cache_time(md)
-        with patch.object(md, "_load_disk_cache", return_value=disk_data):
+        with patch.object(md, "_load_disk_cache", return_value=disk_data), \
+            patch.object(md, "_load_bundled_snapshot", return_value={}):
             result = fetch_models_dev(allow_network=False)
 
         assert result == expected

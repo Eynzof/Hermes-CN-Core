@@ -6315,7 +6315,6 @@ class BasePlatformAdapter(ABC):
                 # must be preserved (user asked to resend an image, the model echoed
                 # a path intentionally, etc.).  Bare-file-path dedup still applies
                 # to local_files below via the same _history_media_paths set.
-                _history_media_paths = self._history_media_paths_for_session(session_key)
 
                 # Extract image URLs and send them as native platform attachments
                 images, text_content = self.extract_images(response)

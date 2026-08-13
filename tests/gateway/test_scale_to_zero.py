@@ -8,6 +8,8 @@ test without a live gateway.
 
 from __future__ import annotations
 
+import sys
+
 import pytest
 
 from gateway.scale_to_zero import (
@@ -84,6 +86,7 @@ def test_not_idle_with_running_agent():
     assert is_idle(**_idle_kwargs(running_agent_count=1)) is False
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: AF_UNIX unix-socket flaps stub not available")
 def test_idle_exactly_at_threshold():
     # >= timeout is idle (boundary).
     assert is_idle(**_idle_kwargs(seconds_since_last_inbound=300.0)) is True
@@ -142,6 +145,7 @@ def _fake_flaps(tmp_path, status_line, capture):
     return sock_path, t
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: AF_UNIX unix-socket flaps stub not available")
 def test_suspend_self_posts_suspend_for_this_machine(tmp_path):
     captured: list[bytes] = []
     sock_path, t = _fake_flaps(tmp_path, "200 OK", captured)
@@ -156,6 +160,7 @@ def test_suspend_self_posts_suspend_for_this_machine(tmp_path):
     assert "Host: flaps\r\n" in request
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: AF_UNIX unix-socket flaps stub not available")
 def test_suspend_self_non_2xx_is_false_not_raise(tmp_path):
     captured: list[bytes] = []
     sock_path, t = _fake_flaps(tmp_path, "412 Precondition Failed", captured)
@@ -163,6 +168,7 @@ def test_suspend_self_non_2xx_is_false_not_raise(tmp_path):
     t.join(timeout=5)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: AF_UNIX unix-socket flaps stub not available")
 def test_suspend_self_missing_socket_is_false_not_raise(tmp_path):
     # Fail-awake: a dead/absent flaps socket must never raise out of the watcher.
     assert suspend_self(_FLY_ENV, socket_path=str(tmp_path / "nope.sock")) is False

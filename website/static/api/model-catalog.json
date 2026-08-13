@@ -1,9 +1,9 @@
 {
   "version": 1,
-  "updated_at": "2026-08-03T22:03:15Z",
+  "updated_at": "2026-08-12T17:23:25Z",
   "metadata": {
-    "source": "Hermes-CN-Core repo",
-    "docs": "https://github.com/Eynzof/Hermes-CN-Core/blob/main/website/docs/reference/model-catalog.md"
+    "source": "hermes-agent repo",
+    "docs": "https://hermes-agent.nousresearch.com/docs/reference/model-catalog"
   },
   "providers": {
     "openrouter": {
@@ -85,7 +85,7 @@
           "description": ""
         },
         {
-          "id": "x-ai/grok-4.5",
+          "id": "x-ai/grok-4.6",
           "description": ""
         },
         {
@@ -107,14 +107,6 @@
         {
           "id": "moonshotai/kimi-k3",
           "description": "recommended"
-        },
-        {
-          "id": "moonshotai/kimi-k2.6",
-          "description": "recommended"
-        },
-        {
-          "id": "moonshotai/kimi-k2.7-code",
-          "description": ""
         },
         {
           "id": "minimax/minimax-m3",
@@ -234,7 +226,7 @@
           "id": "google/gemini-3.6-flash"
         },
         {
-          "id": "x-ai/grok-4.5"
+          "id": "x-ai/grok-4.6"
         },
         {
           "id": "deepseek/deepseek-v4-pro"
@@ -250,12 +242,6 @@
         },
         {
           "id": "moonshotai/kimi-k3"
-        },
-        {
-          "id": "moonshotai/kimi-k2.6"
-        },
-        {
-          "id": "moonshotai/kimi-k2.7-code"
         },
         {
           "id": "minimax/minimax-m3"

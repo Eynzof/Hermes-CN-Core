@@ -16,8 +16,8 @@ revision (or a newer one) was actually loaded:
 Each test file runs in its own subprocess (run_tests.sh isolation), but the
 fixtures still restore the module globals they touch.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import threading
 

@@ -16,6 +16,7 @@ then cut over with same-filesystem renames. The old venv remains available for
 synchronous rollback and is parked for cleanup after the updating process
 releases it.
 """
+
 from __future__ import annotations
 
 

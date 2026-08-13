@@ -19,7 +19,6 @@ from __future__ import annotations
 import pybase64 as base64
 from types import SimpleNamespace
 
-
 def _png_bytes():
     """Return a minimal valid PNG byte sequence.
 

@@ -1,6 +1,6 @@
 """Tests for scripts/ci/emit_review_status.py."""
-from __future__ import annotations
 
+from __future__ import annotations
 
 import importlib.util
 import sys

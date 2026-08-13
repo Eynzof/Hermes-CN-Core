@@ -1,6 +1,6 @@
 """Tests for the core Relay-managed Hermes tool adapter."""
-from __future__ import annotations
 
+from __future__ import annotations
 
 import contextvars
 import json

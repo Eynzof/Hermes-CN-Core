@@ -509,7 +509,7 @@ def _reinstall_sidecar_deps() -> None:
                 [npm, "install"],
                 cwd=str(_sidecar_dir()),
                 capture_output=True,
-                text=True, encoding='utf-8', errors='replace',
+                text=True, encoding="utf-8", errors="replace",
                 check=False,
                 timeout=_NPM_REINSTALL_TIMEOUT,
                 creationflags=windows_hide_flags(),

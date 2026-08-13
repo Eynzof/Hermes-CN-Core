@@ -36,7 +36,7 @@ def test_sessiondb_handlers_open_connections_inside_executor_helpers():
     handlers: dict[str, ast.AsyncFunctionDef] = {}
     top_level_helpers: dict[str, ast.FunctionDef] = {}
     for mod in (web_server, web_sessions):
-        tree = ast.parse(Path(mod.__file__).read_text(encoding="utf-8", errors="replace"))
+        tree = ast.parse(Path(mod.__file__).read_text(encoding="utf-8"))
         for node in tree.body:
             if isinstance(node, ast.AsyncFunctionDef) and node.name in TARGET_HANDLERS:
                 handlers[node.name] = node

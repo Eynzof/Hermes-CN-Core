@@ -17,8 +17,8 @@ Covers:
     the map,
   - the stream consumer's _raw_message_limit honoring the per-chat cap.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import asyncio
 import json

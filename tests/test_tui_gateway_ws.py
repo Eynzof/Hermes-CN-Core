@@ -228,4 +228,3 @@ def test_ws_transport_preserves_cross_batch_order():
     asyncio.run(scenario())
 
 
-

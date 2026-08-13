@@ -6,7 +6,6 @@ Covers:
 """
 from __future__ import annotations
 
-
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -201,7 +200,6 @@ class TestLocalhostIPv4SiblingSites:
         resp.json.return_value = {"data": []}
 
         with patch("agent.model_metadata.detect_local_server_type", return_value=None), \
-             patch("agent.model_metadata._endpoint_reachable", return_value=True), \
              patch("agent.model_metadata.requests.get", return_value=resp) as mock_get:
             fetch_endpoint_model_metadata("http://localhost:8000/v1")
 
@@ -231,7 +229,6 @@ class TestLocalhostIPv4SiblingSites:
         }
 
         with patch("agent.model_metadata.detect_local_server_type", return_value=None), \
-             patch("agent.model_metadata._endpoint_reachable", return_value=True), \
              patch(
                  "agent.model_metadata.requests.get",
                  side_effect=[models_resp, props_resp],

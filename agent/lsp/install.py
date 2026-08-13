@@ -34,7 +34,6 @@ import threading
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from hermes_cli._subprocess_compat import resolve_node_command
 from hermes_cli._subprocess_compat import windows_hide_flags
 from hermes_constants import find_node_executable
 
@@ -125,14 +124,9 @@ def _is_windows() -> bool:
 
 def hermes_lsp_bin_dir() -> Path:
     """Return the Hermes-owned bin staging dir for LSP servers."""
-    home = os.environ.get("HERMES_HOME")
-    if home is None:
-        try:
-            from hermes_constants import get_hermes_home
-            home = str(get_hermes_home())
-        except Exception:
-            home = os.path.join(os.path.expanduser("~"), ".hermes")
-    p = Path(home) / "lsp" / "bin"
+    from hermes_constants import get_hermes_home
+
+    p = get_hermes_home() / "lsp" / "bin"
     p.mkdir(parents=True, exist_ok=True)
     return p
 
@@ -272,7 +266,7 @@ def _install_npm(
             " ".join(install_targets),
         )
         proc = subprocess.run(
-            resolve_node_command("npm", ["install", "--prefix", str(staging), "--silent", "--no-fund", "--no-audit", *install_targets]),
+            [npm, "install", "--prefix", str(staging), "--silent", "--no-fund", "--no-audit", *install_targets],
             check=False,
             capture_output=True,
             text=True, encoding="utf-8", errors="replace",

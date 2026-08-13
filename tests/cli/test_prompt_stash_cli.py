@@ -10,8 +10,8 @@ tests verify the cli.py side:
 Follows the prompt_toolkit-stub construction pattern from
 tests/cli/test_cli_extension_hooks.py.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import importlib
 import sys

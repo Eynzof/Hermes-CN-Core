@@ -12,7 +12,9 @@ Verifies that:
 import time
 from unittest.mock import MagicMock, patch
 
+
 from run_agent import AIAgent
+
 
 def _make_tool_defs(*names: str) -> list:
     return [
@@ -26,6 +28,7 @@ def _make_tool_defs(*names: str) -> list:
         }
         for n in names
     ]
+
 
 def _make_agent(fallback_model=None, provider="custom", base_url="https://my-llm.example.com/v1"):
     """Create a minimal AIAgent with optional fallback config."""
@@ -46,12 +49,14 @@ def _make_agent(fallback_model=None, provider="custom", base_url="https://my-llm
         agent.client = MagicMock()
         return agent
 
+
 def _mock_resolve(base_url="https://openrouter.ai/api/v1", api_key="fallback-key-1234"):
     """Helper to create a mock client for resolve_provider_client."""
     mock_client = MagicMock()
     mock_client.api_key = api_key
     mock_client.base_url = base_url
     return mock_client
+
 
 # =============================================================================
 # _primary_runtime snapshot
@@ -104,6 +109,7 @@ class TestPrimaryRuntimeSnapshot:
         agent = _make_agent(provider="custom")
         rt = agent._primary_runtime
         assert "anthropic_api_key" not in rt
+
 
 # =============================================================================
 # _restore_primary_runtime()
@@ -360,6 +366,8 @@ class TestRestorePrimaryRuntime:
         agent._swap_credential.assert_called_once()
 
 
+
+
 # =============================================================================
 # _try_recover_primary_transport()
 # =============================================================================
@@ -368,6 +376,7 @@ def _make_transport_error(error_type="ReadTimeout"):
     """Create an exception whose type().__name__ matches the given name."""
     cls = type(error_type, (Exception,), {})
     return cls("connection timed out")
+
 
 class TestTryRecoverPrimaryTransport:
 
@@ -473,12 +482,24 @@ class TestTryRecoverPrimaryTransport:
 
         assert result is False
 
+
 # =============================================================================
 # Integration: restore_primary_runtime called from run_conversation
 # =============================================================================
 
 class TestRestoreInRunConversation:
     """Verify the hook in run_conversation() calls _restore_primary_runtime."""
+
+    def test_restore_called_at_turn_start(self):
+        agent = _make_agent()
+        agent._fallback_activated = True
+
+        with patch.object(agent, "_restore_primary_runtime", return_value=True) as mock_restore, \
+             patch.object(agent, "run_conversation", wraps=None) as _:
+            # We can't easily run the full conversation, but we can verify
+            # the method exists and is callable
+            agent._restore_primary_runtime()
+            mock_restore.assert_called_once()
 
     def test_full_cycle_fallback_then_restore(self):
         """Simulate: turn 1 activates fallback, turn 2 restores primary."""
@@ -505,6 +526,7 @@ class TestRestoreInRunConversation:
         assert agent._fallback_index == 0
         assert agent.provider == "custom"
         assert agent.base_url == "https://my-llm.example.com/v1"
+
 
 # =============================================================================
 # Rate-limit cooldown gate

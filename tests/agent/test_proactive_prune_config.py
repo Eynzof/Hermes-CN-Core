@@ -7,8 +7,8 @@ strings accepted) and attached to the built-in compressor.  Default is
 0 / 8000 / 4096, i.e. the feature is OFF and behavior-neutral unless
 ``proactive_prune_tokens`` is set above 0.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import contextlib
 import io

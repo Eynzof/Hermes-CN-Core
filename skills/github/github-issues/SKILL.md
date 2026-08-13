@@ -37,7 +37,7 @@ else
     if _hermes_env="${HERMES_HOME:-$HOME/.hermes}/.env"; [ -f "$_hermes_env" ] && grep -q "^GITHUB_TOKEN=" "$_hermes_env"; then
       GITHUB_TOKEN=$(grep "^GITHUB_TOKEN=" "$_hermes_env" | head -1 | cut -d= -f2 | tr -d '\n\r')
     elif grep -q "github.com" ~/.git-credentials 2>/dev/null; then
-      GITHUB_TOKEN=$(uv run python3 "${HERMES_HOME:-$HOME/.hermes}/skills/github/github-auth/scripts/git-credential-token.py")
+      GITHUB_TOKEN=$(uv run python "${HERMES_HOME:-$HOME/.hermes}/skills/github/github-auth/scripts/git-credential-token.py")
     fi
   fi
 fi
@@ -69,7 +69,7 @@ gh issue view 42
 curl -s \
   -H "Authorization: token $GITHUB_TOKEN" \
   "https://api.github.com/repos/$OWNER/$REPO/issues?state=open&per_page=20" \
-  | python3 -c "
+  | python -c "
 import sys, json
 for i in json.load(sys.stdin):
     if 'pull_request' not in i:  # GitHub API returns PRs in /issues too
@@ -80,7 +80,7 @@ for i in json.load(sys.stdin):
 curl -s \
   -H "Authorization: token $GITHUB_TOKEN" \
   "https://api.github.com/repos/$OWNER/$REPO/issues?state=open&labels=bug&per_page=20" \
-  | python3 -c "
+  | python -c "
 import sys, json
 for i in json.load(sys.stdin):
     if 'pull_request' not in i:
@@ -90,7 +90,7 @@ for i in json.load(sys.stdin):
 curl -s \
   -H "Authorization: token $GITHUB_TOKEN" \
   https://api.github.com/repos/$OWNER/$REPO/issues/42 \
-  | python3 -c "
+  | python -c "
 import sys, json
 i = json.load(sys.stdin)
 labels = ', '.join(l['name'] for l in i['labels'])
@@ -104,7 +104,7 @@ print(f\"\n{i['body']}\")"
 curl -s \
   -H "Authorization: token $GITHUB_TOKEN" \
   "https://api.github.com/search/issues?q=authentication+error+repo:$OWNER/$REPO" \
-  | python3 -c "
+  | python -c "
 import sys, json
 for i in json.load(sys.stdin)['items']:
     print(f\"#{i['number']}  {i['state']:6}  {i['title']}\")"
@@ -212,7 +212,7 @@ curl -s -X DELETE \
 curl -s \
   -H "Authorization: token $GITHUB_TOKEN" \
   https://api.github.com/repos/$OWNER/$REPO/labels \
-  | python3 -c "
+  | python -c "
 import sys, json
 for l in json.load(sys.stdin):
     print(f\"  {l['name']:30}  {l.get('description', '')}\")"
@@ -318,7 +318,7 @@ gh issue list --label "needs-triage" --state open
 curl -s \
   -H "Authorization: token $GITHUB_TOKEN" \
   "https://api.github.com/repos/$OWNER/$REPO/issues?labels=needs-triage&state=open" \
-  | python3 -c "
+  | python -c "
 import sys, json
 for i in json.load(sys.stdin):
     if 'pull_request' not in i:
@@ -352,7 +352,7 @@ gh issue list --label "wontfix" --json number --jq '.[].number' | \
 curl -s \
   -H "Authorization: token $GITHUB_TOKEN" \
   "https://api.github.com/repos/$OWNER/$REPO/issues?labels=wontfix&state=open" \
-  | python3 -c "import sys,json; [print(i['number']) for i in json.load(sys.stdin)]" \
+  | python -c "import sys,json; [print(i['number']) for i in json.load(sys.stdin)]" \
   | while read num; do
     curl -s -X PATCH \
       -H "Authorization: token $GITHUB_TOKEN" \

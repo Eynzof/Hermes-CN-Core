@@ -9,22 +9,7 @@ import type { ComposerAttachment } from '@/store/composer'
 import type { ModelOptionsResponse, SessionInfo } from '@/types/hermes'
 
 export const SLASH_COMMAND_RE = /^\/[^\s/]*(?:\s|$)/
-export const BUILTIN_PERSONALITIES = [
-  'helpful',
-  'concise',
-  'technical',
-  'creative',
-  'teacher',
-  'kawaii',
-  'catgirl',
-  'pirate',
-  'shakespeare',
-  'surfer',
-  'noir',
-  'uwu',
-  'philosopher',
-  'hype'
-]
+export { BUILTIN_PERSONALITIES } from '@/lib/personalities'
 
 const THINKING_STATUS_PREFIX_RE =
   /^\s*(?:(?:[^\s.]{1,16})\s+)?(?:processing|thinking|reasoning|analyzing|pondering|contemplating|musing|cogitating|ruminating|deliberating|mulling|reflecting|computing|synthesizing|formulating|brainstorming)\.\.\.\s*/i
@@ -52,6 +37,7 @@ export function createClientSessionState(
     awaitingResponse: false,
     streamId: null,
     sawAssistantPayload: false,
+    adoptedRunningTurn: false,
     pendingBranchGroup: null,
     interrupted: false,
     interimBoundaryPending: false,
@@ -64,6 +50,10 @@ export function createClientSessionState(
 export function sessionTitle(session: SessionInfo): string {
   return session.title?.trim() || session.preview?.trim() || 'Untitled session'
 }
+
+/** What a session is called before it has been sent — and before its composer
+ *  has been typed into, which is the only thing that can name it earlier. */
+export const NEW_SESSION_TITLE = 'New session'
 
 export function coerceGatewayText(value: unknown): string {
   if (typeof value === 'string') {
@@ -182,6 +172,31 @@ export function attachmentId(kind: ComposerAttachment['kind'], value: string): s
   return `${kind}:${normalizeAttachmentValue(kind, value)}`
 }
 
+/** A GitHub PR review-thread (`#discussion_r<id>`) or conversation
+ *  (`#issuecomment-<id>`) deep link — the one paste shape that can resolve to
+ *  a structured review attachment instead of a plain `@url:` chip. */
+export const PR_COMMENT_URL_RE =
+  /^https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/\d+(?:\/[^#\s]*)?#(?:discussion_r|issuecomment-)\d+$/
+
+/** The send-time expansion of a `review` attachment. `detail` holds the
+ *  resolved comment as JSON (HermesPrComment shape); a malformed payload falls
+ *  back to the attachment's URL ref so the send never throws. */
+export function reviewCommentBlock(detail: string): null | string {
+  try {
+    const c = JSON.parse(detail)
+
+    const anchor = c.path
+      ? `${c.path}${c.line ? `:${c.startLine && c.startLine !== c.line ? `${c.startLine}-` : ''}${c.line}` : ''}`
+      : `PR #${c.prNumber}`
+
+    const hunk = c.diffHunk ? `\n--- diff hunk ---\n${String(c.diffHunk).trim()}` : ''
+
+    return `\`\`\`review-comment ${anchor}\n@${c.author} on ${c.url}\n\n${String(c.body).trim()}${hunk}\n\`\`\``
+  } catch {
+    return null
+  }
+}
+
 export function pathLabel(path: string): string {
   return path.split(/[\\/]/).filter(Boolean).pop() || path
 }
@@ -196,6 +211,18 @@ export function attachmentDisplayText(attachment: ComposerAttachment): string | 
 
   if (attachment.kind === 'terminal' && attachment.detail) {
     return `\`\`\`terminal\n${attachment.detail.trim()}\n\`\`\``
+  }
+
+  // A resolved PR review comment: expand to a fenced block carrying the
+  // anchor (file:line), author, body, and — when present — the diff hunk the
+  // comment sits on, so "address this" needs no re-explaining what "this" is.
+  // A malformed payload falls through to the refText (the pasted URL).
+  if (attachment.kind === 'review' && attachment.detail) {
+    const block = reviewCommentBlock(attachment.detail)
+
+    if (block) {
+      return block
+    }
   }
 
   if (attachment.refText) {

@@ -202,7 +202,8 @@ export const en: Translations = {
     unmuteHaptics: 'Unmute haptics',
     openSettings: 'Open settings',
     openStarmap: 'Open memory graph',
-    openKeybinds: 'Keyboard shortcuts',
+    enterHud: 'HUD mode',
+    exitHud: 'Exit HUD mode',
     layoutEditor: 'Layout editor',
     layoutEditorTitle: 'Layout editor — ⌘-click resets the layout'
   },
@@ -261,6 +262,8 @@ export const en: Translations = {
       'view.toggleReview': 'Toggle review pane',
       'view.toggleStatusbar': 'Toggle status bar',
       'view.showFiles': 'Show file browser',
+      'view.toggleHud': 'Toggle HUD mode',
+      'hud.snapToPointer': 'Move HUD to pointer (global, while HUD is open)',
       'view.showTerminal': 'Toggle terminal',
       'view.newTerminal': 'New terminal',
       'view.nextTerminal': 'Next terminal',
@@ -363,7 +366,20 @@ export const en: Translations = {
       disable: 'Disable',
       failed: 'failed',
       empty: 'No desktop plugins installed yet.',
-      kinds: { bundled: 'bundled', disk: 'on disk', runtime: 'runtime' }
+      kinds: { bundled: 'bundled', disk: 'on disk', runtime: 'runtime' },
+      agent: {
+        title: 'Agent plugins',
+        blurb:
+          'Run in the Hermes backend — tools, skills, MCP servers, hooks, and slash commands. Portable ones are Agent Plugins packages (skills + MCP bundles that work in other agents too). Toggles apply to new sessions.',
+        empty: 'No agent plugins installed yet.',
+        loadFailed: 'Could not load agent plugins',
+        portable: 'portable',
+        search: 'Search plugins…',
+        noMatches: 'No plugins match your search.',
+        toggleFailed: (name: string) => `Could not toggle ${name}`,
+        updateBackendToManage: 'Update the Hermes backend to manage this plugin from Desktop.',
+        sources: { bundled: 'bundled', user: 'user', git: 'git', project: 'project', entrypoint: 'pip' }
+      }
     },
     notifications: {
       title: 'Notifications',
@@ -677,6 +693,13 @@ export const en: Translations = {
       existingToken: value => `Existing token ${value}`,
       savedToken: 'saved',
       pasteSessionToken: 'Paste session token',
+      plainTextConfirmTitle: 'Store the gateway token in plain text?',
+      plainTextConfirmDesc:
+        'No OS keyring service was found on this machine, so the token would be saved unencrypted in the app’s connection settings file, readable by any process running as this user. Install or enable GNOME Keyring or KWallet for encrypted storage.',
+      plainTextConfirmAction: 'Save as plain text',
+      plainTextStoredTitle: 'Token stored in plain text',
+      plainTextStoredDesc:
+        'Secure storage is unavailable, so the saved token is stored unencrypted in the app’s connection settings file on this machine. Install or enable GNOME Keyring or KWallet to encrypt it.',
       testRemote: 'Test remote',
       saveForRestart: 'Save for next restart',
       saveAndReconnect: 'Save and reconnect',
@@ -1855,6 +1878,7 @@ export const en: Translations = {
     noWorkspace: 'No workspace',
     projectEmpty: 'No sessions yet',
     noSessions: 'No sessions yet',
+    noFilterMatches: 'No sessions match these filters',
     projects: {
       sectionLabel: 'Projects',
       home: 'Home',
@@ -1902,6 +1926,9 @@ export const en: Translations = {
       baseBranchPlaceholder: 'Search branches…',
       baseBranchNone: 'No branches found',
       startWorkFailed: 'Could not create worktree',
+      worktreeProjectLabel: 'Project',
+      worktreeProjectPlaceholder: 'Search projects…',
+      worktreeProjectNone: 'No projects with a folder',
       convertBranch: 'Convert a branch…',
       convertBranchTitle: 'Convert a branch',
       convertBranchDesc: 'Open checked-out branches, or create a worktree for a free branch.',
@@ -1910,6 +1937,7 @@ export const en: Translations = {
       branchOpenExisting: 'open',
       branchSwitchHome: 'switch home',
       branchCreateWorktree: 'new worktree',
+      branchTrackRemote: 'track remote',
       branchesLoading: 'Loading branches…',
       noBranches: 'No branches found',
       removeWorktree: 'Remove worktree',
@@ -1948,6 +1976,7 @@ export const en: Translations = {
       waitingForAnswer: 'Waiting for your answer',
       finishedUnread: 'Finished — unread',
       backgroundRunning: 'Background task running',
+      draftSession: 'Draft — nothing sent yet',
       handoffOrigin: platform => `Handed off from ${platform}`,
       ownedByProfile: profile => `Profile: ${profile}`,
       renamed: 'Renamed',
@@ -1956,6 +1985,8 @@ export const en: Translations = {
       renameDesc: 'Leave empty to clear.',
       untitledPlaceholder: 'Untitled session',
       untitledChat: id => `Chat ${id}`,
+      messageCount: count => `${count} ${count === 1 ? 'message' : 'messages'}`,
+      todoProgress: 'Tasks completed',
       ageNow: 'now',
       ageDay: 'd',
       ageHour: 'h',
@@ -1967,6 +1998,10 @@ export const en: Translations = {
       thisWeek: 'Earlier this week',
       lastWeek: 'Last week',
       thisMonth: 'Earlier this month'
+    },
+    statusDivider: {
+      working: 'Working',
+      done: 'Done'
     }
   },
 
@@ -2058,6 +2093,7 @@ export const en: Translations = {
     editingQueuedInComposer: 'Editing queued turn in composer',
     queueEdit: 'Edit',
     queueSendNext: 'Next',
+    queueSteer: 'Steer — redirect the live turn now',
     queueSend: 'Send',
     queueDelete: 'Delete',
     queueResume: 'Resume',
@@ -2577,10 +2613,6 @@ export const en: Translations = {
 
   preview: {
     tab: 'Preview',
-    closeTab: label => `Close ${label}`,
-    closeOthers: 'Close others',
-    closeToRight: 'Close to the right',
-    closeAll: 'Close all',
     closePane: 'Close preview pane',
     loading: 'Loading preview',
     unavailable: 'Preview unavailable',

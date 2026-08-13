@@ -18,8 +18,8 @@ Mechanism:
 Nothing is persisted here. Monitoring is an egress path, not a local store;
 if no subscriber is attached, events simply age out of the ring buffer.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import logging
 import queue

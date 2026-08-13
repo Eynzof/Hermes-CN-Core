@@ -5,8 +5,8 @@ and event loop are all faked.  Covers the adapter contract defaults, the
 consumer lifecycle (begin/write/finish/abort), fallback safety, duplicate
 suppression, cancellation idempotency, and concurrent-turn isolation.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import asyncio
 import queue

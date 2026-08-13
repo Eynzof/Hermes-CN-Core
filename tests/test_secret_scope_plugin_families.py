@@ -18,8 +18,8 @@ family, plus the two behavioral sites:
   the scope AT SPAWN TIME and pass it explicitly in the child environment —
   the detached child inherits the process env, not the contextvar scope.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import os
 from typing import Any, Dict

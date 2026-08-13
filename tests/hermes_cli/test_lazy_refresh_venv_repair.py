@@ -117,4 +117,3 @@ def test_refresh_repairs_venv_after_lazy_failure(tmp_path, monkeypatch, capsys):
 
 
 
-

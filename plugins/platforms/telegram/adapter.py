@@ -20,7 +20,7 @@ import threading
 import time
 from contextvars import ContextVar
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Set, Any
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Set
 
 logger = logging.getLogger(__name__)
 
@@ -245,6 +245,7 @@ try:
         CallbackQueryHandler,
         MessageHandler as TelegramMessageHandler,
         ContextTypes,
+        TypeHandler,
         filters,
     )
     from telegram.constants import ParseMode, ChatType
@@ -261,6 +262,7 @@ except ImportError:
     Application = Any
     CommandHandler = Any
     CallbackQueryHandler = Any
+    TypeHandler = Any
     TelegramMessageHandler = Any
     HTTPXRequest = Any
     filters = None
@@ -391,6 +393,17 @@ def _probe_voice_duration_seconds(path: str) -> Optional[int]:
         pass
 
     return None
+
+
+def telegram_deps_present() -> bool:
+    """PASSIVE probe: is python-telegram-bot importable right now?
+
+    Registry ``check_fn`` — called from status displays and config loading,
+    so it must never install anything.  The ACTIVE lazy-installer
+    (``check_telegram_requirements``) is registered as ``ensure_deps_fn``
+    and runs from ``create_adapter()`` when this returns False (#79812).
+    """
+    return TELEGRAM_AVAILABLE
 
 
 def check_telegram_requirements() -> bool:
@@ -568,6 +581,11 @@ def _rich_normalize_linebreaks(text: str) -> str:
 # reconnect/teardown ladder. This is an internal safety bound (not a user knob),
 # applied identically at every stop() site so no path can hang on a dead socket.
 _UPDATER_STOP_TIMEOUT = 15.0
+# Per-step bound for disconnect() awaits that are not updater.stop() itself.
+# Kept short so a cancellation-swallowing lifecycle/PTB close cannot burn the
+# gateway's whole fatal-handler budget before the reconnect queue is useful
+# (#80598). updater.stop() keeps the longer _UPDATER_STOP_TIMEOUT.
+_DISCONNECT_STEP_TIMEOUT = 2.0
 # start_polling() can also hang when the connection pool is in a degraded state
 # after _drain_polling_connections(), particularly when both primary and fallback
 # Telegram endpoints are unreachable. Bounding start_polling() prevents the
@@ -723,6 +741,9 @@ class TelegramAdapter(BasePlatformAdapter):
         # Rich draft previews use a separate opt-in. Telegram macOS / Desktop
         # can leave Bot API 10.1 rich draft frames visually overlaid until the
         # chat is redrawn, while final rich messages remain useful.
+        # When rich_messages is on but rich_drafts is off, supports_draft_streaming
+        # declines drafts so transport=auto uses edit-in-place + rich finalize
+        # instead of MDV2 drafts that jump to sendRichMessage at the end.
         self._rich_drafts_enabled: bool = self._coerce_bool_extra("rich_drafts", False)
         # Latched off after a capability failure on sendRichMessage /
         # sendRichMessageDraft (e.g. older python-telegram-bot without the
@@ -1034,6 +1055,60 @@ class TelegramAdapter(BasePlatformAdapter):
             user_id=user_id,
             user_name=user_name,
             thread_id=thread_id,
+        )
+
+    def _source_from_reaction_for_auth(self, update):
+        """Build the SessionSource for a ``message_reaction`` update's actor.
+
+        Mirrors ``_source_from_message_for_auth`` but for reactions, which
+        carry the reactor (``user``, or ``actor_chat`` for an anonymous admin)
+        and ``chat`` but no ``Message``. The gateway runner uses this internal
+        source for its normal profile-scoped authorization decision. Reactions
+        expose no thread id, so ``thread_id`` is None.
+
+        Raises ``ValueError`` when the reaction, actor, chat, or message identity
+        is absent so the post-auth boundary fails closed rather than authorizing
+        an incomplete source. A future event type must wire its own extraction.
+        """
+        mr = getattr(update, "message_reaction", None)
+        if mr is None:
+            raise ValueError(
+                "gateway_platform_event source extraction requires a "
+                "message_reaction update"
+            )
+        user = getattr(mr, "user", None) or getattr(mr, "actor_chat", None)
+        chat = getattr(mr, "chat", None)
+        user_id = str(getattr(user, "id", "")).strip() or None
+        user_name = (
+            str(
+                getattr(user, "username", "")
+                or getattr(user, "full_name", "")
+                or getattr(user, "title", "")
+            ).strip()
+            or None
+        )
+
+        chat_id = str(getattr(chat, "id", "")).strip() or None
+        message_id = getattr(mr, "message_id", None)
+        if not user_id or not chat_id or message_id is None or not str(message_id).strip():
+            raise ValueError(
+                "gateway_platform_event reaction requires actor, chat, and message identities"
+            )
+        chat_type = str(getattr(chat, "type", "dm")).strip().lower() or "dm"
+        if chat_type == "private":
+            chat_type = "dm"
+        elif chat_type == "supergroup":
+            # Reactions carry no message_thread_id; a forum supergroup is the
+            # only forum signal available without the underlying message.
+            chat_type = "forum" if getattr(chat, "is_forum", False) is True else "group"
+
+        return self.build_source(
+            chat_id=chat_id,
+            chat_type=chat_type,
+            user_id=user_id,
+            user_name=user_name,
+            thread_id=None,
+            message_id=str(message_id),
         )
 
     def _telegram_auth_env_configured(self) -> bool:
@@ -3661,6 +3736,218 @@ class TelegramAdapter(BasePlatformAdapter):
             if self._post_connect_task is asyncio.current_task():
                 self._post_connect_task = None
 
+    async def _on_platform_update(self, update, context) -> None:
+        """Catch-all PTB handler firing ``gateway_platform_event`` per inbound update.
+
+        Normalizes the update into a stable envelope (no raw SDK objects; see
+        #64176), then forwards it with an internal source to the gateway-owned
+        post-auth boundary. Registered in a dedicated high group so it observes
+        alongside, never displaces, the core handlers. Malformed updates and
+        dispatch errors cannot raise into PTB's update loop.
+        """
+        handler: Optional[Callable[[Dict[str, Any], Any], Awaitable[None]]] = getattr(
+            self, "_platform_event_handler", None
+        )
+        if handler is None:
+            return
+        try:
+            from hermes_cli.lifecycle import has_hook
+
+            if not has_hook("gateway_platform_event"):
+                return
+            event = self._normalize_platform_event(update)
+        except Exception:
+            logger.debug("[%s] gateway_platform_event normalize error", self.name, exc_info=True)
+            return
+        if event is None:
+            return
+        # The catch-all sees every inbound update. Hand the normalized envelope
+        # and its internal source to the gateway-owned boundary, where the full
+        # profile-scoped authorization chain runs before plugin dispatch. No
+        # callback means no trusted auth boundary, so fail closed.
+        try:
+            source = self._source_for_platform_event_auth(update)
+            await handler(event, source)
+        except Exception:
+            logger.debug("[%s] gateway_platform_event dispatch error", self.name, exc_info=True)
+            return
+
+    def _source_for_platform_event_auth(self, update):
+        """Route a supported update to its event-specific auth-source extractor.
+
+        Every ``gateway_platform_event`` type needs its own identity
+        extraction (a reaction carries the reactor; an edit carries the
+        editor). Raises ``ValueError`` for updates without a wired extractor
+        so the post-auth boundary fails closed rather than authorizing an
+        incomplete source.
+        """
+        if getattr(update, "message_reaction", None) is not None:
+            return self._source_from_reaction_for_auth(update)
+        edited = getattr(update, "edited_message", None)
+        if edited is not None:
+            source = self._source_from_message_for_auth(edited)
+            # _source_from_message_for_auth tolerates missing identities for
+            # its pairing-flow callers; the platform-event boundary must not.
+            if not source.user_id or not source.chat_id:
+                raise ValueError(
+                    "gateway_platform_event message_edited requires editor "
+                    "and chat identities"
+                )
+            return source
+        raise ValueError(
+            "gateway_platform_event source extraction has no extractor for "
+            "this update type"
+        )
+
+    def _normalize_platform_event(self, update) -> Optional[Dict[str, Any]]:
+        """Map an inbound PTB update to a normalized ``gateway_platform_event``
+        envelope ``{platform, event_type, payload}``, or ``None`` if unsupported.
+
+        Each supported event type has its own event-local, additive payload
+        contract (documented in hooks.md). Raw SDK objects never leave this
+        boundary. Update types without a wired contract (forward, chat-member)
+        return ``None`` unless and until they gain a concrete contract and
+        current fire-site consumer.
+        """
+        if getattr(update, "message_reaction", None) is not None:
+            return self._normalize_reaction_event(update)
+        if getattr(update, "edited_message", None) is not None:
+            return self._normalize_message_edited_event(update)
+        return None
+
+    def _normalize_reaction_event(self, update) -> Optional[Dict[str, Any]]:
+        """Normalize a ``message_reaction`` update (event_type ``reaction``).
+
+        Reaction (the motivating use case: a plugin that re-renders or reacts to
+        a message when the user reacts to it) is normalized to the fields a
+        plugin consumes: ``emojis`` (standard unicode), ``custom_emoji_ids``
+        (custom reaction emojis — PTB exposes ``custom_emoji_id`` with no
+        ``.emoji``), ``chat_id``, ``message_id``, ``thread_id``.
+        """
+        mr = getattr(update, "message_reaction", None)
+        if mr is None:
+            return None
+        chat = getattr(mr, "chat", None)
+        new_reaction = getattr(mr, "new_reaction", None) or []
+        if not isinstance(new_reaction, (list, tuple)):
+            return None
+        chat_id = getattr(chat, "id", None) if chat is not None else None
+        message_id = getattr(mr, "message_id", None)
+        if (
+            isinstance(chat_id, bool)
+            or not isinstance(chat_id, (str, int))
+            or isinstance(message_id, bool)
+            or not isinstance(message_id, (str, int))
+        ):
+            return None
+        emojis: List[str] = []
+        custom_emoji_ids: List[str] = []
+        for r in new_reaction[:64]:
+            emoji = getattr(r, "emoji", None)
+            if isinstance(emoji, str) and emoji:
+                emojis.append(emoji[:64])
+            custom_id = getattr(r, "custom_emoji_id", None)
+            if (
+                not isinstance(custom_id, bool)
+                and isinstance(custom_id, (str, int))
+            ):
+                custom_emoji_ids.append(str(custom_id)[:128])
+        return {
+            "platform": "telegram",
+            "event_type": "reaction",
+            "payload": {
+                "emojis": emojis,
+                "custom_emoji_ids": custom_emoji_ids,
+                "chat_id": str(chat_id)[:128],
+                "message_id": str(message_id)[:128],
+                # Reactions don't carry thread_id; do not guess it or expose an
+                # adapter object as a routing escape hatch.
+                "thread_id": None,
+            },
+        }
+
+    def _normalize_message_edited_event(self, update) -> Optional[Dict[str, Any]]:
+        """Normalize an ``edited_message`` update (event_type ``message_edited``).
+
+        Payload contract (v1, additive): ``chat_id``, ``message_id``,
+        ``thread_id`` (forum topic when present), ``text`` (edited text or
+        caption, bounded), ``edited_at`` (ISO 8601 UTC or None). No raw PTB
+        ``Message`` object leaves this boundary. Malformed identities return
+        ``None`` so the fire-site drops the event.
+        """
+        message = getattr(update, "edited_message", None)
+        if message is None:
+            return None
+        chat = getattr(message, "chat", None)
+        chat_id = getattr(chat, "id", None) if chat is not None else None
+        message_id = getattr(message, "message_id", None)
+        if (
+            isinstance(chat_id, bool)
+            or not isinstance(chat_id, (str, int))
+            or isinstance(message_id, bool)
+            or not isinstance(message_id, (str, int))
+        ):
+            return None
+        text = getattr(message, "text", None) or getattr(message, "caption", None)
+        if not isinstance(text, str):
+            text = None
+        thread_id = None
+        thread_id_raw = getattr(message, "message_thread_id", None)
+        if (
+            not isinstance(thread_id_raw, bool)
+            and isinstance(thread_id_raw, (str, int))
+            and bool(getattr(message, "is_topic_message", False))
+        ):
+            thread_id = str(thread_id_raw)[:128]
+        edited_at = None
+        edit_date = getattr(message, "edit_date", None)
+        try:
+            if edit_date is not None and hasattr(edit_date, "isoformat"):
+                edited_at = str(edit_date.isoformat())[:64]
+        except Exception:
+            edited_at = None
+        return {
+            "platform": "telegram",
+            "event_type": "message_edited",
+            "payload": {
+                "chat_id": str(chat_id)[:128],
+                "message_id": str(message_id)[:128],
+                "thread_id": thread_id,
+                "text": text[:8192] if text is not None else None,
+                "edited_at": edited_at,
+            },
+        }
+
+    def _register_handlers(self, app) -> None:
+        """Register every PTB handler on ``app``.
+
+        Single source of truth for handler registration. Both initial connect
+        and the transient-initialization rebuild path call this method, keeping
+        the ``gateway_platform_event`` observer (group 99) in lockstep with the
+        core handlers.
+        """
+        app.add_handler(TelegramMessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            self._handle_text_message
+        ))
+        app.add_handler(TelegramMessageHandler(
+            filters.COMMAND,
+            self._handle_command
+        ))
+        app.add_handler(TelegramMessageHandler(
+            filters.LOCATION | getattr(filters, "VENUE", filters.LOCATION),
+            self._handle_location_message
+        ))
+        app.add_handler(TelegramMessageHandler(
+            filters.PHOTO | filters.VIDEO | filters.AUDIO | filters.VOICE | filters.Document.ALL | filters.Sticker.ALL,
+            self._handle_media_message
+        ))
+        # Handle inline keyboard button callbacks (update prompts)
+        app.add_handler(CallbackQueryHandler(self._handle_callback_query))
+        # gateway_platform_event observer (see _on_platform_update); group 99 so
+        # it observes alongside, never displaces, the core handlers.
+        app.add_handler(TypeHandler(Update, self._on_platform_update), group=99)
+
     async def connect(self, *, is_reconnect: bool = False) -> bool:
         """Connect to Telegram via polling or webhook.
 
@@ -3873,25 +4160,8 @@ class TelegramAdapter(BasePlatformAdapter):
             self._app = builder.build()
             self._bot = self._app.bot
             
-            # Register handlers
-            self._app.add_handler(TelegramMessageHandler(
-                filters.TEXT & ~filters.COMMAND,
-                self._handle_text_message
-            ))
-            self._app.add_handler(TelegramMessageHandler(
-                filters.COMMAND,
-                self._handle_command
-            ))
-            self._app.add_handler(TelegramMessageHandler(
-                filters.LOCATION | getattr(filters, "VENUE", filters.LOCATION),
-                self._handle_location_message
-            ))
-            self._app.add_handler(TelegramMessageHandler(
-                filters.PHOTO | filters.VIDEO | filters.AUDIO | filters.VOICE | filters.Document.ALL | filters.Sticker.ALL,
-                self._handle_media_message
-            ))
-            # Handle inline keyboard button callbacks (update prompts)
-            self._app.add_handler(CallbackQueryHandler(self._handle_callback_query))
+            # Register handlers via the single registration site (#64176).
+            self._register_handlers(self._app)
             
             # Start polling — retry initialize() for transient TLS resets.
             # Each attempt is capped by _init_timeout so a single unreachable
@@ -4005,24 +4275,9 @@ class TelegramAdapter(BasePlatformAdapter):
                         old_app = self._app
                         self._app = builder.build()
                         self._bot = self._app.bot
-                        # Re-register handlers on the new app
-                        self._app.add_handler(TelegramMessageHandler(
-                            filters.TEXT & ~filters.COMMAND,
-                            self._handle_text_message
-                        ))
-                        self._app.add_handler(TelegramMessageHandler(
-                            filters.COMMAND,
-                            self._handle_command
-                        ))
-                        self._app.add_handler(TelegramMessageHandler(
-                            filters.LOCATION | getattr(filters, "VENUE", filters.LOCATION),
-                            self._handle_location_message
-                        ))
-                        self._app.add_handler(TelegramMessageHandler(
-                            filters.PHOTO | filters.VIDEO | filters.AUDIO | filters.VOICE | filters.Document.ALL | filters.Sticker.ALL,
-                            self._handle_media_message
-                        ))
-                        self._app.add_handler(CallbackQueryHandler(self._handle_callback_query))
+                        # Keep core and observer handlers in lockstep after a
+                        # transient-init rebuild (#64176).
+                        self._register_handlers(self._app)
                         # Best-effort discard the old app's resources
                         try:
                             await _shutdown_abandoned_app(old_app)
@@ -4293,6 +4548,47 @@ class TelegramAdapter(BasePlatformAdapter):
         if getattr(self, "_polling_progress_verifier_task", None) is not current_task:
             self._polling_progress_verifier_task = None
 
+    async def _await_disconnect_step(self, awaitable, timeout: float, step: str) -> bool:
+        """Await one disconnect step; detach on timeout so teardown advances.
+
+        ``asyncio.wait_for`` cancels an overdue child but then waits for it to
+        exit. Lifecycle / PTB close paths that swallow ``CancelledError`` on a
+        half-dead socket can therefore wedge disconnect forever (#80598).
+        Detach at the deadline and continue — the abandoned task is observed
+        via ``_consume_abandoned_task``.
+        """
+        task = asyncio.ensure_future(awaitable)
+        try:
+            if timeout <= 0:
+                done, _pending = await asyncio.wait({task})
+            else:
+                done, _pending = await asyncio.wait({task}, timeout=timeout)
+        except asyncio.CancelledError:
+            # Outer cancellation (e.g. the fatal handler's outer timeout) must
+            # not orphan the inner task — asyncio.wait does NOT cancel its
+            # futures when itself cancelled (#80598).  Mirror the pattern used
+            # by GatewayRunner._await_adapter_cleanup_with_timeout.
+            task.cancel()
+            task.add_done_callback(_consume_abandoned_task)
+            raise
+        if task in done:
+            # Intentional cancels (heartbeat / identity / lifecycle) surface as
+            # CancelledError — swallow so disconnect keeps advancing.
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            return True
+        task.cancel()
+        task.add_done_callback(_consume_abandoned_task)
+        logger.warning(
+            "[%s] %s timed out after %.1fs during disconnect; continuing teardown",
+            self.name,
+            step,
+            timeout,
+        )
+        return False
+
     async def disconnect(self) -> None:
         """Stop polling/webhook, cancel pending delayed deliveries, and disconnect."""
         # Mark disconnected first so the drop guard short-circuits any flush
@@ -4304,6 +4600,11 @@ class TelegramAdapter(BasePlatformAdapter):
         self._polling_generation = getattr(self, "_polling_generation", 0) + 1
         self._polling_progress_event = asyncio.Event()
         self._send_path_degraded = True
+
+        # Release the bot-token lock immediately so a wedged close cannot block
+        # the reconnect watcher from acquiring it (#80598). The rest of teardown
+        # is best-effort against a half-dead transport.
+        self._release_platform_lock()
 
         # Recovery can be suspended in stop/drain/start while disconnect begins.
         # Cancel and await both polling lifecycle owners immediately after the
@@ -4325,7 +4626,11 @@ class TelegramAdapter(BasePlatformAdapter):
             if asyncio.isfuture(task) or asyncio.iscoroutine(task):
                 lifecycle_tasks.append(task)
         if lifecycle_tasks:
-            await asyncio.gather(*lifecycle_tasks, return_exceptions=True)
+            await self._await_disconnect_step(
+                asyncio.gather(*lifecycle_tasks, return_exceptions=True),
+                _DISCONNECT_STEP_TIMEOUT,
+                "lifecycle-task cancel",
+            )
         if getattr(self, "_polling_error_task", None) is not current_task:
             self._polling_error_task = None
         if getattr(self, "_polling_progress_verifier_task", None) is not current_task:
@@ -4343,7 +4648,11 @@ class TelegramAdapter(BasePlatformAdapter):
         post_connect_task = getattr(self, "_post_connect_task", None)
         if post_connect_task and not post_connect_task.done():
             post_connect_task.cancel()
-            await asyncio.gather(post_connect_task, return_exceptions=True)
+            await self._await_disconnect_step(
+                asyncio.gather(post_connect_task, return_exceptions=True),
+                _DISCONNECT_STEP_TIMEOUT,
+                "post-connect cancel",
+            )
         self._post_connect_task = None
 
         # Cancel the heartbeat before tearing down the app so the probe task
@@ -4351,10 +4660,11 @@ class TelegramAdapter(BasePlatformAdapter):
         polling_heartbeat_task = getattr(self, "_polling_heartbeat_task", None)
         if polling_heartbeat_task and not polling_heartbeat_task.done():
             polling_heartbeat_task.cancel()
-            try:
-                await polling_heartbeat_task
-            except asyncio.CancelledError:
-                pass
+            await self._await_disconnect_step(
+                polling_heartbeat_task,
+                _DISCONNECT_STEP_TIMEOUT,
+                "heartbeat cancel",
+            )
         self._polling_heartbeat_task = None
 
         # Cancel the webhook-mode identity refresh loop on the same fence as
@@ -4362,10 +4672,11 @@ class TelegramAdapter(BasePlatformAdapter):
         identity_task = getattr(self, "_bot_identity_refresh_task", None)
         if identity_task and not identity_task.done():
             identity_task.cancel()
-            try:
-                await identity_task
-            except asyncio.CancelledError:
-                pass
+            await self._await_disconnect_step(
+                identity_task,
+                _DISCONNECT_STEP_TIMEOUT,
+                "identity-refresh cancel",
+            )
         self._bot_identity_refresh_task = None
 
         # Mark the bot "Offline" in its short description while the bot's HTTP
@@ -4374,11 +4685,19 @@ class TelegramAdapter(BasePlatformAdapter):
         # a hard crash leaves the last-known status, which is the expected
         # limitation of a profile-text indicator.
         try:
-            await self._set_status_indicator(online=False)
+            await self._await_disconnect_step(
+                self._set_status_indicator(online=False),
+                _DISCONNECT_STEP_TIMEOUT,
+                "status-indicator update",
+            )
         except Exception:
             pass
 
-        await self._cancel_pending_delivery_tasks()
+        await self._await_disconnect_step(
+            self._cancel_pending_delivery_tasks(),
+            _DISCONNECT_STEP_TIMEOUT,
+            "pending-delivery cancel",
+        )
 
         if self._app:
             try:
@@ -4389,22 +4708,35 @@ class TelegramAdapter(BasePlatformAdapter):
                 # we fall through to app.stop()/shutdown() to force teardown.
                 if self._app.updater and self._app.updater.running:
                     try:
-                        await asyncio.wait_for(self._app.updater.stop(), timeout=_UPDATER_STOP_TIMEOUT)
-                    except asyncio.TimeoutError:
-                        logger.warning(
-                            "[%s] updater.stop() timed out during disconnect "
-                            "(likely CLOSE-WAIT socket); forcing app shutdown",
-                            self.name,
+                        await self._await_disconnect_step(
+                            self._app.updater.stop(),
+                            _UPDATER_STOP_TIMEOUT,
+                            "updater.stop()",
                         )
+                    except Exception as stop_error:
+                        logger.warning(
+                            "[%s] updater.stop() failed during disconnect: %s",
+                            self.name,
+                            _redact_telegram_error_text(stop_error),
+                        )
+                # app.stop()/shutdown() can also block on a half-dead httpx
+                # pool. Detach-on-timeout so disconnect always returns (#80598).
                 if self._app.running:
-                    await self._app.stop()
-                await self._app.shutdown()
+                    await self._await_disconnect_step(
+                        self._app.stop(),
+                        _DISCONNECT_STEP_TIMEOUT,
+                        "app.stop()",
+                    )
+                await self._await_disconnect_step(
+                    self._app.shutdown(),
+                    _DISCONNECT_STEP_TIMEOUT,
+                    "app.shutdown()",
+                )
             except Exception as e:
                 logger.warning(
                     "[%s] Error during Telegram disconnect: %s",
                     self.name, _redact_telegram_error_text(e),
                 )
-        self._release_platform_lock()
 
         self._app = None
         self._bot = None
@@ -5254,8 +5586,22 @@ class TelegramAdapter(BasePlatformAdapter):
         We additionally require ``self._bot`` to expose ``send_message_draft``
         (added to python-telegram-bot in 22.6); older PTB installs gracefully
         fall back to the edit path even on DMs.
+
+        When ``rich_messages`` is enabled but ``rich_drafts`` is not, decline
+        drafts even on DMs.  Final delivery then uses ``sendRichMessage`` /
+        rich ``editMessageText``, while the default draft path still renders
+        MarkdownV2 (tables → bullet lists).  That mismatch makes the streaming
+        preview look unformatted/"crooked" and the finalized reply a second
+        beautiful wiki-style bubble.  Prefer edit-in-place streaming so the
+        same message upgrades via rich finalize.  Operators who want animated
+        rich drafts opt in with ``rich_drafts: true``.
         """
         if not self._bot or not hasattr(self._bot, "send_message_draft"):
+            return False
+        if (
+            getattr(self, "_rich_messages_enabled", False)
+            and not getattr(self, "_rich_drafts_enabled", False)
+        ):
             return False
         return (chat_type or "").lower() in {"dm", "private"}
 
@@ -8140,7 +8486,7 @@ class TelegramAdapter(BasePlatformAdapter):
                 if offset < 0 or length <= 0:
                     continue
 
-                entity_text = source_text[offset:offset + length].strip()
+                entity_text = TelegramAdapter._telegram_entity_text(source_text, offset, length).strip()
                 if entity_type == "mention":
                     handle = entity_text.lstrip("@").lower()
                     if _is_bot_handle(handle):
@@ -8171,6 +8517,19 @@ class TelegramAdapter(BasePlatformAdapter):
 
         return mentioned_bot_usernames
 
+    @staticmethod
+    def _telegram_entity_text(source_text: str, offset: int, length: int) -> str:
+        """Return a Telegram entity span using UTF-16 code-unit offsets."""
+        if offset < 0 or length <= 0:
+            return ""
+        try:
+            raw = source_text.encode("utf-16-le")
+            start = offset * 2
+            end = (offset + length) * 2
+            return raw[start:end].decode("utf-16-le")
+        except UnicodeDecodeError:
+            return ""
+
     def _message_mentions_bot(self, message: Message) -> bool:
         if not self._bot:
             return False
@@ -8197,7 +8556,7 @@ class TelegramAdapter(BasePlatformAdapter):
                     length = int(getattr(entity, "length", 0))
                     if offset < 0 or length <= 0:
                         continue
-                    if source_text[offset:offset + length].strip().lower() == expected:
+                    if self._telegram_entity_text(source_text, offset, length).strip().lower() == expected:
                         return True
                 elif entity_type == "text_mention":
                     user = getattr(entity, "user", None)
@@ -8217,7 +8576,7 @@ class TelegramAdapter(BasePlatformAdapter):
                     length = int(getattr(entity, "length", 0))
                     if offset < 0 or length <= 0:
                         continue
-                    command_text = source_text[offset:offset + length]
+                    command_text = self._telegram_entity_text(source_text, offset, length)
                     at_index = command_text.find("@")
                     if at_index < 0:
                         continue
@@ -10136,7 +10495,8 @@ def register(ctx) -> None:
         name="telegram",
         label="Telegram",
         adapter_factory=_build_adapter,
-        check_fn=check_telegram_requirements,
+        check_fn=telegram_deps_present,
+        ensure_deps_fn=check_telegram_requirements,
         is_connected=_is_connected,
         required_env=["TELEGRAM_BOT_TOKEN"],
         install_hint="Run `hermes setup` to install Telegram support.",

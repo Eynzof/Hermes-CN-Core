@@ -20,8 +20,8 @@ Both had already happened here:
 
 This guard is cheap and catches the whole class at collection time.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import ast
 from pathlib import Path

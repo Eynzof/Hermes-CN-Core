@@ -28,8 +28,8 @@ Call sites should build :class:`BackendIdentity` values, classify the failure
 with :func:`classify_failure_scope`, and ask :func:`should_skip_candidate`.
 Do not re-implement any comparison inline — extend THIS module instead.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import logging
 from dataclasses import dataclass

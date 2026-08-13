@@ -12,8 +12,8 @@ advisors") fixed the other two MoA call paths but never touched
 containing all joined reference outputs) with zero cache_control breakpoints,
 even when the resolved aggregator slot is a cache-honoring route.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import copy
 from types import SimpleNamespace

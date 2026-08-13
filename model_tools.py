@@ -282,6 +282,18 @@ def _is_delegated_child_context() -> bool:
         return False
 
 
+def _is_dispatcher_owned_worker() -> bool:
+    """False when HERMES_KANBAN_* is present but this execution does not own it
+    (delegate_task child, or a cron job fired in-process from a worker)."""
+    try:
+        from agent.delegation_context import is_dispatcher_owned_worker_context
+
+        return is_dispatcher_owned_worker_context()
+    except Exception:
+        return True
+
+
+
 # =============================================================================
 # Async Bridging  (single source of truth -- used by registry.dispatch too)
 # =============================================================================
@@ -546,11 +558,11 @@ _LEGACY_TOOLSET_MAP = {
 # =============================================================================
 
 # Module-level memoization for get_tool_definitions(). Keyed on
-# (frozenset(enabled_toolsets), frozenset(disabled_toolsets), registry._generation,
-#  config fingerprint, kanban flag, tool-search flag, shell type). Hot callers
-# (gateway runner, AIAgent.__init__, the CLI background warmup) invoke this on
-# every agent construction; caching avoids ~12 ms of registry walking + schema
-# filtering + check_fn probing per call.
+# (profile scope, enabled/disabled toolsets, registry generation, config
+# fingerprint, kanban flag, tool-search flag, dispatcher-ownership flag,
+# shell type). Hot callers (gateway runner, AIAgent.__init__, the CLI
+# background warmup) invoke this on every agent construction; caching avoids
+# ~12 ms of registry walking + schema filtering + check_fn probing per call.
 #
 # Active in BOTH quiet and non-quiet modes. quiet_mode is deliberately NOT part
 # of the key: the computed schema list is identical regardless of it — only the
@@ -779,6 +791,7 @@ def get_tool_definitions(
     profile_scope = check_fn_cache_scope()
     if profile_scope != CHECK_FN_CACHE_BYPASS:
         cache_key = (
+            registry.current_scope_key(),
             frozenset(enabled_toolsets) if enabled_toolsets is not None else None,
             frozenset(disabled_toolsets) if disabled_toolsets else None,
             registry._generation,
@@ -786,6 +799,7 @@ def get_tool_definitions(
             bool(os.environ.get("HERMES_KANBAN_TASK")),
             bool(skip_tool_search_assembly),
             _is_delegated_child_context(),
+            _is_dispatcher_owned_worker(),
             profile_scope,
             _shell_fp,
         )
@@ -826,6 +840,7 @@ def get_tool_definitions(
     # later mutation still bumps the generation and invalidates correctly.
     if cache_key is not None:
         store_key = (
+            registry.current_scope_key(),
             frozenset(enabled_toolsets) if enabled_toolsets is not None else None,
             frozenset(disabled_toolsets) if disabled_toolsets else None,
             registry._generation,
@@ -833,6 +848,7 @@ def get_tool_definitions(
             bool(os.environ.get("HERMES_KANBAN_TASK")),
             bool(skip_tool_search_assembly),
             _is_delegated_child_context(),
+            _is_dispatcher_owned_worker(),
             profile_scope,
             _shell_fp,
         )
@@ -870,6 +886,7 @@ def _compute_tool_definitions(
         if (
             os.environ.get("HERMES_KANBAN_TASK")
             and not _is_delegated_child_context()
+            and _is_dispatcher_owned_worker()
             and "kanban" not in effective_enabled_toolsets
         ):
             # Dispatcher-spawned workers are scoped by HERMES_KANBAN_TASK and
@@ -1013,6 +1030,21 @@ def _compute_tool_definitions(
                     }
                     break
 
+    # browser_exec (Browser Use mode) runs arbitrary Python on the host via
+    # the browser-use CLI subprocess.  A session whose toolset selection
+    # excludes the terminal surface (e.g. a messaging platform configured
+    # without terminal access) must not regain host code execution through
+    # the browser toolset — that would silently widen the operator's chosen
+    # security posture.  Session-level gate, NOT a check_fn: check_fn results
+    # are TTL-cached process-wide while one gateway process serves many
+    # sessions with different toolset configs.
+    if "browser_exec" in available_tool_names and "terminal" not in available_tool_names:
+        filtered_tools = [
+            td for td in filtered_tools
+            if td.get("function", {}).get("name") != "browser_exec"
+        ]
+        available_tool_names.discard("browser_exec")
+
     if filtered_tools:
         tool_names = [t["function"]["name"] for t in filtered_tools]
         status_lines.append(f"🛠️  Final tool selection ({len(filtered_tools)} tools): {', '.join(tool_names)}")
@@ -1055,10 +1087,15 @@ def _compute_tool_definitions(
                 config=ts_cfg,
             )
             if assembly.activated:
+                _forms = {"full": "catalog listing embedded",
+                          "names": "names-only listing embedded",
+                          "mixed": "listing embedded (oversized servers summarized)",
+                          "groups": "server summary embedded (search-only discovery)",
+                          "none": "no listing (search-only)"}
                 status_lines.append(
-                    f"🔎 Tool Search: {assembly.deferred_count} MCP/plugin tools deferred "
-                    f"(~{assembly.deferred_tokens} tokens) behind tool_search/describe/call. "
-                    f"Threshold ~{assembly.threshold_tokens} tokens."
+                    f"🔎 Tool Search (tier {assembly.tier}): {assembly.deferred_count} "
+                    f"MCP/plugin tools deferred (~{assembly.deferred_tokens} tokens) behind "
+                    f"tool_search/describe/call — {_forms.get(assembly.listing_form, assembly.listing_form)}."
                 )
             filtered_tools = assembly.tool_defs
     except Exception as e:  # pragma: no cover — never break tool loading
@@ -1113,6 +1150,25 @@ def _resolve_active_context_length() -> int:
                     "context gate (provider=%s): %s — using config values only",
                     provider, rt_exc,
                 )
+        # Fast path: a previously discovered on-disk cache entry is plenty
+        # for SIZING the tool-search gate — unlike compression budgeting, a
+        # slightly stale window can't corrupt anything (should_activate only
+        # picks a disclosure tier). The full resolver below deliberately
+        # bypasses the persistent cache for some providers (Nous portal,
+        # Codex OAuth) so IT can reconcile against the authoritative live
+        # /models endpoint — correct for compression sizing, but it costs a
+        # ~200ms network probe on EVERY CLI startup. When any prior session
+        # already learned the window, use it for the gate and let the full
+        # resolver (called later on the compression path) do reconciliation.
+        if config_ctx is None and base_url:
+            try:
+                from agent.model_metadata import get_cached_context_length
+                cached_ctx = get_cached_context_length(model_id, base_url)
+                if isinstance(cached_ctx, int) and cached_ctx > 0:
+                    return cached_ctx
+            except Exception:
+                pass
+
         return int(get_model_context_length(
             model_id,
             base_url=base_url,
@@ -1160,7 +1216,11 @@ _TOOL_ERROR_ROLE_TAG_RE = re.compile(
 _TOOL_ERROR_FENCE_OPEN_RE = re.compile(r'^\s*```(?:json|xml|html|markdown)?\s*', re.MULTILINE)
 _TOOL_ERROR_FENCE_CLOSE_RE = re.compile(r'\s*```\s*$', re.MULTILINE)
 _TOOL_ERROR_CDATA_RE = re.compile(r'<!\[CDATA\[.*?\]\]>', re.DOTALL)
-_TOOL_ERROR_MAX_LEN = 2000
+# Single home for the tool-error context cap: tools/registry.py. Both this
+# sanitizer (exception paths) and the dispatch-boundary bounding
+# (tool_error / _bound_json_error_result) trim to the same budget so text
+# never passes two different caps with two different markers.
+from tools.registry import _MAX_TOOL_ERROR_CHARS as _TOOL_ERROR_MAX_LEN
 
 
 def _sanitize_tool_error(error_msg: str) -> str:
@@ -2204,6 +2264,7 @@ def handle_function_call(
             _approval_tokens = set_current_observability_context(
                 turn_id=turn_id or "",
                 tool_call_id=tool_call_id or "",
+                session_id=session_id or "",
             )
         except Exception:
             reset_current_observability_context = None

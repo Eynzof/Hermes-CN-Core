@@ -2,7 +2,6 @@
 
 import asyncio
 import json
-import orjson
 import os
 import threading
 from types import SimpleNamespace
@@ -40,7 +39,7 @@ def _write_directory(tmp_path, platforms):
     """Helper to write a fake channel directory."""
     data = {"updated_at": "2026-01-01T00:00:00", "platforms": platforms}
     cache_file = tmp_path / "channel_directory.json"
-    cache_file.write_text(orjson.dumps(data).decode('utf-8'))
+    cache_file.write_text(json.dumps(data))
     return cache_file
 
 
@@ -57,7 +56,7 @@ class TestBuildChannelDirectoryWrites:
         cache_file = _write_directory(tmp_path, {
             "telegram": [{"id": "123", "name": "Alice", "type": "dm"}]
         })
-        previous = orjson.loads(cache_file.read_text())
+        previous = json.loads(cache_file.read_text())
 
         def broken_dump(data, fp, *args, **kwargs):
             fp.write('{"updated_at":')
@@ -111,6 +110,27 @@ class TestBuildChannelDirectoryOffload:
         assert builder_threads
         assert all(tid != loop_thread for tid in builder_threads)
 
+    def test_directory_write_runs_off_event_loop_thread(self, tmp_path):
+        """The persist step calls os.fsync, which blocks the loop until the write
+        reaches stable storage. #60794 moved the builders off the loop; the write
+        stayed on it."""
+        from gateway.config import Platform
+
+        cache_file = tmp_path / "channel_directory.json"
+        loop_thread = threading.get_ident()
+        write_threads = []
+
+        def fake_write(path, data, *args, **kwargs):
+            write_threads.append(threading.get_ident())
+
+        with patch("gateway.channel_directory.atomic_json_write", side_effect=fake_write), \
+             patch("gateway.channel_directory._build_discord", return_value=[]), \
+             patch("gateway.channel_directory.DIRECTORY_PATH", cache_file):
+            asyncio.run(build_channel_directory({Platform.DISCORD: object()}))
+
+        assert write_threads
+        assert all(tid != loop_thread for tid in write_threads)
+
 
 class TestResolveChannelName:
     def _setup(self, tmp_path, platforms):
@@ -158,20 +178,11 @@ class TestResolveChannelName:
 
 
 class TestBuildFromSessions:
-    @pytest.fixture(autouse=True)
-    def _force_sessions_json_fallback(self):
-        """These tests assert sessions.json behavior. state.db is the primary
-        source and is the ambient real database in this test process — rows
-        written by other tests would shadow the fixtures. Force the fallback.
-        """
-        with patch("hermes_state.SessionDB", side_effect=Exception("no db in test")):
-            yield
-
     def _write_sessions(self, tmp_path, sessions_data):
         """Write sessions.json at the path _build_from_sessions expects."""
         sessions_path = tmp_path / "sessions" / "sessions.json"
         sessions_path.parent.mkdir(parents=True)
-        sessions_path.write_text(orjson.dumps(sessions_data).decode('utf-8'))
+        sessions_path.write_text(json.dumps(sessions_data))
 
     def test_builds_from_sessions_json(self, tmp_path):
         self._write_sessions(tmp_path, {
@@ -276,9 +287,9 @@ class TestBuildSlack:
     def test_no_team_clients_falls_back_to_sessions(self, tmp_path):
         sessions_path = tmp_path / "sessions" / "sessions.json"
         sessions_path.parent.mkdir(parents=True)
-        sessions_path.write_text(orjson.dumps({
+        sessions_path.write_text(json.dumps({
             "s1": {"origin": {"platform": "slack", "chat_id": "D123", "chat_name": "Alice"}},
-        }).decode('utf-8'))
+        }))
 
         with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
             entries = asyncio.run(_build_slack(_make_slack_adapter({})))
@@ -326,6 +337,28 @@ class TestBuildSlack:
         assert {e["id"] for e in entries} == {"C001", "C002"}
         assert client.users_conversations.await_count == 2
 
+    def test_thread_ids_use_base_conversation_and_dedupe_info_calls(self, tmp_path, monkeypatch):
+        client = _make_slack_client([{"ok": True, "channels": [], "response_metadata": {}}])
+        client.conversations_info = AsyncMock(side_effect=[
+            {"ok": True, "channel": {"name": "engineering"}},
+            {"ok": True, "channel": {"name": "support"}},
+        ])
+        monkeypatch.setattr(
+            "gateway.channel_directory._build_from_sessions",
+            lambda platform: [
+                {"id": "C001:111", "name": "C001:111", "type": "channel"},
+                {"id": "C001:222", "name": "C001:222", "type": "channel"},
+                {"id": "C002:333", "name": "C002:333", "type": "channel"},
+            ],
+        )
+
+        with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
+            entries = asyncio.run(_build_slack(_make_slack_adapter({"T1": client})))
+
+        assert {entry["name"] for entry in entries} == {"engineering", "support"}
+        assert client.conversations_info.await_count == 2
+        assert [call.kwargs["channel"] for call in client.conversations_info.await_args_list] == ["C001", "C002"]
+
 
 class TestChannelAliases:
     """The user-maintained alias overlay (channel_aliases.json) gives durable
@@ -333,7 +366,7 @@ class TestChannelAliases:
 
     def _setup_aliases(self, tmp_path, aliases):
         alias_file = tmp_path / "channel_aliases.json"
-        alias_file.write_text(orjson.dumps(aliases).decode('utf-8'))
+        alias_file.write_text(json.dumps(aliases))
         return patch("gateway.channel_directory.CHANNEL_ALIASES_PATH", alias_file)
 
 
@@ -360,7 +393,7 @@ class TestChannelAliases:
         with patch("gateway.channel_directory.DIRECTORY_PATH", cache_file), \
              self._setup_aliases(tmp_path, {"whatsapp": {"120363@g.us": "general"}}):
             asyncio.run(build_channel_directory({}))
-            on_disk = orjson.loads(cache_file.read_text())
+            on_disk = json.loads(cache_file.read_text())
         names = [e["name"] for e in on_disk["platforms"]["whatsapp"]
                  if e["id"] == "120363@g.us"]
         assert names == ["general"]

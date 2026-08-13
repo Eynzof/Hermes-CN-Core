@@ -7,20 +7,14 @@ Extracted from run_agent.py to isolate Responses API-specific logic from the
 core agent loop. All functions are stateless — they operate on the data passed
 in and return transformed results.
 """
+
 from __future__ import annotations
 
-
-import xxhash
-import orjson
-import logging
 import hashlib
 import json
 import logging
+import re
 import unicodedata
-import uuid
-import xxhash
-import orjson
-from agent.re_compat import re
 import uuid
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
@@ -271,13 +265,16 @@ def _deterministic_call_id(fn_name: str, arguments: str, index: int = 0) -> str:
     """
     return deterministic_call_id(fn_name, arguments, index)
 
+
 def _clamp_responses_call_id(call_id: str) -> str:
     """Keep a ``call_id`` within the Responses API's 64-char limit (#73492).
+
     The codex app-server namespaces MCP tool call ids as
     ``codex_mcp__<server>__<tool>_<codex_call_id>``; with an ``exec-<uuid>``
     component the built-in ``hermes-tools`` server already overflows 64 chars,
     and the Responses API rejects the whole payload with a non-retryable HTTP
     400 that then replays every turn — permanently bricking the session.
+
     Sibling defect to #10788 (which clamped ``input[*].id``), applied here to
     ``call_id``. The surrogate is a pure, deterministic function of the
     original, so the ``function_call`` and its matching ``function_call_output``
@@ -333,7 +330,7 @@ def _derive_responses_function_call_id(
         return f"fc_{sanitized[:48]}"
 
     seed = source or str(response_item_id or "") or uuid.uuid4().hex
-    digest = xxhash.xxh64(seed.encode("utf-8")).hexdigest()[:24]
+    digest = hashlib.sha1(seed.encode("utf-8")).hexdigest()[:24]
     return f"fc_{digest}"
 
 
@@ -639,7 +636,7 @@ def _chat_messages_to_responses_input(
 
                         arguments = fn.get("arguments", "{}")
                         if isinstance(arguments, dict):
-                            arguments = orjson.dumps(arguments).decode('utf-8')
+                            arguments = json.dumps(arguments, ensure_ascii=False)
                         elif not isinstance(arguments, str):
                             arguments = str(arguments)
                         arguments = arguments.strip() or "{}"
@@ -731,7 +728,7 @@ def _preflight_codex_input_items(
 
             arguments = item.get("arguments", "{}")
             if isinstance(arguments, dict):
-                arguments = orjson.dumps(arguments).decode('utf-8')
+                arguments = json.dumps(arguments, ensure_ascii=False)
             elif not isinstance(arguments, str):
                 arguments = str(arguments)
             arguments = sanitize_text(arguments.strip() or "{}")
@@ -823,6 +820,17 @@ def _preflight_codex_input_items(
                 else:
                     reasoning_item["summary"] = []
                 normalized.append(reasoning_item)
+            continue
+
+        if item_type == "compaction":
+            # Replayed native server-side compaction checkpoint (gpt-5.6,
+            # direct OpenAI/Codex routes). Opaque, issuer-sealed; forward
+            # only the fields the API defines.
+            encrypted = item.get("encrypted_content")
+            if isinstance(encrypted, str) and encrypted:
+                normalized.append(
+                    {"type": "compaction", "encrypted_content": encrypted}
+                )
             continue
 
         if item_type == "message":
@@ -1033,7 +1041,7 @@ def _preflight_codex_api_kwargs(
         "model", "instructions", "input", "tools", "store",
         "reasoning", "include", "max_output_tokens", "temperature",
         "tool_choice", "parallel_tool_calls", "prompt_cache_key",
-        "prompt_cache_retention", "service_tier",
+        "prompt_cache_retention", "service_tier", "context_management",
         "extra_headers", "extra_body", "timeout",
     }
     normalized: Dict[str, Any] = {
@@ -1081,6 +1089,13 @@ def _preflight_codex_api_kwargs(
         val = api_kwargs.get(passthrough_key)
         if val is not None:
             normalized[passthrough_key] = val
+
+    # Native server-side compaction directive (gpt-5.6 on direct OpenAI /
+    # Codex routes — eligibility already resolved upstream in
+    # agent/native_compaction.py; the preflight only preserves the shape).
+    context_management = api_kwargs.get("context_management")
+    if isinstance(context_management, list) and context_management:
+        normalized["context_management"] = context_management
 
     extra_headers = api_kwargs.get("extra_headers")
     if extra_headers is not None:
@@ -1419,13 +1434,30 @@ def _normalize_codex_response(
                             raw_summary.append({"type": "summary_text", "text": text})
                     raw_item["summary"] = raw_summary
                 reasoning_items_raw.append(raw_item)
+        elif item_type == "compaction":
+            # Native server-side compaction checkpoint (gpt-5.6 on direct
+            # OpenAI/Codex routes). The encrypted blob stands in for the
+            # pruned older context on subsequent requests. It rides the
+            # codex_reasoning_items sidecar so it inherits persistence
+            # (state.db), session replay, the cross-issuer guard, and the
+            # invalid-encrypted-content kill switch without new state.
+            encrypted = getattr(item, "encrypted_content", None)
+            if isinstance(encrypted, str) and encrypted:
+                raw_item = {"type": "compaction", "encrypted_content": encrypted}
+                if issuer_kind:
+                    raw_item["_issuer_kind"] = issuer_kind
+                reasoning_items_raw.append(raw_item)
+                logger.info(
+                    "Native Responses compaction item captured (%d chars encrypted).",
+                    len(encrypted),
+                )
         elif item_type == "function_call":
             if item_status in {"queued", "in_progress", "incomplete"}:
                 continue
             fn_name = getattr(item, "name", "") or ""
             arguments = getattr(item, "arguments", "{}")
             if not isinstance(arguments, str):
-                arguments = orjson.dumps(arguments).decode('utf-8')
+                arguments = json.dumps(arguments, ensure_ascii=False)
             raw_call_id = getattr(item, "call_id", None)
             raw_item_id = getattr(item, "id", None)
             embedded_call_id, _ = _split_responses_tool_id(raw_item_id)
@@ -1446,7 +1478,7 @@ def _normalize_codex_response(
             fn_name = getattr(item, "name", "") or ""
             arguments = getattr(item, "input", "{}")
             if not isinstance(arguments, str):
-                arguments = orjson.dumps(arguments).decode('utf-8')
+                arguments = json.dumps(arguments, ensure_ascii=False)
             raw_call_id = getattr(item, "call_id", None)
             raw_item_id = getattr(item, "id", None)
             embedded_call_id, _ = _split_responses_tool_id(raw_item_id)

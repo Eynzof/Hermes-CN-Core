@@ -320,6 +320,50 @@ Also fixed a pre-existing bug in `hermes_time.py` where `def now():` was missing
 **Should we upstream?** Yes. These are generic reliability fixes that affect every Hermes deployment, regardless of platform or provider. The stale-lock recovery alone prevents a class of "cron mysteriously stopped" support tickets.
 
 ---
+---
+
+## Sync record (2026-08-13, `08606fc23` post-v0.19.0 → `dev-fix`)
+
+Upstream sync merged `NousResearch/hermes-agent` main (08606fc2317f591f4e73292670be65a9bf35da72, 2026-08-13) into `dev-fix` with **5396 upstream commits** and **1135 conflicts** resolved across 10 groups. The fork's `dev-fix` was reset to `origin/dev-fix` first (giving up local-only commits per repo policy — `backup/dev-fix-local-4227-before-task` preserves the pre-sync local state), then the upstream merge was performed on top.
+
+### How conflicts were resolved (per group)
+
+| Group | Files | Approach |
+|---|---|---|
+| agent/ + tests | 186 | Upstream structure base; fork patches re-applied: P-017 dedup tracker, P-018 key guard, P-022 stale-stream FD-safe kill + bounded escalation (upstream #58962 streak breaker merged alongside), P-024 fused single-pass sanitizer (upstream #58168/#58755/#58327 defenses ported), P-028 models.dev snapshot (+ upstream meta-ai alias grafted), P-041 tool_calls_committed, P-057 system-prompt HERMES_HOME pin, P-059 steer/ReminderRegistry/Compact tool; fork `IncrementalTokenEstimator`/`_endpoint_reachable` dropped (upstream equivalents) |
+| tools/ + tests | 145 | P-016/019/050/052/054/058 Windows shell saga re-asserted (git-bash→pwsh→powershell resolution kept; upstream's `_find_bash` Git-Bash machinery NOT taken), P-020 registry env refresh, P-030/P-033/P-037/P-038/P-049/P-051/P-059 file/terminal patches kept; upstream hardened `_read_script_in_env`, systemd PTY isolation, `_escape_native_tool_arg` grafted |
+| hermes_cli/ + tests | 196 | P-002 upload, P-003 WS gate, P-005 mcp-servers, P-006/010 CN env vars, P-008 profile compat shims, P-009 SSE, P-012 base_url, P-025 OAuth cache, P-027 config write, P-028 offline models.dev, P-055/056 memory/request hardening all kept; upstream web_routers refactor, session-db heal, host-native test markers taken |
+| gateway/ cron/ tui_gateway/ + tests | 140 | P-021 cron reliability, P-023 pending_steer, P-041 turn watchdog, P-011 slug_filter/provider.probe, P-047/054 delegation events all kept; upstream relay adapter, dispatch exception handling, ws observability taken |
+| apps/desktop | 152 | Upstream structure taken (pane-shell tabs, HUD, windowing); fork P-016/019/050/058 electron main preflight + P-032 node/TUI env + P-041 stream state machine verified in auto-merged regions |
+| website/ docs/ | 56 | Upstream docs taken except fork features (P-058 windows-native shell story, P-048 Python 3.14, P-049 rtk notes); `website/package-lock.json` deleted for regeneration |
+| plugins/ skills/ optional-skills/ | 106 | Fork orjson conversions, frozen-runtime guards, feishu lazy machinery, P-054 claude-code/codex `--json`, P-058 Windows quirks kept; upstream authoring-standards rewrites (mlops skill renames, github python3→python) taken |
+| misc tests | 91 | Upstream supersets taken where fork had no unique content; fork tests kept (P-027 config, P-028 prewarm disable in conftest, yuanbao CN plugin, cache-isolation, iron_proxy Windows skips, packaging metadata) |
+| scripts/ .github/ web/ ui-tui/ | 37 | Fork CI (release-runtime.yml, upstream-watch.yml) + Python 3.14 + ripgrep pins kept; upstream workflow review-status.json writes, install.sh launcher fixes taken; `Set-GitBashEnvVar` NOT restored (P-019) |
+| root (pyproject.toml, uv.lock, cli.py, run_agent.py, model_tools.py, hermes_*.py, utils.py, toolsets.py, setup.py, batch_runner.py, package*.json, README/AGENTS/CONTRIBUTING, .gitignore/.npmrc/.python-version/cli-config.yaml.example) | 25 | P-013 arg repair, P-019 rename, P-022 `_emit_status`/keepalive, P-027 save_config_value, P-028 allow_network, P-043 import accelerator/precompile, P-048 Python>=3.14 pins kept; upstream CLI mixins/`_compress_context mode`/credential-pool fixes taken; `setup.py` fork wheel-building version kept (upstream is a Nix-only build guard — deliberate fork divergence) |
+
+### Notable dependency decisions (`pyproject.toml`)
+
+- `cryptography==50.0.0` (upstream) + `[tool.uv]` override `cryptography>=50,<51` — upstream solved the alibabacloud/msal `<49` cap with an override, so the fork's `==48.0.1` pin was superseded (better CVE coverage).
+- `pywinpty>=3.0.5,<4` and `pywin32>=306` (no cap) kept per P-048 (Python >=3.14 cp314 wheels; upstream caps break 3.14).
+- Fork's high-performance replacements (`regex`, `rapidfuzz`, `xxhash`, `pybase64`, `ciso8601`, `zstandard`, `lz4`, `uvloop`, `yarl`) kept — all used by merged code.
+- `nemo-relay>=0.7.1,<0.8` (upstream bump) taken; `wake` extra removed (openwakeword/tflite have no cp314 wheels — P-048); `cn-desktop` extra kept; `cli` extra dropped (upstream removed simple-term-menu; merged code doesn't use it); `dev` keeps pytest-benchmark; `messaging`/`homeassistant`/`sms`/`teams` take upstream's newer aiohttp 3.14.3.
+- `uv.lock` regenerated (`uv lock`) for Python >=3.14; `package-lock.json` regenerated against merged package.json files.
+
+### Fork patches dropped or superseded in this sync
+
+- `P-004` `/api/fs/list` — fully converged with upstream (fork helpers removed earlier).
+- `P-007` dispatch-exception handling — superseded by upstream's `-32603` JSON-RPC error handling (2026-06-04 sync).
+- `IncrementalTokenEstimator` (model_metadata/turn_context) — upstream's memoized estimator is equivalent.
+- `_endpoint_reachable` fast-gates in model_metadata — upstream removed the function.
+- `[wake]` extra — unresolvable on Python 3.14 (documented in pyproject).
+- `cli = ["simple-term-menu==1.6.6"]` extra — upstream removed the dependency; merged code no longer uses it.
+- Legacy `sessions.json` utf-8 `errors="replace"` pin (hermes_state) — code path gone in both sides.
+
+### Follow-ups / known issues
+
+- `apps/desktop/node_modules` not installed; TypeScript compile not run — careful manual merge review performed instead; `tsc` should run in CI.
+- `tests/agent/test_endpoint_reachability_gate.py` may reference removed `_endpoint_reachable` — verify in the test pass.
+- Upstream's httpx pool reaping (`keepalive_expiry=20s`) in `agent/httpx_clients` still not ported (P-022 follow-up).
 
 ## Release/support changes
 These are fork maintenance changes, not runtime behavior patches:

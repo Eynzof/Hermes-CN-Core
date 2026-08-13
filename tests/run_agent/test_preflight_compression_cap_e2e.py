@@ -14,8 +14,8 @@ threshold — the exact "progress, but not enough yet" shape that legitimately
 needs more than three rounds.  With cap=6 the preflight must run a 4th pass
 (and ultimately all six).
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import contextlib
 import io

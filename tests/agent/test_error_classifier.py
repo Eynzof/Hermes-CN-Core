@@ -11,6 +11,7 @@ from agent.error_classifier import (
     _classify_402,
 )
 
+
 # ── Helper: mock API errors ────────────────────────────────────────────
 
 class MockAPIError(Exception):
@@ -20,23 +21,55 @@ class MockAPIError(Exception):
         self.status_code = status_code
         self.body = body or {}
 
+
 class MockTransportError(Exception):
     """Simulates a transport-level error with a specific type name."""
     pass
 
+
 class ReadTimeout(MockTransportError):
     pass
+
 
 class ConnectError(MockTransportError):
     pass
 
+
 class RemoteProtocolError(MockTransportError):
     pass
+
 
 class ServerDisconnectedError(MockTransportError):
     pass
 
+
 # ── Test: FailoverReason enum ──────────────────────────────────────────
+
+class TestFailoverReason:
+    def test_all_reasons_have_string_values(self):
+        for reason in FailoverReason:
+            assert isinstance(reason.value, str)
+
+    def test_enum_members_exist(self):
+        expected = {
+            "auth", "auth_permanent", "billing", "rate_limit",
+            "upstream_rate_limit",
+            "overloaded", "server_error", "timeout",
+            "ssl_cert_verification",
+            "context_overflow", "payload_too_large", "image_too_large",
+            "model_not_found", "format_error",
+            "invalid_encrypted_content",
+            "multimodal_tool_content_unsupported",
+            "provider_policy_blocked",
+            "content_policy_blocked",
+            "thinking_signature", "long_context_tier",
+            "oauth_long_context_beta_forbidden",
+            "llama_cpp_grammar_pattern",
+            "unknown",
+        }
+        actual = {r.value for r in FailoverReason}
+        assert expected == actual
+
 
 # ── Test: ClassifiedError ──────────────────────────────────────────────
 
@@ -60,6 +93,7 @@ class TestClassifiedError:
         assert e.status_code is None
         assert e.message == ""
 
+
 # ── Test: Status code extraction ───────────────────────────────────────
 
 class TestExtractStatusCode:
@@ -74,6 +108,7 @@ class TestExtractStatusCode:
         outer = Exception("outer")
         outer.__cause__ = inner
         assert _extract_status_code(outer) == 401
+
 
 
 
@@ -99,6 +134,7 @@ class TestExtractErrorBody:
     def test_empty_when_no_body(self):
         assert _extract_error_body(Exception("generic")) == {}
 
+
 # ── Test: Error code extraction ────────────────────────────────────────
 
 class TestExtractErrorCode:
@@ -112,6 +148,7 @@ class TestExtractErrorCode:
     def test_empty_when_no_code(self):
         assert _extract_error_code({}) == ""
         assert _extract_error_code({"error": {"message": "oops"}}) == ""
+
 
 # ── Test: 402 disambiguation ───────────────────────────────────────────
 
@@ -135,6 +172,7 @@ class TestClassify402:
             lambda reason, **kw: ClassifiedError(reason=reason, **kw),
         )
         assert result.reason == FailoverReason.rate_limit
+
 
 
 
@@ -445,9 +483,55 @@ class TestClassifyApiError:
 
     # ── Provider-specific: llama.cpp grammar-parse ──
 
+    def test_llama_cpp_unable_to_generate_parser_template(self):
+        e = MockAPIError(
+            "Unable to generate parser for this template. "
+            "Automatic parser generation failed: error parsing grammar",
+            status_code=400,
+        )
+        result = classify_api_error(e, provider="custom", model="local-llama")
+        assert result.reason == FailoverReason.llama_cpp_grammar_pattern
+        assert result.retryable is True
+        assert result.should_compress is False
 
+    def test_qwen_apply_prompt_template_no_user_query_not_llama_cpp_grammar(self):
+        """Local engines wrap Qwen raise_exception as applyPromptTemplate 400.
 
+        Must NOT classify as llama_cpp_grammar_pattern (which strips tool
+        schema keywords and retries). Fail fast as format_error so the user
+        sees a request-shape failure instead of a misleading template/parser
+        loop — typical after context overflow + failed compression.
+        """
+        e = MockAPIError(
+            "Engine protocol applyPromptTemplate request returned 400: "
+            '{"error":{"code":400,"message":"Unable to generate parser for '
+            "this template. Automatic parser generation failed: "
+            "While executing CallExpression ... multi_step_tool %} "
+            "{{- raise_exception('No user query found in messages')",
+            status_code=400,
+        )
+        result = classify_api_error(
+            e,
+            provider="custom",
+            model="qwen/qwen3.6-35b-a3b",
+            approx_tokens=226_000,
+            context_length=100_864,
+        )
+        assert result.reason == FailoverReason.format_error
+        assert result.retryable is False
+        assert result.should_compress is False
+        assert result.should_fallback is True
 
+    def test_bare_no_user_query_found_is_format_error_even_on_large_session(self):
+        e = MockAPIError("No user query found in messages", status_code=400)
+        result = classify_api_error(
+            e,
+            approx_tokens=226_000,
+            context_length=100_864,
+        )
+        assert result.reason == FailoverReason.format_error
+        assert result.retryable is False
+        assert result.should_compress is False
 
     # ── Provider-specific: Anthropic long-context tier ──
 
@@ -611,6 +695,7 @@ class TestClassifyApiError:
         result = classify_api_error(e)
         assert result.message == "Internal server error occurred"
 
+
 # ── Test: Adversarial / edge cases (from live testing) ─────────────────
 
 class TestAdversarialEdgeCases:
@@ -721,6 +806,7 @@ class TestAdversarialEdgeCases:
 
 
 
+
 # ── Test: SSL/TLS transient errors ─────────────────────────────────────
 
 class TestSSLTransientPatterns:
@@ -760,6 +846,7 @@ class TestSSLTransientPatterns:
         )
         assert result.reason == FailoverReason.context_overflow
         assert result.should_compress is True
+
 
 
 # ── Test: SSL certificate verification failures (fail fast) ────────────
@@ -832,6 +919,8 @@ class TestRateLimitErrorWithoutStatusCode:
         result = classify_api_error(e, provider="copilot", model="gpt-4o")
         assert result.reason != FailoverReason.rate_limit
 
+
+
 # ── Test: multimodal_tool_content_unsupported pattern ───────────────────
 
 class TestMultimodalToolContentUnsupported:
@@ -858,6 +947,7 @@ class TestMultimodalToolContentUnsupported:
         """Make sure the patterns don't false-positive on normal 400s."""
         e = MockAPIError("bad request: missing field 'model'", status_code=400)
         result = classify_api_error(e, provider="openrouter", model="anthropic/claude-sonnet-4")
+
 
 class TestOpenRouterUpstreamRateLimit:
     """Distinguish upstream-provider 429 from account-level 429 on OpenRouter.
@@ -906,6 +996,7 @@ class TestOpenRouterUpstreamRateLimit:
         result = classify_api_error(e, provider="openrouter", model="deepseek/deepseek-v4-flash")
         assert result.reason == FailoverReason.rate_limit
         assert result.should_rotate_credential is True
+
 
 
 

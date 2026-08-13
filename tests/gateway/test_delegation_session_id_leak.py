@@ -1,6 +1,6 @@
 """Delegated children must not replace their parent's session identity."""
-from __future__ import annotations
 
+from __future__ import annotations
 
 import os
 from concurrent.futures import ThreadPoolExecutor

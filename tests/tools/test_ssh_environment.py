@@ -45,7 +45,10 @@ class TestBuildSSHCommand:
                                                       stdin=MagicMock()))
         monkeypatch.setattr("tools.environments.base.time.sleep", lambda _: None)
 
-    def test_base_flags(self):
+    def test_base_flags(self, monkeypatch):
+        # ControlMaster flags are POSIX-only (#73927): assert them only
+        # where multiplexing is enabled so the test passes on Windows too.
+        monkeypatch.setattr(ssh_env, "_SSH_MULTIPLEX", True)
         env = SSHEnvironment(host="h", user="u")
         cmd = " ".join(env._build_ssh_command())
         for flag in ("ControlMaster=auto", "ControlPersist=300",

@@ -9,8 +9,8 @@ The status bar repaints often (every keystroke and on a ~1s idle refresh), so
 :func:`read_battery` memoises the last reading for a few seconds instead of
 hitting ``psutil`` on every frame.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import time
 from dataclasses import dataclass

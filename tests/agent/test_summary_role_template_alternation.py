@@ -32,8 +32,8 @@ the assembled output always satisfies the Mistral alternation check. The
 existing #52160 / #58753 forced-user guards must keep winning: their forced
 shapes (summary-user followed only by exempt messages) are alternation-safe.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 from unittest.mock import patch
 

@@ -26,6 +26,10 @@ from typing import Any, Dict, List, Optional
 
 from hermes_constants import get_default_hermes_root, get_hermes_home, display_hermes_home
 
+# Shared formatter; the private alias is kept because claw.py and the backup
+# tests import ``_format_size`` from this module.
+from hermes_cli.sizefmt import format_bytes as _format_size
+
 logger = logging.getLogger(__name__)
 
 
@@ -575,15 +579,6 @@ def copy_db_and_verify(src: Path, dst: Path) -> bool:
 # Backup
 # ---------------------------------------------------------------------------
 
-def _format_size(nbytes: int) -> str:
-    """Human-readable file size."""
-    for unit in ("B", "KB", "MB", "GB"):
-        if nbytes < 1024:
-            return f"{nbytes:.1f} {unit}" if unit != "B" else f"{nbytes} {unit}"
-        nbytes /= 1024
-    return f"{nbytes:.1f} TB"
-
-
 def run_backup(args) -> None:
     """Create a zip backup of the Hermes home directory."""
     hermes_root = get_default_hermes_root()
@@ -1071,6 +1066,22 @@ def run_import(args) -> None:
             print("\nTo re-enable gateway services for profiles:")
             for pname in gw_profiles:
                 print(f"  hermes -p {pname} gateway install")
+
+        # Bring the restored install to life: the backup may contain bot
+        # tokens and registered cron jobs, but they're inert without a
+        # gateway process. Install/start the service automatically (a
+        # platform-less gateway is a supported mode, so this is safe even
+        # for backups with no messaging config). Best-effort and prompt-free;
+        # failures print a manual fallback and never fail the import.
+        try:
+            from hermes_cli.gateway import ensure_gateway_service, _is_service_running
+
+            if not _is_service_running():
+                print()
+                ensure_gateway_service(context="import")
+        except Exception:
+            print("\nStart the gateway to activate cron jobs and messaging:")
+            print("  hermes gateway install")
 
         print("Done. Your Hermes configuration has been restored.")
 

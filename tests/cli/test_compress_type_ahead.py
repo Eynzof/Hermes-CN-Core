@@ -30,8 +30,8 @@ The Ink TUI (ui-tui) needs no equivalent fix: its ``/compress`` is an async
 runs; the gateway already resolves the concurrent-mutation race via the
 ``history_version`` guard in ``_compress_session_history``.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import ast
 import queue as queue_mod

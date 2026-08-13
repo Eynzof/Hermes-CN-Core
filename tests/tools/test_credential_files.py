@@ -355,12 +355,55 @@ class TestCacheDirectoryMounts:
         assert "/root/.hermes/cache/images" in container_paths
 
     def test_empty_hermes_home(self, tmp_path, monkeypatch):
-        """No cache dirs → empty list."""
+        """Empty home → every staging dir is created and mounted (#76577).
+
+        Docker snapshots the mount list at container creation; skipping
+        not-yet-existing dirs meant the first attachment/clipboard file after
+        container start dangled forever. All _CACHE_DIRS entries mount."""
         hermes_home = tmp_path / ".hermes"
         hermes_home.mkdir()
         monkeypatch.setenv("HERMES_HOME", str(hermes_home))
 
-        assert get_cache_directory_mounts() == []
+        mounts = get_cache_directory_mounts()
+        container_paths = {m["container_path"] for m in mounts}
+        assert "/root/.hermes/attachments" in container_paths
+        assert "/root/.hermes/images" in container_paths
+        assert "/root/.hermes/cache/images" in container_paths
+        for mount in mounts:
+            assert Path(mount["host_path"]).is_dir()
+
+    def test_images_upload_dir_is_mounted(self, tmp_path, monkeypatch):
+        """The flat top-level ``images/`` upload dir is mounted (#69575).
+
+        Desktop / clipboard / PDF uploads land in ``HERMES_HOME/images``, not
+        under ``cache/``. Without this entry vision_analyze on a desktop upload
+        fails because the file is not reachable inside the sandbox.
+        """
+        hermes_home = tmp_path / ".hermes"
+        (hermes_home / "images").mkdir(parents=True)
+        monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+
+        mounts = get_cache_directory_mounts()
+        by_container = {m["container_path"]: m["host_path"] for m in mounts}
+        assert "/root/.hermes/images" in by_container
+        assert by_container["/root/.hermes/images"] == str(hermes_home / "images")
+
+    def test_images_upload_file_maps_into_container(self, tmp_path, monkeypatch):
+        """A concrete upload under ``images/`` maps to its container path.
+
+        This is the reverse mapping vision uses to translate a container-visible
+        path back to the host mount; it must recognise the ``images/`` dir.
+        """
+        hermes_home = tmp_path / ".hermes"
+        (hermes_home / "images").mkdir(parents=True)
+        upload = hermes_home / "images" / "upload_20260722_181019_1.png"
+        upload.write_bytes(bytes.fromhex("89504e470d0a1a0a"))
+        monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+
+        assert (
+            map_cache_path_to_container(str(upload))
+            == "/root/.hermes/images/upload_20260722_181019_1.png"
+        )
 
     def test_images_upload_dir_is_mounted(self, tmp_path, monkeypatch):
         """The flat top-level ``images/`` upload dir is mounted (#69575).
@@ -418,6 +461,56 @@ class TestMapCachePathToContainer:
         monkeypatch.setenv("HERMES_HOME", str(hermes_home))
 
         assert map_cache_path_to_container(str(hermes_home / "cache" / "images" / "x.png")) is None
+
+    def test_maps_path_even_when_cache_dir_missing(self, tmp_path, monkeypatch):
+        """Missing staging dirs are auto-created at mount-list time (#76577):
+        Docker snapshots mounts at container creation, so a dir that appears
+        later would dangle for the container's whole life. The map must
+        therefore succeed (and the dir exist) even before first use."""
+        hermes_home = tmp_path / ".hermes"
+        hermes_home.mkdir()
+        monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+
+        mapped = map_cache_path_to_container(str(hermes_home / "cache" / "images" / "x.png"))
+        assert mapped == "/root/.hermes/cache/images/x.png"
+        assert (hermes_home / "cache" / "images").is_dir()
+
+
+class TestToAgentVisiblePathPerBackend:
+    """#76577 follow-up: translation covers every backend that relocates the
+    Hermes cache — not just docker — and skips the ones where the host path
+    stays correct (local; singularity auto-binds the host home)."""
+
+    def _staged(self, tmp_path, monkeypatch):
+        hermes_home = tmp_path / ".hermes"
+        (hermes_home / "attachments").mkdir(parents=True)
+        monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+        return str(hermes_home / "attachments" / "drop.zip")
+
+    def test_docker_maps_to_root_hermes(self, tmp_path, monkeypatch):
+        staged = self._staged(tmp_path, monkeypatch)
+        monkeypatch.setenv("TERMINAL_ENV", "docker")
+        from tools.credential_files import to_agent_visible_cache_path
+        assert to_agent_visible_cache_path(staged) == "/root/.hermes/attachments/drop.zip"
+
+    def test_ssh_maps_to_tilde_hermes(self, tmp_path, monkeypatch):
+        staged = self._staged(tmp_path, monkeypatch)
+        monkeypatch.setenv("TERMINAL_ENV", "ssh")
+        from tools.credential_files import to_agent_visible_cache_path
+        assert to_agent_visible_cache_path(staged) == "~/.hermes/attachments/drop.zip"
+
+    @pytest.mark.parametrize("backend", ["local", "singularity", ""])
+    def test_untranslated_backends_keep_host_path(self, tmp_path, monkeypatch, backend):
+        staged = self._staged(tmp_path, monkeypatch)
+        monkeypatch.setenv("TERMINAL_ENV", backend)
+        from tools.credential_files import to_agent_visible_cache_path
+        assert to_agent_visible_cache_path(staged) == staged
+
+    def test_non_cache_path_passes_through(self, tmp_path, monkeypatch):
+        self._staged(tmp_path, monkeypatch)
+        monkeypatch.setenv("TERMINAL_ENV", "docker")
+        from tools.credential_files import to_agent_visible_cache_path
+        assert to_agent_visible_cache_path("/etc/hosts") == "/etc/hosts"
 
 
 class TestIterCacheFiles:

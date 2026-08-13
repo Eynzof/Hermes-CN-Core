@@ -754,4 +754,3 @@ def _apply_featured_with_dates(rows, dates: dict[str, str]):
 
 
 
-

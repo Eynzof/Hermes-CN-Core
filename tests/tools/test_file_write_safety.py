@@ -26,6 +26,50 @@ class TestStaticDenyList:
         assert _is_write_denied("/etc/shadow") is True
 
 
+class TestSshConfigApprovalGate:
+    """~/.ssh/config is approval-gated, not hard-denied (private keys stay denied)."""
+
+    def test_ssh_config_not_hard_denied(self):
+        from agent.file_safety import is_write_denied
+
+        # The client config carries no key material — it must NOT be in the
+        # flat credential deny (it is routed through approval instead).
+        assert is_write_denied(os.path.expanduser("~/.ssh/config")) is False
+
+    def test_ssh_config_get_write_denied_error_is_none(self):
+        from agent.file_safety import get_write_denied_error
+
+        assert get_write_denied_error(os.path.expanduser("~/.ssh/config")) is None
+
+    def test_ssh_config_is_approval_required(self):
+        from agent.file_safety import is_write_approval_required
+
+        assert is_write_approval_required(os.path.expanduser("~/.ssh/config")) is True
+
+    def test_private_keys_still_hard_denied(self):
+        from agent.file_safety import is_write_approval_required, is_write_denied
+
+        for name in ("id_rsa", "id_ed25519", "authorized_keys"):
+            p = os.path.expanduser(f"~/.ssh/{name}")
+            assert is_write_denied(p) is True, name
+            # A hard-denied credential is not merely approval-gated.
+            assert is_write_approval_required(p) is False, name
+
+    def test_other_ssh_dir_files_still_hard_denied(self):
+        from agent.file_safety import is_write_denied
+
+        # The ~/.ssh/ directory prefix deny still covers everything else,
+        # e.g. a known_hosts or an arbitrary key file.
+        assert is_write_denied(os.path.expanduser("~/.ssh/id_rsa.pub")) is True
+        assert is_write_denied(os.path.expanduser("~/.ssh/secret_key")) is True
+
+    def test_regular_file_not_approval_required(self, tmp_path: Path):
+        from agent.file_safety import is_write_approval_required
+
+        assert is_write_approval_required(str(tmp_path / "notes.txt")) is False
+
+
+
 class TestSafeWriteRoot:
     """HERMES_WRITE_SAFE_ROOT should sandbox writes to a specific subtree."""
 
@@ -185,7 +229,7 @@ class TestSafeRootDenialMessageIntegration:
 
         res = ops.write_file(str(inside), "content")
         assert res.error is None
-        assert inside.read_text() == "content"
+        assert inside.read_text(encoding="utf-8") == "content"
 
 
 @_win32
@@ -242,11 +286,11 @@ class TestAtomicWrite:
         # A real rename allocates a new inode for the target; an in-place
         # rewrite would keep the same inode. This proves the swap is atomic.
         target = tmp_path / "f.txt"
-        target.write_text("v1")
+        target.write_text("v1", encoding="utf-8")
         ino_before = os.stat(target).st_ino
         res = ops.write_file(str(target), "v2 content")
         assert res.error is None, res.error
-        assert target.read_text() == "v2 content"
+        assert target.read_text(encoding="utf-8") == "v2 content"
         assert os.stat(target).st_ino != ino_before
 
     @_win32
@@ -292,14 +336,12 @@ class TestAtomicWrite:
 
     def test_patch_routes_through_atomic_write(self, ops, tmp_path: Path):
         target = tmp_path / "edit.py"
-        target.write_text("a = 1\nb = 2\nc = 3\n")
+        target.write_text("a = 1\nb = 2\nc = 3\n", encoding="utf-8")
         os.chmod(target, 0o600)
         res = ops.patch_replace(str(target), "b = 2", "b = 22")
         assert res.success, res.error
-        assert target.read_text() == "a = 1\nb = 22\nc = 3\n"
-        if sys.platform != 'win32':
-            # POSIX mode bits only; Windows chmod can't express 0o600.
-            assert (os.stat(target).st_mode & 0o777) == 0o600
+        assert target.read_text(encoding="utf-8") == "a = 1\nb = 22\nc = 3\n"
+        assert (os.stat(target).st_mode & 0o777) == 0o600
 
 
 class TestBomHandling:

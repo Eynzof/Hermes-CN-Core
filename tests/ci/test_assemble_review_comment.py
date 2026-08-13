@@ -23,8 +23,8 @@ Layout rules tested here:
   - jobs with declared statuses excluded from failed-jobs list
   - per-job URLs used for failed job links when available
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import importlib.util
 import json
@@ -179,6 +179,35 @@ def test_render_pending_notif():
     body = _mod.render_comment(items, pending_jobs=["ci-timings"])
     assert "૮ >ﻌ< ა" in body
     assert "<sub>Still running 1 job: `ci-timings`</sub>" in body
+
+
+# ─── render_comment (waiting for jobs to start) ───────────────────────
+
+
+def test_waiting_with_no_items_shows_waiting_not_all_good():
+    """A run with no jobs yet must not render the final 'all good!' banner."""
+    body = _mod.render_comment([], waiting=True)
+    assert "all good" not in body
+    assert "waiting for jobs to start" in body
+
+
+def test_waiting_with_items_but_no_pending_keeps_a_live_footer():
+    """Between job waves: results exist, nothing pending, run not done."""
+    items = [ReviewItem(severity="info", title="lockfile", summary="No changes.")]
+    body = _mod.render_comment(items, waiting=True)
+    assert "waiting for more jobs to start" in body
+    assert "### lockfile" in body
+
+
+def test_not_waiting_and_no_items_still_renders_all_good():
+    body = _mod.render_comment([])
+    assert "all good!" in body
+
+
+def test_assemble_passes_waiting_through():
+    body = _mod.assemble(waiting=True)
+    assert "waiting for jobs to start" in body
+    assert "all good" not in body
 
 
 

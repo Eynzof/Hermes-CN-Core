@@ -4,8 +4,8 @@ This module deliberately exposes immutable contracts, not ``AIAgent`` objects.
 It is the supported boundary for plugins that need to supervise fresh child
 sessions; plugins must obtain it from ``PluginContext.subagent_lifecycle``.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import contextvars
 import dataclasses

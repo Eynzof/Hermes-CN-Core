@@ -12,8 +12,8 @@ compressor that always demands compression and assert ``_compress_context``
 fires at most ``max_compression_attempts`` times per turn — no source
 inspection, only observable behavior.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import json
 from types import SimpleNamespace

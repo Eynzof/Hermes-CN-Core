@@ -387,7 +387,56 @@ class TestModelsDevOfflineFirst:
              patch.object(md, "_load_bundled_snapshot", return_value=SAMPLE_REGISTRY):
             result = fetch_models_dev(force_refresh=True)
         mock_get.assert_called_once()
-        assert "anthropic" in result
+
+    @patch("agent.models_dev.requests.get")
+    def test_force_refresh_bypasses_failure_backoff(self, mock_get):
+        import agent.models_dev as md
+
+        response = MagicMock()
+        response.json.return_value = SAMPLE_REGISTRY
+        mock_get.side_effect = [OSError("models.dev unreachable"), response]
+
+        with patch.object(md, "_disk_cache_age_seconds", return_value=None), patch.object(
+            md, "_load_disk_cache", return_value={}
+        ), patch.object(md, "_save_disk_cache"):
+            assert fetch_models_dev() == {}
+            assert fetch_models_dev(force_refresh=True) == SAMPLE_REGISTRY
+
+        assert mock_get.call_count == 2
+        assert md._models_dev_retry_after == 0
+
+    @pytest.mark.parametrize(
+        ("cache", "cache_time", "disk_data", "expected"),
+        [
+            (SAMPLE_REGISTRY, lambda md: time.time(), {}, SAMPLE_REGISTRY),
+            (
+                SAMPLE_REGISTRY,
+                lambda md: time.time() - md._MODELS_DEV_CACHE_TTL - 1,
+                {},
+                SAMPLE_REGISTRY,
+            ),
+            ({}, lambda _md: 0, {}, {}),
+        ],
+        ids=["fresh-memory", "stale-memory", "missing"],
+    )
+    @patch("agent.models_dev.requests.get")
+    def test_network_disabled_never_fetches(
+        self, mock_get, cache, cache_time, disk_data, expected
+    ):
+        import agent.models_dev as md
+
+        md._models_dev_cache = cache
+        md._models_dev_cache_time = cache_time(md)
+        with patch.object(md, "_load_disk_cache", return_value=disk_data):
+            result = fetch_models_dev(allow_network=False)
+
+        assert result == expected
+        mock_get.assert_not_called()
+
+
+
+
+
 
     @patch("agent.models_dev.requests.get")
     def test_capabilities_non_blocking(self, mock_get):

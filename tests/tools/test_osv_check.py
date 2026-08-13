@@ -190,6 +190,76 @@ class TestCheckPackageForMalware:
             check_package_for_malware("uvx", ["mcp-server-fetch"])
         assert mock_url.call_count == 2
 
+    def test_repeat_checks_hit_cache_not_network(self):
+        """Same package re-checked (MCP revival loops) must not re-query OSV.
+
+        Regression for #75485: watchdog revival loops re-ran the preflight
+        every spawn attempt, producing 779K api.osv.dev DNS queries in 16h.
+        """
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps({"vulns": []}).encode()
+        mock_response.__enter__ = lambda s: s
+        mock_response.__exit__ = MagicMock(return_value=False)
+
+        with patch("tools.osv_check.urllib.request.urlopen", return_value=mock_response) as mock_url:
+            for _ in range(50):
+                assert check_package_for_malware("uvx", ["mcp-server-fetch"]) is None
+        assert mock_url.call_count == 1
+
+    def test_blocked_verdict_is_cached(self):
+        """A malware verdict is served from cache on re-check too."""
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps(
+            {"vulns": [{"id": "MAL-2023-1", "summary": "bad"}]}
+        ).encode()
+        mock_response.__enter__ = lambda s: s
+        mock_response.__exit__ = MagicMock(return_value=False)
+
+        with patch("tools.osv_check.urllib.request.urlopen", return_value=mock_response) as mock_url:
+            first = check_package_for_malware("npx", ["evil-pkg"])
+            second = check_package_for_malware("npx", ["evil-pkg"])
+        assert first is not None and "BLOCKED" in first
+        assert second == first
+        assert mock_url.call_count == 1
+
+    def test_network_failure_not_cached(self):
+        """Fail-open results must not be cached — retry once network is back."""
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps({"vulns": []}).encode()
+        mock_response.__enter__ = lambda s: s
+        mock_response.__exit__ = MagicMock(return_value=False)
+
+        with patch(
+            "tools.osv_check.urllib.request.urlopen",
+            side_effect=OSError("network down"),
+        ):
+            assert check_package_for_malware("uvx", ["mcp-server-time"]) is None
+        # Network is back: the next check must hit OSV, not a cached fail-open.
+        with patch(
+            "tools.osv_check.urllib.request.urlopen", return_value=mock_response
+        ) as mock_url:
+            assert check_package_for_malware("uvx", ["mcp-server-time"]) is None
+        assert mock_url.call_count == 1
+
+    def test_cache_expiry_requeries(self, monkeypatch):
+        """Expired entries re-query instead of serving stale verdicts."""
+        from tools import osv_check
+
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps({"vulns": []}).encode()
+        mock_response.__enter__ = lambda s: s
+        mock_response.__exit__ = MagicMock(return_value=False)
+
+        with patch("tools.osv_check.urllib.request.urlopen", return_value=mock_response) as mock_url:
+            check_package_for_malware("uvx", ["mcp-server-fetch"])
+            # Force-expire the entry.
+            with osv_check._cache_lock:
+                key = next(iter(osv_check._cache))
+                _, result = osv_check._cache[key]
+                osv_check._cache[key] = (0.0, result)
+            check_package_for_malware("uvx", ["mcp-server-fetch"])
+        assert mock_url.call_count == 2
+
 
 class TestLiveOsvQuery:
     """Live integration test against the real OSV API. Skipped if offline."""

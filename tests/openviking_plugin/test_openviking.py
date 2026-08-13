@@ -1,7 +1,6 @@
 """Tests for plugins/memory/openviking/__init__.py — URI normalization and payload handling."""
 
 import json
-import orjson
 import os
 import threading
 import time
@@ -474,7 +473,7 @@ class TestOpenVikingTurnConversion:
                         "type": "function",
                         "function": {
                             "name": "shell_command",
-                            "arguments": orjson.dumps({"command": "rg assemble"}).decode('utf-8'),
+                            "arguments": json.dumps({"command": "rg assemble"}),
                         },
                     }
                 ],
@@ -508,7 +507,7 @@ class TestOpenVikingTurnConversion:
                         "type": "function",
                         "function": {
                             "name": "shell_command",
-                            "arguments": orjson.dumps({"command": "rg assemble"}).decode('utf-8'),
+                            "arguments": json.dumps({"command": "rg assemble"}),
                         },
                     }
                 ],
@@ -558,7 +557,7 @@ class TestOpenVikingRead:
             }
         )
 
-        result = orjson.loads(provider._tool_read({"uri": "viking://user/hermes/.overview.md", "level": "overview"}))
+        result = json.loads(provider._tool_read({"uri": "viking://user/hermes/.overview.md", "level": "overview"}))
 
         assert result["uri"] == "viking://user/hermes/.overview.md"
         assert result["resolved_uri"] == "viking://user/hermes"
@@ -595,7 +594,7 @@ class TestOpenVikingRead:
             }
         )
 
-        result = orjson.loads(provider._tool_read({"uris": uris, "level": "full"}))
+        result = json.loads(provider._tool_read({"uris": uris, "level": "full"}))
 
         assert result["requested"] == 4
         assert result["returned"] == 3
@@ -640,7 +639,7 @@ class TestOpenVikingAutoRecallPrefetch:
 
         class Handler(BaseHTTPRequestHandler):
             def _send_json(self, payload):
-                body = orjson.dumps(payload)
+                body = json.dumps(payload).encode("utf-8")
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(body)))
@@ -697,7 +696,7 @@ class TestOpenVikingAutoRecallPrefetch:
 
             def do_POST(self):
                 length = int(self.headers.get("Content-Length", "0") or "0")
-                payload = orjson.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
                 records["headers"].append(dict(self.headers))
                 if self.path == "/api/v1/search/search":
                     records["searches"].append(payload)
@@ -802,7 +801,7 @@ class TestOpenVikingBrowse:
             }
         )
 
-        result = orjson.loads(provider._tool_browse({"action": "list", "path": "viking://user/hermes"}))
+        result = json.loads(provider._tool_browse({"action": "list", "path": "viking://user/hermes"}))
 
         assert result["path"] == "viking://user/hermes"
         assert result["entries"] == [

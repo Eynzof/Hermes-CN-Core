@@ -26,13 +26,12 @@ The module is intentionally subprocess-driven rather than going through
 the ``bitwarden-sdk-secrets`` Python package: one cross-platform binary
 is easier to lazy-install than a wheels-with-Rust-extension dependency.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import base64
 import hashlib
 import json
-import orjson
 import logging
 import os
 import platform
@@ -720,8 +719,8 @@ def _run_bws_list(
         return {}, ["bws returned no output (empty project?)"]
 
     try:
-        payload = orjson.loads(raw)
-    except orjson.JSONDecodeError as exc:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
         raise RuntimeError(f"bws returned non-JSON output: {exc}") from exc
 
     if not isinstance(payload, list):

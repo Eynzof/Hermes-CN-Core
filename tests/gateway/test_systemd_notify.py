@@ -1,10 +1,9 @@
 """Tests for the optional systemd event-loop watchdog protocol."""
-from __future__ import annotations
 
+from __future__ import annotations
 
 import asyncio
 import socket
-import sys
 
 import pytest
 
@@ -28,7 +27,6 @@ def test_notify_supports_systemd_abstract_socket(monkeypatch):
         receiver.close()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="systemd sd_notify is Linux-only; Windows has no AF_UNIX and NOTIFY_SOCKET is never set")
 def test_notify_uses_nonblocking_datagram_send(monkeypatch):
     calls: list[object] = []
 
@@ -57,7 +55,6 @@ def test_notify_uses_nonblocking_datagram_send(monkeypatch):
     assert calls[0] == ("setblocking", False)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="systemd watchdog is Linux-only; Windows has no AF_UNIX")
 @pytest.mark.asyncio
 async def test_watchdog_sends_ready_heartbeat_and_stopping(monkeypatch):
     calls: list[str] = []

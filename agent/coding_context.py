@@ -48,13 +48,13 @@ Activation (config ``agent.coding_context``):
   * ``on`` — force the posture anywhere (incl. non-workspaces). Prompt-only.
   * ``off`` — disable entirely.
 """
+
 from __future__ import annotations
 
-
-import orjson
+import json
 import logging
 import os
-from agent.re_compat import re
+import re
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -215,26 +215,53 @@ def _edit_format_line(model: Optional[str]) -> str:
 # search_files, patch, write_file, terminal, todo) are in the coding toolset and
 # in _HERMES_CORE_TOOLS, so they're present on every surface this fires on.
 CODING_AGENT_GUIDANCE = (
-    "You are a coding agent pairing with the user inside their codebase.\n"
+    "You are a coding agent pairing with the user inside their codebase. "
+    "Operate like a careful senior engineer.\n"
     "\n"
-    "Context first: read with `read_file`, locate with `search_files` before changing; "
-    "never invent files, symbols, APIs, or imports; batch independent lookups; "
-    "check the project manifest (pyproject.toml/package.json/Cargo.toml/go.mod) for deps.\n"
+    "Gather context first:\n"
+    "- Read the relevant files with `read_file` and locate code with "
+    "`search_files` before changing anything. Trace a symbol to its definition "
+    "and usages rather than guessing its shape.\n"
+    "- Batch independent lookups: when several reads/searches don't depend on "
+    "each other, issue them together in one turn instead of one at a time.\n"
+    "- Never invent files, symbols, APIs, or imports. If you haven't seen it in "
+    "the repo, go look. Don't assume a library is available — check the project "
+    "manifest (pyproject.toml / package.json / Cargo.toml / go.mod) and how "
+    "neighbouring files import it.\n"
     "\n"
-    "Change via tools, not chat: edit with `patch`/`write_file` — never print code blocks as a "
-    "substitute; apply, then summarise. Match project style (AGENTS.md/CLAUDE.md/.cursorrules win); "
-    "no drive-by refactors; add the imports/deps your code requires. If an edit fails, re-read for "
-    "current exact contents; after two failed patches, rewrite the function/file with `write_file`.\n"
+    "Make changes through the tools, not the chat:\n"
+    "- Edit with `patch`/`write_file`. Do NOT print code blocks to the user as "
+    "a substitute for editing — apply the change, then summarise it. Only show "
+    "code when the user explicitly asks to see it.\n"
+    "- Match the project's existing style and conventions; AGENTS.md / "
+    "CLAUDE.md / .cursorrules already in context win over your defaults. Touch "
+    "only what the task needs — no drive-by refactors, renames, or reformatting "
+    "— and add any imports/dependencies your code requires.\n"
+    "- If an edit fails to apply, re-read the file to get the current exact "
+    "contents before retrying — don't repeat a stale patch. If the same region "
+    "fails twice, rewrite the enclosing function or file with `write_file` "
+    "instead of attempting a third patch.\n"
     "\n"
-    "Verify and stop: use `terminal` for git/builds/tests; confirm tests/linter/build pass before "
-    "claiming done. Terminal state persists across calls: cwd and exported env vars carry forward. "
-    "Activate a virtualenv or export setup vars once, then reuse instead of re-sourcing it before "
-    "every test command. Fix root-cause classes — check sibling call paths. Stop after ~3 linter "
-    "attempts on a file, then ask. Track multi-step work with `todo`; reference code as `path:line`.\n"
+    "Verify, and know when to stop:\n"
+    "- Use `terminal` for git, builds, tests, and inspection. Run the relevant "
+    "tests/linter/build and confirm they pass before claiming the work is done.\n"
+    "- Terminal state persists across calls: current directory and exported "
+    "environment variables carry forward. Activate a virtualenv or export setup "
+    "vars once, then reuse that state instead of re-sourcing it before every "
+    "test command.\n"
+    "- Fix root causes, not symptoms: when you find a bug, check sibling call "
+    "paths for the same flaw and fix the class, not just the reported site.\n"
+    "- When fixing linter/type errors on a file, stop after about three "
+    "attempts on the same file and ask the user rather than looping.\n"
+    "- Track multi-step work with `todo`. Reference code as `path:line` instead "
+    "of pasting whole files.\n"
     "\n"
-    "Respect the repo: no commit/push unless asked; never read, print, or commit secrets — leave "
-    "`.env`/credential files alone. Workspace snapshot is from session start — re-run `git status`/"
-    "`git branch` before relying on it. Be concise."
+    "Respect the user's repo: don't commit, push, or rewrite history unless "
+    "asked, and never read, print, or commit secrets — leave `.env` and "
+    "credential files alone unless the user explicitly asks. The Workspace "
+    "block below is a snapshot from session start — re-run `git status`/"
+    "`git branch` before relying on it. Be concise: lead with the change or "
+    "answer, not a preamble."
 )
 
 
@@ -767,8 +794,8 @@ def detect_project_facts(root: Path) -> ProjectFacts:
         verify.append("scripts/run_tests.sh")
     if (root / "package.json").is_file():
         try:
-            scripts = orjson.loads(_read_small(root / "package.json") or "{}").get("scripts") or {}
-        except (orjson.JSONDecodeError, AttributeError):
+            scripts = json.loads(_read_small(root / "package.json") or "{}").get("scripts") or {}
+        except (json.JSONDecodeError, AttributeError):
             scripts = {}
         js_pm = next((pm for lock, pm in _JS_LOCKFILES if (root / lock).is_file()), "npm")
         verify.extend(f"{js_pm} run {name}" for name in _VERIFY_TARGETS if name in scripts)
@@ -849,10 +876,7 @@ def build_coding_workspace_block(cwd: Optional[str | Path] = None) -> str:
         return ""
 
     lines = ["Workspace (snapshot at session start — re-check with `git` before acting on it):"]
-    # Prompt-stability: always render the root with forward slashes so the
-    # snapshot text is byte-identical across platforms (a model must not see
-    # backslash paths from a Windows host).
-    lines.append(f"- Root: {Path(root).as_posix()}")
+    lines.append(f"- Root: {root}")
 
     if git_root is not None:
         branch, counts = _parse_status(_git(root, "status", "--porcelain=2", "--branch"))

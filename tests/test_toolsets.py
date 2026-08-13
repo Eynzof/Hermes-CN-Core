@@ -12,8 +12,10 @@ from toolsets import (
     get_toolset_info,
 )
 
+
 def _dummy_handler(args, **kwargs):
     return "{}"
+
 
 def _make_schema(name: str, description: str = "test tool"):
     return {
@@ -21,6 +23,7 @@ def _make_schema(name: str, description: str = "test tool"):
         "description": description,
         "parameters": {"type": "object", "properties": {}},
     }
+
 
 class TestGetToolset:
     def test_known_toolset(self):
@@ -53,7 +56,11 @@ class TestGetToolset:
         assert set(ts["tools"]) == {"web_search", "web_extract", "web_search_plus"}
 
 
+
 class TestResolveToolset:
+    def test_leaf_toolset(self):
+        tools = resolve_toolset("web")
+        assert set(tools) == {"web_search", "web_extract"}
 
     def test_composite_toolset(self):
         tools = resolve_toolset("debugging")
@@ -96,6 +103,7 @@ class TestResolveToolset:
 
 
 
+
 class TestResolveMultipleToolsets:
     def test_combines_and_deduplicates(self):
         tools = resolve_multiple_toolsets(["web", "terminal"])
@@ -104,6 +112,7 @@ class TestResolveMultipleToolsets:
         assert "terminal" in tools
         # No duplicates
         assert len(tools) == len(set(tools))
+
 
 
 class TestValidateToolset:
@@ -131,12 +140,19 @@ class TestValidateToolset:
         assert validate_toolset("mcp-dynserver") is True
         assert "mcp__dynserver__ping" in resolve_toolset("dynserver")
 
+
 class TestGetToolsetInfo:
+    def test_leaf(self):
+        info = get_toolset_info("web")
+        assert info["name"] == "web"
+        assert info["is_composite"] is False
+        assert info["tool_count"] == 2
 
     def test_composite(self):
         info = get_toolset_info("debugging")
         assert info["is_composite"] is True
         assert info["tool_count"] > len(info["direct_tools"])
+
 
 
 class TestCreateCustomToolset:
@@ -155,6 +171,7 @@ class TestCreateCustomToolset:
         finally:
             del TOOLSETS["_test_custom"]
 
+
 class TestRegistryOwnedToolsets:
     def test_registry_membership_is_live(self, monkeypatch):
         reg = ToolRegistry()
@@ -170,6 +187,7 @@ class TestRegistryOwnedToolsets:
         assert validate_toolset("test-live-toolset") is True
         assert get_toolset("test-live-toolset")["tools"] == ["test_live_toolset_tool"]
         assert resolve_toolset("test-live-toolset") == ["test_live_toolset_tool"]
+
 
 class TestToolsetConsistency:
     """Verify structural integrity of the built-in TOOLSETS dict."""
@@ -199,6 +217,7 @@ class TestToolsetConsistency:
         # silently let a platform diverge so far that nothing is shared).
         assert len(core) > 20, f"Suspiciously small shared core: {len(core)} tools"
 
+
 class TestPluginToolsets:
     def test_get_all_toolsets_includes_plugin_toolset(self, monkeypatch):
         reg = ToolRegistry()
@@ -215,9 +234,11 @@ class TestPluginToolsets:
         assert "plugin_bundle" in all_toolsets
         assert all_toolsets["plugin_bundle"]["tools"] == ["plugin_tool"]
 
+
 class TestDefaultPlatformWebSearchCoverage:
     def test_hermes_whatsapp_toolset_includes_web_search(self):
         assert "web_search" in resolve_toolset("hermes-whatsapp")
+
 
 
 class TestResolveToolsetIncludeRegistry:
@@ -225,17 +246,29 @@ class TestResolveToolsetIncludeRegistry:
     by platform reverse-mapping. Regression harness for issue #49622."""
 
     def test_include_registry_false_excludes_registry_tools(self):
-        from tools.registry import discover_builtin_tools
-        discover_builtin_tools()  # registers read_terminal into 'terminal'
+        from tools.registry import discover_builtin_tools, registry
+        discover_builtin_tools()
 
-        merged = set(resolve_toolset("terminal"))
-        static = set(resolve_toolset("terminal", include_registry=False))
+        # Register a tool into `terminal` at runtime, the way plugins and MCP
+        # servers do, so the split is exercised on the mechanism rather than on
+        # whichever built-in currently happens to live where.
+        registry.register(
+            name="__probe_registry_only_tool__",
+            toolset="terminal",
+            schema={"name": "__probe_registry_only_tool__", "parameters": {"type": "object", "properties": {}}},
+            handler=lambda args, **kw: "",
+        )
+        try:
+            merged = set(resolve_toolset("terminal"))
+            static = set(resolve_toolset("terminal", include_registry=False))
+        finally:
+            registry.deregister("__probe_registry_only_tool__")
 
         assert static == {"terminal", "process"}, static
-        # read_terminal is registered into 'terminal' but is desktop-only and
-        # not part of the static definition — it must only appear in the merged view.
-        assert "read_terminal" in merged
-        assert "read_terminal" not in static
+        # Registered into 'terminal' but not part of the static definition — it
+        # must only appear in the merged view.
+        assert "__probe_registry_only_tool__" in merged
+        assert "__probe_registry_only_tool__" not in static
 
 
     def test_static_view_threads_through_includes(self):

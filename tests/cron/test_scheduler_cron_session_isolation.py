@@ -4,8 +4,8 @@ A cron job must use ``approvals.cron_mode`` for its own ``execute_code`` call,
 without leaving process-global state that changes a later interactive gateway
 turn handled by the same Python process.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import os
 

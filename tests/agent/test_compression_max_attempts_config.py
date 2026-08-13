@@ -11,8 +11,8 @@ class).  The cap is now parsed from ``compression.max_attempts`` in
 These tests pin the parse/validate/attach seam: default preserved, custom
 value honored, floor and ceiling enforced, garbage tolerated.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import contextlib
 import io

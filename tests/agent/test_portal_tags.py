@@ -1,6 +1,6 @@
 """Tests for agent.portal_tags — Nous Portal request tag contract."""
-from __future__ import annotations
 
+from __future__ import annotations
 
 
 

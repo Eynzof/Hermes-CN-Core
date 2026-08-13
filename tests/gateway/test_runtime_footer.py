@@ -1,10 +1,9 @@
 """Unit tests for gateway.runtime_footer — the opt-in runtime-metadata footer
 appended to final gateway replies."""
+
 from __future__ import annotations
 
-
 import os
-import sys
 
 import pytest
 
@@ -35,7 +34,6 @@ def test_model_short_drops_vendor_prefix(model, expected):
     assert _model_short(model) == expected
 
 
-@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: path format /tmp vs C:\tmp")
 def test_home_relative_cwd_collapses_home(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     sub = tmp_path / "projects" / "hermes"
@@ -48,7 +46,6 @@ def test_home_relative_cwd_collapses_home(tmp_path, monkeypatch):
 # format_runtime_footer
 # ---------------------------------------------------------------------------
 
-@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: path format /tmp vs C:\tmp")
 def test_format_footer_all_fields(monkeypatch, tmp_path):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("TERMINAL_CWD", str(tmp_path / "projects" / "hermes"))
@@ -63,7 +60,6 @@ def test_format_footer_all_fields(monkeypatch, tmp_path):
     assert out == "gpt-5.4 · 68% · ~/projects/hermes"
 
 
-@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: path format /tmp vs C:\\tmp")
 def test_format_footer_skips_missing_context_length():
     out = format_runtime_footer(
         model="openai/gpt-5.4",
@@ -216,7 +212,6 @@ def test_format_footer_latency_zero_renders_sub_second():
     assert out == "<1s"
 
 
-@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: os.path.expanduser ignores HOME env")
 def test_format_footer_latency_in_field_order(monkeypatch, tmp_path):
     monkeypatch.setenv("HOME", str(tmp_path))
     out = format_runtime_footer(
@@ -287,7 +282,6 @@ def test_resolve_footer_config_default_fields_exclude_latency():
         ("m", 10, 100, "", "m · 10%"),
     ],
 )
-@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: POSIX /var/data renders as C:\\var\\data")
 def test_default_footer_renders_byte_identically(
     monkeypatch, model, tokens, window, cwd, expected
 ):
@@ -308,7 +302,6 @@ def test_default_footer_renders_byte_identically(
     assert out == expected
 
 
-@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: POSIX /var/data renders as C:\\var\\data")
 def test_default_build_footer_line_ignores_turn_seconds(monkeypatch):
     """build_footer_line with default fields is unaffected by turn_seconds."""
     monkeypatch.delenv("TERMINAL_CWD", raising=False)

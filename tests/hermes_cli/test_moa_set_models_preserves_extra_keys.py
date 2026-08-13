@@ -80,4 +80,3 @@ class TestSetMoaModelsPreservesUndeclaredKeys:
             "trace_dir was dropped by set_moa_models"
         )
 
-

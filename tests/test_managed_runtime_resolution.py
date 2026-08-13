@@ -22,8 +22,8 @@ one function's behavior, and there is no runtime seam that can observe a lookup
 that was never written. Every entry in the allow-list below names a call site
 whose behavior is separately covered by a real test.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import ast
 from pathlib import Path
@@ -73,6 +73,11 @@ _ALLOWED: dict[tuple[str, str], str] = {
     ("tools/lazy_deps.py", "uv"): (
         "Fallback after resolve_uv(), plus the except-branch for the "
         "hermes_cli import guard."
+    ),
+    ("tools/browser_use_cli.py", "uv"): (
+        "install_cli()'s fallback after ensure_uv() misses — a user-installed "
+        "uv on PATH is a legitimate last rung before giving up with install "
+        "guidance."
     ),
     ("hermes_cli/gateway.py", "node"): (
         "Fallback rung of _append_node_dir_for_service(), after the managed "

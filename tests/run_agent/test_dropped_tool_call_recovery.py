@@ -14,8 +14,8 @@ bounded to 3 consecutive stalls, with the budget resetting after any
 successful tool round so it guards each stall rather than the whole run. A
 genuine ``finish_reason="stop"`` text turn is unaffected.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch

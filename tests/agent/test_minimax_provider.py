@@ -2,12 +2,17 @@
 
 from unittest.mock import patch
 
+
 class TestMinimaxContextLengths:
     """Verify context length entries match official docs.
 
     M2.x series is 204,800; M3 is 1M (max output 512K).
     Source: https://platform.minimax.io/docs/api-reference/text-anthropic-api
     """
+
+    def test_minimax_prefix_has_correct_context(self):
+        from agent.model_metadata import DEFAULT_CONTEXT_LENGTHS
+        assert DEFAULT_CONTEXT_LENGTHS["minimax"] == 204_800
 
     def test_minimax_models_resolve_via_prefix(self):
         from agent.model_metadata import get_model_context_length
@@ -25,6 +30,7 @@ class TestMinimaxContextLengths:
         for model in ("MiniMax-M3", "minimax/minimax-m3", "minimax-m3"):
             ctx = get_model_context_length(model, "")
             assert ctx >= 1_000_000, f"{model} expected 1M-class, got {ctx}"
+
 
 class TestMinimaxM3StaleCacheGuard:
     """Pre-catalog builds resolved M3 via the generic 'minimax' catch-all
@@ -55,6 +61,8 @@ class TestMinimaxM3StaleCacheGuard:
                 slug, base_url=base, api_key="", provider="minimax-cn"
             )
             assert ctx == 204_800, f"{slug} should stay 204800, got {ctx}"
+
+
 
 class TestMinimaxThinkingSupport:
     """Verify that MiniMax gets manual thinking (not adaptive).
@@ -103,6 +111,7 @@ class TestMinimaxThinkingSupport:
         )
         assert "thinking" in kwargs
 
+
 class TestMinimaxAuxModel:
     """Verify auxiliary model is the current frontier standard (not highspeed).
 
@@ -138,6 +147,7 @@ class TestMinimaxAuxModel:
         from agent.auxiliary_client import _get_aux_model_for_provider
         assert "highspeed" not in _get_aux_model_for_provider("minimax")
         assert "highspeed" not in _get_aux_model_for_provider("minimax-cn")
+
 
 class TestMinimaxBetaHeaders:
     """MiniMax Anthropic-compat endpoints reject fine-grained-tool-streaming beta.
@@ -194,6 +204,8 @@ class TestMinimaxBetaHeaders:
         assert len(betas) > 0  # still has other betas
 
 
+
+
 class TestMinimaxApiMode:
     """Verify determine_api_mode returns anthropic_messages for MiniMax providers.
 
@@ -220,6 +232,7 @@ class TestMinimaxApiMode:
         result = determine_api_mode("deepseek")
         assert result == "chat_completions"
 
+
 class TestMinimaxMaxOutput:
     """Verify _get_anthropic_max_output returns correct limits for MiniMax models.
 
@@ -238,6 +251,7 @@ class TestMinimaxMaxOutput:
         # Sanity: Claude limits are not broken by the MiniMax entry
         assert _get_anthropic_max_output("claude-sonnet-4-6") == 64_000
         assert _get_anthropic_max_output("claude-sonnet-5") == 128_000
+
 
 class TestMinimaxPreserveDots:
     """Verify that MiniMax model names preserve dots through the Anthropic adapter.
@@ -263,6 +277,8 @@ class TestMinimaxPreserveDots:
     def test_normalize_preserves_m25_free_dot(self):
         from agent.anthropic_adapter import normalize_model_name
         assert normalize_model_name("minimax-m2.5-free", preserve_dots=True) == "minimax-m2.5-free"
+
+
 
 
 

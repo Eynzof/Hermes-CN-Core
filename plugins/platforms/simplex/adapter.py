@@ -45,6 +45,7 @@ is present, so the gateway will not attempt to instantiate the adapter.
 """
 
 import asyncio
+import json
 import pybase64 as base64
 import orjson
 import logging
@@ -1256,7 +1257,7 @@ async def _standalone_send(
         return {"error": "SimpleX standalone send: SIMPLEX_WS_URL is required"}
 
     try:
-        composed = orjson.dumps(
+        composed = json.dumps(
             [{"msgContent": {"type": "text", "text": message}}]
         )
         if chat_id.startswith("group:"):

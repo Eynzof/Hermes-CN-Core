@@ -477,6 +477,21 @@ class TestDelegationCleanup:
         monkeypatch.setattr(relay_runtime, "get_runtime", lambda **_kwargs: relay_host)
         monkeypatch.setattr("tools.delegate_tool._get_child_timeout", lambda: 0.1)
 
+        from tools.daemon_pool import DaemonThreadPoolExecutor
+
+        real_submit = DaemonThreadPoolExecutor.submit
+
+        def submit_after_child_starts(executor, *args, **kwargs):
+            future = real_submit(executor, *args, **kwargs)
+            assert child_started.wait(timeout=5)
+            return future
+
+        monkeypatch.setattr(
+            DaemonThreadPoolExecutor,
+            "submit",
+            submit_after_child_starts,
+        )
+
         def run_conversation(**kwargs):
             lease = relay_runtime.SESSION_COORDINATOR.acquire_conversation(
                 profile_key=relay_runtime.current_profile_key(),

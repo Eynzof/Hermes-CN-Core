@@ -4215,6 +4215,7 @@ async function ensureRuntime(backend) {
             'and ensure it is on your PATH to use Git Bash, or keep the default shell "auto".'
         )
       }
+
       // Verify at least one PowerShell is available (ships with every Windows system).
       const hasPowerShell =
         findOnPath('pwsh.exe') ||

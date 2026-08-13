@@ -361,13 +361,21 @@ class FileSyncManager:
         except Exception:
             file_mapping = []
 
-        with tempfile.NamedTemporaryFile(suffix=".tar") as tf:
-            self._bulk_download_fn(Path(tf.name))
+        # On Windows a still-open NamedTemporaryFile handle denies a second
+        # open of the same path (PermissionError), which breaks every real
+        # bulk_download implementation (tarfile.open / open(dest, "wb") /
+        # dest.write_bytes). Close the handle up front and manage the temp
+        # file manually so backends can write to it.
+        tf = tempfile.NamedTemporaryFile(suffix=".tar", delete=False)
+        tf.close()
+        tar_path = tf.name
+        try:
+            self._bulk_download_fn(Path(tar_path))
 
             # Defensive size cap: a misbehaving sandbox could produce an
             # arbitrarily large tar. Refuse to extract if it exceeds the cap.
             try:
-                tar_size = os.path.getsize(tf.name)
+                tar_size = os.path.getsize(tar_path)
             except OSError:
                 tar_size = 0
             if tar_size > _SYNC_BACK_MAX_BYTES:
@@ -378,7 +386,7 @@ class FileSyncManager:
                 return
 
             with tempfile.TemporaryDirectory(prefix="hermes-sync-back-") as staging:
-                with tarfile.open(tf.name) as tar:
+                with tarfile.open(tar_path) as tar:
                     tar.extractall(staging, filter="data")
 
                 applied = 0
@@ -441,6 +449,11 @@ class FileSyncManager:
                     logger.info("sync_back: applied %d changed file(s)", applied)
                 else:
                     logger.debug("sync_back: no remote changes detected")
+        finally:
+            try:
+                os.unlink(tar_path)
+            except OSError:
+                pass
 
     def _resolve_host_path(self, remote_path: str,
                            file_mapping: list[tuple[str, str]] | None = None) -> str | None:

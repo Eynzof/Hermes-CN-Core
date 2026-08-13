@@ -123,6 +123,7 @@ def test_token_file_rejects_symlink(tmp_path, monkeypatch):
         reset_hermes_home_override(override)
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX desktop-ssh token root (~/.hermes/desktop-ssh); Windows anchors at LOCALAPPDATA/hermes/desktop-ssh")
 def test_token_file_rejects_parent_escape(tmp_path, monkeypatch):
     home = tmp_path / "home"
     monkeypatch.setenv("HOME", str(home))

@@ -27,6 +27,9 @@ def test_notify_supports_systemd_abstract_socket(monkeypatch):
         receiver.close()
 
 
+@pytest.mark.skipif(
+    not hasattr(socket, "AF_UNIX"), reason="Unix datagram sockets are unavailable"
+)
 def test_notify_uses_nonblocking_datagram_send(monkeypatch):
     calls: list[object] = []
 
@@ -56,6 +59,9 @@ def test_notify_uses_nonblocking_datagram_send(monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(
+    not hasattr(socket, "AF_UNIX"), reason="Unix datagram sockets are unavailable"
+)
 async def test_watchdog_sends_ready_heartbeat_and_stopping(monkeypatch):
     calls: list[str] = []
     monkeypatch.setenv("NOTIFY_SOCKET", "/tmp/hermes-test-notify")

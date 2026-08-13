@@ -91,7 +91,21 @@ def _make_packaged_executable(root: Path, monkeypatch) -> Path:
     else:
         exe = desktop_dir / "release" / "linux-unpacked" / "hermes"
     exe.parent.mkdir(parents=True, exist_ok=True)
-    exe.write_text("", encoding="utf-8")
+    if sys.platform == "win32":
+        # cmd_gui runs the PE integrity gate (#69179) before launch: a real
+        # Windows host rejects a 0-byte file, so lay down a minimal but
+        # structurally complete PE (MZ + DOS header + PE sig + AMD64 machine,
+        # zero sections) that passes the header walk.
+        fake_pe = bytearray(512)
+        fake_pe[0:2] = b"MZ"
+        fake_pe[0x3C:0x40] = (0x40).to_bytes(4, "little")  # e_lfanew
+        fake_pe[0x40:0x44] = b"PE\x00\x00"
+        fake_pe[0x44:0x46] = (0x8664).to_bytes(2, "little")  # AMD64 machine
+        fake_pe[0x46:0x48] = (0).to_bytes(2, "little")       # n_sections = 0
+        fake_pe[0x54:0x56] = (0).to_bytes(2, "little")       # size_of_optional = 0
+        exe.write_bytes(bytes(fake_pe))
+    else:
+        exe.write_text("", encoding="utf-8")
     if sys.platform not in ("darwin", "win32"):
         (exe.parent / "chrome-sandbox").write_text("", encoding="utf-8")
     return exe
@@ -108,6 +122,7 @@ def test_gui_installs_packages_and_launches_desktop_app(tmp_path, monkeypatch):
     launch_ok = subprocess.CompletedProcess([str(packaged_exe)], 0)
 
     with patch("hermes_cli.main.shutil.which", return_value="/usr/bin/npm"), \
+         patch("hermes_constants.find_node_executable", return_value="/usr/bin/npm"), \
          patch("hermes_cli.main._run_npm_install_deterministic", return_value=install_ok) as mock_install, \
          patch("hermes_cli.main._desktop_build_needed", return_value=True), \
          patch("hermes_cli.main._write_desktop_build_stamp"), \

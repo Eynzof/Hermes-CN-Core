@@ -475,7 +475,11 @@ class TestDelegationCleanup:
         parent._active_children.append(child)
         relay_host = MagicMock()
         monkeypatch.setattr(relay_runtime, "get_runtime", lambda **_kwargs: relay_host)
-        monkeypatch.setattr("tools.delegate_tool._get_child_timeout", lambda: 0.1)
+        # Generous-but-short timeout: the child thread must START (and the
+        # relay turn be begun) before the parent times out, while the child is
+        # still alive — Windows thread startup + relay coordination is slower
+        # than 0.1s under load, which made this flaky.
+        monkeypatch.setattr("tools.delegate_tool._get_child_timeout", lambda: 1.0)
 
         def run_conversation(**kwargs):
             lease = relay_runtime.SESSION_COORDINATOR.acquire_conversation(

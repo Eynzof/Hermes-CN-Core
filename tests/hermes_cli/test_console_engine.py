@@ -241,7 +241,11 @@ MUTATING_CONFIRMATION_SMOKE_COMMANDS = [
 
 
 
-def test_sessions_list_and_stats_use_isolated_session_store(_isolate_hermes_home):
+def test_sessions_list_and_stats_use_isolated_session_store(
+    _isolate_hermes_home, monkeypatch
+):
+    import hermes_state
+    from hermes_constants import get_hermes_home
     from hermes_state import SessionDB
 
     # hermes_state.DEFAULT_DB_PATH is bound at module-import time.  If any

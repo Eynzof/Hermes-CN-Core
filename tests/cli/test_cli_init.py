@@ -150,6 +150,7 @@ class TestBusyInputMode:
 
 
 class TestPromptToolkitTerminalCompatibility:
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: thin-PTY LF/c-j Enter handling is POSIX-only (Windows arm: test_windows_leaves_ctrl_j_unbound)")
     def test_lf_enter_binds_to_submit_handler_posix(self):
         """Some thin PTYs deliver Enter as LF/c-j instead of CR/enter.
 
@@ -234,6 +235,7 @@ class TestPromptToolkitTerminalCompatibility:
 
 
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: CPR leak gating is POSIX-only (Windows arm: test_cpr_local_leak.py windows_only)")
     def test_cpr_gating_posix_suppresses_without_ssh(self, monkeypatch):
         """POSIX suppresses CPR without SSH.
 

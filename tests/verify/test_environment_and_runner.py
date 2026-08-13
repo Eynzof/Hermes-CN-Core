@@ -2,6 +2,7 @@
 
 import http.server
 import json
+import sys
 import threading
 import time
 
@@ -132,7 +133,9 @@ class TestReadiness:
         port = _free_port()
         recipe = Recipe(
             name="x",
-            start=f"python3 -m http.server {port} --bind 127.0.0.1",
+            # ``python3`` is the MS Store app alias on Windows; use the
+            # interpreter that is actually running the tests.
+            start=f"{sys.executable} -m http.server {port} --bind 127.0.0.1",
             port=port,
         )
         result = run_verify(tmp_path, recipe, phases=("start",), ready_timeout=15)

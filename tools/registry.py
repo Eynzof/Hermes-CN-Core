@@ -1412,8 +1412,14 @@ class ToolRegistry:
         # (the check_fn probes below still run outside the lock). Equivalent to
         # the old full-snapshot + per-name .get(): absent names simply aren't in
         # the map and are skipped identically.
+        #
+        # NOTE: use the merged snapshot (global + active profile's scoped
+        # plugin tools), not the bare global dict — plugin tools register
+        # under the plugin manager's profile scope and must stay reachable
+        # through the normal toolset path (validate_toolset/resolve_toolset
+        # consult the same merged view).
         with self._lock:
-            entries_by_name = {n: self._tools[n] for n in tool_names if n in self._tools}
+            entries_by_name = {entry.name: entry for entry in self._snapshot_entries()}
         for name in sorted(tool_names):
             entry = entries_by_name.get(name)
             if not entry:

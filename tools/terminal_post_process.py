@@ -156,8 +156,12 @@ def _dedup_output(output: str, threshold: int = _DEFAULT_DEDUP_THRESHOLD) -> tup
     # Phase 1: single-line dedup
     line_counts: dict[str, int] = {}
     for line in lines:
+        if not line:
+            # Blank lines are formatting, not content — never dedup or
+            # annotate them (a few trailing newlines must not become a
+            # bogus "(N repeats)" marker, e.g. PowerShell ``pwd`` output).
+            continue
         line_counts[line] = line_counts.get(line, 0) + 1
-
     # Don't dedup if nothing exceeds threshold
     if not any(c > threshold for c in line_counts.values()):
         return output, 0
@@ -173,6 +177,10 @@ def _dedup_output(output: str, threshold: int = _DEFAULT_DEDUP_THRESHOLD) -> tup
             if i + block_len > n:
                 continue
             block = tuple(lines[i : i + block_len])
+            if not any(block):
+                # All-blank block — formatting only; fall through to the
+                # per-line handling below (which keeps blanks untouched).
+                break
 
             # Count how many times this block repeats contiguously
             repeat_count = 1
@@ -199,6 +207,11 @@ def _dedup_output(output: str, threshold: int = _DEFAULT_DEDUP_THRESHOLD) -> tup
 
         # Single-line dedup
         line = lines[i]
+        if not line:
+            # Keep blank lines verbatim (never counted/annotated).
+            deduped_lines.append(line)
+            i += 1
+            continue
         count = line_counts.get(line, 0)
         if count > threshold:
             # Only keep the first occurrence with annotation

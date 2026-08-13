@@ -46,6 +46,10 @@ def test_install_npm_works_without_extras(tmp_path, monkeypatch):
 
     monkeypatch.setattr(install_mod.subprocess, "run", fake_run)
     monkeypatch.setattr(install_mod.shutil, "which", lambda c: "/usr/bin/npm" if c == "npm" else None)
+    # On Windows, npm resolution goes through find_node_executable (PATH shim
+    # ordering), not install_mod.shutil.which — pin it so the recipe under
+    # test (extra_pkgs=None) is exercised deterministically on both platforms.
+    monkeypatch.setattr(install_mod, "find_node_executable", lambda c: "/usr/bin/npm")
 
     install_mod._install_npm("pyright", "pyright-langserver")
 

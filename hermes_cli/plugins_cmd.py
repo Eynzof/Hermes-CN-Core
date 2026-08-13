@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import functools
 import importlib.metadata
+import json
 import orjson
 import logging
 import os

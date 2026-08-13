@@ -110,7 +110,7 @@ class TestCronjobRunExecutesImmediately:
 
         set_activity_callback(record)
         try:
-            def slow_run(job):
+            def slow_run(job, **kw):
                 # Deterministic: block until at least one heartbeat has fired
                 # (bounded so a broken heartbeat can't hang the test).
                 assert heartbeat_seen.wait(timeout=5.0), "no heartbeat within 5s"
@@ -159,7 +159,7 @@ class TestCronjobRunExecutesImmediately:
 
         set_activity_callback(record)
         try:
-            def slow_run(job):
+            def slow_run(job, **kw):
                 # Ceiling=0 → the very first wake stops the loop without
                 # touching. Give it a couple of cycles to prove silence.
                 time.sleep(0.2)
@@ -192,7 +192,7 @@ class TestCronjobRunExecutesImmediately:
 
         set_activity_callback(flaky)
         try:
-            def slow_run(job):
+            def slow_run(job, **kw):
                 # Block until a heartbeat AFTER the raising one has fired.
                 assert second_beat.wait(timeout=5.0), \
                     "heartbeat stopped after one callback exception"

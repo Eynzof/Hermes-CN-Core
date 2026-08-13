@@ -71,6 +71,11 @@ def register_provider(provider: BrowserProvider, *, scope: Optional[str] = None)
     name = raw_name.strip()
     global _generation
     with _lock:
+        if scope is not None:
+            # Scoped registrations are keyed by the same normalized
+            # ``hermes_home_key()`` that lookups use — on Windows a raw
+            # path scope differs by drive-letter case from the lookup key.
+            scope = hermes_home_key(scope)
         target = _providers if scope is None else _scoped_providers.setdefault(scope, {})
         existing = target.get(name)
         target[name] = provider
@@ -92,9 +97,10 @@ def register_provider(provider: BrowserProvider, *, scope: Optional[str] = None)
 
 def list_providers(*, scope: Optional[str] = None) -> List[BrowserProvider]:
     """Return all registered providers, sorted by name."""
+    scope_key = hermes_home_key(scope) if scope is not None else hermes_home_key()
     with _lock:
         merged = dict(_providers)
-        merged.update(_scoped_providers.get(scope or hermes_home_key(), {}))
+        merged.update(_scoped_providers.get(scope_key, {}))
         items = list(merged.values())
     return sorted(items, key=lambda p: p.name)
 
@@ -105,20 +111,23 @@ def get_provider(name: str, *, scope: Optional[str] = None) -> Optional[BrowserP
         return None
     with _lock:
         key = name.strip()
-        return _scoped_providers.get(scope or hermes_home_key(), {}).get(key) or _providers.get(key)
+        scope_key = hermes_home_key(scope) if scope is not None else hermes_home_key()
+        return _scoped_providers.get(scope_key, {}).get(key) or _providers.get(key)
 
 
 def snapshot_registration(
     name: str, *, scope: Optional[str] = None
 ) -> Optional[BrowserProvider]:
     with _lock:
+        if scope is not None:
+            scope = hermes_home_key(scope)
         target = _providers if scope is None else _scoped_providers.get(scope, {})
         return target.get(name.strip())
 
 
 def registry_generation(*, scope: Optional[str] = None) -> tuple[int, int]:
     """Return a cache fingerprint for the global base and one profile."""
-    active_scope = scope or hermes_home_key()
+    active_scope = hermes_home_key(scope) if scope is not None else hermes_home_key()
     with _lock:
         return _generation, _scoped_generations.get(active_scope, 0)
 
@@ -134,6 +143,8 @@ def restore_registration(
     key = name.strip()
     global _generation
     with _lock:
+        if scope is not None:
+            scope = hermes_home_key(scope)
         target = _providers if scope is None else _scoped_providers.setdefault(scope, {})
         if target.get(key) is not current:
             return False

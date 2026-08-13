@@ -13,6 +13,7 @@ Covers:
 from __future__ import annotations
 
 import json
+import sys
 
 import pytest
 
@@ -45,6 +46,7 @@ class TestNormalizeWorkdir:
         result = _normalize_workdir(str(tmp_path))
         assert result == str(tmp_path.resolve())
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: ~ expansion follows USERPROFILE, not $HOME (posixpath semantics)")
     def test_tilde_expands(self, tmp_path, monkeypatch):
         from cron.jobs import _normalize_workdir
         monkeypatch.setenv("HOME", str(tmp_path))

@@ -442,6 +442,7 @@ class TestWrapperScript:
     """Tests for create_wrapper_script() and remove_wrapper_script()."""
 
     def test_creates_sh_on_posix(self, profile_env, monkeypatch):
+        monkeypatch.setattr("sys.platform", "darwin")
         monkeypatch.setattr("hermes_cli.profiles.shutil.which", lambda name: "/opt/hermes/bin/hermes")
         from hermes_cli.profiles import create_wrapper_script
         wrapper = create_wrapper_script("mybot")
@@ -515,7 +516,8 @@ class TestFindAliasForProfile:
         assert find_alias_for_profile("steve") is None
 
 
-    def test_list_profiles_surfaces_custom_alias(self, profile_env):
+    def test_list_profiles_surfaces_custom_alias(self, profile_env, monkeypatch):
+        monkeypatch.setattr("sys.platform", "darwin")
         from hermes_cli.profiles import (
             create_profile,
             create_wrapper_script,

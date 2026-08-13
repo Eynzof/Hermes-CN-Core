@@ -2,6 +2,7 @@ from hermes_state import AsyncSessionDB
 """Tests for gateway /status behavior and token persistence."""
 
 from datetime import datetime
+import sys
 import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -380,35 +381,36 @@ async def test_status_command_bypasses_active_session_guard():
     assert session_key not in adapter._pending_messages, "/status was incorrectly queued"
 
 
-@pytest.mark.asyncio
-async def test_profile_command_reports_source_stamped_profile(monkeypatch, tmp_path):
-    """On a multiplexed gateway, /profile reports the profile SERVING the
-    source (source.profile — URL prefix / per-credential adapter / room map),
-    not the multiplexer's active profile, which is always the default and
-    made /profile answer "default" in every persona chat."""
-    hermes_home = tmp_path / ".hermes"
-    profile_home = hermes_home / "profiles" / "milo"
-    profile_home.mkdir(parents=True)
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: display_hermes_home abbreviates home under ~ (POSIX shows full path)")
+    @pytest.mark.asyncio
+    async def test_profile_command_reports_source_stamped_profile(monkeypatch, tmp_path):
+        """On a multiplexed gateway, /profile reports the profile SERVING the
+        source (source.profile — URL prefix / per-credential adapter / room map),
+        not the multiplexer's active profile, which is always the default and
+        made /profile answer "default" in every persona chat."""
+        hermes_home = tmp_path / ".hermes"
+        profile_home = hermes_home / "profiles" / "milo"
+        profile_home.mkdir(parents=True)
 
-    session_entry = SessionEntry(
-        session_key=build_session_key(_make_source()),
-        session_id="sess-1",
-        created_at=datetime.now(),
-        updated_at=datetime.now(),
-        platform=Platform.TELEGRAM,
-        chat_type="dm",
-    )
-    runner = _make_runner(session_entry)
-    runner.config.multiplex_profiles = True
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+        session_entry = SessionEntry(
+            session_key=build_session_key(_make_source()),
+            session_id="sess-1",
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            platform=Platform.TELEGRAM,
+            chat_type="dm",
+        )
+        runner = _make_runner(session_entry)
+        runner.config.multiplex_profiles = True
+        monkeypatch.setenv("HERMES_HOME", str(hermes_home))
 
-    event = _make_event("/profile")
-    event.source.profile = "milo"
+        event = _make_event("/profile")
+        event.source.profile = "milo"
 
-    result = await runner._handle_profile_command(event)
+        result = await runner._handle_profile_command(event)
 
-    assert "**Profile:** `milo`" in result
-    assert f"**Home:** `{profile_home}`" in result
+        assert "**Profile:** `milo`" in result
+        assert f"**Home:** `{profile_home}`" in result
 
 
 # ── /context command tests ────────────────────────────────────────────────

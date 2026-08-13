@@ -2,6 +2,7 @@
 
 import json
 import os
+import sys
 from pathlib import Path
 from unittest.mock import patch, MagicMock, mock_open
 
@@ -185,6 +186,7 @@ class TestRunBrowserCommandPathConstruction:
         ]
 
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: Termux/Homebrew POSIX path fallback + clear=True env patching (Path.home needs USERPROFILE)")
     def test_subprocess_path_includes_termux_fallback_dirs(self, tmp_path):
         """Termux fallback dirs should survive browser PATH rebuilding."""
         captured_env = {}

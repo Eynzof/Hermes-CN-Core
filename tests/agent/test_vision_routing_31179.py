@@ -79,12 +79,37 @@ def _module_isolation():
     into sys.modules after the test, splitting module identity for any
     later test that patches ``agent.image_routing.*`` while holding
     function refs from the original module (issue #61597).
+
+    The teardown also re-aligns parent-package attributes: the reloads
+    bind a fresh module as the package attribute (e.g. ``hermes_cli.config``
+    on the ``hermes_cli`` package), so after restoring sys.modules the
+    attribute and sys.modules can point at different objects.
+    ``from hermes_cli import config`` resolves the package ATTRIBUTE while
+    ``from hermes_cli.config import X`` resolves sys.modules — a mismatch
+    makes later monkeypatches of ``hermes_cli.config.*`` silently
+    ineffective (upstream-sync fallout: plugin_index.get_index_url and
+    shell_hooks re_register_config_hooks patches stopped applying).
     """
     saved = {name: mod for name, mod in sys.modules.items()
              if name.startswith(_RELOAD_PREFIXES)}
     yield
+    touched = [name for name in sys.modules if name.startswith(_RELOAD_PREFIXES)]
     _drop_reload_targets()
     sys.modules.update(saved)
+    for name in touched:
+        parent_name, _, attr = name.rpartition(".")
+        if not parent_name or not attr:
+            continue
+        parent = sys.modules.get(parent_name)
+        if parent is None:
+            continue
+        try:
+            if name in sys.modules:
+                setattr(parent, attr, sys.modules[name])
+            elif getattr(parent, attr, None) is not None:
+                delattr(parent, attr)
+        except Exception:
+            pass
 
 
 def _fresh_modules():

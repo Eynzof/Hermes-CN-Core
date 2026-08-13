@@ -139,6 +139,11 @@ def register_source(
         )
         return False
     with _REGISTRY_LOCK:
+        if scope is not None:
+            # Scoped registrations are keyed by the same normalized
+            # ``hermes_home_key()`` that lookups use — on Windows a raw
+            # path scope differs by drive-letter case from the lookup key.
+            scope = hermes_home_key(scope)
         effective = dict(_SOURCES)
         if scope is not None:
             effective.update(_SCOPED_SOURCES.get(scope, {}))
@@ -169,9 +174,8 @@ def register_source(
 def get_source(name: str, *, scope: Optional[str] = None) -> Optional[SecretSource]:
     _ensure_builtin_sources()
     with _REGISTRY_LOCK:
-        return _SCOPED_SOURCES.get(scope or hermes_home_key(), {}).get(
-            name
-        ) or _SOURCES.get(name)
+        scope_key = hermes_home_key(scope) if scope is not None else hermes_home_key()
+        return _SCOPED_SOURCES.get(scope_key, {}).get(name) or _SOURCES.get(name)
 
 
 def snapshot_registration(
@@ -180,6 +184,8 @@ def snapshot_registration(
     """Return the registration owned by exactly one registry layer."""
     _ensure_builtin_sources()
     with _REGISTRY_LOCK:
+        if scope is not None:
+            scope = hermes_home_key(scope)
         target = _SOURCES if scope is None else _SCOPED_SOURCES.get(scope, {})
         return target.get(name)
 
@@ -194,6 +200,8 @@ def restore_registration(
     """Restore a host-owned source registration if it is still current."""
     _ensure_builtin_sources()
     with _REGISTRY_LOCK:
+        if scope is not None:
+            scope = hermes_home_key(scope)
         target = _SOURCES if scope is None else _SCOPED_SOURCES.setdefault(scope, {})
         if target.get(name) is not current:
             return False
@@ -210,7 +218,8 @@ def list_sources(*, scope: Optional[str] = None) -> List[SecretSource]:
     _ensure_builtin_sources()
     with _REGISTRY_LOCK:
         merged = dict(_SOURCES)
-        merged.update(_SCOPED_SOURCES.get(scope or hermes_home_key(), {}))
+        scope_key = hermes_home_key(scope) if scope is not None else hermes_home_key()
+        merged.update(_SCOPED_SOURCES.get(scope_key, {}))
         return list(merged.values())
 
 

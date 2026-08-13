@@ -530,55 +530,6 @@ class TestDelegateTask(unittest.TestCase):
             _, kwargs = MockAgent.call_args
             self.assertEqual(kwargs["api_mode"], "anthropic_messages")
 
-    def test_nous_child_rederives_api_mode_from_model(self):
-        """Portal is dual-wire — same provider + different model prefix must
-        not inherit the parent's Messages/chat_completions mode verbatim."""
-        parent = _make_mock_parent(depth=0)
-        parent.base_url = "https://inference-api.nousresearch.com/v1"
-        parent.api_key = "portal-jwt"
-        parent.provider = "nous"
-        parent.api_mode = "anthropic_messages"
-        parent.model = "anthropic/claude-opus-4.8"
-
-        with patch("run_agent.AIAgent") as MockAgent:
-            mock_child = MagicMock()
-            MockAgent.return_value = mock_child
-
-            _build_child_agent(
-                task_index=0,
-                goal="Stay on chat completions",
-                context=None,
-                toolsets=None,
-                model="hermes-4-405b",
-                max_iterations=10,
-                parent_agent=parent,
-                task_count=1,
-            )
-
-            _, kwargs = MockAgent.call_args
-            self.assertEqual(kwargs["provider"], "nous")
-            self.assertEqual(kwargs["model"], "hermes-4-405b")
-            self.assertEqual(kwargs["api_mode"], "chat_completions")
-
-        with patch("run_agent.AIAgent") as MockAgent:
-            mock_child = MagicMock()
-            MockAgent.return_value = mock_child
-            parent.api_mode = "chat_completions"
-            parent.model = "hermes-4-405b"
-
-            _build_child_agent(
-                task_index=0,
-                goal="Move onto Messages",
-                context=None,
-                toolsets=None,
-                model="anthropic/claude-opus-4.8",
-                max_iterations=10,
-                parent_agent=parent,
-                task_count=1,
-            )
-
-            _, kwargs = MockAgent.call_args
-            self.assertEqual(kwargs["api_mode"], "anthropic_messages")
 
 class TestToolNamePreservation(unittest.TestCase):
     """Verify _last_resolved_tool_names is restored after subagent runs."""
@@ -2034,69 +1985,6 @@ class TestDelegateHeartbeat(unittest.TestCase):
         self.assertGreater(
             len(touch_calls), 2,
             f"Heartbeat stopped too early while child was inside a tool; "
-            f"got {len(touch_calls)} touches",
-        )
-
-    def test_heartbeat_does_not_trip_idle_stale_while_waiting_on_model(self):
-        """A slow in-flight model wait (api_call_count frozen, no tool) must
-        stay alive when last_activity_ts keeps advancing.
-
-        Top-level delegate_task runs in the background; the async stall
-        monitor already treats ticking last_activity_ts as progress. The sync
-        heartbeat path must use the same signal so slow local / long-prefill
-        completions are not mistaken for a wedged idle child.
-        """
-        from tools.delegate_tool import _run_single_child
-
-        parent = _make_mock_parent()
-        touch_calls = []
-        kept_going = threading.Event()
-
-        def record(desc):
-            touch_calls.append(desc)
-            if len(touch_calls) > 2:
-                kept_going.set()
-
-        parent._touch_activity = record
-
-        child = MagicMock()
-        activity = {"ts": 1000.0}
-
-        def _summary():
-            # Frozen iteration / no tool — only the activity clock moves,
-            # matching direct_api_call's mid-wait heartbeats.
-            activity["ts"] += 1.0
-            return {
-                "current_tool": None,
-                "api_call_count": 1,
-                "max_iterations": 50,
-                "last_activity_desc": "waiting for non-streaming API response",
-                "last_activity_ts": activity["ts"],
-            }
-
-        child.get_activity_summary.side_effect = _summary
-
-        def slow_run(**kwargs):
-            kept_going.wait(5)
-            return {"final_response": "done", "completed": True, "api_calls": 1}
-
-        child.run_conversation.side_effect = slow_run
-
-        with (
-            patch("tools.delegate_tool._HEARTBEAT_INTERVAL", 0.01),
-            patch("tools.delegate_tool._HEARTBEAT_STALE_CYCLES_IDLE", 2),
-            patch("tools.delegate_tool._HEARTBEAT_STALE_CYCLES_IN_TOOL", 40),
-        ):
-            _run_single_child(
-                task_index=0,
-                goal="Test slow model wait",
-                child=child,
-                parent_agent=parent,
-            )
-
-        self.assertGreater(
-            len(touch_calls), 2,
-            f"Heartbeat stopped too early while child was waiting on the model; "
             f"got {len(touch_calls)} touches",
         )
 

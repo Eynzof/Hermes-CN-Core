@@ -238,7 +238,16 @@ class TestMemoryManager:
 
     # -- Tool routing -------------------------------------------------------
 
-
+    def test_tool_schemas_collected(self):
+        mgr = MemoryManager()
+        p1 = FakeMemoryProvider("builtin", tools=[
+            {"name": "recall_builtin", "description": "Builtin recall", "parameters": {}}
+        ])
+        p2 = FakeMemoryProvider("external", tools=[
+            {"name": "recall_ext", "description": "External recall", "parameters": {}}
+        ])
+        mgr.add_provider(p1)
+        mgr.add_provider(p2)
         schemas = mgr.get_all_tool_schemas()
         names = {s["name"] for s in schemas}
         assert names == {"recall_builtin", "recall_ext"}

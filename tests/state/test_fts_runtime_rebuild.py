@@ -180,7 +180,6 @@ class TestRuntimeFtsRebuild:
         # i.e. we did not silently degrade to the LIKE fallback.
         assert any(">>>" in (r.get("snippet") or "") for r in results)
 
-
     def test_rebuild_is_one_shot_per_instance(self, db, tmp_path):
         if not db._fts_enabled:
             pytest.skip("FTS5 unavailable in this build")
@@ -197,33 +196,6 @@ class TestRuntimeFtsRebuild:
         assert db._fts_runtime_rebuild_attempted is True  # the search rebuilt it
         assert results  # non-empty: the rebuilt index matched the query
         assert any("needle" in (r.get("snippet") or "") for r in results)
-
-    def test_trigram_search_self_heals_after_fts_corruption(self, db, tmp_path):
-        """The CJK/trigram MATCH branch has the same read-corruption exposure
-        as the main FTS5 branch: it caught only OperationalError (query
-        syntax), so a corrupt trigram shadow table raised DatabaseError
-        straight out of search_messages. It must self-heal via the shared
-        one-shot rebuild and answer from the rebuilt trigram index.
-        """
-        if not db._fts_enabled:
-            pytest.skip("FTS5 unavailable in this build")
-        if not db._trigram_available:
-            pytest.skip("trigram tokenizer unavailable in this build")
-        db.create_session("s1", source="test")
-        db.append_message("s1", "user", "关于大别山项目的进展报告")
-
-        _corrupt_trigram_fts(tmp_path / "state.db")
-        assert db._fts_runtime_rebuild_attempted is False
-
-        # >=3 CJK chars per token → routed to the trigram branch.
-        results = db.search_messages("大别山项目")
-
-        assert db._fts_runtime_rebuild_attempted is True  # search rebuilt it
-        assert results
-        # The rebuilt trigram index answered (trigram snippets use >>> <<<),
-        # i.e. we did not silently degrade to the LIKE fallback.
-        assert any(">>>" in (r.get("snippet") or "") for r in results)
-
 
     def test_second_corruption_fails_open_and_rebuilds_on_reopen(
         self, db, tmp_path

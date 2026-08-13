@@ -752,7 +752,7 @@ class TestMsysPathNormalization:
         assert _normalize_msys_path("") == ""
 
     @pytest.mark.windows_only
-    def test_windows_translation(self):
+    def test_windows_translation(self, monkeypatch):
         """On native Windows, /c/Users/... becomes C:\\Users\\...
 
         ``windows_only``: the function's whole job is producing native
@@ -939,7 +939,8 @@ class TestWindowlessGatewayRestartSpec:
         import hermes_cli.gateway_windows as gw
 
         argv = ["/path/venv/bin/python", "-m", "hermes_cli.main", "gateway", "run"]
-        new_argv, cwd, env = gw.windowless_gateway_restart_spec(list(argv))
+        with mock.patch.object(gw.sys, "platform", "linux"):
+            new_argv, cwd, env = gw.windowless_gateway_restart_spec(list(argv))
         assert new_argv == argv
         assert cwd == ""
         assert env == {}

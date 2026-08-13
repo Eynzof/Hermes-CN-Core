@@ -575,14 +575,23 @@ class TestActiveTurnRedirectCheckpoint:
         _apply_active_turn_redirect(agent, messages, "New direction.")
 
         checkpoint_row = messages[-2]
+        correction = messages[-1]
         # Nothing was on screen, so the row exists only for the model: hidden
-        # from every transcript surface, scaffolding replayed via the sidecar.
+        # from every transcript surface.
         assert checkpoint_row["display_kind"] == "hidden"
+        # Upstream #81841: the scaffold is replayed via the CORRECTION's
+        # api_content sidecar — never on the placeholder assistant row (an
+        # assistant row inlining the scaffold makes the model echo it).
+        assert "api_content" not in checkpoint_row
         assert (
-            checkpoint_row["api_content"]
-            == "[This response was interrupted by a user correction.]"
+            "This response was interrupted by a user correction."
+            not in (checkpoint_row.get("content") or "")
         )
-        assert messages[-1]["content"] == "New direction."
+        assert correction["content"] == "New direction."
+        assert (
+            "[This response was interrupted by a user correction.]"
+            in correction["api_content"]
+        )
 
 
 class TestSteerUserMessageInjection:
@@ -787,24 +796,6 @@ class TestSteerChannelNote:
 
         assert "OUT-OF-BAND USER MESSAGE" not in STEER_CHANNEL_NOTE
         assert "[/OUT-OF-BAND USER MESSAGE]" not in STEER_CHANNEL_NOTE
-
-    def test_system_prompt_scopes_freshness_to_unanswered_marker(self):
-        """A delivered marker remains in immutable history on later API calls.
-
-        The prompt contract must distinguish the unanswered tail occurrence
-        from one followed by an assistant response, or a model can interpret a
-        historical steer as newly delivered and repeat non-idempotent work.
-        """
-        from agent.prompt_builder import STEER_CHANNEL_NOTE
-
-        assert "latest tool-result batch" in STEER_CHANNEL_NOTE
-        assert "no later assistant message follows it" in STEER_CHANNEL_NOTE
-        assert "do not treat it as a new message" in STEER_CHANNEL_NOTE
-        assert "repeat completed work" in STEER_CHANNEL_NOTE
-
-        emitted = format_steer_marker("deploy once")
-        assert "delivered once at this position" in emitted
-        assert "not a new delivery when replayed" in emitted
 
     def test_system_prompt_scopes_freshness_to_unanswered_marker(self):
         """A delivered marker remains in immutable history on later API calls.

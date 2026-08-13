@@ -410,6 +410,7 @@ class TestHasClipboardImage:
                 assert has_clipboard_image() is True
                 m.assert_called_once()
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: has_clipboard_image() short-circuits to _windows_has_image() on win32; the WSL/Wayland fallthrough only runs on a Linux host")
     def test_wsl_falls_through_to_wayland_when_windows_path_empty(self):
         """WSLg often bridges images to wl-paste even when powershell.exe check fails.
 

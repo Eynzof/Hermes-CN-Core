@@ -257,7 +257,15 @@ def _expand(value: str, plugin_root: Path, data_root: Path) -> str:
         "PLUGIN_ROOT": str(plugin_root),
         "PLUGIN_DATA": str(data_root),
     }
-    return _PLACEHOLDER_RE.sub(lambda match: replacements[match.group(1)], value)
+    expanded, n_subs = _PLACEHOLDER_RE.subn(
+        lambda match: replacements[match.group(1)], value
+    )
+    if n_subs and os.sep == "\\":
+        # On Windows, join substituted path segments with the native separator
+        # so `${PLUGIN_ROOT}/server.py` → `...\plugin\server.py` instead of a
+        # mixed-separator string that Windows executors may mishandle.
+        expanded = os.path.normpath(expanded)
+    return expanded
 
 
 def _resolve_scoped_path(

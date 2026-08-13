@@ -287,7 +287,7 @@ class TestTelegramRichMessagesHint:
         with patch("hermes_cli.config.load_config_readonly") as mock_cfg:
             mock_cfg.return_value = {}
             stable = _stable_prompt(agent)
-        assert "Markdown is converted automatically" in stable
+        assert "Standard Markdown is automatically converted" in stable
         assert "lean into it" not in stable
 
 

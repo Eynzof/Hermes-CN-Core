@@ -66,7 +66,7 @@ class TestTextToSpeechToolChunking:
         captured_text = []
 
         def fake_openai(t, out, cfg, **_kw):
-            captured_text["text"] = t
+            captured_text.append(t)
             with open(out, "wb") as f:
                 f.write(b"\x00")
             return out
@@ -121,7 +121,7 @@ class TestTextToSpeechToolChunking:
         captured_text = []
 
         def fake_openai(t, out, cfg, **_kw):
-            captured_text["text"] = t
+            captured_text.append(t)
             with open(out, "wb") as f:
                 f.write(b"\x00")
             return out

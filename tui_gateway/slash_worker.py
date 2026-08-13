@@ -23,6 +23,8 @@ import json
 import logging
 import os
 import sys
+
+import orjson
 import threading
 import time
 

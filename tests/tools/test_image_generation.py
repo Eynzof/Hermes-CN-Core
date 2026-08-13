@@ -47,19 +47,7 @@ class TestFalCatalog:
             assert not missing, f"{mid} missing required keys: {missing}"
 
 
-    def test_only_flux2_pro_upscales_by_default(self, image_tool):
-        """Upscaling should default to False for all new models to preserve
-        the <1s / fast-render value prop. Only flux-2-pro stays True for
-        backward-compat with the previous default."""
-        for mid, meta in image_tool.FAL_MODELS.items():
-            if mid == "fal-ai/flux-2-pro":
-                assert meta["upscale"] is True, \
-                    "flux-2-pro should keep upscale=True for backward-compat"
-            else:
-                  assert meta["upscale"] is False, \
-                      f"{mid} should default to upscale=False"
-
-    def test_upscale_defaults_track_native_resolution(self, image_tool):
+    def test_klein_landscape_uses_preset(self, image_tool):
         """Default-on upscaling: every model whose native output is below
         ~2MP upscales by default so users never silently get low-res images.
         Models that already emit >=2MP natively (Seedream tiers, Krea 2

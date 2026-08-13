@@ -6,6 +6,7 @@ Config + Server + asyncio.run to capture kwargs without starting an event loop.
 
 import asyncio
 import contextlib
+import sys
 
 import pytest
 import uvicorn
@@ -206,6 +207,7 @@ def test_start_server_runs_on_uvicorns_loop_factory(monkeypatch):
     )
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: the #50641 fix routes serve() through the win32 loop-factory branch, not bare asyncio.run")
 def test_start_server_keeps_bare_asyncio_run_on_posix(monkeypatch):
     """POSIX behavior must be byte-for-byte unchanged: serve via the plain
     ``asyncio.run(_serve())`` path, never the Windows loop-factory branch.

@@ -64,6 +64,7 @@ def test_run_gate_pass():
     assert "hello" in out
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: bash >&2/; syntax is POSIX-only (cmd.exe parses it differently)")
 def test_run_gate_fail_captures_output():
     passed, code, out = run_gate(GoalGate(command="echo broken >&2; exit 3"))
     assert passed is False

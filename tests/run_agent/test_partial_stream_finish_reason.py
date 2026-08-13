@@ -685,7 +685,11 @@ class TestSendTimeEmptyAssistantPad:
              and not m.get("tool_calls")),
             None,
         )
-        assert stub is not None and stub["content"] == "[response interrupted]"
+        assert stub is None, f"empty stub should be dropped, got {stub!r}"
+        # CN fork contract (P-024): the empty partial-stream stub is DROPPED
+        # at the send boundary (sanitize_api_messages drops empty-content
+        # messages), not healed into a "[response interrupted]" placeholder —
+        # upstream's heal pass was not adopted by the fork's fused sanitizer.
 
     def test_tool_call_turn_not_padded_on_send(self, loop_agent):
         history = [

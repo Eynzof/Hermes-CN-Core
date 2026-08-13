@@ -303,7 +303,7 @@ class TestUpdateManagedUv:
 
         from hermes_cli.managed_uv import UV_SELF_UPDATE_INTERVAL_SECONDS, update_managed_uv
 
-        uv = tmp_path / "bin" / "uv"
+        uv = tmp_path / "bin" / ("uv.exe" if sys.platform == "win32" else "uv")
         _make_executable(uv)
         import hermes_constants
         stamp = hermes_constants.get_hermes_home() / "cache" / ".uv_self_update_stamp"
@@ -1013,9 +1013,11 @@ class TestDefaultLiveVenv:
         root.mkdir()
         (root / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
         for d in dirs:
-            bin_dir = root / d / "bin"
+            # _venv_python resolves the host-native interpreter location
+            # (Scripts/python.exe on Windows, bin/python elsewhere).
+            bin_dir = root / d / ("Scripts" if sys.platform == "win32" else "bin")
             bin_dir.mkdir(parents=True)
-            (bin_dir / "python").write_text("py", encoding="utf-8")
+            (bin_dir / ("python.exe" if sys.platform == "win32" else "python")).write_text("py", encoding="utf-8")
         return root
 
     def test_dot_venv_only_is_targeted(self, tmp_path):

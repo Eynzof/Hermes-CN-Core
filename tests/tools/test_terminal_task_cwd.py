@@ -166,33 +166,30 @@ def test_foreground_command_prefers_recorded_session_cwd_over_init_time_cwd(monk
 
     class FakeEnv:
         env = {}
-        cwd = "/workspace/acp"
+        cwd = "/workspace/live"
 
         def execute(self, command, **kwargs):
-            # Marker parse stamps env.cwd to where the command ran.
-            self.cwd = kwargs.get("cwd", self.cwd)
+            calls.append((command, kwargs))
             return {"output": "ok", "returncode": 0}
 
-    task_id = "acp-session-2"
+    task_id = "session-live-cwd"
     monkeypatch.setattr(terminal_tool, "_active_environments", {task_id: FakeEnv()})
     monkeypatch.setattr(terminal_tool, "_last_activity", {})
-    monkeypatch.setattr(terminal_tool, "_task_env_overrides", {task_id: {"cwd": "/workspace/acp"}})
-    monkeypatch.setattr(terminal_tool, "_get_env_config", lambda: _minimal_terminal_config())
+    monkeypatch.setattr(terminal_tool, "_session_cwd", {})
+    monkeypatch.setattr(terminal_tool, "_task_env_overrides", {task_id: {"cwd": "/workspace/init"}})
+    monkeypatch.setattr(terminal_tool, "_get_env_config", lambda: _minimal_terminal_config(cwd="/workspace/init"))
+    monkeypatch.setattr(terminal_tool, "_start_cleanup_thread", lambda: None)
+    monkeypatch.setattr(terminal_tool, "_resolve_container_task_id", lambda value: value or "default")
     monkeypatch.setattr(
         terminal_tool,
         "_check_all_guards",
         lambda command, env_type, **kwargs: {"approved": True},
     )
-    monkeypatch.setattr(
-        terminal_tool,
-        "record_session_cwd",
-        lambda session_key, cwd: recorded.append((session_key, cwd)),
-    )
-
+    # The prior command's completed `cd` recorded the session cwd.
+    terminal_tool.record_session_cwd(task_id, "/workspace/live")
     result = orjson.loads(terminal_tool.terminal_tool(command="pwd", task_id=task_id))
-
-    # The transient workdir must NOT have been recorded as the session cwd.
-    assert all(cwd != "/one/off/dir" for _, cwd in recorded), recorded
+    assert result["exit_code"] == 0
+    assert calls == [("pwd", {"timeout": 60, "cwd": "/workspace/live", "bounded_capture": True})]
 
 
 def test_background_command_prefers_recorded_session_cwd_over_init_time_cwd(monkeypatch):

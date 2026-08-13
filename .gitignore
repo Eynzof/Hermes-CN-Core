@@ -200,3 +200,5 @@ build/
 
 # Windows system cache (never track)
 %SystemDrive%/
+.kimix_cache/
+reports/

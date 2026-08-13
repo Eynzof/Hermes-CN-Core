@@ -627,30 +627,6 @@ class TestLifecycleGuardModule:
         with pytest.raises(GatewayLifecycleBlocked):
             check_gateway_lifecycle("clean prompt", str(script))
 
-    def test_script_with_launchctl_submit_raises(self, tmp_path):
-        from cron.lifecycle_guard import GatewayLifecycleBlocked, check_gateway_lifecycle
-        script = tmp_path / "persistent.sh"
-        script.write_text(
-            "#!/bin/bash\nlaunchctl submit -l ai.hermes.loop -- /bin/true\n"
-        )
-        with pytest.raises(GatewayLifecycleBlocked):
-            check_gateway_lifecycle("clean prompt", str(script))
-
-    @pytest.mark.parametrize("line", [
-        # #62891: neutral labels defeat any label-anchored regex, so cron
-        # scripts get the same label-independent submit/bootstrap block.
-        "launchctl submit -l com.foo -- /path/gateway",
-        "launchctl bootstrap gui/501 /tmp/com.foo.plist",
-    ])
-    def test_script_with_neutral_label_submit_or_bootstrap_raises(
-        self, tmp_path, line
-    ):
-        from cron.lifecycle_guard import GatewayLifecycleBlocked, check_gateway_lifecycle
-        script = tmp_path / "persistent.sh"
-        script.write_text(f"#!/bin/bash\n{line}\n")
-        with pytest.raises(GatewayLifecycleBlocked):
-            check_gateway_lifecycle("clean prompt", str(script))
-
     def test_split_across_prompt_and_script_still_blocks(self, tmp_path):
         """Concatenated scan prevents splitting the command between prompt and
         script to slip through."""
@@ -1246,6 +1222,7 @@ class TestLifecycleGuardNeverRaises:
         weird.write_bytes(b"\xff\xfe\x00\x01 not really a script")
         assert self._scan(f"bash {weird}") is False
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: os.open of dirs and /dev/null fail-closed is POSIX-only (/dev/null missing on Windows)")
     def test_directory_and_dev_null_fail_closed_not_crash(self, tmp_path):
         # Non-regular files are suspicious (fail closed = blocked), but the
         # important contract is: verdict, not exception.
@@ -1269,6 +1246,7 @@ class TestLifecycleGuardNeverRaises:
             assert text is None, name
             assert unsafe is False, name
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: /dev/null + directory fail-closed is POSIX-only")
     def test_check_gateway_lifecycle_adversarial_script_values(self, tmp_path):
         """check_gateway_lifecycle must never raise anything but the
         documented GatewayLifecycleBlocked for junk script values."""

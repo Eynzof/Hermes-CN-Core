@@ -54,6 +54,7 @@ def _build_artifact(kind: str, tmp_path, *, nix_build: bool) -> subprocess.Compl
 
 
 @pytest.mark.parametrize("kind", ["sdist", "wheel"])
+@pytest.mark.skip(reason="Fork packaging: Hermes-CN's setup.py intentionally allows wheel/sdist builds outside the Nix dev shell (pip install from git must work) — upstream's HERMES_NIX_BUILD guard was deliberately removed")
 def test_artifact_build_rejects_nix_development_shell_environment(kind, tmp_path):
     result = _build_artifact(kind, tmp_path, nix_build=False)
 

@@ -1,5 +1,6 @@
 """Tests for the dangerous command approval module."""
 
+import ast
 import os
 import sys
 import tempfile

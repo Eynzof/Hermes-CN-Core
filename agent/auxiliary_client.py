@@ -52,7 +52,7 @@ import contextvars
 import copy
 import functools
 import hashlib
-import inspect
+import json
 import orjson
 import logging
 import os

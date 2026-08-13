@@ -470,12 +470,16 @@ class TestShellFileOpsHelpers:
         assert result.error is None
         assert commands[0] == (
             "if [ -f '/c/Users/alice/notes.txt' ]; "
-            "then wc -c < '/c/Users/alice/notes.txt' 2>/dev/null; "
+            "then wc -c < '/c/Users/alice/notes.txt' 2>$null; "
             "elif [ -e '/c/Users/alice/notes.txt' ]; "
             "then echo __hermes_not_regular__; "
             "else exit 1; fi"
         )
-        assert commands[1] == "head -c 1000 '/c/Users/alice/notes.txt' 2>/dev/null | base64"
+        # The fork's Windows shell layer runs file ops through PowerShell,
+        # so /dev/null redirects arrive at the shell already translated
+        # (P-016/P-050 Windows shell saga). The MSYS path form below is the
+        # point of this test; the redirect form follows the Windows convention.
+        assert commands[1] == "head -c 1000 '/c/Users/alice/notes.txt' 2>$null | base64"
         assert commands[2] == "sed -n '1,2000p' '/c/Users/alice/notes.txt' | cut -b1-8001"
         assert commands[3] == "wc -l < '/c/Users/alice/notes.txt'"
 
@@ -581,8 +585,16 @@ class TestSearchPathValidation:
 
 
 class TestSearchFilesFallbackHiddenPaths:
-    def _make_env(self):
-        return make_real_subprocess_env("/")
+    def _make_env(self, monkeypatch):
+        # Use the real local backend so the portable Python fallback is
+        # exercised; this keeps the tests runnable on Windows where the POSIX
+        # ``find`` command does not exist. Force rg off so we hit the Python
+        # walk rather than the rg path (rg includes hidden descendants when
+        # the root path itself is hidden, which differs from the find/Python
+        # semantics these tests assert).
+        monkeypatch.setattr(tools.file_operations.shutil, "which", lambda name: None)
+        from tools.environments.local import LocalEnvironment
+        return LocalEnvironment()
 
     def test_hidden_root_with_hidden_ancestor_includes_files(self, tmp_path, monkeypatch):
         """Fallback search should include visible files when path is inside hidden root."""

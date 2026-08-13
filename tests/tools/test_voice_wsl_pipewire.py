@@ -52,6 +52,10 @@ def test_wsl_with_pulse_server_still_allows_voice(monkeypatch):
 def test_wsl_without_forwarding_still_blocks(monkeypatch):
     _base(monkeypatch)
     _force_wsl(monkeypatch)  # no PULSE_SERVER, no PIPEWIRE_REMOTE
+    # Deterministic: the production gate relaxes the hard block when the
+    # WSL2 PowerShell TTS fallback exists (powershell.exe + ffmpeg on PATH);
+    # pin it off so this test always exercises the hard-block branch.
+    monkeypatch.setattr("tools.voice_mode._wsl_powershell_tts_available", lambda: False)
     from tools.voice_mode import detect_audio_environment
     res = detect_audio_environment()
     assert res["available"] is False

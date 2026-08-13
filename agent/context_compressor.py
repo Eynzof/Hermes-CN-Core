@@ -7294,6 +7294,17 @@ This compaction should PRIORITISE preserving all information related to the focu
             )
         self._last_compression_made_progress = True
 
+        # Reclaim the dropped transcript slice promptly. ``messages`` is still
+        # referenced by the caller here, but the summariser call, the pruned
+        # working copies, and any reference cycles created during summarisation
+        # are now unreachable; a single collection returns them (and their
+        # arena pages) instead of waiting on the generational threshold.
+        if maybe_collect_after_compaction(n_messages - len(compressed)) and not self.quiet_mode:
+            logger.debug(
+                "Post-compaction gc.collect() ran (%d -> %d messages)",
+                n_messages, len(compressed),
+            )
+
         # A successful compaction just freed the largest allocation a long
         # session ever drops (the compressed-away message dicts), which makes
         # this the natural point to hand allocator pages back to the OS.

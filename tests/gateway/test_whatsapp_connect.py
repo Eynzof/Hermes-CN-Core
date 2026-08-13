@@ -405,8 +405,9 @@ class TestHttpSessionLifecycle:
         mock_run.assert_called_once_with(
             ["taskkill", "/PID", "12345", "/T"],
             capture_output=True,
+            # No explicit encoding: taskkill prints in the OEM/ANSI codepage
+            # (GBK on zh-CN Windows) — locale decode + replace, never strict.
             text=True,
-            encoding="utf-8",
             errors="replace",
             timeout=10,
         )

@@ -38,7 +38,7 @@ def _spawn_capture(monkeypatch, tmp_path, *, extra_env=None):
     monkeypatch.setenv("_HERMES_GATEWAY", "1")
 
     web_server._spawn_hermes_action(
-        ["gateway", "restart"], "gateway-restart", extra_env=extra_env
+        ["gateway", "restart"], "gateway-restart", env_overrides=extra_env
     )
     return captured["env"]
 

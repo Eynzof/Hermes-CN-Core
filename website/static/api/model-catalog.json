@@ -1,9 +1,9 @@
 {
   "version": 1,
-  "updated_at": "2026-08-12T17:23:25Z",
+  "updated_at": "2026-08-13T08:54:05Z",
   "metadata": {
-    "source": "hermes-agent repo",
-    "docs": "https://hermes-agent.nousresearch.com/docs/reference/model-catalog"
+    "source": "Hermes-CN-Core repo",
+    "docs": "https://github.com/Eynzof/Hermes-CN-Core/blob/main/website/docs/reference/model-catalog.md"
   },
   "providers": {
     "openrouter": {
@@ -107,6 +107,14 @@
         {
           "id": "moonshotai/kimi-k3",
           "description": "recommended"
+        },
+        {
+          "id": "moonshotai/kimi-k2.6",
+          "description": "recommended"
+        },
+        {
+          "id": "moonshotai/kimi-k2.7-code",
+          "description": ""
         },
         {
           "id": "minimax/minimax-m3",
@@ -242,6 +250,12 @@
         },
         {
           "id": "moonshotai/kimi-k3"
+        },
+        {
+          "id": "moonshotai/kimi-k2.6"
+        },
+        {
+          "id": "moonshotai/kimi-k2.7-code"
         },
         {
           "id": "minimax/minimax-m3"

@@ -15,6 +15,7 @@ from __future__ import annotations
 import os
 import signal
 import subprocess
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -226,7 +227,27 @@ def _run_start_phase(
         _terminate_process_group(proc)
         try:
             if proc.stdout is not None:
-                output = proc.stdout.read() or ""
+                # Bounded drain: on Windows the direct child (cmd.exe) may be
+                # killed while an orphaned grandchild (the actual server) still
+                # holds the pipe write end, so a blocking read() would hang
+                # forever. Drain on a daemon thread and join with a deadline;
+                # on POSIX the process group is dead and this returns at once.
+                chunks: list[str] = []
+
+                def _drain() -> None:
+                    try:
+                        while True:
+                            chunk = proc.stdout.read(65536)  # type: ignore[union-attr]
+                            if not chunk:
+                                break
+                            chunks.append(chunk)
+                    except (OSError, ValueError):
+                        pass
+
+                _drain_thread = threading.Thread(target=_drain, daemon=True)
+                _drain_thread.start()
+                _drain_thread.join(timeout=2.0)
+                output = "".join(chunks)
         except (OSError, ValueError):
             output = ""
     return ReadinessResult(

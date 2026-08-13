@@ -4643,16 +4643,49 @@ def interruptible_streaming_api_call(agent, api_kwargs: dict, *, on_first_delta=
                 # The shared client will be replaced lazily by
                 # _ensure_primary_openai_client on the next request.
                 pass
-            # Reset the timer so we don't kill repeatedly while
-            # the inner thread processes the closure.
-            last_chunk_time["t"] = time.time()
+            # The fork (P-022) deliberately does NOT reset last_chunk_time
+            # here: the _last_stale_kill_at grace gate prevents re-killing
+            # every tick, and leaving the true last-chunk timestamp intact is
+            # what lets the bounded escalation below detect a worker that
+            # never unblocks (upstream's timer reset made the kill counter
+            # reset every iteration, so a wedged worker hung forever).
             agent._emit_wait_notice(
                 f"⚠ no output from provider for {int(_stale_elapsed)}s — "
                 f"reconnecting..."
             )
             agent._touch_activity(
-                f"stale stream detected after {int(_stale_elapsed)}s, reconnecting"
+                f"stale stream aborted after {int(_stale_elapsed)}s, reconnecting"
             )
+            # Give the worker a moment to notice the aborted socket and
+            # either raise (→ inner retry reconnects, resetting the timer) or
+            # finish.  We deliberately do NOT reset last_chunk_time here: the
+            # _last_stale_kill_at grace gate prevents re-killing every tick,
+            # and leaving the true last-chunk timestamp intact is what lets
+            # the escalation below detect a worker that never unblocks.
+            t.join(timeout=_stale_kill_grace)
+            if not t.is_alive():
+                continue
+            # Worker is STILL blocked after the abort.  If we've spent the
+            # whole reconnect budget, stop the unbounded hang: synthesize a
+            # timeout so the turn surfaces an error (the daemon worker is
+            # abandoned — same contract as the non-streaming stale path).
+            if _stale_kill_count >= _max_stale_kills:
+                if result["error"] is None and result["response"] is None:
+                    result["error"] = TimeoutError(
+                        f"Streaming API call stalled: no chunks for "
+                        f"{int(_stale_elapsed)}s across {_stale_kill_count} "
+                        f"reconnect attempts (stale threshold "
+                        f"{int(_stream_stale_timeout)}s)."
+                    )
+                try:
+                    agent._emit_status(
+                        "❌ Provider stopped responding and could not be "
+                        f"reconnected after {_stale_kill_count} attempts — "
+                        "ending this turn. Please try again."
+                    )
+                except Exception:
+                    pass
+                break
 
         if agent._interrupt_requested:
             # Mark THIS request cancelled before force-closing so the worker's

@@ -5,6 +5,7 @@ the _send_update_notification startup hook (sends results after restart).
 """
 
 import json
+import sys
 from pathlib import Path
 from unittest.mock import patch, MagicMock, AsyncMock
 
@@ -138,6 +139,7 @@ class TestHandleUpdateCommand:
 
 
     @pytest.mark.asyncio
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: no bash/setsid chain — detached restart uses sys.executable watcher")
     async def test_fallback_when_no_setsid(self, tmp_path):
         """Falls back to start_new_session=True when setsid is not available."""
         runner = _make_runner()

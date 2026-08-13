@@ -7,6 +7,7 @@ resolve "latest" through the same workspace-scoped MRU lookup as `-c`, with
 
 from __future__ import annotations
 
+import sys
 from argparse import Namespace
 
 import pytest
@@ -215,6 +216,7 @@ def test_in_dir_missing_directory_exits(main_mod, monkeypatch, tmp_path, capsys)
     assert "--in directory not found" in capsys.readouterr().out
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: ~ expands via USERPROFILE, not $HOME")
 def test_in_dir_expands_user_home(main_mod, launched, monkeypatch, tmp_path):
     import os
 

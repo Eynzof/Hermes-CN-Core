@@ -27,6 +27,7 @@ import time
 from typing import Any, Dict, List, Optional
 
 from agent.codex_responses_adapter import _summarize_user_message_for_log
+from agent.agent_runtime_helpers import _INTERRUPTED_PLACEHOLDER
 from agent.conversation_compression import (
     COMPRESSION_RETRY_CONTEXT_REDUCED_STATUS_TEMPLATE,
     COMPRESSION_RETRY_MESSAGES_STATUS_TEMPLATE,
@@ -270,7 +271,13 @@ def _apply_active_turn_redirect(agent: Any, messages: List[Dict[str, Any]], text
         # then echoes (#81841 / incomplete #73146 else branch).
         placeholder: Dict[str, Any] = {
             "role": "assistant",
-            "content": visible or "",
+            # Nothing reached the screen: carry the same neutral interrupted
+            # marker the upstream heal pass uses ("[response interrupted]") so
+            # the row stays non-empty on the wire — the fork's P-024 fused
+            # sanitizer DROPS empty-content assistant turns, which would
+            # otherwise remove the alternation placeholder and leave a
+            # user→user tail.  The scaffold itself never lands here (#81841).
+            "content": visible or _INTERRUPTED_PLACEHOLDER,
         }
         if not visible:
             placeholder["display_kind"] = "hidden"
@@ -7935,64 +7942,6 @@ def run_conversation(
                 final_msg = agent._build_assistant_message(
                     assistant_message, finish_reason
                 )
-
-                # ── Dropped tool-call recovery (copilot/Claude) ────────
-                # Some providers (observed: claude-opus-4.8 / claude-sonnet-4.5
-                # on GitHub Copilot, ~2026-07) return finish_reason="tool_calls"
-                # while the parsed tool_calls array is empty — the model
-                # signalled it wanted to act but the payload shipped no call.
-                # Reaching finalization with that mismatch means the turn is
-                # about to end with the task unstarted (the narration, which may
-                # be in content or only in the reasoning field, gets treated as
-                # the final answer). Re-prompt (bounded to 3 CONSECUTIVE stalls;
-                # the budget resets after any successful tool round) to make the
-                # model emit the call instead of exiting. finish_reason="stop"
-                # text finishes never enter this guard.
-                if (
-                    finish_reason == "tool_calls"
-                    and not assistant_message.tool_calls
-                    and getattr(agent, "_dropped_toolcall_retries", 0) < 3
-                ):
-                    agent._dropped_toolcall_retries = getattr(agent, "_dropped_toolcall_retries", 0) + 1
-                    logger.warning(
-                        "finish_reason=tool_calls with empty tool_calls array "
-                        "(narration only) — re-prompting to emit the call "
-                        "(retry %d/3, model=%s provider=%s)",
-                        agent._dropped_toolcall_retries, agent.model, agent.provider,
-                    )
-                    agent._emit_status(
-                        "↻ Model signaled a tool call but sent none — "
-                        f"re-prompting ({agent._dropped_toolcall_retries}/3)"
-                    )
-                    # Both halves of the re-prompt pair are ephemeral recovery
-                    # scaffolding (mirrors the empty-response nudge pattern):
-                    # the interim narration-only assistant turn exists solely to
-                    # keep role alternation valid for the nudge, and the nudge
-                    # exists solely to drive the retry. Flag both so the
-                    # persistence layer never writes them to the durable
-                    # transcript and the finalization pop below can strip an
-                    # unanswered tail pair. A recovered (answered) pair stays
-                    # buried mid-list in live memory but is skipped by the
-                    # flush regardless of position.
-                    final_msg["_dropped_toolcall_nudge"] = True
-                    messages.append(final_msg)
-                    messages.append({
-                        "role": "user",
-                        "content": (
-                            "Your previous turn indicated a tool call but none was "
-                            "included. Do not narrate a plan or restate intent — issue "
-                            "the actual tool call now to continue the task."
-                        ),
-                        "_dropped_toolcall_nudge": True,
-                    })
-                    agent._session_messages = messages
-                    final_response = None
-                    continue
-
-                # Reached finalization without the dropped-tool-call mismatch —
-                # a genuine turn end. Clear the consecutive-stall budget so the
-                # next turn starts fresh.
-                agent._dropped_toolcall_retries = 0
 
                 # ── Dropped tool-call recovery (copilot/Claude) ────────
                 # Some providers (observed: claude-opus-4.8 / claude-sonnet-4.5

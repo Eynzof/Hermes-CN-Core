@@ -1799,12 +1799,12 @@ def _confine_source_images(
                 for ref in list(reference_image_urls)
             ]
     except ImageResolutionError as exc:
-        return image_url, reference_image_urls, json.dumps({
+        return image_url, reference_image_urls, orjson.dumps({
             "success": False,
             "image": None,
             "error": f"Could not read source image: {exc}",
             "error_type": type(exc).__name__,
-        })
+        }).decode('utf-8')
     return image_url, reference_image_urls, None
 
 

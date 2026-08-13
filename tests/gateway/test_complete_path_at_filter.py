@@ -19,6 +19,7 @@ Covers:
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -223,6 +224,10 @@ def test_leading_slash_matches_the_bare_form(tmp_path, monkeypatch):
     assert slashed == bare
 
 
+import sys
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: absolute /etc path resolution is POSIX-only")
 def test_leading_slash_prefers_a_real_absolute_path(tmp_path, monkeypatch):
     """When the absolute reading resolves, it wins — no silent rewrite.
 

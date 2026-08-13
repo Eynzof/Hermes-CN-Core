@@ -405,9 +405,6 @@ class TestWrapCommandWindowsNativeCwd:
         assert captured == {}
 
     def test_init_session_bootstrap_rewrites_backslash_snapshot_paths(self, monkeypatch):
-        monkeypatch.setattr(local_mod, "_IS_WINDOWS", True)
-
-    def test_init_session_bootstrap_rewrites_backslash_snapshot_paths(self, monkeypatch):
         captured = {}
         def fake_run_bash(self, cmd_string, *, login=False, timeout=120, stdin_data=None):
             captured.setdefault("script", cmd_string)  # bootstrap only; ignore the failure-path probe

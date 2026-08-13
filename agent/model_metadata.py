@@ -3295,6 +3295,64 @@ def _estimate_message_tokens_without_images(msg: Dict[str, Any]) -> int:
     return estimate_tokens_rough(str(_wire_message_shadow(msg)))
 
 
+class IncrementalTokenEstimator:
+    """O(delta) rough token estimator for an append-mostly message list.
+
+    ``estimate_messages_tokens_rough`` re-stringifies every message on every
+    call.  On a long-lived conversation the per-turn pre-flight gate re-scans
+    the whole history even though only the last couple of messages are new —
+    an O(n) pass per turn, O(n^2) across a session.
+
+    This estimator memoises each message's ``(tokens, image_tokens)``
+    contribution keyed on the message object's identity, so re-estimating a
+    conversation that grew by a few messages only pays for the new ones.  A
+    strong reference to each still-present message is kept alongside its cached
+    contribution: it pins ``id()`` (guarding against identity reuse after GC)
+    and is revalidated with an ``is`` check on every hit.  Entries for messages
+    that dropped out of the list are discarded each call, so the cache tracks
+    the live conversation and never grows unbounded.
+
+    The result is byte-for-byte identical to the stateless function: each
+    message contributes ``estimate_tokens_rough(str(_wire_message_shadow(msg)))``
+    plus its flat image cost, the same per-message rounding the stateless path
+    uses.  It is intended only for the *rough* pre-flight estimate — if a
+    cached message is mutated in place the estimate drifts by a handful of
+    tokens, which is immaterial to a ~4-chars/token gate.
+    """
+
+    __slots__ = ("_cache",)
+
+    def __init__(self) -> None:
+        # id(msg) -> (msg, tokens, image_tokens)
+        self._cache: Dict[int, Any] = {}
+
+    def estimate(self, messages: List[Dict[str, Any]]) -> int:
+        """Return the rough token estimate for ``messages`` (cache-accelerated)."""
+        if not messages:
+            self._cache = {}
+            return 0
+        cache = self._cache
+        fresh: Dict[int, Any] = {}
+        total = 0
+        for msg in messages:
+            key = id(msg)
+            entry = cache.get(key)
+            if entry is not None and entry[0] is msg:
+                tokens = entry[1]
+                imgs = entry[2]
+            else:
+                tokens = _estimate_message_tokens_without_images(msg)
+                imgs = _count_image_tokens(msg, 1500)
+            fresh[key] = (msg, tokens, imgs)
+            total += tokens + imgs
+        self._cache = fresh
+        return total
+
+    def invalidate(self) -> None:
+        """Drop all cached contributions (e.g. after a full history rebuild)."""
+        self._cache = {}
+
+
 def estimate_request_tokens_rough(
     messages: List[Dict[str, Any]],
     *,

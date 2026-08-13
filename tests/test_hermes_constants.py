@@ -1,6 +1,7 @@
 """Tests for hermes_constants module."""
 
 import os
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -33,6 +34,7 @@ from hermes_constants import (
 class TestGetDefaultHermesRoot:
     """Tests for get_default_hermes_root() — Docker/custom deployment awareness."""
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: native root is %%LOCALAPPDATA%%\\hermes (covered by test_no_hermes_home_returns_localappdata_root_on_windows)")
     def test_no_hermes_home_returns_native(self, tmp_path, monkeypatch):
         """When HERMES_HOME is not set, returns ~/.hermes."""
         monkeypatch.delenv("HERMES_HOME", raising=False)

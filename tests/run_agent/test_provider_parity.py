@@ -763,16 +763,25 @@ class TestAuxiliaryClientProviderPriority:
     def test_openrouter_key_is_not_implicit_fallback(self, monkeypatch):
         """OpenRouter key alone should not make auto probe OpenRouter."""
         monkeypatch.setenv("OPENROUTER_API_KEY", "or-key")
-        from agent.auxiliary_client import _OPENROUTER_MODEL, get_text_auxiliary_client
-        with patch("agent.auxiliary_client.OpenAI") as mock:
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        from agent.auxiliary_client import get_text_auxiliary_client
+        with patch("agent.auxiliary_client._read_main_provider", return_value=""), \
+             patch("agent.auxiliary_client._read_main_model", return_value=""), \
+             patch("agent.auxiliary_client._try_custom_endpoint", return_value=(None, None)), \
+             patch("agent.auxiliary_client._resolve_api_key_provider", return_value=(None, None)), \
+             patch("agent.auxiliary_client._try_openrouter") as try_openrouter, \
+             patch("agent.auxiliary_client.OpenAI") as mock_openai:
             client, model = get_text_auxiliary_client()
-        assert model == _OPENROUTER_MODEL
-        assert "openrouter" in str(mock.call_args.kwargs["base_url"]).lower()
+        assert client is None
+        assert model is None
+        try_openrouter.assert_not_called()
+        mock_openai.assert_not_called()
 
     def test_nous_auth_is_not_implicit_fallback(self, monkeypatch):
         """Nous auth alone should not make auto probe Nous Portal."""
         monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-        from agent.auxiliary_client import _NOUS_MODEL, get_text_auxiliary_client
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        from agent.auxiliary_client import get_text_auxiliary_client
         nous_auth = {
             "access_token": _fake_invoke_jwt(),
             "scope": "inference:invoke",
@@ -786,7 +795,11 @@ class TestAuxiliaryClientProviderPriority:
              patch("agent.auxiliary_client.OpenAI") as mock_openai, \
              patch("hermes_cli.models.get_nous_recommended_aux_model", return_value=None):
             client, model = get_text_auxiliary_client()
-        assert model == _NOUS_MODEL
+        assert client is None
+        assert model is None
+        read_nous_auth.assert_not_called()
+        try_nous.assert_not_called()
+        mock_openai.assert_not_called()
 
     def test_custom_endpoint_when_no_nous(self, monkeypatch):
         """Custom endpoint is used when no OpenRouter/Nous keys are available.

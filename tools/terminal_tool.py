@@ -1654,8 +1654,11 @@ def _is_unusable_container_cwd(cwd: str) -> bool:
         return True
     # Relative paths (".", "src/") can't be a container workdir either. Windows
     # drive paths are absolute on Windows but os.path.isabs() is False on a
-    # POSIX host, so they're already caught by the prefix check above.
-    if not os.path.isabs(cwd):
+    # POSIX host, so they're already caught by the prefix check above. On a
+    # Windows host the mirror case bites: POSIX container paths (e.g.
+    # "/workspace") are not os.path.isabs() under ntpath, so a leading "/"
+    # must count as absolute too (container cwds are always POSIX).
+    if not (cwd.startswith("/") or os.path.isabs(cwd)):
         return True
     return False
 

@@ -1463,8 +1463,20 @@ class ShellFileOperations(FileOperations):
     def _prim_stat_size(self, path: str) -> "ExecuteResult":
         """Byte size of ``path`` (POSIX: ``wc -c``). Non-zero exit if missing."""
         if self._use_inproc_io():
+            abs_path = self._abs_local(path)
             try:
-                return ExecuteResult(stdout=str(os.path.getsize(self._abs_local(path))), exit_code=0)
+                if not os.path.isfile(abs_path):
+                    # Mirror the POSIX ``[ -f ]``/``[ -e ]`` size probe: an
+                    # existing non-regular path (directory, FIFO, device)
+                    # reports the sentinel so callers surface "not a regular
+                    # file" instead of a read error; a missing path exits
+                    # non-zero (os.path.getsize on a Windows directory raises
+                    # PermissionError, which would leak a "Permission denied"
+                    # instead of the not-regular error).
+                    if os.path.exists(abs_path):
+                        return ExecuteResult(stdout=NOT_REGULAR_SENTINEL, exit_code=0)
+                    return ExecuteResult(stdout="", exit_code=1)
+                return ExecuteResult(stdout=str(os.path.getsize(abs_path)), exit_code=0)
             except OSError:
                 return ExecuteResult(stdout="", exit_code=1)
         return self._exec(f"wc -c < {self._escape_shell_arg(path)} 2>/dev/null")
@@ -1562,7 +1574,11 @@ class ShellFileOperations(FileOperations):
         """
         abs_path = self._abs_local(path)
         parent = os.path.dirname(abs_path) or "."
-        data = content.encode("utf-8")
+        # surrogateescape is the exact inverse of the decode that may have
+        # produced this content (see write_file's encode for the byte count);
+        # without it a surrogateescape round-trip (U+DC80–U+DCFF) crashes here
+        # on the local Windows backend.
+        data = content.encode("utf-8", "surrogateescape")
         expected_crc = zlib.crc32(data) & 0xFFFFFFFF
         expected_size = len(data)
         # Serialize concurrent writers targeting the SAME file (striped, so
@@ -1909,13 +1925,32 @@ class ShellFileOperations(FileOperations):
         # the transport allows, falling back to the legacy text heuristic.
         if self._use_inproc_io():
             # [CN-fork] P-033: in-process sample read on the local Windows backend.
-            sample_result = self._prim_read_sample(path, 1000)
-            sample_output = _strip_terminal_fence_leaks(sample_result.stdout)
-            is_binary = self._is_likely_binary(path, sample_output)
-            sample_bytes = (
-                sample_result.stdout.encode("utf-8", errors="replace")
-                if sample_result.stdout else b""
-            )
+            # Read RAW bytes so the type disclosure keeps its magic-byte
+            # signature, then classify with the byte-layer rule (#80308) while
+            # preserving the P-037 contract: bytes that decode cleanly through
+            # a legacy fallback encoding (GBK/cp936) are TEXT, not binary.
+            #   binary = byte_binary AND (lossy-decode OR valid-utf8)
+            # (valid UTF-8 that still trips the byte layer carries NUL/control
+            # bytes → binary; a clean legacy decode → text; an undecodable
+            # sample (PNG/ELF magic) → binary with the real type name).
+            try:
+                with open(self._abs_local(path), "rb") as fh:
+                    sample_bytes = fh.read(1000)
+            except OSError:
+                sample_bytes = b""
+            sample_output = _decode_file_bytes(sample_bytes)
+            byte_binary = self._is_likely_binary_bytes(sample_bytes)
+            if byte_binary:
+                if "\ufffd" in sample_output:
+                    is_binary = True
+                else:
+                    try:
+                        sample_bytes.decode("utf-8")
+                        is_binary = True
+                    except UnicodeDecodeError:
+                        is_binary = False  # clean legacy-encoding text (P-037)
+            else:
+                is_binary = False
         else:
             sample_bytes = self._sample_file_bytes(path)
             if sample_bytes is not None:
@@ -2042,8 +2077,7 @@ class ShellFileOperations(FileOperations):
             return out
 
         target = _canon(filename)
-        ls_cmd = f"ls -1 {self._escape_shell_arg(dir_path)} 2>/dev/null"
-        ls_result = self._exec(ls_cmd)
+        ls_result = self._prim_list_dir(dir_path)
         if ls_result.exit_code != 0 or not ls_result.stdout.strip():
             return None
         candidates = [
@@ -2178,6 +2212,33 @@ class ShellFileOperations(FileOperations):
     def read_file_bytes(self, path: str, max_bytes: Optional[int] = None) -> ReadResult:
         """Read binary-safe bytes from any shell-backed environment."""
         path = self._expand_path(path)
+        if self._use_inproc_io():
+            # [CN-fork] P-033: in-process read on the local Windows backend.
+            # The shell probe (``[ -f ]`` + ``base64``) breaks under the
+            # fork's default Windows shell (git-bash): the /dev/null
+            # redirects are rewritten for PowerShell, so every command fails
+            # and read_file_tool's document-extraction path reports "File
+            # not found" for files that exist.
+            abs_path = self._abs_local(path)
+            try:
+                file_size = os.path.getsize(abs_path)
+            except OSError:
+                return ReadResult(error=f"File not found: {path}")
+            if max_bytes is not None and file_size > max_bytes:
+                return ReadResult(
+                    file_size=file_size,
+                    error=f"File is too large ({file_size:,} bytes, limit is {max_bytes:,})",
+                )
+            try:
+                with open(abs_path, "rb") as fh:
+                    data = fh.read()
+            except OSError as exc:
+                return ReadResult(error=f"Failed to read binary file: {exc}")
+            return ReadResult(
+                base64_content=base64.b64encode(data).decode(),
+                file_size=file_size,
+                is_binary=True,
+            )
         stat_result = self._exec(self._size_probe_cmd(path))
         if stat_result.exit_code != 0:
             return ReadResult(error=f"File not found: {path}")
@@ -2510,7 +2571,7 @@ class ShellFileOperations(FileOperations):
         # what we intended to write. This catches silent persistence failures
         # (backend FS oddities, truncated pipe, race, PowerShell script no-op,
         # etc.) without the cost of re-reading the entire file content.
-        content_bytes = content.encode('utf-8', 'surrogatepass')
+        content_bytes = content.encode('utf-8', 'surrogateescape')
         expected_bytes = len(content_bytes)
         stat_result = self._prim_stat_size(path)
         if stat_result.exit_code != 0:
@@ -2542,14 +2603,19 @@ class ShellFileOperations(FileOperations):
                 # the hash in-process — `sha256sum` is a POSIX binary that
                 # does not exist under Windows PowerShell (the fork's only
                 # Windows shell), so the shell probe would silently report
-                # verified=None and force a verify-read round-trip.
-                read_result = self._prim_read_all(path)
-                if read_result.exit_code == 0:
-                    disk_sha = hashlib.sha256(
-                        read_result.stdout.encode("utf-8", "surrogatepass")
-                    ).hexdigest()
+                # verified=None and force a verify-read round-trip. Hash the
+                # RAW bytes (like sha256sum does) rather than decoded text:
+                # _decode_file_bytes is lossy for non-UTF-8 (e.g. a
+                # surrogateescape round-trip of \xff reads back as U+FFFD),
+                # so hashing decoded text could never match the intended
+                # content_bytes.
+                try:
+                    with open(self._abs_local(path), "rb") as fh:
+                        disk_sha = hashlib.sha256(fh.read()).hexdigest()
                     expected_sha = hashlib.sha256(content_bytes).hexdigest()
                     content_verified = disk_sha == expected_sha
+                except OSError:
+                    content_verified = None
             else:
                 hash_cmd = f"sha256sum {self._escape_shell_arg(path)} 2>/dev/null"
                 hash_result = self._exec(hash_cmd)

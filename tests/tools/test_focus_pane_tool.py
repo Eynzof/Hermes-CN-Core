@@ -5,6 +5,7 @@ import json
 import pytest
 
 from tools import desktop_ui, focus_pane_tool as fp
+from tools.registry import registry
 
 
 @pytest.fixture(autouse=True)

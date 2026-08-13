@@ -202,6 +202,7 @@ class _DiscordMediaFailureAdapter(BasePlatformAdapter):
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: file:// media URIs encode backslashes (POSIX path equality assumptions)")
 async def test_queued_followup_delivery_strips_media_tag_from_text_and_sends_image(
     tmp_path, monkeypatch,
 ):
@@ -245,6 +246,7 @@ async def test_queued_followup_delivery_strips_media_tag_from_text_and_sends_ima
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: file:// media URIs encode backslashes (POSIX path equality assumptions)")
 async def test_queued_followup_delivery_reuses_routing_metadata_for_media(
     tmp_path, monkeypatch,
 ):
@@ -508,6 +510,7 @@ class _QueuedMediaAgent:
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: file:// media URIs encode backslashes (POSIX path equality assumptions)")
 async def test_queued_resend_branch_delivers_media_and_preserves_protected_example(
     tmp_path, monkeypatch,
 ):

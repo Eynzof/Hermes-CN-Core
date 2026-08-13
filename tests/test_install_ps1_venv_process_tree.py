@@ -153,11 +153,13 @@ def test_venv_sweep_stops_managed_runtime_children_but_not_unrelated_processes(
             "PATH": str(fake_bin) + os.pathsep + os.environ["PATH"],
         }
         result = subprocess.run(
-            [
-                POWERSHELL,
-                "-NoProfile",
-                "-File",
-                str(INSTALL_PS1),
+              [
+                  POWERSHELL,
+                  "-NoProfile",
+                  "-ExecutionPolicy",
+                  "Bypass",
+                  "-File",
+                  str(INSTALL_PS1),
                 "-Stage",
                 "venv",
                 "-NonInteractive",

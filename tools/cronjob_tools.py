@@ -1249,7 +1249,7 @@ def cronjob(
                 result["executed"] = True
                 result["execution_mode"] = "background"
                 result["delegation_id"] = bg.get("delegation_id")
-                return json.dumps(
+                return orjson.dumps(
                     {
                         "success": True,
                         "job": result,
@@ -1260,8 +1260,8 @@ def cronjob(
                             "Do not wait or poll — just continue."
                         ),
                     },
-                    indent=2,
-                )
+                    option=orjson.OPT_INDENT_2,
+                ).decode('utf-8')
             # bg carries a terminal result (claim lost, or inline fallback
             # after pool rejection); None means background delivery is
             # unsupported here — run synchronously as before.

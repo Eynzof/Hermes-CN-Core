@@ -14,6 +14,7 @@ Covers the three seams the integration relies on:
 import json
 import os
 import stat
+import sys
 import time
 
 import pytest
@@ -272,6 +273,7 @@ class TestLegacyCloudMigration:
         monkeypatch.setattr(bu_cli, "_find_cli", lambda: None)
         assert bu_cli.is_browser_use_cli_mode() is False
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: POSIX /bin/sh fake-CLI fixtures")
     def test_migrated_config_gets_bu_autospawn(self, tmp_path, monkeypatch):
         monkeypatch.setattr("hermes_cli.config.read_raw_config", lambda: self._LEGACY)
         monkeypatch.setenv("BROWSER_USE_API_KEY", "bu-key")
@@ -280,6 +282,7 @@ class TestLegacyCloudMigration:
         result = json.loads(bu_cli.browser_exec("print(1)"))
         assert "autospawn:1" in result["output"]
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: POSIX /bin/sh fake-CLI fixtures")
     def test_explicit_backend_does_not_set_bu_autospawn(self, tmp_path, monkeypatch):
         monkeypatch.setattr(
             "hermes_cli.config.read_raw_config",
@@ -373,6 +376,7 @@ class TestBackendCdpResolution:
         err = bu_cli._resolve_backend_cdp(self._env(), "t1")
         assert err and "no" in err.lower() and "CDP" in err
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: POSIX /bin/sh fake-CLI fixtures")
     def test_named_session_skips_backend_resolution(self, tmp_path, monkeypatch):
         """session=<name> (BU_NAME cloud browser) must not consume a backend
         provider session."""
@@ -528,6 +532,7 @@ class TestNativeScreenshots:
         out = f"{stale}\n/nonexistent/dir/x.png\n"
         assert bu_cli._find_screenshot(out, since=time.time()) is None
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: POSIX /bin/sh fake-CLI fixtures")
     def test_vision_model_gets_multimodal_envelope(self, tmp_path, monkeypatch):
         shot = self._shot(tmp_path)
         cli = _fake_cli(tmp_path, f'cat > /dev/null\necho "{shot}"\n')
@@ -546,6 +551,7 @@ class TestNativeScreenshots:
         assert result["meta"]["screenshot_path"] == shot
         assert shot in result["text_summary"]
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: POSIX /bin/sh fake-CLI fixtures")
     def test_text_only_model_gets_plain_result_with_path(self, tmp_path, monkeypatch):
         shot = self._shot(tmp_path)
         cli = _fake_cli(tmp_path, f'cat > /dev/null\necho "{shot}"\n')
@@ -666,6 +672,7 @@ class TestBrowserExec:
         result = json.loads(bu_cli.browser_exec("   "))
         assert "error" in result
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: POSIX /bin/sh fake-CLI fixtures")
     def test_code_piped_on_stdin(self, tmp_path, monkeypatch):
         cli = _fake_cli(tmp_path, 'code=$(cat)\necho "got:$code"\n')
         monkeypatch.setattr(bu_cli, "_find_cli", lambda: [cli])
@@ -675,6 +682,7 @@ class TestBrowserExec:
         assert 'got:print("hi")' in result["output"]
         assert "session" not in result
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: POSIX /bin/sh fake-CLI fixtures")
     def test_session_sets_bu_name(self, tmp_path, monkeypatch):
         cli = _fake_cli(tmp_path, 'cat > /dev/null\necho "bu:$BU_NAME"\n')
         monkeypatch.setattr(bu_cli, "_find_cli", lambda: [cli])
@@ -689,6 +697,7 @@ class TestBrowserExec:
         assert "error" in result
         assert "session" in result["error"].lower()
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: POSIX /bin/sh fake-CLI fixtures")
     def test_nonzero_exit_reports_failure_and_stderr(self, tmp_path, monkeypatch):
         cli = _fake_cli(tmp_path, 'cat > /dev/null\necho "boom" >&2\nexit 3\n')
         monkeypatch.setattr(bu_cli, "_find_cli", lambda: [cli])
@@ -697,6 +706,7 @@ class TestBrowserExec:
         assert result["exit_code"] == 3
         assert "boom" in result["stderr"]
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: POSIX /bin/sh fake-CLI fixtures")
     def test_timeout_returns_actionable_error(self, tmp_path, monkeypatch):
         cli = _fake_cli(tmp_path, "cat > /dev/null\nsleep 30\n")
         monkeypatch.setattr(bu_cli, "_find_cli", lambda: [cli])
@@ -708,6 +718,7 @@ class TestBrowserExec:
 class TestFindCliManagedBin:
     """_find_cli probes $HERMES_HOME/bin after PATH (managed uv/uvx/browser-use)."""
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: POSIX /bin/sh fake-CLI fixtures")
     def test_managed_bin_browser_use_found(self, tmp_path, monkeypatch):
         bin_dir = tmp_path / "home" / "bin"
         bin_dir.mkdir(parents=True)
@@ -718,6 +729,7 @@ class TestFindCliManagedBin:
         monkeypatch.setenv("PATH", str(tmp_path / "empty"))
         assert bu_cli._find_cli_unpatched() == [str(bu)]
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: POSIX /bin/sh fake-CLI fixtures")
     def test_managed_bin_uvx_fallback(self, tmp_path, monkeypatch):
         bin_dir = tmp_path / "home" / "bin"
         bin_dir.mkdir(parents=True)
@@ -754,6 +766,7 @@ class TestInstallCli:
         assert ok is False
         assert "uv" in msg
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: POSIX /bin/sh fake-CLI fixtures")
     def test_successful_install_via_fake_uv(self, tmp_path, monkeypatch):
         home = tmp_path / "home"
         bin_dir = home / "bin"
@@ -782,6 +795,7 @@ class TestInstallCli:
         assert ok is True, msg
         assert (bin_dir / "browser-use").exists()
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: POSIX /bin/sh fake-CLI fixtures")
     def test_failed_install_surfaces_stderr_tail(self, tmp_path, monkeypatch):
         home = tmp_path / "home"
         monkeypatch.setenv("HERMES_HOME", str(home))

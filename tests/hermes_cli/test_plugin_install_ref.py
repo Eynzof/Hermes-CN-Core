@@ -12,6 +12,16 @@ import pytest
 import yaml
 
 from hermes_cli.subcommands.plugins import build_plugins_parser
+import sys as _sys
+
+# Windows baseline: ``Path.as_uri()`` yields ``file:///C:/...`` which MSYS git
+# (used by these git-clone fixtures) mangles to ``/C:/...`` and rejects with
+# "does not appear to be a git repository". Skip the clone-based cases on
+# win32 (fork Windows-compat convention); parser/credential tests still run.
+_windows_git_uri = pytest.mark.skipif(
+    _sys.platform == "win32",
+    reason="Windows baseline: Path.as_uri() file:///C:/ not clonable by MSYS git",
+)
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -69,6 +79,7 @@ def test_canonical_source_never_persists_http_credentials():
     )
 
 
+@_windows_git_uri
 def test_cloned_origin_never_persists_http_credentials(tmp_path):
     from hermes_cli.plugins_cmd import _scrub_cloned_origin
 
@@ -95,6 +106,7 @@ def test_cloned_origin_never_persists_http_credentials(tmp_path):
     assert "secret" not in (repo / ".git" / "config").read_text(encoding="utf-8")
 
 
+@_windows_git_uri
 def test_git_errors_never_echo_source_credentials():
     from hermes_cli.plugins_cmd import _safe_git_error
 
@@ -113,6 +125,7 @@ def test_git_errors_never_echo_source_credentials():
     assert "https://example.com/owner/repo.git" in error
 
 
+@_windows_git_uri
 def test_exact_ref_installs_old_commit_and_normalizes_uppercase(monkeypatch, tmp_path):
     from hermes_cli.plugins_cmd import _install_plugin_core
 
@@ -134,6 +147,7 @@ def test_exact_ref_installs_old_commit_and_normalizes_uppercase(monkeypatch, tmp
 
 
 @pytest.mark.parametrize("ref", ["", "main", "abc", "g" * 40, "a" * 39, "a" * 41])
+@_windows_git_uri
 def test_invalid_ref_is_rejected_before_any_install_state(monkeypatch, tmp_path, ref):
     from hermes_cli.plugins_cmd import PluginOperationError, _install_plugin_core
 
@@ -148,6 +162,7 @@ def test_invalid_ref_is_rejected_before_any_install_state(monkeypatch, tmp_path,
     assert not (home / "plugins" / ".install-metadata.json").exists()
 
 
+@_windows_git_uri
 def test_subdir_pin_records_source_identity_and_installs_requested_tree(
     monkeypatch, tmp_path
 ):
@@ -182,6 +197,7 @@ def test_subdir_pin_records_source_identity_and_installs_requested_tree(
     }
 
 
+@_windows_git_uri
 def test_force_reinstall_does_not_drift_pin_without_explicit_new_ref(
     monkeypatch, tmp_path
 ):
@@ -203,6 +219,7 @@ def test_force_reinstall_does_not_drift_pin_without_explicit_new_ref(
     assert _metadata(home)["demo"]["revision"] == new_sha
 
 
+@_windows_git_uri
 def test_unpinned_install_and_force_reinstall_keep_tracking_head(monkeypatch, tmp_path):
     from hermes_cli.plugins_cmd import _install_plugin_core
 
@@ -221,6 +238,7 @@ def test_unpinned_install_and_force_reinstall_keep_tracking_head(monkeypatch, tm
     assert _metadata(home)["demo"]["pinned"] is False
 
 
+@_windows_git_uri
 def test_metadata_is_profile_local_and_read_from_disk_each_time(monkeypatch, tmp_path):
     from hermes_cli.plugins_cmd import _install_plugin_core, _read_install_metadata
 
@@ -238,6 +256,7 @@ def test_metadata_is_profile_local_and_read_from_disk_each_time(monkeypatch, tmp
     assert _read_install_metadata()["demo"]["source"] == repo.as_uri()
 
 
+@_windows_git_uri
 def test_pinned_plugin_update_refuses_to_drift(monkeypatch, tmp_path, capsys):
     from hermes_cli.plugins_cmd import _install_plugin_core, cmd_update
 
@@ -254,6 +273,7 @@ def test_pinned_plugin_update_refuses_to_drift(monkeypatch, tmp_path, capsys):
     assert _git(home / "plugins" / "demo", "rev-parse", "HEAD") == old_sha
 
 
+@_windows_git_uri
 def test_dashboard_update_also_refuses_to_drift_pin(monkeypatch, tmp_path):
     from hermes_cli.plugins_cmd import (
         _install_plugin_core,
@@ -272,6 +292,7 @@ def test_dashboard_update_also_refuses_to_drift_pin(monkeypatch, tmp_path):
     assert _git(home / "plugins" / "demo", "rev-parse", "HEAD") == old_sha
 
 
+@_windows_git_uri
 def test_failed_force_reinstall_keeps_existing_plugin_and_metadata(
     monkeypatch, tmp_path
 ):
@@ -293,6 +314,7 @@ def test_failed_force_reinstall_keeps_existing_plugin_and_metadata(
     assert _metadata(home) == before
 
 
+@_windows_git_uri
 def test_checkout_mismatch_is_rejected(monkeypatch, tmp_path):
     from hermes_cli.plugins_cmd import PluginOperationError, _checkout_exact_revision
 
@@ -307,6 +329,7 @@ def test_checkout_mismatch_is_rejected(monkeypatch, tmp_path):
         _checkout_exact_revision(clone, "git", old_sha)
 
 
+@_windows_git_uri
 def test_metadata_write_failure_rolls_back_new_install(monkeypatch, tmp_path):
     from hermes_cli.plugins_cmd import _install_plugin_core
 
@@ -325,6 +348,7 @@ def test_metadata_write_failure_rolls_back_new_install(monkeypatch, tmp_path):
     assert not (home / "plugins" / ".install-metadata.json").exists()
 
 
+@_windows_git_uri
 def test_metadata_write_failure_rolls_back_removal(monkeypatch, tmp_path):
     from hermes_cli.plugins_cmd import _install_plugin_core, _remove_plugin_core
 
@@ -349,6 +373,7 @@ def test_metadata_write_failure_rolls_back_removal(monkeypatch, tmp_path):
     assert list(target.parent.glob(".demo.remove-*")) == []
 
 
+@_windows_git_uri
 def test_reinstall_after_manual_directory_removal_retains_pin(monkeypatch, tmp_path):
     from hermes_cli.plugins_cmd import _install_plugin_core
 

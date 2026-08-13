@@ -1,0 +1,21 @@
+{
+  "samples": [
+    {
+      "section": "sanitize_messages_small",
+      "duration_ms": 0.01,
+      "iteration": 0
+    }
+  ],
+  "summary": {
+    "sanitize_messages_small": {
+      "count": 1,
+      "total_ms": 0.01,
+      "mean_ms": 0.01,
+      "min_ms": 0.01,
+      "max_ms": 0.01,
+      "durations": [
+        0.01
+      ]
+    }
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "summary": {
+    "conversation_turn": {
+      "count": 1,
+      "total_ms": 656.727,
+      "mean_ms": 656.727,
+      "min_ms": 656.727,
+      "max_ms": 656.727,
+      "durations": [
+        656.727
+      ]
+    },
+    "init_agent": {
+      "count": 1,
+      "total_ms": 7785.976,
+      "mean_ms": 7785.976,
+      "min_ms": 7785.976,
+      "max_ms": 7785.976,
+      "durations": [
+        7785.976
+      ]
+    }
+  }
+}

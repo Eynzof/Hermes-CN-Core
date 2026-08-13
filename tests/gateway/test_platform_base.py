@@ -784,6 +784,7 @@ class TestMediaDeliveryDefaultMode:
         assert BasePlatformAdapter.validate_media_delivery_path(str(link)) is None
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: Docker container media paths are POSIX-only")
 class TestDockerContainerMediaPathTranslation:
     """MEDIA:/workspace (and configured mounts) must resolve to host paths."""
 

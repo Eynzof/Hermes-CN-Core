@@ -1,0 +1,21 @@
+{
+  "samples": [
+    {
+      "section": "build_terminal_description",
+      "duration_ms": 55.696,
+      "iteration": 0
+    }
+  ],
+  "summary": {
+    "build_terminal_description": {
+      "count": 1,
+      "total_ms": 55.696,
+      "mean_ms": 55.696,
+      "min_ms": 55.696,
+      "max_ms": 55.696,
+      "durations": [
+        55.696
+      ]
+    }
+  }
+}

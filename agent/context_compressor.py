@@ -7331,6 +7331,46 @@ This compaction should PRIORITISE preserving all information related to the focu
         return compressed
 
 
+    # ------------------------------------------------------------------
+    # Context engine tools (context_usage, compact) — fork P-039 additions
+    # ------------------------------------------------------------------
+    def get_tool_schemas(self) -> List[Dict[str, Any]]:
+        """Return schemas for ``context_usage`` and ``compact`` tools."""
+        from agent.context_tools import get_compact_schema, get_context_usage_schema
+        return [get_context_usage_schema(), get_compact_schema()]
+
+    def handle_tool_call(self, name: str, args: dict, **kwargs) -> str:
+        """Handle context engine tool calls from the agent.
+
+        Supported tools:
+          - ``context_usage``: reports current usage status as JSON.
+          - ``compact``: validates and acknowledges a compaction request.
+            The actual compression is deferred to the tool executor layer
+            (tool_executor.py inline dispatch) which detects the compact
+            tool and calls ``_compress_context()`` with the acknowledged
+            parameters.
+        """
+        import orjson
+        if name == "context_usage":
+            return orjson.dumps(self.get_usage_status()).decode('utf-8')
+        if name == "compact":
+            instruction = args.get("instruction", "")
+            mode = args.get("mode", "balanced")
+            # Validate mode
+            from agent.context_tools import CompactMode
+            if mode not in [m.value for m in CompactMode]:
+                mode = CompactMode.BALANCED.value
+            return orjson.dumps({
+                "status": "acknowledged",
+                "message": (
+                    "Compaction request registered. "
+                    f"{'Focus: ' + instruction + '. ' if instruction else ''}"
+                    f"Mode: {mode}."
+                ),
+                "current_usage": self.get_usage_status(),
+            }).decode('utf-8')
+        return super().handle_tool_call(name, args, **kwargs)
+
 def is_compaction_summary_message(message: Any) -> bool:
     """Return True when *message* is a context-compaction handoff summary.
 

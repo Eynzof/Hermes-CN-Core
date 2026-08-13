@@ -197,3 +197,6 @@ infographics/
 infograficos/
 infografico/
 build/
+
+# Windows system cache (never track)
+%SystemDrive%/

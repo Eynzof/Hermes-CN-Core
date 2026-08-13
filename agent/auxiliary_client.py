@@ -6429,14 +6429,6 @@ def resolve_provider_client(
             custom_key_env = (custom_entry.get("key_env") or custom_entry.get("api_key_env") or "").strip()
             if not custom_key and custom_key_env:
                 custom_key = _scoped_key_env(custom_key_env)
-            custom_key = custom_key or "no-key-required"
-            if custom_key == "no-key-required":
-                logger.warning(
-                    "resolve_provider_client: named custom provider %r has no resolvable "
-                    "api_key — request will be sent with placeholder no-key-required "
-                    "and will 401 on auth-required endpoints",
-                    custom_entry.get("name") or provider,
-                )
             # An explicit per-task api_mode override (from _resolve_task_provider_model)
             # wins; otherwise fall back to what the provider entry declared.
             entry_api_mode = (api_mode or custom_entry.get("api_mode") or "").strip()
@@ -9906,46 +9898,6 @@ async def async_call_llm(
             semaphore.release()
 
 
-async def _async_call_llm_impl(
-    task: str = None,
-    *,
-    provider: str = None,
-    model: str = None,
-    base_url: str = None,
-    api_key: str = None,
-    main_runtime: Optional[Dict[str, Any]] = None,
-    messages: list,
-    temperature: Optional[float] = None,
-    max_tokens: int = None,
-    tools: list = None,
-    timeout: float = None,
-    extra_body: dict = None,
-    reasoning_config: Optional[dict] = None,
-    route_info: Optional[Dict[str, str]] = None,
-) -> Any:
-    """Run an asynchronous auxiliary LLM request under the configured limit."""
-    semaphore = _acquire_async_aux_semaphore(task)
-    if semaphore is not None:
-        await semaphore.acquire()
-    try:
-        return await _async_call_llm_impl(
-            task=task,
-            provider=provider,
-            model=model,
-            base_url=base_url,
-            api_key=api_key,
-            main_runtime=main_runtime,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            tools=tools,
-            timeout=timeout,
-            extra_body=extra_body,
-            reasoning_config=reasoning_config,
-        )
-    finally:
-        if semaphore is not None:
-            semaphore.release()
 
 
 async def _async_call_llm_impl(
@@ -9963,6 +9915,7 @@ async def _async_call_llm_impl(
     timeout: float = None,
     extra_body: dict = None,
     reasoning_config: Optional[dict] = None,
+      route_info: Optional[Dict[str, str]] = None,
 ) -> Any:
     """Centralized asynchronous LLM call.
 

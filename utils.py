@@ -331,11 +331,15 @@ def atomic_write_text(
                 handle.write(content)
                 handle.flush()
                 os.fsync(handle.fileno())
-                real_path = atomic_replace(tmp_path, path)
-                if preserve_mode:
-                    _restore_file_owner(Path(real_path), original_owner)
-                if effective_mode is not None and not hasattr(os, "fchmod"):
-                    _restore_file_mode(Path(real_path), effective_mode)
+        # The temp handle must be CLOSED before os.replace on Windows:
+        # CPython opens files without FILE_SHARE_DELETE, so renaming over
+        # an open temp handle raises WinError 32. The with-block exits
+        # (closing the handle) before atomic_replace runs (fork fix).
+        real_path = atomic_replace(tmp_path, path)
+        if preserve_mode:
+            _restore_file_owner(Path(real_path), original_owner)
+        if effective_mode is not None and not hasattr(os, "fchmod"):
+            _restore_file_mode(Path(real_path), effective_mode)
     except BaseException:
         try:
             os.unlink(tmp_path)

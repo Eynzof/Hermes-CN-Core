@@ -1343,6 +1343,8 @@ class TestTerminateHostPidWindows:
 class TestTerminateHostPidPosix:
     """POSIX branch walks the tree via psutil and SIGTERMs children first."""
 
+    pytest.importorskip("psutil")
+
     def test_posix_walks_tree_and_terminates_children_then_parent(self, monkeypatch):
         from tools import process_registry as pr
         import psutil
@@ -1764,7 +1766,36 @@ class TestReaderLoopOrphanedPipe:
 # Spawn shell selection
 # =========================================================================
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Windows baseline: systemd-run --user --scope is POSIX-only",
+)
 class TestSpawnLocalShellSelection:
+    @pytest.fixture()
+    def _gateway_identity(self, monkeypatch):
+        """Opt-in: mark this test as running AS the live gateway process."""
+        monkeypatch.setenv("_HERMES_GATEWAY", "1")
+        monkeypatch.setattr(
+            "gateway.status.get_running_pid",
+            lambda *, cleanup_stale=False: os.getpid(),
+        )
+
+    def _fake_popen_capture(self):
+        """Return (fake_popen, captured) where captured["argv"] gets the
+        argv passed to subprocess.Popen."""
+        captured = {}
+
+        def fake_popen(argv, **kwargs):
+            captured["argv"] = list(argv)
+            captured["start_new_session"] = kwargs.get("start_new_session")
+            proc = MagicMock()
+            proc.pid = 4321
+            proc.stdout = iter([])
+            proc.stdin = MagicMock()
+            proc.poll.return_value = None
+            return proc
+
+        return fake_popen, captured
     """Regression tests for background terminal shell parity on Windows."""
 
     def test_spawn_local_windows_uses_resolve_shell(self, monkeypatch, registry):

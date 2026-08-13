@@ -1,0 +1,51 @@
+{
+  "samples": [
+    {
+      "section": "shell_startup_powershell_51",
+      "duration_ms": 10335.052,
+      "iteration": 0
+    },
+    {
+      "section": "shell_startup_pwsh_7",
+      "duration_ms": 4424.425,
+      "iteration": 0
+    },
+    {
+      "section": "shell_startup_cmd",
+      "duration_ms": 233.159,
+      "iteration": 0
+    }
+  ],
+  "summary": {
+    "shell_startup_cmd": {
+      "count": 1,
+      "total_ms": 233.159,
+      "mean_ms": 233.159,
+      "min_ms": 233.159,
+      "max_ms": 233.159,
+      "durations": [
+        233.159
+      ]
+    },
+    "shell_startup_powershell_51": {
+      "count": 1,
+      "total_ms": 10335.052,
+      "mean_ms": 10335.052,
+      "min_ms": 10335.052,
+      "max_ms": 10335.052,
+      "durations": [
+        10335.052
+      ]
+    },
+    "shell_startup_pwsh_7": {
+      "count": 1,
+      "total_ms": 4424.425,
+      "mean_ms": 4424.425,
+      "min_ms": 4424.425,
+      "max_ms": 4424.425,
+      "durations": [
+        4424.425
+      ]
+    }
+  }
+}

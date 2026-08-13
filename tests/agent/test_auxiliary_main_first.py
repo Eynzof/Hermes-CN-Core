@@ -99,6 +99,7 @@ class TestResolveAutoMainFirst:
             mock_resolve.return_value = (mock_client, "anthropic/claude-opus-4.6")
 
 
+            from agent.auxiliary_client import _resolve_auto
             client, model = _resolve_auto()
 
         assert client is mock_client

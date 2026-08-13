@@ -19,6 +19,7 @@ Usage::
     hermes profile delete coder          # remove profile + alias + service
 """
 
+import logging
 import orjson
 import os
 from agent.re_compat import re

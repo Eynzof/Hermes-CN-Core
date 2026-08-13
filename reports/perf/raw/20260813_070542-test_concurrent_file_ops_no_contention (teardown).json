@@ -1,0 +1,21 @@
+{
+  "samples": [
+    {
+      "section": "concurrent_file_ops",
+      "duration_ms": 10.426,
+      "iteration": 0
+    }
+  ],
+  "summary": {
+    "concurrent_file_ops": {
+      "count": 1,
+      "total_ms": 10.426,
+      "mean_ms": 10.426,
+      "min_ms": 10.426,
+      "max_ms": 10.426,
+      "durations": [
+        10.426
+      ]
+    }
+  }
+}

@@ -183,12 +183,13 @@ def test_load_jobs_cached_fast(timing_context, tmp_path, monkeypatch, sample_job
 
 @pytest.mark.perf
 def test_tick_cycles_benchmark(timing_context, tmp_path, monkeypatch):
-    """100 real cron tick cycles (empty schedule) complete quickly.
+    """Benchmark 100 real cron tick cycles and pin the cache-hit contract.
 
     Exercises the real tick file lock + jobs lock + cached get_due_jobs/load_jobs
-    path; only load_config (a separate perf domain) is stubbed. Plan target is
-    < 50 ms for 100 cycles — we report whether it was met and gate on a
-    contention-safe ceiling so the test is not flaky under parallel CI load.
+    path; only load_config (a separate perf domain) is stubbed. The < 50 ms
+    target remains diagnostic because shared-runner wall time varies with host
+    contention. The deterministic gate is that every warmed tick stays on the
+    cache-hit path and an empty schedule never dispatches a job.
     """
     from cron import scheduler as cron_sched
 
@@ -202,11 +203,21 @@ def test_tick_cycles_benchmark(timing_context, tmp_path, monkeypatch):
     # Warm up: first tick creates the lock file and primes the read cache.
     cron_sched.tick(verbose=True, sync=True)
 
+    parse_calls = []
+    real_json_load = cron_jobs.json.load
+
+    def counting_json_load(*args, **kwargs):
+        parse_calls.append(1)
+        return real_json_load(*args, **kwargs)
+
+    monkeypatch.setattr(cron_jobs.json, "load", counting_json_load)
+
     # Best-of-3 batches: filters transient GC/scheduler noise on shared runners.
+    tick_results = []
     for _ in range(3):
         with timing_context.measure("tick_100x"):
             for _ in range(100):
-                cron_sched.tick(verbose=True, sync=True)
+                tick_results.append(cron_sched.tick(verbose=True, sync=True))
 
     durations = timing_context.summary().get("tick_100x", {}).get("durations", [0])
     best_ms = min(durations)
@@ -215,7 +226,5 @@ def test_tick_cycles_benchmark(timing_context, tmp_path, monkeypatch):
         f"\n  100 tick cycles (best of {len(durations)}): {best_ms:.1f}ms "
         f"[<50ms target: {target_met}]  batches={[round(d, 1) for d in durations]}"
     )
-    assert best_ms < 150, (
-        f"100 tick cycles took {best_ms:.1f}ms (expected well under 150ms; "
-        f"a cache/syscall regression is the likely cause)"
-    )
+    assert tick_results == [0] * 300
+    assert parse_calls == [], "warmed cron ticks must not re-parse an unchanged jobs.json"

@@ -1,6 +1,6 @@
 """ABC for system-reminder providers that inject ephemeral hints before each LLM step."""
-
 from __future__ import annotations
+
 
 from abc import abstractmethod
 from typing import Any, Dict, List, Optional

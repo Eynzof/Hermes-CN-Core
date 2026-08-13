@@ -12,13 +12,14 @@ spraying a traceback into ``errors.log`` on every restart-race.
 The fix adds ``_interpreter_shutting_down()`` and guards the scheduling
 sites so they skip gracefully with a warning instead of raising.
 """
-
 from __future__ import annotations
+
 
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
 
 class TestInterpreterShuttingDownHelper:
     def test_true_when_finalizing(self):
@@ -49,6 +50,7 @@ class TestInterpreterShuttingDownHelper:
         exc = RuntimeError("some other problem")
         with patch("sys.is_finalizing", return_value=False):
             assert _interpreter_shutting_down(exc) is False
+
 
 class TestStandaloneDeliverySkipsDuringShutdown:
     def _telegram_cfg(self):
@@ -103,6 +105,7 @@ class TestStandaloneDeliverySkipsDuringShutdown:
         send_mock.assert_called_once()
         assert result is None
 
+
 class TestSourceGuardrail:
     @pytest.fixture
     def source(self) -> str:
@@ -111,4 +114,9 @@ class TestSourceGuardrail:
         return (
             Path(__file__).resolve().parents[2] / "cron" / "scheduler.py"
         ).read_text(encoding="utf-8", errors="replace")
+
+    def test_helper_defined(self, source):
+        assert "def _interpreter_shutting_down(" in source
+        assert "#58720" in source
+
 

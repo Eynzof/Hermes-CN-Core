@@ -42,8 +42,8 @@ Env vars::
     TOOL_GATEWAY_SCHEME=...
     TOOL_GATEWAY_USER_TOKEN=...
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import logging

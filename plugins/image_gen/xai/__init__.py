@@ -14,8 +14,8 @@ Selection precedence (first hit wins):
 2. ``image_gen.xai.model`` in ``config.yaml``
 3. :data:`DEFAULT_MODEL`
 """
-
 from __future__ import annotations
+
 
 import logging
 import os

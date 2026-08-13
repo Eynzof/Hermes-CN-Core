@@ -1,8 +1,8 @@
 """The slash worker feeds desktop chat bubbles, which render plain text — so
 any ANSI a worker-routed command emits (e.g. /journey's own Rich Console) must
 be stripped from the worker's return value."""
-
 from __future__ import annotations
+
 
 
 class _FakeCLI:

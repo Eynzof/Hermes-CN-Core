@@ -42,8 +42,8 @@ Adding a new credential source is:
 
 No more per-source if/elif chain in ``auth_remove_command``.
 """
-
 from __future__ import annotations
+
 
 import os
 from dataclasses import dataclass, field
@@ -164,7 +164,7 @@ def _remove_env_source(provider: str, removed) -> RemovalResult:
         if env_path.exists():
             env_in_dotenv = any(
                 line.strip().startswith(f"{env_var}=")
-                for line in env_path.read_text(errors="replace").splitlines()
+                for line in env_path.read_text(errors="replace", encoding="utf-8").splitlines()
             )
     except OSError:
         pass

@@ -17,8 +17,8 @@ Nothing in this module ever raises out to the caller's hot path: the disk
 layer is strictly best-effort (a miss just triggers a refetch), because a
 cache problem must never block Hermes startup.
 """
-
 from __future__ import annotations
+
 
 import json
 import os
@@ -82,7 +82,9 @@ def resolve_cache_home(home_path: Optional[Path] = None) -> Path:
     (and tests that don't thread a home through) working.
     """
     if home_path is None:
-        home_path = Path(os.getenv("HERMES_HOME", Path.home() / ".hermes"))
+        from hermes_constants import get_hermes_home
+
+        home_path = get_hermes_home()
     return home_path
 
 

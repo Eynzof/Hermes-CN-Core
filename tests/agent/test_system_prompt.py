@@ -1,9 +1,11 @@
 """Tests for agent/system_prompt.py — context-file cwd wiring."""
 
+from datetime import datetime
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from agent.system_prompt import build_system_prompt_parts
+from agent.system_prompt import build_system_prompt, build_system_prompt_parts
 
 
 def _make_agent(**overrides):
@@ -70,6 +72,16 @@ def _stable_prompt(agent):
         return build_system_prompt_parts(agent)["stable"]
 
 
+def _prompt_parts(agent):
+    with (
+        patch("run_agent.load_soul_md", return_value=""),
+        patch("run_agent.build_nous_subscription_prompt", return_value=""),
+        patch("run_agent.build_environment_hints", return_value=""),
+        patch("run_agent.build_context_files_prompt", return_value=""),
+    ):
+        return build_system_prompt_parts(agent)
+
+
 def _init_code_repo(path):
     """A git repo that actually holds code — the coding posture requires a source
     file (or manifest), not a bare ``.git`` (a prose/notes repo stays general)."""
@@ -79,14 +91,41 @@ def _init_code_repo(path):
     (path / "main.py").write_text("print('hi')\n")
 
 
+class TestProfileScopeHint:
+    def test_named_profile_uses_exact_active_home(self, monkeypatch, tmp_path):
+        root = tmp_path / "hermes-root"
+        active_home = root / "profiles" / "coder"
+        monkeypatch.setenv("HERMES_HOME", str(active_home))
+        monkeypatch.delenv("HERMES_DESKTOP_MANAGED", raising=False)
+
+        stable = _stable_prompt(_make_agent())
+
+        assert f"This session reads and writes {active_home}/" in stable
+        assert f"{active_home}/profiles/coder" not in stable
+        assert f"The default profile's data lives at {root}/skills/" in stable
+
+    def test_managed_desktop_pins_authoritative_home(self, monkeypatch, tmp_path):
+        active_home = tmp_path / "managed-runtime" / "hermes-home"
+        monkeypatch.setenv("HERMES_HOME", str(active_home))
+        monkeypatch.setenv("HERMES_DESKTOP_MANAGED", "1")
+
+        stable = _stable_prompt(_make_agent(platform="desktop"))
+
+        assert f"{active_home} is the authoritative HERMES_HOME" in stable
+        assert "Do not inspect or modify the global ~/.hermes tree" in stable
+        assert "`hermes memory status`" in stable
+        assert "`/api/memory` provider config/status endpoints" in stable
+        assert "alone does not prove this managed profile is configured" in stable
+
+
 class TestCodingContextBlock:
     def test_injected_when_active(self, monkeypatch, tmp_path):
         _init_code_repo(tmp_path)
         monkeypatch.setenv("TERMINAL_CWD", str(tmp_path))
         agent = _make_agent(valid_tool_names=["read_file"], platform="cli")
-        stable = _stable_prompt(agent)
-        assert "coding agent" in stable
-        assert "Workspace" in stable
+        parts = _prompt_parts(agent)
+        assert "coding agent" in parts["stable"]
+        assert "Workspace" in parts["context"]
 
     def test_absent_when_off(self, monkeypatch, tmp_path):
         _init_code_repo(tmp_path)
@@ -102,6 +141,80 @@ class TestCodingContextBlock:
         monkeypatch.setenv("TERMINAL_CWD", str(tmp_path))
         agent = _make_agent(valid_tool_names=[], platform="cli")
         assert "coding agent" not in _stable_prompt(agent)
+
+
+def test_build_system_prompt_records_stable_prefix():
+    agent = _make_agent()
+    with (
+        patch("run_agent.load_soul_md", return_value=""),
+        patch("run_agent.build_nous_subscription_prompt", return_value=""),
+        patch("run_agent.build_environment_hints", return_value=""),
+        patch("run_agent.build_context_files_prompt", return_value="context"),
+    ):
+        prompt = build_system_prompt(agent)
+
+    assert prompt.startswith(agent._cached_system_prompt_static)
+    assert prompt[len(agent._cached_system_prompt_static):].startswith("\n\ncontext")
+
+
+def test_coding_prompt_preserves_legacy_workspace_order(monkeypatch):
+    """The cache split must not reorder the stored coding prompt."""
+    import agent.system_prompt as system_prompt
+
+    agent = _make_agent(
+        valid_tool_names=["read_file"],
+        _parallel_tool_call_guidance=False,
+    )
+    monkeypatch.setattr(system_prompt, "DEFAULT_AGENT_IDENTITY", "IDENTITY")
+    monkeypatch.setattr(system_prompt, "HERMES_AGENT_HELP_GUIDANCE", "HELP")
+    monkeypatch.setattr(system_prompt, "STEER_CHANNEL_NOTE", "STEER")
+    monkeypatch.setattr(system_prompt, "get_hermes_home", lambda: Path("/hermes"))
+    monkeypatch.setattr(system_prompt, "get_default_hermes_root", lambda: Path("/hermes"))
+
+    # Path renders with native separators (P-058/P-057 use the exact home);
+    # build the expected text the same way so it is platform-independent.
+    home = str(Path("/hermes"))
+    expected_profile = (
+        f"Active Hermes profile: default. This session reads and writes {home}/. "
+        f"Other profiles (if any) live under {home}/profiles/<name>/. "
+        "Each profile has its own skills/, plugins/, cron/, and memories/ "
+        "that affect a different session than this one. Do not modify another "
+        "profile's skills/plugins/cron/memories unless the user explicitly "
+        "directs you to."
+    )
+    expected = "\n\n".join((
+        "IDENTITY",
+        "HELP",
+        "STEER",
+        "CODING_STABLE",
+        "WORKSPACE",
+        "Operator instructions (from config):\nOPERATOR",
+        expected_profile,
+        "SYSTEM_MESSAGE",
+        "CONTEXT_FILES",
+        "Conversation started: Friday, January 02, 2026",
+    ))
+
+    with (
+        patch("run_agent.load_soul_md", return_value=""),
+        patch("run_agent.build_nous_subscription_prompt", return_value=""),
+        patch("run_agent.build_environment_hints", return_value=""),
+        patch("run_agent.build_context_files_prompt", return_value="CONTEXT_FILES"),
+        patch(
+            "agent.coding_context.coding_system_prompt_parts",
+            return_value=(
+                ["CODING_STABLE"],
+                ["WORKSPACE"],
+                ["Operator instructions (from config):\nOPERATOR"],
+            ),
+        ),
+        patch("agent.file_safety._resolve_active_profile_name", return_value="default"),
+        patch("hermes_time.now", return_value=datetime(2026, 1, 2)),
+    ):
+        prompt = build_system_prompt(agent, system_message="SYSTEM_MESSAGE")
+
+    assert prompt == expected
+    assert agent._cached_system_prompt_static == "\n\n".join(expected.split("\n\n")[:4])
 
 
 class TestTelegramRichMessagesHint:
@@ -145,3 +258,43 @@ class TestTelegramRichMessagesHint:
             stable = _stable_prompt(agent)
         assert "Markdown is converted automatically" in stable
         assert "lean into it" not in stable
+
+
+_SKILLS = "SKILLS_INDEX_SENTINEL"
+_CONTEXT = "CONTEXT_FILES_SENTINEL"
+
+
+def _build(builder, **overrides):
+    """Run a build_* function with skills + context files present."""
+    agent = _make_agent(valid_tool_names=["skills_list"], **overrides)
+    with (
+        patch("run_agent.load_soul_md", return_value=""),
+        patch("run_agent.build_nous_subscription_prompt", return_value=""),
+        patch("run_agent.build_environment_hints", return_value=""),
+        patch("run_agent.build_context_files_prompt", return_value=_CONTEXT),
+        patch("run_agent.get_toolset_for_tool", return_value=None),
+        patch("run_agent.build_skills_system_prompt", return_value=_SKILLS),
+    ):
+        return builder(agent)
+
+
+class TestSkillsInVolatileBand:
+    """The skills index is runtime-mutable, so it lives in the volatile band,
+    not the stable band, to keep the cached stable prefix reusable when a
+    rebuild picks up a skill change."""
+
+    def test_skills_not_in_stable_band(self):
+        parts = _build(build_system_prompt_parts)
+        assert _SKILLS not in parts["stable"]
+
+    def test_skills_lead_the_volatile_band(self):
+        parts = _build(build_system_prompt_parts)
+        assert parts["volatile"].startswith(_SKILLS)
+
+    def test_full_order_is_stable_context_then_skills(self):
+        # build_system_prompt joins stable + context + volatile, so the skills
+        # index renders after the context files and before the per-turn
+        # memory/timestamp tail.
+        full = _build(build_system_prompt)
+        assert full.index(_CONTEXT) < full.index(_SKILLS)
+        assert full.index(_SKILLS) < full.index("Conversation started:")

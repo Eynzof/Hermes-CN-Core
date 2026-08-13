@@ -4,8 +4,8 @@ Mirrors the TUI's PetPane. The methods are tested in isolation via __new__ so
 we don't pay the full HermesCLI.__init__ cost; a synthetic spritesheet exercises
 the real engine decode + half-block fragment building.
 """
-
 from __future__ import annotations
+
 
 import threading
 

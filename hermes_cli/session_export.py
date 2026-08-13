@@ -5,8 +5,8 @@ session-shaped data: a session dict with a ``messages`` list. Keep filtering
 and human-readable rendering here so each surface only has to load sessions
 and write bytes.
 """
-
 from __future__ import annotations
+
 
 from datetime import datetime, timezone
 from html import escape as html_escape

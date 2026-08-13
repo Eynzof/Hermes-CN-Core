@@ -196,6 +196,90 @@ class TestFlushAfterCompression:
                 "final answer",
             ]
 
+    def test_abort_after_in_place_compaction_preserves_flush_baseline(self):
+        """An aborted retry must survive flush, restart, and resume."""
+        from agent.conversation_compression import (
+            compress_context,
+            conversation_history_after_compression,
+        )
+        from hermes_state import SessionDB
+
+        class SuccessCompressor:
+            _last_compress_aborted = False
+            _last_summary_error = None
+            compression_count = 1
+            _last_compression_made_progress = True
+            _last_summary_fallback_used = False
+            last_compression_rough_tokens = 0
+            last_prompt_tokens = 0
+            last_completion_tokens = 0
+            awaiting_real_usage_after_compression = False
+
+            def compress(self, _messages, **_kwargs):
+                return [
+                    {"role": "user", "content": "[summary] earlier state"},
+                    {"role": "assistant", "content": "retained tail"},
+                ]
+
+        class AbortCompressor:
+            _last_compress_aborted = False
+            _last_summary_error = "simulated auxiliary timeout"
+            compression_count = 2
+            _last_compression_made_progress = False
+            _last_summary_fallback_used = False
+            last_compression_rough_tokens = 0
+            last_prompt_tokens = 0
+            last_completion_tokens = 0
+            awaiting_real_usage_after_compression = False
+
+            def compress(self, messages, **_kwargs):
+                self._last_compress_aborted = True
+                return messages
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "test.db"
+            db = SessionDB(db_path=db_path)
+            agent = self._make_agent(db)
+            agent.compression_in_place = True
+            original = [
+                {"role": "user", "content": "old question"},
+                {"role": "assistant", "content": "old answer"},
+            ]
+            agent._flush_messages_to_session_db(original, [])
+
+            agent.context_compressor = SuccessCompressor()
+            compacted, _ = compress_context(
+                agent, original, "system", approx_tokens=100_000
+            )
+            history = conversation_history_after_compression(
+                agent, compacted, None
+            )
+
+            messages = compacted + [
+                {"role": "user", "content": "new request"},
+                {"role": "assistant", "content": "new answer"},
+            ]
+            agent.context_compressor = AbortCompressor()
+            returned, _ = compress_context(
+                agent, messages, "system", approx_tokens=100_000
+            )
+            history = conversation_history_after_compression(
+                agent, returned, history
+            )
+            agent._flush_messages_to_session_db(returned, history)
+
+            db.close()
+            resumed_db = SessionDB(db_path=db_path)
+            assert [message["content"] for message in resumed_db.get_messages_as_conversation(
+                agent.session_id
+            )] == [
+                "[summary] earlier state",
+                "retained tail",
+                "new request",
+                "new answer",
+            ]
+            resumed_db.close()
+
     def test_rotation_child_session_flushes_full_compressed_transcript_with_markers(self):
         """Regression for #57491: live cached-agent markers must not block child flush."""
         from agent.conversation_compression import compress_context
@@ -243,7 +327,205 @@ class TestFlushAfterCompression:
             )
             db.close()
 
+
+
 # ---------------------------------------------------------------------------
 # Part 2: Gateway-side — history_offset after session split
 # ---------------------------------------------------------------------------
 
+class TestGatewayHistoryOffsetAfterSplit:
+    """Verify that when the agent creates a new session during compression,
+    the gateway uses history_offset=0 so all compressed messages are written
+    to the JSONL transcript."""
+
+    def test_history_offset_zero_on_session_split(self):
+        """When agent.session_id differs from the original, history_offset must be 0."""
+        # This tests the logic in gateway/run.py run_sync():
+        # _session_was_split = agent.session_id != session_id
+        # _effective_history_offset = 0 if _session_was_split else len(agent_history)
+
+        original_session_id = "session-abc"
+        agent_session_id = "session-compressed-xyz"  # Different = compression happened
+        agent_history_len = 200
+
+        # Simulate the gateway's offset calculation (post-fix)
+        _session_was_split = (agent_session_id != original_session_id)
+        _effective_history_offset = 0 if _session_was_split else agent_history_len
+
+        assert _session_was_split is True
+        assert _effective_history_offset == 0
+
+
+    def test_new_messages_extraction_after_split(self):
+        """After compression with offset=0, new_messages should be ALL agent messages."""
+        # Simulates the gateway's new_messages calculation
+        agent_messages = [
+            {"role": "user", "content": "[CONTEXT COMPACTION] Summary..."},
+            {"role": "user", "content": "recent question"},
+            {"role": "assistant", "content": "recent answer"},
+            {"role": "user", "content": "new question"},
+            {"role": "assistant", "content": "new answer"},
+        ]
+        history_offset = 0  # After fix: 0 on session split
+
+        new_messages = agent_messages[history_offset:] if len(agent_messages) > history_offset else []
+        assert len(new_messages) == 5, (
+            f"Expected all 5 messages with offset=0, got {len(new_messages)}"
+        )
+
+
+
+class TestStoredPromptCwdDrift:
+    """Verify that stored system prompts are rejected when cwd changed."""
+
+    def _make_agent(self, model="test/model", provider="openrouter"):
+        class _Agent:
+            pass
+
+        agent = _Agent()
+        agent.model = model
+        agent.provider = provider
+        return agent
+
+    @staticmethod
+    def _host_block(cwd: str) -> str:
+        """A stored prompt fragment shaped like the real host-info block.
+
+        ``build_environment_hints`` always emits ``User home directory:``
+        immediately before the working-directory line, and the staleness check
+        anchors on that pair so user project files can't shadow the real value.
+        Fixtures must therefore include the anchor or they stop exercising the
+        cwd path at all.
+        """
+        return (
+            "Host: Linux (6.16.0)\n"
+            "User home directory: /home/tester\n"
+            f"Current working directory: {cwd}\n"
+        )
+
+    def test_stored_prompt_stale_when_cwd_differs(self):
+        """Different cwd should force a prompt rebuild."""
+        from unittest.mock import patch
+        from agent.conversation_loop import _stored_prompt_matches_runtime
+
+        agent = self._make_agent()
+        stored_prompt = (
+            self._host_block("/project/old")
+            + "Model: test/model\n"
+            "Provider: openrouter\n"
+        )
+
+        with patch("os.getcwd", return_value="/project/new"):
+            assert _stored_prompt_matches_runtime(agent, stored_prompt) is False, (
+                "Expected False when stored cwd differs from current cwd"
+            )
+
+    def test_stored_prompt_fresh_when_cwd_matches(self):
+        """Matching cwd should allow prompt reuse."""
+        from unittest.mock import patch
+        from agent.conversation_loop import _stored_prompt_matches_runtime
+
+        agent = self._make_agent()
+        current_cwd = "/project/current"
+        stored_prompt = (
+            self._host_block(current_cwd)
+            + "Model: test/model\n"
+            "Provider: openrouter\n"
+        )
+
+        with patch("os.getcwd", return_value=current_cwd):
+            assert _stored_prompt_matches_runtime(agent, stored_prompt) is True, (
+                "Expected True when stored cwd matches current cwd"
+            )
+
+    def test_project_context_cannot_force_a_rebuild(self):
+        """🔴 CACHE INVARIANT: user project text must never invalidate the prompt.
+
+        The prompt embeds AGENTS.md / CLAUDE.md / .cursorrules in the context
+        tier, which sits AFTER the host-info block. A whole-prompt scan for
+        ``Current working directory:`` therefore matched the user's own file
+        and compared runtime state against project prose. That mismatch never
+        clears, so the check rejected the stored prompt on EVERY turn —
+        rebuilding the system prompt each message and destroying the prefix
+        cache for the entire session. Strictly worse than the staleness this
+        check exists to catch.
+        """
+        from unittest.mock import patch
+        from agent.conversation_loop import _stored_prompt_matches_runtime
+
+        agent = self._make_agent()
+        current_cwd = "/project/current"
+        stored_prompt = (
+            self._host_block(current_cwd)
+            + "\n# AGENTS.md\n\n"
+            "Our deploy convention:\n\n"
+            "Current working directory: /srv/decoy\n\n"
+            "Always run make before pushing.\n\n"
+            "Model: test/model\n"
+            "Provider: openrouter\n"
+        )
+
+        with patch("os.getcwd", return_value=current_cwd):
+            assert _stored_prompt_matches_runtime(agent, stored_prompt) is True, (
+                "A project file that merely MENTIONS 'Current working "
+                "directory:' must not invalidate the prompt — that would "
+                "rebuild every turn and break the prefix cache"
+            )
+
+    def test_project_context_cannot_mask_real_drift(self):
+        """The inverse: project text must not fake a match either.
+
+        A stored prompt built in /project/old whose embedded AGENTS.md happens
+        to name the NEW cwd must still be rejected — otherwise project prose
+        could suppress genuine drift detection.
+        """
+        from unittest.mock import patch
+        from agent.conversation_loop import _stored_prompt_matches_runtime
+
+        agent = self._make_agent()
+        stored_prompt = (
+            self._host_block("/project/old")
+            + "\n# AGENTS.md\n\n"
+            "Current working directory: /project/new\n\n"
+            "Model: test/model\n"
+            "Provider: openrouter\n"
+        )
+
+        with patch("os.getcwd", return_value="/project/new"):
+            assert _stored_prompt_matches_runtime(agent, stored_prompt) is False, (
+                "Embedded project text naming the new cwd must not mask real "
+                "drift in the host-info block"
+            )
+
+
+
+
+
+    def test_built_prompt_contains_platform_line(self):
+        """The built system prompt must carry a Platform: line so drift detection works."""
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from hermes_state import SessionDB
+        from run_agent import AIAgent
+        from agent.system_prompt import build_system_prompt_parts
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db = SessionDB(db_path=Path(tmpdir) / "test.db")
+            with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}):
+                agent = AIAgent(
+                    api_key="test-key",
+                    base_url="https://openrouter.ai/api/v1",
+                    model="test/model",
+                    provider="openrouter",
+                    quiet_mode=True,
+                    session_db=db,
+                    session_id="platform-test",
+                    skip_context_files=True,
+                    skip_memory=True,
+                )
+            agent.platform = "cli"
+            parts = build_system_prompt_parts(agent)
+            assert "Platform: cli" in parts["volatile"], (
+                "Built prompt missing 'Platform: cli' — drift detection cannot read it"
+            )

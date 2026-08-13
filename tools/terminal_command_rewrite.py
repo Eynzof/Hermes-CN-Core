@@ -13,8 +13,8 @@ Usage::
     )
     # cmd == "rtk git log --oneline -100", rewritten == True
 """
-
 from __future__ import annotations
+
 
 import functools
 import platform
@@ -46,7 +46,12 @@ _RTK_KNOWN_COMMANDS: frozenset[str] = frozenset({
     "ls",
     "grep",
     "rg",
-    "find",
+    # NOTE: `find` is intentionally NOT wrapped by rtk: rtk's find
+    # emulation is not a drop-in for the standard find(1) and refuses
+    # common predicates (`-not`, `-exec`, compound expressions) with a
+    # hard error, breaking legitimate agent usage. The faithful local
+    # dedup pipeline (_token_filter_output) still collapses repeated
+    # find output, so no token-saving benefit is lost.
     "cat",
     "head",
     "tail",
@@ -153,6 +158,17 @@ def _read_shell_word(command: str, start: int) -> tuple[str, int]:
         return "", i
 
     ch = command[i]
+
+    # Shell metacharacters are tokens in their own right.  The regular-word
+    # scanner below deliberately stops before them; if a metacharacter appears
+    # at ``start`` (for example the ``&`` in ``2>&1``), returning an empty word
+    # without advancing would make callers such as ``_split_shell_words`` spin
+    # forever.  Consume the full operator where possible so every successful
+    # read advances monotonically.
+    if ch in (";", "&", "|", "(", ")"):
+        if i + 1 < n and command[i : i + 2] in ("&&", "||", "|&"):
+            return command[i : i + 2], i + 2
+        return ch, i + 1
 
     # ANSI-C quoting  $'...'
     if ch == "$" and i + 1 < n and command[i + 1] == "'":
@@ -356,7 +372,12 @@ def _split_shell_words(command: str) -> list[str]:
             i += 1
         if i >= n:
             break
-        word, i = _read_shell_word(command, i)
+        word, next_i = _read_shell_word(command, i)
+        # Defensive progress invariant: future token-reader changes must never
+        # be able to wedge the dashboard event loop on malformed shell input.
+        if next_i <= i:
+            next_i = i + 1
+        i = next_i
         if word:
             words.append(word)
     return words
@@ -512,6 +533,14 @@ def _maybe_rewrite_shell_command_with_rtk(
     Otherwise splits into segments, rewrites each known command segment, and
     returns ``(rewritten_command, True)``.
 
+    Multi-segment commands (containing top-level ``;``/``&&``/``||``) are
+    intentionally NOT rewritten: rtk cannot guarantee newline-terminated
+    output (its git-specific re-annotation, for example, strips the trailing
+    newline), so a wrapped segment followed by more output glues the next
+    command's text onto the same line (``git status --short; echo x`` renders
+    as `` M f.txtx``).  Glued structured output silently misleads the model,
+    so such commands fall back to the faithful local dedup pipeline.
+
     Args:
         command: The original shell command string.
         token_kill: Whether token-kill rewriting is enabled.
@@ -538,6 +567,17 @@ def _maybe_rewrite_shell_command_with_rtk(
 
     segments = _split_shell_segments(command)
     if not segments:
+        return command, False
+
+    # Safety guard: rtk's per-segment output is not guaranteed to end with a
+    # newline (its git status re-annotation strips it), so when several
+    # commands share one output stream the next command's text gets glued
+    # onto the previous line (``rtk git status --short; echo x`` ->
+    # `` M f.txtx``).  A glued line reads as one unit and has repeatedly
+    # misled the agent into misreading structured output (e.g. a clean/dirty
+    # git status).  Multi-segment commands therefore skip rtk entirely and
+    # use the faithful local dedup pipeline (_token_filter_output).
+    if len(segments) > 1:
         return command, False
 
     # Find all separators using a quote-aware scanner (not a blind regex).

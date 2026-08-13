@@ -9,8 +9,8 @@ The lock directory is created on first use. If locking cannot be performed
 (for example on a read-only filesystem), the helpers fall back to a no-op
 ``PortLock`` so startup is not blocked.
 """
-
 from __future__ import annotations
+
 
 import os
 import sys

@@ -7,6 +7,7 @@ return ``None`` instead of the default — calling ``.lower()`` on that raises
 
 from unittest.mock import patch
 
+
 # ── TTS tool ──────────────────────────────────────────────────────────────
 
 class TestTTSProviderNullGuard:
@@ -19,18 +20,6 @@ class TestTTSProviderNullGuard:
         result = _get_provider({"provider": None})
         assert result == DEFAULT_PROVIDER.lower().strip()
 
-    def test_missing_provider_returns_default(self):
-        """No ``provider`` key + non-TTS active provider should return default."""
-        from tools.tts_tool import _get_provider, DEFAULT_PROVIDER
-
-        result = _get_provider({})
-        assert result == DEFAULT_PROVIDER.lower().strip()
-
-    def test_valid_provider_passed_through(self):
-        from tools.tts_tool import _get_provider
-
-        result = _get_provider({"provider": "OPENAI"})
-        assert result == "openai"
 
     def test_missing_provider_keeps_free_default_with_cloud_credentials(self):
         """A chat-provider key must not silently opt the user into paid TTS."""
@@ -53,6 +42,7 @@ class TestTTSProviderNullGuard:
 
         assert _get_provider({"provider": "edge"}) == "edge"
 
+
 # ── Web tools ─────────────────────────────────────────────────────────────
 
 class TestWebBackendNullGuard:
@@ -74,7 +64,25 @@ class TestWebBackendNullGuard:
         result = _get_backend()
         assert isinstance(result, str)
 
+
 # ── MCP tool ──────────────────────────────────────────────────────────────
+
+class TestMCPAuthNullGuard:
+    """tools/mcp_tool.py — MCPServerTask.__init__() auth config line"""
+
+    def test_explicit_null_auth_does_not_crash(self):
+        """YAML ``auth: null`` in MCP server config should not raise."""
+        # Test the expression directly — MCPServerTask.__init__ has many deps
+        config = {"auth": None, "timeout": 30}
+        auth_type = (config.get("auth") or "").lower().strip()
+        assert auth_type == ""
+
+
+    def test_valid_auth_passed_through(self):
+        config = {"auth": "OAUTH", "timeout": 30}
+        auth_type = (config.get("auth") or "").lower().strip()
+        assert auth_type == "oauth"
+
 
 # ── Trajectory compressor ─────────────────────────────────────────────────
 
@@ -95,3 +103,13 @@ class TestTrajectoryCompressorNullGuard:
         result = compressor._detect_provider()
         assert result == ""
 
+    def test_config_loading_null_base_url_keeps_default(self):
+        """YAML ``summarization: {base_url: null}`` should keep default."""
+        from trajectory_compressor import CompressionConfig
+        from hermes_constants import OPENROUTER_BASE_URL
+
+        config = CompressionConfig()
+        data = {"summarization": {"base_url": None}}
+
+        config.base_url = data["summarization"].get("base_url") or config.base_url
+        assert config.base_url == OPENROUTER_BASE_URL

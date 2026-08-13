@@ -25,8 +25,8 @@ registry. The rationale is locality: a name declared in the user's
 ``config.yaml`` is more specific to their setup than a plugin that
 happens to be installed.
 """
-
 from __future__ import annotations
+
 
 import logging
 import threading

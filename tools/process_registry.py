@@ -29,9 +29,12 @@ Usage:
     process_registry.kill(session.id)
 """
 
+import codecs
 import orjson
 import logging
 import os
+from pathlib import Path
+import re
 from platform_utils import is_windows
 import shlex
 import signal
@@ -42,11 +45,13 @@ import uuid
 
 _IS_WINDOWS = is_windows()
 from tools.environments.local import (
+    _build_bash_background_script,
     _build_powershell_background_script,
     _find_shell,
     _resolve_safe_cwd,
     _resolve_shell,
     _sanitize_subprocess_env,
+    _windows_to_msys_path,
 )
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
@@ -64,6 +69,33 @@ MAX_OUTPUT_CHARS = 200_000      # 200KB rolling output buffer
 FINISHED_TTL_SECONDS = 1800     # Keep finished processes for 30 minutes
 MAX_PROCESSES = 64              # Max concurrent tracked processes (LRU pruning)
 MAX_ACTIVE_PROCESS_AGE = 86400  # 24h default — see session_reset.bg_process_max_age_hours (#29177)
+
+# Default output-silence cap for pattern waits (kimi DEFAULT_INACTIVITY_TIMEOUT).
+# A still-running process that produces no new output for this many seconds
+# makes process(action='wait', pattern=...) return early with partial output
+# instead of blocking the agent for the whole window.
+_DEFAULT_INACTIVITY_TIMEOUT = 120
+
+# ---------------------------------------------------------------------------
+# Output-buffer helper
+# ---------------------------------------------------------------------------
+
+def _buffer_append(session: ProcessSession, chunk: str) -> None:
+    """Append output to a session's rolling buffer, flagging overflow.
+
+    All reader loops (local pipe, PTY, sandbox poller) and the adopt path
+    funnel through here so ``output_truncated`` metadata stays accurate:
+    once the 200KB window wraps, ``_buffer_overflowed`` is set and
+    ``poll()``/``read_log()`` report it to the model.
+    """
+    if not chunk:
+        return
+    with session._lock:
+        session.output_buffer += chunk
+        if len(session.output_buffer) > session.max_output_chars:
+            session.output_buffer = session.output_buffer[-session.max_output_chars:]
+            session._buffer_overflowed = True
+
 
 # Watch pattern rate limiting — PER SESSION.
 # Hard rule: at most ONE watch-match notification every WATCH_MIN_INTERVAL_SECONDS.
@@ -142,6 +174,16 @@ class ProcessSession:
     _lock: threading.Lock = field(default_factory=threading.Lock)
     _reader_thread: Optional[threading.Thread] = field(default=None, repr=False)
     _pty: Any = field(default=None, repr=False)  # ptyprocess handle (when use_pty=True)
+    # True when this session was adopted from a foreground run (foreground →
+    # background promotion): the registry has NO reader thread of its own — a
+    # foreground drain thread owns the pipe and streams into output_buffer via
+    # an output_callback; completion is detected lazily by
+    # _reconcile_local_exit() from poll()/wait()/list_sessions().
+    _adopted: bool = field(default=False, repr=False)
+    # True once the rolling output buffer dropped the oldest bytes (the
+    # 200KB window wrapped). Surfaced as `output_truncated` so the model
+    # knows the middle of the log is gone and should use output_path export.
+    _buffer_overflowed: bool = field(default=False, repr=False)
 
 
 class ProcessRegistry:
@@ -724,13 +766,35 @@ class ProcessRegistry:
         env_vars: dict,
         cwd_file: str | None = None,
     ) -> subprocess.Popen:
-        """Windows non-PTY background spawn using PowerShell."""
-        ps_script = _build_powershell_background_script(
-            command=command,
-            cwd=session.cwd,
-            shell_type=shell_type,
-            cwd_file=cwd_file,
-        )
+        """Windows non-PTY background spawn, following the resolved shell.
+
+        ``shell_type == "bash"`` (the git-bash default) builds a bash wrapper
+        and invokes ``[shell_path, "-lc", script]``; PowerShell shells keep
+        the ``-NoProfile``/``-Command`` invocation.
+        """
+        if shell_type == "bash":
+            script = _build_bash_background_script(
+                command=command,
+                cwd=_windows_to_msys_path(session.cwd, force=_IS_WINDOWS),
+                cwd_file=_windows_to_msys_path(cwd_file, force=_IS_WINDOWS) if cwd_file else None,
+            )
+            shell_argv = [shell_path, "-lc", script]
+        else:
+            script = _build_powershell_background_script(
+                command=command,
+                cwd=session.cwd,
+                shell_type=shell_type,
+                cwd_file=cwd_file,
+            )
+            shell_argv = [
+                shell_path,
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                script,
+            ]
         bg_env = _sanitize_subprocess_env(os.environ, env_vars)
         bg_env["PYTHONUNBUFFERED"] = "1"
         _popen_kwargs = {
@@ -738,15 +802,7 @@ class ProcessRegistry:
             | getattr(subprocess, "CREATE_NO_WINDOW", 0)
         }
         proc = subprocess.Popen(
-            [
-                shell_path,
-                "-NoProfile",
-                "-NonInteractive",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-Command",
-                ps_script,
-            ],
+            shell_argv,
             text=True,
             cwd=session.cwd,
             env=bg_env,
@@ -769,27 +825,41 @@ class ProcessRegistry:
         env_vars: dict,
         cwd_file: str | None = None,
     ):
-        """Windows PTY background spawn using PowerShell via winpty."""
+        """Windows PTY background spawn via winpty, following the resolved shell.
+
+        ``shell_type == "bash"`` (the git-bash default) runs the bash wrapper
+        via winpty; PowerShell shells keep the ``-NoProfile``/``-Command``
+        invocation.
+        """
         from winpty import PtyProcess as _PtyProcessCls
 
-        ps_script = _build_powershell_background_script(
-            command=command,
-            cwd=session.cwd,
-            shell_type=shell_type,
-            cwd_file=cwd_file,
-        )
-        pty_env = _sanitize_subprocess_env(os.environ, env_vars)
-        pty_env["PYTHONUNBUFFERED"] = "1"
-        pty_proc = _PtyProcessCls.spawn(
-            [
+        if shell_type == "bash":
+            script = _build_bash_background_script(
+                command=command,
+                cwd=_windows_to_msys_path(session.cwd, force=_IS_WINDOWS),
+                cwd_file=_windows_to_msys_path(cwd_file, force=_IS_WINDOWS) if cwd_file else None,
+            )
+            shell_argv = [shell_path, "-lc", script]
+        else:
+            script = _build_powershell_background_script(
+                command=command,
+                cwd=session.cwd,
+                shell_type=shell_type,
+                cwd_file=cwd_file,
+            )
+            shell_argv = [
                 shell_path,
                 "-NoProfile",
                 "-NonInteractive",
                 "-ExecutionPolicy",
                 "Bypass",
                 "-Command",
-                ps_script,
-            ],
+                script,
+            ]
+        pty_env = _sanitize_subprocess_env(os.environ, env_vars)
+        pty_env["PYTHONUNBUFFERED"] = "1"
+        pty_proc = _PtyProcessCls.spawn(
+            shell_argv,
             cwd=session.cwd,
             env=pty_env,
             dimensions=(30, 120),
@@ -816,10 +886,21 @@ class ProcessRegistry:
                      CLI tools (Codex, Claude Code, Python REPL). Falls back to
                      subprocess.Popen if ptyprocess is not installed.
             cwd_file: Optional path to write the final working directory to
-                      (PowerShell background path). When provided, the wrapper
-                      writes ``(Get-Location).Path`` to this file so subsequent
-                      foreground commands can pick up CWD changes.
+                      (Windows background path — PowerShell writes
+                      ``(Get-Location).Path``, bash writes ``pwd``). When
+                      provided, the wrapper writes the final CWD to this file
+                      so subsequent foreground commands can pick up CWD
+                      changes.
         """
+        # Guard against the `A && B &` subshell-wait trap (issue #68915).
+        # Bash parses ``A && B &`` as ``(A && B) &`` — a subshell that holds
+        # the stdout pipe open forever when B is a long-running server.
+        # The rewriter wraps it to ``A && { B & }`` so no subshell fork.
+        # Lazy import avoids circular dependency (terminal_tool imports this).
+        from tools.terminal_tool import _rewrite_compound_background as _rewrite_bg
+
+        safe_command = _rewrite_bg(command)
+
         session = ProcessSession(
             id=f"proc_{uuid.uuid4().hex[:12]}",
             command=command,
@@ -853,7 +934,7 @@ class ProcessRegistry:
                     pty_env = _sanitize_subprocess_env(os.environ, env_vars)
                     pty_env["PYTHONUNBUFFERED"] = "1"
                     pty_proc = _PtyProcessCls.spawn(
-                        [user_shell, "-lic", f"set +m; {command}"],
+                        [user_shell, "-lic", f"set +m; {safe_command}"],
                         cwd=session.cwd,
                         env=pty_env,
                         dimensions=(30, 120),
@@ -899,7 +980,7 @@ class ProcessRegistry:
         else:
             proc = self._spawn_posix_local(
                 session=session,
-                command=command,
+                command=safe_command,
                 env_vars=env_vars,
             )
 
@@ -1046,6 +1127,59 @@ class ProcessRegistry:
 
         return session
 
+    # ----- Foreground → background adoption (promote_on_timeout) -----
+
+    def prepare_adopt_local(
+        self,
+        command: str,
+        task_id: str = "",
+        session_key: str = "",
+        cwd: str | None = None,
+    ) -> ProcessSession:
+        """Create an UNREGISTERED session that a foreground run may adopt.
+
+        Foreground→background promotion (terminal ``promote_on_timeout`` /
+        ``wait_for_pattern``) hands a still-running foreground Popen to the
+        registry instead of killing it at the timeout. The caller creates the
+        session up front, streams output into it via an ``output_callback``
+        (so the buffer is already warm at adoption), and calls
+        ``adopt_local()`` when the timeout/pattern fires.
+        """
+        return ProcessSession(
+            id=f"proc_{uuid.uuid4().hex[:12]}",
+            command=command,
+            task_id=task_id,
+            session_key=session_key,
+            cwd=_resolve_safe_cwd(cwd or os.getcwd()),
+            started_at=time.time(),
+            _adopted=True,
+        )
+
+    def adopt_local(self, session: ProcessSession, proc: Any) -> str:
+        """Register a still-running foreground Popen as a tracked background
+        session. Returns the session id.
+
+        The foreground drain thread keeps reading the pipe into the session's
+        buffer via the caller's output_callback; the registry has no reader
+        thread of its own, so completion is detected lazily by
+        ``_reconcile_local_exit()`` from poll()/wait()/list_sessions() — the
+        same orphaned-pipe guard that already covers normal local sessions.
+        """
+        with session._lock:
+            session.process = proc
+            session.pid = proc.pid
+            session.host_start_time = self._safe_host_start_time(session.pid)
+            session._adopted = True
+        with self._lock:
+            self._prune_if_needed()
+            self._running[session.id] = session
+        self._write_checkpoint()
+        logger.info(
+            "Adopted foreground process %s (pid=%s) as background session %s",
+            session.command[:80], session.pid, session.id,
+        )
+        return session.id
+
     # ----- Reader / Poller Threads -----
 
     def _reader_loop(self, session: ProcessSession):
@@ -1055,39 +1189,117 @@ class ProcessRegistry:
         block until EOF (or a large buffer fills), which makes "live" output land
         in one burst at process exit. ``buffer.read1(4096)`` yields incremental
         chunks as bytes become available, then we decode to text.
+
+        Orphaned-pipe guard (issue #68915): when the user's command backgrounds
+        a long-lived process (``node server.js &``, ``sleep 300 &``), that
+        grandchild inherits the write end of our stdout pipe via ``fork()``.
+        The direct ``bash`` child exits promptly, but the pipe never reaches
+        EOF while the grandchild lives — so a blocking read would park this
+        thread forever, ``session.exited`` would never flip, and
+        ``notify_on_complete`` would never fire (``_reconcile_local_exit``
+        only runs lazily from poll()/wait(), which an autonomous notification
+        can't rely on). On POSIX we therefore ``select()`` with a short poll
+        interval and stop draining shortly after the direct child exits, even
+        if the pipe hasn't EOF'd — mirroring the foreground fix in
+        ``tools/environments/base.py::_wait_for_process`` (#8340). Windows
+        pipes don't support select(); the blocking path is kept there and the
+        lazy reconcile in poll()/wait() remains the safety net.
         """
         first_chunk = True
+        # Incremental decoder: raw pipe reads can split a multibyte UTF-8
+        # character across two read1() chunks. A stateless per-chunk
+        # ``bytes.decode(errors="replace")`` turns both halves into U+FFFD
+        # mojibake. The incremental decoder holds the partial sequence until
+        # the continuation bytes arrive — same treatment the foreground path
+        # already has in ``tools/environments/base.py::_wait_for_process``.
+        # (Ported from openclaw/openclaw#112325.)
+        decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+
+        def _append_chunk(chunk: str):
+            nonlocal first_chunk
+            if first_chunk:
+                chunk = self._clean_shell_noise(chunk)
+                first_chunk = False
+            _buffer_append(session, chunk)
+            self._check_watch_patterns(session, chunk)
+            self._emit_output(session, chunk)
+
         try:
-            stdout = session.process.stdout
-            if stdout is None:
+            proc = session.process
+            if proc is None or proc.stdout is None:
                 return
+            stdout = proc.stdout
 
             raw_read = getattr(getattr(stdout, "buffer", None), "read1", None)
-            while True:
-                if raw_read is not None:
-                    raw = raw_read(4096)
-                    if not raw:
-                        break
-                    chunk = raw.decode("utf-8", errors="replace")
-                else:
-                    # Fallback for mocked/alternate streams without a buffered raw
-                    # interface. This may be less "live", but keeps compatibility.
-                    chunk = stdout.read(4096)
-                    if not chunk:
-                        break
 
-                if first_chunk:
-                    chunk = self._clean_shell_noise(chunk)
-                    first_chunk = False
-                with session._lock:
-                    session.output_buffer += chunk
-                    if len(session.output_buffer) > session.max_output_chars:
-                        session.output_buffer = session.output_buffer[-session.max_output_chars:]
-                self._check_watch_patterns(session, chunk)
-                self._emit_output(session, chunk)
+            # Resolve a real OS fd for the select() path. Mocked streams
+            # (unit tests, adapters) may lack fileno() — fall back to the
+            # historical blocking loop for those.
+            fd = None
+            if raw_read is not None and not _IS_WINDOWS:
+                fileno = getattr(stdout, "fileno", None)
+                try:
+                    candidate = fileno() if callable(fileno) else None
+                except Exception:
+                    candidate = None
+                if isinstance(candidate, int) and candidate >= 0:
+                    fd = candidate
+
+            if fd is not None:
+                import select as _select
+
+                idle_after_exit = 0
+                while True:
+                    try:
+                        ready, _, _ = _select.select([fd], [], [], 0.2)
+                    except (ValueError, OSError):
+                        break  # fd already closed
+                    if ready:
+                        raw = raw_read(4096)
+                        if not raw:
+                            break  # true EOF — all writers closed
+                        chunk = decoder.decode(raw)
+                        if chunk:
+                            _append_chunk(chunk)
+                        idle_after_exit = 0
+                    elif proc.poll() is not None:
+                        # Direct child is gone and the pipe was idle for
+                        # ~200ms. Give it a few more cycles to catch any
+                        # buffered tail, then stop — otherwise we would wait
+                        # forever on a pipe held open by an orphaned
+                        # grandchild (issue #68915).
+                        idle_after_exit += 1
+                        if idle_after_exit >= 3:
+                            break
+            else:
+                while True:
+                    if raw_read is not None:
+                        raw = raw_read(4096)
+                        if not raw:
+                            break
+                        chunk = decoder.decode(raw)
+                        if not chunk:
+                            continue  # partial multibyte sequence — wait for more bytes
+                    else:
+                        # Fallback for mocked/alternate streams without a buffered raw
+                        # interface. This may be less "live", but keeps compatibility.
+                        chunk = stdout.read(4096)
+                        if not chunk:
+                            break
+
+                    _append_chunk(chunk)
         except Exception as e:
             logger.debug("Process stdout reader ended: %s", e)
         finally:
+            # Flush any bytes still pending in the incremental decoder (a
+            # truncated multibyte sequence at EOF becomes one U+FFFD instead
+            # of being dropped silently).
+            try:
+                tail = decoder.decode(b"", final=True)
+                if tail:
+                    _append_chunk(tail)
+            except Exception:
+                pass
             # Always reap the child to prevent zombie processes.
             try:
                 session.process.wait(timeout=5)
@@ -1117,10 +1329,14 @@ class ProcessRegistry:
                     # Compute delta for watch pattern scanning
                     delta = new_output[prev_output_len:] if len(new_output) > prev_output_len else ""
                     prev_output_len = len(new_output)
+                    # The sandbox poller re-reads the WHOLE log file each tick,
+                    # so this is a replace (not append) — but still flag overflow
+                    # so output_truncated metadata stays accurate.
                     with session._lock:
                         session.output_buffer = new_output
                         if len(session.output_buffer) > session.max_output_chars:
                             session.output_buffer = session.output_buffer[-session.max_output_chars:]
+                            session._buffer_overflowed = True
                     if delta:
                         self._check_watch_patterns(session, delta)
                         self._emit_output(session, delta)
@@ -1160,25 +1376,39 @@ class ProcessRegistry:
     def _pty_reader_loop(self, session: ProcessSession):
         """Background thread: read output from a PTY process."""
         pty = session._pty
+        # PTY reads can split a multibyte UTF-8 character across chunks just
+        # like pipe reads — hold partial sequences until the rest arrives.
+        # (Ported from openclaw/openclaw#112325.)
+        decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+
+        def _append_text(text: str):
+            _buffer_append(session, text)
+            self._check_watch_patterns(session, text)
+            self._emit_output(session, text)
+
         try:
             while pty.isalive():
                 try:
                     chunk = pty.read(4096)
                     if chunk:
-                        # ptyprocess returns bytes
-                        text = chunk if isinstance(chunk, str) else chunk.decode("utf-8", errors="replace")
-                        with session._lock:
-                            session.output_buffer += text
-                            if len(session.output_buffer) > session.max_output_chars:
-                                session.output_buffer = session.output_buffer[-session.max_output_chars:]
-                        self._check_watch_patterns(session, text)
-                        self._emit_output(session, text)
+                        # ptyprocess returns bytes; pywinpty returns str
+                        text = chunk if isinstance(chunk, str) else decoder.decode(chunk)
+                        if text:
+                            _append_text(text)
                 except EOFError:
                     break
                 except Exception:
                     break
         except Exception as e:
             logger.debug("PTY stdout reader ended: %s", e)
+
+        # Flush any partial multibyte sequence held by the decoder.
+        try:
+            tail = decoder.decode(b"", final=True)
+            if tail:
+                _append_text(tail)
+        except Exception:
+            pass
 
         # Process exited
         try:
@@ -1435,11 +1665,11 @@ class ProcessRegistry:
             except Exception as e:
                 logger.debug("Non-blocking drain failed for %s: %s", session.id, e)
 
+        # _buffer_append() owns session._lock.  Append before taking the lock
+        # for the exit-state transition; threading.Lock is not re-entrant.
+        if drained:
+            _buffer_append(session, drained)
         with session._lock:
-            if drained:
-                session.output_buffer += drained
-                if len(session.output_buffer) > session.max_output_chars:
-                    session.output_buffer = session.output_buffer[-session.max_output_chars:]
             session.exited = True
             if session.completion_reason != "killed":
                 session.exit_code = rc
@@ -1451,8 +1681,14 @@ class ProcessRegistry:
         )
         self._move_to_finished(session)
 
-    def poll(self, session_id: str) -> dict:
-        """Check status and get new output for a background process."""
+    def poll(self, session_id: str, offset: int = None) -> dict:
+        """Check status and get new output for a background process.
+
+        ``offset`` (optional line number) turns poll into a new-output read:
+        the result carries ``output`` = lines at/after ``offset`` plus
+        ``total_lines``, so the model can page a log incrementally (the
+        background counterpart of kimi's consuming ``pop_output``).
+        """
         from tools.ansi_strip import strip_ansi
 
         session = self.get(session_id)
@@ -1464,7 +1700,9 @@ class ProcessRegistry:
         self._reconcile_local_exit(session)
 
         with session._lock:
-            output_preview = strip_ansi(session.output_buffer[-1000:]) if session.output_buffer else ""
+            full_buffer = session.output_buffer or ""
+            output_preview = strip_ansi(full_buffer[-1000:]) if full_buffer else ""
+            output_truncated = session._buffer_overflowed
 
         result = {
             "session_id": session.id,
@@ -1472,12 +1710,45 @@ class ProcessRegistry:
             "status": "exited" if session.exited else "running",
             "pid": session.pid,
             "uptime_seconds": int(time.time() - session.started_at),
+            "elapsed_seconds": round(time.time() - session.started_at, 2),
             "output_preview": output_preview,
+            "output_total_chars": len(full_buffer),
+            "output_truncated": output_truncated,
         }
+        # New-output read via a line cursor (poll(offset=N)).
+        if offset is not None:
+            try:
+                offset = max(int(offset), 0)
+            except (TypeError, ValueError):
+                offset = 0
+            lines = strip_ansi(full_buffer).splitlines()
+            result["output"] = "\n".join(lines[offset:])
+            result["total_lines"] = len(lines)
+            result["offset"] = offset
         if session.exited:
             result["exit_code"] = session.exit_code
             result["completion_reason"] = session.completion_reason
             result["termination_source"] = session.termination_source
+            if session.exit_code:
+                try:
+                    from tools.terminal_tool import _interpret_exit_code
+
+                    meaning = _interpret_exit_code(session.command, session.exit_code)
+                    if meaning:
+                        result["exit_code_meaning"] = meaning
+                    else:
+                        try:
+                            from tools.terminal_hints import annotate_failure
+
+                            hint = annotate_failure(
+                                session.command, session.exit_code, output_preview
+                            )
+                            if hint:
+                                result["hint"] = hint
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
             # NOTE: poll() is a read-only status query and deliberately does
             # NOT mark the session _completion_consumed. wait()/read_log()
             # represent actual output consumption and do mark it. Marking
@@ -1494,8 +1765,22 @@ class ProcessRegistry:
             result["note"] = "Process recovered after restart -- output history unavailable"
         return result
 
-    def read_log(self, session_id: str, offset: int = 0, limit: int = 200) -> dict:
-        """Read the full output log with optional pagination by lines."""
+    def read_log(
+        self,
+        session_id: str,
+        offset: int = 0,
+        limit: int = 200,
+        output_path: str | None = None,
+    ) -> dict:
+        """Read the full output log with optional pagination by lines.
+
+        ``output_path`` optionally exports the FULL accumulated buffer to a
+        file (a literal path, or ``"auto"`` for a session temp file) so the
+        model can page the middle of a long log that the 200KB rolling window
+        may have dropped — the background counterpart of the foreground spill
+        file. The result always carries ``output_total_chars`` and
+        ``output_truncated`` so the model knows whether the window wrapped.
+        """
         from tools.ansi_strip import strip_ansi
 
         session = self.get(session_id)
@@ -1504,6 +1789,7 @@ class ProcessRegistry:
 
         with session._lock:
             full_output = strip_ansi(session.output_buffer)
+            output_truncated = session._buffer_overflowed
 
         lines = full_output.splitlines()
         total_lines = len(lines)
@@ -1526,22 +1812,77 @@ class ProcessRegistry:
             "output": "\n".join(selected),
             "total_lines": total_lines,
             "showing": f"{len(selected)} lines",
+            "output_total_chars": len(full_output),
+            "output_truncated": output_truncated,
         }
+        if output_path:
+            path = self._export_output(session, full_output, output_path)
+            if path:
+                result["full_output_path"] = path
+                result["output_path"] = path
         if session.exited and observed_completion_output:
             self._completion_consumed.add(session_id)
         return result
 
-    def wait(self, session_id: str, timeout: int = None) -> dict:
+    def _export_output(
+        self, session: "ProcessSession", text: str, output_path: str
+    ) -> str | None:
+        """Write ``text`` to ``output_path`` (or a session temp file for "auto").
+
+        Returns the resolved path, or None on failure (never raises — log
+        retrieval must keep working even when disk export fails).
         """
-        Block until a process exits, timeout, or interrupt.
+        try:
+            if not output_path or output_path.lower() in ("auto", ""):
+                from tools.terminal_post_process import _get_session_temp_dir
+
+                tmp_dir = _get_session_temp_dir()
+                out_path = tmp_dir / f"{session.id}_output.txt"
+            else:
+                out_path = Path(output_path)
+                if out_path.is_dir():
+                    out_path = out_path / f"{session.id}_output.txt"
+                out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(text, encoding="utf-8")
+            return str(out_path)
+        except OSError as e:
+            logger.debug("Output export failed for %s: %s", session.id, e)
+            return None
+
+    def wait(
+        self,
+        session_id: str,
+        timeout: int = None,
+        *,
+        pattern: str | None = None,
+        inactivity_timeout: int | None = None,
+        since_chars: int = 0,
+    ) -> dict:
+        """
+        Block until a process exits, timeout, pattern match, or interrupt.
 
         Args:
             session_id: The process to wait for.
             timeout: Max seconds to block. Falls back to TERMINAL_TIMEOUT config.
+            pattern: Optional regex. Returns as soon as the pattern matches NEW
+                output (``status="matched"``, ``wait_matched=True``) even while
+                the process keeps running — the LLM-friendly counterpart of the
+                push-only ``watch_patterns``.
+            inactivity_timeout: Optional seconds of output silence while the
+                process still runs. When exceeded, returns early with partial
+                output (``status="timeout"``, ``inactivity_timeout=True``,
+                ``process_running=True``). Defaults to 120s when ``pattern`` is
+                set, so a silent process can never block the agent forever.
+            since_chars: Optional character cursor into the rolling buffer
+                (from ``len(session.output_buffer)``). When set, only output
+                produced AFTER the cursor is reported, and (when no pattern is
+                set) the wait returns as soon as any new output arrives
+                (``status="output"``, ``process_running=True``) — used by
+                terminal session continuation.
 
         Returns:
-            dict with status ("exited", "timeout", "interrupted", "not_found")
-            and output snapshot.
+            dict with status ("exited", "matched", "output", "timeout",
+            "interrupted", "not_found") and an output snapshot.
         """
         from tools.ansi_strip import strip_ansi
         from tools.interrupt import is_interrupted as _is_interrupted
@@ -1567,26 +1908,72 @@ class ProcessRegistry:
         if session is None:
             return {"status": "not_found", "error": f"No process with ID {session_id}"}
 
-        deadline = time.monotonic() + effective_timeout
+        # Regex wait support (kimi-style wait_for_pattern).
+        pattern_re = None
+        if pattern:
+            try:
+                pattern_re = re.compile(pattern)
+            except re.error:
+                return {
+                    "status": "error",
+                    "error": f"Invalid regex pattern: {pattern}",
+                }
+
+        # Inactivity default: when waiting on a pattern, cap silent periods so
+        # the agent never blocks on a process that stopped producing output.
+        if inactivity_timeout is None and pattern_re is not None:
+            inactivity_timeout = _DEFAULT_INACTIVITY_TIMEOUT
+        if inactivity_timeout is not None and int(inactivity_timeout) <= 0:
+            inactivity_timeout = None
+
+        started = time.monotonic()
+        deadline = started + effective_timeout
+
+        # Cursor into the rolling buffer: ``scan_cursor`` advances as output is
+        # consumed for pattern scanning; ``result_cursor`` stays at the original
+        # position so the returned ``output`` covers everything produced since
+        # this wait began (or since ``since_chars``).
+        result_cursor = max(int(since_chars or 0), 0)
+        scan_cursor = result_cursor
+        last_output_at = time.monotonic()
+
+        def _buf_len() -> int:
+            return len(session.output_buffer or "")
+
+        def _since(cursor: int) -> str:
+            buf = session.output_buffer or ""
+            return buf[cursor:] if len(buf) > cursor else ""
 
         while time.monotonic() < deadline:
             session = self._refresh_detached_session(session)
             if session is None:
                 return {"status": "not_found", "error": f"No process with ID {session_id}"}
+            # Cursor clamp: if the 200KB rolling window wrapped past the
+            # since_chars cursor, fall back to the whole buffer so a
+            # continuation can't hang forever on a stale cursor.
+            buf_len = _buf_len()
+            if result_cursor and buf_len and result_cursor > buf_len:
+                result_cursor = 0
+                scan_cursor = 0
             # Reconcile against real child state — guards against orphaned-
             # pipe reader hangs where the reader is blocked but the direct
             # child has already exited (issue #17327).
             self._reconcile_local_exit(session)
             if session.exited:
                 self._completion_consumed.add(session_id)
+                new_output = _since(result_cursor)
                 result = {
                     "status": "exited",
                     "command": session.command,
                     "exit_code": session.exit_code,
                     "completion_reason": session.completion_reason,
                     "termination_source": session.termination_source,
-                    "output": strip_ansi(session.output_buffer[-2000:]),
+                    "output": new_output if result_cursor else strip_ansi(session.output_buffer[-2000:]),
+                    "elapsed_seconds": round(time.monotonic() - started, 2),
                 }
+                if pattern_re is not None:
+                    result["wait_matched"] = False
+                    result["pattern"] = pattern
                 if timeout_note:
                     result["timeout_note"] = timeout_note
                 return result
@@ -1597,9 +1984,79 @@ class ProcessRegistry:
                     "command": session.command,
                     "output": strip_ansi(session.output_buffer[-1000:]),
                     "note": "User sent a new message -- wait interrupted",
+                    "elapsed_seconds": round(time.monotonic() - started, 2),
                 }
                 if timeout_note:
                     result["timeout_note"] = timeout_note
+                return result
+
+            buf_len = _buf_len()
+            new_text = _since(scan_cursor)
+            if new_text:
+                if pattern_re is not None:
+                    match = pattern_re.search(new_text)
+                    if match:
+                        output = _since(result_cursor)
+                        result = {
+                            "status": "matched",
+                            "command": session.command,
+                            "wait_matched": True,
+                            "matched_pattern": match.group(0),
+                            "pattern": pattern,
+                            "output": output or strip_ansi(session.output_buffer[-2000:]),
+                            "process_running": True,
+                            "elapsed_seconds": round(time.monotonic() - started, 2),
+                        }
+                        if timeout_note:
+                            result["timeout_note"] = timeout_note
+                        return result
+                # New output arrived — remember when and consume the scan
+                # cursor so we don't re-scan old text.
+                last_output_at = time.monotonic()
+                scan_cursor = buf_len
+                if result_cursor and pattern_re is None:
+                    # Continuation wait: return as soon as new output appears
+                    # (terminal session continuation semantics).
+                    result = {
+                        "status": "output",
+                        "command": session.command,
+                        "output": _since(result_cursor),
+                        "process_running": True,
+                        "elapsed_seconds": round(time.monotonic() - started, 2),
+                    }
+                    if timeout_note:
+                        result["timeout_note"] = timeout_note
+                    return result
+
+            # Inactivity early-return: a still-running process that stopped
+            # producing output for `inactivity_timeout` seconds yields partial
+            # output instead of blocking the whole window (kimi's
+            # DEFAULT_INACTIVITY_TIMEOUT semantics).
+            if (
+                inactivity_timeout is not None
+                and (time.monotonic() - last_output_at) >= inactivity_timeout
+            ):
+                output = _since(result_cursor)
+                result = {
+                    "status": "timeout",
+                    "command": session.command,
+                    "output": output or strip_ansi(session.output_buffer[-1000:]),
+                    "inactivity_timeout": True,
+                    "process_running": True,
+                    "elapsed_seconds": round(time.monotonic() - started, 2),
+                }
+                if pattern_re is not None:
+                    result["wait_matched"] = False
+                    result["pattern"] = pattern
+                if timeout_note:
+                    result["timeout_note"] = timeout_note
+                else:
+                    result["timeout_note"] = (
+                        f"No new output for {int(inactivity_timeout)}s while the "
+                        "process is still running — returned early with partial "
+                        "output. Poll again later or use process(action='wait', "
+                        f"pattern=...) / terminal(process_id=...) to wait on a signal."
+                    )
                 return result
 
             remaining = deadline - time.monotonic()
@@ -1611,11 +2068,36 @@ class ProcessRegistry:
             "status": "timeout",
             "command": session.command,
             "output": strip_ansi(session.output_buffer[-1000:]),
+            # A wait window elapsing is NOT a failure — 511 exact-duplicate
+            # process calls in a production window show models re-issuing
+            # identical waits after misreading this result as an error.
+            "process_running": True,
+            "elapsed_seconds": round(time.monotonic() - started, 2),
         }
-        if timeout_note:
-            result["timeout_note"] = timeout_note
+        if pattern_re is not None:
+            result["wait_matched"] = False
+            result["pattern"] = pattern
+        uptime = time.time() - session.started_at if session.started_at else None
+        base_note = (
+            f"Wait window of {effective_timeout}s elapsed — the process is "
+            "still running. This is not an error."
+        )
+        if uptime is not None:
+            base_note += f" Uptime: {int(uptime)}s."
+        if session.notify_on_complete:
+            base_note += (
+                " notify_on_complete is set: you will be notified on exit — "
+                "do more work instead of waiting again."
+            )
         else:
-            result["timeout_note"] = f"Waited {effective_timeout}s, process still running"
+            base_note += (
+                " Poll again later or use terminal(background=true, "
+                "notify_on_complete=true) next time for automatic notification."
+            )
+        if timeout_note:
+            result["timeout_note"] = f"{timeout_note}. {base_note}"
+        else:
+            result["timeout_note"] = base_note
         return result
 
     def kill_process(
@@ -1630,7 +2112,10 @@ class ProcessRegistry:
         ``consume_output`` is true for explicit tool/RPC kills because their
         caller observes the returned output. Bulk cleanup passes false: it
         discards each result and therefore must not suppress an autonomous
-        output-bearing completion notification.
+        output-bearing completion notification. Exception: abandoned-turn
+        reaping (``kill_started_since``) is bulk cleanup that deliberately
+        passes true — a killed abandoned process must not enqueue a synthetic
+        follow-up that revives work the timeout/interrupt stopped.
         """
         from tools.ansi_strip import strip_ansi
 
@@ -1647,6 +2132,7 @@ class ProcessRegistry:
                     "completion_reason": session.completion_reason,
                     "termination_source": session.termination_source,
                     "output": strip_ansi(session.output_buffer[-2000:]),
+                    "elapsed_seconds": round(time.time() - session.started_at, 2),
                 }
             # Only suppress the autonomous turn after its output is present in
             # the explicit kill result, matching wait/log consumption.
@@ -1716,6 +2202,7 @@ class ProcessRegistry:
                 "completion_reason": session.completion_reason,
                 "termination_source": session.termination_source,
                 "output": output,
+                "elapsed_seconds": round(time.time() - session.started_at, 2),
             }
         except Exception as e:
             return {"status": "error", "error": str(e)}
@@ -1942,20 +2429,64 @@ class ProcessRegistry:
         with self._lock:
             return any(not s.exited for s in self._running.values())
 
-    def kill_all(self, task_id: str = None) -> int:
+    def snapshot_running_ids(self, task_id: str) -> frozenset[str]:
+        """Capture running process IDs owned by ``task_id``.
+
+        Gateway turns use this as a boundary marker: if a turn times out, only
+        processes absent from its starting snapshot belong to the abandoned
+        turn. Older session processes must survive because background tasks
+        intentionally span successful turns.
+        """
+        with self._lock:
+            return frozenset(
+                s.id
+                for s in self._running.values()
+                if s.task_id == task_id and not s.exited
+            )
+
+    def kill_started_since(
+        self,
+        task_id: str,
+        baseline_ids,
+        *,
+        source: str,
+    ) -> int:
+        """Kill processes created for ``task_id`` after a prior snapshot.
+
+        ``consume_output`` is forced on: abandoned-turn output must not
+        enqueue a synthetic follow-up that revives work the timeout
+        deliberately stopped.
+        """
+        return self.kill_all(
+            task_id,
+            exclude_ids=frozenset(baseline_ids or ()),
+            source=source,
+            consume_output=True,
+        )
+
+    def kill_all(
+        self,
+        task_id: Optional[str] = None,
+        *,
+        exclude_ids: frozenset = frozenset(),
+        source: str = "kill_all",
+        consume_output: bool = False,
+    ) -> int:
         """Kill all running processes, optionally filtered by task_id. Returns count killed."""
         with self._lock:
             targets = [
                 s for s in self._running.values()
-                if (task_id is None or s.task_id == task_id) and not s.exited
+                if (task_id is None or s.task_id == task_id)
+                and s.id not in exclude_ids
+                and not s.exited
             ]
 
         killed = 0
         for session in targets:
             result = self.kill_process(
                 session.id,
-                source="kill_all",
-                consume_output=False,
+                source=source,
+                consume_output=consume_output,
             )
             if result.get("status") in {"killed", "already_exited"}:
                 killed += 1
@@ -2356,8 +2887,11 @@ PROCESS_SCHEMA = {
     "name": "process",
     "description": (
         "Manage background processes (terminal background=true). Actions: list all; "
-        "poll status+new output; log full output (paginated); wait until done/timeout; "
-        "kill; write stdin (no newline); submit data+Enter (prompts); close stdin."
+        "poll status+new output (optionally from a line offset); log full output "
+        "(paginated, optionally exported to a file); wait until done / pattern match / "
+        "timeout / output-silence; kill; write stdin (no newline); submit data+Enter "
+        "(prompts); close stdin. Prefer wait with pattern= for mid-process signals "
+        "(server readiness, migration-done) instead of blind polling."
     ),
     "parameters": {
         "type": "object",
@@ -2377,12 +2911,29 @@ PROCESS_SCHEMA = {
             },
             "timeout": {
                 "type": "integer",
-                "description": "Max seconds to block for 'wait'; returns partial output on timeout.",
+                "description": "Max seconds to block for 'wait' (clamped to the configured TERMINAL_TIMEOUT); returns partial output on timeout.",
                 "minimum": 1
+            },
+            "pattern": {
+                "type": "string",
+                "description": "Regex to wait for in NEW output (with action='wait'). Returns as soon as it matches (status='matched', wait_matched=true) even while the process keeps running — the blocking counterpart of watch_patterns. Use for server-readiness signals instead of polling."
+            },
+            "inactivity_timeout": {
+                "type": "integer",
+                "description": "With action='wait': return early with partial output after this many seconds of output SILENCE while the process still runs (status='timeout', inactivity_timeout=true). Default 120 when pattern is set, so a silent process never blocks you forever.",
+                "minimum": 1
+            },
+            "block": {
+                "type": "boolean",
+                "description": "With action='poll': block until the process exits or `timeout` elapses (same as action='wait'). kimi-style convenience: process(action='poll', block=true)."
+            },
+            "output_path": {
+                "type": "string",
+                "description": "With action='log'/'wait': also write the FULL accumulated output to this file (absolute path, or 'auto' for a session temp file) so you can page the middle of a long log that the 200KB rolling window may have dropped."
             },
             "offset": {
                 "type": "integer",
-                "description": "Line offset for 'log' (default: last 200 lines)"
+                "description": "With action='poll': only return output lines at/after this line number (new-output reads). With action='log': line offset (default 0 = last `limit` lines)."
             },
             "limit": {
                 "type": "integer",
@@ -2423,6 +2974,10 @@ def _redact_process_result(result: dict) -> dict:
 def _handle_process(args, **kw):
     task_id = kw.get("task_id")
     action = args.get("action", "")
+    # kimi-style convenience: a boolean `block` on poll upgrades it to a
+    # blocking wait (per-tool alias maps `wait` → `block`).
+    if action == "poll" and args.get("block"):
+        action = "wait"
     # Coerce to string — some models send session_id as an integer
     session_id = str(args.get("session_id", "")) if args.get("session_id") is not None else ""
 
@@ -2440,12 +2995,21 @@ def _handle_process(args, **kw):
         if not session_id:
             return tool_error(f"session_id is required for {action}")
         if action == "poll":
-            return orjson.dumps(_redact_process_result(process_registry.poll(session_id))).decode('utf-8')
+            return orjson.dumps(_redact_process_result(process_registry.poll(
+                session_id, offset=args.get("offset"),
+            ))).decode('utf-8')
         elif action == "log":
             return orjson.dumps(_redact_process_result(process_registry.read_log(
-                session_id, offset=args.get("offset", 0), limit=args.get("limit", 200)))).decode('utf-8')
+                session_id, offset=args.get("offset", 0), limit=args.get("limit", 200),
+                output_path=args.get("output_path"),
+            ))).decode('utf-8')
         elif action == "wait":
-            return orjson.dumps(_redact_process_result(process_registry.wait(session_id, timeout=args.get("timeout")))).decode('utf-8')
+            return orjson.dumps(_redact_process_result(process_registry.wait(
+                session_id,
+                timeout=args.get("timeout"),
+                pattern=args.get("pattern"),
+                inactivity_timeout=args.get("inactivity_timeout"),
+            ))).decode('utf-8')
         elif action == "kill":
             return orjson.dumps(
                 _redact_process_result(process_registry.kill_process(session_id))

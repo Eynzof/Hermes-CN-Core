@@ -11,8 +11,8 @@ of writing ``1`` to ``cgroup.kill``: the original failure mode in #37454
 was the kernel returning ``EINVAL`` on the cgroup-wide kill, while per-PID
 signal delivery uses a separate code path that still works.
 """
-
 from __future__ import annotations
+
 
 import os
 from agent.re_compat import re

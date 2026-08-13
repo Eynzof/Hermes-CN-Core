@@ -1,6 +1,6 @@
 """Tests for agent/system_reminder.py — SystemReminder + SystemReminderProvider."""
-
 from __future__ import annotations
+
 
 from abc import ABC
 from typing import Any, List

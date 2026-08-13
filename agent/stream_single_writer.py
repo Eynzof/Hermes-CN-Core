@@ -19,8 +19,8 @@ the sole legitimate writer. So when the guard is unavailable (or raises), the
 correct degradation is "no fence": keep streaming. These helpers make the
 claim/check best-effort to guarantee that.
 """
-
 from __future__ import annotations
+
 
 import logging
 from typing import Any

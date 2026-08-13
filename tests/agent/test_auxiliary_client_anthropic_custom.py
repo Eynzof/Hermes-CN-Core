@@ -6,8 +6,8 @@ When a user configures a custom endpoint with ``api_mode: anthropic_messages``
 native Anthropic transport rather than being silently downgraded to an
 OpenAI-wire client that speaks the wrong protocol.
 """
-
 from __future__ import annotations
+
 
 from unittest.mock import MagicMock, patch
 

@@ -8,8 +8,8 @@ api_content sidecar channel as plugin context (string content), or as an
 appended text part on multimodal (list) content, where the string sidecar
 cannot apply and the fact would otherwise silently drop.
 """
-
 from __future__ import annotations
+
 
 import types
 from unittest.mock import patch

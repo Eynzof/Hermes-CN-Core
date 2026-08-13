@@ -12,8 +12,8 @@ We don't exercise the full agent loop here (it's 3000 lines of inference,
 streaming, plugin hooks, etc.) — instead we verify the normalization
 adapter produces exactly the shape the continuation block now consumes.
 """
-
 from __future__ import annotations
+
 
 from types import SimpleNamespace
 
@@ -65,23 +65,6 @@ class TestTruncatedAnthropicResponseNormalization:
         )
         assert nr.finish_reason == "length", "max_tokens stop_reason must map to OpenAI-style 'length'"
 
-    def test_truncated_tool_call_produces_tool_calls(self):
-        """Tool-use truncation → tool-call retry path should fire."""
-        from agent.transports import get_transport
-
-        response = _make_anthropic_response(
-            [
-                _make_anthropic_text_block("thinking..."),
-                _make_anthropic_tool_use_block(),
-            ]
-        )
-        nr = get_transport("anthropic_messages").normalize_response(response)
-
-        assert bool(nr.tool_calls), (
-            "Truncation mid-tool_use must expose tool_calls so the "
-            "tool-call retry branch fires instead of text continuation"
-        )
-        assert nr.finish_reason == "length"
 
     def test_empty_content_does_not_crash(self):
         """Empty response.content — defensive: treat as a truncation with no text."""

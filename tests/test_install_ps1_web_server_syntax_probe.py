@@ -10,8 +10,8 @@ This test is source-level because Linux CI cannot execute the PowerShell
 installer. It locks the contract that install.ps1 runs ``py_compile`` against
 ``hermes_cli/web_server.py`` and fails the stage when that syntax probe fails.
 """
-
 from __future__ import annotations
+
 
 import re
 from pathlib import Path

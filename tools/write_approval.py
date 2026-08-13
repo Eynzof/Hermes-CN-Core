@@ -39,8 +39,8 @@ Pending records live under ``<HERMES_HOME>/pending/{memory,skills}/<id>.json``
 so they survive process restarts and can be reviewed from CLI, gateway, or the
 web dashboard.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import logging

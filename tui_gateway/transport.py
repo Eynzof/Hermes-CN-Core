@@ -19,8 +19,8 @@ original ``_real_stdout`` + ``_stdout_lock`` pair.  Tests that monkey-patch
 ``server._real_stdout`` continue to work because the stdio transport resolves
 the stream lazily through a callback.
 """
-
 from __future__ import annotations
+
 
 import contextvars
 import errno

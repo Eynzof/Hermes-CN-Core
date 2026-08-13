@@ -479,6 +479,8 @@ for _gnu_command in (
     _FALLBACK_BODIES.setdefault("g" + _gnu_command, f'{_gnu_command} "$@"')
 
 
+
+
 def _fallback_definition(name: str) -> str:
     body = _FALLBACK_BODIES[name]
     if name in _STUB_AWARE_FALLBACKS:

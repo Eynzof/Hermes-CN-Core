@@ -12,8 +12,8 @@ and a chat message. Skill diffs are intentionally NOT inlined here — the
 ``diff`` handler returns the full diff for the CLI pager, but on a messaging
 platform the gateway truncates it and points the user at the dashboard / file.
 """
-
 from __future__ import annotations
+
 
 import orjson
 from typing import List, Optional

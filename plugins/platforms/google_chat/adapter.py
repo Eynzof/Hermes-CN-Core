@@ -34,8 +34,8 @@ CARD_CLICKED]. Only MESSAGE dispatches to the agent. ADDED_TO_SPACE caches the
 bot's resource name (belt-and-suspenders on top of eager resolution in connect()).
 CARD_CLICKED is ACK'd only in v1 (follow-up PR implements interactivity).
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import orjson
@@ -558,7 +558,7 @@ class _ThreadCountStore:
             self._counts = {}
             return
         try:
-            raw = self._path.read_text()
+            raw = self._path.read_text(encoding="utf-8")
             data = orjson.loads(raw) if raw.strip() else {}
         except orjson.JSONDecodeError as exc:
             logger.warning(
@@ -613,7 +613,7 @@ class _ThreadCountStore:
         try:
             self._path.parent.mkdir(parents=True, exist_ok=True)
             tmp = self._path.with_suffix(self._path.suffix + ".tmp")
-            tmp.write_text(orjson.dumps(self._counts).decode('utf-8'))
+            tmp.write_text(orjson.dumps(self._counts).decode('utf-8'), encoding='utf-8')
             os.replace(tmp, self._path)
         except OSError as exc:
             logger.warning(
@@ -3693,7 +3693,7 @@ def register(ctx) -> None:
         required_env=[
             "GOOGLE_CHAT_SERVICE_ACCOUNT_JSON",
         ],
-        install_hint="pip install 'hermes-agent[google_chat]'",
+        install_hint="Run `hermes setup` to install Google Chat support.",
         setup_fn=interactive_setup,
         # Env-driven auto-configuration — the core env-populator hook calls
         # this during ``_apply_env_overrides`` and seeds

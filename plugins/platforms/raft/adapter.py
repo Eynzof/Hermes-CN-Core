@@ -6,8 +6,8 @@ Token and port are auto-generated when not provided via env/config.
 The bridge remains responsible for Raft message cursors and body materialization;
 the agent uses the Raft CLI according to the Raft manual.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 from collections import deque

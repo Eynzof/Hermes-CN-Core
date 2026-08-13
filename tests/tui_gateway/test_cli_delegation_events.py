@@ -5,8 +5,8 @@
 前台委派两拍终态、后台委派绑定 process session、启动失败直接 failed、
 非 terminal / 非委派命令不产生事件、tool progress 关闭时整体静默。
 """
-
 from __future__ import annotations
+
 
 import json
 
@@ -80,6 +80,41 @@ def test_foreground_claude_json_delegation_started_and_completed(events):
     assert payload["result"]["num_turns"] == 4
     # 终态后 tracker 不留状态。
     assert cli_delegation.tracker._entries == {}
+
+
+def test_codex_human_output_recovers_runtime_metadata(events):
+    args = {
+        "command": "cd $(mktemp -d) && git init -q && codex exec 'hello'",
+        "pty": True,
+    }
+    server._on_tool_start("sid-1", "call-human", "terminal", args)
+    started = _by_type(events, "delegation.cli.started")[-1][2]
+    assert started["workdir"] is None
+
+    output = """OpenAI Codex v0.145.0
+--------
+workdir: /private/tmp/codex-run
+model: gpt-5.6-sol
+session id: 019fa2c2-test
+--------
+tokens used
+10,654
+你好
+"""
+    server._on_tool_complete(
+        "sid-1",
+        "call-human",
+        "terminal",
+        args,
+        json.dumps({"output": output, "exit_code": 0, "error": None}),
+    )
+    result = _by_type(events, "delegation.cli.completed")[-1][2]["result"]
+    assert result == {
+        "workdir": "/private/tmp/codex-run",
+        "model": "gpt-5.6-sol",
+        "session_id": "019fa2c2-test",
+        "total_tokens": 10654,
+    }
 
 
 def test_foreground_failure_maps_to_failed(events):

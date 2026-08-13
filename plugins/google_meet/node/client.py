@@ -8,8 +8,8 @@ maintaining persistent connection state across agent turns.
 The ``websockets`` package is an optional dep — we import it lazily so
 plugin load doesn't require it.
 """
-
 from __future__ import annotations
+
 
 from typing import Any, Dict, Optional
 

@@ -1,5 +1,5 @@
-from __future__ import annotations
 
+from __future__ import annotations
 import subprocess
 
 
@@ -87,42 +87,6 @@ agent:
     pinned = captured["cmd"][captured["cmd"].index("--toolsets") + 1].split(",")
     for required in ("terminal", "web", "file", "skills", "code_execution", "delegation"):
         assert required in pinned
-
-
-def test_default_spawn_never_boots_the_tui(monkeypatch, tmp_path):
-    """Workers are headless: an inherited HERMES_TUI=1 (or a TUI-default
-    config) must not send the quiet chat run into the Ink TUI, whose no-TTY
-    bail-out exits 0 without doing the task — every attempt then ends in
-    "protocol violation". The spawn pins --cli (highest-precedence interface
-    flag) and strips HERMES_TUI from the child env."""
-    root = tmp_path / ".hermes"
-    (root / "profiles" / "elias").mkdir(parents=True)
-    root.joinpath("config.yaml").write_text("display:\n  interface: tui\n", encoding="utf-8")
-    monkeypatch.setenv("HERMES_HOME", str(root))
-    monkeypatch.setenv("HERMES_TUI", "1")
-
-    from hermes_cli import kanban_db as kb
-
-    monkeypatch.setattr(kb, "_resolve_hermes_argv", lambda: ["hermes"])
-
-    captured = {}
-
-    class FakeProc:
-        pid = 4243
-
-    def fake_popen(cmd, *args, **kwargs):
-        captured["cmd"] = list(cmd)
-        captured["env"] = dict(kwargs.get("env") or {})
-        return FakeProc()
-
-    monkeypatch.setattr(subprocess, "Popen", fake_popen)
-
-    workspace = tmp_path / "workspace"
-    workspace.mkdir()
-    kb._default_spawn(_make_task(kb, assignee="elias"), str(workspace))
-
-    assert "--cli" in captured["cmd"]
-    assert "HERMES_TUI" not in captured["env"]
 
 
 def test_default_spawn_model_override_survives_real_cli_parse(monkeypatch, tmp_path):

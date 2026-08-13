@@ -15,8 +15,8 @@ When xAI storage is enabled, the primary ``video`` / ``public_url`` fields are t
 stored files-cdn HTTPS link. Pass that public MP4 URL as ``video_url`` for
 edit/extend; it is sent to xAI as ``video.url``.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import pybase64 as base64

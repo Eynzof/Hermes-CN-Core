@@ -1,6 +1,6 @@
 """Shared fixtures for Feishu adapter tests (admission, group policy, dispatch)."""
-
 from __future__ import annotations
+
 
 import threading
 from types import SimpleNamespace

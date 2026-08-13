@@ -25,15 +25,13 @@ Design:
 
 import orjson
 import logging
-import os
-import tempfile
 import time
 from contextlib import contextmanager
 from pathlib import Path
 from hermes_constants import get_hermes_home
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 
-from utils import atomic_replace
+from utils import atomic_write_text
 
 # fcntl is Unix-only; on Windows use msvcrt for file locking
 msvcrt = None
@@ -67,6 +65,18 @@ MEMORY_BLOCK_HEADERS = {
 }
 
 ENTRY_DELIMITER = "\n§\n"
+DEFAULT_MEMORY_CHAR_LIMIT = 2200
+MIN_MEMORY_CHAR_LIMIT = 1
+MAX_MEMORY_CHAR_LIMIT = 8000
+
+
+def normalize_memory_char_limit(value: Any) -> int:
+    """Return a safe built-in-memory limit for every runtime entry point."""
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return DEFAULT_MEMORY_CHAR_LIMIT
+    return max(MIN_MEMORY_CHAR_LIMIT, min(MAX_MEMORY_CHAR_LIMIT, parsed))
 
 
 # ---------------------------------------------------------------------------
@@ -120,6 +130,33 @@ def _drift_error(path: "Path", bak_path: str) -> Dict[str, Any]:
     }
 
 
+# Sentinel returned by ``_reload_target`` when the target file EXISTS but could
+# not be read. Distinct from a drift-backup path (``str``) and from a clean
+# reload (``None``): the caller must abort the mutation rather than persist over
+# an unreadable file.
+_READ_FAILED = object()
+
+
+def _read_failed_error(path: "Path") -> Dict[str, Any]:
+    """Build the error dict returned when the on-disk memory file is unreadable.
+
+    A file that exists but cannot be read is NOT an empty store. Reading it as
+    ``[]`` and then persisting would rewrite the whole file from an empty entry
+    list — wiping the user's memory. We refuse the write so nothing is lost.
+    """
+    return {
+        "success": False,
+        "error": (
+            f"Refusing to write {path.name}: the file exists on disk but could "
+            f"not be read right now (temporarily locked by another program, a "
+            f"permission change, invalid/corrupt text encoding, or a filesystem "
+            f"error). Treating an unreadable file as empty and saving would wipe "
+            f"existing memory, so the write is refused. Nothing was changed — "
+            f"retry in a moment."
+        ),
+    }
+
+
 class MemoryStore:
     """
     Bounded curated memory with file persistence. One instance per AIAgent.
@@ -137,10 +174,10 @@ class MemoryStore:
     # turn to budget exhaustion and suppress the user's reply (issue #42405).
     _MAX_CONSOLIDATION_FAILURES_PER_TURN = 3
 
-    def __init__(self, memory_char_limit: int = 2200, user_char_limit: int = 1375):
+    def __init__(self, memory_char_limit: int = DEFAULT_MEMORY_CHAR_LIMIT, user_char_limit: int = 1375):
         self.memory_entries: List[str] = []
         self.user_entries: List[str] = []
-        self.memory_char_limit = memory_char_limit
+        self.memory_char_limit = normalize_memory_char_limit(memory_char_limit)
         self.user_char_limit = user_char_limit
         # Frozen snapshot for system prompt -- set once at load_from_disk()
         self._system_prompt_snapshot: Dict[str, str] = {"memory": "", "user": ""}
@@ -299,7 +336,7 @@ class MemoryStore:
             return mem_dir / "USER.md"
         return mem_dir / "MEMORY.md"
 
-    def _reload_target(self, target: str, *, skip_drift: bool = False) -> Optional[str]:
+    def _reload_target(self, target: str, *, skip_drift: bool = False):
         """Re-read entries from disk into in-memory state.
 
         Called under file lock to get the latest state before mutating.
@@ -308,15 +345,34 @@ class MemoryStore:
         parser/serializer, OR an entry larger than the store's char limit).
         When drift is detected the caller must abort the mutation —
         flushing would discard the un-roundtrippable content.
-        Returns None on clean reload.
+        Returns ``None`` on clean reload.
+
+        Returns the ``_READ_FAILED`` sentinel when the file EXISTS but could not
+        be read. The caller MUST abort: the on-disk entries are unknown, so
+        overwriting from an assumed-empty view would wipe them. This is the real
+        exposure behind ``add`` — it skips the drift guard because appending is
+        safe, but that reasoning only holds when the reload actually saw the
+        file. A failed read reported as ``[]`` turned ``add`` into a full-file
+        rewrite down to a single entry.
 
         When *skip_drift* is True the round-trip / entry-size check is
         bypassed.  Used by the ``add`` action which appends without
         rewriting, so existing content is never clobbered.
         """
         path = self._path_for(target)
-        bak = None if skip_drift else self._detect_external_drift(target)
-        fresh = self._read_file(path)
+        raw, read_ok = self._read_raw_checked(path)
+        if not read_ok:
+            # Leave in-memory entries untouched and tell the caller to abort;
+            # persisting over an unreadable file would destroy it.
+            return _READ_FAILED
+        # Derive BOTH the drift check and the entry parse from the same raw
+        # snapshot. The drift guard used to re-read the file itself and treat
+        # a failed second read as "no drift" — so a read failure between the
+        # checked reload and the drift check let replace/remove/apply_batch
+        # rewrite the file from a stale view, silently discarding whatever an
+        # external writer had just added. One read, one snapshot, no window.
+        bak = None if skip_drift else self._detect_external_drift(target, raw)
+        fresh = self._parse_entries(raw)
         fresh = list(dict.fromkeys(fresh))  # deduplicate
         self._set_entries(target, fresh)
         return bak
@@ -372,7 +428,14 @@ class MemoryStore:
             # tool-written entries in the same session are harmless.  The drift
             # guard remains active for replace/remove where full-file rewrite
             # would discard un-roundtrippable content (issue #26045).
-            self._reload_target(target, skip_drift=True)
+            #
+            # But "append never clobbers" only holds when the reload actually
+            # read the file. add rewrites the WHOLE file from the parsed
+            # entries, so a file that exists but read as empty (transient lock,
+            # permission blip, I/O error) would be rewritten down to just the
+            # new entry — wiping every prior memory. Refuse instead.
+            if self._reload_target(target, skip_drift=True) is _READ_FAILED:
+                return _read_failed_error(self._path_for(target))
 
             entries = self._entries_for(target)
             limit = self._char_limit(target)
@@ -422,6 +485,8 @@ class MemoryStore:
 
         with self._file_lock(self._path_for(target)):
             bak = self._reload_target(target)
+            if bak is _READ_FAILED:
+                return _read_failed_error(self._path_for(target))
             if bak:
                 return _drift_error(self._path_for(target), bak)
 
@@ -483,6 +548,8 @@ class MemoryStore:
 
         with self._file_lock(self._path_for(target)):
             bak = self._reload_target(target)
+            if bak is _READ_FAILED:
+                return _read_failed_error(self._path_for(target))
             if bak:
                 return _drift_error(self._path_for(target), bak)
 
@@ -543,6 +610,8 @@ class MemoryStore:
 
         with self._file_lock(self._path_for(target)):
             bak = self._reload_target(target)
+            if bak is _READ_FAILED:
+                return _read_failed_error(self._path_for(target))
             if bak:
                 return _drift_error(self._path_for(target), bak)
 
@@ -701,29 +770,72 @@ class MemoryStore:
         return f"{separator}\n{header}\n{separator}\n{content}"
 
     @staticmethod
-    def _read_file(path: Path) -> List[str]:
-        """Read a memory file and split into entries.
+    def _read_raw_checked(path: Path) -> Tuple[str, bool]:
+        """Read a memory file's raw text, distinguishing unreadable from empty.
+
+        Returns ``(raw, read_ok)``. ``read_ok`` is False ONLY when the file
+        EXISTS but could not be read — an absent file is a clean ``("", True)``.
+        Invalid UTF-8 counts as unreadable too: the bytes on disk hold content
+        we cannot faithfully round-trip, so a rewrite would corrupt or discard
+        it just like a failed read. Read-modify-write callers must treat
+        ``read_ok=False`` as "abort" rather than "empty store", or a transient
+        read failure would let them persist over — and wipe — the on-disk
+        memory (issue #26045 is about the same class: never rewrite a file
+        from a view that isn't the real one).
 
         No file locking needed: _write_file uses atomic rename, so readers
         always see either the previous complete file or the new complete file.
         """
         if not path.exists():
-            return []
+            return "", True
         try:
-            raw = path.read_text(encoding="utf-8", errors="replace")
-        except (OSError, IOError):
-            return []
+            return path.read_text(encoding="utf-8"), True
+        except (OSError, IOError, UnicodeDecodeError):
+            return "", False
 
+    @staticmethod
+    def _parse_entries(raw: str) -> List[str]:
+        """Split raw memory-file text into stripped, non-empty entries."""
         if not raw.strip():
             return []
-
         # Use ENTRY_DELIMITER for consistency with _write_file. Splitting by "§"
         # alone would incorrectly split entries that contain "§" in their content.
         entries = [e.strip() for e in raw.split(ENTRY_DELIMITER)]
         return [e for e in entries if e]
 
-    def _detect_external_drift(self, target: str) -> Optional[str]:
+    @staticmethod
+    def _read_entries_checked(path: Path) -> Tuple[List[str], bool]:
+        """Read + parse a memory file, distinguishing unreadable from empty.
+
+        Returns ``(entries, read_ok)`` — see ``_read_raw_checked`` for the
+        ``read_ok`` contract.
+        """
+        raw, read_ok = MemoryStore._read_raw_checked(path)
+        if not read_ok:
+            return [], False
+        return MemoryStore._parse_entries(raw), True
+
+    @staticmethod
+    def _read_file(path: Path) -> List[str]:
+        """Read a memory file and split into entries (empty list on any error).
+
+        Retained for read-only callers (``load_from_disk``) that build in-memory
+        state without persisting; a failed read degrading to ``[]`` there is
+        harmless because nothing is written back. Read-modify-write paths use
+        ``_read_raw_checked`` so they can refuse to overwrite an unreadable
+        file — see ``_reload_target``.
+        """
+        return MemoryStore._read_entries_checked(path)[0]
+
+    def _detect_external_drift(self, target: str, raw: str) -> Optional[str]:
         """Return a backup-path string if on-disk content shows external drift.
+
+        *raw* is the file content already read by the caller's checked read
+        (``_read_raw_checked``). Drift detection MUST operate on that same
+        snapshot — an earlier version re-read the file here and treated a
+        failed second read as "no drift", which let a mutation proceed from a
+        stale first snapshot and rewrite away content an external writer added
+        between the two reads.
 
         The memory file is supposed to be a list of small entries the tool
         wrote, joined by §. Detect drift via two signals:
@@ -747,12 +859,6 @@ class MemoryStore:
         per-target char_limit for signal #2.
         """
         path = self._path_for(target)
-        if not path.exists():
-            return None
-        try:
-            raw = path.read_text(encoding="utf-8", errors="replace")
-        except (OSError, IOError):
-            return None
         if not raw.strip():
             return None
 
@@ -788,23 +894,7 @@ class MemoryStore:
         """
         content = ENTRY_DELIMITER.join(entries) if entries else ""
         try:
-            # Write to temp file in same directory (same filesystem for atomic rename)
-            fd, tmp_path = tempfile.mkstemp(
-                dir=str(path.parent), suffix=".tmp", prefix=".mem_"
-            )
-            try:
-                with os.fdopen(fd, "w", encoding="utf-8", errors="replace") as f:
-                    f.write(content)
-                    f.flush()
-                    os.fsync(f.fileno())
-                atomic_replace(tmp_path, path)
-            except BaseException:
-                # Clean up temp file on any failure
-                try:
-                    os.unlink(tmp_path)
-                except OSError:
-                    pass
-                raise
+            atomic_write_text(path, content, tmp_prefix=".mem_")
         except (OSError, IOError) as e:
             raise RuntimeError(f"Failed to write memory file {path}: {e}")
 
@@ -822,7 +912,7 @@ def load_on_disk_store() -> "MemoryStore":
     Falls back to the built-in defaults if config can't be loaded, so this can
     never raise on a missing/unreadable config.
     """
-    memory_char_limit = 2200
+    memory_char_limit = DEFAULT_MEMORY_CHAR_LIMIT
     user_char_limit = 1375
     try:
         from hermes_cli.config import load_config
@@ -1149,7 +1239,6 @@ registry.register(
     check_fn=check_memory_requirements,
     emoji="🧠",
 )
-
 
 
 

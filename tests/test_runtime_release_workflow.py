@@ -8,7 +8,11 @@ that contract so a backend can't silently drop out of the build again — the
 failure mode behind issue #16 (MCP) and the 飞书/钉钉/企微/微信 desktop reports.
 """
 
+import os
+import plistlib
 import re
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -85,7 +89,19 @@ def test_cn_desktop_extra_bundles_every_desktop_backend():
     extra = _cn_desktop_extra()
     blob = "\n".join(extra)
     # Aggregated sub-extras
-    for sub in ("web", "anthropic", "mcp", "feishu", "dingtalk", "wecom"):
+    for sub in (
+        "web",
+        "anthropic",
+        "mcp",
+        "computer-use",
+        "exa",
+        "firecrawl",
+        "parallel-web",
+        "ddgs",
+        "feishu",
+        "dingtalk",
+        "wecom",
+    ):
         assert f"[{sub}]" in blob, f"cn-desktop is missing the {sub} extra"
     # 微信 (weixin) has no dedicated extra — its adapter deps are listed directly
     assert any(e.startswith("aiohttp") for e in extra), "cn-desktop missing aiohttp (微信/feishu/wecom)"
@@ -109,6 +125,51 @@ def test_runtime_workflow_freezes_native_mcp_client():
     assert "--collect-submodules mcp" in workflow
     assert "--copy-metadata mcp" in workflow
     assert "mcp" in _frozen_verify_packages()
+
+
+def test_runtime_workflow_builds_and_verifies_web_dist():
+    """Issue #116: the frozen runtime must ship the dashboard SPA bundle."""
+    workflow = _workflow_text()
+    assert "Build web dashboard" in workflow
+    assert "hermes_cli/web_dist/index.html not built" in workflow
+    assert "--collect-data hermes_cli" in workflow
+    assert "Verify frozen runtime resources" in workflow
+    assert "hermes_cli/web_dist/index.html" in workflow
+
+
+def test_runtime_workflow_freezes_computer_use_tooling():
+    """Issue #106: Desktop-visible computer_use must be importable frozen."""
+    workflow = _workflow_text()
+    assert any("[computer-use]" in e for e in _cn_desktop_extra())
+    assert "--collect-submodules tools" in workflow
+    for mod in (
+        "tools.computer_use_tool",
+        "tools.computer_use.tool",
+        "tools.computer_use.doctor",
+        "tools.computer_use.cua_backend",
+    ):
+        assert mod in workflow
+    assert "tools/computer_use_tool.py" in workflow
+    assert "tools/computer_use/tool.py" in workflow
+    assert "computer-use status" in workflow
+    assert "cua-driver" not in "\n".join(_cn_desktop_extra())
+
+
+def test_runtime_workflow_freezes_web_search_providers():
+    """Issue #111: bundled Web providers and SDK metadata must ship frozen."""
+    workflow = _workflow_text()
+    extra = _cn_desktop_extra()
+    for sub in ("exa", "firecrawl", "parallel-web", "ddgs"):
+        assert any(f"[{sub}]" in e for e in extra), f"cn-desktop missing {sub}"
+    for mod in ("plugins.web", "ddgs", "exa_py", "firecrawl", "parallel"):
+        assert f"--collect-submodules {mod}" in workflow
+    for dist in ("ddgs", "exa-py", "firecrawl-py", "parallel-web"):
+        assert f"--copy-metadata {dist}" in workflow
+    for pkg in ("ddgs", "exa_py", "firecrawl_py", "parallel_web"):
+        assert pkg in _frozen_verify_packages()
+    for plugin in ("brave_free", "ddgs", "exa", "firecrawl", "parallel", "searxng", "tavily", "xai"):
+        assert f"plugins.web.{plugin}" in workflow
+        assert f"plugins/web/$p/plugin.yaml" in workflow
 
 
 def test_runtime_workflow_freezes_im_platform_backends():
@@ -366,6 +427,42 @@ def test_runtime_workflow_freezes_hindsight_client_api_and_aiohttp_retry():
     )
 
 
+def test_runtime_workflow_freezes_cloud_memory_provider_sdks():
+    """The CN desktop frozen runtime pre-bakes hosted memory provider SDKs."""
+    workflow = _workflow_text()
+    extra = _cn_desktop_extra()
+
+    for sub in ("supermemory", "mem0"):
+        assert any(f"[{sub}]" in e for e in extra), (
+            f"cn-desktop extra is missing hermes-agent[{sub}] "
+            "(frozen runtime cannot lazy-install memory provider SDKs)"
+        )
+
+    text = workflow
+    start = text.index("for m in (") + len("for m in (")
+    body = text[start : text.index("):", start)]
+    import_list = body.replace("\n", " ").replace('"', " ").split()
+    for mod in ("supermemory", "mem0"):
+        assert mod in import_list, (
+            f"release-runtime.yml build-env import smoke test does not "
+            f"check {mod}; PyInstaller may bundle a missing SDK."
+        )
+
+    assert "--collect-submodules supermemory" in workflow
+    assert "--collect-submodules mem0" in workflow
+    assert "--collect-submodules mem0ai" not in workflow, (
+        "mem0ai is the distribution name; the importable package is mem0."
+    )
+    assert "--copy-metadata supermemory" in workflow
+    assert "--copy-metadata mem0ai" in workflow
+
+    verified = _frozen_verify_packages()
+    for pkg in ("supermemory", "mem0ai"):
+        assert pkg in verified, (
+            f"frozen-output verify list does not assert {pkg} dist-info"
+        )
+
+
 def test_runtime_workflow_signs_and_preserves_macos_frameworks():
     workflow = _workflow_text()
 
@@ -374,3 +471,103 @@ def test_runtime_workflow_signs_and_preserves_macos_frameworks():
     assert "Prepare macOS signing credentials" in workflow
     assert "scripts/sign_macos_runtime_payload.sh" in workflow
     assert "zip -r -y" in workflow
+
+
+def test_macos_runtime_signing_grants_ctypes_executable_memory_to_main_only():
+    """The hardened Python 3.14 executable must permit libffi trampolines.
+
+    macOS 13 otherwise spins in ``ffi_closure_alloc`` before even
+    ``dashboard --help`` returns. The exception belongs on the loading main
+    executable, not on every bundled dylib/framework.
+    """
+    root = _repo_root()
+    script = (root / "scripts" / "sign_macos_runtime_payload.sh").read_text(
+        encoding="utf-8", errors="replace"
+    )
+    entitlements_path = root / "scripts" / "macos-runtime.entitlements.plist"
+    with entitlements_path.open("rb") as handle:
+        entitlements = plistlib.load(handle)
+
+    assert entitlements == {
+        "com.apple.security.cs.allow-unsigned-executable-memory": True,
+    }
+    assert "find_main_runtime_binary()" in script
+    assert 'main_binary="$(find_main_runtime_binary || true)"' in script
+    assert 'if [[ "$path" == "$main_binary" ]]; then' in script
+    assert 'path_sign_args+=(--entitlements "$entitlements_file")' in script
+    assert 'codesign -d --entitlements - "$main_binary"' in script
+    assert "grep -q 'com.apple.security.cs.allow-unsigned-executable-memory'" in script
+    assert "<key>com.apple.security.cs.allow-unsigned-executable-memory</key><true/>" not in script
+
+
+def test_macos_runtime_signing_script_applies_entitlement_to_main_only(tmp_path):
+    bash = shutil.which("bash")
+    if bash is None:
+        pytest.skip("bash is required to exercise the signing script")
+
+    root = _repo_root()
+    runtime_dir = tmp_path / "runtime"
+    runtime_dir.mkdir()
+    main_binary = runtime_dir / "hermes-agent-cn-runtime-darwin-arm64"
+    helper_dylib = runtime_dir / "libhelper.dylib"
+    framework = runtime_dir / "Helper.framework"
+    main_binary.write_text("main", encoding="utf-8")
+    helper_dylib.write_text("helper", encoding="utf-8")
+    framework.mkdir()
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    log_path = tmp_path / "codesign.log"
+    fake_file = bin_dir / "file"
+    fake_file.write_text(
+        "#!/usr/bin/env bash\n"
+        "printf '%s: Mach-O 64-bit executable\\n' \"$1\"\n",
+        encoding="utf-8",
+    )
+    fake_codesign = bin_dir / "codesign"
+    fake_codesign.write_text(
+        "#!/usr/bin/env bash\n"
+        "printf '%s\\n' \"$*\" >> \"$CODESIGN_LOG\"\n"
+        "if [[ \"$1\" == '-d' ]]; then\n"
+        "  printf '<plist><dict><key>com.apple.security.cs.allow-unsigned-executable-memory</key><true/></dict></plist>\\n'\n"
+        "fi\n",
+        encoding="utf-8",
+    )
+    fake_file.chmod(0o755)
+    fake_codesign.chmod(0o755)
+
+    env = {
+        "APPLE_SIGNING_IDENTITY": "-",
+        "CODESIGN_LOG": str(log_path),
+        "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}",
+    }
+    result = subprocess.run(
+        [bash, str(root / "scripts" / "sign_macos_runtime_payload.sh"), str(runtime_dir)],
+        cwd=root,
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    calls = log_path.read_text(encoding="utf-8").splitlines()
+    signing_calls = [call for call in calls if call.startswith("--force --sign -")]
+    entitlement_signing_calls = [
+        call for call in signing_calls if "--entitlements" in call
+    ]
+    expected_entitlements = root / "scripts" / "macos-runtime.entitlements.plist"
+    assert entitlement_signing_calls == [
+        f"--force --sign - --entitlements {expected_entitlements} {main_binary}"
+    ]
+    assert not any(
+        "--entitlements" in call and str(helper_dylib) in call
+        for call in signing_calls
+    )
+    assert not any(
+        "--entitlements" in call and str(framework) in call
+        for call in signing_calls
+    )
+    assert f"-d --entitlements - {main_binary}" in calls

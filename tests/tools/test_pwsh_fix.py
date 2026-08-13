@@ -19,11 +19,12 @@ Sections:
 
 Classes that execute against a real pwsh are skipped when pwsh is missing.
 """
-
 from __future__ import annotations
+
 
 import shutil
 import subprocess
+import sys
 from unittest.mock import patch
 
 import pytest
@@ -105,7 +106,11 @@ NAIVE_REJECTED_RUN_CLEAN: list[tuple[str, str]] = [
     ("$x = @'\nline \" quote\n'@\nWrite-Output $x", 'line " quote'),
     ('# comment " quote\nWrite-Output ok', "ok"),
     ('<# comment " quote #>\nWrite-Output ok', "ok"),
-    ('cmd /c echo --% "hello world', '"hello world'),
+    pytest.param(
+        'cmd /c echo --% "hello world',
+        '"hello world',
+        marks=pytest.mark.skipif(sys.platform != "win32", reason="cmd.exe is Windows-only"),
+    ),
     ('Write-Output ("a" + \'b"\')', 'ab"'),
 ]
 
@@ -230,7 +235,11 @@ class TestFixPwshCommandWrapperSafety:
         "cmd,expected_out",
         [
             ("Write-Output ok # done", "ok"),
-            ("cmd /c echo --% foo", "foo"),
+            pytest.param(
+                "cmd /c echo --% foo",
+                "foo",
+                marks=pytest.mark.skipif(sys.platform != "win32", reason="cmd.exe is Windows-only"),
+            ),
             ('Write-Output ok # " done', "ok"),
         ],
     )

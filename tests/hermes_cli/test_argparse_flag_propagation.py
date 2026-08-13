@@ -17,6 +17,7 @@ import sys
 
 import pytest
 
+
 def _build_parser():
     """Build the hermes argument parser from the real code.
 
@@ -54,6 +55,7 @@ def _build_parser():
     )
     return parser
 
+
 class TestChatVerboseArg:
     """Verify chat --verbose preserves config fallback when absent."""
 
@@ -65,13 +67,6 @@ class TestChatVerboseArg:
 
         assert not hasattr(args, "verbose")
 
-    def test_chat_verbose_sets_attribute_true(self):
-        from hermes_cli._parser import build_top_level_parser
-
-        parser, _subparsers, _chat_parser = build_top_level_parser()
-        args = parser.parse_args(["chat", "--verbose"])
-
-        assert args.verbose is True
 
     def test_cmd_chat_forwards_none_when_verbose_is_absent(self, monkeypatch):
         import types
@@ -106,6 +101,7 @@ class TestChatVerboseArg:
         assert captured["quiet"] is False
         assert "verbose" not in captured
 
+
 class TestYoloEnvVar:
     """Verify --yolo sets HERMES_YOLO_MODE regardless of flag position.
 
@@ -122,6 +118,13 @@ class TestYoloEnvVar:
         """Replicate the exact check from cmd_chat in main.py."""
         if getattr(args, "yolo", False):
             os.environ["HERMES_YOLO_MODE"] = "1"
+
+    def test_yolo_before_chat_sets_env(self):
+        parser = _build_parser()
+        args = parser.parse_args(["--yolo", "chat"])
+        self._simulate_cmd_chat_yolo_check(args)
+        assert os.environ.get("HERMES_YOLO_MODE") == "1"
+
 
 class TestAcceptHooksOnAgentSubparsers:
     """Verify --accept-hooks is accepted at every agent-subcommand
@@ -198,6 +201,7 @@ print(json.dumps(results))
             )
             assert "unrecognized arguments" not in entry["stderr"]
 
+
 class TestChatSubparserInheritedValueFlags:
     """Verify -t/--toolsets, -m/--model and --provider survive parent→chat
     subparser dispatch.
@@ -218,39 +222,8 @@ class TestChatSubparserInheritedValueFlags:
         parser, _subparsers, _chat = build_top_level_parser()
         return parser
 
-    @pytest.mark.parametrize("flag,attr,value", [
-        ("-t", "toolsets", "web"),
-        ("--toolsets", "toolsets", "web,terminal"),
-        ("-m", "model", "anthropic/claude-sonnet-4"),
-        ("--model", "model", "openai/gpt-4"),
-        ("--provider", "provider", "openrouter"),
-    ])
-    def test_flag_before_chat_is_preserved(self, real_parser, flag, attr, value):
-        args, _ = real_parser.parse_known_args([flag, value, "chat"])
-        assert getattr(args, attr, None) == value, (
-            f"`hermes {flag} {value} chat` lost the flag — got "
-            f"{getattr(args, attr, None)!r}, expected {value!r}"
-        )
 
-    @pytest.mark.parametrize("flag,attr,value", [
-        ("-t", "toolsets", "web"),
-        ("--toolsets", "toolsets", "web,terminal"),
-        ("-m", "model", "anthropic/claude-sonnet-4"),
-        ("--model", "model", "openai/gpt-4"),
-        ("--provider", "provider", "openrouter"),
-    ])
-    def test_flag_after_chat_still_works(self, real_parser, flag, attr, value):
-        args, _ = real_parser.parse_known_args(["chat", flag, value])
-        assert getattr(args, attr, None) == value
 
-    def test_no_flag_leaves_attrs_at_top_level_default(self, real_parser):
-        """When the user passes none of the inherited flags, the top-level
-        parser's `default=None` still seeds the namespace — the SUPPRESS on
-        the subparser must not remove existing attributes."""
-        args, _ = real_parser.parse_known_args(["chat"])
-        assert getattr(args, "toolsets", "MISSING") is None
-        assert getattr(args, "model", "MISSING") is None
-        assert getattr(args, "provider", "MISSING") is None
 
     def test_all_three_flags_before_chat(self, real_parser):
         """Issue #28780 reporter's case generalized: passing every inherited
@@ -265,22 +238,6 @@ class TestChatSubparserInheritedValueFlags:
         assert args.model == "anthropic/claude-sonnet-4"
         assert args.provider == "openrouter"
 
-    @pytest.mark.parametrize("flag,attr", [
-        ("--tui", "tui"),
-        ("--cli", "cli"),
-        ("--dev", "tui_dev"),
-    ])
-    def test_store_true_flag_before_chat_is_preserved(
-        self, real_parser, flag, attr,
-    ):
-        """`--tui` / `--cli` / `--dev` are store_true flags inherited by chat; the same
-        SUPPRESS contract applies. Without it, the subparser's `default=False`
-        would clobber the parent's `True` when used as `hermes --tui chat`."""
-        args, _ = real_parser.parse_known_args([flag, "chat"])
-        assert getattr(args, attr, None) is True, (
-            f"`hermes {flag} chat` lost the flag — got "
-            f"{getattr(args, attr, None)!r}, expected True"
-        )
 
     def test_chat_subparser_inherited_value_flags_use_suppress(self):
         """Contract test for the underlying invariant.

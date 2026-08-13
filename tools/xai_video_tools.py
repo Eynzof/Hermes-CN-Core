@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """xAI-specific Imagine video edit and extend tools."""
-
 from __future__ import annotations
+
 
 import orjson
 from typing import Any, Dict, Optional

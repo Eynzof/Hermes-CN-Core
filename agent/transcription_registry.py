@@ -16,8 +16,8 @@ rejected at registration with a warning. This invariant is also
 re-checked at dispatch time in
 :func:`tools.transcription_tools._dispatch_to_plugin_provider`.
 """
-
 from __future__ import annotations
+
 
 import logging
 import threading

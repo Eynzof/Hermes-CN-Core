@@ -31,8 +31,8 @@ Design reference:
   ``stat()`` per tool call is cheaper than an ``await`` + potential refresh
   round-trip, and the SDK's in-memory expiry path is already correct.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 import logging
@@ -546,6 +546,11 @@ class MCPOAuthManager:
             return None
 
         cfg = dict(entry.oauth_config or {})
+        from tools.mcp_oauth import apply_oauth_provider_defaults
+
+        apply_oauth_provider_defaults(
+            cfg, server_name=server_name, server_url=entry.server_url
+        )
         storage = HermesTokenStorage(server_name)
 
         from tools.mcp_dashboard_oauth import get_dashboard_oauth_flow

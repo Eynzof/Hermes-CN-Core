@@ -9,7 +9,7 @@ sidebar_position: 3
 
 Hermes runs natively on Windows 10 and Windows 11 — no WSL, no Cygwin, no Docker. This page is the deep dive: what works natively, what's WSL-only, what the installer actually does, and the Windows-specific knobs you might need to touch.
 
-If you just want to install, the one-liner on the [landing page](/) or [Installation page](../getting-started/installation#windows-native-powershell) is all you need. Come back here when something surprises you.
+If you just want to install, the one-liner on the [landing page](/) or [Installation page](../getting-started/installation#windows-native) is all you need. Come back here when something surprises you.
 
 :::tip Want WSL instead?
 If you prefer a real POSIX environment (for the dashboard's embedded terminal, `fork` semantics, Linux-style file watchers, etc.), see the **[Windows (WSL2) Guide](./windows-wsl-quickstart.md)**. Both coexist cleanly: native data lives under `%LOCALAPPDATA%\hermes`, WSL data lives under `~/.hermes`.
@@ -103,11 +103,11 @@ The dashboard's `/chat` tab embeds a real terminal via a POSIX PTY (`ptyprocess`
 
 ## How Hermes runs shell commands on Windows
 
-Hermes's terminal tool runs commands through **PowerShell 7 (pwsh)** when available, falling back to **Windows PowerShell 5.1** (`powershell.exe`) — both ship with or are easily installed on every Windows 10 and Windows 11 system. When pwsh is detected, all modern PowerShell syntax (ternary `?:`, null-coalescing `??`, pipeline chains `&&`/`||`, null-conditional `?.`/`?[`) is supported natively without any compatibility layer.
+Hermes's terminal tool runs commands through **Git Bash** (the bash that ships with Git for Windows) when a working install is detected, falling back to **PowerShell 7 (pwsh)**, then **Windows PowerShell 5.1** (`powershell.exe`). Git Bash is used automatically when present — no configuration needed — so POSIX syntax (`pwd -P`, `sed`/`awk`/`grep` pipes, `&&`/`||` chains, `cat`/`head`/`tail`) works out of the box on Windows.
 
-If pwsh is not installed, Hermes automatically falls back to Windows PowerShell 5.1 (`powershell.exe`), which ships with every Windows system — no extra install, no download, no Git Bash needed.
+If Git Bash is not installed, Hermes automatically uses PowerShell 7 (pwsh) when available, otherwise Windows PowerShell 5.1 — which ships with every Windows 10/11 system, so there is always a working shell: no extra install, no download.
 
-Set `HERMES_SHELL_TYPE=pwsh` (to prefer PowerShell 7), `powershell` (to force Windows PowerShell 5.1), or `bash` (to use pre-installed Git Bash — requires Git for Windows from https://git-scm.com/download/win), or leave at the default `auto` in your `.env`.
+Set `HERMES_SHELL_TYPE=bash` (to force pre-installed Git Bash — requires Git for Windows from https://git-scm.com/download/win), `pwsh` (to prefer PowerShell 7), `powershell` (to force Windows PowerShell 5.1), or leave the default `auto` (Git Bash → PowerShell 7 → Windows PowerShell 5.1) in your `.env`.
 
 ## UTF-8 console on Windows
 
@@ -242,7 +242,7 @@ These only affect native Windows installs:
 
 | Variable                      | Effect                                                                                                                                             |
 | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `HERMES_SHELL_TYPE`           | `auto` (default → PowerShell on Windows), `powershell` (explicit). `bash` is not supported on Windows.                                            |
+| `HERMES_SHELL_TYPE`           | `auto` (default → Git Bash → PowerShell 7 → Windows PowerShell 5.1), `pwsh` / `powershell` (explicit PowerShell, never Git Bash), `bash` (explicit Git Bash, requires pre-installed Git for Windows). |
 | `HERMES_DISABLE_WINDOWS_UTF8` | Set to `1` to disable the UTF-8 stdio shim and fall back to the locale code page. Useful for bisecting an encoding bug.                            |
 | `EDITOR` / `VISUAL`           | Your editor for `/edit` and `Ctrl-X Ctrl-E`. Hermes defaults to `notepad` if both are unset.                                                       |
 
@@ -298,7 +298,7 @@ You set it in the current process only; close and reopen the shell, or set it at
 Chromium is auto-installed on first run. If the install failed (rate-limited GitHub, Playwright CDN hiccup), run `hermes doctor` — it will surface the missing Chromium and print the exact `npx playwright install chromium` command to fix it.
 
 **`agent-browser` fails with a weird Node version error.**
-The installer provisions Node 22 at `%LOCALAPPDATA%\hermes\node` but your PATH may have an older system Node 18 first. Either move Hermes's node dir earlier on PATH, or delete the system install if you don't use Node elsewhere.
+The installer provisions Node 26 at `%LOCALAPPDATA%\hermes\node` but your PATH may have an older system Node 18 first. Either move Hermes's node dir earlier on PATH, or delete the system install if you don't use Node elsewhere.
 
 **Chinese / Japanese / Arabic characters show as `?` in the CLI.**
 The UTF-8 stdio shim didn't activate. Check that `HERMES_DISABLE_WINDOWS_UTF8` is NOT set (`Get-ChildItem env:HERMES_DISABLE_WINDOWS_UTF8`). If it's empty and you still see `?`, the console host (very old `cmd.exe`) may not support UTF-8 at all — switch to Windows Terminal.

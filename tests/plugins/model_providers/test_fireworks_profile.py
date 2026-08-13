@@ -4,8 +4,8 @@ Pins the profile's contract without going live: identity, alias registration,
 and the pay-as-you-go model defaults (direct catalog ``/models/``
 IDs, not the router-only tier).
 """
-
 from __future__ import annotations
+
 
 import pytest
 

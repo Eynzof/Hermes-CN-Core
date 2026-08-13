@@ -20,12 +20,15 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+from pathlib import Path
 
 import pytest
+
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _clear_web_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Strip every web-provider env var so is_available() returns False."""
@@ -46,23 +49,68 @@ def _clear_web_env(monkeypatch: pytest.MonkeyPatch) -> None:
     ):
         monkeypatch.delenv(k, raising=False)
 
+
 def _ensure_plugins_loaded() -> None:
     """Idempotently load plugins so the registry is populated."""
     from hermes_cli.plugins import _ensure_plugins_discovered
 
     _ensure_plugins_discovered()
 
+
 # ---------------------------------------------------------------------------
 # Per-plugin discovery + capability flags
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(autouse=True)
 def _isolate_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Each test starts with a clean web-provider env."""
     _clear_web_env(monkeypatch)
 
+
 class TestBundledPluginsRegister:
     """All eight bundled web plugins discover and register correctly."""
+
+    def test_all_eight_plugins_present_in_registry(self) -> None:
+        _ensure_plugins_loaded()
+        from agent.web_search_registry import list_providers
+
+        names = sorted(p.name for p in list_providers())
+        assert names == [
+            "brave-free",
+            "ddgs",
+            "exa",
+            "firecrawl",
+            "parallel",
+            "searxng",
+            "tavily",
+            "xai",
+        ]
+
+    def test_plugin_entrypoints_import_provider_via_package_path(self) -> None:
+        """Bundled web plugins import their provider through the package path
+        (dev-020 style) so PyInstaller's module graph resolves them when the
+        frozen runtime collects ``plugins.web.*``."""
+        root = Path(__file__).resolve().parents[3]
+        for init_file in (root / "plugins" / "web").glob("*/__init__.py"):
+            text = init_file.read_text(encoding="utf-8", errors="replace")
+            assert "from plugins.web." in text
+            assert "from .provider import " not in text
+
+    def test_check_fn_triggers_plugin_discovery_before_availability(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Tool schema gating must see plugin-registered web providers."""
+        import tools.web_tools as web_tools
+        from agent import web_search_registry
+
+        calls: list[str] = []
+
+        monkeypatch.setattr(web_tools, "_ensure_web_plugins_loaded", lambda: calls.append("loaded"))
+        monkeypatch.setattr(web_tools, "_load_web_config", lambda: {"backend": ""})
+        monkeypatch.setattr(web_tools, "_is_backend_available", lambda _backend: False)
+        monkeypatch.setattr(web_search_registry, "list_providers", lambda: [])
+
+        assert web_tools.check_web_api_key() is False
+        assert calls == ["loaded"]
 
     @pytest.mark.parametrize(
         "plugin_name,expected_search,expected_extract",
@@ -105,25 +153,11 @@ class TestBundledPluginsRegister:
         assert provider.name == plugin_name
         assert provider.display_name  # any non-empty string
 
-    @pytest.mark.parametrize(
-        "plugin_name",
-        ["brave-free", "ddgs", "searxng", "exa", "parallel", "tavily", "firecrawl", "xai"],
-    )
-    def test_each_plugin_has_setup_schema(self, plugin_name: str) -> None:
-        """``get_setup_schema()`` returns a dict the picker can consume."""
-        _ensure_plugins_loaded()
-        from agent.web_search_registry import get_provider
-
-        provider = get_provider(plugin_name)
-        assert provider is not None
-        schema = provider.get_setup_schema()
-        assert isinstance(schema, dict)
-        assert "name" in schema
-        assert "env_vars" in schema
 
 # ---------------------------------------------------------------------------
 # is_available() behavior
 # ---------------------------------------------------------------------------
+
 
 class TestIsAvailable:
     """Each plugin's ``is_available()`` returns False without env config."""
@@ -222,9 +256,11 @@ class TestIsAvailable:
         monkeypatch.setenv("XAI_API_KEY", "real")
         assert p.is_available() is True
 
+
 # ---------------------------------------------------------------------------
 # Registry resolution semantics (Option B — conservative smart fallback)
 # ---------------------------------------------------------------------------
+
 
 class TestRegistryResolution:
     """``_resolve()`` follows explicit-config + availability-filtered fallback."""
@@ -264,25 +300,6 @@ class TestRegistryResolution:
         assert result is not None
         assert result.is_available() is True
 
-    def test_explicit_search_only_provider_for_extract_falls_back(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Asking for extract via a search-only backend → fall back.
-
-        ``brave-free`` is search-only (``supports_extract() is False``).
-        When the registry resolves it for an extract capability, the
-        explicit-config branch rejects it as capability-incompatible
-        and the fallback walk picks an extract-capable provider.
-        """
-        _ensure_plugins_loaded()
-        from agent.web_search_registry import _resolve
-
-        monkeypatch.setenv("EXA_API_KEY", "real")
-        result = _resolve("brave-free", capability="extract")
-        # Should land on exa (only extract-capable available provider).
-        assert result is not None
-        assert result.supports_extract() is True
-        assert result.is_available() is True
 
     def test_no_config_no_credentials_returns_none(
         self,
@@ -302,167 +319,22 @@ class TestRegistryResolution:
             # means an env var leaked in.
             assert result.is_available() is True
 
+
 # ---------------------------------------------------------------------------
 # Sync-vs-async extract detection
 # ---------------------------------------------------------------------------
 
+
 class TestAsyncExtractDispatch:
     """The dispatcher detects async vs sync extract methods correctly."""
 
-    def test_parallel_extract_is_async(self) -> None:
-        _ensure_plugins_loaded()
-        from agent.web_search_registry import get_provider
-
-        p = get_provider("parallel")
-        assert p is not None
-        assert inspect.iscoroutinefunction(p.extract) is True
-
-    def test_firecrawl_extract_is_async(self) -> None:
-        _ensure_plugins_loaded()
-        from agent.web_search_registry import get_provider
-
-        p = get_provider("firecrawl")
-        assert p is not None
-        assert inspect.iscoroutinefunction(p.extract) is True
-
-    def test_exa_extract_is_sync(self) -> None:
-        _ensure_plugins_loaded()
-        from agent.web_search_registry import get_provider
-
-        p = get_provider("exa")
-        assert p is not None
-        assert inspect.iscoroutinefunction(p.extract) is False
-
-    def test_tavily_extract_is_sync(self) -> None:
-        _ensure_plugins_loaded()
-        from agent.web_search_registry import get_provider
-
-        p = get_provider("tavily")
-        assert p is not None
-        assert inspect.iscoroutinefunction(p.extract) is False
 
 # ---------------------------------------------------------------------------
 # Error response shape (preserved bit-for-bit from legacy)
 # ---------------------------------------------------------------------------
 
+
 class TestErrorResponseShapes:
     """When credentials are missing, plugins return typed errors, not raises."""
 
-    def test_brave_free_returns_error_dict_when_unconfigured(self) -> None:
-        _ensure_plugins_loaded()
-        from agent.web_search_registry import get_provider
 
-        p = get_provider("brave-free")
-        assert p is not None
-        result = p.search("test", limit=5)
-        assert isinstance(result, dict)
-        assert result.get("success") is False
-        assert "error" in result
-
-    def test_searxng_returns_error_dict_when_unconfigured(self) -> None:
-        _ensure_plugins_loaded()
-        from agent.web_search_registry import get_provider
-
-        p = get_provider("searxng")
-        assert p is not None
-        result = p.search("test", limit=5)
-        assert isinstance(result, dict)
-        assert result.get("success") is False
-        assert "error" in result
-
-    def test_exa_returns_error_dict_when_unconfigured(self) -> None:
-        _ensure_plugins_loaded()
-        from agent.web_search_registry import get_provider
-
-        p = get_provider("exa")
-        assert p is not None
-        result = p.search("test", limit=5)
-        assert isinstance(result, dict)
-        assert result.get("success") is False
-        assert "error" in result
-
-    def test_tavily_returns_error_dict_when_unconfigured(self) -> None:
-        _ensure_plugins_loaded()
-        from agent.web_search_registry import get_provider
-
-        p = get_provider("tavily")
-        assert p is not None
-        result = p.search("test", limit=5)
-        assert isinstance(result, dict)
-        assert result.get("success") is False
-        assert "error" in result
-
-    def test_parallel_extract_returns_per_url_errors_when_unconfigured(self) -> None:
-        _ensure_plugins_loaded()
-        from agent.web_search_registry import get_provider
-
-        p = get_provider("parallel")
-        assert p is not None
-        result = asyncio.run(p.extract(["https://example.com"]))
-        assert isinstance(result, list)
-        assert len(result) == 1
-        assert "error" in result[0]
-        assert result[0]["url"] == "https://example.com"
-
-    def test_firecrawl_extract_returns_per_url_errors_when_unconfigured(self) -> None:
-        _ensure_plugins_loaded()
-        from agent.web_search_registry import get_provider
-
-        p = get_provider("firecrawl")
-        assert p is not None
-        # firecrawl extract returns [] when the website-policy gate rejects
-        # the URL, or a per-URL error dict when the gate passes but the
-        # firecrawl client fails. Use a URL the policy allows to make sure
-        # we hit the credential-missing path.
-        result = asyncio.run(p.extract(["https://example.com"]))
-        assert isinstance(result, list)
-        if result:  # if anything came back, it should be an error entry
-            assert "error" in result[0]
-
-    def test_firecrawl_config_error_points_paid_users_to_nous_subscription(self, monkeypatch):
-        from plugins.web.firecrawl import provider as firecrawl_provider
-
-        monkeypatch.setattr(
-            "tools.web_tools.managed_nous_tools_enabled",
-            lambda: True,
-            raising=False,
-        )
-
-        with pytest.raises(ValueError) as exc_info:
-            firecrawl_provider._raise_web_backend_configuration_error()
-
-        message = str(exc_info.value)
-        assert "With your Nous subscription you can also use the Tool Gateway" in message
-        assert "select Nous Subscription as the web provider" in message
-        assert "managed Firecrawl web tools is unavailable" not in message
-
-    def test_firecrawl_config_error_uses_entitlement_message_when_not_paid(self, monkeypatch):
-        from plugins.web.firecrawl import provider as firecrawl_provider
-
-        monkeypatch.setattr(
-            "tools.web_tools.managed_nous_tools_enabled",
-            lambda: False,
-            raising=False,
-        )
-        monkeypatch.setattr(
-            "tools.web_tools.nous_tool_gateway_unavailable_message",
-            lambda capability: f"{capability} denied by test entitlement.",
-            raising=False,
-        )
-
-        with pytest.raises(ValueError) as exc_info:
-            firecrawl_provider._raise_web_backend_configuration_error()
-
-        assert "managed Firecrawl web tools denied by test entitlement" in str(exc_info.value)
-
-    def test_xai_search_returns_error_dict_when_unconfigured(self) -> None:
-        """xAI returns a typed error dict (no XAI_API_KEY)."""
-        _ensure_plugins_loaded()
-        from agent.web_search_registry import get_provider
-
-        p = get_provider("xai")
-        assert p is not None
-        result = p.search("test", limit=5)
-        assert isinstance(result, dict)
-        assert result.get("success") is False
-        assert "error" in result

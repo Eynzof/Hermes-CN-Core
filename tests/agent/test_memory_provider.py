@@ -494,6 +494,82 @@ class TestPluginMemoryDiscovery:
         from plugins.memory import load_memory_provider
         assert load_memory_provider("nonexistent_provider") is None
 
+    def test_frozen_provider_loads_when_code_and_data_are_split(
+        self, tmp_path, monkeypatch
+    ):
+        """Frozen modules remain discoverable without a physical __init__.py.
+
+        PyInstaller keeps executable modules in its importer while plugin.yaml
+        is staged into a separate data tree.  Reproduce that split with two
+        real import locations so this covers discovery, provider loading, and
+        the sibling provider-CLI path without mocking importlib.
+        """
+        import importlib
+        import sys
+
+        import plugins.memory as memory_plugins
+
+        name = "frozenfixture"
+        module_name = f"plugins.memory.{name}"
+        data_memory = tmp_path / "frozen-data" / "plugins" / "memory"
+        data_provider = data_memory / name
+        data_provider.mkdir(parents=True)
+        (data_provider / "plugin.yaml").write_text(
+            f"name: {name}\ndescription: Frozen fixture provider\n"
+        )
+
+        code_memory = tmp_path / "frozen-code" / "plugins" / "memory"
+        code_provider = code_memory / name
+        code_provider.mkdir(parents=True)
+        (code_provider / "__init__.py").write_text(
+            "from agent.memory_provider import MemoryProvider\n"
+            "class FrozenProvider(MemoryProvider):\n"
+            "    @property\n"
+            f"    def name(self): return {name!r}\n"
+            "    def is_available(self): return True\n"
+            "    def initialize(self, **kw): pass\n"
+            "    def sync_turn(self, *a, **kw): pass\n"
+            "    def get_tool_schemas(self): return []\n"
+            "    def handle_tool_call(self, *a, **kw): return '{}'\n"
+        )
+        (code_provider / "cli.py").write_text(
+            "def register_cli(subparser):\n"
+            "    subparser.add_argument('--frozen-status', action='store_true')\n"
+        )
+
+        monkeypatch.setattr(memory_plugins, "_MEMORY_PLUGINS_DIR", data_memory)
+        monkeypatch.setattr(memory_plugins, "_get_user_plugins_dir", lambda: None)
+        monkeypatch.setattr(
+            memory_plugins, "_get_active_memory_provider", lambda: name
+        )
+        monkeypatch.setattr(
+            memory_plugins,
+            "__path__",
+            [str(code_memory), *list(memory_plugins.__path__)],
+        )
+        sys.modules.pop(module_name, None)
+        sys.modules.pop(f"{module_name}.cli", None)
+        importlib.invalidate_caches()
+
+        try:
+            assert memory_plugins.list_memory_provider_names() == [name]
+            assert memory_plugins.find_provider_dir(name) == data_provider
+            assert memory_plugins.discover_memory_providers() == [
+                (name, "Frozen fixture provider", True)
+            ]
+
+            provider = memory_plugins.load_memory_provider(name)
+            assert provider is not None
+            assert provider.name == name
+
+            commands = memory_plugins.discover_plugin_cli_commands()
+            assert len(commands) == 1
+            assert commands[0]["name"] == name
+        finally:
+            sys.modules.pop(f"{module_name}.cli", None)
+            sys.modules.pop(module_name, None)
+            importlib.invalidate_caches()
+
 
 class TestUserInstalledProviderDiscovery:
     """Memory providers installed to $HERMES_HOME/plugins/ should be found.

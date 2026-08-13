@@ -1,6 +1,6 @@
 """Regression tests for CLI prefill config key compatibility."""
-
 from __future__ import annotations
+
 
 import cli
 

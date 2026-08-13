@@ -10,8 +10,8 @@ abort with "You do not have the initial commit yet", failing the install at the
 Both installers must instead treat a commit-less checkout as broken and
 re-clone fresh.
 """
-
 from __future__ import annotations
+
 from agent.re_compat import re
 import shlex
 import shutil

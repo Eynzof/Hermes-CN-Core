@@ -15,8 +15,8 @@ These tests stay green only while the token file and its parent directory
 end up at ``0o600`` / ``0o700`` after every write. POSIX-only — the mode-bit
 enforcement does not exist on Windows.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import os

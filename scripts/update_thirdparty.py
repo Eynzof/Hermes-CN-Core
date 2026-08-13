@@ -166,11 +166,14 @@ def _iter_mirrors(
     *,
     include_direct: bool = True,
     custom_mirror: str | None = None,
+    include_china_defaults: bool = True,
 ) -> Iterator[str]:
     """Yield download/API URL prefixes to try, in order.
 
     Direct GitHub is tried first, then an explicit custom mirror, then the
-    built-in China mirror list.
+    built-in China mirror list. The built-in list is opt-in at the CLI layer
+    (``--china-mirror``): those are third-party proxies, so we do not route a
+    maintainer's requests through them unless they asked for it.
     """
     if include_direct:
         yield ""
@@ -179,6 +182,8 @@ def _iter_mirrors(
     env = os.environ.get("HERMES_THIRDPARTY_MIRROR", "")
     if env and env != custom_mirror:
         yield env
+    if not include_china_defaults:
+        return
     for m in _DEFAULT_CHINA_MIRRORS:
         if m != custom_mirror and m != env:
             yield m
@@ -304,9 +309,15 @@ def _update_version_in_file(
     new_version: str,
     group: str = "ver",
 ) -> bool:
-    """Replace the version string matching *pattern* in *filepath*.
+    """Replace *every* version string matching *pattern* in *filepath*.
 
-    Returns ``True`` if the file was modified.
+    All occurrences are rewritten, not just the first: a single file can pin
+    the same tool more than once (``.github/workflows/tests.yml`` installs
+    ripgrep in both the ``test`` and the ``e2e`` job). Patching only the first
+    match leaves the file internally inconsistent — exactly the drift this
+    script exists to prevent.
+
+    Returns ``True`` if the pattern matched at least once.
     """
     content = filepath.read_text(encoding="utf-8")
 
@@ -315,7 +326,7 @@ def _update_version_in_file(
         old = m.group(group)
         return full.replace(old, new_version, 1)
 
-    new_content, count = re.subn(pattern, _replace, content, count=1, flags=re.MULTILINE)
+    new_content, count = re.subn(pattern, _replace, content, flags=re.MULTILINE)
     if count == 0:
         print(f"  ❌ Could not find version pattern in {filepath.name}")
         return False
@@ -491,13 +502,14 @@ def check_and_update(
 def _build_mirror_list(args: argparse.Namespace) -> list[str]:
     """Build the ordered list of URL prefixes to try."""
     custom = args.mirror or os.environ.get("HERMES_THIRDPARTY_MIRROR", "")
-    # Always try direct GitHub first; mirrors are fallbacks.  When
-    # --china-mirror is set, the default China mirror list is appended after
-    # any custom mirror.
+    # Always try direct GitHub first; mirrors are fallbacks.  An explicit
+    # --mirror / HERMES_THIRDPARTY_MIRROR is always honored; the built-in
+    # China mirror list is only appended when --china-mirror is passed.
     return list(
         _iter_mirrors(
             include_direct=True,
             custom_mirror=custom,
+            include_china_defaults=args.china_mirror,
         )
     )
 

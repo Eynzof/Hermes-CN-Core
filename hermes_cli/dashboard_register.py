@@ -21,8 +21,8 @@ The portal endpoint is the NAS half of this feature (POST
 /api/oauth/self-hosted-client). The ``agent:`` prefix is applied server-side,
 so this client never needs to know the namespace convention.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import os

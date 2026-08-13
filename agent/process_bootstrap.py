@@ -20,8 +20,8 @@ Three concerns, all tied to ``AIAgent`` boot-time / runtime IO setup:
 ``from run_agent import _get_proxy_from_env`` imports keep working
 unchanged.
 """
-
 from __future__ import annotations
+
 
 import os
 import sys

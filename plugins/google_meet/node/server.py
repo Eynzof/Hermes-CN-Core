@@ -21,8 +21,8 @@ Dependencies
 :meth:`serve` so installing the plugin doesn't require it unless you
 actually host a node.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import secrets

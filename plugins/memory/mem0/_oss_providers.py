@@ -1,6 +1,6 @@
 """OSS provider definitions for LLM, embedder, and vector store."""
-
 from __future__ import annotations
+
 
 import os
 from typing import Any

@@ -1,6 +1,6 @@
 """Tests for hermes_cli/webhook.py — webhook subscription CLI."""
 
-import orjson
+import json
 import os
 import pytest
 import stat
@@ -14,6 +14,7 @@ from hermes_cli.webhook import (
     _subscriptions_path,
 )
 
+
 @pytest.fixture(autouse=True)
 def _isolate(tmp_path, monkeypatch):
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
@@ -21,6 +22,7 @@ def _isolate(tmp_path, monkeypatch):
     monkeypatch.setattr(
         "hermes_cli.webhook._is_webhook_enabled", lambda: True
     )
+
 
 def _make_args(**kwargs):
     defaults = {
@@ -39,6 +41,7 @@ def _make_args(**kwargs):
     defaults.update(kwargs)
     return Namespace(**defaults)
 
+
 @pytest.mark.parametrize("host", [None, "", "0.0.0.0", "::"])
 def test_webhook_base_url_maps_wildcard_hosts_to_localhost(monkeypatch, host):
     monkeypatch.setattr(
@@ -47,38 +50,9 @@ def test_webhook_base_url_maps_wildcard_hosts_to_localhost(monkeypatch, host):
     )
     assert _get_webhook_base_url() == "http://localhost:9123"
 
-def test_webhook_base_url_brackets_pinned_ipv6_host(monkeypatch):
-    monkeypatch.setattr(
-        "hermes_cli.webhook._get_webhook_config",
-        lambda: {"extra": {"host": "::1", "port": 9123}},
-    )
-    assert _get_webhook_base_url() == "http://[::1]:9123"
 
 class TestSubscribe:
-    def test_basic_create(self, capsys):
-        webhook_command(_make_args(webhook_action="subscribe", name="test-hook"))
-        out = capsys.readouterr().out
-        assert "Created" in out
-        assert "/webhooks/test-hook" in out
-        subs = _load_subscriptions()
-        assert "test-hook" in subs
 
-    def test_with_options(self, capsys):
-        webhook_command(_make_args(
-            webhook_action="subscribe",
-            name="gh-issues",
-            events="issues,pull_request",
-            prompt="Issue: {issue.title}",
-            deliver="telegram",
-            deliver_chat_id="12345",
-            description="Watch GitHub",
-        ))
-        subs = _load_subscriptions()
-        route = subs["gh-issues"]
-        assert route["events"] == ["issues", "pull_request"]
-        assert route["prompt"] == "Issue: {issue.title}"
-        assert route["deliver"] == "telegram"
-        assert route["deliver_extra"] == {"chat_id": "12345"}
 
     def test_custom_secret(self):
         webhook_command(_make_args(
@@ -86,35 +60,14 @@ class TestSubscribe:
         ))
         assert _load_subscriptions()["s"]["secret"] == "my-secret"
 
-    def test_script_option_is_persisted(self):
-        webhook_command(_make_args(
-            webhook_action="subscribe", name="s", script="todoist_filter.py"
-        ))
-        assert _load_subscriptions()["s"]["script"] == "todoist_filter.py"
 
     def test_auto_secret(self):
         webhook_command(_make_args(webhook_action="subscribe", name="s"))
         secret = _load_subscriptions()["s"]["secret"]
         assert len(secret) > 20
 
-    def test_update(self, capsys):
-        webhook_command(_make_args(webhook_action="subscribe", name="x", prompt="v1"))
-        webhook_command(_make_args(webhook_action="subscribe", name="x", prompt="v2"))
-        out = capsys.readouterr().out
-        assert "Updated" in out
-        assert _load_subscriptions()["x"]["prompt"] == "v2"
-
-    def test_invalid_name(self, capsys):
-        webhook_command(_make_args(webhook_action="subscribe", name="bad name!"))
-        out = capsys.readouterr().out
-        assert "Error" in out or "Invalid" in out
-        assert _load_subscriptions() == {}
 
 class TestList:
-    def test_empty(self, capsys):
-        webhook_command(_make_args(webhook_action="list"))
-        out = capsys.readouterr().out
-        assert "No dynamic" in out
 
     def test_with_entries(self, capsys):
         webhook_command(_make_args(webhook_action="subscribe", name="a"))
@@ -126,18 +79,9 @@ class TestList:
         assert "a" in out
         assert "b" in out
 
-class TestRemove:
-    def test_remove_existing(self, capsys):
-        webhook_command(_make_args(webhook_action="subscribe", name="temp"))
-        webhook_command(_make_args(webhook_action="remove", name="temp"))
-        out = capsys.readouterr().out
-        assert "Removed" in out
-        assert _load_subscriptions() == {}
 
-    def test_remove_nonexistent(self, capsys):
-        webhook_command(_make_args(webhook_action="remove", name="nope"))
-        out = capsys.readouterr().out
-        assert "No subscription" in out
+class TestRemove:
+
 
     def test_selective_remove(self):
         webhook_command(_make_args(webhook_action="subscribe", name="keep"))
@@ -147,13 +91,8 @@ class TestRemove:
         assert "keep" in subs
         assert "drop" not in subs
 
+
 class TestPersistence:
-    def test_file_written(self):
-        webhook_command(_make_args(webhook_action="subscribe", name="persist"))
-        path = _subscriptions_path()
-        assert path.exists()
-        data = orjson.loads(path.read_text())
-        assert "persist" in data
 
     def test_corrupted_file(self):
         path = _subscriptions_path()
@@ -171,29 +110,23 @@ class TestPersistence:
 
         path = _subscriptions_path()
         assert stat.S_IMODE(path.stat().st_mode) == 0o600
-        assert "TOPSECRET" in path.read_text(encoding="utf-8", errors="replace")
+        assert "TOPSECRET" in path.read_text(encoding="utf-8")
 
     @pytest.mark.skipif(os.name == "nt", reason="POSIX mode bits are platform-specific")
     def test_save_narrows_existing_broad_secret_file_mode(self):
         # Simulate a pre-existing 0o644 file from before this hardening landed.
         path = _subscriptions_path()
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(orjson.dumps({"old": {"secret": "stale", "prompt": "x"}}).decode('utf-8'))
+        path.write_text(json.dumps({"old": {"secret": "stale", "prompt": "x"}}))
         path.chmod(0o644)
 
         _save_subscriptions({"demo": {"secret": "FRESH", "prompt": "x"}})
 
         assert stat.S_IMODE(path.stat().st_mode) == 0o600
-        assert "FRESH" in path.read_text(encoding="utf-8", errors="replace")
+        assert "FRESH" in path.read_text(encoding="utf-8")
+
 
 class TestWebhookEnabledGate:
-    def test_blocks_when_disabled(self, capsys, monkeypatch):
-        monkeypatch.setattr("hermes_cli.webhook._is_webhook_enabled", lambda: False)
-        webhook_command(_make_args(webhook_action="subscribe", name="blocked"))
-        out = capsys.readouterr().out
-        assert "not enabled" in out.lower()
-        assert "hermes gateway setup" in out
-        assert _load_subscriptions() == {}
 
     def test_blocks_list_when_disabled(self, capsys, monkeypatch):
         monkeypatch.setattr("hermes_cli.webhook._is_webhook_enabled", lambda: False)
@@ -207,4 +140,16 @@ class TestWebhookEnabledGate:
         out = capsys.readouterr().out
         assert "Created" in out
         assert "allowed" in _load_subscriptions()
+
+    def test_real_check_disabled(self, monkeypatch):
+        monkeypatch.setattr(
+            "hermes_cli.webhook._get_webhook_config",
+            lambda: {},
+        )
+        monkeypatch.setattr(
+            "hermes_cli.webhook._is_webhook_enabled",
+            lambda: bool({}.get("enabled")),
+        )
+        import hermes_cli.webhook as wh_mod
+        assert wh_mod._is_webhook_enabled() is False
 

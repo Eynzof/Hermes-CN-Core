@@ -12,8 +12,8 @@ meeting, via OpenAI Realtime / Gemini Live + BlackHole / PulseAudio null-sink.
 Explicit-by-design: only joins ``https://meet.google.com/`` URLs explicitly
 passed in. No calendar scanning, no auto-dial, no consent announcement.
 """
-
 from __future__ import annotations
+
 
 import logging
 import platform

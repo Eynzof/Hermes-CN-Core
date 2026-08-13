@@ -1,6 +1,6 @@
 """Integration tests for CompactReminderProvider wired into run_conversation()."""
-
 from __future__ import annotations
+
 
 import sys
 import types

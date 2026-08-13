@@ -11,8 +11,8 @@ The shipped coding guidance lives on the evidence-based verification-stop nudge
 the default token cost tied to the existing "missing verification evidence"
 decision while preserving ``pre_verify`` for user/plugin policy.
 """
-
 from __future__ import annotations
+
 
 from typing import Any, Optional
 

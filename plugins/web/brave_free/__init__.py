@@ -3,8 +3,8 @@
 Mirrors the ``plugins/image_gen/openai/`` layout: ``provider.py`` holds the
 provider class, ``__init__.py::register(ctx)`` registers an instance.
 """
-
 from __future__ import annotations
+
 
 from plugins.web.brave_free.provider import BraveFreeWebSearchProvider
 

@@ -39,8 +39,8 @@ instructions" instead of "ignore all instructions") without allowing unbounded
 regex backtracking. This mirrors the fix applied to ``skills_guard.py`` in
 commit 4ea29978.
 """
-
 from __future__ import annotations
+
 from agent.re_compat import re
 import unicodedata
 from typing import List, Optional, Tuple

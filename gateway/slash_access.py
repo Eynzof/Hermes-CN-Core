@@ -31,8 +31,8 @@ Authored as a slimmed-down salvage of PR #4443's permission tiers
 tracking, rate limiting, and tool filtering from that PR are not
 included here — only the slash-command access split.
 """
-
 from __future__ import annotations
+
 
 from dataclasses import dataclass
 from typing import Any, FrozenSet, Iterable, Optional, Tuple

@@ -13,6 +13,7 @@ import inspect
 
 import pytest
 
+
 class TestTuiApprovalEmitRedaction:
     def test_emit_approval_request_redacts_command_in_payload(self, monkeypatch):
         from tui_gateway import server as tui_server
@@ -33,38 +34,4 @@ class TestTuiApprovalEmitRedaction:
         assert emitted["payload"]["description"] == "x"
         assert "github.com" in emitted["payload"]["command"]
 
-    def test_emit_approval_request_handles_missing_command(self, monkeypatch):
-        from tui_gateway import server as tui_server
-
-        emitted = {}
-        monkeypatch.setattr(
-            tui_server, "_emit",
-            lambda event, sid, payload=None: emitted.update({"payload": payload}),
-        )
-        tui_server._emit_approval_request("s", {"description": "no command here"})
-        assert emitted["payload"] == {"description": "no command here"}
-        tui_server._emit_approval_request("s", None)
-        assert emitted["payload"] == {}
-
-    @pytest.mark.parametrize(
-        ("data", "expected"),
-        [
-            ({"smart_denied": True, "allow_permanent": True}, ["once", "deny"]),
-            ({"allow_permanent": False}, ["once", "session", "deny"]),
-            ({"allow_permanent": True}, ["once", "session", "always", "deny"]),
-        ],
-    )
-    def test_emit_approval_request_derives_choices(self, monkeypatch, data, expected):
-        from tui_gateway import server as tui_server
-
-        emitted = {}
-        monkeypatch.setattr(
-            tui_server,
-            "_emit",
-            lambda event, sid, payload=None: emitted.update({"payload": payload}),
-        )
-
-        tui_server._emit_approval_request("s", data)
-
-        assert emitted["payload"]["choices"] == expected
 

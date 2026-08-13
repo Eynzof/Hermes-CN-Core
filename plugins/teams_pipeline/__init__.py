@@ -3,8 +3,8 @@
 Registers only operator-facing CLI surfaces. The agent should invoke these via
 the terminal tool; no model tools are added by this plugin.
 """
-
 from __future__ import annotations
+
 
 from plugins.teams_pipeline.cli import register_cli, teams_pipeline_command
 

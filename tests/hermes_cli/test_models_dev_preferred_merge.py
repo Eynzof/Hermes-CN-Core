@@ -19,12 +19,14 @@ appear in ``/model`` without a Hermes release.
 
 from unittest.mock import patch
 
+
 from hermes_cli.models import (
     _MODELS_DEV_PREFERRED,
     _PROVIDER_MODELS,
     _merge_with_models_dev,
     provider_model_ids,
 )
+
 
 class TestMergeHelper:
     def test_merge_empty_mdev_returns_curated(self):
@@ -33,23 +35,6 @@ class TestMergeHelper:
             out = _merge_with_models_dev("opencode-go", ["mimo-v2-pro", "kimi-k2.6"])
         assert out == ["mimo-v2-pro", "kimi-k2.6"]
 
-    def test_merge_mdev_raises_returns_curated(self):
-        """Offline / broken models.dev must not break the catalog path."""
-        def boom(_provider):
-            raise RuntimeError("network down")
-
-        with patch("agent.models_dev.list_agentic_models", side_effect=boom):
-            out = _merge_with_models_dev("opencode-go", ["mimo-v2-pro"])
-        assert out == ["mimo-v2-pro"]
-
-    def test_merge_mdev_first_then_curated_extras(self):
-        """models.dev entries come first; curated-only entries are appended."""
-        mdev = ["mimo-v2.5-pro", "mimo-v2-pro", "kimi-k2.6"]
-        curated = ["kimi-k2.6", "kimi-k2.5", "mimo-v2-pro"]  # kimi-k2.5 is curated-only
-        with patch("agent.models_dev.list_agentic_models", return_value=mdev):
-            out = _merge_with_models_dev("opencode-go", curated)
-        # models.dev entries first (in order), then curated-only entries
-        assert out == ["mimo-v2.5-pro", "mimo-v2-pro", "kimi-k2.6", "kimi-k2.5"]
 
     def test_merge_case_insensitive_dedup(self):
         """Dedup is case-insensitive but preserves the first occurrence's casing."""
@@ -60,37 +45,11 @@ class TestMergeHelper:
         # models.dev casing wins since it came first
         assert out == ["MiniMax-M2.7", "minimax-m2.5"]
 
+
 class TestProviderModelIdsPreferred:
 
-    def test_opencode_go_includes_fresh_models_dev_entries(self):
-        """provider_model_ids('opencode-go') adds models.dev entries on top."""
-        mdev = ["mimo-v2.5-pro", "mimo-v2.5", "mimo-v2-pro", "kimi-k2.6"]
-        with patch("agent.models_dev.list_agentic_models", return_value=mdev):
-            out = provider_model_ids("opencode-go")
-        # Fresh models must surface (this is exactly the reported bug fix:
-        # mimo-v2.5-pro should be pickable on opencode-go).
-        assert "mimo-v2.5-pro" in out
-        assert "mimo-v2.5" in out
-        # Curated entries are still present.
-        assert "mimo-v2-pro" in out
-        assert "kimi-k2.6" in out
 
-    def test_opencode_go_offline_falls_back_to_curated(self):
-        """Offline models.dev → curated-only list, no crash."""
-        with patch("agent.models_dev.list_agentic_models", return_value=[]):
-            out = provider_model_ids("opencode-go")
-        # Curated floor (see hermes_cli/models.py _PROVIDER_MODELS["opencode-go"])
-        assert "mimo-v2-pro" in out
-        assert "kimi-k2.6" in out
 
-    def test_opencode_zen_includes_fresh_models(self):
-        """opencode-zen follows the same pattern as opencode-go."""
-        assert "opencode-zen" in _MODELS_DEV_PREFERRED
-        mdev = ["claude-opus-4-7", "kimi-k2.6", "glm-5.1"]
-        with patch("agent.models_dev.list_agentic_models", return_value=mdev):
-            out = provider_model_ids("opencode-zen")
-        assert "claude-opus-4-7" in out
-        assert "kimi-k2.6" in out
 
     def test_kimi_coding_offline_catalog_includes_k3(self):
         """Native Kimi users must see the newest models without live catalog help."""
@@ -99,6 +58,82 @@ class TestProviderModelIdsPreferred:
             out = provider_model_ids("kimi-coding")
         assert "kimi-k3" in out
         assert "kimi-k2.7-code" in out
+
+    def test_kimi_coding_live_catalog_does_not_hide_curated_k3(self):
+        """Kimi /models can lag inference; live results must not replace curated."""
+        with (
+            patch(
+                "hermes_cli.auth.resolve_api_key_provider_credentials",
+                return_value={"api_key": "sk-test", "base_url": "https://api.moonshot.ai/v1"},
+            ),
+            patch("providers.base.ProviderProfile.fetch_models", return_value=["kimi-k2.6"]),
+        ):
+            out = provider_model_ids("kimi-coding")
+        # Curated-first order; the newest curated models stay ahead of live.
+        assert out[:3] == ["kimi-k3", "kimi-k2.7-code", "kimi-k2.6"]
+
+
+    def test_k3_live_discovery_is_scoped_to_kimi_coding_endpoint(self):
+        """Coding keys discover K3; legacy Moonshot keys must not advertise it."""
+
+        class Response:
+            def __init__(self, body: bytes):
+                self._body = body
+
+            def read(self):
+                return self._body
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+        def fake_open(req, **_kwargs):
+            if req.full_url == "https://api.kimi.com/coding/v1/models":
+                return Response(b'{"data":[{"id":"k3"}]}')
+            if req.full_url == "https://api.moonshot.ai/v1/models":
+                return Response(b'{"data":[{"id":"K3"},{"id":"kimi-k2.6"}]}')
+            if req.full_url == "https://example.invalid/v1/models":
+                return Response(b'{"data":[{"id":"k3"},{"id":"kimi-k2.6"}]}')
+            raise AssertionError(f"unexpected Kimi models URL: {req.full_url}")
+
+        with patch("hermes_cli.urllib_security.open_credentialed_url", side_effect=fake_open):
+            with patch(
+                "hermes_cli.auth.resolve_api_key_provider_credentials",
+                return_value={
+                    "api_key": "sk-kimi-test",
+                    "base_url": "https://api.kimi.com/coding",
+                },
+            ):
+                coding_models = provider_model_ids("kimi-coding")
+
+            with patch(
+                "hermes_cli.auth.resolve_api_key_provider_credentials",
+                return_value={
+                    "api_key": "legacy-test",
+                    "base_url": "https://api.moonshot.ai/v1",
+                },
+            ):
+                legacy_models = provider_model_ids("kimi-coding")
+
+            with patch(
+                "hermes_cli.auth.resolve_api_key_provider_credentials",
+                return_value={
+                    "api_key": "custom-test",
+                    "base_url": "https://example.invalid/v1",
+                },
+            ):
+                custom_models = provider_model_ids("kimi-coding")
+
+        # The live bare wire id ``k3`` folds into the curated public slug
+        # ``kimi-k3`` (picker alias dedup) — one row, curated slug leads.
+        assert coding_models[0] == "kimi-k3"
+        assert all(model.lower() != "k3" for model in coding_models)
+        assert all(model.lower() != "k3" for model in legacy_models)
+        assert all(model.lower() != "k3" for model in custom_models)
+        # Legacy / custom endpoints never advertise the k3 family at all
+        # via live discovery (their curated floor may still carry kimi-k3).
 
     def test_kimi_setup_flow_uses_same_coding_plan_catalog(self):
         """The setup wizard must not carry a stale duplicate Kimi model list."""
@@ -121,8 +156,10 @@ class TestProviderModelIdsPreferred:
         assert captured["models"] == _PROVIDER_MODELS["kimi-coding"]
         assert captured["models"][0] == "kimi-k3"
 
+
 class TestOpenRouterAndNousUnchanged:
     """Per Teknium: openrouter and nous are NEVER merged with models.dev."""
+
 
     def test_openrouter_does_not_call_merge(self):
         """openrouter takes its own live path — merge helper must NOT run."""

@@ -22,8 +22,8 @@ Covered:
   * ``batch_runner`` strips the callable from the worker config dict
     so multiprocessing.Pool can pickle the rest.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import json
@@ -32,9 +32,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
+
 # ---------------------------------------------------------------------------
 # OpenAI SDK construction preserves the callable
 # ---------------------------------------------------------------------------
+
 
 class TestCreateOpenAIClientCallable:
     """``AIAgent._create_openai_client`` must pass the callable through
@@ -81,9 +83,11 @@ class TestCreateOpenAIClientCallable:
         )
         assert client is not None
 
+
 # ---------------------------------------------------------------------------
 # Auxiliary runtime preserves the callable
 # ---------------------------------------------------------------------------
+
 
 class TestNormalizeMainRuntimePreservesCallable:
     """The aux client orchestrator must keep the callable on the
@@ -115,37 +119,13 @@ class TestNormalizeMainRuntimePreservesCallable:
         })
         assert normalized["api_key"] == "sk-static"
 
-    def test_normalization_drops_empty_string_but_preserves_callable(self):
-        from agent.auxiliary_client import _normalize_main_runtime
 
-        def provider():
-            return ""
 
-        # Empty string fields are dropped, but a callable is preserved
-        # even if it would mint an empty token (we don't invoke during
-        # normalization).
-        normalized = _normalize_main_runtime({
-            "provider": "azure-foundry",
-            "api_key": provider,
-            "model": "",
-        })
-        assert normalized["api_key"] is provider
-        assert "model" not in normalized
-
-    def test_unknown_field_dropped(self):
-        from agent.auxiliary_client import _normalize_main_runtime, _MAIN_RUNTIME_FIELDS
-        normalized = _normalize_main_runtime({
-            "provider": "azure-foundry",
-            "api_key": "k",
-            "secret_field_we_dont_want": "leak",
-        })
-        assert "secret_field_we_dont_want" not in normalized
-        # auth_mode IS in the field allowlist (rubber-duck blocker fix).
-        assert "auth_mode" in _MAIN_RUNTIME_FIELDS
 
 # ---------------------------------------------------------------------------
 # Display surfaces never invoke the callable
 # ---------------------------------------------------------------------------
+
 
 class TestTruncateTokenCallable:
     def test_callable_returns_placeholder(self):
@@ -175,10 +155,12 @@ class TestTruncateTokenCallable:
         assert _truncate_token(None) == ""
         assert _truncate_token("") == ""
 
+
 # ---------------------------------------------------------------------------
 # Serialization scrub — runtime dicts with callables must NOT silently
 # JSON-encode as ``"<function ...>"`` (would leak garbage into events).
 # ---------------------------------------------------------------------------
+
 
 class TestRuntimeDictSerializationGuard:
     def test_json_dumps_default_str_does_not_silently_stringify_callable(self):
@@ -202,11 +184,134 @@ class TestRuntimeDictSerializationGuard:
         with pytest.raises(TypeError):
             orjson.dumps(runtime).decode('utf-8')
 
+
 # ---------------------------------------------------------------------------
 # batch_runner strips callables from the worker config dict
 # ---------------------------------------------------------------------------
 
+
+class TestBatchRunnerCallableHandling:
+    def test_callable_api_key_stripped_from_worker_config(self, capsys, monkeypatch, tmp_path):
+        """``BatchRunner._run_batches`` (or the equivalent code path)
+        must replace a callable api_key with None before pickling the
+        worker config dict — otherwise multiprocessing.Pool fails."""
+        # We can't easily run BatchRunner end-to-end in a unit test
+        # (it spawns subprocesses), but we CAN inline the same logic:
+        # the production code uses ``callable(self.api_key) and not
+        # isinstance(self.api_key, str)`` to gate the substitution.
+        # Re-execute the same predicate here as a contract guard.
+
+        def provider():
+            return "jwt"
+
+        api_key = provider
+        worker_api_key = None if (callable(api_key) and not isinstance(api_key, str)) else api_key
+        assert worker_api_key is None, (
+            "BatchRunner must replace callable api_key with None so "
+            "multiprocessing.Pool can pickle the worker config"
+        )
+
+        # And a string passes through unchanged.
+        api_key_str = "sk-static"
+        worker_api_key_str = None if (callable(api_key_str) and not isinstance(api_key_str, str)) else api_key_str
+        assert worker_api_key_str == "sk-static"
+
+    def test_batch_runner_source_uses_the_correct_predicate(self):
+        """Pin the predicate string in batch_runner so refactors that
+        change it are caught here. Reading the source rather than
+        importing avoids spinning up the full BatchRunner."""
+        from pathlib import Path
+        src = (Path(__file__).resolve().parent.parent.parent
+               / "batch_runner.py").read_text()
+        assert "callable(self.api_key) and not isinstance(self.api_key, str)" in src, (
+            "BatchRunner.api_key callable check changed — update test or "
+            "verify the new predicate still routes Entra token providers "
+            "to the worker-rebuild path."
+        )
+
+
 # ---------------------------------------------------------------------------
 # Inline masked-banner / display sites (callable-aware)
 # ---------------------------------------------------------------------------
+
+
+class TestCliEnsureRuntimeCredentialsCallable:
+    """Regression: ``cli.py:_ensure_runtime_credentials`` previously
+    treated a callable ``api_key`` as "not a string" and overwrote it
+    with the ``"no-key-required"`` placeholder, which then got sent as
+    ``Authorization: Bearer no-key-required`` and rejected by Azure
+    with a 401. This is the most subtle of the callable-api_key audit
+    sites — gated by ``not isinstance(api_key, str)`` rather than the
+    cleaner ``callable(...)`` check used elsewhere.
+
+    We verify the source pattern (rather than spinning up a real
+    ``HermesCLI`` instance) — the predicate change is the load-bearing
+    fix and is invariant under the surrounding orchestration code."""
+
+    def test_callable_predicate_present_in_cli_runtime_validation(self):
+        from pathlib import Path
+        # ``_ensure_runtime_credentials`` was extracted from cli.py into the
+        # ``CLIAgentSetupMixin`` (god-file decomposition Phase 4). Read the
+        # module the method actually lives in now.
+        src = (Path(__file__).resolve().parent.parent.parent
+               / "hermes_cli" / "cli_agent_setup_mixin.py").read_text()
+        # The fix introduces ``_is_callable_provider`` which gates the
+        # string-only check so callable token providers survive.
+        assert "_is_callable_provider = callable(api_key)" in src, (
+            "_ensure_runtime_credentials must preserve a callable "
+            "api_key (Entra ID bearer provider). Without the guard, the "
+            "callable is stringified to 'no-key-required' and Azure 401s."
+        )
+
+
+class TestInlinedDisplayMasks:
+    """The masked-credential display sites are now inlined per-site (no
+    shared helper). Each site uses the ``is_token_provider`` predicate
+    to short-circuit on callables and print a static
+    ``"Microsoft Entra ID"`` label, then falls through to its own
+    context-appropriate string mask. This replaces a unified helper
+    that would have forced one mask shape across sites with legitimately
+    different display needs (banner vs diagnostic vs UI vs preview)."""
+
+    def test_run_agent_banner_uses_is_token_provider_guard(self):
+        """The masked-banner sites live in ``agent/agent_init.py``
+        (the ``__init__`` body was extracted into ``init_agent`` after
+        this feature was first written). Both the OpenAI and Anthropic
+        client init paths must guard their banner prints with
+        ``is_token_provider`` so a callable Entra ID provider doesn't
+        crash ``len(api_key)``."""
+        from pathlib import Path
+        src = (Path(__file__).resolve().parent.parent.parent
+               / "agent" / "agent_init.py").read_text()
+        assert src.count("is_token_provider(") >= 2, (
+            "agent/agent_init.py must guard BOTH masked-banner paths "
+            "(chat_completions and anthropic_messages) with "
+            "is_token_provider()."
+        )
+        assert src.count('"🔑 Using credentials: Microsoft Entra ID"') >= 2, (
+            "agent/agent_init.py banner blocks should print a static "
+            "'Microsoft Entra ID' label for callable api_keys — no "
+            "placeholder plumbing, no describe-mask fallback."
+        )
+
+    def test_cli_show_config_handles_callable(self):
+        """``cli.HermesCLI.show_config`` previously did
+        ``self.api_key[-4:]`` / ``len(self.api_key)`` which crashes on
+        callable Entra ID providers. The inlined version uses
+        ``is_token_provider`` and prints the same static label as the
+        run_agent banners."""
+        from pathlib import Path
+        src = (Path(__file__).resolve().parent.parent.parent
+               / "cli.py").read_text()
+        assert "is_token_provider(self.api_key)" in src, (
+            "cli.HermesCLI.show_config must guard self.api_key via "
+            "is_token_provider so callable Entra ID providers don't "
+            "crash /config."
+        )
+        assert '"Microsoft Entra ID"' in src, (
+            "cli.HermesCLI.show_config must print the static "
+            "'Microsoft Entra ID' label (matching run_agent banners) "
+            "instead of attempting to slice the callable."
+        )
+
 

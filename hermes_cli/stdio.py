@@ -26,8 +26,8 @@ actually flip the console code page — they rely on their runtime (Node or
 Rust) writing UTF-16 to the Win32 console API and letting the terminal
 sort it out.  Python doesn't get that luxury.
 """
-
 from __future__ import annotations
+
 
 import os
 import sys

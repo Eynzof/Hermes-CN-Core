@@ -9,8 +9,8 @@ revokes the whole grant. So every refresh must persist the rotated token
 atomically and be serialized — and a failed refresh never raises into the
 agent (stale token stays; the fail-open path absorbs the eventual 401).
 """
-
 from __future__ import annotations
+
 
 import orjson
 import logging
@@ -173,6 +173,36 @@ def _http_post_form(url: str, data: dict[str, str], timeout: float) -> dict[str,
     resp = httpx.post(url, data=data, timeout=timeout)
     resp.raise_for_status()
     return resp.json()
+
+
+def _http_post_form_status(
+    url: str, data: dict[str, str], timeout: float
+) -> tuple[int, dict[str, Any]]:
+    """POST form-encoded ``data``; return ``(status, parsed JSON body)``.
+
+    Unlike ``_http_post_form``, 4xx does not raise — RFC 8628 polling reads the
+    OAuth error body off a 400. A non-JSON body parses to ``{}``.
+    """
+    import httpx
+
+    resp = httpx.post(url, data=data, timeout=timeout)
+    try:
+        body = resp.json()
+    except ValueError:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    return resp.status_code, body
+
+
+def _http_get_json(url: str, timeout: float) -> dict[str, Any]:
+    """GET ``url`` and return the parsed JSON body. Raises on non-2xx/non-JSON."""
+    import httpx
+
+    resp = httpx.get(url, timeout=timeout)
+    resp.raise_for_status()
+    body = resp.json()
+    return body if isinstance(body, dict) else {}
 
 
 def _exchange_refresh_token(cred: OAuthCredential, *, now: float) -> OAuthCredential:

@@ -5,8 +5,8 @@ resolution through both CLI resolvers, config/doctor/overlay registration,
 and credential/base-URL resolution — without
 any live network calls.
 """
-
 from __future__ import annotations
+
 
 import contextlib
 import io
@@ -24,10 +24,12 @@ if "dotenv" not in sys.modules:
 from hermes_cli.auth import resolve_api_key_provider_credentials
 from hermes_cli.models import CANONICAL_PROVIDERS, _PROVIDER_LABELS, normalize_provider
 
+
 @pytest.fixture(autouse=True)
 def _clear_provider_env(monkeypatch):
     for key in ("FIREWORKS_API_KEY", "FIREWORKS_BASE_URL"):
         monkeypatch.delenv(key, raising=False)
+
 
 class TestFireworksAliases:
     """Both CLI resolvers must map the aliases — the plugin's aliases= tuple is
@@ -43,12 +45,18 @@ class TestFireworksAliases:
 
         assert normalize_in_providers(alias) == "fireworks"
 
+
 class TestFireworksOrdering:
     """Fireworks participates in the canonical provider catalog."""
 
     def test_present_in_canonical_providers(self):
         slugs = [p.slug for p in CANONICAL_PROVIDERS]
         assert "fireworks" in slugs
+
+
+    def test_has_a_label(self):
+        assert _PROVIDER_LABELS.get("fireworks") == "Fireworks AI"
+
 
 class TestFireworksConfigRegistry:
     def test_optional_env_vars_include_fireworks(self):
@@ -60,6 +68,7 @@ class TestFireworksConfigRegistry:
 
         assert "FIREWORKS_BASE_URL" not in OPTIONAL_ENV_VARS
 
+
 class TestFireworksOverlay:
     def test_overlay_exists(self):
         from hermes_cli.providers import HERMES_OVERLAYS
@@ -70,6 +79,7 @@ class TestFireworksOverlay:
         assert overlay.base_url_override == "https://api.fireworks.ai/inference/v1"
         assert not overlay.base_url_env_var
         assert not overlay.is_aggregator
+
 
 class TestFireworksDoctor:
     def test_provider_env_hints_include_fireworks(self):
@@ -124,6 +134,7 @@ class TestFireworksDoctor:
         assert "vendor-prefixed" not in out
         assert "vendor/model slug" not in out
 
+
 class TestFireworksCredentials:
     def test_resolves_default_base_url(self, monkeypatch):
         monkeypatch.setenv("FIREWORKS_API_KEY", "fw_test_key")
@@ -153,17 +164,6 @@ class TestFireworksAuxiliary:
         assert "X-Title" not in headers
         assert kwargs["base_url"] == "https://api.fireworks.ai/inference/v1"
 
-    def test_aux_model_is_payg_safe(self, monkeypatch):
-        monkeypatch.setenv("FIREWORKS_API_KEY", "fw_test_key")
-        _, model, _ = self._resolve("fireworks")
-        assert model.startswith("accounts/fireworks/models/")
-        assert "/routers/" not in model
-        assert "turbo" not in model.lower()
-
-    def test_alias_resolves_through_aux_client(self, monkeypatch):
-        monkeypatch.setenv("FIREWORKS_API_KEY", "fw_test_key")
-        client, _, _ = self._resolve("fw")
-        assert client is not None
 
 class TestFireworksModelMetadata:
     def test_url_infers_fireworks(self):

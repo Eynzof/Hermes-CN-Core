@@ -5,8 +5,8 @@ SDK is async-native (``AsyncParallel.beta.extract``). The web_extract_tool
 dispatcher detects coroutines via :func:`inspect.iscoroutinefunction` and
 awaits.
 """
-
 from __future__ import annotations
+
 
 from plugins.web.parallel.provider import ParallelWebSearchProvider
 

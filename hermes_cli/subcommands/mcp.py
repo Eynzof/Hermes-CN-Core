@@ -3,8 +3,8 @@
 Extracted from ``hermes_cli/main.py:main()`` (god-file Phase 2 follow-up).
 Handler injected to avoid importing ``main``.
 """
-
 from __future__ import annotations
+
 
 import argparse
 from typing import Callable

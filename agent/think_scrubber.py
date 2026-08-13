@@ -53,8 +53,8 @@ being incorrectly suppressed.  Closed pairs (``<think>X</think>``) are
 always suppressed regardless of boundary; a closed pair is an
 intentional, bounded construct.
 """
-
 from __future__ import annotations
+
 
 from typing import Tuple
 

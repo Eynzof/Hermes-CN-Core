@@ -4,8 +4,8 @@ Mirrors the ``plugins/web/<vendor>/`` and ``plugins/image_gen/openai/``
 layout: ``provider.py`` holds the provider class; ``__init__.py::register``
 instantiates and registers it via the plugin context.
 """
-
 from __future__ import annotations
+
 
 from plugins.browser.browserbase.provider import BrowserbaseBrowserProvider
 

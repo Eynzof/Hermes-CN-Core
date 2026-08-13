@@ -50,6 +50,18 @@ MAX_TODO_CODE_CHARS = 16000
 # oldest are dropped first.
 MAX_ARCHIVED_TODOS = 500
 _TRUNCATION_MARKER = "… [truncated]"
+# Persisted as ordinary message content. ContextCompressor uses this stable
+# header to distinguish the synthetic post-compaction row from a real user.
+TODO_INJECTION_HEADER = (
+    "[Your active task list was preserved across context compression]"
+)
+
+# Reminder surfaced as the result "message" once the active list is non-empty
+# and every item is finished — exact Kimi TodoList wording.
+_ALL_DONE_REMINDER = (
+    "All todos are done. "
+    "Please review the requirements again to ensure nothing is left unfinished."
+)
 
 # Reminder surfaced as the result "message" once the active list is non-empty
 # and every item is finished — exact Kimi TodoList wording.
@@ -281,7 +293,7 @@ class TodoStore:
         if not active_items:
             return None
 
-        lines = ["[Your active task list was preserved across context compression]"]
+        lines = [TODO_INJECTION_HEADER]
         for item in active_items:
             marker = markers.get(item["status"], "[?]")
             lines.append(f"- {marker} {item['id']}. {item['content']} ({item['status']})")

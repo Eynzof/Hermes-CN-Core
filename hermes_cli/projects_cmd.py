@@ -9,8 +9,8 @@ convention. State lives in the per-profile ``$HERMES_HOME/projects.db`` store
 This is a footprint-ladder rung-2 capability: a CLI command + gateway RPC,
 with zero model-tool schema cost.
 """
-
 from __future__ import annotations
+
 
 import argparse
 import functools

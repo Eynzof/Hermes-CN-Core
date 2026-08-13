@@ -1,6 +1,6 @@
 """Shared helpers for classifying tool result payloads."""
-
 from __future__ import annotations
+
 
 import orjson
 from typing import Any

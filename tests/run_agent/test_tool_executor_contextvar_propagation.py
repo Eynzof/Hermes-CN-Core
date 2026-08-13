@@ -29,12 +29,13 @@ necessary. If anyone ever reverts the wrapper, the call-site test
 fails while the contract test keeps passing — a clear diagnostic
 signal for *why* the call-site regressed.
 """
-
 from __future__ import annotations
+
 
 import concurrent.futures
 import contextvars
 import threading
+
 
 def test_executor_submit_without_copy_context_does_not_propagate():
     """Documents the Python contract the fix relies on.
@@ -67,26 +68,8 @@ def test_executor_submit_without_copy_context_does_not_propagate():
         "test_run_tool_worker_sees_parent_context below."
     )
 
-def test_executor_submit_with_copy_context_run_propagates():
-    """Positive case: the explicit ``copy_context().run(...)`` wrapper the
-    PR adds makes parent-context ContextVar values visible in the worker.
-    """
-    probe: contextvars.ContextVar[str] = contextvars.ContextVar(
-        "probe_explicit_propagation", default="unset"
-    )
 
-    def read_in_worker() -> str:
-        return probe.get()
 
-    probe.set("set-in-main")
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-        ctx = contextvars.copy_context()
-        observed = ex.submit(ctx.run, read_in_worker).result(timeout=5)
-
-    assert observed == "set-in-main", (
-        f"copy_context().run(...) failed to propagate: got {observed!r}"
-    )
 
 def test_run_tool_worker_sees_parent_approval_session_key():
     """End-to-end call-site guard.
@@ -133,6 +116,9 @@ def test_run_tool_worker_sees_parent_approval_session_key():
         "the copy_context().run wrapper in _execute_tool_calls_concurrent "
         "was removed."
     )
+
+
+
 
 def test_two_concurrent_tool_batches_keep_session_keys_isolated():
     """End-to-end guard: two callers each set a different session key

@@ -8,8 +8,8 @@ other compression warnings in the same module, which route through
 ``_emit_status`` (and store ``_compression_warning`` for late-bound
 gateway replay). This pins the warning onto the gateway-aware channel.
 """
-
 from __future__ import annotations
+
 
 import os
 from pathlib import Path

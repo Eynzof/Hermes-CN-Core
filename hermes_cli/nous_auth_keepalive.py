@@ -1,6 +1,6 @@
 """Background keepalive for long-lived Nous Portal sessions."""
-
 from __future__ import annotations
+
 
 import logging
 import os

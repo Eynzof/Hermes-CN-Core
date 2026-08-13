@@ -9,8 +9,8 @@ Tests cover:
 - ``_save_original_output`` — original save to temp file
 - ``_build_session_output_block`` — metadata block assembly
 """
-
 from __future__ import annotations
+
 
 import os
 import shutil

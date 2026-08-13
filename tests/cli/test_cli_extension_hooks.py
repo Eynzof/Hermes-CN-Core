@@ -6,8 +6,8 @@ Verifies that wrapper CLIs can extend the TUI via:
   - _build_tui_layout_children()
 without overriding run().
 """
-
 from __future__ import annotations
+
 
 import importlib
 import sys

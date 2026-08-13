@@ -7,8 +7,8 @@ Protocol-specific state goes in ``provider_data`` dicts (response-level
 and per-tool-call) so that protocol-aware code paths can access it
 without polluting the shared type.
 """
-
 from __future__ import annotations
+
 
 import orjson
 from dataclasses import dataclass, field

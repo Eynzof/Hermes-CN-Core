@@ -6,8 +6,8 @@ fallbacks that work under Git Bash on Windows, and normalizes Windows
 backslash paths for the shell.  On non-Windows hosts it is a byte-for-byte
 no-op; the Windows-specific behavior is tested by patching ``sys.platform``.
 """
-
 from __future__ import annotations
+
 
 from unittest.mock import MagicMock, patch
 
@@ -84,6 +84,13 @@ class TestNonWindowsNoop:
             "say hello",
             "wl-copy < file",
             "python3 --version",
+            "copy src dst",
+            "tasklist",
+            "taskkill /PID 123 /F",
+            "watch date",
+            "killall name",
+            "column -t file",
+            "netcat -z example.com 80",
             "echo D:\\repo\\src",
         ],
     )
@@ -118,6 +125,7 @@ class TestBashFixFallbacks:
             ("printf text | wl-copy", "wl-copy"),
             ("python3 --version", "python3"),
             ("pip3 list", "pip3"),
+
             ("copy src.txt dst.txt", "copy"),
             ("move src.txt dst.txt", "move"),
             ("del temp.txt", "del"),
@@ -140,6 +148,7 @@ class TestBashFixFallbacks:
             ("watch -n 1 date", "watch"),
             ("killall notepad", "killall"),
             ("pidof notepad", "pidof"),
+
             ("column -t file", "column"),
             ("netcat -z example.com 80", "netcat"),
         ],
@@ -484,7 +493,12 @@ class TestWrapCommandBashFix:
 
     def test_unchanged_command_no_warning(self) -> None:
         env, wrapped = self._wrap("echo ok")
-        assert "eval 'echo ok'" in wrapped
+        # With P-058's git-bash-first Windows default the resolved shell path is
+        # a real Git Bash, so the P-052 MSYSTEM neutralization prepends
+        # ``export MSYSTEM=;`` inside the eval.  Assert the command still lands
+        # un-fixed in the eval region (the bash_fix contract), not the exact
+        # eval spelling.
+        assert "eval '" in wrapped and "echo ok" in wrapped
         assert getattr(env, "_bash_fix_warnings", None) is None
 
     def test_powershell_shell_skips_bash_fix(self) -> None:

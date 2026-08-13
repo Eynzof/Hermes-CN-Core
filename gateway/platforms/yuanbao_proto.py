@@ -15,8 +15,8 @@ yuanbao_proto.py - Yuanbao WebSocket 协议编解码（纯 Python 实现）
 
 实现方式：手写 varint / protobuf wire-format 编解码，不依赖第三方 protobuf 库。
 """
-
 from __future__ import annotations
+
 
 import logging
 import threading

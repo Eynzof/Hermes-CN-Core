@@ -28,8 +28,8 @@ and calls the existing ``cronjob`` tool. No new tool, no second job engine.
 Parsing is shlex-based so quoted free-text values (``criteria="from my boss"``)
 survive.
 """
-
 from __future__ import annotations
+
 
 import rapidfuzz.process as _fuzz_process
 import logging

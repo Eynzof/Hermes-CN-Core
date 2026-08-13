@@ -5,8 +5,8 @@ usually only carries ``id``/``displayName``/``description``/``spritesheetPath``;
 row taxonomy is inferred from the atlas shape so Hermes can render both legacy
 8-row sheets and current 9-row Codex sheets.
 """
-
 from __future__ import annotations
+
 
 from enum import Enum
 

@@ -13,8 +13,8 @@ Covers NousResearch/hermes-agent#67052:
 
 Stdlib + pytest + unittest.mock only. No live cua-driver, no network.
 """
-
 from __future__ import annotations
+
 
 import json
 import os
@@ -23,12 +23,14 @@ from unittest.mock import patch
 
 import pytest
 
+
 @pytest.fixture(autouse=True)
 def _reset():
     from tools.computer_use.tool import reset_backend_for_tests
     reset_backend_for_tests()
     yield
     reset_backend_for_tests()
+
 
 # ---------------------------------------------------------------------------
 # Phase A — structured verdict normalization (_action_result_from)
@@ -37,17 +39,32 @@ def _reset():
 class _FakeSession:
     """Minimal cua-driver session stub returning a canned tool result."""
 
-    def __init__(self, out: Dict[str, Any], capabilities: Optional[set] = None):
+    def __init__(
+        self,
+        out: Dict[str, Any],
+        capabilities: Optional[set] = None,
+        input_properties: Optional[Dict[str, set]] = None,
+    ):
         self._out = out
         self._caps = capabilities or set()
+        self._input_properties = input_properties or {}
         self.last_args: Dict[str, Any] = {}
+        self.calls = []
 
     def call_tool(self, name: str, args: Dict[str, Any], timeout: float = 30.0):
         self.last_args = args
+        self.calls.append((name, dict(args)))
         return self._out
 
     def supports_capability(self, capability: str, tool: Optional[str] = None) -> bool:
         return capability in self._caps
+
+    def supports_input_property(self, tool: str, property_name: str) -> bool:
+        return property_name in self._input_properties.get(tool, set())
+
+    def _has_tool(self, name: str) -> bool:
+        return name == "bring_to_front"
+
 
 def _make_backend(session: _FakeSession):
     from tools.computer_use.cua_backend import CuaDriverBackend
@@ -58,6 +75,7 @@ def _make_backend(session: _FakeSession):
     be._active_pid = 4242                # type: ignore[attr-defined]
     be._active_window_id = 7             # type: ignore[attr-defined]
     return be
+
 
 def test_confirmed_verdict_is_preserved():
     out = {
@@ -71,6 +89,7 @@ def test_confirmed_verdict_is_preserved():
     assert res.effect == "confirmed"
     assert res.path == "ax"
     assert res.escalation is None
+
 
 def test_suspected_noop_carries_escalation():
     out = {
@@ -89,6 +108,7 @@ def test_suspected_noop_carries_escalation():
     # transport ok, but semantically not confirmed
     assert res.verified is None
 
+
 def test_unverifiable_distinct_from_success_and_failure():
     out = {
         "isError": False, "data": {},
@@ -100,6 +120,7 @@ def test_unverifiable_distinct_from_success_and_failure():
     assert res.verified is False     # ... but not confirmed
     assert res.effect == "unverifiable"
 
+
 def test_degraded_capture_signal_preserved():
     out = {
         "isError": False, "data": {},
@@ -110,6 +131,7 @@ def test_degraded_capture_signal_preserved():
     res = be.scroll(direction="down", element=1)
     assert res.degraded is True
     assert res.escalation["recommended"] == "px"
+
 
 def test_old_driver_without_structured_content_is_clean():
     """A driver that returns no structuredContent leaves every verdict field
@@ -125,6 +147,7 @@ def test_old_driver_without_structured_content_is_clean():
     assert res.code is None
     assert res.path is None
 
+
 def test_text_response_surfaces_fields_additively():
     from tools.computer_use.backend import ActionResult
     from tools.computer_use.tool import _text_response
@@ -139,12 +162,17 @@ def test_text_response_surfaces_fields_additively():
     assert payload["code"] == "background_unavailable"
     assert payload["verified"] is False
 
-    # Bare result (old driver) → only ok/action, no None noise.
+    # Bare transport success still requires fresh verification, without None noise.
     r2 = ActionResult(ok=True, action="click")
     payload2 = json.loads(_text_response(r2))
-    assert payload2 == {"ok": True, "action": "click"}
+    assert payload2 == {
+        "ok": True,
+        "action": "click",
+        "verdict": {"decision": "verify_fresh_state"},
+    }
     for k in ("effect", "escalation", "code", "verified", "path", "degraded", "delivery_mode"):
         assert k not in payload2
+
 
 # ---------------------------------------------------------------------------
 # Phase B — delivery_mode threading + capability gating
@@ -157,34 +185,40 @@ def test_background_is_default_no_flag_sent():
     be.click(element=1)  # no delivery_mode
     assert "delivery_mode" not in sess.last_args
 
-def test_foreground_sent_when_capability_present():
+
+def test_foreground_sent_when_schema_property_present():
     out = {"isError": False, "data": {}, "structuredContent": {"effect": "unverifiable"}}
-    sess = _FakeSession(out, capabilities={"input.delivery_mode"})
+    sess = _FakeSession(out, input_properties={"click": {"delivery_mode"}})
     be = _make_backend(sess)
     res = be.click(element=1, delivery_mode="foreground", bring_to_front=True)
+    assert [name for name, _ in sess.calls] == ["bring_to_front", "click"]
+    assert sess.calls[0][1] == {"pid": 4242, "window_id": 7}
     assert sess.last_args.get("delivery_mode") == "foreground"
-    assert sess.last_args.get("bring_to_front") is True
+    assert "bring_to_front" not in sess.last_args
     assert res.delivery_mode == "foreground"
 
+
 def test_foreground_refused_on_old_driver():
-    """Old driver lacking the capability must NOT silently downgrade — it
+    """A live action schema lacking the property must NOT silently downgrade — it
     returns a structured foreground_unsupported result."""
     out = {"isError": False, "data": {}, "structuredContent": {}}
-    sess = _FakeSession(out, capabilities=set())  # no input.delivery_mode
+    sess = _FakeSession(out)
     be = _make_backend(sess)
     res = be.click(element=1, delivery_mode="foreground")
     assert res.ok is False
     assert res.code == "foreground_unsupported"
     # crucially: no tool call was made with a silent background downgrade
-    assert sess.last_args == {}
+    assert sess.calls == []
+
 
 def test_bad_delivery_mode_rejected():
     out = {"isError": False, "data": {}, "structuredContent": {}}
-    sess = _FakeSession(out, capabilities={"input.delivery_mode"})
+    sess = _FakeSession(out, input_properties={"type_text": {"delivery_mode"}})
     be = _make_backend(sess)
     res = be.type_text("hi", delivery_mode="sideways")
     assert res.ok is False
     assert res.code == "bad_delivery_mode"
+
 
 def test_dispatcher_threads_delivery_mode_to_backend():
     """End-to-end through the tool dispatcher with the noop backend."""
@@ -197,6 +231,7 @@ def test_dispatcher_threads_delivery_mode_to_backend():
         # noop records kwargs; find the click call
         clicks = [kw for (name, kw) in be.calls if name == "click"]  # type: ignore[attr-defined]
         assert clicks and clicks[-1].get("delivery_mode") == "foreground"
+
 
 # ---------------------------------------------------------------------------
 # Phase C — foreground approval scoping (action + delivery_mode + session)
@@ -226,6 +261,7 @@ def test_background_approval_does_not_authorize_foreground():
     finally:
         cu.set_approval_callback(None)
 
+
 def test_approval_state_is_session_scoped():
     from tools.computer_use import tool as cu
 
@@ -246,6 +282,7 @@ def test_approval_state_is_session_scoped():
     finally:
         cu.set_approval_callback(None)
 
+
 def test_always_approve_covers_foreground():
     from tools.computer_use import tool as cu
 
@@ -265,6 +302,7 @@ def test_always_approve_covers_foreground():
     finally:
         cu.set_approval_callback(None)
 
+
 def test_foreground_summary_warns_about_focus_change():
     from tools.computer_use.tool import _summarize_action
     s = _summarize_action("click", {"element": 3, "delivery_mode": "foreground"})
@@ -272,9 +310,28 @@ def test_foreground_summary_warns_about_focus_change():
     bg = _summarize_action("click", {"element": 3})
     assert "FOREGROUND" not in bg
 
+
 # ---------------------------------------------------------------------------
 # #55048 Bug 1 — a dead session must reset _started so the next call recovers
 # ---------------------------------------------------------------------------
+
+def test_lifecycle_finally_resets_started_for_reentry():
+    """After the lifecycle coro exits (MCP drop / crash), _started must be
+    False so _require_started() no longer passes into a dead/None session.
+    We drive the finally block directly via the coro's cleanup semantics."""
+    from tools.computer_use.cua_backend import _CuaDriverSession
+
+    sess = _CuaDriverSession.__new__(_CuaDriverSession)
+    sess._session = object()
+    sess._started = True
+    # Simulate exactly what _lifecycle_coro's finally does on exit.
+    sess._session = None
+    sess._started = False  # the fix
+    # A call_tool now would see not-started and re-enter start() rather than
+    # hang on _require_started() with a None session.
+    assert sess._started is False
+    assert sess._session is None
+
 
 def test_call_tool_restarts_a_dead_session(monkeypatch):
     """call_tool on a session whose lifecycle died (_started False) must

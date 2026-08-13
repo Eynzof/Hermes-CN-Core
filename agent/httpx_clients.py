@@ -5,8 +5,8 @@ for each new httpx/OpenAI/Anthropic client.  A gateway process creates several
 clients while constructing every AIAgent, so reusing a process-wide SSL context
 keeps session startup from paying that certificate-load cost repeatedly.
 """
-
 from __future__ import annotations
+
 
 import os
 import ssl

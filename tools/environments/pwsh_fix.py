@@ -50,8 +50,8 @@ The tokenizer is used to decide:
    be repaired (empty/whitespace-only input, or a dangling line-continuation
    backtick at the very end of the command).
 """
-
 from __future__ import annotations
+
 
 from dataclasses import dataclass
 

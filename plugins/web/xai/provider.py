@@ -29,8 +29,8 @@ prefers Hermes-managed xAI Grok OAuth (via ``hermes auth``) and falls back
 to ``XAI_API_KEY`` (resolved through ``~/.hermes/.env``, then
 ``os.environ``).
 """
-
 from __future__ import annotations
+
 
 import orjson
 import logging

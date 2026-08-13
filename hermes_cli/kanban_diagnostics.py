@@ -26,8 +26,8 @@ Design goals:
   ``completed`` event arrives, a spawn succeeds, the task gets
   unblocked), the diagnostic stops firing. The audit event trail stays.
 """
-
 from __future__ import annotations
+
 
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterable, Optional

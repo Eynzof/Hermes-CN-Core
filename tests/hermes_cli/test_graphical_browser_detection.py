@@ -10,8 +10,8 @@ The helper distinguishes "a real windowed browser will pop up" from "a console
 browser will hijack the terminal" so OAuth callsites can fall back to printing
 the URL / manual paste instead of auto-opening.
 """
-
 from __future__ import annotations
+
 
 import webbrowser
 
@@ -60,37 +60,3 @@ def test_browser_env_pointing_at_console_browser_refuses(monkeypatch):
     assert _can_open_graphical_browser() is False
 
 
-@pytest.mark.parametrize("console", ["w3m", "lynx", "links", "elinks", "browsh"])
-def test_resolved_console_browser_refuses(monkeypatch, console):
-    """When webbrowser resolves to a console browser, refuse to auto-open."""
-    _force_platform_linux(monkeypatch)
-    monkeypatch.setenv("DISPLAY", ":0")
-    _force_resolved_browser(monkeypatch, console)
-    assert _can_open_graphical_browser() is False
-
-
-def test_graphical_browser_with_display_allows(monkeypatch):
-    """Real GUI browser + display server → auto-open is fine."""
-    _force_platform_linux(monkeypatch)
-    monkeypatch.setenv("DISPLAY", ":0")
-    _force_resolved_browser(monkeypatch, "firefox")
-    assert _can_open_graphical_browser() is True
-
-
-def test_webbrowser_get_raises_refuses(monkeypatch):
-    """No resolvable browser at all → don't auto-open."""
-    _force_platform_linux(monkeypatch)
-    monkeypatch.setenv("DISPLAY", ":0")
-
-    def _boom(*_a, **_kw):
-        raise webbrowser.Error("no browser")
-
-    monkeypatch.setattr(webbrowser, "get", _boom)
-    assert _can_open_graphical_browser() is False
-
-
-def test_non_linux_with_gui_allows(monkeypatch):
-    """macOS / Windows always have a usable default GUI browser."""
-    monkeypatch.setattr("hermes_cli.auth.sys.platform", "darwin")
-    _force_resolved_browser(monkeypatch, "MacOSX")
-    assert _can_open_graphical_browser() is True

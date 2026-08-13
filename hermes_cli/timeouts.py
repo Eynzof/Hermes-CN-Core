@@ -1,6 +1,6 @@
+
+
 from __future__ import annotations
-
-
 def _coerce_timeout(raw: object) -> float | None:
     try:
         timeout = float(raw)

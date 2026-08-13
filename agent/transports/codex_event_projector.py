@@ -25,8 +25,8 @@ Counters tracked alongside projection:
   - tool_iterations: ticks once per completed tool-shaped item. Used by
     AIAgent._iters_since_skill (skill nudge gate, default threshold 10).
 """
-
 from __future__ import annotations
+
 
 import hashlib
 import orjson

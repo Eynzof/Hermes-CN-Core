@@ -14,8 +14,8 @@ The recovery is **POSIX-only** (``fcntl``).  On Windows, ``O_NONBLOCK`` on a
 shared file description is not a concern, so the guard simply reports a
 genuine EOF and lets the caller exit.
 """
-
 from __future__ import annotations
+
 
 import os
 import time

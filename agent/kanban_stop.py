@@ -10,8 +10,8 @@ This module is policy-only: when a kanban worker tries to finish without a
 terminal board tool, return a bounded synthetic nudge so the conversation
 loop continues instead of exiting.
 """
-
 from __future__ import annotations
+
 
 import os
 from typing import Any, Iterable, Optional

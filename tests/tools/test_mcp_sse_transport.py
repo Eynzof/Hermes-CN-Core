@@ -13,8 +13,8 @@ due to stale-branch divergence:
    code built ``_oauth_auth`` but never passed it to the SSE path, so SSE MCP
    servers behind OAuth 2.1 PKCE would silently fail with 401s.
 """
-
 from __future__ import annotations
+
 
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch

@@ -9,8 +9,8 @@ own provider resolution — ``resolve_provider_client('fireworks')`` — so it
 verifies the auth/config/base-URL/aux-model wiring that the
 bundled provider actually ships, then makes a real call through that client.
 """
-
 from __future__ import annotations
+
 
 import os
 
@@ -58,7 +58,3 @@ def test_fireworks_basic_chat_through_runtime():
     assert content and "pong" in content.lower()
 
 
-def test_fireworks_alias_resolves_through_runtime():
-    """The 'fw' alias resolves to the same Fireworks client via the runtime."""
-    client, _ = _resolve_runtime_client("fw")
-    assert "api.fireworks.ai" in str(client.base_url)

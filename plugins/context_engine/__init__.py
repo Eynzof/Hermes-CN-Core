@@ -15,8 +15,8 @@ Usage:
     available = discover_context_engines()   # [(name, desc, available), ...]
     engine = load_context_engine("lcm")      # ContextEngine instance
 """
-
 from __future__ import annotations
+
 
 import importlib
 import importlib.util

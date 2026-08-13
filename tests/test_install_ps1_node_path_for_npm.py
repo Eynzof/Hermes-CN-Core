@@ -4,8 +4,8 @@ The desktop installer can resolve ``npm.cmd`` while postinstall hooks fail with
 ``'node' is not recognized`` because child ``cmd.exe`` processes do not inherit
 a PATH that includes ``node.exe``'s directory.
 """
-
 from __future__ import annotations
+
 
 import re
 from pathlib import Path

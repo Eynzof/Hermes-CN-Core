@@ -6,8 +6,8 @@ spawns against stale deps and dies on every reconnect. ``_sidecar_deps_stale``
 detects that skew (lockfile newer than npm's install marker) so
 ``_start_sidecar`` can reinstall before spawning.
 """
-
 from __future__ import annotations
+
 
 import os
 from pathlib import Path

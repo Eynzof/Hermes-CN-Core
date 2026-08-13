@@ -19,6 +19,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -42,11 +43,13 @@ def _isolate_hermes_home(tmp_path, monkeypatch):
         pass
     return tmp_path
 
+
 @pytest.fixture
 def sessions_dir(tmp_path):
     sdir = tmp_path / "sessions"
     sdir.mkdir(parents=True, exist_ok=True)
     return sdir
+
 
 @pytest.fixture
 def sample_sessions():
@@ -119,10 +122,12 @@ def sample_sessions():
         },
     }
 
+
 @pytest.fixture
 def populated_sessions_dir(sessions_dir, sample_sessions):
     (sessions_dir / "sessions.json").write_text(orjson.dumps(sample_sessions).decode('utf-8'))
     return sessions_dir
+
 
 def _create_test_db(db_path, session_id, messages):
     """Create a minimal SQLite DB mimicking hermes_state schema."""
@@ -169,6 +174,7 @@ def _create_test_db(db_path, session_id, messages):
     conn.commit()
     conn.close()
 
+
 @pytest.fixture
 def mock_session_db(tmp_path, populated_sessions_dir):
     """Create a real SQLite DB with test messages and wire it up."""
@@ -208,11 +214,13 @@ def mock_session_db(tmp_path, populated_sessions_dir):
 
     return TestSessionDB()
 
+
 class _FakeTool:
     def __init__(self, fn):
         self.name = fn.__name__
         self.description = inspect.getdoc(fn) or ""
         self.fn = fn
+
 
 class _FakeToolManager:
     def __init__(self):
@@ -227,6 +235,7 @@ class _FakeToolManager:
     def list_tools(self):
         return list(self._tools.values())
 
+
 class _FakeFastMCP:
     def __init__(self, *args, **kwargs):
         self._tool_manager = _FakeToolManager()
@@ -237,6 +246,7 @@ class _FakeFastMCP:
             return fn
 
         return decorator
+
 
 @pytest.fixture
 def fake_mcp_server(populated_sessions_dir, mock_session_db, monkeypatch):
@@ -252,9 +262,22 @@ def fake_mcp_server(populated_sessions_dir, mock_session_db, monkeypatch):
     server = mcp_serve.create_mcp_server(event_bridge=bridge)
     return server, bridge
 
+
 # ---------------------------------------------------------------------------
 # 1. UNIT TESTS — helpers, extraction, attachments
 # ---------------------------------------------------------------------------
+
+class TestImports:
+    def test_import_module(self):
+        import mcp_serve
+        assert hasattr(mcp_serve, "create_mcp_server")
+        assert hasattr(mcp_serve, "run_mcp_server")
+        assert hasattr(mcp_serve, "EventBridge")
+
+    def test_mcp_available_flag(self):
+        import mcp_serve
+        assert isinstance(mcp_serve._MCP_SERVER_AVAILABLE, bool)
+
 
 class TestHelpers:
     def test_get_sessions_dir(self, tmp_path):
@@ -288,6 +311,7 @@ class TestHelpers:
         monkeypatch.setattr(mcp_serve, "_get_sessions_dir", lambda: sessions_dir)
         assert mcp_serve._load_sessions_index() == {}
 
+
 class TestContentExtraction:
     def test_text(self):
         from mcp_serve import _extract_message_content
@@ -307,6 +331,7 @@ class TestContentExtraction:
         assert _extract_message_content({"content": ""}) == ""
         assert _extract_message_content({}) == ""
         assert _extract_message_content({"content": None}) == ""
+
 
 class TestAttachmentExtraction:
     def test_image_url_block(self):
@@ -339,6 +364,7 @@ class TestAttachmentExtraction:
         msg = {"content": [{"type": "image", "url": "http://x.com/p.png"}]}
         att = _extract_attachments(msg)
         assert att[0]["type"] == "image"
+
 
 # ---------------------------------------------------------------------------
 # 2. EVENT BRIDGE TESTS — queue, cursors, waiters, concurrency
@@ -472,6 +498,7 @@ class TestEventBridge:
         r = EventBridge().respond_to_approval("nope", "deny")
         assert "error" in r
 
+
 # ---------------------------------------------------------------------------
 # 3. END-TO-END TESTS — call MCP tools through FastMCP server
 # ---------------------------------------------------------------------------
@@ -489,12 +516,14 @@ def mcp_server_e2e(populated_sessions_dir, mock_session_db, monkeypatch):
     server = mcp_serve.create_mcp_server(event_bridge=bridge)
     return server, bridge
 
+
 def _run_tool(server, name, args=None):
     """Call an MCP tool through FastMCP's tool manager and return parsed JSON."""
     result = asyncio.get_event_loop().run_until_complete(
         server._tool_manager.call_tool(name, args or {})
     )
     return orjson.loads(result) if isinstance(result, str) else result
+
 
 @pytest.fixture
 def _event_loop():
@@ -503,6 +532,7 @@ def _event_loop():
     asyncio.set_event_loop(loop)
     yield loop
     loop.close()
+
 
 class TestE2EConversationsList:
     def test_list_all(self, mcp_server_e2e, _event_loop):
@@ -548,6 +578,7 @@ class TestE2EConversationsList:
         result = _run_tool(server, "conversations_list", {"limit": 2})
         assert result["count"] == 2
 
+
 class TestE2EConversationGet:
     def test_get_existing(self, mcp_server_e2e, _event_loop):
         server, _ = mcp_server_e2e
@@ -563,6 +594,7 @@ class TestE2EConversationGet:
         result = _run_tool(server, "conversation_get",
                           {"session_key": "nonexistent:key"})
         assert "error" in result
+
 
 class TestE2EMessagesRead:
     def test_read_messages(self, mcp_server_e2e, _event_loop):
@@ -605,6 +637,7 @@ class TestE2EMessagesRead:
                           {"session_key": "nonexistent:key"})
         assert "error" in result
 
+
 class TestE2EAttachmentsFetch:
     def test_fetch_media_from_message(self, mcp_server_e2e, _event_loop):
         server, _ = mcp_server_e2e
@@ -642,6 +675,7 @@ class TestE2EAttachmentsFetch:
             "message_id": "1",
         })
         assert "error" in result
+
 
 class TestE2EEventsPoll:
     def test_poll_empty(self, mcp_server_e2e, _event_loop):
@@ -692,6 +726,7 @@ class TestE2EEventsPoll:
         result = _run_tool(server, "events_poll",
                           {"session_key": "b"})
         assert len(result["events"]) == 1
+
 
 class TestE2EEventsWait:
     def test_wait_timeout(self, mcp_server_e2e, _event_loop):
@@ -762,6 +797,7 @@ class TestMCPToolParameterCoercion:
         assert result["event"] is not None
         assert result["event"]["content"] == "waiting for this"
 
+
 class TestE2EMessagesSend:
     def test_send_missing_args(self, mcp_server_e2e, _event_loop):
         server, _ = mcp_server_e2e
@@ -780,6 +816,7 @@ class TestE2EMessagesSend:
         call_args = mock.call_args[0][0]
         assert call_args["action"] == "send"
         assert call_args["target"] == "telegram:123456"
+
 
 class TestE2EChannelsList:
     def test_channels_from_sessions(self, mcp_server_e2e, _event_loop):
@@ -838,6 +875,7 @@ class TestE2EChannelsList:
         assert result["count"] == 1
         assert result["channels"][0]["target"] == "discord:789"
 
+
 class TestE2EPermissions:
     def test_list_empty(self, mcp_server_e2e, _event_loop):
         server, _ = mcp_server_e2e
@@ -888,16 +926,30 @@ class TestE2EPermissions:
                           {"id": "nope", "decision": "deny"})
         assert "error" in result
 
+
 # ---------------------------------------------------------------------------
 # 4. TOOL LISTING — verify all 10 tools are registered
 # ---------------------------------------------------------------------------
 
 class TestToolRegistration:
+    def test_all_tools_registered(self, mcp_server_e2e, _event_loop):
+        server, _ = mcp_server_e2e
+        tools = server._tool_manager.list_tools()
+        tool_names = {t.name for t in tools}
+
+        expected = {
+            "conversations_list", "conversation_get", "messages_read",
+            "attachments_fetch", "events_poll", "events_wait",
+            "messages_send", "channels_list",
+            "permissions_list_open", "permissions_respond",
+        }
+        assert expected == tool_names, f"Missing: {expected - tool_names}, Extra: {tool_names - expected}"
 
     def test_tools_have_descriptions(self, mcp_server_e2e, _event_loop):
         server, _ = mcp_server_e2e
         for tool in server._tool_manager.list_tools():
             assert tool.description, f"Tool {tool.name} has no description"
+
 
 # ---------------------------------------------------------------------------
 # 5. SERVER LIFECYCLE / CLI INTEGRATION
@@ -923,6 +975,7 @@ class TestServerCreation:
         with pytest.raises(ImportError, match="MCP server requires"):
             mcp_serve.create_mcp_server()
 
+
 class TestRunMcpServer:
     def test_run_without_mcp_exits(self, monkeypatch):
         import mcp_serve
@@ -931,7 +984,32 @@ class TestRunMcpServer:
             mcp_serve.run_mcp_server()
         assert exc_info.value.code == 1
 
+
 class TestCliIntegration:
+    def test_parse_serve(self):
+        import argparse
+        parser = argparse.ArgumentParser()
+        subs = parser.add_subparsers(dest="command")
+        mcp_p = subs.add_parser("mcp")
+        mcp_sub = mcp_p.add_subparsers(dest="mcp_action")
+        serve_p = mcp_sub.add_parser("serve")
+        serve_p.add_argument("-v", "--verbose", action="store_true")
+
+        args = parser.parse_args(["mcp", "serve"])
+        assert args.mcp_action == "serve"
+        assert args.verbose is False
+
+    def test_parse_serve_verbose(self):
+        import argparse
+        parser = argparse.ArgumentParser()
+        subs = parser.add_subparsers(dest="command")
+        mcp_p = subs.add_parser("mcp")
+        mcp_sub = mcp_p.add_subparsers(dest="mcp_action")
+        serve_p = mcp_sub.add_parser("serve")
+        serve_p.add_argument("-v", "--verbose", action="store_true")
+
+        args = parser.parse_args(["mcp", "serve", "--verbose"])
+        assert args.verbose is True
 
     def test_dispatcher_routes_serve(self, monkeypatch, tmp_path):
         monkeypatch.setenv("HERMES_HOME", str(tmp_path))
@@ -943,6 +1021,7 @@ class TestCliIntegration:
         from hermes_cli.mcp_config import mcp_command
         mcp_command(args)
         mock_run.assert_called_once_with(verbose=True)
+
 
 # ---------------------------------------------------------------------------
 # 6. EDGE CASES
@@ -975,6 +1054,10 @@ class TestEdgeCases:
         b._running = True
         b.stop()
         assert not b._running
+
+    def test_truncation(self):
+        assert len(("x" * 5000)[:2000]) == 2000
+
 
 # ---------------------------------------------------------------------------
 # 7. EVENT BRIDGE POLL LOOP E2E — real SQLite DB, mtime optimization
@@ -1220,3 +1303,98 @@ class TestEventBridgePollE2E:
         assert result["events"][0]["session_key"] == "agent:main:telegram:dm:late"
         assert result["events"][0]["content"].startswith("Hello from a freshly")
 
+    def test_startup_baseline_suppresses_historical_replay(self, tmp_path, monkeypatch):
+        """start()'s baseline records existing history without emitting it, so a
+        fresh EventBridge does not replay stored messages on startup; only
+        messages written after the baseline are delivered."""
+        import mcp_serve
+
+        db_path = tmp_path / "state.db"
+        db_path.write_text("placeholder")
+        session_id = "20260329_150000_history"
+        monkeypatch.setattr(
+            mcp_serve, "_load_sessions_index",
+            lambda: {
+                "agent:main:telegram:dm:hist": {
+                    "session_id": session_id,
+                    "platform": "telegram",
+                    "origin": {"platform": "telegram", "chat_id": "hist"},
+                }
+            },
+        )
+        store = [{
+            "id": 1, "role": "user", "content": "pre-existing history",
+            "timestamp": "2026-03-29T15:00:00",
+        }]
+
+        class DB:
+            def get_messages(self, sid):
+                return list(store)
+
+        monkeypatch.setattr(mcp_serve, "_get_session_db", lambda: DB())
+
+        bridge = mcp_serve.EventBridge()
+        bridge._establish_baseline()
+        # Messages that existed before start() are not replayed.
+        assert bridge.poll_events(after_cursor=0)["events"] == []
+
+        # A message written after the baseline IS delivered on the next tick.
+        store.append({
+            "id": 2, "role": "assistant", "content": "arrived after start",
+            "timestamp": "2026-03-29T15:05:00",
+        })
+        # Bump mtime so the poll gate opens. Use an explicit future stamp: on
+        # coarse-timestamp filesystems (Windows/NTFS) os.utime(None) right after
+        # the baseline stat can land in the same tick and leave the gate closed.
+        _now = time.time() + 5
+        os.utime(db_path, (_now, _now))
+        bridge._poll_once(DB())
+        events = bridge.poll_events(after_cursor=0)["events"]
+        assert len(events) == 1
+        assert events[0]["content"] == "arrived after start"
+
+    def test_new_conversation_after_baseline_is_delivered(self, tmp_path, monkeypatch):
+        """A conversation that first appears AFTER the startup baseline is still
+        delivered on its state.db-change tick — sessions absent from the
+        baseline default to last_seen=0.0."""
+        import mcp_serve
+
+        db_path = tmp_path / "state.db"
+        db_path.write_text("placeholder")
+        index: dict = {}
+        messages: dict = {}
+        monkeypatch.setattr(mcp_serve, "_load_sessions_index", lambda: dict(index))
+
+        class DB:
+            def get_messages(self, sid):
+                return list(messages.get(sid, []))
+
+        monkeypatch.setattr(mcp_serve, "_get_session_db", lambda: DB())
+
+        bridge = mcp_serve.EventBridge()
+        bridge._establish_baseline()  # no conversations exist yet
+
+        # The gateway registers a brand-new conversation + its first message.
+        sid = "20260329_150000_fresh"
+        index["agent:main:telegram:dm:fresh"] = {
+            "session_id": sid,
+            "platform": "telegram",
+            "origin": {"platform": "telegram", "chat_id": "fresh"},
+        }
+        messages[sid] = [{
+            "id": 1, "role": "user", "content": "hello after baseline",
+            "timestamp": "2026-03-29T15:10:00",
+        }]
+        _now = time.time() + 5  # explicit future stamp (see above)
+        os.utime(db_path, (_now, _now))
+        bridge._poll_once(DB())
+
+        events = bridge.poll_events(after_cursor=0)["events"]
+        assert len(events) == 1
+        assert events[0]["session_key"] == "agent:main:telegram:dm:fresh"
+        assert events[0]["content"] == "hello after baseline"
+
+    def test_poll_interval_is_200ms(self):
+        """Verify the poll interval constant."""
+        from mcp_serve import POLL_INTERVAL
+        assert POLL_INTERVAL == 0.2

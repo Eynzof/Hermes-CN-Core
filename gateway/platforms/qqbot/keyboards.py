@@ -26,8 +26,8 @@ This module provides:
 Ported from WideLee's qqbot-agent-sdk v1.2.2 (``approval.py`` + ``dto.py``
 keyboard types). Authorship preserved via Co-authored-by.
 """
-
 from __future__ import annotations
+
 
 import logging
 from agent.re_compat import re

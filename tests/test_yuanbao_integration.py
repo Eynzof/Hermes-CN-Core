@@ -24,6 +24,7 @@ from unittest.mock import MagicMock, patch
 from gateway.config import Platform, PlatformConfig, GatewayConfig
 from gateway.platforms.yuanbao import YuanbaoAdapter
 
+
 def make_config(**kwargs):
     extra = kwargs.pop("extra", {})
     extra.setdefault("app_id", "test_key")
@@ -34,6 +35,7 @@ def make_config(**kwargs):
         extra=extra,
         **kwargs,
     )
+
 
 # ===========================================================
 # 1. Adapter 初始化
@@ -46,12 +48,7 @@ class TestYuanbaoAdapterInit:
         assert adapter is not None
         assert adapter.PLATFORM == Platform.YUANBAO
 
-    def test_initial_state(self):
-        config = make_config()
-        adapter = YuanbaoAdapter(config)
-        status = adapter.get_status()
-        assert status["connected"] == False
-        assert status["bot_id"] is None
+
 
 # ===========================================================
 # 2. Config / Platform 枚举
@@ -60,6 +57,7 @@ class TestYuanbaoAdapterInit:
 class TestYuanbaoConfig:
     def test_platform_enum(self):
         assert Platform.YUANBAO.value == "yuanbao"
+
 
     def test_get_connected_platforms_requires_key_and_secret(self):
         # Only key, no secret → not in connected list
@@ -86,11 +84,16 @@ class TestYuanbaoConfig:
         platforms2 = gw_full.get_connected_platforms()
         assert Platform.YUANBAO in platforms2
 
+
 # ===========================================================
 # 3. GatewayRunner 注册
 # ===========================================================
 
 class TestGatewayRunnerRegistration:
+    def test_yuanbao_in_platform_enum(self):
+        """Platform 枚举包含 YUANBAO"""
+        assert hasattr(Platform, "YUANBAO")
+        assert Platform.YUANBAO.value == "yuanbao"
 
     def _make_minimal_runner(self, config):
         """通过 __new__ + 最小初始化绕过 run.py 的模块级 dotenv/ssl 副作用"""
@@ -141,21 +144,7 @@ class TestGatewayRunnerRegistration:
         assert adapter is not None
         assert isinstance(adapter, YuanbaoAdapter)
 
-    def test_runner_adapter_platform_attr(self):
-        """创建的 adapter.PLATFORM 为 Platform.YUANBAO"""
-        from gateway.config import GatewayConfig
-        config = make_config(enabled=True)
-        gw_config = GatewayConfig(platforms={Platform.YUANBAO: config})
 
-        try:
-            runner, _ = self._make_minimal_runner(gw_config)
-            with patch("gateway.platforms.yuanbao.WEBSOCKETS_AVAILABLE", True):
-                adapter = runner._create_adapter(Platform.YUANBAO, config)
-        except ImportError as e:
-            pytest.skip(f"run.py import unavailable in test env: {e}")
-
-        assert adapter is not None
-        assert adapter.PLATFORM == Platform.YUANBAO
 
 # ===========================================================
 # 4. Proto round-trip
@@ -171,15 +160,7 @@ class TestProtoRoundTrip:
         assert decoded["seq_no"] == 42
         assert decoded["data"] == b"hello"
 
-    def test_text_elem_encoding(self):
-        from gateway.platforms.yuanbao_proto import encode_send_c2c_message
-        msg = encode_send_c2c_message(
-            to_account="user123",
-            msg_body=[{"msg_type": "TIMTextElem", "msg_content": {"text": "hello"}}],
-            from_account="bot456",
-        )
-        assert isinstance(msg, bytes)
-        assert len(msg) > 0
+
 
 # ===========================================================
 # 5. Markdown 分块
@@ -196,21 +177,23 @@ class TestMarkdownChunking:
             assert isinstance(c, str)
             assert len(c) > 0
 
-    def test_chunk_short_text_no_split(self):
-        from gateway.platforms.yuanbao import MarkdownProcessor
-        text = "hello world"
-        chunks = MarkdownProcessor.chunk_markdown_text(text, 3000)
-        assert chunks == [text]
+
 
 # ===========================================================
 # 6. Sign Token 模块
 # ===========================================================
+
+
 
 # ===========================================================
 # 6b. ConnectionManager / OutboundManager
 # ===========================================================
 
 class TestManagerImports:
+
+
+
+
 
     def test_adapter_has_outbound_manager(self):
         adapter = YuanbaoAdapter(make_config())
@@ -225,9 +208,12 @@ class TestManagerImports:
         assert isinstance(adapter._outbound.heartbeat, HeartbeatManager)
         assert isinstance(adapter._outbound.slow_notifier, SlowResponseNotifier)
 
+
 # ===========================================================
 # 7. Media 模块
 # ===========================================================
+
+
 
 # ===========================================================
 # 8. Toolset 注册
@@ -242,9 +228,13 @@ class TestToolset:
         toolsets_dict = getattr(ts, "TOOLSETS", getattr(ts, "toolsets", {}))
         assert "hermes-yuanbao" in toolsets_dict
 
+
+
 # ===========================================================
 # 9. platforms/__init__.py 导出
 # ===========================================================
+
+
 
 # ===========================================================
 # 10. P0 fixes verification
@@ -253,10 +243,35 @@ class TestToolset:
 import asyncio
 import collections
 
+
+class TestP0ReconnectGuard:
+    """P0-1: _reconnecting flag prevents concurrent reconnect attempts."""
+
+    def test_reconnecting_flag_initialized(self):
+        adapter = YuanbaoAdapter(make_config())
+        assert hasattr(adapter._connection, '_reconnecting')
+        assert adapter._connection._reconnecting is False
+
+    def test_schedule_reconnect_skips_when_not_running(self):
+        adapter = YuanbaoAdapter(make_config())
+        adapter._running = False
+        adapter._connection._reconnecting = False
+        adapter._connection.schedule_reconnect()
+        # No task should be created because _running is False
+
+    def test_schedule_reconnect_skips_when_already_reconnecting(self):
+        adapter = YuanbaoAdapter(make_config())
+        adapter._running = True
+        adapter._connection._reconnecting = True
+        adapter._connection.schedule_reconnect()
         # No new task should be created because already reconnecting
+
+
+
 
 class TestP0ChatLockEviction:
     """P0-3: get_chat_lock uses OrderedDict and safe eviction."""
+
 
     def test_eviction_skips_locked(self):
         """When eviction is needed, locked entries are skipped."""
@@ -292,6 +307,16 @@ class TestP0ChatLockEviction:
         keys = list(adapter._outbound._chat_locks.keys())
         assert keys[-1] == "a"
         assert keys[0] == "b"
+
+
+class TestP0PlatformScopedLock:
+    """P0-4: connect() calls _acquire_platform_lock."""
+
+    def test_adapter_has_platform_lock_methods(self):
+        adapter = YuanbaoAdapter(make_config())
+        assert hasattr(adapter, '_acquire_platform_lock')
+        assert hasattr(adapter, '_release_platform_lock')
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

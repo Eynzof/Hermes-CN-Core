@@ -1,6 +1,6 @@
 """Gateway runtime wiring for the Teams meeting pipeline plugin."""
-
 from __future__ import annotations
+
 
 import logging
 from typing import Any

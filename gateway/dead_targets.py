@@ -21,10 +21,10 @@ profile keeps its own dead set.  Reads/writes are best-effort: a corrupt or
 unwritable file degrades to an in-memory-only registry rather than raising on
 the delivery path.
 """
-
 from __future__ import annotations
 
-import orjson
+
+import json
 import logging
 import threading
 import time
@@ -67,7 +67,7 @@ class DeadTargetRegistry:
     def _load(self) -> None:
         try:
             if self._path.exists():
-                raw = orjson.loads(self._path.read_text())
+                raw = json.loads(self._path.read_text(encoding="utf-8"))
                 if isinstance(raw, dict):
                     # Only keep well-shaped entries.
                     self._dead = {
@@ -82,7 +82,7 @@ class DeadTargetRegistry:
         try:
             self._path.parent.mkdir(parents=True, exist_ok=True)
             tmp = self._path.with_suffix(self._path.suffix + ".tmp")
-            tmp.write_text(orjson.dumps(self._dead, option=orjson.OPT_INDENT_2).decode('utf-8'))
+            tmp.write_text(json.dumps(self._dead, indent=2), encoding="utf-8")
             tmp.replace(self._path)
         except OSError as exc:
             # Best-effort: keep the in-memory state, don't break delivery.

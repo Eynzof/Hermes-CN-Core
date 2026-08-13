@@ -41,14 +41,15 @@ Unknown fields are ignored — extra metadata can be added at either level
 without bumping ``version``. ``version`` bumps are reserved for
 breaking changes (renaming ``providers``, changing ``models`` shape).
 """
-
 from __future__ import annotations
+
 
 import orjson
 import logging
 import os
 import sys
 import sysconfig
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -65,6 +66,13 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 DEFAULT_CATALOG_URL = "https://desktop.hermesagent.org.cn/api/model-catalog.json"
+# Fallback fetch chain. The primary URL (CN mirror) can be slow or briefly
+# unavailable; the raw GitHub URL is the same manifest published from the
+# same repo and is not bot-gated, so we fall through to it whenever the
+# primary URL fails.
+DEFAULT_CATALOG_FALLBACK_URLS: tuple[str, ...] = (
+    "https://raw.githubusercontent.com/NousResearch/hermes-agent/main/website/static/api/model-catalog.json",
+)
 DEFAULT_TTL_HOURS = 1
 DEFAULT_FETCH_TIMEOUT = 8.0
 SUPPORTED_SCHEMA_VERSION = 1
@@ -164,6 +172,31 @@ def _fetch_manifest(url: str, timeout: float) -> dict[str, Any] | None:
         return None
 
     return data
+
+
+def _fetch_manifest_with_fallback(
+    primary_url: str,
+    timeout: float,
+    fallback_urls: tuple[str, ...] = DEFAULT_CATALOG_FALLBACK_URLS,
+) -> dict[str, Any] | None:
+    """Try ``primary_url`` first, then walk ``fallback_urls``.
+
+    Returns the first manifest that fetches and validates, or None when
+    every URL fails. Skips fallback URLs identical to the primary so an
+    operator who configured the catalog URL to point at the raw GitHub
+    copy doesn't double-fetch.
+    """
+    data = _fetch_manifest(primary_url, timeout)
+    if data is not None:
+        return data
+    for url in fallback_urls:
+        if not url or url == primary_url:
+            continue
+        data = _fetch_manifest(url, timeout)
+        if data is not None:
+            logger.info("model catalog primary URL failed; using fallback %s", url)
+            return data
+    return None
 
 
 def _validate_manifest(data: Any) -> bool:
@@ -277,6 +310,34 @@ def _seed_cache_from_bundled() -> bool:
         logger.info("seeded model catalog cache from bundled copy at %s", src)
         return True
     return False
+# Stale-while-revalidate machinery: at most one background manifest refresh
+# in flight per process. The refreshed manifest lands on disk; the NEXT
+# get_catalog() call picks it up via the mtime check.
+_catalog_swr_lock = threading.Lock()
+_catalog_swr_inflight = False
+
+
+def _spawn_catalog_swr_refresh(url: str) -> None:
+    """Refresh the catalog manifest off-thread (fire-and-forget, deduped)."""
+    global _catalog_swr_inflight
+    with _catalog_swr_lock:
+        if _catalog_swr_inflight:
+            return
+        _catalog_swr_inflight = True
+
+    def _refresh() -> None:
+        global _catalog_swr_inflight
+        try:
+            fetched = _fetch_manifest_with_fallback(url, DEFAULT_FETCH_TIMEOUT)
+            if fetched is not None:
+                _write_disk_cache(fetched)
+        except Exception:
+            logger.debug("catalog SWR refresh failed", exc_info=True)
+        finally:
+            with _catalog_swr_lock:
+                _catalog_swr_inflight = False
+
+    threading.Thread(target=_refresh, daemon=True, name="model-catalog-swr").start()
 
 
 # ---------------------------------------------------------------------------
@@ -318,13 +379,29 @@ def get_catalog(*, force_refresh: bool = False) -> dict[str, Any]:
         _catalog_cache_source_mtime = disk_mtime
         return disk_data
 
+    # Stale-while-revalidate: an expired disk copy is served immediately and
+    # refreshed off-thread, so interactive surfaces (the /model picker calls
+    # this via get_curated_nous_model_ids on every open) never block on the
+    # manifest fetch. Only a cold cache (no disk copy at all) still blocks.
+    if not force_refresh and disk_data is not None:
+        _catalog_cache = disk_data
+        _catalog_cache_source_mtime = disk_mtime
+        _spawn_catalog_swr_refresh(cfg["url"])
+        return disk_data
+
     # Need to (re)fetch. Seed from a bundled copy first so offline/fresh
     # installs still have a fallback, then try the network.
     if disk_data is None:
         _seed_cache_from_bundled()
         disk_data, disk_mtime = _read_disk_cache()
 
-    fetched = _fetch_manifest(cfg["url"], DEFAULT_FETCH_TIMEOUT)
+    # Need to (re)fetch. If it fails, fall back to any stale disk copy.
+    # CN fork: the synchronous fetch walks NO fallback chain — the CN mirror
+    # is the primary source and the merged upstream fallback URLs are only
+    # used by the background SWR refresh below. Passing an empty fallback
+    # tuple keeps the mirror-only policy while routing through the shared
+    # helper (the merged test suite exercises it in both shapes).
+    fetched = _fetch_manifest_with_fallback(cfg["url"], DEFAULT_FETCH_TIMEOUT, fallback_urls=())
     if fetched is not None:
         _write_disk_cache(fetched)
         new_disk_data, new_mtime = _read_disk_cache()

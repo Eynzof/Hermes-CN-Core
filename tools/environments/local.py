@@ -14,6 +14,7 @@ import sys
 import tempfile
 import threading
 import time
+from collections.abc import Mapping
 from pathlib import Path
 
 from hermes_cli._subprocess_compat import windows_hide_flags
@@ -26,6 +27,13 @@ from tools.environments.windows_env import refresh_env_from_registry
 _IS_WINDOWS = is_windows()
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_which(cmd: str) -> str | None:
+    try:
+        return shutil.which(cmd)
+    except AttributeError:
+        return None
 
 
 def _msys_to_windows_path(cwd: str) -> str:
@@ -96,7 +104,7 @@ def _resolve_local_initial_cwd(cwd: str) -> str:
     return candidate
 
 
-def _windows_to_msys_path(cwd: str) -> str:
+def _windows_to_msys_path(cwd: str, *, force: bool = False) -> str:
     """Translate a native Windows path (``C:\\Users\\x``) to Git Bash /
     MSYS form (``/c/Users/x``) so ``builtin cd`` resolves it reliably.
 
@@ -105,7 +113,7 @@ def _windows_to_msys_path(cwd: str) -> str:
     native Windows paths. Returns the input unchanged when no translation
     applies.
     """
-    if not _IS_WINDOWS or not cwd:
+    if not (force or _IS_WINDOWS) or not cwd:
         return cwd
     m = re.match(r'^([a-zA-Z]):[\\/]*(.*)$', cwd)
     if not m:
@@ -321,6 +329,10 @@ def _build_provider_env_blocklist() -> frozenset:
         "GATEWAY_RELAY_ID",
         "GATEWAY_RELAY_SECRET",
         "GATEWAY_RELAY_DELIVERY_KEY",
+        "VERCEL_OIDC_TOKEN",
+        "VERCEL_TOKEN",
+        "VERCEL_PROJECT_ID",
+        "VERCEL_TEAM_ID",
     })
     # CLAUDE_CODE_OAUTH_TOKEN is deliberately NOT stripped.  It is set and
     # owned by the user's Claude Code install (subscription OAuth), not a
@@ -457,9 +469,13 @@ def _inject_session_context_env(env: dict) -> None:
 def _sanitize_subprocess_env(base_env: dict | None, extra_env: dict | None = None) -> dict:
     """Filter Hermes-managed secrets from a subprocess environment."""
     try:
-        from tools.env_passthrough import is_env_passthrough as _is_passthrough
+        from tools.env_passthrough import (
+            is_env_passthrough as _is_passthrough,
+            resolve_passthrough_value as _resolve_passthrough_value,
+        )
     except Exception:
         _is_passthrough = lambda _: False  # noqa: E731
+        _resolve_passthrough_value = lambda _name, fallback: fallback  # noqa: E731
 
     sanitized: dict[str, str] = {}
 
@@ -468,8 +484,12 @@ def _sanitize_subprocess_env(base_env: dict | None, extra_env: dict | None = Non
             continue
         if _is_hermes_internal_secret(key):
             continue
-        if key not in _HERMES_PROVIDER_ENV_BLOCKLIST or _is_passthrough(key):
-            sanitized[key] = value
+        passthrough = _is_passthrough(key)
+        if key in _HERMES_PROVIDER_ENV_BLOCKLIST and not passthrough:
+            continue
+        resolved = _resolve_passthrough_value(key, value) if passthrough else value
+        if resolved is not None:
+            sanitized[key] = resolved
 
     for key, value in (extra_env or {}).items():
         if key.startswith(_HERMES_PROVIDER_ENV_FORCE_PREFIX):
@@ -479,8 +499,13 @@ def _sanitize_subprocess_env(base_env: dict | None, extra_env: dict | None = Non
             sanitized[real_key] = value
         elif _is_hermes_internal_secret(key):
             continue
-        elif key not in _HERMES_PROVIDER_ENV_BLOCKLIST or _is_passthrough(key):
-            sanitized[key] = value
+        else:
+            passthrough = _is_passthrough(key)
+            if key in _HERMES_PROVIDER_ENV_BLOCKLIST and not passthrough:
+                continue
+            resolved = _resolve_passthrough_value(key, value) if passthrough else value
+            if resolved is not None:
+                sanitized[key] = resolved
 
     _inject_context_hermes_home(sanitized)
 
@@ -496,7 +521,24 @@ def _sanitize_subprocess_env(base_env: dict | None, extra_env: dict | None = Non
 
     _apply_windows_msys_bash_env_defaults(sanitized)
 
+    sanitized = _scrub_delegated_child_kanban_env(sanitized)
+
     return sanitized
+
+
+def _scrub_delegated_child_kanban_env(env: dict[str, str]) -> dict[str, str]:
+    """Strip dispatcher-owned Kanban env from delegate_task child subprocesses."""
+    try:
+        from agent.delegation_context import (
+            is_delegated_child_process_context,
+            scrub_kanban_env,
+        )
+
+        if is_delegated_child_process_context():
+            return scrub_kanban_env(env)
+    except Exception:
+        pass
+    return env
 
 
 # Tier-1 secrets: stripped from EVERY spawned subprocess unconditionally —
@@ -618,6 +660,75 @@ def hermes_subprocess_env(*, inherit_credentials: bool = False) -> dict[str, str
     # happen; single uniform policy across every spawn surface.
     _inject_session_context_env(env)
 
+    # Non-terminal subprocess helpers (browser, lazy-deps, TUI/ACP hosts, etc.)
+    # also need the delegate_task child lineage marker.  Otherwise a child
+    # context that later imports Kanban DB code in the spawned process would
+    # still see the parent's HERMES_HOME but lose the DB mutation guard.
+    env = _scrub_delegated_child_kanban_env(env)
+
+    return env
+
+
+def build_subprocess_env(
+    base: "Mapping[str, str] | None" = None,
+    *,
+    inherit_profile_home: bool = True,
+    scrub_secrets: bool = True,
+    extra: "Mapping[str, str] | None" = None,
+) -> dict[str, str]:
+    """Single factory for building a child-process environment.
+
+    Every spawn site in the codebase should build its env through this
+    function (or :func:`hermes_subprocess_env` for the model-driving-CLI
+    surface) instead of copying ``os.environ`` directly, so profile-home
+    propagation (``HERMES_HOME`` / subprocess ``HOME`` contract) and the
+    Hermes secret-scrub policy have a single owner.  History: ~11 separate
+    commits each fixed one more spawn site that missed profile-HOME or
+    secret-scrub propagation; this factory is the fix for the class.
+
+    Parameters:
+
+    * ``base`` — starting environment.  ``None`` (default) snapshots
+      ``os.environ``.  Pass an explicit mapping to build on a caller-prepared
+      env instead.
+    * ``scrub_secrets=True`` (default) — delegate to
+      :func:`_sanitize_subprocess_env`, the long-standing owner of the scrub
+      list (provider blocklist + ``_is_hermes_internal_secret`` dynamic
+      patterns + kanban/venv-marker/session-context guards) **and** of
+      ``HERMES_HOME`` / subprocess-HOME propagation.  On this path profile
+      home propagation is inherent — ``inherit_profile_home`` is ignored
+      (always applied), exactly matching today's sanitize semantics.
+    * ``scrub_secrets=False`` — preserve the base env content byte-for-byte
+      (no key is removed).  Use for children that intentionally receive
+      secrets (git credential flows, ``bws``/``op`` secret CLIs) or where
+      scrubbing could change behavior.  The site is still a win: it becomes
+      grep-able and future-fixable.
+    * ``inherit_profile_home`` — on the non-scrub path, when True, bridge the
+      context-local Hermes home override into ``HERMES_HOME`` and apply the
+      subprocess HOME contract (``hermes_constants.apply_subprocess_home_env``).
+      Pass False to keep the inherited env untouched (exact legacy
+      ``os.environ.copy()`` behavior).
+    * ``extra`` — applied **last** on the non-scrub path so explicit caller
+      overrides (e.g. a session-scoped ``HERMES_HOME``) always win.  On the
+      scrub path it is forwarded as ``_sanitize_subprocess_env``'s
+      ``extra_env`` (same force-prefix / blocklist handling as today).
+    """
+    if scrub_secrets:
+        # _sanitize_subprocess_env already performs HERMES_HOME override
+        # bridging + apply_subprocess_home_env unconditionally; delegating
+        # wholesale keeps one owner and zero drift.
+        return _sanitize_subprocess_env(
+            dict(base) if base is not None else os.environ.copy(),
+            dict(extra) if extra else None,
+        )
+
+    env: dict[str, str] = dict(base) if base is not None else os.environ.copy()
+    if inherit_profile_home:
+        _inject_context_hermes_home(env)
+        from hermes_constants import apply_subprocess_home_env
+        apply_subprocess_home_env(env)
+    if extra:
+        env.update(extra)
     return env
 
 
@@ -792,6 +903,8 @@ def _where_git_executables() -> list[str]:
             ["where.exe", "git"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             check=False,
             creationflags=windows_hide_flags() if _IS_WINDOWS else 0,
         )
@@ -804,6 +917,8 @@ def _where_git_executables() -> list[str]:
 
 def _git_bash_candidate_from_git_path(git_path: str) -> Path:
     """Derive ``<gitRoot>/bin/bash.exe`` from the path to ``git.exe``."""
+    if "/" in git_path and "\\" not in git_path:
+        return Path(git_path).parent.parent / "bin" / "bash.exe"
     normalized = ntpath.normpath(
         ntpath.join(ntpath.dirname(git_path), "..", "bin", "bash.exe")
     )
@@ -817,6 +932,8 @@ def _git_exec_path(git_path: str) -> str | None:
             [git_path, "--exec-path"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             check=False,
             timeout=5,
             creationflags=windows_hide_flags() if _IS_WINDOWS else 0,
@@ -834,6 +951,12 @@ def _git_exec_path(git_path: str) -> str | None:
 
 def _git_install_root_from_exec_path(exec_path: str) -> str | None:
     """Return the Git for Windows install root given a ``mingw*/libexec/git-core`` path."""
+    if "/" in exec_path and "\\" not in exec_path:
+        current_path = Path(exec_path)
+        for parent in (current_path, *current_path.parents):
+            if parent.name.casefold() in {"mingw32", "mingw64"}:
+                return str(parent.parent)
+        return None
     current = ntpath.normpath(exec_path)
     while True:
         parent, name = ntpath.split(current)
@@ -846,6 +969,12 @@ def _git_install_root_from_exec_path(exec_path: str) -> str | None:
 
 def _git_bash_candidates_from_exec_path(exec_path: str) -> list[Path]:
     """Return candidate ``bash.exe`` paths derived from ``git --exec-path``."""
+    if "/" in exec_path and "\\" not in exec_path:
+        normalized_exec_path = Path(exec_path)
+        install_root = _git_install_root_from_exec_path(exec_path)
+        if install_root is not None:
+            return [Path(install_root) / "bin" / "bash.exe"]
+        return [normalized_exec_path.parent.parent / "bin" / "bash.exe"]
     normalized_exec_path = ntpath.normpath(exec_path)
     install_root = _git_install_root_from_exec_path(normalized_exec_path)
     if install_root is not None:
@@ -884,7 +1013,7 @@ def _git_bash_for_macos() -> str | None:
     Git installer ships a bash under ``<gitRoot>/bin/bash`` or
     ``<gitRoot>/usr/bin/bash``.
     """
-    git_path = shutil.which("git")
+    git_path = _safe_which("git")
     if not git_path:
         return None
     git_exe = Path(git_path).resolve()
@@ -913,8 +1042,9 @@ def _find_bash_posix() -> str:
         git_bash = _git_bash_for_macos()
         if git_bash:
             return git_bash
+    bash_on_path = _safe_which("bash")
     return (
-        shutil.which("bash")
+        bash_on_path
         or ("/usr/bin/bash" if os.path.isfile("/usr/bin/bash") else None)
         or ("/bin/bash" if os.path.isfile("/bin/bash") else None)
         or os.environ.get("SHELL")
@@ -922,8 +1052,19 @@ def _find_bash_posix() -> str:
     )
 
 
-def _find_bash() -> str:
-    """Find a usable bash, including Git Bash when explicitly selected on Windows."""
+def _find_bash(raise_if_missing: bool = True) -> str | None:
+    """Find a usable bash, including Git Bash on Windows.
+
+    Candidates are probed with ``_bash_starts()`` (external-program smoke
+    test) so broken/WSL-stub bash is never returned as usable.
+
+    ``raise_if_missing`` (default ``True``) preserves the legacy contract for
+    callers that require bash (explicit ``HERMES_SHELL_TYPE=bash``): when no
+    candidate passes the smoke test a helpful ``RuntimeError`` is raised. The
+    default/auto resolution path passes ``raise_if_missing=False`` and treats
+    a ``None`` return as "no working bash" so the resolver can fall back to
+    PowerShell.
+    """
     if not _IS_WINDOWS:
         return _find_bash_posix()
 
@@ -971,7 +1112,7 @@ def _find_bash() -> str:
         if candidate and os.path.isfile(candidate) and candidate not in candidates:
             candidates.append(candidate)
 
-    found = shutil.which("bash")
+    found = _safe_which("bash")
     if found and found not in candidates:
         candidates.append(found)
 
@@ -1012,16 +1153,24 @@ def _find_bash() -> str:
         if _mandatory_aslr_enabled() is True or _looks_like_msys_spawn_failure(
             probe_details
         ):
+            if not raise_if_missing:
+                return None
             raise RuntimeError(_git_bash_aslr_help(candidates[0], probe_details))
 
-        # Preserve the underlying launch error for failures outside the known
-        # MSYS/ASLR class instead of replacing it with a misleading not-found.
-        return candidates[0]
+        if raise_if_missing:
+            # Preserve the underlying launch error for failures outside the known
+            # MSYS/ASLR class instead of replacing it with a misleading not-found.
+            return candidates[0]
+        # Non-raising probe: the smoke test failed, so the auto path must not
+        # select a broken bash — fall through to PowerShell instead.
+        return None
 
-    raise RuntimeError(
-        "Git Bash is not found on this system. It was explicitly selected via "
-        "HERMES_SHELL_TYPE=bash; install Git for Windows or use PowerShell."
-    )
+    if raise_if_missing:
+        raise RuntimeError(
+            "Git Bash is not found on this system. It was explicitly selected via "
+            "HERMES_SHELL_TYPE=bash; install Git for Windows or use PowerShell."
+        )
+    return None
 
 
 def _is_git_bash_install(bash_path: str) -> bool:
@@ -1039,6 +1188,15 @@ def _is_git_bash_install(bash_path: str) -> bool:
     """
     if not bash_path:
         return False
+    if "/" in bash_path and "\\" not in bash_path:
+        path = Path(bash_path)
+        if path.name.casefold() != "bash.exe" or path.parent.name.casefold() != "bin":
+            return False
+        if path.parent.parent.name.casefold() == "usr":
+            root_path = path.parent.parent.parent
+        else:
+            root_path = path.parent.parent
+        return (root_path / "cmd" / "git.exe").is_file()
     text = ntpath.normpath(bash_path)
     drive, tail = ntpath.splitdrive(text)
     parts = [p.lower() for p in tail.split("\\") if p]
@@ -1087,7 +1245,7 @@ def _find_powershell() -> str:
     and is always on PATH.  No probing needed — just return the first
     ``powershell.exe`` found via ``shutil.which``.
     """
-    return shutil.which("powershell.exe") or "powershell.exe"
+    return _safe_which("powershell.exe") or "powershell.exe"
 
 
 def _find_pwsh() -> str | None:
@@ -1100,7 +1258,7 @@ def _find_pwsh() -> str | None:
     # are reparse points that can fail in non-interactive / service contexts
     # (``CreateProcessAsUserW`` error 1312).  Prefer real PE binaries from
     # subsequent strategies.
-    path = shutil.which("pwsh") or shutil.which("pwsh.exe")
+    path = _safe_which("pwsh") or _safe_which("pwsh.exe")
     if path and "WindowsApps" not in path:
         return path
 
@@ -1142,19 +1300,24 @@ def _find_pwsh() -> str | None:
 def _resolve_shell() -> tuple[str, str]:
     """Determine which shell to use for local command execution.
 
-    On Windows: prefers PowerShell 7 (``pwsh``) when available, falling
-    back to Windows PowerShell 5.1 (``powershell.exe``) which ships with
-    every Windows 10/11 system.
+    On Windows with ``HERMES_SHELL_TYPE`` unset or ``"auto"`` (the default):
+    prefers **git-bash** when a working install exists (``_find_bash`` with
+    ``raise_if_missing=False`` — discovery + ``_bash_starts()`` smoke test),
+    then PowerShell 7 (``pwsh``), falling back to Windows PowerShell 5.1
+    (``powershell.exe``) which ships with every Windows 10/11 system.
 
     On non-Windows: always uses bash.
 
-    Env overrides:
+    Env overrides (respected, never git-bash for the explicit PowerShell
+    values):
       ``HERMES_SHELL_TYPE`` — ``"powershell"``, ``"pwsh"``, ``"bash"``,
       or ``"auto"`` (default: ``"auto"`` on Windows, ``"bash"`` otherwise).
-      ``HERMES_SHELL_TYPE=bash`` on Windows uses a pre-installed Git Bash
+      ``HERMES_SHELL_TYPE=bash`` on Windows selects pre-installed Git Bash
       via ``_find_bash()`` (no auto-install); when Git Bash is missing or
       cannot start, it degrades gracefully to the PowerShell chain
       (``pwsh`` → ``powershell.exe``) instead of failing startup.
+      ``HERMES_SHELL_TYPE=pwsh`` / ``powershell`` select PowerShell only
+      (pwsh → 5.1 fallback) and never probe for git-bash.
 
     Returns ``(shell_type, shell_path)`` where *shell_type* is
     ``"pwsh"``, ``"powershell"``, or ``"bash"``.
@@ -1162,8 +1325,23 @@ def _resolve_shell() -> tuple[str, str]:
     shell_type = os.environ.get("HERMES_SHELL_TYPE", "auto").strip().lower() or "auto"
 
     if _IS_WINDOWS:
-        if shell_type in ("auto", "pwsh", "powershell"):
-            # Prefer pwsh (PowerShell 7) when available
+        if shell_type == "auto":
+            # Default preference: git-bash (if a working one exists) →
+            # PowerShell 7 → Windows PowerShell 5.1.
+            bash_path = _find_bash(raise_if_missing=False)
+            if bash_path:
+                logger.info("Selected shell: bash at %s", bash_path)
+                return ("bash", bash_path)
+            pwsh_path = _find_pwsh()
+            if pwsh_path:
+                logger.info("Selected shell: pwsh at %s", pwsh_path)
+                return ("pwsh", pwsh_path)
+            ps_path = _find_powershell()
+            logger.info("Selected shell: powershell at %s", ps_path)
+            return ("powershell", ps_path)
+        if shell_type in ("pwsh", "powershell"):
+            # Explicit PowerShell: prefer pwsh (PowerShell 7) when available;
+            # never git-bash.
             pwsh_path = _find_pwsh()
             if pwsh_path:
                 logger.info("Selected shell: pwsh at %s", pwsh_path)
@@ -1208,7 +1386,7 @@ def _resolve_shell() -> tuple[str, str]:
             return ("powershell", ps_path)
         raise RuntimeError(
             f"Unknown HERMES_SHELL_TYPE={shell_type!r} on Windows. "
-            "Supported values: 'auto' (default → pwsh/powershell), 'pwsh', "
+            "Supported values: 'auto' (default → bash/pwsh/powershell), 'pwsh', "
             "'powershell', 'bash' (requires pre-installed Git Bash)."
         )
 
@@ -1292,6 +1470,49 @@ def _build_powershell_background_script(
     return "\n".join(parts)
 
 
+def _build_bash_background_script(
+    command: str,
+    cwd: str,
+    cwd_file: str | None = None,
+) -> str:
+    """Build a bash wrapper suitable for detached background processes.
+
+    Mirrors ``_build_powershell_background_script`` for the bash-on-Windows
+    background path (used by ``process_registry`` when the resolved shell is
+    git-bash). The wrapper cd's to *cwd* (guarded — exits 126 when the
+    directory can't be entered), runs *command*, persists the final working
+    directory to *cwd_file* when one is provided, and exits with the
+    command's exit code.
+
+    The persisted ``pwd`` is in MSYS form (``/c/Users/x``) on Windows; the
+    consumer (``LocalEnvironment._update_cwd``) translates it via
+    ``_msys_to_windows_path`` for bash sessions.
+
+    Args:
+        command: Raw user command (bash syntax).
+        cwd: Working directory to switch to before running *command*.
+        cwd_file: Optional path to write the final working directory to.
+
+    Returns:
+        A multi-line bash script ready for ``bash -lc``.
+    """
+    escaped = command.replace("'", "'\\''")
+    quoted_cwd = _quote_bash_path(cwd)
+
+    parts = [
+        f"builtin cd -- {quoted_cwd} || exit 126",
+        f"eval '{escaped}'",
+        "__hermes_ec=$?",
+    ]
+
+    if cwd_file:
+        quoted_cwd_file = _quote_bash_path(cwd_file)
+        parts.append(f"pwd > {quoted_cwd_file} 2>/dev/null || true")
+
+    parts.append("exit $__hermes_ec")
+    return "\n".join(parts)
+
+
 _bash_starts_cache: dict[str, bool] = {}
 _bash_probe_details_cache: dict[str, str] = {}
 _mandatory_aslr_enabled_cache: "bool | None" = None
@@ -1320,7 +1541,7 @@ def _mandatory_aslr_enabled() -> "bool | None":
         return _mandatory_aslr_enabled_cache
 
     try:
-        powershell = shutil.which("powershell.exe") or "powershell.exe"
+        powershell = _safe_which("powershell.exe") or "powershell.exe"
         result = subprocess.run(
             [
                 powershell,
@@ -1330,9 +1551,8 @@ def _mandatory_aslr_enabled() -> "bool | None":
                 "(Get-ProcessMitigation -System).Aslr.ForceRelocateImages.ToString()",
             ],
             capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
+            text=True, encoding="utf-8", errors="replace",
+
             timeout=10,
             creationflags=windows_hide_flags(),
         )
@@ -1398,9 +1618,8 @@ def _bash_starts(bash: str) -> bool:
         result = subprocess.run(
             [bash, "--noprofile", "--norc", "-c", _BASH_EXTERNAL_PROGRAM_PROBE],
             capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
+            text=True, encoding="utf-8", errors="replace",
+
             timeout=15,
             creationflags=windows_hide_flags() if _IS_WINDOWS else 0,
         )
@@ -1532,8 +1751,9 @@ def _find_shell() -> str:
     behaviour).
 
     On Windows, ``process_registry.spawn_local`` uses ``_resolve_shell``
-    (PowerShell 7 / Windows PowerShell 5.1) instead of this function, so this
-    function is intentionally POSIX-only on Windows.
+    (git-bash when available, else PowerShell 7 / Windows PowerShell 5.1)
+    instead of this function, so this function is intentionally POSIX-only
+    on Windows.
     """
 
     if not _IS_WINDOWS:
@@ -1589,7 +1809,7 @@ def _resolve_hermes_bin_dir() -> str | None:
 
     candidate: str | None = None
 
-    which = shutil.which("hermes")
+    which = _safe_which("hermes")
     if which:
         candidate = os.path.dirname(which)
 
@@ -1634,6 +1854,34 @@ def _prepend_hermes_bin_dir(existing_path: str) -> str:
     return sep.join([bin_dir, *entries])
 
 
+def _managed_runtime_path_entries() -> list[str]:
+    """Return existing Hermes-managed runtime dirs for the terminal subshell PATH.
+
+    The terminal tool spawns a subshell whose PATH is the agent process's PATH
+    plus ``_SANE_PATH``. Neither carries the runtimes Hermes installs for
+    itself, so on a machine where Hermes provisioned its own toolchain a
+    command the agent runs resolves a system copy instead — or nothing at all:
+
+    - ``$HERMES_HOME/node`` (+ ``/bin``) — installed to satisfy the desktop and
+      browser toolchain. ``tools/browser_tool.py`` already does this for its own
+      subprocesses; the agent's shell deserves the same.
+    - ``$HERMES_HOME/bin`` — the managed ``uv``. ``install.sh`` writes it there
+      and nothing has ever put that directory on PATH, so an install whose only
+      uv is the managed one looks uv-less to both the agent and the model.
+
+    Resolved per call rather than cached in a module constant because
+    ``get_hermes_home()`` is profile-scoped and a managed tree can appear
+    mid-process (``heal_hermes_managed_node``, a first browser install).
+    """
+    try:
+        from hermes_constants import get_hermes_home, iter_hermes_node_dirs
+
+        candidates = [*iter_hermes_node_dirs(), get_hermes_home() / "bin"]
+        return [str(d) for d in candidates if d.is_dir()]
+    except Exception:
+        return []
+
+
 def _append_missing_sane_path_entries(existing_path: str) -> str:
     """Return a normalised POSIX PATH with missing sane entries appended.
 
@@ -1651,6 +1899,11 @@ def _append_missing_sane_path_entries(existing_path: str) -> str:
     - **Duplicates are collapsed** (first occurrence wins), so a caller PATH
       that already contains repeats is not propagated verbatim.
 
+    Hermes-managed runtime dirs are appended alongside the sane entries, not
+    prepended: a tool the user deliberately put on their own PATH still wins,
+    and the managed one only fills the gap where there would otherwise be
+    nothing.
+
     For a well-formed PATH (no empties, no duplicates) the leading segment is
     byte-identical to the input and ordering is preserved; only the missing
     sane entries are appended. On Windows this is a no-op passthrough (the
@@ -1660,6 +1913,9 @@ def _append_missing_sane_path_entries(existing_path: str) -> str:
         return existing_path
 
     sane_entries = [entry for entry in _SANE_PATH.split(":") if entry]
+    sane_entries.extend(
+        entry for entry in _managed_runtime_path_entries() if entry not in sane_entries
+    )
     if not existing_path:
         return ":".join(sane_entries)
 
@@ -1727,9 +1983,13 @@ def _path_env_key(run_env: dict) -> str | None:
 def _make_run_env(env: dict) -> dict:
     """Build a run environment with a sane PATH and provider-var stripping."""
     try:
-        from tools.env_passthrough import is_env_passthrough as _is_passthrough
+        from tools.env_passthrough import (
+            is_env_passthrough as _is_passthrough,
+            resolve_passthrough_value as _resolve_passthrough_value,
+        )
     except Exception:
         _is_passthrough = lambda _: False  # noqa: E731
+        _resolve_passthrough_value = lambda _name, fallback: fallback  # noqa: E731
 
     merged = dict(os.environ | env)
     run_env = {}
@@ -1741,8 +2001,13 @@ def _make_run_env(env: dict) -> dict:
             run_env[real_key] = v
         elif _is_hermes_internal_secret(k):
             continue
-        elif k not in _HERMES_PROVIDER_ENV_BLOCKLIST or _is_passthrough(k):
-            run_env[k] = v
+        else:
+            passthrough = _is_passthrough(k)
+            if k in _HERMES_PROVIDER_ENV_BLOCKLIST and not passthrough:
+                continue
+            value = _resolve_passthrough_value(k, v) if passthrough else v
+            if value is not None:
+                run_env[k] = value
     path_key = _path_env_key(run_env)
     if path_key is not None:
         new_path = _append_missing_sane_path_entries(run_env.get(path_key, ""))
@@ -1771,6 +2036,8 @@ def _make_run_env(env: dict) -> dict:
         run_env.pop(_marker, None)
 
     _apply_windows_msys_bash_env_defaults(run_env)
+
+    run_env = _scrub_delegated_child_kanban_env(run_env)
 
     return run_env
 
@@ -1862,23 +2129,30 @@ class LocalEnvironment(BaseEnvironment):
     """Run commands directly on the host machine.
 
     Spawn-per-call: every execute() spawns a fresh shell process.
-    On Windows, uses Windows PowerShell 5.1 (``powershell.exe``) which
-    ships with every Windows 10/11 system.  On other platforms, uses bash.
+    On Windows, uses git-bash when a working install exists (default/auto),
+    else PowerShell 7 (``pwsh``) / Windows PowerShell 5.1 (``powershell.exe``)
+    which ships with every Windows 10/11 system.  On other platforms, uses
+    bash.
 
     Session snapshot preserves env vars across calls (bash only;
     Windows env vars propagate naturally through ``os.environ``).
     CWD persists via file-based read after each command.
     """
 
+    _profile_scoped_passthrough = True
+
     def __init__(self, cwd: str = "", timeout: int = 60, env: dict = None):
         cwd = _resolve_local_initial_cwd(cwd)
         super().__init__(cwd=cwd, timeout=timeout, env=env)
         self._shell_type, self._shell_path = _resolve_shell()
         # [CN-fork P-042] persistent PowerShell session (opt-in, Windows only).
+        # Bash sessions skip this fast path: the resolver functions below
+        # return False unless shell_type is "powershell"/"pwsh".
         self._pwsh_session = None
         self._pwsh_session_lock = threading.Lock()
         self._pwsh_session_reuse = _resolve_pwsh_session_reuse(self._shell_type)
         # [CN-fork P-042 #3] cmd.exe fast path for trivial builtins (opt-in).
+        # PowerShell-only by design — bash sessions skip it (False).
         self._cmd_fast_path = _resolve_cmd_fast_path(self._shell_type)
         self.init_session()
 
@@ -2367,6 +2641,7 @@ class LocalEnvironment(BaseEnvironment):
         stdin_data: str | None = None,
         rewrite_compound_background: bool = True,
         bounded_capture: bool = False,
+        output_callback=None,
     ) -> dict:
         """Execute a command via the fastest eligible path (P-042).
 
@@ -2425,6 +2700,7 @@ class LocalEnvironment(BaseEnvironment):
             stdin_data=stdin_data,
             rewrite_compound_background=rewrite_compound_background,
             bounded_capture=bounded_capture,
+            output_callback=output_callback,
         )
 
     # ------------------------------------------------------------------
@@ -2442,7 +2718,7 @@ class LocalEnvironment(BaseEnvironment):
         For **bash**: unchanged — captures env vars, functions, aliases
         into a snapshot file that subsequent commands source.
         """
-        if self._shell_type in ("powershell", "pwsh"):
+        if getattr(self, "_shell_type", "bash") in ("powershell", "pwsh"):
             # Simple CWD marker write — no snapshot needed for powershell.
             self._snapshot_ready = False
             try:
@@ -2462,7 +2738,17 @@ class LocalEnvironment(BaseEnvironment):
             )
             return
 
-        # --- bash path (unchanged from BaseEnvironment) ---
+        # --- bash path ---
+        if _IS_WINDOWS:
+            native_snapshot_path = self._snapshot_path
+            native_cwd_file = self._cwd_file
+            self._snapshot_path = _windows_to_msys_path(native_snapshot_path)
+            self._cwd_file = _windows_to_msys_path(native_cwd_file)
+            try:
+                return super().init_session()
+            finally:
+                self._snapshot_path = native_snapshot_path
+                self._cwd_file = native_cwd_file
         return super().init_session()
 
     # ------------------------------------------------------------------
@@ -2472,6 +2758,10 @@ class LocalEnvironment(BaseEnvironment):
     def _quote_shell_path(self, path: str) -> str:
         """Rewrite native/mixed Windows paths before quoting for Git Bash."""
         return _quote_bash_path(path)
+
+    def _quote_cwd_for_cd(self, cwd: str) -> str:
+        """Rewrite native/mixed Windows CWD paths before quoting for Git Bash."""
+        return _quote_bash_path(cwd)
 
     def _run_bash(self, cmd_string: str, *, login: bool = False,
                   timeout: int = 120,

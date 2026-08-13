@@ -24,8 +24,8 @@ profile-portable and does not accidentally read arbitrary files.
 Only configured phrase strings are used; raw tool args, commands, previews, and
 reasoning text are never interpolated into the returned phrase.
 """
-
 from __future__ import annotations
+
 
 import random as _random
 from collections.abc import Mapping, MutableSequence

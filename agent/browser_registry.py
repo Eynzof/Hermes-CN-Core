@@ -33,8 +33,8 @@ has search/extract/crawl). Every browser provider implements the full
 :class:`agent.browser_provider.BrowserProvider` lifecycle; the registry's
 job is purely selection, not capability routing.
 """
-
 from __future__ import annotations
+
 
 import logging
 import threading

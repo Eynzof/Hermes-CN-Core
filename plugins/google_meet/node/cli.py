@@ -4,8 +4,8 @@ Wired into the existing ``hermes meet`` parser by the plugin's top-level
 CLI. This module only defines the subparsers and their dispatch — it
 does not mutate the existing cli.py.
 """
-
 from __future__ import annotations
+
 
 import argparse
 import asyncio

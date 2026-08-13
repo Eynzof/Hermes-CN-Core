@@ -24,8 +24,8 @@ re-offered after the user says no.
 Storage mirrors ``cron/jobs.py``: ``~/.hermes/cron/suggestions.json``, atomic
 writes, an in-process lock, and 0600 perms.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import logging

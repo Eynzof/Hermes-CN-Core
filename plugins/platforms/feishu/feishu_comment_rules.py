@@ -6,8 +6,8 @@ Each field (enabled/policy/allow_from) falls back independently.
 Config: ~/.hermes/feishu_comment_rules.json (mtime-cached, hot-reload).
 Pairing store: ~/.hermes/feishu_comment_pairing.json.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import logging

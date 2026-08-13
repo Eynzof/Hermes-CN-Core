@@ -28,13 +28,13 @@ Fail-open everywhere: any missing/non-finite field degrades to fewer bars or a
 magnitudes-only view; a logged-out / unreachable portal yields
 ``available=False`` and the surface shows nothing.
 """
-
 from __future__ import annotations
+
 
 import logging
 import math
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)

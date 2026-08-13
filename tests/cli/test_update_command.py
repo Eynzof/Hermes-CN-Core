@@ -14,8 +14,8 @@ side.  The companion Vitest (``ui-tui/src/__tests__/createSlashHandler.test.ts``
 covers the TypeScript slash-handler that *emits* code 42; this file covers
 the Python wrapper branch that *acts on* it.
 """
-
 from __future__ import annotations
+
 
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -76,13 +76,13 @@ def test_managed_install_refuses_and_does_not_set_pending_relaunch(capsys):
         patch("hermes_cli.config.is_managed", return_value=True),
         patch(
             "hermes_cli.config.format_managed_message",
-            return_value="Use `brew upgrade hermes-agent` to update.",
+            return_value="Use `sudo nixos-rebuild switch` to update.",
         ),
     ):
         result = _call(self_)
 
     out = capsys.readouterr().out
-    assert "brew upgrade hermes-agent" in out
+    assert "sudo nixos-rebuild switch" in out
     assert self_._pending_relaunch is None
     assert not result
 

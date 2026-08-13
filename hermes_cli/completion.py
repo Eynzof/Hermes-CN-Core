@@ -5,8 +5,8 @@ completion scripts — no hardcoded subcommand lists, no extra dependencies.
 
 Supports bash, zsh, and fish.
 """
-
 from __future__ import annotations
+
 
 import argparse
 from typing import Any

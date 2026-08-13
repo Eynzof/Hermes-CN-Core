@@ -8,8 +8,8 @@ Tests cover:
 
 All tests mock ``sys.platform`` and Windows APIs so they run on any host.
 """
-
 from __future__ import annotations
+
 
 import os
 import sys

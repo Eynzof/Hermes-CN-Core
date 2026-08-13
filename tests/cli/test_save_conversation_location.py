@@ -7,8 +7,8 @@ snapshots are not indexed in the state DB and are generally invisible.
 The fix writes snapshots under ``~/.hermes/sessions/saved/`` and prints
 the absolute path plus the resume hint for the live session.
 """
-
 from __future__ import annotations
+
 
 import orjson
 import sys

@@ -20,8 +20,8 @@ Scenario:
      ``TurnRetryState.has_retried_429`` after transport recovery so the post-recovery
      429 always gets a fresh fallback-chain attempt.
 """
-
 from __future__ import annotations
+
 
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch

@@ -5,6 +5,7 @@ import orjson
 from types import SimpleNamespace
 
 import tools.terminal_tool as terminal_tool
+import tools.terminal_output_stream as terminal_output_stream
 
 
 def _minimal_terminal_config(cwd="/default"):
@@ -75,6 +76,88 @@ def test_explicit_workdir_still_wins_over_registered_task_cwd(monkeypatch):
 
     assert result["exit_code"] == 0
     assert calls == [{"timeout": 60, "cwd": "/explicit/workdir", "bounded_capture": True}]
+
+
+def test_explicit_workdir_does_not_persist_into_session_cwd(monkeypatch):
+    """A per-command ``workdir`` must not hijack the durable session cwd.
+
+    Regression: the post-command dual-write recorded ``env.cwd`` (stamped to
+    the transient ``workdir``) into the session-cwd store, so every later
+    command that omitted ``workdir`` inherited the one-off directory.
+    """
+    recorded = []
+
+    class FakeEnv:
+        env = {}
+        cwd = "/workspace/acp"
+
+        def execute(self, command, **kwargs):
+            # Marker parse stamps env.cwd to where the command ran.
+            self.cwd = kwargs.get("cwd", self.cwd)
+            return {"output": "ok", "returncode": 0}
+
+    task_id = "acp-session-2"
+    monkeypatch.setattr(terminal_tool, "_active_environments", {task_id: FakeEnv()})
+    monkeypatch.setattr(terminal_tool, "_last_activity", {})
+    monkeypatch.setattr(terminal_tool, "_task_env_overrides", {task_id: {"cwd": "/workspace/acp"}})
+    monkeypatch.setattr(terminal_tool, "_get_env_config", lambda: _minimal_terminal_config())
+    monkeypatch.setattr(
+        terminal_tool,
+        "_check_all_guards",
+        lambda command, env_type, **kwargs: {"approved": True},
+    )
+    monkeypatch.setattr(
+        terminal_tool,
+        "record_session_cwd",
+        lambda session_key, cwd: recorded.append((session_key, cwd)),
+    )
+
+    terminal_tool.terminal_tool(command="pwd", task_id=task_id, workdir="/one/off/dir")
+
+    # The transient workdir must NOT have been recorded as the session cwd.
+    assert all(cwd != "/one/off/dir" for _, cwd in recorded), recorded
+
+
+
+
+def test_foreground_tool_call_forwards_live_output_to_gateway_sink(monkeypatch):
+    observed = []
+
+    class FakeEnv:
+        env = {}
+        cwd = "/resolved/workdir"
+
+        def execute(self, command, **kwargs):
+            kwargs["output_callback"]("first chunk\n")
+            return {"output": "first chunk\n", "returncode": 0}
+
+    task_id = "streaming-session"
+    monkeypatch.setattr(terminal_tool, "_active_environments", {task_id: FakeEnv()})
+    monkeypatch.setattr(terminal_tool, "_last_activity", {})
+    monkeypatch.setattr(terminal_tool, "_task_env_overrides", {task_id: {"cwd": "/workspace"}})
+    monkeypatch.setattr(terminal_tool, "_get_env_config", lambda: _minimal_terminal_config())
+    monkeypatch.setattr(
+        terminal_tool,
+        "_check_all_guards",
+        lambda command, env_type, **kwargs: {"approved": True},
+    )
+    monkeypatch.setattr(
+        terminal_output_stream,
+        "_sink",
+        lambda tool_call_id, chunk: observed.append((tool_call_id, chunk)),
+    )
+
+    result = orjson.loads(
+        terminal_tool.terminal_tool(
+            command="printf hello",
+            task_id=task_id,
+            tool_call_id="tool-live-1",
+        )
+    )
+
+    assert result["exit_code"] == 0
+    assert result["cwd"] == "/resolved/workdir"
+    assert observed == [("tool-live-1", "first chunk\n")]
 
 
 def test_foreground_command_prefers_recorded_session_cwd_over_init_time_cwd(monkeypatch):

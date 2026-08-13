@@ -1,6 +1,6 @@
 """QQBot shared utilities — User-Agent, HTTP helpers, config coercion."""
-
 from __future__ import annotations
+
 
 import platform
 import sys

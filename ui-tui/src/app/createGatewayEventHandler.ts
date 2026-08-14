@@ -1009,47 +1009,6 @@ export function createGatewayEventHandler(ctx: GatewayEventHandlerContext): (ev:
         return
       }
 
-      case 'wake.detected': {
-        // "Hey Hermes": optionally open a fresh session (start_new_session),
-        // then arm voice capture so the user can speak hands-free. Mirrors CLI.
-        void (async () => {
-          // Multi-profile routing: the TUI is a single-profile process, so a
-          // phrase enrolled by ANOTHER profile can't be routed here — surface
-          // the switch command instead of starting voice on the wrong profile.
-          const wakeProfile = ev.payload?.profile?.trim()
-          const ownProfile = getUiState().info?.profile_name || 'default'
-
-          if (wakeProfile && wakeProfile !== ownProfile) {
-            sys(`wake phrase for profile '${wakeProfile}' — run: hermes -p ${wakeProfile} --tui`)
-            await rpc('wake.resume', {}).catch(() => undefined)
-
-            return
-          }
-
-          if (ev.payload?.start_new_session !== false) {
-            await newSession()
-          }
-
-          const sid = getUiState().sid
-
-          if (!sid) {
-            await rpc('wake.resume', {}).catch(() => undefined)
-
-            return
-          }
-
-          setVoiceEnabled(true)
-          await rpc('voice.toggle', { action: 'on' })
-          await rpc('voice.record', { action: 'start', session_id: sid })
-        })().catch((e: unknown) => {
-          sys(`wake: ${rpcErrorMessage(e)}`)
-
-          void rpc('wake.resume', {}).catch(() => undefined)
-        })
-
-        return
-      }
-
       case 'gateway.start_timeout': {
         const { cwd, python, stderr_tail: stderrTail } = ev.payload ?? {}
         const trace = python || cwd ? ` · ${String(python || '')} ${String(cwd || '')}`.trim() : ''

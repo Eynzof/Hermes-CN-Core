@@ -1800,32 +1800,6 @@ class TestSpawnLocalShellSelection:
         return fake_popen, captured
     """Regression tests for background terminal shell parity on Windows."""
 
-    def test_spawn_local_windows_uses_resolve_shell(self, monkeypatch, registry):
-        """On Windows, non-PTY background spawn uses PowerShell via _resolve_shell."""
-        monkeypatch.setattr("tools.process_registry._IS_WINDOWS", True)
-        monkeypatch.setattr(
-            "tools.process_registry._resolve_shell",
-            lambda: ("pwsh", r"C:\Program Files\PowerShell\7\pwsh.exe"),
-        )
-        monkeypatch.setattr(
-            "tools.process_registry._resolve_safe_cwd",
-            lambda cwd: cwd,
-        )
-
-        captured = {}
-
-        def fake_popen(cmd, **kwargs):
-            captured["cmd"] = cmd
-            captured["kwargs"] = kwargs
-            proc = MagicMock()
-            proc.pid = 12345
-            proc.stdout = iter([])
-            proc.stdin = MagicMock()
-            proc.poll.return_value = None
-            return proc
-
-        return fake_popen, captured
-
     def test_wraps_in_systemd_scope_when_supervisor_and_available(
         self, registry, monkeypatch, _gateway_identity
     ):

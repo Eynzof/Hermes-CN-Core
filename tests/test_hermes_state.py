@@ -1890,17 +1890,6 @@ class TestListSessionsRich:
         activity = db.get_session_activity("gw-1")
         assert activity["last_activity_description"] == "compressing context"
 
-    def test_order_by_last_active_surfaces_recently_touched_older_session_first(self, db):
-        t0 = 1709500000.0
-        db.create_session("old", "cli")
-        db.create_session("new", "cli")
-
-
-
-
-
-
-
     def test_rich_list_session_key_filter_precedes_limit(self, db):
         lane_key = "agent:main:telegram:dm:lane"
         db.create_session(

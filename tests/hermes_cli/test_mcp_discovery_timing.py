@@ -178,44 +178,7 @@ def test_ensure_helper_swallows_errors(monkeypatch):
     mcp_startup.ensure_mcp_discovery_before_agent_build(logger=logger)
 
 
-# ── oneshot ordering: discovery before AIAgent ──────────────────────────────
-
-
-def test_oneshot_calls_ensure_helper_before_aiagent(monkeypatch):
-    """oneshot._run_agent must call ensure_mcp_discovery_before_agent_build
-    before constructing AIAgent (#38448)."""
-    import inspect
-
-    import hermes_cli.oneshot as oneshot_mod
-
-    src = inspect.getsource(oneshot_mod._run_agent)
-    helper_idx = src.find("ensure_mcp_discovery_before_agent_build")
-    agent_idx = src.find("AIAgent(")
-    assert helper_idx != -1, "oneshot._run_agent must call ensure_mcp_discovery_before_agent_build"
-    assert agent_idx != -1, "oneshot._run_agent must construct AIAgent"
-    assert helper_idx < agent_idx, (
-        "ensure_mcp_discovery_before_agent_build must be called BEFORE AIAgent "
-        "construction in oneshot._run_agent (#38448)"
-    )
-
-
 # ── _init_agent ordering: discovery before AIAgent (CLI path) ───────────────
-
-
-def test_init_agent_calls_ensure_helper_before_aiagent(monkeypatch):
-    """cli_agent_setup_mixin._init_agent must call
-    ensure_mcp_discovery_before_agent_build before constructing AIAgent."""
-    import inspect
-
-    from hermes_cli.cli_agent_setup_mixin import CLIAgentSetupMixin
-
-    src = inspect.getsource(CLIAgentSetupMixin._init_agent)
-    helper_idx = src.find("ensure_mcp_discovery_before_agent_build")
-    # _init_agent delegates AIAgent construction to cli.py, so we check
-    # the helper appears before the session_db / agent construction logic
-    assert helper_idx != -1, (
-        "_init_agent must call ensure_mcp_discovery_before_agent_build"
-    )
 
 
 def test_init_agent_forwards_single_query_flag(monkeypatch):

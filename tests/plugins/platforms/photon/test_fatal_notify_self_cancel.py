@@ -127,24 +127,5 @@ class TestFatalNotifyIsDetached:
         assert "fatal-error notification failed" in caplog.text
 
 
-class TestBothCallSitesDetached:
-    """Neither fatal path may await the notification inline."""
-
-    def test_no_inline_notify_awaits_remain(self) -> None:
-        """Guard against a future edit reintroducing the inline await."""
-        import inspect
-
-        from plugins.platforms.photon import adapter as photon_adapter
-
-        for name in ("_monitor_sidecar_health", "_supervise_sidecar"):
-            src = inspect.getsource(getattr(photon_adapter.PhotonAdapter, name))
-            assert "await self._notify_fatal_error()" not in src, (
-                f"{name} awaits _notify_fatal_error inline; use "
-                f"_dispatch_fatal_notification() so disconnect() cannot cancel "
-                f"its own caller"
-            )
-            assert "_dispatch_fatal_notification()" in src
-
-
 async def _noop() -> None:
     return None

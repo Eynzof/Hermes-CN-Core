@@ -9,7 +9,6 @@ Covers:
 """
 from __future__ import annotations
 
-import inspect
 from unittest.mock import patch
 
 import pytest
@@ -48,23 +47,6 @@ class TestEmitNotice:
         agent.notice_callback = received.append
         agent._emit_notice(notice)
         assert received == [notice]
-
-
-
-
-
-
-
-# ── B. Constructor / init_agent signature threading ─────────────────────────
-
-
-class TestSignatureThreading:
-    def test_agent_init_exposes_notice_callback(self):
-        sig = inspect.signature(AIAgent.__init__)
-        assert "notice_callback" in sig.parameters
-
-
-
 
 
 # ── C. TUI _agent_cbs binding ────────────────────────────────────────────────
@@ -123,7 +105,6 @@ class TestAgentCbsNoticeBinding:
         assert len(captured) == 1
         _event_type, _sid, payload = captured[0]
         assert set(payload.keys()) == {"text", "level", "kind", "ttl_ms", "key", "id"}
-
 
 
     def test_notice_clear_callback_event_type_is_notification_clear(self):

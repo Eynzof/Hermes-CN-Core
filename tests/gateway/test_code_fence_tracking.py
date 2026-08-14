@@ -358,57 +358,6 @@ class TestEditPathBypass:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-#  K. Missing: overflow split first chunk (GAP G3)
-# ═══════════════════════════════════════════════════════════════════════════
-
-class TestOverflowSplitFenceGap:
-    """run() overflow split loop (lines 567-601) splits at newlines
-    without fence awareness.  The first chunk goes through edit path
-    (_send_or_edit with _message_id set) which has NO fence tracking."""
-
-    def test_overflow_split_first_chunk_no_fence_tracking(self):
-        """Simulate the overflow split loop's behaviour:
-        first chunk split inside ```, sent through edit path — no close."""
-        adapter = MagicMock()
-        adapter.edit_message = AsyncMock(return_value=MagicMock(
-            success=True, message_id="msg_1",
-        ))
-        adapter.MAX_MESSAGE_LENGTH = 2000
-        adapter.message_len_fn = len
-
-        config = StreamConsumerConfig(
-            buffer_only=False, transport="edit",
-            edit_interval=9999, buffer_threshold=9999,
-        )
-        consumer = GatewayStreamConsumer(
-            adapter=adapter, chat_id="12345", config=config,
-        )
-        consumer._message_id = "msg_1"
-        consumer._already_sent = True
-        consumer._edit_supported = True
-
-        # accumulated starts with ``` that gets split
-        consumer._accumulated = "```\n" + "\n".join(f"line{i}" for i in range(30)) + "\n```end"
-
-        # Safe limit small enough to force overflow
-        _safe_limit = 60
-        _raw_limit = 2000
-        _len_fn = len
-        _cp_budget = _len_fn(consumer._accumulated[:60])  # simulate
-
-        split_at = consumer._accumulated.rfind("\n", 0, _cp_budget)
-        chunk = consumer._accumulated[:split_at]
-        remaining = consumer._accumulated[split_at:].lstrip("\n")
-
-        # First chunk should have odd ``` (no close from edit path)
-        first_odd = _odd_fences(chunk)
-        # Second part (remaining) may or may not — depends on split point
-        # Just document the behaviour
-        if first_odd:
-            pass  # This demonstrates the gap: edit path doesn't close fence
-
-
-# ═══════════════════════════════════════════════════════════════════════════
 #  L. Missing: fallback final with unclosed fence (GAP G4)
 # ═══════════════════════════════════════════════════════════════════════════
 

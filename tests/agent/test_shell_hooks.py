@@ -398,15 +398,6 @@ class TestAllowlistConcurrency:
         )
 
 
-    @pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: .sh scripts can't run on Windows")
-    def test_script_is_executable_handles_interpreter_prefix(self, tmp_path):
-        """For ``python3 hook.py`` and similar the interpreter reads
-        the script, so X_OK on the script itself is not required —
-        only R_OK.  Bare invocations still require X_OK."""
-        script = tmp_path / "hook.py"
-        script.write_text("print()\n")  # readable, NOT executable
-
-
     def test_save_allowlist_uses_unique_tmp_paths(self, tmp_path, monkeypatch):
         """Two save_allowlist calls in flight must use distinct tmp files
         so the loser's os.replace does not ENOENT on the winner's sweep."""

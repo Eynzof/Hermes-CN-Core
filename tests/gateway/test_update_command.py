@@ -495,24 +495,6 @@ class TestSendUpdateNotification:
         assert not exit_code_path.exists()
 
 
-# ---------------------------------------------------------------------------
-# /update in help and known_commands
-# ---------------------------------------------------------------------------
-
-
-class TestUpdateInHelp:
-    """Verify /update appears in help text and known commands set."""
-
-
-    def test_update_is_known_command(self):
-        """The /update command is in the help text (proxy for _known_commands)."""
-        # _known_commands is local to _handle_message, so we verify by
-        # checking the help output includes it.
-        from gateway.run import GatewayRunner
-        import inspect
-        source = inspect.getsource(GatewayRunner._handle_message)
-        assert '"update"' in source
-
 class TestWatchUpdateProgress:
     @pytest.mark.asyncio
     async def test_invalid_utf8_update_output_does_not_crash_watcher(self, tmp_path):

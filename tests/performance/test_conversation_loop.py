@@ -204,23 +204,6 @@ def test_tool_dispatch_timing(timing_context):
 
 
 @pytest.mark.perf
-def test_middleware_hooks_timing(timing_context):
-    """Measure middleware hook overhead."""
-    mock_plugin = MagicMock()
-    mock_plugin.pre_tool_call = MagicMock()
-    mock_plugin.post_tool_call = MagicMock()
-
-    with timing_context.measure("pre_tool_call_hooks"):
-        mock_plugin.pre_tool_call("read_file", {"path": "/tmp/test.txt"})
-    with timing_context.measure("post_tool_call_hooks"):
-        mock_plugin.post_tool_call("read_file", {"success": True})
-
-    summary = timing_context.summary()
-    print(f"\n  Pre-tool hook: {summary.get('pre_tool_call_hooks', {}).get('total_ms', 0):.1f}ms")
-    print(f"  Post-tool hook: {summary.get('post_tool_call_hooks', {}).get('total_ms', 0):.1f}ms")
-
-
-@pytest.mark.perf
 @pytest.mark.perf_baseline
 def test_conversation_loop_baseline(timing_context, mock_llm_response):
     """Baseline: run a 1-turn conversation with mocked LLM response."""

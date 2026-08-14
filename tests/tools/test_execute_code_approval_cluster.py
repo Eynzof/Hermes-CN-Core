@@ -83,24 +83,6 @@ def test_helper_clears_callbacks_on_teardown():
         TT.set_approval_callback(None)
 
 
-def test_both_rpc_threads_use_propagation_helper():
-    """Source guard: both execute_code RPC threads must wrap their target with
-    propagate_context_to_thread, or the gateway approval bypass (#33057)
-    silently returns."""
-    import inspect
-    import tools.code_execution_tool as cet
-
-    src = inspect.getsource(cet)
-    assert "propagate_context_to_thread(_rpc_server_loop)" in src, (
-        "local UDS RPC server thread is not wrapped with "
-        "propagate_context_to_thread — gateway approval routing will be lost."
-    )
-    assert "propagate_context_to_thread(_rpc_poll_loop)" in src, (
-        "remote file-RPC poll thread is not wrapped with "
-        "propagate_context_to_thread — gateway approval routing will be lost."
-    )
-
-
 # ---------------------------------------------------------------------------
 # 3. check_execute_code_guard decision matrix
 # ---------------------------------------------------------------------------

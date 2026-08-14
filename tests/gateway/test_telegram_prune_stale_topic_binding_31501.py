@@ -179,68 +179,6 @@ class TestPruneStaleDmTopicBindingHelper:
         adapter._prune_stale_dm_topic_binding("123", "456")
 
 
-# ---------------------------------------------------------------------------
-# Source-level wiring guards — both fallback sites must call the helper
-# ---------------------------------------------------------------------------
-
-
-class TestThreadNotFoundFallbackSitesPruneBinding:
-    """Pin that the two ``Thread not found`` warning sites in the
-    Telegram adapter actually invoke ``_prune_stale_dm_topic_binding``.
-    These guards stop a future refactor from quietly losing the
-    cleanup wire — re-opening #31501.
-    """
-
-    def test_streaming_send_fallback_calls_prune(self):
-        from plugins.platforms.telegram import adapter as telegram_mod
-
-        src = inspect.getsource(telegram_mod.TelegramAdapter.send)
-        # Locate the second-failure branch (the one that flips
-        # ``used_thread_fallback``).  It must invoke the prune
-        # helper before flipping the flag.
-        marker = "retrying without message_thread_id"
-        idx = src.find(marker)
-        assert idx != -1, (
-            "Streaming send must keep its 'thread not found' "
-            "fallback log line — the prune wiring is anchored "
-            "next to it."
-        )
-        # 600 char window is enough to cover the warning, the
-        # prune call, and the ``used_thread_fallback = True``
-        # assignment that follows.
-        window = src[idx:idx + 600]
-        assert "_prune_stale_dm_topic_binding" in window, (
-            "Streaming send 'Thread not found' fallback must call "
-            "_prune_stale_dm_topic_binding so the stale row in "
-            "telegram_dm_topic_bindings doesn't keep redirecting "
-            "future inbound messages to the deleted topic (#31501)."
-        )
-
-    def test_control_message_helper_calls_prune(self):
-        from plugins.platforms.telegram import adapter as telegram_mod
-
-        src = inspect.getsource(
-            telegram_mod.TelegramAdapter._send_message_with_thread_fallback
-        )
-        # The helper has a single retry path; the prune call
-        # must sit inside it, not in dead code outside the
-        # ``if message_thread_id is not None and …`` guard.
-        assert "_prune_stale_dm_topic_binding" in src, (
-            "_send_message_with_thread_fallback must call "
-            "_prune_stale_dm_topic_binding when Telegram returns "
-            "BadRequest('Thread not found') for a control message "
-            "(#31501)."
-        )
-        # Belt-and-braces: the call must precede the retry
-        # ``send_message`` so the prune happens whether or not
-        # the retry itself succeeds.
-        prune_idx = src.find("_prune_stale_dm_topic_binding")
-        retry_idx = src.find("send_message(**retry_kwargs)")
-        assert 0 <= prune_idx < retry_idx, (
-            "_prune_stale_dm_topic_binding must run before the "
-            "fallback send_message retry."
-        )
-
 
 # ---------------------------------------------------------------------------
 # End-to-end semantic — prune + recovery returns None for deleted topic

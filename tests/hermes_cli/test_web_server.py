@@ -4713,33 +4713,6 @@ class TestPluginAPIAuth:
         resp = self.client.get("/api/plugins/_definitely_not_a_plugin_/anything")
         assert resp.status_code == 401
 
-    def test_plugin_websocket_unaffected_by_http_middleware(self):
-        """The kanban /events WebSocket has its own ``?token=`` check;
-        the HTTP middleware change must not start gating WS upgrades.
-
-        Starlette doesn't run HTTP middleware on WebSocket upgrades anyway,
-        but pin the behavior so a future refactor that moves auth into a
-        shared layer can't silently break the WS auth contract.
-        """
-        from starlette.websockets import WebSocketDisconnect
-
-        # Without a token the WS endpoint must close the upgrade itself
-        # (its own _check_ws_token), NOT 401 from the HTTP middleware.
-        try:
-            with self.client.websocket_connect(
-                "/api/plugins/kanban/events"
-            ):
-                pass  # if we got here without disconnect, the WS accepted us
-        except WebSocketDisconnect:
-            pass  # expected — WS endpoint rejected via its own check
-        except Exception:
-            # The kanban plugin may not be mounted in this test environment,
-            # in which case the route doesn't exist at all (3xx/4xx during
-            # upgrade). That's fine for this regression — it only matters
-            # that the HTTP middleware didn't start intercepting WS upgrades.
-            pass
-
-
 class TestDashboardPluginManifestExtensions:
     """Tests for the extended plugin manifest fields (tab.override,
     tab.hidden, slots) read by _discover_dashboard_plugins()."""

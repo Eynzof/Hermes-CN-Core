@@ -310,16 +310,6 @@ def test_interruption_and_resume():
         _cleanup_test_artifacts(dataset_file, temp_dataset, output_dir)
 
 
-def test_simulated_crash():
-    """Test behavior when process crashes mid-execution."""
-    print("\n" + "=" * 70)
-    print("TEST 3: Simulated Crash During Execution")
-    print("=" * 70)
-    print("\n📝 This test would require running in a subprocess and killing it...")
-    print("   Skipping for safety - manual testing recommended")
-    return None
-
-
 def print_test_plan():
     """Print the detailed test and fix plan."""
     print("\n" + "=" * 70)
@@ -399,11 +389,10 @@ def main(
     Args:
         test_current: Test current implementation checkpoint timing
         test_resume: Test interruption and resume functionality
-        test_crash: Test simulated crash scenario (manual)
         compare: Run all tests and compare
         show_plan: Show detailed fix plan
     """
-    if show_plan or (not any([test_current, test_resume, test_crash, compare])):
+    if show_plan or (not any([test_current, test_resume, compare])):
         print_test_plan()
         return
     
@@ -414,9 +403,6 @@ def main(
     
     if test_resume or compare:
         results['resume'] = test_interruption_and_resume()
-    
-    if test_crash or compare:
-        results['crash'] = test_simulated_crash()
     
     # Summary
     if results:

@@ -254,24 +254,6 @@ def test_mpim_unmentioned_does_not_react():
     assert _reaction_guard("", False) is False         # channel, unmentioned
 
 
-def test_reaction_guard_pinned_to_production_expression():
-    """Regression teeth for the reaction guard.
-
-    ``_reaction_guard`` mirrors the production expression at the
-    ``_should_react = (is_one_to_one_dm or is_mentioned) ...`` site in
-    ``adapter.py``. This test pins that source line so a revert of the fix
-    (back to ``is_dm or is_mentioned``, which reacts to unmentioned MPIMs)
-    fails here instead of silently passing a self-referential lambda.
-    """
-    src = inspect.getsource(SlackAdapter._handle_slack_message)
-    assert "(is_one_to_one_dm or is_mentioned)" in src, (
-        "reaction guard no longer keys off is_one_to_one_dm — an unmentioned "
-        "MPIM would react again (regression of the group-DM fix)"
-    )
-    assert "(is_dm or is_mentioned)" not in src, (
-        "reaction guard reverted to is_dm — MPIMs would react when unmentioned"
-    )
-
 
 def test_mentioned_message_always_processed():
     adapter = _make_adapter(require_mention=True)

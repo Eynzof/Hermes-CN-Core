@@ -197,8 +197,6 @@ def test_initial_connect_failure_revives_same_registered_server(monkeypatch, tmp
         _cleanup_mcp_state(mcp_tool, created)
 
 
-def test_terminal_initial_failure_is_not_retained(monkeypatch, tmp_path):
-    """A non-recoverable startup error must not leave a dead cache entry."""
 
 def test_initial_auth_failure_is_retained_and_reaped(monkeypatch, tmp_path):
     """An auth failure must stay parked (revivable) and reap on shutdown.

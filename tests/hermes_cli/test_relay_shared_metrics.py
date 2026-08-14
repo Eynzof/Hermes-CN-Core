@@ -1186,42 +1186,6 @@ def test_package_builder_rejects_tampered_client_resources(tmp_path):
 
     assert list(outbox_directory.glob("*.json")) == []
 
-
-def test_pending_package_retry_reuses_the_same_package_and_file(tmp_path):
-    database_path = tmp_path / "metrics.sqlite3"
-    outbox_directory = tmp_path / "outbox"
-    store = SharedMetricsStore(database_path, outbox_directory)
-    store.record_model_call(_dimensions(), _resource())
-    [package_path] = store.create_and_export_package()
-    original_payload = package_path.read_bytes()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 def test_retention_prunes_only_expired_exported_history(tmp_path):
     database_path = tmp_path / "metrics.sqlite3"
     outbox_directory = tmp_path / "outbox"

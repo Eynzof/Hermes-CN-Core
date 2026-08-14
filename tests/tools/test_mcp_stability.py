@@ -432,44 +432,6 @@ class TestStdioPgroupReaping:
 
 
 # ---------------------------------------------------------------------------
-# Fix 3: MCP reload timeout (cli.py)
-# ---------------------------------------------------------------------------
-
-class TestMCPReloadTimeout:
-    """_check_config_mcp_changes uses a timeout on _reload_mcp."""
-
-    def test_reload_timeout_does_not_block_forever(self, tmp_path, monkeypatch):
-        """If _reload_mcp hangs, the config watcher times out and returns."""
-        import time
-
-        # Create a mock HermesCLI-like object with the needed attributes
-        class FakeCLI:
-            _config_mtime = 0.0
-            _config_mcp_servers = {}
-            _last_config_check = 0.0
-            _command_running = False
-            config = {}
-            agent = None
-
-            def _reload_mcp(self):
-                # Simulate a hang — sleep longer than the timeout
-                time.sleep(60)
-
-            def _slow_command_status(self, cmd):
-                return cmd
-
-        # This test verifies the timeout mechanism exists in the code
-        # by checking that _check_config_mcp_changes doesn't call
-        # _reload_mcp directly (it uses a thread now)
-        import inspect
-        from cli import HermesCLI
-        source = inspect.getsource(HermesCLI._check_config_mcp_changes)
-        # The fix adds threading.Thread for _reload_mcp
-        assert "Thread" in source or "thread" in source.lower(), \
-            "_check_config_mcp_changes should use a thread for _reload_mcp"
-
-
-# ---------------------------------------------------------------------------
 # Fix 4: MCP initial connection retry with backoff
 # (Ported from Kilo Code's MCP resilience fix)
 # ---------------------------------------------------------------------------

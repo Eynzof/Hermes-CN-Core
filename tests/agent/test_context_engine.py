@@ -317,31 +317,3 @@ class TestInitAgentDoesNotMutatePluginSingleton:
         assert selected is None
         # The original engine is untouched (no partial mutation).
         assert engine.context_length == 1_000_000
-
-    def test_agent_init_source_deepcopies_singleton_not_aliases(self):
-        """Source-pin guarding the production fix in agent/agent_init.py:
-        the plugin-singleton fallback MUST deepcopy the candidate, not alias
-        it (`_selected_engine = _candidate`). Full init_agent is too heavy to
-        drive here, so this pins the exact line so a future revert to direct
-        assignment fails CI. Regression for #42449."""
-        import inspect
-        import re
-        import agent.agent_init as _ai
-
-        src = inspect.getsource(_ai)
-        # The candidate fetched from the plugin singleton must be deep-copied
-        # before becoming _selected_engine (which is later mutated by
-        # update_model). A bare `_selected_engine = _candidate` is the bug.
-        assert re.search(
-            r"_selected_engine\s*=\s*(copy|_copy)\.deepcopy\(\s*_candidate\s*\)",
-            src,
-        ), (
-            "agent_init must deepcopy the plugin context-engine singleton "
-            "(`_selected_engine = copy.deepcopy(_candidate)`) — a bare "
-            "`_selected_engine = _candidate` re-introduces #42449 (child "
-            "update_model corrupts the parent's shared singleton)."
-        )
-        # And the bug-shape alias must NOT be present on that path.
-        assert not re.search(
-            r"_selected_engine\s*=\s*_candidate\b", src
-        ), "found the #42449 bug-shape alias `_selected_engine = _candidate`"

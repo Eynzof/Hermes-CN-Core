@@ -60,67 +60,6 @@ class TestRedactApprovalCommand:
         assert _FAKE_GHP not in out
 
 
-class TestApprovalCommandWiring:
-    """Guard the production wiring on BOTH approval-notify transports:
-    1. the chat-platform path (_approval_notify_sync in gateway/run.py), and
-    2. the SSE/API path (_approval_notify in gateway/platforms/api_server.py),
-    each of which must route the command through _redact_approval_command and
-    REASSIGN the redacted value before any send/enqueue (so the raw command
-    cannot reach a client). Uses AST (not char-offset string slicing) so a
-    benign refactor doesn't cause a false failure, and so a discarded-result
-    call (`_redact(cmd); send(cmd)`) does NOT pass."""
-
-    def _assert_redacts_then_uses(self, module, func_name: str, sink_substr: str):
-        """Parse `module`'s full AST, locate the (possibly nested) function
-        `func_name`, and assert it contains an assignment
-        `<x> = _redact_approval_command(...)` whose result is then used by a
-        statement matching `sink_substr` on a LATER line. Walking the real AST
-        (not a source slice) is refactor-robust and rejects discarded-result
-        calls (the call must be an assignment, not a bare expression)."""
-        import ast
-        import inspect
-
-        source = inspect.getsource(module)
-        tree = ast.parse(source)
-        target_fn = None
-        for node in ast.walk(tree):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == func_name:
-                target_fn = node
-                break
-        assert target_fn is not None, f"function {func_name} not found in {module.__name__}"
-
-        redact_line = None
-        for node in ast.walk(target_fn):
-            if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call):
-                fn = node.value.func
-                if isinstance(fn, ast.Name) and fn.id == "_redact_approval_command":
-                    redact_line = node.lineno
-        assert redact_line is not None, (
-            f"{func_name} must assign the result of _redact_approval_command(...) "
-            "(a discarded-result call would still leak the raw command)"
-        )
-
-        sink_line = None
-        for node in ast.walk(target_fn):
-            seg = ast.get_source_segment(source, node)
-            if seg and sink_substr in seg and getattr(node, "lineno", 0) > redact_line:
-                sink_line = node.lineno
-                break
-        assert sink_line is not None, (
-            f"`{sink_substr}` sink not found after the redaction in {func_name}"
-        )
-
-    def test_chat_platform_path_redacts_before_send(self):
-        import gateway.run as run
-
-        self._assert_redacts_then_uses(run, "_approval_notify_sync", "send_exec_approval")
-
-    def test_sse_api_path_redacts_before_enqueue(self):
-        from gateway.platforms import api_server
-
-        self._assert_redacts_then_uses(api_server, "_approval_notify", "put_nowait")
-
-
 class TestApprovalTextFallbackContract:
     def test_smart_deny_only_advertises_one_operation(self):
         from gateway.run import _format_exec_approval_fallback

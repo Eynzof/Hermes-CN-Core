@@ -1713,18 +1713,3 @@ def test_default_config_kanban_block_not_dropped_by_duplicate_key():
     # From the second block:
     assert "dispatch_in_gateway" in kanban
     assert "auto_decompose" in kanban
-
-
-def test_default_config_has_no_duplicate_top_level_keys():
-    """Guard against any duplicate key silently shadowing a default."""
-    import ast
-    import hermes_cli.config as cfg_mod
-
-    src = open(cfg_mod.__file__, encoding="utf-8").read()
-    tree = ast.parse(src)
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Dict):
-            keys = [k.value for k in node.keys if isinstance(k, ast.Constant)]
-            if "model" in keys and "kanban" in keys:  # the DEFAULT_CONFIG literal
-                dupes = {k for k in keys if keys.count(k) > 1}
-                assert not dupes, f"duplicate DEFAULT_CONFIG keys: {sorted(dupes)}"

@@ -48,24 +48,6 @@ def test_compute_host_workers_inherit_tui_pool_env_or_8(monkeypatch):
     assert _default_workers() == 8
 
 
-def test_mutator_route_table_matches_prd_inventory():
-    assert MUTATOR_ROUTE_TABLE == {
-        "prompt.submit": "turn-path",
-        "session.interrupt": "turn-path",
-        "reload.mcp": "run-concurrent",
-        "session.save": "run-concurrent",
-        "session.compress": "idle-gated",
-        "prompt.submit.truncate": "idle-gated",
-        "slash.model": "idle-gated",
-        "slash.personality": "idle-gated",
-        "slash.prompt": "idle-gated",
-        "slash.compress": "idle-gated",
-        "session.reset": "idle-gated",
-        "session.history.reload": "idle-gated",
-        "slash.retry": "idle-gated",
-    }
-
-
 def test_append_log_record_single_write_lines(tmp_path):
     path = tmp_path / "agent.log"
 

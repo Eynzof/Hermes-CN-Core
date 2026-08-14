@@ -4,8 +4,8 @@ Verifies that a ``max_tokens`` field on a reference slot dict takes
 precedence over the preset-level ``reference_max_tokens``, and that
 slot-level max_tokens=None falls back to the preset-level cap.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 

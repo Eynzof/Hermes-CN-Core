@@ -138,12 +138,9 @@ def offline_agent_factory():
     and OpenAI mocked, so construction exercises the real tool-definitions path
     without any network I/O."""
     from run_agent import AIAgent
-    import agent.model_metadata as mm
 
     model_tools._clear_tool_defs_cache()
-    mm._reset_endpoint_reachable_cache()
-    with patch("run_agent.OpenAI") as mock_cls, \
-            patch.object(mm, "_endpoint_reachable", return_value=False):
+    with patch("run_agent.OpenAI") as mock_cls:
         mock_cls.return_value = MagicMock()
         yield AIAgent
 

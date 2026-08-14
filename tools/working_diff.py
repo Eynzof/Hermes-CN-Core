@@ -16,8 +16,8 @@ Untracked files are folded in via ``git diff --no-index /dev/null <file>`` so
 brand-new files show up as additions instead of being silently invisible
 (mirrors Codex CLI's ``/diff`` behaviour).
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import os
 import shutil
@@ -34,7 +34,8 @@ def _run(args: List[str], cwd: str, timeout: int = _GIT_TIMEOUT):
     """Run git, returning (returncode, stdout). Never raises on git failure."""
     proc = subprocess.run(
         ["git", "-c", "core.quotePath=false", *args],
-        cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout,
+        cwd=cwd, capture_output=True, text=True, timeout=timeout,
+        encoding="utf-8", errors="replace",
     )
     return proc.returncode, proc.stdout
 

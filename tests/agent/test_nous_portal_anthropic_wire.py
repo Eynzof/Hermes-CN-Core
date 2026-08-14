@@ -12,8 +12,8 @@ These tests pin the contracts that make that routing correct:
 5. Signed thinking blocks replay like native Anthropic (not strip-all third-party).
 6. Auxiliary clients inherit the same dual-wire split (Claude → Messages).
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch

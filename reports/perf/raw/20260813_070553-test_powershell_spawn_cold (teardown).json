@@ -1,0 +1,21 @@
+{
+  "samples": [
+    {
+      "section": "powershell_cold_spawn",
+      "duration_ms": 1568.764,
+      "iteration": 0
+    }
+  ],
+  "summary": {
+    "powershell_cold_spawn": {
+      "count": 1,
+      "total_ms": 1568.764,
+      "mean_ms": 1568.764,
+      "min_ms": 1568.764,
+      "max_ms": 1568.764,
+      "durations": [
+        1568.764
+      ]
+    }
+  }
+}

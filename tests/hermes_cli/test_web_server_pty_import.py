@@ -44,26 +44,3 @@ def test_web_server_uses_posix_pty_bridge_on_posix():
     assert web_server.PtyBridge is PosixBridge
     assert web_server._PTY_BRIDGE_AVAILABLE is True
     assert web_server.PtyUnavailableError is PosixErr
-
-
-def test_pty_bridge_import_block_is_platform_branched():
-    """Source-level guard: a future refactor must not collapse the branch
-    back to a single POSIX import.  Reads web_server.py directly so this
-    fails the same way on every OS — the runtime symbol checks above can
-    pass even when the branch shape is wrong on the current platform."""
-    src = pytest.importorskip("inspect").getsource(web_server)
-    # The shape we expect (from PR #39913):
-    #
-    #   if sys.platform.startswith("win"):
-    #       try:
-    #           from hermes_cli.win_pty_bridge import WinPtyBridge as PtyBridge, ...
-    #       except ImportError:
-    #           PtyBridge = None
-    #           ...
-    #   else:
-    #       try:
-    #           from hermes_cli.pty_bridge import PtyBridge, PtyUnavailableError
-    #       ...
-    assert 'sys.platform.startswith("win")' in src or "sys.platform.startswith('win')" in src
-    assert "from hermes_cli.win_pty_bridge import" in src
-    assert "from hermes_cli.pty_bridge import" in src

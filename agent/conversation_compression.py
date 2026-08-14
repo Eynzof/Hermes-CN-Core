@@ -48,8 +48,8 @@ thread, not the conversation thread. Extension authors must assume:
   on pool siblings — engine/provider instances shared across sessions must
   be thread-safe or internally locked.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import concurrent.futures
 import copy
@@ -271,6 +271,7 @@ _COMPRESSOR_ATTEMPT_STATE_FIELDS = (
     "_last_compression_telemetry",
     "_active_compression_telemetry",
     "_compression_telemetry_seed",
+    "_proactive_prune_rearm_tokens",
 )
 
 _COMPRESSOR_COOLDOWN_STATE_FIELDS = (
@@ -1309,6 +1310,27 @@ def recover_rotated_compression_session(
                 return recovered
             holder = holder_getter(session_id) if callable(holder_getter) else None
             if not holder or attempt == 20:
+                if not holder:
+                    orphan_reopener = getattr(
+                        type(session_db),
+                        "reopen_orphaned_compression_session",
+                        None,
+                    )
+                    if callable(orphan_reopener):
+                        try:
+                            if orphan_reopener(session_db, session_id):
+                                logger.warning(
+                                    "compression recovery: reopened orphaned "
+                                    "session=%s with no continuation",
+                                    session_id,
+                                )
+                        except Exception as exc:
+                            logger.warning(
+                                "orphaned compression session reopen failed "
+                                "for %s: %s",
+                                session_id,
+                                exc,
+                            )
                 return None
             time.sleep(0.05)
         return None
@@ -2734,19 +2756,78 @@ def compress_context(
             if callable(durable_loader):
                 durable_parent = durable_loader(_lock_db, _lock_sid)
                 if isinstance(durable_parent, list) and len(durable_parent) > len(messages):
-                    logger.info(
-                        "compression: session=%s grew before lease "
-                        "(%d → %d msgs); adopting durable snapshot",
-                        _lock_sid,
-                        len(messages),
-                        len(durable_parent),
-                    )
-                    messages = durable_parent
-                    _pre_msg_count = len(messages)
-                    # Token estimate was for the stale snapshot; clear it so
-                    # the compressor re-derives from the adopted transcript
-                    # instead of under-counting the newly visible rows.
-                    approx_tokens = 0
+                    # The in-memory transcript carries the CURRENT turn's
+                    # un-persisted user tail (anchored by
+                    # _persist_user_message_idx) that the durable snapshot read
+                    # above does not contain yet. Flush that tail through the
+                    # normal rotation-boundary path (conversation_history = the
+                    # already-durable prefix, #68196 boundary) BEFORE adopting,
+                    # then re-read the durable parent so the adopted snapshot
+                    # includes the live input. If the flush fails (or the
+                    # anchor is unknown), skip adoption entirely: replacing
+                    # the in-memory transcript with a snapshot that lacks the
+                    # user's input would silently drop it from the summarized
+                    # and rotated history (#adopt-live-tail).
+                    _preflush_idx = getattr(agent, "_persist_user_message_idx", None)
+                    _preflush_ok = False
+                    if (
+                        isinstance(_preflush_idx, int)
+                        and 0 <= _preflush_idx < len(messages)
+                    ):
+                        try:
+                            _preflush_ok = agent._flush_messages_to_session_db(
+                                messages,
+                                conversation_history=messages[:_preflush_idx],
+                            )
+                        except Exception:
+                            _preflush_ok = False
+                    else:
+                        # No known un-persisted tail (anchor unset or already
+                        # at the end of the snapshot): the in-memory transcript
+                        # is fully durable, so adopting the longer parent
+                        # cannot drop live input — keep the legacy
+                        # adopt-directly behavior for that shape
+                        # (test_compression_concurrent_fork).
+                        _preflush_ok = True
+                    if not _preflush_ok:
+                        logger.warning(
+                            "compression: session=%s grew before lease "
+                            "(%d → %d msgs) but the pre-adoption flush of the "
+                            "live tail failed; skipping durable-snapshot "
+                            "adoption so un-persisted user input is kept",
+                            _lock_sid,
+                            len(messages),
+                            len(durable_parent),
+                        )
+                    else:
+                        # Re-read after the flush so the adopted snapshot
+                        # carries the just-persisted tail.
+                        durable_parent = durable_loader(_lock_db, _lock_sid)
+                    if (
+                        _preflush_ok
+                        and isinstance(durable_parent, list)
+                        and len(durable_parent) > len(messages)
+                    ):
+                        logger.info(
+                            "compression: session=%s grew before lease "
+                            "(%d → %d msgs); adopting durable snapshot",
+                            _lock_sid,
+                            len(messages),
+                            len(durable_parent),
+                        )
+                        messages = durable_parent
+                        _pre_msg_count = len(messages)
+                        # Token estimate was for the stale snapshot; clear it so
+                        # the compressor re-derives from the adopted transcript
+                        # instead of under-counting the newly visible rows.
+                        approx_tokens = 0
+                        # The whole adopted list is durable (DB re-read plus
+                        # the just-flushed tail). Re-anchor the persist index
+                        # at the end so the rotation-boundary flush that runs
+                        # after compression skips the adopted rows by identity
+                        # (conversation_history=messages[:idx]) instead of
+                        # re-appending the concurrent rows and the live tail.
+                        agent._persist_user_message_idx = len(messages)
 
         # Notify external memory provider before compression discards context.
         # The provider's on_pre_compress() may return a string of insights it
@@ -3200,7 +3281,17 @@ def compress_context(
                     # for search/recovery (Teknium review — keep one durable id
                     # WITHOUT destroying history, unlike a hard replace_messages).
                     # See #38763.
-                    agent._session_db.archive_and_compact(agent.session_id, compressed)
+                    from agent.context_compressor import (
+                        PROACTIVE_PRUNE_REARM_MODEL_CONFIG_KEY,
+                    )
+
+                    agent._session_db.archive_and_compact(
+                        agent.session_id,
+                        compressed,
+                        model_config_patch={
+                            PROACTIVE_PRUNE_REARM_MODEL_CONFIG_KEY: None,
+                        },
+                    )
                     split_status = "in_place_committed"
                     # Reset the flush identity set so the next turn's appends are
                     # diffed against the COMPACTED transcript: the compacted dicts
@@ -3301,13 +3392,58 @@ def compress_context(
                         migrate_goal_to_session(old_session_id, agent.session_id, reason="compression")
                     except Exception as _goal_err:
                         logger.debug("Could not migrate goal on compression: %s", _goal_err)
-                    # Auto-number the title for the continuation session
+                    # Same boundary hazard for /heartbeat state — carry it too.
+                    try:
+                        from hermes_cli.heartbeat import migrate_heartbeat_to_session
+                        migrate_heartbeat_to_session(old_session_id, agent.session_id)
+                    except Exception as _hb_err:
+                        logger.debug("Could not migrate heartbeat on compression: %s", _hb_err)
+                    # Carry the title across the compression boundary unchanged.
+                    #
+                    # This used to renumber ("Fix X" → "Fix X #2") on every
+                    # rotation, which is why a long conversation ended up as
+                    # "Smallville Map Architecture Plan #10" — ten forks of ONE
+                    # session, each looking like a separate piece of work in the
+                    # sidebar. Compression is an internal implementation detail;
+                    # the user's conversation did not change topic, so its name
+                    # must not change either. Uniqueness still holds because
+                    # _set_session_title transfers the title off a hidden
+                    # compression ancestor rather than raising on the conflict.
                     if old_title:
+                        # Read provenance BEFORE the write: transferring the
+                        # title off a hidden compression ancestor clears the
+                        # ancestor's row, so reading afterwards always returns
+                        # None and the child would be stamped "user" — freezing
+                        # an auto-title that should still be upgradeable.
+                        _src = None
                         try:
-                            new_title = agent._session_db.get_next_title_in_lineage(old_title)
-                            agent._session_db.set_session_title(agent.session_id, new_title)
+                            _src = agent._session_db.get_session_title_source(
+                                old_session_id
+                            )
+                        except Exception as _src_err:
+                            logger.debug(
+                                "Could not read title provenance: %s", _src_err
+                            )
+                        try:
+                            agent._session_db.set_session_title(
+                                agent.session_id, old_title
+                            )
                         except (ValueError, Exception) as e:
                             logger.debug("Could not propagate title on compression: %s", e)
+                        else:
+                            # set_session_title() records "user"; restore the
+                            # original authority so an inherited auto-title
+                            # stays upgradeable and a manual one stays pinned.
+                            if _src is not None:
+                                try:
+                                    agent._session_db.set_session_title_source(
+                                        agent.session_id, _src
+                                    )
+                                except Exception as _src_err:
+                                    logger.debug(
+                                        "Could not propagate title provenance: %s",
+                                        _src_err,
+                                    )
 
                 # In-place mode still updates/replaces the current row here.
                 # Rotation already published prompt + compacted handoff atomically.
@@ -3337,6 +3473,24 @@ def compress_context(
                     messages[:] = copy.deepcopy(messages_before_compression)
                     compressed = messages
                     _compression_made_progress = False
+                    # Restore ONLY the prune runway, not the full attempt
+                    # snapshot: _restore_compressor_attempt_state is reserved
+                    # for pre-commit cancels (fence deny / explicit cancel),
+                    # while this branch is post-attempt — the other snapshot
+                    # fields (telemetry, aborted flags) must keep the failed
+                    # attempt's values. The runway is a property of transcript
+                    # state, and the transcript was just rolled back to its
+                    # pre-compression copy, so the runway rolls back with it.
+                    # (compress() zeroed it in-memory on summary success; the
+                    # durable copy was never cleared — that clear only rides
+                    # the atomic archive_and_compact / child-row publication
+                    # that just failed.)
+                    if "_proactive_prune_rearm_tokens" in _compressor_attempt_snapshot:
+                        agent.context_compressor._proactive_prune_rearm_tokens = (
+                            _compressor_attempt_snapshot[
+                                "_proactive_prune_rearm_tokens"
+                            ]
+                        )
                 split_status = (
                     "aborted"
                     if locals().get("old_session_id") is None and not in_place

@@ -8,8 +8,8 @@ The output keeps buffering and the user can reopen the tab from the status stack
 
 It routes through the process registry's ``on_close`` sink, which the desktop
 gateway wires to emit a ``terminal.close`` event the renderer handles. Like
-``read_terminal`` it is gated on ``HERMES_DESKTOP`` so it never appears outside
-the GUI.
+``read_terminal`` it lives in the ``desktop_ui`` toolset, which the GUI gateway
+enables only for desktop-sourced sessions, so it never appears outside the GUI.
 """
 
 import orjson
@@ -27,11 +27,6 @@ def close_terminal_tool(process_id: str) -> str:
         return tool_error("process_id is required (the background process whose tab to close).")
 
     return orjson.dumps(process_registry.request_close_terminal(pid)).decode('utf-8')
-
-
-def check_close_terminal_requirements() -> bool:
-    """Desktop GUI only — HERMES_DESKTOP is set on the gateway the app spawns."""
-    return env_var_enabled("HERMES_DESKTOP")
 
 
 CLOSE_TERMINAL_SCHEMA = {
@@ -62,9 +57,8 @@ CLOSE_TERMINAL_SCHEMA = {
 
 registry.register(
     name="close_terminal",
-    toolset="terminal",
+    toolset="desktop_ui",
     schema=CLOSE_TERMINAL_SCHEMA,
     handler=lambda args, **kw: close_terminal_tool(process_id=args.get("process_id", "")),
-    check_fn=check_close_terminal_requirements,
     emoji="🖥️",
 )

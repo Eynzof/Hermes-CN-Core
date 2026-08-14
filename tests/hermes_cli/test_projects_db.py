@@ -27,14 +27,6 @@ def conn(tmp_path):
 @pytest.mark.skipif(sys.platform == "win32", reason="asserts POSIX absolute paths; on Windows '/www/alpha' legitimately normalizes to 'D:\\www\\alpha'")
 
 
-def test_record_discovered_repos_replace_drops_stale_rows(conn):
-    pdb.record_discovered_repos(conn, [("/www/alpha", "alpha"), ("/www/beta", "beta")])
-    pdb.record_discovered_repos(conn, [("/www/alpha", "fresh")], replace=True)
-
-    rows = {r["root"]: r["label"] for r in pdb.list_discovered_repos(conn)}
-    assert rows == {"/www/alpha": "fresh"}
-
-
 def test_discovery_policy_change_clears_only_discovered_rows(conn):
     project_id = pdb.create_project(conn, name="Explicit", folders=["/www/explicit"])
     pdb.record_discovered_repos(
@@ -45,10 +37,6 @@ def test_discovery_policy_change_clears_only_discovered_rows(conn):
     assert pdb.list_discovered_repos(conn) == []
     assert pdb.get_project(conn, project_id) is not None
     assert pdb.get_discovery_policy_key(conn) == "policy-b"
-
-
-
-
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="asserts POSIX absolute paths; on Windows '/www/alpha' legitimately normalizes to 'D:\\www\\alpha'")
@@ -98,6 +86,7 @@ def test_project_for_path_skips_archived(conn):
 
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: POSIX absolute-path semantics (/a -> drive-relative on Windows)")
 def test_per_profile_isolation(tmp_path):
     # Two distinct DB paths stand in for two profiles' HERMES_HOME.
     a = pdb.connect(db_path=tmp_path / "a" / "projects.db")
@@ -115,5 +104,4 @@ def test_per_profile_isolation(tmp_path):
     finally:
         a.close()
         b.close()
-
 

@@ -71,5 +71,3 @@ class TestStepCallbackNormalization:
         assert all(isinstance(n, str) for n in data["tool_names"])
         # tools should be the enriched dicts
         assert data["tools"] == prev_tools
-
-

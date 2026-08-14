@@ -15,6 +15,7 @@ import hmac
 import json
 import os
 import socket
+import sys
 import threading
 import urllib.error
 import urllib.request
@@ -1570,6 +1571,7 @@ class TestV1SpecRegressionFixes:
         assert "one" in adapter._agents
         assert "two" not in adapter._agents
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: fake hermes CLI is a POSIX shebang script on PATH")
     def test_forward_to_profile_first_contact_creates_then_resumes_fake_hermes(self, monkeypatch, tmp_path):
         from plugins.platforms.a2a.adapter import A2AAdapter
         from gateway.config import PlatformConfig

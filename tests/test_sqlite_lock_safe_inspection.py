@@ -15,8 +15,8 @@ rewriting it, producing "database disk image is malformed".
 These tests pin the behavioural contract: an external process must stay locked
 out across Hermes' inspection calls.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import sqlite3
 import subprocess

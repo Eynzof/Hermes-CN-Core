@@ -2,6 +2,7 @@
 
 import json
 import os
+import sys
 from pathlib import Path
 from unittest.mock import patch, MagicMock, mock_open
 
@@ -88,6 +89,7 @@ class TestFindAgentBrowser:
         with patch("shutil.which", return_value=None), \
              patch("os.path.isdir", return_value=False), \
              patch.object(Path, "exists", mock_path_exists), \
+             patch("hermes_cli.dep_ensure.ensure_dependency", return_value=False), \
              patch(
                  "tools.browser_tool._discover_homebrew_node_dirs",
                  return_value=[],
@@ -185,6 +187,7 @@ class TestRunBrowserCommandPathConstruction:
         ]
 
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: Termux/Homebrew POSIX path fallback + clear=True env patching (Path.home needs USERPROFILE)")
     def test_subprocess_path_includes_termux_fallback_dirs(self, tmp_path):
         """Termux fallback dirs should survive browser PATH rebuilding."""
         captured_env = {}

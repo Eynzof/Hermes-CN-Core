@@ -573,6 +573,7 @@ class TestWhisperHallucinationFilter:
 # ============================================================================
 
 class TestPlayAudioFile:
+    @pytest.mark.linux_only
     def test_play_wav_via_sounddevice(self, monkeypatch, sample_wav):
         np = pytest.importorskip("numpy")
         # Pin to a non-macOS platform: on macOS WAV output deliberately skips
@@ -604,9 +605,13 @@ class TestPlayAudioFile:
 # ============================================================================
 
 class TestMacOSAudioOutputPolicy:
+    """macOS-gated: the policy exists because PortAudio/CoreAudio init raises
+    a TCC media-library prompt, which no faked platform on Linux reproduces —
+    and `afplay` only resolves on a real macOS host."""
+
+    @pytest.mark.macos_only
     def test_play_audio_file_skips_sounddevice_on_macos(self, monkeypatch, sample_wav):
         """On macOS, WAV playback must not import sounddevice; it routes to afplay."""
-        monkeypatch.setattr("tools.voice_mode.platform.system", lambda: "Darwin")
 
         def _forbidden_import():
             raise AssertionError("sounddevice must not be imported for output on macOS")
@@ -639,10 +644,10 @@ class TestMacOSAudioOutputPolicy:
         assert popen_cmds, "expected a system player to be invoked"
         assert popen_cmds[0][0] == "afplay"
 
+    @pytest.mark.macos_only
     def test_play_beep_routes_through_afplay_on_macos(self, monkeypatch):
         """On macOS, beeps synthesize with numpy but play via the tempfile/afplay path."""
         pytest.importorskip("numpy")
-        monkeypatch.setattr("tools.voice_mode.platform.system", lambda: "Darwin")
 
         def _forbidden_import():
             raise AssertionError("sounddevice must not be imported for beeps on macOS")
@@ -1381,10 +1386,9 @@ class TestDefaultInputSamplerate:
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32",
+    sys.platform != "linux",
     reason="WSL2 PowerShell fallback branch is gated on platform.system() == 'Linux' "
-    "(WSL detection reads /proc/version) — unreachable on a Windows host "
-    "(Linux-only environment tests)",
+    "(WSL detection reads /proc/version)",
 )
 class TestWSL2PowerShellFallback:
     """Regression tests for WSL2 PowerShell TTS fallback (issue #17608).

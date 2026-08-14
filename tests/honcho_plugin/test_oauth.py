@@ -1,6 +1,6 @@
 """Tests for plugins/memory/honcho/oauth.py — OAuth grant storage + refresh."""
 
-import orjson
+import json
 from pathlib import Path
 
 import pytest
@@ -24,7 +24,7 @@ def _host_block(refresh="hch-rt-old", expires_at=10_000):
 
 
 def _write(path: Path, raw: dict) -> None:
-    path.write_text(orjson.dumps(raw).decode('utf-8'), encoding="utf-8")
+    path.write_text(json.dumps(raw), encoding="utf-8")
 
 
 class TestTokenDetection:
@@ -69,7 +69,7 @@ class TestEnsureFreshToken:
         path = tmp_path / "honcho.json"
         _write(path, {"hosts": {"hermes": _host_block(expires_at=10_000)}})
         monkeypatch.setattr(
-            oauth, "_http_post_form",
+            oauth, "_http_post_form_status",
             lambda *a, **k: pytest.fail("refresh must not be called when fresh"),
         )
         token, refreshed = oauth.ensure_fresh_token(path, "hermes", now=0)
@@ -84,7 +84,7 @@ class TestEnsureFreshToken:
             assert data["grant_type"] == "refresh_token"
             assert data["refresh_token"] == "hch-rt-old"
             assert data["client_id"] == "hermes-desktop"
-            return {
+            return 200, {
                 "access_token": "hch-at-new",
                 "refresh_token": "hch-rt-new",
                 "expires_in": 3600,
@@ -92,12 +92,12 @@ class TestEnsureFreshToken:
                 "token_type": "Bearer",
             }
 
-        monkeypatch.setattr(oauth, "_http_post_form", fake_post)
+        monkeypatch.setattr(oauth, "_http_post_form_status", fake_post)
         token, refreshed = oauth.ensure_fresh_token(path, "hermes", now=1000)
         assert token == "hch-at-new" and refreshed is True
 
         # Rotated refresh token + new access token + absolute expiry persisted.
-        saved = orjson.loads(path.read_text())["hosts"]["hermes"]
+        saved = json.loads(path.read_text())["hosts"]["hermes"]
         assert saved["apiKey"] == "hch-at-new"
         assert saved["oauth"]["refreshToken"] == "hch-rt-new"
         assert saved["oauth"]["expiresAt"] == 1000 + 3600
@@ -105,15 +105,21 @@ class TestEnsureFreshToken:
     def test_refresh_failure_fails_open(self, tmp_path, monkeypatch):
         path = tmp_path / "honcho.json"
         _write(path, {"hosts": {"hermes": _host_block(expires_at=100)}})
+        monkeypatch.setattr(oauth, "_REFRESH_RETRY_DELAY_SECONDS", 0)
+
+        calls = []
 
         def boom(*a, **k):
+            calls.append(a)
             raise RuntimeError("network down")
 
-        monkeypatch.setattr(oauth, "_http_post_form", boom)
+        monkeypatch.setattr(oauth, "_http_post_form_status", boom)
         token, refreshed = oauth.ensure_fresh_token(path, "hermes", now=1000)
-        # Stale token returned, no crash, file untouched.
+        # Stale token returned, no crash, file untouched. Transient failures
+        # retry exactly once, then fail open.
         assert token == "hch-at-old" and refreshed is False
-        assert orjson.loads(path.read_text())["hosts"]["hermes"]["apiKey"] == "hch-at-old"
+        assert len(calls) == 2
+        assert json.loads(path.read_text())["hosts"]["hermes"]["apiKey"] == "hch-at-old"
 
     def test_double_check_uses_disk_when_already_rotated(self, tmp_path, monkeypatch):
         # Simulates a concurrent thread that rotated the token on disk after our
@@ -123,7 +129,7 @@ class TestEnsureFreshToken:
         stale_raw = {"hosts": {"hermes": _host_block(refresh="hch-rt-old", expires_at=100)}}
         stale_raw["hosts"]["hermes"]["apiKey"] = "hch-at-stale"
         monkeypatch.setattr(
-            oauth, "_http_post_form",
+            oauth, "_http_post_form_status",
             lambda *a, **k: pytest.fail("must not refresh; disk token is fresh"),
         )
         token, refreshed = oauth.ensure_fresh_token(path, "hermes", stale_raw, now=1000)
@@ -158,7 +164,7 @@ class TestInstallGrant:
         )
         assert cred.expires_at == 1000 + 3600
 
-        saved = orjson.loads(path.read_text())
+        saved = json.loads(path.read_text())
         assert saved["apiKey"] == "hch-v3-root"  # untouched
         assert saved["hosts"]["obsidian"] == {"workspace": "obsidian"}  # untouched
         h = saved["hosts"]["hermes"]

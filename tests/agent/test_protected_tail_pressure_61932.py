@@ -10,8 +10,8 @@ token progress, and the turn dies with::
 
 This is the core compressor contract — not Desktop/Windows-specific.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 from unittest.mock import patch
 

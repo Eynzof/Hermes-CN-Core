@@ -61,6 +61,7 @@ export type GatewayEventPayload = {
   running?: boolean
   cwd?: string
   branch?: string
+  terminal_backend?: string
   credential_warning?: string
   install_warning?: string
   personality?: string
@@ -81,7 +82,8 @@ export type GatewayEventPayload = {
   // secret.request (skill credential capture)
   env_var?: string
   prompt?: string
-  // terminal.read.request (GUI agent reading the in-app terminal pane)
+  // terminal.read.request / preview.read.request (GUI agent reading the
+  // in-app terminal pane or the browser/preview pane)
   start?: number
   count?: number
   // status.update (kind=process → background process completion/watch-match)
@@ -383,6 +385,10 @@ function timelineDisplayContent(message: SessionMessage, content: string): strin
 
   if (message.display_kind === 'auto_continue') {
     return 'resumed interrupted turn'
+  }
+
+  if (message.display_kind === 'personality_switch') {
+    return 'personality changed'
   }
 
   if (message.display_kind === 'async_delegation_complete') {
@@ -859,7 +865,12 @@ function applyStoredToolResultToParts(parts: ChatMessagePart[], toolMessage: Ses
 function storedToolMessagePart(toolMessage: SessionMessage, fallbackIndex: number): ChatMessagePart {
   const name = toolMessage.tool_name || toolMessage.name || 'tool'
   const context = textFromUnknown(toolMessage.context || toolMessage.text || toolMessage.content || '')
-  const args = context ? { context } : {}
+  // Prefer the full arguments when the gateway projection carries them:
+  // `context` is an 80-char display preview, and the expanded tool row
+  // rebuilds the real command from args. Keep `context` alongside as the
+  // title-side placeholder.
+  const storedArgs = parseMaybeJsonObject(toolMessage.args)
+  const args = { ...storedArgs, ...(context ? { context } : {}) }
 
   return {
     type: 'tool-call',
@@ -986,7 +997,8 @@ export function toChatMessages(messages: SessionMessage[]): ChatMessage[] {
     const displayRole =
       message.display_kind === 'model_switch' ||
       message.display_kind === 'async_delegation_complete' ||
-      message.display_kind === 'auto_continue'
+      message.display_kind === 'auto_continue' ||
+      message.display_kind === 'personality_switch'
         ? 'system'
         : message.role
 

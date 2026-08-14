@@ -15,12 +15,11 @@ import stat
 import subprocess
 import sys
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
+from unittest.mock import patch
 
 INSTALL_SH = Path(__file__).resolve().parent.parent / "scripts" / "install.sh"
-
 pytestmark = pytest.mark.skipif(
     sys.platform == "win32",
     reason="install.sh is the POSIX installer; the CN fork installs via install.ps1 on Windows (FORK_NOTES P-019)",

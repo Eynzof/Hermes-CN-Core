@@ -1,5 +1,4 @@
 """Tests for gateway session management."""
-import orjson
 import json
 import pytest
 from dataclasses import replace
@@ -544,7 +543,7 @@ class TestSessionStoreSwitchSession:
         db.close()
 
 
-class TestSessionStoreLookupBySessionId:
+class TestSessionStoreLookup:
     @pytest.fixture()
     def store(self, tmp_path):
         config = GatewayConfig()
@@ -566,6 +565,19 @@ class TestSessionStoreLookupBySessionId:
         assert store.lookup_by_session_id(entry.session_id) is entry
         assert store.lookup_by_session_id("missing") is None
         assert store.lookup_by_session_id("") is None
+
+    def test_returns_exact_existing_route(self, store):
+        source = SessionSource(
+            platform=Platform.TELEGRAM,
+            chat_id="42",
+            chat_type="dm",
+            user_id="42",
+        )
+        entry = store.get_or_create_session(source)
+
+        assert store.lookup_by_session_key(entry.session_key) is entry
+        assert store.lookup_by_session_key("agent:main:telegram:dm:missing") is None
+        assert store.lookup_by_session_key("") is None
 
 
 class TestSlackWorkspaceSessionIsolation:
@@ -638,7 +650,7 @@ class TestWhatsAppSessionKeyConsistency:
         mapping_dir = tmp_home / "whatsapp" / "session"
         mapping_dir.mkdir(parents=True, exist_ok=True)
         (mapping_dir / "lid-mapping-999999999999999.json").write_text(
-            orjson.dumps("15551234567@s.whatsapp.net").decode('utf-8'),
+            json.dumps("15551234567@s.whatsapp.net"),
             encoding="utf-8",
         )
         monkeypatch.setenv("HERMES_HOME", str(tmp_home))
@@ -1010,7 +1022,7 @@ class TestWhatsAppIdentifierPublicHelpers:
         mapping_dir = tmp_path / "whatsapp" / "session"
         mapping_dir.mkdir(parents=True, exist_ok=True)
         (mapping_dir / "lid-mapping-999999999999999.json").write_text(
-            orjson.dumps("15551234567@s.whatsapp.net").decode('utf-8'),
+            json.dumps("15551234567@s.whatsapp.net"),
             encoding="utf-8",
         )
         monkeypatch.setenv("HERMES_HOME", str(tmp_path))
@@ -1109,12 +1121,12 @@ class TestEnsureLoadedSkipsInvalidEntries:
     """Regression: one bad sessions.json entry must not block valid entries from loading."""
 
     def test_invalid_entry_skipped_valid_entry_loads(self, tmp_path):
-        import orjson
+        import json
         from gateway.session import SessionStore
         from gateway.config import GatewayConfig
 
         sessions_file = tmp_path / "sessions.json"
-        sessions_file.write_text(orjson.dumps({
+        sessions_file.write_text(json.dumps({
             "bad:key": {
                 "session_key": "bad:key",
                 "session_id": "../../evil",
@@ -1127,7 +1139,7 @@ class TestEnsureLoadedSkipsInvalidEntries:
                 "created_at": "2026-01-01T00:00:00",
                 "updated_at": "2026-01-01T00:00:00",
             },
-        }).decode('utf-8'), encoding="utf-8")
+        }), encoding="utf-8")
 
         store = SessionStore(sessions_dir=tmp_path, config=GatewayConfig())
         store._ensure_loaded()

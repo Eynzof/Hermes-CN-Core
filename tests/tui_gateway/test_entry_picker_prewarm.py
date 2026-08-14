@@ -21,8 +21,8 @@ Harness: same style as tests/test_tui_entry_mcp_owner.py — import
 ``tui_gateway.entry`` and monkeypatch its module attributes, running the real
 ``main()`` with stubbed I/O collaborators (no subprocess, no real gateway).
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import io
 

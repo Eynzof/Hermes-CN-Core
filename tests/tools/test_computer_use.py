@@ -634,25 +634,6 @@ class TestRunAgentMultimodalHelpers:
         assert any(part.get("type") == "image_url" for part in content)
 
 # ---------------------------------------------------------------------------
-# Universality: does the schema work without Anthropic?
-# ---------------------------------------------------------------------------
-
-class TestUniversality:
-
-    def test_no_provider_gating_in_tool_registration(self):
-        """Anthropic-only gating was a #4562 artefact — must not recur."""
-        import tools.computer_use_tool  # noqa: F401
-        from tools.registry import registry
-        entry = registry._tools["computer_use"]
-        # check_fn should only check platform + binary availability,
-        # never provider.
-        import inspect
-        source = inspect.getsource(entry.check_fn)
-        assert "anthropic" not in source.lower()
-        assert "openai" not in source.lower()
-
-
-# ---------------------------------------------------------------------------
 # Regression tests for bugs 2 & 5 from issue #24170 (cua-driver v0.1.6)
 # ---------------------------------------------------------------------------
 

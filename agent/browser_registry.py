@@ -41,15 +41,19 @@ import threading
 from typing import Dict, List, Optional
 
 from agent.browser_provider import BrowserProvider
+from hermes_constants import hermes_home_key
 
 logger = logging.getLogger(__name__)
 
 
 _providers: Dict[str, BrowserProvider] = {}
+_scoped_providers: Dict[str, Dict[str, BrowserProvider]] = {}
+_generation = 0
+_scoped_generations: Dict[str, int] = {}
 _lock = threading.Lock()
 
 
-def register_provider(provider: BrowserProvider) -> None:
+def register_provider(provider: BrowserProvider, *, scope: Optional[str] = None) -> None:
     """Register a cloud browser provider.
 
     Re-registration (same ``name``) overwrites the previous entry and logs
@@ -61,12 +65,24 @@ def register_provider(provider: BrowserProvider) -> None:
             f"register_provider() expects a BrowserProvider instance, "
             f"got {type(provider).__name__}"
         )
-    name = provider.name
-    if not isinstance(name, str) or not name.strip():
+    raw_name = provider.name
+    if not isinstance(raw_name, str) or not raw_name.strip():
         raise ValueError("Browser provider .name must be a non-empty string")
+    name = raw_name.strip()
+    global _generation
     with _lock:
-        existing = _providers.get(name)
-        _providers[name] = provider
+        if scope is not None:
+            # Scoped registrations are keyed by the same normalized
+            # ``hermes_home_key()`` that lookups use — on Windows a raw
+            # path scope differs by drive-letter case from the lookup key.
+            scope = hermes_home_key(scope)
+        target = _providers if scope is None else _scoped_providers.setdefault(scope, {})
+        existing = target.get(name)
+        target[name] = provider
+        if scope is None:
+            _generation += 1
+        else:
+            _scoped_generations[scope] = _scoped_generations.get(scope, 0) + 1
     if existing is not None:
         logger.debug(
             "Browser provider '%s' re-registered (was %r)",
@@ -79,19 +95,70 @@ def register_provider(provider: BrowserProvider) -> None:
         )
 
 
-def list_providers() -> List[BrowserProvider]:
+def list_providers(*, scope: Optional[str] = None) -> List[BrowserProvider]:
     """Return all registered providers, sorted by name."""
+    scope_key = hermes_home_key(scope) if scope is not None else hermes_home_key()
     with _lock:
-        items = list(_providers.values())
+        merged = dict(_providers)
+        merged.update(_scoped_providers.get(scope_key, {}))
+        items = list(merged.values())
     return sorted(items, key=lambda p: p.name)
 
 
-def get_provider(name: str) -> Optional[BrowserProvider]:
+def get_provider(name: str, *, scope: Optional[str] = None) -> Optional[BrowserProvider]:
     """Return the provider registered under *name*, or None."""
     if not isinstance(name, str):
         return None
     with _lock:
-        return _providers.get(name.strip())
+        key = name.strip()
+        scope_key = hermes_home_key(scope) if scope is not None else hermes_home_key()
+        return _scoped_providers.get(scope_key, {}).get(key) or _providers.get(key)
+
+
+def snapshot_registration(
+    name: str, *, scope: Optional[str] = None
+) -> Optional[BrowserProvider]:
+    with _lock:
+        if scope is not None:
+            scope = hermes_home_key(scope)
+        target = _providers if scope is None else _scoped_providers.get(scope, {})
+        return target.get(name.strip())
+
+
+def registry_generation(*, scope: Optional[str] = None) -> tuple[int, int]:
+    """Return a cache fingerprint for the global base and one profile."""
+    active_scope = hermes_home_key(scope) if scope is not None else hermes_home_key()
+    with _lock:
+        return _generation, _scoped_generations.get(active_scope, 0)
+
+
+def restore_registration(
+    name: str,
+    current: BrowserProvider,
+    previous: Optional[BrowserProvider],
+    *,
+    scope: Optional[str] = None,
+) -> bool:
+    """Restore a plugin registration only when *current* is still installed."""
+    key = name.strip()
+    global _generation
+    with _lock:
+        if scope is not None:
+            scope = hermes_home_key(scope)
+        target = _providers if scope is None else _scoped_providers.setdefault(scope, {})
+        if target.get(key) is not current:
+            return False
+        if previous is None:
+            target.pop(key, None)
+        else:
+            target[key] = previous
+        if scope is None:
+            _generation += 1
+        else:
+            _scoped_generations[scope] = _scoped_generations.get(scope, 0) + 1
+            if not target:
+                _scoped_providers.pop(scope, None)
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -145,6 +212,7 @@ def _resolve(configured: Optional[str]) -> Optional[BrowserProvider]:
     """
     with _lock:
         snapshot = dict(_providers)
+        snapshot.update(_scoped_providers.get(hermes_home_key(), {}))
 
     def _is_available_safe(p: BrowserProvider) -> bool:
         """Wrap ``is_available()`` so a buggy provider doesn't kill resolution."""
@@ -188,5 +256,9 @@ def _resolve(configured: Optional[str]) -> Optional[BrowserProvider]:
 
 def _reset_for_tests() -> None:
     """Clear the registry. **Test-only.**"""
+    global _generation
     with _lock:
         _providers.clear()
+        _scoped_providers.clear()
+        _scoped_generations.clear()
+        _generation += 1

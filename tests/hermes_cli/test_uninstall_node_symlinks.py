@@ -7,6 +7,7 @@ only when they still resolve into the Hermes-managed node dir.
 """
 
 import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -64,6 +65,7 @@ def test_leaves_unrelated_symlinks_untouched(fake_home):
 
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: FHS /usr/local/bin node symlink cleanup (POSIX installer); os.readlink returns \\\\?\\-prefixed targets")
 def test_removes_fhs_symlinks_in_usr_local_bin(fake_home, tmp_path, monkeypatch):
     """Root FHS installs place node symlinks in /usr/local/bin.
 

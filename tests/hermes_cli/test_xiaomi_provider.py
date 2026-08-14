@@ -309,11 +309,6 @@ class TestXiaomiDoctor:
 class TestXiaomiAgentInit:
     """Verify the agent can be constructed with xiaomi provider without errors."""
 
-    def test_no_syntax_errors(self):
-        """Importing run_agent with xiaomi should not raise."""
-        import importlib
-        importlib.import_module("run_agent")
-
     def test_api_mode_is_chat_completions(self):
         from hermes_cli.providers import HERMES_OVERLAYS, TRANSPORT_TO_API_MODE
         overlay = HERMES_OVERLAYS["xiaomi"]

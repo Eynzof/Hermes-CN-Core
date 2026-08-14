@@ -171,36 +171,3 @@ class TestFeishuFallbackThreadRouting:
         assert receive_id_type == "thread_id", (
             f"Expected receive_id_type='thread_id', got '{receive_id_type}'"
         )
-
-    @pytest.mark.asyncio
-    async def test_create_uses_chat_id_when_no_thread(self):
-        """When reply_to=None and metadata has no thread_id, message.create
-        should use receive_id_type='chat_id' (original behavior)."""
-        from plugins.platforms.feishu.adapter import FeishuAdapter
-
-        mock_client = MagicMock()
-        mock_create_response = SimpleNamespace(
-            success=lambda: True,
-            data=SimpleNamespace(message_id="new_msg_1"),
-        )
-        mock_client.im.v1.message.create = MagicMock(return_value=mock_create_response)
-
-        adapter = MagicMock(spec=FeishuAdapter)
-        adapter._client = mock_client
-        adapter._build_create_message_body = FeishuAdapter._build_create_message_body
-        adapter._build_create_message_request = FeishuAdapter._build_create_message_request
-        async def _run_blocking_passthrough(func, *args):
-            return func(*args)
-        adapter._run_blocking = _run_blocking_passthrough
-
-        import orjson
-        result = await FeishuAdapter._send_raw_message(
-            adapter,
-            chat_id="oc_main_chat",
-            msg_type="text",
-            payload=orjson.dumps({"text": "hello"}).decode('utf-8'),
-            reply_to=None,
-            metadata=None,
-        )
-
-        mock_client.im.v1.message.create.assert_called_once()

@@ -36,6 +36,11 @@ import { isWakeUserDisabled } from './wakeState.js'
 
 const NO_PROVIDER_RE = /\bNo (?:LLM|inference) provider configured\b/i
 
+type VoiceSubmitMode = 'direct' | 'draft'
+
+const normalizeVoiceSubmitMode = (value: unknown): VoiceSubmitMode =>
+  typeof value === 'string' && value.trim().toLowerCase() === 'draft' ? 'draft' : 'direct'
+
 const statusFromBusy = () => (getUiState().busy ? 'running…' : 'ready')
 
 // The last gateway skin, kept so the theme can be re-derived when the OSC-11
@@ -944,16 +949,62 @@ export function createGatewayEventHandler(ctx: GatewayEventHandlerContext): (ev:
           return
         }
 
-        // CLI parity: _pending_input.put(transcript) unconditionally feeds
-        // the transcript to the agent as its next turn — draft handling
-        // doesn't apply because voice-mode users are speaking, not typing.
-        //
-        // We can't branch on composer input from inside a setInput updater
-        // (React strict mode double-invokes it, duplicating the submit).
-        // Just clear + defer submit so the cleared input is committed before
-        // submit reads it.
-        setInput('')
-        setTimeout(() => submitRef.current(text), 0)
+        void getFullConfigOnce().then(cfg => {
+          const submitMode = normalizeVoiceSubmitMode(cfg?.config?.voice?.submit_mode)
+
+          if (submitMode === 'draft') {
+            setInput(current => (current.trim() ? `${current.trimEnd()} ${text}` : text))
+
+            return
+          }
+
+          // Default to CLI parity. Clear + defer submit so the cleared input
+          // is committed before submit reads it; invalid config also falls
+          // back to this established direct-submit behavior.
+          setInput('')
+          setTimeout(() => submitRef.current(text), 0)
+        })
+
+        return
+      }
+
+      case 'wake.detected': {
+        // "Hey Hermes": optionally open a fresh session (start_new_session),
+        // then arm voice capture so the user can speak hands-free. Mirrors CLI.
+        void (async () => {
+          // Multi-profile routing: the TUI is a single-profile process, so a
+          // phrase enrolled by ANOTHER profile can't be routed here — surface
+          // the switch command instead of starting voice on the wrong profile.
+          const wakeProfile = ev.payload?.profile?.trim()
+          const ownProfile = getUiState().info?.profile_name || 'default'
+
+          if (wakeProfile && wakeProfile !== ownProfile) {
+            sys(`wake phrase for profile '${wakeProfile}' — run: hermes -p ${wakeProfile} --tui`)
+            await rpc('wake.resume', {}).catch(() => undefined)
+
+            return
+          }
+
+          if (ev.payload?.start_new_session !== false) {
+            await newSession()
+          }
+
+          const sid = getUiState().sid
+
+          if (!sid) {
+            await rpc('wake.resume', {}).catch(() => undefined)
+
+            return
+          }
+
+          setVoiceEnabled(true)
+          await rpc('voice.toggle', { action: 'on' })
+          await rpc('voice.record', { action: 'start', session_id: sid })
+        })().catch((e: unknown) => {
+          sys(`wake: ${rpcErrorMessage(e)}`)
+
+          void rpc('wake.resume', {}).catch(() => undefined)
+        })
 
         return
       }

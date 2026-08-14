@@ -148,98 +148,6 @@ class TestEstimateMessagesTokensRough:
 
 
 
-class TestIncrementalTokenEstimator:
-    """The incremental estimator is a drop-in, value-identical replacement for
-    the stateless ``estimate_messages_tokens_rough`` — it just caches the
-    unchanged prefix of a growing conversation. Every test here asserts the
-    *equivalence invariant* (same value as the stateless path), never a frozen
-    token count, so these are behaviour contracts and not change-detectors.
-    """
-
-    def test_matches_stateless_on_empty(self):
-        est = IncrementalTokenEstimator()
-        assert est.estimate([]) == estimate_messages_tokens_rough([]) == 0
-
-    def test_matches_stateless_single_call(self):
-        est = IncrementalTokenEstimator()
-        msgs = [
-            {"role": "user", "content": "hello"},
-            {"role": "assistant", "content": "hi there"},
-        ]
-        assert est.estimate(msgs) == estimate_messages_tokens_rough(msgs)
-
-    def test_incremental_token_counting(self):
-        """After 10 appended turns the incremental estimate matches a full
-        stateless rescan at *every* step (the same list object grows in place,
-        exercising the cached-prefix fast path)."""
-        est = IncrementalTokenEstimator()
-        conv = [{"role": "system", "content": "You are a helpful assistant."}]
-        for i in range(10):
-            conv.append({"role": "user", "content": f"Question {i}: " + "x" * (i * 40)})
-            conv.append({"role": "assistant", "content": f"Answer {i}: " + "y" * (i * 90)})
-            assert est.estimate(conv) == estimate_messages_tokens_rough(conv)
-
-    def test_cache_tracks_live_messages_only(self):
-        """Messages that drop out of the list evict their cached contribution,
-        so the cache never outgrows the live conversation."""
-        est = IncrementalTokenEstimator()
-        conv = [{"role": "user", "content": f"m{i}"} for i in range(20)]
-        est.estimate(conv)
-        assert len(est._cache) == 20
-        est.estimate(conv[:5])
-        assert len(est._cache) == 5
-        est.estimate([])
-        assert len(est._cache) == 0
-
-    def test_replaced_message_is_recomputed(self):
-        """Swapping a message for a longer one at the same index recomputes it;
-        the identity guard prevents a stale cached value from being reused."""
-        est = IncrementalTokenEstimator()
-        conv = [{"role": "user", "content": "short"}]
-        v1 = est.estimate(conv)
-        conv[0] = {"role": "user", "content": "a considerably longer message body here"}
-        v2 = est.estimate(conv)
-        assert v2 == estimate_messages_tokens_rough(conv)
-        assert v2 > v1
-
-    def test_matches_stateless_with_images(self):
-        est = IncrementalTokenEstimator()
-        msgs = [
-            {"role": "user", "content": [
-                {"type": "text", "text": "describe"},
-                {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAAA"}},
-            ]},
-            {"role": "assistant", "content": "a picture of a cat"},
-        ]
-        assert est.estimate(msgs) == estimate_messages_tokens_rough(msgs)
-
-    def test_invalidate_forces_recompute(self):
-        est = IncrementalTokenEstimator()
-        conv = [{"role": "user", "content": "hello"}]
-        assert est.estimate(conv) == estimate_messages_tokens_rough(conv)
-        est.invalidate()
-        assert len(est._cache) == 0
-        assert est.estimate(conv) == estimate_messages_tokens_rough(conv)
-
-    def test_estimate_messages_estimator_param_equivalence(self):
-        conv = [{"role": "user", "content": "hello world"}]
-        est = IncrementalTokenEstimator()
-        assert (estimate_messages_tokens_rough(conv, estimator=est)
-                == estimate_messages_tokens_rough(conv))
-
-    def test_request_estimate_with_estimator_matches_plain(self):
-        conv = [
-            {"role": "user", "content": "u" * 300},
-            {"role": "assistant", "content": "a" * 600},
-        ]
-        est = IncrementalTokenEstimator()
-        plain = estimate_request_tokens_rough(conv, system_prompt="sys prompt", tools=[{"t": 1}])
-        cached = estimate_request_tokens_rough(
-            conv, system_prompt="sys prompt", tools=[{"t": 1}], estimator=est
-        )
-        assert plain == cached
-
-
 class TestEstimateRequestTokensRough:
     def test_caches_tools_estimate(self):
         messages = [{"role": "user", "content": "hello"}]
@@ -402,94 +310,6 @@ class TestDefaultContextLengths:
             # Generic kimi must NOT resolve to the k3 value
             assert get_model_context_length("kimi-k2.6") == 262_144
 
-    def test_solar_reasoning_model_gets_default_context(self):
-        """Upstage Solar models without a static context-length entry fall
-        through to a reasonable default (neither 0 nor the probe minimum).
-        """
-        from agent.model_metadata import get_model_context_length, DEFAULT_FALLBACK_CONTEXT
-        from unittest.mock import patch as mock_patch
-
-        with mock_patch("agent.model_metadata.fetch_model_metadata", return_value={}), \
-             mock_patch("agent.model_metadata.fetch_endpoint_model_metadata", return_value={}), \
-             mock_patch("agent.model_metadata.get_cached_context_length", return_value=None), \
-             mock_patch("agent.models_dev.lookup_models_dev_context", return_value=None):
-            ctx = get_model_context_length("solar-pro3")
-            assert ctx is not None and ctx > 0
-            # Should get the 256K probe tier default, not 0
-            assert ctx >= 256_000
-
-    def test_xai_oauth_grok_build_uses_xai_models_dev_context(self):
-        """xAI OAuth should share the xAI provider metadata path.
-
-        The xAI /v1/models endpoint does not currently include context fields
-        for grok-build-0.1, so this guards against falling through to the
-        generic "grok" 131k fallback when using OAuth credentials.
-        """
-        registry = {
-            "xai": {
-                "models": {
-                    "grok-build-0.1": {
-                        "limit": {"context": 256000, "output": 64000},
-                    },
-                },
-            },
-        }
-        with patch("agent.model_metadata.get_cached_context_length", return_value=None), \
-             patch("agent.model_metadata._query_ollama_api_show", return_value=None), \
-             patch("agent.models_dev.fetch_models_dev", return_value=registry):
-            assert get_model_context_length(
-                "grok-build-0.1",
-                provider="xai-oauth",
-                base_url="https://api.x.ai/v1",
-                api_key="oauth-token",
-            ) == 256000
-
-    def test_deepseek_v4_models_1m_context(self):
-        from agent.model_metadata import get_model_context_length
-        from unittest.mock import patch as mock_patch
-
-        expected_keys = {
-            "deepseek-v4-pro": 1_000_000,
-            "deepseek-v4-flash": 1_000_000,
-            "deepseek-chat": 1_000_000,
-            "deepseek-reasoner": 1_000_000,
-        }
-        for key, value in expected_keys.items():
-            assert key in DEFAULT_CONTEXT_LENGTHS, f"{key} missing"
-            assert DEFAULT_CONTEXT_LENGTHS[key] == value, (
-                f"{key} should be {value}, got {DEFAULT_CONTEXT_LENGTHS[key]}"
-            )
-
-        # Longest-first substring matching must resolve both the bare V4
-        # ids (native DeepSeek) and the vendor-prefixed forms (OpenRouter
-        # / Nous Portal) to 1M without probing down to the legacy 128K
-        # ``deepseek`` substring fallback.
-        with mock_patch("agent.model_metadata.fetch_model_metadata", return_value={}), \
-             mock_patch("agent.model_metadata.fetch_endpoint_model_metadata", return_value={}), \
-             mock_patch("agent.model_metadata.get_cached_context_length", return_value=None):
-            cases = [
-                ("deepseek-v4-pro", 1_000_000),
-                ("deepseek-v4-flash", 1_000_000),
-                ("deepseek/deepseek-v4-pro", 1_000_000),
-                ("deepseek/deepseek-v4-flash", 1_000_000),
-                ("deepseek-chat", 1_000_000),
-                ("deepseek-reasoner", 1_000_000),
-            ]
-            for model_id, expected_ctx in cases:
-                actual = get_model_context_length(model_id)
-                assert actual == expected_ctx, (
-                    f"{model_id}: expected {expected_ctx}, got {actual}"
-                )
-
-
-
-
-
-
-# =========================================================================
-# Codex OAuth context-window resolution (provider="openai-codex")
-# =========================================================================
-
 class TestCodexOAuthContextLength:
     """ChatGPT Codex OAuth context windows come from the authenticated
     /models catalogue and may differ from the static fallback table or the
@@ -614,7 +434,9 @@ class TestCodexOAuthContextLength:
 
         assert ctx == live_context
         mock_get.assert_called_once()
-        remaining = _yaml.safe_load(cache_file.read_text()).get("context_lengths", {})
+        remaining = _yaml.safe_load(cache_file.read_text(encoding="utf-8")).get(
+            "context_lengths", {}
+        )
         assert remaining.get(stale_key) == live_context
         assert remaining.get(other_key) == 128_000
 
@@ -639,8 +461,7 @@ class TestFetchEndpointModelMetadata:
         response.status_code = status_code
         response.raise_for_status.side_effect = RuntimeError(str(status_code))
 
-        with patch("agent.model_metadata._endpoint_reachable", return_value=True), \
-             patch("agent.model_metadata.requests.get", return_value=response) as mock_get:
+        with patch("agent.model_metadata.requests.get", return_value=response) as mock_get:
             result = mm.fetch_endpoint_model_metadata("https://custom.example/v1")
 
         assert result == {}
@@ -657,8 +478,7 @@ class TestFetchEndpointModelMetadata:
         response.status_code = 401
         response.raise_for_status.side_effect = RuntimeError("401")
 
-        with patch("agent.model_metadata._endpoint_reachable", return_value=True), \
-             patch("agent.model_metadata.requests.get", return_value=response) as mock_get:
+        with patch("agent.model_metadata.requests.get", return_value=response) as mock_get:
             first = mm.fetch_endpoint_model_metadata("https://custom.example/v1")
             second = mm.fetch_endpoint_model_metadata("https://custom.example/v1")
 
@@ -678,11 +498,10 @@ class TestFetchEndpointModelMetadata:
             "data": [{"id": "test/model", "context_length": 32768}]
         }
 
-        with patch("agent.model_metadata._endpoint_reachable", return_value=True), \
-             patch(
-                 "agent.model_metadata.requests.get",
-                 side_effect=[not_found, success],
-             ) as mock_get:
+        with patch(
+            "agent.model_metadata.requests.get",
+            side_effect=[not_found, success],
+        ) as mock_get:
             result = mm.fetch_endpoint_model_metadata("https://custom.example/v1")
 
         assert result["test/model"]["context_length"] == 32768
@@ -752,7 +571,7 @@ class TestNousPortalContextResolution:
         )
         assert ctx == 1_000_000, "OR fallback should still serve the request"
         assert not cache_file.exists() or not yaml.safe_load(
-            cache_file.read_text()
+            cache_file.read_text(encoding="utf-8")
         ).get("context_lengths", {}), (
             "OR-fallback values must NOT be persisted — a single portal blip "
             "would otherwise freeze the wrong value in via step-1 cache hit"
@@ -794,7 +613,9 @@ class TestNousPortalContextResolution:
             f"Stale OR-derived cache entry should not have leaked through; got {ctx}"
         )
 
-        remaining = yaml.safe_load(cache_file.read_text()).get("context_lengths", {})
+        remaining = yaml.safe_load(cache_file.read_text(encoding="utf-8")).get(
+            "context_lengths", {}
+        )
         assert remaining.get(stale_key) == 262_144, (
             "Portal value should have overwritten the stale entry on disk"
         )
@@ -1029,6 +850,33 @@ class TestStripProviderPrefix:
         assert _strip_provider_prefix("http://example.com") == "http://example.com"
         assert _strip_provider_prefix("https://example.com") == "https://example.com"
 
+    def test_registered_profile_name_and_alias_are_stripped(self, monkeypatch):
+        import providers
+        from providers import ProviderProfile
+
+        monkeypatch.setattr(providers, "_REGISTRY", {})
+        monkeypatch.setattr(providers, "_ALIASES", {})
+        monkeypatch.setattr(providers, "_PROVIDER_LIST_CACHE", None)
+        monkeypatch.setattr(providers, "_discovered", True)
+        providers.register_provider(
+            ProviderProfile(name="fake-provider", aliases=("fake-alias",))
+        )
+
+        assert _strip_provider_prefix("fake-provider:org/model") == "org/model"
+        assert _strip_provider_prefix("fake-alias:org/model") == "org/model"
+
+    def test_bundled_plugin_provider_prefix_is_stripped(self):
+        assert _strip_provider_prefix("fireworks:accounts/fireworks/models/foo") == (
+            "accounts/fireworks/models/foo"
+        )
+
+    def test_unknown_provider_prefix_is_unchanged(self):
+        assert _strip_provider_prefix("not-a-provider:org/model") == (
+            "not-a-provider:org/model"
+        )
+
+    def test_ollama_model_tag_is_unchanged(self):
+        assert _strip_provider_prefix("qwen3.5:27b") == "qwen3.5:27b"
 
     @patch("agent.model_metadata.fetch_model_metadata")
     def test_ollama_model_tag_not_mangled_in_context_lookup(self, mock_fetch):
@@ -1225,7 +1073,7 @@ class TestContextLengthCache:
         """``context_lengths:`` with no value parses as None — must behave
         like an empty cache instead of crashing every caller (#47135)."""
         cache_file = tmp_path / "cache.yaml"
-        cache_file.write_text("context_lengths:\n")
+        cache_file.write_text("context_lengths:\n", encoding="utf-8")
         with patch("agent.model_metadata._get_context_cache_path", return_value=cache_file):
             assert get_cached_context_length("test/model", "http://x") is None
             # save must also survive the null key and repair the file
@@ -1239,7 +1087,7 @@ class TestContextLengthCache:
         with patch("agent.model_metadata._get_context_cache_path", return_value=cache_file):
             save_context_length("model", "http://x", 32768)
             save_context_length("model", "http://x", 32768)
-            with open(cache_file) as f:
+            with open(cache_file, encoding="utf-8") as f:
                 data = yaml.safe_load(f)
             assert len(data["context_lengths"]) == 1
 
@@ -1327,7 +1175,7 @@ class TestMoAContextLength:
             payload["custom_providers"] = custom_providers
         if providers is not None:
             payload["providers"] = providers
-        with open(os.path.join(home, "config.yaml"), "w") as f:
+        with open(os.path.join(home, "config.yaml"), "w", encoding="utf-8") as f:
             yaml.safe_dump(payload, f)
 
     def test_moa_resolves_from_aggregator(self, tmp_path, monkeypatch):

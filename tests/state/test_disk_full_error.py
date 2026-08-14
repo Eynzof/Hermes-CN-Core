@@ -1,6 +1,6 @@
 """is_disk_full_error classifies ENOSPC / SQLITE_FULL failures."""
-from __future__ import annotations
 
+from __future__ import annotations
 
 import errno
 import sqlite3

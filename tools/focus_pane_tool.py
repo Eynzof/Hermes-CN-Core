@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Reveal/focus a pane in the Hermes desktop GUI.
 
-Gated on ``HERMES_DESKTOP`` (like the other GUI affordances). Emits
-``pane.reveal`` through the shared ``desktop_ui`` bridge; the renderer runs each
-pane's own reveal path and only acts on the active window (a background turn
-never moves the user's focus). To show a URL/file, use ``open_preview``.
+Lives in the ``desktop_ui`` toolset (like the other GUI affordances), which the
+GUI gateway enables only for desktop-sourced sessions. Emits ``pane.reveal``
+through the shared ``desktop_ui`` bridge; the renderer runs each pane's own
+reveal path and only acts on the active window (a background turn never moves
+the user's focus). To show a URL/file, use ``open_preview``.
 """
 
 import json
@@ -62,9 +63,8 @@ FOCUS_PANE_SCHEMA = {
 
 registry.register(
     name="focus_pane",
-    toolset="terminal",
+    toolset="desktop_ui",
     schema=FOCUS_PANE_SCHEMA,
     handler=lambda args, **kw: focus_pane_tool(pane=args.get("pane", "")),
-    check_fn=check_focus_pane_requirements,
     emoji="🪟",
 )

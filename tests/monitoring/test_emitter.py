@@ -1,6 +1,6 @@
 """Tests for the monitoring emitter: hot-path invariant + subscriber fan-out."""
-from __future__ import annotations
 
+from __future__ import annotations
 
 import time
 import threading

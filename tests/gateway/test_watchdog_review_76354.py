@@ -1,8 +1,8 @@
 """Regressions for #76354 review S1/S2/S4 — activity write budget, watchdog
 pre-delivery revalidation, and import/export activity asymmetry.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import sqlite3
 import threading

@@ -235,6 +235,7 @@ def _save_mem0_json(hermes_home: str, data: dict) -> None:
     )
 
 
+
 def _setup_platform(hermes_home: str, config: dict, flags: dict[str, str]) -> None:
     """Platform mode setup — uses the framework's schema-based flow.
 

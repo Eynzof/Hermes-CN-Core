@@ -1,0 +1,51 @@
+{
+  "samples": [
+    {
+      "section": "count_lines_small",
+      "duration_ms": 0.755,
+      "iteration": 0
+    },
+    {
+      "section": "count_lines_medium",
+      "duration_ms": 0.973,
+      "iteration": 0
+    },
+    {
+      "section": "count_lines_large",
+      "duration_ms": 4.304,
+      "iteration": 0
+    }
+  ],
+  "summary": {
+    "count_lines_large": {
+      "count": 1,
+      "total_ms": 4.304,
+      "mean_ms": 4.304,
+      "min_ms": 4.304,
+      "max_ms": 4.304,
+      "durations": [
+        4.304
+      ]
+    },
+    "count_lines_medium": {
+      "count": 1,
+      "total_ms": 0.973,
+      "mean_ms": 0.973,
+      "min_ms": 0.973,
+      "max_ms": 0.973,
+      "durations": [
+        0.973
+      ]
+    },
+    "count_lines_small": {
+      "count": 1,
+      "total_ms": 0.755,
+      "mean_ms": 0.755,
+      "min_ms": 0.755,
+      "max_ms": 0.755,
+      "durations": [
+        0.755
+      ]
+    }
+  }
+}

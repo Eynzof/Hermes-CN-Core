@@ -1,6 +1,6 @@
 """Tests for the core Relay-managed physical LLM attempt adapter."""
-from __future__ import annotations
 
+from __future__ import annotations
 
 import asyncio
 import contextvars

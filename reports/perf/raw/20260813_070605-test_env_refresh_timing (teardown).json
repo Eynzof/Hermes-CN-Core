@@ -1,0 +1,21 @@
+{
+  "samples": [
+    {
+      "section": "env_registry_refresh",
+      "duration_ms": 0.916,
+      "iteration": 0
+    }
+  ],
+  "summary": {
+    "env_registry_refresh": {
+      "count": 1,
+      "total_ms": 0.916,
+      "mean_ms": 0.916,
+      "min_ms": 0.916,
+      "max_ms": 0.916,
+      "durations": [
+        0.916
+      ]
+    }
+  }
+}

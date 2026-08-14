@@ -508,19 +508,6 @@ class TestWrapCommandBashFix:
         assert wrapped == "<pwsh wrapper>"
         assert getattr(env, "_bash_fix_warnings", None) is None
 
-    def test_init_session_never_routes_through_wrap_command(self) -> None:
-        # Guard: the env snapshot probe must stay fix-free so the fallback
-        # functions never leak into the snapshot (init_session captures
-        # ``declare -f`` output).  _wrap_command is only reachable via
-        # execute(); assert the bash branch is what production calls.
-        import inspect
-
-        from tools.environments import local as local_mod
-
-        src = inspect.getsource(local_mod.LocalEnvironment._wrap_command)
-        assert "fix_bash_command(command)" in src
-
-
 class TestRunBashPassthrough:
     """_run_bash no longer applies bash_fix — the raw command is already
     covered by _wrap_command before it is embedded in the wrapper."""

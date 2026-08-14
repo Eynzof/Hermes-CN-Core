@@ -1,0 +1,36 @@
+{
+  "samples": [
+    {
+      "section": "registry_refresh_cold",
+      "duration_ms": 0.384,
+      "iteration": 0
+    },
+    {
+      "section": "registry_refresh_warm",
+      "duration_ms": 2.535,
+      "iteration": 0
+    }
+  ],
+  "summary": {
+    "registry_refresh_cold": {
+      "count": 1,
+      "total_ms": 0.384,
+      "mean_ms": 0.384,
+      "min_ms": 0.384,
+      "max_ms": 0.384,
+      "durations": [
+        0.384
+      ]
+    },
+    "registry_refresh_warm": {
+      "count": 1,
+      "total_ms": 2.535,
+      "mean_ms": 2.535,
+      "min_ms": 2.535,
+      "max_ms": 2.535,
+      "durations": [
+        2.535
+      ]
+    }
+  }
+}

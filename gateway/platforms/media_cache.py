@@ -33,8 +33,8 @@ NOTE: ``gateway/platforms/weixin.py`` also has a private mime map
 (``_mime_from_filename``) but is intentionally NOT migrated here — another
 in-flight branch edits that file.  Follow-up: fold it in once that lands.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import mimetypes
 import uuid

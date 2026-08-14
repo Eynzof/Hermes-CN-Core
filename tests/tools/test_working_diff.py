@@ -10,6 +10,7 @@ import subprocess
 
 import pytest
 
+import tools.working_diff as working_diff
 from tools.working_diff import collect_working_diff
 
 pytestmark = pytest.mark.skipif(

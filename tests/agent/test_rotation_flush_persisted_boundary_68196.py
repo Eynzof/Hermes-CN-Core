@@ -19,8 +19,8 @@ Without the fix the parent grows to 5 rows (the two originals + a duplicate of
 both + the new turn). With it the parent holds exactly the two originals plus
 the single new turn.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import os
 import time

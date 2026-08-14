@@ -15,6 +15,7 @@ in-memory object store + ref table. No live server, no network.
 
 import hashlib
 import json
+import sys
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -370,7 +371,9 @@ class TestObjectBuilding:
         tree = json.loads(data)
         entries = {e["name"]: e for e in tree["entries"]}
         assert entries["SKILL.md"]["mode"] == ssc.MODE_FILE
-        assert entries["run.sh"]["mode"] == ssc.MODE_EXEC
+        if sys.platform != "win32":
+            # POSIX exec bits only; Windows chmod(0o755) cannot set +x.
+            assert entries["run.sh"]["mode"] == ssc.MODE_EXEC
         # entries sorted by name (byte order)
         names = [e["name"] for e in tree["entries"]]
         assert names == sorted(names)

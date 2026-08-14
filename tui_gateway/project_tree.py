@@ -229,7 +229,7 @@ def _place(cwd: str, branch: str, resolve: Optional[Resolve], persisted_root: st
     if info and info.get("repo_root") and info.get("worktree_root"):
         repo_root = info["repo_root"]
         worktree_root = info["worktree_root"]
-        is_main = worktree_root == repo_root or bool(info.get("is_main"))
+        is_main = _path_key(worktree_root) == _path_key(repo_root) or bool(info.get("is_main"))
 
         if is_main:
             # Unrecorded branch folds into the one trunk lane, so a repo never
@@ -504,6 +504,15 @@ def _project_for_session(session: dict, index: _FolderIndex, resolve: Optional[R
 # ---------------------------------------------------------------------------
 
 
+def _session_cost(session: dict) -> float:
+    """A session's spend, billed if the provider reported it, else estimated."""
+    for key in ("actual_cost_usd", "estimated_cost_usd"):
+        value = session.get(key)
+        if value:
+            return float(value)
+    return 0.0
+
+
 def _project_node(
     *,
     pid: str,
@@ -513,6 +522,7 @@ def _project_node(
     session_count: int,
     last_active: float,
     preview_sessions: list[dict],
+    sessions: Optional[list[dict]] = None,
     color: Any = None,
     icon: Any = None,
     is_auto: bool = False,
@@ -528,6 +538,11 @@ def _project_node(
         "isNoProject": is_no_project,
         "sessionCount": session_count,
         "lastActive": last_active,
+        # Totals over the same sessions `sessionCount` counts, so a project's
+        # header can add up what its rows show. The window the caller loaded is
+        # the whole truth either way — count and totals can't disagree.
+        "totalTokens": sum((s.get("input_tokens") or 0) + (s.get("output_tokens") or 0) for s in sessions or []),
+        "totalCostUsd": sum(_session_cost(s) for s in sessions or []),
         "repos": repos,
         "previewSessions": preview_sessions,
     }
@@ -611,6 +626,7 @@ def build_tree(
                 session_count=len(psessions),
                 last_active=_last_active(psessions),
                 preview_sessions=_previews(psessions),
+                sessions=psessions,
             )
         )
 
@@ -692,6 +708,7 @@ def build_tree(
                 session_count=repo_node["sessionCount"],
                 last_active=_last_active(auto_sessions),
                 preview_sessions=_previews(auto_sessions),
+                sessions=auto_sessions,
                 is_auto=True,
             )
         )
@@ -760,6 +777,7 @@ def build_tree(
                 session_count=len(homeless),
                 last_active=_last_active(homeless),
                 preview_sessions=_previews(homeless),
+                sessions=homeless,
                 is_no_project=True,
             ),
         )

@@ -3,6 +3,7 @@
 import base64
 import json
 import logging
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -19,21 +20,24 @@ from hermes_cli.auth import AuthError, get_provider_auth_state, resolve_nous_run
 
 
 class TestResolveVerifyFallback:
-    """Verify _resolve_verify falls back to True when CA bundle path doesn't exist."""
-
-    @pytest.fixture(autouse=True)
-    def _pin_platform_to_linux(self, monkeypatch):
-        """Pin sys.platform so the macOS certifi fallback doesn't alter the
-        generic "default trust" return value asserted by these tests."""
-        monkeypatch.setattr("sys.platform", "linux")
+    """Verify _resolve_verify falls back to default trust when the CA bundle
+    path doesn't exist."""
 
     def test_missing_ca_bundle_in_auth_state_falls_back(self):
+        import ssl
         from hermes_cli.auth import _resolve_verify
 
         result = _resolve_verify(auth_state={
             "tls": {"insecure": False, "ca_bundle": "/nonexistent/ca-bundle.pem"},
         })
-        assert result is True
+        # The subject is "falls back to _default_verify()", not the literal
+        # True. Deriving the expectation from the real host keeps the
+        # regression covered on the macOS lane too, where _default_verify
+        # pins certifi's bundle and returns a context instead.
+        if sys.platform == "darwin":
+            assert isinstance(result, ssl.SSLContext)
+        else:
+            assert result is True
 
     def test_valid_ca_bundle_in_auth_state_is_returned(self, tmp_path, monkeypatch):
         import ssl
@@ -899,9 +903,11 @@ def test_shared_store_write_and_read_roundtrip(shared_store_env):
     path = _nous_shared_store_path()
     assert path.is_file()
 
-    # Permissions should be 0600 where the platform supports it.
-    mode = path.stat().st_mode & 0o777
-    assert mode == 0o600 or mode == 0o644  # 0o644 on platforms without chmod
+    if sys.platform != "win32":
+        # Permissions should be 0600 where the platform supports it.
+        # (Windows ignores the os.open mode — stat reports 0o666 there.)
+        mode = path.stat().st_mode & 0o777
+        assert mode == 0o600 or mode == 0o644  # 0o644 on platforms without chmod
 
     loaded = _read_shared_nous_state()
     assert loaded is not None

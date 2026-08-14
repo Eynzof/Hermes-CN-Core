@@ -1,6 +1,6 @@
 """Behavior tests for the status-bar battery helper (agent/battery.py)."""
-from __future__ import annotations
 
+from __future__ import annotations
 
 import sys
 import types

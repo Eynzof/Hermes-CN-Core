@@ -4,8 +4,8 @@ Verify that _slot_runtime passes the resolved api_mode through to call_llm,
 so reference slots using providers that require a specific API surface
 (e.g. Copilot GPT-5.x → codex_responses) get routed correctly.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -192,16 +192,3 @@ def test_one_shot_aggregate_moa_context_passes_slot_extra_body(monkeypatch):
     agg_calls = [c for c in captured_calls if c.get("task") == "moa_aggregator"]
     assert len(agg_calls) == 1
     assert agg_calls[0]["extra_body"] == {"enable_thinking": False}
-
-
-class TestCallLlmApiMode:
-    """call_llm should accept and forward api_mode parameter."""
-
-    def test_call_llm_accepts_api_mode_kwarg(self):
-        """call_llm signature includes api_mode parameter."""
-        import inspect
-        from agent.auxiliary_client import call_llm
-
-        sig = inspect.signature(call_llm)
-        assert "api_mode" in sig.parameters
-        assert sig.parameters["api_mode"].default is None

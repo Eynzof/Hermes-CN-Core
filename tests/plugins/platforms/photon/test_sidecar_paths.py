@@ -9,6 +9,7 @@ from __future__ import annotations
 
 
 import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -88,6 +89,7 @@ def test_mirror_refresh_updates_changed_files_and_keeps_node_modules(
     assert (mirror / "node_modules" / "installed.txt").exists()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: os.geteuid / chmod 0o555 permission semantics are POSIX-only")
 def test_dir_writable_probe(tmp_path) -> None:
     assert sidecar_paths.dir_writable(tmp_path) is True
     ro = tmp_path / "ro"

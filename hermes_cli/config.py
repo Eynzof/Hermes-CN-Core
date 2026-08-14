@@ -490,7 +490,7 @@ def detect_install_method(project_root: Optional[Path] = None) -> str:
     # 1. Code-scoped stamp — authoritative, immune to shared $HERMES_HOME.
     try:
         method = (root / ".install_method").read_text(encoding="utf-8", errors="replace").strip().lower()
-        if method:
+        if method in supported_methods:
             return method
     except OSError:
         pass
@@ -2105,6 +2105,20 @@ def validate_config_structure(
 
     issues: List[ConfigIssue] = []
 
+    # ── voice.submit_mode: direct | draft ────────────────────────────────
+    voice_cfg = config.get("voice")
+    if isinstance(voice_cfg, dict) and "submit_mode" in voice_cfg:
+        submit_mode = voice_cfg.get("submit_mode")
+        normalized_submit_mode = (
+            submit_mode.strip().lower() if isinstance(submit_mode, str) else None
+        )
+        if normalized_submit_mode not in {"direct", "draft"}:
+            issues.append(ConfigIssue(
+                "error",
+                f"voice.submit_mode must be 'direct' or 'draft', got {submit_mode!r}",
+                "Set voice.submit_mode to direct (submit immediately) or draft (edit before sending)",
+            ))
+
     # ── custom_providers must be a list, not a dict ──────────────────────
     cp = config.get("custom_providers")
     if cp is not None:
@@ -3365,6 +3379,42 @@ def cfg_get(cfg: Optional[Dict[str, Any]], *keys: str, default: Any = None) -> A
     return node
 
 
+# Back-compat alias — canonical set lives in hermes_cli.personality.
+from hermes_cli.personality import NEUTRAL_PERSONALITY_NAMES as _NEUTRAL_PERSONALITY_NAMES  # noqa: F401
+
+
+def _prompt_text(value: Any) -> str:
+    """Normalize config prompt values from YAML before handing them to AIAgent.
+
+    Delegates to :mod:`hermes_cli.personality` — the single owner of
+    personality/overlay semantics. Kept as a re-export for existing importers.
+    """
+    from hermes_cli.personality import prompt_text
+
+    return prompt_text(value)
+
+
+def render_personality_prompt(value: Any) -> str:
+    """Render a string or structured personality definition to a prompt."""
+    from hermes_cli.personality import render_personality_prompt as _render
+
+    return _render(value)
+
+
+def resolve_ephemeral_system_prompt_from_config(cfg: Optional[Dict[str, Any]]) -> str:
+    """Resolve the session overlay from config.yaml.
+
+    ``display.personality`` is the selected named personality and wins when set.
+    Otherwise fall back to the user-owned ``agent.system_prompt``. Callers should
+    still prefer ``HERMES_EPHEMERAL_SYSTEM_PROMPT`` when that env var is set.
+
+    Delegates to :mod:`hermes_cli.personality` (single owner).
+    """
+    from hermes_cli.personality import resolve_ephemeral_system_prompt
+
+    return resolve_ephemeral_system_prompt(cfg)
+
+
 def read_raw_config() -> Dict[str, Any]:
     """Read ~/.hermes/config.yaml as-is, without merging defaults or migrating.
 
@@ -3405,6 +3455,100 @@ def read_raw_config() -> Dict[str, Any]:
             _fast_config_copy(data),
         )
         return data
+
+
+def read_user_config_raw(config_path: Optional[Path] = None) -> Dict[str, Any]:
+    """Read a user ``config.yaml`` EXACTLY as written on disk.
+
+    No DEFAULT_CONFIG merge, no managed-scope overlay, no ``${ENV_VAR}``
+    expansion, no migration, no root-model normalization, no caching.
+
+    ONLY legal for write-back round-trips and raw-file diagnostics —
+    behavioral reads must use load_config()/load_config_readonly().
+
+    Legal call sites, exhaustively:
+
+      * WRITE-BACK ROUND-TRIPS (read → mutate one key → save): merging
+        defaults or the managed overlay here would persist hundreds of
+        default keys (or administrator-pinned values) into the user's file
+        on the next save. Raw is *correct*, not an optimization.
+      * RAW-FILE DIAGNOSTICS (doctor, deprecation sweeps): these inspect
+        what the user actually wrote — stale root keys, drift against .env —
+        and merged defaults would produce false positives.
+      * PRESENCE-SENSITIVE ENV BRIDGES (gateway/send bridges that only
+        export a key when the user explicitly set it): a defaults merge
+        would make every key "present" and bridge the entire DEFAULT_CONFIG
+        into the environment. These sites must still apply
+        ``managed_scope.apply_managed_overlay`` + ``_expand_env_vars``
+        inline, which they do.
+
+    Semantics (deliberately mirrors the bare ``open()+yaml.safe_load()``
+    pattern this replaces, so migrated sites keep their exact failure
+    behavior):
+
+      * missing file → ``{}``
+      * unparseable YAML / other I/O errors → raises (callers that want
+        fail-open already wrap in try/except; callers with last-known-good
+        or warn semantics rely on the exception)
+      * non-dict YAML root → ``{}``
+
+    ``config_path`` defaults to :func:`get_config_path` (profile-aware).
+    Pass an explicit path when the caller resolves its own home (gateway
+    ``_hermes_home``, tui profile override, multi-profile probes).
+    """
+    if config_path is None:
+        config_path = get_config_path()
+    try:
+        with open(config_path, encoding="utf-8") as f:
+            data = fast_safe_load(f) or {}
+    except FileNotFoundError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def read_raw_config_readonly() -> Dict[str, Any]:
+    """Fast-path variant of ``read_raw_config()`` for callers that ONLY READ.
+
+    Returns the cached raw-config dict directly, skipping the per-call
+    ``copy.deepcopy`` that ``read_raw_config()`` performs (needed there
+    because some callers mutate the result before ``save_config``).
+
+    **Mutating the returned dict corrupts the in-process cache for every
+    subsequent caller.** Only use on read-only paths — e.g. per-turn policy
+    checks like the shared-metrics gate, which runs 2-3x per agent turn and
+    was paying a full config deepcopy each time.
+
+    Same (mtime_ns, size) freshness key as ``read_raw_config()`` — an edited
+    config.yaml is picked up on the next call.
+    """
+    with _CONFIG_LOCK:
+        try:
+            config_path = get_config_path()
+            st = config_path.stat()
+            cache_key = (st.st_mtime_ns, st.st_size)
+        except (FileNotFoundError, OSError):
+            return {}
+
+        path_key = str(config_path)
+        cached = _RAW_CONFIG_CACHE.get(path_key)
+        if cached is not None and cached[:2] == cache_key:
+            return cached[2]
+
+        try:
+            with open(config_path, encoding="utf-8") as f:
+                data = fast_safe_load(f) or {}
+        except Exception as e:
+            _warn_config_parse_failure(config_path, e)
+            return {}
+
+        if not isinstance(data, dict):
+            data = {}
+        # Store and return THE SAME object (identity invariant): the first
+        # caller must see the exact dict later cache hits return, so a test
+        # asserting ``ro1 is ro2`` holds from the very first call.
+        cached_copy = copy.deepcopy(data)
+        _RAW_CONFIG_CACHE[path_key] = (cache_key[0], cache_key[1], cached_copy)
+        return cached_copy
 
 
 def read_user_config_raw(config_path: Optional[Path] = None) -> Dict[str, Any]:
@@ -3623,6 +3767,7 @@ TERMINAL_CONFIG_ENV_MAP = {
     "backend": "TERMINAL_ENV",
     "shell": "HERMES_SHELL_TYPE",
     "modal_mode": "TERMINAL_MODAL_MODE",
+    "degraded_mode": "TERMINAL_DEGRADED_MODE",
     "cwd": "TERMINAL_CWD",
     "timeout": "TERMINAL_TIMEOUT",
     "lifetime_seconds": "TERMINAL_LIFETIME_SECONDS",
@@ -3668,6 +3813,18 @@ def terminal_config_env_var_for_key(key: str) -> Optional[str]:
     return TERMINAL_CONFIG_ENV_MAP.get(key[len(prefix) :])
 
 
+def _is_ssh_remote_tilde_cwd(backend: str, cwd: str) -> bool:
+    """Return whether the remote SSH shell must expand *cwd* itself.
+
+    Expanding ``~`` on the Hermes host rewrites it to the host or container
+    home before SSH sees it. Preserve ``~`` and ``~/...`` so they follow the
+    user selected by the SSH connection.
+    """
+    if (backend or "").strip().lower() != "ssh":
+        return False
+    return cwd == "~" or cwd.startswith("~/")
+
+
 def apply_terminal_config_to_env(
     *,
     env: Optional[Dict[str, str]] = None,
@@ -3704,6 +3861,15 @@ def apply_terminal_config_to_env(
     # override existing env values; keys inherited from DEFAULT_CONFIG are
     # backfill-only.
     explicit_keys = terminal_cfg.keys() if config is not None else raw_terminal_cfg.keys()
+    backend_is_explicit = config is not None or "backend" in raw_terminal_cfg
+    if backend_is_explicit:
+        terminal_backend = str(
+            terminal_cfg.get("backend") or target.get("TERMINAL_ENV") or ""
+        )
+    else:
+        terminal_backend = str(
+            target.get("TERMINAL_ENV") or terminal_cfg.get("backend") or ""
+        )
 
     for cfg_key, env_var in TERMINAL_CONFIG_ENV_MAP.items():
         if cfg_key not in terminal_cfg:
@@ -3713,7 +3879,9 @@ def apply_terminal_config_to_env(
             raw_cwd = str(value or "").strip()
             if raw_cwd in {".", "auto", "cwd"}:
                 continue
-            if isinstance(value, str):
+            if isinstance(value, str) and not _is_ssh_remote_tilde_cwd(
+                terminal_backend, raw_cwd
+            ):
                 value = os.path.expanduser(value)
         if (should_override and cfg_key in explicit_keys) or env_var not in target:
             target[env_var] = _terminal_env_value(value)
@@ -4891,8 +5059,14 @@ def show_config():
     # Display
     print()
     print(color("◆ Display", Colors.CYAN, Colors.BOLD))
-    display = config.get("display", {})
-    print(f"  Personality:  {display.get('personality') or 'none'}")
+    display = config.get('display', {})
+    try:
+        from hermes_cli.personality import active_personality_name
+
+        _active_personality = active_personality_name(config) or 'none'
+    except Exception:
+        _active_personality = display.get('personality') or 'none'
+    print(f"  Personality:  {_active_personality}")
     print(f"  Reasoning:    {'on' if display.get('show_reasoning', True) else 'off'}")
     print(
         f"  Bell:         {'on' if display.get('bell_on_complete', False) else 'off'}"
@@ -4960,9 +5134,15 @@ def show_config():
     print(f"  Enabled:      {'yes' if enabled else 'no'}")
     if enabled:
         print(f"  Threshold:    {compression.get('threshold', 0.50) * 100:.0f}%")
-        print(
-            f"  Target ratio: {compression.get('target_ratio', 0.20) * 100:.0f}% of threshold preserved"
-        )
+        _tt = compression.get('threshold_tokens')
+        if _tt is not None:
+            try:
+                _tt = int(_tt)
+                if _tt > 0:
+                    print(f"  Token cap:    {_tt:,} tokens (takes lower of ratio vs absolute)")
+            except (TypeError, ValueError):
+                pass
+        print(f"  Target ratio: {compression.get('target_ratio', 0.20) * 100:.0f}% of threshold preserved")
         print(f"  Protect last: {compression.get('protect_last_n', 20)} messages")
         print(
             f"  Protect first: {compression.get('protect_first_n', 3)} non-system head messages"
@@ -5256,6 +5436,11 @@ _SCHEMA_DEFINED_DICT_KEYS = frozenset({
     "email", "sms", "dingtalk",
     # MCP server template / dynamic auth dicts
     "sessions", "checkpoints",
+    # Plugin settings — enable/disable lists plus index_url override
+    # (hermes_cli/plugins_cmd.py, hermes_cli/plugin_index.py). Absent from
+    # DEFAULT_CONFIG (written only when used), so listed here for
+    # `hermes config set plugins.index_url ...` validation.
+    "plugins",
 })
 
 # Top-level keys that can be ANY user-supplied name (platform/provider dict

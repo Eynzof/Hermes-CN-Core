@@ -1,12 +1,13 @@
 """Tests for gateway runtime status tracking."""
 
-import orjson
 import json
 import os
 import sys
 import time
 from pathlib import Path
 from types import SimpleNamespace
+
+import pytest
 
 from gateway import status
 
@@ -17,7 +18,7 @@ class TestGatewayPidState:
 
         status.write_pid_file()
 
-        payload = orjson.loads((tmp_path / "gateway.pid").read_text())
+        payload = json.loads((tmp_path / "gateway.pid").read_text())
         assert payload["pid"] == os.getpid()
         assert payload["kind"] == "hermes-gateway"
         assert isinstance(payload["argv"], list)
@@ -44,7 +45,7 @@ class TestGatewayPidState:
             status.write_pid_file()
 
         # Original record is preserved.
-        payload = orjson.loads((tmp_path / "gateway.pid").read_text())
+        payload = json.loads((tmp_path / "gateway.pid").read_text())
         assert payload["pid"] == os.getpid()
 
 
@@ -100,12 +101,12 @@ class TestGatewayPidState:
     def test_get_running_pid_falls_back_to_live_lock_record(self, tmp_path, monkeypatch):
         monkeypatch.setenv("HERMES_HOME", str(tmp_path))
         pid_path = tmp_path / "gateway.pid"
-        pid_path.write_text(orjson.dumps({
+        pid_path.write_text(json.dumps({
             "pid": 99999,
             "kind": "hermes-gateway",
             "argv": ["python", "-m", "hermes_cli.main", "gateway"],
             "start_time": 123,
-        }).decode('utf-8'))
+        }))
 
         monkeypatch.setattr(status, "_get_process_start_time", lambda pid: 123)
         monkeypatch.setattr(status, "_read_process_cmdline", lambda pid: None)
@@ -177,13 +178,13 @@ class TestGatewayRuntimeStatus:
 
         # Simulate a previous gateway run that left a state file with a stale PID
         state_path = tmp_path / "gateway_state.json"
-        state_path.write_text(orjson.dumps({
+        state_path.write_text(json.dumps({
             "pid": 99999,
             "start_time": 1000.0,
             "kind": "hermes-gateway",
             "platforms": {},
             "updated_at": "2025-01-01T00:00:00Z",
-        }).decode('utf-8'))
+        }))
 
         status.write_runtime_status(gateway_state="running")
 
@@ -311,20 +312,15 @@ class TestGetProcessStartTime:
 
 
 class TestTerminatePid:
+    @pytest.mark.windows_only
     def test_force_uses_taskkill_on_windows(self, monkeypatch):
+        # Faking _IS_WINDOWS on POSIX could not reproduce the real
+        # CREATE_NO_WINDOW creationflags value that windows_hide_flags()
+        # returns only on Windows (it is 0 elsewhere).
         calls = []
-        monkeypatch.setattr(status, "_IS_WINDOWS", True)
 
         def fake_run(cmd, capture_output=False, text=False, timeout=None, creationflags=0, **kwargs):
-            calls.append((
-                cmd,
-                capture_output,
-                text,
-                timeout,
-                creationflags,
-                kwargs.get("encoding"),
-                kwargs.get("errors"),
-            ))
+            calls.append((cmd, capture_output, text, timeout, creationflags))
             return SimpleNamespace(returncode=0, stdout="", stderr="")
 
         monkeypatch.setattr(status.subprocess, "run", fake_run)
@@ -333,19 +329,19 @@ class TestTerminatePid:
 
         # taskkill is spawned with the no-window flag so the windowless
         # pythonw.exe backend doesn't flash a conhost window on force-kill.
-        # windows_hide_flags() is 0 on the POSIX test host (a valid no-op
-        # creationflags value); on real Windows it is CREATE_NO_WINDOW.
-        # errors="replace" keeps localized taskkill output (e.g. GBK on
-        # zh-CN Windows) from killing the stdout reader thread.
         from hermes_cli._subprocess_compat import windows_hide_flags
 
         assert calls == [
-            (["taskkill", "/PID", "123", "/T", "/F"], True, True, 10, windows_hide_flags(), "utf-8", "replace")
+            (["taskkill", "/PID", "123", "/T", "/F"], True, True, 10, windows_hide_flags())
         ]
 
 
 class TestScopedLocks:
+    @pytest.mark.windows_only
     def test_windows_file_lock_uses_high_offset(self, tmp_path, monkeypatch):
+        # Faking _IS_WINDOWS on POSIX could not reproduce the msvcrt
+        # byte-range locking path at all: msvcrt does not exist off Windows,
+        # so the stub below had to invent the module as well as the host.
         lock_path = tmp_path / "gateway.lock"
         handle = open(lock_path, "a+", encoding="utf-8")
         fd = handle.fileno()
@@ -354,7 +350,6 @@ class TestScopedLocks:
         def fake_locking(fd, mode, size):
             calls.append((fd, mode, size, handle.tell()))
 
-        monkeypatch.setattr(status, "_IS_WINDOWS", True)
         monkeypatch.setattr(
             status,
             "msvcrt",
@@ -372,17 +367,17 @@ class TestScopedLocks:
             (fd, 1, 1, status._WINDOWS_LOCK_OFFSET),
             (fd, 2, 1, status._WINDOWS_LOCK_OFFSET),
         ]
-        assert lock_path.read_text(encoding="utf-8", errors="replace") == "\n"
+        assert lock_path.read_text(encoding="utf-8") == "\n"
 
     def test_acquire_scoped_lock_rejects_live_other_process(self, tmp_path, monkeypatch):
         monkeypatch.setenv("HERMES_GATEWAY_LOCK_DIR", str(tmp_path / "locks"))
         lock_path = tmp_path / "locks" / "telegram-bot-token-2bb80d537b1da3e3.lock"
         lock_path.parent.mkdir(parents=True, exist_ok=True)
-        lock_path.write_text(orjson.dumps({
+        lock_path.write_text(json.dumps({
             "pid": 99999,
             "start_time": 123,
             "kind": "hermes-gateway",
-        }).decode('utf-8'))
+        }))
 
         # Post-#21561 the liveness probe routes through
         # ``gateway.status._pid_exists`` (psutil-first, safe on Windows).
@@ -405,12 +400,12 @@ class TestScopedLocks:
         monkeypatch.setenv("HERMES_GATEWAY_LOCK_DIR", str(tmp_path / "locks"))
         lock_path = tmp_path / "locks" / "telegram-bot-token-2bb80d537b1da3e3.lock"
         lock_path.parent.mkdir(parents=True, exist_ok=True)
-        lock_path.write_text(orjson.dumps({
+        lock_path.write_text(json.dumps({
             "pid": 873,
             "start_time": None,
             "kind": "hermes-gateway",
             "argv": ["/Users/user/.hermes/hermes-agent/hermes_cli/main.py", "gateway", "run", "--replace"],
-        }).decode('utf-8'))
+        }))
 
         # Post-#21561 the liveness probe routes through
         # ``gateway.status._pid_exists`` (psutil-first, safe on Windows),
@@ -425,10 +420,97 @@ class TestScopedLocks:
         acquired, existing = status.acquire_scoped_lock("telegram-bot-token", "secret", metadata={"platform": "telegram"})
 
         assert acquired is True
-        payload = orjson.loads(lock_path.read_text())
+        payload = json.loads(lock_path.read_text())
         assert payload["pid"] == os.getpid()
         assert payload["metadata"]["platform"] == "telegram"
 
+    def test_acquire_scoped_lock_self_reacquires_when_disk_start_time_null(
+        self, tmp_path, monkeypatch
+    ):
+        """#81468: same PID with on-disk start_time=null must self-reacquire.
+
+        After Discord 503 reconnect, the scoped lock still names this process
+        but may carry ``start_time: null`` (psutil miss at first write). The
+        freshly built record has a real fingerprint. Requiring equality made
+        the gateway report its own PID as a foreign token squatter.
+        """
+        monkeypatch.setenv("HERMES_GATEWAY_LOCK_DIR", str(tmp_path / "locks"))
+        lock_path = tmp_path / "locks" / "discord-bot-token-2bb80d537b1da3e3.lock"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path.write_text(json.dumps({
+            "pid": os.getpid(),
+            "start_time": None,
+            "kind": "hermes-gateway",
+            "argv": ["hermes_cli/main.py", "--profile", "milena", "gateway", "run", "--replace"],
+            "scope": "discord-bot-token",
+        }))
+
+        # Live process can resolve start_time; disk cannot — the mismatch
+        # that previously failed the self-reacquire short-circuit.
+        monkeypatch.setattr(status, "_get_process_start_time", lambda pid: 987654321)
+        # If we wrongly fall through to staleness, a gateway-looking self PID
+        # would be treated as a live foreign holder (return False).
+        monkeypatch.setattr(status, "_pid_exists", lambda pid: True)
+        monkeypatch.setattr(status, "_looks_like_gateway_process", lambda pid: True)
+
+        acquired, existing = status.acquire_scoped_lock(
+            "discord-bot-token", "secret", metadata={"platform": "discord"}
+        )
+
+        assert acquired is True
+        assert existing["pid"] == os.getpid()
+        payload = json.loads(lock_path.read_text())
+        assert payload["pid"] == os.getpid()
+        assert payload["start_time"] == 987654321
+        assert payload["metadata"]["platform"] == "discord"
+
+    def test_release_scoped_lock_allows_null_disk_start_time(self, tmp_path, monkeypatch):
+        """#81468: release must not no-op when disk start_time is null."""
+        monkeypatch.setenv("HERMES_GATEWAY_LOCK_DIR", str(tmp_path / "locks"))
+        lock_path = tmp_path / "locks" / "discord-bot-token-2bb80d537b1da3e3.lock"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path.write_text(json.dumps({
+            "pid": os.getpid(),
+            "start_time": None,
+            "kind": "hermes-gateway",
+        }))
+        monkeypatch.setattr(status, "_get_process_start_time", lambda pid: 987654321)
+
+        status.release_scoped_lock("discord-bot-token", "secret")
+
+        assert not lock_path.exists()
+
+    def test_acquire_scoped_lock_self_reacquires_when_start_times_differ(
+        self, tmp_path, monkeypatch
+    ):
+        """Same PID with two known, differing start_time values must self-reacquire.
+
+        The on-disk record may carry a stale integer (from a previous run or a
+        psutil transient) while the live process now reports a different value.
+        Since the PID is ours, start_time equality is not required.
+        """
+        monkeypatch.setenv("HERMES_GATEWAY_LOCK_DIR", str(tmp_path / "locks"))
+        lock_path = tmp_path / "locks" / "discord-bot-token-2bb80d537b1da3e3.lock"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path.write_text(json.dumps({
+            "pid": os.getpid(),
+            "start_time": 111,
+            "kind": "hermes-gateway",
+            "argv": ["hermes_cli/main.py", "gateway", "run", "--replace"],
+            "scope": "discord-bot-token",
+        }))
+
+        monkeypatch.setattr(status, "_get_process_start_time", lambda pid: 987654321)
+
+        acquired, existing = status.acquire_scoped_lock(
+            "discord-bot-token", "secret", metadata={"platform": "discord"}
+        )
+
+        assert acquired is True
+        assert existing["pid"] == os.getpid()
+        payload = json.loads(lock_path.read_text())
+        assert payload["pid"] == os.getpid()
+        assert payload["start_time"] == 987654321
 
     def test_acquire_scoped_lock_race_second_acquirer_loses(self, tmp_path, monkeypatch):
         """Two racing starters both observe the same stale lock. The loser's
@@ -477,11 +559,11 @@ class TestScopedLocks:
         monkeypatch.setenv("HERMES_GATEWAY_LOCK_DIR", str(tmp_path / "locks"))
         lock_path = tmp_path / "locks" / "telegram-bot-token-2bb80d537b1da3e3.lock"
         lock_path.parent.mkdir(parents=True, exist_ok=True)
-        lock_path.write_text(orjson.dumps({
+        lock_path.write_text(json.dumps({
             "pid": 99999,
             "start_time": 123,
             "kind": "hermes-gateway",
-        }).decode('utf-8'))
+        }))
 
         # Post-#21561: simulate "PID gone" via _pid_exists returning False.
         monkeypatch.setattr(status, "_pid_exists", lambda pid: False)
@@ -489,7 +571,7 @@ class TestScopedLocks:
         acquired, existing = status.acquire_scoped_lock("telegram-bot-token", "secret", metadata={"platform": "telegram"})
 
         assert acquired is True
-        payload = orjson.loads(lock_path.read_text())
+        payload = json.loads(lock_path.read_text())
         assert payload["pid"] == os.getpid()
         assert payload["metadata"]["platform"] == "telegram"
 
@@ -501,16 +583,16 @@ class TestScopedLocks:
 
         target_lock = lock_dir / "telegram-bot-token-target.lock"
         other_lock = lock_dir / "slack-app-token-other.lock"
-        target_lock.write_text(orjson.dumps({
+        target_lock.write_text(json.dumps({
             "pid": 111,
             "start_time": 222,
             "kind": "hermes-gateway",
-        }).decode('utf-8'))
-        other_lock.write_text(orjson.dumps({
+        }))
+        other_lock.write_text(json.dumps({
             "pid": 999,
             "start_time": 333,
             "kind": "hermes-gateway",
-        }).decode('utf-8'))
+        }))
 
         removed = status.release_all_scoped_locks(
             owner_pid=111,
@@ -540,7 +622,7 @@ class TestTakeoverMarker:
         assert ok is True
         marker = tmp_path / ".gateway-takeover.json"
         assert marker.exists()
-        payload = orjson.loads(marker.read_text())
+        payload = json.loads(marker.read_text())
         assert payload["target_pid"] == 12345
         assert payload["target_start_time"] == 42
         assert payload["replacer_pid"] == os.getpid()
@@ -566,7 +648,7 @@ class TestTakeoverMarker:
 
         ok = status.write_takeover_marker(target_pid=os.getpid())
         assert ok is True
-        payload = orjson.loads((tmp_path / ".gateway-takeover.json").read_text())
+        payload = json.loads((tmp_path / ".gateway-takeover.json").read_text())
         assert payload["target_start_time"] is None
 
         result = status.consume_takeover_marker_for_self()
@@ -582,7 +664,7 @@ class TestTakeoverMarker:
 
         status.write_takeover_marker(target_pid=12345)
 
-        payload = orjson.loads((tmp_path / ".gateway-takeover.json").read_text())
+        payload = json.loads((tmp_path / ".gateway-takeover.json").read_text())
         assert payload["replacer_hermes_home"] == str(tmp_path)
 
     def test_consume_rejects_marker_from_different_profile(self, tmp_path, monkeypatch):
@@ -598,13 +680,13 @@ class TestTakeoverMarker:
         from datetime import datetime, timezone
         # Marker names OUR pid + start_time (the coincidental match the bug
         # relied on) but was written by a gateway in a different profile.
-        marker_path.write_text(orjson.dumps({
+        marker_path.write_text(json.dumps({
             "target_pid": os.getpid(),
             "target_start_time": 100,
             "replacer_pid": 99999,
             "replacer_hermes_home": str(tmp_path / "profiles" / "other"),
             "written_at": datetime.now(timezone.utc).isoformat(),
-        }).decode('utf-8'))
+        }))
 
         result = status.consume_takeover_marker_for_self()
 
@@ -621,12 +703,12 @@ class TestTakeoverMarker:
         monkeypatch.setattr(status, "_get_process_start_time", lambda pid: 100)
         marker_path = tmp_path / ".gateway-takeover.json"
         from datetime import datetime, timezone
-        marker_path.write_text(orjson.dumps({
+        marker_path.write_text(json.dumps({
             "target_pid": os.getpid(),
             "target_start_time": 100,
             "replacer_pid": 99999,
             "written_at": datetime.now(timezone.utc).isoformat(),
-        }).decode('utf-8'))
+        }))
 
         result = status.consume_takeover_marker_for_self()
 
@@ -725,7 +807,7 @@ class TestPlannedStopMarker:
         assert ok is True
         marker = tmp_path / ".gateway-planned-stop.json"
         assert marker.exists()
-        payload = orjson.loads(marker.read_text())
+        payload = json.loads(marker.read_text())
         assert payload["target_pid"] == 12345
         assert payload["target_start_time"] == 42
         assert payload["stopper_pid"] == os.getpid()
@@ -754,7 +836,7 @@ class TestPlannedStopMarker:
         ok = status.write_planned_stop_marker(target_pid=os.getpid())
         assert ok is True
         # Marker carries a null start_time, exactly as written on Windows.
-        payload = orjson.loads((tmp_path / ".gateway-planned-stop.json").read_text())
+        payload = json.loads((tmp_path / ".gateway-planned-stop.json").read_text())
         assert payload["target_start_time"] is None
 
         result = status.consume_planned_stop_marker_for_self()
@@ -787,9 +869,9 @@ class TestPlannedStopMarker:
 class TestReadProcessCmdlinePsFallback:
     """Tests for _read_process_cmdline falling back to ps on non-Linux."""
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: /proc + ps fallback is POSIX-only (Windows uses psutil)")
     def test_ps_fallback_when_proc_unavailable(self, monkeypatch):
         monkeypatch.setattr(status.Path, "read_bytes", lambda self: (_ for _ in ()).throw(FileNotFoundError))
-        monkeypatch.setattr(status, "_IS_WINDOWS", False)
         monkeypatch.setattr(
             status.subprocess, "run",
             lambda args, **kwargs: SimpleNamespace(returncode=0, stdout="/usr/libexec/bluetoothuserd\n"),

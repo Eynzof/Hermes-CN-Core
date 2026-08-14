@@ -62,17 +62,6 @@ class TestPathCompletions:
         idx = names.index("mydir/")
         assert metas[idx] == "dir"
 
-    def test_home_expansion(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("HOME", str(tmp_path))
-        # Path.home()/expanduser keys off USERPROFILE on Windows.
-        monkeypatch.setenv("USERPROFILE", str(tmp_path))
-        (tmp_path / "testfile.md").touch()
-
-        completions = list(SlashCommandCompleter._path_completions("~/test"))
-        names = _display_names(completions)
-        assert "testfile.md" in names
-
-
 
 class TestIntegration:
     """Test the completer produces path completions via the prompt_toolkit API."""

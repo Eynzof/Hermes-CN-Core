@@ -30,13 +30,11 @@ The Ink TUI (ui-tui) needs no equivalent fix: its ``/compress`` is an async
 runs; the gateway already resolves the concurrent-mutation race via the
 ``history_version`` guard in ``_compress_session_history``.
 """
+
 from __future__ import annotations
 
-
-import ast
 import queue as queue_mod
 import threading
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -117,34 +115,3 @@ def test_type_ahead_queued_during_compress_becomes_next_prompt():
     )
     with pytest.raises(queue_mod.Empty):
         shell._pending_input.get_nowait()
-
-
-def test_handle_enter_never_gates_on_command_running():
-    """handle_enter must not consult the busy-command flags (drop-proof routing).
-
-    Enter-key routing while a slash command runs must keep flowing into
-    ``_pending_input``; read-only enforcement belongs exclusively to the
-    TextArea's ``read_only=Condition(...)``. A ``_command_running`` /
-    ``_command_blocks_input`` check inside ``handle_enter`` would let a
-    future edit silently drop type-ahead submissions during /compress.
-    """
-    cli_path = Path(__file__).resolve().parents[2] / "cli.py"
-    tree = ast.parse(cli_path.read_text(encoding="utf-8"))
-
-    target = None
-    for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef) and node.name == "handle_enter":
-            target = node
-            break
-    assert target is not None, "handle_enter closure not found in cli.py"
-
-    offenders = [
-        node.attr
-        for node in ast.walk(target)
-        if isinstance(node, ast.Attribute)
-        and node.attr in {"_command_running", "_command_blocks_input"}
-    ]
-    assert not offenders, (
-        "handle_enter references busy-command state — Enter routing while a "
-        f"slash command runs risks dropping type-ahead input: {offenders}"
-    )

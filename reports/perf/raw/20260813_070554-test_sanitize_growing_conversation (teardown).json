@@ -1,0 +1,21 @@
+{
+  "samples": [
+    {
+      "section": "sanitize_growing_50_turns",
+      "duration_ms": 2.316,
+      "iteration": 0
+    }
+  ],
+  "summary": {
+    "sanitize_growing_50_turns": {
+      "count": 1,
+      "total_ms": 2.316,
+      "mean_ms": 2.316,
+      "min_ms": 2.316,
+      "max_ms": 2.316,
+      "durations": [
+        2.316
+      ]
+    }
+  }
+}

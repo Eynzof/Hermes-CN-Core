@@ -63,6 +63,13 @@ _ALL_DONE_REMINDER = (
     "Please review the requirements again to ensure nothing is left unfinished."
 )
 
+# Reminder surfaced as the result "message" once the active list is non-empty
+# and every item is finished — exact Kimi TodoList wording.
+_ALL_DONE_REMINDER = (
+    "All todos are done. "
+    "Please review the requirements again to ensure nothing is left unfinished."
+)
+
 
 class TodoStore:
     """

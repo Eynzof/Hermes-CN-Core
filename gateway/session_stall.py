@@ -17,8 +17,8 @@ Notification / timeout / kill / retry policy stay in their own components;
 the shared contract remains observation-only (timestamp + bounded
 description + provenance).
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import math
 from typing import Any, Mapping, Optional

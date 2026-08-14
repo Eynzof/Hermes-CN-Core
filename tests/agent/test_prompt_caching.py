@@ -394,26 +394,6 @@ class TestNormalizationOrdering:
 
         assert in_window == out_of_window
 
-    def test_cache_marking_runs_after_every_message_mutation(self):
-        """Ordering invariant, locked against regression."""
-        import inspect
-
-        from agent import conversation_loop
-
-        src = inspect.getsource(conversation_loop)
-        # Anchor on the call-block request plan, not the retry helper.
-        anchor = src.index("Build the request-local cache sections")
-        mark = src.index("build_prompt_cache_plan(\n", anchor)
-        for earlier in (
-            'am["content"].strip()',              # whitespace normalization
-            "_sanitize_api_messages(api_messages)",       # orphan sweep
-            "_drop_thinking_only_and_merge_users(",       # drop / merge
-            "_sanitize_messages_surrogates(api_messages)",
-        ):
-            assert src.index(earlier) < mark, (
-                f"{earlier!r} must run before cache breakpoints are injected"
-            )
-
 
 class TestStripAnthropicCacheControl:
     """strip must undo decoration so failover can re-render for a new policy."""

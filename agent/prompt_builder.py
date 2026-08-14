@@ -15,7 +15,7 @@ from collections import OrderedDict
 from pathlib import Path
 
 from hermes_constants import get_hermes_home, get_skills_dir, is_wsl
-from typing import Optional
+from typing import List, Optional
 
 from agent.runtime_cwd import resolve_agent_cwd
 from agent.skill_utils import (
@@ -238,24 +238,33 @@ KANBAN_GUIDANCE = (
     "infer (missing credentials, UX choice, paywalled source, peer output you "
     'need first), call `kanban_block(reason="...")` and stop. Don\'t guess. '
     "The user will unblock with context and the dispatcher will respawn you.\n"
-    "5. **Complete with structured handoff.** Call `kanban_complete(summary=..., "
-    "metadata=...)`. `summary` is 1–3 human-readable sentences naming concrete "
-    "artifacts. `metadata` is machine-readable facts "
-    "(`{changed_files: [...], tests_run: N, decisions: [...]}`). Downstream "
-    "workers read both via their own `kanban_show`. Never put secrets / "
-    "tokens / raw PII in either field — run rows are durable forever. "
-    "Exception: if your output is a code change that needs human review "
-    "before counting as merged/done (most coding tasks), drop the "
-    "structured metadata (changed_files / tests_run / diff_path) into a "
-    "`kanban_comment` first, then end with "
-    '`kanban_block(reason="review-required: <one-line summary>")` so a '
-    "reviewer can approve+unblock or request changes. Reviewing-then-"
-    "completing is more honest than auto-completing work that still needs "
-    "eyes on it.\n"
+    "5. **Finish with the review model encoded by the task graph.** Always "
+    "include the structured handoff (`summary`, `metadata`) on the lifecycle "
+    "transition itself; never put secrets, tokens, or raw PII in these durable "
+    "fields. If `kanban_show()` lists child IDs, inspect those cards with "
+    "`kanban_show(task_id=...)` before choosing the terminal action. When any "
+    "pre-created review, QA, or release child depends on your task, call "
+    "`kanban_complete`: your implementation phase is done, and completion is "
+    "what releases those children. Never sticky-block that parent for "
+    "`review-required` and never request same-card review as well — either "
+    "choice would strand or duplicate the downstream lane. Otherwise, when "
+    "this same task needs review before it is final, call "
+    "`kanban_request_review(summary=..., metadata=..., "
+    "reviewer=<optional-profile>)`. The reviewer approves with "
+    "`kanban_complete`, returns actionable rework with "
+    "`kanban_request_changes`, or uses `kanban_block` only for a genuine "
+    "external escalation. Review is not a block, so repeated review cycles do "
+    "not trip unblock-loop detection.\n"
     "6. **If follow-up work appears, create it; don't do it.** Use "
     "`kanban_create(title=..., assignee=<right-profile>, parents=[your-task-id])` "
     "to spawn a child task for the appropriate specialist profile instead of "
     "scope-creeping into the next thing.\n"
+    "7. **Flag collision hotspots; don't pile on.** If your change keeps "
+    "colliding with sibling branches in one file, or a file your diff touches "
+    "shows up in other cards' recent comments, do not silently add more to it: "
+    "leave a `kanban_comment` starting with `hotspot: <path> — <one-line reason>` "
+    "on your card and repeat the flag in your completion metadata, so the "
+    "orchestrator can decompose that file before more work lands on it.\n"
     "\n"
     "## Orchestrator mode\n"
     "\n"
@@ -265,6 +274,13 @@ KANBAN_GUIDANCE = (
     "express dependencies. Then `kanban_complete` your own task with a summary "
     "of the decomposition. Do NOT execute the work yourself; your job is "
     "routing, not implementation.\n"
+    "\n"
+    "**Decision ownership.** Design decisions belong to you, the orchestrator, "
+    "not to workers — settle naming schemes, schemas, file formats, and API "
+    "shapes before fanning out. Never let two subtree cards decide the same "
+    "question: if two tasks would each pick one, decide it yourself and write "
+    "the decision into BOTH card bodies. Every child card body must carry the "
+    "decisions it depends on, because workers cannot see sibling context.\n"
     "\n"
     "## Reference details that change outcomes\n"
     "\n"
@@ -703,6 +719,79 @@ STEER_CHANNEL_NOTE += (
     "because it remains in the conversation history."
 )
 
+# OOB markers are immutable conversation records, so every later API request
+# naturally contains them again. Keep the one-shot rule adjacent to the trust
+# rule: provenance establishes authority, while chronology establishes whether
+# there is anything new to act on. This text is static and cache-prefix safe.
+STEER_CHANNEL_NOTE += (
+    "\n\nA marker is newly delivered only when it is in the latest tool-result "
+    "batch and no later assistant message follows it. If a later assistant "
+    "message follows the marker, it is historical context that you already "
+    "received; do not treat it as a new message or repeat completed work solely "
+    "because it remains in the conversation history."
+)
+
+
+def hud_surface_note(valid_tool_names: "set[str] | None" = None) -> str:
+    """Per-turn note for a message typed into the desktop's floating HUD.
+
+    HUD mode is a strip of Hermes floating over another application, so the
+    user is rarely asking about Hermes — they are asking about the thing behind
+    it, and the work they want done usually belongs in that app rather than in
+    a surface of our own. Left to itself the model answers from its own
+    browser and panes, which is the wrong half of the screen.
+
+    It is a per-turn fact, not a platform — one desktop session can be driven
+    from the app window on one turn and the HUD on the next — so it rides the
+    model-bound message beside the reaction / speech-interrupted notes rather
+    than the system prompt, which has to stay byte-stable for a conversation's
+    whole life.
+
+    The same is true one level down: the app underneath changes as the user
+    drags the strip around, and they carry a thought across the move ("pause
+    that and play X here"). Earlier windows are already in context as
+    read_window_below results, so the note only has to say they still count —
+    without that, the latest window reads as the only one and half of a
+    two-app request is silently dropped.
+
+    Each sentence is gated on the tool it names — naming a tool outside this
+    agent's schema invites a hallucinated call — and the note as a whole is
+    withheld without the one it rests on.
+    """
+    names = valid_tool_names or set()
+    if "read_window_below" not in names:
+        return ""
+
+    sentences = [
+        "[Note: this message came from HUD mode — a small floating Hermes "
+        "window sitting over whatever the user is actually working in, so an "
+        'unqualified "this" or "here" usually means the app behind the HUD '
+        "rather than anything inside Hermes. read_window_below identifies "
+        "that app.",
+        "They move the HUD from app to app mid-conversation, so one you "
+        "identified on an earlier turn is still a live target: a reference "
+        "that does not fit the window below may name one from a turn or two "
+        "ago, and a single message can span both.",
+    ]
+    if "computer_use" in names:
+        sentences.append(
+            "Prefer carrying the work out in that same app — computer_use "
+            "takes its name in `app` — over pulling the task into a surface "
+            "of your own."
+        )
+        if "browser_navigate" in names:
+            sentences.append(
+                "When the app underneath is a browser, that means driving the "
+                "user's browser rather than opening yours with "
+                "browser_navigate."
+            )
+    sentences.append(
+        "This is a prior, not a rule: when the request names its own target, "
+        "follow the request.]"
+    )
+    return " ".join(sentences)
+
+
 # Model name substrings that should use the 'developer' role instead of
 # 'system' for the system prompt.  OpenAI's newer models (GPT-5, Codex)
 # give stronger instruction-following weight to the 'developer' role.
@@ -961,7 +1050,8 @@ PLATFORM_HINTS = {
 }
 
 # Telegram rich-messages extension — only injected when the user has opted in
-# to ``platforms.telegram.extra.rich_messages: true``.  The base
+# to ``gateway.platforms.telegram.extra.rich_messages: true`` (or the
+# top-level ``platforms.telegram.extra.rich_messages``).  The base
 # PLATFORM_HINTS["telegram"] covers MarkdownV2-compatible constructs; this
 # extension adds the Bot API 10.1 rich-Markdown guidance (tables, task lists,
 # collapsible details, math, etc.).
@@ -1005,13 +1095,8 @@ WSL_ENVIRONMENT_HINT = (
 # runs. For these backends, host info (Windows/Linux/macOS, $HOME, cwd) is
 # misleading — the agent should only see the machine it can actually touch.
 _REMOTE_TERMINAL_BACKENDS = frozenset({
-    "docker",
-    "singularity",
-    "modal",
-    "daytona",
-    "ssh",
-    "managed_modal",
-    "vercel_sandbox",
+    "docker", "singularity", "modal", "daytona", "ssh",
+    "vercel_sandbox", "managed_modal",
 })
 
 
@@ -1092,6 +1177,25 @@ _WINDOWS_PWSH_SHELL_HINT = (
     "- Parameter value expressions must be parenthesized: `-Index (100..120)` "
     "not `-Index 100..120`."
 )
+def _windows_marketing_version() -> str:
+    """Return the marketing Windows version ("10", "11", ...) for the prompt.
+
+    ``platform.release()`` reports the kernel version, which is ``10`` for
+    BOTH Windows 10 and Windows 11 — the prompt then claims "Windows (10)"
+    on Windows 11 hosts and misleads the model about the OS (#51755).
+    Windows 11 is distinguished by build number: >= 22000 is 11.
+    Falls back to ``platform.release()`` on any lookup failure.
+    """
+    try:
+        build = sys.getwindowsversion().build  # type: ignore[attr-defined]
+        if build >= 22000:
+            return "11"
+        return "10"
+    except Exception:
+        import platform
+
+        return platform.release()
+
 
 _WINDOWS_BASH_SHELL_HINT = (
     "Shell: on this Windows host your `terminal` tool runs commands through "
@@ -1100,7 +1204,20 @@ _WINDOWS_BASH_SHELL_HINT = (
     "calls. MSYS-style paths like `/c/Users/<user>/...` work alongside "
     "native `C:\\Users\\<user>\\...` paths. PowerShell builtins "
     "(`Get-ChildItem`, `$env:FOO`, `Select-String`) will NOT work — use their "
-    "POSIX equivalents (`ls`, `$FOO`, `grep`)."
+    "POSIX equivalents (`ls`, `$FOO`, `grep`). Path arguments for NATIVE "
+    "Windows programs (git, rg, node, python, ...) are NOT translated: MSYS "
+    "path conversion is disabled here, so `git -C /c/Users/x` or "
+    "`node /tmp/a.js` fails with 'cannot change to'/'not found' even though "
+    "`cd /c/Users/x` (a bash builtin) works. Pass `C:/Users/x`-style "
+    "forward-slash native paths to native tools, and prefer "
+    "`$LOCALAPPDATA/Temp` over `/tmp` for scratch files a native tool must "
+    "read. When answering prompts in a "
+    "pty background process, use process(submit) — never process(write) "
+    "with a bare trailing newline: Enter on a Windows PTY is a carriage "
+    "return, and a lone `\\n` is not delivered as a line terminator, so the "
+    "child's prompt silently never returns. When a CLI offers a "
+    "non-interactive path (flags, `--with-token`, config files, an OAuth "
+    "device flow polled with curl), prefer it over driving prompts."
 )
 
 
@@ -1171,9 +1288,7 @@ def _probe_remote_backend(env_type: str) -> str | None:
                 "docker_run_as_host_user": config.get("docker_run_as_host_user", False),
                 "docker_extra_args": config.get("docker_extra_args", []),
                 "docker_shm_size": config.get("docker_shm_size", "1g"),
-                "docker_persist_across_processes": config.get(
-                    "docker_persist_across_processes", True
-                ),
+                "docker_persist_across_processes": config.get("docker_persist_across_processes", True),
                 "docker_orphan_reaper": config.get("docker_orphan_reaper", True),
             }
 
@@ -2192,25 +2307,86 @@ def _load_hermes_md(cwd_path: Path, context_length: Optional[int] = None) -> str
         return ""
 
 
+def _agents_md_directory_chain(cwd_path: Path) -> List[Path]:
+    """Directories to check for AGENTS.md: git root first, cwd last.
+
+    Ported from superagent-ai/grok-cli ``src/utils/instructions.ts``
+    (``directoryChain``): the chain runs from the git repository root down
+    through every intermediate directory to *cwd*, so deeper directories can
+    add more specific guidance that appears later (and therefore takes
+    precedence) in the merged prompt.  Without a git root — or when *cwd*
+    sits outside it — only *cwd* itself is checked, matching the historical
+    single-directory behavior.
+    """
+    current = cwd_path.resolve()
+    root = _find_git_root(current)
+    if root is None or root == current:
+        return [current]
+    try:
+        rel = current.relative_to(root)
+    except ValueError:
+        return [current]
+    chain = [root]
+    acc = root
+    for part in rel.parts:
+        acc = acc / part
+        chain.append(acc)
+    return chain
+
+
 def _load_agents_md(cwd_path: Path, context_length: Optional[int] = None) -> str:
-    """AGENTS.md — top-level only (no recursive walk)."""
-    for name in ["AGENTS.md", "agents.md"]:
-        candidate = cwd_path / name
-        if candidate.exists():
+    """AGENTS.md — merged directory chain from git root down to cwd.
+
+    Each directory on the chain (see ``_agents_md_directory_chain``)
+    contributes its ``AGENTS.md`` / ``agents.md`` (first name wins per
+    directory) as its own provenance-labelled section.  Identical content
+    encountered again further down the chain (copied or symlinked files) is
+    deduplicated.  With a single match — the common case, and always the
+    case outside a git repo — output is identical to the historical
+    single-file behavior.
+    """
+    cwd_resolved = cwd_path.resolve()
+    sections: List[str] = []
+    seen_content: set = set()
+    for directory in _agents_md_directory_chain(cwd_resolved):
+        for name in ["AGENTS.md", "agents.md"]:
+            candidate = directory / name
+            if not candidate.exists():
+                continue
             try:
-                content = candidate.read_text(encoding="utf-8", errors="replace").strip()
-                if content:
-                    content = _scan_context_content(content, name)
-                    result = f"## {name}\n\n{content}"
-                    return _truncate_content(
-                        result,
-                        "AGENTS.md",
-                        context_length=context_length,
-                        read_path=str(candidate),
-                    )
+                content = candidate.read_text(encoding="utf-8").strip()
             except Exception as e:
                 logger.debug("Could not read %s: %s", candidate, e)
-    return ""
+                continue
+            if not content:
+                continue
+            if content in seen_content:
+                break  # identical copy along the chain — skip duplicate
+            seen_content.add(content)
+            if directory == cwd_resolved:
+                label = name
+            else:
+                label = os.path.relpath(candidate, cwd_resolved)
+            scanned = _scan_context_content(content, label)
+            section = f"## {label}\n\n{scanned}"
+            section = _truncate_content(
+                section, label, context_length=context_length,
+                read_path=str(candidate),
+            )
+            sections.append(section)
+            break  # first name match wins per directory
+    if not sections:
+        return ""
+    if len(sections) == 1:
+        return sections[0]
+    # Per-file budgets were already applied above; also cap the merged chain
+    # so a deep monorepo cannot multiply the context-file budget unbounded.
+    merged = "\n\n".join(sections)
+    return _truncate_content(
+        merged, "AGENTS.md (directory chain)",
+        context_length=context_length,
+        read_path=str(cwd_resolved / "AGENTS.md"),
+    )
 
 
 def _load_claude_md(cwd_path: Path, context_length: Optional[int] = None) -> str:
@@ -2283,7 +2459,7 @@ def build_context_files_prompt(
 
     Priority (first found wins — only ONE project context type is loaded):
       1. .hermes.md / HERMES.md  (walk to git root)
-      2. AGENTS.md / agents.md   (cwd only)
+      2. AGENTS.md / agents.md   (merged chain: git root → cwd)
       3. CLAUDE.md / claude.md   (cwd only)
       4. .cursorrules / .cursor/rules/*.mdc  (cwd only)
 

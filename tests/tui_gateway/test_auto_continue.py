@@ -15,8 +15,8 @@ time is positive proof the turn never finished. Contract pinned here:
   disabled / crash-looping / already-running cases, and bounds attempts via
   the marker's attempt counter.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import threading
 import time

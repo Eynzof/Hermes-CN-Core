@@ -341,9 +341,17 @@ def _sanitize_loaded_credentials() -> None:
 
 def _load_dotenv_with_fallback(path: Path, *, override: bool) -> None:
     try:
-        load_dotenv(dotenv_path=path, override=override, encoding="utf-8")
+        # utf-8-sig strips a leading UTF-8 BOM if present (PowerShell 5.1
+        # Set-Content -Encoding UTF8 / Notepad) and is a no-op for BOM-less
+        # UTF-8. Plain "utf-8" would keep U+FEFF on the first key name and
+        # silently drop it from os.environ under its canonical name.
+        load_dotenv(dotenv_path=path, override=override, encoding="utf-8-sig")
     except UnicodeDecodeError:
-        load_dotenv(dotenv_path=path, override=override, encoding="latin-1")
+        # utf-8-sig can't strip a BOM once we fall back to latin-1 decode.
+        raw = path.read_bytes()
+        if raw.startswith(codecs.BOM_UTF8):
+            raw = raw[len(codecs.BOM_UTF8) :]
+        load_dotenv(stream=io.StringIO(raw.decode("latin-1")), override=override)
     # Strip non-ASCII characters from credential env vars that were just
     # loaded.  API keys must be pure ASCII since they're sent as HTTP
     # header values (httpx encodes headers as ASCII).  Non-ASCII chars
@@ -677,7 +685,9 @@ def _apply_external_secret_sources(home_path: Path) -> None:
             )
         if src.result.error:
             print(f"  {src.label}: {src.result.error}", file=sys.stderr)
-            hint = _remediation_hint(src.name, src.result.error_kind, cfg)
+            hint = _remediation_hint(
+                src.name, src.result.error_kind, cfg, scope=home_key
+            )
             if hint:
                 print(f"  {src.label}: → {hint}", file=sys.stderr)
         for warn in src.result.warnings:
@@ -686,7 +696,13 @@ def _apply_external_secret_sources(home_path: Path) -> None:
         print(f"  Secret sources: {conflict}", file=sys.stderr)
 
 
-def _remediation_hint(source_name: str, error_kind, secrets_cfg: dict) -> str:
+def _remediation_hint(
+    source_name: str,
+    error_kind,
+    secrets_cfg: dict,
+    *,
+    scope: str | None = None,
+) -> str:
     """Ask the failed source for its one-line fix-it hint.
 
     Defensive wrapper: remediation() is a pure mapping and shouldn't
@@ -696,7 +712,7 @@ def _remediation_hint(source_name: str, error_kind, secrets_cfg: dict) -> str:
     try:
         from agent.secret_sources.registry import get_source
 
-        source = get_source(source_name)
+        source = get_source(source_name, scope=scope)
         if source is None:
             return ""
         src_cfg = secrets_cfg.get(source_name)

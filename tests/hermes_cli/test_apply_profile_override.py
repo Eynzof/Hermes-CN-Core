@@ -186,6 +186,9 @@ class TestApplyProfileOverrideHermesHomeGuard:
         assert os.environ.get("HERMES_HOME") == str(profile_dir)
         assert sys.argv == ["hermes", "gateway", "install", "--system"]
 
+
+
+
 class TestSupervisedChildIgnoresStickyProfile:
     """The reserved default gateway s6 slot must not follow active_profile.
 
@@ -197,6 +200,7 @@ class TestSupervisedChildIgnoresStickyProfile:
     redirect the reserved default gateway into that profile — producing a
     duplicate gateway for the active profile and no real default gateway.
     """
+
 
     def test_non_supervised_run_still_follows_active_profile(
         self, tmp_path, monkeypatch

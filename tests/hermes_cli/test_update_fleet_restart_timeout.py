@@ -112,4 +112,3 @@ class TestIncompleteFleetRestartWarning:
         assert out.count("hermes-gateway-xiaomo5") == 1
         assert "hermes-gateway-xiaomo6" in out
         assert "pre-update code" in out
-

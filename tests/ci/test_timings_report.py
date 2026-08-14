@@ -5,8 +5,8 @@ by the review comment assembler. It classifies the CI timings result as
 info/warning (never error — timings is an observability job, not a gate)
 and provides a one-line summary plus optional per-job delta detail.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import importlib.util
 from datetime import datetime, timezone

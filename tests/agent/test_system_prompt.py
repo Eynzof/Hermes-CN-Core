@@ -24,6 +24,7 @@ def _make_agent(**overrides):
         platform="",
         pass_session_id=False,
         session_id="",
+        _emit_status=lambda *args, **kwargs: None,
     )
     base.update(overrides)
     return SimpleNamespace(**base)

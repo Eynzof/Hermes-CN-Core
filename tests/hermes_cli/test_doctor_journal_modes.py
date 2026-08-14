@@ -114,7 +114,10 @@ class TestReadJournalMode:
             holder.close()
 
     @pytest.mark.skipif(os.name == "nt", reason="chmod is a no-op on Windows")
-    @pytest.mark.skipif(os.geteuid() == 0, reason="root ignores file permissions")
+    @pytest.mark.skipif(
+        hasattr(os, "geteuid") and os.geteuid() == 0,
+        reason="root ignores file permissions",
+    )
     def test_read_only_directory_is_still_readable(self, tmp_path):
         db = tmp_path / "state.db"
         _make_db(db, journal_mode="WAL")
@@ -185,7 +188,9 @@ class TestReportDatabaseJournalModes:
         assert "state.db is in WAL mode" in out
         assert "projects.db: rollback journal mode" in out
         assert "kanban.db: rollback journal mode" in out
-        assert "kanban/boards/myboard/kanban.db is in WAL mode" in out
+        # Native separators: `relative_to` renders `\` on Windows, `/` on POSIX.
+        board_db_rel = os.path.join("kanban", "boards", "myboard", "kanban.db")
+        assert f"{board_db_rel} is in WAL mode" in out
 
     def test_missing_databases_are_skipped(self, tmp_path, capsys):
         doctor._report_database_journal_modes(tmp_path, VULNERABLE)
@@ -209,7 +214,10 @@ class TestReportDatabaseJournalModes:
         assert "state.db: rollback journal mode" in out
 
     @pytest.mark.skipif(os.name == "nt", reason="chmod is a no-op on Windows")
-    @pytest.mark.skipif(os.geteuid() == 0, reason="root ignores file permissions")
+    @pytest.mark.skipif(
+        hasattr(os, "geteuid") and os.geteuid() == 0,
+        reason="root ignores file permissions",
+    )
     def test_unreadable_database_does_not_crash(self, tmp_path, capsys):
         db = tmp_path / "state.db"
         _make_db(db)

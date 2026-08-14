@@ -1345,6 +1345,7 @@ class TestTerminateHostPidPosix:
 
     pytest.importorskip("psutil")
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="POSIX-only: psutil tree-walk SIGTERM branch")
     def test_posix_walks_tree_and_terminates_children_then_parent(self, monkeypatch):
         from tools import process_registry as pr
         import psutil
@@ -1382,6 +1383,7 @@ class TestTerminateHostPidPosix:
             "Children must be terminated before the parent"
         )
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="POSIX-only: psutil tree-walk SIGTERM branch")
     def test_posix_oserror_falls_back_to_os_kill(self, monkeypatch):
         from tools import process_registry as pr
         import psutil

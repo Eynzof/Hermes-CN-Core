@@ -169,16 +169,30 @@ _ensure_teams_mock()
 _teams_mod = load_plugin_adapter("teams")
 
 _teams_mod.AIOHTTP_AVAILABLE = True
-# SDK import is deferred (#62935); bind mocked symbols the same way connect() does.
-assert _teams_mod.check_teams_requirements() is True
 _teams_mod.TEAMS_SDK_AVAILABLE = True
-
-# Ensure SDK symbols that were None (import failed on Python <3.12) are
-# replaced with the mocked versions so runtime calls don't silently no-op.
-import sys as _sys
-_mt = _sys.modules.get("microsoft_teams.api.activities.typing")
-if _mt and _teams_mod.TypingActivityInput is None:
-    _teams_mod.TypingActivityInput = _mt.TypingActivityInput
+# SDK import is deferred (#62935); bind the mocked SDK symbols the same way
+# check_teams_requirements()'s importer does, straight from sys.modules (the
+# real package isn't installed in the test env, so ensure() can't satisfy it).
+_sm = sys.modules
+_teams_mod.App = _sm["microsoft_teams.apps"].App
+_teams_mod.ActivityContext = _sm["microsoft_teams.apps"].ActivityContext
+_teams_mod.ClientOptions = _sm["microsoft_teams.common.http.client"].ClientOptions
+_teams_mod.MessageActivity = _sm["microsoft_teams.api"].MessageActivity
+_teams_mod.ConversationReference = _sm["microsoft_teams.api"].ConversationReference
+_teams_mod.TypingActivityInput = _sm["microsoft_teams.api.activities.typing"].TypingActivityInput
+_teams_mod.AdaptiveCardInvokeActivity = _sm["microsoft_teams.api.activities.invoke.adaptive_card"].AdaptiveCardInvokeActivity
+_teams_mod.AdaptiveCardActionCardResponse = _sm["microsoft_teams.api.models.adaptive_card"].AdaptiveCardActionCardResponse
+_teams_mod.AdaptiveCardActionMessageResponse = _sm["microsoft_teams.api.models.adaptive_card"].AdaptiveCardActionMessageResponse
+_teams_mod.InvokeResponse = _sm["microsoft_teams.api.models.invoke_response"].InvokeResponse
+_teams_mod.AdaptiveCardInvokeResponse = _sm["microsoft_teams.api.models.invoke_response"].AdaptiveCardInvokeResponse
+_teams_mod.HttpMethod = _sm["microsoft_teams.apps.http.adapter"].HttpMethod
+_teams_mod.HttpRequest = _sm["microsoft_teams.apps.http.adapter"].HttpRequest
+_teams_mod.HttpResponse = _sm["microsoft_teams.apps.http.adapter"].HttpResponse
+_teams_mod.HttpRouteHandler = _sm["microsoft_teams.apps.http.adapter"].HttpRouteHandler
+_teams_mod.AdaptiveCard = _sm["microsoft_teams.cards"].AdaptiveCard
+_teams_mod.ExecuteAction = _sm["microsoft_teams.cards"].ExecuteAction
+_teams_mod.TextBlock = _sm["microsoft_teams.cards"].TextBlock
+assert _teams_mod.check_teams_requirements() is True
 
 TeamsAdapter = _teams_mod.TeamsAdapter
 TeamsSummaryWriter = _teams_mod.TeamsSummaryWriter

@@ -610,6 +610,13 @@ class TestResolveVisionCustomProvider:
         """custom main with recorded runtime endpoint → Step 1 builds a client."""
         import agent.auxiliary_client as aux
 
+        # Custom endpoints have no catalog entry — capability is unknown, so
+        # the main-provider path must be taken (deterministic regardless of
+        # process-global catalog state left by other test modules).
+        monkeypatch.setattr(
+            "agent.image_routing._lookup_supports_vision",
+            lambda provider, model, config: None,
+        )
         monkeypatch.setattr(aux, "_RUNTIME_MAIN_BASE_URL", "https://my.endpoint.example/v1")
         monkeypatch.setattr(aux, "_RUNTIME_MAIN_API_KEY", "sk-runtime-key")
         monkeypatch.setattr(aux, "_RUNTIME_MAIN_API_MODE", "anthropic_messages")
@@ -629,7 +636,7 @@ class TestResolveVisionCustomProvider:
 
             from agent.auxiliary_client import resolve_vision_provider_client
 
-            provider, client, model = resolve_vision_provider_client()
+            provider, client, model = resolve_vision_provider_client(main_runtime={"provider": "custom", "model": "claude-opus-4-8", "base_url": "https://my.endpoint.example/v1", "api_key": "sk-runtime-key", "api_mode": "anthropic_messages"})
 
         assert provider == "custom"
         assert client is mock_client
@@ -645,6 +652,11 @@ class TestResolveVisionCustomProvider:
         """A ``custom:<name>`` provider id also forwards the runtime endpoint."""
         import agent.auxiliary_client as aux
 
+        # Same unknown-capability pin as the sibling test above.
+        monkeypatch.setattr(
+            "agent.image_routing._lookup_supports_vision",
+            lambda provider, model, config: None,
+        )
         monkeypatch.setattr(aux, "_RUNTIME_MAIN_BASE_URL", "https://named.example/v1")
         monkeypatch.setattr(aux, "_RUNTIME_MAIN_API_KEY", "sk-named")
         monkeypatch.setattr(aux, "_RUNTIME_MAIN_API_MODE", "")
@@ -665,7 +677,7 @@ class TestResolveVisionCustomProvider:
 
             from agent.auxiliary_client import resolve_vision_provider_client
 
-            provider, client, model = resolve_vision_provider_client()
+            provider, client, model = resolve_vision_provider_client(main_runtime={"provider": "custom:copilot-gateway", "model": "claude-opus-4-8", "base_url": "https://named.example/v1", "api_key": "sk-named", "api_mode": ""})
 
         assert provider == "custom:copilot-gateway"
         assert client is mock_client

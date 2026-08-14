@@ -3460,7 +3460,14 @@ def _handle_process(args, **kw):
             session_key = get_current_session_key(default="") or ""
         except Exception:
             session_key = ""
-        return orjson.dumps({"processes": process_registry.list_sessions(task_id=task_id, session_key=session_key or None)}).decode('utf-8')
+        return orjson.dumps({
+            "processes": [
+                _redact_process_result(p)
+                for p in process_registry.list_sessions(
+                    task_id=task_id, session_key=session_key or None
+                )
+            ]
+        }).decode('utf-8')
     elif action in {"poll", "log", "wait", "kill", "write", "submit", "close"}:
         if not session_id:
             return tool_error(f"session_id is required for {action}")

@@ -289,38 +289,32 @@ def test_agent_init_cold_vs_warm(timing_context):
     Three measurements:
 
     * ``init_cold`` — a fresh (first-in-process) construction with the
-      endpoint's reachability verdict resolved promptly. On any host where a
-      closed port refuses immediately this is the real path; here it is pinned
-      via ``_endpoint_reachable`` so the number reflects Hermes's own init work
-      rather than this machine's firewall/connect-timeout behaviour.
+      OpenAI client mocked, so no endpoint probing lands on the measured path.
     * ``init_warm`` — a second construction reusing the process-wide caches.
     * ``init_warm_realprobe`` — two constructions against the REAL (unpinned)
-      unreachable endpoint; the second must still be fast, proving the
-      reachability verdict is cached instead of re-probed. Pre-fix this second
-      construction cost ~40s.
+      unreachable endpoint; the second must still be fast, proving the process-
+      wide caches (tool catalog, endpoint probe results) are reused instead of
+      re-probed. Pre-fix this second construction cost ~40s.
     """
     from run_agent import AIAgent
-    import agent.model_metadata as mm
     from model_tools import _clear_tool_defs_cache
 
     with patch("run_agent.OpenAI") as mock_cls:
         mock_cls.return_value = MagicMock()
 
-        # Target path: prompt reachability verdict (normal fast-refuse case).
+        # Target path: cold + warm construction with no endpoint probing.
         _clear_tool_defs_cache()
-        mm._reset_endpoint_reachable_cache()
-        with patch.object(mm, "_endpoint_reachable", return_value=False):
-            with timing_context.measure("init_cold"):
-                cold_agent = AIAgent(**_COLD_INIT_KWARGS)
-            with timing_context.measure("init_warm"):
-                warm_agent = AIAgent(**_COLD_INIT_KWARGS)
+        with timing_context.measure("init_cold"):
+            cold_agent = AIAgent(**_COLD_INIT_KWARGS)
+        with timing_context.measure("init_warm"):
+            warm_agent = AIAgent(**_COLD_INIT_KWARGS)
 
-        # Real path: unpinned reachability against a genuinely down endpoint.
-        # The first probe pays the (bounded) reachability check; the second must
-        # hit the cached verdict and be fast — the sharp regression guard.
+        # Real path: a second construction against the genuinely down endpoint
+        # must still be fast — the process-wide caches are reused instead of
+        # re-probed. This is the sharp regression guard for the eager-network
+        # hotspot.
         _clear_tool_defs_cache()
-        mm._reset_endpoint_reachable_cache()
-        _ = AIAgent(**_COLD_INIT_KWARGS)  # primes reachability + tool caches
+        _ = AIAgent(**_COLD_INIT_KWARGS)  # primes caches
         with timing_context.measure("init_warm_realprobe"):
             realprobe_agent = AIAgent(**_COLD_INIT_KWARGS)
 
@@ -360,7 +354,6 @@ def test_first_turn_latency(timing_context, mock_llm_response):
     model output.
     """
     from run_agent import AIAgent
-    import agent.model_metadata as mm
 
     mock_response = mock_llm_response(content="Done.", finish_reason="stop")
 
@@ -377,17 +370,15 @@ def test_first_turn_latency(timing_context, mock_llm_response):
         original_which = shutil_mod.which
         shutil_mod.which = MagicMock(return_value=None)
 
-        mm._reset_endpoint_reachable_cache()
         try:
-            with patch.object(mm, "_endpoint_reachable", return_value=False):
-                with timing_context.measure("first_turn_total"):
-                    agent = AIAgent(
-                        base_url="http://localhost:9/v1", api_key="sk-test-mock-key",
-                        model="test/mock-model", max_iterations=3, quiet_mode=True,
-                        skip_context_files=True, skip_memory=True,
-                        enabled_toolsets=["file"],
-                    )
-                    result = agent.chat("Test message")
+            with timing_context.measure("first_turn_total"):
+                agent = AIAgent(
+                    base_url="http://localhost:9/v1", api_key="sk-test-mock-key",
+                    model="test/mock-model", max_iterations=3, quiet_mode=True,
+                    skip_context_files=True, skip_memory=True,
+                    enabled_toolsets=["file"],
+                )
+                result = agent.chat("Test message")
         finally:
             shutil_mod.which = original_which
 
@@ -464,7 +455,6 @@ def test_ten_agent_inits_reuse_tool_cache(timing_context):
     lands well under the ~2s plan target (measured ~0.5s).
     """
     from run_agent import AIAgent
-    import agent.model_metadata as mm
     from model_tools import _clear_tool_defs_cache
 
     kw = dict(
@@ -477,14 +467,12 @@ def test_ten_agent_inits_reuse_tool_cache(timing_context):
     with patch("run_agent.OpenAI") as mock_cls:
         mock_cls.return_value = MagicMock()
         _clear_tool_defs_cache()
-        mm._reset_endpoint_reachable_cache()
-        with patch.object(mm, "_endpoint_reachable", return_value=False):
-            with timing_context.measure("ten_agent_inits"):
-                agent = None
-                for _ in range(10):
-                    t0 = time.perf_counter()
-                    agent = AIAgent(**kw)
-                    per_agent.append((time.perf_counter() - t0) * 1000.0)
+        with timing_context.measure("ten_agent_inits"):
+            agent = None
+            for _ in range(10):
+                t0 = time.perf_counter()
+                agent = AIAgent(**kw)
+                per_agent.append((time.perf_counter() - t0) * 1000.0)
 
     total_ms = timing_context.summary().get("ten_agent_inits", {}).get("total_ms", 0)
     first_ms = per_agent[0]

@@ -657,14 +657,16 @@ def _managed_node_tree_outdated(home: Path | None = None) -> bool:
                 continue
             try:
                 from hermes_cli._subprocess_compat import windows_hide_flags
-
                 result = subprocess.run(
                     [str(candidate), "--version"],
                     capture_output=True,
                     timeout=10,
                     creationflags=windows_hide_flags(),
                 )
-                major = int(result.stdout.decode().strip().lstrip("v").split(".")[0])
+                raw_stdout = result.stdout
+                if isinstance(raw_stdout, bytes):
+                    raw_stdout = raw_stdout.decode("utf-8", errors="replace")
+                major = int(raw_stdout.strip().lstrip("v").split(".")[0])
             except (OSError, subprocess.TimeoutExpired, ValueError, IndexError):
                 return False  # broken, not outdated — the runnable probe handles it
             return major < _HERMES_NODE_TARGET_MAJOR

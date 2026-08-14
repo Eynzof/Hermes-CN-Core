@@ -3491,13 +3491,13 @@ class TestVisionAutoSkipsKimiCoding:
             "agent.auxiliary_client._read_main_model", lambda: "deepseek-chat",
         )
         monkeypatch.setattr(
-            "agent.models_dev.get_model_capabilities",
-            lambda provider, model: SimpleNamespace(supports_vision=False),
+        "agent.image_routing._lookup_supports_vision",
+        lambda provider, model, config: False,
         )
         monkeypatch.setattr(
-            "agent.auxiliary_client.resolve_provider_client",
-            MagicMock(side_effect=AssertionError(
-                "resolve_provider_client should NOT be called for a known text-only model")),
+        "agent.auxiliary_client.resolve_provider_client",
+        MagicMock(side_effect=AssertionError(
+        "resolve_provider_client should NOT be called for a known text-only model")),
         )
         monkeypatch.setattr(
             "agent.auxiliary_client._resolve_strict_vision_backend",
@@ -3522,13 +3522,13 @@ class TestVisionAutoSkipsKimiCoding:
             "agent.auxiliary_client._read_main_model", lambda: "deepseek/deepseek-chat",
         )
         monkeypatch.setattr(
-            "agent.models_dev.get_model_capabilities",
-            lambda provider, model: SimpleNamespace(supports_vision=False),
+        "agent.image_routing._lookup_supports_vision",
+        lambda provider, model, config: False,
         )
         monkeypatch.setattr(
-            "agent.auxiliary_client.resolve_provider_client",
-            MagicMock(side_effect=AssertionError(
-                "resolve_provider_client should NOT be called for OpenRouter's text-only main model")),
+        "agent.auxiliary_client.resolve_provider_client",
+        MagicMock(side_effect=AssertionError(
+        "resolve_provider_client should NOT be called for OpenRouter's text-only main model")),
         )
 
         def fake_strict(provider, model=None):

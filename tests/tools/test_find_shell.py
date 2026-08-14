@@ -96,7 +96,7 @@ class TestFindShellWindowsBehavior:
         # Even if SHELL is set, it should be ignored on Windows
         with patch.dict(os.environ, {"SHELL": "/usr/bin/zsh"}):
             result = _find_shell()
-            assert result == _find_bash()
+            assert os.path.normcase(result) == os.path.normcase(_find_bash())
 
 
 class TestFindShellReturnsString:

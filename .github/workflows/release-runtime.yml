@@ -128,13 +128,35 @@ jobs:
         with:
           python-version: "3.14"
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # 8.2.0
+        with:
+          version: "0.9.28"
+          enable-cache: true
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+
       - name: Install build deps + agent
         shell: bash
         run: |
-          python -m pip install --upgrade pip
-          # Install the package plus dashboard extras into the build env so the
-          # frozen runtime never tries to lazy-install fastapi/uvicorn on a
-          # user's machine.
+          # Install the exact locked dependency set used by main CI. This must
+          # use uv rather than bare pip: the project intentionally overrides
+          # incompatible transitive caps (for example cryptography 50 with the
+          # current Alibaba SDK), and pip does not honor [tool.uv] overrides.
+          # A fresh pip resolution silently downgraded alibabacloud-tea-openapi
+          # and omitted darabonba-core, then PyInstaller failed while copying
+          # that package's metadata.
+          uv sync --locked --python 3.14 --extra cn-desktop
+
+          # Install packaging-only tooling into that same locked environment.
+          uv pip install --python .venv "pyinstaller==6.*"
+
+          # GITHUB_PATH applies to subsequent steps. Resolve the interpreter
+          # directory through uv so this is correct for POSIX bin/ and Windows
+          # Scripts/ layouts without maintaining two path branches.
+          uv run --no-sync python -c 'import os, sys; print(os.path.dirname(sys.executable))' >> "$GITHUB_PATH"
+
           # The `cn-desktop` aggregate extra pre-bakes every backend the frozen
           # runtime exposes: dashboard (web), the Anthropic transport (MiniMax-CN
           # rides on Anthropic Messages), the native MCP client (issue #16), and
@@ -144,9 +166,6 @@ jobs:
           # unavailable at runtime — and `pip install <pkg>` on the host does NOT
           # help, since the frozen runtime ships its own interpreter + packages.
           # Keep this in sync with the cn-desktop extra in pyproject.toml.
-          pip install -e ".[cn-desktop]"
-          # Build tooling
-          pip install pyinstaller==6.* cryptography
 
       - name: Set up Node.js (build web dashboard + TUI bundle)
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4

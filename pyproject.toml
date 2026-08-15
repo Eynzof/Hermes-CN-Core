@@ -77,9 +77,18 @@ dependencies = [
   # urllib3 2.7.0 fixes GHSA-mf9v-mfxr-j63j (decompression-bomb bypass)
   # and GHSA-qccp-gfcp-xxvc (header leak across origins).
   "urllib3>=2.7.0,<3",
-  # cryptography is pulled in transitively by PyJWT[crypto]; pin it explicitly
-  # so the WeCom/Weixin crypto paths can't drift below the CVE-fixed floor.
-  "cryptography==48.0.1",  # CVE-2026-39892, CVE-2026-34073, GHSA-537c-gmf6-5ccf; ==48.0.1 (not 49.x): msal and alibabacloud-tea-openapi cap <49, hindsight-api-slim needs >=48.0.1
+  # PyJWT[crypto] pulls cryptography in transitively. Pin it here as well, so
+  # that the WeCom and Weixin crypto paths cannot fall below the patched
+  # version. 50.0.0 is the floor: it fixes CVE-2026-69247, a Bleichenbacher
+  # oracle in PKCS#7 EnvelopedData, and 49.0.0 fixed GHSA-m2h6-j472-rp4c,
+  # where a wildcard DNS name escapes permittedSubtrees, and
+  # GHSA-jwv3-5hgf-82ww, exponential path-building on duplicate self-signed
+  # intermediates.
+  #
+  # A pin here is not sufficient on its own. alibabacloud-tea-openapi caps
+  # cryptography<49, so [tool.uv] also holds an override. Read that comment
+  # before you move this version.
+  "cryptography==50.0.0",  # CVE-2026-69247, GHSA-m2h6-j472-rp4c, GHSA-jwv3-5hgf-82ww, CVE-2026-39892, CVE-2026-34073, GHSA-537c-gmf6-5ccf
   # Windows has no IANA tzdata shipped with the OS, so Python's ``zoneinfo``
   # (PEP 615) raises ``ZoneInfoNotFoundError`` for every non-UTC timezone
   # out of the box.  ``tzdata`` ships the Olson database as a data package
@@ -140,24 +149,33 @@ dependencies = [
   "concurrent-log-handler==0.9.29; sys_platform == 'win32'",
   # ── High-performance library replacements ──────────────────────────
   # Phase 1 — Drop-in replacements (all already installed and in use)
-  "regex>=2026.3.32",        # 1.5-10× faster re replacement
-  "rapidfuzz>=3.14.5",       # 10-100× faster difflib replacement
-  "xxhash>=3.8.0",           # 5-10× faster non-crypto hashing
-  "pybase64>=1.4.3",          # 2-4× faster base64 via SIMD
-  "ciso8601>=2.3.3",         # 10-50× faster ISO8601 parsing
+  "regex>=2026.3.32,<2027", # 1.5-10× faster re replacement
+  "rapidfuzz>=3.14.5,<4", # 10-100× faster difflib replacement
+  "xxhash>=3.8.0,<4", # 5-10× faster non-crypto hashing
+  "pybase64>=1.4.3,<2", # 2-4× faster base64 via SIMD
+  "ciso8601>=2.3.3,<3", # 10-50× faster ISO8601 parsing
   # Phase 2 — Verified replacements
-  "zstandard>=0.25.0",       # Better compression ratio + speed
-  "lz4>=4.4.5",              # Fastest decompression
+  "zstandard>=0.25.0,<1", # Better compression ratio + speed
+  "lz4>=4.4.5,<5", # Fastest decompression
   # Phase 3 — Infrastructure
   "uvloop>=0.21.0; sys_platform != 'win32'",  # 2-4× async throughput (Unix)
   # Phase 4 — Nice-to-have (already used in some places)
-  "yarl>=1.23.0",            # C-accelerated URL type
-  # First-party lifecycle and shared-metrics runtime (upstream sync). Relay 0.6
-  # is the minimum lossless provider-codec contract. Relay publishes wheels
+  "yarl>=1.23.0,<2", # C-accelerated URL type
+  # First-party lifecycle and shared-metrics runtime. Relay 0.7 is the minimum
+  # lossless provider-codec contract. Managed calls pass request/response data
+  # through this native module in-process; shared metrics installs no network
+  # exporter and consumes only its bounded projection. Relay publishes wheels
   # only (no sdist), so this marker must stay false anywhere no wheel tag can
   # match — otherwise installing Python dependencies fails resolution outright
   # instead of falling back to the no-op Relay host (#76469, Termux).
-  "nemo-relay>=0.6.0,<0.7; (sys_platform == 'darwin' and platform_machine == 'arm64') or (sys_platform == 'linux' and platform_machine == 'x86_64' and 'android' not in platform_release) or (sys_platform == 'linux' and platform_machine == 'aarch64' and 'android' not in platform_release) or (sys_platform == 'win32' and platform_machine == 'AMD64') or (sys_platform == 'win32' and platform_machine == 'ARM64')",
+  # Termux Python reports plain linux/aarch64 but runs on Bionic
+  # libc, which satisfies neither manylinux nor musllinux, hence the
+  # `'android' not in platform_release` guard on the linux arms: Android GKI
+  # kernels embed "-androidNN-" in the kernel release string. (Official PEP
+  # 738 CPython reports sys_platform == 'android' and never matched.) Pre-GKI
+  # devices can still slip through; they get the same resolution failure as
+  # before, worked around by installing with `--no-deps` or an older release.
+  "nemo-relay>=0.7.1,<0.8; (sys_platform == 'darwin' and platform_machine == 'arm64') or (sys_platform == 'linux' and platform_machine == 'x86_64' and 'android' not in platform_release) or (sys_platform == 'linux' and platform_machine == 'aarch64' and 'android' not in platform_release) or (sys_platform == 'win32' and platform_machine == 'AMD64') or (sys_platform == 'win32' and platform_machine == 'ARM64')",
 ]
 
 [project.optional-dependencies]
@@ -180,17 +198,16 @@ daytona = ["daytona==0.155.0"]
 vercel = ["vercel==0.7.2"]
 hindsight = ["hindsight-client==0.6.1"]
 dev = ["debugpy==1.8.20", "pytest==9.1.1", "pytest-asyncio==1.3.0", "pytest-benchmark>=5.2.3,<6", "mcp==1.28.1", "starlette==1.3.1", "ty==0.0.21", "ruff==0.15.10", "setuptools==83.0.0"]  # starlette: CVE-2026-48710; setuptools: 83 (torch >=2.13 requires setuptools 83); pytest-benchmark kept for tests/performance
-messaging = ["python-telegram-bot[webhooks]==22.6", "discord.py[voice]==2.7.1", "aiohttp==3.14.1", "brotlicffi==1.2.0.1", "slack-bolt==1.29.0", "slack-sdk==3.43.0", "qrcode==7.4.2"]  # aiohttp 3.14.1: CVE-2026-34513/34518/34519/34520/34525 + 34993(RCE)/47265
+messaging = ["python-telegram-bot[webhooks]==22.8", "discord.py[voice]==2.7.1", "aiohttp==3.14.3", "brotlicffi==1.2.0.1", "slack-bolt==1.30.0", "slack-sdk==3.43.0", "qrcode==7.4.2"]  # aiohttp 3.14.3: prior CVEs + GHSA-cq5v-8q36-5273/GHSA-mfx4-hv73-q22v/GHSA-mq44-7p77-q5h7
 cron = []  # croniter is now a core dependency; this extra kept for back-compat
-slack = ["slack-bolt==1.29.0", "slack-sdk==3.43.0", "aiohttp==3.14.1"]
-matrix = ["mautrix[encryption]==0.21.0", "aiosqlite==0.22.1", "asyncpg==0.31.0", "aiohttp-socks==0.11.0", "aiohttp==3.14.1"]  # aiohttp 3.14.1: CVE-2026-34993(RCE)/47265 + 34513/34518/34519/34520/34525 (mautrix/aiohttp-socks only cap aiohttp<4 / >=3.10, so pin the patched floor directly)
+slack = ["slack-bolt==1.30.0", "slack-sdk==3.43.0", "aiohttp==3.14.3"]
+matrix = ["mautrix[encryption]==0.21.1", "aiosqlite==0.22.1", "asyncpg==0.31.0", "aiohttp-socks==0.11.0", "aiohttp==3.14.3"]  # aiohttp 3.14.3: prior CVEs + GHSA-cq5v-8q36-5273/GHSA-mfx4-hv73-q22v/GHSA-mq44-7p77-q5h7 (mautrix/aiohttp-socks only cap aiohttp<4 / >=3.10, so pin the patched floor directly)
 # WeCom callback-mode adapter — parses untrusted XML POST bodies from
 # WeCom-controlled callback endpoints, so we use defusedxml (drop-in
 # replacement for stdlib xml.etree.ElementTree) to block billion-laughs
 # and XXE. aiohttp/httpx are already in [messaging]; defusedxml lands
 # here to keep the dependency local to wecom_callback's threat model.
 wecom = ["defusedxml==0.7.1"]
-cli = ["simple-term-menu==1.6.6"]
 tts-premium = ["elevenlabs==1.59.0"]
 voice = [
   # Local STT pulls in wheel-only transitive deps (ctranslate2, onnxruntime).
@@ -234,9 +251,9 @@ mcp = ["mcp==1.28.1", "starlette==1.3.1"]  # starlette: CVE-2026-48710
 # Backwards-compatible no-op alias. Relay is a core dependency on supported
 # wheel targets and intentionally unavailable on other platforms.
 nemo-relay = []
-homeassistant = ["aiohttp==3.14.1"]
-sms = ["aiohttp==3.14.1"]
-teams = ["microsoft-teams-apps==2.0.13.4", "aiohttp==3.14.1"]  # aiohttp 3.14.1: CVE-2026-34993(RCE)/47265 + 34513/34518/34519/34520/34525
+homeassistant = ["aiohttp==3.14.3"]
+sms = ["aiohttp==3.14.3"]
+teams = ["microsoft-teams-apps==2.0.13.4", "aiohttp==3.14.3"]  # aiohttp 3.14.3: prior CVEs + GHSA-cq5v-8q36-5273/GHSA-mfx4-hv73-q22v/GHSA-mq44-7p77-q5h7
 # Computer use — macOS background desktop control via cua-driver (MCP stdio).
 # The cua-driver binary itself is installed via `hermes tools` post-setup
 # (curl install script); this extra just pins the MCP client used to talk
@@ -262,9 +279,8 @@ vertex = ["google-auth==2.55.1"]
 azure-identity = ["azure-identity==1.25.3"]
 termux = [
   # Baseline Android / Termux path for reliable fresh installs.
-  "python-telegram-bot[webhooks]==22.6",
+  "python-telegram-bot[webhooks]==22.8",
   "hermes-agent[cron]",
-  "hermes-agent[cli]",
   "hermes-agent[mcp]",
   "hermes-agent[honcho]",
   "hermes-agent[acp]",
@@ -333,7 +349,6 @@ all = [
   # and failed on `make`. Lazy-install routes that build to first use,
   # where the user is expected to have a toolchain available.
   "hermes-agent[cron]",
-  "hermes-agent[cli]",
   "hermes-agent[pty]",
   "hermes-agent[mcp]",
   "hermes-agent[homeassistant]",
@@ -354,35 +369,34 @@ all = [
 # sync with the --collect-submodules / Verify steps in release-runtime.yml.
 # See issue #16 (MCP) and the Feishu/DingTalk/WeCom/WeChat desktop reports.
 cn-desktop = [
-  "hermes-agent[web]",        # dashboard: fastapi / uvicorn / starlette
+  "hermes-agent[web]", # dashboard: fastapi / uvicorn / starlette
   "hermes-agent[anthropic]",  # native Anthropic transport (MiniMax-CN etc.)
-  "hermes-agent[mcp]",        # native MCP client SDK (issue #16)
+  "hermes-agent[mcp]", # native MCP client SDK (issue #16)
   "hermes-agent[computer-use]", # computer_use tool shim + MCP client; cua-driver stays post-install
-  "hermes-agent[exa]",        # bundled web provider (frozen runtime cannot lazy-install)
+  "hermes-agent[exa]", # bundled web provider (frozen runtime cannot lazy-install)
   "hermes-agent[firecrawl]",  # bundled web provider (frozen runtime cannot lazy-install)
   "hermes-agent[parallel-web]", # bundled web provider (frozen runtime cannot lazy-install)
-  "hermes-agent[ddgs]",       # bundled no-key web provider (frozen runtime cannot lazy-install)
+  "hermes-agent[ddgs]", # bundled no-key web provider (frozen runtime cannot lazy-install)
   # PyInstaller's --collect-submodules mcp imports mcp.cli during analysis.
   # The mcp package keeps its CLI deps behind the mcp[cli] extra, so the frozen
   # runtime build must install typer explicitly or all platform builds fail.
   "typer==0.24.1",
-  "hermes-agent[feishu]",     # 飞书 / Lark — lark-oapi
-  "hermes-agent[dingtalk]",   # 钉钉 — dingtalk-stream + alibabacloud SDK
-  "hermes-agent[wecom]",      # 企业微信 callback — defusedxml
+  "hermes-agent[feishu]", # 飞书 / Lark — lark-oapi
+  "hermes-agent[dingtalk]", # 钉钉 — dingtalk-stream + alibabacloud SDK
+  "hermes-agent[wecom]", # 企业微信 callback — defusedxml
   # 微信 (gateway/platforms/weixin.py) has no dedicated extra. Its adapter —
   # plus the Feishu webhook and WeCom send paths — need aiohttp + qrcode +
   # cryptography (certifi arrives transitively via httpx). Pinned to match the
   # messaging / feishu extras so the resolver can't drift to another version.
-  # aiohttp 3.14.1 = upstream CVE floor (CVE-2026-34993 RCE 等) — keep in
+  # aiohttp 3.14.3 = upstream CVE floor (CVE-2026-34993 RCE 等) — keep in
   # lockstep with the messaging extra when syncing upstream.
-  "aiohttp==3.14.1",
+  "aiohttp==3.14.3",
   "qrcode==7.4.2",
-  "cryptography==48.0.1",
+  "cryptography==50.0.0",
   "hermes-agent[hindsight]",  # long-term memory: hindsight-client (frozen runtime cannot lazy-install)
   "hermes-agent[supermemory]", # long-term memory: supermemory SDK (frozen runtime cannot lazy-install)
-  "hermes-agent[mem0]",       # long-term memory: mem0ai SDK (frozen runtime cannot lazy-install)
+  "hermes-agent[mem0]", # long-term memory: mem0ai SDK (frozen runtime cannot lazy-install)
 ]
-
 [build-system]
 requires = ["setuptools==83.0.0"]
 build-backend = "setuptools.build_meta"
@@ -399,12 +413,40 @@ override-dependencies = [
   # so, we force-override this to pynacl 1.6. here.
   # remove this when we update discord.py
   "pynacl>=1.6,<1.7",
+  "cryptography>=50,<51",
 ]
 exclude-newer = "14 days"
-exclude-newer-package = { vercel = false, nemo-relay = false, huggingface_hub = false }
+# h2: temporary exclude-newer exception for the CVE-2026-71554 (GHSA-6hr6-w5qg-qmwg,
+# request-smuggling) fix in 4.4.1, published 2026-08-03. Remove after 2026-08-17.
+# aiohttp, cryptography: same shape — the advisory fixes are newer than the
+# 14-day window, so the resolver cannot see them without an exception.
+exclude-newer-package = { vercel = false, nemo-relay = false, huggingface_hub = false, h2 = false, aiohttp = false, cryptography = false }
 
 [tool.setuptools]
-py-modules = ["run_agent", "model_tools", "toolsets", "batch_runner", "trajectory_compressor", "toolset_distributions", "cli", "hermes_bootstrap", "hermes_constants", "hermes_state", "hermes_state_common", "hermes_state_portability", "hermes_state_schema", "hermes_state_search", "hermes_time", "hermes_logging", "utils", "platform_utils", "import_accelerator", "mcp_serve"]
+# Top-level single-file modules (not packages). Without this, uv2nix's
+# sealed venv is missing hermes_constants, run_agent, etc.
+py-modules = [
+  "run_agent",
+  "model_tools",
+  "toolsets",
+  "batch_runner",
+  "trajectory_compressor",
+  "toolset_distributions",
+  "cli",
+  "hermes_bootstrap",
+  "hermes_constants",
+  "hermes_state",
+  "hermes_state_common",
+  "hermes_state_portability",
+  "hermes_state_schema",
+  "hermes_state_search",
+  "hermes_time",
+  "hermes_logging",
+  "utils",
+  "platform_utils",
+  "import_accelerator",
+  "mcp_serve",
+]
 
 # Ahead-of-time bytecode warm-up (scripts/precompile.py).  ``pip install`` already
 # byte-compiles installed packages; this table drives the run-from-source path
@@ -472,7 +514,7 @@ locales = ["locales/*.yaml"]
 "optional-mcps/n8n" = ["optional-mcps/n8n/manifest.yaml"]
 
 [tool.setuptools.package-data]
-hermes_cli = ["web_dist/**/*", "tui_dist/**/*", "scripts/install.sh", "scripts/install.ps1", "observability/schemas/*.json"]
+hermes_cli = ["web_dist/**/*", "tui_dist/**/*", "scripts/install.sh", "scripts/install.ps1", "observability/schemas/*.json", "data/*.json"]
 gateway = ["assets/**/*"]
 # Offline-first models.dev snapshot (P-028) — bundled so the cost guard,
 # capability lookup, and context-length resolution have data even when
@@ -498,6 +540,7 @@ plugins = [
 [tool.setuptools.packages.find]
 include = ["agent", "agent.*", "tools", "tools.*", "hermes_cli", "hermes_cli.*", "gateway", "gateway.*", "tui_gateway", "tui_gateway.*", "cron", "cron.*", "acp_adapter", "plugins", "plugins.*", "providers", "providers.*"]
 
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
@@ -508,6 +551,9 @@ markers = [
     "requires_wal: needs the runtime to actually enable SQLite WAL mode (skipped where Hermes falls back to journal_mode=DELETE)",
     "no_isolate: opt out of per-file subprocess isolation (tests share mutable module-level state)",
     "ssh: marks tests requiring a reachable SSH server (skipped in normal CI)",
+      "linux_only: exercises Linux-specific behaviour; skipped on other hosts",
+      "macos_only: exercises macOS-specific behaviour; skipped on other hosts",
+      "windows_only: exercises native-Windows behaviour; skipped on other hosts",
 ]
 # integration tests take way too long to run in the normal CI environments
 addopts = "-m 'not integration'"

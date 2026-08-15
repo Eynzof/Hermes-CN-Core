@@ -263,8 +263,7 @@ class ChatCompletionsTransport(ProviderTransport):
                 or "tool_name" in msg
                 or "effect_disposition" in msg
                 or "timestamp" in msg  # #47868 — strict providers reject this
-                or "effect_disposition" in msg
-                or "api_content" in msg
+                or "api_content" in msg  # persist-what-you-send sidecar
             ):
                 needs_sanitize = True
                 break
@@ -307,8 +306,7 @@ class ChatCompletionsTransport(ProviderTransport):
                 or "tool_name" in msg
                 or "effect_disposition" in msg
                 or "timestamp" in msg  # #47868 — leak into strict providers
-                or "effect_disposition" in msg
-                or "api_content" in msg
+                or "api_content" in msg  # persist-what-you-send sidecar
             ):
                 out_msg = mutable_msg()
                 out_msg.pop("codex_reasoning_items", None)
@@ -316,8 +314,7 @@ class ChatCompletionsTransport(ProviderTransport):
                 out_msg.pop("tool_name", None)
                 out_msg.pop("effect_disposition", None)
                 out_msg.pop("timestamp", None)  # #47868 — leak into strict providers
-                out_msg.pop("effect_disposition", None)
-                out_msg.pop("api_content", None)
+                out_msg.pop("api_content", None)  # persist-what-you-send sidecar
 
 
             # Drop all Hermes-internal scaffolding markers (``_``-prefixed).
@@ -743,7 +740,7 @@ class ChatCompletionsTransport(ProviderTransport):
             api_kwargs,
             messages=sanitized,
             tools=api_kwargs.get("tools"),
-            supports_prompt_cache_key=bool(profile.supports_prompt_cache_key),
+            supports_prompt_cache_key=bool(getattr(profile, "supports_prompt_cache_key", False)),
             session_id=params.get("session_id"),
         )
 
@@ -781,7 +778,12 @@ class ChatCompletionsTransport(ProviderTransport):
                 if extra is not None:
                     if hasattr(extra, "model_dump"):
                         try:
-                            extra = extra.model_dump()
+                            extra = extra.model_dump(warnings=False)
+                        except TypeError:
+                            try:
+                                extra = extra.model_dump()
+                            except Exception:
+                                pass
                         except Exception:
                             pass
                     tc_provider_data["extra_content"] = extra

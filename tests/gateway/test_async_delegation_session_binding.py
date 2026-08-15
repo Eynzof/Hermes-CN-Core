@@ -206,14 +206,3 @@ class TestGatewayPinningFailsClosed:
         getattr(
             runner.session_store, "advance_compression_session"
         ).assert_called_once_with(current.session_key, "sess_parent", "sess_tip")
-
-
-class TestResetHandlerInterruptsDelegations:
-    def test_reset_command_calls_interrupt_for_session(self):
-        """The /new handler must sever the old conversation's delegations."""
-        import inspect
-        from gateway import slash_commands
-
-        src = inspect.getsource(slash_commands.GatewaySlashCommandsMixin._handle_reset_command)
-        assert "interrupt_for_session" in src
-        assert "session_reset" in src

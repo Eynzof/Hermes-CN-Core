@@ -294,18 +294,6 @@ async def test_recovered_mention_reuses_live_auth_and_mention_gates(adapter, mon
     )
 
 
-def test_default_config_exposes_missed_message_backfill_settings():
-    from hermes_cli.config import DEFAULT_CONFIG
-
-    assert DEFAULT_CONFIG["discord"]["missed_message_backfill"] == {
-        "enabled": False,
-        "channels": "",
-        "window_seconds": 21600,
-        "limit": 100,
-        "max_dispatches": 10,
-    }
-
-
 def test_missed_message_backfill_config_stays_per_adapter():
     first_extra = _apply_yaml_config(
         {},

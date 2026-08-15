@@ -61,7 +61,8 @@ class TestFindAgentBrowserCache:
 
         with patch("shutil.which", return_value=None), \
              patch("os.path.isdir", return_value=False), \
-             patch.object(Path, "exists", mock_exists):
+             patch.object(Path, "exists", mock_exists), \
+             patch("hermes_cli.dep_ensure.ensure_dependency", return_value=False):
             with pytest.raises(FileNotFoundError):
                 bt._find_agent_browser()
         # Second call should also raise (from cache)
@@ -202,4 +203,3 @@ class TestTruncateSnapshot:
 # ---------------------------------------------------------------------------
 # _camofox_eval bug fix
 # ---------------------------------------------------------------------------
-

@@ -1,6 +1,6 @@
 """Tests for credential pool upsert — key rotation clears exhaustion state."""
-from __future__ import annotations
 
+from __future__ import annotations
 
 import json
 

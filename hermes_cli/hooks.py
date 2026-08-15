@@ -213,6 +213,14 @@ _DEFAULT_PAYLOADS = {
         "assistant_content_chars": 1200,
         "assistant_tool_call_count": 0,
     },
+    "pre_transcription": {
+        "file_path": "/tmp/voice-message.ogg",
+        "provider": "local",
+        "model": "base",
+        "language": "en",
+        "prompt": None,
+        "source": "gateway",
+    },
     "subagent_stop": {
         "parent_session_id": "parent-sess",
         "child_role": None,
@@ -291,9 +299,11 @@ def _cmd_test(args) -> None:
 def _print_run_result(result: Dict[str, Any]) -> None:
     if result.get("error"):
         print(f"      ✗ error: {result['error']}")
+        _print_parsed(result)
         return
     if result.get("timed_out"):
         print(f"      ✗ timed out after {result['elapsed_seconds']}s")
+        _print_parsed(result)
         return
 
     rc = result.get("returncode")
@@ -307,6 +317,10 @@ def _print_run_result(result: Dict[str, Any]) -> None:
     if stderr:
         print(f"      stderr: {_truncate(stderr, 400)}")
 
+    _print_parsed(result)
+
+
+def _print_parsed(result: Dict[str, Any]) -> None:
     parsed = result.get("parsed")
     if parsed:
         print(f"      parsed (Hermes wire shape): {json.dumps(parsed)}")

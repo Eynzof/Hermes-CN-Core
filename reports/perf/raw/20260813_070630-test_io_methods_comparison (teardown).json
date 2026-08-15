@@ -1,0 +1,51 @@
+{
+  "samples": [
+    {
+      "section": "python_inproc_read",
+      "duration_ms": 4.828,
+      "iteration": 0
+    },
+    {
+      "section": "powershell_get_content",
+      "duration_ms": 21787.721,
+      "iteration": 0
+    },
+    {
+      "section": "cmd_type",
+      "duration_ms": 458.193,
+      "iteration": 0
+    }
+  ],
+  "summary": {
+    "cmd_type": {
+      "count": 1,
+      "total_ms": 458.193,
+      "mean_ms": 458.193,
+      "min_ms": 458.193,
+      "max_ms": 458.193,
+      "durations": [
+        458.193
+      ]
+    },
+    "powershell_get_content": {
+      "count": 1,
+      "total_ms": 21787.721,
+      "mean_ms": 21787.721,
+      "min_ms": 21787.721,
+      "max_ms": 21787.721,
+      "durations": [
+        21787.721
+      ]
+    },
+    "python_inproc_read": {
+      "count": 1,
+      "total_ms": 4.828,
+      "mean_ms": 4.828,
+      "min_ms": 4.828,
+      "max_ms": 4.828,
+      "durations": [
+        4.828
+      ]
+    }
+  }
+}

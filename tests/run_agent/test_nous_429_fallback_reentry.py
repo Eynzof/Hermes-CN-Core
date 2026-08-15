@@ -17,7 +17,9 @@ provider (resetting retry_count) or returns the explicit rate-limit failure.
 from __future__ import annotations
 
 import inspect
-from agent.re_compat import re
+import re
+
+
 def _loop_reenters(retry_count: int, max_retries: int) -> bool:
     """Mirror of the ``while retry_count < max_retries`` loop condition."""
     return retry_count < max_retries
@@ -33,6 +35,3 @@ class TestGenuineNous429ReentersLoop:
             assert _loop_reenters(retry_count, max_retries), (
                 f"max_retries={max_retries}: guard would never run"
             )
-
-
-

@@ -196,6 +196,7 @@ def _lark_bindings() -> dict:
         "FeishuWSClient": FeishuWSClient,
         "FEISHU_AVAILABLE": True,
     }
+
 FEISHU_WEBSOCKET_AVAILABLE = websockets is not None
 FEISHU_WEBHOOK_AVAILABLE = aiohttp is not None
 
@@ -1499,6 +1500,26 @@ def _load_lark_oapi() -> bool:
         if lark is not None:
             return True
         return ensure_and_bind("platform.feishu", _lark_bindings, globals(), prompt=False)
+
+
+def feishu_deps_present() -> bool:
+    """PASSIVE probe: is lark-oapi installed right now?
+
+    Registry ``check_fn`` — called from status displays and config loading,
+    so it must never install anything.  Uses ``is_available`` (cheap
+    importlib.metadata lookups) instead of importing the SDK, which is
+    deferred to ``_load_lark_oapi`` at connect time.  The ACTIVE
+    lazy-installer (``check_feishu_requirements``) is registered as
+    ``ensure_deps_fn`` and runs from ``create_adapter()`` when this
+    returns False (#79812).
+    """
+    if FEISHU_AVAILABLE:
+        return True
+    try:
+        from tools.lazy_deps import is_available
+        return is_available("platform.feishu")
+    except Exception:  # pragma: no cover — defensive
+        return False
 
 
 def check_feishu_requirements() -> bool:
@@ -4753,6 +4774,41 @@ class FeishuAdapter(BasePlatformAdapter):
         except Exception:
             return 0
 
+    @staticmethod
+    def _get_audio_duration_ms(file_path: str) -> int:
+        """Extract OGG/Opus audio duration in milliseconds (pure Python, no deps).
+
+        Parses the OGG container to find the last granule position and divides
+        by the Opus sample rate (48000 Hz). Returns 0 for non-OGG files or on error.
+        """
+        import struct
+        try:
+            with open(file_path, "rb") as f:
+                data = f.read()
+            pos = 0
+            last_granule = 0
+            while pos < len(data) - 27:
+                idx = data.find(b"OggS", pos)
+                if idx == -1:
+                    break
+                pos = idx
+                if pos + 27 > len(data):
+                    break
+                granule = struct.unpack_from("<q", data, pos + 6)[0]
+                num_segments = data[pos + 26]
+                if granule > 0:
+                    last_granule = granule
+                segment_end = pos + 27 + num_segments
+                if segment_end > len(data):
+                    break
+                page_size = num_segments
+                for i in range(num_segments):
+                    page_size += data[pos + 27 + i]
+                pos += page_size
+            return int(last_granule / 48000 * 1000) if last_granule > 0 else 0
+        except Exception:
+            return 0
+
     async def _send_uploaded_file_message(
         self,
         *,
@@ -5939,7 +5995,8 @@ def register(ctx) -> None:
         name="feishu",
         label="Feishu / Lark",
         adapter_factory=_build_adapter,
-        check_fn=check_feishu_requirements,
+        check_fn=feishu_deps_present,
+        ensure_deps_fn=check_feishu_requirements,
         is_connected=_is_connected,
         validate_config=_is_connected,
         required_env=["FEISHU_APP_ID", "FEISHU_APP_SECRET"],

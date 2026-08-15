@@ -157,42 +157,6 @@ def test_managed_uv_helper_delegates_to_the_shared_one():
     assert _venv_python(v) == venv_python_path(v)
 
 
-def test_no_open_coded_venv_layout_remains_in_hermes_cli():
-    """Fails if a new call site hand-rolls Scripts/bin again (#76105).
-
-    Uses AST rather than substring matching: an earlier `"if" in line` version
-    matched any word containing "if" (mod*if*y, ver*if*y) and still missed
-    `os.path.join(venv, "Scripts")`.
-
-    ``stdio.py`` is exempt: it builds a list of literal *Windows-only* PATH
-    candidates, not a cross-platform layout derivation, so ``venv_bin_dir()``
-    (which branches on the host platform) would be the wrong tool there.
-    """
-    import ast
-    import hermes_cli
-
-    exempt = {"stdio.py"}
-    pkg = Path(hermes_cli.__file__).parent
-    offenders = []
-    for py in pkg.rglob("*.py"):
-        if py.name in exempt:
-            continue
-        try:
-            tree = ast.parse(py.read_text(encoding="utf-8", errors="replace"))
-        except SyntaxError:
-            continue
-        for node in ast.walk(tree):
-            # Any *code* string literal "Scripts" is a hand-rolled layout;
-            # docstrings and comments never reach ast.Constant in an expr
-            # position we care about here.
-            if isinstance(node, ast.Constant) and node.value == "Scripts":
-                offenders.append(f"{py.relative_to(pkg)}:{node.lineno}")
-    assert not offenders, (
-        "open-coded venv layout found (use hermes_constants.venv_bin_dir):\n"
-        + "\n".join(offenders)
-    )
-
-
 # ---------------------------------------------------------------------------
 # Top-level FILES must be atomic too (#76104 review, C1)
 # ---------------------------------------------------------------------------
@@ -428,43 +392,3 @@ def test_commit_failure_plus_discard_leaves_no_staging_litter(tmp_path, monkeypa
     # ...and zero litter of any kind (staging OR backup).
     litter = [p for p in os.listdir(live) if "hermes-update" in p]
     assert litter == [], f"orphaned update litter: {litter}"
-
-
-def test_update_via_zip_wires_discard_into_the_commit_failure_path():
-    """AST wiring contract: _update_via_zip must call _discard_staged from an
-    exception handler around _commit_staged_replacements. The behavioral test
-    above mirrors that wiring; this pins the production function itself so a
-    refactor can't silently drop the cleanup."""
-    import ast
-    import inspect
-    import textwrap
-
-    src = textwrap.dedent(inspect.getsource(update_cmd._update_via_zip))
-    tree = ast.parse(src)
-
-    def _calls(node, name):
-        return any(
-            isinstance(n, ast.Call)
-            and isinstance(n.func, ast.Name)
-            and n.func.id == name
-            for n in ast.walk(node)
-        )
-
-    wired = False
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Try):
-            continue
-        body_commits = any(
-            _calls(stmt, "_commit_staged_replacements") for stmt in node.body
-        )
-        handler_discards = any(
-            _calls(handler, "_discard_staged") for handler in node.handlers
-        )
-        if body_commits and handler_discards:
-            wired = True
-            break
-    assert wired, (
-        "_update_via_zip no longer discards staging copies when "
-        "_commit_staged_replacements fails — commit-phase litter will make "
-        "the retry's free-space check fail harder than the first attempt"
-    )

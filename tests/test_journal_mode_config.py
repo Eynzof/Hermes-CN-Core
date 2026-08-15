@@ -1,6 +1,6 @@
 """Behavioral coverage for #68545's centralized journal-mode setting."""
-from __future__ import annotations
 
+from __future__ import annotations
 
 import sqlite3
 

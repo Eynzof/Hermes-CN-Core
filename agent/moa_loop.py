@@ -5,8 +5,8 @@ MoA-enabled; the normal Hermes agent loop still owns tool calling and turn
 termination, while this module gathers reference-model context before each model
 iteration.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import hashlib
 import logging
@@ -283,51 +283,10 @@ _REFERENCE_SYSTEM_PROMPT = (
 
 
 
-def _slot_label(slot: dict[str, str]) -> str:
-    provider = str(slot.get("provider") or "").strip()
-    model = str(slot.get("model") or "").strip()
-    label = f"{provider}:{model}"
+def _slot_label(slot: dict[str, Any]) -> str:
+    label = f"{(slot.get('provider') or '').strip()}:{(slot.get('model') or '').strip()}"
     effort = str(slot.get("reasoning_effort") or "").strip()
-    if effort:
-        label += f"[reasoning={effort}]"
-    return label
-
-
-def _slot_reasoning_config(slot: dict[str, Any]) -> dict[str, Any] | None:
-    """Translate optional per-MoA-slot reasoning_effort into runtime config."""
-    effort = slot.get("reasoning_effort")
-    if effort:
-        from hermes_constants import parse_reasoning_effort
-        return parse_reasoning_effort(effort)
-    return None
-
-
-def _aggregator_reasoning_config(aggregator: dict[str, Any]) -> dict[str, Any] | None:
-    """Resolve the aggregator's reasoning config: slot => per-model override => global.
-
-    Unlike reference slots which resolve reasoning_effort only from their
-    slot dict, the aggregator (the "acting model" of the MoA) has its
-    reasoning_effort determined by the same chokepoint
-    (``resolve_reasoning_config``) that governs the main loop. This ensures
-    per-model overrides (``agent.reasoning_overrides``) and the global
-    ``agent.reasoning_effort`` apply to the aggregator just as they would
-    if the model were selected directly, not only the slot's inline value.
-    """
-    cfg = _slot_reasoning_config(aggregator)
-    if cfg is not None:
-        return cfg
-    # Fall back to the shared chokepoint — uses agent.reasoning_overrides
-    # then agent.reasoning_effort.
-    try:
-        from hermes_constants import resolve_reasoning_config
-        from hermes_cli.config import load_config
-        return resolve_reasoning_config(
-            load_config(),
-            model=aggregator.get("model", ""),
-        )
-    except Exception:
-        pass
-    return None
+    return f"{label}[reasoning={effort}]" if effort else label
 
 
 def _slot_reasoning_config(slot: dict[str, Any]) -> dict[str, Any] | None:
@@ -1022,9 +981,9 @@ def _render_tool_calls(tool_calls: Any) -> str:
             args_text = fn_args
         elif fn_args is not None:
             try:
-                import orjson
+                import json
 
-                args_text = orjson.dumps(fn_args).decode('utf-8')
+                args_text = json.dumps(fn_args, ensure_ascii=False)
             except Exception:
                 args_text = str(fn_args)
         else:
@@ -1258,6 +1217,7 @@ def aggregate_moa_context(
     reference_max_tokens: int | None = None,
     reference_timeout: float | None = None,
     degraded_reference_policy: str = "loud",
+    synthesis_style: str = "guidance",
     agent: Any = None,
 ) -> str:
     """Run configured reference models and synthesize their advice.
@@ -1281,6 +1241,14 @@ def aggregate_moa_context(
 
     ``agent``, when passed, lets the reference fan-out be aborted early on a
     user interrupt — see ``_run_references_parallel``'s docstring.
+
+    ``synthesis_style`` selects how advisor output is synthesized (see
+    ``hermes_cli.moa_config.coerce_synthesis_style``): ``"guidance"`` (the
+    default) produces private context for the acting model; ``"council"``
+    (inspired by Perplexity Computer's Model Council, Aug 2026) makes the
+    aggregator act as a council *chair*, producing a user-facing deliberation
+    report that surfaces agreement, disagreement, per-model unique
+    contributions, and a recommendation with confidence.
     """
     reference_models = [slot for slot in reference_models if slot.get("enabled", True)]
     reference_outputs: list[tuple[str, str, Any]] = []
@@ -1338,15 +1306,36 @@ def aggregate_moa_context(
             f"{notice}"
         )
 
-    synth_prompt = (
-        "You are the aggregator in a Mixture of Agents process. Synthesize the "
-        "reference responses into concise, actionable guidance for the main "
-        "Hermes agent. Focus on next steps, tool-use strategy, risks, and any "
-        "disagreements. Do not answer the user directly unless that is all that "
-        "is needed; produce context the main agent should use in its normal loop.\n\n"
-        f"Original user prompt:\n{user_prompt}\n\n"
-        f"Reference responses:\n{joined}"
-    )
+    council = str(synthesis_style or "guidance").strip().lower() == "council"
+    if council:
+        synth_prompt = (
+            "You are the CHAIR of a model council. Several independent frontier "
+            "models were each asked the same question and answered without seeing "
+            "each other's responses. Chair the deliberation: produce a council "
+            "report with these sections —\n"
+            "1. Consensus: where the models agree (consensus supports acting with "
+            "confidence).\n"
+            "2. Disagreements: where they diverge, attributing each position to "
+            "its model by label, and identifying the differing starting "
+            "assumptions behind each divergence.\n"
+            "3. Unique contributions: what each model uniquely surfaced that the "
+            "others missed.\n"
+            "4. Chair's recommendation: your synthesized position, with an "
+            "explicit confidence level and what evidence would change it.\n"
+            "Be concrete and attribute positions to models by name.\n\n"
+            f"Original user prompt:\n{user_prompt}\n\n"
+            f"Council member responses:\n{joined}"
+        )
+    else:
+        synth_prompt = (
+            "You are the aggregator in a Mixture of Agents process. Synthesize the "
+            "reference responses into concise, actionable guidance for the main "
+            "Hermes agent. Focus on next steps, tool-use strategy, risks, and any "
+            "disagreements. Do not answer the user directly unless that is all that "
+            "is needed; produce context the main agent should use in its normal loop.\n\n"
+            f"Original user prompt:\n{user_prompt}\n\n"
+            f"Reference responses:\n{joined}"
+        )
 
     agg_label = _slot_label(aggregator)
     agg_runtime = _slot_runtime(aggregator)
@@ -1391,6 +1380,18 @@ def aggregate_moa_context(
 
     if not synthesis:
         synthesis = joined
+
+    if council:
+        return (
+            "[Model Council report — a board of independent models deliberated "
+            "on the user's question and the chair synthesized their positions. "
+            "Present this deliberation to the user: preserve the "
+            "consensus/disagreement structure and the per-model attributions, "
+            "and add your own judgement where useful.]\n"
+            f"Chair: {agg_label}\n"
+            f"Council members: {', '.join(_slot_label(slot) for slot in reference_models)}\n\n"
+            f"{synthesis.strip()}"
+        )
 
     return (
         "[Mixture of Agents context — use this as private guidance for the "
@@ -2268,15 +2269,39 @@ class MoAChatCompletions:
         elif joined or degraded:
             if degraded:
                 joined = f"{joined}\n\n{degraded}" if joined else degraded
-            guidance = (
-                "[Mixture of Agents reference context]\n"
-                f"Preset: {self.preset_name}\n"
-                f"Aggregator/acting model: {_slot_label(aggregator)}\n"
-                f"References: {', '.join(label for label, _, _ in _agg_refs)}\n\n"
-                "Use the reference responses below as private context. You are the aggregator and acting model: "
-                "answer the user directly or call tools as needed.\n\n"
-                f"{joined}"
-            )
+            if str(preset.get("synthesis_style") or "guidance").strip().lower() == "council":
+                # Council style (inspired by Perplexity Computer's Model
+                # Council, Aug 2026): the acting model chairs a deliberation
+                # instead of consuming private advice. Its user-facing answer
+                # must surface consensus, disagreements (with per-model
+                # attribution and the differing assumptions behind them),
+                # unique contributions, and a recommendation with confidence.
+                guidance = (
+                    "[Model Council deliberation]\n"
+                    f"Preset: {self.preset_name}\n"
+                    f"Chair (you): {_slot_label(aggregator)}\n"
+                    f"Council members: {', '.join(label for label, _, _ in _agg_refs)}\n\n"
+                    "You are the chair of a model council. The council member "
+                    "responses below are independent answers to the current "
+                    "state of the task. Chair the deliberation in your reply: "
+                    "surface where the members agree (consensus), where they "
+                    "disagree (attribute positions to members by name and name "
+                    "the differing assumptions), what each uniquely surfaced, "
+                    "and close with your own recommendation and an explicit "
+                    "confidence level. You may still call tools when the task "
+                    "requires acting rather than deliberating.\n\n"
+                    f"{joined}"
+                )
+            else:
+                guidance = (
+                    "[Mixture of Agents reference context]\n"
+                    f"Preset: {self.preset_name}\n"
+                    f"Aggregator/acting model: {_slot_label(aggregator)}\n"
+                    f"References: {', '.join(label for label, _, _ in _agg_refs)}\n\n"
+                    "Use the reference responses below as private context. You are the aggregator and acting model: "
+                    "answer the user directly or call tools as needed.\n\n"
+                    f"{joined}"
+                )
             _attach_reference_guidance(agg_messages, guidance)
 
         prepared_request = {

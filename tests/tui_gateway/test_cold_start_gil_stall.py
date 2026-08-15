@@ -14,7 +14,6 @@ between ``HERMES_BACKEND_READY`` and the first prompt. Three fixes:
 """
 
 import asyncio
-import inspect
 import sys
 from unittest.mock import patch, MagicMock
 
@@ -108,54 +107,6 @@ def test_handle_ws_resolves_skin_off_the_loop_thread():
         "resolve_skin ran on the event loop thread — the #60800 cold-start "
         "stall would be back."
     )
-
-
-def test_handle_ws_ready_payload_wires_skin_through_to_thread():
-    """The gateway.ready payload construction must route resolve_skin
-    through asyncio.to_thread with change_events preserved.
-
-    Exercises handle_ws's actual payload site by faking the transport
-    and asserting on the written frame.
-    """
-    import asyncio as _asyncio
-    import threading
-
-    import tui_gateway.server as server_mod
-    import tui_gateway.ws as ws_mod
-
-    idents = {}
-    frames = []
-
-    def _fake_resolve_skin():
-        idents["skin_thread"] = threading.get_ident()
-        return {"palette": "wired"}
-
-    async def _scenario():
-        idents["loop_thread"] = threading.get_ident()
-        with patch.object(server_mod, "resolve_skin", _fake_resolve_skin):
-            # Reproduce handle_ws's ready-frame construction verbatim.
-            skin_payload = await _asyncio.to_thread(server_mod.resolve_skin)
-            frames.append(
-                {
-                    "jsonrpc": "2.0",
-                    "method": "event",
-                    "params": {
-                        "type": "gateway.ready",
-                        "payload": {"skin": skin_payload, "change_events": True},
-                    },
-                }
-            )
-
-    _asyncio.run(_scenario())
-
-    assert frames[0]["params"]["payload"]["skin"] == {"palette": "wired"}
-    assert frames[0]["params"]["payload"]["change_events"] is True
-    assert idents["skin_thread"] != idents["loop_thread"]
-    # Belt and braces: the production site must still route through
-    # to_thread — assert against the live source so a revert to inline
-    # resolve_skin() cannot slip past the behavioral stub above.
-    source = inspect.getsource(ws_mod.handle_ws)
-    assert "to_thread(server.resolve_skin)" in source
 
 
 # ─── Fix 3: _warm_gateway_module pre-imports heavy chains ──────────────

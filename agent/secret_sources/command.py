@@ -29,8 +29,8 @@ Security model (mirrors the TS provider line-for-line where it matters):
   degrades to an empty result with a warning; Windows users stay on the
   default ``env`` provider.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import os
 import platform

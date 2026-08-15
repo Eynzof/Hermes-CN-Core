@@ -14,8 +14,8 @@ relay eligible only when its authenticated transport advertises the logical
 platform). These tests cover the resolver semantics the watcher depends on,
 plus the CLI pre-check's env-derived fronted set.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import pytest
 

@@ -139,6 +139,9 @@ COMMAND_REGISTRY: list[CommandDef] = [
                cli_only=True, args_hint="<archive.tar.gz> [--name <name>]"),
     CommandDef("stop", "Kill all running background processes", "Session",
                busy_policy="interrupt_then_dispatch", busy_handler="stop"),
+    CommandDef("pause", "Pause new work globally (emergency stop); '/pause off' resumes", "Session",
+               gateway_only=True, args_hint="[reason | off]",
+               busy_policy="dispatch"),
     CommandDef("approve", "Approve a pending dangerous command", "Session",
                gateway_only=True, args_hint="[session|always]", busy_policy="dispatch"),
     CommandDef("deny", "Deny a pending dangerous command (optionally with a reason)", "Session",
@@ -164,10 +167,18 @@ COMMAND_REGISTRY: list[CommandDef] = [
     CommandDef("steer", "Inject a message after the next tool call without interrupting", "Session",
                args_hint="<prompt>", busy_policy="dispatch", busy_handler="steer"),
     CommandDef("goal", "Set a standing goal Hermes works on across turns until achieved", "Session",
-               args_hint="[text | draft <text> | show | pause | resume | clear | status | wait <pid> | unwait]",
+               args_hint="[text | draft <text> | show | gate add <cmd> | pause | resume | clear | status | wait <pid> | unwait]",
                busy_policy="dispatch", busy_handler="goal"),
+    CommandDef("heartbeat", "Set a recurring prompt that re-enters this session when idle", "Session",
+               aliases=("hb",), args_hint="[every <interval> <prompt> | status | pause | resume | clear]",
+               subcommands=("status", "pause", "resume", "clear"),
+               busy_policy="dispatch"),
+    CommandDef("refine", "Review this conversation now and save lessons to memory/skills", "Session",
+               args_hint="[focus instructions]"),
     CommandDef("moa", "Run one prompt through the default Mixture of Agents preset, then restore your model", "Session",
                args_hint="<prompt>", busy_policy="reject", busy_handler="moa"),
+    CommandDef("council", "Convene a model council: reference models answer independently, a chair synthesizes consensus and disagreements", "Session",
+               args_hint="<question>", busy_policy="reject"),
     CommandDef("subgoal", "Add or manage extra criteria on the active goal", "Session",
                args_hint="[text | remove N | clear]", busy_policy="dispatch"),
     CommandDef("status", "Show session, model, token, and context info", "Session",
@@ -299,9 +310,9 @@ COMMAND_REGISTRY: list[CommandDef] = [
                aliases=("reload_mcp",)),
     CommandDef("reload-skills", "Re-scan ~/.hermes/skills/ for newly installed or removed skills",
                "Tools & Skills", aliases=("reload_skills",)),
-    CommandDef("browser", "Connect browser tools to your live Chromium-family browser via CDP", "Tools & Skills",
-               cli_only=True, args_hint="[connect|disconnect|status]",
-               subcommands=("connect", "disconnect", "status")),
+    CommandDef("browser", "Connect browser tools to your live Chromium-family browser via CDP, or switch to Browser Use mode", "Tools & Skills",
+               cli_only=True, args_hint="[connect|disconnect|status|use]",
+               subcommands=("connect", "disconnect", "status", "use")),
     CommandDef("plugins", "List installed plugins and their status",
                "Tools & Skills", cli_only=True),
 
@@ -1268,11 +1279,19 @@ _SLACK_PRIORITY_ALIASES = ("btw", "bg")
 #     /hermes update on Slack. Demoted to free the native slot /approvals now
 #     claims — without this entry /approvals tips the registry past the 50-cap
 #     and silently clamps /update off, breaking Telegram parity.
-#   - platform: gateway fault-control surface; reachable via /hermes platform
-#     on Slack to keep native slash registration within Slack's 50-command cap.
+# - platform: gateway fault-control surface; reachable via /hermes platform
+# on Slack to keep native slash registration within Slack's 50-command cap.
+# - heartbeat: session heartbeat management; reached via /hermes heartbeat
+# on Slack. Added at the 50-cap — a native slot would clamp /insights.
+# - refine: on-demand memory/skill review; reached via /hermes refine on
+# Slack. Added at the 50-cap — a native slot would clamp an existing
+# native slash.
+# - pause: global emergency stop; reached via /hermes pause [off] on
+# Slack. Added at the 50-cap — a native slot would clamp /platform.
 _SLACK_VIA_HERMES_ONLY = frozenset({
     "topup",
     "moa",
+    "council",
     "debug",
     "egress",
     "init",
@@ -1280,6 +1299,9 @@ _SLACK_VIA_HERMES_ONLY = frozenset({
     "diff",
     "update",
     "platform",
+    "heartbeat",
+    "refine",
+    "pause",
 })
 
 
@@ -1791,7 +1813,14 @@ class SlashCommandCompleter(Completer):
                     raw = proc.stdout.strip().split("\n")
                     # Store relative paths
                     for p in raw[:5000]:
-                        rel = os.path.relpath(p, cwd) if os.path.isabs(p) else p
+                        try:
+                            rel = os.path.relpath(p, cwd) if os.path.isabs(p) else p
+                        except ValueError:
+                            # Windows: relpath raises for paths on a different
+                            # mount than cwd — device paths (\\.\nul, \\.\con)
+                            # or another drive letter. One bad entry must not
+                            # crash the @ autocomplete event loop (#42016).
+                            continue
                         files.append(rel)
                     break
             except (RipGrepNotFound, subprocess.TimeoutExpired, OSError):
@@ -2053,15 +2082,16 @@ class SlashCommandCompleter(Completer):
 
     @staticmethod
     def _personality_completions(sub_text: str, sub_lower: str):
-        """Yield completions for /personality from configured personalities."""
+        """Yield completions for /personality via hermes_cli.personality."""
         try:
-            # Resolve from the same source the runtime applies personalities —
-            # agent.personalities via the CLI config (which ships the built-ins).
-            # load_config()'s schema has no agent.personalities, so the completer
-            # used to come back empty even with personalities available.
+            # Single owner: built-ins + user overrides from agent.personalities.
             from cli import load_cli_config
+            from hermes_cli.personality import (
+                available_personalities,
+                describe_personality,
+            )
 
-            personalities = (load_cli_config().get("agent") or {}).get("personalities", {}) or {}
+            personalities = available_personalities(load_cli_config())
             if "none".startswith(sub_lower) and "none" != sub_lower:
                 yield Completion(
                     "none",
@@ -2071,15 +2101,11 @@ class SlashCommandCompleter(Completer):
                 )
             for name, prompt in personalities.items():
                 if name.startswith(sub_lower) and name != sub_lower:
-                    if isinstance(prompt, dict):
-                        meta = prompt.get("description") or prompt.get("system_prompt", "")[:50]
-                    else:
-                        meta = str(prompt)[:50]
                     yield Completion(
                         name,
                         start_position=-len(sub_text),
                         display=name,
-                        display_meta=meta,
+                        display_meta=describe_personality(prompt),
                     )
         except Exception:
             pass
@@ -2235,8 +2261,12 @@ class SlashCommandAutoSuggest(AutoSuggest):
 
         if len(parts) == 1 and not text.endswith(" "):
             # Still typing the command name: /upd → suggest "ate"
+            # Prefer the SHORTEST matching command so a short, high-frequency
+            # command keeps its ghost text when a longer command shares its
+            # prefix (e.g. /he → "lp" for /help, not "artbeat" for
+            # /heartbeat; type one more letter to steer).
             word = text[1:].lower()
-            for cmd in COMMANDS:
+            for cmd in sorted(COMMANDS, key=len):
                 if self._completer is not None and not self._completer._command_allowed(cmd):
                     continue
                 cmd_name = cmd[1:]  # strip leading /

@@ -13,8 +13,8 @@ Invariants pinned here:
   response still goes through prefill continuation first.
 - A truly empty exhaustion (no reasoning either) still returns "(empty)".
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import sys
 import types

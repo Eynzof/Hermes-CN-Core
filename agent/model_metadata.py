@@ -7,12 +7,10 @@ and run_agent.py for pre-flight context checks.
 import base64
 import hashlib
 import ipaddress
-import orjson
 import json
 import logging
 import os
-from agent.re_compat import re
-import threading
+import re
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
@@ -68,12 +66,23 @@ def _resolve_requests_verify() -> bool | str:
             return val
     return True
 
-# Provider names that can appear as a "provider:" prefix before a model ID.
-# Only these are stripped — Ollama-style "model:tag" colons (e.g. "qwen3.5:27b")
-# are preserved so the full model name reaches cache lookups and server queries.
+# Compatibility snapshot for callers that inspect this private constant.
+# Prefix routing below queries the registry live so later registrations work.
+# Compatibility snapshot for callers that inspect this private constant.
+# Prefix routing below queries the registry live so later registrations work.
+try:
+    from providers import list_providers as _list_providers
+except Exception:
+    def _list_providers():
+        return []
+
+# Static curated prefixes — includes CN providers that are not registered in
+# the provider-profile registry (kimi-cn, moonshot-cn, stepfun, minimax,
+# alibaba, qwen, ...), merged with the live registry so bundled and user
+# plugins are recognised without a core catalog update.
 _PROVIDER_PREFIXES: frozenset[str] = frozenset({
     "openrouter", "nous", "openai-codex", "copilot", "copilot-acp",
-    "gemini", "ollama-cloud", "zai", "kimi-coding", "kimi-coding-cn", "stepfun", "minimax", "minimax-oauth", "minimax-cn", "anthropic", "deepseek", "deepinfra",
+    "gemini", "ollama-cloud", "zai", "kimi-coding", "kimi-coding-cn", "stepfun", "minimax", "minimax-oauth",
     "opencode-zen", "opencode-go", "ai-gateway", "kilocode", "alibaba", "novita",
     "qwen-oauth",
     "xiaomi",
@@ -94,7 +103,11 @@ _PROVIDER_PREFIXES: frozenset[str] = frozenset({
     "xai", "x-ai", "x.ai", "grok",
     "nvidia", "nim", "nvidia-nim", "nemotron",
     "qwen-portal", "novita-ai", "novitaai",
-})
+}) | frozenset(
+    value.lower()
+    for profile in _list_providers()
+    for value in (profile.name, *profile.aliases)
+)
 
 
 _OLLAMA_TAG_PATTERN = re.compile(
@@ -113,6 +126,9 @@ _TAILSCALE_CGNAT = ipaddress.IPv4Network("100.64.0.0/10")
 def _strip_provider_prefix(model: str) -> str:
     """Strip a recognised provider prefix from a model string.
 
+    Provider names and aliases come from the provider-profile registry, so
+    bundled and user plugins are recognised without a core catalog update.
+
     ``"local:my-model"`` → ``"my-model"``
     ``"qwen3.5:27b"``   → ``"qwen3.5:27b"``  (unchanged — not a provider prefix)
     ``"qwen:0.5b"``     → ``"qwen:0.5b"``    (unchanged — Ollama model:tag)
@@ -122,7 +138,13 @@ def _strip_provider_prefix(model: str) -> str:
         return model
     prefix, suffix = model.split(":", 1)
     prefix_lower = prefix.strip().lower()
-    if prefix_lower in _PROVIDER_PREFIXES:
+    try:
+        from providers import get_provider_profile
+
+        is_provider = get_provider_profile(prefix_lower) is not None
+    except Exception:
+        is_provider = False
+    if is_provider:
         # Don't strip if suffix looks like an Ollama tag (e.g. "7b", "latest", "q4_0")
         if _OLLAMA_TAG_PATTERN.match(suffix.strip()):
             return model
@@ -323,8 +345,8 @@ def _load_model_metadata_disk_cache() -> Dict[str, Dict[str, Any]]:
     """Load processed OpenRouter metadata cache from disk."""
     try:
         cache_path = _get_model_metadata_cache_path()
-        with cache_path.open("r", encoding="utf-8", errors="replace") as f:
-            data = orjson.loads(f.read())
+        with cache_path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
         if not isinstance(data, dict):
             return {}
         return {
@@ -399,142 +421,6 @@ MINIMUM_CONTEXT_LENGTH = 64_000
 # restart freshness is handled by the reconcile logic re-probing after expiry.
 _LOCAL_CTX_PROBE_TTL_SECONDS = 30.0
 _LOCAL_CTX_PROBE_CACHE: Dict[tuple, tuple] = {}
-
-# ---------------------------------------------------------------------------
-# Fast endpoint reachability gate
-#
-# The local-server metadata probes below (detect_local_server_type,
-# _query_local_context_length_uncached, fetch_endpoint_model_metadata) each
-# issue several HTTP GET/POST requests. When the endpoint is DOWN or the URL is
-# a placeholder (e.g. a gateway/test agent constructed against
-# ``http://localhost:9999/v1``), every one of those requests pays the full
-# per-request connect timeout. On hosts where a closed loopback port is
-# *filtered* rather than actively refused (common on Windows, and for any
-# firewalled remote box), a single ``localhost`` connect fans out to ``::1``
-# then ``127.0.0.1`` and blocks ~2s each — so one agent construction could
-# stall 30-60s on nothing. See reports/perf/root-cause-analysis.md hotspots 1-4.
-#
-# The gate does one cheap TCP connect with a short timeout BEFORE the HTTP
-# probing. If the port isn't accepting connections we skip the HTTP round
-# trips entirely and let context-length resolution fall through to cache +
-# hardcoded defaults (exactly what it would have done after the slow probes
-# failed anyway). The verdict is cached briefly, keyed by (host, port):
-#   * reachable   -> 30s TTL (server is up; don't re-probe every construction)
-#   * unreachable -> short TTL so a server that comes up moments later is still
-#     picked up quickly by the reconcile logic, while back-to-back constructions
-#     in one process (gateway per-message agents, warm re-inits) collapse to a
-#     single connect instead of N.
-# ---------------------------------------------------------------------------
-_ENDPOINT_REACHABLE_TIMEOUT_SECONDS = 0.3
-_ENDPOINT_REACHABLE_POS_TTL_SECONDS = 30.0
-_ENDPOINT_REACHABLE_NEG_TTL_SECONDS = 5.0
-_endpoint_reachable_cache: Dict[Tuple[str, int], Tuple[bool, float]] = {}
-_endpoint_reachable_lock = threading.Lock()
-
-
-def _endpoint_host_port(base_url: str) -> Optional[Tuple[str, int]]:
-    """Extract (host, port) from a base URL, defaulting the port by scheme."""
-    normalized = _normalize_base_url(base_url)
-    if not normalized:
-        return None
-    url = normalized if "://" in normalized else f"http://{normalized}"
-    try:
-        parsed = urlparse(url)
-    except Exception:
-        return None
-    host = parsed.hostname or ""
-    if not host:
-        return None
-    port = parsed.port
-    if port is None:
-        port = 443 if (parsed.scheme or "").lower() == "https" else 80
-    return host, port
-
-
-def _probe_endpoint_reachable(base_url: str, timeout: float) -> bool:
-    """One cheap request to decide whether an endpoint accepts connections.
-
-    Returns True on ANY HTTP response (even an error status) and False only on a
-    genuine connection failure (refused / timed out / DNS failure). The probe is
-    routed through the SAME ``build_httpx_client`` the metadata probes use and
-    issues a ``HEAD`` (a verb the probes themselves never use), so:
-
-    * Unit tests that stub ``httpx.Client`` see a mock response → reachable=True
-      → the real probe logic runs against their mock exactly as before, and the
-      ``HEAD`` never collides with their ``.get``/``.post`` call assertions.
-    * A genuinely down/placeholder endpoint fails the connection → reachable=
-      False → the caller skips its multi-request probing and falls through to
-      cache/defaults instead of paying a pile of connect timeouts.
-    """
-    server_url = _normalize_base_url(base_url)
-    if not server_url:
-        return False
-    server_url = server_url.rstrip("/")
-    try:
-        import httpx
-        from agent.httpx_clients import build_httpx_client
-    except Exception:
-        # No usable HTTP stack to check with — fail open so we never suppress a
-        # probe that might otherwise have worked.
-        return True
-    try:
-        with build_httpx_client(timeout=timeout) as client:
-            client.head(server_url)
-        return True
-    except Exception as exc:  # noqa: BLE001 — classify below
-        conn_failures = (
-            getattr(httpx, "ConnectError", ()),
-            getattr(httpx, "ConnectTimeout", ()),
-            getattr(httpx, "TimeoutException", ()),
-            getattr(httpx, "NetworkError", ()),
-        )
-        conn_failures = tuple(c for c in conn_failures if isinstance(c, type))
-        if conn_failures and isinstance(exc, conn_failures):
-            return False
-        # Unexpected error (e.g. a bad URL, an unrelated bug): fail open so the
-        # gate can never REMOVE a probe that would otherwise have run.
-        return True
-
-
-def _endpoint_reachable(base_url: str, timeout: Optional[float] = None) -> bool:
-    """Fast, cached reachability check for a model endpoint.
-
-    Short-circuits the slow multi-request HTTP metadata probes when the endpoint
-    is down/unreachable, so agent construction never stalls tens of seconds on
-    connect timeouts (see reports/perf/root-cause-analysis.md hotspots 1-4). An
-    empty/unparseable URL is unreachable; verdicts are cached per (host, port)
-    — positive 30s, negative 5s — so back-to-back constructions in one process
-    (gateway per-message agents, warm re-inits) collapse to a single probe.
-    """
-    try:
-        hp = _endpoint_host_port(base_url)
-    except Exception:
-        return True
-    if hp is None:
-        return False
-    now = time.monotonic()
-    with _endpoint_reachable_lock:
-        cached = _endpoint_reachable_cache.get(hp)
-        if cached is not None:
-            reachable, ts = cached
-            ttl = _ENDPOINT_REACHABLE_POS_TTL_SECONDS if reachable else _ENDPOINT_REACHABLE_NEG_TTL_SECONDS
-            if (now - ts) < ttl:
-                return reachable
-    to = _ENDPOINT_REACHABLE_TIMEOUT_SECONDS if timeout is None else timeout
-    try:
-        reachable = _probe_endpoint_reachable(base_url, to)
-    except Exception:
-        # Never let a probe of the probe make things worse.
-        return True
-    with _endpoint_reachable_lock:
-        _endpoint_reachable_cache[hp] = (reachable, now)
-    return reachable
-
-
-def _reset_endpoint_reachable_cache() -> None:
-    """Clear the reachability cache (test hook / manual invalidation)."""
-    with _endpoint_reachable_lock:
-        _endpoint_reachable_cache.clear()
 
 # Thin fallback defaults — only broad model family patterns.
 # These fire only when provider is unknown AND models.dev/OpenRouter/Anthropic
@@ -649,6 +535,7 @@ DEFAULT_CONTEXT_LENGTHS = {
     "grok-2-vision": 8192,      # grok-2-vision, -1212, -latest
     "grok-4-fast": 2000000,     # grok-4-fast-(non-)reasoning, also matches -reasoning
     "grok-4.20": 2000000,       # grok-4.20-0309-(non-)reasoning, -multi-agent-0309
+    "grok-4.6": 500000,         # grok-4.6 — 500K context (OpenRouter / docs.x.ai)
     "grok-4.5": 500000,         # grok-4.5, grok-4.5-latest — 500K context per docs.x.ai
     "grok-4.3": 1000000,        # grok-4.3, grok-4.3-latest — 1M context per docs.x.ai
     "grok-4": 256000,           # grok-4, grok-4-0709
@@ -669,7 +556,7 @@ DEFAULT_CONTEXT_LENGTHS = {
     # Sources: Solar Pro 3 = 128K, Solar Pro 2 = 64K, Solar Mini = 32K,
     # Solar Open 2 = 256K.
     "solar-open2": 262144,  # 256K
-    "solar-pro3": 262144,
+    "solar-pro3": 131072,
     "solar-pro2": 65536,
     "solar-mini": 32768,
     # Tencent — Hy3 Preview (Hunyuan) with 256K context window.
@@ -723,6 +610,8 @@ _GROK_EFFORT_CAPABLE_PREFIXES = (
     # "none" ("This model does not support `reasoning_effort` value `none`"),
     # unlike grok-4.3. models.dev agrees: effort values [low, medium, high].
     "grok-4.5",
+    # grok-4.6: drop-in successor of grok-4.5 (same effort dial).
+    "grok-4.6",
 )
 
 
@@ -842,7 +731,6 @@ _URL_TO_PROVIDER: Dict[str, str] = {
 # Auto-extend with hostnames derived from provider profiles.
 # Any provider with a base_url not already in the map gets added automatically.
 try:
-    from providers import list_providers as _list_providers
     for _pp in _list_providers():
         _host = _pp.get_hostname()
         if _host and _host not in _URL_TO_PROVIDER:
@@ -1087,6 +975,8 @@ def detect_local_server_type(base_url: str, api_key: str = "") -> Optional[str]:
     calls (e.g. every 5-minute metadata refresh) never re-run the waterfall
     and never spray 404s at endpoints the server does not expose.
     """
+    import httpx
+
     normalized = _normalize_base_url(base_url)
 
     # Resolve localhost to IPv4 to avoid 2s IPv6 timeout on Windows dual-stack.
@@ -1117,13 +1007,6 @@ def detect_local_server_type(base_url: str, api_key: str = "") -> Optional[str]:
         _endpoint_probe_path_cache[server_url] = (disk_hit, time.monotonic())
         return disk_hit
 
-    # Fast reachability gate: if the port isn't accepting connections, none of
-    # the four probes below can succeed, so skip them and avoid paying four
-    # connect timeouts for nothing (a placeholder/down endpoint would otherwise
-    # stall agent construction tens of seconds — see _endpoint_reachable).
-    if not _endpoint_reachable(base_url):
-        return None
-
     headers = _auth_headers(api_key)
 
     def _probe_failed(exc: Exception) -> None:
@@ -1138,9 +1021,7 @@ def detect_local_server_type(base_url: str, api_key: str = "") -> Optional[str]:
 
     result: Optional[str] = None
     try:
-        from agent.httpx_clients import build_httpx_client
-
-        with build_httpx_client(timeout=2.0, headers=headers) as client:
+        with httpx.Client(timeout=2.0, headers=headers) as client:
             # LM Studio exposes /api/v1/models — check first (most specific)
             try:
                 r = client.get(f"{lmstudio_url}/api/v1/models")
@@ -1376,12 +1257,6 @@ def fetch_endpoint_model_metadata(
         if cached is not None and (time.time() - cached_at) < _ENDPOINT_MODEL_CACHE_TTL:
             return cached
 
-    # Fast reachability gate: skip the /models round trips (and, for local
-    # endpoints, the detect_local_server_type probe) when the endpoint is not
-    # accepting connections. Return empty WITHOUT caching so a server that
-    # comes up later is still discovered on the next call.
-    if not _endpoint_reachable(base_url):
-        return {}
     # Blackholed endpoint: every candidate below would spend its full 5s
     # connect budget. Returned empty rather than cached, so the endpoint is
     # retried as soon as the blackhole entry expires.
@@ -1577,7 +1452,7 @@ def _load_context_cache() -> Dict[str, int]:
     if not path.exists():
         return {}
     try:
-        with open(path, encoding="utf-8", errors="replace") as f:
+        with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
         return data.get("context_lengths") or {}
     except Exception as e:
@@ -1609,7 +1484,7 @@ def save_context_length(model: str, base_url: str, length: int) -> None:
     path = _get_context_cache_path()
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w", encoding="utf-8", errors="replace") as f:
+        with open(path, "w", encoding="utf-8") as f:
             yaml.dump({"context_lengths": cache}, f, default_flow_style=False)
         logger.info("Cached context length %s -> %s tokens", key, f"{length:,}")
     except Exception as e:
@@ -1658,7 +1533,7 @@ def _invalidate_cached_context_length(model: str, base_url: str) -> None:
     path = _get_context_cache_path()
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w", encoding="utf-8", errors="replace") as f:
+        with open(path, "w", encoding="utf-8") as f:
             yaml.dump({"context_lengths": cache}, f, default_flow_style=False)
     except Exception as e:
         logger.debug("Failed to invalidate context length cache entry %s: %s", key, e)
@@ -1938,6 +1813,8 @@ def query_ollama_num_ctx(model: str, base_url: str, api_key: str = "") -> Option
     This is the value that should be passed as ``num_ctx`` in Ollama chat
     requests to override the default 2048.
     """
+    import httpx
+
     bare_model = _strip_provider_prefix(model)
     server_url = _localhost_to_ipv4(base_url.rstrip("/"))
     if server_url.endswith("/v1"):
@@ -1960,9 +1837,7 @@ def query_ollama_num_ctx(model: str, base_url: str, api_key: str = "") -> Option
     headers = _auth_headers(api_key)
 
     try:
-        from agent.httpx_clients import build_httpx_client
-
-        with build_httpx_client(timeout=3.0, headers=headers) as client:
+        with httpx.Client(timeout=3.0, headers=headers) as client:
             resp = client.post(f"{server_url}/api/show", json={"name": bare_model})
             if resp.status_code != 200:
                 return None
@@ -2080,13 +1955,6 @@ def _query_ollama_api_show(model: str, base_url: str, api_key: str = "") -> Opti
     if cached is not None and (now - cached[1]) < _LOCAL_CTX_PROBE_TTL_SECONDS:
         return cached[0]
 
-    # [CN-fork] Fast reachability gate: a single /api/show POST against a down
-    # endpoint otherwise blocks on the full 5s connect timeout (doubled for
-    # dual-stack localhost); the positive-only TTL cache above never memoizes
-    # that failure. Reachable hosts pass the cheap TCP check and probe normally.
-    if not _endpoint_reachable(base_url):
-        return None
-
     result = _query_ollama_api_show_uncached(model, base_url, api_key=api_key)
     if result:  # positive-only — never memoize a failed probe
         _LOCAL_CTX_PROBE_CACHE[cache_key] = (result, now)
@@ -2107,9 +1975,7 @@ def _query_ollama_api_show_uncached(model: str, base_url: str, api_key: str = ""
     headers = _auth_headers(api_key)
 
     try:
-        from agent.httpx_clients import build_httpx_client
-
-        with build_httpx_client(timeout=5.0, headers=headers) as client:
+        with httpx.Client(timeout=5.0, headers=headers) as client:
             resp = client.post(f"{server_url}/api/show", json={"name": model})
             if resp.status_code != 200:
                 return None
@@ -2215,11 +2081,7 @@ def _query_local_context_length(model: str, base_url: str, api_key: str = "") ->
 
 def _query_local_context_length_uncached(model: str, base_url: str, api_key: str = "") -> Optional[int]:
     """Query a local server for the model's context length."""
-
-    # Fast reachability gate — an unreachable endpoint has no context length to
-    # report, so skip the probes rather than pay their connect timeouts.
-    if not _endpoint_reachable(base_url):
-        return None
+    import httpx
 
     # Strip recognised provider prefix (e.g., "local:model-name" → "model-name").
     # Ollama "model:tag" colons (e.g. "qwen3.5:27b") are intentionally preserved.
@@ -2242,9 +2104,7 @@ def _query_local_context_length_uncached(model: str, base_url: str, api_key: str
         server_type = None
 
     try:
-        from agent.httpx_clients import build_httpx_client
-
-        with build_httpx_client(timeout=3.0, headers=headers) as client:
+        with httpx.Client(timeout=3.0, headers=headers) as client:
             # Ollama: /api/show returns model details with context info
             if server_type == "ollama":
                 resp = client.post(f"{server_url}/api/show", json={"name": model})
@@ -2654,14 +2514,8 @@ def get_model_context_length(
     config_context_length: int | None = None,
     provider: str = "",
     custom_providers: list | None = None,
-    allow_network: bool = True,
 ) -> int:
     """Get the context length for a model.
-
-    ``allow_network=False`` skips the foreign metadata services (models.dev and
-    the OpenRouter live API) so display/hot paths like ``/api/model/info`` never
-    block on them; resolution falls through to cache + hardcoded defaults. The
-    local/own-provider endpoint probes are unaffected. See P-028.
 
     Resolution order:
     0. Explicit config override (model.context_length or custom_providers per-model)
@@ -3079,7 +2933,7 @@ def get_model_context_length(
     # effective_provider`), so a fresh slug like claude-fable-5 fell through to
     # the generic "claude": 200K entry and under-reported a 1M window. Mirrors
     # the dedicated Nous/Copilot/GMI branches above.
-    if allow_network and effective_provider == "openrouter":
+    if effective_provider == "openrouter":
         metadata = fetch_model_metadata()
         entry = metadata.get(model)
         if entry:
@@ -3093,9 +2947,7 @@ def get_model_context_length(
 
     if effective_provider:
         from agent.models_dev import lookup_models_dev_context
-        ctx = lookup_models_dev_context(
-            effective_provider, model, allow_network=allow_network
-        )
+        ctx = lookup_models_dev_context(effective_provider, model)
         if ctx:
             # MiniMax M3: models.dev reports 512K but actual context is 1M.
             # Prefer hardcoded catalog over stale probe value.
@@ -3114,7 +2966,7 @@ def get_model_context_length(
     # Only consulted when the provider is unknown (no effective_provider),
     # because OpenRouter data is community-maintained and can be incorrect
     # for models that belong to known providers with curated defaults.
-    if allow_network and not effective_provider:
+    if not effective_provider:
         metadata = fetch_model_metadata()
         if model in metadata:
             or_ctx = metadata[model].get("context_length", DEFAULT_FALLBACK_CONTEXT)
@@ -3242,16 +3094,7 @@ def estimate_tokens_rough(text: str) -> int:
     return dense + ((sparse + 3) // 4)
 
 
-# Flat per-image token cost (Anthropic pricing model). Counting a base64
-# screenshot by raw character length would estimate a ~1MB image at ~250K
-# tokens and trigger premature context compression; a flat cost avoids that.
-_IMAGE_TOKEN_COST = 1500
-
-
-def estimate_messages_tokens_rough(
-    messages: List[Dict[str, Any]],
-    estimator: "Optional[IncrementalTokenEstimator]" = None,
-) -> int:
+def estimate_messages_tokens_rough(messages: List[Dict[str, Any]]) -> int:
     """Rough token estimate for a message list (pre-flight only).
 
     Image parts (base64 PNG/JPEG) are counted as a flat ~1500 tokens per
@@ -3259,20 +3102,12 @@ def estimate_messages_tokens_rough(
     character length. Without this, a single ~1MB screenshot would be
     estimated at ~250K tokens and trigger premature context compression.
 
-    Pass an :class:`IncrementalTokenEstimator` as ``estimator`` to reuse
-    per-message work across calls over an append-mostly conversation: the
-    estimate is then O(new messages) instead of O(all messages), and the
-    returned value is byte-for-byte identical to the stateless path (both
-    paths apply the same per-message character rounding via
-    ``estimate_tokens_rough``).
+    Per-message results are memoized (see ``_estimate_message_tokens_cached``)
+    keyed on a deep *identity fingerprint* of the message, so re-walking a
+    long history every iteration only pays for messages whose object graph
+    actually changed. The memo is exact: equal fingerprints imply identical
+    leaf objects and structure, hence an identical estimate.
     """
-    if estimator is not None:
-        return estimator.estimate(messages)
-    # Per-message results are memoized (see ``_estimate_message_tokens_cached``)
-    # keyed on a deep *identity fingerprint* of the message, so re-walking a
-    # long history every iteration only pays for messages whose object graph
-    # actually changed. The memo is exact: equal fingerprints imply identical
-    # leaf objects and structure, hence an identical estimate.
     _IMAGE_TOKEN_COST = 1500
     total = 0
     for msg in messages:
@@ -3401,27 +3236,6 @@ def _wire_message_shadow(msg: Dict[str, Any]) -> Dict[str, Any]:
       separately at a flat rate by ``_count_image_tokens``, and counting their
       raw chars here would massively overestimate usage.
     """
-    if not isinstance(msg, dict):
-        return msg
-    # Fast path: the shadow dict only ever differs from ``msg`` when a base64
-    # image needs stripping — i.e. when ``_anthropic_content_blocks`` is present
-    # or ``content`` is a list / a ``_multimodal`` dict. In every other case
-    # (scalar/str content, no stashed blocks) the shadow is a shallow copy of
-    # ``msg`` with identical key order, so ``str(shadow) == str(msg)``. Skip the
-    # per-key rebuild and stringify ``msg`` directly — identical result, one
-    # fewer dict allocation per message on the hot pre-flight path.
-    content = msg.get("content")
-    if (
-        "api_content" not in msg
-        and "_anthropic_content_blocks" not in msg
-        and "reasoning_details" not in msg
-        and not isinstance(content, list)
-        and not (isinstance(content, dict) and content.get("_multimodal"))
-    ):
-        # Return the dict itself (not a copy): str(shadow) == str(msg), and
-        # callers either stringify it (estimate_tokens_rough path) or take
-        # len(str()) for the char-count path — both need a str-able object.
-        return msg
     sidecar = msg.get("api_content")
     sidecar_wins = (
         isinstance(sidecar, str)
@@ -3487,7 +3301,7 @@ class IncrementalTokenEstimator:
     ``estimate_messages_tokens_rough`` re-stringifies every message on every
     call.  On a long-lived conversation the per-turn pre-flight gate re-scans
     the whole history even though only the last couple of messages are new —
-    an O(n) pass per turn, O(n²) across a session.
+    an O(n) pass per turn, O(n^2) across a session.
 
     This estimator memoises each message's ``(tokens, image_tokens)``
     contribution keyed on the message object's identity, so re-estimating a
@@ -3528,7 +3342,7 @@ class IncrementalTokenEstimator:
                 imgs = entry[2]
             else:
                 tokens = _estimate_message_tokens_without_images(msg)
-                imgs = _count_image_tokens(msg, _IMAGE_TOKEN_COST)
+                imgs = _count_image_tokens(msg, 1500)
             fresh[key] = (msg, tokens, imgs)
             total += tokens + imgs
         self._cache = fresh
@@ -3544,7 +3358,6 @@ def estimate_request_tokens_rough(
     *,
     system_prompt: str = "",
     tools: Optional[List[Dict[str, Any]]] = None,
-    estimator: "Optional[IncrementalTokenEstimator]" = None,
 ) -> int:
     """Rough token estimate for a full chat-completions request.
 
@@ -3558,7 +3371,7 @@ def estimate_request_tokens_rough(
     if system_prompt:
         total += estimate_tokens_rough(system_prompt)
     if messages:
-        total += estimate_messages_tokens_rough(messages, estimator=estimator)
+        total += estimate_messages_tokens_rough(messages)
     if tools:
         total += _estimate_tools_tokens_rough(tools)
     return total

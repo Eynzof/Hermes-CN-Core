@@ -8,6 +8,7 @@ the chunked-streamer playback path, and the universal per-sentence sync fallback
 
 import os
 import queue
+import sys
 import tempfile
 import threading
 import time
@@ -229,6 +230,16 @@ def test_stream_cap_truncates_runaway_upstream(monkeypatch):
 # ── Dispatch: chunked streamer path (regression tests) ───────────────────
 
 
+# The 12 speaker-path tests below assert on the sounddevice OutputStream
+# branch, which stream_tts_to_speaker takes on every host EXCEPT macOS —
+# Darwin routes to the tempfile/afplay path by design. They used to fake
+# platform.system() == "Linux" (a no-op on the Linux CI lane) purely to
+# shield macOS dev machines; an honest exclusion skipif says the same
+# thing without lying to the interpreter.
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="macOS deliberately skips the sounddevice OutputStream path (PR #62601)",
+)
 def test_streamer_path_handles_misaligned_pcm_chunks(monkeypatch):
     """Regression: PCM chunks with odd byte counts must not be dropped.
 
@@ -280,6 +291,10 @@ def test_streamer_path_handles_misaligned_pcm_chunks(monkeypatch):
     assert done.is_set()
 
 
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="macOS deliberately skips the sounddevice OutputStream path (PR #62601)",
+)
 def test_streamer_path_survives_portaudio_write_error(monkeypatch):
     """Regression: a transient PortAudio error on output_stream.write must
     not kill the playback thread or hang the pipeline join.
@@ -316,6 +331,10 @@ def test_streamer_path_survives_portaudio_write_error(monkeypatch):
     assert done.is_set(), "done event must fire even after PortAudio error"
 
 
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="macOS deliberately skips the sounddevice OutputStream path (PR #62601)",
+)
 def test_streamer_reinit_after_portaudio_error_plays_remaining_sentences(monkeypatch):
     """Regression: after a PortAudio error the worker must reinit the stream
     and continue playing remaining sentences instead of dropping them.
@@ -372,6 +391,10 @@ def test_streamer_reinit_after_portaudio_error_plays_remaining_sentences(monkeyp
     assert done.is_set(), "done event must fire after recovery"
 
 
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="macOS deliberately skips the sounddevice OutputStream path (PR #62601)",
+)
 def test_streamer_tempfile_fallback_after_reinit_exhausted(monkeypatch):
     """Regression: after 3 failed reinits, remaining sentences must play
     via the temp-file fallback, not be silently dropped.
@@ -434,6 +457,10 @@ def test_streamer_tempfile_fallback_after_reinit_exhausted(monkeypatch):
 
 # ── Dispatch: hybrid batch-prefetch path ──────────────────────────────────
 
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="macOS deliberately skips the sounddevice OutputStream path (PR #62601)",
+)
 def test_hybrid_first_sentence_streamed_individually(monkeypatch):
     """The first sentence must get its own stream() call for low TTFA."""
     from tools import tts_tool
@@ -467,6 +494,10 @@ def test_hybrid_first_sentence_streamed_individually(monkeypatch):
     assert done.is_set()
 
 
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="macOS deliberately skips the sounddevice OutputStream path (PR #62601)",
+)
 def test_hybrid_subsequent_sentences_prefetched_individually(monkeypatch):
     """Every sentence should get its own stream() call — per-sentence
     prefetch fires the HTTP request the moment each sentence completes,
@@ -516,6 +547,10 @@ def test_hybrid_subsequent_sentences_prefetched_individually(monkeypatch):
     assert done.is_set()
 
 
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="macOS deliberately skips the sounddevice OutputStream path (PR #62601)",
+)
 def test_hybrid_short_sentences_each_get_own_call(monkeypatch):
     """Short sentences should each get their own stream() call — no batching,
     no waiting for a threshold or end-of-text."""
@@ -557,6 +592,10 @@ def test_hybrid_short_sentences_each_get_own_call(monkeypatch):
     assert done.is_set()
 
 
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="macOS deliberately skips the sounddevice OutputStream path (PR #62601)",
+)
 def test_hybrid_done_event_waits_for_prefetch(monkeypatch):
     """The done event must not fire until the prefetch thread has finished,
     otherwise continuous voice mode could overlap turns."""
@@ -605,6 +644,10 @@ def test_hybrid_done_event_waits_for_prefetch(monkeypatch):
     )
 
 
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="macOS deliberately skips the sounddevice OutputStream path (PR #62601)",
+)
 def test_hybrid_single_sentence_still_works(monkeypatch):
     """A single-sentence reply should stream immediately with no batch."""
     from tools import tts_tool
@@ -638,6 +681,10 @@ def test_hybrid_single_sentence_still_works(monkeypatch):
     assert done.is_set()
 
 
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="macOS deliberately skips the sounddevice OutputStream path (PR #62601)",
+)
 def test_hybrid_playback_serialized_no_overlap(monkeypatch):
     """Multiple batch flushes must not overlap on the output stream.
 
@@ -694,6 +741,10 @@ def test_hybrid_playback_serialized_no_overlap(monkeypatch):
     )
 
 
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="macOS deliberately skips the sounddevice OutputStream path (PR #62601)",
+)
 def test_hybrid_prefetch_fires_http_immediately(monkeypatch):
     """The prefetch thread must start consuming the generator (firing the
     HTTP request) the moment _enqueue_audio is called, NOT when the
@@ -761,6 +812,10 @@ def test_hybrid_prefetch_fires_http_immediately(monkeypatch):
     )
 
 
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="macOS deliberately skips the sounddevice OutputStream path (PR #62601)",
+)
 def test_display_callback_not_called_when_streaming_enabled(monkeypatch):
     """When streaming is enabled, display_callback must NOT be passed to
     the TTS consumer — the token stream already renders text. This

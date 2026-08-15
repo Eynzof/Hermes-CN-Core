@@ -1,0 +1,21 @@
+{
+  "samples": [
+    {
+      "section": "estimate_tokens",
+      "duration_ms": 0.319,
+      "iteration": 0
+    }
+  ],
+  "summary": {
+    "estimate_tokens": {
+      "count": 1,
+      "total_ms": 0.319,
+      "mean_ms": 0.319,
+      "min_ms": 0.319,
+      "max_ms": 0.319,
+      "durations": [
+        0.319
+      ]
+    }
+  }
+}

@@ -1,13 +1,16 @@
 """Regression coverage for the user-facing macOS Hermes launcher."""
-from __future__ import annotations
 
+from __future__ import annotations
 
 import os
 import re
 import shutil
 import stat
 import subprocess
+import sys
 from pathlib import Path
+
+import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -29,6 +32,7 @@ def _setup_path_function() -> str:
     return match.group(0)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: macOS launcher harness uses POSIX sh/dirname/realpath symlinks")
 def test_venv_launcher_bypasses_uv_console_script_that_requires_realpath(tmp_path: Path) -> None:
     """Stock macOS must start Hermes even when its uv console script needs realpath."""
     install_dir = tmp_path / "install"

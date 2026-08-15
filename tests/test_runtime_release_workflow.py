@@ -500,6 +500,7 @@ def test_macos_runtime_signing_grants_ctypes_executable_memory_to_main_only():
     assert "<key>com.apple.security.cs.allow-unsigned-executable-memory</key><true/>" not in script
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: bash signing script emits POSIX-style (/c/dev/...) paths that differ from Windows paths in the assertions")
 def test_macos_runtime_signing_script_applies_entitlement_to_main_only(tmp_path):
     bash = shutil.which("bash")
     if bash is None:

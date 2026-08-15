@@ -48,13 +48,13 @@ Activation (config ``agent.coding_context``):
   * ``on`` — force the posture anywhere (incl. non-workspaces). Prompt-only.
   * ``off`` — disable entirely.
 """
+
 from __future__ import annotations
 
-
-import orjson
+import json
 import logging
 import os
-from agent.re_compat import re
+import re
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -767,8 +767,8 @@ def detect_project_facts(root: Path) -> ProjectFacts:
         verify.append("scripts/run_tests.sh")
     if (root / "package.json").is_file():
         try:
-            scripts = orjson.loads(_read_small(root / "package.json") or "{}").get("scripts") or {}
-        except (orjson.JSONDecodeError, AttributeError):
+            scripts = json.loads(_read_small(root / "package.json") or "{}").get("scripts") or {}
+        except (json.JSONDecodeError, AttributeError):
             scripts = {}
         js_pm = next((pm for lock, pm in _JS_LOCKFILES if (root / lock).is_file()), "npm")
         verify.extend(f"{js_pm} run {name}" for name in _VERIFY_TARGETS if name in scripts)
@@ -849,10 +849,7 @@ def build_coding_workspace_block(cwd: Optional[str | Path] = None) -> str:
         return ""
 
     lines = ["Workspace (snapshot at session start — re-check with `git` before acting on it):"]
-    # Prompt-stability: always render the root with forward slashes so the
-    # snapshot text is byte-identical across platforms (a model must not see
-    # backslash paths from a Windows host).
-    lines.append(f"- Root: {Path(root).as_posix()}")
+    lines.append(f"- Root: {root}")
 
     if git_root is not None:
         branch, counts = _parse_status(_git(root, "status", "--porcelain=2", "--branch"))

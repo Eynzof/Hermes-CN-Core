@@ -240,7 +240,7 @@ def load_env_file(env_path: Path) -> Dict[str, str]:
     """
     secrets: Dict[str, str] = {}
     try:
-        text = env_path.read_text(encoding="utf-8-sig", errors="replace")
+        text = env_path.read_text(encoding="utf-8-sig")
     except (FileNotFoundError, OSError, UnicodeDecodeError):
         return secrets
 

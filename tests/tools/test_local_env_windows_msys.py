@@ -13,9 +13,20 @@ effect was a warning logged on every single terminal call:
     LocalEnvironment cwd '/c/Users/NVIDIA' is missing on disk;
     falling back to '/' so terminal commands keep working.
 
-These tests fake the Windows env on Linux CI by patching ``_IS_WINDOWS``
-and ``os.path.isdir`` so the MSYS path tests as "missing" exactly like
-on the real OS.
+Platform gating
+---------------
+These tests used to fake Windows on Linux CI by patching
+``local_mod._IS_WINDOWS`` (and sometimes ``os.path.isdir``) so an MSYS
+path tested as "missing" exactly like on the real OS. That inverted the
+thing under test: the bug was that ``os.path.isdir("/c/Users/x")`` is
+False *on Windows*, and the fake had to recreate that condition by hand
+on a host where the path semantics, the drive letters, the path
+separator, and Git Bash itself are all absent.
+
+So the Windows-behaviour tests are ``windows_only`` and run on the
+Windows CI job against a real Git Bash layout. The "no-op off Windows"
+cases assert genuine POSIX behaviour and are ``linux_only`` — on that
+host ``_IS_WINDOWS`` is already False, so no patching is needed at all.
 """
 
 import os
@@ -23,6 +34,8 @@ import shutil
 import sys
 import pytest
 from unittest.mock import patch
+
+import pytest
 
 from tools.environments.base import BaseEnvironment
 from tools.environments import local as local_mod
@@ -46,15 +59,15 @@ from tools.environments.local import (
 # ---------------------------------------------------------------------------
 
 class TestMsysToWindowsPath:
-    def test_noop_on_non_windows(self, monkeypatch):
-        monkeypatch.setattr(local_mod, "_IS_WINDOWS", False)
+    @pytest.mark.linux_only
+    def test_noop_on_non_windows(self):
         # On a non-Windows host the function must never rewrite the path
         # — POSIX-style paths are real paths there.
         assert _msys_to_windows_path("/c/Users/NVIDIA") == "/c/Users/NVIDIA"
         assert _msys_to_windows_path("/home/teknium") == "/home/teknium"
 
-    def test_translates_drive_path(self, monkeypatch):
-        monkeypatch.setattr(local_mod, "_IS_WINDOWS", True)
+    @pytest.mark.windows_only
+    def test_translates_drive_path(self):
         assert _msys_to_windows_path("/c/Users/NVIDIA") == r"C:\Users\NVIDIA"
         assert _msys_to_windows_path("/d/Projects/foo bar") == r"D:\Projects\foo bar"
 
@@ -69,8 +82,8 @@ class TestMsysToWindowsPath:
 # ---------------------------------------------------------------------------
 
 class TestWindowsToMsysPath:
-    def test_noop_on_non_windows(self, monkeypatch):
-        monkeypatch.setattr(local_mod, "_IS_WINDOWS", False)
+    @pytest.mark.linux_only
+    def test_noop_on_non_windows(self):
         assert _windows_to_msys_path(r"C:\Users\NVIDIA") == r"C:\Users\NVIDIA"
 
 
@@ -84,9 +97,9 @@ class TestWindowsToMsysPath:
 # _bash_safe_path / _quote_bash_path — shell-script interpolation
 # ---------------------------------------------------------------------------
 
+@pytest.mark.windows_only
 class TestBashSafePath:
-    def test_native_windows_path_becomes_msys(self, monkeypatch):
-        monkeypatch.setattr(local_mod, "_IS_WINDOWS", True)
+    def test_native_windows_path_becomes_msys(self):
         assert _bash_safe_path(r"C:\Users\alice\notes.txt") == "/c/Users/alice/notes.txt"
 
 
@@ -103,32 +116,30 @@ class TestBashSafePath:
 # _resolve_safe_cwd — Windows fast path
 # ---------------------------------------------------------------------------
 
+@pytest.mark.windows_only
 class TestResolveSafeCwdWindows:
     def test_msys_path_resolves_to_native_when_native_exists(
         self, monkeypatch, tmp_path,
     ):
         """The whole point of this fix: a bash ``/c/Users/x`` value
         should resolve to its native equivalent if that native dir exists,
-        WITHOUT falling back to the temp dir."""
-        monkeypatch.setattr(local_mod, "_IS_WINDOWS", True)
+        WITHOUT falling back to the temp dir.
 
-        # tmp_path is a real native dir on the test host. Build a fake
-        # MSYS form pointing at it and prove the resolver finds it.
+        ``tmp_path`` is a real native directory on the Windows runner, so
+        its MSYS spelling is a genuine round-trip rather than a stubbed
+        translation.
+        """
         native = str(tmp_path)
-        # Construct a synthetic MSYS form for whatever tmp_path is.
-        # On Linux CI tmp_path is /tmp/... ; the resolver shouldn't even
-        # try to translate that (regex won't match), so emulate the
-        # mapping by pointing the translator at the real native dir.
-        with patch.object(
-            local_mod, "_msys_to_windows_path", return_value=native
-        ):
-            assert _resolve_safe_cwd("/c/whatever") == native
+        msys = _windows_to_msys_path(native)
+        assert msys != native, "expected a drive-letter path to translate"
+        assert _resolve_safe_cwd(msys) == native
 
 
 # ---------------------------------------------------------------------------
-# End-to-end: _update_cwd via stdout marker (Windows simulation)
+# End-to-end: _update_cwd via stdout marker
 # ---------------------------------------------------------------------------
 
+@pytest.mark.windows_only
 class TestUpdateCwdWindowsMsys:
     def test_marker_output_msys_path_stored_in_native_form(
         self, monkeypatch, tmp_path,
@@ -139,9 +150,6 @@ class TestUpdateCwdWindowsMsys:
         perfectly real directory."""
         original = tmp_path / "starting"
         original.mkdir()
-
-        # Fake Windows for the test
-        monkeypatch.setattr(local_mod, "_IS_WINDOWS", True)
 
         with patch.object(
             LocalEnvironment, "init_session", autospec=True, return_value=None
@@ -156,20 +164,16 @@ class TestUpdateCwdWindowsMsys:
         new_dir = tmp_path / "next"
         new_dir.mkdir()
         marker = env._cwd_marker
+        # The real MSYS spelling of a real native dir — what Git Bash
+        # actually writes into the marker.
+        msys_new = _windows_to_msys_path(str(new_dir))
 
-        # Translate the synthetic MSYS marker path to the real native dir.
-        def fake_translate(p):
-            if p == "/c/whatever/from/bash":
-                return str(new_dir)
-            return p
-
-        with patch.object(local_mod, "_msys_to_windows_path", side_effect=fake_translate):
-            env._update_cwd(
-                {
-                    "output": f"x\n{marker}/c/whatever/from/bash{marker}\n",
-                    "returncode": 0,
-                }
-            )
+        env._update_cwd(
+            {
+                "output": f"x\n{marker}{msys_new}{marker}\n",
+                "returncode": 0,
+            }
+        )
 
         assert env.cwd == str(new_dir)
 
@@ -218,15 +222,14 @@ class TestPowerShellWrapperOutput:
 # End-to-end: _extract_cwd_from_output rollback when marker is invalid
 # ---------------------------------------------------------------------------
 
+@pytest.mark.windows_only
 class TestExtractCwdFromOutputWindowsMsys:
-    def test_stale_msys_marker_does_not_clobber_cwd(self, monkeypatch, tmp_path):
+    def test_stale_msys_marker_does_not_clobber_cwd(self, tmp_path):
         """When the cwd marker in stdout points at a non-existent path,
         ``LocalEnvironment._extract_cwd_from_output`` must roll back to
         the previous cwd instead of propagating a bad value."""
         original = tmp_path / "starting"
         original.mkdir()
-
-        monkeypatch.setattr(local_mod, "_IS_WINDOWS", True)
 
         with patch.object(
             LocalEnvironment, "init_session", autospec=True, return_value=None
@@ -234,28 +237,21 @@ class TestExtractCwdFromOutputWindowsMsys:
             env = LocalEnvironment(cwd=str(original), timeout=10)
 
         marker = env._cwd_marker
+        gone = _windows_to_msys_path(str(tmp_path / "definitely-does-not-exist"))
         result = {
-            "output": f"some command output\n{marker}/c/no/such/path{marker}\n",
+            "output": f"some command output\n{marker}{gone}{marker}\n",
             "returncode": 0,
         }
 
-        # Translation produces a path that doesn't exist on disk → rollback.
-        with patch.object(
-            local_mod,
-            "_msys_to_windows_path",
-            return_value=str(tmp_path / "definitely-does-not-exist"),
-        ):
-            env._extract_cwd_from_output(result)
+        env._extract_cwd_from_output(result)
 
         assert env.cwd == str(original)
 
-    def test_valid_msys_marker_normalized_to_native(self, monkeypatch, tmp_path):
+    def test_valid_msys_marker_normalized_to_native(self, tmp_path):
         original = tmp_path / "starting"
         original.mkdir()
         new_dir = tmp_path / "next"
         new_dir.mkdir()
-
-        monkeypatch.setattr(local_mod, "_IS_WINDOWS", True)
 
         with patch.object(
             LocalEnvironment, "init_session", autospec=True, return_value=None
@@ -265,13 +261,13 @@ class TestExtractCwdFromOutputWindowsMsys:
         env._shell_type = "bash"
 
         marker = env._cwd_marker
+        msys_new = _windows_to_msys_path(str(new_dir))
         result = {
-            "output": f"x\n{marker}/c/whatever{marker}\n",
+            "output": f"x\n{marker}{msys_new}{marker}\n",
             "returncode": 0,
         }
 
-        with patch.object(local_mod, "_msys_to_windows_path", return_value=str(new_dir)):
-            env._extract_cwd_from_output(result)
+        env._extract_cwd_from_output(result)
 
         assert env.cwd == str(new_dir)
 
@@ -280,19 +276,17 @@ class TestExtractCwdFromOutputWindowsMsys:
 # MSYS_NO_PATHCONV — native Windows command flags (#56700)
 # ---------------------------------------------------------------------------
 
+@pytest.mark.windows_only
 class TestWindowsMsysPathconvDefaults:
-    def test_make_run_env_sets_msys_no_pathconv_on_windows(self, monkeypatch):
-        monkeypatch.setattr(local_mod, "_IS_WINDOWS", True)
+    def test_make_run_env_sets_msys_no_pathconv_on_windows(self):
         run_env = _make_run_env({})
         assert run_env.get("MSYS_NO_PATHCONV") == "1"
 
-    def test_sanitize_subprocess_env_sets_msys_no_pathconv_on_windows(self, monkeypatch):
-        monkeypatch.setattr(local_mod, "_IS_WINDOWS", True)
+    def test_sanitize_subprocess_env_sets_msys_no_pathconv_on_windows(self):
         env = _sanitize_subprocess_env({})
         assert env.get("MSYS_NO_PATHCONV") == "1"
 
-    def test_hermes_subprocess_env_sets_msys_no_pathconv_on_windows(self, monkeypatch):
-        monkeypatch.setattr(local_mod, "_IS_WINDOWS", True)
+    def test_hermes_subprocess_env_sets_msys_no_pathconv_on_windows(self):
         env = hermes_subprocess_env()
         assert env.get("MSYS_NO_PATHCONV") == "1"
 
@@ -314,8 +308,17 @@ class TestGitBashCoreutilsOnPath:
         existing = {e.replace("\\", "/") for e in existing}
         return lambda p: p.replace("\\", "/") in existing
 
+    @pytest.mark.windows_only
     def test_derives_dirs_from_portablegit_layout(self, monkeypatch):
-        monkeypatch.setattr(local_mod, "_IS_WINDOWS", True)
+        """The PortableGit layout probe, run on the real OS.
+
+        ``_find_bash`` and ``os.path.isdir`` are still stubbed — the point of
+        this test is the *derivation* (which sibling dirs we compute from a
+        bash path, and in what order), and hard-coding a fake tree keeps it
+        independent of which Git flavour the runner happens to have installed.
+        What is no longer faked is the host: the ``_IS_WINDOWS`` gate this
+        function opens with is genuinely True here.
+        """
         monkeypatch.setattr(local_mod, "_git_bash_bin_dirs_cache", None)
         monkeypatch.setattr(local_mod, "_find_bash", lambda: "/pg/bin/bash.exe")
         existing = {"/pg/mingw64/bin", "/pg/usr/bin", "/pg/bin"}
@@ -323,21 +326,26 @@ class TestGitBashCoreutilsOnPath:
 
         dirs = _git_bash_bin_dirs()
 
+        # Compare separator-agnostically: the derivation uses os.path.join, so
+        # on real Windows these come back with backslashes ("/pg\\usr\\bin").
+        # The subject is WHICH dirs are derived and in what ORDER, not which
+        # separator the host's os.path uses.
+        norm = [d.replace("\\", "/") for d in dirs]
+
         # usr/bin is the load-bearing coreutils dir; mingw64 precedes it.
-        assert "/pg/usr/bin" in dirs
-        assert dirs.index("/pg/mingw64/bin") < dirs.index("/pg/usr/bin")
+        assert "/pg/usr/bin" in norm
+        assert norm.index("/pg/mingw64/bin") < norm.index("/pg/usr/bin")
         # Non-existent dirs (mingw32, usr/local/bin) are excluded.
         assert "/pg/mingw32/bin" not in dirs
 
 
+    @pytest.mark.linux_only
     def test_empty_off_windows(self, monkeypatch):
-        monkeypatch.setattr(local_mod, "_IS_WINDOWS", False)
         monkeypatch.setattr(local_mod, "_git_bash_bin_dirs_cache", None)
         assert _git_bash_bin_dirs() == []
 
 
     def test_make_run_env_noop_on_posix(self, monkeypatch):
-        monkeypatch.setattr(local_mod, "_IS_WINDOWS", False)
         monkeypatch.setattr(local_mod, "_git_bash_bin_dirs_cache", None)
         run_env = _make_run_env({"PATH": "/usr/bin:/bin"})
         # No Windows git dirs injected on POSIX.
@@ -348,6 +356,7 @@ class TestGitBashCoreutilsOnPath:
 # Command wrapping — native Windows cwd must be Git Bash-friendly for cd
 # ---------------------------------------------------------------------------
 
+@pytest.mark.windows_only
 class TestWrapCommandWindowsNativeCwd:
     """[CN-fork] P-019/P-058 rewrite of the upstream Git-Bash msys-cwd tests.
 
@@ -396,7 +405,6 @@ class TestWrapCommandWindowsNativeCwd:
         assert captured == {}
 
     def test_init_session_bootstrap_rewrites_backslash_snapshot_paths(self, monkeypatch):
-        monkeypatch.setattr(local_mod, "_IS_WINDOWS", True)
         captured = {}
         def fake_run_bash(self, cmd_string, *, login=False, timeout=120, stdin_data=None):
             captured.setdefault("script", cmd_string)  # bootstrap only; ignore the failure-path probe

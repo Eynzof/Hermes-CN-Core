@@ -374,7 +374,7 @@ export function ModelCatalogMenu({
                     <HighlightMatches query={search} text={group.provider.name} />
                   </span>
                   {group.provider.warning ? (
-                    <span className="min-w-0 flex-1 truncate normal-case tracking-normal font-normal text-(--ui-text-tertiary)">
+                    <span className="min-w-0 flex-1 truncate font-normal normal-case tracking-normal text-(--ui-text-tertiary)">
                       {group.provider.warning}
                     </span>
                   ) : null}

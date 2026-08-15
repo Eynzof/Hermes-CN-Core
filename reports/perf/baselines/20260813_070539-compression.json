@@ -1,0 +1,24 @@
+{
+  "summary": {
+    "compression_decision": {
+      "count": 1,
+      "total_ms": 0.239,
+      "mean_ms": 0.239,
+      "min_ms": 0.239,
+      "max_ms": 0.239,
+      "durations": [
+        0.239
+      ]
+    },
+    "compression_execute": {
+      "count": 1,
+      "total_ms": 0.02,
+      "mean_ms": 0.02,
+      "min_ms": 0.02,
+      "max_ms": 0.02,
+      "durations": [
+        0.02
+      ]
+    }
+  }
+}

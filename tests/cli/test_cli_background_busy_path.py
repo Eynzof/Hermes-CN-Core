@@ -17,8 +17,8 @@ never consulted.
 These tests exercise the detector without starting a prompt_toolkit app,
 mirroring tests/cli/test_cli_steer_busy_path.py.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import importlib
 import sys

@@ -12,8 +12,8 @@ Covers:
     when no client is available);
   - the RelayMediaClient URL derivation + auth header shape.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 from pathlib import Path
 from typing import Optional

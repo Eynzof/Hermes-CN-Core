@@ -123,8 +123,6 @@ hermes setup --portal
 
 ## 前置条件
 
-**pip install：** 除 Python 3.14+ 外无其他前置条件，其余均自动处理。
-
 **Git 安装程序：** 唯一的前置条件是 **Git**。安装程序自动处理其余一切：
 
 - **uv**（快速 Python 包管理器）

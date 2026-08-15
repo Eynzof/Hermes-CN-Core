@@ -776,8 +776,62 @@ class TestPreflightCompression:
         agent.compression_enabled = True
         agent.context_compressor.context_length = 200_000
         agent.context_compressor.threshold_tokens = 100_000
-        agent.context_compressor.last_prompt_tokens = 58_000
-        agent.context_compressor.last_real_prompt_tokens = 58_000
+
+        def _custom_status(**kwargs):
+            assert kwargs["phase"] == "preflight"
+            assert kwargs["approx_tokens"] == 114_000
+            assert kwargs["threshold_tokens"] == 100_000
+            return "🔧 LCM context maintenance: preparing compacted context."
+
+        agent.context_compressor.get_automatic_compaction_status_message = _custom_status
+
+        big_history = []
+        for i in range(20):
+            big_history.append({"role": "user", "content": f"Message {i} padded"})
+            big_history.append({"role": "assistant", "content": f"Response {i} padded"})
+
+        ok_resp = _mock_response(content="After custom preflight", finish_reason="stop")
+        agent.client.chat.completions.create.side_effect = [ok_resp]
+        status_messages = []
+        agent.status_callback = lambda ev, msg: status_messages.append((ev, msg))
+
+        _rough_calls = {"n": 0}
+
+        def _rough_estimate(*_args, **_kwargs):
+            _rough_calls["n"] += 1
+            return 114_000 if _rough_calls["n"] == 1 else 40_000
+
+        with (
+            patch("agent.turn_context.estimate_request_tokens_rough", side_effect=_rough_estimate),
+            patch("agent.conversation_loop.estimate_request_tokens_rough", side_effect=_rough_estimate),
+            patch.object(agent, "_compress_context") as mock_compress,
+            patch.object(agent, "_persist_session"),
+            patch.object(agent, "_save_trajectory"),
+            patch.object(agent, "_cleanup_task_resources"),
+        ):
+            mock_compress.return_value = (
+                [{"role": "user", "content": f"{SUMMARY_PREFIX}\nPrevious conversation"}],
+                "new system prompt",
+            )
+            result = agent.run_conversation("hello", conversation_history=big_history)
+
+        mock_compress.assert_called_once()
+        assert result["completed"] is True
+        lifecycle_messages = [msg for ev, msg in status_messages if ev == "lifecycle"]
+        assert "🔧 LCM context maintenance: preparing compacted context." in lifecycle_messages
+        assert not any("Preflight compression" in msg for msg in lifecycle_messages)
+
+
+    def test_preflight_compresses_when_projected_real_usage_crosses(self, agent):
+        """Projected real usage (last real + rough growth) crossing the
+        threshold still triggers preflight: 95K real + 12K rough growth =
+        107K >= 100K. Growth alone no longer decides — real usage far below
+        the threshold defers instead (see TestPreflightDeferral)."""
+        agent.compression_enabled = True
+        agent.context_compressor.context_length = 200_000
+        agent.context_compressor.threshold_tokens = 100_000
+        agent.context_compressor.last_prompt_tokens = 95_000
+        agent.context_compressor.last_real_prompt_tokens = 95_000
         agent.context_compressor.last_rough_tokens_when_real_prompt_fit = 113_000
 
         big_history = []

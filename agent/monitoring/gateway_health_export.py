@@ -5,8 +5,8 @@ narrow redacted diagnostic events. It is deliberately in-process and fail-open s
 it works under systemd, launchd, s6, containers, tmux, nohup, or a simple shell
 without a sidecar/watchdog dependency.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import logging
 import os

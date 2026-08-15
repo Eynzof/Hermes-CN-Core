@@ -1,0 +1,66 @@
+{
+  "samples": [
+    {
+      "section": "estimate_tokens_5turns",
+      "duration_ms": 0.23,
+      "iteration": 0
+    },
+    {
+      "section": "estimate_tokens_15turns",
+      "duration_ms": 0.577,
+      "iteration": 0
+    },
+    {
+      "section": "estimate_tokens_30turns",
+      "duration_ms": 1.045,
+      "iteration": 0
+    },
+    {
+      "section": "estimate_tokens_50turns",
+      "duration_ms": 1.782,
+      "iteration": 0
+    }
+  ],
+  "summary": {
+    "estimate_tokens_15turns": {
+      "count": 1,
+      "total_ms": 0.577,
+      "mean_ms": 0.577,
+      "min_ms": 0.577,
+      "max_ms": 0.577,
+      "durations": [
+        0.577
+      ]
+    },
+    "estimate_tokens_30turns": {
+      "count": 1,
+      "total_ms": 1.045,
+      "mean_ms": 1.045,
+      "min_ms": 1.045,
+      "max_ms": 1.045,
+      "durations": [
+        1.045
+      ]
+    },
+    "estimate_tokens_50turns": {
+      "count": 1,
+      "total_ms": 1.782,
+      "mean_ms": 1.782,
+      "min_ms": 1.782,
+      "max_ms": 1.782,
+      "durations": [
+        1.782
+      ]
+    },
+    "estimate_tokens_5turns": {
+      "count": 1,
+      "total_ms": 0.23,
+      "mean_ms": 0.23,
+      "min_ms": 0.23,
+      "max_ms": 0.23,
+      "durations": [
+        0.23
+      ]
+    }
+  }
+}

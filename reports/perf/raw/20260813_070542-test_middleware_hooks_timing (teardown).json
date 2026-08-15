@@ -1,0 +1,36 @@
+{
+  "samples": [
+    {
+      "section": "pre_tool_call_hooks",
+      "duration_ms": 0.155,
+      "iteration": 0
+    },
+    {
+      "section": "post_tool_call_hooks",
+      "duration_ms": 0.135,
+      "iteration": 0
+    }
+  ],
+  "summary": {
+    "post_tool_call_hooks": {
+      "count": 1,
+      "total_ms": 0.135,
+      "mean_ms": 0.135,
+      "min_ms": 0.135,
+      "max_ms": 0.135,
+      "durations": [
+        0.135
+      ]
+    },
+    "pre_tool_call_hooks": {
+      "count": 1,
+      "total_ms": 0.155,
+      "mean_ms": 0.155,
+      "min_ms": 0.155,
+      "max_ms": 0.155,
+      "durations": [
+        0.155
+      ]
+    }
+  }
+}

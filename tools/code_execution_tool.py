@@ -35,6 +35,7 @@ import json
 import logging
 import os
 from platform_utils import is_windows
+import platform
 import re
 import secrets
 import shlex
@@ -50,6 +51,7 @@ _IS_WINDOWS = is_windows()
 from typing import Any, Dict, List, Optional, Tuple
 
 from tools.thread_context import propagate_context_to_thread
+from agent.thread_scoped_output import thread_scoped_silence
 
 # Availability gate.  On Windows we fall back to loopback TCP for the
 # sandbox RPC transport (AF_UNIX is unreliable on Windows Python) — see
@@ -71,6 +73,8 @@ from tools.runtime_compat import is_frozen_runtime  # noqa: E402  (after logger)
 if is_frozen_runtime():
     SANDBOX_AVAILABLE = False
 
+# The 7 tools allowed inside the sandbox. The intersection of this list
+# and the session's enabled tools determines which stubs are generated.
 SANDBOX_ALLOWED_TOOLS = frozenset([
     "web_search",
     "web_extract",
@@ -483,9 +487,12 @@ _COMMON_HELPERS = '''\
 # ---------------------------------------------------------------------------
 
 def json_parse(text: str):
-    """Parse JSON tolerant of control characters (strict=False).
+    """Parse JSON tolerant of control characters and UTF-8 BOM (strict=False).
     Use this instead of json.loads() when parsing output from terminal()
-    or web_extract() that may contain raw tabs/newlines in strings."""
+    or web_extract() that may contain raw tabs/newlines in strings,
+    or from tools/files that prepend a UTF-8 BOM (salvage #57870, credit @woxinwuhen713-bit)."""
+    if isinstance(text, str) and text.startswith("﻿"):
+        text = text[1:]
     return json.loads(text, strict=False)
 
 
@@ -765,17 +772,10 @@ def _rpc_server_loop(
                 # Suppress stdout/stderr from internal tool handlers so
                 # their status prints don't leak into the CLI spinner.
                 try:
-                    _real_stdout, _real_stderr = sys.stdout, sys.stderr
-                    devnull = open(os.devnull, "w", encoding="utf-8")
-                    try:
-                        sys.stdout = devnull
-                        sys.stderr = devnull
+                    with thread_scoped_silence():
                         result = handle_function_call(
                             tool_name, tool_args, task_id=task_id
                         )
-                    finally:
-                        sys.stdout, sys.stderr = _real_stdout, _real_stderr
-                        devnull.close()
                 except Exception as exc:
                     logger.error("Tool call failed in sandbox: %s", exc, exc_info=True)
                     result = tool_error(str(exc))
@@ -820,7 +820,7 @@ def _get_or_create_env(task_id: str):
         _active_environments, _env_lock, _create_environment,
         _get_env_config, _last_activity, _start_cleanup_thread,
         _creation_locks, _creation_locks_lock, _task_env_overrides,
-        _resolve_container_task_id,
+        _resolve_container_task_id, _resolve_task_host_cwd,
     )
 
     effective_task_id = _resolve_container_task_id(task_id)
@@ -900,7 +900,7 @@ def _get_or_create_env(task_id: str):
             container_config=container_config,
             local_config=local_config,
             task_id=effective_task_id,
-            host_cwd=config.get("host_cwd"),
+            host_cwd=_resolve_task_host_cwd(config, task_id),
         )
 
         with _env_lock:
@@ -1047,17 +1047,10 @@ def _rpc_poll_loop(
 
                     # Dispatch through the standard tool handler
                     try:
-                        _real_stdout, _real_stderr = sys.stdout, sys.stderr
-                        devnull = open(os.devnull, "w", encoding="utf-8")
-                        try:
-                            sys.stdout = devnull
-                            sys.stderr = devnull
+                        with thread_scoped_silence():
                             tool_result = handle_function_call(
                                 tool_name, tool_args, task_id=task_id
                             )
-                        finally:
-                            sys.stdout, sys.stderr = _real_stdout, _real_stderr
-                            devnull.close()
                     except Exception as exc:
                         logger.error("Tool call failed in remote sandbox: %s",
                                      exc, exc_info=True)
@@ -1315,7 +1308,11 @@ def execute_code(
         )
 
     if not code or not code.strip():
-        return tool_error("No code provided.")
+        return tool_error(
+            "No code provided. execute_code requires a non-empty 'code' "
+            "parameter containing Python source. To run shell commands, use "
+            "terminal(command=...) instead."
+        )
 
     # Dispatch: remote backends use file-based RPC, local uses UDS
     from tools.terminal_tool import _get_env_config, _docker_has_host_access
@@ -1485,16 +1482,6 @@ def execute_code(
         # with a C/POSIX locale (containers, minimal base images).
         child_env["PYTHONIOENCODING"] = "utf-8"
         child_env["PYTHONUTF8"] = "1"
-        # Ensure the hermes-agent root is importable in the sandbox so
-        # repo-root modules are available to child scripts.  We also prepend
-        # the staging tmpdir so ``from hermes_tools import ...`` resolves even
-        # when the subprocess CWD is not tmpdir (project mode).
-        _hermes_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        _existing_pp = child_env.get("PYTHONPATH", "")
-        _pp_parts = [tmpdir, _hermes_root]
-        if _existing_pp:
-            _pp_parts.append(_existing_pp)
-        child_env["PYTHONPATH"] = os.pathsep.join(_pp_parts)
         # Inject user's configured timezone so datetime.now() in sandboxed
         # code reflects the correct wall-clock time.  Only TZ is set —
         # HERMES_TIMEZONE is an internal Hermes setting and must not leak
@@ -1516,6 +1503,32 @@ def execute_code(
         _child_python = _resolve_child_python(_mode)
         _child_cwd = _resolve_child_cwd(_mode, tmpdir, task_id=task_id or "")
         _script_path = os.path.join(tmpdir, "script.py")
+
+        # ``hermes_tools.py`` always lives in the staging directory, so that
+        # directory must be importable even when project mode changes CWD.
+        # Hermes's own package root is useful too, but only when the child
+        # uses the same Python environment. Project mode can select an
+        # external venv; exposing Hermes's site-packages to that interpreter
+        # can mix incompatible compiled extensions (for example, Python 3.12
+        # NumPy with a Python 3.9 project interpreter).
+        _hermes_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        _existing_pp = child_env.get("PYTHONPATH", "")
+        _pp_parts = [tmpdir]
+        if _uses_hermes_python_environment(_child_python):
+            _pp_parts.append(_hermes_root)
+        elif _child_python not in _external_env_logged:
+            # Import behavior changes silently otherwise — surface it (once
+            # per interpreter path) so "import hermes_constants suddenly
+            # fails" reports are diagnosable without log spam.
+            _external_env_logged.add(_child_python)
+            logger.info(
+                "execute_code: child interpreter %s is outside the Hermes "
+                "environment; hermes root omitted from PYTHONPATH",
+                _child_python,
+            )
+        if _existing_pp:
+            _pp_parts.append(_existing_pp)
+        child_env["PYTHONPATH"] = os.pathsep.join(_pp_parts)
 
         proc = subprocess.Popen(
             [_child_python, _script_path],
@@ -1856,28 +1869,104 @@ def _get_execution_mode() -> str:
     return DEFAULT_EXECUTION_MODE
 
 
-@functools.lru_cache(maxsize=32)
+# Shared budget for the two interpreter-probe caches below. Success-only
+# dict caches (FIFO-evicted at the cap) rather than lru_cache: a transient
+# probe failure (fork pressure, 5s timeout on a loaded host) must not stick
+# for the process lifetime.
+_PROBE_CACHE_MAX = 32
+_usable_python_cache: dict = {}
+_python_prefix_cache: dict = {}
+
+# Interpreter paths already reported as outside the Hermes environment —
+# dedupes the exclusion log to once per path per process.
+_external_env_logged: set = set()
+
+
+def _cache_probe_result(cache: dict, key: str, value):
+    """Insert into a bounded probe cache, FIFO-evicting at the cap."""
+    if len(cache) >= _PROBE_CACHE_MAX:
+        cache.pop(next(iter(cache)))
+    cache[key] = value
+
+
 def _is_usable_python(python_path: str) -> bool:
     """Check whether a candidate Python interpreter is usable for execute_code.
 
     Requires Python 3.8+ (f-strings and stdlib modules the RPC stubs need).
-    Cached so we don't fork a subprocess on every execute_code call.
+    Successful probes are cached per interpreter path; failures are retried
+    (a sticky False would silently pin project mode to sys.executable).
+    """
+    cached = _usable_python_cache.get(python_path)
+    if cached is not None:
+        return cached
+    result = _probe_python(
+        python_path,
+        "import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)",
+    )
+    if result is None:
+        return False
+    usable = result.returncode == 0
+    _cache_probe_result(_usable_python_cache, python_path, usable)
+    return usable
+
+
+def _probe_python(python_path: str, code: str, *, text: bool = False):
+    """Run ``python_path -c code`` with the standard interpreter-probe guards.
+
+    Returns the ``CompletedProcess``, or ``None`` when the interpreter is
+    missing, can't be spawned, or hangs past the 5s timeout.
     """
     try:
         from agent.delegation_context import delegated_child_subprocess_env
 
-        result = subprocess.run(
-            [python_path, "-c",
-             "import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)"],
+        return subprocess.run(
+            [python_path, "-c", code],
             timeout=5,
             capture_output=True,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0) if _IS_WINDOWS else 0,
+            text=text,
+            creationflags=subprocess.CREATE_NO_WINDOW if _IS_WINDOWS else 0,
             stdin=subprocess.DEVNULL,
             env=delegated_child_subprocess_env(),
         )
-        return result.returncode == 0
     except (OSError, subprocess.TimeoutExpired, subprocess.SubprocessError):
-        return False
+        return None
+
+
+def _python_environment_prefix(python_path: str) -> str:
+    """Return the resolved ``sys.prefix`` reported by *python_path*, if any.
+
+    Successful probes are cached per interpreter path (bounded, FIFO-evicted).
+    Failures are NOT cached: a transient probe failure (fork pressure, 5s
+    timeout on a loaded host) must not stick for the process lifetime — a
+    sticky empty result would silently drop the hermes root from every
+    subsequent execute_code call's PYTHONPATH.
+    """
+    cached = _python_prefix_cache.get(python_path)
+    if cached is not None:
+        return cached
+    result = _probe_python(python_path, "import sys; print(sys.prefix)", text=True)
+    if result is not None and result.returncode == 0 and result.stdout.strip():
+        prefix = os.path.realpath(result.stdout.strip())
+        _cache_probe_result(_python_prefix_cache, python_path, prefix)
+        return prefix
+    return ""
+
+
+def _uses_hermes_python_environment(python_path: str) -> bool:
+    """Whether *python_path* belongs to Hermes's active Python environment.
+
+    Short-circuits when *python_path* IS the running interpreter (by path or
+    realpath) — no subprocess probe on the default strict-mode path, and no
+    way for a flaky probe of ``sys.executable`` itself to break the invariant
+    that repo-root modules are importable in strict mode.  The realpath leg
+    also covers venvs whose bin/python resolves to the same binary (e.g.
+    ``uv run`` setting VIRTUAL_ENV without changing sys.prefix).
+    """
+    if python_path == sys.executable or (
+        os.path.realpath(python_path) == os.path.realpath(sys.executable)
+    ):
+        return True
+    return _python_environment_prefix(python_path) == os.path.realpath(sys.prefix)
 
 
 def _resolve_child_python(mode: str) -> str:
@@ -1979,27 +2068,24 @@ def _resolve_child_cwd(mode: str, staging_dir: str, task_id: str = "") -> str:
 # Ordered to match the canonical display order.
 _TOOL_DOC_LINES = [
     ("web_search",
-     "  web_search(query: str, limit: int = 5) -> dict\n"
-     "    Returns {\"data\": {\"web\": [{\"url\", \"title\", \"description\"}, ...]}}"),
+     "  web_search(query, limit=5) -> dict: {\"data\": {\"web\": [{url, title, description}]}}"),
     ("web_extract",
-     "  web_extract(urls: list[str], char_limit: int = None) -> dict\n"
-     "    Returns {\"results\": [{\"url\", \"title\", \"content\", \"error\"}, ...]} where content is markdown.\n"
-     "    No LLM summarization. Pages over char_limit (default 15000) are head+tail truncated; full text stored on disk (path in the content footer)."),
+     "  web_extract(urls, char_limit=None) -> dict: {\"results\": [{url, title, content, error}]} "
+     "(markdown, no LLM). Over 15000 chars head+tail truncated; full text on disk "
+     "(path in footer)."),
     ("read_file",
      "  read_file(path: str, offset: int = 1, limit: int = 2000) -> dict\n"
      "    Lines are 1-indexed. Returns {\"content\": \"...\", \"total_lines\": N}"),
     ("write_file",
-     "  write_file(path: str, content: str) -> dict\n"
-     "    Always overwrites the entire file."),
+     "  write_file(path, content) -> dict: always overwrites the entire file."),
     ("search_files",
-     "  search_files(pattern: str, target=\"content\", path=\".\", file_glob=None, limit=50) -> dict\n"
-     "    target: \"content\" (search inside files) or \"files\" (find files by name). Returns {\"matches\": [...]}"),
+     "  search_files(pattern, target=\"content\", path=\".\", file_glob=None, limit=50) -> dict: "
+     "{\"matches\": [...]}; target: \"content\"=in files, \"files\"=by name."),
     ("patch",
-     "  patch(path: str, old_string: str, new_string: str, replace_all: bool = False) -> dict\n"
-     "    Replaces old_string with new_string in the file."),
+     "  patch(path, old_string, new_string, replace_all=False) -> dict: replaces old_string with new_string."),
     ("terminal",
-     "  terminal(command: str, timeout=None, workdir=None) -> dict\n"
-     "    Foreground only (no background/pty). Returns {\"output\": \"...\", \"exit_code\": N}"),
+     "  terminal(command, timeout=None, workdir=None) -> dict: foreground only (no bg/pty); "
+     "{\"output\", \"exit_code\"}"),
 ]
 
 
@@ -2041,13 +2127,14 @@ def build_execute_code_schema(enabled_sandbox_tools: set = None,
     # temp-dir staging and hermes-agent's own python.
     if mode == "strict":
         cwd_note = (
-            "Scripts run in their own temp dir, not the session's CWD — use absolute paths "
-            "(os.path.expanduser('~/.hermes/.env')) or terminal()/read_file() for user files."
+            "Scripts run in their own temp dir, not the session's CWD — use "
+            "absolute paths or terminal()/read_file() for user files."
         )
     else:
         cwd_note = (
-            "Scripts run in the session's working directory with the active venv's python, "
-            "so project deps (pandas, etc.) and relative paths work like in terminal()."
+            "Scripts run in the session's working directory with the active "
+            "venv's python, so project deps and relative paths work like in "
+            "terminal()."
         )
 
     description = (
@@ -2059,8 +2146,8 @@ def build_execute_code_schema(enabled_sandbox_tools: set = None,
         "over in full, or anything needing user interaction.\n\n"
         f"Available via `from hermes_tools import ...`:\n\n"
         f"{tool_lines}\n\n"
-        "Limits: 5-minute timeout, 50KB stdout cap, max 50 tool calls per script. "
-        "terminal() is foreground-only (no background or pty).\n\n"
+        "Limits: 5-minute timeout, 50KB stdout cap, 50 tool calls max. "
+        "terminal() is foreground-only (no bg/pty).\n\n"
         f"{cwd_note}\n\n"
         "Print your final result to stdout; stdlib (json, re, csv, datetime, ...) "
         "is available for processing.\n\n"
@@ -2097,14 +2184,47 @@ EXECUTE_CODE_SCHEMA = build_execute_code_schema()
 # --- Registry ---
 from tools.registry import registry, tool_error
 
+
+def _execute_code_handler(args: dict, **kwargs) -> str:
+    """Recover misdirected calls before dispatching to ``execute_code``.
+
+    Models sometimes reuse terminal's ``command`` argument or send a
+    non-string ``code`` payload; both get an actionable redirect instead
+    of a generic failure.
+    """
+    # Help models recover when they reuse terminal's ``command`` argument.
+    if "code" not in args and "command" in args:
+        logger.warning(
+            "execute_code received 'command' instead of the required 'code' argument"
+        )
+        return tool_error(
+            "execute_code received a 'command' parameter, but it requires "
+            "Python source in 'code'. Use terminal(command=...) for shell "
+            "commands; for Python, retry as execute_code(code=...)."
+        )
+
+    code = args.get("code", "")
+    if code is not None and not isinstance(code, str):
+        # A non-string payload (int, dict, list) would otherwise surface as
+        # a generic AttributeError from code.strip() — redirect instead.
+        return tool_error(
+            f"execute_code received a {type(code).__name__} in 'code', but it "
+            "requires Python source as a string. Retry as "
+            "execute_code(code=\"...\")."
+        )
+
+    return execute_code(
+        code=code or "",
+        task_id=kwargs.get("task_id"),
+        enabled_tools=kwargs.get("enabled_tools"),
+    )
+
+
 registry.register(
     name="execute_code",
     toolset="code_execution",
     schema=EXECUTE_CODE_SCHEMA,
-    handler=lambda args, **kw: execute_code(
-        code=args.get("code", ""),
-        task_id=kw.get("task_id"),
-        enabled_tools=kw.get("enabled_tools")),
+    handler=_execute_code_handler,
     check_fn=check_sandbox_requirements,
     emoji="🐍",
     max_result_size_chars=100_000,

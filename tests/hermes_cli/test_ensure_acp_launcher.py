@@ -8,6 +8,7 @@ launcher from ``scripts/install.sh``; existing installs get it from
 
 import os
 import stat
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -50,6 +51,7 @@ def test_does_not_follow_symlink_into_venv(fake_home, tmp_path):
 
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: geteuid/chmod-based writability probe is POSIX-only")
 def test_unwritable_bin_dir_is_skipped(fake_home):
     (fake_home / "hermes").write_text("#!/bin/sh\n", encoding="utf-8")
     if os.geteuid() == 0:

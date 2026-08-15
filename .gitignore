@@ -31,6 +31,10 @@ __pycache__/model_tools.cpython-310.pyc
 __pycache__/web_tools.cpython-310.pyc
 logs/
 data/
+# Bundled community plugin index seed (shipped as package data) — the bare
+# `data/` pattern above would otherwise swallow it.
+!hermes_cli/data/
+!hermes_cli/data/plugin_index.json
 .pytest_cache/
 test_durations.json
 .pytest-cache/
@@ -193,9 +197,9 @@ infographics/
 infograficos/
 infografico/
 build/
-native/fts5_cjk/*.so
-# Runtime marker written by hermes update when a lazy dependency refresh is
-# interrupted; consumed by launch-time recovery. Never commit it (was tracked
-# by accident via 3a69e34702, removed in the #72002 salvage).
-.lazy-refresh-incomplete
+
+# Windows system cache (never track)
+%SystemDrive%/
 .kimix_cache/
+reports/
+/agent.py

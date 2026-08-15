@@ -4,6 +4,10 @@ The module landed in #56832's extraction without its tests; these cover the
 fingerprint keying, read/write round-trip, and invalidation behavior.
 """
 
+import sys
+
+import pytest
+
 import tools.mcp_schema_cache as msc
 
 
@@ -75,6 +79,7 @@ class TestCacheRoundTrip:
 
 
 class TestCacheFileLocation:
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: chmod 0o600 mode bits")
     def test_cache_lives_under_hermes_home_cache_dir_with_0600(
         self, monkeypatch, tmp_path
     ):

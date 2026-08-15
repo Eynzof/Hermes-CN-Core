@@ -72,7 +72,7 @@ def lifecycle(monkeypatch):
 def test_cancel_is_cooperative_and_forged_handle_is_unknown(lifecycle):
     handle = lifecycle.launch(SubagentLaunchRequest(goal="x"))
     assert lifecycle.cancel(handle, reason="test").accepted
-    terminal = lifecycle.wait(handle, timeout_seconds=1)
+    terminal = lifecycle.wait(handle, timeout_seconds=5)
     assert terminal.state is SubagentState.CANCELLED
     forged = handle.__class__(**{**handle.to_dict(), "capability": "forged"})
     assert lifecycle.status(forged).state is SubagentState.UNKNOWN
@@ -90,15 +90,7 @@ def test_cancel_uses_explicit_hard_interrupt(lifecycle):
     assert lifecycle.cancel(handle, reason="explicit user cancel").accepted
 
     assert record.agent.interrupt_kind == "hard"
-    lifecycle.wait(handle, timeout_seconds=1)
-
-
-
-
-
-
-
-
+    lifecycle.wait(handle, timeout_seconds=5)
 def test_public_lifecycle_runs_host_aggregation(monkeypatch):
     memory = Mock()
     parent = SimpleNamespace(

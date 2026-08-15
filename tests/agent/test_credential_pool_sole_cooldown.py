@@ -4,8 +4,8 @@ its only key for an hour on a transient throttle (429/403/5xx).
 Regression for the case where removing fallbacks / running a single API key
 turned a transient rate-limit into an hour of hard failures.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import json
 import time

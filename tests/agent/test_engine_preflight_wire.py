@@ -23,8 +23,8 @@ Contracts pinned here:
 * The hook is never consulted when the threshold path fires, when a
   compression-failure cooldown is active, or when the engine raises.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import types
 from unittest.mock import MagicMock, patch

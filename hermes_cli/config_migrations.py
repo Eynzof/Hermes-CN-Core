@@ -953,22 +953,92 @@ def _migrate_to_34(results: Dict[str, Any], quiet: bool) -> None:
     # with model.base_url/model.api_mode/model.api_key. Runtime resolution
     # prefers providers.packycode when it exists, so repair both missing entries
     # and existing entries that lack a credential source.
+    # ALSO (upstream v34): one-time personality reset (post-#81946 unification).
+    # The inline-provider recovery above and this scrub are independent;
+    # both run on every v33→v34 upgrade.
+        # ── Version 33 → 34: one-time personality reset (post-#81946 unification) ──
+        # Personality persistence used to be split per surface: the TUI/desktop
+        # wrote the NAME to display.personality while the CLI/gateway wrote the
+        # rendered TEXT into agent.system_prompt (and their "/personality none"
+        # only blanked the text, leaving the name behind). When #81946 made
+        # display.personality authoritative everywhere, stale names written years
+        # ago resurrected personalities users had already turned off ("kawaii
+        # defaults on after updating"). There is no way to know which of the two
+        # divergent fields reflects the user's intent, so reset the selection to
+        # none once and tell the user how to re-enable it. Two scrubs:
+        #
+        # 1. display.personality → "" (announce the old name).
+        # 2. agent.system_prompt → "" ONLY when it verbatim-equals the rendered
+        #    text of a known personality — that shape was written by the old
+        #    CLI/gateway /personality, never typed by hand. Any other text is a
+        #    user-owned manual prompt and is never touched.
     _c = _cfg()
     read_raw_config = _c.read_raw_config
     _persist_migration = _c._persist_migration
 
     config = read_raw_config()
     repaired = _repair_inline_model_provider_config(config)
-    if repaired is None:
-        return
+    if repaired is not None:
+        provider_key, action = repaired
+        _persist_migration(config)
+        results["config_added"].append(
+            f"providers.{provider_key} ({action})"
+        )
+        if not quiet:
+            print(f"  ✓ Repaired providers.{provider_key} from inline model settings")
 
-    provider_key, action = repaired
-    _persist_migration(config)
-    results["config_added"].append(
-        f"providers.{provider_key} ({action})"
+    # ── upstream v34: one-time personality reset ──
+    from hermes_cli.personality import (
+        available_personalities,
+        normalize_personality_name,
+        prompt_text,
+        render_personality_prompt,
     )
-    if not quiet:
-        print(f"  ✓ Repaired providers.{provider_key} from inline model settings")
+
+    config = read_raw_config()
+    touched = False
+
+    raw_display = config.get("display")
+    old_name = ""
+    if isinstance(raw_display, dict):
+        old_name = normalize_personality_name(raw_display.get("personality", ""))
+        if old_name:
+            raw_display["personality"] = ""
+            config["display"] = raw_display
+            touched = True
+
+    raw_agent = config.get("agent")
+    scrubbed_text = False
+    if isinstance(raw_agent, dict):
+        manual = prompt_text(raw_agent.get("system_prompt", ""))
+        if manual:
+            rendered = {
+                render_personality_prompt(defn)
+                for defn in available_personalities(config).values()
+            }
+            if manual in rendered:
+                raw_agent["system_prompt"] = ""
+                config["agent"] = raw_agent
+                touched = True
+                scrubbed_text = True
+
+    if touched:
+        _persist_migration(config)
+        results["config_added"].append("display.personality=none (one-time reset)")
+        if not quiet:
+            if old_name:
+                print(
+                    f"  ✓ Personality reset to none (was '{old_name}'). Personality "
+                    "state was previously saved inconsistently across surfaces and "
+                    "could re-enable a personality you had turned off. "
+                    f"Run /personality {old_name} to turn it back on."
+                )
+            if scrubbed_text:
+                print(
+                    "  ✓ Removed personality text from agent.system_prompt (written "
+                    "by an older /personality). That field is now reserved for "
+                    "manual system prompts; personalities live in display.personality."
+                )
 
 
 #: Registry of (target_version, migration_fn), strictly ascending. The driver

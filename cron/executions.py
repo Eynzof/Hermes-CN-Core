@@ -4,8 +4,8 @@ The ledger records what is known about each attempt; it is not a retry queue.
 Interrupted attempts become ``unknown`` only after their exact owner process is
 proved gone. Terminal states are immutable.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import os
 import sqlite3

@@ -51,7 +51,11 @@ class TestCwdEcho:
         # Next command runs IN the new cwd without changing it: no echo.
         r2 = json.loads(terminal_tool("pwd", task_id="t-cwd-3"))
         assert "cwd" not in r2
-        assert os.path.realpath(r2["output"].strip()) == os.path.realpath(str(target))
+        # PowerShell renders `pwd` (Get-Location) as a small table
+        # (Path/----/C:\...), so the path is the last non-empty line; on
+        # bash `pwd` emits the path alone — both parse the same way.
+        pwd_path = r2["output"].strip().splitlines()[-1] if r2["output"].strip() else ""
+        assert os.path.realpath(pwd_path) == os.path.realpath(str(target))
 
     def test_cd_within_chain_reports_final_dir(self, isolated_home, tmp_path):
         a = tmp_path / "a"

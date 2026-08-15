@@ -633,6 +633,14 @@ class A2AAdapter(BasePlatformAdapter):
                 for n in names
                 if allowed is None or n in allowed
             }
+            # Explicitly configured capabilities/toolsets must be advertised
+            # even when the live registry has no toolset of that name (e.g. a
+            # capability that maps to a profile rather than a toolset). Without
+            # this, an empty registry or a partial match silently drops
+            # advertised capabilities from the Agent Card.
+            if allowed:
+                for n in sorted(allowed):
+                    mapping.setdefault(n, [])
             if mapping:
                 return protocol.skills_from_toolsets(mapping)
         except Exception:

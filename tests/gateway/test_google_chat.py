@@ -12,7 +12,7 @@ We shim the imports at module load so collection doesn't fail.
 """
 
 import asyncio
-import orjson
+import json
 import os
 import sys
 import types
@@ -189,7 +189,7 @@ def adapter(tmp_path):
 def _make_pubsub_message(data: dict, *, attributes=None):
     """Build a Mock Pub/Sub Message with ack/nack trackers."""
     msg = MagicMock()
-    msg.data = orjson.dumps(data)
+    msg.data = json.dumps(data).encode("utf-8")
     msg.attributes = attributes or {}
     msg.ack = MagicMock()
     msg.nack = MagicMock()
@@ -1058,7 +1058,7 @@ class TestSetupFilesSlashCommand:
 class TestUserOAuthHelper:
     @staticmethod
     def _assert_private_json_file(path, expected):
-        assert orjson.loads(path.read_text(encoding="utf-8", errors="replace")) == expected
+        assert json.loads(path.read_text(encoding="utf-8")) == expected
         assert list(path.parent.glob(f"{path.stem}.tmp.*")) == []
         if os.name != "nt":
             assert (path.stat().st_mode & 0o777) == 0o600
@@ -1110,7 +1110,7 @@ class TestUserOAuthHelper:
         monkeypatch.setenv("HERMES_HOME", str(tmp_path))
         src = tmp_path / "client_secret.json"
         payload = {"installed": {"client_id": "cid", "client_secret": "secret"}}
-        src.write_text(orjson.dumps(payload).decode('utf-8'), encoding="utf-8")
+        src.write_text(json.dumps(payload), encoding="utf-8")
 
         from plugins.platforms.google_chat.oauth import (
             _client_secret_path,
@@ -1139,11 +1139,11 @@ class TestPerUserAttachmentRouting:
         monkeypatch.setenv("HERMES_HOME", str(tmp_path))
         users_dir = tmp_path / "google_chat_user_tokens"
         users_dir.mkdir(parents=True)
-        (users_dir / "alice@example.com.json").write_text(orjson.dumps({
+        (users_dir / "alice@example.com.json").write_text(json.dumps({
             "type": "authorized_user",
             "client_id": "cid", "client_secret": "csec",
             "refresh_token": "rtok", "token": "atok",
-        }).decode('utf-8'))
+        }))
         adapter._last_sender_by_chat["spaces/S"] = "alice@example.com"
 
         per_user_api = MagicMock()
@@ -1245,8 +1245,8 @@ class TestThreadCountStore:
         prev = store.incr("spaces/X", "spaces/X/threads/T")
         assert prev == 0
         # File now has valid JSON.
-        import orjson
-        data = orjson.loads(path.read_text())
+        import json
+        data = json.loads(path.read_text())
         assert data == {"spaces/X": {"spaces/X/threads/T": 1}}
 
 
@@ -1567,8 +1567,13 @@ class TestAuthorizationEmailMatch:
         from gateway.config import GatewayConfig
         from gateway.run import GatewayRunner
         from gateway.session import SessionSource
+        from hermes_cli.plugins import discover_plugins
 
         monkeypatch.setenv("GOOGLE_CHAT_ALLOWED_USERS", "alice@example.com")
+        # Plugin platforms become available during the normal gateway startup
+        # discovery pass.  This unit test constructs GatewayRunner directly,
+        # so perform that lifecycle step explicitly before testing auth.
+        discover_plugins()
         cfg = GatewayConfig()
         runner = GatewayRunner(cfg)
         runner.pairing_store = MagicMock()
@@ -1698,12 +1703,12 @@ class TestGoogleChatStandaloneSend:
         self, monkeypatch, tmp_path
     ):
         sa_file = tmp_path / "sa.json"
-        sa_file.write_text(orjson.dumps({
+        sa_file.write_text(json.dumps({
             "type": "service_account",
             "client_email": "bot@example.iam.gserviceaccount.com",
             "private_key": "fake",
             "token_uri": "https://example/token",
-        }).decode('utf-8'))
+        }))
         monkeypatch.setenv("GOOGLE_CHAT_SERVICE_ACCOUNT_JSON", str(sa_file))
 
         fake_creds = MagicMock()
@@ -1738,5 +1743,4 @@ class TestGoogleChatStandaloneSend:
         assert url == "https://chat.googleapis.com/v1/spaces/AAAA-BBBB/messages"
         assert kwargs["headers"]["Authorization"] == "Bearer the-token"
         assert kwargs["json"] == {"text": "hello cron"}
-
 

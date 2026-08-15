@@ -9,10 +9,10 @@ Each 429 from Nous triggers up to 9 API calls per conversation turn
 against RPH.  By recording the rate limit state on first 429 and checking
 it before subsequent attempts, we eliminate the amplification effect.
 """
+
 from __future__ import annotations
 
-
-import orjson
+import json
 import logging
 import os
 import tempfile
@@ -118,7 +118,7 @@ def record_nous_rate_limit(
         fd, tmp_path = tempfile.mkstemp(dir=state_dir, suffix=".tmp")
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as f:
-                f.write(orjson.dumps(state).decode('utf-8'))
+                json.dump(state, f)
             atomic_replace(tmp_path, path)
         except Exception:
             # Clean up temp file on failure
@@ -144,8 +144,8 @@ def nous_rate_limit_remaining() -> Optional[float]:
     """
     path = _state_path()
     try:
-        with open(path, encoding="utf-8", errors="replace") as f:
-            state = orjson.loads(f.read())
+        with open(path, encoding="utf-8") as f:
+            state = json.load(f)
         reset_at = state.get("reset_at", 0)
         remaining = reset_at - time.time()
         if remaining > 0:
@@ -156,7 +156,7 @@ def nous_rate_limit_remaining() -> Optional[float]:
         except OSError:
             pass
         return None
-    except (FileNotFoundError, orjson.JSONDecodeError, KeyError, TypeError):
+    except (FileNotFoundError, json.JSONDecodeError, KeyError, TypeError):
         return None
 
 

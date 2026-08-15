@@ -19,13 +19,14 @@ agent.conversation_loop import logger``) so this module never imports
 ``agent.conversation_loop`` at import time -> no import cycle, and the log records
 keep the exact logger name (``"agent.conversation_loop"``).
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import os
 
 from agent.codex_responses_adapter import _summarize_user_message_for_log
 from agent.message_content import flatten_message_text
+from agent.message_sanitization import _sanitize_surrogates
 
 
 def _is_pure_tool_call_tail(msg: dict) -> bool:
@@ -113,22 +114,22 @@ def finalize_turn(
         # A verification/continuation gate deliberately withheld a composed
         # answer, then consumed the remaining budget before producing a newer
         # one. Preserve that exact answer instead of replacing it with another
-        # fallible model call.
+        # fallible model call. The explicit pending value is the provenance
+        # guard: unrelated error/recovery exits can never enter this branch.
         final_response = _pending_verification_response
+        # Mark the turn as previewed only when the reused candidate was
+        # actually streamed to the user as interim content. (#65919 review:
+        # response-loss blocker)
         if _pending_verification_response_previewed:
             agent._response_was_previewed = True
-        _turn_exit_reason = (
-            f"max_iterations_reached({api_call_count}/{agent.max_iterations})"
-        )
+        _turn_exit_reason = f"max_iterations_reached({api_call_count}/{agent.max_iterations})"
         iteration_limit_fallback = True
         preserved_verification_fallback = True
     elif final_response is None and budget_fallback_eligible:
         # Budget exhausted — ask the model for a summary via one extra
         # API call with tools stripped.  _handle_max_iterations injects a
         # user message and makes a single toolless request.
-        _turn_exit_reason = (
-            f"max_iterations_reached({api_call_count}/{agent.max_iterations})"
-        )
+        _turn_exit_reason = f"max_iterations_reached({api_call_count}/{agent.max_iterations})"
         agent._emit_status(
             f"⚠️ Iteration budget exhausted ({api_call_count}/{agent.max_iterations}) "
             "— asking model to summarise"
@@ -155,7 +156,6 @@ def finalize_turn(
         if _kanban_task:
             try:
                 from hermes_cli import kanban_db as _kb
-
                 _conn = _kb.connect()
                 try:
                     _kb._record_task_failure(
@@ -177,9 +177,7 @@ def finalize_turn(
                     )
                     logger.info(
                         "recorded budget-exhausted failure for task %s (%d/%d)",
-                        _kanban_task,
-                        api_call_count,
-                        agent.max_iterations,
+                        _kanban_task, api_call_count, agent.max_iterations,
                     )
                 finally:
                     try:
@@ -198,7 +196,10 @@ def finalize_turn(
     completed = (
         final_response is not None
         and not failed
-        and (api_call_count < agent.max_iterations or normal_text_response)
+        and (
+            api_call_count < agent.max_iterations
+            or normal_text_response
+        )
     )
 
     # Preflight can seed the display count before the provider receives the
@@ -247,25 +248,17 @@ def finalize_turn(
     # Save trajectory if enabled.  ``user_message`` may be a multimodal
     # list of parts; the trajectory format wants a plain string.
     try:
-        agent._save_trajectory(
-            messages, _summarize_user_message_for_log(user_message), completed
-        )
+        agent._save_trajectory(messages, _summarize_user_message_for_log(user_message), completed)
     except Exception as _save_err:
         _cleanup_errors.append(f"save_trajectory: {_save_err}")
-        logger.error(
-            "finalize_turn: _save_trajectory failed: %s", _save_err, exc_info=True
-        )
+        logger.error("finalize_turn: _save_trajectory failed: %s", _save_err, exc_info=True)
 
     # Clean up VM and browser for this task after conversation completes
     try:
         agent._cleanup_task_resources(effective_task_id)
     except Exception as _cleanup_err:
         _cleanup_errors.append(f"cleanup_task_resources: {_cleanup_err}")
-        logger.error(
-            "finalize_turn: _cleanup_task_resources failed: %s",
-            _cleanup_err,
-            exc_info=True,
-        )
+        logger.error("finalize_turn: _cleanup_task_resources failed: %s", _cleanup_err, exc_info=True)
 
     # Persist session to both JSON log and SQLite only after private retry
     # scaffolding has been removed. Otherwise a later user "continue" turn
@@ -296,7 +289,6 @@ def finalize_turn(
         # persisting an empty-content assistant turn.
         if interrupted:
             from agent.message_sanitization import close_interrupted_tool_sequence
-
             close_interrupted_tool_sequence(messages, final_response)
 
         # Some recovery/fallback paths return a real final_response without
@@ -419,9 +411,15 @@ def finalize_turn(
         agent._persist_session(messages, conversation_history)
     except Exception as _persist_err:
         _cleanup_errors.append(f"persist_session: {_persist_err}")
-        logger.error(
-            "finalize_turn: _persist_session failed: %s", _persist_err, exc_info=True
-        )
+        logger.error("finalize_turn: _persist_session failed: %s", _persist_err, exc_info=True)
+
+    # The gateway owns a separate in-memory history snapshot. Keep it current
+    # even when finalization reports a cleanup error: a later prompt must not be
+    # sent with the pre-turn snapshot while the durable DB already has this turn.
+    try:
+        agent._session_messages = messages
+    except Exception:
+        pass
 
     # ── Turn-exit diagnostic log ─────────────────────────────────────
     # Always logged at INFO so agent.log captures WHY every turn ended.
@@ -439,8 +437,7 @@ def finalize_turn(
                 break
 
     _turn_tool_count = sum(
-        1
-        for m in messages
+        1 for m in messages
         if isinstance(m, dict) and m.get("role") == "assistant" and m.get("tool_calls")
     )
     _resp_len = len(final_response) if final_response else 0
@@ -452,15 +449,9 @@ def finalize_turn(
         "tool_turns=%d last_msg_role=%s response_len=%d session=%s"
     )
     _diag_args = (
-        _turn_exit_reason,
-        agent.model,
-        api_call_count,
-        agent.max_iterations,
-        _budget_used,
-        _budget_max,
-        _turn_tool_count,
-        _last_msg_role,
-        _resp_len,
+        _turn_exit_reason, agent.model, api_call_count, agent.max_iterations,
+        _budget_used, _budget_max,
+        _turn_tool_count, _last_msg_role, _resp_len,
         agent.session_id or "none",
     )
 
@@ -468,10 +459,8 @@ def finalize_turn(
         # Agent was mid-work — this is the "just stops" case.
         logger.warning(
             "Turn ended with pending tool result (agent may appear stuck). "
-            + _diag_msg
-            + " last_tool=%s",
-            *_diag_args,
-            _last_tool_name,
+            + _diag_msg + " last_tool=%s",
+            *_diag_args, _last_tool_name,
         )
     else:
         logger.info(_diag_msg, *_diag_args)
@@ -530,8 +519,7 @@ def finalize_turn(
                     and not preserved_verification_fallback
                     and not str(_turn_exit_reason).startswith("text_response")
                     and len(_stripped) <= 24
-                    and _stripped[-1:]
-                    not in {".", "!", "?", "。", "！", "？", "`", ")"}
+                    and _stripped[-1:] not in {".", "!", "?", "。", "！", "？", "`", ")"}
                 )
                 _is_partial_stream_recovery = (
                     str(_turn_exit_reason) == "partial_stream_recovery"
@@ -542,7 +530,8 @@ def finalize_turn(
                     or _is_partial_stream_recovery
                 ):
                     _explanation = agent._format_turn_completion_explanation(
-                        _turn_exit_reason
+                        _turn_exit_reason,
+                        getattr(agent, "_last_persistence_error_cause", None),
                     )
                     if _explanation:
                         if _is_empty_terminal:
@@ -553,11 +542,14 @@ def finalize_turn(
                             # Keep the partial fragment, append the reason so
                             # the user sees both what arrived and why it
                             # stopped.
-                            final_response = _stripped + "\n\n" + _explanation
+                            final_response = (
+                                _stripped + "\n\n" + _explanation
+                            )
         except Exception as _exp_err:
             logger.debug("turn-completion explainer failed: %s", _exp_err)
 
     _response_transformed = False
+    _pre_transform_response = None
 
     # Plugin hook: transform_llm_output
     # Fired once per turn after the tool-calling loop completes.
@@ -575,6 +567,7 @@ def finalize_turn(
             )
             for _hook_result in _transform_results:
                 if isinstance(_hook_result, str) and _hook_result:
+                    _pre_transform_response = final_response
                     final_response = _hook_result
                     _response_transformed = True
                     break  # First non-empty string wins
@@ -647,6 +640,18 @@ def finalize_turn(
             last_reasoning = msg["reasoning"]
             break
 
+    # Class-level surrogate chokepoint (#80366, #55143, #55309, #19819):
+    # ``final_response`` is often the RAW SDK content
+    # (``assistant_message.content``), not the sanitized copy stored in
+    # history by ``build_assistant_message``. Any lone UTF-16 surrogate
+    # (U+D800–U+DFFF) in it crashes downstream consumers — oneshot stdout
+    # writes, Telegram's ``utf16_len`` length check, Signal formatting,
+    # JSON envelope encodes — on every provider (Ollama, NVIDIA NIM, …).
+    # Scrub once here, where model text leaves the conversation loop, so
+    # every delivery surface receives valid Unicode.
+    if isinstance(final_response, str):
+        final_response = _sanitize_surrogates(final_response)
+
     # Build result with interrupt info if applicable
     result = {
         "final_response": final_response,
@@ -659,6 +664,7 @@ def finalize_turn(
         "partial": False,  # True only when stopped due to invalid tool calls
         "interrupted": interrupted,
         "response_transformed": _response_transformed,
+        "pre_transform_response": _pre_transform_response,
         "response_previewed": getattr(agent, "_response_was_previewed", False),
         "model": agent.model,
         "provider": agent.provider,
@@ -671,8 +677,7 @@ def finalize_turn(
         "prompt_tokens": agent.session_prompt_tokens,
         "completion_tokens": agent.session_completion_tokens,
         "total_tokens": agent.session_total_tokens,
-        "last_prompt_tokens": getattr(agent.context_compressor, "last_prompt_tokens", 0)
-        or 0,
+        "last_prompt_tokens": getattr(agent.context_compressor, "last_prompt_tokens", 0) or 0,
         "estimated_cost_usd": agent.session_estimated_cost_usd,
         "cost_status": agent.session_cost_status,
         "cost_source": agent.session_cost_source,
@@ -687,11 +692,20 @@ def finalize_turn(
         result["guardrail"] = agent._tool_guardrail_halt_decision.to_metadata()
     # Persistence failures already set failed=True + an explanation in
     # final_response; also stamp `error` so gateway surfaces status="error"
-    # (and desktop can toast disk-full) instead of a quiet complete frame.
+    # (and desktop can toast the cause) instead of a quiet complete frame.
     if failed and str(_turn_exit_reason) == "session_persistence_failed":
         result["error"] = final_response or (
-            "session storage could not be written — free disk space and try again"
+            "session storage could not be written — check the state database "
+            "health (`hermes doctor`), then send your message again"
         )
+        # Machine-readable cause for the gateway/desktop: exactly
+        # 'session_persistence_failed:<locked|disk|unknown>'. Never clobber a
+        # failure_reason another path already stamped on this result.
+        if "failure_reason" not in result:
+            _cause = getattr(agent, "_last_persistence_error_cause", None)
+            result["failure_reason"] = (
+                "session_persistence_failed:" + (_cause or "unknown")
+            )
     # Surface any post-loop cleanup failures so the caller can distinguish a
     # clean turn from one whose trajectory/session/resource teardown raised
     # (the response is still returned either way — #8049).
@@ -700,11 +714,9 @@ def finalize_turn(
     # If a /steer landed after the final assistant turn (no more tool
     # batches to drain into), hand it back to the caller so it can be
     # delivered as the next user turn instead of being silently lost.
-    _registry = getattr(agent, "_reminder_registry", None)
-    if _registry is not None:
-        _leftover_steer = _registry.drain_user_reminders(agent)
-        if _leftover_steer:
-            result["pending_steer"] = _leftover_steer
+    _leftover_steer = agent._drain_pending_steer()
+    if _leftover_steer:
+        result["pending_steer"] = _leftover_steer
     agent._response_was_previewed = False
 
     # Include interrupt message if one triggered the interrupt
@@ -719,11 +731,9 @@ def finalize_turn(
 
     # Check skill trigger NOW — based on how many tool iterations THIS turn used.
     _should_review_skills = False
-    if (
-        agent._skill_nudge_interval > 0
-        and agent._iters_since_skill >= agent._skill_nudge_interval
-        and "skill_manage" in agent.valid_tool_names
-    ):
+    if (agent._skill_nudge_interval > 0
+            and agent._iters_since_skill >= agent._skill_nudge_interval
+            and "skill_manage" in agent.valid_tool_names):
         _should_review_skills = True
         agent._iters_since_skill = 0
 
@@ -737,9 +747,13 @@ def finalize_turn(
 
     # Background memory/skill review — runs AFTER the response is delivered
     # so it never competes with the user's task for model attention.
+    # Suppressed when skip_background_review=True (e.g. cron) — review forks
+    # spawn another AIAgent (~30K tokens / event) and cron sessions have no
+    # human-in-the-loop benefit from the review.
     if (
         final_response
         and not interrupted
+        and not getattr(agent, "skip_background_review", False)
         and (_should_review_memory or _should_review_skills)
     ):
         try:

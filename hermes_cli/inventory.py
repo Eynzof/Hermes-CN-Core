@@ -153,6 +153,17 @@ def build_models_payload(
       bundled models.dev snapshot. Besides the legacy ``fast``/``reasoning``
       gates, each known model includes tools, vision, reasoning, context-window,
       output-token, and family metadata for richer desktop picker tags.
+    - ``capabilities``: add a per-row ``capabilities`` map
+      ``{model: {fast, reasoning}}`` so pickers can gate the model-options
+      controls (fast toggle / reasoning) to what each model actually
+      supports, instead of offering knobs the backend would reject.
+    - ``featured``: add a per-row ``featured_models`` list — the newest few
+      models per lab (by models.dev release_date, ranked within the row's own
+      models; see ``_FEATURED_PER_LAB``) for aggregator providers that serve
+      dozens of models across many labs. Pickers default their visible set to
+      these; the rest of ``models`` stays reachable via search / show-all. Empty
+      for single-lab providers (callers fall back to top-N). Derived live from
+      models.dev — no allowlist.
     - ``force_fresh_nous_tier``: bypass the short Nous free-tier cache when
       selecting Portal-recommended Nous models and applying tier gating. Keep
       this false for UI picker opens; explicit auth/model flows can opt in

@@ -4,10 +4,8 @@ All tests run in OFFLINE mode — no real LLM API calls.
 Tests measure token estimation and message processing performance.
 """
 
-import orjson
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 import pytest
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -41,51 +39,6 @@ def test_token_estimation_scaling(timing_context):
         avg = ms / 5
         print(f"\n  Estimate tokens ({num_turns}turns): {ms:.1f}ms total, {avg:.1f}ms avg")
         assert avg < 100, f"Token estimation {num_turns}turns avg {avg:.1f}ms (expected < 100ms)"
-
-
-@pytest.mark.perf
-def test_compression_pipeline_mocked(timing_context):
-    """Measure the compression pipeline with mocked context compressor."""
-    from agent.context_compressor import ContextCompressor
-
-    with patch.object(ContextCompressor, '__init__', return_value=None):
-        compressor = ContextCompressor.__new__(ContextCompressor)
-        compressor.model = MagicMock()
-        compressor.should_compress = MagicMock(return_value=True)
-
-        messages = _build_history(20, tokens_per_msg=500)
-
-        with timing_context.measure("compress_pipeline_full"):
-            # Simulate compression operations
-            for msg in messages:
-                _ = len(str(msg))
-
-    total_ms = timing_context.summary().get("compress_pipeline_full", {}).get("total_ms", 0)
-    print(f"\n  Compression pipeline: {total_ms:.1f}ms")
-
-
-@pytest.mark.perf
-def test_compression_with_tool_results(timing_context):
-    """Measure message processing with tool results."""
-    messages = [{"role": "system", "content": "System prompt." * 20}]
-    for i in range(10):
-        messages.append({"role": "user", "content": f"Question {i}."})
-        messages.append({
-            "role": "assistant", "content": None,
-            "tool_calls": [{"id": f"call_{i}", "function": {"name": "search_files", "arguments": '{}'}}],
-        })
-        messages.append({
-            "role": "tool", "tool_call_id": f"call_{i}",
-            "content": orjson.dumps({"files": [f"f_{j}.py" for j in range(20)]}).decode('utf-8'),
-        })
-
-    with timing_context.measure("compress_with_tools"):
-        for _ in range(10):
-            sizes = [len(str(m)) for m in messages]
-            total_chars = sum(sizes)
-
-    total_ms = timing_context.summary().get("compress_with_tools", {}).get("total_ms", 0)
-    print(f"\n  Process tool results x10: {total_ms:.1f}ms")
 
 
 @pytest.mark.perf

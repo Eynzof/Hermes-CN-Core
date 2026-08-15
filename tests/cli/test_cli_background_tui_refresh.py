@@ -78,16 +78,6 @@ class TestBackgroundCommandTuiRefresh:
         assert call_order[0] == "invalidate"
         assert "print" in call_order
 
-    def test_no_crash_when_app_is_none(self):
-        """No crash when _app is None (non-TUI mode)."""
-        cli_obj = _make_cli()
-        cli_obj._app = None
-
-        # This should not raise
-        if cli_obj._app:
-            cli_obj._app.invalidate()
-        # If we get here without exception, test passes
-
     def test_background_task_thread_safety(self):
         """Background task tracking is thread-safe."""
         cli_obj = _make_cli()

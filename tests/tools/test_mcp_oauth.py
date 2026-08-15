@@ -190,10 +190,12 @@ class TestUtilities:
         assert _can_open_browser() is False
 
     def test_can_open_browser_true_with_display(self, monkeypatch):
+        # No ``os.name`` pin: on Linux this exercises the DISPLAY branch for
+        # real, and on macOS/Windows the function early-returns True anyway —
+        # the assertion holds on every host without faking one.
         monkeypatch.delenv("SSH_CLIENT", raising=False)
         monkeypatch.delenv("SSH_TTY", raising=False)
         monkeypatch.setenv("DISPLAY", ":0")
-        monkeypatch.setattr(os, "name", "posix")
         assert _can_open_browser() is True
 
 
@@ -336,11 +338,12 @@ class TestCallbackPortReservation:
     def test_pinned_port_is_not_reserved(self):
         import tools.mcp_oauth as mod
 
+        reservations_before = dict(mod._reserved_sockets)
         cfg: dict = {"redirect_port": 49399}
         port = mod._configure_callback_port(cfg)
         assert port == 49399
         assert cfg["_resolved_port"] == 49399
-        assert 49399 not in mod._reserved_sockets
+        assert mod._reserved_sockets == reservations_before
 
     def test_wait_for_callback_adopts_reserved_socket(self, monkeypatch):
         """E2E: reserve → _wait_for_callback binds the SAME socket and the

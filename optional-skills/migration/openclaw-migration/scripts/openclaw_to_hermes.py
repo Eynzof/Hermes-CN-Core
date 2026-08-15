@@ -1402,11 +1402,11 @@ class Migrator:
         for name in ("openclaw.json", "clawdbot.json", "moltbot.json"):
             config_path = self.source_root / name
             if config_path.exists():
-                try:
-                    data = orjson.loads(config_path.read_text(encoding="utf-8", errors="replace"))
-                    return data if isinstance(data, dict) else {}
-                except (orjson.JSONDecodeError, OSError):
-                    continue
+                  try:
+                      data = orjson.loads(config_path.read_text(encoding="utf-8", errors="replace"))
+                      return data if isinstance(data, dict) else {}
+                  except (orjson.JSONDecodeError, OSError):
+                      continue
         return {}
 
     def load_openclaw_env(self) -> Dict[str, str]:

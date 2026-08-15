@@ -16,7 +16,6 @@ from __future__ import annotations
 import orjson
 from unittest.mock import MagicMock
 
-
 # ---------------------------------------------------------------------------
 # Provider surface
 # ---------------------------------------------------------------------------

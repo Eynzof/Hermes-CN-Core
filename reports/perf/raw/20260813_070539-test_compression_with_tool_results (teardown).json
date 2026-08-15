@@ -1,0 +1,21 @@
+{
+  "samples": [
+    {
+      "section": "compress_with_tools",
+      "duration_ms": 0.264,
+      "iteration": 0
+    }
+  ],
+  "summary": {
+    "compress_with_tools": {
+      "count": 1,
+      "total_ms": 0.264,
+      "mean_ms": 0.264,
+      "min_ms": 0.264,
+      "max_ms": 0.264,
+      "durations": [
+        0.264
+      ]
+    }
+  }
+}

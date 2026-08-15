@@ -12,8 +12,8 @@ and the byte-upload fallback that handles up to 10MB -- went out on the short
 timeout. Both are driven for real below and asserted on the ``read_timeout``
 that actually reaches the Bot API.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import sys
 from unittest.mock import AsyncMock, MagicMock

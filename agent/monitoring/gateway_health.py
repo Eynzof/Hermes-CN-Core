@@ -5,8 +5,8 @@ redacted operational diagnostics. It reuses the existing gateway runtime-status
 contract and emits content-free metrics/events. No prompts, messages, tool args,
 session history, audit records, or product analytics belong here.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import hashlib
 import logging

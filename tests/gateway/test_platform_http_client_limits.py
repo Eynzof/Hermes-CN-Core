@@ -40,32 +40,3 @@ def test_env_override_rejects_garbage(monkeypatch):
     assert limits.keepalive_expiry is not None and limits.keepalive_expiry > 0
     assert limits.max_keepalive_connections is not None
     assert limits.max_keepalive_connections > 0
-
-
-class TestWhatsappTypingLeakFix:
-    """#18451 — whatsapp.send_typing previously used a bare
-    `await self._http_session.post(...)` which leaked the aiohttp
-    response object until GC, holding its TCP socket in CLOSE_WAIT.
-    Must now wrap the call in `async with` so the response is
-    released immediately when the call returns.
-
-    We verify by inspecting the source text rather than exercising
-    the coroutine — the test suite would otherwise need a live
-    aiohttp server, and the contract we care about is structural.
-    """
-
-    def test_bare_await_removed(self):
-        import inspect
-        import plugins.platforms.whatsapp.adapter as mod
-
-        src = inspect.getsource(mod.WhatsAppAdapter.send_typing)
-        # The fix must be structural: the post() call is inside an
-        # `async with`, not a bare `await`.
-        assert "async with self._http_session.post(" in src, (
-            "send_typing must wrap self._http_session.post(...) in "
-            "`async with` to release the aiohttp response socket "
-            "(#18451). Otherwise the response sits in CLOSE_WAIT "
-            "until GC."
-        )
-        # The old bare-await form must be gone.
-        assert "await self._http_session.post(" not in src

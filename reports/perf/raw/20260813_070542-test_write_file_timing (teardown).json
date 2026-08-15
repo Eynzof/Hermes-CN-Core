@@ -1,0 +1,36 @@
+{
+  "samples": [
+    {
+      "section": "write_small",
+      "duration_ms": 2.858,
+      "iteration": 0
+    },
+    {
+      "section": "write_large",
+      "duration_ms": 0.82,
+      "iteration": 0
+    }
+  ],
+  "summary": {
+    "write_large": {
+      "count": 1,
+      "total_ms": 0.82,
+      "mean_ms": 0.82,
+      "min_ms": 0.82,
+      "max_ms": 0.82,
+      "durations": [
+        0.82
+      ]
+    },
+    "write_small": {
+      "count": 1,
+      "total_ms": 2.858,
+      "mean_ms": 2.858,
+      "min_ms": 2.858,
+      "max_ms": 2.858,
+      "durations": [
+        2.858
+      ]
+    }
+  }
+}

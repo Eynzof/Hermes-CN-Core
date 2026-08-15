@@ -17,8 +17,8 @@ the total count, so an unlucky streak of crashes can't grow it unboundedly.
 Every function is best-effort by design — marker bookkeeping must never
 break a turn — so I/O errors degrade to "no marker" instead of raising.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import json
 import logging

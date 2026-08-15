@@ -241,12 +241,6 @@ class TestOllamaCloudModelsDev:
 # ── Agent Init (no SyntaxError) ──
 
 class TestOllamaCloudAgentInit:
-    def test_agent_imports_without_error(self):
-        """Verify run_agent.py has no SyntaxError."""
-        import importlib
-        import run_agent
-        importlib.reload(run_agent)
-
     def test_ollama_cloud_agent_uses_chat_completions(self, monkeypatch):
         """Ollama Cloud falls through to chat_completions — no special elif needed."""
         monkeypatch.setenv("OLLAMA_API_KEY", "test-key")

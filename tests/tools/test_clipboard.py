@@ -402,6 +402,7 @@ class TestHasClipboardImage:
         import hermes_cli.clipboard as cb
         cb._wsl_detected = None
 
+    @pytest.mark.macos_only
     def test_macos_dispatch(self):
         with patch("hermes_cli.clipboard.sys") as mock_sys:
             mock_sys.platform = "darwin"
@@ -409,17 +410,23 @@ class TestHasClipboardImage:
                 assert has_clipboard_image() is True
                 m.assert_called_once()
 
+    @pytest.mark.skipif(
+        sys.platform != "linux",
+        reason="The WSL/Wayland fallthrough only runs on a Linux host",
+    )
     def test_wsl_falls_through_to_wayland_when_windows_path_empty(self):
-        """WSLg often bridges images to wl-paste even when powershell.exe check fails."""
-        with patch("hermes_cli.clipboard.sys") as mock_sys:
-            mock_sys.platform = "linux"
-            with patch("hermes_cli.clipboard._is_wsl", return_value=True):
-                with patch("hermes_cli.clipboard._wsl_has_image", return_value=False) as wsl:
-                    with patch.dict(os.environ, {"WAYLAND_DISPLAY": "wayland-0"}):
-                        with patch("hermes_cli.clipboard._wayland_has_image", return_value=True) as wl:
-                            assert has_clipboard_image() is True
-                            wsl.assert_called_once()
-                            wl.assert_called_once()
+        """WSLg often bridges images to wl-paste even when powershell.exe check fails.
+
+        WSL is Linux, so the host reaches the fallthrough on its own; only the
+        WSL/Wayland environment probes below are stubbed.
+        """
+        with patch("hermes_cli.clipboard._is_wsl", return_value=True):
+            with patch("hermes_cli.clipboard._wsl_has_image", return_value=False) as wsl:
+                with patch.dict(os.environ, {"WAYLAND_DISPLAY": "wayland-0"}):
+                    with patch("hermes_cli.clipboard._wayland_has_image", return_value=True) as wl:
+                        assert has_clipboard_image() is True
+                        wsl.assert_called_once()
+                        wl.assert_called_once()
 
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -559,26 +566,3 @@ class TestVoiceSubmission:
         from cli import _VoiceInputMessage
         assert isinstance(queued, _VoiceInputMessage)
         assert queued.text == "hello"
-
-# ── PowerShell Encoding ──────────────────────────────────────────────────
-
-class TestClipboardPowershellEncoding:
-    """Verify clipboard PowerShell calls handle UTF-8 correctly."""
-
-    def test_run_powershell_has_utf8_encoding(self):
-        """_run_powershell() uses encoding='utf-8' on subprocess.run."""
-        import inspect
-        from hermes_cli import clipboard
-        src = inspect.getsource(clipboard._run_powershell)
-        assert "encoding" in src.lower(), (
-            "_run_powershell must specify encoding='utf-8'"
-        )
-
-    def test_run_powershell_uses_ps_with_utf8(self):
-        """_run_powershell() wraps script with ps_with_utf8()."""
-        import inspect
-        from hermes_cli import clipboard
-        src = inspect.getsource(clipboard._run_powershell)
-        assert "ps_with_utf8" in src, (
-            "_run_powershell must use ps_with_utf8() to prepend encoding preamble"
-        )

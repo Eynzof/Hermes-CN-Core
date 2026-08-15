@@ -1,0 +1,36 @@
+{
+  "samples": [
+    {
+      "section": "search_by_pattern",
+      "duration_ms": 0.859,
+      "iteration": 0
+    },
+    {
+      "section": "search_by_content",
+      "duration_ms": 3.269,
+      "iteration": 0
+    }
+  ],
+  "summary": {
+    "search_by_content": {
+      "count": 1,
+      "total_ms": 3.269,
+      "mean_ms": 3.269,
+      "min_ms": 3.269,
+      "max_ms": 3.269,
+      "durations": [
+        3.269
+      ]
+    },
+    "search_by_pattern": {
+      "count": 1,
+      "total_ms": 0.859,
+      "mean_ms": 0.859,
+      "min_ms": 0.859,
+      "max_ms": 0.859,
+      "durations": [
+        0.859
+      ]
+    }
+  }
+}

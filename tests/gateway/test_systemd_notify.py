@@ -1,6 +1,6 @@
 """Tests for the optional systemd event-loop watchdog protocol."""
-from __future__ import annotations
 
+from __future__ import annotations
 
 import asyncio
 import socket
@@ -10,7 +10,7 @@ import pytest
 
 
 @pytest.mark.skipif(
-    not hasattr(socket, "AF_UNIX"), reason="Unix datagram sockets are unavailable"
+    sys.platform != "linux", reason="Abstract Unix sockets are Linux-only"
 )
 def test_notify_supports_systemd_abstract_socket(monkeypatch):
     name = "\0hermes-test-notify"
@@ -28,7 +28,9 @@ def test_notify_supports_systemd_abstract_socket(monkeypatch):
         receiver.close()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="systemd sd_notify is Linux-only; Windows has no AF_UNIX and NOTIFY_SOCKET is never set")
+@pytest.mark.skipif(
+    not hasattr(socket, "AF_UNIX"), reason="Unix datagram sockets are unavailable"
+)
 def test_notify_uses_nonblocking_datagram_send(monkeypatch):
     calls: list[object] = []
 
@@ -57,8 +59,10 @@ def test_notify_uses_nonblocking_datagram_send(monkeypatch):
     assert calls[0] == ("setblocking", False)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="systemd watchdog is Linux-only; Windows has no AF_UNIX")
 @pytest.mark.asyncio
+@pytest.mark.skipif(
+    not hasattr(socket, "AF_UNIX"), reason="Unix datagram sockets are unavailable"
+)
 async def test_watchdog_sends_ready_heartbeat_and_stopping(monkeypatch):
     calls: list[str] = []
     monkeypatch.setenv("NOTIFY_SOCKET", "/tmp/hermes-test-notify")
@@ -80,5 +84,4 @@ async def test_watchdog_sends_ready_heartbeat_and_stopping(monkeypatch):
     assert "WATCHDOG=1" in calls
     assert calls[-1] == "STOPPING=1"
     assert watchdog.unhealthy is False
-
 

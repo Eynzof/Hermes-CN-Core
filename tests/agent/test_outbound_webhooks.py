@@ -4,8 +4,8 @@ Covers config parsing, matcher behaviour, HMAC signing, payload shape,
 idempotent registration on the plugin manager, and end-to-end delivery
 against a real local HTTP server (no mocks on the network path).
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import hashlib
 import hmac

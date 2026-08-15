@@ -6,7 +6,7 @@ streaming, or the _run_codex_stream() call path.
 """
 
 import hashlib
-import orjson
+import json
 import re
 from typing import Any, Dict, List, Optional
 
@@ -163,9 +163,11 @@ def _content_cache_key(
             (t for t in tools if isinstance(t, dict)),
             key=lambda t: str(t.get("name") or t.get("type") or ""),
         )
-        tools_part = orjson.dumps(sorted_tools, option=orjson.OPT_SORT_KEYS).decode('utf-8')
-        # \x00 separators so a scope/instructions/tools boundary can't be forged
-        # by content that happens to contain the same bytes.
+        tools_part = json.dumps(
+            sorted_tools, sort_keys=True, ensure_ascii=False, separators=(",", ":")
+        )
+    # \x00 separators so a scope/instructions/tools boundary can't be forged
+    # by content that happens to contain the same bytes.
     content = f"{scope_id}\x00{instructions or ''}\x00{tools_part}"
     digest = hashlib.sha256(content.encode("utf-8", errors="replace")).hexdigest()[:24]
     return f"pck_{digest}"
@@ -269,6 +271,11 @@ class ResponsesApiTransport(ProviderTransport):
         replay_encrypted_reasoning = bool(
             params.get("replay_encrypted_reasoning", True)
         )
+        # Native server-side compaction (gpt-5.6 on direct OpenAI/Codex routes
+        # only). The caller resolves eligibility via
+        # agent.native_compaction.native_compaction_context_management();
+        # None means the field is never added to the request.
+        context_management = params.get("context_management")
 
         # Resolve the issuing endpoint for this call. Stashed on the
         # transport so normalize_response can stamp it onto reasoning
@@ -295,6 +302,12 @@ class ResponsesApiTransport(ProviderTransport):
         if params.get("is_xai_responses", False):
             # xAI Responses tops out at high; keep generic stronger values usable.
             _effort_clamp.update({"xhigh": "high", "max": "high", "ultra": "high"})
+        if (params.get("provider") or "").strip().lower() == "actual":
+            # Actual Computer relays to SGLang/vLLM backends that accept only
+            # none/low/medium/high/max for reasoning effort — a forwarded
+            # xhigh/ultra fails with a wrapped HTTP 400 ("Expecting value:
+            # line 1 column 1"). Clamp Hermes' wider set to the supported one.
+            _effort_clamp.update({"xhigh": "high", "ultra": "max"})
         reasoning_effort = _effort_clamp.get(reasoning_effort, reasoning_effort)
 
         response_tools = _responses_tools(tools)
@@ -359,6 +372,8 @@ class ResponsesApiTransport(ProviderTransport):
             kwargs["tools"] = response_tools
             kwargs["tool_choice"] = "auto"
             kwargs["parallel_tool_calls"] = True
+        if isinstance(context_management, list) and context_management:
+            kwargs["context_management"] = context_management
 
         session_id = params.get("session_id")
         # prompt_cache_key is content-addressed from the static prefix

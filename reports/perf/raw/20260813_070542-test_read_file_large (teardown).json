@@ -1,0 +1,21 @@
+{
+  "samples": [
+    {
+      "section": "read_large",
+      "duration_ms": 0.876,
+      "iteration": 0
+    }
+  ],
+  "summary": {
+    "read_large": {
+      "count": 1,
+      "total_ms": 0.876,
+      "mean_ms": 0.876,
+      "min_ms": 0.876,
+      "max_ms": 0.876,
+      "durations": [
+        0.876
+      ]
+    }
+  }
+}

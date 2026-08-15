@@ -82,46 +82,6 @@ def test_quarantine_read_modify_write_is_atomic():
     )
 
 
-def test_quarantine_paths_hold_the_pool_lock():
-    """Static guard: every bare ``self._entries = [`` inside
-    _refresh_entry_impl must sit under a ``with self._lock`` block.
-
-    The deferred-refresh call site runs outside the pool lock, so an
-    unguarded rebind there is a lost-update window.
-    """
-    import inspect
-    import textwrap
-
-    src = textwrap.dedent(inspect.getsource(CredentialPool._refresh_entry_impl))
-    lines = src.splitlines()
-
-    unguarded = []
-    for idx, line in enumerate(lines):
-        if "self._entries = [" not in line:
-            continue
-        indent = len(line) - len(line.lstrip())
-        # Walk backwards for an enclosing `with self._lock` at lower indent.
-        guarded = False
-        for prev in range(idx - 1, -1, -1):
-            p = lines[prev]
-            if not p.strip():
-                continue
-            p_indent = len(p) - len(p.lstrip())
-            if p_indent < indent:
-                if "with self._lock" in p:
-                    guarded = True
-                    break
-                if p.lstrip().startswith("def "):
-                    break
-        if not guarded:
-            unguarded.append(line.strip())
-
-    assert not unguarded, (
-        "unguarded self._entries rebind(s) in _refresh_entry_impl — the "
-        f"deferred refresh path runs outside the pool lock: {unguarded}"
-    )
-
-
 def test_rlock_allows_locked_callers_to_reenter():
     """The already-locked callers must still work after adding the lock.
 

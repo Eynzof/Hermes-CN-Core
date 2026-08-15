@@ -137,7 +137,19 @@ def _all_fal_families():
     return list(FAL_FAMILIES.keys())
 
 
-@pytest.mark.parametrize("family_id", _all_fal_families())
+def _t2v_fal_families():
+    """Families that advertise a text-to-video endpoint."""
+    from plugins.video_gen.fal import FAL_FAMILIES
+    return [fid for fid, meta in FAL_FAMILIES.items() if meta.get("text_endpoint")]
+
+
+def _i2v_only_fal_families():
+    """Families that only animate an existing image (no text_endpoint)."""
+    from plugins.video_gen.fal import FAL_FAMILIES
+    return [fid for fid, meta in FAL_FAMILIES.items() if not meta.get("text_endpoint")]
+
+
+@pytest.mark.parametrize("family_id", _t2v_fal_families())
 def test_fal_text_only_routes_to_text_endpoint(matrix_env, family_id):
     home, fal_calls, _ = matrix_env
     from plugins.video_gen.fal import FAL_FAMILIES
@@ -147,6 +159,14 @@ def test_fal_text_only_routes_to_text_endpoint(matrix_env, family_id):
         {"video_gen": {"provider": "fal", "model": family_id}},
         {"prompt": "a dog running"},
     )
+
+    # Image-only families (e.g. gemini-omni-flash) must reject text-only
+    # jobs with a clean modality error instead of submitting anywhere.
+    if not FAL_FAMILIES[family_id].get("text_endpoint"):
+        assert result["success"] is False, family_id
+        assert result.get("error_type") == "modality_unsupported", result
+        assert not fal_calls, f"{family_id} submitted despite no text endpoint"
+        return
 
     assert result["success"] is True, f"{family_id}: {result.get('error')}"
     assert result["modality"] == "text"

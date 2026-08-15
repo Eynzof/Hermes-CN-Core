@@ -13,8 +13,8 @@ Deliberately out of scope here: run/model/tool trajectory capture, usage
 analytics, and any content-bearing signal. Those planes are served by the
 NeMo Relay integration and its Hermes-owned subscribers.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 from . import emitter, events
 

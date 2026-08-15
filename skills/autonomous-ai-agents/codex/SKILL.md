@@ -56,7 +56,7 @@ terminal(command="cd $(mktemp -d) && git init && codex exec --json 'Build a snak
 # (recent Codex CLI versions) that Hermes' desktop UI renders as a live
 # delegation timeline; if your codex rejects the flag (check
 # `codex exec --help`), drop it — behaviour is otherwise identical.
-terminal(command="codex exec --json --full-auto 'Refactor the auth module'", workdir="~/project", background=true, pty=true, notify_on_complete=true)
+terminal(command="codex exec --json --sandbox workspace-write 'Refactor the auth module'", workdir="~/project", background=true, pty=true, notify_on_complete=true)
 # Returns session_id
 
 # Monitor progress
@@ -156,7 +156,7 @@ terminal(command="gh pr comment 86 --body '<review>'", workdir="~/project")
 1. **Always use `pty=true`** — Codex is an interactive terminal app and hangs without a PTY
 2. **Git repo required** — Codex won't run outside a git directory. Use `mktemp -d && git init` for scratch
 3. **Use `exec` for one-shots** — `codex exec "prompt"` runs and exits cleanly
-4. **`--full-auto` for building** — auto-approves changes within the sandbox
+4. **`--sandbox workspace-write` for building** — auto-approves changes within the sandbox (`--full-auto` is deprecated for this)
 5. **Use machine-readable progress** — add `--json` when supported for both foreground and background runs so Hermes can stream steps and Token usage; for long tasks also use `background=true, notify_on_complete=true` and monitor with the `process` tool
 6. **Don't interfere** — monitor with `poll`/`log`, be patient with long-running tasks
 7. **Parallel is fine** — run multiple Codex processes at once for batch work

@@ -29,10 +29,13 @@ Suppress an intentional use (e.g. tests or platform-gated code) with:
 from __future__ import annotations
 
 import argparse
+import ast
+import io
 import os
 import re
 import subprocess
 import sys
+import tokenize
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -135,6 +138,84 @@ class Footgun:
     post_filter: "callable | None" = None
 
 
+def _call_uses_literal_binary_mode(line: str, call_name: str) -> bool:
+    """Return whether the first matching call has a literal binary mode.
+
+    The line regex cannot capture the mode when the path expression itself
+    contains parentheses, for example ``open(resolve(path), "rb")``. Token
+    depth keeps commas inside the path expression separate from the call's
+    real argument separators without turning this lightweight checker into a
+    whole-file parser.
+    """
+    try:
+        tokens = list(tokenize.generate_tokens(io.StringIO(line).readline))
+    except (IndentationError, tokenize.TokenError):
+        return False
+
+    ignored = {
+        tokenize.COMMENT,
+        tokenize.DEDENT,
+        tokenize.ENCODING,
+        tokenize.ENDMARKER,
+        tokenize.INDENT,
+        tokenize.NEWLINE,
+        tokenize.NL,
+    }
+    tokens = [token for token in tokens if token.type not in ignored]
+
+    for index, token in enumerate(tokens):
+        if token.type != tokenize.NAME or token.string != call_name:
+            continue
+        if index > 0 and tokens[index - 1].string == "." and call_name == "open":
+            continue
+        if index + 1 >= len(tokens) or tokens[index + 1].string != "(":
+            continue
+
+        arguments: list[list[tokenize.TokenInfo]] = []
+        current: list[tokenize.TokenInfo] = []
+        depth = 1
+        for part in tokens[index + 2 :]:
+            if part.type == tokenize.OP:
+                if part.string in "([{":
+                    depth += 1
+                elif part.string in ")]}":
+                    depth -= 1
+                    if depth == 0:
+                        arguments.append(current)
+                        break
+                elif part.string == "," and depth == 1:
+                    arguments.append(current)
+                    current = []
+                    continue
+            current.append(part)
+
+        mode_token: tokenize.TokenInfo | None = None
+        if len(arguments) > 1 and len(arguments[1]) == 1:
+            candidate = arguments[1][0]
+            if candidate.type == tokenize.STRING:
+                mode_token = candidate
+        for argument in arguments:
+            if (
+                len(argument) >= 3
+                and argument[0].type == tokenize.NAME
+                and argument[0].string == "mode"
+                and argument[1].string == "="
+                and argument[2].type == tokenize.STRING
+            ):
+                mode_token = argument[2]
+                break
+
+        if mode_token is None:
+            return False
+        try:
+            mode = ast.literal_eval(mode_token.string)
+        except (SyntaxError, ValueError):
+            return False
+        return isinstance(mode, str) and "b" in mode
+
+    return False
+
+
 FOOTGUNS: list[Footgun] = [
     Footgun(
         name="open() without encoding= on text mode",
@@ -164,6 +245,7 @@ FOOTGUNS: list[Footgun] = [
         # already pass encoding=. Skip binary mode (contains "b").
         post_filter=lambda m, line: (
             "b" not in (m.group("mode") or "")
+            and not _call_uses_literal_binary_mode(line, "open")
             and "encoding=" not in line
             and "encoding =" not in line
             # Skip `def open(` and `async def open(` (method definitions)
@@ -172,6 +254,33 @@ FOOTGUNS: list[Footgun] = [
             # Skip open(path, **kwargs) patterns — encoding may be in the dict.
             # Too expensive to trace; require the author to set encoding in
             # the dict and trust them (or they can add a # windows-footgun: ok).
+            and "**" not in line
+        ),
+    ),
+    Footgun(
+        name="os.fdopen() without encoding= on text mode",
+        # ruff PLW1514 covers builtins.open/Path.read_text/write_text/
+        # Path.open but NOT os.fdopen — a bare text-mode fdopen still
+        # decodes/encodes with the locale default (cp1252 on Windows).
+        # This is the exact hole the July 2026 encoding sweep kept
+        # re-fixing by hand (PRs #56033/#56940/#65565), so gate it here.
+        pattern=re.compile(
+            r"""(?:os\s*\.\s*)?\bfdopen\s*\(\s*[^,)]+\s*(?:,\s*['"](?P<mode>[^'"]*)['"])?"""
+        ),
+        message=(
+            "os.fdopen() without an explicit encoding= uses the platform "
+            "default (cp1252/mbcs on Windows) in text mode — the same "
+            "mojibake class as bare open(). ruff PLW1514 does not cover "
+            "fdopen, so this checker is the only gate."
+        ),
+        fix=(
+            "os.fdopen(fd, 'w', encoding='utf-8')  # or mode 'wb' for binary"
+        ),
+        post_filter=lambda m, line: (
+            "b" not in (m.group("mode") or "")
+            and not _call_uses_literal_binary_mode(line, "fdopen")
+            and "encoding=" not in line
+            and "encoding =" not in line
             and "**" not in line
         ),
     ),
@@ -456,10 +565,14 @@ FOOTGUNS: list[Footgun] = [
             "encoding=" not in line
             and "encoding =" not in line
             and not _looks_like_string_literal(line, m)
-            # Skip calls that continue onto the next line — the closing
-            # paren isn't on this line, so encoding= may follow. AST-level
-            # enforcement for those lives in the gateway guard test.
-            and line.rstrip().endswith(")")
+            # Skip calls that continue onto the next line — if the call's
+            # own closing paren isn't on this line, encoding= may follow
+            # on a later line. Balance parens from the call opener instead
+            # of requiring the line to END with ``)`` so chained forms like
+            # ``read_text()[:4000]`` / ``read_text().splitlines()`` are
+            # still caught. AST-level enforcement for multi-line calls
+            # lives in the gateway guard test.
+            and _call_closes_on_line(line, m.end())
         ),
     ),
 ]
@@ -580,6 +693,22 @@ def _is_likely_subprocess_call(line: str) -> bool:
     false negative for a line-based scanner.
     """
     return any(token in line for token in _SUBPROCESS_METHODS)
+
+
+def _call_closes_on_line(line: str, open_paren_end: int) -> bool:
+    """True when the call whose ``(`` sits at ``open_paren_end - 1`` closes
+    on this same line (paren-balance walk). Multi-line calls return False —
+    the missing ``encoding=`` may sit on a continuation line, so the caller
+    should skip them rather than false-positive."""
+    depth = 1
+    for ch in line[open_paren_end:]:
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                return True
+    return False
 
 
 def _looks_like_string_literal(line: str, match: "re.Match") -> bool:

@@ -1,0 +1,21 @@
+{
+  "samples": [
+    {
+      "section": "compress_pipeline_full",
+      "duration_ms": 0.076,
+      "iteration": 0
+    }
+  ],
+  "summary": {
+    "compress_pipeline_full": {
+      "count": 1,
+      "total_ms": 0.076,
+      "mean_ms": 0.076,
+      "min_ms": 0.076,
+      "max_ms": 0.076,
+      "durations": [
+        0.076
+      ]
+    }
+  }
+}

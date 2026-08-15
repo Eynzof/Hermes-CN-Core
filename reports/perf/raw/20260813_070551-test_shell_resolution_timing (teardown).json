@@ -1,0 +1,21 @@
+{
+  "samples": [
+    {
+      "section": "resolve_shell",
+      "duration_ms": 0.003,
+      "iteration": 0
+    }
+  ],
+  "summary": {
+    "resolve_shell": {
+      "count": 1,
+      "total_ms": 0.003,
+      "mean_ms": 0.003,
+      "min_ms": 0.003,
+      "max_ms": 0.003,
+      "durations": [
+        0.003
+      ]
+    }
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "samples": [
+    {
+      "section": "patch_apply",
+      "duration_ms": 5.842,
+      "iteration": 0
+    }
+  ],
+  "summary": {
+    "patch_apply": {
+      "count": 1,
+      "total_ms": 5.842,
+      "mean_ms": 5.842,
+      "min_ms": 5.842,
+      "max_ms": 5.842,
+      "durations": [
+        5.842
+      ]
+    }
+  }
+}

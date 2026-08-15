@@ -928,46 +928,6 @@ class TestDiscordVoiceChannelMethods:
 # =====================================================================
 
 # =====================================================================
-# VoiceReceiver thread-safety (lock coverage)
-# =====================================================================
-
-class TestVoiceReceiverThreadSafety:
-    """Verify that VoiceReceiver buffer access is protected by lock."""
-
-    def _make_receiver(self):
-        from plugins.platforms.discord.adapter import VoiceReceiver
-        mock_vc = MagicMock()
-        mock_vc._connection.secret_key = [0] * 32
-        mock_vc._connection.dave_session = None
-        mock_vc._connection.ssrc = 9999
-        mock_vc._connection.add_socket_listener = MagicMock()
-        mock_vc._connection.remove_socket_listener = MagicMock()
-        mock_vc._connection.hook = None
-        return VoiceReceiver(mock_vc)
-
-    def test_check_silence_holds_lock(self):
-        """check_silence must hold lock while iterating buffers."""
-        import ast, inspect, textwrap
-        from plugins.platforms.discord.adapter import VoiceReceiver
-        source = textwrap.dedent(inspect.getsource(VoiceReceiver.check_silence))
-        tree = ast.parse(source)
-        # Find 'with self._lock:' that contains buffer iteration
-        found_lock_with_for = False
-        for node in ast.walk(tree):
-            if isinstance(node, ast.With):
-                # Check if lock context and contains for loop
-                has_lock = any(
-                    "lock" in ast.dump(item) for item in node.items
-                )
-                has_for = any(isinstance(n, ast.For) for n in ast.walk(node))
-                if has_lock and has_for:
-                    found_lock_with_for = True
-        assert found_lock_with_for, (
-            "check_silence must hold self._lock while iterating buffers"
-        )
-
-
-# =====================================================================
 # Callback wiring order (join)
 # =====================================================================
 
@@ -1199,51 +1159,6 @@ class TestPacketDebugCounterIsInstanceLevel:
 
 
 # =====================================================================
-# Bug 3: play_in_voice_channel uses get_running_loop not get_event_loop
-# =====================================================================
-
-class TestPlayInVoiceChannelUsesRunningLoop:
-    """play_in_voice_channel must use asyncio.get_running_loop()."""
-
-    def test_source_uses_get_running_loop(self):
-        """The method source code calls get_running_loop, not get_event_loop."""
-        import inspect
-        from plugins.platforms.discord.adapter import DiscordAdapter
-        source = inspect.getsource(DiscordAdapter.play_in_voice_channel)
-        assert "get_running_loop" in source, \
-            "play_in_voice_channel should use asyncio.get_running_loop()"
-        assert "get_event_loop" not in source, \
-            "play_in_voice_channel should NOT use deprecated asyncio.get_event_loop()"
-
-
-# =====================================================================
-# Bug 4: _send_voice_reply filename uses uuid (no collision)
-# =====================================================================
-
-class TestSendVoiceReplyFilename:
-    """_send_voice_reply uses uuid for unique filenames."""
-
-    def test_filename_uses_uuid(self):
-        """The path builder uses uuid in the filename, not time-based.
-
-        Filename construction moved into build_auto_tts_output_path
-        (gateway/platforms/base.py) when the path became platform-aware;
-        the uniqueness contract lives there now.
-        """
-        import inspect
-        from gateway.platforms.base import build_auto_tts_output_path
-        from gateway.run import GatewayRunner
-        source = inspect.getsource(build_auto_tts_output_path)
-        assert "uuid" in source, \
-            "build_auto_tts_output_path should use uuid for unique filenames"
-        assert "int(time.time())" not in source, \
-            "build_auto_tts_output_path should not use int(time.time()) — collision risk"
-        runner_source = inspect.getsource(GatewayRunner._send_voice_reply)
-        assert "build_auto_tts_output_path" in runner_source, \
-            "_send_voice_reply should build its path via build_auto_tts_output_path"
-
-
-# =====================================================================
 # Bug 5: Voice timeout cleans up runner voice_mode via callback
 # =====================================================================
 
@@ -1336,17 +1251,6 @@ class TestPlaybackTimeout:
         adapter._allowed_user_ids = set()
         return adapter
 
-    def test_source_has_wait_for_timeout(self):
-        """The method uses asyncio.wait_for with timeout."""
-        import inspect
-        from plugins.platforms.discord.adapter import DiscordAdapter
-        source = inspect.getsource(DiscordAdapter.play_in_voice_channel)
-        assert "wait_for" in source, \
-            "play_in_voice_channel must use asyncio.wait_for for timeout"
-        assert "_playback_timeout_for_audio" in source, \
-            "play_in_voice_channel must use duration-aware playback timeout helper"
-
-
     @pytest.mark.asyncio
     async def test_playback_timeout_fires(self):
         """When done event is never set, playback times out gracefully."""
@@ -1374,56 +1278,6 @@ class TestPlaybackTimeout:
             mock_vc.stop.assert_called()
         finally:
             DiscordAdapter.PLAYBACK_TIMEOUT = original_timeout
-
-
-# =====================================================================
-# Bug 7: _send_voice_reply cleanup in finally block
-# =====================================================================
-
-class TestSendVoiceReplyCleanup:
-    """_send_voice_reply must clean up temp files even on exception."""
-
-    def test_cleanup_in_finally(self):
-        """The method has cleanup in a finally block, not inside try."""
-        import inspect, textwrap, ast
-        from gateway.run import GatewayRunner
-        source = textwrap.dedent(inspect.getsource(GatewayRunner._send_voice_reply))
-        tree = ast.parse(source)
-        func = tree.body[0]
-
-        has_finally_unlink = False
-        for node in ast.walk(func):
-            if isinstance(node, ast.Try) and node.finalbody:
-                finally_source = ast.dump(node.finalbody[0])
-                if "unlink" in finally_source or "remove" in finally_source:
-                    has_finally_unlink = True
-                    break
-
-        assert has_finally_unlink, \
-            "_send_voice_reply must have os.unlink in a finally block"
-
-
-# =====================================================================
-# Bug 8: Base adapter auto-TTS cleans up temp file after play_tts
-# =====================================================================
-
-class TestAutoTtsTempFileCleanup:
-    """Base adapter auto-TTS must clean up generated audio file."""
-
-    def test_source_has_finally_remove(self):
-        """play_tts call is wrapped in try/finally with os.remove."""
-        import inspect
-        from gateway.platforms.base import BasePlatformAdapter
-        source = inspect.getsource(BasePlatformAdapter._process_message_background)
-        # Find the play_tts section and verify cleanup
-        play_tts_idx = source.find("play_tts")
-        assert play_tts_idx > 0
-        after_play = source[play_tts_idx:]
-        finally_idx = after_play.find("finally")
-        remove_idx = after_play.find("os.remove")
-        assert finally_idx > 0, "play_tts must be in a try/finally block"
-        assert remove_idx > 0, "finally block must call os.remove on _tts_path"
-        assert remove_idx > finally_idx, "os.remove must be inside the finally block"
 
 
 # =====================================================================

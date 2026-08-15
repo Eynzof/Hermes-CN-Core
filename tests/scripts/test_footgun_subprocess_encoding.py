@@ -10,8 +10,8 @@ with ``UnicodeDecodeError`` on non-default-codepage bytes.
 
 See issues #47939, #53428, #57238.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import importlib.util
 import sys
@@ -80,6 +80,22 @@ def _scan_line(linter, line: str, footgun_name: str) -> bool:
 
 
 RULE_NAME = "subprocess text=True without explicit encoding="
+OPEN_RULE_NAME = "open() without encoding= on text mode"
+FDOPEN_RULE_NAME = "os.fdopen() without encoding= on text mode"
+
+
+class TestBinaryOpenModeDetection:
+    def test_nested_path_binary_open_is_not_flagged(self, linter):
+        line = '    with open(self._abs_local(path), "rb") as fh:'
+        assert not _scan_line(linter, line, OPEN_RULE_NAME)
+
+    def test_nested_path_text_open_is_still_flagged(self, linter):
+        line = '    with open(self._abs_local(path), "r") as fh:'
+        assert _scan_line(linter, line, OPEN_RULE_NAME)
+
+    def test_nested_fd_binary_fdopen_is_not_flagged(self, linter):
+        line = '    with os.fdopen(os.dup(fd), "wb") as fh:'
+        assert not _scan_line(linter, line, FDOPEN_RULE_NAME)
 
 
 # ---------------------------------------------------------------------------

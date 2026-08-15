@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Open a URL, dev server, or file in the Hermes desktop GUI's preview pane.
 
-Gated on ``HERMES_DESKTOP`` (like ``read_terminal`` / ``close_terminal``) so it
-never appears outside the GUI. Emits ``preview.open`` through the shared
-``desktop_ui`` bridge; the renderer opens the pane beside the chat for the
-window that asked and never steals focus for a background session.
+Lives in the ``desktop_ui`` toolset, which the GUI gateway enables only for a
+session whose source is the desktop app — so the schema never reaches a CLI,
+messaging, or cron agent, and it DOES reach a desktop client on a remote/cloud
+backend. Emits ``preview.open`` through the shared ``desktop_ui`` bridge; the
+renderer opens the pane beside the chat for the window that asked and never
+steals focus for a background session.
 """
 
 import json
@@ -89,9 +91,8 @@ OPEN_PREVIEW_SCHEMA = {
 
 registry.register(
     name="open_preview",
-    toolset="terminal",
+    toolset="desktop_ui",
     schema=OPEN_PREVIEW_SCHEMA,
     handler=lambda args, **kw: open_preview_tool(url=args.get("url", ""), label=args.get("label", "")),
-    check_fn=check_open_preview_requirements,
     emoji="🖼️",
 )

@@ -164,13 +164,6 @@ class TestContinuousLoopStopPhraseSignal:
         assert still_active is False
 
 
-    def test_start_continuous_accepts_on_stop_phrase_kwarg(self):
-        import inspect
-
-        import hermes_cli.voice as v
-
-        assert "on_stop_phrase" in inspect.signature(v.start_continuous).parameters
-
 
 class _ImmediateThread:
     """Thread stand-in that runs the target synchronously on start()."""

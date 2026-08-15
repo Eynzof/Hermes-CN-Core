@@ -13,7 +13,7 @@ Design notes
   :func:`hermes_cli.plugins.invoke_hook` and its aggregators.  Python
   plugins are registered first (via ``discover_and_load()``) so their
   block decisions win ties over shell-hook blocks.
-* Subprocess execution uses ``shlex.split(os.path.expanduser(command), posix=os.name == "posix")``
+* Subprocess execution uses ``shlex.split(os.path.expanduser(command))``
   with ``shell=False`` — no shell injection footguns.  Users that need
   pipes/redirection wrap their logic in a script.
 * First-use consent is gated by the allowlist under
@@ -49,6 +49,28 @@ Wire protocol
 
     # Silent no-op:
     <empty or any non-matching JSON object>
+
+**exit codes**
+
+Exit code 2 from a ``pre_tool_call`` hook blocks the tool call even when
+stdout carries no block JSON (Claude-Code / Cursor compatible).  The block
+message is taken from the stdout block JSON when present, then the first
+400 characters of stderr, then a generic default.  For events whose block
+directive is not honored, exit 2 is logged at warning like any other
+non-zero exit.  All other non-zero exits log a warning and stdout is still
+parsed normally.
+
+**failure semantics**
+
+Hooks fail *open* by default: a spawn error, timeout, or unparseable
+stdout logs a warning and contributes nothing.  A ``pre_tool_call`` entry
+can opt into fail-*closed* semantics with ``fail_closed: true``
+(``failClosed`` also accepted for Cursor/Claude-Code config compat) —
+spawn errors, timeouts, and malformed stdout then BLOCK the tool call
+with ``hook <command> failed closed: <reason>``.  Use this for
+security-gating hooks (secret scanners, policy checks) where a crashed
+hook must not silently allow the action.  On non-blocking events
+``fail_closed`` is ignored with a warning.
 
 Per-event ``extra`` keys
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -103,14 +125,14 @@ emitted by each built-in hook site.
     tool_call_history – redacted tool name/input summary/byte counts/status list
     duration_ms     – wall-clock time of the child run in milliseconds
 """
+
 from __future__ import annotations
 
-
-import rapidfuzz.process as _fuzz_process
-import orjson
+import difflib
+import json
 import logging
 import os
-from agent.re_compat import re
+import re
 import shlex
 import subprocess
 import sys
@@ -123,7 +145,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional, Set, Tuple
 
-from hermes_cli._subprocess_compat import IS_WINDOWS, windows_hide_flags
+from hermes_cli._subprocess_compat import IS_WINDOWS, kill_process_tree, windows_hide_flags
 
 try:
     import fcntl  # POSIX only; Windows falls back to best-effort without flock.
@@ -139,6 +161,20 @@ DEFAULT_TIMEOUT_SECONDS = 60
 MAX_TIMEOUT_SECONDS = 300
 ALLOWLIST_FILENAME = "shell-hooks-allowlist.json"
 _DEFAULT_BLOCK_MESSAGE = "Blocked by shell hook."
+
+# Exit code that signals "block this action" from a hook script, independent
+# of stdout content.  Claude Code / Cursor compatible.
+BLOCK_EXIT_CODE = 2
+
+# Events whose block directive is actually honored downstream (see
+# hermes_cli.plugins.get_pre_tool_call_block_message / _get_pre_tool_call_
+# directive_details).  Exit-code-2 blocking and ``fail_closed`` only make
+# sense for these.
+_BLOCKING_EVENTS = frozenset({"pre_tool_call"})
+
+# Cap on stderr excerpt reused as a block message.
+_STDERR_MESSAGE_LIMIT = 400
+
 
 # (event, matcher, command) triples that have been wired to the plugin
 # manager in the current process.  Matcher is part of the key because
@@ -166,6 +202,7 @@ class ShellHookSpec:
     command: str
     matcher: Optional[str] = None
     timeout: int = DEFAULT_TIMEOUT_SECONDS
+    fail_closed: bool = False
     compiled_matcher: Optional[re.Pattern] = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
@@ -278,8 +315,10 @@ def register_from_config(
             _registered.add(key)
             registered.append(spec)
             logger.info(
-                "shell hook registered: %s -> %s (matcher=%s, timeout=%ds)",
+                "shell hook registered: %s -> %s (matcher=%s, timeout=%ds, "
+                "fail_closed=%s)",
                 spec.event, spec.command, spec.matcher, spec.timeout,
+                spec.fail_closed,
             )
 
     return registered
@@ -291,6 +330,27 @@ def iter_configured_hooks(cfg: Optional[Dict[str, Any]]) -> List[ShellHookSpec]:
     if not isinstance(cfg, dict):
         return []
     return _parse_hooks_block(cfg.get("hooks"))
+
+
+def re_register_config_hooks() -> None:
+    """Re-register shell hooks from config after a plugin force-reload.
+
+    ``PluginManager.discover_and_load(force=True)`` unloads via the ownership
+    ledger and clears the manager's ``_hooks`` dict, which silently drops
+    shell hooks that were registered from ``config.yaml`` at startup (they
+    are config-owned, not plugin-owned, so the ledger cannot restore them).
+    Clear the idempotence set and re-run ``register_from_config()`` so hooks
+    are wired again (#60036 / PR #60267; tracking #64178 — salvaged from
+    PR #64188).
+
+    Commands already allowlisted stay allowlisted, so this never re-prompts
+    at a TTY for hooks the user previously approved.
+    """
+    with _registered_lock:
+        _registered.clear()
+    from hermes_cli.config import load_config
+
+    register_from_config(load_config())
 
 
 def reset_for_tests() -> None:
@@ -324,13 +384,13 @@ def _parse_hooks_block(hooks_cfg: Any) -> List[ShellHookSpec]:
         if event_name in ("output_spill", "outbound"):
             continue
         if event_name not in VALID_HOOKS:
-            suggestion = _fuzz_process.extract(
-                str(event_name), VALID_HOOKS, limit=1, score_cutoff=60.0,
+            suggestion = difflib.get_close_matches(
+                str(event_name), VALID_HOOKS, n=1, cutoff=0.6,
             )
             if suggestion:
                 logger.warning(
                     "unknown hook event %r in hooks: config — did you mean %r?",
-                    event_name, suggestion[0][0],
+                    event_name, suggestion[0],
                 )
             else:
                 logger.warning(
@@ -416,11 +476,33 @@ def _parse_single_entry(
         )
         timeout = MAX_TIMEOUT_SECONDS
 
+    # ``fail_closed`` (canonical) / ``failClosed`` (Cursor/Claude-Code
+    # config compat).  Canonical spelling wins when both are present.
+    fail_closed_raw = raw.get("fail_closed", raw.get("failClosed", False))
+    if not isinstance(fail_closed_raw, bool):
+        logger.warning(
+            "hooks.%s[%d].fail_closed must be a boolean (got %r); "
+            "using default false (fail open)",
+            event, index, fail_closed_raw,
+        )
+        fail_closed_raw = False
+    fail_closed = fail_closed_raw
+
+    if fail_closed and event not in _BLOCKING_EVENTS:
+        logger.warning(
+            "hooks.%s[%d].fail_closed=true will be ignored at runtime — "
+            "fail_closed only applies to blocking-capable events (%s).  "
+            "The hook will fail open on %s like any other hook.",
+            event, index, ", ".join(sorted(_BLOCKING_EVENTS)), event,
+        )
+        fail_closed = False
+
     return ShellHookSpec(
         event=event,
         command=command.strip(),
         matcher=matcher,
         timeout=timeout,
+        fail_closed=fail_closed,
     )
 
 
@@ -450,7 +532,10 @@ def _spawn(spec: ShellHookSpec, stdin_json: str) -> Dict[str, Any]:
         "error": None,
     }
     try:
-        argv = shlex.split(os.path.expanduser(spec.command), posix=os.name == "posix")
+        # Windows-safe: plain shlex.split eats backslashes in paths (#78293).
+        from hermes_cli._subprocess_compat import split_command_line
+
+        argv = split_command_line(os.path.expanduser(spec.command))
     except ValueError as exc:
         result["error"] = f"command {spec.command!r} cannot be parsed: {exc}"
         return result
@@ -459,21 +544,26 @@ def _spawn(spec: ShellHookSpec, stdin_json: str) -> Dict[str, Any]:
         return result
 
     t0 = time.monotonic()
-    _popen_kwargs = {"creationflags": windows_hide_flags()} if IS_WINDOWS else {}
+    # Spawn the hook in its own process group on POSIX (``process_group=0``,
+    # Python ≥3.11) so a timed-out hook's descendants can be reaped with the
+    # hook itself. Windows keeps the hidden-window flags; tree cleanup there
+    # goes through ``taskkill /T`` in ``kill_process_tree``. Hooks that
+    # complete in time keep their descendants — an intentionally detached
+    # helper (``some-daemon &``) survives a successful run. Ported from
+    # openai/codex#37527 ("Terminate timed-out hook process trees").
+    _popen_kwargs: Dict[str, Any] = (
+        {"creationflags": windows_hide_flags()} if IS_WINDOWS else {"process_group": 0}
+    )
     try:
-        proc = subprocess.run(
+        proc = subprocess.Popen(
             argv,
-            input=stdin_json,
-            capture_output=True,
-            timeout=spec.timeout,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True, encoding='utf-8', errors='replace',
             shell=False,
             **_popen_kwargs,
         )
-    except subprocess.TimeoutExpired:
-        result["timed_out"] = True
-        result["elapsed_seconds"] = round(time.monotonic() - t0, 3)
-        return result
     except FileNotFoundError:
         result["error"] = "command not found"
         return result
@@ -484,9 +574,32 @@ def _spawn(spec: ShellHookSpec, stdin_json: str) -> Dict[str, Any]:
         result["error"] = str(exc)
         return result
 
+    try:
+        stdout, stderr = proc.communicate(input=stdin_json, timeout=spec.timeout)
+    except subprocess.TimeoutExpired:
+        # Take down the whole process tree, not just the direct child —
+        # otherwise a hook that forked helpers leaves them running (and,
+        # holding the pipe write ends, they'd stall the drain below).
+        kill_process_tree(proc)
+        try:
+            proc.communicate(timeout=1)
+        except Exception:
+            pass
+        result["timed_out"] = True
+        result["elapsed_seconds"] = round(time.monotonic() - t0, 3)
+        return result
+    except Exception as exc:  # pragma: no cover — defensive
+        kill_process_tree(proc)
+        try:
+            proc.communicate(timeout=1)
+        except Exception:
+            pass
+        result["error"] = str(exc)
+        return result
+
     result["returncode"] = proc.returncode
-    result["stdout"] = proc.stdout or ""
-    result["stderr"] = proc.stderr or ""
+    result["stdout"] = stdout or ""
+    result["stderr"] = stderr or ""
     result["elapsed_seconds"] = round(time.monotonic() - t0, 3)
     return result
 
@@ -501,38 +614,112 @@ def _make_callback(spec: ShellHookSpec) -> Callable[..., Optional[Dict[str, Any]
                 return None
 
         r = _spawn(spec, _serialize_payload(spec.event, kwargs))
-
-        if r["error"]:
-            logger.warning(
-                "shell hook failed (event=%s command=%s): %s",
-                spec.event, spec.command, r["error"],
-            )
-            return None
-        if r["timed_out"]:
-            logger.warning(
-                "shell hook timed out after %.2fs (event=%s command=%s)",
-                r["elapsed_seconds"], spec.event, spec.command,
-            )
-            return None
-
-        stderr = r["stderr"].strip()
-        if stderr:
-            logger.debug(
-                "shell hook stderr (event=%s command=%s): %s",
-                spec.event, spec.command, stderr[:400],
-            )
-        # Non-zero exits: log but still parse stdout so scripts that
-        # signal failure via exit code can also return a block directive.
-        if r["returncode"] != 0:
-            logger.warning(
-                "shell hook exited %d (event=%s command=%s); stderr=%s",
-                r["returncode"], spec.event, spec.command, stderr[:400],
-            )
-        return _parse_response(spec.event, r["stdout"])
+        return _evaluate_result(spec, r)
 
     _callback.__name__ = f"shell_hook[{spec.event}:{spec.command}]"
     _callback.__qualname__ = _callback.__name__
     return _callback
+
+
+def _fail_closed_block(spec: ShellHookSpec, reason: str) -> Dict[str, Any]:
+    """Canonical block shape for a ``fail_closed`` hook that failed."""
+    return {
+        "action": "block",
+        "message": f"hook {spec.command} failed closed: {reason}",
+    }
+
+
+def _evaluate_result(
+    spec: ShellHookSpec, r: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
+    """Turn a :func:`_spawn` diagnostic dict into the hook's contribution.
+
+    Single place that encodes the failure semantics:
+
+    * spawn error / timeout — fail open (log + ``None``) unless the spec
+      is ``fail_closed`` on a blocking-capable event, in which case a
+      canonical block shape is returned;
+    * exit code 2 on a blocking-capable event — block, with the message
+      taken from stdout block JSON, then stderr, then a default
+      (Claude-Code / Cursor compatible);
+    * other non-zero exits — warn, then parse stdout normally;
+    * non-JSON / unparseable stdout on a ``fail_closed`` blocking hook —
+      block instead of silently contributing nothing.
+
+    Shared by the live callback path (:func:`_make_callback`) and the CLI
+    test helper (:func:`run_once`) so ``hermes hooks test`` reflects
+    production behaviour exactly.
+    """
+    blocking_event = spec.event in _BLOCKING_EVENTS
+    fail_closed = spec.fail_closed and blocking_event
+
+    if r["error"]:
+        logger.warning(
+            "shell hook failed (event=%s command=%s): %s",
+            spec.event, spec.command, r["error"],
+        )
+        if fail_closed:
+            return _fail_closed_block(spec, r["error"])
+        return None
+    if r["timed_out"]:
+        logger.warning(
+            "shell hook timed out after %.2fs (event=%s command=%s)",
+            r["elapsed_seconds"], spec.event, spec.command,
+        )
+        if fail_closed:
+            return _fail_closed_block(
+                spec, f"timed out after {spec.timeout}s",
+            )
+        return None
+
+    stderr = r["stderr"].strip()
+    if stderr:
+        logger.debug(
+            "shell hook stderr (event=%s command=%s): %s",
+            spec.event, spec.command, stderr[:_STDERR_MESSAGE_LIMIT],
+        )
+
+    # Exit code 2 = block (Claude-Code / Cursor compatible), for events
+    # whose block directive is honored downstream.  stdout block JSON
+    # still wins for the message; otherwise stderr, then a default.
+    if r["returncode"] == BLOCK_EXIT_CODE and blocking_event:
+        parsed = _parse_response(spec.event, r["stdout"])
+        if isinstance(parsed, dict) and parsed.get("action") == "block":
+            return parsed
+        message = stderr[:_STDERR_MESSAGE_LIMIT] or _DEFAULT_BLOCK_MESSAGE
+        logger.info(
+            "shell hook exited %d — blocking (event=%s command=%s): %s",
+            BLOCK_EXIT_CODE, spec.event, spec.command, message,
+        )
+        return {"action": "block", "message": message}
+
+    # Other non-zero exits: log but still parse stdout so scripts that
+    # signal failure via exit code can also return a block directive.
+    if r["returncode"] != 0:
+        logger.warning(
+            "shell hook exited %d (event=%s command=%s); stderr=%s",
+            r["returncode"], spec.event, spec.command,
+            stderr[:_STDERR_MESSAGE_LIMIT],
+        )
+
+    stdout = (r["stdout"] or "").strip()
+    parsed = _parse_response(spec.event, stdout)
+
+    if parsed is None and fail_closed and stdout:
+        # The hook produced output we could not turn into a directive.
+        # A fail-closed gate must not silently allow the action on
+        # garbage output (e.g. a stack trace on stdout).
+        try:
+            data = json.loads(stdout)
+            valid_json = isinstance(data, dict)
+        except json.JSONDecodeError:
+            valid_json = False
+        if not valid_json:
+            return _fail_closed_block(
+                spec, "unparseable stdout (expected a JSON object)",
+            )
+
+    return parsed
 
 
 def _serialize_payload(event: str, kwargs: Dict[str, Any]) -> str:
@@ -551,7 +738,7 @@ def _serialize_payload(event: str, kwargs: Dict[str, Any]) -> str:
         "cwd": cwd,
         "extra": extras,
     }
-    return orjson.dumps(payload, default=str).decode('utf-8')
+    return json.dumps(payload, ensure_ascii=False, default=str)
 
 
 def _block_message(primary: Any, secondary: Any) -> str:
@@ -586,8 +773,8 @@ def _parse_response(event: str, stdout: str) -> Optional[Dict[str, Any]]:
         return None
 
     try:
-        data = orjson.loads(stdout)
-    except orjson.JSONDecodeError:
+        data = json.loads(stdout)
+    except json.JSONDecodeError:
         logger.warning(
             "shell hook stdout was not valid JSON (event=%s): %s",
             event, stdout[:200],
@@ -634,8 +821,8 @@ def allowlist_path() -> Path:
 def load_allowlist() -> Dict[str, Any]:
     """Return the parsed allowlist, or an empty skeleton if absent."""
     try:
-        raw = orjson.loads(allowlist_path().read_text(encoding="utf-8", errors="replace"))
-    except (FileNotFoundError, orjson.JSONDecodeError, OSError):
+        raw = json.loads(allowlist_path().read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
         return {"approvals": []}
     if not isinstance(raw, dict):
         return {"approvals": []}
@@ -658,8 +845,8 @@ def save_allowlist(data: Dict[str, Any]) -> None:
             prefix=f"{p.name}.", suffix=".tmp", dir=str(p.parent),
         )
         try:
-            with os.fdopen(fd, "w") as fh:
-                fh.write(orjson.dumps(data, option=orjson.OPT_INDENT_2 | orjson.OPT_SORT_KEYS).decode('utf-8'))
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(json.dumps(data, indent=2, sort_keys=True))
             atomic_replace(tmp_path, p)
         except Exception:
             try:
@@ -815,7 +1002,9 @@ def _command_script_path(command: str) -> str:
     common bare-path form.
     """
     try:
-        parts = shlex.split(command, posix=os.name == "posix")
+        from hermes_cli._subprocess_compat import split_command_line
+
+        parts = split_command_line(command)
     except ValueError:
         return command
     if not parts:
@@ -902,7 +1091,9 @@ def script_is_executable(command: str) -> bool:
     if not os.path.isfile(expanded):
         return False
     try:
-        argv = shlex.split(command, posix=os.name == "posix")
+        from hermes_cli._subprocess_compat import split_command_line
+
+        argv = split_command_line(command)
     except ValueError:
         return False
     is_bare_invocation = bool(argv) and argv[0] == path
@@ -923,8 +1114,10 @@ def run_once(
     diverge silently from production behaviour.
 
     Returns the :func:`_spawn` diagnostic dict plus a ``parsed`` field
-    holding the canonical Hermes-wire-shape response."""
+    holding the canonical Hermes-wire-shape response — including exit-code-2
+    blocking and ``fail_closed`` semantics, so what ``hermes hooks test``
+    prints is exactly what the dispatcher would receive."""
     stdin_json = _serialize_payload(spec.event, kwargs)
     result = _spawn(spec, stdin_json)
-    result["parsed"] = _parse_response(spec.event, result["stdout"])
+    result["parsed"] = _evaluate_result(spec, result)
     return result

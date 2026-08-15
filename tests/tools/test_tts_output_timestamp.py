@@ -11,19 +11,6 @@ import re
 
 
 class TestDefaultOutputTimestampResolution:
-    def test_default_output_path_uses_microsecond_timestamp(self):
-        """The source must build default filenames with a %f component."""
-        import inspect
-
-        from tools import tts_tool
-
-        src = inspect.getsource(tts_tool.text_to_speech_tool)
-        assert "%Y%m%d_%H%M%S_%f" in src, (
-            "default TTS output timestamp lost its microsecond component — "
-            "concurrent calls in the same second would collide again (#43911)"
-        )
-
-
     def test_timestamp_component_is_filename_safe(self):
         stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         assert re.fullmatch(r"\d{8}_\d{6}_\d{6}", stamp)

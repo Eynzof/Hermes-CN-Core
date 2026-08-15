@@ -4,8 +4,8 @@ Content-free service-health and redacted diagnostic events for the gateway
 daemon. These are the only event shapes the monitoring plane emits: no
 prompts, messages, tool args/results, session history, or usage analytics.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field, asdict

@@ -14,8 +14,8 @@ adapter dispatch layer down, so a future refactor that moves the goal hook
 after the drain (or changes FIFO key derivation) fails loudly instead of
 silently stalling goal loops on messaging gateways.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import asyncio
 

@@ -3323,6 +3323,7 @@ class TestSendMultipleImagesSSRFGuards:
             "all_proxy",
         ):
             monkeypatch.delenv(proxy_var, raising=False)
+        monkeypatch.setenv("NO_PROXY", "*")
 
         answers = iter(("93.184.216.34", "169.254.169.254"))
 
@@ -4557,4 +4558,3 @@ class TestSlackUserAgent:
         """Module constant matches the HermesAgent/<version> convention used
         elsewhere in the codebase for platform-partner attribution."""
         assert _slack_mod._HERMES_SLACK_USER_AGENT_PREFIX.startswith("HermesAgent/")
-

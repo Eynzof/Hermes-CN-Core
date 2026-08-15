@@ -551,6 +551,17 @@ def test_worker_lifecycle_through_tools(worker_env):
 # ---------------------------------------------------------------------------
 
 
+def test_kanban_guidance_orchestrator_decision_ownership():
+    """The orchestrator section must carry the split-brain prevention
+    contract: decisions are made by the orchestrator before fan-out and
+    stamped into every dependent card body."""
+    from agent.prompt_builder import KANBAN_GUIDANCE
+
+    assert KANBAN_GUIDANCE.count("Decision ownership.") == 1
+    assert "Never let two subtree cards decide the same question" in KANBAN_GUIDANCE
+    assert "workers cannot see sibling context" in KANBAN_GUIDANCE
+
+
 # ---------------------------------------------------------------------------
 # Worker task-ownership enforcement (regression tests for #19534)
 # ---------------------------------------------------------------------------

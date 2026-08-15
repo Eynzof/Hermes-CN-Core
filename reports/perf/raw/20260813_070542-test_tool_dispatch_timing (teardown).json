@@ -1,0 +1,21 @@
+{
+  "samples": [
+    {
+      "section": "tool_dispatch_two_calls",
+      "duration_ms": 2388.57,
+      "iteration": 0
+    }
+  ],
+  "summary": {
+    "tool_dispatch_two_calls": {
+      "count": 1,
+      "total_ms": 2388.57,
+      "mean_ms": 2388.57,
+      "min_ms": 2388.57,
+      "max_ms": 2388.57,
+      "durations": [
+        2388.57
+      ]
+    }
+  }
+}

@@ -1,6 +1,6 @@
 """Tests for gateway session stall watchdog (#72016 item 2)."""
-from __future__ import annotations
 
+from __future__ import annotations
 
 import asyncio
 import time

@@ -17,7 +17,6 @@ therefore runs in a disposable child process the parent can terminate/kill.
 """
 from __future__ import annotations
 
-
 import concurrent.futures as cf
 import json
 import logging

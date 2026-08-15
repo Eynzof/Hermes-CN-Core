@@ -4,8 +4,8 @@ No SQLite involved — monitoring is an egress path, so the exporter consumes
 emitter batches directly. Uses the in-memory OTel span exporter; skipped when
 the optional otlp extra is not installed.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import pytest
 
@@ -64,6 +64,20 @@ def test_trace_resource_includes_stable_hashed_instance():
     assert len(attrs["service.instance.id"]) == len("sha256:") + 24
     assert "private-install-id" not in str(attrs)
     assert attrs["telemetry.scope"] == "gateway_monitoring"
+
+
+def test_trace_resource_includes_configured_deployment_environment():
+    attrs = OE._resource_attributes({
+        "monitoring": {
+            "install_id": "private-install-id",
+            "gateway_health_export": {
+                "resource_attributes": {"deployment.environment.name": "production"},
+            },
+        },
+    })
+
+    assert attrs["deployment.environment.name"] == "production"
+    assert attrs["service.name"] == "hermes-gateway"
 
 
 

@@ -16,8 +16,8 @@ hook receives ``None``. These tests pin both ends of that contract through the
 real ``finalize_turn`` call site (the path that previously passed
 ``usage=None``).
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 from typing import Any, Dict, List
 

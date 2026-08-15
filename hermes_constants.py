@@ -140,6 +140,18 @@ def get_hermes_home() -> Path:
     return _hermes_home_from_env()
 
 
+def hermes_home_key(path: str | Path | None = None) -> str:
+    """Return a stable key for a Hermes home/profile directory.
+
+    Runtime registries use this key to isolate plugin-owned entries while
+    keeping built-in registrations process-global.  ``strict=False`` preserves
+    useful behavior for profiles whose directories have not been created yet.
+    """
+    candidate = Path(path) if path is not None else get_hermes_home()
+    resolved = candidate.expanduser().resolve(strict=False)
+    return os.path.normcase(str(resolved))
+
+
 def get_process_hermes_home() -> Path:
     """Return the Hermes home for the running process, ignoring task overrides.
 
@@ -645,14 +657,16 @@ def _managed_node_tree_outdated(home: Path | None = None) -> bool:
                 continue
             try:
                 from hermes_cli._subprocess_compat import windows_hide_flags
-
                 result = subprocess.run(
                     [str(candidate), "--version"],
                     capture_output=True,
                     timeout=10,
                     creationflags=windows_hide_flags(),
                 )
-                major = int(result.stdout.decode().strip().lstrip("v").split(".")[0])
+                raw_stdout = result.stdout
+                if isinstance(raw_stdout, bytes):
+                    raw_stdout = raw_stdout.decode("utf-8", errors="replace")
+                major = int(raw_stdout.strip().lstrip("v").split(".")[0])
             except (OSError, subprocess.TimeoutExpired, ValueError, IndexError):
                 return False  # broken, not outdated — the runnable probe handles it
             return major < _HERMES_NODE_TARGET_MAJOR

@@ -1,6 +1,6 @@
 """Tests for scripts/ci/e2e_screenshot_status.py."""
-from __future__ import annotations
 
+from __future__ import annotations
 
 import importlib.util
 import sys

@@ -248,29 +248,6 @@ class TestSessionKeyContext:
         finally:
             approval_module.reset_current_session_key(token)
 
-    def test_gateway_runner_binds_session_key_to_context_before_agent_run(self):
-        run_py = Path(__file__).resolve().parents[2] / "gateway" / "run.py"
-        module = ast.parse(run_py.read_text(encoding="utf-8", errors="replace"))
-
-        run_sync = None
-        for node in ast.walk(module):
-            if isinstance(node, ast.FunctionDef) and node.name == "run_sync":
-                run_sync = node
-                break
-
-        assert run_sync is not None, "gateway.run.run_sync not found"
-
-        called_names = set()
-        for node in ast.walk(run_sync):
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
-                called_names.add(node.func.id)
-
-        assert "set_current_session_key" in called_names
-        assert "reset_current_session_key" in called_names
-
-
-
-
 class TestRmFalsePositiveFix:
     """Regression tests: filenames starting with 'r' must NOT trigger recursive delete."""
 

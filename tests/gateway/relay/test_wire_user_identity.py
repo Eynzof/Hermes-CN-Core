@@ -14,8 +14,8 @@ remain key-stable — asserted here via build_session_key.
 
 Pure unit tests: no socket, no websockets dependency.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 from gateway.relay.ws_transport import _event_from_wire
 from gateway.session import build_session_key

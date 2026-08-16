@@ -80,6 +80,14 @@ import sys
 _bootstrap_root = os.path.realpath(os.path.join(os.path.dirname(__file__), os.pardir))
 if _bootstrap_root not in sys.path:
     sys.path.insert(0, _bootstrap_root)
+
+from hermes_cli._cron_script_runner import dispatch_frozen_cron_script  # noqa: E402
+
+
+_cron_script_exit_code = dispatch_frozen_cron_script()
+if _cron_script_exit_code is not None:
+    raise SystemExit(_cron_script_exit_code)
+
 from hermes_cli import _startup_fast  # noqa: E402
 
 # Early venv self-heal — MUST run before any third-party import below.  When

@@ -502,7 +502,7 @@ def test_prompt_submit_golden_transcript_matches_flag_off_and_on(monkeypatch):
 
     def run_flag_off():
         events = []
-        monkeypatch.setattr(server, "_emit", lambda event, sid, payload=None: events.append((event, sid, payload)))
+        monkeypatch.setattr(server, "_emit", lambda event, sid, payload=None, **_kw: events.append((event, sid, payload)))
         monkeypatch.setattr(server, "_load_cfg", lambda: {"dashboard": {"turn_isolation": False}})
         server._sessions["sid"] = _session(
             agent=_Agent(), model_override={"model": "gold-model", "provider": "gold-provider"}
@@ -518,7 +518,7 @@ def test_prompt_submit_golden_transcript_matches_flag_off_and_on(monkeypatch):
 
     def run_flag_on():
         events = []
-        monkeypatch.setattr(server, "_emit", lambda event, sid, payload=None: events.append((event, sid, payload)))
+        monkeypatch.setattr(server, "_emit", lambda event, sid, payload=None, **_kw: events.append((event, sid, payload)))
         monkeypatch.setattr(server, "_load_cfg", lambda: {"dashboard": {"turn_isolation": True}})
 
         class _FakeSupervisor:
@@ -9404,7 +9404,7 @@ def test_prompt_submit_history_version_mismatch_surfaces_warning(monkeypatch):
         monkeypatch.setattr(server.threading, "Thread", _ImmediateThread)
         monkeypatch.setattr(server, "_get_usage", lambda _a: {})
         monkeypatch.setattr(server, "render_message", lambda _t, _c: "")
-        monkeypatch.setattr(server, "_emit", lambda *a: emits.append(a))
+        monkeypatch.setattr(server, "_emit", lambda *a, **_kw: emits.append(a))
 
         resp = server.handle_request(
             {
@@ -9509,7 +9509,7 @@ def test_prompt_submit_merges_on_model_switch_marker(monkeypatch):
             monkeypatch.setattr(server.threading, "Thread", _ImmediateThread)
             monkeypatch.setattr(server, "_get_usage", lambda _a: {})
             monkeypatch.setattr(server, "render_message", lambda _t, _c: "")
-            monkeypatch.setattr(server, "_emit", lambda *a: emits.append(a))
+            monkeypatch.setattr(server, "_emit", lambda *a, **_kw: emits.append(a))
 
             resp = server.handle_request(
                 {
@@ -9617,7 +9617,7 @@ def test_prompt_submit_history_version_match_persists_normally(monkeypatch):
         monkeypatch.setattr(server.threading, "Thread", _ImmediateThread)
         monkeypatch.setattr(server, "_get_usage", lambda _a: {})
         monkeypatch.setattr(server, "render_message", lambda _t, _c: "")
-        monkeypatch.setattr(server, "_emit", lambda *a: emits.append(a))
+        monkeypatch.setattr(server, "_emit", lambda *a, **_kw: emits.append(a))
 
         resp = server.handle_request(
             {
@@ -9680,7 +9680,7 @@ def test_prompt_submit_snapshots_history_after_pending_model_switch(monkeypatch)
         monkeypatch.setattr(server, "_sync_agent_model_with_config", lambda *_a: None)
         monkeypatch.setattr(server, "_get_usage", lambda _a: {})
         monkeypatch.setattr(server, "render_message", lambda *_a: "")
-        monkeypatch.setattr(server, "_emit", lambda *a: emits.append(a))
+        monkeypatch.setattr(server, "_emit", lambda *a, **_kw: emits.append(a))
 
         server.handle_request(
             {"id": "1", "method": "prompt.submit", "params": {"session_id": "sid", "text": "hi"}}
@@ -12583,7 +12583,7 @@ def test_prompt_submit_surfaces_backend_error_as_visible_text(monkeypatch):
     monkeypatch.setattr(
         server,
         "_emit",
-        lambda event, sid, payload=None: emitted.append((event, sid, payload or {})),
+        lambda event, sid, payload=None, **_kw: emitted.append((event, sid, payload or {})),
     )
     monkeypatch.setattr(server, "make_stream_renderer", lambda cols: None)
     monkeypatch.setattr(server, "render_message", lambda raw, cols: None)
@@ -12626,7 +12626,7 @@ def test_prompt_submit_preserves_empty_response_without_error(monkeypatch):
     monkeypatch.setattr(
         server,
         "_emit",
-        lambda event, sid, payload=None: emitted.append((event, sid, payload or {})),
+        lambda event, sid, payload=None, **_kw: emitted.append((event, sid, payload or {})),
     )
     monkeypatch.setattr(server, "make_stream_renderer", lambda cols: None)
     monkeypatch.setattr(server, "render_message", lambda raw, cols: None)
@@ -12795,7 +12795,7 @@ def test_session_activate_returns_inflight_stream_before_completion(monkeypatch)
     monkeypatch.setattr(server, "_get_db", lambda: None)
     monkeypatch.setattr(server, "_session_info", lambda agent: {"model": agent.model})
 
-    def _emit(event, sid, payload=None):
+    def _emit(event, sid, payload=None, **_kw):
         if event == "message.complete":
             done.set()
 

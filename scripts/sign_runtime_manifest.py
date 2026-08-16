@@ -6,10 +6,19 @@ it was built with. The canonical payload concatenated with ``\n`` matches what
 the Rust side reconstructs in ``signature_payload()`` — keep the field order in
 sync.
 
-Runtime versions are schema v2 and follow ``<kernelVersion>-cn.<revision>``.
-For example, tag ``runtime-v0.14.0-cn.1`` produces manifest
-``runtimeVersion=0.14.0-cn.1``, ``kernelVersion=0.14.0``,
-``runtimeFlavor=cn``, and ``runtimeRevision=1``.
+Manifest schemas:
+
+* v2 — the original 12-field signature payload; ``minAppVersion`` may be
+  written but is NOT signed (legacy clients ignore it).
+* v3 (default) — appends ``minAppVersion`` as signed payload field #13 and
+  requires it: it drives the desktop's forced-upgrade gate, so an unsigned or
+  missing value would defeat the gate. Only desktop >= 0.7.0 accepts v3;
+  ``--schema 2`` remains available to hand-issue transition manifests for
+  older clients.
+
+Runtime versions follow ``<kernelVersion>-cn.<revision>``. For example, tag
+``runtime-v0.14.0-cn.1`` produces manifest ``runtimeVersion=0.14.0-cn.1``,
+``kernelVersion=0.14.0``, ``runtimeFlavor=cn``, and ``runtimeRevision=1``.
 
 Usage:
     python scripts/sign_runtime_manifest.py \
@@ -24,7 +33,7 @@ Usage:
         --artifact-path dist/hermes-agent-cn-runtime-win32-x64.zip \
         --source-repo Eynzof/hermes-agent-cn \
         --source-commit "$GITHUB_SHA" \
-        --min-app-version 0.1.0 \
+        --min-app-version 0.7.0 \
         --output dist/stable-win32-x64.json
 """
 
@@ -50,13 +59,15 @@ except ImportError:
     )
 
 
-SCHEMA_VERSION = 2
+DEFAULT_SCHEMA_VERSION = 3
+SUPPORTED_SCHEMA_VERSIONS = (2, 3)
 
 # Field order MUST match `signature_payload()` in
 # hermes-agent-cn-desktop/src/process/runtime.rs. Any reorder here is a
 # silent verification failure on every desktop install — change both
-# sides together or not at all.
-_PAYLOAD_FIELDS = (
+# sides together or not at all. v3 appends `minAppVersion` as field #13;
+# the desktop side switches on schemaVersion the same way.
+_PAYLOAD_FIELDS_V2 = (
     "schemaVersion",
     "channel",
     "runtimeVersion",
@@ -70,10 +81,22 @@ _PAYLOAD_FIELDS = (
     "sourceRepo",
     "sourceCommit",
 )
+
+
+def payload_fields(schema_version: int) -> tuple[str, ...]:
+    if schema_version >= 3:
+        return _PAYLOAD_FIELDS_V2 + ("minAppVersion",)
+    return _PAYLOAD_FIELDS_V2
+
+
 _RUNTIME_VERSION_RE = re.compile(
     r"^(?P<kernel>\d+\.\d+\.\d+(?:[.-][0-9A-Za-z.-]+)?)-"
     r"(?P<flavor>[a-z][a-z0-9]*)\.(?P<revision>[1-9]\d*)$"
 )
+# Desktop shell versions are plain semver (optionally pre-release). The Rust
+# gate silently ignores unparseable minAppVersion values, so a typo here would
+# quietly disable the forced-upgrade gate — fail fast at signing time instead.
+_MIN_APP_VERSION_RE = re.compile(r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$")
 
 
 def _sha256_hex(path: Path) -> str:
@@ -164,12 +187,37 @@ def main() -> int:
     )
     p.add_argument("--source-repo", required=True, help="org/name slug")
     p.add_argument("--source-commit", required=True, help="commit SHA")
-    p.add_argument("--min-app-version", default=None, help="desktop client floor")
+    p.add_argument(
+        "--min-app-version",
+        default=None,
+        help="desktop client floor; REQUIRED for schema 3 (signed field)",
+    )
+    p.add_argument(
+        "--schema",
+        type=int,
+        default=DEFAULT_SCHEMA_VERSION,
+        choices=SUPPORTED_SCHEMA_VERSIONS,
+        help="manifest schema version; 2 only for transition re-issues to "
+        "pre-0.7.0 desktop clients",
+    )
     p.add_argument("--output", required=True, type=Path)
     args = p.parse_args()
 
     if args.runtime_revision < 1:
         raise SystemExit("--runtime-revision must be >= 1")
+    if args.schema >= 3:
+        if not args.min_app_version:
+            raise SystemExit(
+                "--min-app-version is required for schema 3 manifests: it is "
+                "part of the signed payload and drives the desktop "
+                "forced-upgrade gate."
+            )
+        if not _MIN_APP_VERSION_RE.match(args.min_app_version):
+            raise SystemExit(
+                "--min-app-version must be semver (X.Y.Z), got "
+                f"{args.min_app_version!r} — the desktop gate ignores "
+                "unparseable values, which would silently disable it."
+            )
     _validate_runtime_version(
         args.runtime_version,
         args.kernel_version,
@@ -189,7 +237,7 @@ def main() -> int:
     print(f"sha256({args.artifact_path.name}) = {sha256}", file=sys.stderr)
 
     manifest = {
-        "schemaVersion": SCHEMA_VERSION,
+        "schemaVersion": args.schema,
         "channel": args.channel,
         "runtimeVersion": args.runtime_version,
         "kernelVersion": args.kernel_version,
@@ -208,7 +256,7 @@ def main() -> int:
         _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     )
 
-    payload = "\n".join(str(manifest[f]) for f in _PAYLOAD_FIELDS).encode()
+    payload = "\n".join(str(manifest[f]) for f in payload_fields(args.schema)).encode()
     key = _load_private_key()
     signature = key.sign(payload)
     manifest["signature"] = base64.standard_b64encode(signature).decode()

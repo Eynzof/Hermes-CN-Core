@@ -1117,6 +1117,60 @@ _SCHEMA_OVERRIDES: Dict[str, Dict[str, Any]] = {
         "description": "ElevenLabs Scribe model",
         "options": ["scribe_v2", "scribe_v1"],
     },
+    # --- Voice provider fields (enriched from DEFAULT_CONFIG; options are
+    # UI guidance for the desktop/dashboard — the runtime accepts any value) ---
+    "stt.local.language": {
+        "type": "string",
+        "description": "Local Whisper language hint (blank = auto-detect; e.g. zh, en)",
+    },
+    "stt.elevenlabs.language_code": {
+        "type": "string",
+        "description": "ElevenLabs Scribe language code (blank = auto-detect; e.g. eng, zho)",
+    },
+    "stt.elevenlabs.tag_audio_events": {
+        "type": "boolean",
+        "description": "Tag audio events (music, laughter, etc.) in Scribe transcripts",
+    },
+    "stt.elevenlabs.diarize": {
+        "type": "boolean",
+        "description": "Speaker diarization for ElevenLabs Scribe",
+    },
+    "tts.edge.voice": {
+        "type": "string",
+        "description": "Edge TTS voice name (e.g. zh-CN-XiaoxiaoNeural)",
+    },
+    "tts.openai.model": {
+        "type": "select",
+        "description": "OpenAI TTS model",
+        "options": ["gpt-4o-mini-tts", "gpt-4o-tts", "tts-1", "tts-1-hd"],
+    },
+    "tts.openai.voice": {
+        "type": "select",
+        "description": "OpenAI TTS voice",
+        "options": [
+            "alloy", "ash", "ballad", "cedar", "coral", "echo", "fable",
+            "marin", "nova", "onyx", "sage", "shimmer", "verse",
+        ],
+    },
+    "tts.elevenlabs.voice_id": {
+        "type": "string",
+        "description": "ElevenLabs voice ID (dynamic list via /api/audio/elevenlabs/voices)",
+    },
+    "tts.elevenlabs.model_id": {
+        "type": "string",
+        "description": "ElevenLabs TTS model (e.g. eleven_multilingual_v2)",
+    },
+    "tts.neutts.device": {
+        "type": "select",
+        "description": "NeuTTS inference device",
+        "options": ["cpu", "cuda", "mps"],
+    },
+    "tts.xai.speed": {
+        "type": "number",
+        "description": "xAI playback speed (0.7-1.5)",
+        "minimum": 0.7,
+        "maximum": 1.5,
+    },
     "display.skin": {
         "type": "select",
         "description": "CLI visual theme",

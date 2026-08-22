@@ -3035,7 +3035,55 @@ class TestBuildSchemaFromConfig:
         assert "python3.13" in runtime_entry["options"]
         assert len(runtime_entry["options"]) >= 3
 
+    def test_voice_provider_schema_overrides(self):
+        """Voice settings expose controls that match their runtime values."""
+        from hermes_cli.web_server import CONFIG_SCHEMA
 
+        expected_types = {
+            "stt.local.language": "string",
+            "stt.elevenlabs.language_code": "string",
+            "stt.elevenlabs.tag_audio_events": "boolean",
+            "stt.elevenlabs.diarize": "boolean",
+            "tts.edge.voice": "string",
+            "tts.openai.model": "select",
+            "tts.openai.voice": "select",
+            "tts.elevenlabs.voice_id": "string",
+            "tts.elevenlabs.model_id": "string",
+            "tts.neutts.device": "select",
+            "tts.xai.speed": "number",
+        }
+
+        for key, expected_type in expected_types.items():
+            assert CONFIG_SCHEMA[key]["type"] == expected_type
+
+        assert CONFIG_SCHEMA["tts.openai.model"]["options"] == [
+            "gpt-4o-mini-tts",
+            "gpt-4o-tts",
+            "tts-1",
+            "tts-1-hd",
+        ]
+        assert CONFIG_SCHEMA["tts.openai.voice"]["options"] == [
+            "alloy",
+            "ash",
+            "ballad",
+            "cedar",
+            "coral",
+            "echo",
+            "fable",
+            "marin",
+            "nova",
+            "onyx",
+            "sage",
+            "shimmer",
+            "verse",
+        ]
+        assert CONFIG_SCHEMA["tts.neutts.device"]["options"] == [
+            "cpu",
+            "cuda",
+            "mps",
+        ]
+        assert CONFIG_SCHEMA["tts.xai.speed"]["minimum"] == 0.7
+        assert CONFIG_SCHEMA["tts.xai.speed"]["maximum"] == 1.5
 
     def test_timezone_field_is_searchable_select(self):
         """timezone must ship as a searchable, clearable select of IANA ids.

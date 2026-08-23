@@ -44,6 +44,7 @@ from typing import Any, List, Optional
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import hermes_constants
+from hermes_cli._cron_script_runner import INTERNAL_CRON_SCRIPT_ARG
 from hermes_cli._subprocess_compat import windows_hide_flags
 from hermes_cli.config import (
     _expand_env_vars,
@@ -2879,6 +2880,9 @@ def _run_job_script(
             )
         argv = [_bash, str(path)]
         env_overlay: dict[str, str] = {}
+    elif getattr(sys, "frozen", False):
+        argv = [sys.executable, INTERNAL_CRON_SCRIPT_ARG, str(path)]
+        env_overlay = {"HERMES_HOME": str(scripts_dir_resolved.parent)}
     else:
         # PyInstaller-frozen runtime (CN portable desktop): sys.executable is
         # the Hermes CLI binary itself, so spawning it with the script path

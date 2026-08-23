@@ -248,6 +248,14 @@ class ProviderConfig:
 
 
 PROVIDER_REGISTRY: Dict[str, ProviderConfig] = {
+    "wander": ProviderConfig(
+        id="wander",
+        name="Wander Portal",
+        auth_type="desktop_broker",
+        portal_base_url="https://portal-staging.wanderminds.ai",
+        inference_base_url="https://inference-staging.wanderminds.ai/v1",
+        base_url_env_var="WANDER_INFERENCE_BASE_URL",
+    ),
     "nous": ProviderConfig(
         id="nous",
         name="Nous Portal",

@@ -136,6 +136,7 @@ _BILLING_ERROR_CODES = frozenset({
     "billing_not_active",
     "payment_required",
     "insufficient_credits",
+    "insufficient_credit",
     "no_usable_credits",
     "balance_depleted",
     "model_not_supported_on_free_tier",

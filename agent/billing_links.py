@@ -51,6 +51,12 @@ class _Provider:
 # (e.g. "openai_compatible") but base_url reveals the real upstream. An unknown
 # provider degrades to a readable label with no invented URL.
 _PROVIDERS: tuple[_Provider, ...] = (
+    _Provider(
+        "Wander Portal",
+        "https://portal-staging.wanderminds.ai/portal",
+        ("wander",),
+        ("inference-staging.wanderminds.ai",),
+    ),
     _Provider("OpenAI", "https://platform.openai.com/settings/organization/billing", ("openai",), ("api.openai.com",)),
     _Provider("Anthropic", "https://console.anthropic.com/settings/billing", ("anthropic",), ("api.anthropic.com",)),
     _Provider("OpenRouter", "https://openrouter.ai/settings/credits", ("openrouter",), ("openrouter.ai",)),

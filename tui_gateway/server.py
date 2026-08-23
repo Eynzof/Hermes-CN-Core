@@ -13304,7 +13304,25 @@ def _(rid, params: dict) -> dict:
         # fallback lets a power user probe a saved provider via plain RPC.
         api_key = str(params.get("api_key", "")).strip()
         pconfig = PROVIDER_REGISTRY.get(provider)
-        if not api_key and pconfig and pconfig.api_key_env_vars:
+        wander_base_url = ""
+        if provider == "wander":
+            try:
+                from hermes_cli.wander_broker import resolve_wander_runtime_credentials
+
+                wander_creds = resolve_wander_runtime_credentials()
+                api_key = wander_creds["api_key"]
+                wander_base_url = wander_creds["base_url"]
+            except Exception as exc:
+                return _ok(rid, {
+                    "ok": False,
+                    "latency_ms": 0,
+                    "model_count": 0,
+                    "sample_models": [],
+                    "status_code": None,
+                    "error": str(exc),
+                    "error_kind": "auth",
+                })
+        elif not api_key and pconfig and pconfig.api_key_env_vars:
             for env_var in pconfig.api_key_env_vars:
                 api_key = os.getenv(env_var, "").strip()
                 if api_key:
@@ -13321,7 +13339,7 @@ def _(rid, params: dict) -> dict:
             })
 
         # Resolve base_url: caller override → registry default.
-        base_url = str(params.get("base_url", "")).strip().rstrip("/")
+        base_url = wander_base_url or str(params.get("base_url", "")).strip().rstrip("/")
         if not base_url and pconfig:
             base_url = (pconfig.inference_base_url or "").rstrip("/")
         if not base_url:
@@ -13387,13 +13405,30 @@ def _(rid, params: dict) -> dict:
 
         api_key = str(params.get("api_key", "")).strip()
         pconfig = PROVIDER_REGISTRY.get(provider)
-        if not api_key and pconfig and pconfig.api_key_env_vars:
+        wander_base_url = ""
+        if provider == "wander":
+            try:
+                from hermes_cli.wander_broker import resolve_wander_runtime_credentials
+
+                wander_creds = resolve_wander_runtime_credentials()
+                api_key = wander_creds["api_key"]
+                wander_base_url = wander_creds["base_url"]
+            except Exception as exc:
+                return _ok(rid, {
+                    "ok": False,
+                    "models": [],
+                    "model_count": 0,
+                    "status_code": None,
+                    "error": str(exc),
+                    "error_kind": "auth",
+                })
+        elif not api_key and pconfig and pconfig.api_key_env_vars:
             for env_var in pconfig.api_key_env_vars:
                 api_key = os.getenv(env_var, "").strip()
                 if api_key:
                     break
 
-        base_url = str(params.get("base_url", "")).strip().rstrip("/")
+        base_url = wander_base_url or str(params.get("base_url", "")).strip().rstrip("/")
         if not base_url and pconfig:
             base_url = (pconfig.inference_base_url or "").rstrip("/")
         if not base_url:

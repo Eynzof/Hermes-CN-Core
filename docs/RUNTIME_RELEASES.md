@@ -30,11 +30,13 @@ https://github.com/Eynzof/hermes-agent-cn/releases/download/runtime-v0.14.0-cn.1
 
 The canonical versioning contract is documented in `docs/RUNTIME_VERSIONING.md`.
 The manifest schema (see `src/process/runtime.rs::RuntimeUpdateManifest`
-on the desktop side) is schema v2:
+on the desktop side) is schema v3 — v2 plus a required, signed
+`minAppVersion` (desktop >= 0.7.0 accepts both; `--schema 2` exists for
+transition re-issues to older clients):
 
 ```json
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "channel": "stable",
   "runtimeVersion": "0.14.0-cn.1",
   "kernelVersion": "0.14.0",
@@ -47,16 +49,16 @@ on the desktop side) is schema v2:
   "signature": "base64-encoded Ed25519 signature",
   "sourceRepo": "Eynzof/hermes-agent-cn",
   "sourceCommit": "01edd139...",
-  "minAppVersion": "0.1.0",
+  "minAppVersion": "0.7.0",
   "createdAt": "2026-05-16T03:00:00Z"
 }
 ```
 
-The signature is over the twelve canonical schema v2 fields concatenated with `\n`
-in this exact order:
+The signature is over the canonical fields concatenated with `\n` in this
+exact order — twelve fields for v2, plus `minAppVersion` as field #13 for v3:
 
 ```
-schemaVersion\nchannel\nruntimeVersion\nkernelVersion\nruntimeFlavor\nruntimeRevision\nplatform\narch\nartifactUrl\nsha256\nsourceRepo\nsourceCommit
+schemaVersion\nchannel\nruntimeVersion\nkernelVersion\nruntimeFlavor\nruntimeRevision\nplatform\narch\nartifactUrl\nsha256\nsourceRepo\nsourceCommit[\nminAppVersion]
 ```
 
 `scripts/sign_runtime_manifest.py` builds this payload identically to

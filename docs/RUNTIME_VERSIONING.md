@@ -38,7 +38,7 @@ packaging bug, rotate runtime assets, or patch desktop-specific integration, we
 ship `0.14.0-cn.2`, `0.14.0-cn.3`, and so on. When the kernel moves to
 `0.15.0`, the CN revision resets to `cn.1`.
 
-## Manifest schema v2
+## Manifest schema (v3, with v2 transition support)
 
 Every release asset set includes one manifest per platform at:
 
@@ -47,12 +47,16 @@ https://github.com/Eynzof/hermes-agent-cn/releases/latest/download/stable-<platf
 ```
 
 The manifest is intentionally flat so GitHub Releases can host it directly.
-Schema v2 is not compatible with the older pre-release manifests; the desktop
-must reject anything that is not `schemaVersion: 2`.
+Current schema is **v3**: identical to v2 plus a **required, signed**
+`minAppVersion` field (the desktop forced-upgrade gate). Desktop >= 0.7.0
+accepts both v2 and v3; older desktops only accept v2, which is why v3
+manifests must not ship to the stable channel until 0.7.0 has rolled out
+(`--schema 2` on the signer exists for transition re-issues). Anything
+outside {2, 3} is rejected by the desktop.
 
 ```json
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "channel": "stable",
   "runtimeVersion": "0.14.0-cn.1",
   "kernelVersion": "0.14.0",
@@ -65,6 +69,7 @@ must reject anything that is not `schemaVersion: 2`.
   "signature": "...",
   "sourceRepo": "Eynzof/hermes-agent-cn",
   "sourceCommit": "...",
+  "minAppVersion": "0.7.0",
   "createdAt": "2026-05-19T00:00:00Z"
 }
 ```
@@ -87,11 +92,13 @@ artifactUrl
 sha256
 sourceRepo
 sourceCommit
+minAppVersion        # v3 only — appended as field #13; absent from v2 payloads
 ```
 
 Any change to that order must be made in both
 `scripts/sign_runtime_manifest.py` and
-`hermes-agent-cn-desktop/src/process/runtime.rs` in the same change.
+`hermes-agent-cn-desktop/src/process/runtime.rs` in the same change (both
+sides carry order-lock tests over the same fixture values).
 
 ## Cutting a runtime release
 

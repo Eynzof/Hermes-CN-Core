@@ -178,6 +178,20 @@ class TestBoardCRUD:
         assert "task_events" in tables
         assert "tasks" in tables
 
+    def test_existing_only_connect_refuses_to_recreate_an_archived_board(self, fresh_home):
+        kb.create_board("event-tail")
+        db_path = kb.kanban_db_path(board="event-tail")
+        assert db_path.is_file()
+
+        kb.remove_board("event-tail", archive=True)
+        assert not kb.board_exists("event-tail")
+
+        with pytest.raises(FileNotFoundError):
+            kb.connect_existing(board="event-tail")
+
+        assert not kb.board_exists("event-tail")
+        assert not db_path.exists()
+
     def test_rename_updates_metadata(self, fresh_home):
         kb.create_board("slug-immutable")
         kb.write_board_metadata("slug-immutable", name="New Display Name")

@@ -7,6 +7,8 @@ REST surface without spinning up the whole dashboard.
 
 from __future__ import annotations
 
+import asyncio
+
 import importlib.util
 import json
 import os
@@ -188,6 +190,26 @@ def test_dashboard_markdown_html_is_sanitized_before_render():
     assert "MARKDOWN_ALLOWED_TAGS" in js
     assert "sanitizeMarkdownHtml(renderMarkdown(props.source || \"\"))" in js
     assert "dangerouslySetInnerHTML: { __html: renderMarkdown(props.source || \"\") }" not in js
+
+
+def test_dashboard_permanent_delete_pins_the_selected_board():
+    """Single and bulk trash deletes must not fall through to Core's current board."""
+
+    repo_root = Path(__file__).resolve().parents[2]
+    bundle = repo_root / "plugins" / "kanban" / "dashboard" / "dist" / "index.js"
+    js = bundle.read_text(encoding="utf-8")
+
+    assert (
+        'SDK.fetchJSON(withBoard(`${API}/tasks/${encodeURIComponent(taskId)}`, board), {'
+        in js
+    )
+    assert (
+        'SDK.fetchJSON(withBoard(`${API}/tasks/${encodeURIComponent(id)}`, board), '
+        '{ method: "DELETE" })'
+        in js
+    )
+    assert 'SDK.fetchJSON(`${API}/tasks/${encodeURIComponent(taskId)}`, {' not in js
+    assert 'SDK.fetchJSON(`${API}/tasks/${encodeURIComponent(id)}`, { method: "DELETE" })' not in js
 
 
 # ---------------------------------------------------------------------------
@@ -589,6 +611,44 @@ def test_ws_events_rejects_when_token_required(tmp_path, monkeypatch):
     # The bug symptom was a traceback; we don't assert on stderr because
     # capturing asyncio's internal "exception was never retrieved" logging
     # is flaky. The assertion that matters is: no CancelledError escaped.
+
+
+def test_idle_ws_event_stream_observes_client_disconnect(kanban_home, monkeypatch):
+    """An idle board must still consume the ASGI disconnect frame."""
+    router = _load_plugin_router()
+    endpoint = next(route.endpoint for route in router.routes if route.path == "/events")
+    module = sys.modules[endpoint.__module__]
+    monkeypatch.setattr(module, "_ws_upgrade_authorized", lambda _ws: True)
+    monkeypatch.setattr(module, "_EVENT_POLL_SECONDS", 0.01)
+
+    class FakeWebSocket:
+        query_params = {"since": "0"}
+
+        def __init__(self):
+            self.accepted = False
+            self.receive_calls = 0
+
+        async def accept(self):
+            self.accepted = True
+
+        async def receive(self):
+            self.receive_calls += 1
+            return {"type": "websocket.disconnect", "code": 1000}
+
+        async def send_json(self, _payload):
+            raise AssertionError("an empty board must not send an event payload")
+
+        async def close(self, **_kwargs):
+            return None
+
+    ws = FakeWebSocket()
+
+    async def exercise():
+        await asyncio.wait_for(endpoint(ws), timeout=0.1)
+
+    asyncio.run(exercise())
+    assert ws.accepted is True
+    assert ws.receive_calls == 1
 
 
 # ---------------------------------------------------------------------------

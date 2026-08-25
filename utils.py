@@ -322,7 +322,10 @@ def atomic_write_text(
         dir=str(path.parent), prefix=tmp_prefix, suffix=".tmp"
     )
     try:
-        with os.fdopen(fd, "w", encoding=encoding) as handle:
+        # Preserve the caller's line endings byte-for-byte. With newline=None,
+        # TextIOWrapper rewrites every \n to os.linesep on Windows; content
+        # that already contains CRLF then becomes CRCRLF.
+        with os.fdopen(fd, "w", encoding=encoding, newline="") as handle:
                 if effective_mode is not None and hasattr(os, "fchmod"):
                     # fchmod the temp fd BEFORE the replace so the target never
                     # transits through mkstemp's 0600. fchmod is Unix-only; on

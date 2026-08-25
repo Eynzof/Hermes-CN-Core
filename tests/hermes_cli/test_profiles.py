@@ -268,6 +268,31 @@ class TestBackfillProfileEnvs:
 class TestDeleteProfile:
     """Tests for delete_profile()."""
 
+    def test_removes_windows_bat_and_stale_extensionless_wrapper(
+        self, profile_env, monkeypatch
+    ):
+        monkeypatch.setattr("sys.platform", "win32")
+        profile_dir = create_profile("coder", no_alias=True)
+        wrapper_dir = profile_env / ".local" / "bin"
+        wrapper_dir.mkdir(parents=True, exist_ok=True)
+        bat_wrapper = wrapper_dir / "coder.bat"
+        posix_wrapper = wrapper_dir / "coder"
+        bat_wrapper.write_text("@echo off\r\nhermes -p coder %*\r\n", encoding="utf-8")
+        posix_wrapper.write_text(
+            '#!/bin/sh\nexec hermes -p coder "$@"\n', encoding="utf-8"
+        )
+
+        with patch("hermes_cli.profiles._check_gateway_running", return_value=False), \
+             patch("hermes_cli.profiles._cleanup_gateway_service"), \
+             patch("hermes_cli.profiles._maybe_unregister_gateway_service"), \
+             patch("hermes_cli.profiles._stop_profile_backends"):
+            removed_path = delete_profile("coder", yes=True)
+
+        assert removed_path == profile_dir
+        assert not profile_dir.exists()
+        assert not bat_wrapper.exists()
+        assert not posix_wrapper.exists()
+
 
     def test_rmtree_failure_raises(self, profile_env):
         profile_dir = create_profile("coder", no_alias=True)

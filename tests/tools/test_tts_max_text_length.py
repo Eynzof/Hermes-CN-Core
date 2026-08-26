@@ -37,6 +37,12 @@ class TestResolveMaxTextLength:
     def test_unknown_provider_falls_back(self):
         assert _resolve_max_text_length("does-not-exist", {}) == FALLBACK_MAX_TEXT_LENGTH
 
+    def test_moss_default_is_5000(self):
+        assert _resolve_max_text_length("moss", {}) == 5000
+
+    def test_moss_override_is_honored(self):
+        assert _resolve_max_text_length("moss", {"moss": {"max_text_length": 123}}) == 123
+
     def test_empty_provider_falls_back(self):
         assert _resolve_max_text_length("", {}) == FALLBACK_MAX_TEXT_LENGTH
         assert _resolve_max_text_length(None, {}) == FALLBACK_MAX_TEXT_LENGTH
@@ -52,7 +58,7 @@ class TestResolveMaxTextLength:
 
     def test_all_documented_providers_have_defaults(self):
         expected = {"edge", "openai", "xai", "minimax", "mistral",
-                    "gemini", "elevenlabs", "neutts", "kittentts"}
+                    "gemini", "elevenlabs", "neutts", "kittentts", "moss"}
         assert expected.issubset(PROVIDER_MAX_TEXT_LENGTH.keys())
 
 

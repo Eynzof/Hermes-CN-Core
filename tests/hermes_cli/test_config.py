@@ -82,6 +82,22 @@ class TestLoadConfigDefaults:
             assert config["terminal"]["backend"] == "local"
             assert config["display"]["interim_assistant_messages"] is True
 
+    def test_moss_tts_defaults_merge(self, tmp_path):
+        """tts.moss defaults exist and merge into load_config (Moss plugin)."""
+        from hermes_cli.config_defaults import DEFAULT_CONFIG as _defaults
+
+        moss = _defaults["tts"]["moss"]
+        assert moss["model"] == "moss-tts"
+        assert moss["version"] == "flash-20260626"
+        assert moss["voice_id"] == "94aa4989-c7e9-5007-ae42-ab401823e6c9"
+        assert moss["max_text_length"] == 5000
+        assert moss["delivery_method"] == "audio"
+
+        with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
+            config = load_config()
+            assert config["tts"]["moss"]["model"] == "moss-tts"
+            assert config["tts"]["moss"]["max_text_length"] == 5000
+
     def test_legacy_root_level_max_turns_migrates_to_agent_config(self, tmp_path):
         with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
             config_path = tmp_path / "config.yaml"

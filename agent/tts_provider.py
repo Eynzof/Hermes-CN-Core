@@ -29,10 +29,10 @@ Built-ins-always-win is enforced at registration time
 defensively). The dispatcher also rejects plugin dispatch when a same-
 name command provider is configured.
 
-Providers live in ``<repo>/plugins/tts/<name>/`` (built-in plugins, no
-shipped today) or ``~/.hermes/plugins/tts/<name>/`` (user-installed).
-None ship in-tree as of issue #30398 — the hook is additive
-infrastructure waiting for a real consumer (Cartesia, Fish Audio, …).
+Providers live in ``<repo>/plugins/tts/<name>/`` (built-in plugins —
+``plugins/tts/moss`` ships in this fork) or ``~/.hermes/plugins/tts/<name>/``
+(user-installed). The hook is additive infrastructure with a real consumer
+(Moss) and is available to any future backend (Cartesia, Fish Audio, …).
 
 Response contract
 -----------------
@@ -253,6 +253,113 @@ class TTSProvider(abc.ABC):
         Default: False (safe — providers opt in explicitly).
         """
         return False
+
+    # ------------------------------------------------------------------
+    # Optional additive capabilities (Moss plugin, phases 4–7)
+    #
+    # All default to ``NotImplementedError`` so existing providers and
+    # plugin registrations are unaffected. Plugin tools that expose these
+    # capabilities probe with ``hasattr`` / try-except before dispatching.
+    # ------------------------------------------------------------------
+
+    def synthesize_dialogue(
+        self,
+        speakers: list,
+        segments: list,
+        output_path: str,
+        *,
+        model: Optional[str] = None,
+        format: str = DEFAULT_OUTPUT_FORMAT,
+        async_mode: bool = False,
+        **extra: Any,
+    ) -> str:
+        """Synthesize a multi-speaker dialogue and write audio to *output_path*.
+
+        ``speakers``: list of ``{"id": str, "voice_id": str}``.
+        ``segments``: list of ``{"speaker": str, "text": str}``.
+
+        Returns the absolute path to the written file. Raises on
+        failure. Default: not supported (raises).
+        """
+        raise NotImplementedError(
+            f"TTS provider {self.name!r} does not implement dialogue "
+            "synthesis (synthesize_dialogue)."
+        )
+
+    def design_voice(
+        self,
+        instruction: str,
+        text: str,
+        output_path: str,
+        *,
+        model: Optional[str] = None,
+        format: str = DEFAULT_OUTPUT_FORMAT,
+        async_mode: bool = False,
+        **extra: Any,
+    ) -> str:
+        """Synthesize speech in a style described by *instruction*.
+
+        Returns the absolute path to the written audio file (the
+        instruction creates a style, not a persisted voice). Raises on
+        failure. Default: not supported (raises).
+        """
+        raise NotImplementedError(
+            f"TTS provider {self.name!r} does not implement voice design "
+            "(design_voice)."
+        )
+
+    def create_voice(
+        self,
+        audio_sample_path: str,
+        *,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+        **extra: Any,
+    ) -> Dict[str, Any]:
+        """Clone a voice from a reference audio sample.
+
+        Returns a dict with at least ``voice_id`` (the reusable voice
+        id) — implementations may include the full provider response.
+        Raises on failure. Default: not supported (raises).
+        """
+        raise NotImplementedError(
+            f"TTS provider {self.name!r} does not implement voice cloning "
+            "(create_voice)."
+        )
+
+    def async_synthesize(
+        self,
+        text: str,
+        *,
+        voice_id: Optional[str] = None,
+        model: Optional[str] = None,
+        format: str = DEFAULT_OUTPUT_FORMAT,
+        **extra: Any,
+    ) -> Dict[str, Any]:
+        """Start an async TTS task; returns ``{"task_id": str, ...}``.
+
+        The result is fetched later via :meth:`poll_task`. Default: not
+        supported (raises).
+        """
+        raise NotImplementedError(
+            f"TTS provider {self.name!r} does not implement async "
+            "synthesis (async_synthesize)."
+        )
+
+    def poll_task(
+        self,
+        task_id: str,
+        timeout: float = 180.0,
+        **extra: Any,
+    ) -> Dict[str, Any]:
+        """Poll an async TTS task to completion; returns the task result.
+
+        Default: not supported (raises).
+        """
+        raise NotImplementedError(
+            f"TTS provider {self.name!r} does not implement async task "
+            "polling (poll_task)."
+        )
 
 
 # ---------------------------------------------------------------------------

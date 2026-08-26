@@ -1,11 +1,12 @@
 """End-to-end tests for Moss TTS.
 
-These tests exercise the Moss ``/v1/audio/speech`` API documented in
-``D:/moss.txt`` against the live service. They perform real network I/O,
-download actual audio, and decode real SSE chunks.
+These tests exercise the Moss ``/v1/audio/speech`` API against the live
+service. They perform real network I/O, download actual audio, and decode
+real SSE chunks.
 
-They are SKIPPED by default; set ``MOSS_API_KEY`` to run them. The key can
-be exported from the ``api_key`` field at the top of ``D:/moss.txt``.
+They are SKIPPED by default; set ``MOSS_API_KEY`` to run them. A key file
+path may be configured via ``MOSS_KEY_FILE`` (the file may contain an
+``"api_key"`` field or a raw single-token key).
 """
 from __future__ import annotations
 
@@ -29,13 +30,17 @@ DEFAULT_MOSS_VOICE_ID = "94aa4989-c7e9-5007-ae42-ab401823e6c9"
 # tests must re-inject it with monkeypatch inside the test body.
 _MOSS_API_KEY = os.environ.get("MOSS_API_KEY", "").strip()
 if not _MOSS_API_KEY:
-    try:
-        _moss_doc = Path("D:/moss.txt").read_text(encoding="utf-8")
-        _match = re.search(r'"api_key"\s*:\s*"([^"]+)"', _moss_doc)
-        if _match:
-            _MOSS_API_KEY = _match.group(1)
-    except Exception:
-        _MOSS_API_KEY = ""
+    key_file = os.environ.get("MOSS_KEY_FILE", "").strip()
+    if key_file:
+        try:
+            _moss_doc = Path(key_file).read_text(encoding="utf-8")
+            _match = re.search(r'"api_key"\s*:\s*"([^"]+)"', _moss_doc)
+            if _match:
+                _MOSS_API_KEY = _match.group(1)
+            else:
+                _MOSS_API_KEY = _moss_doc.strip()
+        except Exception:
+            _MOSS_API_KEY = ""
 
 
 def _has_moss_creds() -> bool:

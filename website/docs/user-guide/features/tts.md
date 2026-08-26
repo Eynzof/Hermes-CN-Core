@@ -440,6 +440,39 @@ Override these on your provider class for richer integration:
 
 See `agent/tts_provider.py` for the full ABC including docstrings.
 
+#### Moss (mosi.cn) — bundled plugin backend
+
+The Hermes-CN fork ships an in-tree Moss TTS plugin at `plugins/tts/moss/` (auto-loaded, `kind: backend`, no `plugins.enabled` opt-in). It provides:
+
+- **Single-voice TTS** — set `tts.provider: moss` and the standard `text_to_speech` tool routes through `MossProvider` (sync `audio`/`url` delivery, optional `pause` float, and async tasks). Streaming via `tts.streaming.provider: moss` yields 48 kHz int16 mono PCM.
+- **Voice catalog** — 15 built-in voices plus any voices you have cloned; shown by `hermes tools` and `moss_voice_list`.
+- **`moss_dialogue_tts`** — multi-speaker dialogue synthesis (speakers + segments; every segment speaker must be declared; ≤20 segments recommended).
+- **`moss_voice_design`** — synthesize speech in a style described by an instruction. The instruction creates a style, **not** a persisted voice — Moss returns audio directly.
+- **`moss_voice_clone`** — clone a voice from a reference mp3/wav sample and get a reusable `voice_id` (appears in `list_voices()` / `moss_voice_list`).
+- **Async** — `moss_dialogue_tts` / `moss_voice_design` accept `async_mode: true` to return a `task_id`; single-voice async is available through the provider ABC (`async_synthesize` / `poll_task`).
+
+Credential resolution (in order): `tts.moss.api_key` in config.yaml → `MOSS_API_KEY` env/`.env` (profile secret scope) → `hermes auth add moss` → a key file configured via `MOSS_KEY_FILE` (client fallback). Behavior knobs live under `tts.moss` in config.yaml:
+
+```yaml
+tts:
+  provider: "moss"
+  moss:
+    # api_key: ""            # preferred: hermes auth add moss / MOSS_API_KEY
+    model: "moss-tts"        # classic alias; /v1/audio/speech rejects new model
+                             # IDs when a separate version is sent
+    version: "flash-20260626"
+    voice_id: "94aa4989-c7e9-5007-ae42-ab401823e6c9"
+    delivery_method: "audio" # audio | url
+    pause: null              # optional float → client appends [pause Ns] itself
+    max_text_length: 5000    # per-request cap used by the long-form splitter
+```
+
+Notes:
+
+- Moss single-voice TTS has no `speed` parameter — a model-supplied speed is logged and ignored (style/instruction belongs to `moss_voice_design`).
+- `ogg` / `opus` / `flac` output is requested as mp3 and transcoded with ffmpeg when available; without ffmpeg the mp3 file is returned and the container-repair pipeline fixes the extension.
+- Voice bubbles (Telegram/Matrix/Feishu/WhatsApp/Signal) work out of the box: `voice_compatible=True` runs the gateway's ffmpeg → Opus conversion.
+- Dialogue streaming is **not** supported by the API (`unsupported_stream`); dialogue is sync/async only.
 ## Voice Message Transcription (STT)
 
 Voice messages sent on Telegram, Discord, WhatsApp, Slack, or Signal are automatically transcribed and injected as text into the conversation. The agent sees the transcript as normal text.

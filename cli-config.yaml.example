@@ -34,8 +34,8 @@ database:
   #   # live result. Pin only when you need a specific Whisper variant.
   #   model: ""
 
-# Text-to-speech. Only the deepinfra block is documented here — the
-# remaining providers (edge, openai, xai, minimax, mistral, gemini,
+# Text-to-speech. Only the deepinfra and moss blocks are documented here —
+# the remaining providers (edge, openai, xai, minimax, mistral, gemini,
 # elevenlabs, neutts, kittentts, piper) inherit sensible defaults from
 # DEFAULT_CONFIG in hermes_cli/config.py.
 # tts:
@@ -46,6 +46,18 @@ database:
 #     # live result.
 #     model: ""
 #     voice: "default"
+#   # Moss (mosi.cn) — plugin backend at plugins/tts/moss/. Key resolution:
+#   # MOSS_API_KEY env/.env, `hermes auth add moss`, tts.moss.api_key below,
+#   # or a key file configured via MOSS_KEY_FILE (client fallback).
+#   moss:
+#     # api_key: ""              # preferred: hermes auth add moss / MOSS_API_KEY
+#     model: "moss-tts"          # classic alias — /v1/audio/speech rejects new
+#                                # model IDs when a separate version is sent
+#     version: "flash-20260626"
+#     voice_id: "94aa4989-c7e9-5007-ae42-ab401823e6c9"
+#     delivery_method: "audio"   # audio | url
+#     max_text_length: 5000
+#     # pause: 0.8               # optional float → client appends [pause Ns]
 
 # "Hey Hermes" hands-free wake word (off by default; toggle with /wake).
 # Full engine/provider options inherit from DEFAULT_CONFIG in

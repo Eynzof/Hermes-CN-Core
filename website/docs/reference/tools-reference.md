@@ -276,6 +276,17 @@ Registered by the bundled `spotify` plugin. Requires an OAuth token — run `her
 | `spotify_albums` | Fetch Spotify album metadata or album tracks. | Spotify OAuth |
 | `spotify_library` | List, save, or remove the user's saved Spotify tracks or albums. | Spotify OAuth |
 
+## `moss` toolset
+
+Registered by the bundled moss (mosi.cn) TTS plugin. Tools are listed in `hermes tools` and gate on a configured Moss key (MOSS_API_KEY, `tts.moss.api_key`, `hermes auth add moss`, or a key file via `MOSS_KEY_FILE`).
+
+| Tool | Description | Requires environment |
+|------|-------------|----------------------|
+| `moss_dialogue_tts` | Multi-speaker dialogue TTS: speakers [{id, voice_id}] + segments [{speaker, text}] → one audio file (MEDIA: path). Every segment speaker must be declared; ≤20 segments recommended. | Moss key |
+| `moss_voice_design` | Synthesize speech in a style described by an instruction. Creates a style, not a persisted voice. | Moss key |
+| `moss_voice_clone` | Clone a voice from a reference audio sample (mp3/wav); returns a reusable voice_id. | Moss key |
+| `moss_voice_list` | List Moss voices (15 built-in + your clones) with ids usable in text_to_speech / moss_dialogue_tts. | Moss key |
+
 ## `hermes-yuanbao` toolset
 
 Registered only on the `hermes-yuanbao` platform toolset. Yuanbao is Tencent's chat app; these tools drive its DM/group/sticker APIs.

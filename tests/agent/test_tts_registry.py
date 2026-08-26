@@ -79,6 +79,16 @@ class TestRegistration:
         assert tts_registry.get_provider("cartesia") is p
         assert [r.name for r in tts_registry.list_providers()] == ["cartesia"]
 
+    def test_moss_registers_and_is_not_shadowed(self):
+        """Moss is a plugin provider — it must register under its own name
+        (it is NOT in the built-in set, so no shadow rejection)."""
+        from plugins.tts.moss.provider import MossProvider
+
+        p = MossProvider()
+        tts_registry.register_provider(p)
+        assert tts_registry.get_provider("moss") is p
+        assert [r.name for r in tts_registry.list_providers()] == ["moss"]
+
 
 
 
@@ -167,6 +177,22 @@ class TestABCContract:
         p = _FakeProvider(name="cartesia")
         with pytest.raises(NotImplementedError, match="does not implement streaming"):
             next(p.stream("hello"))
+
+    def test_additive_capabilities_default_to_not_implemented(self):
+        """The additive Moss-era ABC methods (dialogue/design/clone/async)
+        must default to NotImplementedError so existing providers and
+        plugin registrations are unaffected."""
+        p = _FakeProvider(name="cartesia")
+        with pytest.raises(NotImplementedError, match="synthesize_dialogue"):
+            p.synthesize_dialogue([], [], "/tmp/x.mp3")
+        with pytest.raises(NotImplementedError, match="design_voice"):
+            p.design_voice("style", "text", "/tmp/x.mp3")
+        with pytest.raises(NotImplementedError, match="create_voice"):
+            p.create_voice("/tmp/sample.mp3")
+        with pytest.raises(NotImplementedError, match="async_synthesize"):
+            p.async_synthesize("text")
+        with pytest.raises(NotImplementedError, match="poll_task"):
+            p.poll_task("task-1")
 
 
 

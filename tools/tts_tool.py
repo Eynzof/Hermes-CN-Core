@@ -285,6 +285,7 @@ PROVIDER_MAX_TEXT_LENGTH: Dict[str, int] = {
     "neutts": 2000,       # local model, quality falls off on long text
     "kittentts": 2000,    # local 25MB model
     "piper": 5000,        # local VITS model, phoneme-based; practical cap
+    "moss": 5000,         # Moss (mosi.cn) plugin backend; per-request cap
 }
 
 # ElevenLabs caps vary by model_id. https://elevenlabs.io/docs/overview/models

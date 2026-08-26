@@ -564,6 +564,22 @@ def _print_setup_summary(config: dict, hermes_home):
             tool_status.append(("Text-to-Speech (KittenTTS local)", True, None))
         else:
             tool_status.append(("Text-to-Speech (KittenTTS — not installed)", False, "run 'hermes setup tts'"))
+    elif tts_provider == "moss":
+        # Moss is a bundled plugin backend (plugins/tts/moss). Key resolution
+        # mirrors the plugin: config → env/.env → credential pool → file fallback.
+        try:
+            from plugins.tts.moss.client import resolve_moss_api_key
+
+            moss_ok = bool(resolve_moss_api_key())
+        except Exception:
+            moss_ok = False
+        if moss_ok:
+            tool_status.append(("Text-to-Speech (Moss)", True, None))
+        else:
+            tool_status.append(
+                ("Text-to-Speech (Moss — no API key)", False,
+                 "set MOSS_API_KEY or run `hermes auth add moss`")
+            )
     else:
         tool_status.append(("Text-to-Speech (Edge TTS)", True, None))
 

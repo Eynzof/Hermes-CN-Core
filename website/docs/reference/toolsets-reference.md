@@ -78,6 +78,7 @@ Or in-session:
 | `session_search` | `session_search` | Search past conversation sessions. |
 | `skills` | `skill_manage`, `skill_view`, `skills_list` | Skill CRUD and browsing. |
 | `spotify` | `spotify_albums`, `spotify_devices`, `spotify_library`, `spotify_playback`, `spotify_playlists`, `spotify_queue`, `spotify_search` | Native Spotify control (playback, queue, search, playlists, albums, library). Registered by the bundled `spotify` plugin. |
+| `moss` | `moss_dialogue_tts`, `moss_voice_design`, `moss_voice_clone`, `moss_voice_list` | Moss (mosi.cn) TTS — dialogue, voice design, voice clone, and voice listing. Registered by the bundled `moss` plugin; tools are check_fn-gated on a configured Moss key. |
 | `terminal` | `process`, `terminal` | Shell command execution and background process management. |
 | `todo` | `todo` | Task list management within a session. |
 | `tts` | `text_to_speech` | Text-to-speech audio generation. |

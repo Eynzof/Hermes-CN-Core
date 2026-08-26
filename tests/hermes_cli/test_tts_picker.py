@@ -66,13 +66,18 @@ class TestPluginTTSProviders:
 
     def test_minimal_schema_uses_display_name(self):
         """A provider with no setup_schema override gets a row built from
-        ``display_name`` and ``name`` only."""
+        ``display_name`` and ``name`` only.
+
+        The bundled moss plugin also registers a row during discovery, so we
+        filter for the provider under test instead of asserting a global
+        count."""
         tts_registry.register_provider(_FakeTTSProvider(name="minimal"))
         rows = tools_config._plugin_tts_providers()
-        assert len(rows) == 1
-        assert rows[0]["name"] == "Minimal"  # display_name default
-        assert rows[0]["tts_provider"] == "minimal"
-        assert rows[0]["env_vars"] == []
+        minimal = [r for r in rows if r.get("tts_provider") == "minimal"]
+        assert len(minimal) == 1
+        assert minimal[0]["name"] == "Minimal"  # display_name default
+        assert minimal[0]["tts_provider"] == "minimal"
+        assert minimal[0]["env_vars"] == []
 
 
 
@@ -89,13 +94,13 @@ class TestVisibleProvidersInjectsTTSPlugins:
         names = [row.get("name") for row in visible]
         # Hardcoded rows (sample — check at least one is present)
         assert "Microsoft Edge TTS" in names
-        # Plugin row injected at the end
+        # Plugin row injected at the end (bundled moss + the test provider)
         assert "Cartesia" in names
 
         # Plugin row has tts_provider key for write-path compat
-        plugin_rows = [r for r in visible if r.get("tts_plugin_name")]
-        assert len(plugin_rows) == 1
-        assert plugin_rows[0]["tts_provider"] == "cartesia"
+        cartesia_rows = [r for r in visible if r.get("tts_plugin_name") == "cartesia"]
+        assert len(cartesia_rows) == 1
+        assert cartesia_rows[0]["tts_provider"] == "cartesia"
 
     def test_other_categories_unaffected_by_tts_plugins(self):
         """Registering a TTS plugin must not leak into the Image Generation

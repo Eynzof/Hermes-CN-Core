@@ -1502,10 +1502,10 @@ DEFAULT_CONFIG = {
     # Each provider supports an optional `max_text_length:` override for the
     # per-request input-character cap. Omit it to use the provider's documented
     # limit (OpenAI 4096, xAI 15000, MiniMax 10000, ElevenLabs 5k-40k model-aware,
-    # Gemini 32000, Edge 5000, Mistral 4000, NeuTTS/KittenTTS 2000).
+    # Gemini 32000, Edge 5000, Mistral 4000, NeuTTS/KittenTTS 2000, Moss 5000).
     "tts": {
         # Set explicitly to pin a backend:
-        # "edge" (free) | "elevenlabs" (premium) | "openai" | "xai" | "minimax" | "mistral" | "gemini" | "deepinfra" | "neutts" (local) | "kittentts" (local) | "piper" (local)
+        # "edge" (free) | "elevenlabs" (premium) | "openai" | "xai" | "minimax" | "mistral" | "gemini" | "deepinfra" | "neutts" (local) | "kittentts" (local) | "piper" (local) | "moss" (plugin backend)
         "provider": "edge",
         "edge": {
             "voice": "en-US-AriaNeural",
@@ -1579,6 +1579,27 @@ DEFAULT_CONFIG = {
             "model": "",  # empty = first tts-tagged model from the live catalog
             "voice": "default",
             # "base_url": "",  # override DEEPINFRA_BASE_URL for TTS only
+        },
+        # Moss (mosi.cn) — plugin backend at plugins/tts/moss/. Resolves the
+        # key via MOSS_API_KEY / tts.moss.api_key / `hermes auth add moss`,
+        # falling back to a key file configured via MOSS_KEY_FILE (moss_tts.py).
+        "moss": {
+            # Preferred: `hermes auth add moss` or MOSS_API_KEY in .env.
+            "api_key": "",
+            # Must stay the classic alias — /v1/audio/speech rejects new model
+            # IDs (e.g. moss-tts-1.5-flash) when a separate version field is
+            # sent (moss_tts.py:37-39). Dialogue uses moss-ttsd, voice design
+            # uses moss-voice-generator.
+            "model": "moss-tts",
+            "version": "flash-20260626",
+            "voice_id": "94aa4989-c7e9-5007-ae42-ab401823e6c9",
+            "response_format": "mp3",  # mp3 | wav | pcm
+            "delivery_method": "audio",  # audio | url
+            "pause": None,  # optional float → client appends [pause Ns] itself
+            "max_text_length": 5000,  # per-request cap (long-form splitter)
+            "streaming": True,
+            # "webhook_url": "",  # optional async completion webhook (needs a public callback endpoint)
+            # "base_url": "",  # optional override (default https://api.mosi.cn/v1)
         },
     },
 

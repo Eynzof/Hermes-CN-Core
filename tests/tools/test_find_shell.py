@@ -87,7 +87,7 @@ class TestFindShellWindowsBehavior:
 
     @pytest.mark.windows_only
     def test_windows_ignores_shell_env(self):
-        """On Windows, $SHELL is ignored — _find_shell delegates to _find_bash.
+        """On Windows, $SHELL is ignored — _find_shell resolves a Git Bash.
 
         Windows-only: faking ``_IS_WINDOWS`` selected the branch but left
         ``_find_bash`` resolving a POSIX bash, so the equality proved nothing
@@ -96,7 +96,19 @@ class TestFindShellWindowsBehavior:
         # Even if SHELL is set, it should be ignored on Windows
         with patch.dict(os.environ, {"SHELL": "/usr/bin/zsh"}):
             result = _find_shell()
-            assert result == _find_bash()
+            assert result != "/usr/bin/zsh"
+            assert "bash" in os.path.basename(result).lower()
+
+            # Do NOT assert strict equality with _find_bash(): on a real host
+            # _find_shell (POSIX-only by design) uses shutil.which, while
+            # _find_bash's kimix-aligned ladder can legitimately pick the
+            # <gitRoot>/bin/bash.exe launcher instead of the
+            # <gitRoot>/usr/bin/bash.exe MSYS binary. Both are valid Git Bash
+            # files; assert both resolve to a real bash rather than coupling
+            # the two resolution orders.
+            bash = _find_bash()
+            assert "bash" in os.path.basename(bash).lower()
+            assert os.path.isfile(result) and os.path.isfile(bash)
 
 
 class TestFindShellReturnsString:

@@ -1052,11 +1052,93 @@ def _find_bash_posix() -> str:
     )
 
 
+def _is_windows_apps_stub(bash_path: str) -> bool:
+    """Return True when *bash_path* points into the WindowsApps directory.
+
+    Windows ships ``bash.exe`` under ``%LOCALAPPDATA%\\Microsoft\\WindowsApps``
+    as an App Execution Alias (Microsoft Store stub) that only offers to
+    install WSL; it is not a real bash and must never be treated as one.
+    Mirrors kimix ``bash_tool._is_windows_apps_stub`` (``_find_pwsh`` applies
+    the same WindowsApps exclusion inline).
+    """
+    if not bash_path:
+        return False
+    normalized = os.path.normpath(bash_path).replace("/", "\\")
+    return "WindowsApps" in normalized.split("\\")
+
+
+_wsl_bash_launcher_cache: "dict[str, bool]" = {}
+
+
+def _is_wsl_bash_launcher(bash_path: str) -> bool:
+    """Return True when *bash_path* is the Windows WSL bash launcher.
+
+    The WSL launcher lives at ``%WINDIR%\\System32\\bash.exe`` (or the
+    SysWOW64 twin) and boots a Linux distro whose filesystem mounts Windows
+    drives at ``/mnt/c`` — it cannot consume the native ``/c/...`` paths the
+    terminal wrapper emits, so it must never be selected as Git Bash.
+
+    The cheap path check covers the standard launcher; a cached ``uname -sr``
+    probe catches WSL bash reached through other shims (e.g. a distro bash
+    exported into PATH), where the kernel string is ``Linux ... microsoft``
+    instead of the MSYS/MINGW ``uname`` marker Git Bash reports.
+    """
+    cached = _wsl_bash_launcher_cache.get(bash_path)
+    if cached is not None:
+        return cached
+
+    result = False
+    try:
+        resolved = os.path.realpath(bash_path)
+    except OSError:
+        resolved = bash_path
+
+    if os.path.basename(resolved).lower() == "bash.exe":
+        windir = os.environ.get("WINDIR", r"C:\Windows")
+        lower = resolved.lower()
+        for sysdir in (
+            os.path.join(windir, "System32"),
+            os.path.join(windir, "SysWOW64"),
+        ):
+            sysdir_lower = sysdir.lower()
+            if lower.startswith(sysdir_lower + os.sep) or lower == sysdir_lower:
+                result = True
+                break
+
+    if not result:
+        try:
+            # `uname -sr` on WSL2 reports "Linux 6.x.y-microsoft-standard-WSL2"
+            # (the microsoft marker lives in the release, not `uname -s`);
+            # Git Bash / MSYS reports "MINGW64_NT-..." / "MSYS_NT-...".
+            probe = subprocess.run(
+                [bash_path, "--noprofile", "--norc", "-c", "uname -sr"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=10,
+                creationflags=windows_hide_flags() if _IS_WINDOWS else 0,
+            )
+            kernel = (probe.stdout or "").strip().lower()
+            result = kernel.startswith("linux") and "microsoft" in kernel
+        except Exception:
+            result = False
+
+    _wsl_bash_launcher_cache[bash_path] = result
+    return result
+
+
 def _find_bash(raise_if_missing: bool = True) -> str | None:
     """Find a usable bash, including Git Bash on Windows.
 
     Candidates are probed with ``_bash_starts()`` (external-program smoke
-    test) so broken/WSL-stub bash is never returned as usable.
+    test) so broken/WSL/WindowsApps-stub bash is never returned as usable.
+
+    Windows candidate order mirrors kimix ``bash_tool._find_git_bash_windows``:
+    explicit override → managed portable Git (Hermes-specific) → ``where.exe
+    git``/``git --exec-path`` derivation → well-known Program Files locations →
+    plain ``bash`` on PATH (last resort, filtered for WSL launchers and
+    WindowsApps Store stubs).
 
     ``raise_if_missing`` (default ``True``) preserves the legacy contract for
     callers that require bash (explicit ``HERMES_SHELL_TYPE=bash``): when no
@@ -1088,8 +1170,24 @@ def _find_bash(raise_if_missing: bool = True) -> str | None:
             if os.path.isfile(candidate) and candidate not in candidates:
                 candidates.append(candidate)
 
-    # Check known Git-for-Windows locations before PATH, where ``bash`` may be
-    # the WSL launcher and therefore unable to consume native Windows paths.
+    # git.exe-based discovery (ported from kimix ``bash_tool._find_git_bash_windows``):
+    # ``where.exe git`` -> <gitDir>/../bin/bash.exe, then ``git --exec-path``
+    # -> Git for Windows install root -> bin/bash.exe.  Catches per-user /
+    # chocolatey / scoop / side-by-side Git installs that live outside the
+    # well-known Program Files locations.  Mirrors kimix ordering: this runs
+    # BEFORE the well-known locations and the PATH fallback, so a real Git
+    # Bash install always wins over ambiguous PATH entries.
+    for git_path in _where_git_executables():
+        candidate = _git_bash_candidate_from_git_path(git_path)
+        if candidate.is_file() and str(candidate) not in candidates:
+            candidates.append(str(candidate))
+        git_exec_path = _git_exec_path(git_path)
+        if git_exec_path:
+            for candidate in _git_bash_candidates_from_exec_path(git_exec_path):
+                if candidate.is_file() and str(candidate) not in candidates:
+                    candidates.append(str(candidate))
+
+    # Well-known Git-for-Windows install locations.
     for candidate in (
         os.path.join(
             os.environ.get("ProgramFiles", r"C:\Program Files"),
@@ -1112,29 +1210,31 @@ def _find_bash(raise_if_missing: bool = True) -> str | None:
         if candidate and os.path.isfile(candidate) and candidate not in candidates:
             candidates.append(candidate)
 
+    # PATH ``bash`` is the LAST resort (mirrors kimix ``bash_tool``): on
+    # Windows a plain ``bash`` on PATH is the least trustworthy source — it may
+    # be the WSL launcher (C:\Windows\System32\bash.exe) which boots a Linux
+    # distro (drives at /mnt/c) and cannot consume native /c/... paths, or a
+    # WindowsApps App Execution Alias stub that only offers to install WSL.
+    # Reject both so discovery never selects them; when no real Git Bash
+    # exists the resolver degrades to PowerShell.
     found = _safe_which("bash")
     if found and found not in candidates:
-        candidates.append(found)
-
-    # git.exe-based discovery (ported from kimix ``bash_tool._find_git_bash_windows``):
-    # ``where.exe git`` -> <gitDir>/../bin/bash.exe, then ``git --exec-path``
-    # -> Git for Windows install root -> bin/bash.exe.  Catches per-user /
-    # chocolatey / scoop / side-by-side Git installs that live outside the
-    # well-known Program Files locations.  Kept as the LAST candidate source so
-    # the Hermes-managed portable Git and standard install locations keep their
-    # existing priority, and a plain ``bash`` on PATH is preferred over shelling
-    # out to ``where.exe``/``git``.
-    for git_path in _where_git_executables():
-        candidate = _git_bash_candidate_from_git_path(git_path)
-        if candidate.is_file() and str(candidate) not in candidates:
-            candidates.append(str(candidate))
-        git_exec_path = _git_exec_path(git_path)
-        if git_exec_path:
-            for candidate in _git_bash_candidates_from_exec_path(git_exec_path):
-                if candidate.is_file() and str(candidate) not in candidates:
-                    candidates.append(str(candidate))
+        if _is_wsl_bash_launcher(found) or _is_windows_apps_stub(found):
+            logger.warning(
+                "Ignoring non-Git-Bash bash at %s (WSL launcher / WindowsApps "
+                "stub); preferring Git Bash",
+                found,
+            )
+        else:
+            candidates.append(found)
 
     for candidate in candidates:
+        # Defense in depth: never probe/select WSL launchers or WindowsApps
+        # Store stubs even when they slipped in through another source
+        # (e.g. HERMES_GIT_BASH_PATH).
+        if _is_wsl_bash_launcher(candidate) or _is_windows_apps_stub(candidate):
+            logger.debug("Skipping non-Git-Bash candidate %s", candidate)
+            continue
         if _bash_starts(candidate):
             if candidate != custom and custom and os.path.isfile(custom):
                 logger.warning(

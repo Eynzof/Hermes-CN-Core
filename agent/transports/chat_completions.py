@@ -76,6 +76,63 @@ def _add_prompt_cache_key(
         api_kwargs["prompt_cache_key"] = cache_key
 
 
+def _history_has_reasoning_content(messages: list[dict[str, Any]]) -> bool:
+    """Return True when any assistant message carries non-empty reasoning content.
+
+    OpenAI-compatible gateways that front reasoning models (One API, new-api,
+    some Moonshot/DeepSeek proxies) inject the chain of thought into a
+    ``reasoning_content`` (or ``reasoning``) field on the assistant message.
+    Several of those gateways reject a follow-up request with HTTP 400 when the
+    history contains ``reasoning_content`` but the request did not set
+    ``reasoning_effort`` — the proxy needs the field to route the reasoning
+    block correctly (kosong issue #1616).
+
+    Hermes' own persisted transcripts (state.db) keep ``reasoning_content`` on
+    assistant rows, so a resumed session can hit this 400 even when the user
+    never configured thinking. This predicate lets the transport auto-enable a
+    safe default ``reasoning_effort=medium`` in that case, matching kosong's
+    defensive behaviour without forcing thinking on for users who never opted
+    in (the default only applies when history already shows the model was
+    thinking).
+    """
+    for msg in messages:
+        if not isinstance(msg, dict) or msg.get("role") != "assistant":
+            continue
+        rc = msg.get("reasoning_content")
+        if isinstance(rc, str) and rc.strip():
+            return True
+        r = msg.get("reasoning")
+        if isinstance(r, str) and r.strip():
+            return True
+        # Some persisters store reasoning as a list of content parts.
+        if isinstance(rc, list) and any(
+            isinstance(p, dict)
+            and isinstance(p.get("text"), str)
+            and p["text"].strip()
+            for p in rc
+        ):
+            return True
+    return False
+
+
+def _auto_enable_reasoning_from_history(
+    messages: list[dict[str, Any]],
+    reasoning_config: dict | None,
+) -> dict | None:
+    """Auto-enable ``reasoning_effort=medium`` when history carries reasoning.
+
+    No-op when the caller already set a ``reasoning_config`` (any dict, even a
+    disabled one — explicit user intent wins). Only synthesizes a default when
+    reasoning is unset (``None``) and the history shows the model was thinking,
+    so resumed sessions don't 400 on strict OpenAI-compatible gateways.
+    """
+    if reasoning_config is not None:
+        return reasoning_config
+    if _history_has_reasoning_content(messages):
+        return {"enabled": True, "effort": "medium"}
+    return None
+
+
 def _reasoning_config_for_model(model: str, reasoning_config: dict | None) -> dict | None:
     """Return the model's wire-compatible reasoning config."""
     if not isinstance(reasoning_config, dict):
@@ -458,7 +515,12 @@ class ChatCompletionsTransport(ProviderTransport):
         anthropic_max_out = params.get("anthropic_max_output")
         is_kimi = params.get("is_kimi", False)
         is_tokenhub = params.get("is_tokenhub", False)
-        reasoning_config = _reasoning_config_for_model(model, params.get("reasoning_config"))
+        reasoning_config = _reasoning_config_for_model(
+            model,
+            # Auto-enable reasoning_effort when the resumed history carries
+            # reasoning_content but no explicit config was set (kosong #1616).
+            _auto_enable_reasoning_from_history(sanitized, params.get("reasoning_config")),
+        )
 
         if ephemeral is not None and max_tokens_fn:
             api_kwargs.update(max_tokens_fn(ephemeral))
@@ -665,7 +727,12 @@ class ChatCompletionsTransport(ProviderTransport):
             api_kwargs["max_tokens"] = anthropic_max
 
         # Provider-specific api_kwargs extras (reasoning_effort, metadata, etc.)
-        reasoning_config = _reasoning_config_for_model(model, params.get("reasoning_config"))
+        # Auto-enable reasoning_effort when the resumed history carries
+        # reasoning_content but no explicit config was set (kosong #1616).
+        reasoning_config = _reasoning_config_for_model(
+            model,
+            _auto_enable_reasoning_from_history(sanitized, params.get("reasoning_config")),
+        )
         extra_body_from_profile, top_level_from_profile = (
             profile.build_api_kwargs_extras(
                 reasoning_config=reasoning_config,

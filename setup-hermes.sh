@@ -34,7 +34,7 @@ cd "$SCRIPT_DIR"
 # wrong user's home directory when running under sudo -u <user>.  See #21269.
 export UV_NO_CONFIG=1
 
-PYTHON_VERSION="3.11"
+PYTHON_VERSION="3.14"
 HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
 HERMES_HOME_ARG_EXPLICIT=false
 ISOLATED_LAYOUT=false
@@ -186,11 +186,11 @@ echo -e "${CYAN}→${NC} Checking Python $PYTHON_VERSION..."
 if is_termux; then
     if command -v python >/dev/null 2>&1; then
         PYTHON_PATH="$(command -v python)"
-        if "$PYTHON_PATH" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
+        if "$PYTHON_PATH" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 14) else 1)' 2>/dev/null; then
             PYTHON_FOUND_VERSION=$($PYTHON_PATH --version 2>/dev/null)
             echo -e "${GREEN}✓${NC} $PYTHON_FOUND_VERSION found"
         else
-            echo -e "${RED}✗${NC} Termux Python must be 3.11+"
+            echo -e "${RED}✗${NC} Termux Python must be 3.14+"
             echo "    Run: pkg install python"
             exit 1
         fi

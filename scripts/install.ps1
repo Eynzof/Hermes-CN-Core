@@ -5,7 +5,7 @@
 # Uses uv for fast Python provisioning and package management.
 #
 # Usage:
-#   iex (irm https://hermes-agent.nousresearch.com/install.ps1)
+#   iex (irm https://raw.githubusercontent.com/Eynzof/Hermes-CN-Core/main/scripts/install.ps1)
 #
 # Or download and run with options:
 #   .\install.ps1 -NoVenv -SkipSetup
@@ -373,14 +373,13 @@ $script:ResolvedPathReport = @{
 # Configuration
 # ============================================================================
 
-$RepoUrlSsh = "git@github.com:NousResearch/hermes-agent.git"
-$RepoUrlHttps = "https://github.com/NousResearch/hermes-agent.git"
+$RepoUrlSsh = "git@github.com:Eynzof/Hermes-CN-Core.git"
+$RepoUrlHttps = "https://github.com/Eynzof/Hermes-CN-Core.git"
 $PythonVersion = "3.14"
-# Minor versions the installer accepts when the requested $PythonVersion isn't
-# available, in preference order.  uv discovers both uv-managed and system
-# interpreters, so this list also matches a pre-existing system Python.  Single
-# source of truth shared by Test-Python's fallback and Resolve-AvailablePythonVersion.
-$PythonFallbackVersions = @("3.12", "3.13", "3.10")
+# This fork requires Python >=3.14, so falling back to an older minor would
+# only defer failure until dependency installation. Keep the shared fallback
+# list empty; `uv python find 3.14` already accepts compatible patch releases.
+$PythonFallbackVersions = @()
 $NodeVersion = "22"
 # The npm range the root package.json pins in `engines.npm`.  A constant rather
 # than a manifest read like the POSIX side does: Test-Node runs BEFORE the repo
@@ -2366,13 +2365,13 @@ function Install-Repository {
                 # for.  GitHub supports archive URLs for commits, tags, and
                 # branches; we honour Commit > Tag > Branch.
                 if ($Commit) {
-                    $zipUrl = "https://github.com/NousResearch/hermes-agent/archive/$Commit.zip"
+                    $zipUrl = "https://github.com/Eynzof/Hermes-CN-Core/archive/$Commit.zip"
                     $zipLabel = $Commit
                 } elseif ($Tag) {
-                    $zipUrl = "https://github.com/NousResearch/hermes-agent/archive/refs/tags/$Tag.zip"
+                    $zipUrl = "https://github.com/Eynzof/Hermes-CN-Core/archive/refs/tags/$Tag.zip"
                     $zipLabel = $Tag
                 } else {
-                    $zipUrl = "https://github.com/NousResearch/hermes-agent/archive/refs/heads/$Branch.zip"
+                    $zipUrl = "https://github.com/Eynzof/Hermes-CN-Core/archive/refs/heads/$Branch.zip"
                     $zipLabel = $Branch
                 }
                 $zipPath = "$env:TEMP\hermes-agent-$zipLabel.zip"

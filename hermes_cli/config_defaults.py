@@ -1661,6 +1661,18 @@ DEFAULT_CONFIG = {
             "model": "",  # empty = first stt-tagged model from the live catalog
             # "base_url": "",  # override DEEPINFRA_BASE_URL for STT only
         },
+        # Moss (mosi.cn) speech-to-text — bundled plugin at
+        # plugins/tts/moss. Credentials are shared with the Moss TTS
+        # capabilities: MOSS_API_KEY (env/.env), `tts.moss.api_key` in
+        # config.yaml, `hermes auth add moss`, or MOSS_KEY_FILE. Set
+        # `stt.provider: moss` to route gateway voice messages here.
+        "moss": {
+            "model": "moss-transcribe-1.0",  # or moss-transcribe-diarize-pro
+            "diarize": False,  # true → forces moss-transcribe-diarize-pro + speaker segments
+            "response_format": "json",  # json | text | diarized_json
+            "max_file_size": 536870912,  # 512 MB — Moss allows up to 512 MB
+            "prompt": "",  # optional keyterms (vocabulary boost; diarize-pro only)
+        },
     },
 
     "voice": {

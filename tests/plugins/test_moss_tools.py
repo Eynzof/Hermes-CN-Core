@@ -189,3 +189,92 @@ class TestSchemas:
         assert moss_tools.MOSS_VOICE_DESIGN_SCHEMA["name"] == "moss_voice_design"
         assert moss_tools.MOSS_VOICE_CLONE_SCHEMA["name"] == "moss_voice_clone"
         assert moss_tools.MOSS_VOICE_LIST_SCHEMA["name"] == "moss_voice_list"
+
+    def test_transcribe_schema_shape(self):
+        schema = moss_tools.MOSS_TRANSCRIBE_SCHEMA
+        assert schema["name"] == "moss_transcribe"
+        assert schema["parameters"]["required"] == ["audio_path"]
+        props = schema["parameters"]["properties"]
+        assert props["model"]["enum"] == ["moss-transcribe-1.0", "moss-transcribe-diarize-pro"]
+
+    def test_vision_schema_shape(self):
+        schema = moss_tools.MOSS_VISION_SCHEMA
+        assert schema["name"] == "moss_vision"
+        assert schema["parameters"]["required"] == ["instruction"]
+        props = schema["parameters"]["properties"]
+        assert props["images"]["maxItems"] == 5
+
+
+class TestMossTranscribe:
+    @pytest.fixture
+    def fake_api(self, monkeypatch, tmp_path):
+        state = {"calls": [], "responses": {"text": "转写结果", "duration": 1.5}}
+
+        def fake_transcribe_audio(audio_path, **kw):
+            state["calls"].append(kw)
+            return state["responses"]
+
+        monkeypatch.setattr(moss_tools, "transcribe_audio", fake_transcribe_audio)
+        p = tmp_path / "clip.mp3"
+        p.write_bytes(b"\x00" * 64)
+        state["path"] = str(p)
+        return state
+
+    def test_happy_path(self, fake_api):
+        result = _load(moss_tools._handle_moss_transcribe({"audio_path": fake_api["path"]}))
+        assert result["success"] is True
+        assert result["transcript"] == "转写结果"
+        assert result["provider"] == "moss"
+        assert result["model"] == "moss-transcribe-1.0"
+        assert fake_api["calls"][0]["diarize"] is False
+
+    def test_audio_path_required(self, fake_api):
+        result = _load(moss_tools._handle_moss_transcribe({}))
+        assert result["success"] is False
+        assert "audio_path" in result["error"]
+
+    def test_diarize_forces_diarize_pro_model(self, fake_api):
+        _load(moss_tools._handle_moss_transcribe({
+            "audio_path": fake_api["path"], "diarize": True,
+        }))
+        call = fake_api["calls"][0]
+        assert call["model"] == "moss-transcribe-diarize-pro"
+        assert call["diarize"] is True
+
+    def test_keyterms_passed_through(self, fake_api):
+        _load(moss_tools._handle_moss_transcribe({
+            "audio_path": fake_api["path"], "keyterms": ["术语", "boost"],
+        }))
+        assert fake_api["calls"][0]["keyterms"] == ["术语", "boost"]
+
+    def test_async_mode_returns_task_id(self, fake_api):
+        fake_api["responses"] = {"task_id": "task-42", "status": "PROCESSING"}
+        result = _load(moss_tools._handle_moss_transcribe({
+            "audio_path": fake_api["path"], "async_mode": True,
+        }))
+        assert result["success"] is True
+        assert result["async"] is True
+        assert result["task_id"] == "task-42"
+
+    def test_task_id_polls(self, fake_api, monkeypatch):
+        from plugins.tts.moss.transcription import MossTranscriptionProvider
+
+        captured = {}
+
+        def fake_poll(self, task_id, **kw):
+            captured["task_id"] = task_id
+            return {"status": "SUCCESS", "result": {"text": "轮询结果"}}
+
+        monkeypatch.setattr(MossTranscriptionProvider, "poll_task", fake_poll)
+        result = _load(moss_tools._handle_moss_transcribe({"task_id": "task-1"}))
+        assert result["success"] is True
+        assert captured["task_id"] == "task-1"
+
+    def test_api_error_envelope(self, fake_api, monkeypatch):
+        def boom(audio_path, **kw):
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr(moss_tools, "transcribe_audio", boom)
+        result = _load(moss_tools._handle_moss_transcribe({"audio_path": fake_api["path"]}))
+        assert result["success"] is False
+        assert "boom" in result["error"]

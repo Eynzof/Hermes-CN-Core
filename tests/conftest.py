@@ -39,6 +39,121 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 
+# ── Optional external-dependency stubs ───────────────────────────────────────
+# The bundled ``plugins/tts/moss`` plugin imports the private ``moss_tts``
+# pip package. It is not in ``pyproject.toml``/``uv.lock`` and is not
+# installed in every checkout, so without a stub every moss test would fail
+# at collection. When the real package IS installed, the stub is skipped and
+# the real module is used (same pattern as ``tests/e2e/conftest.py`` for
+# telegram/discord). The stub exposes exactly the symbols the in-tree plugin
+# and its tests import.
+_MOSS_DOC_VOICES = [
+    {"voice_id": "c6c0a40a-ea82-4468-9a21-333d3c4a76f6", "name": "曼波有口音版", "lang": "中文·普通话", "desc": "动漫、角色配音·轻快、可爱、搞笑"},
+    {"voice_id": "f80b6698-0066-430b-88a0-f0fb8796db34", "name": "明太祖", "lang": "中文·普通话", "desc": "角色配音、影视·高冷、沉稳、霸总"},
+    {"voice_id": "ddc6e38b-6f55-4415-b21b-a88cad2cc1d9", "name": "VOX AKUMA", "lang": "英文·英式英语", "desc": "播客、社交媒体·慵懒、磁性、专业"},
+    {"voice_id": "7662a8a1-700c-466a-b66b-57ece9e2e231", "name": "李白", "lang": "中文·普通话", "desc": "影视、人物·古风、热血"},
+    {"voice_id": "f9a1416b-d006-4b77-9581-8f0e8ec1e401", "name": "旁白Jake", "lang": "英文·英式英语", "desc": "角色配音、人物·沉稳、磁性、专业"},
+    {"voice_id": "faf7f550-0627-4fc6-8db0-d3bfdad49358", "name": "经验女教师", "lang": "中文·普通话", "desc": "教育、社交媒体·高冷、自然"},
+    {"voice_id": "fe85a513-9bf3-4ef7-aa0b-8b2d11e4db93", "name": "少年感人声（男）", "lang": "中文·普通话", "desc": "有声书、旁白·温柔、磁性、自然"},
+    {"voice_id": "0804710c-8e5e-4b67-acda-5785ef13c309", "name": "历史解说男声", "lang": "中文·普通话", "desc": "有声书、影视解说·沉稳、磁性"},
+    {"voice_id": "9d1e88e9-3b9c-4992-a414-7a1cb3ff7ab5", "name": "优雅英国女士", "lang": "英文·英式英语", "desc": "影视、人物·温柔、磁性、自然"},
+    {"voice_id": "806c9695-6160-404e-8722-4f788d935af3", "name": "轻快灵动女声", "lang": "中文·普通话", "desc": "智能客服、热门玩法·轻快、活泼、自然"},
+    {"voice_id": "2fdf194e-c16e-4587-9027-0d3464e09b4e", "name": "诗词朗读", "lang": "中文·普通话", "desc": "教育、旁白·沉稳、磁性、专业"},
+    {"voice_id": "133bd03b-d717-4a55-8974-7ffc9afc1b51", "name": "故宫纪录片", "lang": "中文·普通话", "desc": "纪录片、旁白·沉稳、磁性、专业"},
+    {"voice_id": "26838557-6890-4505-bc7c-e8198443a141", "name": "东北虎哥", "lang": "中文·普通话", "desc": "娱乐、社交媒体·搞笑、慵懒"},
+    {"voice_id": "19411508-8731-4b68-901d-7e4b8a98e23f", "name": "忧伤的秋", "lang": "中文·普通话", "desc": "影视、人物·温柔、慵懒"},
+    {"voice_id": "944eb93b-3820-49f3-b2c0-4e37a31d1161", "name": "三农农业旁白", "lang": "中文·普通话", "desc": "纪录片、旁白·轻快、磁性、专业"},
+]
+
+
+def _install_moss_tts_stub() -> None:
+    """Inject a minimal ``moss_tts`` test double when the real package is absent."""
+    if "moss_tts" in sys.modules and getattr(sys.modules["moss_tts"], "__file__", None):
+        return  # Real package installed
+    if "moss_tts" in sys.modules:  # already stubbed
+        return
+
+    import re
+    import types
+
+    mod = types.ModuleType("moss_tts")
+    mod.__file__ = "<tests/conftest moss_tts stub>"
+
+    class MossError(Exception):
+        pass
+
+    class MossClient:
+        """Minimal stand-in — unit tests monkeypatch ``build_client``."""
+
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+            if not kwargs.get("api_key"):
+                # Mirror the real client's contract: no key → ValueError.
+                raise ValueError("No Moss API key found (test stub)")
+
+        def poll_task(self, task_id, timeout=180.0, **kwargs):
+            return {"status": "SUCCESS", "task_id": task_id, "url": "https://example.invalid/a.mp3"}
+
+    def _load_api_key():
+        key = os.environ.get("MOSS_API_KEY", "").strip()
+        if key:
+            return key
+        key_file = os.environ.get("MOSS_KEY_FILE", "").strip()
+        if not key_file:
+            return ""
+        try:
+            text = Path(key_file).read_text(encoding="utf-8")
+        except Exception:
+            return ""
+        m = re.search(r'"api_key"\s*:\s*"([^"]+)"', text)
+        return (m.group(1) if m else text.strip()).strip()
+
+    def is_mp3(path):  # noqa: ARG001 — stub helper
+        return True
+
+    def is_wav(path):  # noqa: ARG001 — stub helper
+        return True
+
+    mod.MossError = MossError
+    mod.MossClient = MossClient
+    mod._load_api_key = _load_api_key
+    mod.DOC_VOICES = list(_MOSS_DOC_VOICES)
+    mod.DEFAULT_VERSION = "flash-20260626"
+    mod.MODEL_TTS = "moss-tts"
+    mod.MODEL_TTSD = "moss-ttsd"
+    mod.MODEL_VOICE_GENERATOR = "moss-voice-generator"
+    mod.is_mp3 = is_mp3
+    mod.is_wav = is_wav
+    sys.modules.setdefault("moss_tts", mod)
+
+
+_install_moss_tts_stub()
+
+
+def pytest_addoption(parser):
+    """Register options for live Moss e2e tests (no hardcoded API keys).
+
+    The key is passed in via ``--moss-key <key>`` or ``--moss-key-file
+    <path>`` (a config/key file such as ``D:/moss.txt`` whose first line
+    is ``"api_key": "<key>"`` or a raw token). The e2e module also falls
+    back to ``MOSS_API_KEY`` / ``MOSS_KEY_FILE`` env vars and a
+    ``D:/moss.txt`` default, so a key never lives in the test source.
+    """
+    group = parser.getgroup("moss", "Moss (mosi.cn) live e2e")
+    group.addoption(
+        "--moss-key",
+        action="store",
+        default="",
+        help="Moss API key for live e2e tests (alternative to --moss-key-file).",
+    )
+    group.addoption(
+        "--moss-key-file",
+        action="store",
+        default="",
+        help="Path to a Moss config/key file (e.g. D:/moss.txt) for live e2e tests.",
+    )
+
+
 # ── Sandbox HERMES_HOME before ANY test module is imported ──────────────────
 # `hermes_cli/main.py` calls `setup_logging()` at MODULE level, which resolves
 # `get_hermes_home()` and attaches rotating file handlers to the ROOT logger.

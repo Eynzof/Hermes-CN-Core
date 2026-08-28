@@ -60,6 +60,54 @@ def resolve_moss_api_key(tts_config: Dict[str, Any] | None = None) -> str:
         return config_value
 
 
+def _resolve_endpoint(cfg: Dict[str, Any]) -> tuple[str, float]:
+    """Resolve the base URL + timeout for the ``tts.moss`` section.
+
+    Returns ``(base_url, timeout)`` with defaults
+    ``https://api.mosi.cn/v1`` and ``60.0``. Used by both
+    :func:`build_client` and the plugin's direct-HTTP layer
+    (:func:`build_http_kwargs` / ``plugins.tts.moss.api``).
+    """
+    section = cfg.get("moss") if isinstance(cfg, dict) else {}
+    section = section if isinstance(section, dict) else {}
+    base_url = str(section.get("base_url") or "https://api.mosi.cn/v1").strip()
+    try:
+        timeout = float(section.get("timeout") or 60)
+    except (TypeError, ValueError):
+        timeout = 60.0
+    return base_url.rstrip("/"), timeout
+
+
+def build_http_kwargs(tts_config: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    """Resolve key / base_url / timeout / auth headers for direct HTTP calls.
+
+    This is the single resolution seam for the plugin's self-contained
+    HTTP layer (``plugins.tts.moss.api``): transcription, file upload and
+    MOSS-VL reuse the same key + endpoint + timeout resolution as TTS, so
+    one ``tts.moss.api_key`` / ``MOSS_API_KEY`` / ``tts.moss.base_url`` /
+    ``tts.moss.timeout`` configuration covers all three capabilities.
+
+    Returns::
+
+        {
+            "api_key": str,   # "" when no key is configured anywhere
+            "base_url": str,  # https://api.mosi.cn/v1 by default (no trailing /)
+            "timeout": float, # seconds
+            "headers": {..., "Authorization": "Bearer <key>"},  # empty when no key
+        }
+    """
+    cfg = tts_config if tts_config is not None else _load_tts_config()
+    base_url, timeout = _resolve_endpoint(cfg)
+    api_key = resolve_moss_api_key(cfg)
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    return {
+        "api_key": api_key,
+        "base_url": base_url,
+        "timeout": timeout,
+        "headers": headers,
+    }
+
+
 def build_client(tts_config: Dict[str, Any] | None = None) -> Any:
     """Build a :class:`moss_tts.MossClient`, resolving key + config.
 
@@ -73,17 +121,12 @@ def build_client(tts_config: Dict[str, Any] | None = None) -> Any:
     from moss_tts import MossClient
 
     cfg = tts_config if tts_config is not None else _load_tts_config()
-    section = cfg.get("moss") if isinstance(cfg, dict) else {}
-    section = section if isinstance(section, dict) else {}
+    base_url, timeout = _resolve_endpoint(cfg)
 
     kwargs: Dict[str, Any] = {}
-    base_url = str(section.get("base_url") or "").strip()
-    if base_url:
+    if base_url and base_url != "https://api.mosi.cn/v1":
         kwargs["base_url"] = base_url
-    try:
-        kwargs["timeout"] = float(section.get("timeout") or 60)
-    except (TypeError, ValueError):
-        kwargs["timeout"] = 60.0
+    kwargs["timeout"] = timeout
 
     api_key = resolve_moss_api_key(cfg)
     if api_key:

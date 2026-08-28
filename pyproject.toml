@@ -446,6 +446,7 @@ py-modules = [
   "platform_utils",
   "import_accelerator",
   "mcp_serve",
+  "registration_lifecycle",
 ]
 
 # Ahead-of-time bytecode warm-up (scripts/precompile.py).  ``pip install`` already
@@ -538,7 +539,7 @@ plugins = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["agent", "agent.*", "tools", "tools.*", "hermes_cli", "hermes_cli.*", "gateway", "gateway.*", "tui_gateway", "tui_gateway.*", "cron", "cron.*", "acp_adapter", "plugins", "plugins.*", "providers", "providers.*"]
+include = ["agent", "agent.*", "tools", "tools.*", "hermes_cli", "hermes_cli.*", "gateway", "gateway.*", "tui_gateway", "tui_gateway.*", "cron", "cron.*", "acp_adapter", "plugins", "plugins.*", "providers", "providers.*", "hermes_embedded", "hermes_embedded.*"]
 
 
 [tool.pytest.ini_options]

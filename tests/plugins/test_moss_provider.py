@@ -290,3 +290,91 @@ class TestABCDefaults:
             m.async_synthesize("text")
         with pytest.raises(NotImplementedError):
             m.poll_task("task")
+
+
+# ---------------------------------------------------------------------------
+# Moss STT provider (plugins/tts/moss/transcription.py) — ABC compliance
+# ---------------------------------------------------------------------------
+
+
+class TestMossTranscriptionProviderCompliance:
+    def test_is_a_transcription_provider(self):
+        from agent.transcription_provider import TranscriptionProvider
+        from plugins.tts.moss.transcription import MossTranscriptionProvider
+
+        assert issubclass(MossTranscriptionProvider, TranscriptionProvider)
+
+    def test_name_and_default_model(self):
+        from plugins.tts.moss.transcription import (
+            MODEL_DIARIZE_PRO,
+            MODEL_TRANSCRIBE,
+            MossTranscriptionProvider,
+        )
+
+        p = MossTranscriptionProvider()
+        assert p.name == "moss"
+        assert p.default_model() == MODEL_TRANSCRIBE
+        models = [m["id"] for m in p.list_models()]
+        assert MODEL_TRANSCRIBE in models
+        assert MODEL_DIARIZE_PRO in models
+
+    def test_is_available_never_raises(self):
+        from plugins.tts.moss.transcription import MossTranscriptionProvider
+
+        assert isinstance(MossTranscriptionProvider().is_available(), bool)
+
+    def test_setup_schema_surfaces_moss_key(self):
+        from plugins.tts.moss.transcription import MossTranscriptionProvider
+
+        schema = MossTranscriptionProvider().get_setup_schema()
+        assert schema["name"] == "Moss"
+        assert schema["badge"] == "paid"
+        assert any(v["key"] == "MOSS_API_KEY" for v in schema["env_vars"])
+
+
+# ---------------------------------------------------------------------------
+# register() wiring — STT provider + tools (relationship assertions, not
+# exact counts — no change-detector tests).
+# ---------------------------------------------------------------------------
+
+
+class FakePluginCtx:
+    """Minimal stand-in for PluginContext used by register()."""
+
+    def __init__(self):
+        self.tts_providers = []
+        self.stt_providers = []
+        self.tools = []
+
+    def register_tts_provider(self, provider):
+        self.tts_providers.append(provider)
+
+    def register_transcription_provider(self, provider):
+        self.stt_providers.append(provider)
+
+    def register_tool(self, **kw):
+        self.tools.append(kw)
+
+
+def test_register_wires_stt_provider_and_new_tools():
+    from plugins.tts.moss import register
+
+    ctx = FakePluginCtx()
+    register(ctx)
+
+    # STT provider registered under the name "moss" so `stt.provider: moss`
+    # routes gateway voice messages to the plugin dispatch path.
+    assert any(getattr(p, "name", None) == "moss" for p in ctx.stt_providers)
+    # The TTS provider is still registered alongside.
+    assert any(getattr(p, "name", None) == "moss" for p in ctx.tts_providers)
+
+    tool_names = {t["name"] for t in ctx.tools}
+    assert "moss_transcribe" in tool_names
+    assert "moss_vision" in tool_names
+    # Every moss tool is check_fn-gated (Spotify pattern) so non-Moss users
+    # pay zero schema cost.
+    for tool in ctx.tools:
+        assert tool.get("toolset") == "moss"
+        assert callable(tool.get("check_fn"))
+        assert callable(tool.get("handler"))
+        assert tool.get("schema", {}).get("name") == tool["name"]

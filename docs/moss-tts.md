@@ -158,3 +158,101 @@ MOSS_KEY_FILE=/secure/path/moss-key.txt \
   .venv/Scripts/python.exe -m pytest tests/plugins/test_moss_provider_e2e.py -q
 # or: MOSS_API_KEY=sk-... pytest ...
 ```
+
+---
+
+## Transcription — `moss_transcribe` (speech-to-text + diarization)
+
+The Moss plugin also provides **speech-to-text** through two surfaces:
+
+1. **Gateway voice messages** — set `stt.provider: moss` in config.yaml and
+   the standard voice-message pipeline routes through the plugin's
+   `MossTranscriptionProvider` (registered via
+   `register_transcription_provider`; `moss` is deliberately absent from
+   `BUILTIN_STT_PROVIDERS`, so plugin dispatch fires — no core change).
+2. **Agent-facing tool** — `moss_transcribe` (gated on a configured key).
+
+### Config (`stt.moss`)
+
+```yaml
+stt:
+  provider: "moss"        # route gateway voice messages here
+  moss:
+    model: "moss-transcribe-1.0"   # or moss-transcribe-diarize-pro
+    diarize: false                 # true → forces diarize-pro + speaker segments
+    response_format: "json"        # json | text | diarized_json
+    max_file_size: 536870912       # 512 MB (Moss allows up to 512 MB)
+    prompt: ""                     # optional keyterms (vocabulary boost; diarize-pro only)
+```
+
+Credentials are **shared with TTS** (`MOSS_API_KEY` env/.env,
+`tts.moss.api_key`, `hermes auth add moss`, `MOSS_KEY_FILE`) — no new
+secrets. `hermes tools` → Speech-to-Text lists **Moss** (badge `paid`).
+
+### Usage
+
+```text
+moss_transcribe(
+  audio_path: "/path/clip.wav",        # local file, `file_id:<id>`, or public URL
+  diarize: false,                      # true → moss-transcribe-diarize-pro + segments
+  model: "moss-transcribe-1.0",        # optional (auto-forced when diarize=true)
+  keyterms: ["术语", "boost"],         # ≤20, ≤30 chars each; diarize-pro only
+  response_format: "json",             # json | text | diarized_json
+  async_mode: false,                   # true → returns task_id; poll with task_id=...
+)
+# → {success, transcript, provider, model, duration?, segments?}
+```
+
+- **Multi-speaker diarization**: `diarize=true` forces
+  `moss-transcribe-diarize-pro`; the result adds `segments` normalized to
+  `{start, end, text, speaker}` (speaker labels like `S01`).
+- **Input kinds**: local file → multipart upload; `file_id:<id>` / URL →
+  JSON pass-through. Localhost/loopback/private URLs are rejected
+  client-side (shared security rule).
+- **Async**: `async_mode=true` returns `{task_id}`; call `moss_transcribe`
+  again with that `task_id` to poll (reuses the same
+  `GET /v1/audio/tasks/{task_id}` endpoint as TTS).
+- **Caps**: ≤512 MB audio; `keyterms` ≤20 entries × ≤30 chars (dropped on
+  the plain model). `language` is a best-effort hint (Moss has no language
+  param — logged and ignored).
+
+Live-verified round-trip: synthesize a WAV → `moss_transcribe` returns the
+spoken text; a two-speaker dialogue diarizes into labeled segments.
+
+---
+
+## Image & video understanding — `moss_vision` (MOSS-VL)
+
+`moss_vision` calls `POST /v1/responses` with the `moss-vl-1.0` model for
+image/video understanding, OCR, captioning, and video Q&A. It is a gated
+tool in the `moss` toolset (check_fn on a configured key) and is
+deliberately **not** wired into the core `vision_analyze` router — a
+third-party SaaS backend lives at the edge.
+
+```text
+moss_vision(
+  instruction: "OCR this receipt and return the total.",
+  images: ["/path/a.png", "file_id:img-1"],   # ≤5 images total
+  # image_urls: ["https://.../a.png"],        # explicit public URLs
+  # video: "/path/clip.mp4",                  # OR exactly 1 video (never mixed)
+  # video_url: "https://.../v.mp4",
+  max_output_tokens: 2048,                    # 1–8192 (truncation → warning)
+)
+# → {success, text, status, provider: "moss", model, warning?}
+```
+
+Constraints honored from the docs:
+
+- **1–5 images OR exactly 1 video — never mixed** (returns an error
+  otherwise).
+- Per item either a URL or a local file / `file_id` — local media is
+  uploaded via `POST /v1/files` (purpose `image` / `video`) and passed as
+  `file_id`; URLs must be public.
+- Caps: image ≤30 MB each; video ≤200 MB; `max_output_tokens` 1–8192.
+- When `status == "incomplete"` with
+  `incomplete_details.reason == "max_output_tokens"`, the result includes a
+  `warning` — retry with a higher `max_output_tokens` for the full answer.
+
+Live-verified: an OCR image (`HELLO MOSS 2026`) transcribed to text with
+`status: "completed"`, both via local-file upload and via a pre-uploaded
+`file_id`.

@@ -9,10 +9,15 @@ Registers:
 * :class:`MossStreamer` (``tools.tts_streaming`` registry) so
   conversational streaming picks it up when ``tts.provider: moss`` or
   ``tts.streaming.provider: moss``.
-* Four gated tools in the ``moss`` toolset: ``moss_dialogue_tts``,
-  ``moss_voice_design``, ``moss_voice_clone``, ``moss_voice_list``.
-  Each is check_fn-gated on a configured Moss key (Spotify pattern), so
-  they are listed by ``hermes tools`` but blocked until configured.
+* :class:`MossTranscriptionProvider` (``agent.transcription_provider``)
+  under the name ``moss`` so ``stt.provider: moss`` routes gateway voice
+  messages through the plugin dispatch path (``moss`` is deliberately
+  absent from ``BUILTIN_STT_PROVIDERS``).
+* Six gated tools in the ``moss`` toolset: ``moss_dialogue_tts``,
+  ``moss_voice_design``, ``moss_voice_clone``, ``moss_voice_list``,
+  ``moss_transcribe``, ``moss_vision``.  Each is check_fn-gated on a
+  configured Moss key (Spotify pattern), so they are listed by
+  ``hermes tools`` but blocked until configured.
 
 Credentials: ``MOSS_API_KEY`` env/.env, ``tts.moss.api_key`` in
 config.yaml, ``hermes auth add moss``, or a key file path configured via
@@ -22,7 +27,7 @@ from __future__ import annotations
 
 
 def register(ctx) -> None:
-    """Register provider, streamer, and gated tools. Called by the loader."""
+    """Register providers, streamer, and gated tools. Called by the loader."""
     from plugins.tts.moss.provider import MossProvider
 
     ctx.register_tts_provider(MossProvider())
@@ -31,13 +36,22 @@ def register(ctx) -> None:
     # tools/tts_streaming._REGISTRY.
     from plugins.tts.moss import streaming  # noqa: F401
 
+    # Lazy import — keeps discovery cheap and mirrors MossProvider.
+    from plugins.tts.moss.transcription import MossTranscriptionProvider
+
+    ctx.register_transcription_provider(MossTranscriptionProvider())
+
     from plugins.tts.moss.tools import (
         MOSS_DIALOGUE_TTS_SCHEMA,
+        MOSS_TRANSCRIBE_SCHEMA,
+        MOSS_VISION_SCHEMA,
         MOSS_VOICE_CLONE_SCHEMA,
         MOSS_VOICE_DESIGN_SCHEMA,
         MOSS_VOICE_LIST_SCHEMA,
         _check_moss_available,
         _handle_moss_dialogue_tts,
+        _handle_moss_transcribe,
+        _handle_moss_vision,
         _handle_moss_voice_clone,
         _handle_moss_voice_design,
         _handle_moss_voice_list,
@@ -74,4 +88,20 @@ def register(ctx) -> None:
         handler=_handle_moss_voice_list,
         check_fn=_check_moss_available,
         emoji="📋",
+    )
+    ctx.register_tool(
+        name="moss_transcribe",
+        toolset="moss",
+        schema=MOSS_TRANSCRIBE_SCHEMA,
+        handler=_handle_moss_transcribe,
+        check_fn=_check_moss_available,
+        emoji="🎙️",
+    )
+    ctx.register_tool(
+        name="moss_vision",
+        toolset="moss",
+        schema=MOSS_VISION_SCHEMA,
+        handler=_handle_moss_vision,
+        check_fn=_check_moss_available,
+        emoji="👁️",
     )

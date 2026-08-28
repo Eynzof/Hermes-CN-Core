@@ -1,10 +1,18 @@
-"""Moss plugin tools — dialogue TTS, voice design, voice clone, voice list.
+"""Moss plugin tools — dialogue TTS, voice design/clone/list, transcription, vision.
 
 All tools are registered into the ``moss`` toolset and gated by
 ``_check_moss_available()`` (Spotify pattern): they stay registered so
 ``hermes tools`` lists them, but dispatch is blocked until a Moss API key
 is configured.  Handlers return the standard ``tool_result`` /
 ``tool_error`` JSON envelopes.
+
+Tools:
+
+* ``moss_dialogue_tts`` / ``moss_voice_design`` / ``moss_voice_clone`` /
+  ``moss_voice_list`` — TTS capabilities.
+* ``moss_transcribe`` — transcription + multi-speaker diarization
+  (``POST /v1/audio/transcriptions``).
+* ``moss_vision`` — image/video understanding (``POST /v1/responses``).
 """
 from __future__ import annotations
 
@@ -16,6 +24,17 @@ from typing import Any, Dict, List, Optional
 from agent.tts_provider import resolve_output_format
 from moss_tts import MossError
 
+from plugins.tts.moss.api import (
+    MAX_AUDIO_BYTES,
+    MAX_IMAGE_BYTES,
+    MAX_VIDEO_BYTES,
+    MossApiError,
+    extract_vision_text,
+    transcribe_audio,
+    understand,
+    upload_file,
+    validate_public_url,
+)
 from plugins.tts.moss.client import build_client
 from plugins.tts.moss.provider import MossProvider
 from tools.registry import tool_error, tool_result
@@ -90,13 +109,62 @@ def _audio_result(path: str, provider: str = "moss") -> str:
 
 
 def _moss_error(exc: Exception) -> str:
-    if isinstance(exc, MossError):
+    if isinstance(exc, (MossError, MossApiError)):
         return tool_error(str(exc), success=False, provider="moss")
     return tool_error(
         f"Moss tool failed: {type(exc).__name__}: {exc}",
         success=False,
         provider="moss",
     )
+
+
+def _truthy(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in {"true", "1", "yes", "on"}
+    return False
+
+
+def _string_list(value: Any) -> List[str]:
+    """Normalize a param to a list of non-empty strings."""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        items = [value]
+    elif isinstance(value, (list, tuple)):
+        items = list(value)
+    else:
+        return []
+    out: List[str] = []
+    for item in items:
+        text = str(item or "").strip()
+        if text:
+            out.append(text)
+    return out
+
+
+def _is_url(value: str) -> bool:
+    from urllib.parse import urlparse
+
+    return urlparse(value).scheme in ("http", "https")
+
+
+def _transcription_envelope(data: dict, model: str) -> str:
+    """Build the standard success envelope from a transcriptions response."""
+    envelope: Dict[str, Any] = {
+        "success": True,
+        "transcript": str(data.get("text") or data.get("transcript") or "").strip(),
+        "provider": "moss",
+        "model": model,
+    }
+    if data.get("segments") is not None:
+        envelope["segments"] = data.get("segments")
+    if data.get("duration") is not None:
+        envelope["duration"] = data.get("duration")
+    return tool_result(envelope)
 
 
 def _validate_speakers(speakers: Any) -> List[Dict[str, str]]:
@@ -280,6 +348,191 @@ def _handle_moss_voice_list(args: dict, **kw) -> str:
         return _moss_error(exc)
 
 
+def _handle_moss_transcribe(args: dict, **kw) -> str:
+    """Transcribe audio (moss_transcribe) — local file, file_id, or URL."""
+    try:
+        task_id = str(args.get("task_id") or "").strip()
+        if task_id:
+            # Poll an in-flight async transcription (second call with task_id).
+            from plugins.tts.moss.transcription import MossTranscriptionProvider
+
+            done = MossTranscriptionProvider().poll_task(task_id)
+            return tool_result({**done, "success": True, "provider": "moss"})
+
+        audio_path = str(args.get("audio_path") or "").strip()
+        if not audio_path:
+            return tool_error(
+                "audio_path is required — a local file path, a `file_id:...` "
+                "handle, or a public URL",
+                success=False,
+                provider="moss",
+            )
+
+        model = str(args.get("model") or "moss-transcribe-1.0").strip() or "moss-transcribe-1.0"
+        diarize = _truthy(args.get("diarize"))
+        if diarize:
+            # Diarization requires the diarize-pro model per the docs.
+            model = "moss-transcribe-diarize-pro"
+        response_format = str(args.get("response_format") or "json").strip() or "json"
+        async_mode = _truthy(args.get("async_mode"))
+        keyterms = _string_list(args.get("keyterms")) or None
+        language = str(args.get("language") or "").strip()
+        if language:
+            logger.debug(
+                "moss_transcribe: language=%s is a best-effort hint (Moss has "
+                "no language param) — ignoring", language,
+            )
+
+        data = transcribe_audio(
+            audio_path,
+            model=model,
+            diarize=diarize,
+            response_format=response_format,
+            keyterms=keyterms,
+            async_mode=async_mode,
+        )
+        if async_mode:
+            tid = str(data.get("task_id") or data.get("id") or "").strip()
+            if not tid:
+                return tool_error(
+                    f"Moss async transcription response missing task_id: {data!r}",
+                    success=False,
+                    provider="moss",
+                )
+            return tool_result({
+                "success": True,
+                "task_id": tid,
+                "provider": "moss",
+                "async": True,
+                "model": model,
+            })
+        return _transcription_envelope(data, model)
+    except Exception as exc:  # noqa: BLE001
+        return _moss_error(exc)
+
+
+def _handle_moss_vision(args: dict, **kw) -> str:
+    """Image/video understanding (moss_vision) via POST /v1/responses."""
+    try:
+        instruction = str(args.get("instruction") or "").strip()
+        if not instruction:
+            return tool_error(
+                "instruction is required — what to look at / ask about the media",
+                success=False,
+                provider="moss",
+            )
+
+        images = _string_list(args.get("images"))
+        video = str(args.get("video") or "").strip()
+        image_urls = _string_list(args.get("image_urls"))
+        video_url = str(args.get("video_url") or "").strip()
+        model = str(args.get("model") or "moss-vl-1.0").strip() or "moss-vl-1.0"
+        max_output_tokens = args.get("max_output_tokens")
+
+        if not (images or video or image_urls or video_url):
+            return tool_error(
+                "Provide at least one image or one video (images / image_urls / video / video_url)",
+                success=False,
+                provider="moss",
+            )
+        if len(images) + len(image_urls) > 5:
+            return tool_error(
+                f"Moss vision supports at most 5 images per request "
+                f"(got {len(images) + len(image_urls)})",
+                success=False,
+                provider="moss",
+            )
+        if (images or image_urls) and (video or video_url):
+            return tool_error(
+                "Moss vision does not support mixing images and video in one request",
+                success=False,
+                provider="moss",
+            )
+        if video and video_url:
+            return tool_error(
+                "Provide either `video` or `video_url`, not both",
+                success=False,
+                provider="moss",
+            )
+
+        # Resolve image sources: local file → upload; URL → pass through;
+        # `file_id:...` → pass through.
+        image_file_ids: List[str] = []
+        urls: List[str] = list(image_urls)
+        for src in images:
+            if src.startswith("file_id:"):
+                image_file_ids.append(src.split(":", 1)[1].strip())
+                continue
+            if _is_url(src):
+                validate_public_url(src)
+                urls.append(src)
+                continue
+            path = Path(src).expanduser()
+            if not path.is_file():
+                return tool_error(f"Image file not found: {src}", success=False, provider="moss")
+            if path.stat().st_size > MAX_IMAGE_BYTES:
+                return tool_error(
+                    f"Image file too large: {path.stat().st_size / (1024*1024):.1f}MB "
+                    f"(max {MAX_IMAGE_BYTES / (1024*1024):.0f}MB)",
+                    success=False,
+                    provider="moss",
+                )
+            image_file_ids.append(upload_file(str(path), purpose="image"))
+
+        # Resolve the (single) video source.
+        video_file_id: Optional[str] = None
+        if video:
+            if video.startswith("file_id:"):
+                video_file_id = video.split(":", 1)[1].strip()
+            elif _is_url(video):
+                validate_public_url(video)
+                video_url = video
+            else:
+                path = Path(video).expanduser()
+                if not path.is_file():
+                    return tool_error(f"Video file not found: {video}", success=False, provider="moss")
+                if path.stat().st_size > MAX_VIDEO_BYTES:
+                    return tool_error(
+                        f"Video file too large: {path.stat().st_size / (1024*1024):.1f}MB "
+                        f"(max {MAX_VIDEO_BYTES / (1024*1024):.0f}MB)",
+                        success=False,
+                        provider="moss",
+                    )
+                video_file_id = upload_file(str(path), purpose="video")
+
+        data = understand(
+            instruction,
+            image_urls=urls,
+            image_file_ids=image_file_ids,
+            video_url=video_url or None,
+            video_file_id=video_file_id,
+            model=model,
+            max_output_tokens=max_output_tokens,
+        )
+        text = extract_vision_text(data)
+        status = data.get("status")
+        result: Dict[str, Any] = {
+            "success": True,
+            "text": text,
+            "status": status,
+            "provider": "moss",
+            "model": model,
+        }
+        if status == "incomplete":
+            details = data.get("incomplete_details") or {}
+            reason = details.get("reason") if isinstance(details, dict) else details
+            if reason == "max_output_tokens":
+                result["warning"] = (
+                    "Response truncated because max_output_tokens was reached — "
+                    "retry with a higher max_output_tokens (up to 8192) for the full answer"
+                )
+            else:
+                result["warning"] = f"Response incomplete (reason: {reason})"
+        return tool_result(result)
+    except Exception as exc:  # noqa: BLE001
+        return _moss_error(exc)
+
+
 # ---------------------------------------------------------------------------
 # schemas
 # ---------------------------------------------------------------------------
@@ -420,5 +673,127 @@ MOSS_VOICE_LIST_SCHEMA = {
     "parameters": {
         "type": "object",
         "properties": {},
+    },
+}
+
+MOSS_TRANSCRIBE_SCHEMA = {
+    "name": "moss_transcribe",
+    "description": (
+        "Moss speech-to-text: transcribe an audio file into text, with "
+        "optional multi-speaker diarization (moss-transcribe-diarize-pro). "
+        "Accepts a local file path, a `file_id:<id>` handle, or a public "
+        "URL. Returns {transcript} and, when diarized, {segments} with "
+        "start/end/text/speaker. With async_mode=true it returns a task_id; "
+        "call again with that task_id to poll for the result."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "audio_path": {
+                "type": "string",
+                "description": (
+                    "Audio to transcribe: a local file path, a `file_id:<id>` "
+                    "handle from a previous Moss file upload, or a public URL. "
+                    "Localhost/private URLs are rejected."
+                ),
+            },
+            "task_id": {
+                "type": "string",
+                "description": (
+                    "When set, poll a previously-started async transcription "
+                    "(from async_mode=true) and return its final result."
+                ),
+            },
+            "model": {
+                "type": "string",
+                "enum": ["moss-transcribe-1.0", "moss-transcribe-diarize-pro"],
+                "description": (
+                    "Transcription model. Diarization automatically uses "
+                    "moss-transcribe-diarize-pro when diarize=true."
+                ),
+            },
+            "diarize": {
+                "type": "boolean",
+                "description": (
+                    "When true, force moss-transcribe-diarize-pro and return "
+                    "speaker-separated segments."
+                ),
+            },
+            "keyterms": {
+                "type": "array",
+                "items": {"type": "string"},
+                "maxItems": 20,
+                "description": (
+                    "Vocabulary boost terms (≤20, ≤30 chars each). Only "
+                    "supported on the diarize-pro model; ignored otherwise."
+                ),
+            },
+            "response_format": {
+                "type": "string",
+                "enum": ["json", "text", "diarized_json"],
+                "description": "Response shape. json returns text + segments.",
+            },
+            "language": {
+                "type": "string",
+                "description": "Optional language hint (logged/ignored by the backend — Moss has no language param).",
+            },
+            "async_mode": {
+                "type": "boolean",
+                "description": "Start an async task and return its task_id; poll it by calling moss_transcribe with task_id.",
+            },
+        },
+        "required": ["audio_path"],
+    },
+}
+
+MOSS_VISION_SCHEMA = {
+    "name": "moss_vision",
+    "description": (
+        "Moss MOSS-VL: image/video understanding (OCR, captioning, video "
+        "Q&A) via the moss-vl-1.0 model. Pass 1-5 images OR exactly 1 video "
+        "(never mixed). Each media item may be a local file path, a "
+        "`file_id:<id>` handle, or a public URL. Returns {text, status}. "
+        "When status is 'incomplete' (max_output_tokens truncation) a "
+        "warning is included — retry with a higher max_output_tokens."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "instruction": {
+                "type": "string",
+                "description": "What to look at / ask about the media (e.g. 'OCR this receipt', 'describe the scene').",
+            },
+            "images": {
+                "type": "array",
+                "items": {"type": "string"},
+                "maxItems": 5,
+                "description": "Images: local paths, `file_id:<id>` handles, or public URLs (≤5 total across images + image_urls).",
+            },
+            "image_urls": {
+                "type": "array",
+                "items": {"type": "string"},
+                "maxItems": 5,
+                "description": "Explicit public image URLs (alternative to images).",
+            },
+            "video": {
+                "type": "string",
+                "description": "Single video: local path, `file_id:<id>` handle, or public URL (cannot be combined with images).",
+            },
+            "video_url": {
+                "type": "string",
+                "description": "Explicit public video URL (alternative to video).",
+            },
+            "model": {
+                "type": "string",
+                "description": "Moss vision model (default moss-vl-1.0; moss-vl-1.0-2026-07-08 accepted).",
+            },
+            "max_output_tokens": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 8192,
+                "description": "Cap on output tokens (1-8192). Truncation is reported via status/warning.",
+            },
+        },
+        "required": ["instruction"],
     },
 }

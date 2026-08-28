@@ -1,6 +1,6 @@
 name: moss
-version: 1.0.0
-description: "Moss (mosi.cn) TTS backend — single-voice text_to_speech (sync + streaming) plus dialogue / voice design / voice clone tools. Key via MOSS_API_KEY, config.yaml `tts.moss.api_key`, `hermes auth add moss`, or a key file configured via `MOSS_KEY_FILE`."
+version: 1.1.0
+description: "Moss (mosi.cn) audio backend — single-voice text_to_speech (sync + streaming), dialogue / voice design / voice clone tools, speech-to-text transcription + multi-speaker diarization (moss_transcribe), and image/video understanding (moss_vision). Key via MOSS_API_KEY, config.yaml `tts.moss.api_key`, `hermes auth add moss`, or a key file configured via `MOSS_KEY_FILE`."
 author: Hermes-CN-Core fork
 kind: backend
 provides_tools:
@@ -8,5 +8,7 @@ provides_tools:
   - moss_voice_design
   - moss_voice_clone
   - moss_voice_list
+  - moss_transcribe
+  - moss_vision
 requires_env:
   - MOSS_API_KEY

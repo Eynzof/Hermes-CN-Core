@@ -323,6 +323,34 @@ async def _lifespan(app: "FastAPI"):
     # sweeping stale sessions on schedule, independent of list requests.
     auto_archive_task = asyncio.create_task(_auto_archive_ticker_loop())
 
+    # [CN-fork] P-066: optional typed Named Pipe bridge for the DLR dashboard
+    # client. Opt-in via HERMES_DASHBOARD_BRIDGE=1, read once at startup (not
+    # hot-reloaded). The listener is a no-op off Win32, so this block stays
+    # safe on Linux CI. See hermes_cli/dashboard_bridge/ for the protocol.
+    bridge_listener = None
+    if os.getenv("HERMES_DASHBOARD_BRIDGE") == "1":
+        try:
+            from hermes_cli.dashboard_bridge import (
+                DashboardBridgeListener,
+                DashboardConversationBackend,
+                bridge_agent_factory,
+            )
+
+            bridge_listener = DashboardBridgeListener(
+                lambda: DashboardConversationBackend(bridge_agent_factory)
+            )
+            bridge_listener.start()
+            app.state.bridge_listener = bridge_listener
+            _log.info(
+                "Dashboard bridge listener started (pipe=%s)",
+                bridge_listener.pipe_name,
+            )
+        except Exception:
+            _log.exception(
+                "Dashboard bridge listener failed to start; continuing without it"
+            )
+            bridge_listener = None
+
     try:
         yield
     finally:
@@ -334,6 +362,11 @@ async def _lifespan(app: "FastAPI"):
             cron_stop.set()
         if os.getenv("HERMES_DESKTOP") == "1":
             _terminate_desktop_managed_gateway()
+        if bridge_listener is not None:
+            try:
+                bridge_listener.stop()
+            except Exception:
+                _log.exception("Dashboard bridge listener stop failed")
 
 
 def _get_event_state(app: "FastAPI"):

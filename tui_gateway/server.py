@@ -6061,6 +6061,13 @@ def _agent_cbs(sid: str) -> dict:
     return callbacks
 
 
+def _agent_cbs_merged(sid: str, overrides: dict | None = None) -> dict:
+    callbacks = _agent_cbs(sid)
+    if overrides:
+        callbacks.update(overrides)
+    return callbacks
+
+
 def _apply_project_workspace(task_id: str, path: str, _name: str = "") -> None:
     """Intentional workspace move from the project_* tools: re-anchor the live
     session's cwd to the chosen project's folder and push session.info so the
@@ -6661,6 +6668,10 @@ def _make_agent(
     reasoning_config_override: dict | None = None,
     service_tier_override: str | None = None,
     platform_override: str | None = None,
+    enabled_toolsets_override: list[str] | None = None,
+    callback_overrides: dict | None = None,
+    skip_memory_override: bool | None = None,
+    skip_background_review_override: bool | None = None,
 ):
     # AC-4 test seam: dead unless explicitly armed by the isolated certify
     # harness. Both inline and compute-host paths construct through _make_agent,
@@ -6816,7 +6827,11 @@ def _make_agent(
             if service_tier_override is not None
             else _load_service_tier()
         ),
-        enabled_toolsets=_load_enabled_toolsets(_resolve_agent_platform(platform_override)),
+        enabled_toolsets=(
+            enabled_toolsets_override
+            if enabled_toolsets_override is not None
+            else _load_enabled_toolsets(_resolve_agent_platform(platform_override))
+        ),
         # OpenRouter provider-routing prefs (config.yaml `provider_routing`).
         # Mirrors the messaging gateway + CLI so the desktop/TUI honors the same
         # routing instead of letting OpenRouter pick providers at random.
@@ -6833,9 +6848,18 @@ def _make_agent(
         checkpoints_enabled=is_truthy_value(os.environ.get("HERMES_TUI_CHECKPOINTS")),
         pass_session_id=is_truthy_value(os.environ.get("HERMES_TUI_PASS_SESSION_ID")),
         skip_context_files=is_truthy_value(os.environ.get("HERMES_IGNORE_RULES")),
-        skip_memory=is_truthy_value(os.environ.get("HERMES_IGNORE_RULES")),
+        skip_memory=(
+            skip_memory_override
+            if skip_memory_override is not None
+            else is_truthy_value(os.environ.get("HERMES_IGNORE_RULES"))
+        ),
+        skip_background_review=(
+            skip_background_review_override
+            if skip_background_review_override is not None
+            else False
+        ),
         fallback_model=_load_fallback_model(),
-        **_agent_cbs(sid),
+        **_agent_cbs_merged(sid, callback_overrides),
     )
 
 

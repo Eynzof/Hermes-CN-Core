@@ -7123,9 +7123,43 @@ def test_config_set_model_global_persists(monkeypatch):
 
     assert resp["result"]["value"] == "anthropic/claude-sonnet-4.6"
     assert seen["is_global"] is True
+    assert "model_override" not in server._sessions["sid"]
     assert saved_values["model.default"] == "anthropic/claude-sonnet-4.6"
     assert saved_values["model.provider"] == "anthropic"
     assert saved_values["model.base_url"] == "https://api.anthropic.com"
+
+
+def test_config_set_model_global_busy_deferred_does_not_pin_session(monkeypatch):
+    session = _session(agent=object())
+    session["running"] = True
+    server._sessions["sid"] = session
+
+    resp = server.handle_request(
+        {
+            "id": "1",
+            "method": "config.set",
+            "params": {
+                "session_id": "sid",
+                "key": "model",
+                "value": "anthropic/claude-sonnet-4.6 --provider anthropic --global",
+            },
+        }
+    )
+
+    assert resp["result"]["scope"] == "global"
+    assert resp["result"]["deferred"] is True
+    assert session["pending_model_switch"]["pin_session_override"] is False
+
+    calls = []
+    monkeypatch.setattr(
+        server,
+        "_apply_model_switch",
+        lambda *args, **kwargs: calls.append(kwargs) or {"confirm_required": False},
+    )
+
+    server._apply_pending_model_switch("sid", session)
+
+    assert calls[0]["pin_session_override"] is False
 
 
 def test_config_set_model_explicit_provider_skips_broken_default_init(monkeypatch):

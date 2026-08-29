@@ -62,6 +62,8 @@ interface ModelEditSubmenuProps {
   /** The profile's configured default effort — what an unset row inherits.
    *  Passed in (not read from a store) so this submenu stays pure. */
   defaultEffort: string
+  /** Whether the row should expose the global-default action. */
+  canSetGlobalDefault: boolean
   /** This row's effective reasoning effort (live for the active model, else its
    *  preset) — the submenu shows and edits from this, never the raw session. */
   effort: string
@@ -73,6 +75,8 @@ interface ModelEditSubmenuProps {
   model: string
   /** Switch to a specific model id (used to swap base ⇄ -fast variant). */
   onSelectModel: (model: string) => Promise<boolean | void> | void
+  /** Persist this row as the profile-global model default. */
+  onSetGlobalDefault: () => Promise<boolean | void> | void
   /** Report an option change. This submenu is PURE: it never writes to a
    *  session, a preset store, or the gateway itself — the owning surface's
    *  controller decides what an edit means. That's what lets the same submenu
@@ -98,11 +102,13 @@ export function ModelEditSubmenu(props: ModelEditSubmenuProps) {
 }
 
 function ModelEditSubmenuBody({
+  canSetGlobalDefault,
   defaultEffort,
   effort,
   fastControl,
   isActive,
   onSelectModel,
+  onSetGlobalDefault,
   onSetOptions,
   reasoning
 }: ModelEditSubmenuProps) {
@@ -111,6 +117,7 @@ function ModelEditSubmenuBody({
 
   const effortValue = resolveReasoningEffort(effort, defaultEffort)
   const thinkingOn = isThinkingEnabled(effort, defaultEffort)
+  const globalDefaultLabel = copy.setGlobalDefault ?? 'Set as global default'
 
   const setFast = (enabled: boolean) => {
     if (fastControl.kind === 'variant') {
@@ -134,46 +141,56 @@ function ModelEditSubmenuBody({
   const hasFast = fastControl.kind !== 'none'
   const fastOn = fastControl.kind === 'none' ? false : fastControl.on
 
-  return !hasFast && !reasoning ? (
-    <div className="px-2.5 py-3 text-xs text-(--ui-text-tertiary)">{copy.noOptions}</div>
-  ) : (
+  return (
     <>
-      <DropdownMenuLabel className={dropdownMenuSectionLabel}>{copy.options}</DropdownMenuLabel>
-      {reasoning ? (
-        <DropdownMenuItem className={dropdownMenuRow} onSelect={event => event.preventDefault()}>
-          {copy.thinking}
-          <Switch
-            checked={thinkingOn}
-            className="ml-auto"
-            onCheckedChange={checked => onSetOptions({ effort: checked ? effortValue || defaultEffort : 'none' })}
-            size="xs"
-          />
+      {canSetGlobalDefault ? (
+        <DropdownMenuItem className={dropdownMenuRow} onSelect={() => void onSetGlobalDefault()}>
+          {globalDefaultLabel}
         </DropdownMenuItem>
       ) : null}
-      {hasFast ? (
-        <DropdownMenuItem className={dropdownMenuRow} onSelect={event => event.preventDefault()}>
-          {copy.fast}
-          <Switch checked={fastOn} className="ml-auto" onCheckedChange={setFast} size="xs" />
-        </DropdownMenuItem>
-      ) : null}
-      {reasoning ? (
+      {!hasFast && !reasoning ? (
+        <div className="px-2.5 py-3 text-xs text-(--ui-text-tertiary)">{copy.noOptions}</div>
+      ) : (
         <>
-          <DropdownMenuSeparator className="mx-0" />
-          <DropdownMenuLabel className={dropdownMenuSectionLabel}>{copy.effort}</DropdownMenuLabel>
-          <DropdownMenuRadioGroup onValueChange={value => onSetOptions({ effort: value })} value={effortValue}>
-            {REASONING_EFFORTS.map(value => (
-              <DropdownMenuRadioItem
-                className={dropdownMenuRow}
-                key={value}
-                onSelect={event => event.preventDefault()}
-                value={value}
-              >
-                {copy[value]}
-              </DropdownMenuRadioItem>
-            ))}
-          </DropdownMenuRadioGroup>
+          {canSetGlobalDefault ? <DropdownMenuSeparator className="mx-0" /> : null}
+          <DropdownMenuLabel className={dropdownMenuSectionLabel}>{copy.options}</DropdownMenuLabel>
+          {reasoning ? (
+            <DropdownMenuItem className={dropdownMenuRow} onSelect={event => event.preventDefault()}>
+              {copy.thinking}
+              <Switch
+                checked={thinkingOn}
+                className="ml-auto"
+                onCheckedChange={checked => onSetOptions({ effort: checked ? effortValue || defaultEffort : 'none' })}
+                size="xs"
+              />
+            </DropdownMenuItem>
+          ) : null}
+          {hasFast ? (
+            <DropdownMenuItem className={dropdownMenuRow} onSelect={event => event.preventDefault()}>
+              {copy.fast}
+              <Switch checked={fastOn} className="ml-auto" onCheckedChange={setFast} size="xs" />
+            </DropdownMenuItem>
+          ) : null}
+          {reasoning ? (
+            <>
+              <DropdownMenuSeparator className="mx-0" />
+              <DropdownMenuLabel className={dropdownMenuSectionLabel}>{copy.effort}</DropdownMenuLabel>
+              <DropdownMenuRadioGroup onValueChange={value => onSetOptions({ effort: value })} value={effortValue}>
+                {REASONING_EFFORTS.map(value => (
+                  <DropdownMenuRadioItem
+                    className={dropdownMenuRow}
+                    key={value}
+                    onSelect={event => event.preventDefault()}
+                    value={value}
+                  >
+                    {copy[value]}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </>
+          ) : null}
         </>
-      ) : null}
+      )}
     </>
   )
 }

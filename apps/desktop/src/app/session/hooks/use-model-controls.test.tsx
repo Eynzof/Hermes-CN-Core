@@ -241,6 +241,34 @@ describe('useModelControls', () => {
     expect(requestGateway).not.toHaveBeenCalledWith('slash.exec', expect.anything())
   })
 
+  it('routes active-session global picks through config.set with --global and keeps the composer default-derived', async () => {
+    $activeSessionId.set('session-1')
+    setCurrentModel('old-model')
+    setCurrentProvider('old-provider')
+    setCurrentModelSource('manual')
+    const requestGateway = vi.fn(async () => ({ key: 'model', value: 'claude-sonnet-4.6' }) as never)
+    let controls!: Controls
+
+    render(<Harness onReady={value => (controls = value)} requestGateway={requestGateway} />)
+
+    await expect(
+      controls.selectModel({
+        model: 'claude-sonnet-4.6',
+        provider: 'anthropic',
+        scope: 'global'
+      })
+    ).resolves.toBe(true)
+
+    expect(requestGateway).toHaveBeenCalledWith('config.set', {
+      session_id: 'session-1',
+      key: 'model',
+      value: 'claude-sonnet-4.6 --provider anthropic --global'
+    })
+    expect($currentModel.get()).toBe('claude-sonnet-4.6')
+    expect($currentProvider.get()).toBe('anthropic')
+    expect(getCurrentModelSource()).toBe('default')
+  })
+
   it('keeps a mid-turn pick painted and skips the refetch that would repaint the old model', async () => {
     // The gateway queues a switch made during a turn and applies it at the next
     // turn start. Invalidating now would answer with the still-running model

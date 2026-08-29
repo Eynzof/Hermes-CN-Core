@@ -46,7 +46,7 @@ export function ModelPicker({
   const [currentModel, setCurrentModel] = useState('')
   const [err, setErr] = useState('')
   const [loading, setLoading] = useState(true)
-  const [persistGlobal, setPersistGlobal] = useState(false)
+  const [persistGlobal, setPersistGlobal] = useState(true)
   const [providerIdx, setProviderIdx] = useState(0)
   const [modelIdx, setModelIdx] = useState(0)
   const [stage, setStage] = useState<Stage>('provider')

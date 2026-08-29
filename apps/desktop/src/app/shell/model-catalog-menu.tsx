@@ -72,7 +72,7 @@ export interface ModelMenuController {
   current: ModelChoice
   presetFor: (provider: string, model: string) => { effort?: string; fast?: boolean }
   /** Commit a model row. Return false to abort (a failed session switch). */
-  select: (model: string, provider: string) => Promise<boolean | void> | void
+  select: (model: string, provider: string, options?: { scope?: 'global' | 'session' }) => Promise<boolean | void> | void
   /** Edit ONE option on a row. `isActive` says whether it's the current model. */
   setOptions: (
     patch: { effort?: string; fast?: boolean },
@@ -454,9 +454,13 @@ export function ModelCatalogMenu({
                           defaultEffort={defaultEffort}
                           effort={effEffort}
                           fastControl={fastControl}
+                          canSetGlobalDefault={Boolean(sessionId)}
                           isActive={isCurrent}
                           model={family.id}
                           onSelectModel={nextModel => controller.select(nextModel, group.provider.slug)}
+                          onSetGlobalDefault={() =>
+                            controller.select(activeId ?? family.id, group.provider.slug, { scope: 'global' })
+                          }
                           onSetOptions={patch =>
                             controller.setOptions(patch, {
                               isActive: isCurrent,

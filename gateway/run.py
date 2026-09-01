@@ -28738,7 +28738,7 @@ async def start_gateway(config: Optional[GatewayConfig] = None, replace: bool = 
     # Start the background cron scheduler via the resolved provider so
     # scheduled jobs fire automatically. Validate the local jobs file first:
     # failures disable cron firing but do not prevent the gateway from serving.
-    from cron.scheduler_provider import resolve_cron_scheduler
+    from cron.scheduler_provider import InProcessCronScheduler, resolve_cron_scheduler
     cron_stop = threading.Event()
     cron_provider = None
     cron_thread = None

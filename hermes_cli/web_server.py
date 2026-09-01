@@ -9281,11 +9281,20 @@ def _messaging_platform_payload(
             )
         except Exception:
             enabled = False
-            configured = all(
-                env_on_disk.get(key) or os.getenv(key, "")
-                for key in entry["required_env"]
-            )
+            configured = False
             home_channel = None
+
+        # Desktop injects HERMES_HOME/.env into the gateway child, but the
+        # dashboard process itself may not have those keys in os.environ.
+        # load_gateway_config() then reports weixin/feishu as disabled even
+        # though IM onboarding wrote valid credentials to disk — the UI
+        # shows「未启用」and auto-restarts QR. Honor env_on_disk here.
+        required_on_disk = all(
+            bool(env_on_disk.get(key)) for key in entry["required_env"]
+        )
+        if required_on_disk:
+            enabled = True
+            configured = True
 
     state = (
         runtime_platform.get("state") if isinstance(runtime_platform, dict) else None

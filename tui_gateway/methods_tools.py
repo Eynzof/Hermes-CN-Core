@@ -1904,6 +1904,50 @@ def _(rid, params: dict) -> dict:
                 },
             )
 
+        if action == "config":
+            from pathlib import Path
+
+            from hermes_cli.plugins_cmd import resolve_plugin_config_file
+
+            ident = (params.get("key") or params.get("name") or "").strip()
+            if not ident:
+                return _err(rid, 4019, "plugins.config requires a 'key' or 'name'")
+            op = str(params.get("op") or "info").strip().lower()
+            try:
+                info = resolve_plugin_config_file(ident)
+            except ValueError as exc:
+                return _err(rid, 4019, str(exc))
+
+            if op == "info":
+                return _ok(rid, info)
+
+            config_path = Path(info["config_path"])
+
+            if op == "read":
+                if config_path.is_file():
+                    content = config_path.read_text(encoding="utf-8", errors="replace")
+                else:
+                    content = str(info.get("template_content") or "")
+                return _ok(rid, {**info, "content": content})
+
+            if op == "write":
+                raw_content = params.get("content")
+                if not isinstance(raw_content, str):
+                    return _err(rid, 4004, "plugins.config write requires 'content'")
+                config_path.parent.mkdir(parents=True, exist_ok=True)
+                config_path.write_text(raw_content, encoding="utf-8")
+                return _ok(
+                    rid,
+                    {
+                        "ok": True,
+                        "config_path": str(config_path),
+                        "config_name": info.get("config_name"),
+                        "exists": True,
+                    },
+                )
+
+            return _err(rid, 4017, f"unknown plugins.config op: {op}")
+
         return _err(rid, 4017, f"unknown plugins action: {action}")
     except Exception as e:
         return _err(rid, 5026, str(e))

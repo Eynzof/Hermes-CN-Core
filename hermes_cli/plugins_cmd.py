@@ -1730,6 +1730,61 @@ def _discover_all_plugins() -> list:
     return list(seen.values())
 
 
+def resolve_plugin_config_file(identifier: str) -> dict:
+    """Locate the editable config file for *identifier* (registry key or name).
+
+    Priority: ``config.yaml`` → ``config.yml`` → ``plugin.yaml`` →
+    ``plugin.yml`` → ``plugin.json``. When only ``config.yaml.example`` exists,
+    returns a target ``config.yaml`` path plus template content for first save.
+    """
+    resolved = _resolve_plugin_key_and_source(identifier)
+    if resolved is None:
+        raise ValueError(f"Plugin '{identifier}' is not installed")
+    key, _source = resolved
+
+    dir_path: Optional[Path] = None
+    for entry in _discover_all_plugins():
+        if entry[5] == key:
+            dir_path = Path(entry[4])
+            break
+    if dir_path is None or not dir_path.is_dir():
+        raise ValueError(f"Plugin directory for '{key}' not found")
+
+    preferred = (
+        "config.yaml",
+        "config.yml",
+        "plugin.yaml",
+        "plugin.yml",
+        "plugin.json",
+    )
+    for name in preferred:
+        candidate = dir_path / name
+        if candidate.is_file():
+            return {
+                "key": key,
+                "plugin_dir": str(dir_path),
+                "config_path": str(candidate),
+                "config_name": name,
+                "exists": True,
+            }
+
+    example = dir_path / "config.yaml.example"
+    if example.is_file():
+        template = example.read_text(encoding="utf-8", errors="replace")
+        target = dir_path / "config.yaml"
+        return {
+            "key": key,
+            "plugin_dir": str(dir_path),
+            "config_path": str(target),
+            "config_name": "config.yaml",
+            "exists": False,
+            "template_name": "config.yaml.example",
+            "template_content": template,
+        }
+
+    raise ValueError(f"No editable config file found for plugin '{key}'")
+
+
 def _discover_entrypoint_plugins() -> list[tuple[str, str, str, str]]:
     """Return plugin entries advertised through ``hermes_agent.plugins``.
 

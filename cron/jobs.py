@@ -1092,23 +1092,38 @@ def get_ticker_last_error() -> Optional[str]:
 # preserved and the cached canonical copy can never be mutated by a caller.
 # ---------------------------------------------------------------------------
 _jobs_cache_lock = threading.Lock()
-_jobs_cache_key: Optional[Tuple[str, int, int]] = None
+_jobs_cache_key: Optional[Tuple[str, int, int, int]] = None
 _jobs_cache_value: Optional[List[Dict[str, Any]]] = None
 
 
 def _jobs_cache_signature(
     stat_result: os.stat_result, jobs_file: Optional[Path] = None
-) -> Tuple[str, int, int]:
-    """Cache-validation identity for jobs.json: (path, mtime_ns, size).
+) -> Tuple[str, int, int, int]:
+    """Cache-validation identity for jobs.json: (path, mtime_ns, size, ino).
 
     ``JOBS_FILE`` is read dynamically (not captured) so a monkeypatched or
     profile-switched path participates in the key and invalidates naturally.
+
+    ``st_ino`` is required for read-your-write correctness, exactly as in
+    ``_jobs_file_stamp``: every legitimate writer goes through
+    mkstemp+``os.replace`` (a new inode). On coarse-filesystem-time hosts —
+    and on Windows, where ``os.replace`` can recycle the freed inode number of
+    the file it just overwrote while the file-system timestamp granularity
+    (typically ~10 ms) leaves ``st_mtime_ns`` unchanged across rapid saves — a
+    same-size update would otherwise keep the previous ``(mtime_ns, size)`` and
+    a stale cache entry would be served as a hit. ``st_ino`` distinguishes the
+    just-written file from the cached one in exactly that window.
     """
     path = jobs_file or _current_cron_store().jobs_file
-    return (str(path), stat_result.st_mtime_ns, stat_result.st_size)
+    return (
+        str(path),
+        stat_result.st_mtime_ns,
+        stat_result.st_size,
+        stat_result.st_ino,
+    )
 
 
-def _read_cached_jobs(signature: Tuple[str, int, int]) -> Optional[List[Dict[str, Any]]]:
+def _read_cached_jobs(signature: Tuple[str, int, int, int]) -> Optional[List[Dict[str, Any]]]:
     """Return a deep copy of the cached jobs iff the signature still matches."""
     with _jobs_cache_lock:
         if _jobs_cache_value is not None and _jobs_cache_key == signature:
@@ -1116,7 +1131,7 @@ def _read_cached_jobs(signature: Tuple[str, int, int]) -> Optional[List[Dict[str
     return None
 
 
-def _store_cached_jobs(signature: Tuple[str, int, int], jobs: List[Dict[str, Any]]) -> None:
+def _store_cached_jobs(signature: Tuple[str, int, int, int], jobs: List[Dict[str, Any]]) -> None:
     """Store a private deep copy of ``jobs`` under ``signature``."""
     global _jobs_cache_key, _jobs_cache_value
     with _jobs_cache_lock:
@@ -1191,7 +1206,7 @@ def load_jobs() -> List[Dict[str, Any]]:
         # handling below still runs.
         stat_result = None
 
-    signature: Optional[Tuple[str, int, int]] = None
+    signature: Optional[Tuple[str, int, int, int]] = None
     if stat_result is not None:
         signature = _jobs_cache_signature(stat_result, jobs_file)
         cached = _read_cached_jobs(signature)

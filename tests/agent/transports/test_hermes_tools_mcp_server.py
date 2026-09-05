@@ -77,11 +77,6 @@ class TestSignatureFromSchema:
 
 
 
-
-
-
-
-
 class TestModuleSurface:
 
     def test_exposed_tools_are_safe_subset(self):
@@ -99,7 +94,6 @@ class TestModuleSurface:
             f"these tools must NOT be exposed via the codex callback "
             f"because codex has built-in equivalents: {leaked}"
         )
-
 
 
 

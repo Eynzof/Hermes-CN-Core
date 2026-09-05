@@ -572,7 +572,9 @@ class TestTerminalToolGatewayLifecycleGuard:
         self._patch_env(monkeypatch, _FakeEnv(), inside_gateway=True)
         monkeypatch.setattr(tt, "_check_all_guards", lambda cmd, env, **kwargs: {"approved": True})
 
-        result = json.loads(tt.terminal_tool(command="systemctl status nginx"))
+        result = json.loads(
+            tt.terminal_tool(command="systemctl status nginx", token_kill=False)
+        )
 
         assert result["exit_code"] == 0
         assert calls == ["systemctl status nginx"]

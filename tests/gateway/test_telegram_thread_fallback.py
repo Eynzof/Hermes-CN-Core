@@ -582,6 +582,7 @@ async def test_send_image_upload_fallback_blocks_connect_time_rebind(monkeypatch
         "all_proxy",
     ):
         monkeypatch.delenv(proxy_var, raising=False)
+    monkeypatch.setenv("NO_PROXY", "*")
 
     answers = iter(("93.184.216.34", "169.254.169.254"))
 
@@ -722,5 +723,4 @@ async def test_thread_fallback_only_fires_once():
     # Second chunk: should use thread_id=None directly (effective_thread_id
     # was cleared per-chunk but the metadata doesn't change between chunks)
     # The key point: the message was delivered despite the invalid thread
-
 

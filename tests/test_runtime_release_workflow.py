@@ -11,6 +11,7 @@ failure mode behind issue #16 (MCP) and the 飞书/钉钉/企微/微信 desktop 
 import os
 import plistlib
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -54,12 +55,29 @@ def _frozen_verify_packages() -> set[str]:
     return set(body.replace("\\", "").split())
 
 
-def test_runtime_workflow_installs_cn_desktop_extra():
-    """The frozen runtime installs the cn-desktop aggregate extra.
+def test_runtime_workflow_installs_cn_desktop_extra_from_lock():
+    """The frozen runtime installs the locked cn-desktop aggregate extra.
 
     cn-desktop is the single source of truth for "what the desktop ships".
+    Bare pip resolution is forbidden because it ignores ``[tool.uv]``
+    overrides and can silently select a different transitive dependency set.
     """
-    assert 'pip install -e ".[cn-desktop]"' in _workflow_text()
+    workflow = _workflow_text()
+    sync_commands = [
+        shlex.split(line.strip())
+        for line in workflow.splitlines()
+        if line.strip().startswith("uv sync ")
+    ]
+
+    assert any(
+        "--locked" in command
+        and any(
+            command[index : index + 2] == ["--extra", "cn-desktop"]
+            for index in range(len(command) - 1)
+        )
+        for command in sync_commands
+    ), "release-runtime.yml must install the locked cn-desktop extra with uv"
+    assert 'pip install -e ".[cn-desktop]"' not in workflow
 
 
 def test_runtime_workflow_python_satisfies_project_requirement():

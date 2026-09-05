@@ -1386,10 +1386,9 @@ class TestDefaultInputSamplerate:
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32",
+    sys.platform != "linux",
     reason="WSL2 PowerShell fallback branch is gated on platform.system() == 'Linux' "
-    "(WSL detection reads /proc/version) — unreachable on a Windows host "
-    "(Linux-only environment tests)",
+    "(WSL detection reads /proc/version)",
 )
 class TestWSL2PowerShellFallback:
     """Regression tests for WSL2 PowerShell TTS fallback (issue #17608).

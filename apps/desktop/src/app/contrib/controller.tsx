@@ -708,26 +708,6 @@ function TitlebarSlot({ area, className, style }: TitlebarSlotProps) {
   )
 }
 
-interface TitlebarSlotProps {
-  area: 'titleBar.center' | 'titleBar.left' | 'titleBar.right'
-  className: string
-  style?: CSSProperties
-}
-
-function TitlebarSlot({ area, className, style }: TitlebarSlotProps) {
-  const items = useContributions(area)
-
-  if (items.length === 0) {
-    return null
-  }
-
-  return (
-    <div className={className} style={style}>
-      <Slot area={area} />
-    </div>
-  )
-}
-
 export function ContribController() {
   const sidebarOpen = useStore($sidebarOpen)
   const statusbarVisible = useStore($statusbarVisible)

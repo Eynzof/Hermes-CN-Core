@@ -47,7 +47,6 @@ import type {
   ImageAttachResponse,
   SessionRedirectResponse
 } from '../../../types'
-import { resolveSessionProfile } from '../use-session-actions/utils'
 
 import {
   applyBranchVisibility,

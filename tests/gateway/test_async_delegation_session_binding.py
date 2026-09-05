@@ -206,4 +206,3 @@ class TestGatewayPinningFailsClosed:
         getattr(
             runner.session_store, "advance_compression_session"
         ).assert_called_once_with(current.session_key, "sess_parent", "sess_tip")
-

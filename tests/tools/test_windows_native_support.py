@@ -52,7 +52,7 @@ class TestConfigureWindowsStdio:
         sys.modules.pop("hermes_cli.stdio", None)
 
     @pytest.mark.skipif(sys.platform == "win32", reason="POSIX-only test — no-op on Windows")
-    def test_no_op_on_posix(self):
+    def test_no_op_on_posix(self, monkeypatch):
         from hermes_cli import stdio
 
         monkeypatch.setattr(stdio, "is_windows", lambda: False)

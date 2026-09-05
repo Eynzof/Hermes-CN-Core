@@ -373,6 +373,11 @@ export function ModelCatalogMenu({
                   <span className="truncate">
                     <HighlightMatches query={search} text={group.provider.name} />
                   </span>
+                  {group.provider.warning ? (
+                    <span className="min-w-0 flex-1 truncate font-normal normal-case tracking-normal text-(--ui-text-tertiary)">
+                      {group.provider.warning}
+                    </span>
+                  ) : null}
                   <DisclosureCaret
                     className="shrink-0 text-(--ui-text-tertiary) opacity-0 transition group-hover/label:opacity-100"
                     open={!collapsed}

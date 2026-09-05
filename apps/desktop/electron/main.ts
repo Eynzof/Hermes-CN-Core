@@ -2961,19 +2961,6 @@ async function applyUpdates(opts = {}) {
       return { ok: false, error: 'update-already-running', message: handoffConflict.message }
     }
 
-    const handoffConflict = updateHandoffConflict(HERMES_HOME)
-
-    if (handoffConflict) {
-      // A different updater already owns the marker — most often a previous
-      // "Update" click whose updater is still alive and parked mid-run.
-      // Spawning another here would overwrite its claim and let two updaters
-      // mutate the checkout at once (#75778); refuse instead.
-      rememberLog(`[updates] refusing hand-off: ${handoffConflict.message}`)
-      emitUpdateProgress({ stage: 'error', message: handoffConflict.message, percent: null })
-
-      return { ok: false, error: 'update-already-running', message: handoffConflict.message }
-    }
-
     emitUpdateProgress({
       stage: 'restart',
       message:
@@ -4077,6 +4064,7 @@ async function ensureRuntime(backend) {
             'and ensure it is on your PATH to use Git Bash, or keep the default shell "auto".'
         )
       }
+
       // Verify at least one PowerShell is available (ships with every Windows system).
       const hasPowerShell =
         findOnPath('pwsh.exe') ||

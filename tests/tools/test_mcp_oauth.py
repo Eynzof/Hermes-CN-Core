@@ -2,6 +2,7 @@
 
 import orjson
 import json
+import os
 import stat
 import sys
 from io import BytesIO
@@ -337,11 +338,12 @@ class TestCallbackPortReservation:
     def test_pinned_port_is_not_reserved(self):
         import tools.mcp_oauth as mod
 
+        reservations_before = dict(mod._reserved_sockets)
         cfg: dict = {"redirect_port": 49399}
         port = mod._configure_callback_port(cfg)
         assert port == 49399
         assert cfg["_resolved_port"] == 49399
-        assert 49399 not in mod._reserved_sockets
+        assert mod._reserved_sockets == reservations_before
 
     def test_wait_for_callback_adopts_reserved_socket(self, monkeypatch):
         """E2E: reserve → _wait_for_callback binds the SAME socket and the

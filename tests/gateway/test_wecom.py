@@ -241,6 +241,7 @@ class TestMediaUpload:
             "all_proxy",
         ):
             monkeypatch.delenv(proxy_var, raising=False)
+        monkeypatch.setenv("NO_PROXY", "*")
 
         answers = iter(("93.184.216.34", "169.254.169.254"))
 
@@ -482,4 +483,3 @@ class TestTextBatchFlushRace:
         assert adapter._pending_text_batches.get(key) is event, (
             "superseded task must not pop the event"
         )
-

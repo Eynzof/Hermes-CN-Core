@@ -227,15 +227,6 @@ export function resolveNewSessionCwd(): string {
     }
   }
 
-  // Inherit the focused chat's workspace. ⌘N/⌘T from a session that already
-  // has a project/pwd should stay there — drilling into the sidebar project
-  // is the uncommon path, not the requirement.
-  const focusedCwd = focusedSessionWorkspaceCwd()
-
-  if (focusedCwd) {
-    return focusedCwd
-  }
-
   return workspaceCwdForNewSession()
 }
 

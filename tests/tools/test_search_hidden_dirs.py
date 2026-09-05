@@ -91,6 +91,7 @@ class TestGrepExcludesHiddenDirs:
             LocalEnvironment(cwd=str(searchable_tree)),
             cwd=str(searchable_tree),
         )
+        monkeypatch.setattr(ops, "_is_local_env", lambda: False)
         monkeypatch.setattr(ops, "_has_command", lambda command: command == "grep")
         return ops
 

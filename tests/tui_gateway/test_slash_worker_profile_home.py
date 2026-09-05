@@ -16,9 +16,9 @@ def test_slash_worker_accepts_profile_home():
         with patch("subprocess.Popen") as mock_popen:
             mock_popen.return_value.stdout = MagicMock()
             mock_popen.return_value.stderr = MagicMock()
-            
+
             from tui_gateway.server import _SlashWorker
-            
+
             # Test initialization with profile_home
             worker = _SlashWorker(
                 session_key="test_key",
@@ -43,18 +43,18 @@ def test_slash_worker_without_profile_home():
         with patch("subprocess.Popen") as mock_popen:
             mock_popen.return_value.stdout = MagicMock()
             mock_popen.return_value.stderr = MagicMock()
-            
+
             from tui_gateway.server import _SlashWorker
-            
+
             # Test initialization without profile_home (backward compatible)
             worker = _SlashWorker(
                 session_key="test_key",
                 model="test-model"
             )
-            
+
             # Verify Popen was called
             assert mock_popen.called
-            
+
             # Check that HERMES_HOME was NOT overridden
             call_kwargs = mock_popen.call_args[1]
             assert "env" in call_kwargs
@@ -73,19 +73,19 @@ def test_slash_worker_with_none_profile_home():
         with patch("subprocess.Popen") as mock_popen:
             mock_popen.return_value.stdout = MagicMock()
             mock_popen.return_value.stderr = MagicMock()
-            
+
             from tui_gateway.server import _SlashWorker
-            
+
             # Test initialization with explicit None
             worker = _SlashWorker(
                 session_key="test_key",
                 model="test-model",
                 profile_home=None
             )
-            
+
             # Verify Popen was called
             assert mock_popen.called
-            
+
             # Check that HERMES_HOME was NOT set
             call_kwargs = mock_popen.call_args[1]
             env = call_kwargs["env"]
@@ -103,17 +103,17 @@ def test_slash_worker_inherits_argv_correctly():
         with patch("subprocess.Popen") as mock_popen:
             mock_popen.return_value.stdout = MagicMock()
             mock_popen.return_value.stderr = MagicMock()
-            
+
             from tui_gateway.server import _SlashWorker
-            
+
             # Test that argv is correct
             worker = _SlashWorker(
                 session_key="my_session",
                 model="gpt-4"
             )
-            
+
             call_args = mock_popen.call_args[0][0]
-            
+
             # Verify argv structure — the worker is spawned through the
             # hidden ``__slash-worker`` CLI subcommand (frozen portable
             # runtime has no standalone python).

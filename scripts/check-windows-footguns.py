@@ -29,10 +29,13 @@ Suppress an intentional use (e.g. tests or platform-gated code) with:
 from __future__ import annotations
 
 import argparse
+import ast
+import io
 import os
 import re
 import subprocess
 import sys
+import tokenize
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -135,6 +138,84 @@ class Footgun:
     post_filter: "callable | None" = None
 
 
+def _call_uses_literal_binary_mode(line: str, call_name: str) -> bool:
+    """Return whether the first matching call has a literal binary mode.
+
+    The line regex cannot capture the mode when the path expression itself
+    contains parentheses, for example ``open(resolve(path), "rb")``. Token
+    depth keeps commas inside the path expression separate from the call's
+    real argument separators without turning this lightweight checker into a
+    whole-file parser.
+    """
+    try:
+        tokens = list(tokenize.generate_tokens(io.StringIO(line).readline))
+    except (IndentationError, tokenize.TokenError):
+        return False
+
+    ignored = {
+        tokenize.COMMENT,
+        tokenize.DEDENT,
+        tokenize.ENCODING,
+        tokenize.ENDMARKER,
+        tokenize.INDENT,
+        tokenize.NEWLINE,
+        tokenize.NL,
+    }
+    tokens = [token for token in tokens if token.type not in ignored]
+
+    for index, token in enumerate(tokens):
+        if token.type != tokenize.NAME or token.string != call_name:
+            continue
+        if index > 0 and tokens[index - 1].string == "." and call_name == "open":
+            continue
+        if index + 1 >= len(tokens) or tokens[index + 1].string != "(":
+            continue
+
+        arguments: list[list[tokenize.TokenInfo]] = []
+        current: list[tokenize.TokenInfo] = []
+        depth = 1
+        for part in tokens[index + 2 :]:
+            if part.type == tokenize.OP:
+                if part.string in "([{":
+                    depth += 1
+                elif part.string in ")]}":
+                    depth -= 1
+                    if depth == 0:
+                        arguments.append(current)
+                        break
+                elif part.string == "," and depth == 1:
+                    arguments.append(current)
+                    current = []
+                    continue
+            current.append(part)
+
+        mode_token: tokenize.TokenInfo | None = None
+        if len(arguments) > 1 and len(arguments[1]) == 1:
+            candidate = arguments[1][0]
+            if candidate.type == tokenize.STRING:
+                mode_token = candidate
+        for argument in arguments:
+            if (
+                len(argument) >= 3
+                and argument[0].type == tokenize.NAME
+                and argument[0].string == "mode"
+                and argument[1].string == "="
+                and argument[2].type == tokenize.STRING
+            ):
+                mode_token = argument[2]
+                break
+
+        if mode_token is None:
+            return False
+        try:
+            mode = ast.literal_eval(mode_token.string)
+        except (SyntaxError, ValueError):
+            return False
+        return isinstance(mode, str) and "b" in mode
+
+    return False
+
+
 FOOTGUNS: list[Footgun] = [
     Footgun(
         name="open() without encoding= on text mode",
@@ -164,6 +245,7 @@ FOOTGUNS: list[Footgun] = [
         # already pass encoding=. Skip binary mode (contains "b").
         post_filter=lambda m, line: (
             "b" not in (m.group("mode") or "")
+            and not _call_uses_literal_binary_mode(line, "open")
             and "encoding=" not in line
             and "encoding =" not in line
             # Skip `def open(` and `async def open(` (method definitions)
@@ -196,6 +278,7 @@ FOOTGUNS: list[Footgun] = [
         ),
         post_filter=lambda m, line: (
             "b" not in (m.group("mode") or "")
+            and not _call_uses_literal_binary_mode(line, "fdopen")
             and "encoding=" not in line
             and "encoding =" not in line
             and "**" not in line

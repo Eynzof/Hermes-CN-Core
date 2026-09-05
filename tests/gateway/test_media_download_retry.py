@@ -170,6 +170,7 @@ class TestCacheImageFromUrlConnectGuard:
             "all_proxy",
         ):
             monkeypatch.delenv(proxy_var, raising=False)
+        monkeypatch.setenv("NO_PROXY", "*")
 
         answers = [
             [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 80))],
@@ -556,4 +557,3 @@ class TestMattermostSendUrlAsFile:
         adapter.send.assert_called_once()
         text_arg = adapter.send.call_args[0][1]
         assert "http://cdn.example.com/img.png" in text_arg
-

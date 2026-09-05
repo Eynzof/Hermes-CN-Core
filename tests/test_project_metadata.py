@@ -17,6 +17,18 @@ def _load_package_data():
     return tool["setuptools"]["package-data"]
 
 
+def _load_py_modules():
+    pyproject_path = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    with pyproject_path.open("rb") as handle:
+        tool = tomllib.load(handle)["tool"]
+    return tool["setuptools"]["py-modules"]
+
+
+def test_plugin_registration_lifecycle_is_packaged():
+    """The sealed wheel must contain every top-level plugin-loader import."""
+    assert "registration_lifecycle" in _load_py_modules()
+
+
 def test_matrix_extra_not_in_all():
     """The [matrix] extra pulls `mautrix[encryption]` -> `python-olm`,
     which has Linux-only wheels and no native build path on Windows or

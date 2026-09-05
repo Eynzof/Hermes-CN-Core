@@ -40,5 +40,3 @@ def test_env_override_rejects_garbage(monkeypatch):
     assert limits.keepalive_expiry is not None and limits.keepalive_expiry > 0
     assert limits.max_keepalive_connections is not None
     assert limits.max_keepalive_connections > 0
-
-

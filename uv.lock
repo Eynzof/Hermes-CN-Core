@@ -3,7 +3,7 @@ revision = 3
 requires-python = ">=3.14"
 
 [options]
-exclude-newer = "2026-07-30T06:21:33.907964Z"
+exclude-newer = "2026-07-31T09:10:06.5559Z"
 exclude-newer-span = "P14D"
 
 [options.exclude-newer-package]
@@ -1702,7 +1702,7 @@ requires-dist = [
     { name = "boto3", marker = "extra == 'bedrock'", specifier = "==1.42.89" },
     { name = "brotlicffi", marker = "extra == 'messaging'", specifier = "==1.2.0.1" },
     { name = "certifi", specifier = "==2026.5.20" },
-    { name = "ciso8601", specifier = ">=2.3.3" },
+    { name = "ciso8601", specifier = ">=2.3.3,<3" },
     { name = "concurrent-log-handler", marker = "sys_platform == 'win32'", specifier = "==0.9.29" },
     { name = "croniter", specifier = "==6.0.0" },
     { name = "cryptography", specifier = "==50.0.0" },
@@ -1766,7 +1766,7 @@ requires-dist = [
     { name = "httpx", extras = ["socks"], specifier = "==0.28.1" },
     { name = "jinja2", specifier = "==3.1.6" },
     { name = "lark-oapi", marker = "extra == 'feishu'", specifier = "==1.6.8" },
-    { name = "lz4", specifier = ">=4.4.5" },
+    { name = "lz4", specifier = ">=4.4.5,<5" },
     { name = "markdown", specifier = "==3.10.2" },
     { name = "mautrix", extras = ["encryption"], marker = "extra == 'matrix'", specifier = "==0.21.1" },
     { name = "mcp", marker = "extra == 'computer-use'", specifier = "==1.28.1" },
@@ -1790,7 +1790,7 @@ requires-dist = [
     { name = "psutil", specifier = "==7.2.2" },
     { name = "ptyprocess", marker = "sys_platform != 'win32'", specifier = ">=0.7.0,<1" },
     { name = "pyasn1", marker = "extra == 'google'", specifier = "==0.6.4" },
-    { name = "pybase64", specifier = ">=1.4.3" },
+    { name = "pybase64", specifier = ">=1.4.3,<2" },
     { name = "pydantic", specifier = "==2.13.4" },
     { name = "pyjwt", extras = ["crypto"], specifier = "==2.13.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = "==9.1.1" },
@@ -1808,8 +1808,8 @@ requires-dist = [
     { name = "qrcode", marker = "extra == 'dingtalk'", specifier = "==7.4.2" },
     { name = "qrcode", marker = "extra == 'feishu'", specifier = "==7.4.2" },
     { name = "qrcode", marker = "extra == 'messaging'", specifier = "==7.4.2" },
-    { name = "rapidfuzz", specifier = ">=3.14.5" },
-    { name = "regex", specifier = ">=2026.3.32" },
+    { name = "rapidfuzz", specifier = ">=3.14.5,<4" },
+    { name = "regex", specifier = ">=2026.3.32,<2027" },
     { name = "requests", extras = ["socks"], specifier = "==2.33.0" },
     { name = "rich", specifier = "==14.3.3" },
     { name = "ripgrepy", specifier = "==2.2.0" },
@@ -1836,10 +1836,10 @@ requires-dist = [
     { name = "uvloop", marker = "sys_platform != 'win32'", specifier = ">=0.21.0" },
     { name = "vercel", marker = "extra == 'vercel'", specifier = "==0.7.2" },
     { name = "websockets", specifier = "==15.0.1" },
-    { name = "xxhash", specifier = ">=3.8.0" },
-    { name = "yarl", specifier = ">=1.23.0" },
+    { name = "xxhash", specifier = ">=3.8.0,<4" },
+    { name = "yarl", specifier = ">=1.23.0,<2" },
     { name = "youtube-transcript-api", marker = "extra == 'youtube'", specifier = "==1.2.4" },
-    { name = "zstandard", specifier = ">=0.25.0" },
+    { name = "zstandard", specifier = ">=0.25.0,<1" },
 ]
 provides-extras = ["anthropic", "exa", "firecrawl", "parallel-web", "ddgs", "fal", "edge-tts", "modal", "daytona", "vercel", "hindsight", "dev", "messaging", "cron", "slack", "matrix", "wecom", "tts-premium", "voice", "honcho", "supermemory", "mem0", "vision", "pty", "mcp", "nemo-relay", "homeassistant", "sms", "teams", "computer-use", "acp", "mistral", "otlp", "bedrock", "vertex", "azure-identity", "termux", "termux-all", "dingtalk", "feishu", "google", "youtube", "web", "all", "cn-desktop"]
 

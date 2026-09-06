@@ -282,7 +282,7 @@ Registered by the bundled moss (mosi.cn) TTS plugin. Tools are listed in `hermes
 
 | Tool | Description | Requires environment |
 |------|-------------|----------------------|
-| `moss_dialogue_tts` | Multi-speaker dialogue TTS: speakers [{id, voice_id}] + segments [{speaker, text}] → one audio file (MEDIA: path). Every segment speaker must be declared; ≤20 segments recommended. | Moss key |
+| `moss_dialogue_tts` | Multi-speaker dialogue TTS: `speakers: [{id, voice_id}]` + `segments: [{speaker, text}]` → one audio file (MEDIA: path). Every segment speaker must be declared; ≤20 segments recommended. | Moss key |
 | `moss_voice_design` | Synthesize speech in a style described by an instruction. Creates a style, not a persisted voice. | Moss key |
 | `moss_voice_clone` | Clone a voice from a reference audio sample (mp3/wav); returns a reusable voice_id. | Moss key |
 | `moss_voice_list` | List Moss voices (15 built-in + your clones) with ids usable in text_to_speech / moss_dialogue_tts. | Moss key |
@@ -298,5 +298,4 @@ Registered only on the `hermes-yuanbao` platform toolset. Yuanbao is Tencent's c
 | `yb_send_dm` | Send a private/direct message to a user in a group, with optional media files. | Yuanbao credentials |
 | `yb_search_sticker` | Search the built-in Yuanbao sticker (TIM face) catalogue by keyword. | Yuanbao credentials |
 | `yb_send_sticker` | Send a built-in sticker to the current Yuanbao chat. | Yuanbao credentials |
-
 

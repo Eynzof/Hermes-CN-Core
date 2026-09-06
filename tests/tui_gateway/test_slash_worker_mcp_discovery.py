@@ -42,6 +42,10 @@ def test_profile_local_mcp_tool_is_visible_in_slash_worker(tmp_path):
     (profile_home / "config.yaml").write_text(
         yaml.safe_dump(
             {
+                # This integration test validates discovery, not the 1.5-second
+                # interactive startup budget. Give a loaded CI runner enough
+                # time to import FastMCP before HermesCLI snapshots its tools.
+                "mcp_discovery_timeout": 15,
                 "mcp_servers": {
                     "profileprobe": {
                         "enabled": True,

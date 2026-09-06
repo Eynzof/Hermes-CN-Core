@@ -108,7 +108,13 @@ class TestRegisterTranscriptionProvider:
 
         assert mgr._plugins["bad-stt-plugin"].enabled is True
         assert transcription_registry.get_provider("not a provider") is None
-        assert transcription_registry.list_providers() == []
+        # ``discover_and_load`` also auto-registers the bundled MOSS STT
+        # provider, so an empty registry is the wrong invariant here. The
+        # contract under test is that the *rejected* plugin added nothing:
+        # the only providers present must be the pre-existing bundled ones,
+        # never the bogus name.
+        provider_names = {p.name for p in transcription_registry.list_providers()}
+        assert "not a provider" not in provider_names
         assert "does not inherit from TranscriptionProvider" in caplog.text
 
         transcription_registry._reset_for_tests()

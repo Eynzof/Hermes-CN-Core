@@ -12,7 +12,15 @@ from unittest import mock
 
 import pytest
 
-from tools.environments.local import _find_bash_posix, _find_powershell, _find_pwsh, _resolve_shell
+from tools.environments.local import (
+    _find_bash,
+    _find_bash_posix,
+    _find_powershell,
+    _find_pwsh,
+    _is_windows_apps_stub,
+    _is_wsl_bash_launcher,
+    _resolve_shell,
+)
 
 
 @contextlib.contextmanager
@@ -458,3 +466,207 @@ class TestBuildBashBackgroundScript:
         )
         assert "-NoProfile" not in script
         assert "Invoke-Expression" not in script
+
+
+class TestIsWindowsAppsStub:
+    """_is_windows_apps_stub() rejects Microsoft Store App Execution Aliases."""
+
+    def test_windowsapps_path_is_stub(self):
+        assert (
+            _is_windows_apps_stub(
+                r"C:\Users\test\AppData\Local\Microsoft\WindowsApps\bash.exe"
+            )
+            is True
+        )
+
+    def test_git_bash_path_is_not_stub(self):
+        assert _is_windows_apps_stub(r"C:\Program Files\Git\bin\bash.exe") is False
+
+    def test_forward_slash_windowsapps_is_stub(self):
+        assert (
+            _is_windows_apps_stub(
+                "C:/Users/test/AppData/Local/Microsoft/WindowsApps/bash.exe"
+            )
+            is True
+        )
+
+    def test_empty_path_is_not_stub(self):
+        assert _is_windows_apps_stub("") is False
+
+
+class TestIsWslBashLauncher:
+    """_is_wsl_bash_launcher() must reject the Windows WSL bash launcher."""
+
+    def test_system32_bash_is_wsl_launcher(self, monkeypatch):
+        monkeypatch.setattr("tools.environments.local._IS_WINDOWS", True)
+        monkeypatch.setattr("tools.environments.local._wsl_bash_launcher_cache", {})
+        with mock.patch.dict(os.environ, {"WINDIR": r"C:\Windows"}, clear=True):
+            # Path check alone is enough — no subprocess probe should run.
+            with mock.patch(
+                "subprocess.run",
+                side_effect=AssertionError("path check should short-circuit"),
+            ):
+                assert _is_wsl_bash_launcher(r"C:\Windows\System32\bash.exe") is True
+
+    def test_syswow64_bash_is_wsl_launcher(self, monkeypatch):
+        monkeypatch.setattr("tools.environments.local._IS_WINDOWS", True)
+        monkeypatch.setattr("tools.environments.local._wsl_bash_launcher_cache", {})
+        with mock.patch.dict(os.environ, {"WINDIR": r"C:\Windows"}, clear=True):
+            assert _is_wsl_bash_launcher(r"C:\Windows\SysWOW64\bash.exe") is True
+
+    def test_git_bash_is_not_wsl_by_path_and_uname(self, monkeypatch):
+        monkeypatch.setattr("tools.environments.local._IS_WINDOWS", True)
+        monkeypatch.setattr("tools.environments.local._wsl_bash_launcher_cache", {})
+        git_bash = r"C:\Program Files\Git\bin\bash.exe"
+        with mock.patch.dict(os.environ, {"WINDIR": r"C:\Windows"}, clear=True):
+            with mock.patch(
+                "subprocess.run",
+                return_value=mock.Mock(stdout="MINGW64_NT-10.0-22631\n", returncode=0),
+            ):
+                assert _is_wsl_bash_launcher(git_bash) is False
+
+    def test_uname_probe_detects_wsl_outside_system32(self, monkeypatch):
+        monkeypatch.setattr("tools.environments.local._IS_WINDOWS", True)
+        monkeypatch.setattr("tools.environments.local._wsl_bash_launcher_cache", {})
+        wsl_shim = r"C:\Users\test\AppData\Local\Microsoft\WindowsApps\bash.exe"
+        with mock.patch.dict(os.environ, {"WINDIR": r"C:\Windows"}, clear=True):
+            with mock.patch(
+                "subprocess.run",
+                return_value=mock.Mock(
+                    stdout="Linux 6.18.33.2-microsoft-standard-WSL2\n",
+                    returncode=0,
+                ),
+            ):
+                assert _is_wsl_bash_launcher(wsl_shim) is True
+
+    def test_result_is_cached_per_path(self, monkeypatch):
+        monkeypatch.setattr("tools.environments.local._IS_WINDOWS", True)
+        monkeypatch.setattr("tools.environments.local._wsl_bash_launcher_cache", {})
+        wsl_bash = r"C:\Windows\System32\bash.exe"
+        with mock.patch.dict(os.environ, {"WINDIR": r"C:\Windows"}, clear=True):
+            assert _is_wsl_bash_launcher(wsl_bash) is True
+            # Second call must hit the cache, not re-probe.
+            with mock.patch(
+                "subprocess.run",
+                side_effect=AssertionError("cache should short-circuit"),
+            ):
+                assert _is_wsl_bash_launcher(wsl_bash) is True
+
+
+class TestFindBashWindowsRejectsWsl:
+    """_find_bash() on Windows must prefer Git Bash and never return WSL bash."""
+
+    @contextlib.contextmanager
+    def _stub_environment(self, monkeypatch):
+        monkeypatch.setattr("tools.environments.local._IS_WINDOWS", True)
+        monkeypatch.setattr("tools.environments.local._wsl_bash_launcher_cache", {})
+        monkeypatch.setattr("tools.environments.local._where_git_executables", lambda: [])
+        monkeypatch.setattr("tools.environments.local._bash_starts", lambda _p: True)
+        with mock.patch.dict(
+            os.environ,
+            {
+                "ProgramFiles": r"C:\Program Files",
+                "ProgramFiles(x86)": r"C:\Program Files (x86)",
+                "LOCALAPPDATA": r"C:\Users\test\AppData\Local",
+                "HERMES_SHELL_TYPE": "auto",
+            },
+            clear=True,
+        ):
+            yield
+
+    def test_wsl_launcher_on_path_is_skipped_for_git_bash(self, monkeypatch):
+        with self._stub_environment(monkeypatch):
+            wsl_bash = r"C:\Windows\System32\bash.exe"
+            git_bash = r"C:\Program Files\Git\bin\bash.exe"
+
+            with mock.patch("shutil.which", return_value=wsl_bash):
+                with mock.patch(
+                    "os.path.isfile",
+                    side_effect=lambda p: os.path.normcase(p) == os.path.normcase(git_bash),
+                ):
+                    with mock.patch(
+                        "tools.environments.local._is_wsl_bash_launcher",
+                        side_effect=lambda p: p == wsl_bash,
+                    ):
+                        assert _find_bash(raise_if_missing=False) == git_bash
+
+    def test_wsl_launcher_alone_falls_back_to_none(self, monkeypatch):
+        with self._stub_environment(monkeypatch):
+            wsl_bash = r"C:\Windows\System32\bash.exe"
+
+            with mock.patch("shutil.which", return_value=wsl_bash):
+                with mock.patch("os.path.isfile", return_value=False):
+                    with mock.patch(
+                        "tools.environments.local._is_wsl_bash_launcher",
+                        return_value=True,
+                    ):
+                        # No Git Bash exists: WSL must not be selected; auto mode
+                        # falls through to PowerShell (None from _find_bash).
+                        assert _find_bash(raise_if_missing=False) is None
+
+    def test_windowsapps_stub_on_path_is_skipped_for_git_bash(self, monkeypatch):
+        """A WindowsApps App Execution Alias bash.exe is skipped even when the
+        WSL check says no (it is a Store stub, not a usable bash)."""
+        with self._stub_environment(monkeypatch):
+            stub = r"C:\Users\test\AppData\Local\Microsoft\WindowsApps\bash.exe"
+            git_bash = r"C:\Program Files\Git\bin\bash.exe"
+
+            with mock.patch("shutil.which", return_value=stub):
+                with mock.patch(
+                    "os.path.isfile",
+                    side_effect=lambda p: os.path.normcase(str(p))
+                    == os.path.normcase(git_bash),
+                ):
+                    with mock.patch(
+                        "tools.environments.local._is_wsl_bash_launcher",
+                        return_value=False,
+                    ), mock.patch(
+                        "tools.environments.local._is_windows_apps_stub",
+                        side_effect=lambda p: p == stub,
+                    ):
+                        assert _find_bash(raise_if_missing=False) == git_bash
+
+    def test_windowsapps_stub_alone_falls_back_to_none(self, monkeypatch):
+        """A WindowsApps stub is not a bash: auto mode falls through to None
+        (PowerShell) instead of selecting or probing the stub."""
+        with self._stub_environment(monkeypatch):
+            stub = r"C:\Users\test\AppData\Local\Microsoft\WindowsApps\bash.exe"
+
+            with mock.patch("shutil.which", return_value=stub):
+                with mock.patch("os.path.isfile", return_value=False):
+                    with mock.patch(
+                        "tools.environments.local._is_wsl_bash_launcher",
+                        return_value=False,
+                    ), mock.patch(
+                        "tools.environments.local._is_windows_apps_stub",
+                        side_effect=lambda p: p == stub,
+                    ):
+                        assert _find_bash(raise_if_missing=False) is None
+
+    def test_git_exe_chain_beats_path_bash(self, monkeypatch):
+        """Mirrors kimix ordering: a Git Bash derived from ``where.exe git``
+        wins over a (working, non-WSL) plain ``bash`` found on PATH — PATH is
+        the last-resort candidate source."""
+        with self._stub_environment(monkeypatch):
+            git_bash = r"C:\Users\test\scoop\apps\git\bin\bash.exe"
+            path_bash = r"C:\msys64\usr\bin\bash.exe"
+
+            with mock.patch("shutil.which", return_value=path_bash):
+                with mock.patch(
+                    "os.path.isfile",
+                    side_effect=lambda p: os.path.normcase(str(p))
+                    == os.path.normcase(git_bash),
+                ):
+                    with mock.patch(
+                        "tools.environments.local._where_git_executables",
+                        lambda: [r"C:\Users\test\scoop\apps\git\cmd\git.exe"],
+                    ), mock.patch(
+                        "tools.environments.local._git_exec_path", lambda git_path: None
+                    ), mock.patch(
+                        "tools.environments.local._is_wsl_bash_launcher",
+                        return_value=False,
+                    ), mock.patch(
+                        "tools.environments.local._is_windows_apps_stub",
+                        return_value=False,
+                    ):
+                        assert _find_bash(raise_if_missing=False) == git_bash

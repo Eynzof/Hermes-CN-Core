@@ -16,6 +16,7 @@ chosen ``user_peer_id`` can be asserted without touching the network.
 
 import hashlib
 import json
+import os
 from unittest.mock import MagicMock
 
 
@@ -529,6 +530,30 @@ class TestPinTransition:
 
         assert sig_pinned["honcho.pin_peer_name"] != sig_unpinned["honcho.pin_peer_name"]
 
+    def test_cache_busting_detects_same_size_in_place_rewrite(self, tmp_path, monkeypatch):
+        """A same-size rewrite with a pinned mtime must not reuse stale identity."""
+        from gateway.run import GatewayRunner
+
+        cfg_path = tmp_path / "honcho.json"
+        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        cfg_path.write_text(json.dumps({"apiKey": "k", "peerName": "Igor"}))
+        original_stat = cfg_path.stat()
+        first = GatewayRunner._extract_cache_busting_config(
+            {"memory": {"provider": "honcho"}}
+        )
+
+        cfg_path.write_text(json.dumps({"apiKey": "k", "peerName": "Oleg"}))
+        os.utime(
+            cfg_path,
+            ns=(original_stat.st_mtime_ns, original_stat.st_mtime_ns),
+        )
+        second = GatewayRunner._extract_cache_busting_config(
+            {"memory": {"provider": "honcho"}}
+        )
+
+        assert first["honcho.peer_name"] == "Igor"
+        assert second["honcho.peer_name"] == "Oleg"
+
 
 class TestProfilePeerUniqueness:
     """Each Hermes profile can pin to its own unique peerName.
@@ -571,4 +596,3 @@ class TestProfilePeerUniqueness:
             "Profiles pinned to distinct peer names must not collapse to "
             "the same Honcho peer — otherwise profile isolation is fictional."
         )
-

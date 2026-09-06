@@ -100,13 +100,32 @@ class TestGenerateTitle:
             captured.append((task, exc))
 
         exc = RuntimeError("openrouter 402: credits exhausted")
-        with patch("agent.title_generator.call_llm", side_effect=exc):
+        with patch("agent.title_generator.call_llm", side_effect=exc) as mocked_call:
             result = generate_title("question", "answer", failure_callback=_cb)
 
         assert result is None
+        assert mocked_call.call_count == 1
         assert len(captured) == 1
         assert captured[0][0] == "title generation"
         assert captured[0][1] is exc
+
+    def test_retries_without_schema_only_when_response_format_is_unsupported(self):
+        response = MagicMock()
+        response.choices = [MagicMock()]
+        response.choices[0].message.content = '{"title": "Fallback title"}'
+
+        with patch(
+            "agent.title_generator.call_llm",
+            side_effect=[
+                RuntimeError("response_format type json_schema is unavailable now"),
+                response,
+            ],
+        ) as mocked_call:
+            assert generate_title("question") == "Fallback title"
+
+        assert mocked_call.call_count == 2
+        assert "extra_body" in mocked_call.call_args_list[0].kwargs
+        assert "extra_body" not in mocked_call.call_args_list[1].kwargs
 
 
 

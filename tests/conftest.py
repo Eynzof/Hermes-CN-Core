@@ -39,6 +39,30 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 
+def pytest_addoption(parser):
+    """Register options for live Moss e2e tests (no hardcoded API keys).
+
+    The key is passed in via ``--moss-key <key>`` or ``--moss-key-file
+    <path>`` (a config/key file such as ``D:/moss.txt`` whose first line
+    is ``"api_key": "<key>"`` or a raw token). The e2e module also falls
+    back to ``MOSS_API_KEY`` / ``MOSS_KEY_FILE`` env vars and a
+    ``D:/moss.txt`` default, so a key never lives in the test source.
+    """
+    group = parser.getgroup("moss", "Moss (mosi.cn) live e2e")
+    group.addoption(
+        "--moss-key",
+        action="store",
+        default="",
+        help="Moss API key for live e2e tests (alternative to --moss-key-file).",
+    )
+    group.addoption(
+        "--moss-key-file",
+        action="store",
+        default="",
+        help="Path to a Moss config/key file (e.g. D:/moss.txt) for live e2e tests.",
+    )
+
+
 # ── Sandbox HERMES_HOME before ANY test module is imported ──────────────────
 # `hermes_cli/main.py` calls `setup_logging()` at MODULE level, which resolves
 # `get_hermes_home()` and attaches rotating file handlers to the ROOT logger.

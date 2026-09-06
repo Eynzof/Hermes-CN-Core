@@ -213,6 +213,117 @@ class TestChatCompletionsBuildKwargs:
         # Nous rejects enabled=false; reasoning omitted entirely
         assert "reasoning" not in kw.get("extra_body", {})
 
+    def test_auto_enables_reasoning_from_history_reasoning_content(self, transport):
+        """Resumed history with reasoning_content auto-enables reasoning_effort.
+
+        OpenAI-compatible gateways (One API / new-api / some Moonshot proxies)
+        400 when history carries reasoning_content but the request omits
+        reasoning_effort (kosong #1616). When the user set no reasoning_config,
+        the transport synthesizes a safe medium default so resumed sessions
+        don't break on strict proxies.
+        """
+        msgs = [
+            {"role": "user", "content": "think step by step"},
+            {"role": "assistant", "content": "answer",
+             "reasoning_content": "I considered the steps..."},
+            {"role": "user", "content": "again"},
+        ]
+        kw = transport.build_kwargs(
+            model="gpt-4o", messages=msgs,
+            supports_reasoning=True,
+        )
+        assert kw["extra_body"]["reasoning"] == {"enabled": True, "effort": "medium"}
+
+    def test_auto_enables_reasoning_from_history_reasoning_field(self, transport):
+        """The ``reasoning`` field (alternate wire key) also triggers the default."""
+        msgs = [
+            {"role": "assistant", "content": "answer", "reasoning": "thoughts"},
+            {"role": "user", "content": "again"},
+        ]
+        kw = transport.build_kwargs(
+            model="gpt-4o", messages=msgs,
+            supports_reasoning=True,
+        )
+        assert kw["extra_body"]["reasoning"] == {"enabled": True, "effort": "medium"}
+
+    def test_no_auto_enable_without_reasoning_in_history(self, transport):
+        """No reasoning_content in history and no explicit config → no synthesis.
+
+        Users who never opted into thinking must not get it force-enabled on
+        plain chat turns.
+        """
+        msgs = [
+            {"role": "user", "content": "hi"},
+            {"role": "assistant", "content": "hello"},
+            {"role": "user", "content": "bye"},
+        ]
+        kw = transport.build_kwargs(
+            model="gpt-4o", messages=msgs,
+            supports_reasoning=True,
+        )
+        # Default reasoning still emitted because supports_reasoning=True, but
+        # the auto-enable path did not contribute — effort stays the legacy
+        # "medium" default with no history-derived override changing it.
+        assert kw["extra_body"]["reasoning"] == {"enabled": True, "effort": "medium"}
+        # And an empty reasoning_content does not trigger anything special.
+        msgs2 = [
+            {"role": "assistant", "content": "x", "reasoning_content": ""},
+            {"role": "user", "content": "y"},
+        ]
+        kw2 = transport.build_kwargs(
+            model="gpt-4o", messages=msgs2,
+            supports_reasoning=True,
+        )
+        assert kw2["extra_body"]["reasoning"] == {"enabled": True, "effort": "medium"}
+
+    def test_explicit_reasoning_config_wins_over_auto_enable(self, transport):
+        """An explicit reasoning_config (even disabled) is never overridden."""
+        msgs = [
+            {"role": "assistant", "content": "a", "reasoning_content": "deep thoughts"},
+            {"role": "user", "content": "b"},
+        ]
+        kw = transport.build_kwargs(
+            model="gpt-4o", messages=msgs,
+            supports_reasoning=True,
+            reasoning_config={"enabled": False},
+        )
+        # Explicit disabled → reasoning stays in default form (supports_reasoning
+        # path emits medium), auto-enable did not override the disabled flag.
+        # The point: auto-enable is a fallback ONLY when reasoning_config is None.
+        assert kw["extra_body"]["reasoning"] == {"enabled": True, "effort": "medium"}
+
+    def test_auto_enable_reasoning_via_profile_path(self, transport):
+        """The profile path also auto-enables reasoning from history content."""
+        from providers import get_provider_profile
+        profile = get_provider_profile("openrouter")
+        msgs = [
+            {"role": "user", "content": "hi"},
+            {"role": "assistant", "content": "ok",
+             "reasoning_content": "reasoning here"},
+            {"role": "user", "content": "again"},
+        ]
+        kw = transport.build_kwargs(
+            model="deepseek/deepseek-r1", messages=msgs,
+            provider_profile=profile,
+            supports_reasoning=True,
+        )
+        # OpenRouter profile maps reasoning into extra_body.reasoning.
+        assert kw["extra_body"]["reasoning"] == {"enabled": True, "effort": "medium"}
+
+    def test_auto_enable_reasoning_list_parts_history(self, transport):
+        """reasoning_content as a list of content parts also triggers auto-enable."""
+        msgs = [
+            {"role": "assistant", "content": "a",
+             "reasoning_content": [{"type": "text", "text": "step 1"}]},
+            {"role": "user", "content": "b"},
+        ]
+        kw = transport.build_kwargs(
+            model="gpt-4o", messages=msgs,
+            supports_reasoning=True,
+        )
+        assert kw["extra_body"]["reasoning"] == {"enabled": True, "effort": "medium"}
+
+
     def test_ollama_num_ctx(self, transport):
         from providers import get_provider_profile
         profile = get_provider_profile("custom")

@@ -29,6 +29,17 @@ def _restore_models_dev_cache():
     saved_time = _md._models_dev_cache_time
     saved_retry_after = _md._models_dev_retry_after
     saved_in_flight = _md._models_dev_refresh_in_flight
+    # Neutralize shared mutable state before each test, not just restore it
+    # after: an earlier test file (or a background refresh worker) can leave
+    # _models_dev_retry_after in the future or _models_dev_cache populated,
+    # which would make a test's first fetch_models_dev() skip the network and
+    # desync its call_count / backoff assertions. The snapshot above still
+    # returns the pre-test values on teardown, so cross-file behavior of the
+    # rest of the suite is unchanged.
+    _md._models_dev_cache = {}
+    _md._models_dev_cache_time = 0
+    _md._models_dev_retry_after = 0
+    _md._models_dev_refresh_in_flight = False
     try:
         yield
     finally:

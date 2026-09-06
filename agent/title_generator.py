@@ -105,6 +105,17 @@ _TITLE_RESPONSE_FORMAT = {
     },
 }
 
+
+def _is_unsupported_title_response_format(error: BaseException) -> bool:
+    """Return whether a provider rejected the structured-output field itself."""
+    detail = str(error).lower()
+    mentions_field = "response_format" in detail or "json_schema" in detail
+    rejects_feature = any(
+        marker in detail
+        for marker in ("unsupported", "not support", "unavailable", "unknown", "invalid")
+    )
+    return mentions_field and rejects_feature
+
 # Control-tag wrappers that surround machine-authored content inside what is
 # nominally a "user" message. Titling from these is what produces a session
 # named after a slash command or an injected reminder rather than the user's
@@ -406,16 +417,49 @@ def generate_title(
         content = response.choices[0].message.content or ""
         return _clean_title(_extract_title_text(content))
     except Exception as e:
-        # Log at WARNING so this shows up in agent.log without debug mode.
-        # Full detail at debug level for operators who need the stack.
-        logger.warning("Title generation failed: %s", e)
-        logger.debug("Title generation traceback", exc_info=True)
-        if failure_callback is not None:
-            try:
-                failure_callback("title generation", e)
-            except Exception:
-                logger.debug("Title generation failure_callback raised", exc_info=True)
-        return None
+        # Not every provider/model supports the json_schema response_format
+        # (e.g. DeepSeek answers HTTP 400 "This response_format type is
+        # unavailable now"). Retry once WITHOUT structured output: the prompt
+        # already asks for `{"title": "..."}` and _extract_title_text parses
+        # JSON (or falls back to prose), so the title still gets generated.
+        # Do not retry authentication, quota, timeout, or network failures: a
+        # second identical request only adds latency and may duplicate charges.
+        if not _is_unsupported_title_response_format(e):
+            logger.warning("Title generation failed: %s", e)
+            logger.debug("Title generation traceback", exc_info=True)
+            if failure_callback is not None:
+                try:
+                    failure_callback("title generation", e)
+                except Exception:
+                    logger.debug(
+                        "Title generation failure_callback raised", exc_info=True
+                    )
+            return None
+        try:
+            response = call_llm(
+                task="title_generation",
+                messages=messages,
+                max_tokens=64,
+                temperature=0.3,
+                timeout=timeout,
+                main_runtime=main_runtime,
+            )
+            content = response.choices[0].message.content or ""
+            title = _clean_title(_extract_title_text(content))
+            if not title:
+                raise ValueError("empty title after unstructured retry")
+            return title
+        except Exception as retry_err:
+            # Log at WARNING so this shows up in agent.log without debug mode.
+            # Full detail at debug level for operators who need the stack.
+            logger.warning("Title generation failed: %s (structured retry: %s)", e, retry_err)
+            logger.debug("Title generation traceback", exc_info=True)
+            if failure_callback is not None:
+                try:
+                    failure_callback("title generation", retry_err)
+                except Exception:
+                    logger.debug("Title generation failure_callback raised", exc_info=True)
+            return None
 
 
 def _persist_session_title(session_db, session_id, title, *, source, dedupe=True):

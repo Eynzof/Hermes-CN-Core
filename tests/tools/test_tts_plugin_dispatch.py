@@ -197,6 +197,68 @@ class TestPluginDispatch:
             )
 
 
+class TestMossDispatch:
+    """The real Moss plugin provider dispatches through the plugin path —
+    moss is deliberately NOT a built-in, so ``_dispatch_to_plugin_provider``
+    must fire and hand off to MossProvider.synthesize."""
+
+    def test_moss_dispatches_via_plugin_path(self, tmp_path, monkeypatch):
+        from plugins.tts.moss import provider as moss_provider_module
+        from plugins.tts.moss.provider import MossProvider
+
+        class FakeClient:
+            def speech(self, text, **kwargs):
+                return b"\xff\xfb\x90\x64" + b"\x00" * 128
+
+            def save_audio(self, data, output_path):
+                import os
+                from pathlib import Path
+
+                Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+                Path(output_path).write_bytes(bytes(data))
+                return output_path
+
+        monkeypatch.setattr(moss_provider_module, "build_client", lambda cfg=None: FakeClient())
+        tts_registry.register_provider(MossProvider())
+
+        out = str(tmp_path / "out.mp3")
+        result = tts_tool._dispatch_to_plugin_provider(
+            text="hello moss",
+            output_path=out,
+            provider="moss",
+            tts_config={},
+        )
+        assert result == out
+        assert (tmp_path / "out.mp3").read_bytes().startswith(b"\xff\xfb")
+
+    def test_moss_is_not_a_builtin(self):
+        from tools.tts_tool import BUILTIN_TTS_PROVIDERS
+
+        assert "moss" not in BUILTIN_TTS_PROVIDERS
+        assert "moss" not in tts_registry._BUILTIN_NAMES
+
+    def test_command_provider_moss_still_wins(self):
+        """A user-declared ``tts.providers.moss: type: command`` entry beats
+        the bundled Moss plugin (config is more local than plugin install)."""
+        from plugins.tts.moss.provider import MossProvider
+
+        tts_registry.register_provider(MossProvider())
+        result = tts_tool._dispatch_to_plugin_provider(
+            text="hello",
+            output_path="/tmp/out.mp3",
+            provider="moss",
+            tts_config={
+                "providers": {
+                    "moss": {
+                        "type": "command",
+                        "command": "echo 'hi' > {output_path}",
+                    },
+                },
+            },
+        )
+        assert result is None
+
+
 # ---------------------------------------------------------------------------
 # voice_compatible flag
 # ---------------------------------------------------------------------------

@@ -52,6 +52,25 @@ from plugins.platforms.telegram import adapter as tg  # noqa: E402
 from plugins.platforms.telegram.adapter import TelegramAdapter  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def _allow_public_image_urls(monkeypatch):
+    """Neutralize the live-DNS SSRF gate for the URL under test.
+
+    ``send_image`` validates the image URL against real DNS before doing
+    anything, and these tests exercise only the ``read_timeout`` that reaches
+    the Bot API -- not the SSRF policy. On hosts whose DNS resolves the
+    placeholder domain into a private/fake-IP range (a transparent proxy's
+    198.18.0.0/15 block, a corporate resolver, /etc/hosts), ``is_safe_url``
+    would return False and ``send_image`` would bail out with a failure
+    ``SendResult`` before ``send_photo`` is ever called -- which is not what
+    the assertion is about. Stub it to True so the test drives the send path
+    deterministically on every host.
+    """
+    import tools.url_safety as url_safety
+
+    monkeypatch.setattr(url_safety, "is_safe_url", lambda url: True)
+
+
 @pytest.fixture
 def adapter():
     a = TelegramAdapter(PlatformConfig(enabled=True, token="fake-token"))

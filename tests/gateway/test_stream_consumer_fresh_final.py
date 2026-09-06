@@ -11,6 +11,7 @@ from __future__ import annotations
 
 
 import asyncio
+import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -74,7 +75,9 @@ class TestFreshFinalForLongLivedPreviews:
             config=StreamConsumerConfig(fresh_final_after_seconds=60.0),
         )
         await consumer._send_or_edit("hello")
-        consumer._message_created_ts = 0.0
+        # Linux CI runners can have less than 60 seconds of monotonic uptime;
+        # zero is therefore not deterministically older than the threshold.
+        consumer._message_created_ts = time.monotonic() - 61.0
         await consumer._send_or_edit("hello world", finalize=True)
         assert adapter.send.call_count == 2
         adapter.edit_message.assert_not_called()
@@ -337,4 +340,3 @@ class TestTelegramAdapterDeleteMessage:
         sig = inspect.signature(cls.delete_message)
         params = list(sig.parameters)
         assert params[:3] == ["self", "chat_id", "message_id"]
-

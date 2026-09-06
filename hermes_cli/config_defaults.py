@@ -1502,10 +1502,10 @@ DEFAULT_CONFIG = {
     # Each provider supports an optional `max_text_length:` override for the
     # per-request input-character cap. Omit it to use the provider's documented
     # limit (OpenAI 4096, xAI 15000, MiniMax 10000, ElevenLabs 5k-40k model-aware,
-    # Gemini 32000, Edge 5000, Mistral 4000, NeuTTS/KittenTTS 2000).
+    # Gemini 32000, Edge 5000, Mistral 4000, NeuTTS/KittenTTS 2000, Moss 5000).
     "tts": {
         # Set explicitly to pin a backend:
-        # "edge" (free) | "elevenlabs" (premium) | "openai" | "xai" | "minimax" | "mistral" | "gemini" | "deepinfra" | "neutts" (local) | "kittentts" (local) | "piper" (local)
+        # "edge" (free) | "elevenlabs" (premium) | "openai" | "xai" | "minimax" | "mistral" | "gemini" | "deepinfra" | "neutts" (local) | "kittentts" (local) | "piper" (local) | "moss" (plugin backend)
         "provider": "edge",
         "edge": {
             "voice": "en-US-AriaNeural",
@@ -1580,6 +1580,24 @@ DEFAULT_CONFIG = {
             "voice": "default",
             # "base_url": "",  # override DEEPINFRA_BASE_URL for TTS only
         },
+        # Moss (mosi.cn) — plugin backend at plugins/tts/moss/. Resolves the
+        # key via MOSS_API_KEY / tts.moss.api_key / `hermes auth add moss`,
+        # falling back to a key file configured via MOSS_KEY_FILE.
+        "moss": {
+            # Preferred: `hermes auth add moss` or MOSS_API_KEY in .env.
+            "api_key": "",
+            # Moss' public API accepts the full model ID directly. Dialogue and
+            # voice design select their own documented models in the plugin.
+            "model": "moss-tts-1.5-flash",
+            "voice_id": "c6c0a40a-ea82-4468-9a21-333d3c4a76f6",
+            "response_format": "mp3",  # mp3 | wav | pcm
+            "delivery_method": "audio",  # audio | url
+            "pause": None,  # optional float → client appends [pause Ns] itself
+            "max_text_length": 5000,  # per-request cap (long-form splitter)
+            "streaming": True,
+            # "webhook_url": "",  # optional async completion webhook (needs a public callback endpoint)
+            # "base_url": "",  # optional override (default https://api.mosi.cn/v1)
+        },
     },
 
     "stt": {
@@ -1639,6 +1657,18 @@ DEFAULT_CONFIG = {
         "deepinfra": {
             "model": "",  # empty = first stt-tagged model from the live catalog
             # "base_url": "",  # override DEEPINFRA_BASE_URL for STT only
+        },
+        # Moss (mosi.cn) speech-to-text — bundled plugin at
+        # plugins/tts/moss. Credentials are shared with the Moss TTS
+        # capabilities: MOSS_API_KEY (env/.env), `tts.moss.api_key` in
+        # config.yaml, `hermes auth add moss`, or MOSS_KEY_FILE. Set
+        # `stt.provider: moss` to route gateway voice messages here.
+        "moss": {
+            "model": "moss-transcribe-1.0",  # or moss-transcribe-diarize-pro
+            "diarize": False,  # true → forces moss-transcribe-diarize-pro + speaker segments
+            "response_format": "json",  # json | text | diarized_json
+            "max_file_size": 536870912,  # 512 MB — Moss allows up to 512 MB
+            "prompt": "",  # optional keyterms (vocabulary boost; diarize-pro only)
         },
     },
 

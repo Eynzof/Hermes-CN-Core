@@ -311,6 +311,18 @@ class TestDispatchersTriggerPluginDiscovery:
                 web_tools, "_load_web_config",
                 lambda: {"extract_backend": "firecrawl"},
             )
+            # The invariant under test is "discovery runs before the registry
+            # lookup". web_extract_tool's SSRF gate runs first and, on hosts
+            # where DNS resolves example.com to a private/fake-IP (TUN/VPN
+            # test environments), short-circuits the batch before the hook is
+            # ever reached — so the test would assert the wrong thing. Treat
+            # the URL as network-safe (CI's public DNS does) so we determinis-
+            # tically reach the dispatcher. This stubs the *network safety*
+            # check only; it does not affect the registry/discovery path.
+            from unittest.mock import AsyncMock
+            monkeypatch.setattr(
+                web_tools, "async_is_safe_url", AsyncMock(return_value=True)
+            )
             # Sanity: registry IS empty before the tool call.
             assert web_search_registry.get_provider("firecrawl") is None
 

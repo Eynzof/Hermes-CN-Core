@@ -2899,7 +2899,10 @@ async def stream_events(ws: WebSocket):
             ws_board = None
 
         def _fetch_new(cursor_val: int) -> tuple[int, list[dict]]:
-            conn = kanban_db.connect(board=ws_board)
+            # Event subscribers are read-only observers. Opening an archived
+            # board through connect() would recreate its directory and schema;
+            # the existing-only contract instead ends this stale subscription.
+            conn = kanban_db.connect_existing(board=ws_board)
             try:
                 rows = conn.execute(
                     "SELECT id, task_id, run_id, kind, payload, created_at "
@@ -2930,8 +2933,29 @@ async def stream_events(ws: WebSocket):
             cursor, events = await asyncio.to_thread(_fetch_new, cursor)
             if events:
                 await ws.send_json({"events": events, "cursor": cursor})
-            await asyncio.sleep(_EVENT_POLL_SECONDS)
+            # A server only learns that an idle browser WebSocket closed when
+            # it receives the ASGI disconnect frame (or attempts a send). Most
+            # boards have no new events, so replace the blind sleep with a
+            # bounded receive. Client data is intentionally ignored; this
+            # endpoint remains a server-to-client event stream.
+            try:
+                message = await asyncio.wait_for(
+                    ws.receive(),
+                    timeout=_EVENT_POLL_SECONDS,
+                )
+            except TimeoutError:
+                continue
+            if message.get("type") == "websocket.disconnect":
+                return
     except WebSocketDisconnect:
+        return
+    except FileNotFoundError:
+        # Normal lifecycle: the selected board was archived while this stream
+        # was open. Never recreate it and do not log a warning.
+        try:
+            await ws.close(code=1001)
+        except Exception:
+            pass
         return
     except asyncio.CancelledError:
         # Normal shutdown path: dashboard process exit (Ctrl-C) cancels the

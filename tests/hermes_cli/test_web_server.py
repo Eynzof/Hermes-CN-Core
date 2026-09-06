@@ -2659,13 +2659,13 @@ class TestWebServerEndpoints:
         # actually received the write.
         env_var = custom_endpoint_key_env("worker-proxy")
 
-        worker_cfg = (worker_home / "config.yaml").read_text()
+        worker_cfg = (worker_home / "config.yaml").read_text(encoding="utf-8")
         assert "worker-proxy" in worker_cfg
         assert env_var in worker_cfg
-        assert "sk-worker-secret" in (worker_home / ".env").read_text()
+        assert "sk-worker-secret" in (worker_home / ".env").read_text(encoding="utf-8")
 
         for leaked in (default_home / "config.yaml", default_home / ".env"):
-            text = leaked.read_text() if leaked.exists() else ""
+            text = leaked.read_text(encoding="utf-8") if leaked.exists() else ""
             assert "worker-proxy" not in text, f"endpoint leaked into default profile ({leaked.name})"
             assert "sk-worker-secret" not in text, f"credential leaked into default profile ({leaked.name})"
 
@@ -3219,6 +3219,52 @@ class TestConfigRoundTrip:
             == {"nested": "value"}, \
             "Shallow-merge regression: agent.x_dashboard_invisible_test_key " \
             "was wiped when the frontend sent a partial agent dict."
+
+    def test_partial_config_update_preserves_providers(self):
+        """A focused form save must not erase an omitted provider mapping."""
+        from hermes_cli.config import read_raw_config, save_config
+
+        provider = {
+            "name": "Hermes E2E",
+            "api": "http://127.0.0.1:18099/v1",
+            "api_key": "synthetic-test-key",
+            "models": {"e2e-model": {}},
+        }
+        save_config({
+            "providers": {"custom:e2e": provider},
+            "memory": {"memory_char_limit": 2200},
+        })
+
+        response = self.client.put(
+            "/api/config",
+            json={"config": {"memory": {"memory_char_limit": 2201}}},
+        )
+
+        assert response.status_code == 200
+        persisted = read_raw_config()
+        assert persisted["memory"]["memory_char_limit"] == 2201
+        assert persisted["providers"] == {"custom:e2e": provider}
+
+    def test_explicit_empty_providers_mapping_still_deletes_providers(self):
+        """Provider management owns the whole mapping when it sends the key."""
+        from hermes_cli.config import read_raw_config, save_config
+
+        save_config({
+            "providers": {
+                "custom:e2e": {
+                    "name": "Hermes E2E",
+                    "api": "http://127.0.0.1:18099/v1",
+                },
+            },
+        })
+
+        response = self.client.put(
+            "/api/config",
+            json={"config": {"providers": {}}},
+        )
+
+        assert response.status_code == 200
+        assert not read_raw_config().get("providers")
 
     def test_schema_types_match_config_values(self):
         """Every schema field should have a matching-type value in the config."""
@@ -3793,6 +3839,49 @@ class TestModelContextLength:
         assert isinstance(result["model"], dict)
         assert result["model"]["context_length"] == 100000
         assert "model_context_length" not in result  # virtual field removed
+
+    def test_denormalize_writes_context_length_into_explicit_model_dict(self):
+        """Desktop provider saves send model metadata as an explicit dict."""
+        from hermes_cli.web_server import _denormalize_config_from_web
+
+        result = _denormalize_config_from_web({
+            "model": {
+                "default": "hermes-e2e-model",
+                "provider": "custom:e2e",
+                "base_url": "http://127.0.0.1:18099/v1",
+            },
+            "model_context_length": 200000,
+        })
+
+        assert result["model"]["context_length"] == 200000
+        assert "model_context_length" not in result
+
+    def test_denormalize_zero_clears_explicit_model_dict_override(self):
+        from hermes_cli.web_server import _denormalize_config_from_web
+
+        result = _denormalize_config_from_web({
+            "model": {
+                "default": "hermes-e2e-model",
+                "provider": "custom:e2e",
+                "context_length": 200000,
+            },
+            "model_context_length": 0,
+        })
+
+        assert "context_length" not in result["model"]
+
+    def test_denormalize_preserves_explicit_dict_context_when_virtual_field_is_omitted(self):
+        from hermes_cli.web_server import _denormalize_config_from_web
+
+        result = _denormalize_config_from_web({
+            "model": {
+                "default": "hermes-e2e-model",
+                "provider": "custom:e2e",
+                "context_length": 128000,
+            },
+        })
+
+        assert result["model"]["context_length"] == 128000
 
 
 class TestDenormalizeProviderSwitch:

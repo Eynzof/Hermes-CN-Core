@@ -7735,7 +7735,11 @@ def _denormalize_config_from_web(config: Dict[str, Any]) -> Dict[str, Any]:
     # with the stripped GET response, but be defensive)
     config.pop("_model_meta", None)
 
-    # Extract and remove model_context_length before processing model
+    # Extract and remove model_context_length before processing model. Keep
+    # whether the virtual field was supplied: API clients may send an explicit
+    # model dict without using the schema-driven virtual field, in which case
+    # an embedded context_length must be preserved.
+    has_ctx_override = "model_context_length" in config
     ctx_override = config.pop("model_context_length", 0)
     if not isinstance(ctx_override, int):
         try:
@@ -7744,7 +7748,15 @@ def _denormalize_config_from_web(config: Dict[str, Any]) -> Dict[str, Any]:
             ctx_override = 0
 
     model_val = config.get("model")
-    if isinstance(model_val, str) and model_val:
+    if isinstance(model_val, dict):
+        model_dict = dict(model_val)
+        if has_ctx_override:
+            if ctx_override > 0:
+                model_dict["context_length"] = ctx_override
+            else:
+                model_dict.pop("context_length", None)
+        config["model"] = model_dict
+    elif isinstance(model_val, str) and model_val:
         # Read the current disk config to recover model subkeys
         try:
             disk_config = load_config()
@@ -7820,11 +7832,10 @@ async def update_config(body: ConfigUpdate, profile: Optional[str] = None):
                               status_code=400,
                               detail="memory.memory_char_limit must be an integer between 1 and 8000",
                           )
-                  # The frontend sends the complete ``providers`` mapping; if a
-                  # provider was deleted, it is absent from ``incoming`` but would
-                  # survive ``_deep_merge`` (which only iterates *override* keys).
-                  # Mark ``providers`` as a replace-key so missing entries are
-                  # treated as deletions (Bug 1 fix).
+                  # Provider management sends the complete ``providers`` mapping.
+                  # When that key is present, replace the mapping so omitted
+                  # entries are treated as deletions. Focused forms do not send
+                  # the key at all, so their saves must preserve the mapping.
                   save_config(_deep_merge(existing, incoming, replace_keys={"providers"}))
         return {"ok": True}
 
@@ -9265,6 +9276,12 @@ def _messaging_platform_payload(
             home_channel = None
         configured = all(env_on_disk.get(key) for key in entry["required_env"])
     else:
+        from agent.secret_scope import reset_secret_scope, set_secret_scope
+
+        # Onboarding can save .env after the dashboard starts. Resolve through
+        # the gateway's existing credential rules using the latest disk values,
+        # without changing the process environment seen by other requests.
+        secret_token = set_secret_scope({**os.environ, **env_on_disk})
         try:
             gateway_config, platform, platform_config = _gateway_platform_config(
                 platform_id
@@ -9281,11 +9298,13 @@ def _messaging_platform_payload(
             )
         except Exception:
             enabled = False
-            configured = all(
+            configured = bool(entry["required_env"]) and all(
                 env_on_disk.get(key) or os.getenv(key, "")
                 for key in entry["required_env"]
             )
             home_channel = None
+        finally:
+            reset_secret_scope(secret_token)
 
     state = (
         runtime_platform.get("state") if isinstance(runtime_platform, dict) else None

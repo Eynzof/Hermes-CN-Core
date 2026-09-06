@@ -101,6 +101,54 @@ export const SDK_CONTRACT_VERSION = "1.1.0";
 // the single source of truth for the public contract. Don't redeclare them
 // here (duplicate ambient declarations with differing modifiers conflict).
 
+type PluginSelectProps = React.ComponentProps<typeof Select> & {
+  "aria-label"?: string;
+  "aria-labelledby"?: string;
+  "aria-describedby"?: string;
+  title?: string;
+};
+
+/**
+ * The Nous Select API styles its outer container but intentionally accepts a
+ * narrow prop set, so accessibility attributes supplied by third-party plugin
+ * bundles otherwise disappear before reaching the internal combobox button.
+ * Keep that dependency boundary explicit and forward only stable semantic
+ * attributes to the trigger instead of making plugins depend on its DOM.
+ */
+export function PluginSelect({
+  "aria-label": ariaLabel,
+  "aria-labelledby": ariaLabelledby,
+  "aria-describedby": ariaDescribedby,
+  title,
+  ...props
+}: PluginSelectProps) {
+  const hostRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const trigger = hostRef.current?.querySelector<HTMLButtonElement>(
+      'button[role="combobox"]',
+    );
+    if (!trigger) return;
+
+    const attributes: Record<string, string | undefined> = {
+      "aria-label": ariaLabel,
+      "aria-labelledby": ariaLabelledby,
+      "aria-describedby": ariaDescribedby,
+      title,
+    };
+    for (const [name, value] of Object.entries(attributes)) {
+      if (value === undefined) trigger.removeAttribute(name);
+      else trigger.setAttribute(name, value);
+    }
+  }, [ariaDescribedby, ariaLabel, ariaLabelledby, title]);
+
+  return React.createElement(
+    "div",
+    { ref: hostRef, style: { display: "contents" } },
+    React.createElement(Select, props),
+  );
+}
+
 export function exposePluginSDK() {
   window.__HERMES_PLUGINS__ = {
     register: registerPlugin,
@@ -150,7 +198,7 @@ export function exposePluginSDK() {
       Checkbox,
       Input,
       Label,
-      Select,
+      Select: PluginSelect,
       SelectOption,
       Separator,
       Tabs,

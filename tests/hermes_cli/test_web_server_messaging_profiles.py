@@ -68,8 +68,9 @@ def _env_field(platform, key):
 
 class TestProfileScopedMessagingReads:
     def test_scoped_read_does_not_show_root_credentials(
-        self, client, isolated_profiles
+        self, client, isolated_profiles, monkeypatch
     ):
+        monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "root-process-token")
         resp = client.get(
             "/api/messaging/platforms", params={"profile": "worker_alpha"}
         )
@@ -134,6 +135,82 @@ class TestProfileScopedMessagingReads:
             "all configured messaging platforms failed to connect"
         )
 
+
+
+class TestMessagingDiskCredentials:
+    @pytest.mark.parametrize(
+        "platform,credentials",
+        [
+            ("telegram", {"TELEGRAM_BOT_TOKEN": _VALID_WORKER_BOT_TOKEN}),
+            ("dingtalk", {"DINGTALK_CLIENT_ID": "test-id", "DINGTALK_CLIENT_SECRET": "test-secret"}),
+            ("feishu", {"FEISHU_APP_ID": "test-id", "FEISHU_APP_SECRET": "test-secret"}),
+            ("wecom", {"WECOM_BOT_ID": "test-id", "WECOM_SECRET": "test-secret"}),
+            ("wecom_callback", {
+                "WECOM_CALLBACK_CORP_ID": "test-id", "WECOM_CALLBACK_CORP_SECRET": "test-secret",
+                "WECOM_CALLBACK_TOKEN": "test-token", "WECOM_CALLBACK_ENCODING_AES_KEY": "test-key",
+            }),
+            ("weixin", {"WEIXIN_TOKEN": "test-token", "WEIXIN_ACCOUNT_ID": "test-id"}),
+        ],
+    )
+    @pytest.mark.parametrize("explicit_enabled", [None, False])
+    def test_disk_credentials_follow_gateway_enablement(
+        self, client, isolated_profiles, monkeypatch, platform, credentials, explicit_enabled
+    ):
+        import os
+        from agent.secret_scope import current_secret_scope
+
+        home = isolated_profiles["default"]
+        (home / ".env").write_text(
+            "".join(f"{key}={value}\n" for key, value in credentials.items()),
+            encoding="utf-8",
+        )
+        for key in credentials:
+            monkeypatch.delenv(key, raising=False)
+        if explicit_enabled is not None:
+            (home / "config.yaml").write_text(
+                yaml.safe_dump({"platforms": {platform: {"enabled": explicit_enabled}}}),
+                encoding="utf-8",
+            )
+        previous_scope = current_secret_scope()
+        resp = client.get("/api/messaging/platforms")
+        assert resp.status_code == 200
+        status = next(p for p in resp.json()["platforms"] if p["id"] == platform)
+        assert status["configured"] is True
+        assert status["enabled"] is (explicit_enabled is not False)
+        assert (status["state"] == "disabled") is (explicit_enabled is False)
+        assert all(key not in os.environ for key in credentials)
+        assert current_secret_scope() is previous_scope
+
+    def test_partial_weixin_credentials_are_not_configured(self, client, isolated_profiles):
+        home = isolated_profiles["default"]
+        (home / ".env").write_text("WEIXIN_TOKEN=test-token\n", encoding="utf-8")
+        resp = client.get("/api/messaging/platforms")
+        status = next(p for p in resp.json()["platforms"] if p["id"] == "weixin")
+        assert status["configured"] is False
+
+    def test_empty_required_env_keeps_plugin_connection_check(
+        self, client, monkeypatch
+    ):
+        from types import SimpleNamespace
+        import hermes_cli.web_server as web_server
+
+        entry = {
+            "id": "telegram", "name": "Test", "description": "",
+            "docs_url": "", "env_vars": (), "required_env": (),
+        }
+        monkeypatch.setattr(web_server, "_messaging_platform_catalog", lambda: [entry])
+        monkeypatch.setattr(
+            web_server, "_gateway_platform_config",
+            lambda platform_id: (
+                SimpleNamespace(_is_platform_connected=lambda *args: False),
+                platform_id,
+                SimpleNamespace(enabled=True, home_channel=None),
+            ),
+        )
+        status = client.get("/api/messaging/platforms").json()["platforms"][0]
+        assert status["enabled"] is True
+        assert status["configured"] is False
+        assert status["state"] == "not_configured"
 
 class TestProfileScopedMessagingWrites:
     def test_scoped_write_lands_in_target_profile_env(
@@ -266,4 +343,3 @@ class TestMultiplexPortBindingGuard:
                 json={"clear_env": [api_server["env_vars"][0]["key"]]},
             )
             assert resp.status_code == 200
-

@@ -2711,10 +2711,10 @@ def _deep_merge(base: dict, override: dict, replace_keys: set = None) -> dict:
     expects a mapping (#58277). A ``None`` override of a dict default is
     ignored — same as the key being absent.
 
-    *replace_keys* — an optional set of top-level keys whose dict values
-    should be replaced outright rather than deep-merged.  Keys in *base* that
-    are absent from *override* at a replace-key path are deleted, allowing
-    the frontend to signal provider deletions (Bug 1 fix).
+    *replace_keys* — an optional set of keys whose dict values should be
+    replaced outright rather than deep-merged when the key is explicitly
+    present in *override*.  Omitted keys remain untouched, so a focused form
+    update cannot delete an unrelated replace-key section.
     """
     result = base.copy()
     for key, value in override.items():
@@ -2729,12 +2729,6 @@ def _deep_merge(base: dict, override: dict, replace_keys: set = None) -> dict:
             continue
         else:
             result[key] = value
-    # Remove from result any replace_keys that are absent from override
-    # (they were copied from base.copy() but the caller wants full replacement).
-    if replace_keys:
-        for key in list(result.keys()):
-            if key in replace_keys and key not in override:
-                del result[key]
     return result
 def _strip_dotted_keys(cfg: dict, dotted_keys: set) -> Tuple[dict, set]:
     """Remove the given dotted leaf keys from a nested config dict.

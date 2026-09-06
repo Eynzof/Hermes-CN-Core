@@ -118,29 +118,36 @@ class TestInterruptPropagationToChild(unittest.TestCase):
 
         # Mock a slow API call
         mock_client = MagicMock()
+        request_started = threading.Event()
+        release_request = threading.Event()
         def slow_api_call(**kwargs):
-            time.sleep(5)  # Would take 5s normally
+            request_started.set()
+            release_request.wait(timeout=5)
             return MagicMock()
         mock_client.chat.completions.create = slow_api_call
         mock_client.close = MagicMock()
         child.client = mock_client
 
-        # Set interrupt after 0.2s from another thread
+        # Measure cancellation of an in-flight request, excluding cold client
+        # and timeout initialization before the worker actually starts.
+        interrupt_at = []
         def set_interrupt_later():
-            time.sleep(0.2)
-            child.interrupt("stop!")
+            if request_started.wait(timeout=5):
+                interrupt_at.append(time.monotonic())
+                child.interrupt("stop!")
         t = threading.Thread(target=set_interrupt_later, daemon=True)
         t.start()
 
-        start = time.monotonic()
         try:
             child._interruptible_api_call({"model": "test", "messages": []})
             self.fail("Should have raised InterruptedError")
         except InterruptedError:
-            elapsed = time.monotonic() - start
+            assert interrupt_at, "The simulated API request must start before interruption"
+            elapsed = time.monotonic() - interrupt_at[0]
             # It should abort promptly without waiting for the 5s slow call.
             assert elapsed < 2.0, f"Took {elapsed:.2f}s to detect interrupt (expected < 2.0s)"
         finally:
+            release_request.set()
             t.join(timeout=2)
             set_interrupt(False)
 

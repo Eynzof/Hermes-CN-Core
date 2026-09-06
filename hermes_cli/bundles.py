@@ -12,6 +12,7 @@ Subcommands:
 - reload: re-scan the bundles directory
 """
 from __future__ import annotations
+from hermes_cli.cli_output import line_input
 
 
 import sys
@@ -100,7 +101,7 @@ def _cmd_create(args) -> None:
         )
         try:
             while True:
-                line = input("skill> ").strip()
+                line = line_input("skill> ").strip()
                 if not line:
                     break
                 skills.append(line)

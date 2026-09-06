@@ -364,6 +364,8 @@ class QQAdapter(BasePlatformAdapter):
             self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
             self._mark_connected()
             logger.info("[%s] Connected", self._log_tag)
+            # Plugin-registered native handlers (ctx.register_platform_handler).
+            self._wire_plugin_handlers(None)
             return True
         except Exception as exc:
             message = f"QQ startup failed: {exc}"
@@ -2550,7 +2552,7 @@ class QQAdapter(BasePlatformAdapter):
                     )
                     await asyncio.sleep(delay)
 
-        error_msg = str(last_exc) if last_exc else "Unknown error"
+        error_msg = (str(last_exc) or type(last_exc).__name__) if last_exc else "Unknown error"
         logger.error("[%s] Send failed: %s", self._log_tag, error_msg)
         retryable = not any(
             k in error_msg.lower() for k in ("invalid", "forbidden", "not found")
@@ -2666,7 +2668,7 @@ class QQAdapter(BasePlatformAdapter):
             logger.error(
                 "[%s] send_with_keyboard failed: %s", self._log_tag, exc
             )
-            return SendResult(success=False, error=str(exc))
+            return SendResult(success=False, error=str(exc) or type(exc).__name__)
 
     async def send_approval_request(
             self,
@@ -3018,7 +3020,7 @@ class QQAdapter(BasePlatformAdapter):
             )
         except Exception as exc:
             logger.error("[%s] Media send failed: %s", self._log_tag, exc)
-            return SendResult(success=False, error=str(exc))
+            return SendResult(success=False, error=str(exc) or type(exc).__name__)
 
     async def _upload_local_file(
             self,

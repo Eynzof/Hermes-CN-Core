@@ -136,7 +136,22 @@ async def test_start_gateway_replace_aborts_when_force_killed_pid_still_alive(
     )
     monkeypatch.setattr(
         "gateway.status.terminate_pid",
-        lambda pid, force=False: calls.append((pid, force)),
+        lambda pid, force=False, **kwargs: calls.append((pid, force)),
+    )
+    # Ownership guard (#89315): legitimate same-home replace fixture — the
+    # persisted record is bound to target pid 42 in this home.
+    monkeypatch.setattr(
+        "gateway.status._read_pid_record",
+        lambda path=None: {
+            "pid": 42,
+            "kind": "hermes-gateway",
+            "argv": ["python", "-m", "hermes_cli.main", "gateway", "run"],
+            "start_time": 0,
+            "hermes_home": str(tmp_path),
+        },
+    )
+    monkeypatch.setattr(
+        "gateway.status._get_process_start_time", lambda pid: 0 if pid == 42 else None
     )
     # _pid_exists never goes False — the force-kill did not take.
     monkeypatch.setattr("gateway.status._pid_exists", lambda pid: True)
@@ -191,7 +206,7 @@ async def test_start_gateway_replace_writes_takeover_marker_before_sigterm(
         })
         return True
 
-    def record_terminate(pid, force=False):
+    def record_terminate(pid, force=False, **kwargs):
         events.append(f"terminate_pid(pid={pid}, force={force})")
 
     class _CleanExitRunner:
@@ -215,6 +230,23 @@ async def test_start_gateway_replace_writes_takeover_marker_before_sigterm(
         _pid_state["alive"] = False
     monkeypatch.setattr("gateway.status.get_running_pid", _mock_get_running_pid)
     monkeypatch.setattr("gateway.status.remove_pid_file", _mock_remove_pid_file)
+    # Ownership guard (#89315): this test simulates a legitimate same-home
+    # replace, so the persisted pid record must be a valid BOUND record for
+    # the target pid in THIS home. start_time 0 matches the legacy fixture's
+    # convention; the live probe is patched to agree.
+    monkeypatch.setattr(
+        "gateway.status._read_pid_record",
+        lambda path=None: {
+            "pid": 42,
+            "kind": "hermes-gateway",
+            "argv": ["python", "-m", "hermes_cli.main", "gateway", "run"],
+            "start_time": 0,
+            "hermes_home": str(tmp_path),
+        },
+    )
+    monkeypatch.setattr(
+        "gateway.status._get_process_start_time", lambda pid: 0 if pid == 42 else None
+    )
     monkeypatch.setattr(
         "gateway.status.release_all_scoped_locks",
         lambda **kwargs: 0,
@@ -263,7 +295,7 @@ async def test_start_gateway_replace_clears_marker_on_permission_denied(
         })
         return True
 
-    def raise_permission(pid, force=False):
+    def raise_permission(pid, force=False, **kwargs):
         raise PermissionError("simulated EPERM")
 
     monkeypatch.setattr("gateway.status.get_running_pid", lambda: 42)
@@ -411,5 +443,3 @@ async def test_start_gateway_propagates_fatal_config_exit_code(monkeypatch, tmp_
         await start_gateway(config=GatewayConfig(), replace=False, verbosity=0)
 
     assert exc_info.value.code == GATEWAY_FATAL_CONFIG_EXIT_CODE
-
-

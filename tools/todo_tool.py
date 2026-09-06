@@ -2,10 +2,11 @@
 """
 Todo Tool Module - Planning & Task Management
 
-Provides an in-memory task list the agent uses to decompose complex tasks,
-track progress, and maintain focus across long conversations. The state
-lives on the AIAgent instance (one per session) and is re-injected into
-the conversation after context compression events.
+Provides an in-memory, revisioned task list the agent uses to decompose
+complex tasks, track progress, and maintain focus across long conversations.
+The state lives on the AIAgent instance (one per session), is re-injected into
+the conversation after context compression events, and every write bumps a
+monotonic revision so UI clients can reject stale updates.
 
 Design:
 - Single `todo` tool: provide `todos` param to write, omit to read
@@ -21,6 +22,7 @@ import sys
 
 import orjson
 import rapidfuzz
+import json
 from typing import Any, Dict, List, Optional
 
 
@@ -85,6 +87,7 @@ class TodoStore:
     Finished items dropped by a replace-mode write move to _archived
     (bounded by MAX_ARCHIVED_TODOS). Warnings produced by the write pipeline
     accumulate on _warnings and are surfaced via pop_warnings().
+      - parent: optional id of another item, for nested subtasks
     """
 
     def __init__(self):
@@ -92,6 +95,7 @@ class TodoStore:
         self._archived: List[Dict[str, str]] = []
         self._warnings: List[str] = []
         self._conflict_error: Optional[str] = None
+        self._revision = 0
 
     def write(
         self,
@@ -114,6 +118,7 @@ class TodoStore:
         Warnings accumulate on self._warnings (pop_warnings() retrieves them);
         the auto_fix=False conflict is retrievable via pop_conflict_error().
         """
+        before = self.read()
         self._warnings = []
         self._conflict_error = None
         incoming = self._dedupe_by_id(todos)
@@ -126,7 +131,7 @@ class TodoStore:
 
         if not merge:
             # Replace mode: new list entirely
-            self._items = [self._validate(t) for t in incoming]
+            self._items = self._normalize_order([self._validate(t) for t in incoming])
             # Archive terminal items dropped by the replacement: finished
             # work is preserved (bounded), abandoned pending/in_progress
             # items are not.
@@ -170,6 +175,12 @@ class TodoStore:
                         existing[item_id]["code"] = self._cap_field(
                             str(t["code"]).strip(), MAX_TODO_CODE_CHARS
                         )
+                    if "parent" in t:
+                        parent = str(t["parent"] or "").strip()
+                        if parent:
+                            existing[item_id]["parent"] = parent
+                        else:
+                            existing[item_id].pop("parent", None)
                 else:
                     # New item -- validate fully and append to end
                     validated = self._validate(t)
@@ -183,7 +194,7 @@ class TodoStore:
                 if current["id"] not in seen:
                     rebuilt.append(current)
                     seen.add(current["id"])
-            self._items = rebuilt
+            self._items = self._normalize_order(rebuilt)
 
         # Regression guard: terminal items (completed/cancelled) cannot be
         # re-opened. Any item whose effective new status is pending or
@@ -242,12 +253,13 @@ class TodoStore:
         # (list order is priority).
         if len(self._items) > MAX_TODO_ITEMS:
             self._items = self._items[:MAX_TODO_ITEMS]
-        return [item.copy() for item in self._items]
+        self._sanitize_parents(self._items)
+        if self._items != before:
+            self._revision += 1
+        return self.read()
 
     def read(self) -> List[Dict[str, str]]:
-        """Return a copy of the current list."""
-        self._warnings = []
-        self._conflict_error = None
+        """Return a copy of the current list without consuming write feedback."""
         return [item.copy() for item in self._items]
 
     def pop_warnings(self) -> List[str]:
@@ -265,6 +277,26 @@ class TodoStore:
     def has_items(self) -> bool:
         """Check if there are any items in the list."""
         return bool(self._items)
+
+    def snapshot(self) -> Dict[str, Any]:
+        """Return the full state clients can reconcile atomically."""
+        return {"todos": self.read(), "revision": self._revision}
+
+    def restore(
+        self,
+        todos: List[Dict[str, Any]],
+        *,
+        revision: Any = 0,
+    ) -> List[Dict[str, str]]:
+        """Restore a trusted snapshot without manufacturing a new revision."""
+        self._items = self._normalize_order(
+            [self._validate(t) for t in self._dedupe_by_id(todos)]
+        )[:MAX_TODO_ITEMS]
+        try:
+            self._revision = max(0, int(revision or 0))
+        except (TypeError, ValueError):
+            self._revision = 0
+        return self.read()
 
     def format_for_injection(self) -> Optional[str]:
         """
@@ -285,18 +317,39 @@ class TodoStore:
         }
 
         # Only inject pending/in_progress items — completed/cancelled ones
-        # cause the model to re-do finished work after compression.
-        active_items = [
-            item for item in self._items
-            if item["status"] in {"pending", "in_progress"}
-        ]
-        if not active_items:
-            return None
+        # cause the model to re-do finished work after compression. A parent
+        # is kept (with its real status marker) when any descendant is
+        # active, so subtasks keep their context.
+        active = {"pending", "in_progress"}
+        children: Dict[str, List[Dict[str, str]]] = {}
+        roots: List[Dict[str, str]] = []
+        for item in self._items:
+            parent = item.get("parent")
+            if parent:
+                children.setdefault(parent, []).append(item)
+            else:
+                roots.append(item)
+
+        def render(item: Dict[str, str], depth: int, out: List[str]) -> bool:
+            kid_lines: List[str] = []
+            has_active_kid = False
+            for kid in children.get(item["id"], []):
+                has_active_kid |= render(kid, depth + 1, kid_lines)
+            keep = item["status"] in active or has_active_kid
+            if keep:
+                marker = markers.get(item["status"], "[?]")
+                out.append(
+                    f"{'  ' * depth}- {marker} {item['id']}. "
+                    f"{item['content']} ({item['status']})"
+                )
+                out.extend(kid_lines)
+            return keep
 
         lines = [TODO_INJECTION_HEADER]
-        for item in active_items:
-            marker = markers.get(item["status"], "[?]")
-            lines.append(f"- {marker} {item['id']}. {item['content']} ({item['status']})")
+        for item in roots:
+            render(item, 0, lines)
+        if len(lines) == 1:
+            return None
 
         return "\n".join(lines)
 
@@ -358,7 +411,33 @@ class TodoStore:
             code = str(raw_code).strip()
             if code:
                 result["code"] = TodoStore._cap_field(code, MAX_TODO_CODE_CHARS)
+        parent = str(item.get("parent") or "").strip()
+        if parent and parent != item_id:
+            result["parent"] = parent
         return result
+
+    @staticmethod
+    def _sanitize_parents(items: List[Dict[str, str]]) -> None:
+        """Drop dangling parent refs and break cycles (in place).
+
+        A parent pointing at a missing id, or a chain that loops back on
+        itself, would corrupt tree rendering — such items become roots.
+        """
+        ids = {item["id"] for item in items}
+        by_id = {item["id"]: item for item in items}
+        for item in items:
+            parent = item.get("parent")
+            if parent and parent not in ids:
+                item.pop("parent", None)
+        for item in items:
+            seen = {item["id"]}
+            node = item
+            while node.get("parent"):
+                if node["parent"] in seen:
+                    item.pop("parent", None)
+                    break
+                seen.add(node["parent"])
+                node = by_id[node["parent"]]
 
     @staticmethod
     def _dedupe_by_id(todos: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -372,6 +451,35 @@ class TodoStore:
             item_id = str(item.get("id", "")).strip() or "?"
             last_index[item_id] = i
         return [todos[i] for i in sorted(last_index.values())]
+
+    @staticmethod
+    def _normalize_order(items: List[Dict[str, str]]) -> List[Dict[str, str]]:
+        """Lift the active step ahead of any earlier unfinished placeholders."""
+        # Nested lists keep authored order — reordering a flat position would
+        # tear a subtask away from its siblings.
+        if any(item.get("parent") for item in items):
+            return items
+        active_index = next(
+            (i for i, item in enumerate(items) if item["status"] == "in_progress"),
+            None,
+        )
+        if active_index is None:
+            return items
+
+        pending_index = next(
+            (
+                i for i, item in enumerate(items[:active_index])
+                if item["status"] == "pending"
+            ),
+            None,
+        )
+        if pending_index is None:
+            return items
+
+        normalized = items.copy()
+        active_item = normalized.pop(active_index)
+        normalized.insert(pending_index, active_item)
+        return normalized
 
     @staticmethod
     def _detect_fuzzy_warnings(
@@ -652,6 +760,7 @@ def todo_tool(
 
     return orjson.dumps({
         "todos": items,
+        "revision": store.snapshot()["revision"],
         "summary": {
             "total": len(items),
             "pending": pending,
@@ -678,6 +787,9 @@ def check_todo_requirements() -> bool:
 
 TODO_SCHEMA = {
     "name": "todo",
+    # Dieted (#95681): the item shape and merge semantics live ONLY in the
+    # parameter schema below — the description teaches behavior, not
+    # structure the params already define.
     "description": (
         "Manage the session's task list. Use for complex tasks (3+ steps) or "
         "multiple user tasks; no args = read.\n\n"
@@ -695,19 +807,19 @@ TODO_SCHEMA = {
         "with error in notes\n"
         "- All-done returns a reminder in 'message'\n\n"
         "Always returns the full list + 'warnings' and 'message'."
+        " Break large phases into nested subtasks using parent."
     ),
     "parameters": {
         "type": "object",
         "properties": {
             "todos": {
                 "type": "array",
-                "description": "Task items to write. Omit to read current list.",
+                "description": "Task items to write.",
                 "items": {
                     "type": "object",
                     "properties": {
                         "id": {
-                            "type": "string",
-                            "description": "Unique item identifier"
+                            "type": "string"
                         },
                         "content": {
                             "type": "string",
@@ -733,6 +845,10 @@ TODO_SCHEMA = {
                                 "path. Runs on completion; failure reverts "
                                 "to pending"
                             )
+                        },
+                        "parent": {
+                            "type": "string",
+                            "description": "Optional id of a parent task."
                         }
                     },
                     "required": ["id", "content", "status"]

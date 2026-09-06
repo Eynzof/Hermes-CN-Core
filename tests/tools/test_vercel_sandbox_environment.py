@@ -483,9 +483,8 @@ class TestExecute:
 
         result = env.execute("echo hello")
 
-        # Invariant, not snapshot: output + returncode (result also carries
-        # elapsed_seconds/… metadata now).
-        assert result["output"] == "hello\n" and result["returncode"] == 0, label
+        assert result["output"] == "hello\n", label
+        assert result["returncode"] == 0, label
         assert original.closed == 1
         assert vercel_sdk.current is replacement
 

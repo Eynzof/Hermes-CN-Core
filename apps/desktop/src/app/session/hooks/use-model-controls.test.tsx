@@ -1,5 +1,5 @@
 import { QueryClient } from '@tanstack/react-query'
-import { cleanup, render, renderHook } from '@testing-library/react'
+import { act, cleanup, render, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { getGlobalModelInfo } from '@/hermes'
@@ -16,20 +16,14 @@ import {
 } from '@/store/session'
 import type * as SessionStates from '@/store/session-states'
 
+import { deferred } from '../../../test/deferred'
+
 import { useModelControls } from './use-model-controls'
 
 const setGlobalModel = vi.fn()
+const notify = vi.fn()
 const notifyError = vi.fn()
-
-function deferred<T>() {
-  let resolve!: (value: T | PromiseLike<T>) => void
-
-  const promise = new Promise<T>(done => {
-    resolve = done
-  })
-
-  return { promise, resolve }
-}
+const dismissNotification = vi.fn()
 
 vi.mock('@/hermes', () => ({
   getGlobalModelInfo: vi.fn(),
@@ -49,6 +43,9 @@ vi.mock('@/store/session-states', async importOriginal => {
 vi.mock('@/i18n', () => ({
   useI18n: () => ({
     t: {
+      common: {
+        confirm: 'Confirm'
+      },
       desktop: {
         modelSwitchFailed: 'Model switch failed'
       }
@@ -57,6 +54,8 @@ vi.mock('@/i18n', () => ({
 }))
 
 vi.mock('@/store/notifications', () => ({
+  dismissNotification: (...args: Parameters<typeof dismissNotification>) => dismissNotification(...args),
+  notify: (...args: Parameters<typeof notify>) => notify(...args),
   notifyError: (...args: Parameters<typeof notifyError>) => notifyError(...args)
 }))
 
@@ -213,13 +212,46 @@ describe('useModelControls', () => {
     expect($currentModel.get()).toBe('poolside/laguna-xs-2.1:free')
     expect($currentProvider.get()).toBe('nous')
     expect(getCurrentModelSource()).toBe('default')
-    expect(queryClient.getQueryData(modelOptionsQueryKey('default'))).toMatchObject({
+    expect(queryClient.getQueryData(modelOptionsQueryKey('default'))).toEqual({
       model: 'poolside/laguna-xs-2.1:free',
-      provider: 'nous'
+      provider: 'nous',
+      providers: [
+        {
+          models: ['poolside/laguna-xs-2.1:free'],
+          name: 'nous',
+          slug: 'nous'
+        }
+      ]
     })
   })
 
-  it('routes active-session picker changes through config.set with an explicit session-scoped provider', async () => {
+  it('preserves a populated model catalog when painting a saved profile default', () => {
+    const queryClient = new QueryClient()
+    const providers = [{ models: ['tencent/hy3:free'], name: 'Nous', slug: 'nous' }]
+
+    queryClient.setQueryData(modelOptionsQueryKey('default'), {
+      model: 'tencent/hy3:free',
+      provider: 'nous',
+      providers
+    })
+
+    const { result } = renderHook(() =>
+      useModelControls({
+        queryClient,
+        requestGateway: vi.fn()
+      })
+    )
+
+    result.current.applySavedMainModel('nous', 'poolside/laguna-xs-2.1:free')
+
+    expect(queryClient.getQueryData(modelOptionsQueryKey('default'))).toEqual({
+      model: 'poolside/laguna-xs-2.1:free',
+      provider: 'nous',
+      providers
+    })
+  })
+
+  it('persists an active primary-session picker change as the profile default via config.set --global', async () => {
     $activeSessionId.set('session-1')
     const requestGateway = vi.fn(async () => ({ key: 'model', value: 'claude-sonnet-4.6' }) as never)
     let controls!: Controls
@@ -233,10 +265,13 @@ describe('useModelControls', () => {
       })
     ).resolves.toBe(true)
 
+    // The primary main agent's pick IS the profile default, so it persists to
+    // config.yaml (model.default + model.provider) — which is what lets a
+    // chosen subscription provider outrank a leftover OPENAI_API_KEY env var.
     expect(requestGateway).toHaveBeenCalledWith('config.set', {
       session_id: 'session-1',
       key: 'model',
-      value: 'claude-sonnet-4.6 --provider anthropic --session'
+      value: 'claude-sonnet-4.6 --provider anthropic --global'
     })
     expect(requestGateway).not.toHaveBeenCalledWith('slash.exec', expect.anything())
   })
@@ -271,6 +306,56 @@ describe('useModelControls', () => {
     await controls.selectModel({ model: 'grok-4.5', provider: 'xai' })
 
     expect(invalidate).toHaveBeenCalled()
+  })
+
+  it('confirms a guarded model switch before retrying it', async () => {
+    $activeSessionId.set('session-1')
+    setCurrentModel('gpt-5.6-sol')
+    setCurrentProvider('openai-codex')
+
+    const requestGateway = vi
+      .fn()
+      .mockResolvedValueOnce({
+        confirm_message: 'This contributor model trains on your data.',
+        confirm_required: true,
+        key: 'model',
+        value: 'muse-spark-1.2-contributor'
+      })
+      .mockResolvedValueOnce({ key: 'model', scope: 'global', value: 'muse-spark-1.2-contributor' })
+
+    let controls!: Controls
+
+    render(<Harness onReady={value => (controls = value)} requestGateway={requestGateway} />)
+
+    await expect(controls.selectModel({ model: 'muse-spark-1.2-contributor', provider: 'opencode-go' })).resolves.toBe(
+      false
+    )
+
+    expect($currentModel.get()).toBe('gpt-5.6-sol')
+    expect($currentProvider.get()).toBe('openai-codex')
+    expect(notify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: expect.objectContaining({ label: 'Confirm' }),
+        kind: 'warning',
+        message: 'This contributor model trains on your data.'
+      })
+    )
+
+    const action = notify.mock.calls.at(-1)?.[0]?.action
+
+    await act(async () => {
+      await action?.onClick()
+    })
+
+    await waitFor(() => expect(requestGateway).toHaveBeenCalledTimes(2))
+    expect(requestGateway).toHaveBeenLastCalledWith('config.set', {
+      confirm_expensive_model: true,
+      key: 'model',
+      session_id: 'session-1',
+      value: 'muse-spark-1.2-contributor --provider opencode-go --global'
+    })
+    expect($currentModel.get()).toBe('muse-spark-1.2-contributor')
+    expect($currentProvider.get()).toBe('opencode-go')
   })
 
   it('keeps the pick when an OLDER gateway refuses a mid-turn switch', async () => {

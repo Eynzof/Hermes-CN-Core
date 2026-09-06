@@ -495,6 +495,29 @@ class TestSendUpdateNotification:
         assert not exit_code_path.exists()
 
 
+# ---------------------------------------------------------------------------
+# /update in help and known_commands
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateInHelp:
+    """Verify /update appears in help text and known commands set."""
+
+
+    def test_update_is_known_command(self):
+        """/update dispatches through the gateway's plain-command handler table.
+
+        (Was an inspect.getsource() check for the literal '"update"' in
+        _handle_message — a banned source-reading test. The if-chain was
+        replaced by _gateway_plain_command_handlers(), so assert the real
+        dispatch contract: the table maps "update" to the update handler.)
+        """
+        from gateway.run import GatewayRunner
+
+        runner = object.__new__(GatewayRunner)
+        handlers = runner._gateway_plain_command_handlers()
+        assert handlers.get("update") == runner._handle_update_command
+
 class TestWatchUpdateProgress:
     @pytest.mark.asyncio
     async def test_invalid_utf8_update_output_does_not_crash_watcher(self, tmp_path):

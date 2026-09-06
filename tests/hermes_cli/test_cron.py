@@ -1,13 +1,15 @@
 """Tests for hermes_cli.cron command handling."""
 
+import argparse
 from argparse import Namespace
 from types import SimpleNamespace
 
 import pytest
 
-from cron.jobs import create_job, get_job, list_jobs
+from cron.jobs import create_job, get_job, list_jobs, load_jobs, save_jobs
 from hermes_cli import cron as cron_cli
 from hermes_cli.cron import cron_command
+from hermes_cli.subcommands.cron import build_cron_parser
 
 
 @pytest.fixture(autouse=True)
@@ -37,6 +39,30 @@ def tmp_cron_dir(tmp_path, monkeypatch):
 
 
 class TestCronCommandLifecycle:
+
+    def test_edit_persists_user_owned_inference_pins(self, tmp_cron_dir, capsys):
+        job = create_job(prompt="Daily report", schedule="every 1h")
+        parser = argparse.ArgumentParser(prog="hermes")
+        subparsers = parser.add_subparsers(dest="command")
+        build_cron_parser(subparsers, cmd_cron=cron_command)
+
+        args = parser.parse_args(
+            [
+                "cron",
+                "edit",
+                job["id"],
+                "--model",
+                "new-model",
+                "--provider",
+                "nous",
+            ]
+        )
+        cron_command(args)
+
+        updated = get_job(job["id"])
+        assert updated["model"] == "new-model"
+        assert updated["provider"] == "nous"
+        assert "Updated job" in capsys.readouterr().out
 
     def test_edit_can_replace_and_clear_skills(self, tmp_cron_dir, capsys):
         job = create_job(
@@ -120,6 +146,69 @@ class TestCronCommandLifecycle:
         assert jobs[0]["skills"] == ["blogwatcher", "maps"]
         assert jobs[0]["name"] == "Skill combo"
 
+
+class TestCronDoctor:
+    def test_doctor_reports_cron_health_issues(self, tmp_cron_dir, capsys):
+        job = create_job(prompt="Daily digest", schedule="every 1h", script="missing.py")
+        jobs = load_jobs()
+        jobs[0]["last_status"] = "error"
+        jobs[0]["last_error"] = "Provider returned error"
+        jobs[0]["last_delivery_error"] = "telegram timeout"
+        save_jobs(jobs)
+
+        rc = cron_command(Namespace(cron_command="doctor"))
+
+        out = capsys.readouterr().out
+        assert rc == 1
+        assert "Cron doctor found 3 issue(s)" in out
+        assert job["id"] in out
+        assert "last run failed: Provider returned error" in out
+        assert "last delivery failed: telegram timeout" in out
+        assert "script not found" in out
+
+    def test_doctor_reports_healthy_jobs(self, tmp_cron_dir, capsys):
+        scripts_dir = tmp_cron_dir / "scripts"
+        scripts_dir.mkdir()
+        (scripts_dir / "ok.py").write_text("print('ok')\n", encoding="utf-8")
+        create_job(prompt="Daily digest", schedule="every 1h", script="ok.py")
+
+        rc = cron_command(Namespace(cron_command="doctor"))
+
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "✓ Cron doctor found no issues" in out
+
+    def test_doctor_flags_overdue_next_run(self, tmp_cron_dir, capsys):
+        from datetime import datetime, timedelta, timezone
+
+        create_job(prompt="Hourly ping", schedule="every 1h")
+        jobs = load_jobs()
+        stale = (datetime.now(timezone.utc) - timedelta(hours=3)).isoformat()
+        jobs[0]["next_run_at"] = stale
+        save_jobs(jobs)
+
+        rc = cron_command(Namespace(cron_command="doctor"))
+
+        out = capsys.readouterr().out
+        assert rc == 1
+        assert "overdue" in out
+        assert "not firing" in out
+
+    def test_doctor_tolerates_slightly_late_next_run(self, tmp_cron_dir, capsys):
+        from datetime import datetime, timedelta, timezone
+
+        create_job(prompt="Hourly ping", schedule="every 1h")
+        jobs = load_jobs()
+        # 5 minutes late is within the ticker grace window — healthy.
+        recent = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+        jobs[0]["next_run_at"] = recent
+        save_jobs(jobs)
+
+        rc = cron_command(Namespace(cron_command="doctor"))
+
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "✓ Cron doctor found no issues" in out
 
 
 class TestGatewayNotRunningWarning:
@@ -252,3 +341,126 @@ def test_cron_create_failure_returns_nonzero(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert rc == 1
     assert "Failed to create job: boom" in out
+
+
+class TestCronRunBackgroundDispatch:
+    """`hermes cron run` must not report 'failed' when the run was dispatched
+    to the background delegation worker.
+
+    The CLI process inherits the gateway/desktop session env, so a manual run
+    can be dispatched to the daemon instead of executing inline. Such
+    responses carry execution_mode='background' / delegation_id and the job
+    keeps running after the CLI exits — a terminal success/failure verdict
+    would be a lie (#83340). The CLI must report the background dispatch
+    instead, and leave synchronous runs unchanged.
+    """
+
+    def _run_cmd(self, capsys):
+        rc = cron_command(Namespace(cron_command="run", job_id="job-1"))
+        return rc, capsys.readouterr().out
+
+    def test_background_dispatch_with_delegation_id_does_not_report_failed(
+        self, monkeypatch, capsys
+    ):
+        monkeypatch.setattr(
+            cron_cli,
+            "_cron_api",
+            lambda **kwargs: {
+                "success": True,
+                "job": {
+                    "id": "job-1",
+                    "name": "Watchdog",
+                    "execution_mode": "background",
+                    "delegation_id": "del-abc123",
+                    # No execution_success — the inline verdict must not apply.
+                    "executed": True,
+                },
+            },
+        )
+
+        rc, out = self._run_cmd(capsys)
+
+        assert rc == 0
+        assert "Running in background (delegation del-abc123)." in out
+        assert "failed" not in out.lower()
+        assert "Ran now" not in out
+
+    def test_background_dispatch_without_delegation_id(self, monkeypatch, capsys):
+        monkeypatch.setattr(
+            cron_cli,
+            "_cron_api",
+            lambda **kwargs: {
+                "success": True,
+                "job": {
+                    "id": "job-1",
+                    "name": "Watchdog",
+                    "execution_mode": "background",
+                },
+            },
+        )
+
+        rc, out = self._run_cmd(capsys)
+
+        assert rc == 0
+        assert "Running in background." in out
+        assert "failed" not in out.lower()
+
+    def test_sync_run_success_unchanged(self, monkeypatch, capsys):
+        monkeypatch.setattr(
+            cron_cli,
+            "_cron_api",
+            lambda **kwargs: {
+                "success": True,
+                "job": {
+                    "id": "job-1",
+                    "name": "Watchdog",
+                    "executed": True,
+                    "execution_success": True,
+                },
+            },
+        )
+
+        rc, out = self._run_cmd(capsys)
+
+        assert rc == 0
+        assert "Ran now: succeeded." in out
+
+    def test_sync_run_failure_still_reported(self, monkeypatch, capsys):
+        # A genuine synchronous failure must keep reporting 'failed' — only
+        # background-dispatched runs are exempt from the terminal verdict.
+        monkeypatch.setattr(
+            cron_cli,
+            "_cron_api",
+            lambda **kwargs: {
+                "success": True,
+                "job": {
+                    "id": "job-1",
+                    "name": "Watchdog",
+                    "executed": True,
+                    "execution_success": False,
+                },
+            },
+        )
+
+        rc, out = self._run_cmd(capsys)
+
+        assert rc == 0
+        assert "Ran now: failed." in out
+
+    def test_delegation_id_alone_counts_as_background(self, monkeypatch, capsys):
+        # Some dispatchers may not set execution_mode but always return the
+        # delegation_id — either marker alone must suppress the verdict.
+        monkeypatch.setattr(
+            cron_cli,
+            "_cron_api",
+            lambda **kwargs: {
+                "success": True,
+                "job": {"id": "job-1", "name": "Watchdog", "delegation_id": "del-xyz"},
+            },
+        )
+
+        rc, out = self._run_cmd(capsys)
+
+        assert rc == 0
+        assert "Running in background (delegation del-xyz)." in out
+        assert "failed" not in out.lower()

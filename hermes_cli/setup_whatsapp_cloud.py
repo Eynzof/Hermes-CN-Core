@@ -32,6 +32,7 @@ prints the exact curl command the user can run from a third terminal
 to verify the loop end-to-end once everything's running.
 """
 from __future__ import annotations
+from hermes_cli.cli_output import line_input
 
 from agent.re_compat import re
 import secrets
@@ -179,7 +180,7 @@ def _prompt(message: str, default: Optional[str] = None, secret: bool = False) -
 
             raw = getpass.getpass(f"{message}{suffix} (input hidden): ").strip()
         else:
-            raw = input(f"{message}{suffix}: ").strip()
+            raw = line_input(f"{message}{suffix}: ").strip()
     except (EOFError, KeyboardInterrupt):
         print()
         return ""
@@ -443,7 +444,7 @@ def run_whatsapp_cloud_setup() -> int:
     current_allow = get_env_value("WHATSAPP_CLOUD_ALLOWED_USERS") or None
     allow_default = current_allow if current_allow else None
     try:
-        allowed = input(
+        allowed = line_input(
             f"  → Allowed users{' [' + allow_default + ']' if allow_default else ''}: "
         ).strip() or (allow_default or "")
     except (EOFError, KeyboardInterrupt):

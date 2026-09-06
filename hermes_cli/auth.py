@@ -396,6 +396,15 @@ PROVIDER_REGISTRY: Dict[str, ProviderConfig] = {
         name="Anthropic",
         auth_type="api_key",
         inference_base_url="https://api.anthropic.com",
+        # CLAUDE_CODE_OAUTH_TOKEN is NOT an API key, despite auth_type="api_key"
+        # and its place in this tuple (#82154). `claude setup-token` yields an
+        # `sk-ant-oat01…` OAuth token: sent as `x-api-key` it 401s, and sent as a
+        # bare Bearer it 429s. It is listed here because this tuple doubles as the
+        # credential-DISCOVERY list (agent/credential_pool.py builds its env scan
+        # from it), so removing it would stop Hermes finding a setup-token
+        # credential at all. The adapter routes such a value down the OAuth path
+        # on the strength of its prefix, not on this entry. Only ANTHROPIC_API_KEY
+        # and ANTHROPIC_TOKEN are usable as literal API keys.
         api_key_env_vars=("ANTHROPIC_API_KEY", "ANTHROPIC_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"),
         base_url_env_var="ANTHROPIC_BASE_URL",
     ),
@@ -476,6 +485,16 @@ PROVIDER_REGISTRY: Dict[str, ProviderConfig] = {
         api_key_env_vars=("OPENCODE_GO_API_KEY",),
         base_url_env_var="OPENCODE_GO_BASE_URL",
     ),
+    "opencode-free": ProviderConfig(
+        id="opencode-free",
+        name="OpenCode Free",
+        auth_type="api_key",
+        inference_base_url="https://opencode.ai/zen/v1",
+        # Deliberately NO api_key_env_vars: the free tier is served
+        # anonymously (any unrecognized bearer is a 401), so there is no
+        # secret to configure. Select via `hermes model` / `/model free`.
+        api_key_env_vars=(),
+    ),
     "kilocode": ProviderConfig(
         id="kilocode",
         name="Kilo Code",
@@ -507,6 +526,14 @@ PROVIDER_REGISTRY: Dict[str, ProviderConfig] = {
         inference_base_url="https://tokenhub.tencentmaas.com/v1",
         api_key_env_vars=("TOKENHUB_API_KEY",),
         base_url_env_var="TOKENHUB_BASE_URL",
+    ),
+    "tencent-tokenplan": ProviderConfig(
+        id="tencent-tokenplan",
+        name="Tencent TokenPlan",
+        auth_type="api_key",
+        inference_base_url="https://api.lkeap.cloud.tencent.com/plan/anthropic",
+        api_key_env_vars=("TOKENPLAN_API_KEY",),
+        base_url_env_var="TOKENPLAN_BASE_URL",
     ),
     "ollama-cloud": ProviderConfig(
         id="ollama-cloud",
@@ -666,6 +693,42 @@ def has_usable_secret(value: Any, *, min_length: int = 4) -> bool:
     return True
 
 
+# Known API-key prefixes per provider.  Only providers listed here get
+# prefix validation; everyone else is fail-open (unknown formats pass).
+# This exists so an obviously malformed key in .env (truncated paste, wrong
+# provider's key in the wrong var, etc.) doesn't silently shadow a valid
+# credential-pool entry and produce opaque 401s (#93593).
+KNOWN_PROVIDER_KEY_PREFIXES: Dict[str, tuple] = {
+    # All OpenRouter keys are issued as sk-or-... (currently sk-or-v1-).
+    "openrouter": ("sk-or-",),
+}
+
+
+def _secret_matches_declared_prefix(provider_id: str, value: str) -> bool:
+    """Return False only when the provider declares key prefixes and none match.
+
+    Providers without a declared prefix always pass (fail-open): we never
+    hard-reject unknown key formats, only skip values that provably don't
+    belong to a provider whose key format we know.
+    """
+    prefixes = KNOWN_PROVIDER_KEY_PREFIXES.get(provider_id)
+    if not prefixes:
+        return True
+    return any(value.startswith(p) for p in prefixes)
+
+
+def _warn_malformed_secret(provider_id: str, source: str) -> None:
+    prefixes = KNOWN_PROVIDER_KEY_PREFIXES.get(provider_id, ())
+    logger.warning(
+        "Ignoring %s for provider %r: value does not match the expected key "
+        "prefix (%s). Falling back to the next credential source. Fix or "
+        "remove the malformed key to silence this warning.",
+        source,
+        provider_id,
+        " or ".join(prefixes),
+    )
+
+
 def _resolve_api_key_provider_secret(
     provider_id: str, pconfig: ProviderConfig
 ) -> tuple[str, str]:
@@ -690,20 +753,42 @@ def _resolve_api_key_provider_secret(
         # in the user's .env file isn't shadowed by a stale shell export
         # inherited from a parent process (Codex CLI, test runners, etc.).
         val = (get_env_value_prefer_dotenv(env_var) or "").strip()
-        if has_usable_secret(val):
-            return val, env_var
+        if not has_usable_secret(val):
+            continue
+        if not _secret_matches_declared_prefix(provider_id, val):
+            # A provably malformed key (declared prefix mismatch) must not
+            # shadow a valid credential-pool entry (#93593). Warn and keep
+            # looking instead of returning it.
+            _warn_malformed_secret(provider_id, env_var)
+            continue
+        return val, env_var
 
     # Fallback: try credential pool (e.g. zai key stored via auth.json)
     try:
         from agent.credential_pool import load_pool
         pool = load_pool(provider_id)
         if pool and pool.has_credentials():
+            # Prefer the pool's own selection (peek), but iterate the rest of
+            # the entries too so one malformed entry doesn't block a valid one.
+            candidates = []
             entry = pool.peek()
-            if entry:
+            if entry is not None:
+                candidates.append(entry)
+            try:
+                for extra in pool.entries():
+                    if extra is not None and all(extra is not c for c in candidates):
+                        candidates.append(extra)
+            except Exception:
+                pass
+            for entry in candidates:
                 key = getattr(entry, "access_token", "") or getattr(entry, "runtime_api_key", "")
                 key = str(key).strip()
-                if has_usable_secret(key):
-                    return key, f"credential_pool:{provider_id}"
+                if not has_usable_secret(key):
+                    continue
+                if not _secret_matches_declared_prefix(provider_id, key):
+                    _warn_malformed_secret(provider_id, f"credential_pool:{provider_id}")
+                    continue
+                return key, f"credential_pool:{provider_id}"
     except Exception:
         pass
 
@@ -725,8 +810,8 @@ ZAI_ENDPOINTS = [
     # (id, base_url, probe_models, label)
     ("global",        "https://api.z.ai/api/paas/v4",        ["glm-5"],   "Global"),
     ("cn",            "https://open.bigmodel.cn/api/paas/v4", ["glm-5"],   "China"),
-    ("coding-global", "https://api.z.ai/api/coding/paas/v4",  ["glm-5.2", "glm-5.1", "glm-5v-turbo", "glm-4.7"], "Global (Coding Plan)"),
-    ("coding-cn",     "https://open.bigmodel.cn/api/coding/paas/v4", ["glm-5.2", "glm-5.1", "glm-5v-turbo", "glm-4.7"], "China (Coding Plan)"),
+    ("coding-global", "https://api.z.ai/api/coding/paas/v4",  ["glm-5.3", "glm-5.3-flash", "glm-5.2", "glm-5.1", "glm-5v-turbo", "glm-4.7"], "Global (Coding Plan)"),
+    ("coding-cn",     "https://open.bigmodel.cn/api/coding/paas/v4", ["glm-5.3", "glm-5.3-flash", "glm-5.2", "glm-5.1", "glm-5v-turbo", "glm-4.7"], "China (Coding Plan)"),
 ]
 
 
@@ -1095,34 +1180,52 @@ def _load_global_auth_store() -> Dict[str, Any]:
     Returns an empty dict when no global fallback exists (classic mode,
     or the global auth.json is absent). Never raises on missing file.
 
-    Seat belt: under pytest, refuses to read the real user's
-    ``~/.hermes/auth.json`` even when HERMES_HOME is set to a profile
-    path. The hermetic conftest does not redirect ``HOME``, so
-    ``get_default_hermes_root()`` for a profile-shaped HERMES_HOME can
-    still resolve to the real user's home on a dev machine. That would
-    leak real credentials into tests. This guard uses the unmodified
-    ``HOME`` env var (what ``os.path.expanduser('~')`` would resolve to),
-    not ``Path.home()``, because ``Path.home`` is sometimes monkeypatched
-    by fixtures that want to relocate the global root to a tmp path.
+    Memoised keyed on the global auth file's path + mtime (same pattern as
+    ``_nous_auth_status_cache``): read_credential_pool() -> load_pool() runs
+    this once per provider row in the /model picker, and the path resolution
+    (``_global_auth_file_path()`` -> ``get_default_hermes_root()``) + JSON
+    parse cost ~105us+ per call even when nothing changed. The global
+    store only changes when the user authenticates at global scope (writes
+    always go through _save_auth_store, which touches the file), so the mtime
+    key keeps the memo freshness-correct. Callers must treat the returned
+    store as read-only (all current callers do — .get / dict() / list()
+    copies only).
     """
+    global _global_auth_store_cache
     global_path = _global_auth_file_path()
     if global_path is None or not global_path.exists():
+        _global_auth_store_cache = None
         return {}
+    try:
+        resolved_path = str(global_path.resolve(strict=False))
+        mtime_ns = global_path.stat().st_mtime_ns
+        cache_key: Optional[Tuple[str, int]] = (resolved_path, mtime_ns)
+    except Exception:
+        cache_key = None
+    if cache_key is not None and _global_auth_store_cache is not None:
+        cached_path, cached_mtime, cached_store = _global_auth_store_cache
+        if cached_path == cache_key[0] and cached_mtime == cache_key[1]:
+            return cached_store
     if os.environ.get("PYTEST_CURRENT_TEST"):
         real_home_env = os.environ.get("HOME", "")
         if real_home_env:
             real_root = Path(real_home_env) / ".hermes" / "auth.json"
             try:
                 if global_path.resolve(strict=False) == real_root.resolve(strict=False):
+                    _global_auth_store_cache = None
                     return {}
             except Exception:
                 pass
     try:
-        return _load_auth_store(global_path)
+        store = _load_auth_store(global_path)
     except Exception:
         # A malformed global store must not break profile reads. The
         # profile's own auth store is still authoritative.
+        _global_auth_store_cache = None
         return {}
+    if cache_key is not None:
+        _global_auth_store_cache = (cache_key[0], cache_key[1], store)
+    return store
 
 
 def _auth_lock_path() -> Path:
@@ -1186,8 +1289,20 @@ def _file_lock(
 
     # On Windows, msvcrt.locking needs the file to have content and the
     # file pointer at position 0. Ensure the lock file has at least 1 byte.
+    # Under real concurrency (many threads/processes racing this same
+    # ensure-content check) this write can collide with another holder's
+    # msvcrt byte-range lock on the same file and raise PermissionError --
+    # uncaught, since it happens before the retry loop below even starts.
+    # A stress test with 20 concurrent Hermes processes reproduced this
+    # deterministically on Windows. It's a best-effort convenience write
+    # (whoever gets there first wins); losing the race here just means the
+    # lock file already has content, so swallow the failure and proceed
+    # straight to the acquire-with-retry loop.
     if msvcrt and (not lock_path.exists() or lock_path.stat().st_size == 0):
-        lock_path.write_text(" ", encoding="utf-8")
+        try:
+            lock_path.write_text(" ", encoding="utf-8")
+        except (OSError, PermissionError):
+            pass
 
     with lock_path.open("r+" if msvcrt else "a+", encoding="utf-8", errors="replace") as lock_file:
         deadline = time.monotonic() + max(1.0, timeout_seconds)
@@ -1330,7 +1445,8 @@ def _save_auth_store(auth_store: Dict[str, Any], target_path: Optional[Path] = N
     auth_file.parent.mkdir(parents=True, exist_ok=True)
     # Tighten parent dir to 0o700 so siblings can't traverse to creds.
     # No-op on Windows (POSIX mode bits not enforced); ignore failures.
-    # secure_parent_dir refuses to chmod / or top-level dirs (#25821).
+    # secure_parent_dir refuses to chmod /, top-level dirs, or the
+    # hermes-agent install tree (#25821, #93050).
     secure_parent_dir(auth_file)
     auth_store["version"] = AUTH_STORE_VERSION
     auth_store["updated_at"] = datetime.now(timezone.utc).isoformat()
@@ -1754,11 +1870,29 @@ def write_credential_pool(
 
 
 def suppress_credential_source(provider_id: str, source: str) -> None:
-    """Mark a credential source as suppressed so it won't be re-seeded."""
+    """Mark a credential source as suppressed so it won't be re-seeded.
+
+    Older auth stores may represent a provider's suppressed sources as a
+    mapping.  Treat its keys as source names and migrate the value to the
+    canonical list form before appending the requested source.
+    """
     with _auth_store_lock():
         auth_store = _load_auth_store()
-        suppressed = auth_store.setdefault("suppressed_sources", {})
-        provider_list = suppressed.setdefault(provider_id, [])
+        suppressed = auth_store.get("suppressed_sources")
+        if not isinstance(suppressed, dict):
+            suppressed = {}
+            auth_store["suppressed_sources"] = suppressed
+
+        raw_sources = suppressed.get(provider_id)
+        if isinstance(raw_sources, list):
+            provider_list = raw_sources
+        elif isinstance(raw_sources, dict):
+            provider_list = [str(name) for name in raw_sources]
+            suppressed[provider_id] = provider_list
+        else:
+            provider_list = []
+            suppressed[provider_id] = provider_list
+
         if source not in provider_list:
             provider_list.append(source)
         _save_auth_store(auth_store)
@@ -1784,8 +1918,15 @@ def unsuppress_credential_source(provider_id: str, source: str) -> bool:
         suppressed = auth_store.get("suppressed_sources")
         if not isinstance(suppressed, dict):
             return False
-        provider_list = suppressed.get(provider_id)
-        if not isinstance(provider_list, list) or source not in provider_list:
+        raw_sources = suppressed.get(provider_id)
+        if isinstance(raw_sources, dict):
+            provider_list = [str(name) for name in raw_sources]
+            suppressed[provider_id] = provider_list
+        elif isinstance(raw_sources, list):
+            provider_list = raw_sources
+        else:
+            return False
+        if source not in provider_list:
             return False
         provider_list.remove(source)
         if not provider_list:
@@ -1904,6 +2045,23 @@ def is_provider_explicitly_configured(provider_id: str) -> bool:
             if has_usable_secret(os.getenv(env_var, "")):
                 return True
 
+    # AWS SDK providers (Bedrock) have auth_type="aws_sdk" and empty
+    # api_key_env_vars, so the loop above never sees them. A user who sets
+    # AWS_BEARER_TOKEN_BEDROCK (or an access-key pair) in .env has configured
+    # the provider exactly as explicitly as pasting ANTHROPIC_API_KEY —
+    # without this check the desktop picker's explicit_only filter hides
+    # Bedrock even though list_authenticated_providers builds its row.
+    # Only check explicit env credentials here (NOT boto3's full chain):
+    # ambient sources like EC2 IMDS / SSO profiles must not auto-surface.
+    if pconfig and pconfig.auth_type == "aws_sdk":
+        if has_usable_secret(os.getenv("AWS_BEARER_TOKEN_BEDROCK", "")):
+            return True
+        if (
+            has_usable_secret(os.getenv("AWS_ACCESS_KEY_ID", ""))
+            and has_usable_secret(os.getenv("AWS_SECRET_ACCESS_KEY", ""))
+        ):
+            return True
+
     # 4. Check persisted credential-pool entries that came from EXPLICIT flows
     # the user initiated inside Hermes (manual add / device-code / PKCE), plus
     # env-backed pool entries. This intentionally excludes ambient borrowed
@@ -1930,6 +2088,39 @@ def is_provider_explicitly_configured(provider_id: str) -> bool:
                 return True
     except Exception:
         pass
+
+    # 5. OAuth-token / cloud-SDK providers (Vertex AI, Bedrock) have NO API-key
+    # env var to detect in step 3 and mint short-lived tokens from ADC / a
+    # service account / the AWS SDK chain. The user "explicitly configures"
+    # them by writing non-secret routing settings into config.yaml
+    # (``vertex.project_id`` / a credentials path, ``bedrock.region``) rather
+    # than by pasting a key — so without this branch such a provider is only
+    # ever "explicitly configured" while it is the *current* provider, and it
+    # silently vanishes from explicit-only pickers (desktop chat model menu)
+    # otherwise. Treat the presence of that deliberate config as explicit.
+    #
+    # NOTE: this uses has_explicit_vertex_config(), NOT has_vertex_credentials()
+    # — the latter also counts an ambient GOOGLE_APPLICATION_CREDENTIALS path
+    # (commonly set globally for unrelated GCP work), which would mark Vertex
+    # explicit for users who never set Hermes up for it. Only Hermes-scoped
+    # signals (VERTEX_PROJECT_ID / vertex.project_id / VERTEX_CREDENTIALS_PATH)
+    # count here.
+    try:
+        if normalized in ("vertex", "google-vertex", "vertex-ai", "gcp-vertex", "vertexai"):
+            from agent.vertex_adapter import has_explicit_vertex_config
+
+            if has_explicit_vertex_config():
+                return True
+        elif normalized == "bedrock":
+            from hermes_cli.config import load_config as _load_cfg
+
+            bedrock_cfg = _load_cfg().get("bedrock")
+            if isinstance(bedrock_cfg, dict) and str(
+                bedrock_cfg.get("region") or ""
+            ).strip():
+                return True
+    except Exception as exc:
+        logger.debug("Failed checking keyless provider explicit config for %s: %s", provider_id, exc)
 
     return False
 
@@ -2061,11 +2252,13 @@ def resolve_provider(
         "github-copilot-acp": "copilot-acp", "copilot-acp-agent": "copilot-acp",
         "aigateway": "ai-gateway", "vercel": "ai-gateway", "vercel-ai-gateway": "ai-gateway",
         "opencode": "opencode-zen", "zen": "opencode-zen",
+        "free": "opencode-free", "opencode_free": "opencode-free",
         "qwen-portal": "qwen-oauth", "qwen-cli": "qwen-oauth", "qwen-oauth": "qwen-oauth",
         "hf": "huggingface", "hugging-face": "huggingface", "huggingface-hub": "huggingface",
         "mimo": "xiaomi", "xiaomi-mimo": "xiaomi",
         "tencent": "tencent-tokenhub", "tokenhub": "tencent-tokenhub",
         "tencent-cloud": "tencent-tokenhub", "tencentmaas": "tencent-tokenhub",
+        "tokenplan": "tencent-tokenplan", "tencent-lkeap": "tencent-tokenplan",
         "aws": "bedrock", "aws-bedrock": "bedrock", "amazon-bedrock": "bedrock", "amazon": "bedrock",
         "go": "opencode-go", "opencode-go-sub": "opencode-go",
         "kilo": "kilocode", "kilo-code": "kilocode", "kilo-gateway": "kilocode",
@@ -2129,7 +2322,29 @@ def resolve_provider(
     except Exception as e:
         logger.debug("Could not read config.yaml model.provider for auto-resolution: %s", e)
 
-    if has_usable_secret(os.getenv("OPENAI_API_KEY")) or has_usable_secret(os.getenv("OPENROUTER_API_KEY")):
+    # Scope-aware key reads: under multiplex a secondary profile's API keys
+    # live only in its secret scope, not os.environ — a bare getenv here
+    # would find nothing and auto-resolution would report "No LLM provider
+    # configured" for every secondary profile (same class as #86905).
+    # Catch ONLY ImportError: any other failure inside auxiliary_client must
+    # propagate — silently falling back to os.getenv would reintroduce the
+    # very fail-open this PR removes, with zero trace.
+    try:
+        from agent.auxiliary_client import _scoped_key_env
+    except ImportError:
+        logger.warning(
+            "agent.auxiliary_client unavailable (%s); provider auto-detection "
+            "will read keys from the process environment only — under "
+            "multiplex, secondary profiles may report 'No LLM provider'.",
+            "import failed",
+        )
+
+        def _scoped_key_env(name: str) -> str:
+            return os.getenv(name) or ""
+
+    if has_usable_secret(_scoped_key_env("OPENAI_API_KEY")) or has_usable_secret(
+        _scoped_key_env("OPENROUTER_API_KEY")
+    ):
         return "openrouter"
 
     # Auto-detect an OpenRouter credential added via `hermes auth add openrouter`
@@ -2172,7 +2387,7 @@ def resolve_provider(
         if pid in {"copilot", "lmstudio"}:
             continue
         for env_var in pconfig.api_key_env_vars:
-            if has_usable_secret(os.getenv(env_var, "")):
+            if has_usable_secret(_scoped_key_env(env_var)):
                 # An exported API key now wins over a logged-in OAuth provider
                 # (the #29285 fix). Surface that so a user who deliberately uses
                 # OAuth but has a stale key in ~/.hermes/.env isn't silently
@@ -2621,7 +2836,8 @@ def _read_qwen_cli_tokens() -> Dict[str, Any]:
 def _save_qwen_cli_tokens(tokens: Dict[str, Any]) -> Path:
     auth_path = _qwen_cli_auth_path()
     auth_path.parent.mkdir(parents=True, exist_ok=True)
-    # secure_parent_dir refuses to chmod / or top-level dirs (#25821).
+    # secure_parent_dir refuses to chmod /, top-level dirs, or the
+    # hermes-agent install tree (#25821, #93050).
     secure_parent_dir(auth_path)
     # Per-process random temp suffix avoids collisions between concurrent
     # writers and stale leftovers from a crashed prior write.
@@ -3311,8 +3527,10 @@ def _spotify_interactive_setup(redirect_uri_hint: str) -> str:
         except Exception:
             pass
 
+    from hermes_cli.cli_output import line_input
+
     try:
-        raw = input("Spotify Client ID: ").strip()
+        raw = line_input("Spotify Client ID: ").strip()
     except (EOFError, KeyboardInterrupt):
         print()
         raise SystemExit("Spotify setup cancelled.")
@@ -5435,7 +5653,8 @@ def _write_shared_nous_state(state: Dict[str, Any]) -> None:
         with _nous_shared_store_lock():
             path = _nous_shared_store_path()
             path.parent.mkdir(parents=True, exist_ok=True)
-            # secure_parent_dir refuses to chmod / or top-level dirs (#25821).
+            # secure_parent_dir refuses to chmod /, top-level dirs, or the
+            # hermes-agent install tree (#25821, #93050).
             secure_parent_dir(path)
             tmp = path.with_name(f"{path.name}.tmp.{os.getpid()}.{uuid.uuid4().hex}")
             # Create with 0o600 atomically via os.open(O_EXCL) — closes the TOCTOU
@@ -6649,6 +6868,11 @@ def _snapshot_nous_pool_status() -> Dict[str, Any]:
 _NOUS_AUTH_STATUS_CACHE_TTL = 15.0  # seconds
 _nous_auth_status_cache: Optional[Tuple[float, str, Optional[float], Dict[str, Any]]] = None
 
+# mtime-keyed memo for _load_global_auth_store(): (path, mtime_ns, store).
+# Same invalidation contract as _nous_auth_status_cache — the global auth
+# file changes only when a global-scope auth write touches it.
+_global_auth_store_cache: Optional[Tuple[str, int, Dict[str, Any]]] = None
+
 
 def _auth_file_cache_key() -> Tuple[str, Optional[float]]:
     auth_file = _auth_file_path()
@@ -7005,6 +7229,25 @@ def get_api_key_provider_status(provider_id: str) -> Dict[str, Any]:
     pconfig = PROVIDER_REGISTRY.get(provider_id)
     if not pconfig or pconfig.auth_type != "api_key":
         return {"configured": False}
+
+    # Keyless providers (opencode-free) are served anonymously: no credential
+    # exists, so every install counts as configured/logged in. Derived from
+    # the HermesOverlay keyless flag — the same source the provider catalog
+    # and GUI contract tests use.
+    try:
+        from hermes_cli.providers import HERMES_OVERLAYS
+        _overlay = HERMES_OVERLAYS.get(provider_id)
+    except Exception:
+        _overlay = None
+    if _overlay is not None and getattr(_overlay, "keyless", False):
+        return {
+            "configured": True,
+            "provider": provider_id,
+            "name": pconfig.name,
+            "key_source": "keyless",
+            "base_url": pconfig.inference_base_url,
+            "logged_in": True,
+        }
 
     api_key = ""
     key_source = ""
@@ -7438,34 +7681,41 @@ def _reset_config_provider() -> Path:
     return config_path
 
 
-def _confirm_expensive_model_selection(
+def _confirm_selection_guards(
     model_id: str,
     *,
     provider: str = "",
     base_url: str = "",
     api_key: str = "",
+    include_kinds: Optional[List[str]] = None,
 ) -> bool:
-    """Prompt before saving a model whose known pricing exceeds guardrails."""
-    try:
-        from hermes_cli.model_cost_guard import expensive_model_warning
+    """Prompt before saving a model that trips any selection guard.
 
-        # P-028: read the models.dev cache/snapshot only — saving a model must
-        # never block on the network (fail-open: no data → no warning).
-        warning = expensive_model_warning(
+    Runs the unified guard registry (cost + data-policy + future guards) via
+    :mod:`hermes_cli.model_selection_guards` and shows one [y/N] confirm with
+    every warning that fired. Returns True to proceed, False to cancel.
+    """
+    try:
+        from hermes_cli.model_selection_guards import (
+            combined_message,
+            selection_warnings,
+        )
+
+        warnings = selection_warnings(
             model_id,
             provider=provider,
             base_url=base_url,
             api_key=api_key,
-            allow_network=False,
+            include_kinds=include_kinds,
         )
     except Exception:
-        warning = None
-    if warning is None:
+        warnings = []
+    if not warnings:
         return True
 
     print()
     print("=" * 72)
-    print(warning.message)
+    print(combined_message(warnings))
     print("=" * 72)
     try:
         response = input("Switch anyway? [y/N]: ").strip().lower()
@@ -7494,6 +7744,7 @@ def _prompt_model_selection(
     If *unavailable_models* is provided, those models are shown grayed out
     and unselectable, with an upgrade link to *portal_url*.
     """
+    from hermes_cli.cli_output import line_input
     from hermes_cli.models import (
         _format_price_per_mtok,
         compute_sale_discount,
@@ -7507,11 +7758,17 @@ def _prompt_model_selection(
     def _confirmed_selection(mid: str) -> Optional[str]:
         if not mid:
             return None
-        if confirm_provider and not _confirm_expensive_model_selection(
+        # Unified guard registry (hermes_cli.model_selection_guards): the cost
+        # guard only runs when a provider is known (pricing lookups need one);
+        # id-keyed guards like the data-policy guard always run — they must
+        # fire even via a custom endpoint or gateway.
+        _kinds = None if confirm_provider else ["data_policy"]
+        if not _confirm_selection_guards(
             mid,
             provider=confirm_provider,
             base_url=confirm_base_url,
             api_key=confirm_api_key,
+            include_kinds=_kinds,
         ):
             return None
         return mid
@@ -7570,16 +7827,22 @@ def _prompt_model_selection(
                     if sale is not None:
                         any_on_sale = True
                         pct, was_prompt_raw, was_out_raw = sale
-                        was_inp = (
-                            _format_price_per_mtok(was_prompt_raw)
-                            if was_prompt_raw != ""
-                            else "?"
-                        )
-                        was_out = (
-                            _format_price_per_mtok(was_out_raw)
-                            if was_out_raw != ""
-                            else "?"
-                        )
+                        # Natively-free models (no gateway original) carry
+                        # empty was_* raws — leave them empty so the row
+                        # shows bare "-100%" with no "was ?/?" suffix.
+                        if was_prompt_raw == "" and was_out_raw == "":
+                            was_inp = was_out = ""
+                        else:
+                            was_inp = (
+                                _format_price_per_mtok(was_prompt_raw)
+                                if was_prompt_raw != ""
+                                else "?"
+                            )
+                            was_out = (
+                                _format_price_per_mtok(was_out_raw)
+                                if was_out_raw != ""
+                                else "?"
+                            )
             else:
                 inp, out, cache = "", "", ""
             _price_cache[mid] = (inp, out, cache, pct, was_inp, was_out)
@@ -7616,7 +7879,8 @@ def _prompt_model_selection(
         segs = [*name_segs, (price_part, None)]
         if on_sale:
             segs.append((f"  -{pct}%", "yellow"))
-            segs.append((f"  was {was_inp}/{was_out}", "dim"))
+            if was_inp or was_out:
+                segs.append((f"  was {was_inp}/{was_out}", "dim"))
         if mid == current_model:
             segs.append(("  ← currently in use", None))
         return segs
@@ -7704,7 +7968,7 @@ def _prompt_model_selection(
             return _confirmed_selection(ordered[idx])
         elif idx == len(ordered):
             try:
-                custom = input("Enter model name: ").strip()
+                custom = line_input("Enter model name: ").strip()
             except (EOFError, KeyboardInterrupt):
                 return None
             return _confirmed_selection(custom) if custom else None
@@ -7748,7 +8012,7 @@ def _prompt_model_selection(
             if 1 <= idx <= n:
                 return _confirmed_selection(ordered[idx - 1])
             elif idx == n + 1:
-                custom = input("Enter model name: ").strip()
+                custom = line_input("Enter model name: ").strip()
                 return _confirmed_selection(custom) if custom else None
             elif idx == n + 2:
                 return None

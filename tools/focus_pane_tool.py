@@ -5,7 +5,8 @@ Lives in the ``desktop_ui`` toolset (like the other GUI affordances), which the
 GUI gateway enables only for desktop-sourced sessions. Emits ``pane.reveal``
 through the shared ``desktop_ui`` bridge; the renderer runs each pane's own
 reveal path and only acts on the active window (a background turn never moves
-the user's focus). To show a URL/file, use ``open_preview``.
+the user's focus). To show a URL/file, use ``open_preview``; to close it, use
+``close_preview``.
 """
 
 import json
@@ -41,11 +42,9 @@ def check_focus_pane_requirements() -> bool:
 FOCUS_PANE_SCHEMA = {
     "name": "focus_pane",
     "description": (
-        "Reveal and focus a pane in the Hermes desktop app when the user asks to "
-        "see it — e.g. \"show me the terminal\", \"open the file browser\", \"show "
-        "the diff\". Panes: chat (the conversation), files (project file browser), "
-        "terminal (embedded shell), review (git diff), sessions (the session list). "
-        "To show a URL or file in the preview pane, use open_preview instead."
+        "Reveal and focus a Hermes desktop pane when the user asks to see it: "
+        "chat, files, terminal, review (git diff), or sessions. For URLs/"
+        "files use the desktop_preview tool instead."
     ),
     "parameters": {
         "type": "object",

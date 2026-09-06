@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import ctypes
 import locale
+import logging
 import os
 from agent.re_compat import re
 import shlex
@@ -40,10 +41,13 @@ from pathlib import Path
 from xml.sax.saxutils import escape
 
 from hermes_cli._subprocess_compat import (
+    _WINDOWS_GATEWAY_BREAKAWAY_ENV,
     windows_detach_flags,
     windows_detach_flags_without_breakaway,
     windows_hide_flags,
 )
+
+logger = logging.getLogger(__name__)
 
 # Short timeouts: schtasks occasionally wedges and we don't want to hang forever.
 _SCHTASKS_TIMEOUT_S = 15
@@ -411,6 +415,7 @@ def _build_gateway_cmd_script(
     lines.append(f'set "HERMES_HOME={hermes_home}"')
     lines.append('set "PYTHONIOENCODING=utf-8"')
     lines.append('set "HERMES_GATEWAY_DETACHED=1"')
+    lines.append('set "HERMES_SUPERVISED_CHILD=1"')
     python_exe_path, venv_dir, extra_pythonpath = _resolve_detached_python(python_path)
     # VIRTUAL_ENV lets the gateway's own python detection find the venv
     # if someone imports hermes_constants-based logic during startup.
@@ -514,6 +519,7 @@ def _build_gateway_vbs_script(
         f"env.Item({_quote_vbs_string('HERMES_HOME')}) = {_quote_vbs_string(hermes_home)}",
         f"env.Item({_quote_vbs_string('PYTHONIOENCODING')}) = {_quote_vbs_string('utf-8')}",
         f"env.Item({_quote_vbs_string('HERMES_GATEWAY_DETACHED')}) = {_quote_vbs_string('1')}",
+        f"env.Item({_quote_vbs_string('HERMES_SUPERVISED_CHILD')}) = {_quote_vbs_string('1')}",
         f"env.Item({_quote_vbs_string('VIRTUAL_ENV')}) = {_quote_vbs_string(_preserve_hermes_home_path(venv_dir))}",
         # Mirror the cmd wrapper's ``PYTHONPATH=<static>;%PYTHONPATH%``: chain onto
         # whatever PYTHONPATH the task environment already carries, at runtime.
@@ -841,6 +847,7 @@ def _build_gateway_argv() -> tuple[list[str], str, dict[str, str]]:
         "HERMES_HOME": hermes_home,
         "PYTHONIOENCODING": "utf-8",
         "HERMES_GATEWAY_DETACHED": "1",
+        "HERMES_SUPERVISED_CHILD": "1",
         "VIRTUAL_ENV": _preserve_hermes_home_path(venv_dir),
     }
     _prepend_pythonpath(
@@ -944,6 +951,7 @@ def _spawn_detached(script_path: Path | None = None) -> int:
 
     # Inherit PATH etc. from the current env, overlay our required vars.
     env = {**os.environ, **env_overlay}
+    primary_env = {**env, _WINDOWS_GATEWAY_BREAKAWAY_ENV: "1"}
 
     # CREATE_NEW_PROCESS_GROUP 0x00000200 — child gets its own group, won't
     #                                       receive Ctrl+C from our group
@@ -973,25 +981,34 @@ def _spawn_detached(script_path: Path | None = None) -> int:
             proc = subprocess.Popen(
                 argv,
                 cwd=working_dir,
-                env=env,
+                env=primary_env,
                 creationflags=flags,
                 close_fds=True,
                 stdin=subprocess.DEVNULL,
                 stdout=log_fh,
                 stderr=log_fh,
             )
-    except OSError:
+    except OSError as exc:
         # CREATE_BREAKAWAY_FROM_JOB can fail with "access denied" when the
         # parent's job object doesn't permit breakaway (some Windows
         # Terminal configs). Retry without the breakaway flag — in most
         # setups the hidden-console CREATE_NO_WINDOW spawn is enough on
         # its own.
+        error_code = getattr(exc, "winerror", None)
+        if error_code is None:
+            error_code = exc.errno
+        logger.warning(
+            "Gateway breakaway spawn failed (error=%s); retrying without "
+            "CREATE_BREAKAWAY_FROM_JOB",
+            error_code,
+        )
         flags_no_breakaway = windows_detach_flags_without_breakaway()
+        fallback_env = {**env, _WINDOWS_GATEWAY_BREAKAWAY_ENV: "0"}
         with open(stray_log, "ab", buffering=0) as log_fh:
             proc = subprocess.Popen(
                 argv,
                 cwd=working_dir,
-                env=env,
+                env=fallback_env,
                 creationflags=flags_no_breakaway,
                 close_fds=True,
                 stdin=subprocess.DEVNULL,
@@ -1587,7 +1604,7 @@ def _windows_stop_drain_timeout() -> float:
 def _force_terminate_known_gateway_pids(pids: list[int]) -> int:
     """Force-kill known gateway PIDs without a broad process sweep."""
     try:
-        from gateway.status import _pid_exists, terminate_pid
+        from gateway.status import _pid_exists, get_process_start_time, terminate_pid
     except ImportError:
         return 0
 
@@ -1601,7 +1618,11 @@ def _force_terminate_known_gateway_pids(pids: list[int]) -> int:
         try:
             if not _pid_exists(pid):
                 continue
-            terminate_pid(pid, force=True)
+            terminate_pid(
+                pid,
+                force=True,
+                expected_start_time=get_process_start_time(pid),
+            )
             killed += 1
         except ProcessLookupError:
             continue

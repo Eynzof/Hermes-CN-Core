@@ -39,6 +39,7 @@ import zlib
 import difflib
 import fnmatch
 import hashlib
+import json
 import unicodedata
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -189,6 +190,52 @@ def _set_temp_attr(path: str, temporary: bool) -> bool:
 # ---------------------------------------------------------------------------
 
 _HOME = str(Path.home())
+
+_MACOS_TCC_PROTECTED_HOME_DIRS = (
+    "Desktop",
+    "Documents",
+    "Downloads",
+    "Library",
+    "Movies",
+    "Music",
+    "Pictures",
+)
+
+
+def _macos_protected_search_exclusions(
+    path: str,
+    *,
+    cwd: Optional[str] = None,
+    home: Optional[str] = None,
+    platform: Optional[str] = None,
+) -> List[str]:
+    """Return protected home directories below a broad macOS search root.
+
+    Direct searches inside a protected directory remain allowed. Only an
+    ancestor search (for example ``$HOME`` or ``/Users``) receives exclusions,
+    preventing recursive tools from triggering unattended TCC prompts.
+    """
+    if (platform or sys.platform) != "darwin":
+        return []
+
+    home_path = Path(home or Path.home()).expanduser()
+    root = Path(path).expanduser()
+    if not root.is_absolute():
+        root = Path(cwd or os.getcwd()) / root
+    root = Path(os.path.normpath(str(root)))
+    home_path = Path(os.path.normpath(str(home_path)))
+
+    exclusions: List[str] = []
+    for dirname in _MACOS_TCC_PROTECTED_HOME_DIRS:
+        protected = home_path / dirname
+        try:
+            relative = protected.relative_to(root)
+        except ValueError:
+            continue
+        if relative.parts:
+            exclusions.append(relative.as_posix())
+    return exclusions
+
 
 WRITE_DENIED_PATHS = build_write_denied_paths(_HOME)
 
@@ -1852,6 +1899,112 @@ class ShellFileOperations(FileOperations):
             )
         )
 
+    # UTF-16 rescue constants (ported from MoonshotAI/kimi-code#2647,
+    # detection derived from VS Code's encoding sniffer): sample the leading
+    # bytes; trust a BOM first, then a zero-byte parity heuristic — zeros
+    # clustering at odd indices mean UTF-16 LE (`0xAA 0x00`), at even indices
+    # UTF-16 BE (`0x00 0xAA`). Only the *placement* of zeros is checked, not
+    # density, so mixed Latin/CJK content (whose CJK units carry no zero
+    # byte) still detects. Zeros at both parities, or a single isolated
+    # zero, mean real binary. Legacy 8-bit encodings (GBK, Big5, ...) are
+    # never guessed — a wrong silent guess is worse than a clear refusal.
+    _UTF16_MAX_BYTES = 10 * 1024 * 1024
+    _UTF16_SAMPLE_BYTES = 512
+
+    def _try_read_utf16(self, path: str, offset: int, limit: int,
+                        file_size: int) -> "Optional[ReadResult]":
+        """Attempt to read ``path`` as UTF-16 text, transcoded to UTF-8.
+
+        Returns a populated ``ReadResult`` when the file is UTF-16 (BOM or
+        zero-byte parity heuristic), else ``None`` so the caller falls back
+        to the binary-file error. Files over 10 MiB are not rescued.
+        ``path`` must already be expanded (caller ran ``_expand_path``).
+        """
+        # Extensions that are definitively binary (images, archives, ...)
+        # never contain UTF-16 text worth rescuing — skip the subprocess.
+        ext = os.path.splitext(path)[1].lower()
+        if ext in BINARY_EXTENSIONS:
+            return None
+        if file_size > self._UTF16_MAX_BYTES:
+            return None
+
+        snippet = (
+            "import sys, json, os\n"
+            f"p = {path!r}\n"
+            f"offset = {int(offset)}\n"
+            f"limit = {int(limit)}\n"
+            f"MAX = {self._UTF16_MAX_BYTES}\n"
+            f"SAMPLE = {self._UTF16_SAMPLE_BYTES}\n"
+            "try:\n"
+            "    size = os.path.getsize(p)\n"
+            "    if size > MAX:\n"
+            "        print('HERMES_UTF16:NO'); sys.exit(0)\n"
+            "    with open(p, 'rb') as f:\n"
+            "        data = f.read()\n"
+            "    sample = data[:SAMPLE]\n"
+            "    enc = None\n"
+            "    if sample[:2] == b'\\xfe\\xff':\n"
+            "        enc = 'utf-16-be'\n"
+            "    elif sample[:2] == b'\\xff\\xfe':\n"
+            "        enc = 'utf-16-le'\n"
+            "    else:\n"
+            "        odd = sum(1 for i in range(1, len(sample), 2) if sample[i] == 0)\n"
+            "        even = sum(1 for i in range(0, len(sample), 2) if sample[i] == 0)\n"
+            "        if even == 0 and odd >= 2:\n"
+            "            enc = 'utf-16-le'\n"
+            "        elif odd == 0 and even >= 2:\n"
+            "            enc = 'utf-16-be'\n"
+            "    if enc is None:\n"
+            "        print('HERMES_UTF16:NO'); sys.exit(0)\n"
+            "    text = data.decode(enc, 'replace')\n"
+            "    if text[:1] == '\\ufeff':\n"
+            "        text = text[1:]\n"
+            "    text = text.replace('\\r\\n', '\\n')\n"
+            "    lines = text.split('\\n')\n"
+            "    total = len(lines)\n"
+            "    sel = lines[offset - 1: offset - 1 + limit]\n"
+            "    out = {'total_lines': total, 'encoding': enc,\n"
+            "           'content': '\\n'.join(sel)}\n"
+            "    print('HERMES_UTF16:OK')\n"
+            "    print(json.dumps(out, ensure_ascii=True))\n"
+            "except Exception:\n"
+            "    print('HERMES_UTF16:NO'); sys.exit(0)\n"
+        )
+
+        result = self._exec(f"python3 -c {self._escape_shell_arg(snippet)}")
+        if result.exit_code != 0 and "python3" in (result.stdout or ""):
+            result = self._exec(f"python -c {self._escape_shell_arg(snippet)}")
+
+        stdout = _strip_terminal_fence_leaks(result.stdout or "")
+        marker = stdout.find("HERMES_UTF16:OK")
+        if result.exit_code != 0 or marker < 0:
+            return None
+        payload = stdout[marker + len("HERMES_UTF16:OK"):].strip()
+        try:
+            data = json.loads(payload.split("\n", 1)[0] if "\n" in payload else payload)
+            content = data["content"]
+            total_lines = int(data["total_lines"])
+            encoding = str(data.get("encoding", "utf-16"))
+        except (ValueError, KeyError, TypeError):
+            return None
+
+        end_line = offset + limit - 1
+        truncated = total_lines > end_line
+        hint_parts = [f"Transcoded from {encoding.upper()} to UTF-8 for display. "
+                      "Text edits via patch/write_file would re-encode as UTF-8."]
+        if truncated:
+            hint_parts.append(
+                f"Use offset={end_line + 1} to continue reading "
+                f"(showing {offset}-{end_line} of {total_lines} lines)"
+            )
+        return ReadResult(
+            content=self._add_line_numbers(content, offset),
+            total_lines=total_lines,
+            file_size=file_size,
+            truncated=truncated,
+            hint=" ".join(hint_parts),
+        )
+
     def read_file(self, path: str, offset: int = 1, limit: int = 2000) -> ReadResult:
         """
         Read a file with pagination, binary detection, and line numbers.
@@ -1962,6 +2115,16 @@ class ShellFileOperations(FileOperations):
                 sample_output = _strip_terminal_fence_leaks(sample_result.stdout)
                 is_binary = self._is_likely_binary(path, sample_output)
         if is_binary:
+            # UTF-16 rescue (ported from MoonshotAI/kimi-code#2647): the
+            # terminal env decodes stdout as UTF-8 with errors="replace", so
+            # a UTF-16 text file (Windows Notepad .txt, PowerShell `>`
+            # redirects) arrives mangled with U+FFFD and trips the binary
+            # guard. Probe the raw bytes via the backend's Python and
+            # transcode to UTF-8 when a BOM or the zero-byte parity
+            # heuristic identifies UTF-16.
+            utf16_result = self._try_read_utf16(path, offset, limit, file_size)
+            if utf16_result is not None:
+                return utf16_result
             return ReadResult(
                 is_binary=True,
                 file_size=file_size,
@@ -2882,6 +3045,28 @@ class ShellFileOperations(FileOperations):
         if ext not in LINTERS:
             return LintResult(skipped=True, message=f"No linter for {ext} files")
 
+        # A per-file `tsc --noEmit <file>` cannot read the project's
+        # tsconfig.json, so for any .ts that belongs to a TS project it floods
+        # phantom errors — unresolved path aliases (`@/…` → TS2307) and ambient
+        # globals (`Window.hermesDesktop` → TS2339) that are defined by the
+        # config it never loads. The delta filter then reports the misleading
+        # "pre-existing lint errors … the file is still broken", which carries
+        # no signal and wastes the caller's turns. When an ancestor
+        # tsconfig.json exists, skip the shell tsc entirely; real diagnostics
+        # come from the LSP tier (below) or an explicit `tsc -p tsconfig.json`
+        # the caller runs deliberately. (.tsx already returns above via the
+        # `ext not in LINTERS` branch.)
+        if ext == '.ts' and self._has_ancestor_tsconfig(path):
+            return LintResult(
+                skipped=True,
+                message=(
+                    "Project tsconfig.json detected — per-file tsc skipped "
+                    "(single-file tsc can't resolve project aliases/globals; "
+                    "use the LSP tier or `tsc -p tsconfig.json` for real "
+                    "diagnostics)."
+                ),
+            )
+
         # If a real LSP server is active and claims this file, skip the
         # shell linter for extensions whose per-file shell invocation is
         # structurally weaker / floods phantom errors.  See
@@ -3062,6 +3247,33 @@ class ShellFileOperations(FileOperations):
             if ext_lower in srv.extensions:
                 return True
         return False
+
+    def _has_ancestor_tsconfig(self, path: str) -> bool:
+        """True iff a tsconfig.json exists in *path*'s directory or any ancestor.
+
+        A single-file ``tsc`` invocation can't read that config, so its
+        diagnostics for such a file are pure noise (unresolved aliases /
+        ambient globals). Used by :meth:`_check_lint` to skip the per-file
+        shell tsc for project TypeScript files.
+
+        Best-effort and local-host only: a host-side ``os.path`` walk. On a
+        remote/sandboxed backend the project tree isn't on this host, so the
+        walk returns False and the shell linter runs exactly as before — never
+        suppress lint based on a probe that couldn't answer.
+        """
+        if not self._lsp_local_only():
+            return False
+        try:
+            d = os.path.dirname(os.path.abspath(path))
+            while True:
+                if os.path.isfile(os.path.join(d, "tsconfig.json")):
+                    return True
+                parent = os.path.dirname(d)
+                if parent == d:
+                    return False
+                d = parent
+        except Exception:  # noqa: BLE001
+            return False
 
     def _lsp_will_handle(self, path: str) -> bool:
         """Return True iff the LSP service is active AND will lint this file.
@@ -3278,11 +3490,41 @@ class ShellFileOperations(FileOperations):
                 )
 
         if target == "files":
-            return self._search_files(pattern, path, limit, offset)
+            result = self._search_files(pattern, path, limit, offset)
         else:
-            return self._search_content(pattern, path, file_glob, limit, offset,
-                                        output_mode, context)
+            result = self._search_content(pattern, path, file_glob, limit, offset,
+                                          output_mode, context)
 
+        exclusions = self._macos_search_exclusions(path)
+        if exclusions and not result.error:
+            skipped = ", ".join(item.split("/")[-1] for item in exclusions)
+            result.warning = (
+                "Skipped macOS protected folders during broad search to avoid "
+                f"an unattended privacy prompt: {skipped}. Search a protected "
+                "folder directly when access is intentional."
+            )
+        return result
+
+    def _macos_search_exclusions(self, path: str) -> List[str]:
+        """Protected descendants to prune for this search root, if any.
+
+        Gated on ``env.is_local``: ``sys.platform``/``Path.home()`` describe
+        the CONTROLLER, but search commands execute on ``self.env``'s host — a
+        macOS controller driving a Linux container/SSH backend must not prune
+        the remote's (unprotected) Downloads, and TCC doesn't exist there
+        anyway. A Linux controller driving a macOS SSH host keeps today's
+        behavior (no pruning); detecting the remote OS is out of scope here.
+        Environments without the flag (test fakes, plugins) default to local
+        semantics — pruning is a warning-carrying skip, never data loss.
+        """
+        env = getattr(self, "env", None)
+        if env is not None and getattr(env, "is_local", True) is False:
+            return []
+        cwd = getattr(self.env, "cwd", None) or self.cwd
+        return _macos_protected_search_exclusions(
+            path, cwd=cwd, home=_HOME, platform=sys.platform
+        )
+    
     def _try_multi_path_search(self, pattern: str, path: str, target: str,
                                file_glob: Optional[str], limit: int, offset: int,
                                output_mode: str, context: int) -> Optional[SearchResult]:
@@ -3426,6 +3668,23 @@ class ShellFileOperations(FileOperations):
 
         if not self._has_command('rg'):
             return None
+
+        def _tally(stdout: str):
+            """Parse ``path:count`` lines from rg --count-matches."""
+            total = 0
+            per_file = []
+            for line in (stdout or "").strip().splitlines():
+                p, _sep, n = line.rpartition(":")
+                if n.isdigit():
+                    total += int(n)
+                    per_file.append(p)
+            return total, per_file
+
+        def _paths_note(per_file, cap: int = 5) -> str:
+            shown = ", ".join(per_file[:cap])
+            extra = len(per_file) - cap
+            return shown + (f" (+{extra} more)" if extra > 0 else "")
+
         glob_expr = f" --glob {self._escape_shell_arg(file_glob)}" if file_glob else ""
         probe = self._exec(
             f"rg -i --count-matches{glob_expr} "
@@ -3433,17 +3692,12 @@ class ShellFileOperations(FileOperations):
             f"2>/dev/null | head -50",
             timeout=30,
         )
-        ci_total = 0
-        ci_files = 0
-        for line in (probe.stdout or "").strip().splitlines():
-            _p, _sep, n = line.rpartition(":")
-            if n.isdigit():
-                ci_total += int(n)
-                ci_files += 1
+        ci_total, ci_paths = _tally(probe.stdout)
         if ci_total > 0:
             return (
                 f"0 exact matches, but {ci_total} case-insensitive match(es) "
-                f"in {ci_files} file(s) — the pattern's casing may be wrong."
+                f"in {len(ci_paths)} file(s): {_paths_note(ci_paths)} — "
+                "the pattern's casing may be wrong."
             )
         # Hidden/ignored probe: rg skips dotdirs and .gitignore'd files by
         # default. When the pattern exists only there, say so instead of
@@ -3455,18 +3709,12 @@ class ShellFileOperations(FileOperations):
             f"2>/dev/null | head -50",
             timeout=30,
         )
-        h_total = 0
-        h_files = 0
-        for line in (hidden.stdout or "").strip().splitlines():
-            _p, _sep, n = line.rpartition(":")
-            if n.isdigit():
-                h_total += int(n)
-                h_files += 1
+        h_total, h_paths = _tally(hidden.stdout)
         if h_total > 0:
             return (
                 f"0 matches in visible files, but {h_total} match(es) in "
-                f"{h_files} hidden or gitignored file(s) — these are excluded "
-                "by default. Search the hidden path explicitly to include them."
+                f"{len(h_paths)} hidden or gitignored file(s): "
+                f"{_paths_note(h_paths)} — these are excluded by default."
             )
         if re.search(r"[.\[\](){}?*+^$\\|]", pattern):
             fixed = self._exec(
@@ -3475,14 +3723,11 @@ class ShellFileOperations(FileOperations):
                 f"2>/dev/null | head -50",
                 timeout=30,
             )
-            f_total = sum(
-                int(line.rpartition(":")[2])
-                for line in (fixed.stdout or "").strip().splitlines()
-                if line.rpartition(":")[2].isdigit()
-            )
+            f_total, f_paths = _tally(fixed.stdout)
             if f_total > 0:
                 return (
-                    f"0 regex matches, but {f_total} literal match(es) — the "
+                    f"0 regex matches, but {f_total} literal match(es) in "
+                    f"{len(f_paths)} file(s): {_paths_note(f_paths)} — the "
                     "pattern contains regex metacharacters that likely need "
                     "escaping (or pass a simpler substring)."
                 )
@@ -3539,7 +3784,20 @@ class ShellFileOperations(FileOperations):
         if not has_hidden_path_ancestor:
             pagination_expr = f" | tail -n +{offset + 1} | head -n {limit}"
 
-        cmd = f"find {self._escape_shell_arg(path)}{hidden_filter_expr} -type f -name {self._escape_shell_arg(search_pattern)} " \
+        # Prune protected directories before traversal so macOS never receives
+        # an access attempt (filtering matched paths after descent is too late).
+        protected_paths = [
+            os.path.normpath(os.path.join(path, item))
+            for item in self._macos_search_exclusions(path)
+        ]
+        prune_expr = ""
+        if protected_paths:
+            prune_terms = " -o ".join(
+                f"-path {self._escape_shell_arg(item)}" for item in protected_paths
+            )
+            prune_expr = f" \\( {prune_terms} \\) -prune -o"
+
+        cmd = f"find {self._escape_shell_arg(path)}{prune_expr}{hidden_filter_expr} -type f -name {self._escape_shell_arg(search_pattern)} " \
               f"-printf '%T@ %p\\n' 2>/dev/null | sort -rn{pagination_expr}"
 
         result = self._exec(cmd, timeout=60)
@@ -3547,7 +3805,7 @@ class ShellFileOperations(FileOperations):
 
         if not stdout.strip() and not limit_reason:
             # Try without -printf (BSD find compatibility -- macOS)
-            cmd_simple = f"find {self._escape_shell_arg(path)}{hidden_filter_expr} -type f -name {self._escape_shell_arg(search_pattern)} " \
+            cmd_simple = f"find {self._escape_shell_arg(path)}{prune_expr}{hidden_filter_expr} -type f -name {self._escape_shell_arg(search_pattern)} " \
                         f"2>/dev/null | sort -rn{pagination_expr}"
             result = self._exec(cmd_simple, timeout=60)
             stdout, limit_reason = _search_stdout_and_limit(result)
@@ -3690,9 +3948,15 @@ class ShellFileOperations(FileOperations):
             glob_pattern = pattern
 
         fetch_limit = limit + offset
+        exclusion_globs = " ".join(
+            f"--glob {self._escape_shell_arg(f'!{item}/**')}"
+            for item in self._macos_search_exclusions(path)
+        )
+        exclusion_args = f" {exclusion_globs}" if exclusion_globs else ""
         # Try mtime-sorted first (rg 13+); fall back to unsorted if not supported.
         cmd_sorted = (
-            f"rg --files --sortr=modified -g {self._escape_shell_arg(glob_pattern)} "
+            f"rg --files --sortr=modified -g {self._escape_shell_arg(glob_pattern)}"
+            f"{exclusion_args} "
             f"{self._escape_native_tool_arg(path)} 2>/dev/null "
             f"| head -n {fetch_limit}"
         )
@@ -3703,7 +3967,8 @@ class ShellFileOperations(FileOperations):
         if not all_files and not limit_reason:
             # --sortr may have failed on older rg; retry without it.
             cmd_plain = (
-                f"rg --files -g {self._escape_shell_arg(glob_pattern)} "
+                f"rg --files -g {self._escape_shell_arg(glob_pattern)}"
+                f"{exclusion_args} "
                 f"{self._escape_native_tool_arg(path)} 2>/dev/null "
                 f"| head -n {fetch_limit}"
             )
@@ -3923,6 +4188,10 @@ class ShellFileOperations(FileOperations):
         # Add context if requested
         if context > 0:
             cmd_parts.extend(["-C", str(context)])
+        
+        # Exclude macOS TCC-protected descendants during broad searches.
+        for item in self._macos_search_exclusions(path):
+            cmd_parts.extend(["--glob", self._escape_shell_arg(f"!{item}/**")])
 
         # Add file glob filter (must be quoted to prevent shell expansion)
         if file_glob:
@@ -4059,6 +4328,23 @@ class ShellFileOperations(FileOperations):
         # This prevents searching inside .hub/index-cache/, .git/, etc.
         cmd_parts.append("--exclude-dir='.*'")
 
+        # Protected-dir pruning CANNOT use --exclude-dir here: grep matches
+        # exclude-dir globs against BASENAMES anywhere in the tree, so
+        # --exclude-dir=Downloads would silently skip every nested directory
+        # named Downloads (a repo's own Downloads/ folder included), not just
+        # the protected home child. When exclusions apply (darwin broad-home
+        # search on a local backend), route through find's path-scoped -prune
+        # instead — same traversal-prevention the find backend uses.
+        protected_paths = [
+            os.path.normpath(os.path.join(path, item))
+            for item in self._macos_search_exclusions(path)
+        ]
+        if protected_paths:
+            return self._search_with_grep_pruned(
+                pattern, path, file_glob, limit, offset, output_mode, context,
+                protected_paths,
+            )
+        
         # Add context if requested
         if context > 0:
             cmd_parts.extend(["-C", str(context)])
@@ -4102,6 +4388,56 @@ class ShellFileOperations(FileOperations):
         # pipefail does not turn truncated results into false errors.
         cmd = "set -o pipefail; " + " ".join(cmd_parts)
         result = self._exec(cmd, timeout=60)
+        return self._parse_grep_search_output(result, output_mode, limit, offset, context)
+
+    def _search_with_grep_pruned(self, pattern: str, path: str, file_glob: Optional[str],
+                                 limit: int, offset: int, output_mode: str, context: int,
+                                 protected_paths: List[str]) -> SearchResult:
+        """grep fallback with PATH-scoped protected-dir pruning.
+
+        Files are enumerated by ``find`` with the same ``-path ... -prune``
+        expression the find backend uses (traversal never enters the protected
+        dirs, so macOS never sees an access attempt), then handed to grep via
+        ``-exec {} +``. This exists because grep's own ``--exclude-dir``
+        matches basenames anywhere in the tree — it cannot express "only the
+        home-level Downloads". Hidden directories are pruned to mirror the
+        plain path's ``--exclude-dir='.*'``. Trade-off: with ``-exec {} +``
+        find folds grep's exit code into its own generic non-zero, so a hard
+        grep error surfaces as an empty result rather than exit 2 — acceptable
+        for this darwin-local-broad-search-only branch.
+        """
+        grep_parts = ["grep", "-nHE"]
+        if context > 0:
+            grep_parts.extend(["-C", str(context)])
+        if output_mode == "files_only":
+            grep_parts.append("-l")
+        elif output_mode == "count":
+            grep_parts.append("-c")
+        grep_parts.append(self._escape_shell_arg(pattern))
+
+        prune_terms = " -o ".join(
+            f"-path {self._escape_shell_arg(item)}" for item in protected_paths
+        )
+        find_parts = [
+            "find", self._escape_shell_arg(path or "."),
+            f"\\( {prune_terms} \\) -prune", "-o",
+            "\\( -type d -name '.*' \\) -prune", "-o",
+            "-type f",
+        ]
+        if file_glob:
+            find_parts.extend(["-name", self._escape_shell_arg(file_glob)])
+        find_parts.extend(["-exec", *grep_parts, "{}", "+"])
+        fetch_limit = limit + offset + (200 if context > 0 else 0)
+        cmd = (
+            "set -o pipefail; " + " ".join(find_parts)
+            + f" 2>/dev/null | head -n {fetch_limit}"
+        )
+        result = self._exec(cmd, timeout=60)
+        return self._parse_grep_search_output(result, output_mode, limit, offset, context)
+
+    def _parse_grep_search_output(self, result, output_mode: str, limit: int,
+                                  offset: int, context: int) -> SearchResult:
+        """Shared grep output parsing for the plain and pruned variants."""
         stdout, limit_reason = _search_stdout_and_limit(result)
 
         # _exec merges stderr into stdout, so grep's diagnostic lines

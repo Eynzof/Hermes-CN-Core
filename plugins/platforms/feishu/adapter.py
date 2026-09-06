@@ -46,6 +46,8 @@ user is seen through different apps in the future.
 """
 from __future__ import annotations
 
+import json
+
 
 import asyncio
 import collections
@@ -1886,6 +1888,8 @@ class FeishuAdapter(BasePlatformAdapter):
             await self._connect_with_retry()
             self._mark_connected()
             logger.info("[Feishu] Connected in %s mode (%s)", self._connection_mode, self._domain_name)
+            # Plugin-registered native handlers (lark_oapi client).
+            self._wire_plugin_handlers(self._client)
             return True
         except Exception as exc:
             await self._release_app_lock()
@@ -2334,15 +2338,36 @@ class FeishuAdapter(BasePlatformAdapter):
         metadata: Optional[Dict[str, Any]] = None,
         **kwargs,
     ) -> SendResult:
-        """Send audio to Feishu as a file attachment plus optional caption."""
-        return await self._send_uploaded_file_message(
-            chat_id=chat_id,
-            file_path=audio_path,
-            reply_to=reply_to,
-            metadata=metadata,
-            caption=caption,
-            outbound_message_type="audio",
-        )
+        """Send audio to Feishu as a native voice message (opus) or file.
+
+        Feishu's voice channel only accepts Opus (msg_type='audio' with an
+        opus upload). Non-opus audio (mp3/wav/flac/...) is transcoded on the
+        fly via the shared ffmpeg engine so audio actually arrives as a
+        playable voice message; when ffmpeg is unavailable the original
+        file is sent as a file attachment (previous behavior).
+        """
+        transcoded_path: Optional[str] = None
+        ext = Path(audio_path).suffix.lower()
+        if ext not in _FEISHU_OPUS_UPLOAD_EXTENSIONS:
+            from gateway.platforms.base import transcode_to_ogg_opus
+            transcoded_path = await asyncio.to_thread(transcode_to_ogg_opus, audio_path)
+            if transcoded_path:
+                audio_path = transcoded_path
+        try:
+            return await self._send_uploaded_file_message(
+                chat_id=chat_id,
+                file_path=audio_path,
+                reply_to=reply_to,
+                metadata=metadata,
+                caption=caption,
+                outbound_message_type="audio",
+            )
+        finally:
+            if transcoded_path:
+                try:
+                    os.unlink(transcoded_path)
+                except OSError:
+                    pass
 
     async def send_document(
         self,
@@ -2881,8 +2906,7 @@ class FeishuAdapter(BasePlatformAdapter):
 
         operator = getattr(event, "operator", None)
         open_id = str(getattr(operator, "open_id", "") or "")
-        sender_id = SimpleNamespace(open_id=open_id, user_id=str(getattr(operator, "user_id", "") or ""))
-        if not self._allow_group_message(sender_id, state.get("chat_id", ""), is_bot=False):
+        if not self._is_interactive_operator_authorized(open_id):
             logger.warning("[Feishu] Unauthorized approval click by %s", open_id or "<unknown>")
             return P2CardActionTriggerResponse() if P2CardActionTriggerResponse else None
 
@@ -2941,8 +2965,7 @@ class FeishuAdapter(BasePlatformAdapter):
 
         operator = getattr(event, "operator", None)
         open_id = str(getattr(operator, "open_id", "") or "")
-        sender_id = SimpleNamespace(open_id=open_id, user_id=str(getattr(operator, "user_id", "") or ""))
-        if not self._allow_group_message(sender_id, state.get("chat_id", ""), is_bot=False):
+        if not self._is_interactive_operator_authorized(open_id):
             logger.warning("[Feishu] Unauthorized update prompt click by %s", open_id or "<unknown>")
             return P2CardActionTriggerResponse() if P2CardActionTriggerResponse else None
 
@@ -3048,11 +3071,9 @@ class FeishuAdapter(BasePlatformAdapter):
         if not state:
             logger.debug("[Feishu] Update prompt %s already resolved or unknown", prompt_id)
             return
-        if open_id:
-            sender_id = SimpleNamespace(open_id=open_id, user_id="")
-            if not self._allow_group_message(sender_id, state.get("chat_id", ""), is_bot=False):
-                logger.warning("[Feishu] Unauthorized update prompt click by %s for prompt %s", open_id, prompt_id)
-                return
+        if not self._is_interactive_operator_authorized(open_id):
+            logger.warning("[Feishu] Unauthorized update prompt click by %s for prompt %s", open_id, prompt_id)
+            return
         expected_chat_id = str(state.get("chat_id", "") or "")
         if expected_chat_id and chat_id and expected_chat_id != chat_id:
             logger.warning(
@@ -3517,6 +3538,7 @@ class FeishuAdapter(BasePlatformAdapter):
             event.source,
             group_sessions_per_user=self.config.extra.get("group_sessions_per_user", True),
             thread_sessions_per_user=self.config.extra.get("thread_sessions_per_user", False),
+            profile=self._session_key_profile(event.source),
         )
         return f"{session_key}:media:{event.message_type.value}"
 
@@ -3825,7 +3847,7 @@ class FeishuAdapter(BasePlatformAdapter):
             event.source,
             group_sessions_per_user=self.config.extra.get("group_sessions_per_user", True),
             thread_sessions_per_user=self.config.extra.get("thread_sessions_per_user", False),
-            profile=event.source.profile,
+            profile=self._session_key_profile(event.source),
         )
 
     @staticmethod

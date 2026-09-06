@@ -292,17 +292,18 @@ LAZY_DEPS: dict[str, tuple[str, ...]] = {
     # the stdlib .ipynb/.docx/.xlsx to PDF, legacy Office (.doc/.ppt/.xls),
     # OpenDocument, RTF, and EPUB. Installed on first read of such a file;
     # the call site uses prompt=False so read_file never blocks on a prompt.
-    # NOTE: lazy-only for now — no pyproject `doc-extract` extra until the
-    # package clears the uv exclude-newer 14-day quarantine (first release
-    # 2026-08-04); add the mirrored extra then.
-    "tool.doc_extract": ("firecrawl-anydoc==0.1.6",),
+    # NOTE: bundled in core pyproject dependencies since the hosted-OCR
+    # wiring (keep this lazy pin in lockstep with pyproject) — this entry
+    # survives as the self-heal path for lean/partial installs.
+    "tool.doc_extract": ("firecrawl-anydoc==0.2.4",),  # lockstep with pyproject
     # Computer Use (cua-driver) — the MCP client SDK used to spawn and talk
     # to the cua-driver process over stdio. Matches the `mcp` / `computer-use`
     # extras in pyproject.toml. The one-liner installer pulls this in via
     # `[all]`; lazy-installing here covers lean / partial / broken-extra
     # installs so computer_use never dead-ends on `No module named 'mcp'`.
     "tool.computer_use": (
-        "mcp==1.28.1",
+        "mcp==2.0.0",
+        "httpx2==2.7.0",  # mcp 2.x HTTP stack — keep in sync with pyproject [computer-use]
         "starlette==1.3.1",  # CVE-2026-48710 — keep in sync with pyproject [computer-use]
     ),
     # HF Agent Trace Viewer upload (hermes trace upload / /upload-trace).
@@ -1113,103 +1114,8 @@ def install_specs(specs: list[str] | tuple[str, ...], *, timeout: int = 300) -> 
     )
 
 
-@dataclass
-class InstallSpecsResult:
-    """Outcome of :func:`install_specs` for one batch of pip specs.
-
-    ``ok``       — install succeeded (or nothing was missing).
-    ``blocked``  — installs are gated off (config kill switch, sealed venv
-                   without a durable target) or a spec failed validation;
-                   nothing was executed. ``reason`` explains why.
-    ``command``  — human-readable description of what ran (for UIs/logs).
-    """
-    ok: bool
-    blocked: bool = False
-    reason: str = ""
-    command: str = ""
-    stdout: str = ""
-    stderr: str = ""
 
 
-def install_specs(specs: list[str] | tuple[str, ...], *, timeout: int = 300) -> InstallSpecsResult:
-    """Install arbitrary (validated) pip specs through the lazy-install pipeline.
-
-    This is the environment-aware install path for callers whose package
-    lists come from data (e.g. memory-provider plugin manifests declaring
-    ``pip_dependencies``) rather than the static :data:`LAZY_DEPS` allowlist.
-    It applies the exact same environment routing as :func:`ensure`:
-
-    * **Venv-scoped by default** — installs into ``sys.executable``'s venv.
-    * **Durable-target on immutable images** — when the deployment seals the
-      agent venv (``HERMES_DISABLE_LAZY_INSTALLS=1``) and sets
-      ``HERMES_LAZY_INSTALL_TARGET``, installs are redirected to the writable
-      data-volume dir (``--target`` + core-venv constraints), then activated
-      on ``sys.path`` so the packages import in this process immediately.
-    * **Gated** — honors ``security.allow_lazy_installs`` and refuses to run
-      when the venv is sealed with no durable target (never attempts a write
-      to a read-only tree; reports *why* instead of surfacing EROFS/EACCES).
-
-    Every spec must pass :func:`_spec_is_safe` (no URLs, paths, or shell
-    metacharacters). Unlike :func:`ensure`, unknown packages are permitted —
-    the caller owns manifest trust; this function owns spec hygiene and
-    environment routing.
-
-    Never raises; inspect the returned :class:`InstallSpecsResult`.
-    """
-    cleaned = tuple(str(s).strip() for s in specs if str(s).strip())
-    if not cleaned:
-        return InstallSpecsResult(ok=True, command="")
-
-    for spec in cleaned:
-        if not _spec_is_safe(spec):
-            return InstallSpecsResult(
-                ok=False, blocked=True,
-                reason=f"refusing to install unsafe spec {spec!r}",
-            )
-
-    if not _allow_lazy_installs():
-        target = _lazy_install_target()
-        if os.environ.get("HERMES_DISABLE_LAZY_INSTALLS") == "1" and target is None:
-            reason = (
-                "runtime installs are disabled on this deployment: the agent "
-                "environment is immutable and no writable install target is "
-                "configured (HERMES_LAZY_INSTALL_TARGET)"
-            )
-        else:
-            reason = "runtime installs disabled (security.allow_lazy_installs=false)"
-        return InstallSpecsResult(ok=False, blocked=True, reason=reason)
-
-    target = _lazy_install_target()
-    display = "uv pip install " + (
-        f"--target {target} " if target is not None else ""
-    ) + " ".join(cleaned)
-
-    logger.info("Installing pip specs %s (target=%s)", " ".join(cleaned), target or "venv")
-    try:
-        result = _venv_pip_install(cleaned, timeout=timeout)
-    except Exception as exc:
-        logger.warning("install_specs failed unexpectedly: %s", exc)
-        return InstallSpecsResult(
-            ok=False, command=display, stderr=f"install failed: {exc}"
-        )
-
-    # Freshly-installed dists must be visible to importers and metadata
-    # checks in this same process (dashboard rechecks availability inline).
-    try:
-        import importlib
-        importlib.invalidate_caches()
-        import importlib.metadata as _md
-        if hasattr(_md, "_cache_clear"):
-            _md._cache_clear()  # type: ignore[attr-defined]
-    except Exception:
-        pass
-
-    return InstallSpecsResult(
-        ok=result.success,
-        command=display,
-        stdout=result.stdout,
-        stderr=result.stderr,
-    )
 
 
 def active_features() -> list[str]:
@@ -1246,8 +1152,27 @@ def refresh_active_features(*, prompt: bool = False) -> dict[str, str]:
     Intended for ``hermes update``. Never raises; lazy-install failures
     here must not block the rest of the update flow.
     """
+    return _refresh_features(active_features(), prompt=prompt, restoring=False)
+
+
+def restore_features(features: list[str]) -> dict[str, str]:
+    """Restore features captured before an explicit managed-runtime rebuild.
+
+    Feature names are checked against :data:`LAZY_DEPS`, and installs remain
+    subject to ``security.allow_lazy_installs``. An explicit opt-out therefore
+    leaves the captured feature absent and reports it as skipped.
+    """
+    return _refresh_features(features, prompt=False, restoring=True)
+
+
+def _refresh_features(
+    features: list[str], *, prompt: bool, restoring: bool
+) -> dict[str, str]:
+    """Refresh or restore a known set of allowlisted lazy features."""
     results: dict[str, str] = {}
-    for feature in active_features():
+    for feature in features:
+        if feature not in LAZY_DEPS:
+            continue
         missing = feature_missing(feature)
         if not missing:
             results[feature] = "current"
@@ -1259,8 +1184,12 @@ def refresh_active_features(*, prompt: bool = False) -> dict[str, str]:
             continue
 
         try:
-            ensure(feature, prompt=prompt)
-            results[feature] = "refreshed"
+            if restoring:
+                ensure(feature, prompt=False)
+                results[feature] = "restored"
+            else:
+                ensure(feature, prompt=prompt)
+                results[feature] = "refreshed"
         except FeatureUnavailable as e:
             # Distinguish "user opted out" or platform-incompatible features
             # from install failures so the update command can render the
@@ -1319,12 +1248,19 @@ def ensure_and_bind(
     """
     try:
         ensure(feature, prompt=prompt)
-    except (FeatureUnavailable, Exception):
+    except FeatureUnavailable as exc:
+        logger.warning("%s", exc)
+        return False
+    except Exception as exc:
+        logger.warning("Failed to ensure feature %r: %s", feature, exc)
         return False
 
     try:
         bindings = importer()
-    except ImportError:
+    except ImportError as exc:
+        logger.warning(
+            "Failed to import feature %r after install: %s", feature, exc
+        )
         return False
 
     target_globals.update(bindings)

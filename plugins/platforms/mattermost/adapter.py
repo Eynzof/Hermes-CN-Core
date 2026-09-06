@@ -339,6 +339,8 @@ class MattermostAdapter(BasePlatformAdapter):
         # Start WebSocket in background.
         self._ws_task = asyncio.create_task(self._ws_loop())
         self._mark_connected()
+        # Plugin-registered native handlers (ctx.register_platform_handler).
+        self._wire_plugin_handlers(None)
         return True
 
     async def disconnect(self) -> None:
@@ -751,12 +753,23 @@ class MattermostAdapter(BasePlatformAdapter):
                 # Detect permanent auth/permission failures that will never
                 # succeed on retry — stop reconnecting instead of looping forever.
                 import aiohttp
-                err_str = str(exc).lower()
                 if isinstance(exc, aiohttp.WSServerHandshakeError) and exc.status in {401, 403}:
                     logger.error("Mattermost WS auth failed (HTTP %d) — stopping reconnect", exc.status)
-                    return
-                if "401" in err_str or "403" in err_str or "unauthorized" in err_str:
-                    logger.error("Mattermost WS permanent error: %s — stopping reconnect", exc)
+                    # Escalate through the fatal-error hook instead of a bare
+                    # return: the old silent exit left _running True, so
+                    # is_connected() kept reporting healthy while the listener
+                    # was dead and the gateway was never told (OOF-156 class).
+                    # Type-based only — the substring fallback that used to sit
+                    # below this branch misclassified transient errors whose
+                    # message merely contained "401" (#80489).
+                    self._set_fatal_error(
+                        "mattermost_auth_error",
+                        f"Mattermost WebSocket authentication rejected (HTTP {exc.status}). "
+                        "The bot token is invalid, revoked, or lacks permission — check "
+                        "MATTERMOST_TOKEN and the bot account in the System Console.",
+                        retryable=False,
+                    )
+                    await self._notify_fatal_error()
                     return
                 logger.warning("Mattermost WS error: %s — reconnecting in %.0fs", exc, delay)
 

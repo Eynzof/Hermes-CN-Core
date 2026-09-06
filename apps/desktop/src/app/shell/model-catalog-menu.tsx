@@ -40,6 +40,14 @@ import type { ModelOptionProvider, ModelOptionsResponse } from '@/types/hermes'
 
 import { type FastControl, ModelEditSubmenu, resolveFastControl } from './model-edit-submenu'
 
+/** Whether a catalog row represents the session's current provider. Custom
+ *  providers report the canonical `custom:<key>` identity from `model.options`
+ *  while the row's slug is the bare config key, so exact slug equality never
+ *  matches — check the row's alias set too (#87035). */
+function isCurrentProvider(provider: ModelOptionProvider, currentProvider: string): boolean {
+  return provider.slug === currentProvider || (provider.aliases?.includes(currentProvider) ?? false)
+}
+
 // Lets the host dropdown (model-pill, a kanban field trigger, …) hand the panel
 // a way to dismiss itself so clicking a model row commits + closes, while the
 // hover-revealed edit submenu (reasoning/fast) stays open to play with (its
@@ -85,6 +93,9 @@ interface ModelCatalogMenuProps {
   /** Rows appended under the catalog (Refresh Models, Edit Models, …). */
   footer?: ReactNode
   gateway?: HermesGateway
+  /** Owner-routed RPC for catalog reads. Preferred over `gateway.request` so
+   *  a tile's menu queries the session owner's backend, not chrome's. */
+  request?: <T>(method: string, params?: Record<string, unknown>) => Promise<T>
   /** Render the virtual `moa` provider's presets as a selectable section.
    *  Off for override surfaces, where a MoA preset isn't a worker model. */
   includeMoa?: boolean
@@ -114,6 +125,7 @@ export function ModelCatalogMenu({
   gateway,
   includeMoa = false,
   profile = 'default',
+  request,
   sessionId = null
 }: ModelCatalogMenuProps) {
   const { t } = useI18n()
@@ -133,7 +145,7 @@ export function ModelCatalogMenu({
     // Gateway-first even with no session: a connected (possibly remote)
     // gateway owns the model catalog, including virtual providers the local
     // REST fallback can't know about (#53817).
-    queryFn: (): Promise<ModelOptionsResponse> => requestModelOptions({ gateway, sessionId })
+    queryFn: (): Promise<ModelOptionsResponse> => requestModelOptions({ gateway, profile, request, sessionId })
   })
 
   const loading = modelOptions.isPending && !modelOptions.data
@@ -243,13 +255,17 @@ export function ModelCatalogMenu({
   // hover can't take rows out from under the keyboard.
   const pointerQuiet = usePointerQuiet()
 
-  const currentKey = current.provider === 'moa' ? `moa:${current.model}` : `${current.provider}:${current.model}`
+  const rowIsCurrent = (row: KbRow) =>
+    row.kind === 'moa'
+      ? current.provider === 'moa' && row.preset === current.model
+      : isCurrentProvider(row.provider, current.provider) &&
+        (row.family.id === current.model || row.family.fastId === current.model)
 
   const autoIndex = q
     ? kbRows.length > 0
       ? 0
       : -1
-    : kbRows.findIndex(row => row.key === currentKey || (row.kind === 'family' && row.family.fastId === current.model))
+    : kbRows.findIndex(row => rowIsCurrent(row) || (row.kind === 'family' && row.family.fastId === current.model))
 
   const kbIndex = kbOverride !== null && kbOverride < kbRows.length ? kbOverride : autoIndex
   const kbActiveKey = kbIndex >= 0 ? kbRows[kbIndex].key : null
@@ -277,7 +293,7 @@ export function ModelCatalogMenu({
       return
     }
 
-    if (row.key !== currentKey && row.family.fastId !== current.model) {
+    if (!rowIsCurrent(row) && row.family.fastId !== current.model) {
       void selectFamily(row.family, row.provider)
     }
 
@@ -389,7 +405,7 @@ export function ModelCatalogMenu({
                     // The active id may be the base or its -fast sibling; either
                     // way this one family row represents both.
                     const activeId =
-                      group.provider.slug === current.provider &&
+                      isCurrentProvider(group.provider, current.provider) &&
                       (current.model === family.id || current.model === family.fastId)
                         ? current.model
                         : null
@@ -451,6 +467,7 @@ export function ModelCatalogMenu({
                           ) : null}
                         </DropdownMenuSubTrigger>
                         <ModelEditSubmenu
+                          canDisableReasoning={caps?.can_disable_reasoning}
                           defaultEffort={defaultEffort}
                           effort={effEffort}
                           fastControl={fastControl}
@@ -566,7 +583,7 @@ function groupModels(
     // stable curated order, so selecting a model can't shuffle the list. While
     // SEARCHING the pin is skipped: a query means "show me matches".
     const activeId =
-      !q && provider.slug === current.provider && current.model
+      !q && isCurrentProvider(provider, current.provider) && current.model
         ? allFamilies.find(family => family.id === current.model || family.fastId === current.model)?.id
         : undefined
 

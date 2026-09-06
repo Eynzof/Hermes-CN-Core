@@ -16,6 +16,8 @@ TIM 消息体构建：
 """
 from __future__ import annotations
 
+import hashlib
+
 
 import xxhash
 import hmac

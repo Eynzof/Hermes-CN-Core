@@ -96,6 +96,39 @@ class TestProfileMessageHandler:
         assert seen["profile"] == "coder"
 
 
+class TestProfileRuntimeStatus:
+    def test_base_adapter_uses_namespaced_platform_key(self, monkeypatch):
+        from gateway.platforms.base import BasePlatformAdapter
+
+        class _ConcreteAdapter(BasePlatformAdapter):
+            async def connect(self):
+                return True
+
+            async def disconnect(self):
+                return None
+
+            async def send(self, *_args, **_kwargs):
+                return None
+
+            async def get_chat_info(self, *_args, **_kwargs):
+                return None
+
+        adapter = _ConcreteAdapter.__new__(_ConcreteAdapter)
+        adapter.platform = Platform.DISCORD
+        adapter._runtime_status_platform_key = "reviewer:discord"
+        writes = []
+        monkeypatch.setattr(
+            "gateway.status.write_runtime_status",
+            lambda **kwargs: writes.append(kwargs),
+        )
+
+        adapter._write_runtime_status_safe("fatal", platform_state="fatal")
+
+        assert writes == [
+            {"platform": "reviewer:discord", "platform_state": "fatal"}
+        ]
+
+
 class _SecondaryRecoveryAdapter:
     platform = Platform.DISCORD
 
@@ -145,6 +178,7 @@ def _secondary_recovery_runner(*, running=True):
     runner._make_adapter_auth_check = lambda platform, profile_name=None: object()
     runner._adapter_disconnect_timeout_secs = lambda: 0
     runner._sync_voice_mode_state_to_adapter = lambda adapter: None
+    runner._redeliver_failed_obligations_for_platform = AsyncMock(return_value=0)
     return runner
 
 
@@ -195,6 +229,15 @@ class TestSecondaryProfileFatalRecovery:
             return True
 
         monkeypatch.setattr(runner, "_connect_adapter_with_timeout", connect)
+        redelivery_homes = []
+
+        async def redeliver(platform, *, profile=None):
+            from hermes_constants import get_hermes_home
+
+            redelivery_homes.append(Path(get_hermes_home()))
+            return 0
+
+        runner._redeliver_failed_obligations_for_platform.side_effect = redeliver
         await runner._handle_profile_adapter_fatal_error(
             "reviewer", Platform.DISCORD, stale
         )
@@ -205,8 +248,13 @@ class TestSecondaryProfileFatalRecovery:
         assert len(tasks) == 1
         await tasks[0]
         assert runner._profile_adapters["reviewer"][Platform.DISCORD] is replacement
+        runner._redeliver_failed_obligations_for_platform.assert_awaited_once_with(
+            Platform.DISCORD, profile="reviewer"
+        )
         assert scoped_homes
         assert all(path == Path("/profiles/reviewer") for path in scoped_homes)
+        assert redelivery_homes
+        assert all(path != Path("/profiles/reviewer") for path in redelivery_homes)
 
 
     @pytest.mark.asyncio
@@ -238,6 +286,200 @@ class TestSecondaryProfileFatalRecovery:
 
         assert runner._profile_adapters == {}
         assert replacement.disconnected is True
+        assert runner._profile_failed_platforms == {}
+
+
+class TestSecondaryStartupFailureRecovery:
+    """Cold-start connect failures must reach the same reconnect slot as
+    mid-run fatals — one unlucky connect window must not kill the platform
+    for the life of the process."""
+
+    @pytest.mark.asyncio
+    async def test_retryable_initial_failure_schedules_reconnect(
+        self, monkeypatch
+    ):
+        runner = _secondary_recovery_runner()
+        failed = _SecondaryRecoveryAdapter()
+        replacement = _SecondaryRecoveryAdapter()
+        scoped_homes: list[Path] = []
+        _install_secondary_reconnect_context(
+            monkeypatch, runner, replacement, scoped_homes
+        )
+
+        # Startup creates `failed`; the reconnect runner creates `replacement`.
+        created = [failed, replacement]
+        monkeypatch.setattr(
+            runner, "_create_adapter", lambda platform, config: created.pop(0)
+        )
+
+        async def fail_initial_connect(adapter, platform):
+            return False
+
+        monkeypatch.setattr(
+            runner, "_connect_initial_adapter_with_timeout", fail_initial_connect
+        )
+
+        async def reconnect_ok(adapter, platform, *, is_reconnect=False):
+            assert is_reconnect is True
+            assert adapter is replacement
+            return True
+
+        monkeypatch.setattr(runner, "_connect_adapter_with_timeout", reconnect_ok)
+
+        connected = await runner._start_one_profile_adapters(
+            "reviewer", "/tmp/reviewer", {}
+        )
+
+        assert connected == 0
+        assert failed.disconnected is True
+        assert Platform.DISCORD not in runner._profile_adapters.get(
+            "reviewer", {}
+        )
+        bridge = list(runner._background_tasks)
+        assert len(bridge) == 1
+        # Drive the bridge to completion; it hands off (immediately when the
+        # gateway is already running) to the regular reconnect task, which
+        # publishes the replacement and clears its own slot.
+        await asyncio.wait_for(bridge[0], timeout=0.5)
+        for _ in range(20):
+            if (
+                runner._profile_adapters.get("reviewer", {}).get(Platform.DISCORD)
+                is replacement
+            ):
+                break
+            await asyncio.sleep(0)
+        assert (
+            runner._profile_adapters["reviewer"][Platform.DISCORD] is replacement
+        )
+        assert Platform.DISCORD not in runner._profile_failed_platforms.get(
+            "reviewer", {}
+        )
+        # Reconnect must have re-entered the profile's own runtime scope.
+        assert Path("/profiles/reviewer") in scoped_homes
+        assert all(
+            path in (Path("/tmp/reviewer"), Path("/profiles/reviewer"))
+            for path in scoped_homes
+        )
+
+    @pytest.mark.asyncio
+    async def test_raising_initial_connect_schedules_reconnect(
+        self, monkeypatch
+    ):
+        runner = _secondary_recovery_runner()
+        failed = _SecondaryRecoveryAdapter()
+        replacement = _SecondaryRecoveryAdapter()
+        _install_secondary_reconnect_context(monkeypatch, runner, replacement)
+
+        created = [failed, replacement]
+        monkeypatch.setattr(
+            runner, "_create_adapter", lambda platform, config: created.pop(0)
+        )
+
+        async def explode(adapter, platform):
+            raise TimeoutError("initial connect budget exhausted")
+
+        monkeypatch.setattr(runner, "_connect_initial_adapter_with_timeout", explode)
+
+        async def reconnect_ok(adapter, platform, *, is_reconnect=False):
+            return True
+
+        monkeypatch.setattr(runner, "_connect_adapter_with_timeout", reconnect_ok)
+
+        connected = await runner._start_one_profile_adapters(
+            "reviewer", "/tmp/reviewer", {}
+        )
+
+        assert connected == 0
+        assert failed.disconnected is True
+        bridge = list(runner._background_tasks)
+        assert len(bridge) == 1
+        await asyncio.wait_for(bridge[0], timeout=0.5)
+        for _ in range(20):
+            if (
+                runner._profile_adapters.get("reviewer", {}).get(Platform.DISCORD)
+                is replacement
+            ):
+                break
+            await asyncio.sleep(0)
+        assert (
+            runner._profile_adapters["reviewer"][Platform.DISCORD] is replacement
+        )
+        assert Platform.DISCORD not in runner._profile_failed_platforms.get(
+            "reviewer", {}
+        )
+
+    @pytest.mark.asyncio
+    async def test_non_retryable_initial_failure_does_not_schedule(
+        self, monkeypatch
+    ):
+        runner = _secondary_recovery_runner()
+        failed = _SecondaryRecoveryAdapter(retryable=False)
+        _install_secondary_reconnect_context(
+            monkeypatch, runner, _SecondaryRecoveryAdapter()
+        )
+        monkeypatch.setattr(runner, "_create_adapter", lambda platform, config: failed)
+
+        async def fail_initial_connect(adapter, platform):
+            return False
+
+        monkeypatch.setattr(
+            runner, "_connect_initial_adapter_with_timeout", fail_initial_connect
+        )
+
+        connected = await runner._start_one_profile_adapters(
+            "reviewer", "/tmp/reviewer", {}
+        )
+
+        assert connected == 0
+        assert failed.disconnected is True
+        assert runner._background_tasks == set()
+        assert runner._profile_failed_platforms == {}
+
+    @pytest.mark.asyncio
+    async def test_handoff_failure_is_logged_not_raised(self, monkeypatch, caplog):
+        """If the scheduler raises at bridge handoff, the parked task must not
+        die as an unretrieved-task exception — the failure surfaces in the log."""
+        runner = _secondary_recovery_runner()
+        failed = _SecondaryRecoveryAdapter()
+        _install_secondary_reconnect_context(
+            monkeypatch, runner, _SecondaryRecoveryAdapter()
+        )
+        monkeypatch.setattr(runner, "_create_adapter", lambda platform, config: failed)
+
+        async def fail_initial_connect(adapter, platform):
+            return False
+
+        monkeypatch.setattr(
+            runner, "_connect_initial_adapter_with_timeout", fail_initial_connect
+        )
+
+        def explode_at_handoff(profile_name, platform, adapter):
+            raise RuntimeError("scheduler exploded during handoff")
+
+        monkeypatch.setattr(
+            runner, "_schedule_secondary_profile_reconnect", explode_at_handoff
+        )
+
+        with caplog.at_level(logging.ERROR, logger="gateway.run"):
+            connected = await runner._start_one_profile_adapters(
+                "reviewer", "/tmp/reviewer", {}
+            )
+            bridge = list(runner._background_tasks)
+            assert len(bridge) == 1
+            # Awaiting completes cleanly: the guard swallows the handoff
+            # failure instead of letting it escape as an unretrieved-task
+            # exception at GC time.
+            await asyncio.wait_for(bridge[0], timeout=0.5)
+
+        assert connected == 0
+        assert failed.disconnected is True
+        assert any(
+            record.levelno == logging.ERROR
+            and "secondary-startup-reconnect handoff failed" in record.getMessage()
+            for record in caplog.records
+        )
+        # Nothing was scheduled and no slot leaked behind the failed handoff.
+        assert Platform.DISCORD not in runner._profile_adapters.get("reviewer", {})
         assert runner._profile_failed_platforms == {}
 
 
@@ -276,6 +518,98 @@ class TestSecondaryProfileConfigHandling:
         assert "webhook" in message
         assert "telegram" not in message
         assert "reviewer" not in runner._profile_adapters
+
+    def test_configured_secondary_adapter_namespaces_runtime_status(self):
+        runner = _secondary_recovery_runner()
+        adapter = _SecondaryRecoveryAdapter()
+
+        runner._configure_profile_adapter(adapter, "reviewer", Platform.DISCORD)
+
+        assert adapter._runtime_status_platform_key == "reviewer:discord"
+
+    @pytest.mark.asyncio
+    async def test_duplicate_credential_is_persisted_as_profile_fatal(
+        self, monkeypatch
+    ):
+        runner = _secondary_recovery_runner()
+        config = GatewayConfig(
+            multiplex_profiles=True,
+            platforms={
+                Platform.DISCORD: PlatformConfig(
+                    enabled=True, token="shared-discord-token"
+                )
+            },
+        )
+        adapter = _SecondaryRecoveryAdapter()
+        adapter.config = config.platforms[Platform.DISCORD]
+        writes = []
+
+        monkeypatch.setattr("gateway.config.load_gateway_config", lambda: config)
+        monkeypatch.setattr(runner, "_create_adapter", lambda _p, _c: adapter)
+        monkeypatch.setattr(
+            runner,
+            "_update_platform_runtime_status",
+            lambda platform, **kwargs: writes.append((platform, kwargs)),
+        )
+        claim = runner._adapter_credential_claim(Platform.DISCORD, adapter)
+
+        connected = await runner._start_one_profile_adapters(
+            "reviewer", "/tmp/reviewer", {claim: "default"}
+        )
+
+        assert connected == 0
+        assert writes == [
+            (
+                "reviewer:discord",
+                {
+                    "platform_state": "fatal",
+                    "error_code": "duplicate_credential",
+                    "error_message": (
+                        "Profile 'default' and 'reviewer' both configure discord "
+                        "with the same credential. Give each profile its own "
+                        "discord credential."
+                    ),
+                },
+            )
+        ]
+
+    @pytest.mark.asyncio
+    async def test_duplicate_listener_is_persisted_without_public_bind_details(
+        self, monkeypatch
+    ):
+        class _ListenerAdapter(_SecondaryRecoveryAdapter):
+            _sidecar_bind = "127.0.0.1"
+            _sidecar_port = 8789
+
+        runner = _secondary_recovery_runner()
+        platform = Platform("photon")
+        config = GatewayConfig(
+            multiplex_profiles=True,
+            platforms={platform: PlatformConfig(enabled=True)},
+        )
+        adapter = _ListenerAdapter()
+        adapter.platform = platform
+        adapter.config = config.platforms[platform]
+        writes = []
+
+        monkeypatch.setattr("gateway.config.load_gateway_config", lambda: config)
+        monkeypatch.setattr(runner, "_create_adapter", lambda _p, _c: adapter)
+        monkeypatch.setattr(
+            runner,
+            "_update_platform_runtime_status",
+            lambda key, **kwargs: writes.append((key, kwargs)),
+        )
+        claim = runner._adapter_listener_claim(platform, adapter)
+
+        connected = await runner._start_one_profile_adapters(
+            "reviewer", "/tmp/reviewer", {claim: "default"}
+        )
+
+        assert connected == 0
+        assert writes[0][0] == "reviewer:photon"
+        assert writes[0][1]["error_code"] == "duplicate_listener"
+        assert "127.0.0.1" not in writes[0][1]["error_message"]
+        assert "8789" not in writes[0][1]["error_message"]
 
     @pytest.mark.asyncio
     async def test_multiplexer_skips_bad_profile_and_continues(self, monkeypatch, caplog):
@@ -409,7 +743,7 @@ class TestSecondaryProfileConfigHandling:
             GatewayRunner._adapter_listener_claim(photon, primary): "default"
         }
 
-        async def _connect(adapter, platform):
+        async def _connect(adapter, platform, **_kw):
             adapter.connected = True
             return True
 
@@ -468,7 +802,7 @@ class TestSecondaryProfileConfigHandling:
         adapters = iter((failed, later))
         claimed = {}
 
-        async def _connect(adapter, platform):
+        async def _connect(adapter, platform, **_kw):
             return adapter.should_connect
 
         monkeypatch.setattr("gateway.config.load_gateway_config", lambda: profile_cfg)

@@ -331,11 +331,29 @@ class SessionImport(BaseModel):
 class SessionRename(BaseModel):
     title: Optional[str] = None
     archived: Optional[bool] = None
+    # Generic visibility flag. This is also used by process-light cross-profile
+    # reconciliation, where the primary backend opens the owner's state.db.
+    hidden: Optional[bool] = None
     # Durable "keep" flag mirrored from the Desktop sidebar's pins; pinned
     # sessions are exempt from the sessions.auto_archive stale sweep.
     pinned: Optional[bool] = None
+    # Read-state watermark toggle (sessions.last_read_at): True marks the
+    # session explicitly unread, False marks it read up to now. Mirrored from
+    # the Desktop sidebar's "Mark as unread"/"Mark as read". None = leave alone.
+    unread: Optional[bool] = None
     # Mutate a session belonging to another profile (opens its state.db). Omit
     # for the current/default profile.
+    profile: Optional[str] = None
+
+
+class SessionOwnerBackfill(BaseModel):
+    """Body for POST /api/sessions/owner-backfill (#94724 legacy migration).
+
+    ``profile`` scopes WHICH profile's state.db is stamped (same semantics as
+    every other session route); the stamped value is always that store's own
+    serving-profile identity — the caller cannot inject an arbitrary owner.
+    """
+
     profile: Optional[str] = None
 
 
@@ -385,6 +403,7 @@ class CronJobCreate(BaseModel):
     enabled_toolsets: Optional[List[str]] = None
     workdir: Optional[str] = None
     no_agent: bool = False
+    monitor_url: Optional[str] = None
 
 
 class CronJobUpdate(BaseModel):

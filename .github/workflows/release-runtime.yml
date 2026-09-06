@@ -62,7 +62,7 @@ jobs:
       # TUI, embedded/external terminal, and node-based MCP/playwright/npx tools
       # work without a host Node install. Bump as new 22.x LTS patches ship.
       # See FORK_NOTES P-032.
-      NODE_RUNTIME_VERSION: "22.12.0"
+      NODE_RUNTIME_VERSION: "22.22.0"
     strategy:
       fail-fast: false
       matrix:
@@ -134,7 +134,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # 8.2.0
         with:
-          version: "0.9.28"
+          version: "0.12.10"
           enable-cache: true
           cache-dependency-glob: |
             pyproject.toml
@@ -247,7 +247,6 @@ jobs:
               "plugins.web.firecrawl",
               "plugins.web.parallel",
               "plugins.web.searxng",
-              "plugins.web.tavily",
               "plugins.web.xai",
           ):
               try:
@@ -484,7 +483,7 @@ jobs:
 
           test -f "$internal/tools/computer_use_tool.py" || { echo "::error::missing computer_use tool shim" >&2; exit 1; }
           test -f "$internal/tools/computer_use/tool.py" || { echo "::error::missing computer_use package" >&2; exit 1; }
-          for p in brave_free ddgs exa firecrawl parallel searxng tavily xai; do
+          for p in brave_free ddgs exa firecrawl parallel searxng xai; do
             test -f "$internal/plugins/web/$p/__init__.py" || { echo "::error::missing web plugin $p __init__.py" >&2; exit 1; }
             test -f "$internal/plugins/web/$p/provider.py" || { echo "::error::missing web plugin $p provider.py" >&2; exit 1; }
             test -f "$internal/plugins/web/$p/plugin.yaml" || { echo "::error::missing web plugin $p plugin.yaml" >&2; exit 1; }
@@ -599,7 +598,7 @@ jobs:
           test -f "$internal/hermes_cli/web_dist/index.html" || { echo "::error::missing hermes_cli/web_dist/index.html" >&2; exit 1; }
           test -f "$internal/tools/computer_use_tool.py" || { echo "::error::missing tools/computer_use_tool.py" >&2; exit 1; }
           test -f "$internal/tools/computer_use/tool.py" || { echo "::error::missing tools/computer_use/tool.py" >&2; exit 1; }
-          for p in brave_free ddgs exa firecrawl parallel searxng tavily xai; do
+          for p in brave_free ddgs exa firecrawl parallel searxng xai; do
             for f in __init__.py provider.py plugin.yaml; do
               test -f "$internal/plugins/web/$p/$f" || { echo "::error::missing plugins/web/$p/$f" >&2; exit 1; }
             done

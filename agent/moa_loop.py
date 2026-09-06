@@ -410,6 +410,7 @@ def _maybe_apply_moa_cache_control(
     runtime: dict[str, Any],
     *,
     cache_disabled: bool | None = None,
+    cache_ttl: str | None = None,
 ) -> list[dict[str, Any]]:
     """Decorate an advisor or aggregator request with cache_control when its
     route honors it.
@@ -427,13 +428,21 @@ def _maybe_apply_moa_cache_control(
     ``cache_disabled`` (or the live config when omitted) is stamped onto the
     policy stub so ``prompt_caching.cache_ttl: off`` is not bypassed by the
     blank-agent pattern (#76085).
+
+    ``cache_ttl`` threads the agent's configured tier (default ``5m``) so
+    advisor/synthesis requests stop regressing 1h → 5m; it is clamped
+    per-destination by :func:`effective_cache_ttl` (Qwen → 5m, #84733).
     """
     try:
         from agent.agent_runtime_helpers import (
             anthropic_prompt_cache_policy,
             blank_cache_policy_stub,
         )
-        from agent.prompt_caching import apply_anthropic_cache_control
+        from agent.prompt_caching import (
+            apply_anthropic_cache_control,
+            effective_cache_ttl,
+            envelope_tool_part_cache_markers_supported,
+        )
 
         # Prefer an explicit kwarg, then a snapshot on the runtime dict
         # (threaded from the live agent), else config via the stub factory.
@@ -454,7 +463,20 @@ def _maybe_apply_moa_cache_control(
         if not should_cache:
             return messages
         return apply_anthropic_cache_control(
-            messages, native_anthropic=native_layout
+            messages,
+            cache_ttl=effective_cache_ttl(
+                # effective_cache_ttl resolves None → "5m"; the should_cache
+                # gate above already returned for cache-disabled routes.
+                cache_ttl,
+                provider=runtime.get("provider") or "",
+                model=runtime.get("model") or "",
+            ),
+            native_anthropic=native_layout,
+            # LiteLLM-style envelope routes forward part-level markers into
+            # tool_result.content[] → non-retryable 400 (#89886).
+            tool_part_markers=envelope_tool_part_cache_markers_supported(
+                runtime.get("provider") or "", runtime.get("base_url") or ""
+            ),
         )
     except Exception as exc:  # pragma: no cover - decoration must never break a call
         logger.debug("MoA cache_control decoration skipped: %s", exc)
@@ -470,6 +492,7 @@ def _run_reference(
     reference_timeout: float | None = None,
     context_length_cache: Any = None,
     cache_disabled: bool | None = None,
+    cache_ttl: str | None = None,
 ) -> tuple[str, str, Any]:
     """Call one reference model and return ``(label, text, accounting)``.
 
@@ -536,7 +559,9 @@ def _run_reference(
         cache_runtime = runtime
         if cache_disabled is not None:
             cache_runtime = {**runtime, "_cache_disabled": cache_disabled}
-        messages = _maybe_apply_moa_cache_control(messages, cache_runtime)
+        messages = _maybe_apply_moa_cache_control(
+            messages, cache_runtime, cache_ttl=cache_ttl
+        )
         # Per-slot max_tokens takes precedence over the preset-level
         # reference_max_tokens passed in by the caller. This lets each
         # reference model have its own output cap independently.
@@ -843,6 +868,10 @@ def _run_references_parallel(
     cache_disabled = (
         getattr(agent, "_cache_disabled", None) if agent is not None else None
     )
+    # Thread the agent's configured cache TTL into every advisor request so
+    # the fan-out stops regressing 1h → 5m (#84733); the destination-aware
+    # clamp (Qwen → 5m) runs inside _maybe_apply_moa_cache_control.
+    cache_ttl = getattr(agent, "_cache_ttl", None) if agent is not None else None
     try:
         for idx, slot in enumerate(reference_models):
             if slot.get("provider") == "moa":
@@ -862,6 +891,7 @@ def _run_references_parallel(
                     reference_timeout=reference_timeout,
                     context_length_cache=_ctx_len_cache,
                     cache_disabled=cache_disabled,
+                    cache_ttl=cache_ttl,
                 )
             ] = idx
 
@@ -1217,7 +1247,6 @@ def aggregate_moa_context(
     reference_max_tokens: int | None = None,
     reference_timeout: float | None = None,
     degraded_reference_policy: str = "loud",
-    synthesis_style: str = "guidance",
     agent: Any = None,
 ) -> str:
     """Run configured reference models and synthesize their advice.
@@ -1241,14 +1270,6 @@ def aggregate_moa_context(
 
     ``agent``, when passed, lets the reference fan-out be aborted early on a
     user interrupt — see ``_run_references_parallel``'s docstring.
-
-    ``synthesis_style`` selects how advisor output is synthesized (see
-    ``hermes_cli.moa_config.coerce_synthesis_style``): ``"guidance"`` (the
-    default) produces private context for the acting model; ``"council"``
-    (inspired by Perplexity Computer's Model Council, Aug 2026) makes the
-    aggregator act as a council *chair*, producing a user-facing deliberation
-    report that surfaces agreement, disagreement, per-model unique
-    contributions, and a recommendation with confidence.
     """
     reference_models = [slot for slot in reference_models if slot.get("enabled", True)]
     reference_outputs: list[tuple[str, str, Any]] = []
@@ -1306,36 +1327,15 @@ def aggregate_moa_context(
             f"{notice}"
         )
 
-    council = str(synthesis_style or "guidance").strip().lower() == "council"
-    if council:
-        synth_prompt = (
-            "You are the CHAIR of a model council. Several independent frontier "
-            "models were each asked the same question and answered without seeing "
-            "each other's responses. Chair the deliberation: produce a council "
-            "report with these sections —\n"
-            "1. Consensus: where the models agree (consensus supports acting with "
-            "confidence).\n"
-            "2. Disagreements: where they diverge, attributing each position to "
-            "its model by label, and identifying the differing starting "
-            "assumptions behind each divergence.\n"
-            "3. Unique contributions: what each model uniquely surfaced that the "
-            "others missed.\n"
-            "4. Chair's recommendation: your synthesized position, with an "
-            "explicit confidence level and what evidence would change it.\n"
-            "Be concrete and attribute positions to models by name.\n\n"
-            f"Original user prompt:\n{user_prompt}\n\n"
-            f"Council member responses:\n{joined}"
-        )
-    else:
-        synth_prompt = (
-            "You are the aggregator in a Mixture of Agents process. Synthesize the "
-            "reference responses into concise, actionable guidance for the main "
-            "Hermes agent. Focus on next steps, tool-use strategy, risks, and any "
-            "disagreements. Do not answer the user directly unless that is all that "
-            "is needed; produce context the main agent should use in its normal loop.\n\n"
-            f"Original user prompt:\n{user_prompt}\n\n"
-            f"Reference responses:\n{joined}"
-        )
+    synth_prompt = (
+        "You are the aggregator in a Mixture of Agents process. Synthesize the "
+        "reference responses into concise, actionable guidance for the main "
+        "Hermes agent. Focus on next steps, tool-use strategy, risks, and any "
+        "disagreements. Do not answer the user directly unless that is all that "
+        "is needed; produce context the main agent should use in its normal loop.\n\n"
+        f"Original user prompt:\n{user_prompt}\n\n"
+        f"Reference responses:\n{joined}"
+    )
 
     agg_label = _slot_label(aggregator)
     agg_runtime = _slot_runtime(aggregator)
@@ -1352,6 +1352,9 @@ def aggregate_moa_context(
             **agg_runtime,
             "_cache_disabled": _agg_cache_disabled,
         }
+    # Thread the agent's configured cache TTL into the synthesis decoration
+    # so the one-shot /moa path stops regressing 1h → 5m (#84733).
+    _agg_cache_ttl = getattr(agent, "_cache_ttl", None) if agent is not None else None
     try:
         # Same cache_control decoration as _run_reference's advisor calls
         # (see _maybe_apply_moa_cache_control) — this synthesis call is a
@@ -1364,7 +1367,9 @@ def aggregate_moa_context(
         # breakpoints, even when the resolved aggregator slot is a
         # cache-honoring route (e.g. Claude on OpenRouter/native Anthropic).
         agg_messages = _maybe_apply_moa_cache_control(
-            [{"role": "user", "content": synth_prompt}], agg_cache_runtime
+            [{"role": "user", "content": synth_prompt}],
+            agg_cache_runtime,
+            cache_ttl=_agg_cache_ttl,
         )
         response = call_llm(
             task="moa_aggregator",
@@ -1380,18 +1385,6 @@ def aggregate_moa_context(
 
     if not synthesis:
         synthesis = joined
-
-    if council:
-        return (
-            "[Model Council report — a board of independent models deliberated "
-            "on the user's question and the chair synthesized their positions. "
-            "Present this deliberation to the user: preserve the "
-            "consensus/disagreement structure and the per-model attributions, "
-            "and add your own judgement where useful.]\n"
-            f"Chair: {agg_label}\n"
-            f"Council members: {', '.join(_slot_label(slot) for slot in reference_models)}\n\n"
-            f"{synthesis.strip()}"
-        )
 
     return (
         "[Mixture of Agents context — use this as private guidance for the "
@@ -1604,6 +1597,11 @@ class MoAChatCompletions:
         # caller to stitch in the live session_id + resolved aggregator output
         # and flush to the trace file (only when moa.save_traces is on).
         self._pending_trace: Any = None
+        # Per-advisor metrics for observability hooks. Unlike _pending_trace
+        # this is NOT consumed — post_api_request fires on a different branch
+        # than consume_and_save_trace, so a consuming read would race it. Holds
+        # until the next fan-out replaces it.
+        self._last_reference_metrics: Any = None
         # every_n fan-out cadence state. The iteration counter is scoped to a
         # single USER TURN (not the facade lifetime): it counts create() calls
         # since the last new user message and resets whenever the user-turn
@@ -1634,6 +1632,14 @@ class MoAChatCompletions:
             self._pending_reference_usage = CanonicalUsage()
             self._pending_reference_cost = None
         return usage, cost
+
+    def last_reference_metrics(self) -> Any:
+        """Per-advisor metrics from the most recent fan-out, or None.
+
+        Read-only: a MoA turn's post_api_request hook must not disturb the
+        accounting that consume_reference_usage and consume_and_save_trace own.
+        """
+        return self._last_reference_metrics
 
     def _record_late_reference_accounting(self, label: str, accounting: Any) -> None:
         """Fold a late-completing interrupted reference's real spend in.
@@ -1793,6 +1799,13 @@ class MoAChatCompletions:
                 api_mode=agg_runtime.get("api_mode") or "",
                 model=agg_runtime.get("model") or "",
                 cache_disabled=_cache_disabled,
+                # Thread the agent's configured TTL and stable system prefix
+                # into the aggregator plan so MoA stops regressing 1h → 5m and
+                # marking the whole system prompt as one breakpoint (#84733).
+                cache_ttl=getattr(_agent, "_cache_ttl", None),
+                static_system_prefix=getattr(
+                    _agent, "_cached_system_prompt_static", None
+                ),
             )
             if guidance:
                 _attach_reference_guidance(agg_messages, str(guidance))
@@ -2183,6 +2196,18 @@ class MoAChatCompletions:
                 "aggregator_slot": aggregator,
                 "aggregator_temperature": aggregator_temperature,
             }
+            # Derived from the same privacy-redacted _trace_refs, so an active
+            # privacy mode redacts the observability payload too.
+            try:
+                from agent.moa_trace import slot_metrics
+
+                self._last_reference_metrics = [
+                    slot_metrics(acct, label, output=text)
+                    for label, text, acct in _trace_refs
+                ]
+            except Exception as exc:  # pragma: no cover - never break a turn
+                logger.debug("MoA reference metrics render failed: %s", exc)
+                self._last_reference_metrics = None
 
             # Surface each reference model's answer to the display BEFORE the
             # aggregator acts — once per turn (only on the iteration that
@@ -2269,39 +2294,15 @@ class MoAChatCompletions:
         elif joined or degraded:
             if degraded:
                 joined = f"{joined}\n\n{degraded}" if joined else degraded
-            if str(preset.get("synthesis_style") or "guidance").strip().lower() == "council":
-                # Council style (inspired by Perplexity Computer's Model
-                # Council, Aug 2026): the acting model chairs a deliberation
-                # instead of consuming private advice. Its user-facing answer
-                # must surface consensus, disagreements (with per-model
-                # attribution and the differing assumptions behind them),
-                # unique contributions, and a recommendation with confidence.
-                guidance = (
-                    "[Model Council deliberation]\n"
-                    f"Preset: {self.preset_name}\n"
-                    f"Chair (you): {_slot_label(aggregator)}\n"
-                    f"Council members: {', '.join(label for label, _, _ in _agg_refs)}\n\n"
-                    "You are the chair of a model council. The council member "
-                    "responses below are independent answers to the current "
-                    "state of the task. Chair the deliberation in your reply: "
-                    "surface where the members agree (consensus), where they "
-                    "disagree (attribute positions to members by name and name "
-                    "the differing assumptions), what each uniquely surfaced, "
-                    "and close with your own recommendation and an explicit "
-                    "confidence level. You may still call tools when the task "
-                    "requires acting rather than deliberating.\n\n"
-                    f"{joined}"
-                )
-            else:
-                guidance = (
-                    "[Mixture of Agents reference context]\n"
-                    f"Preset: {self.preset_name}\n"
-                    f"Aggregator/acting model: {_slot_label(aggregator)}\n"
-                    f"References: {', '.join(label for label, _, _ in _agg_refs)}\n\n"
-                    "Use the reference responses below as private context. You are the aggregator and acting model: "
-                    "answer the user directly or call tools as needed.\n\n"
-                    f"{joined}"
-                )
+            guidance = (
+                "[Mixture of Agents reference context]\n"
+                f"Preset: {self.preset_name}\n"
+                f"Aggregator/acting model: {_slot_label(aggregator)}\n"
+                f"References: {', '.join(label for label, _, _ in _agg_refs)}\n\n"
+                "Use the reference responses below as private context. You are the aggregator and acting model: "
+                "answer the user directly or call tools as needed.\n\n"
+                f"{joined}"
+            )
             _attach_reference_guidance(agg_messages, guidance)
 
         prepared_request = {
@@ -2350,6 +2351,14 @@ class MoAClient:
         return self.chat.completions.consume_and_save_trace(
             session_id, aggregator_output_fallback=aggregator_output_fallback
         )
+
+    def last_reference_metrics(self) -> Any:
+        """Per-advisor metrics from the most recent fan-out, or None.
+
+        Read-only, unlike the two consume_* methods above: the observability
+        hook fires on a different branch than the accounting they own.
+        """
+        return self.chat.completions.last_reference_metrics()
 
 
 def build_moa_facade(agent, preset_name: Any = None) -> MoAClient:

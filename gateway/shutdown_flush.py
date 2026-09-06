@@ -319,6 +319,14 @@ def recover_pending_to_db(
         session_db = SessionDB()
         own_db = True
 
+    def _close_owned_db() -> None:
+        if not own_db:
+            return
+        try:
+            session_db.close()
+        except Exception:
+            pass
+
     recovered = 0
     for path in flush_files:
         try:
@@ -392,6 +400,10 @@ def recover_pending_to_db(
             )
             recovered += 1
             path.unlink(missing_ok=True)
+        except BaseException:
+            # Shutdown cancellation/interrupt must not strand an owned DB.
+            _close_owned_db()
+            raise
         except Exception as exc:
             logger.warning(
                 "Failed to recover pending message from %s: %s",
@@ -399,11 +411,7 @@ def recover_pending_to_db(
             )
             # Leave the file for next startup retry.
 
-    if own_db:
-        try:
-            session_db.close()
-        except Exception:
-            pass
+    _close_owned_db()
 
     if recovered:
         logger.info(

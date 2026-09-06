@@ -2277,6 +2277,53 @@ def connect(
     return conn
 
 
+def connect_existing(
+    db_path: Optional[Path] = None,
+    *,
+    board: Optional[str] = None,
+) -> sqlite3.Connection:
+    """Open an existing Kanban DB without creating files or directories.
+
+    Read-side tailers must never call :func:`connect` after a board is
+    archived: its initialization contract intentionally recreates a missing
+    directory and schema. SQLite URI ``mode=rw`` gives this helper an atomic
+    open-existing contract, including the check/open race; a vanished DB is
+    reported as :class:`FileNotFoundError`.
+    """
+    path = db_path if db_path is not None else kanban_db_path(board=board)
+    resolved = path.expanduser().resolve()
+    if not resolved.is_file():
+        raise FileNotFoundError(f"kanban database does not exist: {resolved}")
+
+    from hermes_cli.sqlite_safe_read import connect_tracked
+
+    busy_timeout_ms = _resolve_busy_timeout_ms()
+    uri = f"{resolved.as_uri()}?mode=rw"
+    try:
+        conn = connect_tracked(
+            uri,
+            tracking_path=resolved,
+            connect_fn=sqlite3.connect,
+            uri=True,
+            isolation_level=None,
+            timeout=busy_timeout_ms / 1000.0,
+        )
+    except sqlite3.OperationalError as exc:
+        if not resolved.is_file():
+            raise FileNotFoundError(
+                f"kanban database does not exist: {resolved}"
+            ) from exc
+        raise
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute(f"PRAGMA busy_timeout={busy_timeout_ms}")
+        conn.execute("PRAGMA query_only=ON")
+        return conn
+    except Exception:
+        conn.close()
+        raise
+
+
 @contextlib.contextmanager
 def connect_closing(
     db_path: Optional[Path] = None,

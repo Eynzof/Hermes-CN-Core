@@ -42,6 +42,9 @@ on:
         default: stable
         type: choice
         options: [stable, beta, canary]
+      artifact_tag:
+        description: "Fixed artifact download tag for a manual candidate build (does not publish a Release)"
+        required: false
 
 permissions:
   contents: write  # needed to create the Release + upload assets
@@ -312,6 +315,8 @@ jobs:
             --collect-submodules mcp \
             --collect-submodules tools \
             --collect-submodules plugins.web \
+            --collect-submodules plugins.dashboard_auth \
+            --collect-submodules plugins.image_gen \
             --collect-submodules ddgs \
             --collect-submodules exa_py \
             --collect-submodules firecrawl \
@@ -455,13 +460,27 @@ jobs:
           # advertised tool/plugin inventory matches the payload.
           NAME="hermes-agent-cn-runtime-${{ matrix.platform }}-${{ matrix.arch }}"
           internal="dist/$NAME/_internal"
-          mkdir -p "$internal/tools" "$internal/plugins"
-          rm -rf "$internal/tools/computer_use" "$internal/plugins/web"
+          mkdir -p "$internal/tools"
+          rm -rf "$internal/tools/computer_use"
           cp tools/__init__.py "$internal/tools/__init__.py"
           cp tools/computer_use_tool.py "$internal/tools/computer_use_tool.py"
           cp -R tools/computer_use "$internal/tools/computer_use"
-          cp plugins/__init__.py "$internal/plugins/__init__.py"
-          cp -R plugins/web "$internal/plugins/web"
+          # Runtime-only updates must carry resources from their own commit.
+          # --collect-data excludes Python sources, while PluginManager loads
+          # __init__.py from disk. Do not depend on an older Desktop installer
+          # to supply plugin code or skills (CN #174).
+          python - "$internal" <<'PY'
+          import shutil
+          import sys
+          from pathlib import Path
+
+          internal = Path(sys.argv[1])
+          for category in ("plugins", "skills"):
+              shutil.copytree(
+                  category, internal / category, dirs_exist_ok=True,
+                  ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "node_modules", ".git"),
+              )
+          PY
 
           test -f "$internal/tools/computer_use_tool.py" || { echo "::error::missing computer_use tool shim" >&2; exit 1; }
           test -f "$internal/tools/computer_use/tool.py" || { echo "::error::missing computer_use package" >&2; exit 1; }
@@ -594,6 +613,24 @@ jobs:
           "./dist/$NAME/$NAME${{ matrix.ext }}" tools list --platform cli
           "./dist/$NAME/$NAME${{ matrix.ext }}" computer-use status
 
+      - name: Verify frozen auth and image provider registration
+        shell: bash
+        run: |
+          NAME="hermes-agent-cn-runtime-${{ matrix.platform }}-${{ matrix.arch }}"
+          binary="$(pwd)/dist/$NAME/$NAME${{ matrix.ext }}"
+          plugins="$(pwd)/dist/$NAME/_internal/plugins"
+          smoke_home="$RUNNER_TEMP/hermes-provider-smoke"
+          mkdir -p "$smoke_home"
+          cd "$smoke_home"
+          # Doctor imports and registers through the real PluginManager in the
+          # frozen process, with outbound connections blocked. Check the actual
+          # packaged sources, not this checkout or dist-info directories.
+          for provider in dashboard_auth/basic dashboard_auth/nous dashboard_auth/self_hosted \
+            image_gen/openai-codex image_gen/openrouter image_gen/xai image_gen/fal; do
+            HERMES_HOME="$smoke_home" HERMES_ENABLE_PROJECT_PLUGINS=0 \
+              "$binary" plugins doctor "$plugins/$provider" --ci
+          done
+
       - name: Verify frozen memory provider discovery
         shell: bash
         run: |
@@ -655,11 +692,14 @@ jobs:
         # from the job-level env above.
         if: env.RUNTIME_SIGN_PRIVATE_KEY_PEM != ''
         shell: bash
+        env:
+          RUNTIME_ARTIFACT_TAG: ${{ inputs.artifact_tag || github.ref_name }}
         run: |
           NAME="hermes-agent-cn-runtime-${{ matrix.platform }}-${{ matrix.arch }}"
           # Anticipate the URL the Release will publish at — this has to
           # match exactly because the signature covers it.
-          URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/${NAME}.zip"
+          git check-ref-format "refs/tags/$RUNTIME_ARTIFACT_TAG"
+          URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RUNTIME_ARTIFACT_TAG}/${NAME}.zip"
           python scripts/sign_runtime_manifest.py \
             --channel "${{ steps.meta.outputs.channel }}" \
             --runtime-version "${{ steps.meta.outputs.runtime_version }}" \

@@ -2314,9 +2314,7 @@ def _apply_env_overrides(config: GatewayConfig) -> None:
     dingtalk_client_id = getenv("DINGTALK_CLIENT_ID")
     dingtalk_client_secret = getenv("DINGTALK_CLIENT_SECRET")
     if dingtalk_client_id and dingtalk_client_secret:
-        if Platform.DINGTALK not in config.platforms:
-            config.platforms[Platform.DINGTALK] = PlatformConfig()
-        config.platforms[Platform.DINGTALK].enabled = True
+        _enable_from_env(Platform.DINGTALK)
         config.platforms[Platform.DINGTALK].extra.update({
             "client_id": dingtalk_client_id,
             "client_secret": dingtalk_client_secret,
@@ -2334,9 +2332,7 @@ def _apply_env_overrides(config: GatewayConfig) -> None:
     feishu_app_id = getenv("FEISHU_APP_ID")
     feishu_app_secret = getenv("FEISHU_APP_SECRET")
     if feishu_app_id and feishu_app_secret:
-        if Platform.FEISHU not in config.platforms:
-            config.platforms[Platform.FEISHU] = PlatformConfig()
-        config.platforms[Platform.FEISHU].enabled = True
+        _enable_from_env(Platform.FEISHU)
         config.platforms[Platform.FEISHU].extra.update({
             "app_id": feishu_app_id,
             "app_secret": feishu_app_secret,
@@ -2362,9 +2358,7 @@ def _apply_env_overrides(config: GatewayConfig) -> None:
     wecom_bot_id = getenv("WECOM_BOT_ID")
     wecom_secret = getenv("WECOM_SECRET")
     if wecom_bot_id and wecom_secret:
-        if Platform.WECOM not in config.platforms:
-            config.platforms[Platform.WECOM] = PlatformConfig()
-        config.platforms[Platform.WECOM].enabled = True
+        _enable_from_env(Platform.WECOM)
         config.platforms[Platform.WECOM].extra.update({
             "bot_id": wecom_bot_id,
             "secret": wecom_secret,
@@ -2385,9 +2379,7 @@ def _apply_env_overrides(config: GatewayConfig) -> None:
     wecom_callback_corp_id = getenv("WECOM_CALLBACK_CORP_ID")
     wecom_callback_corp_secret = getenv("WECOM_CALLBACK_CORP_SECRET")
     if wecom_callback_corp_id and wecom_callback_corp_secret:
-        if Platform.WECOM_CALLBACK not in config.platforms:
-            config.platforms[Platform.WECOM_CALLBACK] = PlatformConfig()
-        config.platforms[Platform.WECOM_CALLBACK].enabled = True
+        _enable_from_env(Platform.WECOM_CALLBACK)
         config.platforms[Platform.WECOM_CALLBACK].extra.update({
             "corp_id": wecom_callback_corp_id,
             "corp_secret": wecom_callback_corp_secret,
@@ -2405,9 +2397,7 @@ def _apply_env_overrides(config: GatewayConfig) -> None:
     weixin_token = getenv("WEIXIN_TOKEN")
     weixin_account_id = getenv("WEIXIN_ACCOUNT_ID")
     if weixin_token or weixin_account_id:
-        if Platform.WEIXIN not in config.platforms:
-            config.platforms[Platform.WEIXIN] = PlatformConfig()
-        config.platforms[Platform.WEIXIN].enabled = True
+        _enable_from_env(Platform.WEIXIN)
         if weixin_token:
             config.platforms[Platform.WEIXIN].token = weixin_token
         extra = config.platforms[Platform.WEIXIN].extra

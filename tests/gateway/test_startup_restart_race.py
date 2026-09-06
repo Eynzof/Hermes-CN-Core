@@ -226,3 +226,77 @@ async def test_start_gateway_does_not_start_cron_after_aborted_startup(tmp_path,
     assert exc.value.code == GATEWAY_SERVICE_RESTART_EXIT_CODE
     assert cron_started is False
     assert export_shutdown_calls == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cron_allowed", [True, False])
+async def test_start_gateway_starts_and_stops_cron_on_relaunch(
+    tmp_path, monkeypatch, cron_allowed
+):
+    """Exercise the entry-point branch, including the real provider type check."""
+    import threading
+    from cron.scheduler_provider import InProcessCronScheduler
+
+    started = threading.Event()
+    calls = []
+
+    class RunningGateway:
+        def __init__(self, config):
+            self.config = config
+            self.adapters = {}
+            self._running = True
+            self._draining = False
+            self._external_drain_active = False
+            self._restart_requested = False
+            self._restart_via_service = False
+            self.should_exit_cleanly = False
+            self.should_exit_with_failure = False
+            self.exit_reason = None
+            self.exit_code = None
+
+        async def start(self):
+            return True
+
+        async def wait_for_shutdown(self):
+            if cron_allowed:
+                assert await asyncio.to_thread(started.wait, 5)
+            self._running = False
+
+    def run_scheduler(self, stop_event, **kwargs):
+        calls.append(kwargs)
+        started.set()
+        stop_event.wait(5)
+
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setattr("gateway.status.get_running_pid", lambda: None)
+    monkeypatch.setattr("gateway.status.acquire_gateway_runtime_lock", lambda: True)
+    monkeypatch.setattr("gateway.status.write_pid_file", lambda: None)
+    monkeypatch.setattr("gateway.status.remove_pid_file", lambda: None)
+    monkeypatch.setattr("gateway.status.release_gateway_runtime_lock", lambda: None)
+    monkeypatch.setattr("tools.skills_sync.sync_skills", lambda **kwargs: None)
+    monkeypatch.setattr("hermes_logging.setup_logging", lambda **kwargs: None)
+    monkeypatch.setattr("tools.mcp_tool.discover_mcp_tools", lambda: None)
+    monkeypatch.setattr("tools.mcp_tool.shutdown_mcp_servers", lambda: None)
+    monkeypatch.setattr("hermes_cli.nous_auth_keepalive.start_nous_auth_keepalive", lambda: None)
+    monkeypatch.setattr("hermes_cli.nous_auth_keepalive.stop_nous_auth_keepalive", lambda: None)
+    monkeypatch.setattr(gateway_run, "GatewayRunner", RunningGateway)
+    monkeypatch.setattr(gateway_run, "_validate_cron_startup", lambda: cron_allowed)
+    monkeypatch.setattr(
+        gateway_run, "_start_gateway_housekeeping",
+        lambda stop, **kwargs: stop.wait(5),
+    )
+    monkeypatch.setattr(
+        gateway_run, "_run_planned_stop_watcher",
+        lambda stop, *args: stop.wait(5),
+    )
+    monkeypatch.setattr(InProcessCronScheduler, "start", run_scheduler)
+
+    for _ in range(2):
+        started.clear()
+        assert await gateway_run.start_gateway(
+            config=GatewayConfig(), replace=False, verbosity=None
+        ) is True
+
+    assert len(calls) == (2 if cron_allowed else 0)
+    for kwargs in calls:
+        assert kwargs["can_dispatch"]() is True

@@ -483,7 +483,12 @@ def create_wrapper_script(name: str, target: Optional[str] = None) -> Optional[P
 
 
 def remove_wrapper_script(name: str) -> bool:
-    """Remove the wrapper script for a profile. Returns True if removed."""
+    """Remove every Hermes-owned wrapper candidate for a profile.
+
+    Checking both names also cleans up a wrapper left by moving the same
+    Hermes home between POSIX and Windows. Returns ``True`` if anything was
+    removed.
+    """
     wrapper_dir = _get_wrapper_dir()
     canon = normalize_profile_name(name)
     # A traversal-shaped name could point unlink() at a file outside the
@@ -499,6 +504,7 @@ def remove_wrapper_script(name: str) -> bool:
     if is_windows:
         candidates.insert(0, wrapper_dir / f"{canon}.bat")
 
+    removed = False
     for wrapper_path in candidates:
         if wrapper_path.exists():
             try:
@@ -506,10 +512,10 @@ def remove_wrapper_script(name: str) -> bool:
                 content = wrapper_path.read_text(encoding="utf-8")
                 if "hermes -p" in content:
                     wrapper_path.unlink()
-                    return True
+                    removed = True
             except Exception:
                 pass
-    return False
+    return removed
 
 
 def _migrate_profile_config_if_outdated(profile_dir: Path) -> None:
@@ -1566,7 +1572,9 @@ def delete_profile(name: str, yes: bool = False) -> Path:
     ]
 
     # Check for service
-    wrapper_path = _get_wrapper_dir() / canon
+    wrapper_path = _get_wrapper_dir() / (
+        f"{canon}.bat" if sys.platform == "win32" else canon
+    )
     has_wrapper = wrapper_path.exists()
     if has_wrapper:
         items.append(f"Command alias ({wrapper_path})")
@@ -1608,9 +1616,10 @@ def delete_profile(name: str, yes: bool = False) -> Path:
     _stop_profile_backends(canon, profile_dir)
 
     # 3. Remove wrapper script
-    if has_wrapper:
-        if remove_wrapper_script(canon):
-            print(f"✓ Removed {wrapper_path}")
+    # Call unconditionally: remove_wrapper_script also recognises a
+    # cross-platform stale candidate (extensionless on Windows).
+    if remove_wrapper_script(canon):
+        print(f"✓ Removed command alias for {canon}")
 
     # 4. Remove profile directory
     remove_error: Exception | None = None

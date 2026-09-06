@@ -1393,6 +1393,19 @@ def _find_bash(raise_if_missing: bool = True) -> str | None:
                 if candidate.is_file() and str(candidate) not in candidates:
                     candidates.append(str(candidate))
 
+    # Windows' bash.exe launcher starts WSL and accepts Linux /mnt/c paths,
+    # not the Git Bash /c paths used by this native Windows environment.
+    # A successful `bash --version` probe does not make it a usable Git shell.
+    windows_root = os.environ.get("SystemRoot", r"C:\Windows")
+    wsl_launcher_dirs = {
+        ntpath.normcase(ntpath.join(windows_root, subdir))
+        for subdir in ("System32", "Sysnative", "SysWOW64")
+    }
+    candidates = [
+        candidate for candidate in candidates
+        if ntpath.normcase(ntpath.dirname(candidate)) not in wsl_launcher_dirs
+    ]
+
     for candidate in candidates:
         if _bash_starts(candidate):
             if candidate != custom and custom and os.path.isfile(custom):

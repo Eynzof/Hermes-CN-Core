@@ -829,3 +829,4 @@ Windows 平台现在要求使用 PowerShell 7（`pwsh`）或 Windows PowerShell�
 - Web cron 创建接口补齐 `monitor_url`，允许 Desktop 编辑运行记忆与网页监控；todo 写入警告不再被随后的读取清空。
 - 锁定 Python 3.14、uv 0.12.10；随附 Node 22.22.0、TUI 和 Dashboard 构建资源。运行时 manifest 继续使用 schema 2，配套兼容范围 Desktop 0.9.x / Core 0.21.x。
 - 桌面专项测试覆盖模型路由、cron、MCP、子任务控制、Windows 工具和冻结包。官方完整测试套件与云端 CI 不属于本轮执行范围。
+- Windows 终端真机验收补充：过滤 System32/Sysnative/SysWOW64 中的 WSL bash 启动器，避免将仅能处理 Linux 路径的程序选作 Git Bash。保留原有 auto 优先 Git Bash 与显式 PowerShell 的选择规则；修复包含于本地 Runtime `0.21.0-cn.3`。

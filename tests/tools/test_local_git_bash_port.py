@@ -310,8 +310,12 @@ class TestFindBashUsesGitExeChain:
         monkeypatch.delenv("ProgramFiles(x86)", raising=False)
         monkeypatch.setattr(local_mod.shutil, "which", lambda _name: None)
 
-    def test_where_git_chain_finds_bash(self, tmp_path, monkeypatch):
+    @pytest.mark.parametrize("wsl_dir", [None, "System32", "Sysnative", "SysWOW64"])
+    def test_where_git_chain_finds_bash(self, tmp_path, monkeypatch, wsl_dir):
         self._clear_win_env(monkeypatch, tmp_path)
+        if wsl_dir:
+            monkeypatch.setenv("SystemRoot", r"C:\Windows")
+            monkeypatch.setattr(local_mod, "_safe_which", lambda _: rf"C:\Windows\{wsl_dir}\bash.exe")
         install = tmp_path / "Git"
         (install / "cmd").mkdir(parents=True)
         (install / "cmd" / "git.exe").write_text("", encoding="utf-8")
@@ -324,7 +328,7 @@ class TestFindBashUsesGitExeChain:
         )
         monkeypatch.setattr(local_mod, "_git_exec_path", lambda git_path: None)
         monkeypatch.setattr(
-            local_mod, "_bash_starts", lambda p: p == str(bash_exe)
+            local_mod, "_bash_starts", lambda p: True
         )
 
         assert _find_bash() == str(bash_exe)

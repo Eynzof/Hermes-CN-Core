@@ -1111,3 +1111,4 @@ Windows platform now requires PowerShell 7 (`pwsh`) or Windows PowerShell (syste
 - Frozen cron Python scripts execute in a terminable child through the hidden `__run-script` CLI entry, avoiding process-wide stdout/argv mutation. The Desktop cron create contract now accepts `monitor_url`; todo writes retain their warnings.
 - Runtime dependency baseline: Python 3.14, uv 0.12.10, bundled Node 22.22.0 and compiled TUI/Dashboard assets. Manifest schema remains 2; Desktop 0.9.x targets Core 0.21.x.
 - Focused tests and Windows frozen-runtime checks cover the integration. The full upstream suite and cloud CI were not run in this local-only task.
+- Windows acceptance follow-up: reject the System32/Sysnative/SysWOW64 WSL bash launcher during native Git Bash discovery. Preserve the existing auto/Git Bash preference and explicit PowerShell selection. Included in local Runtime `0.21.0-cn.3`.

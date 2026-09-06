@@ -820,3 +820,12 @@ Windows 平台现在要求使用 PowerShell 7（`pwsh`）或 Windows PowerShell�
 **测试。** `tests/tools/test_terminal_process_llm_ergonomics.py`（新增，23 个测试）：pattern 等待（运行中命中 / 未命中即退出 / 非法正则）、静默提前返回 + pattern 默认上限、`since_chars` 只读新输出、`read_log` 导出（`output_path` + `'auto'`）与截断元数据、`poll(offset)` + `exit_code_meaning` + 截断、收养流程端到端（真实 Popen：超时保活进程可继续 poll/kill；pattern 保活；无回调仍 kill 124）、mode 归一化、交互 shell 命令、真实会话续接（真实子进程：向 stdin 发 `hello`，只返回新输出）、续接错误路径、schema 面断言。完整 `tests/tools` terminal/process/base 扫 + `tests/gateway` process/terminal/watcher 扫 + `tests/run_agent/test_repair_tool_arg_keys.py` 通过（507 + 152 + 53）；`ruff check .` 干净。扫描中仅存的失败为本仓库既有问题（临时目录 junction 的 `cwd_echo`、`test_teams` 收集、browser-path termux、顺序相关的 spill/wake-word 抖动）——用 stash 对比基线完全一致。
 
 **是否可上游？** 通用部分可上游：阻塞式 pattern 等待、静默提前返回、`since_chars` 游标、后台 `output_path` 导出 + 截断元数据、poll 偏移读取、保活（先本地后端）、统一 `elapsed_seconds`/`exit_code_meaning`/`hint` 元数据、schema 别名——全部与后端无关。命名（`mode`、`process_id`、`block`）只是既有参数之上的糖。关联：P-049（rtk/后处理管线）、P-013（参数键修复）、P-047/P-054（委派可观测性）。
+
+## 2026-09-06：同步官方 v0.21.0，配套 Desktop v0.9.0
+
+- 官方 release：`v2026.8.31`，上游提交 `29112bef099274229cadff79cdff7bf7b99c4b77`；中文集成提交 `23fb1a14a425ef9808d686e79ad52089a0724638`。本次为本地集成，没有推送或发布。
+- 合并上游后台委派与实时 steer/interrupt、cron continuity/notepad/monitor、MCP 2、模型元数据覆盖与流式恢复；保留中文模型镜像、模型能力字段、Windows PowerShell/UTF-8、受管目录、Wander memory、CN 群聊与桌面事件契约。
+- 冻结运行时的 Python 定时脚本通过隐藏 `__run-script` 命令在独立可终止子进程内执行，避免修改主进程 stdout、argv 或全局环境。Windows 真机已验证脚本中文输出与真实 MCP stdio 服务。
+- Web cron 创建接口补齐 `monitor_url`，允许 Desktop 编辑运行记忆与网页监控；todo 写入警告不再被随后的读取清空。
+- 锁定 Python 3.14、uv 0.12.10；随附 Node 22.22.0、TUI 和 Dashboard 构建资源。运行时 manifest 继续使用 schema 2，配套兼容范围 Desktop 0.9.x / Core 0.21.x。
+- 桌面专项测试覆盖模型路由、cron、MCP、子任务控制、Windows 工具和冻结包。官方完整测试套件与云端 CI 不属于本轮执行范围。

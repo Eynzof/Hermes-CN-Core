@@ -460,10 +460,8 @@ tts:
   provider: "moss"
   moss:
     # api_key: ""            # preferred: hermes auth add moss / MOSS_API_KEY
-    model: "moss-tts"        # classic alias; /v1/audio/speech rejects new model
-                             # IDs when a separate version is sent
-    version: "flash-20260626"
-    voice_id: "94aa4989-c7e9-5007-ae42-ab401823e6c9"
+    model: "moss-tts-1.5-flash"
+    voice_id: "c6c0a40a-ea82-4468-9a21-333d3c4a76f6"
     delivery_method: "audio" # audio | url
     pause: null              # optional float → client appends [pause Ns] itself
     max_text_length: 5000    # per-request cap used by the long-form splitter

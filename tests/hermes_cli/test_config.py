@@ -87,15 +87,15 @@ class TestLoadConfigDefaults:
         from hermes_cli.config_defaults import DEFAULT_CONFIG as _defaults
 
         moss = _defaults["tts"]["moss"]
-        assert moss["model"] == "moss-tts"
-        assert moss["version"] == "flash-20260626"
-        assert moss["voice_id"] == "94aa4989-c7e9-5007-ae42-ab401823e6c9"
+        assert moss["model"] == "moss-tts-1.5-flash"
+        assert "version" not in moss
+        assert moss["voice_id"] == "c6c0a40a-ea82-4468-9a21-333d3c4a76f6"
         assert moss["max_text_length"] == 5000
         assert moss["delivery_method"] == "audio"
 
         with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
             config = load_config()
-            assert config["tts"]["moss"]["model"] == "moss-tts"
+            assert config["tts"]["moss"]["model"] == "moss-tts-1.5-flash"
             assert config["tts"]["moss"]["max_text_length"] == 5000
 
     def test_legacy_root_level_max_turns_migrates_to_agent_config(self, tmp_path):

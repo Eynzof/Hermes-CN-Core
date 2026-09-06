@@ -1063,8 +1063,8 @@ def _is_windows_apps_stub(bash_path: str) -> bool:
     """
     if not bash_path:
         return False
-    normalized = os.path.normpath(bash_path).replace("/", "\\")
-    return "WindowsApps" in normalized.split("\\")
+    normalized = ntpath.normpath(bash_path)
+    return "windowsapps" in {part.lower() for part in normalized.split("\\")}
 
 
 _wsl_bash_launcher_cache: "dict[str, bool]" = {}
@@ -1088,20 +1088,17 @@ def _is_wsl_bash_launcher(bash_path: str) -> bool:
         return cached
 
     result = False
-    try:
-        resolved = os.path.realpath(bash_path)
-    except OSError:
-        resolved = bash_path
+    resolved = ntpath.normpath(bash_path) if _IS_WINDOWS else os.path.realpath(bash_path)
 
-    if os.path.basename(resolved).lower() == "bash.exe":
+    if ntpath.basename(resolved).lower() == "bash.exe":
         windir = os.environ.get("WINDIR", r"C:\Windows")
-        lower = resolved.lower()
+        lower = ntpath.normcase(resolved)
         for sysdir in (
-            os.path.join(windir, "System32"),
-            os.path.join(windir, "SysWOW64"),
+            ntpath.join(windir, "System32"),
+            ntpath.join(windir, "SysWOW64"),
         ):
-            sysdir_lower = sysdir.lower()
-            if lower.startswith(sysdir_lower + os.sep) or lower == sysdir_lower:
+            sysdir_lower = ntpath.normcase(sysdir)
+            if lower.startswith(sysdir_lower + "\\") or lower == sysdir_lower:
                 result = True
                 break
 
@@ -1160,12 +1157,12 @@ def _find_bash(raise_if_missing: bool = True) -> str | None:
     # explicitly selected bash path while the managed copy is healthy.
     local_appdata = os.environ.get("LOCALAPPDATA", "")
     portable_git = (
-        os.path.join(local_appdata, "hermes", "git") if local_appdata else ""
+        ntpath.join(local_appdata, "hermes", "git") if local_appdata else ""
     )
     if portable_git:
         for candidate in (
-            os.path.join(portable_git, "bin", "bash.exe"),
-            os.path.join(portable_git, "usr", "bin", "bash.exe"),
+            ntpath.join(portable_git, "bin", "bash.exe"),
+            ntpath.join(portable_git, "usr", "bin", "bash.exe"),
         ):
             if os.path.isfile(candidate) and candidate not in candidates:
                 candidates.append(candidate)
@@ -1179,30 +1176,30 @@ def _find_bash(raise_if_missing: bool = True) -> str | None:
     # Bash install always wins over ambiguous PATH entries.
     for git_path in _where_git_executables():
         candidate = _git_bash_candidate_from_git_path(git_path)
-        if candidate.is_file() and str(candidate) not in candidates:
+        if os.path.isfile(str(candidate)) and str(candidate) not in candidates:
             candidates.append(str(candidate))
         git_exec_path = _git_exec_path(git_path)
         if git_exec_path:
             for candidate in _git_bash_candidates_from_exec_path(git_exec_path):
-                if candidate.is_file() and str(candidate) not in candidates:
+                if os.path.isfile(str(candidate)) and str(candidate) not in candidates:
                     candidates.append(str(candidate))
 
     # Well-known Git-for-Windows install locations.
     for candidate in (
-        os.path.join(
+        ntpath.join(
             os.environ.get("ProgramFiles", r"C:\Program Files"),
             "Git",
             "bin",
             "bash.exe",
         ),
-        os.path.join(
+        ntpath.join(
             os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"),
             "Git",
             "bin",
             "bash.exe",
         ),
         (
-            os.path.join(local_appdata, "Programs", "Git", "bin", "bash.exe")
+            ntpath.join(local_appdata, "Programs", "Git", "bin", "bash.exe")
             if local_appdata
             else ""
         ),

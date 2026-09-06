@@ -13,6 +13,7 @@ list_voices, clone → reuse, dialogue, voice design, async poll, plus the
 new STT + MOSS-VL workflows: transcription round-trip, two-speaker
 diarization, and image OCR via ``moss_vision``.
 """
+
 from __future__ import annotations
 
 import json
@@ -24,7 +25,7 @@ from pathlib import Path
 
 import pytest
 
-from moss_tts import is_mp3, is_wav
+from plugins.tts.moss.client import is_mp3, is_wav
 
 
 def _read_key_from_file(path: str) -> str:
@@ -63,7 +64,11 @@ _MOSS_API_KEY = (
     or os.environ.get("MOSS_API_KEY", "").strip()
     or _read_key_from_file(_cli_option("moss-key-file"))
     or _read_key_from_file(os.environ.get("MOSS_KEY_FILE", "").strip())
-    or (_read_key_from_file(_DEFAULT_KEY_FILE) if Path(_DEFAULT_KEY_FILE).is_file() else "")
+    or (
+        _read_key_from_file(_DEFAULT_KEY_FILE)
+        if Path(_DEFAULT_KEY_FILE).is_file()
+        else ""
+    )
 )
 
 pytestmark = pytest.mark.skipif(
@@ -97,7 +102,9 @@ def test_streaming_pcm(provider, tmp_path, monkeypatch):
     from tools.tts_streaming import _try_instantiate
 
     monkeypatch.setenv("MOSS_API_KEY", _MOSS_API_KEY)
-    streamer = _try_instantiate("moss", {"moss": {"voice_id": provider.default_voice()}})
+    streamer = _try_instantiate(
+        "moss", {"moss": {"voice_id": provider.default_voice()}}
+    )
     assert streamer is not None
     assert streamer.sample_rate == 48000
     chunks = list(streamer.stream("这是流式测试。"))
@@ -158,7 +165,9 @@ def test_async_synthesize_then_poll(provider):
     done = provider.poll_task(task["task_id"], timeout=180)
     assert str(done.get("status", "")).upper() in ("SUCCESS", "COMPLETED")
     url = done.get("url") or (
-        done.get("result", {}).get("url") if isinstance(done.get("result"), dict) else ""
+        done.get("result", {}).get("url")
+        if isinstance(done.get("result"), dict)
+        else ""
     )
     assert isinstance(url, str) and url.startswith("http")
 
@@ -187,7 +196,7 @@ def _moss_http_headers() -> dict:
 
 
 def _synthesize_speech_via_http(text: str, out_path: Path, fmt: str = "wav") -> Path:
-    """Synthesize speech via raw HTTP (bypasses the moss_tts SDK).
+    """Synthesize speech via raw HTTP.
 
     Keeps the STT/VL e2e self-contained: the transcription + vision paths
     are deliberately SDK-independent (self-contained HTTP in
@@ -200,10 +209,9 @@ def _synthesize_speech_via_http(text: str, out_path: Path, fmt: str = "wav") -> 
         "https://api.mosi.cn/v1/audio/speech",
         headers={**_moss_http_headers(), "Content-Type": "application/json"},
         json={
-            "model": "moss-tts",
-            "version": "flash-20260626",
+            "model": "moss-tts-1.5-flash",
             "input": text,
-            "voice_id": "94aa4989-c7e9-5007-ae42-ab401823e6c9",
+            "voice_id": "c6c0a40a-ea82-4468-9a21-333d3c4a76f6",
             "response_format": fmt,
             "delivery_method": "audio",
         },
@@ -221,8 +229,10 @@ def _synthesize_dialogue_via_http(out_path: Path) -> Path:
     voices = requests.get(
         "https://api.mosi.cn/v1/audio/voices", headers=_moss_http_headers(), timeout=60
     ).json()
-    items = voices if isinstance(voices, list) else (
-        voices.get("data") or voices.get("voices") or []
+    items = (
+        voices
+        if isinstance(voices, list)
+        else (voices.get("data") or voices.get("voices") or [])
     )
     assert len(items) >= 2, "need at least 2 Moss voices"
     v0 = items[0].get("voice_id") or items[0].get("id")
@@ -232,7 +242,7 @@ def _synthesize_dialogue_via_http(out_path: Path) -> Path:
         "https://api.mosi.cn/v1/audio/speech/speakers",
         headers={**_moss_http_headers(), "Content-Type": "application/json"},
         json={
-            "model": "moss-ttsd",
+            "model": "moss-ttsd-1.0",
             "speakers": [{"id": "a", "voice_id": v0}, {"id": "b", "voice_id": v1}],
             "segments": [
                 {"speaker": "a", "text": "你好，请问今天天气如何？"},
@@ -252,7 +262,9 @@ def test_transcribe_roundtrip(provider, tmp_path):
     """Synthesize a WAV, then transcribe it back to text (provider path)."""
     from plugins.tts.moss.transcription import MossTranscriptionProvider
 
-    wav = _synthesize_speech_via_http("欢迎使用 Moss 端到端转写测试。", tmp_path / "roundtrip.wav")
+    wav = _synthesize_speech_via_http(
+        "欢迎使用 Moss 端到端转写测试。", tmp_path / "roundtrip.wav"
+    )
     assert wav.is_file() and wav.stat().st_size > 1024
 
     stt = MossTranscriptionProvider()
@@ -306,10 +318,12 @@ def test_vision_image_ocr(provider, tmp_path, monkeypatch):
     img = tmp_path / "ocr.png"
     _make_ocr_image(img)
 
-    result = _json.loads(moss_tools._handle_moss_vision({
-        "instruction": "OCR this image. Return the exact text you see.",
-        "images": [str(img)],
-    }))
+    result = _json.loads(
+        moss_tools._handle_moss_vision({
+            "instruction": "OCR this image. Return the exact text you see.",
+            "images": [str(img)],
+        })
+    )
     assert result["success"] is True
     assert result["status"] == "completed"
     assert result["provider"] == "moss"
@@ -332,10 +346,12 @@ def test_vision_upload_file_id_flow(provider, tmp_path, monkeypatch):
     file_id = moss_api.upload_file(str(img), purpose="image")
     assert isinstance(file_id, str) and file_id.strip()
 
-    result = _json.loads(moss_tools._handle_moss_vision({
-        "instruction": "Describe this image briefly.",
-        "images": [f"file_id:{file_id}"],
-    }))
+    result = _json.loads(
+        moss_tools._handle_moss_vision({
+            "instruction": "Describe this image briefly.",
+            "images": [f"file_id:{file_id}"],
+        })
+    )
     assert result["success"] is True
     assert result["status"] == "completed"
     assert result["text"].strip()
@@ -357,9 +373,15 @@ def _make_test_video(path: Path) -> bool:
     try:
         result = subprocess.run(
             [
-                ffmpeg, "-y", "-f", "lavfi", "-i",
+                ffmpeg,
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
                 "testsrc=duration=1:size=160x120:rate=10",
-                "-pix_fmt", "yuv420p", str(path),
+                "-pix_fmt",
+                "yuv420p",
+                str(path),
             ],
             capture_output=True,
             timeout=90,
@@ -381,10 +403,12 @@ def test_vision_video_understanding(provider, tmp_path, monkeypatch):
         pytest.skip("no ffmpeg / video encoder available to generate a test clip")
 
     monkeypatch.setenv("MOSS_API_KEY", _MOSS_API_KEY)
-    result = _json.loads(moss_tools._handle_moss_vision({
-        "instruction": "Describe what happens in this video briefly.",
-        "video": str(video),
-    }))
+    result = _json.loads(
+        moss_tools._handle_moss_vision({
+            "instruction": "Describe what happens in this video briefly.",
+            "video": str(video),
+        })
+    )
     assert result["success"] is True
     assert result["status"] == "completed"
     assert result["text"].strip()

@@ -2,6 +2,7 @@
 
 No network — ``build_client`` is monkeypatched to a fake MossClient.
 """
+
 from __future__ import annotations
 
 import json
@@ -11,11 +12,11 @@ from typing import Any, Dict, Optional
 import pytest
 
 from plugins.tts.moss.provider import MossProvider
-from moss_tts import DOC_VOICES
+from plugins.tts.moss.client import DOC_VOICES
 
 
 class FakeMossClient:
-    """Minimal stand-in for moss_tts.MossClient."""
+    """Minimal stand-in for the repository-owned MossClient."""
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         self.config = config or {}
@@ -51,13 +52,19 @@ class FakeMossClient:
         return self.audio_bytes
 
     def voice_generations(self, instruction, input_text, **kwargs):
-        self._record("voice_generations", {"instruction": instruction, "input_text": input_text, **kwargs})
+        self._record(
+            "voice_generations",
+            {"instruction": instruction, "input_text": input_text, **kwargs},
+        )
         if kwargs.get("async_mode"):
             return {"task_id": "task-design"}
         return self.audio_bytes
 
     def create_voice(self, audio_sample_path, name=None, description=None, **kwargs):
-        self._record("create_voice", {"path": audio_sample_path, "name": name, "description": description})
+        self._record(
+            "create_voice",
+            {"path": audio_sample_path, "name": name, "description": description},
+        )
         if self.create_voice_result is not None:
             return self.create_voice_result
         return {"id": "clone-abc-123", "voice_id": "clone-abc-123", "name": name}
@@ -98,14 +105,18 @@ class TestBasics:
     def test_is_available_false_when_no_key(self, monkeypatch):
         from plugins.tts.moss import provider as provider_module
 
-        monkeypatch.setattr(provider_module, "resolve_moss_api_key", lambda cfg=None: "")
-        monkeypatch.setattr("moss_tts._load_api_key", lambda: "")
+        monkeypatch.setattr(
+            provider_module, "resolve_moss_api_key", lambda cfg=None: ""
+        )
+        monkeypatch.setattr(provider_module, "_load_api_key", lambda: "")
         assert MossProvider().is_available() is False
 
     def test_is_available_true_with_key(self, monkeypatch):
         from plugins.tts.moss import provider as provider_module
 
-        monkeypatch.setattr(provider_module, "resolve_moss_api_key", lambda cfg=None: "sk-test")
+        monkeypatch.setattr(
+            provider_module, "resolve_moss_api_key", lambda cfg=None: "sk-test"
+        )
         assert MossProvider().is_available() is True
 
 
@@ -147,7 +158,11 @@ class TestListVoices:
 class TestListModels:
     def test_three_models_with_max_text_length(self, provider):
         models = provider.list_models()
-        assert [m["id"] for m in models] == ["moss-tts", "moss-ttsd", "moss-voice-generator"]
+        assert [m["id"] for m in models] == [
+            "moss-tts-1.5-flash",
+            "moss-ttsd-1.0",
+            "moss-voice-generator-1.0",
+        ]
         assert all(m["max_text_length"] == 5000 for m in models)
 
 
@@ -174,6 +189,7 @@ class TestSynthesize:
             "plugins.tts.moss.provider.subprocess.run",
             lambda *a, **kw: type("R", (), {"returncode": 0})(),
         )
+
         # The conversion helper checks work.exists() and size — simulate by
         # writing the out path from the "ffmpeg" side.
         def fake_run(*a, **kw):
@@ -204,6 +220,18 @@ class TestSynthesize:
         with pytest.raises(Exception, match="missing url"):
             provider.synthesize("你好", str(tmp_path / "a.mp3"))
 
+    def test_request_failure_is_not_retried_with_another_delivery_mode(
+        self, provider, tmp_path, monkeypatch
+    ):
+        def fail_once(text, **kwargs):
+            provider._fake._record("speech", {"text": text, **kwargs})
+            raise RuntimeError("quota exhausted")
+
+        monkeypatch.setattr(provider._fake, "speech", fail_once)
+        with pytest.raises(RuntimeError, match="quota exhausted"):
+            provider.synthesize("你好", str(tmp_path / "a.mp3"))
+        assert len(provider._fake.calls["speech"]) == 1
+
     def test_pause_passed_through(self, provider, tmp_path, monkeypatch):
         monkeypatch.setattr(
             "plugins.tts.moss.provider.MossProvider._config",
@@ -231,10 +259,12 @@ class TestDialogueDesignCloneAsync:
         call = provider._fake.calls["speakers"][0]
         assert call["speakers"] == speakers
         assert call["segments"] == segments
-        assert call["model"] == "moss-ttsd"
+        assert call["model"] == "moss-ttsd-1.0"
 
     def test_dialogue_async_returns_task_id(self, provider):
-        result = provider.synthesize_dialogue([], [{"speaker": "a", "text": "x"}], "/tmp/x.mp3", async_mode=True)
+        result = provider.synthesize_dialogue(
+            [], [{"speaker": "a", "text": "x"}], "/tmp/x.mp3", async_mode=True
+        )
         assert result["task_id"] == "task-speakers"
 
     def test_design_sync(self, provider, tmp_path):
@@ -246,7 +276,9 @@ class TestDialogueDesignCloneAsync:
         assert call["input_text"] == "hello"
 
     def test_design_async(self, provider):
-        result = provider.design_voice("energetic", "hello", "/tmp/x.mp3", async_mode=True)
+        result = provider.design_voice(
+            "energetic", "hello", "/tmp/x.mp3", async_mode=True
+        )
         assert result["task_id"] == "task-design"
 
     def test_create_voice_normalizes_id(self, provider):
@@ -260,7 +292,10 @@ class TestDialogueDesignCloneAsync:
             provider.create_voice("/tmp/sample.mp3")
 
     def test_async_synthesize_and_poll(self, provider):
-        provider._fake.speech_result = {"task_id": "task-async-1", "status": "PROCESSING"}
+        provider._fake.speech_result = {
+            "task_id": "task-async-1",
+            "status": "PROCESSING",
+        }
         task = provider.async_synthesize("hello")
         assert task["task_id"] == "task-async-1"
         done = provider.poll_task(task["task_id"])

@@ -8,6 +8,7 @@ They are SKIPPED by default; set ``MOSS_API_KEY`` to run them. A key file
 path may be configured via ``MOSS_KEY_FILE`` (the file may contain an
 ``"api_key"`` field or a raw single-token key).
 """
+
 from __future__ import annotations
 
 import base64
@@ -21,9 +22,8 @@ import requests
 
 
 MOSS_BASE_URL = "https://api.mosi.cn/v1"
-DEFAULT_MOSS_MODEL = "moss-tts"
-DEFAULT_MOSS_VERSION = "flash-20260626"
-DEFAULT_MOSS_VOICE_ID = "94aa4989-c7e9-5007-ae42-ab401823e6c9"
+DEFAULT_MOSS_MODEL = "moss-tts-1.5-flash"
+DEFAULT_MOSS_VOICE_ID = "c6c0a40a-ea82-4468-9a21-333d3c4a76f6"
 
 # Capture the credential at import time; the root conftest's hermetic
 # environment fixture clears API-key-shaped env vars before each test, so
@@ -69,7 +69,6 @@ def test_moss_tts_sync_url_delivery(tmp_path: Path, monkeypatch) -> None:
     output_path = tmp_path / "moss_url.mp3"
     payload = {
         "model": DEFAULT_MOSS_MODEL,
-        "version": DEFAULT_MOSS_VERSION,
         "input": "欢迎使用 Moss API。[pause 0.8s]现在开始生成语音。",
         "voice_id": DEFAULT_MOSS_VOICE_ID,
         "response_format": "mp3",
@@ -106,7 +105,6 @@ def test_moss_tts_sync_audio_delivery(tmp_path: Path, monkeypatch) -> None:
     output_path = tmp_path / "moss_audio.mp3"
     payload = {
         "model": DEFAULT_MOSS_MODEL,
-        "version": DEFAULT_MOSS_VERSION,
         "input": "欢迎使用 Moss API。",
         "voice_id": DEFAULT_MOSS_VOICE_ID,
         "response_format": "mp3",
@@ -134,7 +132,6 @@ def test_moss_tts_streaming_sse(monkeypatch) -> None:
     monkeypatch.setenv("MOSS_API_KEY", _MOSS_API_KEY)
     payload = {
         "model": DEFAULT_MOSS_MODEL,
-        "version": DEFAULT_MOSS_VERSION,
         "input": "欢迎使用 Moss API。",
         "voice_id": DEFAULT_MOSS_VOICE_ID,
         "stream": True,
@@ -160,7 +157,7 @@ def test_moss_tts_streaming_sse(monkeypatch) -> None:
     for raw_line in resp.iter_lines(decode_unicode=True):
         if not raw_line or not raw_line.startswith("data: "):
             continue
-        event = json.loads(raw_line[len("data: "):])
+        event = json.loads(raw_line[len("data: ") :])
         event_type = event.get("type")
 
         if event_type == "task.created":

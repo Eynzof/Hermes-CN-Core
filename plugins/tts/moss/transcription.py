@@ -19,6 +19,7 @@ The HTTP work lives in :mod:`plugins.tts.moss.api` (self-contained,
 ``requests``-based); this class owns the ABC contract, config defaults
 and envelope normalization.
 """
+
 from __future__ import annotations
 
 import logging
@@ -27,7 +28,7 @@ from typing import Any, Dict, List, Optional
 
 from agent.transcription_provider import TranscriptionProvider
 
-from plugins.tts.moss.client import resolve_moss_api_key
+from plugins.tts.moss.client import _load_api_key, resolve_moss_api_key
 
 logger = logging.getLogger(__name__)
 
@@ -47,8 +48,6 @@ def _key_present() -> bool:
     try:
         if resolve_moss_api_key():
             return True
-        from moss_tts import _load_api_key
-
         return bool(_load_api_key())
     except Exception:
         return False
@@ -199,10 +198,16 @@ class MossTranscriptionProvider(TranscriptionProvider):
             section = self._section(cfg)
             stt = self._stt_section(cfg)
 
-            resolved_model = str(
-                model or stt.get("model") or section.get("model")
-                or self.default_model() or MODEL_TRANSCRIBE
-            ).strip() or MODEL_TRANSCRIBE
+            resolved_model = (
+                str(
+                    model
+                    or stt.get("model")
+                    or section.get("model")
+                    or self.default_model()
+                    or MODEL_TRANSCRIBE
+                ).strip()
+                or MODEL_TRANSCRIBE
+            )
 
             diarize = _as_bool(
                 extra.get("diarize", stt.get("diarize", section.get("diarize", False)))
@@ -211,12 +216,17 @@ class MossTranscriptionProvider(TranscriptionProvider):
                 # Diarization requires the diarize-pro model per the docs.
                 resolved_model = MODEL_DIARIZE_PRO
 
-            response_format = str(
-                extra.get("response_format")
-                or stt.get("response_format")
-                or section.get("response_format")
+            response_format = (
+                str(
+                    extra.get("response_format")
+                    or stt.get("response_format")
+                    or section.get("response_format")
+                    or "json"
+                )
+                .strip()
+                .lower()
                 or "json"
-            ).strip().lower() or "json"
+            )
             if response_format not in _RESPONSE_FORMATS:
                 logger.warning(
                     "Moss: unsupported response_format %r; falling back to 'json'",
@@ -231,8 +241,8 @@ class MossTranscriptionProvider(TranscriptionProvider):
             size = path.stat().st_size
             if size > max_size:
                 return _error_envelope(
-                    f"File too large: {size / (1024*1024):.1f}MB "
-                    f"(max {max_size / (1024*1024):.0f}MB)"
+                    f"File too large: {size / (1024 * 1024):.1f}MB "
+                    f"(max {max_size / (1024 * 1024):.0f}MB)"
                 )
 
             if language:
@@ -254,8 +264,11 @@ class MossTranscriptionProvider(TranscriptionProvider):
             async_mode = _as_bool(extra.get("async_mode"))
             if async_mode:
                 data = self._api_transcribe(
-                    path, model=resolved_model, diarize=diarize,
-                    response_format=response_format, keyterms=keyterms,
+                    path,
+                    model=resolved_model,
+                    diarize=diarize,
+                    response_format=response_format,
+                    keyterms=keyterms,
                     async_mode=True,
                 )
                 task_id = str(data.get("task_id") or data.get("id") or "").strip()
@@ -272,8 +285,11 @@ class MossTranscriptionProvider(TranscriptionProvider):
                 }
 
             data = self._api_transcribe(
-                path, model=resolved_model, diarize=diarize,
-                response_format=response_format, keyterms=keyterms,
+                path,
+                model=resolved_model,
+                diarize=diarize,
+                response_format=response_format,
+                keyterms=keyterms,
                 async_mode=False,
             )
             return self._success_envelope(data, diarize=diarize, model=resolved_model)
@@ -293,9 +309,7 @@ class MossTranscriptionProvider(TranscriptionProvider):
     def _success_envelope(
         self, data: Dict[str, Any], *, diarize: bool, model: str
     ) -> Dict[str, Any]:
-        transcript = str(
-            data.get("text") or data.get("transcript") or ""
-        ).strip()
+        transcript = str(data.get("text") or data.get("transcript") or "").strip()
         envelope: Dict[str, Any] = {
             "success": True,
             "transcript": transcript,

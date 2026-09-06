@@ -1582,17 +1582,14 @@ DEFAULT_CONFIG = {
         },
         # Moss (mosi.cn) — plugin backend at plugins/tts/moss/. Resolves the
         # key via MOSS_API_KEY / tts.moss.api_key / `hermes auth add moss`,
-        # falling back to a key file configured via MOSS_KEY_FILE (moss_tts.py).
+        # falling back to a key file configured via MOSS_KEY_FILE.
         "moss": {
             # Preferred: `hermes auth add moss` or MOSS_API_KEY in .env.
             "api_key": "",
-            # Must stay the classic alias — /v1/audio/speech rejects new model
-            # IDs (e.g. moss-tts-1.5-flash) when a separate version field is
-            # sent (moss_tts.py:37-39). Dialogue uses moss-ttsd, voice design
-            # uses moss-voice-generator.
-            "model": "moss-tts",
-            "version": "flash-20260626",
-            "voice_id": "94aa4989-c7e9-5007-ae42-ab401823e6c9",
+            # Moss' public API accepts the full model ID directly. Dialogue and
+            # voice design select their own documented models in the plugin.
+            "model": "moss-tts-1.5-flash",
+            "voice_id": "c6c0a40a-ea82-4468-9a21-333d3c4a76f6",
             "response_format": "mp3",  # mp3 | wav | pcm
             "delivery_method": "audio",  # audio | url
             "pause": None,  # optional float → client appends [pause Ns] itself

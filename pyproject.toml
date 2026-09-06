@@ -447,7 +447,6 @@ py-modules = [
   "platform_utils",
   "import_accelerator",
   "mcp_serve",
-  "registration_lifecycle",
 ]
 
 # Ahead-of-time bytecode warm-up (scripts/precompile.py).  ``pip install`` already

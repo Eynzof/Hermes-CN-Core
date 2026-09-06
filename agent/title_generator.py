@@ -105,6 +105,17 @@ _TITLE_RESPONSE_FORMAT = {
     },
 }
 
+
+def _is_unsupported_title_response_format(error: BaseException) -> bool:
+    """Return whether a provider rejected the structured-output field itself."""
+    detail = str(error).lower()
+    mentions_field = "response_format" in detail or "json_schema" in detail
+    rejects_feature = any(
+        marker in detail
+        for marker in ("unsupported", "not support", "unavailable", "unknown", "invalid")
+    )
+    return mentions_field and rejects_feature
+
 # Control-tag wrappers that surround machine-authored content inside what is
 # nominally a "user" message. Titling from these is what produces a session
 # named after a slash command or an injected reminder rather than the user's
@@ -411,6 +422,19 @@ def generate_title(
         # unavailable now"). Retry once WITHOUT structured output: the prompt
         # already asks for `{"title": "..."}` and _extract_title_text parses
         # JSON (or falls back to prose), so the title still gets generated.
+        # Do not retry authentication, quota, timeout, or network failures: a
+        # second identical request only adds latency and may duplicate charges.
+        if not _is_unsupported_title_response_format(e):
+            logger.warning("Title generation failed: %s", e)
+            logger.debug("Title generation traceback", exc_info=True)
+            if failure_callback is not None:
+                try:
+                    failure_callback("title generation", e)
+                except Exception:
+                    logger.debug(
+                        "Title generation failure_callback raised", exc_info=True
+                    )
+            return None
         try:
             response = call_llm(
                 task="title_generation",

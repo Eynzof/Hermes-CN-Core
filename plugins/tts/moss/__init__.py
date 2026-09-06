@@ -21,8 +21,9 @@ Registers:
 
 Credentials: ``MOSS_API_KEY`` env/.env, ``tts.moss.api_key`` in
 config.yaml, ``hermes auth add moss``, or a key file path configured via
-``MOSS_KEY_FILE`` (see ``moss_tts.MossClient``).
+``MOSS_KEY_FILE`` (see ``plugins.tts.moss.client.MossClient``).
 """
+
 from __future__ import annotations
 
 

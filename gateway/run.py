@@ -28,6 +28,7 @@ import asyncio
 import concurrent.futures
 import dataclasses
 import faulthandler
+import hashlib
 import inspect
 import json
 import orjson
@@ -24138,7 +24139,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
         "honcho.runtime_peer_prefix",
         "honcho.user_peer_aliases",
     )
-    _HONCHO_CACHE_BUSTING_MEMO: dict[tuple[str, int | None, int | None, int | None], dict[str, Any]] = {}
+    _HONCHO_CACHE_BUSTING_MEMO: dict[tuple[str, str | None], dict[str, Any]] = {}
 
     @classmethod
     def _empty_honcho_cache_busting_config(cls) -> dict[str, Any]:
@@ -24146,28 +24147,22 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
 
     @classmethod
     def _extract_honcho_cache_busting_config(cls) -> dict[str, Any]:
-        """Extract Honcho identity keys, memoized by honcho.json stamp.
+        """Extract Honcho identity keys, memoized by honcho.json content.
 
-        The memo key is ``(path, mtime_ns, size, inode)`` rather than mtime
-        alone.  On Windows a rapid same-size rewrite can land inside the
-        filesystem's ~12 ms mtime quantum, leaving ``st_mtime_ns`` unchanged;
-        truncating writes (``open('w')``) also keep the inode, so an
-        ``mtime``-only key returns the *previous* parse and a ``pinPeerName``
-        (or peer-name) flip silently fails to bust the cached agent —
-        multi-user mode keeps merging users it shouldn't.  Adding ``size``
-        and ``inode`` makes the change-detector read-your-write consistent
-        with the cron ``_jobs_file_stamp`` / ``_jobs_cache_signature`` fix.
+        A stat-only key cannot detect an in-place, same-size rewrite when the
+        filesystem timestamp is coarse (and the inode necessarily stays the
+        same). The file is small, so hashing its bytes makes identity changes
+        reliably invalidate the cached agent on every supported platform.
         """
         try:
             from plugins.memory.honcho.client import HonchoClientConfig, resolve_config_path
 
             path = resolve_config_path()
             try:
-                st = path.stat()
-                mtime_ns, size, ino = st.st_mtime_ns, st.st_size, st.st_ino
+                content_digest = hashlib.sha256(path.read_bytes()).hexdigest()
             except OSError:
-                mtime_ns, size, ino = None, None, None
-            memo_key = (str(path), mtime_ns, size, ino)
+                content_digest = None
+            memo_key = (str(path), content_digest)
             cached = cls._HONCHO_CACHE_BUSTING_MEMO.get(memo_key)
             if cached is not None:
                 return dict(cached)

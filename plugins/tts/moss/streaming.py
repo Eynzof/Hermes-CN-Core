@@ -12,16 +12,25 @@ change.
 so the mid-stream ``speech.created.sample_rate`` value can only be used as
 a cross-check, never renegotiated.
 """
+
 from __future__ import annotations
 
 import base64
 import logging
 from typing import Iterator
 
-from moss_tts import DEFAULT_VERSION, MODEL_TTS, MossError
-
-from plugins.tts.moss.client import build_client, resolve_moss_api_key
-from tools.tts_streaming import _STREAM_SENTENCE_BYTE_CAP, StreamingTTSProvider, register
+from plugins.tts.moss.client import (
+    MODEL_TTS,
+    MossError,
+    _load_api_key,
+    build_client,
+    resolve_moss_api_key,
+)
+from tools.tts_streaming import (
+    _STREAM_SENTENCE_BYTE_CAP,
+    StreamingTTSProvider,
+    register,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +43,6 @@ def _key_present() -> bool:
     try:
         if resolve_moss_api_key():
             return True
-        from moss_tts import _load_api_key
-
         return bool(_load_api_key())
     except Exception:
         return False
@@ -61,14 +68,13 @@ class MossStreamer(StreamingTTSProvider):
         section = self.section or {}
         voice_id = str(section.get("voice_id") or "").strip() or None
         model = str(section.get("model") or MODEL_TTS).strip() or MODEL_TTS
-        version = str(section.get("version") or DEFAULT_VERSION).strip() or DEFAULT_VERSION
 
         pause: float | None = None
         pause_raw = section.get("pause")
         if pause_raw is not None:
             try:
                 pause = float(pause_raw)
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 logger.warning(
                     "tts.moss.pause is not a number: %r; ignoring", pause_raw
                 )
@@ -78,7 +84,6 @@ class MossStreamer(StreamingTTSProvider):
             text,
             voice_id=voice_id,
             model=model,
-            version=version,
             response_format="pcm",
             stream_format="sse",
             pause=pause,
@@ -95,7 +100,7 @@ class MossStreamer(StreamingTTSProvider):
                                 live,
                                 self.sample_rate,
                             )
-                    except (TypeError, ValueError):
+                    except TypeError, ValueError:
                         logger.warning(
                             "Moss streaming sample_rate is not an int: %r", live
                         )

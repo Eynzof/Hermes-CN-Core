@@ -3,6 +3,7 @@
 No network — ``plugins.tts.moss.api`` functions (and ``requests.post``
 where the real builder is exercised) are monkeypatched.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -89,7 +90,7 @@ class TestBasics:
         monkeypatch.setattr(
             "plugins.tts.moss.transcription.resolve_moss_api_key", lambda: ""
         )
-        monkeypatch.setattr("moss_tts._load_api_key", lambda: "")
+        monkeypatch.setattr("plugins.tts.moss.transcription._load_api_key", lambda: "")
         assert MossTranscriptionProvider().is_available() is False
 
     def test_is_available_true_with_key(self, monkeypatch):
@@ -141,7 +142,10 @@ class TestTranscribe:
         assert call["diarize"] is True
         assert result["model"] == MODEL_DIARIZE_PRO
         assert result["segments"][0] == {
-            "start": 0.0, "end": 1.5, "text": "你好", "speaker": "S01",
+            "start": 0.0,
+            "end": 1.5,
+            "text": "你好",
+            "speaker": "S01",
         }
         # Transcript is assembled from diarized segments when text is empty.
         assert "S01" in result["transcript"] and "S02" in result["transcript"]
@@ -167,7 +171,9 @@ class TestTranscribe:
         provider.transcribe(path, response_format="text")
         assert fake_api.calls["transcribe"][0]["response_format"] == "text"
 
-    def test_unsupported_response_format_falls_back_to_json(self, provider, fake_api, tmp_path):
+    def test_unsupported_response_format_falls_back_to_json(
+        self, provider, fake_api, tmp_path
+    ):
         path = _audio_file(tmp_path)
         provider.transcribe(path, response_format="yaml")
         assert fake_api.calls["transcribe"][0]["response_format"] == "json"
@@ -184,7 +190,8 @@ class TestTranscribeErrors:
     def test_file_too_large_rejected(self, provider, tmp_path, monkeypatch):
         # Force a tiny cap so a small file trips the size guard.
         monkeypatch.setattr(
-            MossTranscriptionProvider, "_stt_section",
+            MossTranscriptionProvider,
+            "_stt_section",
             classmethod(lambda cls, cfg=None: {"max_file_size": 10}),
         )
         path = _audio_file(tmp_path, size=64)
@@ -210,7 +217,8 @@ class TestTranscribeErrors:
     def test_never_raises(self, provider, tmp_path, monkeypatch):
         path = _audio_file(tmp_path)
         monkeypatch.setattr(
-            moss_api, "transcribe",
+            moss_api,
+            "transcribe",
             lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("boom")),
         )
         result = provider.transcribe(path)
@@ -221,7 +229,11 @@ class TestTranscribeErrors:
 class TestAsyncAndPoll:
     def test_async_mode_returns_task_id(self, provider, fake_api, tmp_path):
         path = _audio_file(tmp_path)
-        fake_api.responses["transcribe"] = {"id": "task-9", "task_id": "task-9", "status": "PROCESSING"}
+        fake_api.responses["transcribe"] = {
+            "id": "task-9",
+            "task_id": "task-9",
+            "status": "PROCESSING",
+        }
         result = provider.transcribe(path, async_mode=True)
         assert result["success"] is True
         assert result["async"] is True
@@ -322,7 +334,9 @@ class TestURLValidation:
 class TestTranscribeAudioRouting:
     def test_local_path_uses_multipart_transcribe(self, monkeypatch):
         sent = {}
-        monkeypatch.setattr(moss_api, "transcribe", lambda p, **kw: sent.update(p=p) or {"text": "x"})
+        monkeypatch.setattr(
+            moss_api, "transcribe", lambda p, **kw: sent.update(p=p) or {"text": "x"}
+        )
         out = moss_api.transcribe_audio("C:/tmp/clip.mp3", model=MODEL_TRANSCRIBE)
         assert out["text"] == "x"
         assert sent["p"] == "C:/tmp/clip.mp3"
@@ -338,10 +352,18 @@ class TestTranscribeAudioRouting:
 
         monkeypatch.setattr(moss_api.requests, "post", lambda *a, **kw: _TextResp())
         monkeypatch.setattr(
-            moss_api, "build_http_kwargs",
-            lambda: {"api_key": "k", "base_url": "https://api.mosi.cn/v1", "timeout": 60, "headers": {}},
+            moss_api,
+            "build_http_kwargs",
+            lambda: {
+                "api_key": "k",
+                "base_url": "https://api.mosi.cn/v1",
+                "timeout": 60,
+                "headers": {},
+            },
         )
-        out = moss_api.transcribe(str(audio), model=MODEL_TRANSCRIBE, response_format="text")
+        out = moss_api.transcribe(
+            str(audio), model=MODEL_TRANSCRIBE, response_format="text"
+        )
         assert out == {"text": "欢迎使用转写测试。"}
 
     def test_file_id_uses_json(self, monkeypatch):
@@ -363,10 +385,18 @@ class TestTranscribeAudioRouting:
 
         monkeypatch.setattr(moss_api.requests, "post", fake_post)
         monkeypatch.setattr(
-            moss_api, "build_http_kwargs",
-            lambda: {"api_key": "k", "base_url": "https://api.mosi.cn/v1", "timeout": 60, "headers": {}},
+            moss_api,
+            "build_http_kwargs",
+            lambda: {
+                "api_key": "k",
+                "base_url": "https://api.mosi.cn/v1",
+                "timeout": 60,
+                "headers": {},
+            },
         )
-        out = moss_api.transcribe_audio("file_id:file-1", model=MODEL_DIARIZE_PRO, diarize=True)
+        out = moss_api.transcribe_audio(
+            "file_id:file-1", model=MODEL_DIARIZE_PRO, diarize=True
+        )
         assert captured["json"]["file_id"] == "file-1"
         assert captured["json"]["model"] == MODEL_DIARIZE_PRO
         assert captured["json"]["diarize"] is True
@@ -388,10 +418,18 @@ class TestTranscribeAudioRouting:
 
         monkeypatch.setattr(moss_api.requests, "post", fake_post)
         monkeypatch.setattr(
-            moss_api, "build_http_kwargs",
-            lambda: {"api_key": "k", "base_url": "https://api.mosi.cn/v1", "timeout": 60, "headers": {}},
+            moss_api,
+            "build_http_kwargs",
+            lambda: {
+                "api_key": "k",
+                "base_url": "https://api.mosi.cn/v1",
+                "timeout": 60,
+                "headers": {},
+            },
         )
-        out = moss_api.transcribe_audio("https://example.com/a.mp3", model=MODEL_TRANSCRIBE)
+        out = moss_api.transcribe_audio(
+            "https://example.com/a.mp3", model=MODEL_TRANSCRIBE
+        )
         assert captured["json"]["url"] == "https://example.com/a.mp3"
         assert out["text"] == "from url"
 

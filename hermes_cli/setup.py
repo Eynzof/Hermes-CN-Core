@@ -568,9 +568,9 @@ def _print_setup_summary(config: dict, hermes_home):
         # Moss is a bundled plugin backend (plugins/tts/moss). Key resolution
         # mirrors the plugin: config → env/.env → credential pool → file fallback.
         try:
-            from plugins.tts.moss.client import resolve_moss_api_key
+            from plugins.tts.moss.client import _load_api_key, resolve_moss_api_key
 
-            moss_ok = bool(resolve_moss_api_key())
+            moss_ok = bool(resolve_moss_api_key() or _load_api_key())
         except Exception:
             moss_ok = False
         if moss_ok:

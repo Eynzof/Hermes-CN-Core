@@ -1,11 +1,9 @@
 """Moss direct-HTTP layer — transcription, file upload, MOSS-VL.
 
-The external ``moss_tts`` SDK only ships TTS methods (``speech``,
-``speakers``, ``voice_generations``, ``create_voice``, ``list_voices``,
-``poll_task``, …).  Transcription (``/v1/audio/transcriptions``), file
-upload (``/v1/files``) and MOSS-VL (``/v1/responses``) are implemented
-here directly over ``requests`` so the plugin is self-contained and does
-not depend on the SDK's release cadence.
+Transcription (``/v1/audio/transcriptions``), file upload (``/v1/files``)
+and MOSS-VL (``/v1/responses``) live here; TTS calls use the sibling
+repository-owned client. The plugin therefore has no undeclared SDK
+dependency.
 
 Key / base_url / timeout resolution is delegated to
 :func:`plugins.tts.moss.client.build_http_kwargs` — the single owner for
@@ -25,6 +23,7 @@ Request-shape constraints honored (from the Moss API docs):
 * URLs must be public — localhost/loopback/private addresses are banned
   client-side (shared security rule).
 """
+
 from __future__ import annotations
 
 import ipaddress
@@ -181,9 +180,7 @@ def _validate_local_file(path: Path, *, max_bytes: int, what: str) -> None:
         raise MossApiError(f"{what} file not found: {path}")
     size = path.stat().st_size
     if size > max_bytes:
-        raise MossApiError(
-            f"{what} file too large: {_mb(size)} (max {_mb(max_bytes)})"
-        )
+        raise MossApiError(f"{what} file too large: {_mb(size)} (max {_mb(max_bytes)})")
 
 
 # ---------------------------------------------------------------------------
@@ -288,25 +285,32 @@ def transcribe_audio(
     if not stripped:
         raise MossApiError("audio_path is required")
     if stripped.startswith("file_id:"):
-        file_id = stripped[len("file_id:"):].strip()
+        file_id = stripped[len("file_id:") :].strip()
         if not file_id:
             raise MossApiError("file_id is empty")
         return _transcribe_json(
             {"model": model, "file_id": file_id},
-            diarize=diarize, response_format=response_format,
-            keyterms=keyterms, async_mode=async_mode,
+            diarize=diarize,
+            response_format=response_format,
+            keyterms=keyterms,
+            async_mode=async_mode,
         )
     if _looks_like_url(stripped):
         validate_public_url(stripped)
         return _transcribe_json(
             {"model": model, "url": stripped},
-            diarize=diarize, response_format=response_format,
-            keyterms=keyterms, async_mode=async_mode,
+            diarize=diarize,
+            response_format=response_format,
+            keyterms=keyterms,
+            async_mode=async_mode,
         )
     return transcribe(
         stripped,
-        model=model, diarize=diarize, response_format=response_format,
-        keyterms=keyterms, async_mode=async_mode,
+        model=model,
+        diarize=diarize,
+        response_format=response_format,
+        keyterms=keyterms,
+        async_mode=async_mode,
     )
 
 
@@ -335,9 +339,7 @@ def _keyterms_form(keyterms: Optional[Sequence[str]]) -> List[tuple[str, str]]:
             seen.add(text)
             pairs.append(("keyterms", text))
     if len(pairs) > MAX_KEYTERMS:
-        raise MossApiError(
-            f"Too many keyterms: {len(pairs)} (max {MAX_KEYTERMS})"
-        )
+        raise MossApiError(f"Too many keyterms: {len(pairs)} (max {MAX_KEYTERMS})")
     return pairs
 
 
@@ -460,7 +462,10 @@ def understand(
         "input": [
             {
                 "role": "user",
-                "content": [{"type": "input_text", "text": input_text.strip()}, *content],
+                "content": [
+                    {"type": "input_text", "text": input_text.strip()},
+                    *content,
+                ],
             }
         ],
     }
@@ -468,11 +473,12 @@ def understand(
         try:
             tokens = int(max_output_tokens)
         except (TypeError, ValueError) as exc:
-            raise MossApiError(f"max_output_tokens must be an integer: {max_output_tokens!r}") from exc
+            raise MossApiError(
+                f"max_output_tokens must be an integer: {max_output_tokens!r}"
+            ) from exc
         if tokens < 1 or tokens > MAX_OUTPUT_TOKENS:
             raise MossApiError(
-                f"max_output_tokens must be in 1..{MAX_OUTPUT_TOKENS} "
-                f"(got {tokens})"
+                f"max_output_tokens must be in 1..{MAX_OUTPUT_TOKENS} (got {tokens})"
             )
         payload["max_output_tokens"] = tokens
 

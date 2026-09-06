@@ -14,6 +14,7 @@ Tools:
   (``POST /v1/audio/transcriptions``).
 * ``moss_vision`` — image/video understanding (``POST /v1/responses``).
 """
+
 from __future__ import annotations
 
 import datetime
@@ -22,8 +23,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from agent.tts_provider import resolve_output_format
-from moss_tts import MossError
-
 from plugins.tts.moss.api import (
     MAX_AUDIO_BYTES,
     MAX_IMAGE_BYTES,
@@ -35,7 +34,7 @@ from plugins.tts.moss.api import (
     upload_file,
     validate_public_url,
 )
-from plugins.tts.moss.client import build_client
+from plugins.tts.moss.client import MossError, build_client
 from plugins.tts.moss.provider import MossProvider
 from tools.registry import tool_error, tool_result
 
@@ -74,9 +73,7 @@ def _default_output_dir() -> Path:
         return Path("cache") / "audio"
 
 
-def _resolve_output_path(
-    output_path: Optional[str], fmt: str, prefix: str
-) -> str:
+def _resolve_output_path(output_path: Optional[str], fmt: str, prefix: str) -> str:
     """Return a caller-supplied path or a timestamped default under cache/audio."""
     if output_path and str(output_path).strip():
         return str(Path(output_path).expanduser())
@@ -177,7 +174,7 @@ def _validate_speakers(speakers: Any) -> List[Dict[str, str]]:
         if not isinstance(spk, dict):
             raise ValueError(f"speakers[{i}] must be an object with id and voice_id")
         sid = str(spk.get("id") or "").strip()
-        voice_id = str(spk.get("voice_id") or spk.get("id") or "").strip()
+        voice_id = str(spk.get("voice_id") or "").strip()
         if not sid:
             raise ValueError(f"speakers[{i}] is missing required field 'id'")
         if not voice_id:
@@ -242,7 +239,7 @@ def _handle_moss_dialogue_tts(args: dict, **kw) -> str:
         output_path = _resolve_output_path(
             args.get("output_path"), fmt, "moss_dialogue"
         )
-        async_mode = bool(args.get("async_mode"))
+        async_mode = _truthy(args.get("async_mode"))
         result = _provider().synthesize_dialogue(
             speakers,
             segments,
@@ -283,10 +280,8 @@ def _handle_moss_voice_design(args: dict, **kw) -> str:
                 provider="moss",
             )
         fmt = resolve_output_format(args.get("response_format") or "mp3")
-        output_path = _resolve_output_path(
-            args.get("output_path"), fmt, "moss_design"
-        )
-        async_mode = bool(args.get("async_mode"))
+        output_path = _resolve_output_path(args.get("output_path"), fmt, "moss_design")
+        async_mode = _truthy(args.get("async_mode"))
         result = _provider().design_voice(
             instruction,
             text,
@@ -368,7 +363,10 @@ def _handle_moss_transcribe(args: dict, **kw) -> str:
                 provider="moss",
             )
 
-        model = str(args.get("model") or "moss-transcribe-1.0").strip() or "moss-transcribe-1.0"
+        model = (
+            str(args.get("model") or "moss-transcribe-1.0").strip()
+            or "moss-transcribe-1.0"
+        )
         diarize = _truthy(args.get("diarize"))
         if diarize:
             # Diarization requires the diarize-pro model per the docs.
@@ -380,7 +378,8 @@ def _handle_moss_transcribe(args: dict, **kw) -> str:
         if language:
             logger.debug(
                 "moss_transcribe: language=%s is a best-effort hint (Moss has "
-                "no language param) — ignoring", language,
+                "no language param) — ignoring",
+                language,
             )
 
         data = transcribe_audio(
@@ -469,11 +468,13 @@ def _handle_moss_vision(args: dict, **kw) -> str:
                 continue
             path = Path(src).expanduser()
             if not path.is_file():
-                return tool_error(f"Image file not found: {src}", success=False, provider="moss")
+                return tool_error(
+                    f"Image file not found: {src}", success=False, provider="moss"
+                )
             if path.stat().st_size > MAX_IMAGE_BYTES:
                 return tool_error(
-                    f"Image file too large: {path.stat().st_size / (1024*1024):.1f}MB "
-                    f"(max {MAX_IMAGE_BYTES / (1024*1024):.0f}MB)",
+                    f"Image file too large: {path.stat().st_size / (1024 * 1024):.1f}MB "
+                    f"(max {MAX_IMAGE_BYTES / (1024 * 1024):.0f}MB)",
                     success=False,
                     provider="moss",
                 )
@@ -490,11 +491,13 @@ def _handle_moss_vision(args: dict, **kw) -> str:
             else:
                 path = Path(video).expanduser()
                 if not path.is_file():
-                    return tool_error(f"Video file not found: {video}", success=False, provider="moss")
+                    return tool_error(
+                        f"Video file not found: {video}", success=False, provider="moss"
+                    )
                 if path.stat().st_size > MAX_VIDEO_BYTES:
                     return tool_error(
-                        f"Video file too large: {path.stat().st_size / (1024*1024):.1f}MB "
-                        f"(max {MAX_VIDEO_BYTES / (1024*1024):.0f}MB)",
+                        f"Video file too large: {path.stat().st_size / (1024 * 1024):.1f}MB "
+                        f"(max {MAX_VIDEO_BYTES / (1024 * 1024):.0f}MB)",
                         success=False,
                         provider="moss",
                     )
@@ -543,8 +546,14 @@ _COMMON_BOOL = {"type": "boolean"}
 _SPEAKER_SCHEMA = {
     "type": "object",
     "properties": {
-        "id": {"type": "string", "description": "Short speaker label used by segments, e.g. 'a'"},
-        "voice_id": {"type": "string", "description": "Moss voice id (built-in voice_id or cloned id)"},
+        "id": {
+            "type": "string",
+            "description": "Short speaker label used by segments, e.g. 'a'",
+        },
+        "voice_id": {
+            "type": "string",
+            "description": "Moss voice id (built-in voice_id or cloned id)",
+        },
     },
     "required": ["id", "voice_id"],
 }
@@ -552,7 +561,10 @@ _SPEAKER_SCHEMA = {
 _SEGMENT_SCHEMA = {
     "type": "object",
     "properties": {
-        "speaker": {"type": "string", "description": "Must match a speaker id declared in speakers"},
+        "speaker": {
+            "type": "string",
+            "description": "Must match a speaker id declared in speakers",
+        },
         "text": {"type": "string", "description": "Text spoken by this speaker"},
     },
     "required": ["speaker", "text"],
@@ -656,8 +668,14 @@ MOSS_VOICE_CLONE_SCHEMA = {
                 "type": "string",
                 "description": "Absolute path to a reference audio file (mp3/wav).",
             },
-            "name": {"type": "string", "description": "Optional display name for the cloned voice."},
-            "description": {"type": "string", "description": "Optional description for the cloned voice."},
+            "name": {
+                "type": "string",
+                "description": "Optional display name for the cloned voice.",
+            },
+            "description": {
+                "type": "string",
+                "description": "Optional description for the cloned voice.",
+            },
         },
         "required": ["audio_sample_path"],
     },

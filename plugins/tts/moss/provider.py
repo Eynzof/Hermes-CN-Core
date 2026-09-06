@@ -10,7 +10,7 @@ absent from ``BUILTIN_TTS_PROVIDERS`` so plugin dispatch fires).
 Capabilities:
 
 * ``synthesize`` — single-voice TTS (sync ``audio``/``url`` delivery,
-  optional pause via the client's ``pause: float`` param).
+  optional pause converted to the documented inline marker).
 * ``synthesize_dialogue`` — multi-speaker dialogue (``/audio/speech/speakers``).
 * ``design_voice`` — voice design from an instruction
   (``/audio/voice/generations``); returns audio, not a persisted voice.
@@ -18,6 +18,7 @@ Capabilities:
   (``/audio/voices``, multipart).
 * ``async_synthesize`` / ``poll_task`` — async single-voice tasks.
 """
+
 from __future__ import annotations
 
 import logging
@@ -28,9 +29,17 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from agent.tts_provider import TTSProvider, resolve_output_format
-from moss_tts import DOC_VOICES, DEFAULT_VERSION, MODEL_TTS, MODEL_TTSD, MODEL_VOICE_GENERATOR, MossError
 
-from plugins.tts.moss.client import build_client, resolve_moss_api_key
+from plugins.tts.moss.client import (
+    DOC_VOICES,
+    MODEL_TTS,
+    MODEL_TTSD,
+    MODEL_VOICE_GENERATOR,
+    MossError,
+    _load_api_key,
+    build_client,
+    resolve_moss_api_key,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -98,10 +107,6 @@ class MossProvider(TTSProvider):
 
             if resolve_moss_api_key(self._config()):
                 return True
-            # Fall back to the client's own loader (env MOSS_API_KEY →
-            # MOSS_KEY_FILE key file), which the shared chain does not consult.
-            from moss_tts import _load_api_key
-
             return bool(_load_api_key())
         except Exception:
             return False
@@ -126,14 +131,16 @@ class MossProvider(TTSProvider):
                 "desc": v.get("desc", ""),
                 "builtin": True,
             })
+        seen = {str(voice.get("voice_id") or "") for voice in DOC_VOICES}
         try:
             client = build_client(self._config())
             for raw in client.list_voices():
                 if not isinstance(raw, dict):
                     continue
                 vid = str(raw.get("id") or raw.get("voice_id") or "").strip()
-                if not vid:
+                if not vid or vid in seen:
                     continue
+                seen.add(vid)
                 voices.append({
                     "id": vid,
                     "voice_id": vid,
@@ -150,8 +157,16 @@ class MossProvider(TTSProvider):
         max_len = self._section().get("max_text_length") or 5000
         return [
             {"id": MODEL_TTS, "display": "Moss TTS", "max_text_length": max_len},
-            {"id": MODEL_TTSD, "display": "Moss TTSD (dialogue)", "max_text_length": max_len},
-            {"id": MODEL_VOICE_GENERATOR, "display": "Moss voice generator (design)", "max_text_length": max_len},
+            {
+                "id": MODEL_TTSD,
+                "display": "Moss TTSD (dialogue)",
+                "max_text_length": max_len,
+            },
+            {
+                "id": MODEL_VOICE_GENERATOR,
+                "display": "Moss voice generator (design)",
+                "max_text_length": max_len,
+            },
         ]
 
     def default_voice(self) -> Optional[str]:
@@ -220,9 +235,7 @@ class MossProvider(TTSProvider):
                 timeout=120,
                 stdin=subprocess.DEVNULL,
                 creationflags=(
-                    getattr(subprocess, "CREATE_NO_WINDOW", 0)
-                    if os.name == "nt"
-                    else 0
+                    getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
                 ),
             )
             if result.returncode == 0 and work.exists() and work.stat().st_size > 0:
@@ -260,24 +273,9 @@ class MossProvider(TTSProvider):
 
     @staticmethod
     def _deliver_speech(client: Any, text: str, **kwargs: Any) -> Any:
-        """Call ``client.speech`` preferring ``delivery_method="audio"``.
-
-        Falls back to ``delivery_method="url"`` on any failure so a
-        large/async-style response that the endpoint refuses to return as
-        raw audio still works (the JSON result is returned and the caller
-        downloads the ``url``).
-        """
+        """Call ``client.speech`` with the configured delivery method."""
         delivery = str(kwargs.pop("delivery_method", "audio") or "audio").lower()
-        try:
-            return client.speech(text, delivery_method=delivery, **kwargs)
-        except Exception:
-            if delivery == "audio":
-                logger.debug(
-                    "Moss audio delivery failed; retrying with url delivery",
-                    exc_info=True,
-                )
-                return client.speech(text, delivery_method="url", **kwargs)
-            raise
+        return client.speech(text, delivery_method=delivery, **kwargs)
 
     # --------------------------------------------------------------- synthesize
 
@@ -301,7 +299,6 @@ class MossProvider(TTSProvider):
 
         voice_id = self._resolve_voice_id(voice, section)
         model_id = str(model or section.get("model") or MODEL_TTS).strip() or MODEL_TTS
-        version = str(section.get("version") or DEFAULT_VERSION).strip() or DEFAULT_VERSION
         webhook_url = str(section.get("webhook_url") or "").strip() or None
         delivery = str(section.get("delivery_method") or "audio").lower()
 
@@ -310,11 +307,15 @@ class MossProvider(TTSProvider):
         if pause_raw is not None:
             try:
                 pause = float(pause_raw)
-            except (TypeError, ValueError):
-                logger.warning("tts.moss.pause is not a number: %r; ignoring", pause_raw)
+            except TypeError, ValueError:
+                logger.warning(
+                    "tts.moss.pause is not a number: %r; ignoring", pause_raw
+                )
 
         if speed is not None:
-            logger.debug("Moss single-voice TTS has no speed param; ignoring speed=%s", speed)
+            logger.debug(
+                "Moss single-voice TTS has no speed param; ignoring speed=%s", speed
+            )
         if extra.get("instructions"):
             logger.debug(
                 "Moss single-voice TTS has no instructions param; ignoring "
@@ -326,7 +327,6 @@ class MossProvider(TTSProvider):
             text,
             voice_id=voice_id,
             model=model_id,
-            version=version,
             response_format=request_fmt,
             pause=pause,
             webhook_url=webhook_url,
@@ -359,7 +359,10 @@ class MossProvider(TTSProvider):
         request_fmt = self._request_format(fmt)
         client = build_client(cfg)
 
-        model_id = str(model or section.get("dialogue_model") or MODEL_TTSD).strip() or MODEL_TTSD
+        model_id = (
+            str(model or section.get("dialogue_model") or MODEL_TTSD).strip()
+            or MODEL_TTSD
+        )
         webhook_url = str(section.get("webhook_url") or "").strip() or None
         delivery = str(section.get("delivery_method") or "audio").lower()
 
@@ -375,34 +378,19 @@ class MossProvider(TTSProvider):
             )
             task_id = result.get("task_id") if isinstance(result, dict) else None
             if not task_id:
-                raise MossError(f"Moss dialogue async response missing task_id: {result!r}")
+                raise MossError(
+                    f"Moss dialogue async response missing task_id: {result!r}"
+                )
             return {"task_id": task_id, "provider": "moss", "async": True}
 
-        try:
-            data = client.speakers(
-                speakers,
-                segments,
-                model=model_id,
-                response_format=request_fmt,
-                delivery_method=delivery,
-                webhook_url=webhook_url,
-            )
-        except Exception:
-            if delivery == "audio":
-                logger.debug(
-                    "Moss dialogue audio delivery failed; retrying with url delivery",
-                    exc_info=True,
-                )
-                data = client.speakers(
-                    speakers,
-                    segments,
-                    model=model_id,
-                    response_format=request_fmt,
-                    delivery_method="url",
-                    webhook_url=webhook_url,
-                )
-            else:
-                raise
+        data = client.speakers(
+            speakers,
+            segments,
+            model=model_id,
+            response_format=request_fmt,
+            delivery_method=delivery,
+            webhook_url=webhook_url,
+        )
         written = self._save_speech_result(client, data, output_path)
         return self._maybe_convert(written, fmt)
 
@@ -431,7 +419,10 @@ class MossProvider(TTSProvider):
         request_fmt = self._request_format(fmt)
         client = build_client(cfg)
 
-        model_id = str(model or section.get("design_model") or MODEL_VOICE_GENERATOR).strip() or MODEL_VOICE_GENERATOR
+        model_id = (
+            str(model or section.get("design_model") or MODEL_VOICE_GENERATOR).strip()
+            or MODEL_VOICE_GENERATOR
+        )
         webhook_url = str(section.get("webhook_url") or "").strip() or None
         delivery = str(section.get("delivery_method") or "audio").lower()
 
@@ -447,34 +438,19 @@ class MossProvider(TTSProvider):
             )
             task_id = result.get("task_id") if isinstance(result, dict) else None
             if not task_id:
-                raise MossError(f"Moss voice design async response missing task_id: {result!r}")
+                raise MossError(
+                    f"Moss voice design async response missing task_id: {result!r}"
+                )
             return {"task_id": task_id, "provider": "moss", "async": True}
 
-        try:
-            data = client.voice_generations(
-                instruction,
-                text,
-                model=model_id,
-                response_format=request_fmt,
-                delivery_method=delivery,
-                webhook_url=webhook_url,
-            )
-        except Exception:
-            if delivery == "audio":
-                logger.debug(
-                    "Moss voice design audio delivery failed; retrying with url delivery",
-                    exc_info=True,
-                )
-                data = client.voice_generations(
-                    instruction,
-                    text,
-                    model=model_id,
-                    response_format=request_fmt,
-                    delivery_method="url",
-                    webhook_url=webhook_url,
-                )
-            else:
-                raise
+        data = client.voice_generations(
+            instruction,
+            text,
+            model=model_id,
+            response_format=request_fmt,
+            delivery_method=delivery,
+            webhook_url=webhook_url,
+        )
         written = self._save_speech_result(client, data, output_path)
         return self._maybe_convert(written, fmt)
 
@@ -529,14 +505,12 @@ class MossProvider(TTSProvider):
 
         resolved_voice = self._resolve_voice_id(voice_id, section)
         model_id = str(model or section.get("model") or MODEL_TTS).strip() or MODEL_TTS
-        version = str(section.get("version") or DEFAULT_VERSION).strip() or DEFAULT_VERSION
         webhook_url = str(section.get("webhook_url") or "").strip() or None
 
         result = client.speech(
             text,
             voice_id=resolved_voice,
             model=model_id,
-            version=version,
             response_format=request_fmt,
             delivery_method="url",
             async_mode=True,

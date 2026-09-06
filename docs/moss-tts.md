@@ -32,10 +32,8 @@ tts:
   provider: "moss"          # pin Moss as the TTS backend
   moss:
     # api_key: ""           # optional; see above
-    model: "moss-tts"       # classic alias — /v1/audio/speech rejects new model
-                            # IDs when a separate version field is sent
-    version: "flash-20260626"
-    voice_id: "94aa4989-c7e9-5007-ae42-ab401823e6c9"
+    model: "moss-tts-1.5-flash"
+    voice_id: "c6c0a40a-ea82-4468-9a21-333d3c4a76f6"
     delivery_method: "audio"  # audio | url
     pause: null             # optional float → client appends [pause Ns] itself
     max_text_length: 5000   # per-request cap (long-form splitter)
@@ -89,7 +87,7 @@ moss_dialogue_tts(
               {"speaker": "b", "text": "今天是晴天。"}],
   output_path: "/path/out.mp3",     # optional
   response_format: "mp3",           # mp3 | wav | ogg | opus | flac
-  model: "moss-ttsd",               # optional
+  model: "moss-ttsd-1.0",           # optional
   async_mode: false
 )
 ```

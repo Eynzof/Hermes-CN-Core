@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import concurrent.futures
 import json
 import os
 import threading
@@ -34,6 +35,81 @@ __all__ = ["dispatch_rest", "web_app", "ensure_core_environment"]
 _import_lock = threading.Lock()
 _app: Any = None
 _app_session_token: str = ""
+_runner_lock = threading.Lock()
+_runner: _PersistentAsyncRunner | None = None
+
+
+class _PersistentAsyncRunner:
+    """Run all embedded ASGI cycles under one process-lifetime root task.
+
+    FastAPI executes synchronous route handlers through AnyIO worker threads.
+    Using ``asyncio.run()`` for every FFI call tears down that root task (and
+    therefore its AnyIO worker pool) after every route. Reusing one root task
+    keeps both the event loop and its Python worker threads stable for the
+    lifetime of the embedded process.
+    """
+
+    def __init__(self) -> None:
+        self._ready = threading.Event()
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._queue: asyncio.Queue[tuple[Any, concurrent.futures.Future[Any]]] | None = None
+        self._startup_error: BaseException | None = None
+        self._thread = threading.Thread(
+            target=self._thread_main,
+            name="hermes-embedded-asgi",
+            daemon=True,
+        )
+        self._thread.start()
+        self._ready.wait()
+        if self._startup_error is not None:
+            raise RuntimeError("failed to start embedded ASGI event loop") from self._startup_error
+
+    def _thread_main(self) -> None:
+        try:
+            asyncio.run(self._serve())
+        except BaseException as exc:  # pragma: no cover - interpreter/runtime startup failure
+            self._startup_error = exc
+            self._ready.set()
+
+    async def _serve(self) -> None:
+        self._loop = asyncio.get_running_loop()
+        self._queue = asyncio.Queue()
+        self._ready.set()
+        while True:
+            coro, result = await self._queue.get()
+            if not result.set_running_or_notify_cancel():
+                if hasattr(coro, "close"):
+                    coro.close()
+                continue
+            try:
+                value = await coro
+            except BaseException as exc:  # noqa: BLE001 - preserve caller semantics
+                result.set_exception(exc)
+            else:
+                result.set_result(value)
+
+    def run(self, coro: Any) -> Any:
+        if threading.get_ident() == self._thread.ident:
+            if hasattr(coro, "close"):
+                coro.close()
+            raise RuntimeError("embedded ASGI dispatch cannot synchronously call itself")
+        loop = self._loop
+        queue = self._queue
+        if loop is None or queue is None:  # pragma: no cover - guarded by _ready
+            raise RuntimeError("embedded ASGI event loop did not initialize")
+        result: concurrent.futures.Future[Any] = concurrent.futures.Future()
+        loop.call_soon_threadsafe(queue.put_nowait, (coro, result))
+        return result.result()
+
+
+def _async_runner() -> _PersistentAsyncRunner:
+    global _runner
+    if _runner is not None:
+        return _runner
+    with _runner_lock:
+        if _runner is None:
+            _runner = _PersistentAsyncRunner()
+    return _runner
 
 
 def ensure_core_environment(
@@ -213,30 +289,5 @@ def dispatch_rest(
 
 
 def _run(coro: Any) -> Any:
-    """Run the ASGI cycle on a fresh event loop for this FFI call.
-
-    FFI calls arrive on plain Rust blocking threads (no running loop), but a
-    caller that already has a loop (tests) must not crash — fall back to a
-    dedicated loop thread in that case.
-    """
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        return asyncio.run(coro)
-
-    result: dict[str, Any] = {}
-    done = threading.Event()
-
-    def _worker() -> None:
-        try:
-            result["value"] = asyncio.run(coro)
-        except BaseException as exc:  # noqa: BLE001 - propagate to caller
-            result["error"] = exc
-        finally:
-            done.set()
-
-    threading.Thread(target=_worker, daemon=True).start()
-    done.wait()
-    if "error" in result:
-        raise result["error"]
-    return result["value"]
+    """Run an ASGI cycle on the process-lifetime embedded event loop."""
+    return _async_runner().run(coro)

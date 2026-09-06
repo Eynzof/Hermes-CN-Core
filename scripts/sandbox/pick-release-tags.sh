@@ -24,8 +24,8 @@
 # checkout has no tags and this exits non-zero rather than silently emitting an
 # empty matrix.
 #
-# Only vYYYY.M.D[.N] release tags are considered; the repo also carries
-# backup/* and one-off tags that are not releases.
+# CN Runtime tags identify the source commits shipped to CN users. Ignore
+# upstream calendar tags, prereleases, backups and one-off prototype tags.
 
 set -euo pipefail
 
@@ -64,19 +64,20 @@ if [ -z "$REPO" ]; then
   REPO="$(git -C "$script_dir" rev-parse --show-toplevel 2>/dev/null || printf '%s' "$script_dir")"
 fi
 
-# sort -V orders v2026.4.8 before v2026.4.13 (numeric), which a plain
-# lexicographic sort gets wrong.
-mapfile -t tags < <(
-  git -C "$REPO" tag --list 'v*' \
-    | grep -E '^v[0-9]{4}\.[0-9]+\.[0-9]+(\.[0-9]+)?$' \
+# Numeric ordering must put cn.9 before cn.10.
+tags=()
+while IFS= read -r tag; do
+  tags+=("$tag")
+done < <(
+  git -C "$REPO" tag --list 'runtime-v*-cn.*' \
+    | grep -E '^runtime-v[0-9]+\.[0-9]+\.[0-9]+-cn\.[0-9]+$' \
     | sort -V
 )
 
 total="${#tags[@]}"
 if [ "$total" -eq 0 ]; then
-  echo "error: no release tags found in $REPO" >&2
-  echo '       A shallow clone has no tags: fetch with tags (actions/checkout' >&2
-  echo '       with fetch-depth: 0, or fetch-tags: true).' >&2
+  echo "error: no CN Runtime release tags found in $REPO (runtime-vX.Y.Z-cn.N)" >&2
+  echo '       Check the repository and fetch tags (fetch-depth: 0 or fetch-tags: true).' >&2
   exit 1
 fi
 

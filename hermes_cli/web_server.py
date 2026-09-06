@@ -9276,6 +9276,12 @@ def _messaging_platform_payload(
             home_channel = None
         configured = all(env_on_disk.get(key) for key in entry["required_env"])
     else:
+        from agent.secret_scope import reset_secret_scope, set_secret_scope
+
+        # Onboarding can save .env after the dashboard starts. Resolve through
+        # the gateway's existing credential rules using the latest disk values,
+        # without changing the process environment seen by other requests.
+        secret_token = set_secret_scope({**os.environ, **env_on_disk})
         try:
             gateway_config, platform, platform_config = _gateway_platform_config(
                 platform_id
@@ -9292,11 +9298,13 @@ def _messaging_platform_payload(
             )
         except Exception:
             enabled = False
-            configured = all(
+            configured = bool(entry["required_env"]) and all(
                 env_on_disk.get(key) or os.getenv(key, "")
                 for key in entry["required_env"]
             )
             home_channel = None
+        finally:
+            reset_secret_scope(secret_token)
 
     state = (
         runtime_platform.get("state") if isinstance(runtime_platform, dict) else None

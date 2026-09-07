@@ -14443,6 +14443,19 @@ def _(rid, params: dict) -> dict:
                     )
                 parsed_flags = parse_model_switch_args(value)
                 explicit_provider = parsed_flags.explicit_provider
+                # A prewarmed desktop draft may already be constructing its
+                # agent from the previous model. Merely pinning an override
+                # now would acknowledge the pick, then let that build publish
+                # the old agent. Settle the in-flight build before switching
+                # its live model; a not-yet-started draft can still use the pin.
+                build_ready = session.get("agent_ready")
+                if (
+                    session.get("agent_build_started")
+                    and build_ready is not None
+                    and not build_ready.is_set()
+                ):
+                    if not build_ready.wait(timeout=30.0):
+                        return _err(rid, 5032, "agent initialization timed out")
                 failed_agent_init = (
                     session.get("agent") is None
                     and session.get("agent_error") is not None

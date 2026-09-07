@@ -33,6 +33,7 @@ import time
 from typing import Dict, Any, List, Optional, Set, Tuple, Callable
 
 from tools.registry import (
+    _CHECK_FN_TTL_SECONDS,
     CHECK_FN_CACHE_BYPASS,
     check_fn_cache_scope,
     discover_builtin_tools,
@@ -591,7 +592,7 @@ _LEGACY_TOOLSET_MAP = {
 # which bumps on register() / deregister() / register_toolset_alias(). The
 # inner check_fn TTL cache in registry.py handles environment drift (Docker
 # daemon start/stop, env var changes, etc.) on a 30 s horizon.
-_tool_defs_cache: Dict[tuple, "tuple[List[Dict[str, Any]], List[str]]"] = {}
+_tool_defs_cache: Dict[tuple, "tuple[List[Dict[str, Any]], List[str], float]"] = {}
 
 # Guards _tool_defs_cache against concurrent mutation. The CLI/gateway now
 # pre-warm tool definitions from a background thread while the main thread may
@@ -821,8 +822,8 @@ def get_tool_definitions(
         )
     with _tool_defs_cache_lock:
         cached = _tool_defs_cache.get(cache_key) if cache_key is not None else None
-    if cached is not None:
-        cached_result, cached_status = cached
+    if cached is not None and time.monotonic() - cached[2] < _CHECK_FN_TTL_SECONDS:
+        cached_result, cached_status, _ = cached
         # Keep _last_resolved_tool_names consistent even on a cache hit.
         _last_resolved_tool_names = [t["function"]["name"] for t in cached_result]
         # Replay the tool-selection status lines for non-quiet callers so the
@@ -874,7 +875,7 @@ def get_tool_definitions(
         with _tool_defs_cache_lock:
             if store_key not in _tool_defs_cache and len(_tool_defs_cache) >= _TOOL_DEFS_CACHE_MAX:
                 _tool_defs_cache.pop(next(iter(_tool_defs_cache)))  # evict oldest
-            _tool_defs_cache[store_key] = (result, status_lines)
+            _tool_defs_cache[store_key] = (result, status_lines, time.monotonic())
     return list(result)
 
 

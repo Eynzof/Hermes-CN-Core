@@ -303,6 +303,35 @@ async def auth_mcp_server(name: str, request: Request, profile: Optional[str] = 
     return flow.snapshot()
 
 
+@router.delete("/api/mcp/servers/{name}/auth")
+async def logout_mcp_server(name: str, request: Request, profile: Optional[str] = None):
+    """Clear this profile's local OAuth credentials and disable the server."""
+    _require_token(request)
+
+    def _run():
+        from hermes_constants import get_hermes_home
+        from tools.mcp_oauth_manager import get_manager
+
+        with _profile_scope(profile), _CONFIG_MUTATION_LOCK:
+            home = str(get_hermes_home().expanduser().resolve(strict=False))
+            with _mcp_oauth_flows_lock:
+                if any(flow.server_name == name and flow.hermes_home == home and not flow.worker_done
+                       for flow in _mcp_oauth_flows.values()):
+                    raise HTTPException(status_code=409, detail="Cancel the active authorization before logging out")
+            cfg = load_config()
+            server = (cfg.get("mcp_servers") or {}).get(name)
+            if not isinstance(server, dict):
+                raise HTTPException(status_code=404, detail=f"Server '{name}' not found")
+            if server.get("auth") != "oauth":
+                raise HTTPException(status_code=400, detail="Server does not use OAuth")
+            server["enabled"] = False
+            save_config(cfg)
+            get_manager().remove(name, hermes_home=home)
+        return {"ok": True, "name": name, "enabled": False}
+
+    return await asyncio.to_thread(_run)
+
+
 @router.get("/api/mcp/oauth/flows/{flow_id}")
 async def mcp_oauth_flow_status(flow_id: str, request: Request):
     _require_token(request)

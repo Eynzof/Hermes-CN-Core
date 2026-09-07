@@ -4736,6 +4736,15 @@ def save_config(
         _LAST_EXPANDED_CONFIG_BY_PATH[str(config_path)] = _fast_config_copy(
             current_normalized
         )
+        # New sessions must see newly configured providers immediately. Existing
+        # agents retain their bound tools/prompt; only discovery caches expire.
+        registry_module = sys.modules.get("tools.registry")
+        if registry_module is not None:
+            registry_module.invalidate_check_fn_cache()
+        model_tools_module = sys.modules.get("model_tools")
+        if model_tools_module is not None:
+            model_tools_module._clear_tool_defs_cache()
+
 
 
 def ensure_starter_config_file() -> Optional[Path]:

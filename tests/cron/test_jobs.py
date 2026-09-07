@@ -1207,6 +1207,14 @@ class TestPerJobScanContainment:
 
 
 class TestSaveJobOutput:
+    def test_same_timestamp_keeps_every_output(self, tmp_cron_dir, monkeypatch):
+        import cron.jobs as jobs
+        fixed = jobs._hermes_now()
+        monkeypatch.setattr(jobs, "_hermes_now", lambda: fixed)
+        paths = [save_job_output("same-clock", text) for text in ["first", "second", "third"]]
+        assert len(set(paths)) == 3
+        assert [path.read_text(encoding="utf-8") for path in paths] == ["first", "second", "third"]
+
     def test_creates_output_file(self, tmp_cron_dir):
         output_file = save_job_output("test123", "# Results\nEverything ok.")
         assert output_file.exists()

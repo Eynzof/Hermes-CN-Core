@@ -9155,10 +9155,20 @@ async def get_env_vars(profile: Optional[str] = None):
 
 
 def _get_env_vars_sync(profile: Optional[str] = None):
-    with _profile_scope(profile):
-        env_on_disk = load_env()
     channel_keys = _channel_managed_env_keys()
     catalog_meta = _catalog_provider_env_metadata()
+    use_process_environment = not _is_other_profile(profile)
+    with _profile_scope(profile):
+        env_on_disk = load_env()
+        # The running Core can authenticate with process environment credentials.
+        # Report those known settings too, without borrowing another profile's
+        # process environment or persisting secrets into the profile file.
+        if use_process_environment:
+            from hermes_cli.config import get_env_value
+            for key in set(OPTIONAL_ENV_VARS) | set(catalog_meta):
+                value = get_env_value(key)
+                if value:
+                    env_on_disk[key] = value
 
     def _row(var_name: str, info: dict, *, custom: bool = False) -> dict:
         value = env_on_disk.get(var_name)

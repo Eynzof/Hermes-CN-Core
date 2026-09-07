@@ -4380,10 +4380,10 @@ def save_job_output(job_id: str, output: str):
     _ensure_cron_dir(job_output_dir)
     _secure_dir(job_output_dir)
 
-    timestamp = _hermes_now().strftime("%Y-%m-%d_%H-%M-%S")
-    output_file = job_output_dir / f"{timestamp}.md"
-
+    timestamp = _hermes_now().strftime("%Y-%m-%d_%H-%M-%S-%f")
     fd, tmp_path = tempfile.mkstemp(dir=str(job_output_dir), suffix='.tmp', prefix='.output_')
+    unique_id = Path(tmp_path).stem.removeprefix(".output_")
+    output_file = job_output_dir / f"{timestamp}-{unique_id}.md"
     try:
         with os.fdopen(fd, 'w', encoding='utf-8') as f:
             f.write(output)

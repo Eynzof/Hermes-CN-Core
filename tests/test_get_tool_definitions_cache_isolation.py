@@ -42,7 +42,7 @@ class TestQuietModeCacheIsolation:
         # Find the cached value to compare identity. The cache stores a
         # (schema_list, status_lines) pair; the schema list is element [0].
         assert len(model_tools._tool_defs_cache) == 1
-        cached_result, _status = next(iter(model_tools._tool_defs_cache.values()))
+        cached_result, _status, _cached_at = next(iter(model_tools._tool_defs_cache.values()))
         assert first is not cached_result, (
             "issue #17335: first quiet_mode call returned the cached list "
             "by reference — mutations will leak into subsequent calls."
@@ -53,7 +53,7 @@ class TestQuietModeCacheIsolation:
         first = model_tools.get_tool_definitions(quiet_mode=True)
         second = model_tools.get_tool_definitions(quiet_mode=True)
         assert first is not second
-        cached_result, _status = next(iter(model_tools._tool_defs_cache.values()))
+        cached_result, _status, _cached_at = next(iter(model_tools._tool_defs_cache.values()))
         assert second is not cached_result
 
 
@@ -115,3 +115,19 @@ class TestQuietModeCacheIsolation:
         capsys.readouterr()  # drain the (possibly non-empty) miss-path output
         model_tools.get_tool_definitions(enabled_toolsets=["file"], quiet_mode=True)
         assert capsys.readouterr().out == ""
+
+
+def test_tool_discovery_cache_expires_for_new_sessions(monkeypatch):
+    now = [100.0]
+    monkeypatch.setattr(model_tools.time, "monotonic", lambda: now[0])
+    computed = []
+    def compute(*args, **kwargs):
+        computed.append(1)
+        return [], []
+    monkeypatch.setattr(model_tools, "_compute_tool_definitions", compute)
+    model_tools.get_tool_definitions(quiet_mode=True)
+    model_tools.get_tool_definitions(quiet_mode=True)
+    assert len(computed) == 1
+    now[0] += 31
+    model_tools.get_tool_definitions(quiet_mode=True)
+    assert len(computed) == 2

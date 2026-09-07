@@ -16645,17 +16645,6 @@ def _(rid, params: dict) -> dict:
                 api_key = os.getenv(env_var, "").strip()
                 if api_key:
                     break
-        if not api_key:
-            return _ok(rid, {
-                "ok": False,
-                "latency_ms": 0,
-                "model_count": 0,
-                "sample_models": [],
-                "status_code": None,
-                "error": "no API key (param empty, env vars unset)",
-                "error_kind": "auth",
-            })
-
         # Resolve base_url: caller override → registry default.
         base_url = str(params.get("base_url", "")).strip().rstrip("/")
         if not base_url and pconfig:

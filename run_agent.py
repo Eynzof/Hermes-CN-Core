@@ -7573,12 +7573,16 @@ class AIAgent:
         """
         try:
             from hermes_cli.config import load_config
-            from agent.image_routing import _lookup_supports_vision
+            from agent.image_routing import _lookup_supports_vision, _coerce_mode
 
             cfg = load_config()
+            agent_cfg = cfg.get("agent") or {}
+            if _coerce_mode(agent_cfg.get("image_input_mode")) == "native":
+                return True
             provider = (getattr(self, "provider", "") or "").strip()
             model = (getattr(self, "model", "") or "").strip()
-            return _lookup_supports_vision(provider, model, cfg) is True
+            requested = (getattr(self, "requested_provider", "") or "").strip()
+            return _lookup_supports_vision(provider, model, cfg, requested_provider=requested) is True
         except Exception:
             return False
 

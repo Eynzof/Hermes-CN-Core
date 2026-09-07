@@ -139,3 +139,31 @@ def test_flow_status_does_not_expose_authorization_code():
     assert body["status"] == "approved"
     assert "secret-code" not in response.text
     assert "secret-state" not in response.text
+
+
+def test_logout_removes_only_selected_profile_tokens(tmp_path, monkeypatch):
+    import asyncio
+    from hermes_cli import web_server
+    from hermes_cli.config import load_config, save_config
+    from hermes_constants import get_hermes_home
+    from mcp.shared.auth import OAuthToken
+    from tools.mcp_oauth import HermesTokenStorage
+
+    current_home = get_hermes_home()
+    work_home = tmp_path / "work"
+    work_home.mkdir()
+    monkeypatch.setattr(web_server, "_resolve_profile_dir", lambda _name: work_home)
+    current = HermesTokenStorage("reports", hermes_home=current_home)
+    work = HermesTokenStorage("reports", hermes_home=work_home)
+    for storage in (current, work):
+        asyncio.run(storage.set_tokens(OAuthToken(access_token="test-access", token_type="Bearer")))
+    with web_server._profile_scope("work"):
+        save_config({"mcp_servers": {"reports": {"url": "https://mcp.example/mcp", "auth": "oauth", "enabled": True}}})
+
+    response = _client().delete("/api/mcp/servers/reports/auth?profile=work")
+
+    assert response.status_code == 200
+    assert asyncio.run(work.get_tokens()) is None
+    assert asyncio.run(current.get_tokens()) is not None
+    with web_server._profile_scope("work"):
+        assert load_config()["mcp_servers"]["reports"]["enabled"] is False

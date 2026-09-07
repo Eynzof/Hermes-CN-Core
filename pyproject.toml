@@ -392,6 +392,8 @@ all = [
 # sync with the --collect-submodules / Verify steps in release-runtime.yml.
 # See issue #16 (MCP) and the Feishu/DingTalk/WeCom/WeChat desktop reports.
 cn-desktop = [
+  "hermes-agent[edge-tts]", # default desktop speech synthesis
+  "hermes-agent[voice]", # local speech recognition cannot lazy-install after freezing
   "hermes-agent[web]", # dashboard: fastapi / uvicorn / starlette
   "hermes-agent[anthropic]",  # native Anthropic transport (MiniMax-CN etc.)
   "hermes-agent[mcp]", # native MCP client SDK (issue #16)

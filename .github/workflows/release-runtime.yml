@@ -304,6 +304,17 @@ jobs:
             --console \
             --noupx \
             ${VERSION_FILE_ARG:-} \
+            --collect-all edge_tts \
+            --collect-all faster_whisper \
+            --collect-all ctranslate2 \
+            --collect-all onnxruntime \
+            --collect-all av \
+            --collect-all tokenizers \
+            --collect-all sounddevice \
+            --collect-all nemo_relay \
+            --collect-submodules email \
+            --hidden-import filecmp \
+            --add-data "optional-mcps:optional-mcps" \
             --collect-submodules hermes_cli \
             --collect-submodules tui_gateway \
             --collect-submodules fastapi \

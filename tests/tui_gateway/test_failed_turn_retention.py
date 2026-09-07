@@ -73,7 +73,7 @@ def emits(monkeypatch):
     monkeypatch.setattr(
         server,
         "_emit",
-        lambda event, sid, payload=None: captured.append((event, sid, payload)),
+        lambda event, sid, payload=None, **_kw: captured.append((event, sid, payload)),
     )
     return captured
 

@@ -1622,15 +1622,40 @@ def write_json(obj: dict) -> bool:
     return (current_transport() or _stdio_transport).write(obj)
 
 
-def _event_frame(event: str, sid: str, payload: dict | None = None) -> dict:
+def _event_frame(
+    event: str,
+    sid: str,
+    payload: dict | None = None,
+    *,
+    turn_id: str | None = None,
+) -> dict:
     params: dict = {"type": event, "session_id": sid}
+    # Stamp the in-flight turn id on every event of a turn, from one place, so
+    # a client can group by turn instead of guessing from stream state (see
+    # _new_turn_id). Purely additive: idle sessions and session-less global
+    # broadcasts emit no turn_id, and clients that don't know the field ignore
+    # it (every event schema is passthrough), so old↔new mixes are unaffected.
+    #
+    # ``turn_id`` is an explicit override for terminal frames: the turn's
+    # snapshot is cleared under history_lock BEFORE message.complete is emitted,
+    # so by then _current_turn_id would return None and the closing frame — the
+    # one a client most needs to attribute — would arrive unstamped.
+    stamped = turn_id or _current_turn_id(sid)
+    if stamped:
+        params["turn_id"] = stamped
     if payload is not None:
         params["payload"] = payload
     return {"jsonrpc": "2.0", "method": "event", "params": params}
 
 
-def _emit(event: str, sid: str, payload: dict | None = None):
-    write_json(_event_frame(event, sid, payload))
+def _emit(
+    event: str,
+    sid: str,
+    payload: dict | None = None,
+    *,
+    turn_id: str | None = None,
+):
+    write_json(_event_frame(event, sid, payload, turn_id=turn_id))
 
 
 # Live client transports, one per connected WS peer (maintained by tui_gateway.ws).
@@ -7471,6 +7496,38 @@ def _inflight_text(value: Any) -> str:
     return _content_display_text(value).strip()
 
 
+def _new_turn_id() -> str:
+    """Mint a stable id for one agent turn.
+
+    Clients previously had NO way to tell "same turn, more output" from "a new
+    turn started": gateway events carried only ``type`` + ``session_id``, so a
+    UI had to infer turn identity from stream state and text/tool-call
+    heuristics. A duplicated ``message.start`` (several dispatch paths pre-emit
+    one before ``_run_prompt_submit`` emits its own) or a reconnect replay then
+    looked exactly like a fresh turn and split one reply into two bubbles.
+
+    The id is per-turn and in-memory only — it lives on ``inflight_turn`` and
+    dies with it, so nothing is persisted and no schema migration is involved.
+    """
+    return f"turn_{uuid.uuid4().hex[:16]}"
+
+
+def _current_turn_id(sid: str) -> str | None:
+    """Return the in-flight turn id for ``sid``, or ``None`` when idle.
+
+    Read by ``_event_frame`` so every event of a turn is stamped from one
+    place; a session with no live turn simply yields no ``turn_id`` and the
+    frame stays byte-identical to what older clients already handle.
+    """
+    if not sid:
+        return None
+    turn = (_sessions.get(sid) or {}).get("inflight_turn")
+    if not isinstance(turn, dict):
+        return None
+    turn_id = turn.get("turn_id")
+    return turn_id if isinstance(turn_id, str) and turn_id else None
+
+
 def _start_inflight_turn(session: dict, text: Any) -> None:
     now = time.time()
     session["inflight_turn"] = {
@@ -7478,6 +7535,7 @@ def _start_inflight_turn(session: dict, text: Any) -> None:
         "started_at": now,
         "streaming": True,
         "updated_at": now,
+        "turn_id": _new_turn_id(),
         "user": _inflight_text(text),
     }
 
@@ -10512,6 +10570,11 @@ def _run_prompt_submit(
             rendered = render_message(raw, cols)
             if rendered:
                 payload["rendered"] = rendered
+            # Read the turn id BEFORE the clear below drops the snapshot, then
+            # stamp it explicitly on the terminal frame — otherwise the closing
+            # event arrives with no turn_id and a client cannot tell which turn
+            # it finalizes.
+            completed_turn_id = _current_turn_id(sid)
             with session["history_lock"]:
                 if status == "error":
                     # Returned-error result (provider 4xx, budget, etc.): retain
@@ -10531,7 +10594,7 @@ def _run_prompt_submit(
                 )
                 payload["recoverable"] = True
             _retire_turn_marker(session, marker_key)
-            _emit("message.complete", sid, payload)
+            _emit("message.complete", sid, payload, turn_id=completed_turn_id)
 
             # ── /goal continuation (Ralph-style loop) ─────────────────
             # After every TUI turn, if a /goal is active, ask the judge

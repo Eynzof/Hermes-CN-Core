@@ -45,12 +45,55 @@ def _load_openai_cls() -> type:
     return _OPENAI_CLS_CACHE
 
 
+def hermes_openai_default_headers(kwargs: dict) -> dict:
+    """Return a dict of default headers to inject into an OpenAI client.
+
+    The OpenAI Python SDK sends ``User-Agent: OpenAI/Python <ver>`` (plus
+    ``X-Stainless-*``) by default. Several OpenAI-compatible gateways/proxies
+    sit behind WAFs that reject that SDK UA outright with HTTP 403 / Cloudflare
+    error 1010 (e.g. ``sub2api.zehuamatrix.com``), even though the same
+    endpoint works fine from curl/httpx.
+
+    This helper supplies a neutral ``HermesAgent/<version>`` UA **only when the
+    caller did not already pass one** (via ``default_headers`` containing
+    ``User-Agent``). Provider-specific attribution (OpenRouter, Fireworks, …),
+    user-configured ``model.default_headers``, and per-provider extra headers
+    all run after this fallback and win as today.
+
+    The returned dict is intended to be merged into ``kwargs`` via
+    ``kwargs.setdefault("default_headers", ...)`` semantics; it never clobbers
+    an explicitly provided header block.
+    """
+    existing = kwargs.get("default_headers")
+    if isinstance(existing, dict):
+        for key in existing:
+            if str(key).lower() == "user-agent":
+                return {}
+    if any(str(k).lower() == "user-agent" for k in kwargs):
+        return {}
+    try:
+        from hermes_cli import __version__ as _ver
+    except Exception:
+        _ver = "0.0.0"
+    return {"User-Agent": f"HermesAgent/{_ver}"}
+
+
 class _OpenAIProxy:
     """Module-level proxy that looks like ``openai.OpenAI`` but imports lazily."""
 
     __slots__ = ()
 
     def __call__(self, *args, **kwargs):
+        # Layer a Hermes UA fallback over the SDK's default "OpenAI/Python ..."
+        # UA so custom OpenAI-compatible endpoints behind WAFs accept the
+        # client without requiring user-side header configuration. Explicit
+        # default_headers/User-Agent passed by the caller are never replaced.
+        kwargs = dict(kwargs)
+        fallback = hermes_openai_default_headers(kwargs)
+        if fallback:
+            headers = dict(kwargs.get("default_headers") or {})
+            headers.update(fallback)
+            kwargs["default_headers"] = headers
         return _load_openai_cls()(*args, **kwargs)
 
     def __instancecheck__(self, obj):
@@ -219,6 +262,7 @@ __all__ = [
     "OpenAI",
     "_OpenAIProxy",
     "_load_openai_cls",
+    "hermes_openai_default_headers",
     "_SafeWriter",
     "_install_safe_stdio",
     "_get_proxy_from_env",

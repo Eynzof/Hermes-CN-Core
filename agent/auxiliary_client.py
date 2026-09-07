@@ -122,6 +122,18 @@ class _OpenAIProxy:
                 kwargs["http_client"] = build_openai_http_client()
             except Exception:
                 pass
+        # Replace the SDK's default "OpenAI/Python ..." UA with a neutral
+        # HermesAgent/<version> UA when the caller didn't set one explicitly.
+        # Some OpenAI-compatible gateways/WAFs reject the SDK UA with HTTP 403
+        # (Cloudflare error 1010); provider/user-configured default_headers run
+        # later at the resolver level and still win.
+        from agent.process_bootstrap import hermes_openai_default_headers
+
+        _fallback = hermes_openai_default_headers(kwargs)
+        if _fallback:
+            _dh = dict(kwargs.get("default_headers") or {})
+            _dh.update(_fallback)
+            kwargs["default_headers"] = _dh
         return _load_openai_cls()(*args, **kwargs)
 
     def __instancecheck__(self, obj):

@@ -167,3 +167,33 @@ def test_logout_removes_only_selected_profile_tokens(tmp_path, monkeypatch):
     assert asyncio.run(current.get_tokens()) is not None
     with web_server._profile_scope("work"):
         assert load_config()["mcp_servers"]["reports"]["enabled"] is False
+
+
+def test_cancel_acknowledges_only_after_worker_releases_server():
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    from unittest.mock import patch
+    from hermes_cli import web_server
+    from tools.mcp_dashboard_oauth import DashboardOAuthFlow
+
+    flow = DashboardOAuthFlow(
+        flow_id="cancel-cleanup", server_name="reports", profile=None,
+        hermes_home="/tmp/hermes-test", redirect_uri="https://agent.example/callback",
+    )
+    web_server._mcp_oauth_flows[flow.flow_id] = flow
+    cancelled = threading.Event()
+    mark_error = flow.mark_error
+
+    def begin_cancel(error):
+        mark_error(error)
+        cancelled.set()
+
+    with patch.object(flow, "mark_error", side_effect=begin_cancel), ThreadPoolExecutor() as pool:
+        response = pool.submit(_client().delete, f"/api/mcp/oauth/flows/{flow.flow_id}")
+        try:
+            assert cancelled.wait(5)
+            assert not response.done(), "Cancellation must retain the busy state during worker cleanup"
+        finally:
+            flow.mark_worker_done()
+        assert response.result(timeout=5).status_code == 200
+        assert flow.worker_done

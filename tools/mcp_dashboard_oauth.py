@@ -122,6 +122,9 @@ class DashboardOAuthFlow:
     def mark_worker_done(self) -> None:
         self._worker_done.set()
 
+    async def wait_for_worker(self, timeout: float = 30.0) -> bool:
+        return await asyncio.to_thread(self._worker_done.wait, timeout)
+
     @property
     def worker_done(self) -> bool:
         return self._worker_done.is_set()

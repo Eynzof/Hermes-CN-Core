@@ -313,6 +313,8 @@ jobs:
             --collect-all sounddevice \
             --collect-all nemo_relay \
             --collect-submodules email \
+            --hidden-import imaplib \
+            --hidden-import smtplib \
             --hidden-import filecmp \
             --add-data "optional-mcps:optional-mcps" \
             --collect-submodules hermes_cli \

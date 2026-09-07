@@ -260,6 +260,7 @@ class TestManifestParsing:
 
 class TestInstall:
     @pytest.mark.parametrize("defaults,prior,expected", [
+        ({}, None, None),
         ({"default_enabled": ["search"]}, None, {"include": ["search"]}),
         ({"default_excluded": ["delete"]}, None, {"exclude": ["delete"]}),
         ({"default_enabled": ["search"]}, {"include": []}, {"include": []}),
@@ -282,7 +283,7 @@ class TestInstall:
 
         server = load_config()["mcp_servers"]["demo"]
         assert server["command"] == "npx"
-        assert server["tools"] == expected
+        assert server.get("tools") == expected
 
     def test_dashboard_install_missing_credential_returns_error_without_prompt(self, catalog_dir, monkeypatch):
         import hermes_cli.mcp_catalog as mc

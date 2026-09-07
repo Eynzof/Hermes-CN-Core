@@ -840,3 +840,18 @@ class TestMcpReauth:
         cmd_mcp_reauth(_make_args(name="ghost", all=False))
         out = capsys.readouterr().out
         assert "not found" in out
+
+
+def test_cancelled_probe_future_does_not_cancel_dashboard_handler():
+    import asyncio
+    from concurrent.futures import CancelledError
+    from hermes_cli.mcp_config import _unwrap_exception_group
+
+    def probe():
+        raise _unwrap_exception_group(CancelledError())
+
+    async def request():
+        with pytest.raises(RuntimeError, match="connection reload"):
+            await asyncio.to_thread(probe)
+
+    asyncio.run(request())

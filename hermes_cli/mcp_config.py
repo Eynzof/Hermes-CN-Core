@@ -427,6 +427,12 @@ def _unwrap_exception_group(exc: BaseException) -> Exception:
     """
     while isinstance(exc, BaseExceptionGroup) and exc.exceptions:
         exc = exc.exceptions[0]
+    # An MCP loop restart can cancel the thread-safe probe future. Letting
+    # that executor exception escape through asyncio.to_thread turns it into
+    # asyncio.CancelledError and cancels the HTTP handler without a response.
+    from concurrent.futures import CancelledError as FutureCancelledError
+    if isinstance(exc, FutureCancelledError):
+        return RuntimeError("MCP connection test was interrupted by a connection reload; please retry.")
     # Return a plain Exception so callers can catch normally
     if isinstance(exc, Exception):
         return exc

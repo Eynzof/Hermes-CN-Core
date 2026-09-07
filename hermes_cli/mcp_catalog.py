@@ -740,7 +740,7 @@ def _apply_tool_selection(
         elif entry.tools.default_excluded:
             _write_tools_exclude(entry.name, list(entry.tools.default_excluded))
         else:
-            _write_tools_include(entry.name, list(entry.tools.default_enabled) or None)
+            _write_tools_include(entry.name, list(entry.tools.default_enabled or []) or None)
         return
 
     print()

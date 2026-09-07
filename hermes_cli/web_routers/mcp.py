@@ -593,8 +593,9 @@ async def install_mcp_catalog_entry(body: MCPCatalogInstall, profile: Optional[s
     # to_thread the other way around — asyncio.to_thread copies context, so
     # setting it here works; keep it explicit for clarity).
     def _install_scoped():
-        with _profile_scope(effective_profile):
-            mcp_catalog.install_entry(entry, enable=body.enable)
+        with _config_profile_scope(effective_profile):
+            with _CONFIG_MUTATION_LOCK:
+                mcp_catalog.install_entry(entry, enable=body.enable, interactive=False)
 
     try:
         await asyncio.to_thread(_install_scoped)

@@ -561,7 +561,7 @@ def _expand_install_dir(value: str, install_dir: Optional[Path]) -> str:
     return value.replace(_INSTALL_DIR_VAR, str(install_dir))
 
 
-def _prompt_env_vars(specs: List[EnvVarSpec]) -> Dict[str, str]:
+def _prompt_env_vars(specs: List[EnvVarSpec], *, interactive: bool = True) -> Dict[str, str]:
     """Walk the env spec list, prompting the user for each. Writes secrets and
     non-secrets alike to ~/.hermes/.env via save_env_value()."""
     collected: Dict[str, str] = {}
@@ -575,7 +575,7 @@ def _prompt_env_vars(specs: List[EnvVarSpec]) -> Dict[str, str]:
             spec.prompt,
             default=spec.default or None,
             password=spec.secret,
-        )
+        ) if interactive else spec.default
         if not value:
             if spec.required:
                 raise CatalogError(f"{spec.name} is required but no value was provided")
@@ -711,6 +711,7 @@ def _apply_tool_selection(
     *,
     prior_selection: Optional[List[str]],
     prior_exclude: Optional[List[str]] = None,
+    interactive: bool = True,
 ) -> None:
     """Probe the server and let the user pick which tools to enable.
 
@@ -728,6 +729,20 @@ def _apply_tool_selection(
       - Otherwise → leave config with no filter (all on when reachable).
       - Either way, point the user at ``hermes mcp configure <name>``.
     """
+    if not interactive:
+        # Dashboard installation only saves configuration. Connection testing
+        # and OAuth have their own UI actions; never wait on stdin or a remote
+        # server while the configuration mutation is in progress.
+        if prior_selection is not None:
+            _write_tools_include(entry.name, prior_selection)
+        elif prior_exclude is not None:
+            _write_tools_exclude(entry.name, prior_exclude)
+        elif entry.tools.default_excluded:
+            _write_tools_exclude(entry.name, list(entry.tools.default_excluded))
+        else:
+            _write_tools_include(entry.name, list(entry.tools.default_enabled) or None)
+        return
+
     print()
 
     # Exclude-mode manifests short-circuit the checklist entirely: the curated
@@ -888,7 +903,7 @@ def _apply_tool_selection(
     ))
 
 
-def install_entry(entry: CatalogEntry, *, enable: bool = True) -> None:
+def install_entry(entry: CatalogEntry, *, enable: bool = True, interactive: bool = True) -> None:
     """Install a catalog entry end-to-end.
 
     Steps:
@@ -921,7 +936,7 @@ def install_entry(entry: CatalogEntry, *, enable: bool = True) -> None:
     if entry.auth.type == "api_key":
         print()
         print(color("  Configure credentials:", Colors.CYAN))
-        _prompt_env_vars(entry.auth.env)
+        _prompt_env_vars(entry.auth.env, interactive=interactive)
     elif entry.auth.type == "oauth":
         if entry.auth.provider:
             # Case 2: provider-mediated (Google, GitHub, etc.). We rely on
@@ -963,7 +978,8 @@ def install_entry(entry: CatalogEntry, *, enable: bool = True) -> None:
 
     # ── Probe + tool selection ──────────────────────────────────────────
     _apply_tool_selection(
-        entry, prior_selection=prior_selection, prior_exclude=prior_exclude
+        entry, prior_selection=prior_selection, prior_exclude=prior_exclude,
+        interactive=interactive,
     )
 
     print()

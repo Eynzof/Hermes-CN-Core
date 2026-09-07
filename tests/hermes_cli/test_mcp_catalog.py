@@ -259,6 +259,43 @@ class TestManifestParsing:
 
 
 class TestInstall:
+    @pytest.mark.parametrize("defaults,prior,expected", [
+        ({"default_enabled": ["search"]}, None, {"include": ["search"]}),
+        ({"default_excluded": ["delete"]}, None, {"exclude": ["delete"]}),
+        ({"default_enabled": ["search"]}, {"include": []}, {"include": []}),
+        ({"default_enabled": ["search"]}, {"exclude": ["custom"]}, {"exclude": ["custom"]}),
+    ])
+    def test_dashboard_install_never_probes_or_prompts(self, catalog_dir, monkeypatch, defaults, prior, expected):
+        import hermes_cli.mcp_catalog as mc
+        from hermes_cli.config import load_config, save_config
+
+        _write_manifest(catalog_dir, "demo", _basic_manifest(tools=defaults))
+        if prior is not None:
+            save_config({"mcp_servers": {"demo": {"command": "old", "tools": prior}}})
+        def unexpected(*args, **kwargs):
+            raise AssertionError("Dashboard installation must not probe or read stdin")
+        monkeypatch.setattr(mc, "_probe_tools", unexpected)
+        monkeypatch.setattr(mc, "_prompt_input", unexpected)
+        monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+
+        mc.install_entry(_entry("demo"), interactive=False)
+
+        server = load_config()["mcp_servers"]["demo"]
+        assert server["command"] == "npx"
+        assert server["tools"] == expected
+
+    def test_dashboard_install_missing_credential_returns_error_without_prompt(self, catalog_dir, monkeypatch):
+        import hermes_cli.mcp_catalog as mc
+
+        _write_manifest(catalog_dir, "demo", _basic_manifest(auth={
+            "type": "api_key", "env": [{"name": "DEMO_KEY", "prompt": "Key", "required": True}],
+        }))
+        def unexpected(*args, **kwargs):
+            raise AssertionError("Dashboard installation must not read stdin")
+        monkeypatch.setattr(mc, "_prompt_input", unexpected)
+        with pytest.raises(mc.CatalogError, match="DEMO_KEY is required"):
+            mc.install_entry(_entry("demo"), interactive=False)
+
     def test_install_simple_stdio_writes_config(self, catalog_dir):
         _write_manifest(catalog_dir, "demo", _basic_manifest())
         from hermes_cli.mcp_catalog import install_entry

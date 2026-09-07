@@ -44,6 +44,13 @@ class HermesOverlay:
 
 
 HERMES_OVERLAYS: Dict[str, HermesOverlay] = {
+    "wander": HermesOverlay(
+        transport="openai_chat",
+        auth_type="desktop_broker",
+        extra_env_vars=("WANDER_TOKEN_BROKER_URL", "WANDER_TOKEN_BROKER_SECRET"),
+        base_url_override="https://inference-staging.wanderminds.ai/v1",
+        base_url_env_var="WANDER_INFERENCE_BASE_URL",
+    ),
     "moa": HermesOverlay(
         transport="openai_chat",
         auth_type="virtual",

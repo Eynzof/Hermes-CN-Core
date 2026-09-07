@@ -225,6 +225,7 @@ def _xai_curated_models() -> list[str]:
 
 _PROVIDER_MODELS: dict[str, list[str]] = {
     "moa": ["default"],
+    "wander": ["wander-beta"],
     "nous": [
         # Anthropic
         "anthropic/claude-fable-5",
@@ -1158,6 +1159,24 @@ CANONICAL_PROVIDERS: list[ProviderEntry] = [
     ProviderEntry("ai-gateway",     "Vercel AI Gateway",        "Vercel AI Gateway (Multi-model aggregator)"),
     ProviderEntry("qwen-oauth",     "Qwen OAuth (Portal)",      "Qwen OAuth (Reuses local Qwen CLI login)"),
 ]
+
+# Wander is deliberately a desktop-managed provider in this prototype. Keep it
+# out of the standalone CLI/remote-Core picker unless the desktop has injected
+# the process-local broker capability.
+try:
+    from hermes_cli.wander_broker import wander_broker_configured as _wander_broker_configured
+
+    if _wander_broker_configured():
+        CANONICAL_PROVIDERS.insert(
+            0,
+            ProviderEntry(
+                "wander",
+                "Wander Portal",
+                "Wander Beta（Wanderminds ID 订阅额度，桌面端托管）",
+            ),
+        )
+except Exception:
+    pass
 
 # Auto-extend CANONICAL_PROVIDERS with any provider registered in providers/
 # that is not already in the list above.  Adding plugins/model-providers/<name>/
@@ -3150,6 +3169,17 @@ def provider_model_ids(provider: Optional[str], *, force_refresh: bool = False) 
     on the platform appear in ``/model`` without a Hermes release.
     """
     normalized = normalize_provider(provider)
+    if normalized == "wander":
+        try:
+            from hermes_cli.wander_broker import resolve_wander_runtime_credentials
+
+            creds = resolve_wander_runtime_credentials()
+            live = fetch_api_models(creds["api_key"], creds["base_url"])
+            if live:
+                return live
+        except Exception:
+            pass
+        return list(_PROVIDER_MODELS["wander"])
     if normalized == "openrouter":
         return model_ids(force_refresh=force_refresh)
     if normalized == "openai-codex":

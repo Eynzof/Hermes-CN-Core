@@ -1927,6 +1927,26 @@ def resolve_runtime_provider(
             "requested_provider": requested_provider,
         }
 
+    if requested_provider == "wander":
+        from hermes_cli.wander_broker import (
+            WanderBrokerError,
+            resolve_wander_runtime_credentials,
+        )
+
+        try:
+            creds = resolve_wander_runtime_credentials()
+        except WanderBrokerError as exc:
+            raise AuthError(str(exc), code=exc.code) from exc
+        return {
+            "provider": "wander",
+            "api_mode": "chat_completions",
+            "base_url": creds["base_url"],
+            "api_key": creds["api_key"],
+            "source": creds["source"],
+            "expires_at": creds["expires_at"],
+            "requested_provider": requested_provider,
+        }
+
     # Azure Anthropic short-circuit: when explicitly targeting an Azure endpoint
     # with provider="anthropic", bypass _resolve_named_custom_runtime (which would
     # return provider="custom" with chat_completions api_mode and no valid key).

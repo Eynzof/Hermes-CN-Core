@@ -16,6 +16,8 @@ import contextvars
 import errno
 import json
 import orjson
+from hermes_cli.update_activity import UpdateActivity, UpdateInProgress, track_update_activity
+
 import logging
 import os
 from agent.re_compat import re
@@ -771,6 +773,7 @@ _parallel_pool_max_workers: Optional[int] = None
 _running_job_ids: set = set()
 _running_fire_owners: dict[str, dict[object, tuple[Optional[str], Path]]] = {}
 _running_lock = threading.Lock()
+_update_activities: dict[str, UpdateActivity] = {}
 
 # Wall-clock (time.time()) instant each in-flight job id was claimed by
 # ``_submit_with_guard``, plus the future that owns its release (a pending
@@ -886,6 +889,12 @@ def try_register_running_job(job_id: str) -> bool:
     with _running_lock:
         if job_id in _running_job_ids:
             return False
+        activity = UpdateActivity("cron", job_id)
+        try:
+            activity.__enter__()
+        except UpdateInProgress:
+            return False
+        _update_activities[job_id] = activity
         _running_job_ids.add(job_id)
         # Claim timestamp + pending-future sentinel are recorded in the SAME
         # critical section as the add, so there is never a window where an
@@ -903,6 +912,9 @@ def release_running_job(job_id: str) -> None:
         _running_job_ids.discard(job_id)
         _running_since.pop(job_id, None)
         _running_futures.pop(job_id, None)
+        activity = _update_activities.pop(job_id, None)
+        if activity is not None:
+            activity.__exit__()
 
 
 def _inflight_min_allowance_minutes() -> float:
@@ -7105,6 +7117,7 @@ def _run_with_fire_claim_heartbeat(job: dict, run) -> bool:
         heartbeat_thread.join(timeout=1.0)
 
 
+@track_update_activity("cron")
 def run_one_job(
     job: dict,
     *,
@@ -7869,6 +7882,7 @@ def _maybe_run_worktree_maintenance() -> None:
     ).start()
 
 
+@track_update_activity("cron", skip_during_update=True)
 def tick(
     verbose: bool = True,
     adapters=None,

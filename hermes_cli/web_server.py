@@ -617,6 +617,10 @@ def _get_pty_active_session_files(app: "FastAPI") -> dict[str, Path]:
         return app.state.pty_active_session_files
 
 
+from hermes_cli.update_activity import initialize_update_activity
+
+initialize_update_activity()
+
 app = FastAPI(title="Hermes Agent", version=__version__, lifespan=_lifespan)
 
 

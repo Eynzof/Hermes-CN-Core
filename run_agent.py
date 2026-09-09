@@ -51,6 +51,8 @@ import pybase64 as base64
 import copy
 import hashlib
 import orjson
+from hermes_cli.update_activity import track_update_activity
+
 import logging
 
 logger = logging.getLogger(__name__)
@@ -9125,6 +9127,7 @@ class AIAgent:
                 logger.debug("Conversation root lineage walk failed", exc_info=True)
         return start
 
+    @track_update_activity("conversation")
     def run_conversation(
         self,
         user_message: Any,

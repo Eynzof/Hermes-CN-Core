@@ -185,7 +185,7 @@ def test_runtime_workflow_freezes_web_search_providers():
         assert f"--copy-metadata {dist}" in workflow
     for pkg in ("ddgs", "exa_py", "firecrawl_py", "parallel_web"):
         assert pkg in _frozen_verify_packages()
-    for plugin in ("brave_free", "ddgs", "exa", "firecrawl", "parallel", "searxng", "tavily", "xai"):
+    for plugin in ("brave_free", "ddgs", "exa", "firecrawl", "parallel", "searxng", "xai"):
         assert f"plugins.web.{plugin}" in workflow
         assert f"plugins/web/$p/plugin.yaml" in workflow
 

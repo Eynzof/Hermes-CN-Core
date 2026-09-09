@@ -229,9 +229,9 @@ async def test_start_gateway_does_not_start_cron_after_aborted_startup(tmp_path,
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("cron_allowed", [True, False])
+@pytest.mark.parametrize("draining", [True, False])
 async def test_start_gateway_starts_and_stops_cron_on_relaunch(
-    tmp_path, monkeypatch, cron_allowed
+    tmp_path, monkeypatch, draining
 ):
     """Exercise the entry-point branch, including the real provider type check."""
     import threading
@@ -245,7 +245,7 @@ async def test_start_gateway_starts_and_stops_cron_on_relaunch(
             self.config = config
             self.adapters = {}
             self._running = True
-            self._draining = False
+            self._draining = draining
             self._external_drain_active = False
             self._restart_requested = False
             self._restart_via_service = False
@@ -258,8 +258,7 @@ async def test_start_gateway_starts_and_stops_cron_on_relaunch(
             return True
 
         async def wait_for_shutdown(self):
-            if cron_allowed:
-                assert await asyncio.to_thread(started.wait, 5)
+            assert await asyncio.to_thread(started.wait, 5)
             self._running = False
 
     def run_scheduler(self, stop_event, **kwargs):
@@ -280,7 +279,7 @@ async def test_start_gateway_starts_and_stops_cron_on_relaunch(
     monkeypatch.setattr("hermes_cli.nous_auth_keepalive.start_nous_auth_keepalive", lambda: None)
     monkeypatch.setattr("hermes_cli.nous_auth_keepalive.stop_nous_auth_keepalive", lambda: None)
     monkeypatch.setattr(gateway_run, "GatewayRunner", RunningGateway)
-    monkeypatch.setattr(gateway_run, "_validate_cron_startup", lambda: cron_allowed)
+    monkeypatch.setattr("cron.scheduler_provider.resolve_cron_scheduler", InProcessCronScheduler)
     monkeypatch.setattr(
         gateway_run, "_start_gateway_housekeeping",
         lambda stop, **kwargs: stop.wait(5),
@@ -297,6 +296,6 @@ async def test_start_gateway_starts_and_stops_cron_on_relaunch(
             config=GatewayConfig(), replace=False, verbosity=None
         ) is True
 
-    assert len(calls) == (2 if cron_allowed else 0)
+    assert len(calls) == 2
     for kwargs in calls:
-        assert kwargs["can_dispatch"]() is True
+        assert kwargs["can_dispatch"]() is (not draining)

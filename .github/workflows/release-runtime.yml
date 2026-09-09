@@ -79,7 +79,9 @@ jobs:
             platform: darwin
             arch: x64
             ext: ""
-          - runner: ubuntu-latest
+          # Build and smoke-test on the oldest supported glibc baseline.
+          # ubuntu-latest can silently raise the runtime's GLIBC requirement.
+          - runner: ubuntu-22.04
             platform: linux
             arch: x64
             ext: ""
@@ -472,11 +474,6 @@ jobs:
           # advertised tool/plugin inventory matches the payload.
           NAME="hermes-agent-cn-runtime-${{ matrix.platform }}-${{ matrix.arch }}"
           internal="dist/$NAME/_internal"
-          mkdir -p "$internal/tools"
-          rm -rf "$internal/tools/computer_use"
-          cp tools/__init__.py "$internal/tools/__init__.py"
-          cp tools/computer_use_tool.py "$internal/tools/computer_use_tool.py"
-          cp -R tools/computer_use "$internal/tools/computer_use"
           # Runtime-only updates must carry resources from their own commit.
           # --collect-data excludes Python sources, while PluginManager loads
           # __init__.py from disk. Do not depend on an older Desktop installer
@@ -487,11 +484,20 @@ jobs:
           from pathlib import Path
 
           internal = Path(sys.argv[1])
-          for category in ("plugins", "skills"):
+          # Built-in discovery also scans tools/*.py and parses their AST.
+          # Importable bytecode alone leaves tools such as clarify invisible.
+          for category in ("plugins", "skills", "tools"):
               shutil.copytree(
                   category, internal / category, dirs_exist_ok=True,
                   ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "node_modules", ".git"),
               )
+          if sys.platform == "win32":
+              import winpty
+              # pywinpty's ConPTY backend needs its matching OpenConsole host.
+              # PyInstaller collects the DLLs but misses these helper programs.
+              source = Path(winpty.__file__).parent
+              for name in ("OpenConsole.exe", "winpty-agent.exe"):
+                  shutil.copy2(source / name, internal / "winpty" / name)
           PY
 
           test -f "$internal/tools/computer_use_tool.py" || { echo "::error::missing computer_use tool shim" >&2; exit 1; }
@@ -501,6 +507,8 @@ jobs:
             test -f "$internal/plugins/web/$p/provider.py" || { echo "::error::missing web plugin $p provider.py" >&2; exit 1; }
             test -f "$internal/plugins/web/$p/plugin.yaml" || { echo "::error::missing web plugin $p plugin.yaml" >&2; exit 1; }
           done
+
+          HERMES_HOME="$RUNNER_TEMP/hermes-tools-smoke" "./dist/$NAME/$NAME${{ matrix.ext }}" __run-script scripts/smoke_runtime_tools.py
 
       - name: Normalize macOS framework layout
         if: matrix.platform == 'darwin'
@@ -676,6 +684,9 @@ jobs:
           "$node_bin" --version
           "$npm_bin" --version
           "$npx_bin" --version
+          if [[ "${{ matrix.platform }}" == "win32" ]]; then
+            HERMES_HOME="$RUNNER_TEMP/hermes-pty-smoke" "$root/$NAME.exe" __run-script scripts/smoke_runtime_windows_pty.py
+          fi
           echo "Bundled node + npm + npx + TUI present in $root"
 
       - name: Zip artifact

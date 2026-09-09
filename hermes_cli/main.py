@@ -13365,6 +13365,7 @@ def _register_internal_worker_subcommands(subparsers) -> None:
     no-op on source checkouts (where the plain spawn paths remain).
 
     Subcommands:
+      __run-script          — execute a cron Python script in a child process
       __slash-worker        — run tui_gateway.slash_worker.main()
       __compute-host        — run tui_gateway.compute_host.main()
       __gateway-restart-watch  — poll a PID then respawn the gateway

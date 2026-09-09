@@ -611,6 +611,41 @@ class _StubSession:
 
 
 class TestWeixinApiTimeout:
+    def test_stalled_http_reply_times_out_without_blocking_other_gateway_work(self):
+        async def exercise():
+            import aiohttp
+            release = asyncio.Event()
+            accepted = asyncio.Event()
+
+            async def stalled_peer(reader, writer):
+                await reader.read(4096)
+                accepted.set()
+                await release.wait()
+                writer.close()
+                await writer.wait_closed()
+
+            server = await asyncio.start_server(stalled_peer, "127.0.0.1", 0)
+            port = server.sockets[0].getsockname()[1]
+            try:
+                async with aiohttp.ClientSession(trust_env=False) as session:
+                    request = asyncio.create_task(weixin._api_post(
+                        session, base_url=f"http://127.0.0.1:{port}",
+                        endpoint="sendmessage", payload={"msg": "local test"},
+                        token="test-only", timeout_ms=100,
+                    ))
+                    await asyncio.wait_for(accepted.wait(), timeout=2)
+                    # Other gateway tasks continue while the peer holds the socket.
+                    await asyncio.sleep(0.01)
+                    assert not request.done()
+                    with pytest.raises(asyncio.TimeoutError):
+                        await request
+            finally:
+                release.set()
+                server.close()
+                await server.wait_closed()
+
+        asyncio.run(exercise())
+
     def test_api_post_does_not_pass_aiohttp_timeout_kwarg(self):
         session = _StubSession(_StubResponse(body='{"ret": 0}'))
         result = asyncio.run(
@@ -827,4 +862,3 @@ class TestWeixinVoiceGatewayHandoff:
             "VOICE event body leaked Tencent's STT text — runner would trust "
             "the wrong transcript instead of re-transcribing (#27300)."
         )
-

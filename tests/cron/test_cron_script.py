@@ -432,29 +432,37 @@ class TestRunJobScriptFrozenRuntime:
     itself, so ``_run_job_script`` must NOT spawn ``sys.executable`` with the
     script path — that would run ``hermes <script>.py`` and make argparse
     reject the script path as an invalid subcommand. The script must instead
-    be executed in a dedicated CLI worker that can be terminated.
+    run through the internal CLI worker in an isolated process.
     """
 
     @pytest.fixture
-    def frozen_runtime(self, monkeypatch):
+    def frozen_runtime(self, monkeypatch, tmp_path):
         from cron import scheduler as sched_mod
-
         from tools import runtime_compat
-        python_exe = sys.executable
-        monkeypatch.setattr(sched_mod, "_is_frozen_runtime", lambda: True)
-        # Run the same internal command through the source CLI in unit tests;
-        # the Windows acceptance run exercises the actual frozen executable.
-        monkeypatch.setattr(
-            runtime_compat, "hermes_cli_argv",
-            lambda *args: [python_exe, "-m", "hermes_cli.main", *args],
+
+        # Exercise the real hidden CLI parser/handler with a source Python.
+        # The OS and interpreter remain real, including process termination.
+        launcher = tmp_path / "worker.py"
+        launcher.write_text(
+            "import argparse, sys\n"
+            f"sys.path.insert(0, {str(Path(sched_mod.__file__).resolve().parents[1])!r})\n"
+            "from hermes_cli.main import _register_internal_worker_subcommands\n"
+            "parser = argparse.ArgumentParser()\n"
+            "_register_internal_worker_subcommands(parser.add_subparsers())\n"
+            "args = parser.parse_args()\n"
+            "args.func(args)\n"
         )
+        monkeypatch.setattr(sched_mod, "_is_frozen_runtime", lambda: True)
+        def worker_argv(*args):
+            assert args[0] == "__run-script"
+            return [sys.executable, str(launcher), *args]
+        monkeypatch.setattr(runtime_compat, "hermes_cli_argv", worker_argv)
         return sched_mod
 
-    def test_frozen_runtime_py_script_runs_through_cli_worker(
+    def test_frozen_runtime_py_script_uses_worker_without_changing_parent(
         self, cron_env, frozen_runtime, monkeypatch
     ):
-        """The .py script executes and its stdout is returned; sys.executable
-        (the Hermes CLI binary) is never spawned with the script path."""
+        """The worker captures output without replacing the gateway's streams."""
         from cron.scheduler import _run_job_script
 
         script = cron_env / "scripts" / "whitecat_inspect.py"
@@ -468,6 +476,7 @@ class TestRunJobScriptFrozenRuntime:
             )
         )
 
+        parent_argv, parent_stdout, parent_stderr = sys.argv, sys.stdout, sys.stderr
         success, output = _run_job_script("whitecat_inspect.py")
 
         assert success is True
@@ -475,6 +484,9 @@ class TestRunJobScriptFrozenRuntime:
         # sys.argv behaves like `python script.py` (argv[0] is the script).
         assert "argv0=" in output
         assert "whitecat_inspect.py" in output
+        assert sys.argv is parent_argv
+        assert sys.stdout is parent_stdout
+        assert sys.stderr is parent_stderr
 
     def test_frozen_runtime_no_agent_job_runs_py_script(
         self, cron_env, frozen_runtime, monkeypatch
@@ -535,18 +547,36 @@ class TestRunJobScriptFrozenRuntime:
         assert output == "clean"
 
     def test_frozen_runtime_script_timeout(self, cron_env, frozen_runtime, monkeypatch):
-        """The worker process honours the script timeout."""
+        """Timeout kills the script process instead of leaving a live thread."""
         from cron import scheduler as sched_mod
         from cron.scheduler import _run_job_script
 
         monkeypatch.setattr(sched_mod, "_SCRIPT_TIMEOUT", 1)
 
         script = cron_env / "scripts" / "slow.py"
-        script.write_text("import time; time.sleep(30)\n")
+        pid_file = cron_env / "script.pid"
+        script.write_text(
+            "import os, time\nfrom pathlib import Path\n"
+            f"Path({str(pid_file)!r}).write_text(str(os.getpid()))\n"
+            "time.sleep(30)\n"
+        )
 
         success, output = _run_job_script("slow.py")
         assert success is False
         assert "timed out" in output.lower()
+        import psutil
+        assert not psutil.pid_exists(int(pid_file.read_text()))
+
+    def test_frozen_runtime_workdir_and_sibling_import(self, cron_env, frozen_runtime):
+        from cron.scheduler import _run_job_script
+
+        (cron_env / "scripts" / "sibling.py").write_text('VALUE = "sibling-loaded"\n')
+        (cron_env / "scripts" / "cwd.py").write_text(
+            'import os, sibling\nprint(sibling.VALUE)\nprint(os.getcwd())\n'
+        )
+        success, output = _run_job_script("cwd.py", workdir=str(cron_env))
+        assert success is True
+        assert output.splitlines() == ["sibling-loaded", str(cron_env)]
 
 
 class TestBuildJobPromptWithScript:

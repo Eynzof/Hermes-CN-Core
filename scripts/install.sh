@@ -6,7 +6,7 @@
 # Uses uv for desktop/server installs and Python's stdlib venv + pip on Termux.
 #
 # Usage:
-#   curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/Eynzof/Hermes-CN-Core/main/scripts/install.sh | bash
 #
 # Or with options:
 #   curl -fsSL ... | bash -s -- --no-venv --skip-setup
@@ -44,8 +44,8 @@ NC='\033[0m' # No Color
 BOLD='\033[1m'
 
 # Configuration
-REPO_URL_SSH="git@github.com:NousResearch/hermes-agent.git"
-REPO_URL_HTTPS="https://github.com/NousResearch/hermes-agent.git"
+REPO_URL_SSH="git@github.com:Eynzof/Hermes-CN-Core.git"
+REPO_URL_HTTPS="https://github.com/Eynzof/Hermes-CN-Core.git"
 HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
 HERMES_HOME_ARG_EXPLICIT=false
 # INSTALL_DIR is resolved AFTER arg parsing and OS detection so we can pick an

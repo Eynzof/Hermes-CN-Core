@@ -92,6 +92,13 @@ class TestNonWindowsNoop:
             "column -t file",
             "netcat -z example.com 80",
             "echo D:\\repo\\src",
+            "bash cd /c/dev/x && rev",
+            "sh -c 'rev <<< abc'",
+            "echo hi > nul",
+            "cat /tmp/x",
+            "/c/Windows",
+            "timeout 5 rev",
+            "xargs -a file.txt rev",
         ],
     )
     def test_non_windows_is_byte_for_byte_noop(self, platform: str, command: str) -> None:
@@ -413,6 +420,257 @@ class TestBashFixWindowsPaths:
         result = _fix_for_windows(source)
         assert result.path_changes == ()
         assert result.command == source
+
+
+# ============================================================================
+# Git Bash virtual absolute path rewriting
+# ============================================================================
+
+class TestBashFixVirtualPaths:
+    """Git Bash virtual absolute paths get native Windows spellings.
+
+    ``/tmp/x`` maps to the user's Windows temp directory and ``/c/x`` to
+    ``C:/x``; native Windows executables cannot resolve the virtual
+    spellings.  Assertions derive the temp dir at runtime so they hold on
+    any machine.
+    """
+
+    @staticmethod
+    def _win_temp() -> str:
+        import tempfile
+
+        return tempfile.gettempdir().replace("\\", "/")
+
+    def test_tmp_path_rewritten_to_windows_temp(self) -> None:
+        result = _fix_for_windows("cat /tmp/out.txt")
+        assert result.path_changes == ("/tmp/out.txt",)
+        assert f"{self._win_temp()}/out.txt" in result.command
+
+    def test_exact_tmp_rewritten(self) -> None:
+        result = _fix_for_windows("ls /tmp")
+        assert result.path_changes == ("/tmp",)
+        assert result.command.endswith(self._win_temp())
+
+    def test_tmp_lookalike_not_rewritten(self) -> None:
+        source = "ls /tmpfoo"
+        assert _fix_for_windows(source) == BashFix(source)
+
+    def test_drive_mount_rewritten(self) -> None:
+        result = _fix_for_windows("cat /c/Windows/system.ini")
+        assert result.path_changes == ("/c/Windows/system.ini",)
+        assert "C:/Windows/system.ini" in result.command
+        result = _fix_for_windows("ls /d/work")
+        assert "D:/work" in result.command
+
+    def test_bare_drive_mount_left_alone(self) -> None:
+        # A single-letter mount must never be mistaken for the cmd.exe
+        # ``cd /d`` flag's drive path.
+        source = "cd /c"
+        assert _fix_for_windows(source) == BashFix(source)
+
+    def test_command_word_virtual_path_rewritten(self) -> None:
+        result = _fix_for_windows("/c/tools/rg.exe *.txt")
+        assert result.path_changes == ("/c/tools/rg.exe",)
+        assert "C:/tools/rg.exe *.txt" in result.command
+
+    def test_quoted_virtual_path_is_data_and_left_alone(self) -> None:
+        source = "cat '/tmp/x' \"/c/y\""
+        result = _fix_for_windows(source)
+        assert result.path_changes == ()
+        assert result.command == source
+
+
+# ============================================================================
+# nul redirection target rewriting
+# ============================================================================
+
+class TestBashFixNulRedirection:
+    """Unquoted output-redirection targets ``nul``/``NUL`` become /dev/null.
+
+    Git Bash treats ``nul`` as an ordinary filename and would silently
+    create an empty file literally named ``nul``; quoted spellings are
+    intentional filenames and input redirections never create a file.
+    """
+
+    def test_output_redirect_rewritten(self) -> None:
+        result = _fix_for_windows("echo hi > nul")
+        assert result.nul_fixes == ("nul",)
+        assert result.command == "echo hi > /dev/null"
+        assert result.changed
+
+    def test_fd_prefixed_and_uppercase_rewritten(self) -> None:
+        result = _fix_for_windows("cmd 2> NUL")
+        assert result.nul_fixes == ("NUL",)
+        assert result.command == "cmd 2> /dev/null"
+
+    def test_append_redirect_rewritten(self) -> None:
+        result = _fix_for_windows("cmd >> nul")
+        assert result.command == "cmd >> /dev/null"
+
+    def test_input_redirect_left_alone(self) -> None:
+        source = "cmd < nul"
+        assert _fix_for_windows(source) == BashFix(source)
+
+    def test_quoted_nul_is_an_intentional_filename(self) -> None:
+        source = "echo hi > 'nul'"
+        assert _fix_for_windows(source) == BashFix(source)
+
+    def test_plain_argument_left_alone(self) -> None:
+        source = "echo nul"
+        assert _fix_for_windows(source) == BashFix(source)
+
+    def test_warning_mentions_dev_null(self) -> None:
+        result = _fix_for_windows("echo hi > nul")
+        assert "/dev/null" in result.warning
+        assert "`nul`" in result.warning
+
+
+# ============================================================================
+# Redundant shell wrapper removal
+# ============================================================================
+
+class TestBashFixShellWrappers:
+    """Leading ``bash``/``sh``/``dash``/``ash`` invocations are unwrapped.
+
+    The Bash tool already runs the command via bash, so a redundant shell
+    word (``bash cd /c/dev/x && ...``) or inline-script form
+    (``bash -c '...'``) is removed — except where bash would open a
+    script file, semantics would change, or an outer command wrapper
+    provides the executable context.
+    """
+
+    def test_prefix_form_unwrapped(self) -> None:
+        result = _fix_for_windows("bash cd /c/dev/x && grep foo t.txt")
+        assert result.shell_wrappers == ("bash",)
+        assert result.command == "cd C:/dev/x && grep foo t.txt"
+
+    @pytest.mark.parametrize("shell", ["sh", "dash", "ash"])
+    def test_other_posix_shells_unwrapped(self, shell: str) -> None:
+        result = _fix_for_windows(f"{shell} pwd")
+        assert result.shell_wrappers == (shell,)
+        assert result.command == "pwd"
+
+    def test_c_form_unwrapped_and_inner_scanned(self) -> None:
+        result = _fix_for_windows(r"bash -c 'cd C:\x && rev'")
+        assert result.shell_wrappers == ("bash -c",)
+        assert result.replacements == ("rev",)
+        assert result.path_changes == (r"C:\x",)
+        assert "export -f rev" in result.command
+        assert result.command.endswith("cd C:/x && rev")
+
+    def test_login_cluster_c_form_unwrapped(self) -> None:
+        result = _fix_for_windows("bash -lc 'rev <<< abc'")
+        assert result.shell_wrappers == ("bash -c",)
+        assert result.replacements == ("rev",)
+        assert result.command.endswith("rev <<< abc")
+
+    def test_script_invocations_kept(self) -> None:
+        for source in (
+            "bash script.sh",
+            "bash ./deploy.sh",
+            "bash ../tools/check.sh",
+            "bash sub/dir/tool",
+        ):
+            assert _fix_for_windows(source) == BashFix(source), source
+
+    def test_semantic_options_kept(self) -> None:
+        for source in ("bash -e echo hi", "bash --norc echo hi"):
+            assert _fix_for_windows(source) == BashFix(source), source
+
+    def test_trailing_script_argv_kept(self) -> None:
+        source = "bash -c 'echo hi' arg0"
+        assert _fix_for_windows(source) == BashFix(source)
+
+    def test_assignment_prefix_kept(self) -> None:
+        source = "VAR=x bash -c 'echo $VAR'"
+        assert _fix_for_windows(source) == BashFix(source)
+
+    def test_bare_shell_kept(self) -> None:
+        for source in ("bash", "bash && echo hi"):
+            assert _fix_for_windows(source) == BashFix(source), source
+
+    def test_under_command_wrapper_c_form_kept_and_exported(self) -> None:
+        # ``env`` execs argv and cannot call shell functions, so the
+        # ``bash -c`` wrapper stays; the fallback is exported for the
+        # nested shell to inherit.
+        result = _fix_for_windows("env bash -c 'rev <<< abc'")
+        assert result.shell_wrappers == ()
+        assert result.replacements == ("rev",)
+        assert "env bash -c" in result.command
+        assert "export -f rev" in result.command
+
+    def test_under_command_wrapper_prefix_form_drops_shell_word(self) -> None:
+        result = _fix_for_windows("nohup bash cd /c/dev/x")
+        assert result.shell_wrappers == ("bash",)
+        assert result.command == "nohup cd C:/dev/x"
+
+    def test_warning_mentions_removed_wrapper(self) -> None:
+        result = _fix_for_windows("bash cd /c/dev/x")
+        assert "Removed redundant shell wrapper" in result.warning
+        assert "`bash`" in result.warning
+
+
+# ============================================================================
+# Command wrappers (timeout/stdbuf/nice/xargs, gtimeout/watch fallbacks)
+# ============================================================================
+
+class TestBashFixCommandWrappers:
+    """Wrapper commands keep their wrapped command word scannable.
+
+    ``timeout`` consumes its DURATION operand before the command word;
+    exec'ing wrappers (``timeout``/``xargs``/...) receive the standalone
+    runner because they cannot invoke shell functions; same-shell
+    wrappers (``watch``) resolve the word against the prefix functions.
+    """
+
+    def test_timeout_duration_operand_consumed(self) -> None:
+        result = _fix_for_windows("timeout 5 rev")
+        assert result.replacements == ("rev",)
+        assert "timeout 5 /usr/bin/bash -c" in result.command
+
+    def test_timeout_option_and_duration_consumed(self) -> None:
+        result = _fix_for_windows("timeout -s KILL 5s rev")
+        assert result.replacements == ("rev",)
+        assert "timeout -s KILL 5s /usr/bin/bash -c" in result.command
+
+    def test_stdbuf_and_nice_wrappers(self) -> None:
+        result = _fix_for_windows("stdbuf -oL rev")
+        assert "stdbuf -oL /usr/bin/bash -c" in result.command
+        result = _fix_for_windows("nice -n 5 rev")
+        assert "nice -n 5 /usr/bin/bash -c" in result.command
+
+    def test_xargs_path_option_value(self) -> None:
+        result = _fix_for_windows("xargs -a file.txt rev")
+        assert result.replacements == ("rev",)
+        assert "xargs -a file.txt /usr/bin/bash -c" in result.command
+        result = _fix_for_windows(r"xargs --arg-file=D:\f.txt rev")
+        assert "--arg-file=D:/f.txt" in result.command
+        assert result.path_changes == (r"--arg-file=D:\f.txt",)
+
+    def test_gtimeout_fallback_wrapper(self) -> None:
+        result = _fix_for_windows("gtimeout 5 rev")
+        assert result.replacements == ("gtimeout", "rev")
+        assert "export -f gtimeout" in result.command
+        assert "gtimeout 5 /usr/bin/bash -c" in result.command
+
+    def test_watch_quoted_operand_scanned(self) -> None:
+        result = _fix_for_windows("watch -n1 'rev <<< abc'")
+        assert result.replacements == ("watch", "rev")
+        assert "export -f watch" in result.command
+        assert "export -f rev" in result.command
+        assert result.command.endswith("watch -n1 'rev <<< abc'")
+
+    def test_watch_fallback_body_evals_in_current_shell(self) -> None:
+        result = _fix_for_windows("watch date")
+        assert result.replacements == ("watch",)
+        assert 'eval "$*"' in result.command
+
+    def test_unquoted_watch_operand_resolves_against_functions(self) -> None:
+        # No runner rewrite: watch is a same-shell wrapper, so the bare
+        # word keeps resolving to the exported fallback function.
+        result = _fix_for_windows("watch rev")
+        assert result.replacements == ("watch", "rev")
+        assert result.command.endswith("watch rev")
 
 
 # ============================================================================

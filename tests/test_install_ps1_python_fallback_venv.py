@@ -78,6 +78,14 @@ def test_install_venv_reresolves_before_creating_venv(source: str):
     )
 
 
+def test_cn_fork_disallows_lower_python_fallbacks(source: str):
+    """Python <3.14 cannot satisfy this fork's requires-python contract."""
+    assert re.search(r"\$PythonFallbackVersions\s*=\s*@\(\)", source), (
+        "Hermes-CN-Core requires Python >=3.14, so the Windows installer must "
+        "not fall back to Python 3.12/3.13/3.10"
+    )
+
+
 def test_fallback_list_is_single_source_of_truth(source: str):
     """The fallback versions live in one shared constant, used by both paths.
 

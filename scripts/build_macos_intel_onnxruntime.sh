@@ -33,6 +33,10 @@ test "$(cat "$source_dir/VERSION_NUMBER")" = "1.27.0"
 # Set the ordinary CMake wheel target explicitly as well. A successful build
 # does not replace validation on the oldest supported operating system.
 export MACOSX_DEPLOYMENT_TARGET="$deployment_target"
+# setup-python provides a universal2 interpreter. CMake builds only x86_64,
+# so tell Python's wheel builder the same target instead of inheriting the
+# interpreter's universal2 tag. This sets both filename and WHEEL metadata.
+export _PYTHON_HOST_PLATFORM="macosx-${deployment_target}-x86_64"
 "$python_bin" "$source_dir/tools/ci_build/build.py" \
   --build_dir "$build_root/build" \
   --config Release --update --build --build_wheel \
@@ -45,11 +49,22 @@ export MACOSX_DEPLOYMENT_TARGET="$deployment_target"
     onnxruntime_BUILD_UNIT_TESTS=OFF
 
 "$python_bin" - "$build_root/build/Release/dist" "$output_dir" "$source_commit" "$deployment_target" <<'PY'
-import hashlib, json, platform, shutil, sys
+import hashlib, json, platform, shutil, subprocess, sys, tempfile, zipfile
 from pathlib import Path
 source, output = Path(sys.argv[1]), Path(sys.argv[2])
 wheels = list(source.glob("onnxruntime-1.27.0-cp314-cp314-macosx_*_x86_64.whl"))
 assert len(wheels) == 1, f"Expected one CPython 3.14 Intel wheel, found {wheels}"
+expected_tag = f"cp314-cp314-macosx_{sys.argv[4].replace('.', '_')}_x86_64"
+with zipfile.ZipFile(wheels[0]) as archive, tempfile.TemporaryDirectory() as extracted:
+    metadata = archive.read("onnxruntime-1.27.0.dist-info/WHEEL").decode()
+    tags = [line.removeprefix("Tag: ") for line in metadata.splitlines() if line.startswith("Tag: ")]
+    assert tags == [expected_tag], f"Wheel metadata has unexpected tags: {tags}"
+    native_files = [name for name in archive.namelist() if name.endswith((".so", ".dylib"))]
+    assert native_files, "Wheel contains no native runtime libraries"
+    for name in native_files:
+        path = archive.extract(name, extracted)
+        architectures = subprocess.check_output(["lipo", "-archs", path], text=True).split()
+        assert architectures == ["x86_64"], f"Unexpected Mach-O architectures in {name}: {architectures}"
 wheel = output / wheels[0].name
 shutil.copy2(wheels[0], wheel)
 with wheel.open("rb") as stream:
@@ -58,6 +73,7 @@ record = {
     "sourceRepository": "microsoft/onnxruntime", "sourceCommit": sys.argv[3],
     "version": "1.27.0", "pythonVersion": platform.python_version(),
     "requestedDeploymentTarget": sys.argv[4], "wheel": wheel.name, "sha256": digest,
+    "wheelTag": expected_tag, "verifiedMachOArchitecture": "x86_64",
 }
 (output / "build-record.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
 print(json.dumps(record, indent=2))

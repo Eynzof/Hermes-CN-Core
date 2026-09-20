@@ -26,8 +26,8 @@ For the community production channel, manifests and archives use the release
 mirror. The workflow fixes the immutable download URL **before signing**:
 
 ```
-https://hot-update-download.hermesagent.org.cn/runtime-v0.21.0-cn.15/stable-win32-x64.json
-https://hot-update-download.hermesagent.org.cn/runtime-v0.21.0-cn.15/hermes-agent-cn-runtime-win32-x64.zip
+https://hot-update-download.hermesagent.org.cn/runtime-v0.21.0-cn.16/stable-win32-x64.json
+https://hot-update-download.hermesagent.org.cn/runtime-v0.21.0-cn.16/hermes-agent-cn-runtime-win32-x64.zip
 ```
 
 `RUNTIME_ARTIFACT_BASE_URL` is an optional repository variable for a custom
@@ -130,7 +130,7 @@ the old key and will reject anything signed by the new one.
    release available for rollback.
 
 For a build without creating a GitHub Release, dispatch `release-runtime` on
-the frozen source branch with `version=0.21.0-cn.15` and `channel=stable`.
+the frozen source branch with `version=0.21.0-cn.16` and `channel=stable`.
 `artifact_tag` defaults to `runtime-v<version>` and may be explicitly overridden
 for an isolated test release. The signed archives and manifests are retained as
 Actions artifacts; the same bytes can subsequently be uploaded to a draft.

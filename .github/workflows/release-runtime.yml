@@ -73,7 +73,9 @@ jobs:
             platform: win32
             arch: x64
             ext: .exe
-          - runner: macos-latest
+          # Build and execute on the supported OS floor. A newer runner can
+          # select wheels requiring macOS 15 despite a deployment target of 14.
+          - runner: macos-14
             platform: darwin
             arch: arm64
             ext: ""

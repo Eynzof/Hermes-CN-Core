@@ -94,7 +94,7 @@
 
 **P-052 做了什么**（kimi `bash_tool` win32 对等移植，全部在 `tools/environments/local.py`）：
 
-1. **调用处 win32 门控** — `_wrap_command` 在 `fix_bash_command` 前检查 `sys.platform == "win32"`（POSIX 主机逐字节空操作）；仅当修复器真正改动命令时才记录 `_bash_fix_warnings`。
+1. **调用处 win32 门控** — `_wrap_command` 在 `fix_bash_command` 前检查 `sys.platform == "win32"`（POSIX 主机逐字节空操作）；当修复器真正改动命令、或标记出无 Git Bash 等价实现的命令时记录 `_bash_fix_warnings`。
 2. **git.exe 发现链** — `_where_git_executables`（`where.exe git`）、`_git_bash_candidate_from_git_path`（`<gitDir>/../bin/bash.exe`）、`_git_exec_path`（带超时 `git --exec-path`）、`_git_install_root_from_exec_path`（从 `mingw*/libexec/git-core` 上溯）、`_git_bash_candidates_from_exec_path`；接入 `_find_bash` 作为**最后**候选源（env 覆盖 → 托管便携 Git → 已知位置 → PATH 之后）；`where.exe`/`git` 子进程用 `windows_hide_flags()`。
 3. **MSYSTEM 中和** — `_is_git_bash_install`（盘符锚定 `<root>/cmd/git.exe` 标记；`bin/bash.exe` 与 `usr/bin/bash.exe` 两种布局；真实 MSYS2 安装永不匹配）+ `_MSYSTEM_NEUTRALIZE_PREFIX = "export MSYSTEM=; "` + `_with_msystem_neutralized`，在 `_wrap_command` 的 win32 分支、bash-fix 之后逐命令应用，让子进程即使快照导出 `MINGW64` 也看到空 `MSYSTEM`。
 4. **`_encode_startup_script`** — base64+gzip 自解码单行封装（stdlib `base64`/`gzip`；与 kimi 的 `pybase64` 输出一致）。暂无生产调用者——它是交互式 `bash -i` 引导集的三分之一，为将来的交互式 Git Bash 模式备好。
@@ -114,6 +114,12 @@
 
 **是否上游？** 建议——显式选中的 shell 缺失时优雅降级是通用能力；PowerShell 随每个 Windows 系统自带，回退始终安全。MSYSTEM 中和、git.exe 发现链、标记检查与 macOS 候选是 kimi 的设计且通用；win32 门控与 `_run_bash` shell 路径一致性是正确性修复。POSIX 或 Git Bash 健康时无行为变化。有意不移植：`_bash_runs`（已被 Hermes 更强的 `_bash_starts` 取代）与 Windows shell 默认策略（刻意分叉）。
 
+
+**bash_fix 扫描器同步（2026-09-20）。** `tools/environments/bash_fix.py` 已与更新的 kimi 实现对齐（`bin/kimix_native/_shell_compat.py`，即 `src/kimix/tools/file/bash/bash_fix.py` 的权威副本）。移植保留本模块的公开 API、`__hermes_` shell 变量前缀与 win32 门控；除这些之外扫描器主体与参考实现逐字节一致。
+
+相比首次移植新增：`free`/`uptime`/`top`/`htop`/`ss`/`ip`/`man`/`systemctl`/`sudo` 回退（基于 Windows 原生工具；`htop` 复用 `top`）；`journalctl` 记录为无忠实等价实现（`BashFix.unsupported`——命令文本逐字节保留，`_wrap_command` 现在会为它记录 `_bash_fix_warnings`，让模型看到原因与 `Get-WinEvent` 替代方案，而不是裸的 "command not found"）；未加引号的 `nul`/`NUL` 输出重定向改写为 `/dev/null`；Git Bash 虚拟绝对路径改写为原生拼写（`/tmp/x` → 真实 Windows 临时目录，`/c/x` → `C:/x`）；冗余的 `bash`/`sh` 调用被解包（`bash cd /c/dev/x && …`、`bash -c '…'`、`bash -lc`），内联脚本按独立命令上下文扫描，而 `bash -ec` 这类选项簇、脚本路径、尾部 argv 与赋值前缀一律保持原样；`timeout`/`stdbuf`/`nice`/`xargs` 视为命令包装器，操作数同样获得回退（GNU `timeout` 的 DURATION 操作数先被消费）；`gtimeout`/`watch`/`sudo` 作为带回退定义的包装器；回退函数通过 `export -f` 导出，使嵌套 shell（runner 脚本与 `bash -c` 操作数）继承它们。
+
+验证：与参考扫描器逐字段差分（186 条语料 + 20000 条随机输入，0 处不一致；`sys.platform` 打补丁后的非 Windows 空操作契约同样 0 处不一致）、`ruff check` 通过，并扩展了 `tests/tools/test_bash_fix.py`（新增回退/包装器/`nul`/虚拟路径/unsupported/结果 API 用例，外加对生成代码的 `bash -n` 语法检查）。`tests/tools/test_local_git_bash_port.py` 不受影响（MSYSTEM 与 git.exe 发现链未改动）。
 
 ### P-062：测试套件卫生清理——移除 ad-hoc / magic-mock / 防 LLM 幻觉测试
 

@@ -2953,8 +2953,12 @@ class LocalEnvironment(BaseEnvironment):
         Bash the raw command is first covered by :func:`fix_bash_command`
         (mirroring kimix ``bash_tool._prepare_command``): verified native
         POSIX command words (``open``, ``pbcopy``, ``rev``, ``gtimeout``, …)
-        get bundled fallback definitions prepended and Windows backslash
-        paths are normalized, so the wrapper embeds a Git Bash-safe command.
+        get bundled fallback definitions prepended, Windows backslash and Git
+        Bash virtual paths (``/tmp/x``, ``/c/x``) are normalized, redundant
+        ``bash``/``sh`` invocations are unwrapped, and ``> nul`` becomes
+        ``> /dev/null``, so the wrapper embeds a Git Bash-safe command.
+        Command names with no faithful Git Bash equivalent are left untouched
+        and reported through ``bash_fix_warnings`` with the reason.
         The fix is gated explicitly on ``sys.platform == "win32"`` — it is a
         Windows-only rewrite that turns native POSIX commands into Git Bash
         compatible form, and on non-Windows hosts ``_wrap_command`` skips the
@@ -2973,7 +2977,11 @@ class LocalEnvironment(BaseEnvironment):
         if sys.platform == "win32":
             bash_fix_result = fix_bash_command(command)
             command = bash_fix_result.command
-            if bash_fix_result.changed:
+            # ``unsupported`` names are left byte-for-byte in the command (the
+            # fixer only records them), so they are not part of ``changed``:
+            # the wrapper still surfaces the reason + native alternative here
+            # instead of letting Bash fail with a bare "command not found".
+            if bash_fix_result.changed or bash_fix_result.unsupported:
                 self._bash_fix_warnings = bash_fix_result.warning
             # [CN-fork P-052] MSYSTEM neutralization (ported from kimix
             # ``bash_tool._with_msystem_neutralized``): Git Bash's

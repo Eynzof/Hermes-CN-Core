@@ -11,31 +11,54 @@ Windows-style backslash paths (``D:\\repo\\src``, ``\\\\server\\share``,
 or as the command word itself (``C:\\tools\\rg.exe``) — are rewritten to the
 forward-slash spellings Git Bash understands, and the cmd.exe-only
 ``cd /d <path>`` form loses its flag
-(``cd`` accepts a single argument in Bash).  Git Bash virtual absolute paths
-that native Windows executables cannot resolve are rewritten to their real
-Windows spellings: ``/tmp/x`` to the user's temp directory and ``/c/x`` to
-``C:/x``.  An unquoted output-redirection target ``nul``/``NUL`` is rewritten to
-``/dev/null`` (Git Bash would otherwise create an empty file literally named
-``nul``).  Redundant leading shell invocations whose syntax is a bash subset
-(``bash cd /c/dev/x && ...``, ``bash -c '...'``) are unwrapped so the command
-runs directly in the Bash tool; legitimate ``bash script.sh`` invocations,
-semantic options (``-e``/``-x``/...), stdin forms, and assignment-prefixed
-shells keep their wrapper.  Rewrites are conservative: the unquoted word must
-look unambiguously like a Windows path, so quoted data, tool-level escape
-sequences, short ambiguous words such as ``a\\nb``, and single-segment
-relative paths such as ``foo\\bar`` are preserved byte-for-byte.  Words whose
-normalized form needs it (spaces, ``&``, ``;``, ...) are emitted inside double
-quotes; glob metacharacters stay unquoted so ``D:/x/*.txt`` still performs
-pathname expansion.
+(``cd`` accepts a single argument in Bash).  Git Bash virtual POSIX absolute
+paths are rewritten to the native spellings native Windows executables can
+resolve: ``/tmp/x`` becomes the real Windows temp directory (``/tmp`` in Git
+Bash is a virtual mount, so a native tool would otherwise read it as
+``<current-drive>:\\tmp\\x``) and ``/c/x``/``/d/x`` become ``C:/x``/``D:/x``.
+This makes a POSIX-style command behave the same under Git Bash and native
+POSIX bash.  A redundant leading shell
+invocation — ``bash cd /c/dev/x && ...`` or ``bash -c 'cd C:\\x && rev'`` —
+is unwrapped (and the ``-c`` inline script is scanned for fallbacks and
+paths) because the Bash tool already runs the whole string via bash, so
+``bash cd ...`` would otherwise try to open ``cd`` as a script file and fail.
+Under an active command wrapper (``env``/``nohup``/``timeout``/...) the shell
+word is an operand of that wrapper, so ``bash -c '<script>'`` keeps its shape
+and only the inline script is fixed in place.
+
+Command wrappers whose operand is itself a command are scanned as command
+contexts so missing POSIX commands behind them get their Git Bash fallback:
+``timeout`` (its one DURATION operand is consumed first), ``stdbuf``, ``nice``,
+and ``xargs`` (bundled Git Bash executables that exec their operand), plus the
+fallback wrappers ``gtimeout`` and ``watch`` (which also record their own
+fallback definition; ``watch`` re-runs its command through ``eval "$*"`` in
+the same shell, matching procps ``watch``'s ``sh -c`` behavior).  Fallback
+definitions are exported (``export -f``) so nested shells — the standalone
+runner scripts and ``bash -c`` operands — inherit them.
+
+Rewrites are conservative: the
+unquoted word must look unambiguously like a Windows path, so quoted data,
+tool-level escape sequences, short ambiguous words such as ``a\\nb``, and
+single-segment relative paths such as ``foo\\bar`` are preserved byte-for-byte.
+Words whose normalized form needs it (spaces, ``&``, ``;``, ...) are emitted
+inside double quotes; glob metacharacters stay unquoted so ``D:/x/*.txt`` still
+performs pathname expansion.
 
 The scanner is shell-aware: quoted text, comments, heredoc and here-string
 bodies, assignments, case patterns, and ordinary arguments are data, not
 commands.  Nested command substitutions and process substitutions are scanned
-as their own command contexts.  Command wrappers (``env``, ``sudo``,
-``timeout``, ``xargs``, ...) keep their wrapped command word scannable, and
-inline scripts (``bash -c '...'``, quoted ``watch`` operands) are scanned as
-their own command contexts too.  Fallback functions are exported
-(``export -f``) so nested ``bash -c`` children inherit them.
+as their own command contexts.
+
+Unquoted ``nul``/``NUL`` output redirection targets are rewritten to
+``/dev/null`` (Git Bash would otherwise quietly create a real file named
+``nul``), and command names with no faithful Windows Git Bash equivalent
+are recorded in ``BashFix.unsupported`` together with the reason — for
+those the command text is left byte-for-byte unchanged so the caller can
+explain the failure instead of running a guaranteed ``command not found``.
+
+This module is Windows-only by design: :func:`fix_bash_command` returns
+non-Windows input byte-for-byte unchanged, mirroring the call-site guard
+in ``tools/environments/local.py``.
 """
 
 from __future__ import annotations
@@ -472,10 +495,199 @@ _FALLBACK_BODIES = {
         "-t) shift;; "
         "-s) __hermes_sep=$2; shift 2;; "
         "-s?*) __hermes_sep=${1#-s}; shift;; "
-        "-*) printf '%s\\n' \"column: unsupported option for perl fallback: $1\" >&2; return 1;; "
+        "-*) printf '%s\n' \"column: unsupported option for perl fallback: $1\" >&2; return 1;; "
         "*) break;; esac; done; "
         + _COLUMN_PERL
         + " \"$__hermes_sep\" \"$@\""
+    ),
+    # POSIX utilities from the common command cheat-sheet that are absent
+    # from a bare Git Bash userland and map onto native Windows tools.
+    "free": (
+        "local __hermes_unit=K; "
+        "while (( $# )); do case $1 in "
+        "-b|--bytes) __hermes_unit=B; shift;; "
+        "-k|--kibi|--kilo) __hermes_unit=K; shift;; "
+        "-m|--mebi|--mega) __hermes_unit=M; shift;; "
+        "-g|--gibi|--giga) __hermes_unit=G; shift;; "
+        "-h|--human) __hermes_unit=H; shift;; "
+        "--help) printf '%s\n' 'free: report memory usage (Windows: Win32_OperatingSystem; no swap row)'; return 0;; "
+        "-*) printf '%s\n' \"free: unsupported option: $1\" >&2; return 1;; "
+        "*) shift;; esac; done; "
+        "local -a __hermes_m=(); "
+        "mapfile -t __hermes_m < <(powershell.exe -NoProfile -NonInteractive -Command "
+        "'$o=Get-CimInstance Win32_OperatingSystem; "
+        "Write-Output $o.TotalVisibleMemorySize; Write-Output $o.FreePhysicalMemory' "
+        "2>/dev/null | tr -d '\\r'); "
+        "if [[ ${#__hermes_m[@]} -lt 2 ]]; then "
+        "printf '%s\n' 'free: failed to query memory information' >&2; return 1; fi; "
+        "local __hermes_total=${__hermes_m[0]} __hermes_free=${__hermes_m[1]}; "
+        "local __hermes_used=$(( __hermes_total - __hermes_free )); "
+        "printf '%s\n' '               total        used        free'; "
+        "case $__hermes_unit in "
+        "B) printf 'Mem: %12d %11d %11d\n' $(( __hermes_total * 1024 )) $(( __hermes_used * 1024 )) $(( __hermes_free * 1024 ));; "
+        "M) printf 'Mem: %12d %11d %11d\n' $(( __hermes_total / 1024 )) $(( __hermes_used / 1024 )) $(( __hermes_free / 1024 ));; "
+        "G) printf 'Mem: %12d %11d %11d\n' $(( __hermes_total / 1024 / 1024 )) $(( __hermes_used / 1024 / 1024 )) $(( __hermes_free / 1024 / 1024 ));; "
+        "H) awk -v t=\"$__hermes_total\" -v f=\"$__hermes_free\" '"
+        "function h(x,  i){i=1; while(x>=10240&&i<4){x=x/1024;i++} "
+        "return sprintf(\"%.1f%s\", x, substr(\"KMGT\", i, 1))} "
+        "BEGIN{printf \"Mem: %11s %10s %10s\\n\", h(t), h(t-f), h(f)}';; "
+        "*) printf 'Mem: %12d %11d %11d\n' \"$__hermes_total\" \"$__hermes_used\" \"$__hermes_free\";; esac"
+    ),
+    "uptime": (
+        "local __hermes_since=0; "
+        "while (( $# )); do case $1 in "
+        "-s|--since) __hermes_since=1; shift;; "
+        "--help) printf '%s\n' 'uptime: tell how long the system has been running (Windows approximation; no user count)'; return 0;; "
+        "-*) printf '%s\n' \"uptime: unsupported option: $1\" >&2; return 1;; "
+        "*) printf '%s\n' \"uptime: unsupported argument: $1\" >&2; return 1;; esac; done; "
+        "local -a __hermes_u=(); "
+        "mapfile -t __hermes_u < <(powershell.exe -NoProfile -NonInteractive -Command "
+        "'$b=(Get-CimInstance Win32_OperatingSystem).LastBootUpTime; "
+        "Write-Output $b.ToString(\"yyyy-MM-dd HH:mm:ss\"); "
+        "$up=New-TimeSpan -Start $b -End (Get-Date); "
+        "Write-Output $up.Days; Write-Output $up.Hours; Write-Output $up.Minutes' "
+        "2>/dev/null | tr -d '\\r'); "
+        "if [[ ${#__hermes_u[@]} -lt 4 ]]; then "
+        "printf '%s\n' 'uptime: failed to query boot time' >&2; return 1; fi; "
+        "if (( __hermes_since )); then printf '%s\n' \"${__hermes_u[0]}\"; return 0; fi; "
+        "local __hermes_days=${__hermes_u[1]} __hermes_hours=${__hermes_u[2]} __hermes_mins=${__hermes_u[3]}; "
+        "printf -v __hermes_mins '%02d' \"$__hermes_mins\"; "
+        "local __hermes_up; "
+        "if (( __hermes_days > 0 )); then "
+        "printf -v __hermes_up '%d day(s), %d:%s' \"$__hermes_days\" \"$__hermes_hours\" \"$__hermes_mins\"; "
+        "else printf -v __hermes_up '%d:%s' \"$__hermes_hours\" \"$__hermes_mins\"; fi; "
+        "printf '%s up %s, load average: n/a (not reported on Windows)\n' \"$(date '+%H:%M:%S')\" \"$__hermes_up\""
+    ),
+    "top": (
+        "local __hermes_delay=3 __hermes_iters=0 __hermes_batch=0 __hermes_count=0; "
+        "while (( $# )); do case $1 in "
+        "-b) __hermes_batch=1; shift;; "
+        "-d) __hermes_delay=$2; shift 2;; "
+        "-d?*) __hermes_delay=${1#-d}; shift;; "
+        "-n) __hermes_iters=$2; shift 2;; "
+        "-n?*) __hermes_iters=${1#-n}; shift;; "
+        "-h|--help) printf '%s\n' 'top: display processes (Windows approximation via Get-Process; Ctrl+C quits)'; return 0;; "
+        "-*) printf '%s\n' \"${FUNCNAME[0]}: unsupported option: $1\" >&2; return 1;; "
+        "*) shift;; esac; done; "
+        "__hermes_snapshot() { powershell.exe -NoProfile -NonInteractive -Command "
+        "'Get-Process | Sort-Object -Property CPU -Descending | "
+        "Select-Object -First 25 Id,ProcessName,CPU,WorkingSet | Format-Table -AutoSize'; }; "
+        "if (( __hermes_batch )); then "
+        "local __hermes_n=$__hermes_iters; (( __hermes_n > 0 )) || __hermes_n=1; "
+        "while (( __hermes_count < __hermes_n )); do "
+        "__hermes_snapshot; __hermes_count=$(( __hermes_count + 1 )); done; return 0; fi; "
+        "while (( __hermes_iters == 0 || __hermes_count < __hermes_iters )); do "
+        "clear; __hermes_snapshot; __hermes_count=$(( __hermes_count + 1 )); "
+        "(( __hermes_iters > 0 && __hermes_count >= __hermes_iters )) && break; "
+        "sleep \"$__hermes_delay\"; done"
+    ),
+    "ss": (
+        "local __hermes_stats=0; "
+        "local -a __hermes_split=(); "
+        "local __hermes_combo='' __hermes_i=0; "
+        "while (( $# )); do "
+        "if [[ $1 == -[!-]* && ${#1} -gt 2 ]]; then "
+        "__hermes_combo=${1#-}; __hermes_split=(); shift; "
+        "for (( __hermes_i=0; __hermes_i<${#__hermes_combo}; __hermes_i++ )); do "
+        "__hermes_split+=(-${__hermes_combo:__hermes_i:1}); done; "
+        "set -- \"${__hermes_split[@]}\" \"$@\"; continue; fi; "
+        "case $1 in "
+        "-s|--summary) __hermes_stats=1; shift;; "
+        "-t|-u|-l|-n|-a|-p|-e|-m|-r|-i|-x|-4|-6|-T|--tcp|--udp|--listening|--numeric|--all|--process|--extended|--memory|--resolve|--inet|--inet4|--inet6) shift;; "
+        "--*) shift;; "
+        "-*) printf '%s\n' \"ss: unsupported option: $1\" >&2; return 1;; "
+        "*) shift;; esac; done; "
+        "if (( __hermes_stats )); then netstat -s; else netstat -ano; fi"
+    ),
+    "ip": (
+        "local __hermes_sub=''; "
+        "while (( $# )); do case $1 in "
+        "-4|-6|-br|--brief|-details|-s|-human|-iec|-o|-oneline|-c|--color|-color) shift;; "
+        "-h|--help) __hermes_sub=help; shift;; "
+        "-*) printf '%s\n' \"ip: unsupported option: $1\" >&2; return 1;; "
+        "*) if [[ -z $__hermes_sub ]]; then __hermes_sub=$1; fi; shift;; esac; done; "
+        "case $__hermes_sub in "
+        "help) printf '%s\n' 'Usage: ip [addr|link|route|neigh] (Windows equivalents: ipconfig / Get-NetAdapter / route print / arp -a)'; return 0;; "
+        "'') printf '%s\n' 'Usage: ip [addr|link|route|neigh] (Windows equivalents: ipconfig / Get-NetAdapter / route print / arp -a)' >&2; return 1;; "
+        "addr|address|a) ipconfig;; "
+        "link|l) powershell.exe -NoProfile -NonInteractive -Command "
+        "'Get-NetAdapter | ForEach-Object { \"$($_.Name) $($_.Status) $($_.LinkSpeed) $($_.MacAddress)\" }';; "
+        "route|r) route print;; "
+        "neigh|n) arp -a;; "
+        "*) printf '%s\n' \"ip: unsupported object: $__hermes_sub (supported: addr link route neigh)\" >&2; return 1;; esac"
+    ),
+    "man": (
+        "local __hermes_rc=0 __hermes_seen=0; "
+        "while (( $# )); do case $1 in "
+        "--help) printf '%s\n' 'man: show command help (fallback prints <command> --help)'; return 0;; "
+        "--) shift; break;; "
+        "-*) printf '%s\n' \"man: unsupported option for --help fallback: $1\" >&2; return 1;; "
+        "*) break;; esac; done; "
+        "while (( $# )); do "
+        "if [[ $1 =~ ^[0-9]+$ ]]; then shift; continue; fi; "
+        "__hermes_seen=1; \"$1\" --help || __hermes_rc=1; shift; done; "
+        "if (( ! __hermes_seen )); then printf '%s\n' 'man: missing command name' >&2; return 1; fi; "
+        "return $__hermes_rc"
+    ),
+    "systemctl": (
+        "local __hermes_cmd=''; "
+        "local -a __hermes_names=(); "
+        "while (( $# )); do case $1 in "
+        "-q|--quiet|--no-pager|--plain|--full|-l|--no-legend|--no-ask-password|--user|--system|--global) shift;; "
+        "--type=*) shift;; "
+        "--) shift; break;; "
+        "-*) printf '%s\n' \"systemctl: unsupported option: $1\" >&2; return 1;; "
+        "*) if [[ -z $__hermes_cmd ]]; then __hermes_cmd=$1; else __hermes_names+=(\"$1\"); fi; shift;; esac; done; "
+        "if [[ -z $__hermes_cmd ]]; then "
+        "printf '%s\n' 'systemctl: missing subcommand (Windows service equivalents; supported: status start stop restart reload enable disable is-active is-enabled list-units list-unit-files)' >&2; return 1; fi; "
+        "case $__hermes_cmd in "
+        "status) (( ${#__hermes_names[@]} )) || { printf '%s\n' 'systemctl: missing unit name' >&2; return 1; }; "
+        "local __hermes_csv=$(IFS=,; echo \"${__hermes_names[*]}\"); "
+        "powershell.exe -NoProfile -NonInteractive -Command "
+        "\"Get-Service -Name '$__hermes_csv' | Format-List Name,DisplayName,Status,StartType\";; "
+        "start|stop|restart|reload) (( ${#__hermes_names[@]} )) || { printf '%s\n' 'systemctl: missing unit name' >&2; return 1; }; "
+        "local __hermes_ps='' __hermes_n; "
+        "for __hermes_n in \"${__hermes_names[@]}\"; do "
+        "if [[ $__hermes_cmd == stop || $__hermes_cmd == restart || $__hermes_cmd == reload ]]; then "
+        "__hermes_ps+=\"Stop-Service -Name '$__hermes_n' -ErrorAction Stop; \"; fi; "
+        "if [[ $__hermes_cmd == start || $__hermes_cmd == restart || $__hermes_cmd == reload ]]; then "
+        "__hermes_ps+=\"Start-Service -Name '$__hermes_n' -ErrorAction Stop; \"; fi; done; "
+        "powershell.exe -NoProfile -NonInteractive -Command \"$__hermes_ps\";; "
+        "enable|disable) (( ${#__hermes_names[@]} )) || { printf '%s\n' 'systemctl: missing unit name' >&2; return 1; }; "
+        "local __hermes_start=demand; [[ $__hermes_cmd == enable ]] && __hermes_start=auto; "
+        "local __hermes_rc=0 __hermes_n; "
+        "for __hermes_n in \"${__hermes_names[@]}\"; do "
+        "sc.exe config \"$__hermes_n\" start= \"$__hermes_start\" >/dev/null || __hermes_rc=1; done; "
+        "return $__hermes_rc;; "
+        "is-active) (( ${#__hermes_names[@]} )) || { printf '%s\n' 'systemctl: missing unit name' >&2; return 1; }; "
+        "local __hermes_rc=0 __hermes_n; "
+        "for __hermes_n in \"${__hermes_names[@]}\"; do "
+        "if sc.exe query \"$__hermes_n\" 2>/dev/null | grep -q 'RUNNING'; then "
+        "printf '%s\n' active; else printf '%s\n' inactive; __hermes_rc=3; fi; done; "
+        "return $__hermes_rc;; "
+        "is-enabled) (( ${#__hermes_names[@]} )) || { printf '%s\n' 'systemctl: missing unit name' >&2; return 1; }; "
+        "local __hermes_rc=0 __hermes_n; "
+        "for __hermes_n in \"${__hermes_names[@]}\"; do "
+        "if sc.exe qc \"$__hermes_n\" 2>/dev/null | grep -q 'DISABLED'; then "
+        "printf '%s\n' disabled; __hermes_rc=1; else printf '%s\n' enabled; fi; done; "
+        "return $__hermes_rc;; "
+        "list-units|list-unit-files) "
+        "powershell.exe -NoProfile -NonInteractive -Command "
+        "'Get-Service | ForEach-Object { \"$($_.Status) $($_.Name) $($_.DisplayName)\" }';; "
+        "*) printf '%s\n' \"systemctl: unsupported subcommand: $__hermes_cmd (supported: status start stop restart reload enable disable is-active is-enabled list-units list-unit-files)\" >&2; return 1;; esac"
+    ),
+    # Windows 11 ships sudo.exe in system32; older Windows releases have no
+    # sudo at all, so the guard below only defines this on those hosts.  The
+    # body elevates through a UAC prompt: output is NOT captured (it shows in
+    # the elevated window), which is an honest, documented deviation.
+    "sudo": (
+        "if (( $# == 0 )); then printf '%s\n' 'sudo: missing command' >&2; return 1; fi; "
+        "local __hermes_bash; __hermes_bash=$(type -P bash) || { printf '%s\n' 'sudo: bash not found' >&2; return 1; }; "
+        "local __hermes_wbash; __hermes_wbash=$(cygpath -w -- \"$__hermes_bash\") || return 1; "
+        "printf '%s\n' 'sudo: elevating via UAC in a separate window; output is not captured here' >&2; "
+        "__HERMES_SUDO_CMD=\"$*\" powershell.exe -NoProfile -NonInteractive -Command "
+        "\"Start-Process -Verb RunAs -Wait -FilePath '$__hermes_wbash' -ArgumentList '-c', \\$env:__HERMES_SUDO_CMD\"; "
+        "local __hermes_rc=$?; return $__hermes_rc"
     ),
 }
 
@@ -530,7 +742,24 @@ def _wrapper_runner(name: str) -> str:
 # same ``/dev/tcp`` zero-I/O fallback.
 _FALLBACK_BODIES.setdefault("netcat", _FALLBACK_BODIES["nc"])
 
+# ``htop`` is the fancy TUI spelling of the same live-process view; the
+# Windows approximation is identical to ``top``'s.
+_FALLBACK_BODIES.setdefault("htop", _FALLBACK_BODIES["top"])
+
 _FALLBACKS = {name: _fallback_definition(name) for name in _FALLBACK_BODIES}
+
+# Commands with no faithful Windows Git Bash equivalent at all.  The scanner
+# records these in ``BashFix.unsupported`` (command text is left untouched)
+# so the app layer can refuse to run the command and return the reason in its
+# error message instead of letting Bash fail with a bare "command not found".
+_UNSUPPORTED_BODIES = {
+    "journalctl": (
+        "systemd's journal does not exist on Windows and Git Bash has no "
+        "journal daemon, so there is no faithful equivalent. Read the "
+        "application's own log file(s), or query the Windows Event Log "
+        "instead: powershell.exe Get-WinEvent -LogName Application -MaxEvents 50"
+    ),
+}
 
 _ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\+)?=")
 _NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -551,8 +780,15 @@ _COMMAND_WRAPPERS = frozenset(
 # command the wrapper executes.  ``gtimeout`` runs ``timeout "$@"`` (an
 # executable that execs argv, so its command operand needs the standalone
 # runner), while ``watch`` runs its command inside the same shell (its body
-# uses ``eval "$*"``, so a same-shell function call suffices).
-_FALLBACK_COMMAND_WRAPPERS = {"gtimeout": "timeout", "watch": "watch"}
+# uses ``eval "$*"``, so a same-shell function call suffices).  ``sudo`` maps
+# to its own wrapper semantics (option table and executable operand); the
+# fallback definition only engages on hosts without ``sudo.exe`` (pre-Windows
+# 11), where it elevates through a UAC prompt.
+_FALLBACK_COMMAND_WRAPPERS = {
+    "gtimeout": "timeout",
+    "watch": "watch",
+    "sudo": "sudo",
+}
 
 # Wrappers that require a fixed number of plain operands (options excluded)
 # before the command word.  GNU ``timeout`` takes exactly one DURATION operand
@@ -721,7 +957,7 @@ def _windows_temp_dir() -> str:
     Git Bash's ``/tmp`` maps to this directory (``cygpath -w /tmp`` reports
     the same value), but Git Bash's ``TMP``/``TEMP`` environment variables are
     MSYS-style ``/tmp`` inside the shell, so they cannot be used to translate
-    ``/tmp`` paths for native Windows executables.  The parent (hermes)
+    ``/tmp`` paths for native Windows executables.  The parent (Hermes)
     process environment holds the Windows-style spelling, which is what
     ``tempfile.gettempdir()`` returns.  On POSIX hosts this returns ``/tmp``
     (the identity for the rewrite), which keeps the scanner's platform gate
@@ -743,8 +979,11 @@ class BashFix:
     so the command runs directly in the Bash tool.  ``nul_fixes`` records each
     unquoted redirection target ``nul``/``NUL`` that was rewritten to
     ``/dev/null`` (Git Bash treats ``nul`` as an ordinary filename, silently
-    creating an empty ``nul`` file instead of discarding output).  Empty
-    tuples mean the command was returned byte-for-byte unchanged.
+    creating an empty ``nul`` file instead of discarding output).
+    ``unsupported`` records each command name that has no faithful Windows
+    Git Bash equivalent (see ``_UNSUPPORTED_BODIES`` for the reasons); the
+    command text is left byte-for-byte unchanged for those.  Empty tuples
+    mean the command was returned byte-for-byte unchanged.
     """
 
     command: str
@@ -752,6 +991,7 @@ class BashFix:
     path_changes: tuple[str, ...] = ()
     shell_wrappers: tuple[str, ...] = ()
     nul_fixes: tuple[str, ...] = ()
+    unsupported: tuple[str, ...] = ()
 
     @property
     def changed(self) -> bool:
@@ -767,6 +1007,14 @@ class BashFix:
     def warning(self) -> str:
         """Return a concise description of compatibility changes."""
         parts: list[str] = []
+        if self.unsupported:
+            details = "; ".join(
+                f"`{name}` — {_UNSUPPORTED_BODIES[name]}" for name in self.unsupported
+            )
+            parts.append(
+                "Command(s) with no Windows Git Bash equivalent: "
+                f"{details}."
+            )
         if self.replacements:
             names = ", ".join(f"`{name}`" for name in self.replacements)
             parts.append(
@@ -794,7 +1042,7 @@ class BashFix:
 
 
 @dataclass
-class _BashWrapper:
+class _Wrapper:
     kind: str
     skip_next: bool = False
     opaque: bool = False
@@ -803,16 +1051,16 @@ class _BashWrapper:
 
 
 @dataclass
-class _BashHereDoc:
+class _HereDoc:
     delimiter: str | None
     strip_tabs: bool
     expands: bool
 
 
-class _BashFixScanner:
+class _Scanner:
     """Conservative scanner for Bash executable command positions."""
 
-    __slots__ = ("s", "n", "edits", "names", "path_notes", "shell_notes", "heredoc_events", "nest_depth", "nul_fixes")
+    __slots__ = ("s", "n", "edits", "names", "path_notes", "shell_notes", "heredoc_events", "nest_depth", "nul_fixes", "unsupported")
 
     def __init__(self, command: str) -> None:
         self.s = command
@@ -824,6 +1072,7 @@ class _BashFixScanner:
         self.heredoc_events: list[tuple[int, int]] = []
         self.nest_depth = 0
         self.nul_fixes: list[str] = []
+        self.unsupported: list[str] = []
 
     def fix(self) -> BashFix:
         try:
@@ -837,6 +1086,7 @@ class _BashFixScanner:
             and not self.edits
             and not self.shell_notes
             and not self.nul_fixes
+            and not self.unsupported
         ):
             return BashFix(self.s)
         unique_names = list(dict.fromkeys(self.names))
@@ -845,8 +1095,16 @@ class _BashFixScanner:
         # operand of a command wrapper, the standalone runner scripts), where
         # the definitions above are not otherwise visible: ``env bash -c
         # 'rev <<< abc'`` keeps ``bash -c`` but the child shell still needs
-        # ``rev`` to resolve to the function.
-        exports = "\n".join(f"export -f {name}" for name in unique_names)
+        # ``rev`` to resolve to the function.  The export is conditional on
+        # the function actually being defined: a fallback whose ``command -v``
+        # guard found a real executable on PATH (coreutils ``uptime``, Windows
+        # 11 ``sudo.exe``) installs nothing, and an unconditional ``export -f``
+        # would then pollute stderr with "not a function" noise (the
+        # interactive prelude guards its exports the same way).
+        exports = "\n".join(
+            f"if declare -F {name} >/dev/null; then export -f {name}; fi"
+            for name in unique_names
+        )
         source = self._build_source()
         source = _fix_heredoc_trailing_operators(source)
         prefix = definitions + "\n" + exports + "\n" if definitions else ""
@@ -856,6 +1114,7 @@ class _BashFixScanner:
             tuple(self.path_notes),
             tuple(self.shell_notes),
             tuple(self.nul_fixes),
+            tuple(self.unsupported),
         )
 
     def _build_source(self) -> str:
@@ -927,13 +1186,19 @@ class _BashFixScanner:
     @staticmethod
     def _literal_command_name(raw: str) -> str | None:
         """Return the fallback command name produced by Bash quote removal."""
-        name = _BashFixScanner._literal_word_value(raw)
+        name = _Scanner._literal_word_value(raw)
         return name if name is not None and name in _FALLBACKS else None
+
+    @staticmethod
+    def _literal_unsupported_name(raw: str) -> str | None:
+        """Return the unsupported command name produced by Bash quote removal."""
+        name = _Scanner._literal_word_value(raw)
+        return name if name is not None and name in _UNSUPPORTED_BODIES else None
 
     @staticmethod
     def _shell_wrapper_name(raw: str) -> str | None:
         """Return the shell name when *raw* is a literal ``bash``/``sh`` word."""
-        name = _BashFixScanner._literal_word_value(raw)
+        name = _Scanner._literal_word_value(raw)
         return name if name is not None and name in _SHELL_WRAPPERS else None
 
     @staticmethod
@@ -1058,7 +1323,7 @@ class _BashFixScanner:
             if script is None:
                 return None  # expansions inside the script: leave for bash
             try:
-                inner = _BashFixScanner(script)
+                inner = _Scanner(script)
                 inner._scan_range(0, len(script))
             except RecursionError:
                 return None
@@ -1067,6 +1332,9 @@ class _BashFixScanner:
             self.path_notes.extend(inner.path_notes)
             self.shell_notes.extend(
                 n for n in inner.shell_notes if n not in self.shell_notes
+            )
+            self.unsupported.extend(
+                n for n in inner.unsupported if n not in self.unsupported
             )
             if wrapped:
                 # Keep ``<wrapper> bash -c '<script>'`` and fix the script in
@@ -1110,7 +1378,7 @@ class _BashFixScanner:
         if script is None:
             return  # expansions inside the script: leave for bash
         try:
-            inner = _BashFixScanner(script)
+            inner = _Scanner(script)
             inner._scan_range(0, len(script))
         except RecursionError:
             return
@@ -1119,6 +1387,9 @@ class _BashFixScanner:
         self.path_notes.extend(inner.path_notes)
         self.shell_notes.extend(
             n for n in inner.shell_notes if n not in self.shell_notes
+        )
+        self.unsupported.extend(
+            n for n in inner.unsupported if n not in self.unsupported
         )
         if inner.edits:
             self.edits.append((word_start, word_end, _single_quote(fixed)))
@@ -1146,10 +1417,10 @@ class _BashFixScanner:
         redirect_expected = False
         redirect_resume = True
         redirect_op: str | None = None
-        wrapper: _BashWrapper | None = None
+        wrapper: _Wrapper | None = None
         heredoc_operator: str | None = None
         herestring_flag = False
-        pending_heredocs: list[_BashHereDoc] = []
+        pending_heredocs: list[_HereDoc] = []
         case_stack: list[str] = []
         function_name_expected = False
         function_body_expected = False
@@ -1232,7 +1503,7 @@ class _BashFixScanner:
                     if heredoc is not None:
                         delimiter, expands = heredoc
                         pending_heredocs.append(
-                            _BashHereDoc(delimiter, heredoc_operator == "<<-", expands)
+                            _HereDoc(delimiter, heredoc_operator == "<<-", expands)
                         )
                 elif not herestring_flag:
                     raw_word = s[i:word_end]
@@ -1485,18 +1756,16 @@ class _BashFixScanner:
                     self._watch_command_operand(word_start, word_end, raw)
                     wrapper = None
 
-            if raw in _COMMAND_WRAPPERS:
-                wrapper = _BashWrapper(
-                    raw, operands=_WRAPPER_OPERAND_COUNTS.get(raw, 0)
-                )
-                command_expected = True
-                continue
+            # Fallback wrappers are checked first: ``sudo`` is both a plain
+            # command wrapper (operand semantics, option tables) and a
+            # fallback name whose definition must be recorded for hosts
+            # without ``sudo.exe``.
             fallback_wrapper = _FALLBACK_COMMAND_WRAPPERS.get(raw)
             if fallback_wrapper is not None:
-                # ``gtimeout 5 rev``/``watch -n1 rev``: the wrapper word is
-                # itself a fallback (its definition is recorded) and the
-                # command that follows its options/operands is scanned like a
-                # wrapped command word.
+                # ``gtimeout 5 rev``/``watch -n1 rev``/``sudo rev``: the
+                # wrapper word is itself a fallback (its definition is
+                # recorded) and the command that follows its
+                # options/operands is scanned like a wrapped command word.
                 self.names.append(raw)
                 if executable_wrapper:
                     # The wrapping executable (``xargs gtimeout ...``) cannot
@@ -1508,9 +1777,15 @@ class _BashFixScanner:
                     self.edits.append(
                         (word_start, word_end, _wrapper_runner(raw))
                     )
-                wrapper = _BashWrapper(
+                wrapper = _Wrapper(
                     fallback_wrapper,
                     operands=_WRAPPER_OPERAND_COUNTS.get(fallback_wrapper, 0),
+                )
+                command_expected = True
+                continue
+            if raw in _COMMAND_WRAPPERS:
+                wrapper = _Wrapper(
+                    raw, operands=_WRAPPER_OPERAND_COUNTS.get(raw, 0)
                 )
                 command_expected = True
                 continue
@@ -1546,6 +1821,8 @@ class _BashFixScanner:
                     self.edits.append(
                         (word_start, word_end, _wrapper_runner(fallback_name))
                     )
+            elif self._record_unsupported(raw):
+                pass
             else:
                 # A command word can itself be a Windows executable path
                 # (``C:\tools\rg.exe``) or a Git Bash virtual absolute path
@@ -1558,6 +1835,21 @@ class _BashFixScanner:
                     self.path_notes.append(raw)
             command_expected = False
             wrapper = None
+
+    def _record_unsupported(self, raw: str) -> bool:
+        """Record a command word with no Windows Git Bash equivalent.
+
+        Returns True when *raw* literal-resolved to an unsupported command
+        name; the command text is left untouched so the app layer can surface
+        ``_UNSUPPORTED_BODIES``' reason instead of executing a guaranteed
+        "command not found".
+        """
+        name = self._literal_unsupported_name(raw)
+        if name is None:
+            return False
+        if name not in self.unsupported:
+            self.unsupported.append(name)
+        return True
 
     def _read_word(
         self, start: int, end: int, *, scan_substitutions: bool = True
@@ -1868,7 +2160,7 @@ class _BashFixScanner:
     def _find_matching_inner(self, i: int, end: int, closing: str) -> int:
         s = self.s
         depth = 0
-        pending_heredocs: list[_BashHereDoc] = []
+        pending_heredocs: list[_HereDoc] = []
         case_stack: list[str] = []
         while i < end:
             ch = s[i]
@@ -1899,7 +2191,7 @@ class _BashFixScanner:
                 heredoc = self._heredoc_delimiter(s[delimiter_start:delimiter_end])
                 if heredoc is not None:
                     delimiter, expands = heredoc
-                    pending_heredocs.append(_BashHereDoc(delimiter, strip_tabs, expands))
+                    pending_heredocs.append(_HereDoc(delimiter, strip_tabs, expands))
                 i = delimiter_end if delimiter_end > delimiter_start else delimiter_start
             elif ch == "'":
                 i = self._skip_single_quote(i + 1, end)
@@ -2036,7 +2328,7 @@ class _BashFixScanner:
             return None
         return self._empty_parentheses_end(i, end)
 
-    def _consume_wrapper_word(self, wrapper: _BashWrapper, raw: str) -> str:
+    def _consume_wrapper_word(self, wrapper: _Wrapper, raw: str) -> str:
         if wrapper.skip_next:
             wrapper.skip_next = False
             if wrapper.opaque:
@@ -2216,7 +2508,7 @@ class _BashFixScanner:
         self,
         i: int,
         end: int,
-        documents: list[_BashHereDoc],
+        documents: list[_HereDoc],
         *,
         scan_expansions: bool = True,
     ) -> int:
@@ -2603,7 +2895,7 @@ def _apply_heredoc_operator_move(
 def _fix_heredoc_trailing_operators(source: str) -> str:
     """Repair heredoc commands whose trailing control operator is on the wrong line."""
     try:
-        scanner = _BashFixScanner(source)
+        scanner = _Scanner(source)
         scanner._scan_range(0, scanner.n)
     except RecursionError:
         return source
@@ -2620,7 +2912,9 @@ def fix_bash_command(command: str) -> BashFix:
 
     Non-Windows input is always returned byte-for-byte unchanged.  On Windows,
     only literal command words with verified equivalents are changed; unknown
-    or semantically ambiguous commands are left for Bash to handle normally.
+    or semantically ambiguous commands are left for Bash to handle normally,
+    and names with no faithful equivalent are reported through
+    :attr:`BashFix.unsupported` without touching the command text.
     """
     if sys.platform != "win32" or not command:
         return BashFix(command)
@@ -2628,7 +2922,11 @@ def fix_bash_command(command: str) -> BashFix:
     # containing it contiguously (for example ``r""ev`` or ``\rev``), so a
     # substring fast path would miss legal executable words.  The scanner is
     # linear and exits without allocating generated shell code when unchanged.
-    result = _BashFixScanner(command).fix()
+    # (``_Scanner.fix`` already repairs misplaced heredoc control operators
+    # on the generated source; the final text is re-checked here exactly as
+    # the reference does, which also covers offsets shifted by that first
+    # pass when a command holds several heredocs.)
+    result = _Scanner(command).fix()
     fixed = _fix_heredoc_trailing_operators(result.command)
     return BashFix(
         fixed,
@@ -2636,4 +2934,5 @@ def fix_bash_command(command: str) -> BashFix:
         result.path_changes,
         result.shell_wrappers,
         result.nul_fixes,
+        result.unsupported,
     )

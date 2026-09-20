@@ -8,6 +8,8 @@ that contract so a backend can't silently drop out of the build again — the
 failure mode behind issue #16 (MCP) and the 飞书/钉钉/企微/微信 desktop reports.
 """
 
+import hashlib
+import json
 import os
 import plistlib
 import re
@@ -18,6 +20,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import yaml
 from packaging.specifiers import SpecifierSet
 from packaging.version import Version
 
@@ -34,6 +37,76 @@ def _repo_root() -> Path:
 def _workflow_text() -> str:
     workflow = _repo_root() / ".github" / "workflows" / "release-runtime.yml"
     return workflow.read_text(encoding="utf-8", errors="replace")
+
+
+def _workflow_step_script(job: str, name: str) -> str:
+    workflow = yaml.safe_load(_workflow_text())
+    return next(step["run"] for step in workflow["jobs"][job]["steps"] if step.get("name") == name)
+
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="workflow steps run in bash")
+def test_runtime_dispatch_requires_signing_and_pins_artifact_tag(tmp_path):
+    output = tmp_path / "outputs"
+    env = {
+        **os.environ,
+        "GITHUB_OUTPUT": str(output),
+        "INPUT_VERSION": "0.21.0-cn.14",
+        "INPUT_CHANNEL": "stable",
+        "INPUT_ARTIFACT_TAG": "",
+        "RUNTIME_ARTIFACT_BASE_URL": "https://downloads.example.test",
+        "RUNTIME_SIGN_PRIVATE_KEY_PEM": "",
+    }
+    script = _workflow_step_script("build", "Resolve runtime version + channel")
+    command = ["bash", "-e", "-o", "pipefail", "-c", script]
+    # This check happens before setup/build tooling; no unsigned candidate can
+    # get through just because a fork or environment omitted its secret.
+    result = subprocess.run(command, cwd=_repo_root(), env=env, capture_output=True, text=True)
+    assert result.returncode != 0
+    assert "RUNTIME_SIGN_PRIVATE_KEY_PEM is required" in result.stdout
+    assert not output.exists()
+
+    env["RUNTIME_SIGN_PRIVATE_KEY_PEM"] = "preflight-presence-only"
+    (tmp_path / "pyproject.toml").write_text('version = "0.21.0"\n', encoding="utf-8")
+    result = subprocess.run(command, cwd=tmp_path, env=env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "artifact_tag=runtime-v0.21.0-cn.14\n" in output.read_text(encoding="utf-8")
+
+    env["RUNTIME_ARTIFACT_BASE_URL"] = "http://downloads.example.test"
+    result = subprocess.run(command, cwd=tmp_path, env=env, capture_output=True, text=True)
+    assert result.returncode != 0
+    assert "must use HTTPS" in result.stdout
+
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="workflow steps run in bash")
+@pytest.mark.parametrize("damage", [None, "missing-platform", "changed-archive", "mixed-source"])
+def test_runtime_release_rejects_incomplete_or_changed_archives(tmp_path, damage):
+    for platform, arch in (("win32", "x64"), ("darwin", "arm64"), ("darwin", "x64"), ("linux", "x64")):
+        directory = tmp_path / "dist" / f"runtime-{platform}-{arch}"
+        directory.mkdir(parents=True)
+        contents = f"candidate:{platform}/{arch}".encode()
+        archive = directory / f"hermes-agent-cn-runtime-{platform}-{arch}.zip"
+        archive.write_bytes(contents)
+        manifest = {
+            "schemaVersion": 2, "signature": "signed-by-earlier-step",
+            "platform": platform, "arch": arch, "runtimeVersion": "0.21.0-cn.14",
+            "channel": "stable", "sourceCommit": "same-source",
+            "sha256": hashlib.sha256(contents).hexdigest(),
+        }
+        if platform == "win32":
+            if damage == "missing-platform":
+                continue
+            if damage == "changed-archive":
+                archive.write_bytes(b"changed-after-signing")
+            if damage == "mixed-source":
+                manifest["sourceCommit"] = "another-source"
+        (directory / f"stable-{platform}-{arch}.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    script = _workflow_step_script("release", "Verify complete signed release set")
+    # Reuse this test's interpreter instead of whichever python3 happens to be
+    # first on the host PATH (the CI image has Python >= 3.11).
+    script = script.replace("python3 -", f"{shlex.quote(sys.executable)} -", 1)
+    result = subprocess.run(["bash", "-e", "-c", script], cwd=tmp_path, capture_output=True, text=True)
+    assert (result.returncode == 0) == (damage is None), result.stdout + result.stderr
 
 
 def _cn_desktop_extra() -> list[str]:

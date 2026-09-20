@@ -22,11 +22,18 @@ newest published release automatically:
 https://github.com/Eynzof/hermes-agent-cn/releases/latest/download/stable-win32-x64.json
 ```
 
-Pinning to a specific tag works too:
+For the community production channel, manifests and archives use the release
+mirror. The workflow fixes the immutable download URL **before signing**:
 
 ```
-https://github.com/Eynzof/hermes-agent-cn/releases/download/runtime-v0.14.0-cn.1/stable-win32-x64.json
+https://hot-update-download.hermesagent.org.cn/runtime-v0.21.0-cn.14/stable-win32-x64.json
+https://hot-update-download.hermesagent.org.cn/runtime-v0.21.0-cn.14/hermes-agent-cn-runtime-win32-x64.zip
 ```
+
+`RUNTIME_ARTIFACT_BASE_URL` is an optional repository variable for a custom
+HTTPS mirror root. Do not rewrite `artifactUrl` after signing: the desktop
+signature check covers this field. Updating the channel's manifest pointer
+must preserve the original signed JSON bytes.
 
 The canonical versioning contract is documented in `docs/RUNTIME_VERSIONING.md`.
 The manifest schema (see `src/process/runtime.rs::RuntimeUpdateManifest`
@@ -103,7 +110,7 @@ the old key and will reject anything signed by the new one.
    git tag runtime-v0.14.0-cn.1
    git push origin runtime-v0.14.0-cn.1
    ```
-3. The `release-runtime` workflow validates the tag against `pyproject.toml` and runs once per platform (Windows / macOS-arm64 / Linux-x64).
+3. The `release-runtime` workflow validates the tag against `pyproject.toml` and runs once per platform (Windows-x64 / macOS-arm64 / macOS-x64 / Linux-x64). The manifest signing key is required even for manual candidate builds; an unsigned build fails before packaging.
 4. Each job:
    - Builds a self-contained executable via PyInstaller
    - On macOS, normalizes PyInstaller-collected `.framework` directories back
@@ -113,8 +120,20 @@ the old key and will reject anything signed by the new one.
    - Zips the dist directory as `hermes-agent-cn-runtime-<platform>-<arch>.zip`
      and preserves symlinks for macOS artifacts
    - Signs the manifest with `scripts/sign_runtime_manifest.py`
-5. The aggregate `release` job downloads all artifacts and publishes
-   them to a GitHub Release named `runtime-v0.14.0-cn.1`.
+5. The aggregate `release` job verifies all four archives against their signed
+   manifest hashes and checks that their version, channel and source commit
+   agree. Tag-triggered builds create a **draft** GitHub Release. They do not
+   automatically publish or change GitHub's latest release.
+6. Accept the exact final archives, then publish that draft without rebuilding.
+   Verify the mirror's full downloads, hashes and range responses before
+   promoting the stable channel's manifest pointers. Keep the previous
+   release available for rollback.
+
+For a build without creating a GitHub Release, dispatch `release-runtime` on
+the frozen source branch with `version=0.21.0-cn.14` and `channel=stable`.
+`artifact_tag` defaults to `runtime-v<version>` and may be explicitly overridden
+for an isolated test release. The signed archives and manifests are retained as
+Actions artifacts; the same bytes can subsequently be uploaded to a draft.
 
 Once the release exists, every hermes-agent-cn-desktop install whose
 manifest URL points at this base URL will pick up the update on next
@@ -186,8 +205,10 @@ $ (cd dist && zip -r -y ../out/hermes-agent-cn-runtime-darwin-arm64.zip hermes-a
   are available. Add to the workflow's `--hidden-import` list as
   needed.
 * **Code signing**: macOS runtime payloads are Developer ID signed in CI before
-  they are zipped. PyInstaller-produced Windows `.exe` files are still often
-  flagged by SmartScreen until signed with an Authenticode cert. Register one
-  and add the Windows signing step to the workflow.
+  they are zipped; the Desktop workflow notarizes the complete macOS app that
+  embeds them. Independent runtime ZIPs are not separately notarized by this
+  workflow. Windows Authenticode is optional and is not a v0.9.0 release gate.
+  The project-owned Ed25519 manifest signature and archive hash are mandatory
+  on every platform; these signatures do not establish Windows publisher trust.
 * **Cross-arch builds**: x64-only for Linux today. Add arm64 matrix
   entry once we have a runner.

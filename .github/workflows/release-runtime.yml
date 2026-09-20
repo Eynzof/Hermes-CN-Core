@@ -1,10 +1,10 @@
-# Build, sign, and publish hermes-agent-cn runtime artifacts that the
+# Build, sign, and stage hermes-agent-cn runtime artifacts that the
 # hermes-agent-cn-desktop client downloads on first launch.
 #
 # Trigger: push a tag matching `runtime-v*-cn.*` (e.g. `runtime-v0.14.0-cn.1`).
 # Per-platform jobs build a self-contained executable via PyInstaller,
 # zip it, sign the manifest with Ed25519, and attach all artifacts to a
-# GitHub Release.
+# draft GitHub Release. Promotion happens after final artifact acceptance.
 #
 # Required repository secrets:
 #   RUNTIME_SIGN_PRIVATE_KEY_PEM
@@ -13,6 +13,9 @@
 #     env var at build time. See docs/RUNTIME_RELEASES.md.
 #   APPLE_CERTIFICATE / APPLE_CERTIFICATE_PASSWORD / APPLE_SIGNING_IDENTITY
 #     Developer ID Application signing material for macOS runtime payloads.
+# Optional repository variable:
+#   RUNTIME_ARTIFACT_BASE_URL
+#     HTTPS mirror root; fixed before signing because artifactUrl is signed.
 #
 # Caveats (track in follow-up issues, not blockers for first run):
 #   - PyInstaller's autodetection misses lazy-imported provider SDKs
@@ -22,9 +25,8 @@
 #   - Antivirus on Windows flags unsigned PyInstaller output. Free mitigations
 #     applied here: --onedir (no self-extracting stub), --noupx (UPX-packed
 #     binaries are heavily flagged), and a stamped version-info resource
-#     (CompanyName/ProductName/FileVersion). The real fix is Authenticode
-#     signing + submitting to 360/火绒 vendor whitelists — see
-#     docs/windows-antivirus.md.
+#     (CompanyName/ProductName/FileVersion). Windows Authenticode is optional;
+#     Ed25519 runtime manifest signatures remain mandatory on all platforms.
 
 name: release-runtime
 
@@ -49,15 +51,15 @@ on:
 permissions:
   contents: write  # needed to create the Release + upload assets
 
+concurrency:
+  group: runtime-${{ inputs.version || github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
   build:
-    # Mapped at job level (not in the Sign-manifest step's own env) so the
-    # step's `if:` can read it — a step's `if` is evaluated BEFORE that step's
-    # own `env:` is applied, so a step-scoped env var is invisible to its own
-    # condition. Job-level env is the documented way to gate a step on whether
-    # a secret is present.
     env:
       RUNTIME_SIGN_PRIVATE_KEY_PEM: ${{ secrets.RUNTIME_SIGN_PRIVATE_KEY_PEM }}
+      RUNTIME_ARTIFACT_BASE_URL: ${{ vars.RUNTIME_ARTIFACT_BASE_URL || 'https://hot-update-download.hermesagent.org.cn' }}
       # Node.js LTS bundled into the frozen runtime so the desktop /chat Ink
       # TUI, embedded/external terminal, and node-based MCP/playwright/npx tools
       # work without a host Node install. Bump as new 22.x LTS patches ship.
@@ -94,10 +96,15 @@ jobs:
       - name: Resolve runtime version + channel
         id: meta
         shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_CHANNEL: ${{ inputs.channel }}
+          INPUT_ARTIFACT_TAG: ${{ inputs.artifact_tag }}
         run: |
-          if [[ -n "${{ github.event.inputs.version }}" ]]; then
-            RUNTIME_VERSION="${{ github.event.inputs.version }}"
-            CHANNEL="${{ github.event.inputs.channel }}"
+          test -n "$RUNTIME_SIGN_PRIVATE_KEY_PEM" || { echo "::error::RUNTIME_SIGN_PRIVATE_KEY_PEM is required; unsigned runtime artifacts cannot be released"; exit 1; }
+          if [[ -n "$INPUT_VERSION" ]]; then
+            RUNTIME_VERSION="$INPUT_VERSION"
+            CHANNEL="$INPUT_CHANNEL"
           else
             # Tag is `runtime-v<kernelVersion>-cn.<revision>`; strip the prefix.
             RUNTIME_VERSION="${GITHUB_REF_NAME#runtime-v}"
@@ -123,11 +130,21 @@ jobs:
             exit 1
           fi
 
+          # Dispatch builds anticipate the final tag without publishing it.
+          # The mirror uses /<tag>/<asset>, never a mutable latest URL.
+          ARTIFACT_TAG="${INPUT_ARTIFACT_TAG:-runtime-v$RUNTIME_VERSION}"
+          git check-ref-format "refs/tags/$ARTIFACT_TAG"
+          case "$RUNTIME_ARTIFACT_BASE_URL" in
+            https://*) ;;
+            *) echo "::error::RUNTIME_ARTIFACT_BASE_URL must use HTTPS"; exit 1 ;;
+          esac
+
           echo "runtime_version=$RUNTIME_VERSION" >> "$GITHUB_OUTPUT"
           echo "kernel_version=$KERNEL_VERSION" >> "$GITHUB_OUTPUT"
           echo "runtime_flavor=$RUNTIME_FLAVOR" >> "$GITHUB_OUTPUT"
           echo "runtime_revision=$RUNTIME_REVISION" >> "$GITHUB_OUTPUT"
           echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
+          echo "artifact_tag=$ARTIFACT_TAG" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-python@v5
         with:
@@ -709,20 +726,15 @@ jobs:
           ls -la out
 
       - name: Sign manifest
-        # Skip cleanly when the signing key is absent (forks / secret-less
-        # workflow_dispatch) instead of failing; signs normally on real
-        # releases where the secret is set. RUNTIME_SIGN_PRIVATE_KEY_PEM comes
-        # from the job-level env above.
-        if: env.RUNTIME_SIGN_PRIVATE_KEY_PEM != ''
         shell: bash
         env:
-          RUNTIME_ARTIFACT_TAG: ${{ inputs.artifact_tag || github.ref_name }}
+          RUNTIME_ARTIFACT_TAG: ${{ steps.meta.outputs.artifact_tag }}
         run: |
           NAME="hermes-agent-cn-runtime-${{ matrix.platform }}-${{ matrix.arch }}"
           # Anticipate the URL the Release will publish at — this has to
           # match exactly because the signature covers it.
           git check-ref-format "refs/tags/$RUNTIME_ARTIFACT_TAG"
-          URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RUNTIME_ARTIFACT_TAG}/${NAME}.zip"
+          URL="${RUNTIME_ARTIFACT_BASE_URL%/}/${RUNTIME_ARTIFACT_TAG}/${NAME}.zip"
           python scripts/sign_runtime_manifest.py \
             --channel "${{ steps.meta.outputs.channel }}" \
             --runtime-version "${{ steps.meta.outputs.runtime_version }}" \
@@ -742,6 +754,7 @@ jobs:
         with:
           name: runtime-${{ matrix.platform }}-${{ matrix.arch }}
           path: out/
+          if-no-files-found: error
 
   release:
     needs: build
@@ -750,11 +763,37 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: dist/
+          pattern: runtime-*
 
-      - name: List downloaded
-        run: find dist -type f
+      - name: Verify complete signed release set
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
 
-      - name: Publish release
+          root = Path("dist")
+          expected = {("win32", "x64"), ("darwin", "arm64"), ("darwin", "x64"), ("linux", "x64")}
+          manifests = list(root.glob("runtime-*/*.json"))
+          assert len(manifests) == len(expected), "expected four signed runtime manifests"
+          identities = set()
+          for path in manifests:
+              manifest = json.loads(path.read_text())
+              target = (manifest["platform"], manifest["arch"])
+              assert target in expected, f"duplicate or unexpected target: {target}"
+              expected.remove(target)
+              assert manifest["schemaVersion"] == 2 and manifest["signature"], f"unsigned or incompatible manifest: {path}"
+              archive = path.parent / f"hermes-agent-cn-runtime-{target[0]}-{target[1]}.zip"
+              with archive.open("rb") as stream:
+                  digest = hashlib.file_digest(stream, "sha256").hexdigest()
+              assert digest == manifest["sha256"], f"archive changed after signing: {archive}"
+              identities.add((manifest["runtimeVersion"], manifest["channel"], manifest["sourceCommit"]))
+          assert not expected and len(identities) == 1, "runtime artifacts do not share one release identity"
+          print("All four signed runtime archives and manifests are complete")
+          PY
+
+      - name: Create draft release
         uses: softprops/action-gh-release@v2
         with:
           # When running via workflow_dispatch there is no tag — skip the
@@ -763,7 +802,8 @@ jobs:
           files: |
             dist/**/*.zip
             dist/**/*.json
-          fail_on_unmatched_files: false
-          draft: false
+          fail_on_unmatched_files: true
+          draft: true
+          make_latest: "false"
           prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
         if: startsWith(github.ref, 'refs/tags/runtime-v')

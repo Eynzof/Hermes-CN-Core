@@ -166,6 +166,14 @@ jobs:
             pyproject.toml
             uv.lock
 
+      - name: Build Intel macOS static OpenSSL
+        if: matrix.platform == 'darwin' && matrix.arch == 'x64'
+        shell: bash
+        run: |
+          bash scripts/build_macos_intel_openssl.sh "$RUNNER_TEMP/hermes-openssl14"
+          echo "OPENSSL_DIR=$RUNNER_TEMP/hermes-openssl14" >> "$GITHUB_ENV"
+          echo 'OPENSSL_STATIC=1' >> "$GITHUB_ENV"
+
       - name: Install build deps + agent
         shell: bash
         run: |
@@ -181,7 +189,10 @@ jobs:
             # PyPI has no ORT cp314 Intel macOS wheel. Keep the same locked
             # dependency graph; install our pinned-source wheel immediately
             # below instead of dropping local speech recognition.
-            sync_args+=(--no-install-package onnxruntime)
+            # A cached cryptography source wheel may have linked the runner's
+            # newer Homebrew OpenSSL. Rebuild it against our static prefix.
+            uv cache clean cryptography
+            sync_args+=(--no-install-package onnxruntime --no-binary-package cryptography)
           fi
           uv sync --locked --python 3.14 --extra cn-desktop "${sync_args[@]}"
 
@@ -203,10 +214,17 @@ jobs:
           # help, since the frozen runtime ships its own interpreter + packages.
           # Keep this in sync with the cn-desktop extra in pyproject.toml.
 
+      - name: Verify Intel crypto linkage and compatibility
+        if: matrix.platform == 'darwin' && matrix.arch == 'x64'
+        shell: bash
+        run: |
+          python scripts/verify_macos_intel_crypto.py --output diagnostics/intel-crypto-linkage.json
+          cp "$RUNNER_TEMP/hermes-openssl14/build-record.json" diagnostics/openssl-intel-build-record.json
+
       - name: Cache Intel macOS ONNX Runtime wheel
         if: matrix.platform == 'darwin' && matrix.arch == 'x64'
         id: intel-ort-cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: ${{ runner.temp }}/onnxruntime-intel-wheel
           key: ort-1.27.0-8f0278c77bf44b0cc83c098c6c722b92a36ac4b5-cp314-macos14-x64-${{ hashFiles('scripts/build_macos_intel_onnxruntime.sh') }}
@@ -235,6 +253,21 @@ jobs:
           python scripts/smoke_runtime_voice.py
           mkdir -p diagnostics
           cp "$RUNNER_TEMP/onnxruntime-intel-wheel/build-record.json" diagnostics/onnxruntime-intel-build-record.json
+
+      - name: Save verified Intel ONNX Runtime wheel cache
+        if: matrix.platform == 'darwin' && matrix.arch == 'x64' && steps.intel-ort-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/onnxruntime-intel-wheel
+          key: ${{ steps.intel-ort-cache.outputs.cache-primary-key }}
+
+      - name: Retain verified Intel ONNX Runtime wheel
+        if: matrix.platform == 'darwin' && matrix.arch == 'x64'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-onnxruntime-darwin-x64
+          path: ${{ runner.temp }}/onnxruntime-intel-wheel/
+          if-no-files-found: error
 
       - name: Set up Node.js (build web dashboard + TUI bundle)
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4

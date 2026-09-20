@@ -26,8 +26,8 @@ For the community production channel, manifests and archives use the release
 mirror. The workflow fixes the immutable download URL **before signing**:
 
 ```
-https://hot-update-download.hermesagent.org.cn/runtime-v0.21.0-cn.17/stable-win32-x64.json
-https://hot-update-download.hermesagent.org.cn/runtime-v0.21.0-cn.17/hermes-agent-cn-runtime-win32-x64.zip
+https://hot-update-download.hermesagent.org.cn/runtime-v0.21.0-cn.18/stable-win32-x64.json
+https://hot-update-download.hermesagent.org.cn/runtime-v0.21.0-cn.18/hermes-agent-cn-runtime-win32-x64.zip
 ```
 
 `RUNTIME_ARTIFACT_BASE_URL` is an optional repository variable for a custom
@@ -130,7 +130,7 @@ the old key and will reject anything signed by the new one.
    release available for rollback.
 
 For a build without creating a GitHub Release, dispatch `release-runtime` on
-the frozen source branch with `version=0.21.0-cn.17` and `channel=stable`.
+the frozen source branch with `version=0.21.0-cn.18` and `channel=stable`.
 `artifact_tag` defaults to `runtime-v<version>` and may be explicitly overridden
 for an isolated test release. The signed archives and manifests are retained as
 Actions artifacts; the same bytes can subsequently be uploaded to a draft.
@@ -153,6 +153,16 @@ SHA-256. GitHub also isolates caches by ref, so different release tags do not
 automatically share this cache. Both the build environment and frozen runtime
 execute local Silero VAD inference without downloading a model, so import
 success alone is insufficient.
+
+Intel cryptography 50 is also built from its locked source distribution. Before
+dependency installation, CI builds OpenSSL 3.5.8 LTS from its official tarball,
+checks its fixed SHA-256, and targets macOS 14 with `no-shared no-module`.
+`OPENSSL_STATIC=1` and `OPENSSL_DIR` keep cryptography independent of the runner's
+Homebrew libraries; the legacy provider is built in and tested with ARC4.
+AES, legacy-provider operation, the actual cryptography/Python SSL links and
+Intel deployment targets are checked before the long ORT compilation.
+The verified ORT wheel is immediately saved and uploaded as a separate
+`dependency-onnxruntime-darwin-x64` artifact, even if a later packaging step fails.
 
 The v0.9.0 release targets macOS 14.0 on both architectures. Each macOS CI job uploads a
 `diagnostics-runtime-darwin-<arch>` artifact recording every Mach-O deployment

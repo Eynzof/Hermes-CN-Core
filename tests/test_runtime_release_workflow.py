@@ -109,6 +109,28 @@ def test_runtime_release_rejects_incomplete_or_changed_archives(tmp_path, damage
     assert (result.returncode == 0) == (damage is None), result.stdout + result.stderr
 
 
+@pytest.mark.skipif(shutil.which("bash") is None, reason="workflow steps run in bash")
+@pytest.mark.parametrize("exit_code,message,accepted", [
+    (1, "cua-driver: not installed", True),
+    (1, "ModuleNotFoundError: computer_use", False),
+    (2, "cua-driver: not installed", False),
+])
+def test_runtime_smoke_only_accepts_expected_missing_driver(tmp_path, exit_code, message, accepted):
+    binary = tmp_path / "dist/hermes-agent-cn-runtime-linux-x64/hermes-agent-cn-runtime-linux-x64"
+    binary.parent.mkdir(parents=True)
+    binary.write_text(
+        '#!/bin/bash\nif [[ "$1" == computer-use ]]; then\n'
+        f"printf '%s\\n' {shlex.quote(message)}\nexit {exit_code}\nfi\n",
+        encoding="utf-8",
+    )
+    binary.chmod(0o755)
+    script = _workflow_step_script("build", "Smoke-test the binary")
+    for key, value in (("platform", "linux"), ("arch", "x64"), ("ext", "")):
+        script = script.replace("${{ matrix." + key + " }}", value)
+    result = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", script], cwd=tmp_path, capture_output=True, text=True)
+    assert (result.returncode == 0) == accepted, result.stdout + result.stderr
+
+
 def _cn_desktop_extra() -> list[str]:
     if tomllib is None:  # pragma: no cover
         pytest.skip("tomllib unavailable")

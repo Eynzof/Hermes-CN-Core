@@ -26,8 +26,8 @@ For the community production channel, manifests and archives use the release
 mirror. The workflow fixes the immutable download URL **before signing**:
 
 ```
-https://hot-update-download.hermesagent.org.cn/runtime-v0.21.0-cn.14/stable-win32-x64.json
-https://hot-update-download.hermesagent.org.cn/runtime-v0.21.0-cn.14/hermes-agent-cn-runtime-win32-x64.zip
+https://hot-update-download.hermesagent.org.cn/runtime-v0.21.0-cn.15/stable-win32-x64.json
+https://hot-update-download.hermesagent.org.cn/runtime-v0.21.0-cn.15/hermes-agent-cn-runtime-win32-x64.zip
 ```
 
 `RUNTIME_ARTIFACT_BASE_URL` is an optional repository variable for a custom
@@ -130,10 +130,31 @@ the old key and will reject anything signed by the new one.
    release available for rollback.
 
 For a build without creating a GitHub Release, dispatch `release-runtime` on
-the frozen source branch with `version=0.21.0-cn.14` and `channel=stable`.
+the frozen source branch with `version=0.21.0-cn.15` and `channel=stable`.
 `artifact_tag` defaults to `runtime-v<version>` and may be explicitly overridden
 for an isolated test release. The signed archives and manifests are retained as
 Actions artifacts; the same bytes can subsequently be uploaded to a draft.
+
+### Intel macOS local speech dependency
+
+PyPI does not publish an ONNX Runtime CPython 3.14 wheel for Intel macOS.
+The Intel job keeps the locked `onnxruntime==1.27.0` dependency but defers its
+installation until `scripts/build_macos_intel_onnxruntime.sh` builds a CPU wheel
+from Microsoft's `v1.27.0` commit `8f0278c77bf44b0cc83c098c6c722b92a36ac4b5`.
+Only this platform uses the source wheel; other platforms keep their locked
+PyPI packages. Local speech recognition remains included.
+
+The wheel cache is scoped to the source commit, Python ABI, architecture,
+requested deployment target and build script. A build record contains its
+SHA-256. Both the build environment and frozen runtime execute local Silero VAD
+inference without downloading a model, so import success alone is insufficient.
+
+The v0.9.0 release targets macOS 14.0 on both architectures. Each macOS CI job uploads a
+`diagnostics-runtime-darwin-<arch>` artifact recording every Mach-O deployment
+target and the highest declared minimum, and rejects any binary requiring a
+version above 14.0. The deployment target is not a substitute for actual
+oldest-system acceptance. Do not reuse the
+minimum of a local Homebrew-built RC as evidence for the CI-built release.
 
 Once the release exists, every hermes-agent-cn-desktop install whose
 manifest URL points at this base URL will pick up the update on next

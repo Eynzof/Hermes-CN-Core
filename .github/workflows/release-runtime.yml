@@ -150,6 +150,11 @@ jobs:
         with:
           python-version: "3.14"
 
+      - name: Set macOS 14 deployment target
+        if: matrix.platform == 'darwin'
+        shell: bash
+        run: echo 'MACOSX_DEPLOYMENT_TARGET=14.0' >> "$GITHUB_ENV"
+
       - name: Install uv
         uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # 8.2.0
         with:
@@ -169,7 +174,14 @@ jobs:
           # A fresh pip resolution silently downgraded alibabacloud-tea-openapi
           # and omitted darabonba-core, then PyInstaller failed while copying
           # that package's metadata.
-          uv sync --locked --python 3.14 --extra cn-desktop
+          sync_args=()
+          if [[ "${{ matrix.platform }}-${{ matrix.arch }}" == "darwin-x64" ]]; then
+            # PyPI has no ORT cp314 Intel macOS wheel. Keep the same locked
+            # dependency graph; install our pinned-source wheel immediately
+            # below instead of dropping local speech recognition.
+            sync_args+=(--no-install-package onnxruntime)
+          fi
+          uv sync --locked --python 3.14 --extra cn-desktop "${sync_args[@]}"
 
           # Install packaging-only tooling into that same locked environment.
           uv pip install --python .venv "pyinstaller==6.*"
@@ -188,6 +200,39 @@ jobs:
           # unavailable at runtime — and `pip install <pkg>` on the host does NOT
           # help, since the frozen runtime ships its own interpreter + packages.
           # Keep this in sync with the cn-desktop extra in pyproject.toml.
+
+      - name: Cache Intel macOS ONNX Runtime wheel
+        if: matrix.platform == 'darwin' && matrix.arch == 'x64'
+        id: intel-ort-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/onnxruntime-intel-wheel
+          key: ort-1.27.0-8f0278c77bf44b0cc83c098c6c722b92a36ac4b5-cp314-macos14-x64-${{ hashFiles('scripts/build_macos_intel_onnxruntime.sh') }}
+
+      - name: Build Intel macOS ONNX Runtime wheel
+        if: matrix.platform == 'darwin' && matrix.arch == 'x64' && steps.intel-ort-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          uv pip install --python .venv "wheel==0.45.1"
+          bash scripts/build_macos_intel_onnxruntime.sh "$PWD/.venv/bin/python" "$RUNNER_TEMP/onnxruntime-intel-wheel"
+
+      - name: Install and verify Intel local speech dependencies
+        if: matrix.platform == 'darwin' && matrix.arch == 'x64'
+        shell: bash
+        run: |
+          python - "$RUNNER_TEMP/onnxruntime-intel-wheel" <<'PY'
+          import hashlib, json, sys
+          from pathlib import Path
+          root = Path(sys.argv[1])
+          record = json.loads((root / "build-record.json").read_text())
+          assert record["sourceCommit"] == "8f0278c77bf44b0cc83c098c6c722b92a36ac4b5"
+          with (root / record["wheel"]).open("rb") as stream:
+              assert hashlib.file_digest(stream, "sha256").hexdigest() == record["sha256"]
+          PY
+          uv pip install --python .venv --no-deps "$RUNNER_TEMP"/onnxruntime-intel-wheel/*.whl
+          python scripts/smoke_runtime_voice.py
+          mkdir -p diagnostics
+          cp "$RUNNER_TEMP/onnxruntime-intel-wheel/build-record.json" diagnostics/onnxruntime-intel-build-record.json
 
       - name: Set up Node.js (build web dashboard + TUI bundle)
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -578,6 +623,13 @@ jobs:
           NAME="hermes-agent-cn-runtime-${{ matrix.platform }}-${{ matrix.arch }}"
           scripts/sign_macos_runtime_payload.sh "dist/$NAME"
 
+      - name: Record macOS binary deployment requirements
+        if: matrix.platform == 'darwin'
+        shell: bash
+        run: |
+          NAME="hermes-agent-cn-runtime-${{ matrix.platform }}-${{ matrix.arch }}"
+          python scripts/audit_macos_deployment_targets.py "dist/$NAME" --output "diagnostics/macos-${{ matrix.arch }}-deployment-targets.json" --max-minimum 14.0
+
       - name: Verify frozen runtime backends
         shell: bash
         run: |
@@ -648,7 +700,23 @@ jobs:
           NAME="hermes-agent-cn-runtime-${{ matrix.platform }}-${{ matrix.arch }}"
           "./dist/$NAME/$NAME${{ matrix.ext }}" dashboard --help
           "./dist/$NAME/$NAME${{ matrix.ext }}" tools list --platform cli
-          "./dist/$NAME/$NAME${{ matrix.ext }}" computer-use status
+          # cua-driver is installed by the user on first use, not bundled.
+          # Its documented "not installed" state is valid on a fresh machine;
+          # import failures and other command errors must still fail the build.
+          status_code=0
+          status_output="$("./dist/$NAME/$NAME${{ matrix.ext }}" computer-use status 2>&1)" || status_code=$?
+          printf '%s\n' "$status_output"
+          if [[ "$status_code" != 0 ]]; then
+            if [[ "$status_code" != 1 ]] || ! grep -Fxq 'cua-driver: not installed' <<< "$status_output"; then
+              exit "$status_code"
+            fi
+          fi
+
+      - name: Verify frozen local speech dependencies
+        shell: bash
+        run: |
+          NAME="hermes-agent-cn-runtime-${{ matrix.platform }}-${{ matrix.arch }}"
+          HERMES_HOME="$RUNNER_TEMP/hermes-voice-smoke" "./dist/$NAME/$NAME${{ matrix.ext }}" __run-script scripts/smoke_runtime_voice.py
 
       - name: Verify frozen auth and image provider registration
         shell: bash
@@ -755,6 +823,14 @@ jobs:
           name: runtime-${{ matrix.platform }}-${{ matrix.arch }}
           path: out/
           if-no-files-found: error
+
+      - name: Upload macOS deployment report
+        if: always() && matrix.platform == 'darwin'
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnostics-runtime-darwin-${{ matrix.arch }}
+          path: diagnostics/
+          if-no-files-found: ignore
 
   release:
     needs: build

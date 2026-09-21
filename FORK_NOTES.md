@@ -388,7 +388,7 @@ decidable hunks (44 files).
   `tests/tools/test_mcp_oauth*.py` (mcp-version related).
 * `scripts/run_tests.sh` (canonical per-file isolation runner) on Windows / Python 3.14.3 with the
   merged tree: **4,753 files, 53,333 tests … 1,067 failing** on the first pass, driven to
-  **34 failing tests / 54,542 passing / 1,935 skipped** after the delegated fix waves (`scripts/run_tests.sh -j 16`, Windows + Python 3.14.3). The remaining 34 are tracked as follow-ups below; the pre-merge baseline's 16 failures were all mcp-version related and are now fixed.
+  **34 failing tests / 54,542 passing / 1,935 skipped** after the delegated fix waves (`scripts/run_tests.sh -j 16`, Windows + Python 3.14.3). Those last 34 failures plus 6 files that could not be collected were then closed in `0c8784c1e9` (targeted re-run of all 24 affected files: 830 passed / 0 failed / 53 skipped) — including the P-041 `tool_calls_committed_callback` forwarder whose loss broke every TUI/Desktop gateway agent build. The pre-merge baseline's 16 failures were all mcp-version related and are fixed too.
 * Focused suites re-run per workstream, e.g. `tests/tools/test_bash_fix.py` 313 passed,
   `tests/tools/test_terminal_process_llm_ergonomics.py` 23 passed,
   `tests/hermes_cli/test_gateway_restart_loop.py` 332 passed,

@@ -117,7 +117,7 @@
 
 **bash_fix 扫描器同步（2026-09-20）。** `tools/environments/bash_fix.py` 已与更新的 kimi 实现对齐（`bin/kimix_native/_shell_compat.py`，即 `src/kimix/tools/file/bash/bash_fix.py` 的权威副本）。移植保留本模块的公开 API、`__hermes_` shell 变量前缀与 win32 门控；除这些之外扫描器主体与参考实现逐字节一致。
 
-相比首次移植新增：`free`/`uptime`/`top`/`htop`/`ss`/`ip`/`man`/`systemctl`/`sudo` 回退（基于 Windows 原生工具；`htop` 复用 `top`）；`journalctl` 记录为无忠实等价实现（`BashFix.unsupported`——命令文本逐字节保留，`_wrap_command` 现在会为它记录 `_bash_fix_warnings`，让模型看到原因与 `Get-WinEvent` 替代方案，而不是裸的 "command not found"）；未加引号的 `nul`/`NUL` 输出重定向改写为 `/dev/null`；Git Bash 虚拟绝对路径改写为原生拼写（`/tmp/x` → 真实 Windows 临时目录，`/c/x` → `C:/x`）；冗余的 `bash`/`sh` 调用被解包（`bash cd /c/dev/x && …`、`bash -c '…'`、`bash -lc`），内联脚本按独立命令上下文扫描，而 `bash -ec` 这类选项簇、脚本路径、尾部 argv 与赋值前缀一律保持原样；`timeout`/`stdbuf`/`nice`/`xargs` 视为命令包装器，操作数同样获得回退（GNU `timeout` 的 DURATION 操作数先被消费）；`gtimeout`/`watch`/`sudo` 作为带回退定义的包装器；回退函数通过 `export -f` 导出，使嵌套 shell（runner 脚本与 `bash -c` 操作数）继承它们。
+相比首次移植新增：`free`/`uptime`/`top`/`htop`/`ss`/`ip`/`man`/`systemctl`/`sudo` 回退（基于 Windows 原生工具；`htop` 复用 `top`）；`journalctl` 记录为无忠实等价实现（`BashFix.unsupported`——命令文本逐字节保留，`_wrap_command` 现在会为它记录 `_bash_fix_warnings`，让模型看到原因与 `Get-WinEvent` 替代方案，而不是裸的 "command not found"）；未加引号的 `nul`/`NUL` 输出重定向改写为 `/dev/null`；Git Bash 虚拟绝对路径改写为原生拼写（`/tmp/x` → 真实 Windows 临时目录，`/c/x` → `C:/x`）；冗余的 `bash`/`sh` 调用被解包（`bash cd /c/dev/x && …`、`bash -c '…'`、`bash -lc`），内联脚本按独立命令上下文扫描，而 `bash -ec` 这类选项簇、脚本路径、尾部 argv 与赋值前缀一律保持原样；`timeout`/`stdbuf`/`nice`/`xargs` 视为命令包装器，操作数同样获得回退（GNU `timeout` 的 DURATION 操作数先被消费）；`gtimeout`/`watch`/`sudo` 作为带回退定义的包装器；回退函数通过 `export -f` 导出，使嵌套 shell（runner 脚本与 `bash -c` 操作数）继承它们。 <!-- no-tmp: ok — 说明 Git Bash 的 POSIX 路径会被改写成 Windows 临时目录，属行为说明，不是让模型去写 /tmp -->
 
 验证：与参考扫描器逐字段差分（186 条语料 + 20000 条随机输入，0 处不一致；`sys.platform` 打补丁后的非 Windows 空操作契约同样 0 处不一致）、`ruff check` 通过，并扩展了 `tests/tools/test_bash_fix.py`（新增回退/包装器/`nul`/虚拟路径/unsupported/结果 API 用例，外加对生成代码的 `bash -n` 语法检查）。`tests/tools/test_local_git_bash_port.py` 不受影响（MSYSTEM 与 git.exe 发现链未改动）。
 
@@ -180,6 +180,39 @@
 **测试。** `tests/tools/test_terminal_post_process.py`（新增，约 295 行）覆盖：ANSI 剥离、CR/LF 归一化、单行和块去重（低于阈值、高于阈值、空、单行）、行截断（低于限制、无操作、折叠标记、空、小 max_lines）、完整管线集成（直通、去重开关、rtk_rewritten 跳过、行截断、原始保存、返回类型）、超长导出（低于/超过/恰好等于限制）、原始保存到临时文件、元数据块组装（完整+最小）。现有 terminal/file/search/tirith 测试已更新以覆盖 managed-tools-dir 解析。Ruff 检查通过。
 
 **是否可上游？** 可以——去重/截断/导出管线是纯 Python 无外部依赖；managed-tools-dir 模式（`get_managed_tools_dir()`）是一个通用的维护改进，整合了 Hermes 发现自身下载的二进制文件的方式。rtk 集成（命令重写 + 二进制检测）依赖第三方 CLI（`rtk-ai/rtk`），可作为可选增强提交上游。
+
+## 同步记录（2026-09-20，`639823919c` → `dev-fix`）
+
+上游自上次同步点 `08606fc23`（2026-08-13，post-v0.19.0）以来推进了 **16,888 个提交 / 10,771 个文件**。本次合并
+在 `dev-fix` 上落地，产生 **828 个冲突文件 / 2,780 个冲突区块**（双方都改动过的文件共 1,503 个）。
+
+- **解决原则**（MAINTAINING.md）：先保留上游行为与结构，再按其文档化意图重新落地本仓补丁（FORK_NOTES 的
+  P-002…P-062）；若上游已自行实现同一修复，则删除本仓实现并在上表登记。冲突由 26 个互不重叠的子任务并行处理，
+  另有 44 个可机械判定的文件由脚本直接解决。
+- **上游重构**：`hermes_cli/web_routers/*`、`hermes_cli/main_*` + `subcommands/*`、`agent/turn_*`、
+  `tools/terminal_tool_*` + `process_registry` 拆分、`tools/file_operations_*`/`file_tools_*`、`tools/mcp_tool_*`、
+  `cron/scheduler_*`、`tui_gateway` 分模块 mixin、`plugins/**` 新分类、测试目录合并（`run_agent`→`agent`、
+  `cli`→`hermes_cli`、`state`→`hermes_state`、删除 `stress/`）、`docs/` → `website/docs/`。
+- **重新落地（graft）**：P-061 终端/进程 LLM 人体工学（模式等待、inactivity、since_chars、output 导出、前台提升/
+  收养、交互式会话、统一 metadata）移植到上游 `_ExecPlan`/`_run_foreground`/`_ingest_output`；P-002/P-005/P-025/
+  P-055/P-056/P-059 仪表盘路由；P-063 隐藏 CLI 子命令与 P-034 桌面托管网关助手；P-017/P-022/P-024/P-041/P-059
+  代理钩子；P-030/P-049 进程内搜索回退与托管 `rg`；P-033 Windows 进程内 I/O；P-045 懒加载工具索引；P-055 记忆
+  长度钳制；P-062 Moss 文本上限；P-051 解码固定；P-042 探测加固；P-057 冻结运行时插件发现；P-058 Windows shell
+  优先级；P-043 工具定义缓存（在保留上游函数签名的前提下恢复）；`file:///C:/…` 宿主路径转换（10 处）。
+- **本次被上游取代/删除**：P-022 socket kill、P-024 单遍清洗（保留本仓的丢弃语义并另加测试固定）、P-057 系统
+  提示 HERMES_HOME 固定、P-028 网络门控、P-003/P-004 仪表盘门控、P-007 派发异常处理、`IncrementalTokenEstimator`、
+  `tools/mcp_stdio_watchdog.py`、`tools/flux3_video_tool.py`、`tools/computer_use/browser_route.py`、
+  `plugins/observability/nemo_relay/**`、`hermes_cli/subcommands/version.py`、`tests/stress/**`、顶层 `docs/`。
+- **验证**：合并前基线（`efbc700345`）仅 16 个失败（均与 mcp 版本相关）；合并后首轮全量 1,067 失败，经多轮委派
+  修复后为 **通过 54,542 / 失败 34 / 跳过 1,935**（`scripts/run_tests.sh -j 16`，Windows + Python 3.14.3）。
+  CLI 与插件发现冒烟通过。
+- **依赖/打包**：`uv lock` 重新生成；新增上游固定 `snowballstemmer==3.1.1`、`mcp==2.0.0`；静态 `py-modules` 改为
+  `setup.py::_root_py_modules()` 动态派生；`[tool.setuptools.data-files]` 移入 `setup.py`，使 wheel 真正打包
+  `skills/`、`optional-skills/`、`optional-mcps/`、`locales/`；继承自上游的 Windows footgun 发现写入
+  `scripts/ci/windows_footguns_upstream_baseline.txt`（54 处 / 43 个上游文件，新发现仍会失败）。
+- **遗留**：上游代码中的 54 处 footgun 待加固；`website/static/api/model-catalog.json` 的 CN 模型 id 不可由
+  `scripts/build_model_catalog.py` 复现；`apps/desktop` 未跑 tsc/vitest；少量上游新测试为 POSIX 专属，已加
+  OS 标记并写明原因。
 
 ## 发布和维护支撑
 

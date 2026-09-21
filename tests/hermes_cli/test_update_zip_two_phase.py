@@ -19,6 +19,7 @@ import pytest
 
 from hermes_cli import update_cmd
 from hermes_constants import venv_bin_dir, venv_python_path
+from hermes_cli import main_install_repair
 
 
 # ---------------------------------------------------------------------------
@@ -277,7 +278,7 @@ def test_venv_helpers_honour_an_explicit_platform_verdict():
     """Callers must be able to override the platform check (#76107 CI).
 
     The suite exercises Windows paths on Linux CI by patching predicates like
-    `hermes_cli.main._is_windows`. A helper that reads `sys.platform`
+    `hermes_main._is_windows`. A helper that reads `sys.platform`
     unconditionally silently drops those paths out of coverage -- and broke
     `test_verify_core_dependencies.py::test_uses_virtual_env_from_environment`,
     which patches `_is_windows` and then asserts on a `Scripts/python.exe`

@@ -180,6 +180,7 @@ class TestValidateSignature:
             "X-Hub-Signature-256",
             "X-Gitlab-Token",
             "X-Webhook-Signature",
+            "linear-signature",
         ):
             req = _mock_request(headers={header: hostile})
             # Must return False, never raise.
@@ -193,6 +194,27 @@ class TestValidateSignature:
             "X-Webhook-Timestamp": str(int(time.time())),
         })
         assert adapter._validate_signature(req, b"{}", "secret") is False
+    def test_linear_signature_valid_accepts(self):
+        """Linear signs the raw body (hex HMAC-SHA256) in linear-signature."""
+        adapter = _make_adapter()
+        body = b'{"type": "Issue", "data": {"id": "abc"}}'
+        secret = "linear-webhook-key"
+        sig = _generic_signature(body, secret)  # same math as linear-signature
+
+        req = _mock_request(headers={"linear-signature": sig})
+
+        assert adapter._validate_signature(req, body, secret) is True
+
+    def test_linear_signature_mismatch_rejects(self):
+        """A well-formed linear-signature computed with the wrong key fails closed."""
+        adapter = _make_adapter()
+        body = b'{"type": "Issue"}'
+        sig = _generic_signature(body, "attacker-controlled-key")
+
+        req = _mock_request(headers={"linear-signature": sig})
+
+        assert adapter._validate_signature(req, body, "real-secret") is False
+
 
     def test_non_ascii_svix_signature_rejected(self):
         """The Svix branch also runs its `v1,<sig>` comparison through the
@@ -500,6 +522,36 @@ class TestValidateSignature:
             }
         )
         assert adapter._validate_signature(req, body, secret) is True
+
+    @pytest.mark.parametrize(
+        "secret, sign_with, body, received, stale, expected",
+        [
+            ("whsec_" + base64.b64encode(b"0123456789abcdef").decode(), None, b'{"a":1}', b'{"a":1}', False, True),
+            ("raw-signing-secret", None, b'{"a":1}', b'{"a":1}', False, True),
+            ("real-secret", "attacker-secret", b'{"a":1}', b'{"a":1}', False, False),
+            ("real-secret", None, b'{"a":1}', b'{"a":2}', False, False),  # tampered body
+            ("real-secret", None, b'{"a":1}', b'{"a":1}', True, False),  # replayed stale timestamp
+        ],
+    )
+    def test_standard_webhooks_headers_validate_like_svix(self, secret, sign_with, body, received, stale, expected):
+        """#47451/#101837: webhook-id/-timestamp/-signature is the same HMAC scheme as svix-*."""
+        adapter = _make_adapter()
+        timestamp = str(int(time.time()) - (600 if stale else 0))
+        sig = _svix_signature(body, sign_with or secret, "msg_std", timestamp)
+        req = _mock_request(headers={"webhook-id": "msg_std", "webhook-timestamp": timestamp, "webhook-signature": sig})
+        assert adapter._validate_signature(req, received, secret) is expected
+
+    def test_gitlab_secret_token_survives_unsigned_standard_webhooks_metadata(self):
+        """GitLab sends webhook-id/webhook-timestamp on every delivery and webhook-signature only when a
+        signing token is set; a legacy X-Gitlab-Token route must not be hijacked into the HMAC path."""
+        adapter = _make_adapter()
+        req = _mock_request(headers={
+            "X-Gitlab-Token": "legacy-token", "webhook-id": "gl_1", "webhook-timestamp": str(int(time.time())),
+        })
+        assert adapter._validate_signature(req, b"{}", "legacy-token") is True
+        req_partial = _mock_request(headers={"webhook-id": "gl_2", "webhook-timestamp": str(int(time.time())),
+                                             "webhook-signature": "v1,AAAA"})
+        assert adapter._validate_signature(req_partial, b"{}", "legacy-token") is False
 
 
 # ===================================================================
@@ -1344,6 +1396,70 @@ class TestSessionIsolation:
 
 
 # ===================================================================
+# Silence-marker suppression
+# ===================================================================
+
+
+class TestWebhookSilenceSuppression:
+    """A webhook route that answers ``[SILENT]`` must deliver nothing.
+
+    Webhook routes are autonomous lanes with nobody waiting on the other end,
+    so a subscription prompt tells the agent to reply ``[SILENT]`` on a tick
+    that produced no story.  Models routinely append a sentence saying WHY they
+    stayed quiet, and the live gateway's exact-whole-response rule then treats
+    that as a real report — which is how a Helper support lane ended up
+    repeatedly messaging its owner to say it had nothing to say.
+    """
+
+    def _adapter_with_mock_target(self):
+        adapter = _make_adapter()
+        mock_target = AsyncMock()
+        mock_target.send = AsyncMock(return_value=SendResult(success=True))
+        mock_runner = MagicMock()
+        mock_runner.adapters = {Platform("telegram"): mock_target}
+        mock_runner._authorization_adapter = lambda platform, profile=None: mock_runner.adapters.get(platform)
+        mock_runner.config.get_home_channel.return_value = None
+        adapter.gateway_runner = mock_runner
+
+        chat_id = "webhook:helper-events:d-1"
+        adapter._delivery_info[chat_id] = {
+            "deliver": "telegram",
+            "deliver_extra": {"chat_id": "-100123"},
+        }
+        adapter._delivery_info_created[chat_id] = time.time()
+        return adapter, mock_target, chat_id
+
+    @pytest.mark.asyncio
+    async def test_bare_marker_is_not_delivered(self):
+        adapter, target, chat_id = self._adapter_with_mock_target()
+
+        result = await adapter.send(chat_id, "[SILENT]")
+
+        assert result.success is True
+        target.send.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_marker_followed_by_prose_is_not_delivered(self):
+        """The regression this suppression exists for.
+
+        The agent explains its own silence on the lines after the marker.  The
+        strict interactive rule reads that as substantive prose and delivers the
+        whole thing, marker included.
+        """
+        adapter, target, chat_id = self._adapter_with_mock_target()
+
+        result = await adapter.send(
+            chat_id,
+            "[SILENT]\n\nThe new inbound was the same email quoted back a second "
+            "time, on a ticket we already answered. Nothing new to reply to, so I "
+            "closed it; it reopens by itself if they write back.",
+        )
+
+        assert result.success is True
+        target.send.assert_not_awaited()
+
+
+# ===================================================================
 # Delivery info cleanup
 # ===================================================================
 
@@ -1495,6 +1611,7 @@ class TestDeliverCrossPlatformThreadId:
 
         mock_runner = MagicMock()
         mock_runner.adapters = {Platform("telegram"): mock_target}
+        mock_runner._authorization_adapter = lambda platform, profile=None: mock_runner.adapters.get(platform)
         mock_runner.config.get_home_channel.return_value = None
 
         adapter.gateway_runner = mock_runner
@@ -1703,6 +1820,7 @@ class TestDualStackBind:
         finally:
             await adapter.disconnect()
 
+
     @pytest.mark.skipif(
         sys.platform == "win32",
         reason="Windows socket semantics allow a dual-stack wildcard bind "
@@ -1740,3 +1858,188 @@ class TestDualStackBind:
             await adapter.disconnect()
             blocker.close()
             await blocker.wait_closed()
+
+
+
+
+
+class TestExclusiveBindTimeWait:
+    """The TIME_WAIT rebind (positive case: tests/gateway/test_api_server_bind_guard.py, shared
+    ``start_tcp_site``) must not weaken the exclusive bind: a live listener still wins."""
+
+    @staticmethod
+    def _adapter_on(port: int) -> WebhookAdapter:
+        return _make_adapter(
+            routes={"r1": {"secret": "real-secret-abc123", "prompt": "x"}},
+            host="127.0.0.1",
+            port=port,
+        )
+
+    @pytest.mark.asyncio
+    async def test_explicit_host_still_rejects_live_listener(self):
+        """The TIME_WAIT retry must not weaken exclusivity: a live listener on the same address wins."""
+        # The probe's connection must be closed server-side too, or ``wait_closed()`` never returns.
+        blocker = await asyncio.start_server(
+            lambda _reader, writer: writer.close(), host="127.0.0.1", port=0, reuse_address=False
+        )
+        port = blocker.sockets[0].getsockname()[1]
+        adapter = self._adapter_on(port)
+        try:
+            with patch.object(adapter, "_reload_dynamic_routes"):
+                assert await adapter.connect() is False
+            assert adapter._runner is None
+            assert adapter.is_connected is False
+        finally:
+            await adapter.disconnect()
+            blocker.close()
+            await blocker.wait_closed()
+
+
+# Regression coverage for #72041: profile-bound webhook authentication
+class TestMultiplexProfileWebhookAuthentication:
+    @staticmethod
+    def _configure_profiles(adapter, tmp_path, monkeypatch):
+        runner = MagicMock()
+        runner.config.multiplex_profiles = True
+        adapter.gateway_runner = runner
+        monkeypatch.setattr(
+            "hermes_cli.profiles.profiles_to_serve",
+            lambda multiplex: [
+                ("default", tmp_path),
+                ("worker", tmp_path / "profiles" / "worker"),
+                ("other", tmp_path / "profiles" / "other"),
+            ],
+        )
+
+    @staticmethod
+    def _app(adapter):
+        app = _create_app(adapter)
+        app.router.add_post(
+            "/p/{profile}/webhooks/{route_name}",
+            adapter._handle_webhook,
+        )
+        return app
+
+    @staticmethod
+    def _headers(body: bytes, secret: str):
+        return {
+            "Content-Type": "application/json",
+            "X-Hub-Signature-256": _github_signature(body, secret),
+            # Stop after successful authentication without dispatching an
+            # agent run; the route accepts only pull_request events.
+            "X-GitHub-Event": "push",
+        }
+
+    @pytest.mark.asyncio
+    async def test_route_secret_is_bound_to_named_profile(
+        self, tmp_path, monkeypatch
+    ):
+        route_secret = "worker-route-secret-abc123"
+        adapter = _make_adapter(
+            routes={
+                "gh": {
+                    "profile": "worker",
+                    "secret": route_secret,
+                    "events": ["pull_request"],
+                    "prompt": "PR: {action}",
+                }
+            },
+            host="127.0.0.1",
+        )
+        self._configure_profiles(adapter, tmp_path, monkeypatch)
+        body = b'{"action":"opened"}'
+        headers = self._headers(body, route_secret)
+
+        async with TestClient(TestServer(self._app(adapter))) as cli:
+            accepted = await cli.post(
+                "/p/worker/webhooks/gh",
+                data=body,
+                headers=headers,
+            )
+            assert accepted.status == 200
+            assert (await accepted.json())["status"] == "ignored"
+
+            wrong_profile = await cli.post(
+                "/p/other/webhooks/gh",
+                data=body,
+                headers=headers,
+            )
+            assert wrong_profile.status == 404
+
+            default_profile = await cli.post(
+                "/webhooks/gh",
+                data=body,
+                headers=headers,
+            )
+            assert default_profile.status == 404
+
+    @pytest.mark.asyncio
+    async def test_routed_profile_skills_resolve_under_that_profile(
+        self, tmp_path, monkeypatch
+    ):
+        """A /p/<profile>/ route's ``skills:`` must load from that profile's
+        skills/ dir (#67277). Before the fix the lookup ran with no profile
+        scope, so it scanned the launch profile and logged "Skill not found".
+        """
+        import agent.skill_commands as sc_mod
+
+        worker = tmp_path / "profiles" / "worker"
+        skill_dir = worker / "skills" / "worker-only"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "---\nname: worker-only\ndescription: w\n---\n\nBody of worker-only.\n"
+        )
+        (worker / "config.yaml").write_text("{}\n")
+        (worker / ".env").write_text("")
+        monkeypatch.setattr(
+            "hermes_cli.profiles.get_profile_dir", lambda name: tmp_path / "profiles" / name
+        )
+        route_secret = "worker-route-secret-abc123"
+        adapter = _make_adapter(
+            routes={
+                "gh": {
+                    "profile": "worker",
+                    "secret": route_secret,
+                    "prompt": "PR: {action}",
+                    "skills": ["worker-only"],
+                }
+            },
+            host="127.0.0.1",
+        )
+        self._configure_profiles(adapter, tmp_path, monkeypatch)
+        seen = []
+
+        async def _capture(event):
+            seen.append(event)
+
+        adapter.handle_message = _capture
+        body = b'{"action":"opened"}'
+        headers = {
+            "Content-Type": "application/json",
+            "X-Hub-Signature-256": _github_signature(body, route_secret),
+        }
+        with (
+            patch.object(sc_mod, "_skill_commands", {}),
+            patch.object(sc_mod, "_skill_commands_home", None),
+        ):
+            async with TestClient(TestServer(self._app(adapter))) as cli:
+                resp = await cli.post("/p/worker/webhooks/gh", data=body, headers=headers)
+                assert resp.status == 202
+                await asyncio.sleep(0.05)
+        assert len(seen) == 1
+        assert seen[0].source.profile == "worker"
+        assert "Body of worker-only." in seen[0].text
+
+
+def test_route_profile_validation_fails_closed():
+    assert WebhookAdapter._route_allows_profile({}, None) is True
+    assert WebhookAdapter._route_allows_profile(
+        {"profile": "worker"}, "worker"
+    ) is True
+    assert WebhookAdapter._route_allows_profile(
+        {"profile": "worker"}, "other"
+    ) is False
+    for malformed in (None, "", "   ", 123, ["worker"]):
+        assert WebhookAdapter._route_allows_profile(
+            {"profile": malformed}, "worker"
+        ) is False

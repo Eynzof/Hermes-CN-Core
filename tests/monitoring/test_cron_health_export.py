@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -84,10 +83,52 @@ def test_terminal_execution_emission_flushes_and_failures_are_fail_open(monkeypa
 
 
 
+def test_registered_observable_metric_names_cover_snapshot_metrics(monkeypatch):
+    """Every gauge emitted in the runtime snapshot must also be registered in the
+    observable-gauge metric_names list, or the OTLP exporter never observes it.
+
+    This asserts the vocabulary-registration invariant documented in
+    website/docs/developer-guide/gateway-monitoring.md: an emitted-but-unregistered gauge is
+    silently dropped. Regression guard for background_work / cron additions.
+    """
+    from agent.monitoring import gateway_health_export
+
+    # Build a representative snapshot (gateway + cron + background_work) without
+    # a live gateway by stubbing the gateway snapshot to the real metric names.
+    class _M:
+        def __init__(self, name):
+            self.name = name
+            self.value = 0
+            self.attributes = {}
+
+    gateway_snapshot = type("S", (), {"metrics": [
+        _M("hermes.gateway.up"), _M("hermes.gateway.active_agents"),
+        _M("hermes.gateway.busy"), _M("hermes.gateway.drainable"),
+        _M("hermes.gateway.restart_requested"),
+        _M("hermes.platform.up"), _M("hermes.platform.degraded"),
+    ]})()
+    cron_snapshot = type("S", (), {"metrics": [
+        _M("hermes.cron.scheduler.heartbeat_age_seconds"),
+        _M("hermes.cron.scheduler.last_success_age_seconds"),
+        _M("hermes.cron.scheduler.catch_up_occurrences"),
+        _M("hermes.cron.jobs.enabled"), _M("hermes.cron.jobs.running"),
+        _M("hermes.cron.jobs.overdue"),
+    ]})()
+    monkeypatch.setattr(gateway_health_export, "_read_gateway_snapshot", lambda config: gateway_snapshot)
+    monkeypatch.setattr(gateway_health_export, "_read_cron_snapshot", lambda: cron_snapshot)
+
+    snapshot_names = {m.name for m in gateway_health_export._read_runtime_snapshot({}).metrics}
+
+    registered = set(gateway_health_export._OBSERVABLE_METRIC_NAMES)
+
+    missing = snapshot_names - registered
+    assert not missing, f"gauges emitted but NOT registered in metric_names (will be silently dropped): {sorted(missing)}"
+
+
 def test_monitoring_docs_distinguish_relay_health_scope_and_terminal_flush():
     from pathlib import Path
 
-    text = Path("docs/observability/monitoring.md").read_text(encoding="utf-8")
+    text = Path("website/docs/developer-guide/gateway-monitoring.md").read_text(encoding="utf-8")
 
     assert "Hermes Agent-owned Relay transport health" in text
     assert "authoritative shared connector/platform state" in text

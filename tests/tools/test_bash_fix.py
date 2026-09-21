@@ -890,12 +890,14 @@ class TestTerminalToolSurfacesBashFixWarnings:
 
         import tools.terminal_tool as tt
 
+        import tools.terminal_tool_backends as ttb
+
         fake_env = MagicMock()
         fake_env.cwd = str(tmp_path)
         fake_env.env = {}
         fake_env.execute.return_value = exec_result
 
-        with patch.object(tt, "_create_environment", return_value=fake_env), \
+        with patch.object(ttb, "_create_environment", return_value=fake_env), \
              patch.dict(tt._active_environments, {}, clear=True):
             raw = tt.terminal_tool("echo hi", task_id=task_id)
         return orjson.loads(raw)

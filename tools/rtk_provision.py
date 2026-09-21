@@ -16,12 +16,12 @@ from __future__ import annotations
 
 
 import functools
-import platform
 import shutil
 import subprocess
 from pathlib import Path
 
 from hermes_constants import get_hermes_home, get_managed_tools_dir
+from platform_utils import is_windows
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -38,7 +38,9 @@ RTK_REPO = "rtk-ai/rtk"
 # Platform helpers
 # ---------------------------------------------------------------------------
 
-_IS_WINDOWS = platform.system() == "Windows"
+# is_windows(), never platform.system(): that idiom drives platform.uname() into
+# its WMI-backed path on Python 3.12+ (two WMI queries at import time).
+_IS_WINDOWS = is_windows()
 
 
 def _rtk_binary_name() -> str:

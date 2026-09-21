@@ -69,8 +69,8 @@ cd ~/Documents/GithubProjects/hermes/hermes-agent-cn
 每次同步上游后、每次打 `runtime-v*` tag 前都要跑：
 
 ```bash
-python -m venv /tmp/hermes-cn-test
-source /tmp/hermes-cn-test/bin/activate
+python -m venv "${TMPDIR:-/tmp}/hermes-cn-test"
+source "${TMPDIR:-/tmp}/hermes-cn-test/bin/activate"
 pip install -e .
 
 hermes dashboard --no-open &
@@ -89,7 +89,7 @@ curl -sS http://127.0.0.1:9119/openapi.json | jq '.paths | has("/api/v2/events")
 
 kill %1
 deactivate
-rm -rf /tmp/hermes-cn-test
+rm -rf "${TMPDIR:-/tmp}/hermes-cn-test"
 ```
 
 如果 smoke test 失败，不要合并同步 PR，也不要发布 runtime。

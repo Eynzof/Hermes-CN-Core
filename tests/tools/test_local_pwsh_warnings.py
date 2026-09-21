@@ -224,7 +224,10 @@ class TestTerminalToolSurfacesWarnings:
         fake_env.env = {}
         fake_env.execute.return_value = exec_result
 
-        with patch.object(tt, "_create_environment", return_value=fake_env), \
+        # The merge moved _create_environment into the terminal_tool_backends
+        # sibling; terminal_tool_lifecycle._create_configured_env imports it from
+        # there at call time, so patch where production reads it.
+        with patch("tools.terminal_tool_backends._create_environment", return_value=fake_env), \
              patch.dict(tt._active_environments, {}, clear=True):
             raw = tt.terminal_tool("echo hi", task_id=task_id)
         return orjson.loads(raw)

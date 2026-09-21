@@ -32,7 +32,10 @@ def repo(tmp_path):
     d = tmp_path / "repo"
     d.mkdir()
     _git(d, "init", "-q")
-    (d / "tracked.py").write_text("print('hello')\n")
+    # newline="\n": text mode would write CRLF on Windows, and the clean-tree
+    # assertion below then depends on the host's core.autocrlf (the fixture's
+    # git calls run with HOME=<repo>, collect_working_diff with the real one).
+    (d / "tracked.py").write_text("print('hello')\n", newline="\n")
     _git(d, "add", "-A")
     _git(d, "commit", "-q", "-m", "init")
     return d
@@ -46,7 +49,7 @@ def test_clean_repo_reports_empty(repo):
 
 
 def test_unstaged_change_appears_in_default_mode(repo):
-    (repo / "tracked.py").write_text("print('changed')\n")
+    (repo / "tracked.py").write_text("print('changed')\n", newline="\n")
     result = collect_working_diff(str(repo))
     assert result["success"] is True
     assert "-print('hello')" in result["diff"]

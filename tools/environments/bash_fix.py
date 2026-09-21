@@ -2647,8 +2647,8 @@ class _Scanner:
         """
         if not raw:
             return None
-        if raw.startswith("/tmp"):
-            if raw != "/tmp" and not raw.startswith("/tmp/"):
+        if raw.startswith("/tmp"):  # no-tmp: ok — recognizes Git Bash's virtual /tmp to rewrite it
+            if raw != "/tmp" and not raw.startswith("/tmp/"):  # no-tmp: ok — exact-root guard for that rewrite
                 return None
             return self._quote_path_word(_windows_temp_dir() + raw[4:])
         if len(raw) >= 3 and raw[0] == "/" and raw[1].isalpha() and raw[2] == "/":

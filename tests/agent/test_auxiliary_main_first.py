@@ -18,11 +18,11 @@ from unittest.mock import MagicMock, patch
 
 
 
-# ── Text aux tasks — _resolve_auto ──────────────────────────────────────────
+# ── Text aux tasks — _resolve_auto_route ──────────────────────────────────────────
 
 
 class TestResolveAutoMainFirst:
-    """_resolve_auto() must prefer main provider + main model for every user."""
+    """_resolve_auto_route() must prefer main provider + main model for every user."""
 
 
     def test_moa_main_resolves_aux_to_aggregator(self, monkeypatch, tmp_path):
@@ -64,9 +64,9 @@ class TestResolveAutoMainFirst:
             mock_client = MagicMock()
             mock_resolve.return_value = (mock_client, "anthropic/claude-opus-4.8")
 
-            from agent.auxiliary_client import _resolve_auto
+            from agent.auxiliary_client import _resolve_auto_route
 
-            client, model = _resolve_auto(
+            client, model, _provider = _resolve_auto_route(
                 main_runtime={
                     "provider": "moa",
                     "model": "opus-gpt",
@@ -99,8 +99,8 @@ class TestResolveAutoMainFirst:
             mock_resolve.return_value = (mock_client, "anthropic/claude-opus-4.6")
 
 
-            from agent.auxiliary_client import _resolve_auto
-            client, model = _resolve_auto()
+            from agent.auxiliary_client import _resolve_auto_route
+            client, model, _provider = _resolve_auto_route()
 
         assert client is mock_client
         assert model == "anthropic/claude-opus-4.6"
@@ -120,40 +120,13 @@ class TestResolveAutoMainFirst:
             mock_client = MagicMock()
             mock_resolve.return_value = (mock_client, "deepseek-chat")
 
-            from agent.auxiliary_client import _resolve_auto
+            from agent.auxiliary_client import _resolve_auto_route
 
-            client, model = _resolve_auto()
+            client, model, _provider = _resolve_auto_route()
 
         assert client is mock_client
         assert model == "deepseek-chat"
         assert mock_resolve.call_args.args[0] == "deepseek"
-
-    def test_main_unavailable_falls_through_to_chain(self, monkeypatch):
-        """Main provider with no working client → fall back to aux chain."""
-        chain_client = MagicMock()
-        with patch(
-            "agent.auxiliary_client._read_main_provider", return_value="anthropic",
-        ), patch(
-            "agent.auxiliary_client._read_main_model", return_value="claude-opus",
-        ), patch(
-            "agent.auxiliary_client.resolve_provider_client",
-            return_value=(None, None),  # main provider has no client
-        ), patch(
-            "agent.auxiliary_client._try_custom_endpoint",
-            return_value=(chain_client, "local-model"),
-        ), patch(
-            "agent.auxiliary_client._try_openrouter",
-        ) as or_try, patch(
-            "agent.auxiliary_client._try_nous",
-        ) as nous_try:
-            from agent.auxiliary_client import _resolve_auto
-
-            client, model = _resolve_auto()
-
-        assert client is chain_client
-        assert model == "local-model"
-        or_try.assert_not_called()
-        nous_try.assert_not_called()
 
     def test_main_unavailable_uses_task_fallback_chain_before_builtin_chain(self):
         """Auto aux resolution honors auxiliary.<task>.fallback_chain before built-ins."""
@@ -173,9 +146,9 @@ class TestResolveAutoMainFirst:
         ) as mock_main_chain, patch(
             "agent.auxiliary_client._try_openrouter",
         ) as mock_openrouter:
-            from agent.auxiliary_client import _resolve_auto
+            from agent.auxiliary_client import _resolve_auto_route
 
-            client, model = _resolve_auto(task="title_generation")
+            client, model, _provider = _resolve_auto_route(task="title_generation")
 
         assert client is task_client
         assert model == "task-free-model"
@@ -199,9 +172,9 @@ class TestResolveAutoMainFirst:
         ) as or_try, patch(
             "agent.auxiliary_client._try_nous",
         ) as nous_try:
-            from agent.auxiliary_client import _resolve_auto
+            from agent.auxiliary_client import _resolve_auto_route
 
-            client, model = _resolve_auto()
+            client, model, _provider = _resolve_auto_route()
 
         assert client is chain_client
         assert model == "local-model"
@@ -220,9 +193,9 @@ class TestResolveAutoMainFirst:
         ) as mock_resolve:
             mock_resolve.return_value = (MagicMock(), "runtime-model")
 
-            from agent.auxiliary_client import _resolve_auto
+            from agent.auxiliary_client import _resolve_auto_route
 
-            _resolve_auto(main_runtime={
+            _resolve_auto_route(main_runtime={
                 "provider": "anthropic",
                 "model": "runtime-model",
                 "base_url": "",
@@ -275,9 +248,9 @@ class TestResolveAutoMainFirst:
         ) as mock_resolve:
             mock_resolve.return_value = (MagicMock(), "mimo-v2.5-pro")
 
-            from agent.auxiliary_client import _resolve_auto
+            from agent.auxiliary_client import _resolve_auto_route
 
-            _resolve_auto(main_runtime={
+            _resolve_auto_route(main_runtime={
                 "provider": "xiaomi",
                 "model": "mimo-v2.5-pro",
                 "base_url": token_plan_url,
@@ -731,7 +704,7 @@ def test_aggregator_providers_constant_removed():
     import agent.auxiliary_client as aux_mod
 
     assert not hasattr(aux_mod, "_AGGREGATOR_PROVIDERS"), (
-        "_AGGREGATOR_PROVIDERS was removed when _resolve_auto stopped "
+        "_AGGREGATOR_PROVIDERS was removed when _resolve_auto_route stopped "
         "treating aggregators specially. If you re-added it, the main-first "
         "policy may have regressed."
     )

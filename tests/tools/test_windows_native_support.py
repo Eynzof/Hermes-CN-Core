@@ -107,7 +107,8 @@ class TestTerminatePidRoutingOnWindows:
             return result
 
         monkeypatch.setattr(status.subprocess, "run", fake_run)
-        status.terminate_pid(12345, force=True)
+        monkeypatch.setattr(status, "_get_process_start_time", lambda pid: 123456)
+        status.terminate_pid(12345, force=True, expected_start_time=123456)
 
         assert captured["args"][0] == "taskkill"
         assert "/PID" in captured["args"]
@@ -126,8 +127,9 @@ class TestTerminatePidRoutingOnWindows:
             return result
 
         monkeypatch.setattr(status.subprocess, "run", fake_run)
+        monkeypatch.setattr(status, "_get_process_start_time", lambda pid: 123456)
         with pytest.raises(OSError, match="cannot be terminated"):
-            status.terminate_pid(12345, force=True)
+            status.terminate_pid(12345, force=True, expected_start_time=123456)
 
     def test_graceful_on_windows_uses_os_kill_sigterm(self, monkeypatch):
         """Non-force path calls os.kill with SIGTERM (Windows has no SIGKILL).
@@ -165,7 +167,8 @@ class TestTerminatePidRoutingOnWindows:
 
         monkeypatch.setattr(status.subprocess, "run", fake_run)
         monkeypatch.setattr(status.os, "kill", fake_kill)
-        status.terminate_pid(42, force=True)
+        monkeypatch.setattr(status, "_get_process_start_time", lambda pid: 123456)
+        status.terminate_pid(42, force=True, expected_start_time=123456)
 
         assert captured["pid"] == 42
         assert captured["sig"] == signal.SIGTERM
@@ -458,7 +461,7 @@ class TestTuiGatewayEntrySignalGuards:
 
 
 # ---------------------------------------------------------------------------
-# hermes_cli/kanban_db.py waitpid guard
+# hermes_cli/kanban_db_dispatch.py waitpid guard
 # ---------------------------------------------------------------------------
 
 
@@ -505,21 +508,21 @@ class TestLocalEnvironmentPathInjectionGated:
 
 
 class TestMsysPathNormalization:
-    """_normalize_msys_path should turn /c/Users/... into C:\\Users\\...
+    """_normalize_git_bash_path should turn /c/Users/... into C:\\Users\\...
     on Windows and leave paths unchanged on POSIX."""
 
     def test_posix_noop(self):
         """Must NOT mutate paths on Linux/macOS."""
-        from cli import _normalize_msys_path
+        from hermes_cli.worktree_ops import _normalize_git_bash_path
         if sys.platform != "win32":
-            assert _normalize_msys_path("/home/teknium/foo") == "/home/teknium/foo"
-            assert _normalize_msys_path("/c/Users/foo") == "/c/Users/foo"
-            assert _normalize_msys_path("C:/Users/foo") == "C:/Users/foo"
-            assert _normalize_msys_path(None) is None
+            assert _normalize_git_bash_path("/home/teknium/foo") == "/home/teknium/foo"
+            assert _normalize_git_bash_path("/c/Users/foo") == "/c/Users/foo"
+            assert _normalize_git_bash_path("C:/Users/foo") == "C:/Users/foo"
+            assert _normalize_git_bash_path(None) is None
 
     def test_empty_string_preserved(self):
-        from cli import _normalize_msys_path
-        assert _normalize_msys_path("") == ""
+        from hermes_cli.worktree_ops import _normalize_git_bash_path
+        assert _normalize_git_bash_path("") == ""
 
     @pytest.mark.windows_only
     def test_windows_translation(self, monkeypatch):
@@ -528,18 +531,18 @@ class TestMsysPathNormalization:
         ``windows_only``: the function's whole job is producing native
         Windows paths, which is only meaningful where ``os.sep`` is ``\\``.
         """
-        import cli as cli_mod
+        from hermes_cli import worktree_ops as cli_mod
         monkeypatch.setattr(cli_mod.sys, "platform", "win32")
-        assert cli_mod._normalize_msys_path("/c/Users/foo") == r"C:\Users\foo"
-        assert cli_mod._normalize_msys_path("/C/Users/foo") == r"C:\Users\foo"
-        assert cli_mod._normalize_msys_path("/cygdrive/d/data") == r"D:\data"
-        assert cli_mod._normalize_msys_path("/mnt/c/Users") == r"C:\Users"
+        assert cli_mod._normalize_git_bash_path("/c/Users/foo") == r"C:\Users\foo"
+        assert cli_mod._normalize_git_bash_path("/C/Users/foo") == r"C:\Users\foo"
+        assert cli_mod._normalize_git_bash_path("/cygdrive/d/data") == r"D:\data"
+        assert cli_mod._normalize_git_bash_path("/mnt/c/Users") == r"C:\Users"
         # Already-native path is preserved
-        assert cli_mod._normalize_msys_path(r"C:\Users\foo") == r"C:\Users\foo"
+        assert cli_mod._normalize_git_bash_path(r"C:\Users\foo") == r"C:\Users\foo"
         # Forward-slash Windows path is preserved (git on Windows often
-        # returns this form; it's valid for both PowerShell and Python, so
-        # we don't need to translate).
-        assert cli_mod._normalize_msys_path("C:/Users/foo") == "C:/Users/foo"
+        # returns this form; it's valid for both bash and Python, so we
+        # don't need to translate).
+        assert cli_mod._normalize_git_bash_path("C:/Users/foo") == "C:/Users/foo"
 
 
 class TestWindowlessGatewayRestartSpec:

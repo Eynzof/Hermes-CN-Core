@@ -24,6 +24,17 @@ def _set_interactive_stdin(monkeypatch, *, is_tty: bool = True) -> None:
     mock_stdin = MagicMock()
     mock_stdin.isatty.return_value = is_tty
     monkeypatch.setattr("tools.mcp_oauth.sys.stdin", mock_stdin)
+    import sys
+
+    if sys.platform == "win32":
+        # Windows does not trust isatty() alone: _is_interactive() confirms a real console
+        # handle through GetConsoleMode (tools/mcp_oauth.py::_stdin_is_console, covered by
+        # tests/tools/test_mcp_oauth_stdin_console.py), which a MagicMock stdin can never
+        # satisfy. These tests assert the TTY / ContextVar contract, so model the console
+        # verdict directly on Windows only.
+        import tools.mcp_oauth as _mcp_oauth
+
+        monkeypatch.setattr(_mcp_oauth, "_stdin_is_console", lambda: is_tty)
 
 
 @pytest.mark.asyncio

@@ -17,6 +17,7 @@ _win32 = pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: U
 
 from tools.file_tools import (
     PATCH_SCHEMA,
+    read_file_tool,
 )
 
 @pytest.fixture(autouse=True)
@@ -48,6 +49,22 @@ class TestReadFileHandler:
 
 
     @patch("tools.file_tools._get_file_ops")
+    def test_dispatch_without_limit_uses_schema_default(self, mock_get):
+        """The model omits ``limit`` on most reads; the dispatch handler must fall
+        back to the SAME default the schema advertises (drifted to 500 vs 2000)."""
+        from tools.file_tools import READ_FILE_SCHEMA, _handle_read_file
+        mock_ops = MagicMock()
+        result_obj = MagicMock()
+        result_obj.content = "x"
+        result_obj.to_dict.return_value = {"content": "x", "total_lines": 1}
+        mock_ops.read_file.return_value = result_obj
+        mock_get.return_value = mock_ops
+
+        _handle_read_file({"path": "/tmp/test.txt"}, task_id="t-default")
+        schema_default = READ_FILE_SCHEMA["parameters"]["properties"]["limit"]["default"]
+        assert mock_ops.read_file.call_args.args[2] == schema_default
+
+    @patch("tools.file_tools._get_file_ops")
     def test_exception_returns_error_json(self, mock_get):
         mock_get.side_effect = RuntimeError("terminal not available")
 
@@ -58,27 +75,32 @@ class TestReadFileHandler:
 
 class TestWriteFileHandler:
     @patch("tools.file_tools._get_file_ops")
-    def test_writes_content(self, mock_get):
+    def test_writes_content(self, mock_get, tmp_path):
+        # Hermetic target: the old literal "/tmp/out.txt" resolves to a REAL path
+        # on Windows (C:\tmp\out.txt) and, when that file exists, the merged-in
+        # read-before-write guard (tools/file_tools_write_guards.py) refuses the
+        # overwrite before the mocked ops layer is reached.
+        target = tmp_path / "out.txt"
         mock_ops = MagicMock()
         result_obj = MagicMock()
-        result_obj.to_dict.return_value = {"status": "ok", "path": "/tmp/out.txt", "bytes": 13}
+        result_obj.to_dict.return_value = {"status": "ok", "path": str(target), "bytes": 13}
         mock_ops.write_file.return_value = result_obj
         mock_get.return_value = mock_ops
 
         from tools.file_tools import write_file_tool
-        result = orjson.loads(write_file_tool("/tmp/out.txt", "hello world!\n"))
+        result = orjson.loads(write_file_tool(str(target), "hello world!\n"))
         assert result["status"] == "ok"
         mock_ops.write_file.assert_called_once_with(
-            os.path.realpath("/tmp/out.txt"), "hello world!\n"
+            os.path.realpath(str(target)), "hello world!\n"
         )
 
     @patch("tools.file_tools._get_file_ops")
-    def test_permission_error_returns_error_json_without_error_log(self, mock_get, caplog):
+    def test_permission_error_returns_error_json_without_error_log(self, mock_get, caplog, tmp_path):
         mock_get.side_effect = PermissionError("read-only filesystem")
 
         from tools.file_tools import write_file_tool
         with caplog.at_level(logging.DEBUG, logger="tools.file_tools"):
-            result = orjson.loads(write_file_tool("/tmp/out.txt", "data"))
+            result = orjson.loads(write_file_tool(str(tmp_path / "out.txt"), "data"))
         assert "error" in result
         assert "read-only" in result["error"]
         assert any("write_file expected denial" in r.getMessage() for r in caplog.records)
@@ -97,27 +119,28 @@ class TestWriteFileHandler:
         mock_get.assert_not_called()
 
     @patch("tools.file_tools._get_file_ops")
-    def test_allows_sparse_literal_pipe_content(self, mock_get):
+    def test_allows_sparse_literal_pipe_content(self, mock_get, tmp_path):
         """A single literal N| line should not be treated as read_file output."""
+        target = tmp_path / "out.txt"
         mock_ops = MagicMock()
         result_obj = MagicMock()
-        result_obj.to_dict.return_value = {"status": "ok", "path": "/tmp/out.txt", "bytes": 21}
+        result_obj.to_dict.return_value = {"status": "ok", "path": str(target), "bytes": 21}
         mock_ops.write_file.return_value = result_obj
         mock_get.return_value = mock_ops
 
         from tools.file_tools import write_file_tool
-        result = orjson.loads(write_file_tool("/tmp/out.txt", "1|literal value\nplain line\n"))
+        result = orjson.loads(write_file_tool(str(target), "1|literal value\nplain line\n"))
 
         assert result["status"] == "ok"
         mock_ops.write_file.assert_called_once()
 
     @patch("tools.file_tools._get_file_ops")
-    def test_unexpected_exception_still_logs_error(self, mock_get, caplog):
+    def test_unexpected_exception_still_logs_error(self, mock_get, caplog, tmp_path):
         mock_get.side_effect = RuntimeError("boom")
 
         from tools.file_tools import write_file_tool
         with caplog.at_level(logging.ERROR, logger="tools.file_tools"):
-            result = orjson.loads(write_file_tool("/tmp/out.txt", "data"))
+            result = orjson.loads(write_file_tool(str(tmp_path / "out.txt"), "data"))
         assert result["error"] == "boom"
         assert any("write_file error" in r.getMessage() for r in caplog.records)
 
@@ -403,7 +426,7 @@ class TestWindowsMsysPathResolution:
         """Windows-only: ``_resolve_path_for_task`` hands the translated path
         to ``ntpath``/``Path``, and only a real Windows ``Path`` renders
         ``C:\\Users\\...`` — faking ``sys.platform`` left PosixPath in place."""
-        import tools.file_tools as file_tools
+        import tools.file_tools_paths as file_tools
 
         monkeypatch.setattr(file_tools, "_uses_container_paths", lambda task_id="default": False)
 
@@ -418,7 +441,7 @@ class TestWindowsMsysPathResolution:
         Windows-only: the translation this guards against only happens when
         the host really is Windows, so the negative is only meaningful there.
         """
-        import tools.file_tools as file_tools
+        import tools.file_tools_paths as file_tools
 
         monkeypatch.setattr(file_tools, "_uses_container_paths", lambda task_id="default": True)
         monkeypatch.setattr(
@@ -471,7 +494,7 @@ class TestSearchHints:
 
     def setup_method(self):
         """Clear read/search tracker between tests to avoid cross-test state."""
-        from tools.file_tools import _read_tracker
+        from tools.file_tools_read_tracking import _read_tracker
         _read_tracker.clear()
 
     @patch("tools.file_tools._get_file_ops")
@@ -488,8 +511,10 @@ class TestSearchHints:
 
         from tools.file_tools import search_tool
         raw = search_tool(pattern="foo", offset=0, limit=50)
-        assert "[Hint:" in raw
-        assert "offset=50" in raw
+        # The hint rides inside the payload as a structured field — the tool
+        # result must stay pure JSON (#90322).
+        parsed = json.loads(raw)
+        assert "offset=50" in parsed["_hint"]
 
 
     @patch("tools.file_tools._get_file_ops")
@@ -506,8 +531,8 @@ class TestSearchHints:
 
         from tools.file_tools import search_tool
         raw = search_tool(pattern="foo", offset=50, limit=50)
-        assert "[Hint:" in raw
-        assert "offset=100" in raw
+        parsed = json.loads(raw)
+        assert "offset=100" in parsed["_hint"]
 
 # ---------------------------------------------------------------------------
 # PATCH_SCHEMA shape tests (issue #15524)
@@ -518,8 +543,8 @@ class TestSensitivePathCheck:
 
     def test_hermes_config_blocked_for_write_file(self, tmp_path, monkeypatch):
         fake_config = tmp_path / "config.yaml"
-        monkeypatch.setattr("tools.file_tools._hermes_config_resolved", str(fake_config))
-        monkeypatch.setattr("tools.file_tools._hermes_config_resolved_loaded", True)
+        monkeypatch.setattr("tools.file_tools_write_guards._hermes_config_resolved", str(fake_config))
+        monkeypatch.setattr("tools.file_tools_write_guards._hermes_config_resolved_loaded", True)
 
         from tools.file_tools import write_file_tool
         result = orjson.loads(write_file_tool(str(fake_config), "approvals:\n  mode: off\n"))
@@ -528,8 +553,8 @@ class TestSensitivePathCheck:
 
     def test_hermes_config_blocked_via_tilde_path(self, tmp_path, monkeypatch):
         fake_config = tmp_path / "config.yaml"
-        monkeypatch.setattr("tools.file_tools._hermes_config_resolved", str(fake_config))
-        monkeypatch.setattr("tools.file_tools._hermes_config_resolved_loaded", True)
+        monkeypatch.setattr("tools.file_tools_write_guards._hermes_config_resolved", str(fake_config))
+        monkeypatch.setattr("tools.file_tools_write_guards._hermes_config_resolved_loaded", True)
 
         from tools.file_tools import write_file_tool
         result = orjson.loads(write_file_tool(str(fake_config), "approvals:\n  mode: off\n"))
@@ -539,8 +564,8 @@ class TestSensitivePathCheck:
     def test_hermes_config_blocked_for_patch(self, tmp_path, monkeypatch):
         fake_config = tmp_path / "config.yaml"
         fake_config.write_text("approvals:\n  mode: manual\n")
-        monkeypatch.setattr("tools.file_tools._hermes_config_resolved", str(fake_config))
-        monkeypatch.setattr("tools.file_tools._hermes_config_resolved_loaded", True)
+        monkeypatch.setattr("tools.file_tools_write_guards._hermes_config_resolved", str(fake_config))
+        monkeypatch.setattr("tools.file_tools_write_guards._hermes_config_resolved_loaded", True)
 
         from tools.file_tools import patch_tool
         result = orjson.loads(patch_tool(
@@ -554,8 +579,8 @@ class TestSensitivePathCheck:
 
     @_win32
     def test_system_path_still_blocked(self, monkeypatch):
-        monkeypatch.setattr("tools.file_tools._hermes_config_resolved", "/some/other/path")
-        monkeypatch.setattr("tools.file_tools._hermes_config_resolved_loaded", True)
+        monkeypatch.setattr("tools.file_tools_write_guards._hermes_config_resolved", "/some/other/path")
+        monkeypatch.setattr("tools.file_tools_write_guards._hermes_config_resolved_loaded", True)
 
         from tools.file_tools import write_file_tool
         result = orjson.loads(write_file_tool("/etc/passwd", "evil"))
@@ -566,7 +591,7 @@ class TestSensitivePathCheck:
     def test_macos_private_var_carveouts(self):
         """macOS temp dirs under /private/var must not be blanket-blocked,
         while the genuinely-sensitive /private/var subtrees still are."""
-        from tools.file_tools import _check_sensitive_path
+        from tools.file_tools_write_guards import _check_sensitive_path
 
         # $TMPDIR / /tmp / /var/folders realpath into these on macOS.
         assert _check_sensitive_path("/private/var/folders/xy/T/tmp.txt") is None
@@ -579,8 +604,8 @@ class TestSensitivePathCheck:
 
     @patch("tools.file_tools._get_file_ops")
     def test_normal_file_not_blocked(self, mock_get, monkeypatch):
-        monkeypatch.setattr("tools.file_tools._hermes_config_resolved", "/home/user/.hermes/config.yaml")
-        monkeypatch.setattr("tools.file_tools._hermes_config_resolved_loaded", True)
+        monkeypatch.setattr("tools.file_tools_write_guards._hermes_config_resolved", "/home/user/.hermes/config.yaml")
+        monkeypatch.setattr("tools.file_tools_write_guards._hermes_config_resolved_loaded", True)
         mock_ops = MagicMock()
         result_obj = MagicMock()
         result_obj.to_dict.return_value = {"status": "ok", "path": "/tmp/other.txt", "bytes": 5}
@@ -590,6 +615,7 @@ class TestSensitivePathCheck:
         from tools.file_tools import write_file_tool
         result = orjson.loads(write_file_tool("/tmp/other.txt", "hello"))
         assert result["status"] == "ok"
+
 
 # ---------------------------------------------------------------------------
 # Session-cwd persistence across env recreation (#26211: silent file creation
@@ -610,7 +636,7 @@ class TestSessionCwdSurvivesEnvRecreation:
     @patch("tools.terminal_tool._active_environments", new_callable=dict)
     @patch("tools.file_tools._file_ops_cache", new_callable=dict)
     @patch("tools.terminal_tool._get_env_config")
-    @patch("tools.terminal_tool._create_environment")
+    @patch("tools.terminal_tool_backends._create_environment")
     def test_recorded_cwd_used_for_recreated_env(
         self, mock_create_env, mock_config, mock_cache, mock_active
     ):
@@ -651,7 +677,7 @@ class TestSessionCwdSurvivesEnvRecreation:
     @patch("tools.terminal_tool._active_environments", new_callable=dict)
     @patch("tools.file_tools._file_ops_cache", new_callable=dict)
     @patch("tools.terminal_tool._get_env_config")
-    @patch("tools.terminal_tool._create_environment")
+    @patch("tools.terminal_tool_backends._create_environment")
     def test_stale_cache_cwd_rescued_into_record_on_cleanup_detection(
         self, mock_create_env, mock_config, mock_cache, mock_active
     ):
@@ -776,25 +802,28 @@ class TestDedupInvalidationTaskResolution:
 
         task_id = "acp-dedup"
         monkeypatch.setattr(tt, "_task_env_overrides", {task_id: {"cwd": str(workspace)}})
-        (workspace / "data.txt").write_text("v1\n")
+        (workspace / "data.txt").write_text("v1\n", encoding="utf-8")
 
         # The task resolves the relative path into the workspace; the default
         # task (the old buggy resolution) would resolve into proc.
-        correct = str(ft._resolve_path("data.txt", task_id))
-        buggy = str(ft._resolve_path("data.txt"))
+        from tools.file_tools_paths import _resolve_path_for_task
+        from tools.file_tools_read_tracking import _read_tracker
+        correct = str(_resolve_path_for_task("data.txt", task_id))
+        buggy = str(_resolve_path_for_task("data.txt"))
         assert correct != buggy, "test precondition: cwds must diverge"
 
         # Populate the dedup cache via a real read.
         ft.read_file_tool("data.txt", task_id=task_id)
-        keys = [k[0] for k in ft._read_tracker.get(task_id, {}).get("dedup", {})]
+        keys = [k[0] for k in _read_tracker.get(task_id, {}).get("dedup", {})]
         assert correct in keys, keys
 
         # Invalidate as write_file_tool does; the entry must be gone.
-        ft._invalidate_dedup_for_path("data.txt", task_id)
-        remaining = [k[0] for k in ft._read_tracker.get(task_id, {}).get("dedup", {})]
+        from tools.file_tools_read_tracking import _invalidate_dedup_for_path
+        _invalidate_dedup_for_path("data.txt", task_id)
+        remaining = [k[0] for k in _read_tracker.get(task_id, {}).get("dedup", {})]
         assert correct not in remaining, remaining
 
-        ft._read_tracker.pop(task_id, None)
+        _read_tracker.pop(task_id, None)
 
 
 # ---------------------------------------------------------------------------
@@ -819,7 +848,8 @@ class TestNotFoundCache:
         mock_ops.read_file.return_value = result_obj
         mock_get.return_value = mock_ops
 
-        from tools.file_tools import read_file_tool, _read_tracker
+        from tools.file_tools import read_file_tool
+        from tools.file_tools_read_tracking import _read_tracker
         # Use a unique task_id so we don't collide with other tests.
         tid = "neg-cache-read-1"
         _read_tracker.pop(tid, None)
@@ -847,7 +877,8 @@ class TestNotFoundCache:
         mock_ops.read_file.return_value = result_obj
         mock_get.return_value = mock_ops
 
-        from tools.file_tools import read_file_tool, _read_tracker
+        from tools.file_tools import read_file_tool
+        from tools.file_tools_read_tracking import _read_tracker
         for tid in ("neg-cache-iso-A", "neg-cache-iso-B"):
             _read_tracker.pop(tid, None)
 
@@ -866,7 +897,8 @@ class TestNotFoundCache:
         mock_ops.read_file.return_value = result_obj
         mock_get.return_value = mock_ops
 
-        from tools.file_tools import read_file_tool, _read_tracker
+        from tools.file_tools import read_file_tool
+        from tools.file_tools_read_tracking import _read_tracker
         tid = "neg-cache-success-only"
         _read_tracker.pop(tid, None)
 
@@ -888,7 +920,8 @@ class TestNotFoundCache:
         mock_ops.search.return_value = result_obj
         mock_get.return_value = mock_ops
 
-        from tools.file_tools import search_tool, _read_tracker
+        from tools.file_tools import search_tool
+        from tools.file_tools_read_tracking import _read_tracker
         tid = "neg-cache-search-3"
         _read_tracker.pop(tid, None)
 
@@ -924,7 +957,8 @@ class TestNotFoundCache:
 
         mock_get.return_value = mock_ops
 
-        from tools.file_tools import read_file_tool, search_tool, _read_tracker
+        from tools.file_tools import read_file_tool, search_tool
+        from tools.file_tools_read_tracking import _read_tracker
         tid = "neg-cache-namespace-4"
         _read_tracker.pop(tid, None)
 
@@ -956,7 +990,8 @@ class TestNotFoundCache:
         mock_ops.write_file.return_value = write_result_obj
         mock_get.return_value = mock_ops
 
-        from tools.file_tools import read_file_tool, write_file_tool, _read_tracker
+        from tools.file_tools import read_file_tool, write_file_tool
+        from tools.file_tools_read_tracking import _read_tracker
         tid = "neg-cache-write-invalidate-5"
         _read_tracker.pop(tid, None)
 
@@ -974,13 +1009,9 @@ class TestNotFoundCache:
 
     def test_not_found_ttl_expires(self):
         # A cache entry older than _NOT_FOUND_TTL_SECONDS must be discarded.
-        from tools.file_tools import (
-            _check_not_found_cache,
-            _record_not_found,
-            _read_tracker,
-            _NOT_FOUND_TTL_SECONDS,
-        )
-        import tools.file_tools as ft
+        from tools.file_tools_read_tracking import (
+            _NOT_FOUND_TTL_SECONDS, _check_not_found_cache, _read_tracker, _read_tracker_lock,
+            _record_not_found)
 
         tid = "neg-cache-ttl-6"
         _read_tracker.pop(tid, None)
@@ -989,15 +1020,15 @@ class TestNotFoundCache:
         assert _check_not_found_cache("read", "/tmp/ttl-test", tid) is not None
 
         # Backdate the entry past the TTL.
-        with ft._read_tracker_lock:
+        with _read_tracker_lock:
             entry = _read_tracker[tid]["not_found"][("read", "/tmp/ttl-test")]
-            ft._read_tracker[tid]["not_found"][("read", "/tmp/ttl-test")] = (
+            _read_tracker[tid]["not_found"][("read", "/tmp/ttl-test")] = (
                 entry[0] - _NOT_FOUND_TTL_SECONDS - 1.0,
                 entry[1],
             )
         # Stale entry: cache miss, also evicted.
         assert _check_not_found_cache("read", "/tmp/ttl-test", tid) is None
-        with ft._read_tracker_lock:
+        with _read_tracker_lock:
             assert ("read", "/tmp/ttl-test") not in _read_tracker[tid].get("not_found", {})
 
     def test_out_of_band_creation_defeats_cached_miss(self, tmp_path):
@@ -1005,11 +1036,7 @@ class TestNotFoundCache:
         by a terminal command or any external process, NOT write_file_tool —
         must be served for real on the next read. The agent pattern
         'check for file → create it → read it' breaks otherwise."""
-        from tools.file_tools import (
-            _check_not_found_cache,
-            _record_not_found,
-            _read_tracker,
-        )
+        from tools.file_tools_read_tracking import _check_not_found_cache, _record_not_found, _read_tracker
 
         tid = "neg-cache-oob-read"
         _read_tracker.pop(tid, None)
@@ -1019,7 +1046,7 @@ class TestNotFoundCache:
         assert _check_not_found_cache("read", str(target), tid) is not None
 
         # Out-of-band creation: plain filesystem write, no tool hook fires.
-        target.write_text("real content\n")
+        target.write_text("real content\n", encoding="utf-8")
 
         # The cached miss must NOT be served once the path exists…
         assert _check_not_found_cache("read", str(target), tid) is None, (
@@ -1033,11 +1060,7 @@ class TestNotFoundCache:
     def test_out_of_band_creation_defeats_cached_search_miss(self, tmp_path):
         """Same contract for search roots: creating a file under a
         previously-missing directory must defeat the cached 'Path not found'."""
-        from tools.file_tools import (
-            _check_not_found_cache,
-            _record_not_found,
-            _read_tracker,
-        )
+        from tools.file_tools_read_tracking import _check_not_found_cache, _record_not_found, _read_tracker
 
         tid = "neg-cache-oob-search"
         _read_tracker.pop(tid, None)
@@ -1047,7 +1070,7 @@ class TestNotFoundCache:
         assert _check_not_found_cache("search", str(missing_dir), tid) is not None
 
         missing_dir.mkdir()
-        (missing_dir / "x.txt").write_text("hi\n")
+        (missing_dir / "x.txt").write_text("hi\n", encoding="utf-8")
 
         assert _check_not_found_cache("search", str(missing_dir), tid) is None, (
             "stale 'Path not found' served after the directory was created"
@@ -1056,12 +1079,8 @@ class TestNotFoundCache:
     def test_notify_other_tool_call_clears_not_found(self):
         """Belt-and-suspenders: any non-read tool (terminal etc.) invalidates
         the task's negative cache via the dispatcher's notify hook."""
-        from tools.file_tools import (
-            _check_not_found_cache,
-            _record_not_found,
-            _read_tracker,
-            notify_other_tool_call,
-        )
+        from tools.file_tools_read_tracking import _check_not_found_cache, _record_not_found, _read_tracker
+        from tools.file_tools_read_tracking import notify_other_tool_call
 
         tid = "neg-cache-notify"
         _read_tracker.pop(tid, None)
@@ -1073,3 +1092,132 @@ class TestNotFoundCache:
         assert _check_not_found_cache("read", "/tmp/never-exists-notify", tid) is None, (
             "notify_other_tool_call must clear cached misses"
         )
+
+
+class TestSSHConfigWriteGateSingleQuery:
+    """Regression: the ssh-config write guard must pass
+    single_query_deny_message to _run_approval_gate (required kwarg since
+    1596148ff). Missing it raises TypeError instead of routing through the
+    approval flow — see issue #93201."""
+
+    def test_gate_call_passes_single_query_deny_message(self):
+        import inspect as _inspect
+        import re as _re
+        import tools.file_tools_write_guards as ft
+
+        src = _inspect.getsource(ft)
+        idx = src.find("_approval._run_approval_gate(")
+        assert idx != -1, "ssh_config_write gate call not found"
+        block = src[idx:idx + 900]
+        assert "pattern_key=\"ssh_config_write\"" in block
+
+        from tools.approval import _run_approval_gate
+        required = [
+            name for name, param in _inspect.signature(
+                _run_approval_gate).parameters.items()
+            if param.kind == _inspect.Parameter.KEYWORD_ONLY
+            and param.default is _inspect.Parameter.empty
+        ]
+        missing = [k for k in required if not _re.search(
+            rf"\b{k}\s*=", block)]
+        assert missing == [], (
+            f"_run_approval_gate call at ssh_config_write gate is missing "
+            f"required kwargs {missing}; it would raise TypeError instead "
+            f"of showing an approval prompt"
+        )
+
+
+class TestSecretFileReadRedaction:
+    """#110567: read_file / search_files must classify the RESOLVED path and run the
+    assignment passes for a secret-bearing file, instead of returning an opaque
+    prefix-less credential in cleartext. Same classifier the terminal side uses
+    (``_is_secret_file_arg``), so the two surfaces cannot drift."""
+
+    SYNTH = "3JcQ1UqZ8mNp4Rt6vWx2Yb9Ad0Ef7Gh5Ij2kS"  # 40-char opaque, no vendor prefix
+
+    class _Match:
+        def __init__(self, path, content):
+            self.path = path
+            self.content = content
+
+    class _SearchResult:
+        def __init__(self, matches):
+            self.matches = matches
+            self.files = []
+            self.counts = {}
+
+        def to_dict(self, densify=False):
+            return {
+                "total_count": len(self.matches),
+                "matches": [{"path": m.path, "content": m.content} for m in self.matches],
+            }
+
+    @pytest.fixture
+    def hermes_home(self, tmp_path, monkeypatch):
+        """A Hermes home with no ``.hermes`` segment, like ``%LOCALAPPDATA%\\hermes``."""
+        import agent.file_safety as file_safety
+
+        home = tmp_path / "hermes"
+        home.mkdir()
+        monkeypatch.setattr(file_safety, "_hermes_home_path", lambda: home)
+        monkeypatch.setattr(file_safety, "_hermes_root_path", lambda: home)
+        return home
+
+    @staticmethod
+    def _read_ops(body):
+        ops = MagicMock()
+        result_obj = MagicMock()
+        result_obj.content = body
+        result_obj.to_dict.return_value = {"content": body, "total_lines": body.count("\n")}
+        ops.read_file.return_value = result_obj
+        return ops
+
+    @patch("tools.file_tools._get_file_ops")
+    def test_read_file_of_hermes_config_masks_opaque_token(self, mock_get, hermes_home):
+        # read_file renders line-numbered content ("5|      ADS_API_TOKEN: …"); the gutter is
+        # part of the text the redactor sees, so the fixture must carry it (a gutter-free
+        # fixture would pass even though the real read leaks).
+        body = (f"1|mcp_servers:\n2|  nasa_ads:\n3|    env:\n"
+                f"4|      ADS_API_TOKEN: {self.SYNTH}\n5|MAX_TOKENS: 100\n")
+        mock_get.return_value = self._read_ops(body)
+
+        from tools.file_tools import read_file_tool
+        out = json.loads(read_file_tool(str(hermes_home / "config.yaml"), task_id="secret-read"))
+
+        assert self.SYNTH not in out["content"]
+        assert "«redacted" in out["content"]
+        assert "5|MAX_TOKENS: 100" in out["content"]  # non-secret scalar and rendered gutter survive
+
+        # A project's own config.yaml is NOT secret-bearing: source dumps are never mangled.
+        mock_get.return_value = self._read_ops(f"4|      ADS_API_TOKEN: {self.SYNTH}\n")
+        out = json.loads(read_file_tool(str(hermes_home.parent / "proj-config.yaml"), task_id="plain-read"))
+        assert self.SYNTH in out["content"]
+
+    @patch("tools.file_tools._get_file_ops")
+    def test_search_in_hermes_home_masks_opaque_token(self, mock_get, hermes_home):
+        config = hermes_home / "config.yaml"
+        ops = MagicMock()
+        ops.search.return_value = self._SearchResult(
+            [self._Match(str(config), f"      ADS_API_TOKEN: {self.SYNTH}")])
+        mock_get.return_value = ops
+
+        from tools.file_tools import search_tool
+        raw = search_tool(pattern="ADS_API_TOKEN", path=str(hermes_home),
+                          task_id="secret-search")
+
+        assert self.SYNTH not in raw
+        assert "«redacted" in raw
+
+
+class TestConflictMarkerFlag:
+    def test_read_flags_balanced_conflict_blocks_only(self, tmp_path):
+        conflicted = tmp_path / "c.py"
+        conflicted.write_text("x=1\n<<<<<<< HEAD\ny=2\n=======\ny=3\n>>>>>>> feature\nz=4\n", encoding="utf-8")
+        result = json.loads(read_file_tool(str(conflicted)))
+        assert result["conflict_blocks"] == 1
+        assert "merge-conflict" in result["_hint"]
+
+        prose = tmp_path / "p.py"
+        prose.write_text("print('<<<<<<< not a conflict')\n", encoding="utf-8")
+        assert "conflict_blocks" not in json.loads(read_file_tool(str(prose)))
+

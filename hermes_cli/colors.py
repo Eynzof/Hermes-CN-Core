@@ -20,6 +20,9 @@ def should_use_color() -> bool:
     """
     if os.environ.get("NO_COLOR") is not None:
         return False
+    # TERM=dumb disables color unconditionally, ahead of the force flags: a caller
+    # that exported CLICOLOR_FORCE=1 (e.g. the Desktop terminal env) must still not
+    # paint escapes on a terminal that declared itself dumb. See FORK_NOTES P-032.
     if os.environ.get("TERM") == "dumb":
         return False
     force = os.environ.get("FORCE_COLOR")
@@ -27,9 +30,7 @@ def should_use_color() -> bool:
         return True
     if os.environ.get("CLICOLOR_FORCE") == "1":
         return True
-    if not sys.stdout.isatty():
-        return False
-    return True
+    return bool(sys.stdout.isatty())
 
 
 class Colors:

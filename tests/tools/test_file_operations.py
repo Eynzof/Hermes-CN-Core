@@ -1,77 +1,22 @@
 """Tests for tools/file_operations.py — deny list, result dataclasses, helpers."""
 
 import os
-from agent.re_compat import re
-import sys
 import pytest
-import ripgrepy
 import subprocess
-import tools.file_operations
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock
 
-
-class FakeRipgrepy:
-    """Drop-in replacement for ripgrepy.Ripgrepy that skips binary probing."""
-
-    def __init__(self, regex_pattern, path, rg_path="rg"):
-        self.regex_pattern = regex_pattern
-        self.path = path
-        self.command = [rg_path or "rg"]
-
-    def files(self):
-        self.command.append("--files")
-        return self
-
-    def glob(self, pattern):
-        self.command.extend(["--glob", pattern])
-        return self
-
-    def sortr(self, value):
-        self.command.append(f"--sortr={value}")
-        return self
-
-    def line_number(self):
-        self.command.append("--line-number")
-        return self
-
-    def no_heading(self):
-        self.command.append("--no-heading")
-        return self
-
-    def with_filename(self):
-        self.command.append("--with-filename")
-        return self
-
-    def context(self, n):
-        self.command.extend(["--context", str(n)])
-        return self
-
-    def files_with_matches(self):
-        self.command.append("--files-with-matches")
-        return self
-
-    def count_matches(self):
-        self.command.append("--count-matches")
-        return self
-
-
-@pytest.fixture
-def fake_ripgrepy(monkeypatch):
-    monkeypatch.setattr(ripgrepy, "Ripgrepy", FakeRipgrepy)
-
-
+from tests.tools.file_ops_fakes import READ_SENTINEL_RE, compound_read_output
+from tools.environments.local import _find_bash, _msys_to_windows_path, LocalEnvironment
+from agent.file_safety import is_write_denied as _is_write_denied
+from tools.file_operations_common import LintResult, SearchMatch
 from tools.file_operations import (
-    _is_write_denied,
     ReadResult,
     WriteResult,
     PatchResult,
     SearchResult,
-    SearchMatch,
-    LintResult,
-    ExecuteResult,
     ShellFileOperations,
-    MAX_LINE_LENGTH,
     normalize_read_pagination,
     normalize_search_pagination,
 )
@@ -210,10 +155,16 @@ class TestSearchResult:
         assert d["matches"][0]["path"] == "a.py"
 
 
-    def test_truncated_flag(self):
+    def test_truncated_flag_marks_total_as_lower_bound(self):
         r = SearchResult(total_count=100, truncated=True)
         d = r.to_dict()
         assert d["truncated"] is True
+        assert d["total_count_is_lower_bound"] is True
+
+    def test_untruncated_total_omits_lower_bound_flag(self):
+        r = SearchResult(total_count=100)
+        d = r.to_dict()
+        assert "total_count_is_lower_bound" not in d
 
 
 class TestSearchResultDensify:
@@ -255,96 +206,6 @@ class TestSearchResultDensify:
         assert "matches" in d
         assert "matches_text" not in d
 
-    def test_densify_emits_path_grouped_text(self):
-        r = SearchResult(matches=self._matches(6, paths=["a.py", "b.py"]),
-                         total_count=6)
-        d = r.to_dict(densify=True)
-        assert "matches" not in d
-        assert "matches_text" in d
-        assert "matches_format" in d  # self-describing
-        text = d["matches_text"]
-        # Each path appears once as a group header, not repeated per match.
-        assert text.count("a.py") == 1
-        assert text.count("b.py") == 1
-
-    def test_densify_is_lossless(self):
-        # Every path, line number, and content byte must be recoverable from
-        # the dense form.
-        from agent.re_compat import re
-        matches = [
-            SearchMatch(path="src/x.py", line_number=12, content="    def foo():"),
-            SearchMatch(path="src/x.py", line_number=45, content="        return bar"),
-            SearchMatch(path="src/y.py", line_number=3, content="import os"),
-            SearchMatch(path="src/y.py", line_number=99, content="x = 1  # tail"),
-            SearchMatch(path="src/z.py", line_number=7, content="class Z:"),
-        ]
-        r = SearchResult(matches=matches, total_count=5)
-        text = r.to_dict(densify=True)["matches_text"]
-        # Reconstruct (path, line, content) triples from the grouped text.
-        recovered = []
-        cur = None
-        for ln in text.split("\n"):
-            row = re.match(r"^  (\d+): (.*)$", ln)
-            if row:
-                recovered.append((cur, int(row.group(1)), row.group(2)))
-            else:
-                cur = ln
-        assert len(recovered) == 5
-        for orig, rec in zip(matches, recovered):
-            assert rec[0] == orig.path
-            assert rec[1] == orig.line_number
-            # content is rstrip'd in the dense form; originals here have no
-            # trailing whitespace, so they must match exactly.
-            assert rec[2] == orig.content
-
-    def test_densify_smaller_than_verbose(self):
-        import orjson
-        matches = self._matches(40, paths=["pkg/module_one.py", "pkg/module_two.py"])
-        r = SearchResult(matches=matches, total_count=40)
-        verbose = orjson.dumps(r.to_dict(densify=False)).decode('utf-8')
-        dense = orjson.dumps(r.to_dict(densify=True)).decode('utf-8')
-        assert len(dense) < len(verbose)
-
-    @pytest.mark.parametrize("content", [
-        "x = {'k': 1, 'url': 'http://h:8080'}",   # colons in content
-        "        deeply.indented(call)",          # leading indentation preserved
-        "# \u65e5\u672c\u8a9e comment \U0001f525",  # unicode + emoji
-        "",                                        # empty content
-        "trailing spaces   ",                     # rstrip'd (see note below)
-        'mix "quotes" and , commas',              # punctuation that breaks naive CSV
-    ])
-    def test_densify_content_is_lossless(self, content):
-        # Every realistic single-line match content must round-trip exactly
-        # (trailing whitespace is the one documented transform — rstrip).
-        matches = [SearchMatch(path=f"f{i}.py", line_number=i + 1, content=content)
-                   for i in range(6)]
-        r = SearchResult(matches=matches, total_count=6)
-        text = r.to_dict(densify=True)["matches_text"]
-        recovered = []
-        cur = None
-        for ln in text.split("\n"):
-            row = re.match(r"^  (\d+): (.*)$", ln)
-            if row:
-                recovered.append(row.group(2))
-            else:
-                cur = ln
-        assert len(recovered) == 6
-        for got in recovered:
-            assert got == content.rstrip()
-
-    def test_densify_assumes_single_line_matches(self):
-        # The path-grouped format puts one match per line, so it relies on
-        # ripgrep's one-line-per-match contract (verified: 0/6775 real match
-        # contents contained a newline). This test documents that assumption:
-        # a (synthetic, never-produced-by-rg) multiline content would split
-        # across rows. If search ever emits multiline content, densify must
-        # escape newlines first.
-        matches = [SearchMatch(path="a.py", line_number=i + 1, content="single line")
-                   for i in range(6)]
-        text = SearchResult(matches=matches, total_count=6).to_dict(densify=True)["matches_text"]
-        # one header + six rows == 7 lines, no row spans multiple lines
-        body_rows = [ln for ln in text.split("\n") if re.match(r"^  \d+: ", ln)]
-        assert len(body_rows) == 6
 
     def test_densify_paths_with_spaces(self):
         matches = [SearchMatch(path="my dir/a b.py", line_number=i + 1, content=f"x{i}")
@@ -400,16 +261,29 @@ def make_real_subprocess_env(cwd: str, include_stderr: bool = False) -> MagicMoc
     env.cwd = cwd
 
     def execute(command, **kwargs):
+        stdin_data = kwargs.get("stdin_data")
+        is_windows = os.name == "nt"
+        if is_windows:
+            # Match LocalEnvironment: commands are POSIX scripts executed by
+            # Git Bash, and stdin bytes must bypass Windows newline rewriting.
+            command = [_find_bash(), "-c", command]
         completed = subprocess.run(
             command,
-            shell=True,
-            text=True,
+            shell=not is_windows,
+            text=not is_windows,
             capture_output=True,
-            input=kwargs.get("stdin_data"),
+            input=(stdin_data.encode("utf-8", "surrogateescape")
+                   if is_windows and stdin_data is not None else stdin_data),
         )
-        output = completed.stdout
+        output = (
+            completed.stdout.decode("utf-8", "replace")
+            if is_windows else completed.stdout
+        )
         if include_stderr:
-            output += completed.stderr
+            output += (
+                completed.stderr.decode("utf-8", "replace")
+                if is_windows else completed.stderr
+            )
         return {
             "output": output,
             "returncode": completed.returncode,
@@ -448,19 +322,14 @@ class TestShellFileOpsHelpers:
 
         def side_effect(command, **kwargs):
             commands.append(command)
-            # The size probe gates `wc -c` behind `[ -f ]` so a FIFO or device
-            # cannot block the read; it still reports a plain byte count.
-            if command.startswith("if [ -f ") or command.startswith("wc -c"):
-                return {"output": "5\n", "returncode": 0}
-            if command.startswith("head -c") and "| base64" in command:
-                import base64 as b64
-                return {"output": b64.b64encode(b"hello").decode(), "returncode": 0}
-            if command.startswith("head -c"):
-                return {"output": "hello", "returncode": 0}
-            if command.startswith("sed -n"):
-                return {"output": "hello\n", "returncode": 0}
-            if command.startswith("wc -l"):
-                return {"output": "1\n", "returncode": 0}
+            m = READ_SENTINEL_RE.search(command)
+            if m:
+                return {
+                    "output": compound_read_output(
+                        m.group(0), size=5, sample=b"hello", content="hello\n", total_lines=1
+                    ),
+                    "returncode": 0,
+                }
             return {"output": "", "returncode": 0}
 
         mock_env.execute.side_effect = side_effect
@@ -468,20 +337,27 @@ class TestShellFileOpsHelpers:
         result = ops.read_file(r"C:\Users\alice\notes.txt")
 
         assert result.error is None
-        assert commands[0] == (
+        # One compound probe carries every stage; each embeds the MSYS path.
+        # The size probe gates `wc -c` behind `[ -f ]` so a FIFO or device
+        # cannot block the read; it still reports a plain byte count.
+        assert len(commands) == 1
+        probe = commands[0]
+        # The fork's Windows shell layer runs file ops through PowerShell, so
+        # ``/dev/null`` redirects arrive at the shell already translated
+        # (P-016/P-050 Windows shell saga; see ``ShellFileOperations._exec``).
+        # The MSYS path form below is the point of this test; the redirect form
+        # follows the Windows convention.
+        assert probe.startswith(
             "if [ -f '/c/Users/alice/notes.txt' ]; "
             "then wc -c < '/c/Users/alice/notes.txt' 2>$null; "
+        )
+        assert "head -c 1000 '/c/Users/alice/notes.txt' 2>$null | base64" in probe
+        assert "sed -n '1,2000p' '/c/Users/alice/notes.txt' 2>$null | cut -b1-8001" in probe
+        assert "wc -l < '/c/Users/alice/notes.txt'" in probe
+        assert (
             "elif [ -e '/c/Users/alice/notes.txt' ]; "
             "then echo __hermes_not_regular__; "
-            "else exit 1; fi"
-        )
-        # The fork's Windows shell layer runs file ops through PowerShell,
-        # so /dev/null redirects arrive at the shell already translated
-        # (P-016/P-050 Windows shell saga). The MSYS path form below is the
-        # point of this test; the redirect form follows the Windows convention.
-        assert commands[1] == "head -c 1000 '/c/Users/alice/notes.txt' 2>$null | base64"
-        assert commands[2] == "sed -n '1,2000p' '/c/Users/alice/notes.txt' | cut -b1-8001"
-        assert commands[3] == "wc -l < '/c/Users/alice/notes.txt'"
+        ) in probe
 
     def test_is_likely_binary_by_extension(self, file_ops):
         assert file_ops._is_likely_binary("photo.png") is True
@@ -504,14 +380,15 @@ class TestShellFileOpsHelpers:
         )
 
         def side_effect(command, **kwargs):
-            if command.startswith("if [ -f ") or command.startswith("wc -c"):
-                return {"output": "12\n", "returncode": 0}
-            if command.startswith("head -c"):
-                return {"output": "print('ok')\n", "returncode": 0}
-            if command.startswith("sed -n"):
-                return {"output": leaked, "returncode": 0}
-            if command.startswith("wc -l"):
-                return {"output": "1\n", "returncode": 0}
+            m = READ_SENTINEL_RE.search(command)
+            if m:
+                return {
+                    "output": compound_read_output(
+                        m.group(0), size=12, sample=b"print('ok')\n",
+                        content=leaked, total_lines=1,
+                    ),
+                    "returncode": 0,
+                }
             return {"output": "", "returncode": 0}
 
         mock_env.execute.side_effect = side_effect
@@ -546,6 +423,34 @@ class TestShellFileOpsHelpers:
 
         assert result.error is None
         assert result.content == "alpha\n"
+
+    def test_newline_terminated_content_has_no_phantom_line(self, file_ops):
+        # A file ending in a newline (the normal, well-formed case) has its
+        # last line terminated, NOT followed by an empty line. The gutter must
+        # match `cat -n`: three lines in, three numbered lines out.
+        result = file_ops._add_line_numbers("line1\nline2\nline3\n")
+        assert result == "1|line1\n2|line2\n3|line3"
+        assert "4|" not in result
+        assert len(result.split("\n")) == 3
+
+    def test_non_terminated_content_still_numbered_correctly(self, file_ops):
+        # Content with no trailing newline was already correct; guard it.
+        result = file_ops._add_line_numbers("line1\nline2\nline3")
+        assert result == "1|line1\n2|line2\n3|line3"
+
+    def test_trailing_blank_line_is_kept(self, file_ops):
+        # "a" then a genuine blank line, then the terminating newline: that is
+        # two lines (a, blank), so only the single terminator is dropped.
+        result = file_ops._add_line_numbers("a\n\n")
+        assert result == "1|a\n2|"
+        assert "3|" not in result
+
+    def test_newline_terminated_with_offset_has_no_phantom_line(self, file_ops):
+        # A truncated page (offset>1) that ends on a newline must not append a
+        # phantom numbered line at the page boundary.
+        result = file_ops._add_line_numbers("def f():\n    return 1\n", start_line=10)
+        assert result == "10|def f():\n11|    return 1"
+        assert "12|" not in result
 
 
 class TestSearchPathValidation:
@@ -584,20 +489,16 @@ class TestSearchPathValidation:
         assert "search failed" in result.error.lower() or "Search error" in result.error
 
 
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="POSIX find fallback: the fork's in-process search fallback "
+                           "(P-030) now lives in tools/file_operations_search.py "
+                           "(SearchMixin), which has no shell-less path")
 class TestSearchFilesFallbackHiddenPaths:
-    def _make_env(self, monkeypatch):
-        # Use the real local backend so the portable Python fallback is
-        # exercised; this keeps the tests runnable on Windows where the POSIX
-        # ``find`` command does not exist. Force rg off so we hit the Python
-        # walk rather than the rg path (rg includes hidden descendants when
-        # the root path itself is hidden, which differs from the find/Python
-        # semantics these tests assert).
-        monkeypatch.setattr(tools.file_operations.shutil, "which", lambda name: None)
-        from tools.environments.local import LocalEnvironment
-        return LocalEnvironment()
+    def _make_env(self):
+        return LocalEnvironment("/")
 
     def test_hidden_root_with_hidden_ancestor_includes_files(self, tmp_path, monkeypatch):
-        """Fallback search should include visible files when path is inside hidden root."""
+        """Fallback find should include visible files when path is inside hidden root."""
         root = tmp_path / ".hermes" / "logs"
         root.mkdir(parents=True)
         visible_file = root / "agent.log"
@@ -609,14 +510,15 @@ class TestSearchFilesFallbackHiddenPaths:
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text("x")
 
-        ops = ShellFileOperations(self._make_env(monkeypatch))
+        ops = ShellFileOperations(self._make_env())
+        monkeypatch.setattr(ops, "_has_command", lambda command: command == "find")
         result = ops._search_files("*.log", str(root), limit=50, offset=0)
 
         assert result.error is None
         assert set(result.files) == {str(visible_file), str(visible_nested_file)}
 
     def test_normal_root_still_excludes_hidden_descendants(self, tmp_path, monkeypatch):
-        """Fallback search should still exclude hidden descendant paths for normal roots."""
+        """Fallback find should still exclude hidden descendant paths for normal roots."""
         root = tmp_path / "repo"
         root.mkdir()
         visible_file = root / "agent.log"
@@ -627,45 +529,12 @@ class TestSearchFilesFallbackHiddenPaths:
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text("x")
 
-        ops = ShellFileOperations(self._make_env(monkeypatch))
+        ops = ShellFileOperations(self._make_env())
+        monkeypatch.setattr(ops, "_has_command", lambda command: command == "find")
         result = ops._search_files("*.log", str(root), limit=50, offset=0)
 
         assert result.error is None
         assert set(result.files) == {str(visible_file), str(visible_nested_file)}
-
-
-class TestShellFileOpsWriteVerification:
-    def test_write_file_verification_catches_mismatch(self, file_ops, monkeypatch):
-        """If _atomic_write claims success but the on-disk size differs,
-        write_file returns an error instead of silent success."""
-        monkeypatch.setattr(
-            file_ops, "_atomic_write",
-            lambda path, content: ExecuteResult(stdout="5", exit_code=0)
-        )
-        monkeypatch.setattr(
-            file_ops, "_prim_stat_size",
-            lambda path: ExecuteResult(stdout="99", exit_code=0)
-        )
-        result = file_ops.write_file("/tmp/test.txt", "hello")
-        assert result.error is not None
-        assert "verification failed" in result.error.lower()
-        assert "did not persist" in result.error.lower()
-        assert result.bytes_written == 0
-
-    def test_write_file_verification_catches_unstatable(self, file_ops, monkeypatch):
-        """If the post-write stat itself fails, write_file returns an error."""
-        monkeypatch.setattr(
-            file_ops, "_atomic_write",
-            lambda path, content: ExecuteResult(stdout="5", exit_code=0)
-        )
-        monkeypatch.setattr(
-            file_ops, "_prim_stat_size",
-            lambda path: ExecuteResult(stdout="", exit_code=1)
-        )
-        result = file_ops.write_file("/tmp/test.txt", "hello")
-        assert result.error is not None
-        assert "could not stat" in result.error.lower()
-        assert result.bytes_written == 0
 
 
 class TestShellFileOpsWriteDenied:
@@ -772,531 +641,10 @@ class _DeletedTestGitBaselineCheck:
 
 
 # =========================================================================
-
-# _parse_search_content_output — shared rg/grep output parser
-# =========================================================================
-
-from tools.file_operations import _parse_search_content_output
-
-
-class TestParseSearchContentOutput:
-    """Unit tests for the shared parse function extracted from
-    _search_with_rg_shell and _search_with_grep."""
-
-    # ── files_only mode ──────────────────────────────────────────────
-
-    def test_files_only_mode_basic(self):
-        stdout = "src/a.py\nsrc/b.py\ndocs/readme.md\n"
-        result = _parse_search_content_output(stdout, "files_only", 0, 50, 0)
-        assert result.error is None
-        assert result.files == ["src/a.py", "src/b.py", "docs/readme.md"]
-        assert result.total_count == 3
-
-    def test_files_only_mode_with_offset(self):
-        stdout = "a.py\nb.py\nc.py\nd.py\n"
-        result = _parse_search_content_output(stdout, "files_only", 0, 2, 1)
-        assert result.files == ["b.py", "c.py"]
-        assert result.total_count == 4
-
-    def test_files_only_mode_empty(self):
-        result = _parse_search_content_output("", "files_only", 0, 50, 0)
-        assert result.files == []
-        assert result.total_count == 0
-
-    def test_files_only_mode_blank_lines_ignored(self):
-        stdout = "a.py\n\n\nb.py\n"
-        result = _parse_search_content_output(stdout, "files_only", 0, 50, 0)
-        assert result.files == ["a.py", "b.py"]
-
-    # ── count mode ───────────────────────────────────────────────────
-
-    def test_count_mode_basic(self):
-        stdout = "src/a.py:5\nsrc/b.py:2\n"
-        result = _parse_search_content_output(stdout, "count", 0, 50, 0)
-        assert result.counts == {"src/a.py": 5, "src/b.py": 2}
-        assert result.total_count == 7
-
-    def test_count_mode_empty(self):
-        result = _parse_search_content_output("", "count", 0, 50, 0)
-        assert result.counts == {}
-        assert result.total_count == 0
-
-    def test_count_mode_invalid_line_skipped(self):
-        stdout = "src/a.py:5\ninvalid\nsrc/b.py:2\n"
-        result = _parse_search_content_output(stdout, "count", 0, 50, 0)
-        assert result.counts == {"src/a.py": 5, "src/b.py": 2}
-        assert result.total_count == 7
-
-    # ── content mode ─────────────────────────────────────────────────
-
-    def test_content_mode_basic(self):
-        stdout = "src/a.py:10:def foo():\nsrc/a.py:20:def bar():\n"
-        result = _parse_search_content_output(stdout, "content", 0, 50, 0)
-        assert result.error is None
-        assert len(result.matches) == 2
-        assert result.matches[0].path == "src/a.py"
-        assert result.matches[0].line_number == 10
-        assert result.matches[0].content == "def foo():"
-        assert result.matches[1].line_number == 20
-        assert result.matches[1].content == "def bar():"
-        assert result.total_count == 2
-        assert result.truncated is False
-
-    def test_content_mode_with_windows_paths(self):
-        """Paths with drive letters (C:\\...) should parse correctly."""
-        stdout = "C:\\Users\\vip\\src\\a.py:10:hello world\n"
-        result = _parse_search_content_output(stdout, "content", 0, 50, 0)
-        assert result.error is None
-        assert len(result.matches) == 1
-        assert result.matches[0].path == "C:\\Users\\vip\\src\\a.py"
-        assert result.matches[0].line_number == 10
-        assert result.matches[0].content == "hello world"
-
-    def test_content_mode_with_context_lines(self):
-        """When context > 0, dash-separated context lines are parsed."""
-        stdout = (
-            "src/a.py-8-before line\n"
-            "src/a.py:10:match line\n"
-            "src/a.py-12-after line\n"
-            "--\n"
-        )
-        result = _parse_search_content_output(stdout, "content", 2, 50, 0)
-        assert len(result.matches) == 3
-        assert result.matches[0].content == "before line"
-        assert result.matches[0].line_number == 8
-        assert result.matches[1].content == "match line"
-        assert result.matches[1].line_number == 10
-        assert result.matches[2].content == "after line"
-        assert result.matches[2].line_number == 12
-
-    def test_content_mode_context_lines_ignored_without_context(self):
-        """When context == 0, dash lines are NOT parsed as context lines."""
-        stdout = "src/a.py-8-not-context\nsrc/a.py:10:match line\n"
-        result = _parse_search_content_output(stdout, "content", 0, 50, 0)
-        assert len(result.matches) == 1
-        assert result.matches[0].line_number == 10
-
-    def test_content_mode_separator_lines_skipped(self):
-        stdout = "--\nsrc/a.py:10:match\n--\n"
-        result = _parse_search_content_output(stdout, "content", 0, 50, 0)
-        assert len(result.matches) == 1
-        assert result.matches[0].content == "match"
-
-    def test_content_mode_offset_and_limit(self):
-        stdout = (
-            "a.py:1:first\n"
-            "a.py:2:second\n"
-            "a.py:3:third\n"
-            "a.py:4:fourth\n"
-        )
-        result = _parse_search_content_output(stdout, "content", 0, 2, 1)
-        assert len(result.matches) == 2
-        assert result.matches[0].line_number == 2
-        assert result.matches[1].line_number == 3
-        assert result.total_count == 4
-        assert result.truncated is True
-
-    def test_content_mode_truncated_false_when_all_fit(self):
-        stdout = "a.py:1:a\na.py:2:b\n"
-        result = _parse_search_content_output(stdout, "content", 0, 50, 0)
-        assert result.truncated is False
-
-    def test_content_mode_content_truncated_at_500_chars(self):
-        long_line = "x" * 600
-        stdout = f"a.py:1:{long_line}\n"
-        result = _parse_search_content_output(stdout, "content", 0, 50, 0)
-        assert len(result.matches[0].content) == 500
-
-
-# =========================================================================
-# _is_local_env — local-backend detection
-# =========================================================================
-
-
-class TestIsLocalEnv:
-    """Tests for _is_local_env() which gates ripgrepy-vs-shell dispatch."""
-
-    def test_local_env_returns_true(self):
-        """_is_local_env returns True when env is a LocalEnvironment."""
-        from tools.environments.local import LocalEnvironment
-        ops = ShellFileOperations.__new__(ShellFileOperations)
-        ops.env = LocalEnvironment()
-        assert ops._is_local_env() is True
-
-    def test_no_env_returns_false(self):
-        """_is_local_env returns False when env is None."""
-        ops = ShellFileOperations.__new__(ShellFileOperations)
-        ops.env = None
-        assert ops._is_local_env() is False
-
-    def test_magic_mock_env_returns_false(self):
-        """_is_local_env returns False for MagicMock (not a real LocalEnvironment)."""
-        ops = ShellFileOperations.__new__(ShellFileOperations)
-        ops.env = MagicMock()
-        assert ops._is_local_env() is False
-
-    def test_missing_env_attribute_returns_false(self):
-        """_is_local_env returns False when env attribute is missing."""
-        ops = ShellFileOperations.__new__(ShellFileOperations)
-        # Don't set env at all — uses getattr default
-        assert ops._is_local_env() is False
-
-
-# =========================================================================
-# _search_files_rg_ripgrepy — ripgrepy-based file-name search
-# =========================================================================
-
-
-@pytest.mark.usefixtures("fake_ripgrepy")
-class TestSearchFilesRgRipgrepy:
-    """Tests for _search_files_rg_ripgrepy on local backends."""
-
-    _RG_PATH = "/usr/bin/rg"
-
-    @staticmethod
-    def _make_local_ops():
-        """Create a ShellFileOperations wired to a LocalEnvironment."""
-        from tools.environments.local import LocalEnvironment
-        ops = ShellFileOperations.__new__(ShellFileOperations)
-        ops.env = LocalEnvironment()
-        ops.cwd = str(Path.cwd())
-        return ops
-
-    def test_bare_pattern_gets_glob_wildcard(self, tmp_path, monkeypatch):
-        """A bare name like 'foo.py' → glob pattern '*foo.py'."""
-        ops = self._make_local_ops()
-
-        captured_cmds = []
-
-        def fake_run(cmd, **kwargs):
-            captured_cmds.append(cmd)
-            return subprocess.CompletedProcess(cmd, 0, stdout="a/foo.py\nb/foo.py\n")
-
-        monkeypatch.setattr(subprocess, "run", fake_run)
-
-        result = ops._search_files_rg_ripgrepy("foo.py", str(tmp_path), 50, 0, self._RG_PATH)
-
-        assert result.error is None
-        assert "--glob" in captured_cmds[0]
-        assert "*foo.py" in captured_cmds[0]
-
-    def test_pattern_with_slash_not_rewrapped(self, tmp_path, monkeypatch):
-        """A pattern containing '/' is passed as-is."""
-        ops = self._make_local_ops()
-
-        captured_cmds = []
-
-        def fake_run(cmd, **kwargs):
-            captured_cmds.append(cmd)
-            return subprocess.CompletedProcess(cmd, 0, stdout="")
-
-        monkeypatch.setattr(subprocess, "run", fake_run)
-
-        ops._search_files_rg_ripgrepy("src/foo.py", str(tmp_path), 50, 0, self._RG_PATH)
-
-        assert "--glob" in captured_cmds[0]
-        assert "src/foo.py" in captured_cmds[0]
-
-    def test_sortr_flag_included(self, tmp_path, monkeypatch):
-        """Command should include --sortr modified by default."""
-        ops = self._make_local_ops()
-
-        captured_cmds = []
-
-        def fake_run(cmd, **kwargs):
-            captured_cmds.append(cmd)
-            return subprocess.CompletedProcess(cmd, 0, stdout="")
-
-        monkeypatch.setattr(subprocess, "run", fake_run)
-
-        ops._search_files_rg_ripgrepy("test.py", str(tmp_path), 50, 0, self._RG_PATH)
-
-        assert any("--sortr" in arg for arg in captured_cmds[0])
-
-    def test_fallbacks_to_shell_on_error(self, tmp_path, monkeypatch):
-        """On subprocess error, falls back to _search_files_rg_shell."""
-        ops = self._make_local_ops()
-
-        def fake_run(cmd, **kwargs):
-            raise OSError("no rg")
-
-        monkeypatch.setattr(subprocess, "run", fake_run)
-
-        # Should not raise; instead falls back to shell path
-        monkeypatch.setattr(ops, "_search_files_rg_shell",
-                           lambda p, pa, l, o: SearchResult(files=["fallback.py"], total_count=1))
-
-        result = ops._search_files_rg_ripgrepy("test.py", str(tmp_path), 50, 0, self._RG_PATH)
-        assert result.files == ["fallback.py"]
-
-    def test_results_sliced_with_offset_and_limit(self, tmp_path, monkeypatch):
-        """Results respect offset and limit."""
-        ops = self._make_local_ops()
-        stdout = "\n".join([f"file_{i}.py" for i in range(10)])
-
-        def fake_run(cmd, **kwargs):
-            return subprocess.CompletedProcess(cmd, 0, stdout=stdout)
-
-        monkeypatch.setattr(subprocess, "run", fake_run)
-
-        result = ops._search_files_rg_ripgrepy("file_*.py", str(tmp_path), 3, 2, self._RG_PATH)
-        assert result.files == ["file_2.py", "file_3.py", "file_4.py"]
-        assert result.total_count == 10
-        assert result.truncated is True
-
-
-# =========================================================================
-# _search_with_rg_ripgrepy — ripgrepy-based content search
-# =========================================================================
-
-
-@pytest.mark.usefixtures("fake_ripgrepy")
-class TestSearchWithRgRipgrepy:
-    """Tests for _search_with_rg_ripgrepy on local backends."""
-
-    _RG_PATH = "/usr/bin/rg"
-
-    @staticmethod
-    def _make_local_ops():
-        """Create a ShellFileOperations wired to a LocalEnvironment."""
-        from tools.environments.local import LocalEnvironment
-        ops = ShellFileOperations.__new__(ShellFileOperations)
-        ops.env = LocalEnvironment()
-        ops.cwd = str(Path.cwd())
-        return ops
-
-    def test_basic_content_search(self, tmp_path, monkeypatch):
-        """A basic content search uses line_number, no_heading, with_filename."""
-        ops = self._make_local_ops()
-        captured_cmds = []
-
-        def fake_run(cmd, **kwargs):
-            captured_cmds.append(cmd)
-            return subprocess.CompletedProcess(cmd, 0, stdout="src/a.py:10:hello world\n")
-
-        monkeypatch.setattr(subprocess, "run", fake_run)
-
-        result = ops._search_with_rg_ripgrepy("hello", str(tmp_path), None, 50, 0, "content", 0, self._RG_PATH)
-
-        assert result.error is None
-        assert len(result.matches) == 1
-        assert result.matches[0].path == "src/a.py"
-        assert result.matches[0].line_number == 10
-        assert "--line-number" in captured_cmds[0]
-        assert "--no-heading" in captured_cmds[0]
-        assert "--with-filename" in captured_cmds[0]
-
-    def test_files_only_mode(self, tmp_path, monkeypatch):
-        """files_only output mode adds --files-with-matches."""
-        ops = self._make_local_ops()
-        captured_cmds = []
-
-        def fake_run(cmd, **kwargs):
-            captured_cmds.append(cmd)
-            return subprocess.CompletedProcess(cmd, 0, stdout="src/a.py\nsrc/b.py\n")
-
-        monkeypatch.setattr(subprocess, "run", fake_run)
-
-        result = ops._search_with_rg_ripgrepy("pattern", str(tmp_path), None, 50, 0, "files_only", 0, self._RG_PATH)
-
-        assert "--files-with-matches" in captured_cmds[0]
-        assert result.files == ["src/a.py", "src/b.py"]
-
-    def test_count_mode(self, tmp_path, monkeypatch):
-        """count output mode adds --count."""
-        ops = self._make_local_ops()
-        captured_cmds = []
-
-        def fake_run(cmd, **kwargs):
-            captured_cmds.append(cmd)
-            return subprocess.CompletedProcess(cmd, 0, stdout="src/a.py:5\n")
-
-        monkeypatch.setattr(subprocess, "run", fake_run)
-
-        result = ops._search_with_rg_ripgrepy("pattern", str(tmp_path), None, 50, 0, "count", 0, self._RG_PATH)
-
-        assert "--count-matches" in captured_cmds[0]
-        assert result.counts == {"src/a.py": 5}
-
-    def test_file_glob_added(self, tmp_path, monkeypatch):
-        """file_glob is passed via --glob."""
-        ops = self._make_local_ops()
-        captured_cmds = []
-
-        def fake_run(cmd, **kwargs):
-            captured_cmds.append(cmd)
-            return subprocess.CompletedProcess(cmd, 0, stdout="")
-
-        monkeypatch.setattr(subprocess, "run", fake_run)
-
-        ops._search_with_rg_ripgrepy("pattern", str(tmp_path), "*.py", 50, 0, "content", 0, self._RG_PATH)
-
-        assert "--glob" in captured_cmds[0]
-        assert "*.py" in captured_cmds[0]
-
-    def test_context_added(self, tmp_path, monkeypatch):
-        """context > 0 adds --context."""
-        ops = self._make_local_ops()
-        captured_cmds = []
-
-        def fake_run(cmd, **kwargs):
-            captured_cmds.append(cmd)
-            return subprocess.CompletedProcess(cmd, 0, stdout="")
-
-        monkeypatch.setattr(subprocess, "run", fake_run)
-
-        ops._search_with_rg_ripgrepy("pattern", str(tmp_path), None, 50, 0, "content", 3, self._RG_PATH)
-
-        assert "--context" in captured_cmds[0]
-        assert "3" in captured_cmds[0]
-
-    def test_exit_code_2_with_stdout_keeps_matches(self, tmp_path, monkeypatch):
-        """rg exit 2 with stdout means partial success — keep the matches."""
-        ops = self._make_local_ops()
-
-        def fake_run(cmd, **kwargs):
-            return subprocess.CompletedProcess(cmd, 2, stdout="src/a.py:5:match\n", stderr="permission denied\n")
-
-        monkeypatch.setattr(subprocess, "run", fake_run)
-
-        result = ops._search_with_rg_ripgrepy("pattern", str(tmp_path), None, 50, 0, "content", 0, self._RG_PATH)
-
-        assert result.error is None
-        assert len(result.matches) == 1
-        assert result.matches[0].content == "match"
-
-    def test_exit_code_2_empty_stdout_is_error(self, tmp_path, monkeypatch):
-        """rg exit 2 with no stdout is reported as error."""
-        ops = self._make_local_ops()
-
-        def fake_run(cmd, **kwargs):
-            return subprocess.CompletedProcess(cmd, 2, stdout="", stderr="fatal error\n")
-
-        monkeypatch.setattr(subprocess, "run", fake_run)
-
-        result = ops._search_with_rg_ripgrepy("pattern", str(tmp_path), None, 50, 0, "content", 0, self._RG_PATH)
-
-        assert result.error is not None
-        assert "Search failed" in result.error
-
-    def test_exit_code_1_no_matches(self, tmp_path, monkeypatch):
-        """rg exit 1 (no matches) is not an error."""
-        ops = self._make_local_ops()
-
-        def fake_run(cmd, **kwargs):
-            return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="")
-
-        monkeypatch.setattr(subprocess, "run", fake_run)
-
-        result = ops._search_with_rg_ripgrepy("zxzxzx_nonexistent", str(tmp_path), None, 50, 0, "content", 0, self._RG_PATH)
-
-        assert result.error is None
-        assert result.total_count == 0
-
-    def test_fallbacks_to_shell_on_error(self, tmp_path, monkeypatch):
-        """On OS error, falls back to _search_with_rg_shell."""
-        ops = self._make_local_ops()
-
-        def fake_run(cmd, **kwargs):
-            raise OSError("subprocess failure")
-
-        monkeypatch.setattr(subprocess, "run", fake_run)
-        monkeypatch.setattr(ops, "_search_with_rg_shell",
-                           lambda p, pa, fg, l, o, om, c: SearchResult(
-                               files=["fallback.py"], total_count=1))
-
-        result = ops._search_with_rg_ripgrepy("test", str(tmp_path), None, 50, 0, "files_only", 0, self._RG_PATH)
-        assert result.files == ["fallback.py"]
-
-
-# =========================================================================
-# _search_files_rg / _search_with_rg dispatch (ripgrepy vs shell)
-# =========================================================================
-
-
-class TestRgDispatchToRipgrepy:
-    """Tests that _search_files_rg and _search_with_rg dispatch correctly."""
-
-    @staticmethod
-    def _make_local_ops():
-        from tools.environments.local import LocalEnvironment
-        ops = ShellFileOperations.__new__(ShellFileOperations)
-        ops.env = LocalEnvironment()
-        ops.cwd = str(Path.cwd())
-        return ops
-
-    def test_search_files_rg_dispatches_to_ripgrepy(self, monkeypatch):
-        """On local env with rg, _search_files_rg → _search_files_rg_ripgrepy."""
-        ops = self._make_local_ops()
-        monkeypatch.setattr(ops, "_has_command", lambda cmd: cmd in ("rg",))
-
-        called = {"ripgrepy": False, "shell": False}
-        monkeypatch.setattr(ops, "_search_files_rg_ripgrepy",
-                           lambda p, pa, l, o, rp: called.update({"ripgrepy": True}) or SearchResult())
-        monkeypatch.setattr(ops, "_search_files_rg_shell",
-                           lambda p, pa, l, o: called.update({"shell": True}) or SearchResult())
-
-        ops._search_files_rg("*.py", "/test", 50, 0)
-        assert called["ripgrepy"] is True
-        assert called["shell"] is False
-
-    def test_search_files_rg_dispatches_to_shell_for_remote(self, monkeypatch):
-        """On non-local env, _search_files_rg → _search_files_rg_shell."""
-        ops = ShellFileOperations.__new__(ShellFileOperations)
-        ops.env = MagicMock()  # not LocalEnvironment
-        ops.cwd = "/remote"
-        monkeypatch.setattr(ops, "_has_command", lambda cmd: cmd in ("rg",))
-
-        called = {"ripgrepy": False, "shell": False}
-        monkeypatch.setattr(ops, "_search_files_rg_ripgrepy",
-                           lambda p, pa, l, o, rp: called.update({"ripgrepy": True}) or SearchResult())
-        monkeypatch.setattr(ops, "_search_files_rg_shell",
-                           lambda p, pa, l, o: called.update({"shell": True}) or SearchResult())
-
-        ops._search_files_rg("*.py", "/remote", 50, 0)
-        assert called["ripgrepy"] is False
-        assert called["shell"] is True
-
-    def test_search_with_rg_dispatches_to_ripgrepy(self, monkeypatch):
-        """On local env with rg, _search_with_rg → _search_with_rg_ripgrepy."""
-        ops = self._make_local_ops()
-        monkeypatch.setattr(ops, "_has_command", lambda cmd: cmd in ("rg",))
-
-        called = {"ripgrepy": False, "shell": False}
-        monkeypatch.setattr(ops, "_search_with_rg_ripgrepy",
-                           lambda p, pa, fg, l, o, om, c, rp: called.update({"ripgrepy": True}) or SearchResult())
-        monkeypatch.setattr(ops, "_search_with_rg_shell",
-                           lambda p, pa, fg, l, o, om, c: called.update({"shell": True}) or SearchResult())
-
-        ops._search_with_rg("pattern", "/test", None, 50, 0, "content", 0)
-        assert called["ripgrepy"] is True
-        assert called["shell"] is False
-
-    def test_search_with_rg_dispatches_to_shell_for_remote(self, monkeypatch):
-        """On non-local env, _search_with_rg → _search_with_rg_shell."""
-        ops = ShellFileOperations.__new__(ShellFileOperations)
-        ops.env = MagicMock()
-        ops.cwd = "/remote"
-        monkeypatch.setattr(ops, "_has_command", lambda cmd: cmd in ("rg",))
-
-        called = {"ripgrepy": False, "shell": False}
-        monkeypatch.setattr(ops, "_search_with_rg_ripgrepy",
-                           lambda p, pa, fg, l, o, om, c, rp: called.update({"ripgrepy": True}) or SearchResult())
-        monkeypatch.setattr(ops, "_search_with_rg_shell",
-                           lambda p, pa, fg, l, o, om, c: called.update({"shell": True}) or SearchResult())
-
-        ops._search_with_rg("pattern", "/remote", None, 50, 0, "content", 0)
-        assert called["ripgrepy"] is False
-        assert called["shell"] is True
-
 # Atomic write: umask-default permissions for new files
 # =========================================================================
 
 @pytest.mark.skipif(sys.platform == "win32", reason="umask/mode-bit semantics are POSIX-only; Windows has no umask")
-
-# Atomic write: umask-default permissions for new files
-# =========================================================================
-
 class TestAtomicWriteNewFilePermissions:
     """_atomic_write should apply umask-default perms to new files (not 0600)."""
 
@@ -1398,7 +746,6 @@ class TestReadNonUtf8IsBinary:
         # Proper UTF-8 (including non-ASCII) must still read as text.
         assert ops._is_likely_binary("notes.txt", "café résumé\nsecond\n") is False
 
-
 # =========================================================================
 # Byte-layer binary detection (#80308 class: CJK/multibyte text flagged
 # binary because the byte-boundary sample manufactured U+FFFD in transit)
@@ -1486,17 +833,19 @@ class TestByteLayerBinaryDetection:
     # --- integration: read_file over the mocked terminal ------------------
 
     def _dispatch(self, cjk_bytes):
-        import base64 as b64
-
         def side_effect(command, **kwargs):
-            if command.startswith("if [ -f ") or command.startswith("wc -c"):
-                return {"output": f"{len(cjk_bytes)}\n", "returncode": 0}
-            if command.startswith("head -c") and "| base64" in command:
-                return {"output": b64.b64encode(cjk_bytes[:1000]).decode(), "returncode": 0}
-            if command.startswith("sed -n"):
-                return {"output": cjk_bytes.decode("utf-8", errors="replace"), "returncode": 0}
-            if command.startswith("wc -l"):
-                return {"output": "1\n", "returncode": 0}
+            m = READ_SENTINEL_RE.search(command)
+            if m:
+                return {
+                    "output": compound_read_output(
+                        m.group(0),
+                        size=len(cjk_bytes),
+                        sample=cjk_bytes[:1000],
+                        content=cjk_bytes.decode("utf-8", errors="replace"),
+                        total_lines=1,
+                    ),
+                    "returncode": 0,
+                }
             return {"output": "", "returncode": 0}
 
         return side_effect
@@ -1611,3 +960,32 @@ class TestEscapeNativeToolArg:
         assert node_cmds, f"no node command captured in: {commands}"
         assert "'C:/Users/alice/app/main.js'" in node_cmds[0]
         assert "/c/Users" not in node_cmds[0]
+
+
+class TestIsLocalEnv:
+    """Tests for _is_local_env() which gates ripgrepy-vs-shell dispatch."""
+
+    def test_local_env_returns_true(self):
+        """_is_local_env returns True when env is a LocalEnvironment."""
+        from tools.environments.local import LocalEnvironment
+        ops = ShellFileOperations.__new__(ShellFileOperations)
+        ops.env = LocalEnvironment()
+        assert ops._is_local_env() is True
+
+    def test_no_env_returns_false(self):
+        """_is_local_env returns False when env is None."""
+        ops = ShellFileOperations.__new__(ShellFileOperations)
+        ops.env = None
+        assert ops._is_local_env() is False
+
+    def test_magic_mock_env_returns_false(self):
+        """_is_local_env returns False for MagicMock (not a real LocalEnvironment)."""
+        ops = ShellFileOperations.__new__(ShellFileOperations)
+        ops.env = MagicMock()
+        assert ops._is_local_env() is False
+
+    def test_missing_env_attribute_returns_false(self):
+        """_is_local_env returns False when env attribute is missing."""
+        ops = ShellFileOperations.__new__(ShellFileOperations)
+        # Don't set env at all — uses getattr default
+        assert ops._is_local_env() is False

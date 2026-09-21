@@ -73,8 +73,8 @@ Do not merge upstream directly on `main`, and do not rebase published
 Run after every upstream sync and before every `runtime-v*` tag.
 
 ```bash
-python -m venv /tmp/hermes-cn-test
-source /tmp/hermes-cn-test/bin/activate
+python -m venv "${TMPDIR:-/tmp}/hermes-cn-test"
+source "${TMPDIR:-/tmp}/hermes-cn-test/bin/activate"
 pip install -e .
 
 hermes dashboard --no-open &
@@ -93,7 +93,7 @@ curl -sS http://127.0.0.1:9119/openapi.json | jq '.paths | has("/api/v2/events")
 
 kill %1
 deactivate
-rm -rf /tmp/hermes-cn-test
+rm -rf "${TMPDIR:-/tmp}/hermes-cn-test"
 ```
 
 If the smoke test fails, do not merge the sync PR and do not cut a

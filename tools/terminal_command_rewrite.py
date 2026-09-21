@@ -17,10 +17,10 @@ from __future__ import annotations
 
 
 import functools
-import platform
 import re as _re
 import shutil
 
+from platform_utils import is_windows
 from tools.rtk_provision import _rtk_available
 
 
@@ -28,7 +28,9 @@ from tools.rtk_provision import _rtk_available
 # Platform helpers
 # ---------------------------------------------------------------------------
 
-_IS_WINDOWS: bool = platform.system() == "Windows"
+# is_windows(), never platform.system(): that idiom drives platform.uname() into
+# its WMI-backed path on Python 3.12+ (two WMI queries at import time).
+_IS_WINDOWS: bool = is_windows()
 
 # ---------------------------------------------------------------------------
 # Known commands that benefit from rtk's deduplication

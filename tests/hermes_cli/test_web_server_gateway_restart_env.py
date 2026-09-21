@@ -11,7 +11,11 @@ the detached child is the "external shell" the guard expects.
 
 import subprocess
 
-from hermes_cli import web_server
+# The action registries/spawner live on ``hermes_cli.web_server_gateway`` after the
+# dashboard decomposition (``hermes_cli.web_server`` re-exports only what its routers and
+# older tests reach); the patch seam is the owning module, so a patched
+# ``_ACTION_LOG_DIR`` is the one ``_spawn_hermes_action`` actually writes to.
+from hermes_cli import web_server_gateway as gateway_mod
 
 
 class _FakePopen:
@@ -33,11 +37,11 @@ def _spawn_capture(monkeypatch, tmp_path, *, extra_env=None):
         return proc
 
     monkeypatch.setattr(subprocess, "Popen", _fake_popen)
-    monkeypatch.setattr(web_server, "_ACTION_LOG_DIR", tmp_path)
+    monkeypatch.setattr(gateway_mod, "_ACTION_LOG_DIR", tmp_path)
     # Mark this (test) process as if it were running inside the gateway.
     monkeypatch.setenv("_HERMES_GATEWAY", "1")
 
-    web_server._spawn_hermes_action(
+    gateway_mod._spawn_hermes_action(
         ["gateway", "restart"], "gateway-restart", env_overrides=extra_env
     )
     return captured["env"]

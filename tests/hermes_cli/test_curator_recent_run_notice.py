@@ -45,12 +45,12 @@ def curator_env(tmp_path, monkeypatch, capsys):
             saved[mod] = sys.modules.pop(mod)
     import hermes_constants  # noqa: F401 — fresh import picks up HERMES_HOME
     from agent import curator
-    from hermes_cli import main as hermes_main
+    from hermes_cli import update_cmd_maint
 
     try:
         yield {
             "curator": curator,
-            "main": hermes_main,
+            "main": update_cmd_maint,
             "capsys": capsys,
         }
     finally:

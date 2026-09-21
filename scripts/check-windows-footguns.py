@@ -8,22 +8,30 @@ cheap, fast, catches regressions in a codebase that runs on three OSes.
 Usage:
     # Scan staged changes (default when run from a git checkout)
     python scripts/check-windows-footguns.py
-
-    # Scan the full tree (full-repo audit)
+    # Scan the full tree (full-repo audit; subtracts the inherited baseline below)
     python scripts/check-windows-footguns.py --all
-
     # Scan a specific file or directory
     python scripts/check-windows-footguns.py path/to/file.py path/to/dir/
-
     # Scan only modified files vs. main
     python scripts/check-windows-footguns.py --diff main
-
+    # Regenerate the inherited-findings baseline after an upstream sync
+    python scripts/check-windows-footguns.py --all --print-baseline
 Exit status:
-    0 — no Windows footguns found (or all matches suppressed)
+    0 — no Windows footguns found (or all matches suppressed/baselined)
     1 — at least one unsuppressed match
-
 Suppress an intentional use (e.g. tests or platform-gated code) with:
     os.kill(pid, 0)  # windows-footgun: ok — only called on POSIX
+Inherited findings (``--all`` only)
+------------------------------------
+The CN fork adds two Windows console-window rules that upstream's tree does not
+satisfy (see the [CN-fork] block in FOOTGUNS). A merge therefore lands upstream
+call sites this repo has not hardened yet; rewriting them is its own sweep. The
+*blocking* full-repo gate still has to catch NEW drift, so ``--all`` subtracts
+``scripts/ci/windows_footguns_upstream_baseline.txt`` and fails on anything the
+baseline does not cover. Stale/overstated entries are reported (and can be made
+fatal with ``--strict-baseline``).
+The default (staged) and ``--diff`` modes never consult the baseline — those
+check the branch's own work, which is expected to be clean.
 """
 
 from __future__ import annotations
@@ -840,6 +848,97 @@ def get_diff_files(ref: str) -> list[Path]:
     return [REPO_ROOT / f for f in out.splitlines() if f.strip()]
 
 
+# ---------------------------------------------------------------------------
+# Inherited-findings baseline (``--all`` only)
+# ---------------------------------------------------------------------------
+# The CN fork's two console-window rules are stricter than upstream's tree: a
+# merge imports upstream call sites this repo has not hardened yet, and
+# rewriting them is a sweep of its own. The blocking full-repo gate must still
+# catch NEW drift, so ``--all`` subtracts this baseline. ``--diff`` and the
+# default staged-changes scan never load it: those check the branch's own work.
+#
+# Format — one finding per line::
+#
+#     <repo-relative path> | <rule name> | <allowed count>
+#
+# Counts, not line numbers: an upstream reformat that moves a baselined line
+# must not turn CI red, while a new instance of the same rule in the same file
+# (count grows) and any finding in an unlisted file still fail. ``#`` comments
+# and blank lines are ignored. Regenerate with::
+#
+#     python scripts/check-windows-footguns.py --all --print-baseline
+BASELINE_PATH = REPO_ROOT / "scripts" / "ci" / "windows_footguns_upstream_baseline.txt"
+BASELINE_HEADER = """\
+# Windows-footgun findings inherited from upstream at the 2026-09-20 sync
+# (upstream/main @ 639823919c). They are NOT suppressed: each one is a real
+# console-window footgun in upstream-authored code, listed here so the blocking
+# full-repo gate (lint.yml -> `check-windows-footguns.py --all`, and
+# tests/scripts/test_windows_footguns_full_repo_scan.py) keeps failing only on
+# NEW drift. Anything not listed here still fails the scan.
+#
+# This file is read by `--all` only; `--diff` and the default staged-changes
+# scan check the branch's own work and never subtract it.
+#
+# Format: <repo-relative path> | <rule name> | <allowed count>
+#
+# Burn the list down by hardening a listed call site (usually
+# `creationflags=windows_hide_flags()` from hermes_cli._subprocess_compat) and
+# re-running with --print-baseline. Each upstream sync adds new entries the same
+# way. Refresh:
+#     python scripts/check-windows-footguns.py --all --print-baseline
+"""
+
+
+def load_baseline(path: Path) -> dict[tuple[str, str], int]:
+    """(repo-relative posix path, rule name) -> allowed match count.
+
+    A missing or unreadable file yields an empty baseline: the scan then reports
+    every finding, which is the fail-closed direction.
+    """
+    allowed: dict[tuple[str, str], int] = {}
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return allowed
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        rel, sep, rest = line.partition("|")
+        rule, sep2, count = rest.rpartition("|")
+        if not (sep and sep2 and count.strip().isdigit()):
+            print(
+                f"warning: ignoring malformed baseline line in {path.name}: {line!r}",
+                file=sys.stderr,
+            )
+            continue
+        allowed[(rel.strip(), rule.strip())] = int(count.strip())
+    return allowed
+
+
+def format_baseline(counts: dict[tuple[str, str], int]) -> str:
+    """Render a baseline file body for the given per-(path, rule) counts."""
+    body = "".join(
+        f"{rel} | {rule} | {n}\n" for (rel, rule), n in sorted(counts.items())
+    )
+    return BASELINE_HEADER + body
+
+
+def _full_repo_roots() -> list[Path]:
+    """Main packages + scripts scanned by ``--all`` (and by --print-baseline)."""
+    roots = [
+        REPO_ROOT / "hermes_cli",
+        REPO_ROOT / "gateway",
+        REPO_ROOT / "tools",
+        REPO_ROOT / "cron",
+        REPO_ROOT / "agent",
+        REPO_ROOT / "plugins",
+        REPO_ROOT / "scripts",
+        REPO_ROOT / "acp_adapter",
+    ]
+    return [r for r in roots if r.exists()]
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description="Flag Windows cross-platform footguns in Python code."
@@ -864,6 +963,25 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--list",
         action="store_true",
         help="List all known footgun rules and exit.",
+    )
+    p.add_argument(
+        "--baseline",
+        metavar="PATH",
+        type=Path,
+        help=(
+            "Baseline of inherited findings to subtract in --all mode "
+            f"(default: scripts/ci/{BASELINE_PATH.name})."
+        ),
+    )
+    p.add_argument(
+        "--print-baseline",
+        action="store_true",
+        help="Print a baseline for the current --all scan and exit (refresh the file).",
+    )
+    p.add_argument(
+        "--strict-baseline",
+        action="store_true",
+        help="Treat stale/overstated baseline entries as failures too.",
     )
     return p.parse_args(argv)
 
@@ -893,18 +1011,7 @@ def main(argv: list[str]) -> int:
         return 0
 
     if args.all:
-        # Scan main Python packages + scripts
-        roots = [
-            REPO_ROOT / "hermes_cli",
-            REPO_ROOT / "gateway",
-            REPO_ROOT / "tools",
-            REPO_ROOT / "cron",
-            REPO_ROOT / "agent",
-            REPO_ROOT / "plugins",
-            REPO_ROOT / "scripts",
-            REPO_ROOT / "acp_adapter",
-        ]
-        roots = [r for r in roots if r.exists()]
+        roots = _full_repo_roots()
     elif args.diff:
         roots = get_diff_files(args.diff)
     elif args.paths:
@@ -920,24 +1027,77 @@ def main(argv: list[str]) -> int:
             )
             return 0
 
-    total_matches = 0
+    # The baseline is an --all-only mechanism. --diff and the default
+    # staged-changes scan check the branch's own work, which is expected to be
+    # clean, so they must behave exactly as they did before it existed.
+    if (args.baseline is not None or args.print_baseline or args.strict_baseline) and not args.all:
+        print(
+            "--baseline/--print-baseline/--strict-baseline only apply to --all "
+            "(the inherited baseline records the full-repo audit; --diff and the "
+            "default staged scan are checked against the branch's own changes).",
+            file=sys.stderr,
+        )
+        return 2
+
+    findings: list[tuple[str, int, str, Footgun]] = []
     files_scanned = 0
     for path in iter_files(roots):
         files_scanned += 1
-        matches = scan_file(path, FOOTGUNS)
-        for lineno, line, fg in matches:
-            rel = path.relative_to(REPO_ROOT).as_posix()
-            print(f"{rel}:{lineno}: [{fg.name}]")
-            print(f"    {line.strip()}")
-            print(f"    — {fg.message}")
-            print(f"    Fix: {fg.fix.splitlines()[0]}")
-            print()
-            total_matches += 1
+        rel = path.relative_to(REPO_ROOT).as_posix()
+        for lineno, line, fg in scan_file(path, FOOTGUNS):
+            findings.append((rel, lineno, line, fg))
 
+    if args.print_baseline:
+        counts: dict[tuple[str, str], int] = {}
+        for rel, _lineno, _line, fg in findings:
+            key = (rel, fg.name)
+            counts[key] = counts.get(key, 0) + 1
+        print(format_baseline(counts), end="")
+        return 0
+
+    allowed = load_baseline(args.baseline or BASELINE_PATH) if args.all else {}
+    seen: dict[tuple[str, str], int] = {}
+    total_matches = 0
+    inherited = 0
+    for rel, lineno, line, fg in findings:
+        key = (rel, fg.name)
+        seen[key] = seen.get(key, 0) + 1
+        if seen[key] <= allowed.get(key, 0):
+            inherited += 1
+            continue
+        print(f"{rel}:{lineno}: [{fg.name}]")
+        print(f"    {line.strip()}")
+        print(f"    — {fg.message}")
+        print(f"    Fix: {fg.fix.splitlines()[0]}")
+        print()
+        total_matches += 1
+
+    advisories: list[str] = []
+    for (rel, rule), allowed_count in sorted(allowed.items()):
+        found = seen.get((rel, rule), 0)
+        if found < allowed_count:
+            advisories.append(
+                f"{rel} | {rule}: baseline says {allowed_count}, found {found}"
+            )
+    if advisories:
+        print(
+            "advisory — the inherited baseline is stale/overstated; regenerate it "
+            "with `--all --print-baseline` once the listed sites are hardened:",
+            file=sys.stderr,
+        )
+        for entry in advisories:
+            print(f"  {entry}", file=sys.stderr)
+
+    baseline_note = (
+        f" ({inherited} inherited finding(s) baselined in "
+        f"{Path(args.baseline or BASELINE_PATH).name})"
+        if args.all
+        else ""
+    )
     if total_matches:
         print(
             f"\n✗ {total_matches} Windows footgun(s) found across "
-            f"{files_scanned} file(s) scanned.",
+            f"{files_scanned} file(s) scanned{baseline_note}.",
             file=sys.stderr,
         )
         print(
@@ -946,10 +1106,20 @@ def main(argv: list[str]) -> int:
             "the same line.\n  Run with --list to see all rules.",
             file=sys.stderr,
         )
+        if args.strict_baseline and advisories:
+            print("  (--strict-baseline: the stale entries above also count)", file=sys.stderr)
+        return 1
+
+    if args.strict_baseline and advisories:
+        print(
+            "\n✗ stale inherited baseline (see the advisory above).",
+            file=sys.stderr,
+        )
         return 1
 
     print(
-        f"✓ No Windows footguns found ({files_scanned} file(s) scanned)."
+        f"✓ No new Windows footguns found ({files_scanned} file(s) scanned"
+        f"{baseline_note})."
     )
     return 0
 

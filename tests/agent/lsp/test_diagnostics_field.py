@@ -9,7 +9,7 @@ from __future__ import annotations
 import sys
 
 import pytest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 
 from tools.environments.local import LocalEnvironment
@@ -81,6 +81,22 @@ def test_write_file_skips_lsp_when_syntax_failed(tmp_path):
     assert mock_lsp.call_count == 0
     assert res.lsp_diagnostics is None
     assert res.lint["status"] == "error"
+
+
+def test_maybe_lsp_diagnostics_swallows_enabled_for_failure(tmp_path):
+    """``_maybe_lsp_diagnostics`` gates through the guarded ``_lsp_will_handle``
+    helper, so a workspace-resolution failure (e.g. the process cwd was removed
+    under a running worker) degrades to "no LSP for this write" instead of
+    surfacing as an error from a write that already landed on disk."""
+    fops = ShellFileOperations(LocalEnvironment(cwd=str(tmp_path)))
+
+    with patch.object(fops, "_lsp_service") as mock_service:
+        mock_service.return_value.enabled_for = MagicMock(
+            side_effect=FileNotFoundError(2, "No such file or directory")
+        )
+        result = fops._maybe_lsp_diagnostics(str(tmp_path / "x.py"))
+
+    assert result == ""
 
 
 # ---------------------------------------------------------------------------

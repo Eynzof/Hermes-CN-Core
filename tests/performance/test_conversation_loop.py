@@ -110,35 +110,33 @@ def test_token_estimation_timing(timing_context):
 
 @pytest.mark.perf
 def test_incremental_token_estimation_50_turns(timing_context):
-    """50-turn conversation re-estimated every turn via IncrementalTokenEstimator.
-
-    Each turn only the two new messages are measured; the unchanged prefix is
-    served from cache. Asserts both correctness (matches a full stateless
-    rescan exactly) and the plan's per-turn budget (< 100ms; real cost is
-    microseconds, the wide bound keeps CI non-flaky).
+    """50-turn conversation re-estimated every turn through the merged memoized
+    estimator.  ``estimate_messages_tokens_rough`` memoises each message's contribution
+    in ``agent.model_metadata._MSG_TOKENS_CACHE`` keyed by a value fingerprint, so each
+    turn only measures the two new messages and the unchanged prefix is served from the
+    memo (the fork's ``IncrementalTokenEstimator`` was dropped for this upstream
+    equivalent — see FORK_NOTES).  Asserts both correctness (identical to a cold-cache
+    rescan) and the plan's per-turn budget (< 100ms; real cost is microseconds, the wide
+    bound keeps CI non-flaky).
     """
     from agent.model_metadata import (
-        IncrementalTokenEstimator,
+        _MSG_TOKENS_CACHE,
         estimate_messages_tokens_rough,
     )
-
-    estimator = IncrementalTokenEstimator()
     conv = [{"role": "system", "content": "You are a helpful assistant."}]
-
-    incremental = 0
+    warm = 0
     with timing_context.measure("incremental_estimate_50_turns"):
         for i in range(50):
             conv.append({"role": "user", "content": f"Q{i}: " + "A" * 500})
             conv.append({"role": "assistant", "content": f"A{i}: " + "B" * 1000})
-            incremental = estimator.estimate(conv)
-
-    # Correctness: cached estimate == full stateless rescan of the whole list.
-    assert incremental == estimate_messages_tokens_rough(conv)
-
+            warm = estimate_messages_tokens_rough(conv)
+    # Correctness: the warm (memoized) estimate == a cold-cache rescan of the list.
+    _MSG_TOKENS_CACHE.clear()
+    assert warm == estimate_messages_tokens_rough(conv)
     summary = timing_context.summary().get("incremental_estimate_50_turns", {})
     total_ms = summary.get("total_ms", 0)
     per_turn_ms = total_ms / 50.0
-    print(f"\n  50-turn incremental estimate: {total_ms:.2f}ms total, "
+    print(f"  50-turn incremental estimate: {total_ms:.2f}ms total, "
           f"{per_turn_ms:.3f}ms/turn")
     assert per_turn_ms < 100
     assert total_ms < 1000
@@ -146,13 +144,14 @@ def test_incremental_token_estimation_50_turns(timing_context):
 
 @pytest.mark.perf
 def test_incremental_estimator_matches_full_rescan(timing_context):
-    """Observational: full O(n) rescan every turn vs. incremental over 50 turns.
-
-    No relative timing gate (timing comparisons flake on shared CI); asserts
-    correctness plus a generous absolute ceiling and prints both costs.
+    """Observational: a cold-cache rescan every turn vs. the warm memoized pass over 50
+    turns (one estimator function; the comparand clears ``_MSG_TOKENS_CACHE`` so it takes
+    the stateless O(n) walk the fork's estimator replaced).  No relative timing gate
+    (timing comparisons flake on shared CI); asserts correctness plus a generous absolute
+    ceiling and prints both costs.
     """
     from agent.model_metadata import (
-        IncrementalTokenEstimator,
+        _MSG_TOKENS_CACHE,
         estimate_messages_tokens_rough,
     )
 
@@ -164,21 +163,25 @@ def test_incremental_estimator_matches_full_rescan(timing_context):
     with timing_context.measure("full_rescan_50_turns"):
         for _ in range(50):
             add_turn(c1)
+            _MSG_TOKENS_CACHE.clear()  # stateless: no memo reuse between turns
             estimate_messages_tokens_rough(c1)
-
-    est = IncrementalTokenEstimator()
+    _MSG_TOKENS_CACHE.clear()
+    cold = estimate_messages_tokens_rough(c1)  # stateless rescan of the final list
+    _MSG_TOKENS_CACHE.clear()
     c2 = [{"role": "system", "content": "sys"}]
+    warm = None
     with timing_context.measure("incremental_50_turns"):
         for _ in range(50):
             add_turn(c2)
-            est.estimate(c2)
-
-    assert est.estimate(c2) == estimate_messages_tokens_rough(c2)
-
+            warm = estimate_messages_tokens_rough(c2)
+    _MSG_TOKENS_CACHE.clear()
+    assert warm == estimate_messages_tokens_rough(c2)  # memoized == cold rescan
+    assert warm == cold
+    assert estimate_messages_tokens_rough(c1) == estimate_messages_tokens_rough(c2)
     s = timing_context.summary()
     full_ms = s.get("full_rescan_50_turns", {}).get("total_ms", 0)
     incr_ms = s.get("incremental_50_turns", {}).get("total_ms", 0)
-    print(f"\n  full rescan: {full_ms:.2f}ms | incremental: {incr_ms:.2f}ms")
+    print(f"  full rescan: {full_ms:.2f}ms | incremental: {incr_ms:.2f}ms")
     assert incr_ms < 1000
 
 

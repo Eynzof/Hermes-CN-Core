@@ -386,6 +386,11 @@ class TestFileSync:
         env.cleanup()
         env.cleanup()
 
+        # The remote tar must skip live sockets (gateway.sock) instead of failing the download.
+        tar_scripts = [args[1] for cmd, args, _ in sandbox.run_command_calls
+                       if cmd == "bash" and args and args[1].startswith("tar cf ")]
+        assert tar_scripts and all("--exclude='*.sock'" in script for script in tar_scripts)
+
         # Credential mounts are upload-only since bcfc7458fa ("fix remote
         # sync-back credential overwrite"): the sandbox must never rewrite a
         # host credential file, so token.txt keeps its host content, and the
@@ -484,8 +489,8 @@ class TestExecute:
         result = env.execute("echo hello")
 
         # Invariant, not snapshot: output + returncode (result also carries
-        # elapsed_seconds/… metadata now).
-        assert result["output"] == "hello\n" and result["returncode"] == 0, label
+        assert result["output"] == "hello\n", label
+        assert result["returncode"] == 0, label
         assert original.closed == 1
         assert vercel_sdk.current is replacement
 

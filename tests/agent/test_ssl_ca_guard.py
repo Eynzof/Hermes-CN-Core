@@ -6,7 +6,7 @@ import certifi
 import pytest
 
 from agent.errors import SSLConfigurationError
-from agent.ssl_guard import verify_ca_bundle, verify_ca_bundle_with_fallback
+from agent.ssl_guard import verify_ca_bundle
 
 
 @pytest.fixture(autouse=True)
@@ -85,8 +85,9 @@ def test_truststore_get_ca_certs_not_implemented_is_accepted(monkeypatch, tmp_pa
     monkeypatch.setenv("SSL_CERT_FILE", str(bundle))
 
     # Must not raise on the explicit env bundle nor the certifi check.
+    # (``verify_ca_bundle_with_fallback`` was parked upstream as a plugin-compat
+    # pointer in compat_manifest.json; in-tree code must not depend on it.)
     verify_ca_bundle()
-    verify_ca_bundle_with_fallback()
 
 
 

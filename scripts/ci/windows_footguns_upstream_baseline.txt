@@ -1,0 +1,60 @@
+# Windows-footgun findings inherited from upstream at the 2026-09-20 sync
+# (upstream/main @ 639823919c). They are NOT suppressed: each one is a real
+# console-window footgun in upstream-authored code, listed here so the blocking
+# full-repo gate (lint.yml -> `check-windows-footguns.py --all`, and
+# tests/scripts/test_windows_footguns_full_repo_scan.py) keeps failing only on
+# NEW drift. Anything not listed here still fails the scan.
+#
+# This file is read by `--all` only; `--diff` and the default staged-changes
+# scan check the branch's own work and never subtract it.
+#
+# Format: <repo-relative path> | <rule name> | <allowed count>
+#
+# Burn the list down by hardening a listed call site (usually
+# `creationflags=windows_hide_flags()` from hermes_cli._subprocess_compat) and
+# re-running with --print-baseline. Each upstream sync adds new entries the same
+# way. Refresh:
+#     python scripts/check-windows-footguns.py --all --print-baseline
+agent/context_references.py | subprocess capture_output=True without creationflags | 1
+agent/proxy_sources/iron_proxy.py | subprocess capture_output=True without creationflags | 1
+agent/secret_sources/bitwarden.py | subprocess capture_output=True without creationflags | 1
+hermes_cli/_early_recovery.py | subprocess capture_output=True without creationflags | 1
+hermes_cli/browser_connect.py | subprocess capture_output=True without creationflags | 1
+hermes_cli/claw.py | subprocess capture_output=True without creationflags | 1
+hermes_cli/copilot_auth.py | subprocess capture_output=True without creationflags | 1
+hermes_cli/doctor_state.py | subprocess capture_output=True without creationflags | 1
+hermes_cli/doctor_tools.py | subprocess capture_output=True without creationflags | 1
+hermes_cli/dump.py | subprocess capture_output=True without creationflags | 1
+hermes_cli/gateway.py | subprocess capture_output=True without creationflags | 1
+hermes_cli/gitlock.py | subprocess capture_output=True without creationflags | 1
+hermes_cli/kanban_db_workspace.py | subprocess capture_output=True without creationflags | 1
+hermes_cli/kanban_pr_acceptance.py | subprocess capture_output=True without creationflags | 1
+hermes_cli/main_desktop.py | subprocess capture_output=True without creationflags | 1
+hermes_cli/managed_uv.py | subprocess capture_output=True without creationflags | 2
+hermes_cli/session_lost_and_found.py | subprocess capture_output=True without creationflags | 1
+hermes_cli/uninstall.py | subprocess capture_output=True without creationflags | 2
+hermes_cli/update_cmd_fleet.py | subprocess capture_output=True without creationflags | 4
+hermes_cli/update_cmd_git.py | subprocess capture_output=True without creationflags | 2
+hermes_cli/update_cmd_stash.py | subprocess capture_output=True without creationflags | 3
+hermes_cli/worktree_gc.py | subprocess capture_output=True without creationflags | 1
+hermes_cli/worktree_ops.py | subprocess capture_output=True without creationflags | 1
+plugins/google_meet/audio_bridge.py | subprocess capture_output=True without creationflags | 1
+plugins/memory/honcho/client.py | subprocess capture_output=True without creationflags | 1
+plugins/memory/mem0/_setup.py | subprocess capture_output=True without creationflags | 1
+plugins/platforms/a2a/adapter.py | subprocess capture_output=True without creationflags | 1
+plugins/platforms/matrix/adapter.py | subprocess capture_output=True without creationflags | 1
+scripts/check-case-collisions.py | subprocess capture_output=True without creationflags | 1
+scripts/check_profile_scope_patterns.py | subprocess capture_output=True without creationflags | 2
+scripts/ci/check_public_surface.py | subprocess capture_output=True without creationflags | 3
+tools/browser_tool_install.py | subprocess capture_output=True without creationflags | 1
+tools/browser_tool_real_profile.py | subprocess capture_output=True without creationflags | 1
+tools/browser_use_cli.py | subprocess capture_output=True without creationflags | 1
+tools/checkpoint_manager.py | subprocess capture_output=True without creationflags | 1
+tools/computer_use/cua_backend_capture.py | subprocess capture_output=True without creationflags | 1
+tools/computer_use/cua_backend_session.py | subprocess capture_output=True without creationflags | 1
+tools/computer_use/doctor.py | subprocess capture_output=True without creationflags | 1
+tools/computer_use/permissions.py | subprocess capture_output=True without creationflags | 1
+tools/environments/local_gitbash_probe.py | subprocess capture_output=True without creationflags | 1
+tools/environments/ssh.py | subprocess capture_output=True without creationflags | 1
+tools/tts_command_provider.py | subprocess shell=True without creationflags | 1
+tools/vision_tools_image_prep.py | subprocess capture_output=True without creationflags | 1

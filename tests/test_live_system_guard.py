@@ -37,3 +37,39 @@ def test_wrapped_killer_command_is_still_blocked():
 def test_env_wrapped_killer_command_is_still_blocked():
     with pytest.raises(RuntimeError, match="live-system guard"):
         subprocess.run(["env", "GUARD_TEST=1", "pkill", "-f", "hermes-guard-regression-nomatch"])
+
+
+def test_gateway_start_inside_a_container_exec_is_not_blocked():
+    """``docker exec <ctr> hermes gateway start`` launches the gateway INSIDE the container,
+    where it cannot reach the host's systemd unit or webhook port; tests/docker/ depends on it.
+    The binary is a stub so the argv stays exact without needing a Docker daemon."""
+    import os
+    import stat
+
+    stub_dir = os.path.join(os.environ["HERMES_HOME"], "stub-bin")
+    os.makedirs(stub_dir, exist_ok=True)
+    # The stub must be a runnable image on the host running this test. A shebang script
+    # needs the POSIX exec bit; Windows has no exec bit and dispatches by extension, so
+    # the stub is a .cmd there — which the guard normalizes back to the runtime name
+    # (tests/conftest.py::_first_token_basename strips .cmd/.exe/.bat/.com). The asserted
+    # contract is identical on both hosts: the container argv is exempt from the guard.
+    if os.name == "nt":
+        stub = os.path.join(stub_dir, "docker.cmd")
+        with open(stub, "w") as fh:
+            fh.write("@exit /b 0\r\n")
+    else:
+        stub = os.path.join(stub_dir, "docker")
+        with open(stub, "w") as fh:
+            fh.write("#!/bin/sh\nexit 0\n")
+        os.chmod(stub, os.stat(stub).st_mode | stat.S_IXUSR)
+    result = subprocess.run(
+        [stub, "exec", "-u", "hermes", "ctr", "sh", "-c", "hermes -p prof gateway start"],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0
+
+
+def test_gateway_start_on_the_host_is_still_blocked():
+    with pytest.raises(RuntimeError, match="REAL.*gateway runtime"):
+        subprocess.run(["python", "-m", "hermes_cli.main", "gateway", "start"])

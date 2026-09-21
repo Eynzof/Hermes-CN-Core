@@ -22,11 +22,19 @@ def _git_init(path):
         "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
         "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t",
         "HOME": str(path),
+        # Same config isolation the product's git probes use
+        # (``hermes_cli._subprocess_compat.noninteractive_git_env``). Without it a host
+        # ``core.autocrlf=true`` (the Windows default in git-for-windows' *system* config)
+        # stores LF in the index while the worktree keeps CRLF, and the probe — which
+        # deliberately drops that config — then reports the just-committed file as modified.
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": os.devnull,
     }
     # Commit a source file so the fixture is a real *code* workspace: a bare git
     # repo with no code no longer flips into the coding posture (see
     # _detect_profile_name / _has_code_files), so "a code repo" needs code.
-    (Path(path) / "main.py").write_text("print('hi')\n")
+    # write_bytes, not write_text: text mode rewrites "\n" as CRLF on Windows.
+    (Path(path) / "main.py").write_bytes(b"print('hi')\n")
     for args in (
         ["init", "-q", "-b", "main"],
         ["add", "-A"],

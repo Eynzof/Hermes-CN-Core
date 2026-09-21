@@ -7,10 +7,11 @@ everyone — including binary-fetching backends, on every update.
 
 The contract:
 
-* ``agent-browser`` IS eager. It is the default Chromium-driving backend
-  used whenever the agent makes a browser call without a cloud provider
-  configured, so it must already be installed before any session starts.
-  Its postinstall is also small.
+* ``agent-browser`` is NOT eager either (upstream #43564). It is the default
+  Chromium-driving backend, but it resolves lazily through npx on first use,
+  so its (small) install no longer runs for every user on every update. What
+  this file pins is that the lazy path stays wired: the dependency check in
+  ``hermes_cli/dep_ensure.py`` must accept npx resolution.
 
 * ``@askjo/camofox-browser`` is NOT eager. It is an explicit opt-in
   alternative browser backend, selected by the user via
@@ -54,16 +55,40 @@ def test_camofox_is_not_in_root_dependencies() -> None:
     )
 
 
-def test_agent_browser_stays_eager() -> None:
-    """agent-browser is the default backend; it must remain eager."""
+def test_agent_browser_is_lazy_not_eager(monkeypatch) -> None:
+    """agent-browser deliberately left root ``dependencies`` (#43564).
+
+    It is still the default Chromium-driving backend, but it now resolves
+    lazily through npx (``hermes_cli/dep_ensure.py::_has_npx_agent_browser`` →
+    ``tools.browser_tool_install._find_agent_browser``) instead of being
+    installed eagerly for every user by ``hermes setup`` / ``hermes update``.
+    The eager root dependency was removed upstream on purpose; this test pins
+    the new contract in both halves — no eager dependency, and the dependency
+    check must still report the browser engine as satisfied when resolution
+    falls through to npx (otherwise a default install is told it is missing).
+    """
     deps = _root_package_json().get("dependencies", {})
-    assert "agent-browser" in deps, (
-        "agent-browser is the default browser-tool backend used by every "
-        "session that doesn't have a cloud browser provider configured. "
-        "It must stay in root package.json dependencies so it is present "
-        "after `hermes setup` / `hermes update` without an explicit "
-        "post_setup step."
+    assert "agent-browser" not in deps, (
+        "agent-browser is no longer an eager root dependency (upstream #43564). "
+        "It resolves lazily via npx; re-adding it to root package.json "
+        "dependencies reinstates a binary install for every user on every "
+        "update. Update this test and hermes_cli/doctor_tools.py together if "
+        "that decision is ever reversed."
     )
+
+    from hermes_cli import dep_ensure
+    from tools import browser_tool, browser_tool_install
+
+    monkeypatch.setattr(
+        browser_tool_install,
+        "_find_agent_browser",
+        lambda *a, **k: browser_tool.NPX_AGENT_BROWSER_SENTINEL,
+    )
+    # termux carve-out is host-dependent; the lazy-npx contract is not.
+    monkeypatch.setattr(
+        browser_tool_install, "_requires_real_termux_browser_install", lambda _cmd: False
+    )
+    assert dep_ensure._has_npx_agent_browser() is True
 
 
 def test_root_lockfile_has_no_camofox_entries() -> None:

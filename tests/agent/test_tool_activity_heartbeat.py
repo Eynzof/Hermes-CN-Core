@@ -115,14 +115,18 @@ def test_heartbeat_touches_periodically_and_stops():
         def _touch_activity(self, desc):
             touches.append(desc)
 
+    interval = 0.05
     thread = threading.Thread(
         target=te._run_tool_activity_heartbeat,
         args=(_Agent(), stop, "tool running: terminal"),
-        kwargs={"interval": 0.05},
+        kwargs={"interval": interval},
         daemon=True,
     )
     thread.start()
-    time.sleep(0.12)
+    # The window must fit >=2 ticks on the coarsest supported host. Windows' waitable
+    # timer granularity is ~15.6 ms, so ``Event.wait(0.05)`` costs ~62 ms there
+    # (measured on this box) and a 0.12 s window bought exactly one tick.
+    time.sleep(interval * 6)
     stop.set()
     thread.join(timeout=1.0)
 

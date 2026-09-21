@@ -268,6 +268,7 @@ class TestToolSurfaceSwap:
 
 
 class TestVaultSupervisorAttach:
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: POSIX /bin/sh fake-CLI fixtures")
     def test_exec_attaches_supervisor_to_the_browser_it_drives(self, tmp_path, monkeypatch, _fake_supervisor_registry):
         """browser_vault_fill injects secrets only over the supervisor's CDP WebSocket. Without this attach the
         default (Browser Use) backend had no supervisor at all and every fill failed with supervisor_required."""
@@ -283,6 +284,7 @@ class TestVaultSupervisorAttach:
 
 
 class TestVaultEgressRedaction:
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: POSIX /bin/sh fake-CLI fixtures")
     def test_exec_redacts_registered_vault_secret_from_stdout_and_stderr(self, tmp_path, monkeypatch):
         """A browser_exec page read must not return a vault-filled value to model history."""
         from agent import redact
@@ -653,6 +655,7 @@ class TestOwnTabPreamble:
         monkeypatch.setattr(bu_cli, "_find_cli", lambda: [cli])
         return json.loads(bu_cli.browser_exec("print('payload')", session=session))
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: POSIX /bin/sh fake-CLI fixtures")
     def test_named_shared_browser_gets_preamble(self, tmp_path, monkeypatch):
         result = self._run(tmp_path, monkeypatch, session="r7k2", shared_cdp="http://127.0.0.1:9222")
         assert result["success"] is True
@@ -660,23 +663,27 @@ class TestOwnTabPreamble:
         # model code still present, after the preamble
         assert result["output"].index("_hermes_ensure_own_tab") < result["output"].index("print('payload')")
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: POSIX /bin/sh fake-CLI fixtures")
     def test_named_packaged_chromium_skips_preamble(self, tmp_path, monkeypatch):
         """Each named session launches its own packaged Chromium — nothing to share a tab with."""
         result = self._run(tmp_path, monkeypatch, session="r7k2")
         assert result["success"] is True
         assert "_hermes_ensure_own_tab" not in result["output"]
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: POSIX /bin/sh fake-CLI fixtures")
     def test_unnamed_session_gets_no_preamble(self, tmp_path, monkeypatch):
         result = self._run(tmp_path, monkeypatch, session="")
         assert result["success"] is True
         assert "_hermes_ensure_own_tab" not in result["output"]
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: POSIX /bin/sh fake-CLI fixtures")
     def test_named_provider_browser_skips_preamble(self, tmp_path, monkeypatch):
         """Per-name provider browsers are private — preamble would leak a tab."""
         result = self._run(tmp_path, monkeypatch, session="r7k2", provider=True)
         assert result["success"] is True
         assert "_hermes_ensure_own_tab" not in result["output"]
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: POSIX /bin/sh fake-CLI fixtures")
     def test_sentinel_never_reaches_subprocess_env(self, tmp_path, monkeypatch):
         import tools.browser_tool as bt
 
@@ -1054,6 +1061,7 @@ class TestFindCliManagedBin:
     def test_nothing_found(self, tmp_path, monkeypatch):
         assert bu_cli._find_cli_unpatched() is None
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: POSIX /bin/sh fake-CLI fixtures")
     def test_user_local_bin_browser_use_found(self, tmp_path, monkeypatch):
         """#83788: Desktop/TUI workers spawn with a minimal PATH that omits
         ~/.local/bin, where `uv tool install browser-use` links the binary
@@ -1065,6 +1073,7 @@ class TestFindCliManagedBin:
         cli.chmod(cli.stat().st_mode | stat.S_IXUSR)
         assert bu_cli._find_cli_unpatched() == [str(cli)]
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: POSIX /bin/sh fake-CLI fixtures")
     def test_managed_bin_precedes_user_local_bin(self, tmp_path, monkeypatch):
         """MANAGED-FIRST: Hermes' managed copy wins over a user-level side
         install — every backend selection provisions/updates the managed
@@ -1082,6 +1091,7 @@ class TestFindCliManagedBin:
         managed_cli.chmod(managed_cli.stat().st_mode | stat.S_IXUSR)
         assert bu_cli._find_cli_unpatched() == [str(managed_cli)]
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: POSIX /bin/sh fake-CLI fixtures")
     def test_managed_bin_precedes_path(self, tmp_path, monkeypatch):
         """MANAGED-FIRST: the managed copy also wins over one on PATH."""
         path_dir = tmp_path / "onpath"
@@ -1097,6 +1107,7 @@ class TestFindCliManagedBin:
         managed_cli.chmod(managed_cli.stat().st_mode | stat.S_IXUSR)
         assert bu_cli._find_cli_unpatched() == [str(managed_cli)]
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: POSIX /bin/sh fake-CLI fixtures")
     def test_user_local_bin_uvx_fallback(self, tmp_path, monkeypatch):
         cli_dir = tmp_path / "userhome" / ".local" / "bin"
         cli_dir.mkdir(parents=True)
@@ -1125,6 +1136,7 @@ class TestInstallCli:
         assert ok is False
         assert "already installed" not in msg
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: POSIX /bin/sh fake-CLI fixtures")
     def test_already_installed_in_managed_bin(self, tmp_path, monkeypatch):
         bin_dir = tmp_path / "home" / "bin"
         bin_dir.mkdir(parents=True)
@@ -1314,6 +1326,7 @@ class TestLightpandaBackendResolution:
 
 
 class TestLightpandaPreamble:
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: POSIX /bin/sh fake-CLI fixtures")
     def test_lightpanda_session_skips_own_tab_preamble(self, tmp_path, monkeypatch):
         """A Lightpanda process is private to its session: no sibling daemon
         to collide with, and Target.createTarget would fail anyway

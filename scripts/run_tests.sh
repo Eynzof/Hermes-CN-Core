@@ -113,11 +113,19 @@ fi
 # resolves Path.home() from USERPROFILE (or HOMEDRIVE+HOMEPATH), stdlib
 # platform paths come from LOCALAPPDATA/APPDATA, ssl/sockets need SYSTEMROOT,
 # and tempfile needs TEMP/TMP. Dropping them breaks collection on native
-# Windows (issues #67385, #70813). These are location variables, not
+# Windows (issues #67385, #70813). PATHEXT is the same class of Windows-run
+# variable: PowerShell and cmd resolve a BARE command name by appending the
+# extensions it lists, so without it `cmd`, `git` or `pwsh`-invoked tooling
+# inside a test is reported as "The term 'x' is not recognized" even though the
+# directory holding x.exe is on PATH (this runner forwards PATH; Windows'
+# process-wide PATHEXT default is what it could not see). That silently broke
+# the fork's Windows PowerShell suite (P-042/P-058) and install.ps1 -Stage
+# repository under `scripts/run_tests.sh` while both passed under a plain
+# `pytest` invocation. These are location/execution variables, not
 # credentials, so forwarding them keeps the isolation intent intact. Each is
 # only forwarded when actually set, so POSIX runs are byte-for-byte unchanged.
 WIN_ENV=()
-for _win_var in USERPROFILE HOMEDRIVE HOMEPATH LOCALAPPDATA APPDATA SYSTEMROOT TEMP TMP; do
+for _win_var in USERPROFILE HOMEDRIVE HOMEPATH LOCALAPPDATA APPDATA SYSTEMROOT TEMP TMP PATHEXT; do
   if [ -n "${!_win_var:-}" ]; then
     WIN_ENV+=("$_win_var=${!_win_var}")
   fi

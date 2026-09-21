@@ -18,10 +18,29 @@ def _load_package_data():
 
 
 def _load_py_modules():
-    pyproject_path = Path(__file__).resolve().parents[1] / "pyproject.toml"
-    with pyproject_path.open("rb") as handle:
-        tool = tomllib.load(handle)["tool"]
-    return tool["setuptools"]["py-modules"]
+    """Root single-file modules the sealed wheel ships in ``py_modules``.
+
+    Read from ``setup.py::_root_py_modules()``, the single source of truth: this fork
+    derives the list from the source tree at build time and deliberately carries no
+    static ``[tool.setuptools] py-modules`` (a static list drifted and shipped wheels
+    without ``hermes_state``); ``tests/test_packaging_py_modules.py`` pins that no
+    static list comes back, so reading pyproject here raised ``KeyError: py-modules``.
+    """
+    import importlib.util
+    import sys
+    setup_py = Path(__file__).resolve().parents[1] / "setup.py"
+    spec = importlib.util.spec_from_file_location("_hermes_setup_py_metadata", setup_py)
+    module = importlib.util.module_from_spec(spec)
+    saved_argv = sys.argv
+    sys.argv = ["setup.py", "--name"]  # setup() must not try to build anything on import
+    try:
+        try:
+            spec.loader.exec_module(module)
+        except SystemExit:
+            pass
+    finally:
+        sys.argv = saved_argv
+    return module._root_py_modules()
 
 
 def test_plugin_registration_lifecycle_is_packaged():

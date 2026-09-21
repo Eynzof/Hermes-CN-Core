@@ -309,6 +309,26 @@ class TestResumeVerificationLive:
             gateway, "launch_detached_profile_gateway_restart", _relaunch
         )
 
+        # The gate this test drives is deliberately fleet-wide —
+        # tests/hermes_cli/test_windows_gateway_job_teardown.py::test_liveness_poll_scans_all_profiles
+        # pins ``all_profiles=True`` — so ANY gateway already running on this host (a dev box's own
+        # fleet, or a ``gateway run`` another live test left behind) legitimately vouches for the
+        # dead relaunch, and the "✓ Restarting" this test forbids would then be the truth about
+        # that other process, not a lie about this relaunch. A real resume runs after the whole
+        # fleet was paused, so already-running pids are not part of the fleet it must verify: keep
+        # the real process-table scan and ignore what was up before it.
+        real_find_gateway_pids = gateway.find_gateway_pids
+        preexisting_pids = set(real_find_gateway_pids(all_profiles=True))
+        monkeypatch.setattr(
+            gateway,
+            "find_gateway_pids",
+            lambda all_profiles=False, **_kw: [
+                pid
+                for pid in real_find_gateway_pids(all_profiles=all_profiles)
+                if pid not in preexisting_pids
+            ],
+        )
+
         token = {
             "resume_needed": True,
             "profiles": {"default": 999999},

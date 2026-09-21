@@ -36,6 +36,10 @@ def test_refused_input_commits_failed_mailbox_receipt(tmp_path):
         "_TurnRun": prompt_turn._TurnRun,
         "_record_turn_marker": lambda *args, **kwargs: "marker",
         "_prepare_turn_input": lambda *args: None,
+        # [CN-fork P-041] the fork's turn-inactivity guard is grafted into _run_prompt_submit
+        # (armed before the input is prepared) — the body resolves it bare, so the seam must
+        # provide it. Upstream's version of this body had no such call.
+        "_start_turn_watchdog": lambda *args, **kwargs: noop,
         "_finish_turn": noop, "_clear_inflight_turn": noop,
         # Hosted room member sessions drop their bot_room slot at turn end (#106847); a canonical chat is not one.
         "_release_hosted_room_turn_slot": noop,
@@ -45,6 +49,9 @@ def test_refused_input_commits_failed_mailbox_receipt(tmp_path):
         "_reopen_routed_session_row": noop,
         # Every dispatch binds the session's own row before the turn writes (#111999).
         "_ensure_session_db_row": noop,
+        # The bare `except` arm of _run_prompt_submit resolves this helper too; the refused-input
+        # path must never fall through to a NameError that skips the receipt commit.
+        "_recover_turn_exception": noop,
     })
     def terminal(outcome):
         mailbox.complete_delivery(tmp_path, queued["id"], status=outcome["status"],

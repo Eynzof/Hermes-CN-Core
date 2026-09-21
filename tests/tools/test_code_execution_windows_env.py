@@ -703,6 +703,18 @@ def test_windows_live_child_offset_matches_os_zone_when_timezone_is_configured(m
     )
     assert result.returncode == 0, result.stderr
     child_timezone, child_offset = json.loads(result.stdout.strip())
-    # The test process itself has no TZ override, so its view IS the OS zone.
-    assert child_offset == datetime.datetime.now().astimezone().utcoffset().total_seconds()
-    assert child_timezone == time.timezone
+    # Reference probe with NO TZ override — that IS the OS zone. This process cannot answer the
+    # question itself: scripts/run_tests.sh exports TZ=UTC for the whole suite, which pins this
+    # interpreter's view to UTC while the product's child (TZ deliberately dropped on Windows)
+    # legitimately reports the machine's zone. Comparing the two is the actual contract.
+    os_env = {k: v for k, v in os.environ.items() if k != "TZ"}
+    reference = subprocess.run(
+        [sys.executable, "-c",
+         "import json, time, datetime; print(json.dumps([time.timezone, "
+         "datetime.datetime.now().astimezone().utcoffset().total_seconds()]))"],
+        env=os_env, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30,
+    )
+    assert reference.returncode == 0, reference.stderr
+    os_timezone, os_offset = json.loads(reference.stdout.strip())
+    assert child_offset == os_offset
+    assert child_timezone == os_timezone

@@ -1685,7 +1685,11 @@ def test_peer_terminal_status_acknowledges_durable_stop_on_retry(db: Path):
         gateway_id=BINDING.gateway_id,
         authority_epoch=BINDING.authority_epoch,
         process_generation=runtime.process_generation,
-        ttl_seconds=1,
+        # 60s, not the 1s used by the expiry tests below: this test's subject is the peer-ack
+        # retry, and a 1s real-clock TTL expired whenever the parallel suite stalled the
+        # process past a second between the cancel and the retry (then _finish_stop defers
+        # and the durable stop never lands) — a load-dependent false failure.
+        ttl_seconds=60,
         clock=time.time,
     )
     runtime._leases[ROOM_ID] = lease

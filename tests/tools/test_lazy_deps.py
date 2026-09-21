@@ -509,6 +509,11 @@ class TestWarmInstalledBytecode:
     def test_compiles_the_installed_package(self, tmp_path, monkeypatch):
         pkg = self._package(tmp_path)
         monkeypatch.setattr(ld, "_installed_dist_roots", lambda spec, target: {pkg})
+        # The canonical runner exports PYTHONDONTWRITEBYTECODE=1 to every per-file pytest
+        # process (parallel workers share one source tree), and ``_warm_installed_bytecode``
+        # honors -B by design — see ``test_honors_dont_write_bytecode``. THIS test's subject is
+        # the compilation itself, so it must run as a normal install would (no -B).
+        monkeypatch.setattr(ld.sys, "dont_write_bytecode", False)
 
         assert not list(pkg.rglob("*.pyc"))
         ld._warm_installed_bytecode(("zzzfake==1.0",), None)

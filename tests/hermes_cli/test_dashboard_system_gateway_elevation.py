@@ -12,6 +12,17 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+# [CN-fork] Host-OS gated: this module drives the systemd SYSTEM-unit + sudo elevation gate
+# (``web_server_gateway._spawn_hermes_action`` -> ``_action_targets_system_gateway`` ->
+# ``update_cmd_fleet._needs_sudo``/``_sudo_noninteractive_ok``), and the ``unprivileged``
+# fixture fakes ``os.geteuid`` — a POSIX-only API that does not exist on Windows, where the
+# predicate is unreachable by design (``_needs_sudo`` returns False without ``geteuid``, and
+# there is no sudo/systemd to elevate to). Making the assertions pass here would mean
+# inventing a POSIX host, which AGENTS.md forbids — same call as the ``linux_only`` gate on
+# the euid-faking test in tests/hermes_cli/test_gateway_service.py. The marker also scopes
+# the file into the Linux lane (scripts/ci/list_os_marked_tests.py).
+pytestmark = pytest.mark.linux_only
+
 
 @pytest.fixture
 def unprivileged(monkeypatch):

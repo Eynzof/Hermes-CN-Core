@@ -465,9 +465,14 @@ class TestBuildContextFilesPrompt:
         # order: root before intermediate before cwd
         assert result.index("Root: use Ruff.") < result.index("Packages: pnpm")
         assert result.index("Packages: pnpm") < result.index("Webapp: React 19")
-        # provenance headers point at each source file relative to cwd
-        assert f"## {os.path.join('..', '..', 'AGENTS.md')}" in result
-        assert f"## {os.path.join('..', 'AGENTS.md')}" in result
+        # provenance headers point at each source file relative to cwd, rendered POSIX-style:
+        # the label is deliberately platform-independent
+        # (agent/prompt_builder._agents_md_candidates -> ``PurePath(relpath).as_posix()``), which
+        # tests/agent/test_context_file_sources.py pins with its hard-coded "../AGENTS.md", and which
+        # keeps the cached system-prompt prefix byte-stable across hosts. os.path.join would demand
+        # backslashes on Windows.
+        assert "## ../../AGENTS.md" in result
+        assert "## ../AGENTS.md" in result
         assert "## AGENTS.md" in result
 
     def test_agents_md_chain_skips_gaps(self, tmp_path):
@@ -656,7 +661,13 @@ class TestFindHermesMd:
         with patch("agent.prompt_builder._find_git_root", return_value=None):
             assert _find_hermes_md(cwd) is None
 
-    @pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses directory permissions")
+    @pytest.mark.skipif(os.name == "nt", reason="chmod cannot make a directory unreadable on Windows")
+    @pytest.mark.skipif(
+        # os.geteuid is POSIX-only and a skipif condition is evaluated at collection time,
+        # so an unguarded call takes the whole module down on Windows.
+        hasattr(os, "geteuid") and os.geteuid() == 0,
+        reason="root bypasses directory permissions",
+    )
     def test_unreadable_cwd_is_treated_as_not_found(self, tmp_path):
         """A cwd the process cannot stat yields "no context file" instead of a PermissionError
         escaping prompt construction and taking down every surface sharing the gateway (#112430:
@@ -698,7 +709,13 @@ class TestFindGitRoot:
 
 
 class TestCursorrulesCandidates:
-    @pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses directory permissions")
+    @pytest.mark.skipif(os.name == "nt", reason="chmod cannot make a directory unreadable on Windows")
+    @pytest.mark.skipif(
+        # os.geteuid is POSIX-only and a skipif condition is evaluated at collection time,
+        # so an unguarded call takes the whole module down on Windows.
+        hasattr(os, "geteuid") and os.geteuid() == 0,
+        reason="root bypasses directory permissions",
+    )
     def test_unreadable_cwd_is_treated_as_absent(self, tmp_path):
         """Same crash shape as ``_find_hermes_md``: ``.is_dir()`` on ``<cwd>/.cursor/rules`` inside an
         unreadable cwd must not raise; a readable sibling project still yields its rules."""

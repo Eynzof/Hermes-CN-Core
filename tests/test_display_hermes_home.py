@@ -44,7 +44,11 @@ class TestDisplayHermesHomePosix(unittest.TestCase):
         outside = Path("/opt/hermes-custom") if os.name != "nt" else Path("C:/opt/hermes-custom")
         with patch.object(hc, "get_hermes_home", return_value=outside):
             out = hc.display_hermes_home()
-        self.assertEqual(out, str(outside))
+        # The absolute fallback renders POSIX separators too, per this module's contract
+        # ("renders POSIX separators on every platform"): consumers append "/..." and a native
+        # str() on Windows would emit the mixed-separator form "C:\\opt\\hermes-custom/config.yaml".
+        # str(outside) only coincides with that on POSIX hosts.
+        self.assertEqual(out, outside.as_posix())
 
     def test_no_serving_schema_carries_tilde_backslash_chimera(self):
         """Fleet guard: no served tool schema string may combine '~/' with

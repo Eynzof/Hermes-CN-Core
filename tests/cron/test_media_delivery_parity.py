@@ -29,9 +29,21 @@ import os
 from pathlib import Path
 
 import pytest
+import yaml
 
 from cron.scheduler import _deliver_result
 from cron.scheduler_delivery import _send_media_via_adapter
+
+
+def _write_config(home: Path, config: dict) -> None:
+    """Write this profile's ``config.yaml`` through the real YAML emitter.
+
+    A hand-built ``f"...[{str(path)!r}]"`` line only round-trips on POSIX: on Windows
+    ``repr(r"C:\\Users\\x\\reports")`` emits ``'C:\\\\Users\\\\x\\\\reports'`` and a YAML
+    single-quoted scalar keeps backslashes literally, so the parsed allowlist entry came back
+    with doubled separators (the same Windows-quoting trap as FORK_NOTES P-048 item 1).
+    """
+    (home / "config.yaml").write_text(yaml.safe_dump(config), encoding="utf-8")
 
 
 @pytest.fixture()
@@ -229,12 +241,10 @@ class TestMediaPolicyEnvBridge:
         home.mkdir()
         allow_dir = tmp_path / "reports"
         allow_dir.mkdir()
-        (home / "config.yaml").write_text(
-            "gateway:\n"
-            "  strict: true\n"
-            f"  media_delivery_allow_dirs: [{str(allow_dir)!r}]\n"
-            "  trust_recent_files: false\n"
-        )
+        _write_config(home, {"gateway": {
+            "strict": True,
+            "media_delivery_allow_dirs": [str(allow_dir)],
+            "trust_recent_files": False}})
         monkeypatch.setenv("HERMES_HOME", str(home))
         for var in (
             "HERMES_MEDIA_DELIVERY_STRICT",
@@ -264,11 +274,8 @@ class TestMediaPolicyEnvBridge:
         # allowlist can accept it, proving the bridge ran.
         old = 1_600_000_000
         os.utime(media, (old, old))
-        (home / "config.yaml").write_text(
-            "gateway:\n"
-            "  strict: true\n"
-            f"  media_delivery_allow_dirs: [{str(allow_dir)!r}]\n"
-        )
+        _write_config(home, {"gateway": {
+            "strict": True, "media_delivery_allow_dirs": [str(allow_dir)]}})
         monkeypatch.setenv("HERMES_HOME", str(home))
         for var in ("HERMES_MEDIA_DELIVERY_STRICT", "HERMES_MEDIA_ALLOW_DIRS"):
             monkeypatch.delenv(var, raising=False)
@@ -297,13 +304,12 @@ class TestMediaPolicyEnvBridge:
         home = tmp_path / "hermes-home"
         home.mkdir()
         media_dir = str(Path(media_file).parent)
-        (home / "config.yaml").write_text(
-            "platforms:\n  slack:\n    enabled: true\n    token: xoxb-test\n"
-            "gateway:\n"
-            "  strict: true\n"
-            f"  media_delivery_allow_dirs: [{media_dir!r}]\n"
-            "  trust_recent_files: false\n"
-        )
+        _write_config(home, {
+            "platforms": {"slack": {"enabled": True, "token": "xoxb-test"}},
+            "gateway": {
+                "strict": True,
+                "media_delivery_allow_dirs": [media_dir],
+                "trust_recent_files": False}})
         monkeypatch.setenv("HERMES_HOME", str(home))
         # Strict comes from the shared .env in both processes...
         monkeypatch.setenv("HERMES_MEDIA_DELIVERY_STRICT", "1")

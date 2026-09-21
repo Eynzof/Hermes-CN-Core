@@ -130,4 +130,8 @@ def test_profile_command_reports_custom_root_profile(monkeypatch, tmp_path, caps
 
     out = capsys.readouterr().out
     assert "Profile: coder" in out
-    assert f"Home:    {profile_home}" in out
+    # display_hermes_home() renders POSIX separators on every platform: its own contract
+    # ("~/"-prefixed chimeras like "~/AppData\Local\hermes" were the bug it fixed) and
+    # every consumer appends a "/..." suffix. On Windows str(profile_home) is the
+    # backslash form the helper never returns.
+    assert f"Home:    {profile_home.as_posix()}" in out

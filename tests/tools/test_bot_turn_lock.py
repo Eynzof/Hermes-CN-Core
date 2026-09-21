@@ -9,7 +9,6 @@ process, so threads exercise the true kernel-lock semantics.
 
 from __future__ import annotations
 
-import fcntl
 import json
 import os
 import re
@@ -19,8 +18,20 @@ import time
 
 import pytest
 
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - non-POSIX (Windows)
+    fcntl = None
+
 from tools import bot_mode_dm, bot_relay
 from tools.bot_relay import TurnBusyError, acquire_turn_lock, turn_lock_path
+
+# The tests that drive REAL ``fcntl.flock`` contention from separate fds are POSIX-only: the
+# product's per-profile turn lock is a documented no-op where ``fcntl`` is unavailable (see
+# tools/bot_relay.acquire_turn_lock), so there is no Windows behaviour left for them to assert.
+# Same gate as tests/cron/test_ticker_stall.py; the lock-path / wait-budget / refusal-code
+# contracts below stay unconditional so they keep running on Windows.
+_NEEDS_FLOCK = pytest.mark.skipif(fcntl is None, reason="flock semantics are POSIX-only")
 
 
 @pytest.fixture
@@ -41,6 +52,7 @@ def _hold_flock(path, hold_event, release_event):
     os.close(fd)  # close releases the flock — process-death semantics
 
 
+@_NEEDS_FLOCK
 def test_second_delivery_waits_then_succeeds(root):
     held = threading.Event()
     release = threading.Event()
@@ -59,6 +71,7 @@ def test_second_delivery_waits_then_succeeds(root):
     assert waited >= 0.2, "second delivery should have queued behind the holder"
 
 
+@_NEEDS_FLOCK
 def test_timeout_is_structured_target_busy(root):
     held = threading.Event()
     release = threading.Event()
@@ -82,6 +95,7 @@ def test_timeout_is_structured_target_busy(root):
         t.join(timeout=5)
 
 
+@_NEEDS_FLOCK
 def test_different_profiles_do_not_contend(root):
     held = threading.Event()
     release = threading.Event()
@@ -102,6 +116,7 @@ def test_different_profiles_do_not_contend(root):
         t.join(timeout=5)
 
 
+@_NEEDS_FLOCK
 def test_lock_released_when_holder_fd_closes(root):
     """flock dies with the holder's fd — a crashed turn can't wedge the profile."""
     path = turn_lock_path(root, "ops")
@@ -146,6 +161,7 @@ def test_turn_wait_seconds_reads_config(monkeypatch):
 # ── wiring: local teammate delivery (tools/bot_mode_dm.py) ──────────────────
 
 
+@_NEEDS_FLOCK
 def test_run_delivery_holds_profile_lock_during_turn(root, tmp_path, monkeypatch):
     """The local `hermes -p <profile>` turn runs UNDER the profile lock."""
     home = root / ".hermes"
@@ -180,6 +196,7 @@ def test_run_delivery_holds_profile_lock_during_turn(root, tmp_path, monkeypatch
         pass
 
 
+@_NEEDS_FLOCK
 def test_delivery_main_reports_target_busy_json(root, tmp_path, monkeypatch, capsys):
     """A queued delivery that exceeds its budget surfaces the structured error."""
     home = root / ".hermes"
@@ -210,6 +227,7 @@ def test_delivery_main_reports_target_busy_json(root, tmp_path, monkeypatch, cap
     assert not dm.exists(), "DM plaintext must be reclaimed even on refusal"
 
 
+@_NEEDS_FLOCK
 def test_peer_stdin_delivery_skips_local_lock(root, tmp_path, monkeypatch):
     """Peer transports run their turn on the remote gateway — no local lock."""
     home = root / ".hermes"
@@ -263,6 +281,7 @@ def test_local_delivery_command_never_reenters_the_lock():
     assert not any("bot_mode_dm" in part for part in argv)
 
 
+@_NEEDS_FLOCK
 def test_relay_deliver_returns_target_busy_error(tmp_path, monkeypatch):
     import tui_gateway.server as srv
 
@@ -315,6 +334,7 @@ def test_relay_deliver_returns_target_busy_error(tmp_path, monkeypatch):
         t.join(timeout=5)
 
 
+@_NEEDS_FLOCK
 def test_relay_deliver_serializes_then_succeeds(tmp_path, monkeypatch):
     import tui_gateway.server as srv
 

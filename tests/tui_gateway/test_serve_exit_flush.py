@@ -67,6 +67,20 @@ def _restore_signal_state(prev_handlers):
     server._exit_flush_handlers_installed = False
 
 
+def _raise_sigterm() -> None:
+    """Deliver SIGTERM to THIS process so the installed flush handler runs.
+
+    ``os.kill(os.getpid(), SIGTERM)`` cannot do that on Windows: CPython maps it to
+    ``TerminateProcess``, so the interpreter dies with no handler, no flush and no chained
+    call — the pytest worker itself is killed. ``signal.raise_signal`` goes through the CRT's
+    ``raise()``, which DOES dispatch the Python-level SIGTERM handler on Windows.
+    """
+    if os.name == "nt":
+        signal.raise_signal(signal.SIGTERM)
+    else:
+        os.kill(os.getpid(), signal.SIGTERM)
+
+
 def test_sigterm_flushes_populated_session_into_state_db(
     registered_session, tmp_path, monkeypatch
 ):
@@ -98,7 +112,7 @@ def test_sigterm_flushes_populated_session_into_state_db(
     prev = {signal.SIGTERM: signal.signal(signal.SIGTERM, _prev_handler)}
     try:
         assert server.install_exit_flush_signal_handlers() is True
-        os.kill(os.getpid(), signal.SIGTERM)
+        _raise_sigterm()
         # The handler runs synchronously on the main thread at the next
         # bytecode boundary; poll briefly for robustness.
         deadline = time.monotonic() + 5.0

@@ -52,6 +52,14 @@ class _NonStreamRequest:
     instance; ``_abort_request`` may run from the poll (stranger) thread.
     """
 
+    # [CN-fork] Provider wait status (the CN "provider_wait" heartbeat restored in this module —
+    # see FORK_NOTES, "Fork patches dropped or superseded in this sync"). Class-level defaults
+    # so a partial instance behaves as "cadence disabled" rather than crashing the poll loop:
+    # tests (and upstream's own doubles, e.g. tests/agent/test_nonstream_wait_notice.py) build
+    # one with ``__new__`` to bypass ``__init__``. ``__init__`` overrides both from the env knob.
+    wait_status_interval: float = 0.0
+    next_wait_status_at: float = float("inf")
+
     def __init__(self, agent, api_kwargs: dict):
         self.agent = agent
         self.api_kwargs = api_kwargs

@@ -12,6 +12,20 @@ from unittest import mock
 from hermes_cli.web_routers import profiles
 
 
+# The canonical runner executes one pytest process per file on every core (16-48 at
+# once), so "start N threads and wait 1s for one of them to reach the scan" races
+# thread startup rather than the coalescing under test. The burst tests below release
+# every caller through a threading.Barrier — all callers are live before the first scan
+# is allowed to finish — and use a bound generous enough for a saturated box
+# (AGENTS.md: timing tests must not assume a quiet runner, wall-clock bounds >= 2s).
+_BURST_WAIT_SECONDS = 30.0
+# TTL used while a burst is in flight. Which TTL is right is not what a burst test
+# measures (test_expires does), but with the 5s default a caller that the runner
+# schedules >5s after the scan finished opens a second one and fails the "one scan
+# serves the burst" assertion for a reason that has nothing to do with coalescing.
+_BURST_TTL_SECONDS = 300.0
+
+
 class SidebarCacheTests(unittest.TestCase):
     def setUp(self):
         patcher = mock.patch.object(profiles, "_SIDEBAR_CACHE_TTL_SECONDS", 5.0)
@@ -72,6 +86,7 @@ class SidebarCacheTests(unittest.TestCase):
 
     def test_coalesces_concurrent_identical_scans(self):
         workers = 12
+        start = threading.Barrier(workers + 1)
         entered = threading.Event()
         release = threading.Event()
         calls = 0
@@ -83,15 +98,24 @@ class SidebarCacheTests(unittest.TestCase):
             with calls_lock:
                 calls += 1
             entered.set()
-            self.assertTrue(release.wait(timeout=2))
+            self.assertTrue(release.wait(timeout=_BURST_WAIT_SECONDS))
             return {"profile": profile, "rows": []}
 
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            futures = [pool.submit(scan, "default") for _ in range(workers)]
-            self.assertTrue(entered.wait(timeout=1))
+        def caller():
+            # Rendezvous, not a sleep: every caller is scheduled and about to call the
+            # wrapped scan before any of them may return, so the burst cannot degrade
+            # into "the first caller finished and the rest took the cache".
+            start.wait(timeout=_BURST_WAIT_SECONDS)
+            return scan("default")
+
+        with mock.patch.object(profiles, "_SIDEBAR_CACHE_TTL_SECONDS", _BURST_TTL_SECONDS), \
+                ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = [pool.submit(caller) for _ in range(workers)]
+            start.wait(timeout=_BURST_WAIT_SECONDS)
+            self.assertTrue(entered.wait(timeout=_BURST_WAIT_SECONDS))
             time.sleep(0.05)
             release.set()
-            results = [future.result(timeout=2) for future in futures]
+            results = [future.result(timeout=_BURST_WAIT_SECONDS) for future in futures]
 
         self.assertEqual(calls, 1)
         self.assertEqual(results, [{"profile": "default", "rows": []}] * workers)
@@ -177,6 +201,7 @@ class SidebarCacheTests(unittest.TestCase):
         # background sync + sidebar refreshes overlap identical requests. One scan must
         # serve the whole burst, and no two callers may share the same payload object.
         workers = 8
+        start = threading.Barrier(workers + 1)
         entered = threading.Event()
         release = threading.Event()
         scans = 0
@@ -187,17 +212,26 @@ class SidebarCacheTests(unittest.TestCase):
             with scans_lock:
                 scans += 1
             entered.set()
-            self.assertTrue(release.wait(timeout=2))
+            self.assertTrue(release.wait(timeout=_BURST_WAIT_SECONDS))
             return None
+
+        def caller():
+            # Rendezvous, not a sleep (see _BURST_WAIT_SECONDS): all eight callers are
+            # live before the scan in flight is allowed to complete, so scans == 1 is
+            # the single-flight guarantee rather than a scheduling coincidence.
+            start.wait(timeout=_BURST_WAIT_SECONDS)
+            return profiles.get_profiles_projects_tree()
 
         with mock.patch.object(profiles, "_profile_targets", return_value=[("default", Path("/nonexistent"))]), \
                 mock.patch.object(profiles, "_read_profile_db", side_effect=fake_read), \
+                mock.patch.object(profiles, "_SIDEBAR_CACHE_TTL_SECONDS", _BURST_TTL_SECONDS), \
                 ThreadPoolExecutor(max_workers=workers) as pool:
-            futures = [pool.submit(profiles.get_profiles_projects_tree) for _ in range(workers)]
-            self.assertTrue(entered.wait(timeout=1))
+            futures = [pool.submit(caller) for _ in range(workers)]
+            start.wait(timeout=_BURST_WAIT_SECONDS)
+            self.assertTrue(entered.wait(timeout=_BURST_WAIT_SECONDS))
             time.sleep(0.05)
             release.set()
-            results = [future.result(timeout=2) for future in futures]
+            results = [future.result(timeout=_BURST_WAIT_SECONDS) for future in futures]
 
         self.assertEqual(scans, 1)
         self.assertEqual(len({id(r) for r in results}), workers)

@@ -10,6 +10,20 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 
+# How long the spawned descendant waits before dropping its ``child-done`` marker.
+# It must outlive the whole cancellation path (see the join below): with the original
+# 1s grace the marker appeared whenever a loaded runner needed more than 1s to kill the
+# tree, which read as "descendant survived cancellation" — a scheduler artifact, not a
+# product regression (the file failed once and passed on retry in the full run).
+# The post-join wait stays longer than the grace, so a descendant that really did
+# survive still proves itself by writing the marker.
+_DESCENDANT_GRACE_SECONDS = 3.0
+# Rendezvous bound for the spawned script's start marker: spawning a Python
+# interpreter plus importing it is a scheduler-dependent cost on a loaded runner (the
+# original 5s assumed a quiet box).
+_SCRIPT_START_DEADLINE_SECONDS = 30.0
+
+
 def test_cancel_event_terminates_script_process_tree(tmp_path, monkeypatch):
     """Losing a fire claim must stop both the script and its descendants."""
     import cron.scheduler as scheduler
@@ -23,7 +37,7 @@ def test_cancel_event_terminates_script_process_tree(tmp_path, monkeypatch):
     script = scripts_dir / "blocking.py"
     child_code = (
         "import time; from pathlib import Path; "
-        f"time.sleep(1); Path({str(child_done)!r}).write_text('done')"
+        f"time.sleep({_DESCENDANT_GRACE_SECONDS}); Path({str(child_done)!r}).write_text('done')"
     )
     script.write_text(
         "import subprocess, sys, time\n"
@@ -51,20 +65,23 @@ def test_cancel_event_terminates_script_process_tree(tmp_path, monkeypatch):
 
     thread = threading.Thread(target=_run)
     thread.start()
-    deadline = time.monotonic() + 5
+    deadline = time.monotonic() + _SCRIPT_START_DEADLINE_SECONDS
     while not started.exists() and not errors and time.monotonic() < deadline:
         time.sleep(0.01)
     assert errors == []
     assert started.exists(), "script did not start"
 
     cancel.set()
-    thread.join(timeout=3)
+    # The cancellation path kills the tree (Windows: taskkill /T); under the
+    # parallel runner that can take seconds, so give the join the same room the
+    # rest of the suite gets instead of a 3s wall clock.
+    thread.join(timeout=30)
 
     assert errors == []
     assert not thread.is_alive(), "script ignored cancellation"
     assert result and result[0][0] is False
     assert "cancel" in result[0][1].lower()
-    time.sleep(1.2)
+    time.sleep(_DESCENDANT_GRACE_SECONDS + 1.0)
     assert not child_done.exists(), "script descendant survived cancellation"
 
 

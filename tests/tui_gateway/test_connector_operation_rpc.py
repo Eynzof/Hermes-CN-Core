@@ -23,6 +23,16 @@ from tui_gateway import server
 from tui_gateway.transport import StdioTransport
 
 
+# Every reply here is produced on the RPC pool, and every event on the dispatcher;
+# both land on ``owner.frames`` from PipeClient's reader thread. The canonical runner
+# executes one pytest process per file on every core (16-48 at once), where the same
+# file takes 7s alone and 57s under load — so a 2s poll for that frame is a race
+# against the scheduler, not a contract. Wait on the reader thread's condition with a
+# bound generous enough for a saturated box (AGENTS.md: timing tests must not assume a
+# quiet runner, wall-clock bounds >= 2s); a genuinely missing frame still fails.
+_FRAME_WAIT_SECONDS = 30.0
+
+
 class PipeClient:
     def __init__(self, stack):
         read_fd, write_fd = os.pipe()
@@ -31,12 +41,18 @@ class PipeClient:
         stack.callback(lambda: suppress(BrokenPipeError) and self.writer.close())
         self.transport = StdioTransport(lambda: self.writer, threading.Lock())
         self.frames = []
+        # Notifies waiters (``reply``/``events``) as frames arrive instead of making
+        # them poll and guess how long the scheduler will need.
+        self.frame_condition = threading.Condition()
         self.thread = threading.Thread(target=self._read, daemon=True)
         self.thread.start()
 
     def _read(self):
         for line in self.reader:
-            self.frames.append(json.loads(line))
+            frame = json.loads(line)
+            with self.frame_condition:
+                self.frames.append(frame)
+                self.frame_condition.notify_all()
 
     def write(self, obj):
         return self.transport.write(obj)
@@ -44,14 +60,28 @@ class PipeClient:
     def close(self):
         pass
 
+    def reply(self, reply_id, *, after=0):
+        """Block until the reply ``reply_id`` arrives after frame index ``after``."""
+        deadline = time.monotonic() + _FRAME_WAIT_SECONDS
+        with self.frame_condition:
+            while True:
+                replies = [f for f in self.frames[after:] if f.get("id") == reply_id]
+                if replies:
+                    return replies[-1]
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise AssertionError(f"no reply with id={reply_id}")
+                self.frame_condition.wait(remaining)
+
     def events(self, kind, *, expect=1):
-        deadline = time.time() + 2
-        while time.time() < deadline:
-            found = [f["params"] for f in list(self.frames) if f.get("method") == "event" and f["params"]["type"] == kind]
-            if len(found) >= expect:
-                return found
-            time.sleep(0.01)
-        return [f["params"] for f in list(self.frames) if f.get("method") == "event" and f["params"]["type"] == kind]
+        deadline = time.monotonic() + _FRAME_WAIT_SECONDS
+        with self.frame_condition:
+            while True:
+                found = [f["params"] for f in self.frames if f.get("method") == "event" and f["params"]["type"] == kind]
+                remaining = deadline - time.monotonic()
+                if len(found) >= expect or remaining <= 0:
+                    return found
+                self.frame_condition.wait(remaining)
 
 
 SID = "op-rpc-session"
@@ -177,13 +207,7 @@ def test_panel_connect_reissues_only_a_dead_link(owned, monkeypatch):
         # connectors.connect runs on the pool and writes its reply to the transport.
         before = len(owner.frames)
         _rpc(owner, "connectors.connect", **params)
-        deadline = time.time() + 2
-        while time.time() < deadline:
-            replies = [f for f in list(owner.frames)[before:] if f.get("id") == 7]
-            if replies:
-                return replies[-1]
-            time.sleep(0.01)
-        raise AssertionError("no reply")
+        return owner.reply(7, after=before)
 
     refused = long_rpc(connectors=["gmail"])
     assert refused["error"]["code"] == 4002 and mints == []
@@ -215,9 +239,7 @@ def test_a_failed_reissue_leaves_the_row_failed_with_no_link(owned, monkeypatch,
 
     before = len(owner.frames)
     _rpc(owner, "connectors.connect", connectors=["notion"])
-    deadline = time.time() + 2
-    while time.time() < deadline and not [f for f in list(owner.frames)[before:] if f.get("id") == 7]:
-        time.sleep(0.01)
+    owner.reply(7, after=before)
     target = operation.target("notion")
     assert target.state == TargetState.failed
     assert target.connect_url is None

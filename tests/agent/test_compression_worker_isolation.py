@@ -23,7 +23,29 @@ import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from hermes_state import SessionDB
+
+
+@pytest.fixture(autouse=True)
+def _warm_compression_pool():
+    """Pre-spawn the compress-timeout pool's worker thread.
+
+    ``compress_context`` hands each attempt to a process-wide pool and then gives it the
+    configured idle budget (0.4-0.6s in this file) to produce something; a worker that
+    does not exist yet must be created and scheduled inside that window first. On a
+    loaded runner (one pytest process per file on every core) that startup can outlast
+    the whole budget, and the host then cancels the not-yet-started future / fails
+    ``_fence_gated_worker``'s pre-start deadline check — the stubbed route never runs and
+    the test fails as if the stall path were broken (observed as ``calls == []`` /
+    ``routes == []`` that pass on retry). Warming the pool first turns the handoff into a
+    queue wake-up, so the sub-second fences these tests patch keep measuring the
+    product's stall handling rather than OS thread startup.
+    """
+    from agent.conversation_compression import _get_compress_timeout_executor
+
+    _get_compress_timeout_executor().submit(lambda: None).result(timeout=30)
 
 
 def _build_agent_with_db(db: SessionDB, session_id: str, **compressor_kwargs):
@@ -80,11 +102,15 @@ def test_f3_mutating_engine_cannot_touch_live_transcript_after_timeout(
     agent = _build_agent_with_db(db, session_id)
     agent._cached_system_prompt = "sys"
 
-    # Fast host timeout for the owned wrapper.
+    # Host timeout for the owned wrapper. (2.0, 4.0), matching the sibling F3 test below:
+    # the idle fence must outlast the attempt's pre-dispatch phase on a parallel runner,
+    # else the mutating engine never starts (`engine_started` stayed unset while the retry
+    # passed). Upstream's sibling uses the same value for the same reason.
     monkeypatch.setattr(
         "agent.conversation_compression.resolve_context_compression_timeouts",
-        lambda cfg=None: (0.6, 1.2),
+        lambda cfg=None: (2.0, 4.0),
     )
+
 
     engine_started = threading.Event()
     release_engine = threading.Event()

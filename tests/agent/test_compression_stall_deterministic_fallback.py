@@ -33,6 +33,26 @@ CHAIN_ENTRY = {
 }
 
 
+@pytest.fixture(autouse=True)
+def _warm_compression_pool():
+    """Pre-spawn the compress-timeout pool's worker thread.
+
+    ``compress_context`` hands each attempt to a process-wide pool and then gives it the
+    configured idle budget (0.4-0.6s in this file) to produce something; a worker that
+    does not exist yet must be created and scheduled inside that window first. On a
+    loaded runner (one pytest process per file on every core) that startup can outlast
+    the whole budget, and the host then cancels the not-yet-started future / fails
+    ``_fence_gated_worker``'s pre-start deadline check — the stubbed route never runs and
+    the test fails as if the stall path were broken (observed as ``calls == []`` /
+    ``routes == []`` that pass on retry). Warming the pool first turns the handoff into a
+    queue wake-up, so the sub-second fences these tests patch keep measuring the
+    product's stall handling rather than OS thread startup.
+    """
+    from agent.conversation_compression import _get_compress_timeout_executor
+
+    _get_compress_timeout_executor().submit(lambda: None).result(timeout=30)
+
+
 def _make_agent(tmp_path, tag):
     db = SessionDB(db_path=Path(tmp_path) / f"state-{tag}.db")
     session_id = f"STALL_DETERMINISTIC_{tag}"
@@ -81,7 +101,13 @@ def _summary_rows(messages):
 
 @pytest.fixture
 def fast_timeouts(monkeypatch):
-    monkeypatch.setattr(cc, "resolve_context_compression_timeouts", lambda compression_cfg=None: (0.4, 4.0))
+    # 2.0s, not 0.4s: this idle fence is also the budget in which the attempt must
+    # reach summary dispatch — on a loaded runner the pre-dispatch phase alone measured
+    # ~0.7s and the attempt was cancelled with "Compression cancelled before summary
+    # dispatch", so the stubbed route never ran (`calls == []` / `routes == []` that
+    # passed on retry). The stall under test is unchanged: the stub blocks until the
+    # fence cancels it (AGENTS.md: timing tests must not assume a quiet runner).
+    monkeypatch.setattr(cc, "resolve_context_compression_timeouts", lambda compression_cfg=None: (2.0, 8.0))
 
 
 def test_second_consecutive_stall_commits_the_deterministic_fallback_summary(tmp_path, fast_timeouts):

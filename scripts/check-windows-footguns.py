@@ -1010,6 +1010,25 @@ def main(argv: list[str]) -> int:
         print_rules()
         return 0
 
+    # The baseline is an --all-only mechanism. --diff and the default
+    # staged-changes scan check the branch's own work, which is expected to be
+    # clean, so they must behave exactly as they did before it existed.
+    # Validated BEFORE the scan scope is resolved: an invalid flag combination
+    # is a usage error (exit 2) whatever the caller's git index happens to
+    # contain. Resolving the scope first let the "no staged files" early return
+    # below swallow this check and exit 0, so `--print-baseline` was exit 2
+    # only while the index had staged files (a merge in progress) and exit 0 on
+    # a clean checkout — see tests/scripts/test_windows_footguns_full_repo_scan.py
+    # ::test_branch_scan_never_subtracts_the_baseline.
+    if (args.baseline is not None or args.print_baseline or args.strict_baseline) and not args.all:
+        print(
+            "--baseline/--print-baseline/--strict-baseline only apply to --all "
+            "(the inherited baseline records the full-repo audit; --diff and the "
+            "default staged scan are checked against the branch's own changes).",
+            file=sys.stderr,
+        )
+        return 2
+
     if args.all:
         roots = _full_repo_roots()
     elif args.diff:
@@ -1026,18 +1045,6 @@ def main(argv: list[str]) -> int:
                 file=sys.stderr,
             )
             return 0
-
-    # The baseline is an --all-only mechanism. --diff and the default
-    # staged-changes scan check the branch's own work, which is expected to be
-    # clean, so they must behave exactly as they did before it existed.
-    if (args.baseline is not None or args.print_baseline or args.strict_baseline) and not args.all:
-        print(
-            "--baseline/--print-baseline/--strict-baseline only apply to --all "
-            "(the inherited baseline records the full-repo audit; --diff and the "
-            "default staged scan are checked against the branch's own changes).",
-            file=sys.stderr,
-        )
-        return 2
 
     findings: list[tuple[str, int, str, Footgun]] = []
     files_scanned = 0

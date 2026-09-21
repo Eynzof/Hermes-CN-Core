@@ -24,6 +24,8 @@ import threading
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+
 from agent.context_compressor import (
     ContextCompressor,
     pin_summary_route,
@@ -42,6 +44,26 @@ CHAIN_ENTRY = {
     "api_key": "sk-fallback",
     "timeout": 45,
 }
+
+
+@pytest.fixture(autouse=True)
+def _warm_compression_pool():
+    """Pre-spawn the compress-timeout pool's worker thread.
+
+    ``compress_context`` hands each attempt to a process-wide pool and then gives it the
+    configured idle budget (0.4-0.6s in this file) to produce something; a worker that
+    does not exist yet must be created and scheduled inside that window first. On a
+    loaded runner (one pytest process per file on every core) that startup can outlast
+    the whole budget, and the host then cancels the not-yet-started future / fails
+    ``_fence_gated_worker``'s pre-start deadline check — the stubbed route never runs and
+    the test fails as if the stall path were broken (observed as ``calls == []`` /
+    ``routes == []`` that pass on retry). Warming the pool first turns the handoff into a
+    queue wake-up, so the sub-second fences these tests patch keep measuring the
+    product's stall handling rather than OS thread startup.
+    """
+    from agent.conversation_compression import _get_compress_timeout_executor
+
+    _get_compress_timeout_executor().submit(lambda: None).result(timeout=30)
 
 
 def _patch_chain(chain):
@@ -283,7 +305,13 @@ def test_same_turn_fallback_retry_is_not_gated_by_the_primary_stall_backoff(tmp_
             time.sleep(0.001)
         return real_route()
 
-    monkeypatch.setattr(cc, "resolve_context_compression_timeouts", lambda compression_cfg=None: (0.4, 4.0))
+    # 2.0s, not 0.4s: this idle fence is also the budget in which the attempt must
+    # reach summary dispatch — on a loaded runner the pre-dispatch phase alone measured
+    # ~0.7s and the attempt was cancelled with "Compression cancelled before summary
+    # dispatch", so the stubbed route never ran (`calls == []` / `routes == []` that
+    # passed on retry). The stall under test is unchanged: the stub blocks until the
+    # fence cancels it (AGENTS.md: timing tests must not assume a quiet runner).
+    monkeypatch.setattr(cc, "resolve_context_compression_timeouts", lambda compression_cfg=None: (2.0, 8.0))
     monkeypatch.setattr(cc, "resolve_compression_fallback_route", route_after_primary_unwound)
     with _patch_chain([CHAIN_ENTRY]):
         out_msgs, _prompt = agent._compress_context(live, "sys", approx_tokens=50_000)

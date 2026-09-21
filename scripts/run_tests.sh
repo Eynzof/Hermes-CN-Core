@@ -113,7 +113,17 @@ fi
 # resolves Path.home() from USERPROFILE (or HOMEDRIVE+HOMEPATH), stdlib
 # platform paths come from LOCALAPPDATA/APPDATA, ssl/sockets need SYSTEMROOT,
 # and tempfile needs TEMP/TMP. Dropping them breaks collection on native
-# Windows (issues #67385, #70813). PATHEXT is the same class of Windows-run
+# Windows (issues #67385, #70813). USERNAME is the same class: ntpath.expanduser
+# will only expand a `~name` path when the *current* account name is known AND
+# the profile directory is named after it (it compares USERNAME against
+# basename(USERPROFILE) before guessing `<parent-of-home>\<name>`); with USERNAME
+# stripped, `~root/.ssh/authorized_keys` came back unexpanded, so
+# agent/file_safety.py::_guard_homes never learned that account's home and the
+# credential write-guard silently stopped covering `~name` inputs — tests/agent/
+# test_file_safety_write_credentials.py::TestProfileHomeProcessHome passed under
+# a plain `pytest` and failed under this runner for exactly that reason.
+# GitHub's windows-latest image sets USERNAME, so forwarding it is CI parity,
+# not a loosening. PATHEXT is the same class of Windows-run
 # variable: PowerShell and cmd resolve a BARE command name by appending the
 # extensions it lists, so without it `cmd`, `git` or `pwsh`-invoked tooling
 # inside a test is reported as "The term 'x' is not recognized" even though the
@@ -125,7 +135,7 @@ fi
 # credentials, so forwarding them keeps the isolation intent intact. Each is
 # only forwarded when actually set, so POSIX runs are byte-for-byte unchanged.
 WIN_ENV=()
-for _win_var in USERPROFILE HOMEDRIVE HOMEPATH LOCALAPPDATA APPDATA SYSTEMROOT TEMP TMP PATHEXT; do
+for _win_var in USERPROFILE USERNAME HOMEDRIVE HOMEPATH LOCALAPPDATA APPDATA SYSTEMROOT TEMP TMP PATHEXT; do
   if [ -n "${!_win_var:-}" ]; then
     WIN_ENV+=("$_win_var=${!_win_var}")
   fi

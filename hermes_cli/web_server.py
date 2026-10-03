@@ -19457,6 +19457,12 @@ def start_server(
 _METADATA_MODEL_SWITCH_PREFIXES = (
     "[System: The active model for this chat has changed to",
     "[Note: model was just switched",
+    # CN fork: internal bookkeeping rows that must never reach the chat view.
+    # Context compaction stores its summary back into the session as a normal
+    # message; the WebUI then renders 20-30 KB of "[Hermes UI Workspace] ..."
+    # markers as if the user had typed them. They are model-facing only.
+    "[CONTEXT COMPACTION — REFERENCE ONLY]",
+    "[PRIOR CONTEXT — for reference only; not a new message]",
 )
 
 _IMAGE_METADATA_RE = re.compile(

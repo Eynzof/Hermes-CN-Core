@@ -27,6 +27,20 @@ logger = logging.getLogger(__name__)
 _DEFAULT_DB_PATH = "$HERMES_HOME/memory_store.db"
 
 
+def _expand_user_path(value: str) -> Path:
+    """``~`` through ``Path.home()`` — the home a ``~/...`` display string is rendered against.
+
+    ``Path.expanduser()`` prefers USERPROFILE on Windows, which is not the home a Hermes config spells:
+    HERMES_HOME may sit under ``%LOCALAPPDATA%``, a custom root, or any relocated home, so the two
+    spellings of one path must resolve through the same home.
+    """
+    if value == "~":
+        return Path.home()
+    if value.startswith(("~/", "~\\")):
+        return Path.home() / value[2:]
+    return Path(value)
+
+
 FACT_STORE_SCHEMA = {
     "name": "fact_store",
     "description": (
@@ -125,7 +139,7 @@ class HolographicMemoryProvider(MemoryProvider):
         # This profile's own DB spelled out (older setups wrote it; the dashboard form re-submits what it
         # read) pins every clone and rename of the profile to this file, so it is stored as the placeholder.
         db_path = values.get("db_path")
-        if isinstance(db_path, str) and Path(db_path).expanduser() == Path(hermes_home) / "memory_store.db":
+        if isinstance(db_path, str) and _expand_user_path(db_path) == Path(hermes_home) / "memory_store.db":
             values["db_path"] = _DEFAULT_DB_PATH
         save_config({"plugins": {"hermes-memory-store": values}}, merge_existing=True)
 

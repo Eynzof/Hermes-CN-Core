@@ -19,6 +19,15 @@ from tests.pm._fixtures import client, isolated_python
 
 pytestmark = pytest.mark.skipif(shutil.which("git") is None, reason="git not available")
 
+# Every ``world``-based case installs from ``repo.as_uri()``, and on Windows that is
+# ``file:///C:/...`` — a URL Git for Windows resolves to ``/C:/...`` and rejects with
+# "does not appear to be a git repository" (reproduced with both the host's PortableGit
+# 2.54 and the PM-pinned PortableGit 2.53.0.3: ``git ls-remote file:///C:/x`` fails while
+# ``file://C:/x`` succeeds). Same fork Windows-compat baseline as the win32 skip in
+# tests/hermes_cli/test_plugin_install_ref.py, carried by the tree's host marker
+# (tests/AGENTS.md: a ``skipif(sys.platform == "win32")`` is ``platforms("posix")``).
+# The two ``world``-less cases (shorthand resolution, catalog row mapping) stay unmarked.
+
 _GIT_ENV = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
             "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
 
@@ -84,6 +93,7 @@ def _head(path: Path) -> str:
     return sp.run(["git", "rev-parse", "HEAD"], cwd=path, capture_output=True, text=True).stdout.strip()
 
 
+@pytest.mark.platforms("posix")  # clone-based: Path.as_uri() file:///C:/ URLs are not clonable by Windows git
 def test_catalog_platform_mismatch_refuses_before_install(world):
     from hermes_platform.host.facts import os_family
     host = os_family()
@@ -98,6 +108,7 @@ def test_catalog_platform_mismatch_refuses_before_install(world):
     assert not (world["plugins_dir"] / "cat-plugin").exists()
 
 
+@pytest.mark.platforms("posix")  # clone-based: Path.as_uri() file:///C:/ URLs are not clonable by Windows git
 def test_catalog_name_installs_pinned_sha_with_sidecar_then_update_repins(world, monkeypatch):
     entry = pc_cat.get_live_catalog_entry("cat-plugin")
     assert entry is not None
@@ -118,6 +129,7 @@ def test_catalog_name_installs_pinned_sha_with_sidecar_then_update_repins(world,
     assert _head(world["plugins_dir"] / "cat-plugin") == world["sha2"]
 
 
+@pytest.mark.platforms("posix")  # clone-based: Path.as_uri() file:///C:/ URLs are not clonable by Windows git
 def test_kill_list_blocks_cli_dashboard_and_tui_paths(world, monkeypatch):
     world["state"]["removed"].append(
         pc_cat.RemovedEntry(name="cat-plugin", repo=world["repo"].as_uri(), reason="malware"))
@@ -134,6 +146,7 @@ def test_kill_list_blocks_cli_dashboard_and_tui_paths(world, monkeypatch):
                                   cat.resolved_removed_entries()) == "malware"
 
 
+@pytest.mark.platforms("posix")  # clone-based: Path.as_uri() file:///C:/ URLs are not clonable by Windows git
 def test_the_catalog_name_you_installed_with_works_for_every_later_verb(world, tmp_path):
     """17 catalog entries install under a different manifest name (`hermes-memory-wiki` lands as
     `plugins/memory-wiki`). Every later verb must accept the name the user typed at install, resolved
@@ -162,6 +175,7 @@ def test_the_catalog_name_you_installed_with_works_for_every_later_verb(world, t
     assert "renamed-plugin" not in pc._get_enabled_set()
 
 
+@pytest.mark.platforms("posix")  # clone-based: Path.as_uri() file:///C:/ URLs are not clonable by Windows git
 def test_custom_install_records_an_anonymous_extension_install_and_reinstall_none(world, monkeypatch):
     import hermes_cli.observability.shared_metrics_events as events
 
@@ -192,6 +206,7 @@ def _install_url(repo: Path, name: str, files: dict) -> Path:
     return pc._install_plugin_core(repo.as_uri(), force=False)[0]
 
 
+@pytest.mark.platforms("posix")  # clone-based: Path.as_uri() file:///C:/ URLs are not clonable by Windows git
 def test_in_tree_sidecar_cannot_forge_catalog_provenance(world, tmp_path):
     """Provenance is the installer's metadata record, never a file the repo ships: a URL install carrying
     its own .hermes-catalog.json is not a catalog install and does not mark the real entry installed."""
@@ -208,6 +223,7 @@ def test_in_tree_sidecar_cannot_forge_catalog_provenance(world, tmp_path):
     assert cat.catalog_annotation(real) == f"catalog:community@{world['sha1'][:8]}"
 
 
+@pytest.mark.platforms("posix")  # clone-based: Path.as_uri() file:///C:/ URLs are not clonable by Windows git
 def test_ref_install_records_installed_sha_so_update_is_offered(world):
     """`install NAME --ref X` checks out X, not the reviewed pin; provenance must say X so list/TUI flag the
     drift and `update` re-pins instead of answering 'already at catalog pin'."""
@@ -220,6 +236,7 @@ def test_ref_install_records_installed_sha_so_update_is_offered(world):
     assert result["unchanged"] is False and _head(target) == world["sha1"]
 
 
+@pytest.mark.platforms("posix")  # clone-based: Path.as_uri() file:///C:/ URLs are not clonable by Windows git
 def test_repin_keeps_local_files_backs_up_edits_and_follows_manifest_rename(world, monkeypatch):
     entry = pc_cat.get_live_catalog_entry("cat-plugin")
     target, _m, _n = cat.install_catalog_entry(entry, force=False)
@@ -242,6 +259,7 @@ def test_repin_keeps_local_files_backs_up_edits_and_follows_manifest_rename(worl
 
 
 @pytest.mark.parametrize("via", ["url", "catalog"])
+@pytest.mark.platforms("posix")  # clone-based: Path.as_uri() file:///C:/ URLs are not clonable by Windows git
 def test_update_of_a_subdir_install_keeps_files_the_user_created_or_edited(world, tmp_path, monkeypatch, via):
     """A subdirectory install carries no ``.git``; both update paths must preserve user config/data."""
     mono = tmp_path / "mono"
@@ -298,6 +316,7 @@ def test_update_of_a_subdir_install_keeps_files_the_user_created_or_edited(world
     assert not (target / "dashboard").exists() and not (target / "hooks" / "run.cjs").exists()
 
 
+@pytest.mark.platforms("posix")  # clone-based: Path.as_uri() file:///C:/ URLs are not clonable by Windows git
 def test_repin_keeps_a_wholly_ignored_data_dir_in_a_git_checkout(world):
     """A single ``!! data/`` status entry must preserve every file below that ignored directory."""
     repo = world["repo"]
@@ -339,6 +358,7 @@ def test_repin_keeps_a_wholly_ignored_data_dir_in_a_git_checkout(world):
     assert (target / "data" / "db" / "index.db").read_text() == "user data"
 
 
+@pytest.mark.platforms("posix")  # clone-based: Path.as_uri() file:///C:/ URLs are not clonable by Windows git
 def test_kill_list_covers_update_enable_and_load_of_an_installed_plugin(world, tmp_path, monkeypatch):
     """A URL install whose name lands on the kill list AFTER install must stop pulling, cannot be enabled
     and is refused at load; an install made with --allow-removed keeps working."""
@@ -370,6 +390,7 @@ _PROVIDER = "def register(ctx):\n    ctx.register_memory_provider(object())\n"
     (_HOOK, True),
     ('"""Recall hook. Not a MemoryProvider: it only injects context."""\n' + _HOOK, True),
 ])
+@pytest.mark.platforms("posix")  # clone-based: Path.as_uri() file:///C:/ URLs are not clonable by Windows git
 def test_memory_category_install_activates_via_memory_provider_not_plugins_enable(world, monkeypatch,
                                                                                   init, enable):
     """A memory provider activates through memory.provider alone — the loader never consults
@@ -408,6 +429,7 @@ def test_memory_category_install_activates_via_memory_provider_not_plugins_enabl
 
 
 @pytest.mark.parametrize("prior", [None, "disabled", "enabled"])
+@pytest.mark.platforms("posix")  # clone-based: Path.as_uri() file:///C:/ URLs are not clonable by Windows git
 def test_url_install_of_a_memory_provider_dir_gets_the_provider_hint(world, tmp_path, monkeypatch, prior):
     """A URL (non-catalog) install whose tree satisfies the memory-provider contract gets the same
     provider activation path — the catalog category is a shortcut, not the only trigger. An explicit
@@ -445,6 +467,7 @@ def test_url_install_of_a_memory_provider_dir_gets_the_provider_hint(world, tmp_
     assert any("memory.provider" in line for line in printed)
 
 
+@pytest.mark.platforms("posix")  # clone-based: Path.as_uri() file:///C:/ URLs are not clonable by Windows git
 def test_annotated_tag_pin_keeps_reviewed_trust_and_reads_as_at_pin(world, monkeypatch):
     """A pin recorded as `git rev-parse <tag>` names the TAG object; HEAD can only ever be the commit it
     points at. Trust (scan skips the caution prompt) and the at-pin check must both use the peeled commit,
@@ -470,6 +493,7 @@ def test_annotated_tag_pin_keeps_reviewed_trust_and_reads_as_at_pin(world, monke
     assert cat.catalog_row_fields(target, cat.catalog_pins())["update_available"] is True
 
 
+@pytest.mark.platforms("posix")  # clone-based: Path.as_uri() file:///C:/ URLs are not clonable by Windows git
 def test_repin_that_widens_the_plugin_requires_consent_on_every_surface(world, monkeypatch):
     """A new pin adding tools / a Desktop half is a new grant: the dashboard/TUI answer consent_required
     with the delta and touch nothing; a retry with consent applies it; the CLI asks y/N and a decline

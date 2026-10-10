@@ -191,10 +191,20 @@ def test_restore_runs_the_installers_store_git_when_path_has_none(checkout, monk
         return real_custody_run(argv, **kwargs)
 
     monkeypatch.setattr(update_custody, "run", log_store_git)
+    # Windows loads git.exe's sibling DLLs off PATH, so a bare PATH kills the store copy with
+    # STATUS_DLL_NOT_FOUND: hand it those DLLs alone, which still leaves no `git` to find.
+    no_git_on_path = tmp_path / "no-git-on-path"
+    no_git_on_path.mkdir()
+    for dll in Path(real_git).parent.glob("*.dll"):
+        shutil.copy2(dll, no_git_on_path / dll.name)
     with monkeypatch.context() as windows:
         windows.setattr(pm.paths, "store_root", lambda: store)
         windows.setattr(pm, "current_target", lambda: "win32-x64")
-        windows.setenv("PATH", str(tmp_path / "no-git-here"))
+        windows.setenv("PATH", str(no_git_on_path))
+        print("DEBUG resolved:", er._git_executable(""), file=sys.stderr)
+        print("DEBUG which:", shutil.which("git"), file=sys.stderr)
+        print("DEBUG pkg:", pm.installed_package("git", allow_outdated=True), file=sys.stderr)
+        print("DEBUG store:", pm.paths.store_root(), file=sys.stderr)
         assert er.restore_interrupted_pull(root) is True
     assert calls.read_text(encoding="utf-8-sig").count("rev-parse HEAD") >= 1, "the store's git ran the restore"
     assert _git(root, "rev-parse", "HEAD") == a and _git(root, "status", "--porcelain") == ""

@@ -731,6 +731,16 @@ if not _pm_repair:
         if command_argv(sys.argv[1:])[:1] != ["pm"]:
             print(f"hermes: {exc}; run `hermes pm repair`", file=sys.stderr)
             raise SystemExit(1) from None
+# Accelerate the first-party import cascade that follows (best-effort; installed before the
+# heavy modules load so they resolve via a dict lookup instead of a per-entry sys.path scan).
+install_import_accelerator()
+# Opt-in background .pyc warm-up for the run-from-source layout (no-op by default, under
+# pytest and in frozen builds; it reads the checkout, so it runs after the repair above).
+maybe_precompile_on_start()
+# A sealed image installed its optional backends on the durable lazy target
+# (HERMES_LAZY_INSTALL_TARGET) on an earlier run: that dir must be importable before any
+# backend imports its SDK.
+activate_durable_lazy_target()
 install_happy_eyeballs_socket_connect()
 export_scratch_tmp_env()
 

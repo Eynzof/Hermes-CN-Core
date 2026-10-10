@@ -30,10 +30,10 @@ from hermes_cli.plugins_cmd_capabilities import (
     _run_capability_consent, cmd_capabilities,
 )
 from hermes_cli.plugins_cmd_git import (
-    _EXACT_COMMIT_RE, _canonical_source, _checkout_exact_revision, _clone_plugin_repo, _git_head_revision,
-    _git_or_raise, _git_pull_plugin_dir, _git_resolve_commit, _normalize_exact_revision, _pin_annotation,
-    _read_install_metadata, _run_plugin_git, _safe_git_error, _scrub_cloned_origin, _update_install_record,
-    _write_install_metadata, pinned_revision,
+    _EXACT_COMMIT_RE, _canonical_source, _checkout_exact_revision, _clone_plugin_repo, _cloneable_git_url,
+    _git_head_revision, _git_or_raise, _git_pull_plugin_dir, _git_resolve_commit, _normalize_exact_revision,
+    _pin_annotation, _read_install_metadata, _run_plugin_git, _safe_git_error, _scrub_cloned_origin,
+    _update_install_record, _write_install_metadata, pinned_revision,
 )
 from hermes_cli.plugins_cmd_install import (
     _check_manifest_version, _consent_python_deps, _display_after_install, _install_plugin_core,
@@ -296,7 +296,10 @@ def _resolve_git_url(identifier: str) -> tuple[str, Optional[str]]:
     """Turn an identifier into a cloneable Git URL and optional subdirectory.
 
     ``http://`` and ``file://`` are accepted but trigger a security warning at install time.
+    ``file:///C:/…`` is re-spelled as ``file://C:/…`` on Windows, the local-URL form git itself
+    resolves (the source recorded for the install, the clone and the update pull all use it).
     """
+    identifier = _cloneable_git_url(identifier)
     if identifier.startswith(_URL_SCHEMES):
         if identifier.startswith("https://github.com/"):
             path = identifier[len("https://github.com/") :]

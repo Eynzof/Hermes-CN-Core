@@ -4,6 +4,7 @@
 import logging
 import json
 import os
+import re
 import shlex
 import subprocess
 from fastapi import HTTPException
@@ -12,6 +13,14 @@ from typing import Any, Dict, List, Optional
 
 # Same logger the code used before extraction (record parity).
 _log = logging.getLogger("hermes_cli.web_server")
+
+# Distributions whose import name is not just the normalized package name.
+_MEMORY_PROVIDER_IMPORT_NAMES = {
+    "honcho-ai": "honcho",
+    "mem0ai": "mem0",
+    "hindsight-client": "hindsight_client",
+    "hindsight-all": "hindsight",
+}
 
 def _normalize_memory_provider_name(name: Any) -> str:
     from agent.memory_provider import is_core_memory_provider
@@ -70,6 +79,59 @@ def _memory_provider_setup_manifest(name: str) -> tuple[dict, dict]:
     }, inputs
 
 
+def _memory_provider_dependency_package(dep: str) -> str:
+    return re.split(r"[\[<>=!~;]", dep, maxsplit=1)[0].strip()
+
+
+def _memory_provider_import_name(dep: str) -> str:
+    package = _memory_provider_dependency_package(dep)
+    return _MEMORY_PROVIDER_IMPORT_NAMES.get(package, package.replace("-", "_"))
+
+
+def _memory_provider_dependencies_importable(setup: dict[str, Any]) -> bool:
+    """Whether every declared package imports in the interpreter that will load the provider.
+
+    Only consulted when this checkout has no recorded dependency environment at all (see
+    :func:`_memory_provider_environment_recorded`). The packages are imported by THIS
+    interpreter, so their importability here is the readiness a source checkout needs.
+    """
+    requirements = _string_list(setup.get("pip_dependencies"))
+    if not requirements:
+        return False
+    for dep in requirements:
+        import_name = _memory_provider_import_name(dep)
+        try:
+            if not import_name or __import__(import_name) is None:
+                return False
+        except ImportError:
+            return False
+    return True
+
+
+def _memory_provider_environment_recorded() -> bool:
+    """Whether PM has recorded a dependency environment for this checkout.
+
+    With one, its verdict is final: a module that merely happens to be importable (an ambient
+    site-packages entry, another interpreter) must never bypass admission, which is the
+    contract ``test_web_memory_provider_setup_install`` pins.
+    """
+    try:
+        from pm import paths
+        from pm.environments import runtime_facts_path
+        from pm.lock import Facts
+        from pm.paths import repo_root
+
+        for path in (runtime_facts_path(repo_root()), paths.facts_path()):
+            try:
+                if Facts(path, strict=True).get("venv") is not None:
+                    return True
+            except Exception:
+                continue
+        return False
+    except Exception:
+        return False
+
+
 def _memory_provider_setup_info(name: str) -> dict[str, Any]:
     import pm
 
@@ -84,6 +146,12 @@ def _memory_provider_setup_info(name: str) -> dict[str, Any]:
     except Exception:
         _log.debug("Could not read dependency state for %s", name, exc_info=True)
         python_ready = False
+    if not python_ready and not _memory_provider_environment_recorded():
+        # No recorded environment at all for this checkout — a source install (the CN fork's
+        # Windows default), where PM has no facts and every provider used to read
+        # "unavailable", so the panel refused to activate any of them (P-055). With facts on
+        # disk PM stays the authority and an ambient import never bypasses it.
+        python_ready = _memory_provider_dependencies_importable(setup)
     setup["dependencies_installed"] = python_ready and _memory_provider_external_dependencies_installed(setup)
     return setup
 

@@ -164,14 +164,24 @@ class TestPluginDiscovery:
         plugin = home / "plugins" / "portable"
         skill = plugin / "skills" / "summarize"
         skill.mkdir(parents=True)
-        app = tmp_path / "example-app"
-        app.write_text("", encoding="utf-8")
+        # An app location is per-OS and must be rooted for the family it is declared under,
+        # so declare one this host is not: `app_for(host)` is then None and the requirement
+        # resolves without a host-shaped path, exactly as upstream's darwin declaration did
+        # on Linux CI. (A darwin block holding `str(tmp_path)` only validated on POSIX hosts:
+        # on Windows the drive-letter path is not a rooted darwin location and the declaration
+        # was rejected, disabling the plugin.)
+        from hermes_platform.host import facts
+
+        foreign_os, foreign_app = (
+            ("win32", r"C:\Program Files\example-app")
+            if facts.os_family() != "win32" else ("darwin", "/Applications/example-app")
+        )
         (plugin / "plugin.json").write_text(
             json.dumps({
                 "$schema": PLUGIN_SCHEMA_V1,
                 "name": "portable.test",
                 "extensions": {"com.nousresearch.hermes": {"servers": {"worker": {
-                    "app": {"darwin": {"presence": "executable", "location": str(app)}},
+                    "app": {foreign_os: {"presence": "executable", "location": foreign_app}},
                     "requires": {"app": True},
                     "liveness": {"kind": "static"},
                 }}}},

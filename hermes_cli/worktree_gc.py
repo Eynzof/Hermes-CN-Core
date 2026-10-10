@@ -95,9 +95,16 @@ def _tree_size_mb(path: Path, timeout: int = 30) -> Optional[int]:
 
 
 def _dirty_split(path: str) -> tuple[bool, list[str]]:
-    """(has_tracked_modifications, untracked_paths) — tracked = real work, untracked = archivable."""
+    """(has_tracked_modifications, untracked_paths) — tracked = real work, untracked = archivable.
+
+    ``status`` runs under the same config isolation as the rest of this module, which also
+    drops the host's line-ending policy: a CRLF worktree (Git for Windows materializes one
+    that way by default) then reads as every-file-modified and no clean tree is ever reaped.
+    ``core.autocrlf=input`` folds CR at EOL into the comparison, so only real content changes
+    (and deletions) count as work — which is how the user's own git reads the same tree.
+    """
     try:
-        result = _git(["status", "--porcelain"], cwd=path, timeout=10)
+        result = _git(["-c", "core.autocrlf=input", "status", "--porcelain"], cwd=path, timeout=10)
         if result.returncode != 0:
             return True, []  # fail safe: treat as real work
         lines = [line for line in result.stdout.splitlines() if line.strip()]

@@ -1826,7 +1826,8 @@ CONFIG_SCHEMA = ProviderConfigSchema(
 
     def test_get_session_messages_follows_compression_tip(self):
         """Reading a compressed session by its old id should hydrate from the
-        live continuation, matching /resume behavior."""
+        live continuation, matching /resume behavior — which includes the
+        pre-compaction transcript of the segment it continues (#51058)."""
         import time as _time
 
         from hermes_state import SessionDB
@@ -1846,7 +1847,10 @@ CONFIG_SCHEMA = ProviderConfigSchema(
             # dev-020's hermes_state refuses replace_messages on a
             # compression-closed session (CompressionSessionClosedError); the
             # old segment simply keeps its rows and the reader still resolves
-            # to the live continuation via the parent link.
+            # to the live continuation via the parent link. The continuation is
+            # read with include_ancestors=True (upstream #51058: the REST
+            # transcript must match session.resume), so the old segment's
+            # pre-compaction rows come back ahead of the continuation's own.
             db.append_message(session_id="desktop-tip", role="user", content="after compression")
             db._conn.commit()
         finally:
@@ -1856,7 +1860,10 @@ CONFIG_SCHEMA = ProviderConfigSchema(
         assert resp.status_code == 200
         payload = resp.json()
         assert payload["session_id"] == "desktop-tip"
-        assert [m["content"] for m in payload["messages"]] == ["after compression"]
+        assert [m["content"] for m in payload["messages"]] == [
+            "before compression",
+            "after compression",
+        ]
 
     def test_get_session_messages_clamps_negative_pagination(self):
         from hermes_state import SessionDB

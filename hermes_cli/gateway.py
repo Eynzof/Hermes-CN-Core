@@ -2960,14 +2960,16 @@ def get_systemd_linger_status(username: str | None = None) -> tuple[bool | None,
 
 def get_launchd_plist_path() -> Path:
     """``~/Library/LaunchAgents/ai.hermes.gateway[-<profile>].plist`` under the real account home."""
-    import pwd
     suffix = _profile_suffix()
     name = f"ai.hermes.gateway-{suffix}" if suffix else "ai.hermes.gateway"
     # Real account home: profile mode may point HOME at a profile dir. Sandboxed/app-hosted
     # shells can expose a UID that pwd cannot resolve (#57292); fall back to the shared
     # real-home resolver (HERMES_REAL_HOME → HOME → pwd → ~, profile home skipped) instead
-    # of crashing launchd commands.
+    # of crashing launchd commands. The import lives INSIDE the try for the same reason:
+    # the module is absent off POSIX, and an ImportError here must degrade, not raise.
     try:
+        import pwd
+
         home = Path(pwd.getpwuid(os.getuid()).pw_dir)  # windows-footgun: ok — POSIX launchd (macOS) helper, never invoked on Windows
     except (KeyError, ImportError, OSError):
         from hermes_constants import get_real_home

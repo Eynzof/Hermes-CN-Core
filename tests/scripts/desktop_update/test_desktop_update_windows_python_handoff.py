@@ -119,7 +119,7 @@ def test_earlier_pm_userbin_launcher_is_identity_checked(tmp_path: Path) -> None
     helper = str(ROOT / 'scripts/desktop-update/runtime.ps1').replace("'", "''")
     for target, expected_code in [(root, 0), (wrong, 1)]:
         script = f". '{helper}'; try {{ @(Get-HermesRuntimeCommand -InstallRoot '{target}') | ConvertTo-Json -Compress }} catch {{ exit 1 }}"
-        result = subprocess.run(['powershell', '-NoProfile', '-Command', script],
+        result = subprocess.run(['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script],
                                 env={**os.environ, 'HERMES_HOME': str(home)},
                                 capture_output=True, text=True, timeout=45)
         assert result.returncode == expected_code, result.stdout + result.stderr
@@ -140,7 +140,7 @@ def test_command_file_launcher_probe_runs_through_cmd_exe_explicitly(tmp_path: P
     def probe(argument: str) -> subprocess.CompletedProcess:
         script = (f". '{helper}'; try {{ $r = Invoke-HermesProbe '{target}' @('--version', '{argument}'); "
                   "[Console]::Out.Write(\"code=$($r.Code)`n$($r.Output)\") } catch { [Console]::Out.Write('refused'); exit 3 }")
-        return subprocess.run(['powershell', '-NoProfile', '-Command', script],
+        return subprocess.run(['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script],
                               capture_output=True, text=True, timeout=60)
 
     ok = probe('two words')

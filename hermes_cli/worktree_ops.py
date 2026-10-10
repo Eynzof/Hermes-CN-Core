@@ -562,8 +562,14 @@ def _worktree_is_dirty(worktree_path: str, repo_root, timeout: int = 10) -> bool
         env = noninteractive_repo_git_env(worktree_path)
         if env is None:
             return True
-        result = _git(["status", "--porcelain", "-z"], worktree_path, timeout=timeout,
-                      stdin=subprocess.DEVNULL, env=env)
+        # ``core.autocrlf=input`` keeps the verdict on what the tree CONTAINS: isolating the
+        # user's config also drops its line-ending policy, and on a Windows host whose Git for
+        # Windows default materializes a checkout as CRLF every file git itself wrote reads
+        # modified against its LF index — so no clean tree was ever reclaimed. Comparing with
+        # CR folded away leaves real edits (and deletions) dirty and makes a CRLF round-trip
+        # clean, exactly as the user's own git reads it.
+        result = _git(["-c", "core.autocrlf=input", "status", "--porcelain", "-z"],
+                      worktree_path, timeout=timeout, stdin=subprocess.DEVNULL, env=env)
         if result.returncode != 0:
             return True
         entries = [e for e in result.stdout.split("\0") if e]

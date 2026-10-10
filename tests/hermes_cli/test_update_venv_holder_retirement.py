@@ -75,7 +75,7 @@ def test_gateway_ancestor_refusal_never_kills_unknown_ancestry(monkeypatch, gate
 
 
 def test_command_reaches_checkout_preparation_without_holder_gates(monkeypatch, tmp_path):
-    from hermes_cli import update_inventory
+    from hermes_cli import update_inventory, update_owning_install
 
     class ReachedCheckout(BaseException):
         pass
@@ -83,6 +83,15 @@ def test_command_reaches_checkout_preparation_without_holder_gates(monkeypatch, 
     reached = []
     forbidden = Mock(side_effect=AssertionError("current update called a retired holder gate"))
     monkeypatch.setattr(main, "PROJECT_ROOT", tmp_path)
+    # cmd_update runs the ownership redirect (update_owning_install, upstream) before its
+    # preflight; with an in-checkout .venv it would re-spawn the real updater, so stub it here.
+    from hermes_cli import update_owning_install
+
+    monkeypatch.setattr(update_owning_install, "retarget_to_owning_install", lambda project_root: None)
+    # Same stub the sibling update tests use: ``cmd_update`` retargets to the
+    # owning install before its preflight, and under a checkout's own ``.venv``
+    # that re-spawns the real updater instead of exercising this command.
+    monkeypatch.setattr(update_owning_install, "retarget_to_owning_install", lambda project_root: None)
     monkeypatch.setattr(main, "_update_preflight_handled", lambda args: False)
     monkeypatch.setattr(main, "_install_hangup_protection", lambda **kwargs: None)
     monkeypatch.setattr(main, "_finalize_update_output", lambda token: None)

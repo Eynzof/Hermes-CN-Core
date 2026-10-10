@@ -207,6 +207,10 @@ _UPDATE_CRITICAL_FILES = (
     "hermes_bootstrap.py", "hermes_cli/_parser.py", "hermes_cli/_launchers.py",
     "hermes_cli/_early_recovery.py", "hermes_cli/update_lock.py", "hermes_cli/update_custody.py",
     "hermes_cli/update_handoff.py", "hermes_cli/venv_sync.py", "pm/__init__.py", "pm/environments.py",
+    # the CN fork's bootstrap imports these two acceleration hooks before any
+    # application code, so a syntax error in either bricks every entry point
+    # the same way a broken hermes_bootstrap.py does.
+    "import_accelerator.py", "tools/__init__.py", "tools/lazy_deps.py",
     "hermes_cli/main.py", "hermes_cli/config.py", "hermes_cli/__init__.py",
     "hermes_cli/web_server.py", "cli.py", "run_agent.py", "model_tools.py", "toolsets.py",
     "hermes_constants.py")

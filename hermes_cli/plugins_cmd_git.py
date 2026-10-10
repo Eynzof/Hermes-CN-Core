@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import sys
 import threading
 import urllib.parse
 from contextlib import contextmanager
@@ -193,6 +194,19 @@ def _scrub_git_url(git_url: str) -> str:
 def _canonical_source(git_url: str, subdir: Optional[str]) -> str:
     scrubbed = _scrub_git_url(git_url)
     return f"{scrubbed}#{subdir}" if subdir else scrubbed
+
+
+#: ``file:///C:/dir``: the local-URL spelling of a drive-letter path (``Path.as_uri()``, Explorer,
+#: a copy-pasted path). Git for Windows reads it as the *path* ``/C:/dir`` and refuses it ("does not
+#: appear to be a git repository"); ``file://C:/dir`` is the URL form its own transport resolves.
+_WINDOWS_FILE_URL = re.compile(r"file:///(?=[A-Za-z]:[/\\])")
+
+
+def _cloneable_git_url(git_url: str) -> str:
+    """The spelling of *git_url* this host's git clones, unchanged unless it is a local Windows URL."""
+    if sys.platform == "win32" and _WINDOWS_FILE_URL.match(git_url):
+        return f"file://{git_url[len('file:///'):]}"
+    return git_url
 
 
 def _scrub_cloned_origin(repo: Path, git_exe: str, git_url: str) -> None:

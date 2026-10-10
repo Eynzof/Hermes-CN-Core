@@ -48,7 +48,7 @@ $breakpoint = Set-PSBreakpoint -Command Write-Result -Action {
 Remove-PSBreakpoint $breakpoint
 ''', encoding="utf-8")
     result = subprocess.run(
-        [POWERSHELL, "-NoProfile", "-NonInteractive", "-File", str(harness),
+        [POWERSHELL, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", str(harness),
          "-HandoffPath", str(ROOT / "scripts/desktop-update/windows.ps1"),
          "-Install", str(install), "-Run", run_id],
         env={**os.environ, "HOME": str(home), "HERMES_HOME": str(home),

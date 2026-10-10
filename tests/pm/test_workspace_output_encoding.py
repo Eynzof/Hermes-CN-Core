@@ -101,7 +101,11 @@ def test_node_sidecar_retains_output_and_exit_status(
         return context
 
     def run_npm(cmd, **kwargs):
-        assert cmd == [str(npm), install_cmd, "--no-audit", "--no-fund"]
+        # Windows resolves the fixture's npm.cmd through PATHEXT, which spells the
+        # suffix the way the host records it (npm.CMD). Same file, so compare the
+        # path case-insensitively there — the resolution itself stays asserted.
+        assert os.path.normcase(cmd[0]) == os.path.normcase(str(npm)), cmd
+        assert cmd[1:] == [install_cmd, "--no-audit", "--no-fund"]
         assert kwargs["env"] == context.env
         assert kwargs["cwd"] == str(tmp_path)
         # Keep the real Runner and decoding path; only replace npm's process

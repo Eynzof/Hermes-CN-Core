@@ -101,7 +101,11 @@ async def _drive(monkeypatch, mod, ws, conn, polls: int) -> None:
         return {"type": "websocket.disconnect"}
 
     monkeypatch.setattr(mod.asyncio, "wait_for", _wait_for)
+    # The connect-time tail read opens through kbc.connect; the per-socket tailer polls
+    # through the read-only existing-only opener (fork 09f199097c) — a socket must never
+    # resurrect an archived board. Both seams belong to the same fake connection.
     monkeypatch.setattr(mod.kbc, "connect", lambda *, board=None: conn)
+    monkeypatch.setattr(mod.kanban_db, "connect_existing", lambda db_path=None, *, board=None: conn)
     monkeypatch.setattr(mod, "_ws_upgrade_authorized", lambda ws: True)
     await mod.stream_events(ws)
 

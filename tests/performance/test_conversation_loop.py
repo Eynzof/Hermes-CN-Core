@@ -217,7 +217,9 @@ def test_conversation_loop_baseline(timing_context, mock_llm_response):
         finish_reason="stop",
     )
 
-    with patch("run_agent.OpenAI") as mock_cls:
+    # The client is built by ``agent.process_bootstrap.OpenAI`` (the seam the agent
+    # suite patches); ``run_agent`` is a facade and carries no such name.
+    with patch("agent.process_bootstrap.OpenAI") as mock_cls:
         mock_client = MagicMock()
         mock_client.chat.completions.create = MagicMock(return_value=mock_response)
         mock_cls.return_value = mock_client

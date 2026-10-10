@@ -354,20 +354,22 @@ async def get_media(request: Request, path: str):
     """
     from hermes_cli.web_server import _IMAGE_MEDIA_MAX_BYTES, _VIDEO_MEDIA_MAX_BYTES
 
-    handle, _target, content_type, is_video, size = _open_media_file(path, request)
-    max_bytes = (
-        _VIDEO_MEDIA_MAX_BYTES
-        if is_video
-        else _IMAGE_MEDIA_MAX_BYTES
-    )
-    with handle:
-        if size > max_bytes:
+    def _read_and_encode() -> tuple[str, str]:
+        handle, _target, content_type, is_video, size = _open_media_file(path, request)
+        max_bytes = _VIDEO_MEDIA_MAX_BYTES if is_video else _IMAGE_MEDIA_MAX_BYTES
+        with handle:
+            if size > max_bytes:
+                raise HTTPException(status_code=413, detail="File too large")
+            payload = handle.read(max_bytes + 1)
+        if len(payload) > max_bytes:
             raise HTTPException(status_code=413, detail="File too large")
-        payload = handle.read(max_bytes + 1)
-    if len(payload) > max_bytes:
-        raise HTTPException(status_code=413, detail="File too large")
+        return content_type, base64.b64encode(payload).decode("ascii")
 
-    encoded = base64.b64encode(payload).decode("ascii")
+    # The open, read and encode are disk/CPU work: on the event loop they stall
+    # every other dashboard request for as long as the file takes (upstream's
+    # asyncio.to_thread read, kept on the fork's handle-bound policy path — the
+    # checks stay bound to the fd that was validated).
+    content_type, encoded = await asyncio.to_thread(_read_and_encode)
     return {"data_url": f"data:{content_type};base64,{encoded}"}
 
 @router.get("/api/media/file")

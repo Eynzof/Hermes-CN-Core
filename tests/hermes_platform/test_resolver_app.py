@@ -43,7 +43,11 @@ def _resolver(tmp_path, exe, server_json=None):
 
 def test_locate_reports_expanded_path_when_missing(tmp_path, monkeypatch):
     monkeypatch.setenv("THINGROOT", str(tmp_path))
-    r = AppResolver(AppDef("thing", sys.platform, "executable", (AppLocation("path", "$THINGROOT/bin/thing"),)))
+    # The template is spelled the way a host-local declaration is: the resolver only
+    # expands the variable (os.path.expandvars), it does not re-render separators, so a
+    # template written with "/" would report the mixed form on Windows.
+    r = AppResolver(AppDef("thing", sys.platform, "executable",
+                           (AppLocation("path", f"$THINGROOT{os.sep}bin{os.sep}thing"),)))
     res = r.locate()
     assert res.kind == "missing"
     assert res.candidates[0].value == str(tmp_path / "bin" / "thing")

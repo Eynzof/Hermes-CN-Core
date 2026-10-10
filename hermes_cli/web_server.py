@@ -2348,8 +2348,10 @@ def __getattr__(name):  # PEP 562 — lazy so no import cycles
     if target is None:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
     import importlib
-    from hermes_cli.plugin_compat import warn_once
-    warn_once(__name__, name, *target)
+
+    # The per-name deprecation warning came from the plugin-compat layer, which
+    # upstream retired (hermes_cli/plugin_compat.py is now inert stubs); the lazy
+    # re-export is what keeps old import paths resolving, so it stays.
     return getattr(importlib.import_module(target[0]), target[1])
 # ---- END PLUGIN-COMPAT ----
 

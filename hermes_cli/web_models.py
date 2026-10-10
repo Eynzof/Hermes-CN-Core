@@ -32,6 +32,9 @@ class EnvVarReveal(EnvVarDelete):
 
 class MemoryProviderConfigUpdate(BaseModel):
     values: dict[str, Any] = {}
+    # The Desktop's provider form saves a config and asks whether the running
+    # provider should pick it up now; the router reads ``body.activate`` (P-055).
+    activate: bool = True
 
 class MemoryProviderSetupRequest(BaseModel):
     values: dict[str, Any] = {}

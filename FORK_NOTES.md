@@ -396,9 +396,18 @@ reviewed in batches. Fork-owned files kept their `P-NNN` intent verbatim.
   manylinux cp314 wheelhouse downloaded on the Windows host
   (`pip download --platform manylinux_2_28_x86_64 …`, 206 wheels), installed with
   `pip --python ~/.venvs/hermes314/bin/python install --no-index --no-deps -r freeze-linux.txt`, and the
-  suite runs from a mirror of the tree on the WSL filesystem (`~/hermes-cn`) because `/mnt/c` (9p) makes
-  git-bound tests take minutes per file — `git log` alone timed out there. `PYTEST_ADDOPTS="-p no:pytest_benchmark"`
-  is required: `pytest-benchmark`'s `pytest_addoption` shells out to git during startup and hangs on 9p.
+  suite runs from a mirror of the tree on the WSL filesystem (`~/hermes-cn`): `/mnt/c` (9p) makes git-bound
+  tests take minutes per file — `git log` alone timed out there — and `PYTEST_ADDOPTS="-p no:pytest_benchmark"`
+  is required because `pytest-benchmark`'s startup shells out to git. First full pass on the wave‑4 tree:
+  53,342 passed / 2,325 failed (4 slices, ~55.7k tests). Most of those failures were **environment**, not
+  merge damage: the wheelhouse's unpinned fallback had installed placeholder builds
+  (`pydantic_core 0.0.1`, `ty/watchfiles 0.0.0a1`, `annotated-doc`/`python-multipart` stubs), and every
+  pydantic-backed test died with `ImportError: cannot import name '__version__' from 'pydantic_core'`.
+  Re-installing the correct `pydantic_core==2.46.4`, `ty==0.0.21`, `watchfiles==1.1.1`,
+  `annotated-doc==0.0.4`, `python-multipart==0.0.32` wheels and re-running the 652 previously failing files
+  against the repaired tree gives **8,313 passed / 353 failed (145 files)** — the same failure classes as the
+  Windows lane (`tools/delegate*`, terminal/process-registry, connectors/catalog), which is the follow-up
+  work listed below.
 
 ### Follow-ups / known issues
 

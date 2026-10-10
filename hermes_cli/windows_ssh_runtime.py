@@ -366,29 +366,8 @@ def _resolve_direct_command(hermes_path: str) -> list[str]:
     No assumption about python.exe beside an external bin launcher is valid.
     """
     out = subprocess.run([hermes_path, "--print-runtime-command"], capture_output=True,
-                         text=True, encoding="utf-8", errors="replace", timeout=30)
-def _resolve_direct_interpreter(python_entry: str) -> tuple[str, list[str]]:
-    """Resolve the venv launcher to (base interpreter, sys.path to reproduce).
-
-    On Windows a venv Scripts\\python.exe is a stub that spawns the real interpreter as a CHILD
-    (two PIDs); spawning the base interpreter with the launcher's sys.path injected yields ONE
-    process that both owns the port and is the one we lock. hermes_cli's parent is prepended
-    because the launcher finds it via cwd / an editable-install hook a bare PYTHONPATH lacks."""
-    query = (
-        "import sys,json,os,importlib.util as u;"
-        "s=u.find_spec('hermes_cli');"
-        "root=os.path.dirname(os.path.dirname(s.origin)) if s and s.origin else '';"
-        "print(json.dumps({'base':getattr(sys,'_base_executable','') or sys.executable,"
-        "'path':[p for p in sys.path if p],'root':root}))")
-    out = subprocess.run(
-        [python_entry, "-c", query],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        timeout=30,
-        creationflags=windows_hide_flags(),
-    )
+                         text=True, encoding="utf-8", errors="replace", timeout=30,
+                         creationflags=windows_hide_flags())
     if out.returncode != 0:
         raise ValueError("could not resolve Hermes runtime; refresh this installation's launcher")
     try:

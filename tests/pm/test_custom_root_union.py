@@ -37,7 +37,11 @@ def test_home_layout_joins_sibling_union(tmp_path, monkeypatch, layout):
     import hermes_constants
 
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
-    root = tmp_path / (".hermes" if layout == "default" else "data-root")
+    # The platform names its default home itself (``.hermes`` on POSIX, ``hermes`` under
+    # %LOCALAPPDATA%); the session sandbox relocated that default under tmp_path, so follow its name
+    # instead of hardcoding the POSIX one.
+    default_name = hermes_constants._get_platform_default_hermes_home().name
+    root = tmp_path / (default_name if layout == "default" else "data-root")
     active = root / "profiles/active" if layout == "profile" else root
     if layout == "default":
         monkeypatch.delenv("HERMES_HOME", raising=False)

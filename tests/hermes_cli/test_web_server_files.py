@@ -629,7 +629,11 @@ def test_dangling_symlink_does_not_break_directory_listing(forced_files_client):
     real.write_text("still here")
 
     try:
-        (root / "dangling").symlink_to("/nix/store/nonexistent-broken-link-profile")
+        # A dangling link to a path that does not exist here. It has to be a path this
+        # host can spell: an absolute ``/nix/store/...`` target is not merely missing on
+        # Windows, it is an invalid file name, so resolving it raises a non-FileNotFound
+        # OSError and the direct read below answers 400 instead of 404.
+        (root / "dangling").symlink_to(root / "gone-nonexistent-broken-link-profile")
     except OSError:
         pytest.skip("filesystem does not allow symlinks")
 

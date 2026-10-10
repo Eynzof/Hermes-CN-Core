@@ -8,6 +8,16 @@ from tests.hermes_cli.plugin_worker_support import (
     isolated_python as isolated_python,
 )
 
+# Windows baseline (fork convention, dropped when upstream's test bodies were taken): every
+# case here installs from ``origin.as_uri()``, and ``Path.as_uri()`` yields
+# ``file:///C:/...`` on Windows — a URL MSYS/mingw git mangles to ``/C:/...`` and rejects
+# with "does not appear to be a git repository" (reproduced with Git for Windows 2.54:
+# ``git ls-remote file:///C:/x`` fails, ``file://C:/x`` succeeds). The clone-based cases
+# therefore run on the POSIX lanes only; the same baseline is asserted by the win32 skip in
+# tests/hermes_cli/test_plugin_install_ref.py, expressed here with the tree's host marker
+# (tests/AGENTS.md: a ``skipif(sys.platform == "win32")`` is ``platforms("posix")``).
+pytestmark = pytest.mark.platforms("posix")  # ``Path.as_uri()`` file:///C:/ URLs are not clonable by Windows git
+
 
 @pytest.mark.parametrize("surface,suffix", [
     ("pyproject", "yaml"), ("python_dependencies", "yaml"), ("pip_dependencies", "yaml"),

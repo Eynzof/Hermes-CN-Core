@@ -78,6 +78,9 @@ def test_consumption_checkpoints_debt_before_unlink_and_producer_death(cell, cla
         while True: time.sleep(.05)
     ''', base / "ready", base / "consume", base / "consumed")
     _wait(base / "ready", consumer)
+    # Popen.pid is the venv launcher on Windows; the reported pid is the process that runs the
+    # script, which is the one consume_planned_stop_marker_for_self matches a marker against.
+    consumer_pid = int((base / "ready").read_text(encoding="utf-8-sig"))
     owner = launch('''
         from hermes_cli import update_cmd_windows as w
         from types import SimpleNamespace
@@ -94,7 +97,7 @@ def test_consumption_checkpoints_debt_before_unlink_and_producer_death(cell, cla
             while True: time.sleep(.05)
         w._request_socket_pauses([pid], {pid: SimpleNamespace(profile="default", path=home)},
                                  set(), on_request=on_request)
-    ''', consumer.pid, base / "published")
+    ''', consumer_pid, base / "published")
     _wait(base / "published", owner)
     recovery = None
     if claim_first:
@@ -126,8 +129,8 @@ def test_consumption_checkpoints_debt_before_unlink_and_producer_death(cell, cla
         ''')
     after = _result(recovery)
     assert len(after) == 1, "consumed request lost all durable restart debt"
-    assert after[0]["profiles"] == {"default": consumer.pid}
-    assert after[0]["stop_sent"] == [str(consumer.pid)]
+    assert after[0]["profiles"] == {"default": consumer_pid}
+    assert after[0]["stop_sent"] == [str(consumer_pid)]
 
 
 def test_failed_consumer_checkpoint_keeps_request_and_user_stop_is_not_update_debt(cell):

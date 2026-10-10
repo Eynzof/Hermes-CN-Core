@@ -97,9 +97,14 @@ def _child(definitions, code, *, setup=""):
         "load_package_definitions(json.loads(sys.stdin.read()))\n"
         + textwrap.dedent(code)
     )
+    # ``-I`` drops PYTHONUTF8/PYTHONIOENCODING again, so pin the worker's stdio to
+    # UTF-8 from argv: a production message carrying a non-ASCII character (the em
+    # dash in InstallError) would otherwise come back in the host code page and the
+    # UTF-8 decode below would fail.
     return subprocess.run(
-        [sys.executable, "-I", "-B", "-c", script],
-        input=json.dumps(definitions), capture_output=True, text=True, timeout=30,
+        [sys.executable, "-I", "-X", "utf8", "-B", "-c", script],
+        input=json.dumps(definitions), capture_output=True, text=True,
+        encoding="utf-8", timeout=30,
     )
 
 

@@ -63,7 +63,10 @@ def _run_helper(script: str, home: Path, env_extra: dict[str, str], out: Path) -
     The answer goes through a file, not stdout: under code page 437 or 936 the console cannot
     represent ``ł``, so stdout would lose the very characters under test.
     """
-    result = subprocess.run(['powershell', '-NoProfile', '-Command', f"$out = '{out}'; " + script],
+    # dot-sourcing runtime.ps1 needs an execution policy that allows scripts; the
+    # fixtures elsewhere in this directory pass Bypass for the same reason.
+    result = subprocess.run(['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command',
+                             f"$out = '{out}'; " + script],
                             env={**os.environ, 'HERMES_HOME': str(home), **env_extra},
                             capture_output=True, timeout=120)
     assert result.returncode == 0, (result.stdout + result.stderr).decode('utf-8', 'replace')

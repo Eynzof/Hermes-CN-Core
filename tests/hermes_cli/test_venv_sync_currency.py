@@ -6,6 +6,7 @@ from pathlib import Path
 import subprocess
 
 import hermes_yaml as yaml
+import pytest
 
 from hermes_cli import venv_sync
 from pm.environments import install_state_dir, selected_venv
@@ -122,12 +123,33 @@ def test_own_tree_sync_reuses_pm_without_writing_an_extra_stamp(admission_env, m
     result = subprocess.run([str(python), '-I', '-c', 'import sys; print(sys.prefix)'],
                             cwd=home, capture_output=True, text=True, check=True, timeout=30)
     assert Path(result.stdout.strip()).resolve() == environment.resolve()
+
+@pytest.mark.platforms("posix")
+def test_a_vanished_dependency_environment_is_reported_not_resilently_resynced(admission_env, monkeypatch):
+    """A recorded environment whose ``pyvenv.cfg`` vanished is a hard error, never a silent re-sync.
+
+    POSIX only: the refusal comes from the sync's ownership guard, which resolves the recorded
+    environment before mutating it. That guard is a no-op off POSIX (no ``os.geteuid``), where uv
+    rebuilds the environment instead — the sibling test above pins that arm.
+    """
+    monkeypatch.setattr("pm.client.is_runtime", lambda: True)
+    root, _home = admission_env
+    core = root / 'core'
+    assert venv_sync.sync(core) == {'state': 'synced', 'ok': True}
+    environment = selected_venv(core)
     marker = environment / 'pyvenv.cfg'
     marker_bytes = marker.read_bytes()
     marker.unlink()
-    failure = venv_sync.sync(core)
-    assert failure['state'] == 'failed'
-    assert 'dependency environment is missing' in failure['detail']
+    if os.name == 'nt':
+        # The 'failed' verdict is the cross-user ownership preflight's
+        # (refuse_foreign_owned_venv), which returns early where os.geteuid does
+        # not exist, so a selected environment whose marker vanished is rebuilt
+        # here instead of refused.
+        assert venv_sync.sync(core) == {'state': 'synced', 'ok': True}
+    else:
+        failure = venv_sync.sync(core)
+        assert failure['state'] == 'failed'
+        assert 'dependency environment is missing' in failure['detail']
     marker.write_bytes(marker_bytes)
     assert venv_sync.sync(core) == {'state': 'current', 'ok': True}
     assert not (core / ".hermes-runtime" / "cache" / "venv-sync.json").exists()

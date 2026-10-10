@@ -3,6 +3,7 @@ AIAgent (one per session), is re-injected after context compression, and every w
 a monotonic revision so UI clients can reject stale updates. One ``todo_list`` tool: pass
 ``todos`` to write, omit to read; every call returns the full list. No system-prompt mutation."""
 
+import json
 import os
 import shutil
 import subprocess
@@ -59,18 +60,58 @@ class TodoStore:
         """Validate, dedupe and order a whole new list (replace / restore)."""
         return self._normalize_order([self._validate(t) for t in self._dedupe_by_id(todos)])
 
-    def write(self, todos: list[dict[str, Any]], merge: bool = False) -> list[dict[str, str]]:
+    def write(
+        self,
+        todos: list[dict[str, Any]],
+        merge: bool = False,
+        auto_fix: bool = True,
+    ) -> list[dict[str, str]]:
         """Replace the list (default) or merge by id; returns the full list after writing.
-        Raises ValueError (leaving the list untouched) if any item is invalid."""
-        before = self.read()
+
+        ``auto_fix=True`` (default) keeps the first ``in_progress`` item and marks the
+        extras completed; ``False`` leaves the conflict in place and records it
+        (retrievable via ``pop_conflict_error()``).  Warnings accumulate on
+        ``self._warnings`` (``pop_warnings()`` retrieves them).
+
+        Raises ValueError, leaving the list untouched, if any item is invalid.
+        """
+        self._warnings = []
+        self._conflict_error = None
+        before = [item.copy() for item in self._items]
+        incoming = self._dedupe_by_id(todos)
+        old_items = list(self._items)
+        old_statuses = {item["id"]: item["status"] for item in old_items}
+
+        # Non-blocking content guards (warnings only).
+        self._warnings.extend(self._detect_fuzzy_warnings(incoming, old_items))
+        self._warnings.extend(self._detect_duplicate_contents(incoming))
+
         try:
             if merge:
-                self._merge(todos)
+                self._merge(incoming)
             else:
-                self._items = self._fresh_items(todos)
+                self._items = self._fresh_items(incoming)
+                # Archive terminal items dropped by the replacement: finished
+                # work is preserved (bounded), abandoned pending/in_progress
+                # items are not.
+                if old_items:
+                    kept_ids = {item["id"] for item in self._items}
+                    dropped_terminal = [
+                        item
+                        for item in old_items
+                        if item["id"] not in kept_ids
+                        and item["status"] in {"completed", "cancelled"}
+                    ]
+                    if dropped_terminal:
+                        self._archived.extend(dropped_terminal)
+                # Enforce the archive bound (oldest dropped first) on every
+                # replace-mode write.
+                if len(self._archived) > MAX_ARCHIVED_TODOS:
+                    self._archived = self._archived[-MAX_ARCHIVED_TODOS:]
         except ValueError:
             self._items = before  # rejected write must not leave a partial list behind
             raise
+
         del self._items[MAX_TODO_ITEMS:]  # keep the priority head; replays can't grow unbounded
         self._sanitize_parents(self._items)
 
@@ -236,8 +277,17 @@ class TodoStore:
         return content
 
     @staticmethod
+    def _cap_field(value: str, limit: int) -> str:
+        """Truncate an oversized optional field (notes/code) to `limit` chars."""
+        if len(value) > limit:
+            keep = limit - len(_TRUNCATION_MARKER)
+            return value[:keep] + _TRUNCATION_MARKER
+        return value
+
+    @staticmethod
     def _validate(item: dict[str, Any]) -> dict[str, str]:
-        """Normalize one item to ``{id, content, status, parent?}`` (placeholders when missing)."""
+        """Normalize one item to ``{id, content, status, parent?}`` plus optional
+        ``notes``/``code`` (placeholders when missing)."""
         if not isinstance(item, dict):
             return {"id": "?", "content": "(invalid item)", "status": "pending"}
         item_id = str(item.get("id", "")).strip() or "?"
@@ -394,9 +444,6 @@ class TodoStore:
         return normalized
 
 
-def todo_tool(todos: Optional[list[dict[str, Any]]] = None, merge: bool = False,
-              store: Optional[TodoStore] = None) -> str:
-    """Write ``todos`` (replace, or ``merge`` by id) or read when None -> list + summary JSON."""
 def _verification_argv(code: str) -> List[str]:
     """Resolve a non-shell code string to a subprocess argv.
 
@@ -550,9 +597,13 @@ def todo_tool(todos: Optional[List[Dict[str, Any]]] = None, merge: bool = False,
         if not isinstance(todos, list):
             return tool_error(f"todos must be a list, got {type(todos).__name__}")
         try:
-            items = store.write(todos, merge)
+            items = store.write(todos, merge, auto_fix=auto_fix)
         except ValueError as e:
             return tool_error(str(e))
+        conflict_error = store.pop_conflict_error()
+        if conflict_error is not None:
+            return tool_error(conflict_error)
+        warnings = store.pop_warnings()
     summary = {"total": len(items)}
     for status in ("pending", "in_progress", "completed", "cancelled"):
         summary[status] = sum(1 for i in items if i["status"] == status)
@@ -701,7 +752,6 @@ def is_todo_tool_call(tool_call: Any) -> bool:
 
 
 from tools.registry import registry, tool_error
-import json
 
 registry.register(
     name="todo_list", toolset="todo", schema=TODO_SCHEMA, check_fn=check_todo_requirements,

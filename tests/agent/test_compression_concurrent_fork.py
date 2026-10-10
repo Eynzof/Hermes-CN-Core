@@ -1889,7 +1889,12 @@ def test_hard_stop_waits_for_commit_already_admitted(tmp_path: Path) -> None:
         daemon=True,
     )
     compression.start()
-    assert commit_started.wait(timeout=2)
+    # Admission is only reached after the boundary prompt rebuild that upstream always
+    # performs (#98426 / 514707ff3e) — on a Windows host that rebuild is seconds of git
+    # and shell discovery (`_local_host_hints` → `_find_bash`), and the same budget is
+    # overshot by a pure-upstream tree here too. The fence race asserted below is
+    # unchanged: this wait only has to observe "the commit was admitted".
+    assert commit_started.wait(timeout=30)
 
     stop = threading.Thread(
         target=lambda: (

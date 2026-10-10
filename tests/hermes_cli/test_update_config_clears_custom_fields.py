@@ -10,10 +10,10 @@ xai) compute it at request-resolution time in
 ``_copilot_runtime_api_mode`` / ``_detect_api_mode_for_url``, so removing
 the persisted value here is safe.
 """
+
 from __future__ import annotations
 
-
-import yaml
+import hermes_yaml as yaml
 
 from hermes_cli.auth import _update_config_for_provider
 from hermes_cli.config import clear_model_endpoint_credentials, get_config_path

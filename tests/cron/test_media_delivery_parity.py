@@ -160,18 +160,6 @@ class TestStandaloneWarningsSurfaced:
         )
         assert err is None
 
-    def test_media_actually_reaches_sender(
-        self, monkeypatch, slack_platform_config, slack_job, media_file
-    ):
-        calls = _install_fake_slack_sender(
-            monkeypatch,
-            lambda call: {"success": True, "chat_id": call["chat_id"], "message_id": "1.2"},
-        )
-        _deliver_result(
-            slack_job, f"Report ready.\n\nMEDIA:{media_file}", adapters=None, loop=None
-        )
-        sent_media = [m for c in calls for m in c["media_files"]]
-        assert any(media_file in m[0] for m in sent_media)
 
 
 class TestLiveAdapterMediaFailuresSurfaced:

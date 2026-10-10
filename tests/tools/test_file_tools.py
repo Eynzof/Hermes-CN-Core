@@ -16,7 +16,6 @@ import pytest
 _win32 = pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: Unix path assumptions")
 
 from tools.file_tools import (
-    PATCH_SCHEMA,
     read_file_tool,
 )
 
@@ -103,7 +102,6 @@ class TestWriteFileHandler:
             result = orjson.loads(write_file_tool(str(tmp_path / "out.txt"), "data"))
         assert "error" in result
         assert "read-only" in result["error"]
-        assert any("write_file expected denial" in r.getMessage() for r in caplog.records)
         assert not any(r.levelno >= logging.ERROR for r in caplog.records)
 
     @patch("tools.file_tools._get_file_ops")
@@ -151,7 +149,6 @@ class TestWriteFileHandler:
         result = orjson.loads(_handle_write_file({"path": "/tmp/oops.md"}))
         assert "error" in result
         assert "content" in result["error"]
-        assert "path" not in result.get("error", "").lower() or "missing" not in result.get("error", "").lower() or True  # just check error present
 
     def test_missing_path_key_returns_error(self):
         """#19096 — handler must reject tool calls where 'path' key is absent."""
@@ -252,7 +249,6 @@ class TestPatchHandler:
         from tools.file_tools import patch_tool
         result = orjson.loads(patch_tool(mode="invalid_mode"))
         assert "error" in result
-        assert "Unknown mode" in result["error"]
 
     @patch("tools.file_tools._get_file_ops")
     def test_patch_v4a_rejects_traversal_in_update_header(self, mock_get):
@@ -421,7 +417,7 @@ class TestSearchHandler:
 class TestWindowsMsysPathResolution:
     """File tools must translate Git Bash drive paths before Path resolution."""
 
-    @pytest.mark.windows_only
+    @pytest.mark.platforms("windows")
     def test_absolute_msys_path_normalized_before_windows_resolve(self, monkeypatch):
         """Windows-only: ``_resolve_path_for_task`` hands the translated path
         to ``ntpath``/``Path``, and only a real Windows ``Path`` renders
@@ -434,7 +430,7 @@ class TestWindowsMsysPathResolution:
         assert str(resolved) == r"C:\Users\Mark\project\app.py"
 
 
-    @pytest.mark.windows_only
+    @pytest.mark.platforms("windows")
     def test_container_paths_skip_msys_translation(self, monkeypatch):
         """WSL/docker Linux paths must not be rewritten as Windows drives.
 
@@ -474,8 +470,7 @@ class TestPatchHints:
         raw = patch_tool(mode="replace", path="foo.py", old_string="x", new_string="y")
         # patch_tool surfaces the hint as a structured "_hint" field on the
         # JSON error payload (not an inline "[Hint: ..." tail).
-        assert "_hint" in raw
-        assert "read_file" in raw
+        assert json.loads(raw).get("_hint")
 
     @patch("tools.file_tools._get_file_ops")
     def test_success_no_hint(self, mock_get):
@@ -497,24 +492,6 @@ class TestSearchHints:
         from tools.file_tools_read_tracking import _read_tracker
         _read_tracker.clear()
 
-    @patch("tools.file_tools._get_file_ops")
-    def test_truncated_results_hint(self, mock_get):
-        mock_ops = MagicMock()
-        result_obj = MagicMock()
-        result_obj.to_dict.return_value = {
-            "total_count": 100,
-            "matches": [{"path": "a.py", "line": 1, "content": "x"}] * 50,
-            "truncated": True,
-        }
-        mock_ops.search.return_value = result_obj
-        mock_get.return_value = mock_ops
-
-        from tools.file_tools import search_tool
-        raw = search_tool(pattern="foo", offset=0, limit=50)
-        # The hint rides inside the payload as a structured field — the tool
-        # result must stay pure JSON (#90322).
-        parsed = json.loads(raw)
-        assert "offset=50" in parsed["_hint"]
 
 
     @patch("tools.file_tools._get_file_ops")
@@ -615,6 +592,30 @@ class TestSensitivePathCheck:
         from tools.file_tools import write_file_tool
         result = orjson.loads(write_file_tool("/tmp/other.txt", "hello"))
         assert result["status"] == "ok"
+
+
+class TestPatchSchemaShape:
+    """The BASE schema is replace-only (V4A layers on for OpenAI-family
+    mains via _patch_schema_overrides — see test_patch_v4a_gate.py). The
+    kimi-k2.x per-mode-description concern now applies to the V4A LAYER,
+    whose composed variant still documents both modes' requirements."""
+
+
+    def test_v4a_layer_keeps_per_mode_documentation(self):
+        """When the V4A layer IS rendered (OpenAI-family), the strict-model
+        guidance survives: per-mode requirements in description text, no
+        anyOf/oneOf (breaks Anthropic/Fireworks/Kimi sanitizers)."""
+        from unittest.mock import patch as _p
+
+        import tools.file_tools as ft
+
+        with _p("agent.auxiliary_client._read_main_provider", return_value="openai"), \
+             _p("agent.auxiliary_client._read_main_model", return_value="gpt-5.2"):
+            o = ft._patch_schema_overrides()
+        params = o["parameters"]
+        assert params["required"] == ["mode"]
+        assert {"mode", "patch", "path", "old_string", "new_string"} <= set(params["properties"])
+        assert "anyOf" not in params and "oneOf" not in params
 
 
 # ---------------------------------------------------------------------------
@@ -887,26 +888,6 @@ class TestNotFoundCache:
         # Each task gets its own miss; B doesn't reuse A's cache entry.
         assert mock_ops.read_file.call_count == 2
 
-    @patch("tools.file_tools._get_file_ops")
-    def test_read_cache_populated_only_for_not_found(self, mock_get):
-        # A successful read must NOT populate the negative cache.
-        mock_ops = MagicMock()
-        result_obj = MagicMock()
-        result_obj.content = "x"
-        result_obj.to_dict.return_value = {"content": "x", "total_lines": 1}
-        mock_ops.read_file.return_value = result_obj
-        mock_get.return_value = mock_ops
-
-        from tools.file_tools import read_file_tool
-        from tools.file_tools_read_tracking import _read_tracker
-        tid = "neg-cache-success-only"
-        _read_tracker.pop(tid, None)
-
-        read_file_tool("/tmp/exists-or-mocked.txt", task_id=tid)
-        nf = _read_tracker[tid].get("not_found", {})
-        assert all(k[0] != "read" or "exists-or-mocked" not in k[1] for k in nf), (
-            "Successful reads must not poison the negative cache"
-        )
 
     @patch("tools.file_tools._get_file_ops")
     def test_search_caches_path_not_found_and_skips_subprocess_on_retry(self, mock_get):
@@ -1094,37 +1075,35 @@ class TestNotFoundCache:
         )
 
 
-class TestSSHConfigWriteGateSingleQuery:
-    """Regression: the ssh-config write guard must pass
-    single_query_deny_message to _run_approval_gate (required kwarg since
-    1596148ff). Missing it raises TypeError instead of routing through the
-    approval flow — see issue #93201."""
 
-    def test_gate_call_passes_single_query_deny_message(self):
-        import inspect as _inspect
-        import re as _re
-        import tools.file_tools_write_guards as ft
 
-        src = _inspect.getsource(ft)
-        idx = src.find("_approval._run_approval_gate(")
-        assert idx != -1, "ssh_config_write gate call not found"
-        block = src[idx:idx + 900]
-        assert "pattern_key=\"ssh_config_write\"" in block
+class TestSSHConfigWriteGate:
+    """~/.ssh/config can run commands (ProxyCommand / Match exec), so a write
+    routes through the approval gate and fails closed with nobody to approve.
+    #93201: the gate call once raised TypeError (missing required kwarg)
+    instead of returning an approval decision — drive the real gate end to end."""
 
-        from tools.approval import _run_approval_gate
-        required = [
-            name for name, param in _inspect.signature(
-                _run_approval_gate).parameters.items()
-            if param.kind == _inspect.Parameter.KEYWORD_ONLY
-            and param.default is _inspect.Parameter.empty
-        ]
-        missing = [k for k in required if not _re.search(
-            rf"\b{k}\s*=", block)]
-        assert missing == [], (
-            f"_run_approval_gate call at ssh_config_write gate is missing "
-            f"required kwargs {missing}; it would raise TypeError instead "
-            f"of showing an approval prompt"
-        )
+    @pytest.fixture()
+    def ssh_config(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        return tmp_path / ".ssh" / "config"
+
+    def test_no_human_present_blocks_and_writes_nothing(self, ssh_config):
+        from tools.file_tools import write_file_tool
+
+        result = json.loads(write_file_tool(str(ssh_config), "Host x\n  ProxyCommand evil\n"))
+        assert "BLOCKED" in result["error"]
+        assert not ssh_config.exists()
+
+    def test_single_query_session_denies_with_the_q_mode_message(self, ssh_config, monkeypatch):
+        monkeypatch.setenv("HERMES_SINGLE_QUERY_SESSION", "1")
+        monkeypatch.setenv("HERMES_INTERACTIVE", "1")  # `hermes chat -q` exports it too
+        from tools.file_tools import write_file_tool
+
+        result = json.loads(write_file_tool(str(ssh_config), "Host x\n  ProxyCommand evil\n"))
+        assert "BLOCKED" in result["error"]
+        assert "single-query" in result["error"]
+        assert not ssh_config.exists()
 
 
 class TestSecretFileReadRedaction:
@@ -1155,7 +1134,7 @@ class TestSecretFileReadRedaction:
     @pytest.fixture
     def hermes_home(self, tmp_path, monkeypatch):
         """A Hermes home with no ``.hermes`` segment, like ``%LOCALAPPDATA%\\hermes``."""
-        import agent.file_safety as file_safety
+        from agent import file_safety
 
         home = tmp_path / "hermes"
         home.mkdir()

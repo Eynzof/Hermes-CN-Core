@@ -20,19 +20,7 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.skipif(
-    sys.platform != "win32", reason="live Windows trampoline E2E"
-)
-#: Git for Windows standard install (windows-latest ships it here). A dev box may have git from
-#: MSYS2 / scoop / winget instead, with no ``git-core`` layout for the locator to find.
-_GIT_FOR_WINDOWS_CORE = (
-    Path(r"C:\Program Files\Git\mingw64\libexec\git-core\git.exe"),
-    Path(r"C:\Program Files (x86)\Git\mingw64\libexec\git-core\git.exe"),
-)
-_runner_git_layout = pytest.mark.skipif(
-    not any(p.exists() for p in _GIT_FOR_WINDOWS_CORE),
-    reason="needs the standard Git for Windows git-core layout (windows-latest), not just any git on PATH",
-)
+pytestmark = pytest.mark.platforms("windows")  # live Windows trampoline E2E
 
 _FORK_BOMB_BAT = (
     "@echo off\r\n"

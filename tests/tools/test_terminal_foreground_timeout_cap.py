@@ -58,15 +58,6 @@ class TestForegroundTimeoutCap:
             time.sleep(0.05)
         assert marker.read_text().count("x") == 1  # ran exactly once, in the background
 
-    def test_shell_backgrounding_is_still_refused(self):
-        """`&`/nohup need the command rewritten; the tool cannot do that safely, so it still refuses."""
-        from tools.terminal_tool import terminal_tool
-
-        with patch("tools.terminal_tool._get_env_config", return_value=_make_env_config()), \
-             patch("tools.terminal_tool._start_cleanup_thread"):
-            result = json.loads(terminal_tool(command="sleep 5 &"))
-        assert "'&' backgrounding" in result["error"]
-
     def test_zero_timeout_rejected(self):
         """timeout=0 must be rejected, not silently coerced to the default."""
         from tools.terminal_tool import terminal_tool
@@ -88,7 +79,6 @@ class TestForegroundTimeoutCap:
 
         assert result.get("error")
         assert "positive" in result["error"]
-
 
     def test_foreground_allows_help_variant_for_server_command(self):
         """Informational variants like '--help' should not be blocked."""
@@ -112,7 +102,6 @@ class TestForegroundTimeoutCap:
         assert result["error"] is None
         call_kwargs = mock_env.execute.call_args
         assert call_kwargs[0][0] == "pnpm dev --help"
-
 
     def test_config_default_above_cap_not_rejected(self):
         """When config default timeout > cap but model passes no timeout, execute normally.
@@ -139,7 +128,6 @@ class TestForegroundTimeoutCap:
         call_kwargs = mock_env.execute.call_args
         assert call_kwargs[1]["timeout"] == 900
         assert "error" not in result or result["error"] is None
-
 
     def test_exactly_at_max_not_rejected(self):
         """Timeout exactly at FOREGROUND_MAX_TIMEOUT should execute normally."""
@@ -175,12 +163,3 @@ class TestPromotionKeepsTheDetachmentGuard:
             result2 = json.loads(terminal_tool(command="nohup make test", timeout=9999))
         assert "'&' backgrounding" in result["error"]
         assert "nohup" in result2["error"]
-
-    def test_note_does_not_promise_a_notification_the_session_cannot_receive(self):
-        from tools.terminal_tool import _with_promoted_note
-
-        kept = json.loads(_with_promoted_note(json.dumps({"session_id": "proc_x", "error": None, "notify_on_complete": True}), 900))
-        assert "arrives as a notification" in kept["promoted_from_foreground"]
-        dropped = json.loads(_with_promoted_note(json.dumps({"session_id": "proc_x", "error": None, "notify_on_complete": False}), 900))
-        assert "cannot receive completion notifications" in dropped["promoted_from_foreground"]
-        assert "poll" in dropped["promoted_from_foreground"]

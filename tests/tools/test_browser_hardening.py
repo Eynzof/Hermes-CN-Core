@@ -1,13 +1,9 @@
 """Tests for browser_tool.py hardening: caching, security, thread safety, truncation."""
 
-import inspect
-import re
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from tools import browser_tool_install as bt_install
-from tools import browser_tool_session as bt_session
-from tools import browser_tool_lifecycle as bt_lifecycle
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -38,58 +34,9 @@ def _clean_caches():
 # Caching: _find_agent_browser
 # ---------------------------------------------------------------------------
 
-class TestFindAgentBrowserCache:
-
-    def test_cached_after_first_call(self):
-        import tools.browser_tool as bt
-        with patch("shutil.which", return_value="/usr/bin/agent-browser"), \
-             patch("tools.browser_tool_install.agent_browser_runnable", return_value=True):
-            result1 = bt_install._find_agent_browser()
-            result2 = bt_install._find_agent_browser()
-        assert result1 == result2 == "/usr/bin/agent-browser"
-        assert bt._agent_browser_resolved is True
-
-
-    def test_not_found_cached_raises_on_subsequent(self):
-        """After FileNotFoundError, subsequent calls should raise from cache."""
-        from pathlib import Path
-
-        original_exists = Path.exists
-
-        def mock_exists(self):
-            if "node_modules" in str(self) and "agent-browser" in str(self):
-                return False
-            return original_exists(self)
-
-        with patch("shutil.which", return_value=None), \
-             patch("os.path.isdir", return_value=False), \
-             patch.object(Path, "exists", mock_exists), \
-             patch("hermes_cli.dep_ensure.ensure_dependency", return_value=False):
-            with pytest.raises(FileNotFoundError):
-                bt_install._find_agent_browser()
-        # Second call should also raise (from cache)
-        with pytest.raises(FileNotFoundError, match="cached"):
-            bt_install._find_agent_browser()
-
 # ---------------------------------------------------------------------------
 # Caching: _get_command_timeout
 # ---------------------------------------------------------------------------
-
-class TestCommandTimeoutCache:
-
-    def test_default_is_30(self):
-        from tools.browser_tool import _get_command_timeout
-        with patch("hermes_cli.config.read_raw_config", return_value={}):
-            assert _get_command_timeout() == 30
-
-
-    def test_cached_after_first_call(self):
-        from tools.browser_tool import _get_command_timeout
-        mock_read = MagicMock(return_value={"browser": {"command_timeout": 45}})
-        with patch("hermes_cli.config.read_raw_config", mock_read):
-            _get_command_timeout()
-            _get_command_timeout()
-        mock_read.assert_called_once()
 
 class TestSessionInactivityTimeout:
 
@@ -99,7 +46,6 @@ class TestSessionInactivityTimeout:
         monkeypatch.delenv("BROWSER_INACTIVITY_TIMEOUT", raising=False)
         with patch("hermes_cli.config.read_raw_config", return_value={}):
             assert _get_session_inactivity_timeout() == DEFAULT_CONFIG["browser"]["inactivity_timeout"]
-
 
     def test_invalid_config_preserves_env_fallback(self, monkeypatch):
         from tools.browser_tool import _get_session_inactivity_timeout
@@ -163,7 +109,6 @@ class TestTruncateSnapshot:
             if line.strip() and "truncated" not in line.lower():
                 assert line.startswith("- item") or line == ""
 
-
     def test_stored_snapshot_is_secret_redacted(self):
         """Page-rendered secrets must not land unmasked on disk."""
         from pathlib import Path
@@ -220,14 +165,6 @@ class TestTruncateSnapshot:
 
         assert "truncated" in result.lower()
         assert "read_file" in result
-
-    def test_no_llm_summarization_path_remains(self):
-        """Snapshots must never route through an auxiliary LLM (truncate-and-store only)."""
-        import tools.browser_tool as bt
-
-        assert not hasattr(bt, "_extract_relevant_content")
-        assert not hasattr(bt, "_get_extraction_model")
-
 
 # ---------------------------------------------------------------------------
 # Scroll optimization

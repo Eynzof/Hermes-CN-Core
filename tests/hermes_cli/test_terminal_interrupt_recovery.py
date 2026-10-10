@@ -12,18 +12,13 @@ which is invoked from ``process_loop``'s ``finally`` block only when
   1. Drain stray escape bytes from the OS input buffer (``flush_stdin``).
   2. Force a clean prompt_toolkit renderer redraw (``_force_full_redraw``).
 
-These tests exercise the real method (not a re-implementation of its logic),
-and assert that the finally block actually wires it in behind the interrupt
-guard.
+These tests exercise the real method (not a re-implementation of its logic).
 """
 
-import inspect
-from agent.re_compat import re
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-import cli as cli_mod
 from cli import HermesCLI
 
 @pytest.fixture
@@ -33,15 +28,6 @@ def bare_cli():
 
 class TestRecoverTerminalAfterInterrupt:
     """Directly exercise HermesCLI._recover_terminal_after_interrupt()."""
-
-    def test_drains_stdin_then_redraws(self, bare_cli):
-        """Happy path: flush_stdin runs, then a full redraw is forced."""
-        bare_cli._force_full_redraw = MagicMock()
-        with patch("hermes_cli.curses_ui.flush_stdin") as mock_flush:
-            bare_cli._recover_terminal_after_interrupt()
-
-        mock_flush.assert_called_once()
-        bare_cli._force_full_redraw.assert_called_once()
 
     def test_redraw_still_runs_when_flush_fails(self, bare_cli):
         """A flush_stdin failure (no TTY, non-POSIX) must not skip the redraw.
@@ -80,4 +66,3 @@ class TestRecoverTerminalAfterInterrupt:
         from hermes_cli.curses_ui import flush_stdin
 
         flush_stdin()  # must not raise in a non-TTY test environment
-

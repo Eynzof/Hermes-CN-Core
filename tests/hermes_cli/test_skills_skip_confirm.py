@@ -49,6 +49,10 @@ class TestHandleSkillsSlashUninstallFlags:
             assert kwargs.get("invalidate_cache") is False
 
 
+            # We don't get to the input() call because resolve returns None,
+            # but the parameter wiring is correct
+
+
 class TestDoUninstallSkipConfirm:
     """Test that do_uninstall respects skip_confirm parameter."""
 

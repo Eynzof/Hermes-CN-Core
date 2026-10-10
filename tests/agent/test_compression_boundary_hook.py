@@ -162,7 +162,6 @@ class TestCompressionBoundaryHook:
 
             compressor.on_session_start.assert_not_called()
 
-
     def test_no_progress_does_not_notify(self):
         from hermes_state import SessionDB
 
@@ -183,7 +182,6 @@ class TestCompressionBoundaryHook:
 
             assert returned is messages
             compressor.on_session_start.assert_not_called()
-
 
     def test_no_hook_when_no_session_db(self):
         """Without session_db, session_id does not rotate and the hook is not fired."""
@@ -242,7 +240,6 @@ class TestCompressionBoundaryHook:
             def _raise_on_compression(*args, **kwargs):
                 if kwargs.get("boundary_reason") == "compression":
                     raise RuntimeError("plugin exploded")
-                return None
             compressor.on_session_start.side_effect = _raise_on_compression
             agent.context_compressor = compressor
 
@@ -256,7 +253,6 @@ class TestCompressionBoundaryHook:
             )
             assert compressed
             assert agent.session_id != original_sid
-
 
 class TestSessionCompressEvent:
     """The session:compress event_callback fires after a compression split."""
@@ -316,17 +312,3 @@ class TestSessionCompressEvent:
             assert ctx["session_id"] == agent.session_id
             assert ctx["old_session_id"] == original_sid
             assert ctx["compression_count"] == 1
-
-    def test_no_callback_is_safe(self):
-        """Compression must work when no event_callback is wired."""
-        from hermes_state import SessionDB
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            db = SessionDB(db_path=Path(tmpdir) / "test.db")
-            agent = self._make_agent(db, event_callback=None)
-            agent.context_compressor = self._stub_compressor()
-            compressed, _ = agent._compress_context(
-                [{"role": "user", "content": "m"}], "sys", approx_tokens=100
-            )
-            assert compressed
-

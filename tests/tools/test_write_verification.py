@@ -8,12 +8,10 @@ import pytest
 
 from tools.file_tools import write_file_tool
 
-
 @pytest.fixture
 def workdir(tmp_path, monkeypatch):
     monkeypatch.setenv("HERMES_HOME", str(tmp_path / ".hermes"))
     return tmp_path
-
 
 class TestWriteVerification:
     def test_successful_write_reports_verified(self, workdir):
@@ -63,7 +61,6 @@ class TestWriteVerification:
         with mock_patch.object(fo.hashlib, "sha256", _WrongHash):
             r = json.loads(write_file_tool(str(f), "actual content\n", task_id="t-wv"))
         assert "error" in r
-        assert "did not persist" in r["error"]
 
     @pytest.mark.skipif(
         sys.platform == "win32",

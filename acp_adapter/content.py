@@ -78,6 +78,9 @@ def _path_from_file_uri(uri: str) -> Path | None:
     if not raw:
         return None
 
+    # urlparse treats a bare Windows drive as a URI scheme.
+    if len(raw) >= 3 and raw[0].isalpha() and raw[1] == ":" and raw[2] in "/\\":
+        raw = "file:///" + raw.replace("\\", "/")
     parsed = urlparse(raw)
     if parsed.scheme and parsed.scheme != "file":
         return None
@@ -102,7 +105,11 @@ def _path_from_file_uri(uri: str) -> Path | None:
         drive, rest = path_text[0], path_text[2:]
     else:
         return Path(path_text)
-    return Path("/mnt") / drive.lower() / rest.lstrip("/\\").replace("\\", "/")
+    import os
+    rest = rest.lstrip("/\\").replace("\\", "/")
+    if os.name == "nt":
+        return Path(f"{drive}:/{rest}")
+    return Path("/mnt") / drive.lower() / rest
 
 
 def _decode_text_bytes(data: bytes, mime_type: str | None) -> str | None:

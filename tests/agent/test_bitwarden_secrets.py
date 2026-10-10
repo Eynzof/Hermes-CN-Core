@@ -1,9 +1,7 @@
 """Hermetic tests for the Bitwarden Secrets Manager integration.
 
-We never hit GitHub or Bitwarden in tests — subprocess + urllib are
-mocked so the suite stays fast and offline-safe.  The "live" pull and
-binary download are exercised manually by `hermes secrets bitwarden
-setup` outside of pytest.
+Secret/cache behavior stays offline. PM acquisition and executable invocation
+are exercised by tests/pm/test_security_consumers.py.
 """
 from __future__ import annotations
 
@@ -17,7 +15,6 @@ import stat
 import subprocess
 import sys
 import time
-import zipfile
 from pathlib import Path
 from unittest import mock
 
@@ -29,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from agent.secret_sources import bitwarden as bw  # noqa: E402
+from agent.secret_sources import bitwarden as bw
 
 
 @pytest.fixture(autouse=True)
@@ -203,7 +200,7 @@ def test_fetch_server_url_sets_env(monkeypatch, tmp_path):
         captured_env.update(kwargs["env"])
         return mock.Mock(returncode=0, stdout=payload, stderr="")
 
-    monkeypatch.setattr(bw.subprocess, "run", fake_run)
+    monkeypatch.setattr(subprocess, "run", fake_run)
 
     bw.fetch_bitwarden_secrets(
         access_token="0.t",
@@ -313,7 +310,7 @@ def test_disk_cache_key_mismatch_triggers_refetch(monkeypatch, tmp_path):
     def fake_run(*a, **kw):
         call_count["n"] += 1
         return mock.Mock(returncode=0, stdout=payload, stderr="")
-    monkeypatch.setattr(bw.subprocess, "run", fake_run)
+    monkeypatch.setattr(subprocess, "run", fake_run)
     bw._reset_cache_for_tests(home)
 
     # Write a cache entry for a DIFFERENT token/project pair
@@ -339,6 +336,7 @@ def test_disk_cache_key_mismatch_triggers_refetch(monkeypatch, tmp_path):
 
 
 
+@pytest.mark.platforms("linux")
 def test_encrypted_cache_writes_without_plaintext(monkeypatch, tmp_path):
     """Encrypted cache stores last-good secrets without raw values on disk."""
     home = tmp_path / ".hermes"
@@ -348,7 +346,7 @@ def test_encrypted_cache_writes_without_plaintext(monkeypatch, tmp_path):
     payload = _fake_bws_payload([{"key": "K1", "value": "secret-value"}])
 
     monkeypatch.setattr(
-        bw.subprocess,
+        subprocess,
         "run",
         lambda *a, **kw: mock.Mock(returncode=0, stdout=payload, stderr=""),
     )
@@ -412,7 +410,7 @@ def test_encrypted_cache_falls_back_on_network_error(monkeypatch, tmp_path):
             stderr="Error: network is unreachable",
         )
 
-    monkeypatch.setattr(bw.subprocess, "run", fake_run)
+    monkeypatch.setattr(subprocess, "run", fake_run)
     bw._reset_cache_for_tests(home)
 
     first, _ = bw.fetch_bitwarden_secrets(
@@ -480,7 +478,7 @@ def test_stale_disk_cache_returned_when_bws_fails(monkeypatch, tmp_path):
     def fail_run(*a, **kw):
         return mock.Mock(returncode=1, stdout="",
                          stderr="Error: dns resolution failed")
-    monkeypatch.setattr(bw.subprocess, "run", fail_run)
+    monkeypatch.setattr(subprocess, "run", fail_run)
 
     secrets, warnings = bw.fetch_bitwarden_secrets(
         access_token="0.t", project_id="proj-1", binary=fake_binary,
@@ -513,7 +511,7 @@ def test_stale_fallback_skipped_on_auth_failure(monkeypatch, tmp_path):
     _seed_stale_disk_cache(home, secrets={"K1": "v1"}, age_seconds=3600)
 
     monkeypatch.setattr(
-        bw.subprocess, "run",
+        subprocess, "run",
         lambda *a, **kw: mock.Mock(returncode=1, stdout="",
                                    stderr="Error: unauthorized (401)"),
     )

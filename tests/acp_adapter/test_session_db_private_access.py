@@ -7,13 +7,9 @@ Verifies that:
 3. update_session_meta updates the correct columns atomically.
 """
 
-import ast
 import json
-import tempfile
-from pathlib import Path
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock
 
-import pytest
 
 from hermes_state import SessionDB
 from acp_adapter.session import SessionManager
@@ -34,6 +30,7 @@ def _mock_agent():
 class TestUpdateSessionMeta:
     """Direct unit tests for the new public method."""
 
+
     def test_updates_model_config(self, tmp_path):
         db = _tmp_db(tmp_path)
         db.create_session("s1", source="acp", model="gpt-4")
@@ -48,24 +45,12 @@ class TestUpdateSessionMeta:
 
 
 
-    def test_uses_execute_write_not_private_api(self, tmp_path):
-        """update_session_meta must route through _execute_write, not _conn directly."""
-        db = _tmp_db(tmp_path)
-        db.create_session("s4", source="acp")
 
-        call_count = [0]
-        original = db._execute_write
 
-        def patched(fn, *args, **kwargs):
-            call_count[0] += 1
-            return original(fn, *args, **kwargs)
 
-        db._execute_write = patched
-        db.update_session_meta("s4", json.dumps({"cwd": "."}), model="m")
-
-        assert call_count[0] >= 1, (
-            "update_session_meta must call _execute_write at least once"
-        )
+# ---------------------------------------------------------------------------
+# AST check: session.py must not access db._lock or db._conn
+# ---------------------------------------------------------------------------
 
 
 

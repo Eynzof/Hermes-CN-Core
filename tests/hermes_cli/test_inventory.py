@@ -42,7 +42,7 @@ def _cfg(model=None, providers=None, custom_providers=None) -> dict:
 
 
 def test_load_picker_context_coerces_numeric_yaml_provider():
-    """PyYAML parses unquoted `provider: 2070` as int; picker context must be str.
+    """YAML parses unquoted `provider: 2070` as int; picker context must be str.
 
     Desktop GET /api/model/options crashed when a custom endpoint was named
     after a GPU: current_provider.strip() and providers dict keys .lower().
@@ -118,7 +118,18 @@ def test_build_models_payload_returns_expected_shape():
          "source": "built-in"},
     ]
     ctx = _empty_ctx(provider="openrouter", model="m1", base_url="")
-    with _list_auth_returning(rows):
+    raw_config = {
+        "moa": {
+            "presets": {
+                "default": {"enabled": True},
+            },
+        },
+    }
+    with (
+        _list_auth_returning(rows),
+        patch("hermes_cli.config.read_raw_config", return_value=raw_config),
+        patch("hermes_cli.config.load_config", return_value=raw_config),
+    ):
         payload = build_models_payload(ctx)
     assert set(payload.keys()) == {"providers", "model", "provider"}
     assert payload["model"] == "m1"
@@ -128,222 +139,28 @@ def test_build_models_payload_returns_expected_shape():
     assert payload["providers"][1:] == rows
 
 
-def test_build_models_payload_does_not_call_provider_model_ids():
-    """``build_models_payload`` is a thin shape adapter — it delegates the
-    actual curation to ``list_authenticated_providers`` (which DOES call
-    ``cached_provider_model_ids`` internally for live discovery, with disk
-    caching). ``build_models_payload`` itself must not call the live fetcher
-    directly; the test pins that boundary.
-    """
-    rows = [{"slug": "nous", "name": "Nous", "models": ["hermes-4-405b"],
-             "total_models": 1, "is_current": False, "is_user_defined": False,
-             "source": "built-in"}]
-    ctx = _empty_ctx()
-    with _list_auth_returning(rows), \
-         patch("hermes_cli.models.provider_model_ids") as mock_pm:
-        build_models_payload(ctx)
-    mock_pm.assert_not_called()
-
-
-def test_build_models_payload_uses_cached_nous_tier_by_default():
-    """Picker payloads should not force fresh Nous account checks.
-
-    Desktop/status picker opens are request/response UI paths. They can hit
-    the short free-tier cache; explicit model/auth flows can still opt into a
-    fresh account check when needed.
-    """
-    ctx = _empty_ctx(provider="nous", model="openai/gpt-5.5")
-    rows = [_nous_row()]
-    with patch(
-        "hermes_cli.model_switch.list_authenticated_providers",
-        return_value=rows,
-    ) as mock_list:
-        build_models_payload(ctx)
-
-    mock_list.assert_called_once()
-    assert mock_list.call_args.kwargs["force_fresh_nous_tier"] is False
-
-
-def test_build_models_payload_can_force_fresh_nous_tier():
-    ctx = _empty_ctx(provider="nous", model="openai/gpt-5.5")
-    rows = [_nous_row()]
-    with patch(
-        "hermes_cli.model_switch.list_authenticated_providers",
-        return_value=rows,
-    ) as mock_list:
-        build_models_payload(ctx, force_fresh_nous_tier=True)
-
-    mock_list.assert_called_once()
-    assert mock_list.call_args.kwargs["force_fresh_nous_tier"] is True
-
-
-def test_build_models_payload_can_skip_custom_provider_probes():
-    ctx = _empty_ctx()
-    rows = []
-    with patch(
-        "hermes_cli.model_switch.list_authenticated_providers",
-        return_value=rows,
-    ) as mock_list:
-        build_models_payload(ctx, probe_custom_providers=False)
-
-    mock_list.assert_called_once()
-    assert mock_list.call_args.kwargs["probe_custom_providers"] is False
-
-
-def test_apply_capabilities_includes_models_dev_picker_metadata():
-    rows = [{"slug": "deepseek", "models": ["deepseek-reasoner"]}]
-    metadata = SimpleNamespace(
-        supports_tools=True,
-        supports_vision=False,
-        supports_pdf=True,
-        supports_audio=True,
-        supports_video=True,
-        supports_reasoning=True,
-        supports_reasoning_control=True,
-        open_weights=True,
-        context_window=131_072,
-        max_output_tokens=65_536,
-        model_family="deepseek",
-    )
-
+def test_build_models_payload_hides_moa_without_raw_preset():
+    """Strict opt-in (#63353): no ``moa`` row when the raw config has no enabled preset —
+    the DEFAULT_CONFIG ``default`` preset everyone gets via ``load_config()`` is not a user choice."""
+    rows = [
+        {"slug": "openrouter", "name": "OpenRouter", "models": ["m1"],
+         "total_models": 1, "is_current": True, "is_user_defined": False,
+         "source": "built-in"},
+    ]
+    ctx = _empty_ctx(provider="openrouter", model="m1", base_url="")
+    # load_config() still returns the synthesized DEFAULT_CONFIG moa preset.
+    synthesized = {"moa": {"presets": {"default": {"enabled": True}}}}
     with (
-        patch("agent.models_dev.get_model_capabilities", return_value=metadata),
-        patch("hermes_cli.models.model_supports_fast_mode", return_value=False),
+        _list_auth_returning(rows),
+        patch("hermes_cli.config.read_raw_config", return_value={}),
+        patch("hermes_cli.config.load_config", return_value=synthesized),
     ):
-        _apply_capabilities(rows)
-
-    assert rows[0]["capabilities"]["deepseek-reasoner"] == {
-        "fast": False,
-        "reasoning": True,
-        "supports_tools": True,
-        "supports_vision": False,
-        "supports_pdf": True,
-        "supports_audio": True,
-        "supports_video": True,
-        "supports_reasoning": True,
-        "supports_reasoning_control": True,
-        "open_weights": True,
-        "context_window": 131_072,
-        "max_output_tokens": 65_536,
-        "model_family": "deepseek",
-    }
+        payload = build_models_payload(ctx)
+    assert [r["slug"] for r in payload["providers"]] == ["openrouter"]
 
 
-def test_apply_capabilities_keeps_legacy_shape_for_unknown_models():
-    rows = [{"slug": "custom:local", "models": ["private-model"]}]
-
-    with (
-        patch("agent.models_dev.get_model_capabilities", return_value=None),
-        patch("hermes_cli.models.model_supports_fast_mode", return_value=True),
-    ):
-        _apply_capabilities(rows)
-
-    assert rows[0]["capabilities"]["private-model"] == {
-        "fast": True,
-        "reasoning": True,
-    }
 
 
-def test_apply_capabilities_resolves_custom_canonical_provider_alias():
-    rows = [{"slug": "custom:deepseek", "models": ["deepseek-v4-pro"]}]
-    metadata = SimpleNamespace(
-        supports_tools=True,
-        supports_vision=False,
-        supports_pdf=False,
-        supports_audio=False,
-        supports_video=False,
-        supports_reasoning=True,
-        supports_reasoning_control=True,
-        open_weights=True,
-        context_window=1_000_000,
-        max_output_tokens=384_000,
-        model_family="deepseek-thinking",
-    )
-
-    def lookup(provider, _model):
-        return metadata if provider == "deepseek" else None
-
-    with (
-        patch("agent.models_dev.get_model_capabilities", side_effect=lookup),
-        patch("hermes_cli.models.model_supports_fast_mode", return_value=False),
-    ):
-        _apply_capabilities(rows)
-
-    assert rows[0]["capabilities"]["deepseek-v4-pro"]["context_window"] == 1_000_000
-    assert rows[0]["capabilities"]["deepseek-v4-pro"]["open_weights"] is True
-
-
-def test_build_models_payload_can_probe_only_current_custom_provider():
-    ctx = _empty_ctx()
-    rows = []
-    with patch(
-        "hermes_cli.model_switch.list_authenticated_providers",
-        return_value=rows,
-    ) as mock_list:
-        build_models_payload(
-            ctx,
-            probe_custom_providers=False,
-            probe_current_custom_provider=True,
-        )
-
-    mock_list.assert_called_once()
-    assert mock_list.call_args.kwargs["probe_custom_providers"] is False
-    assert mock_list.call_args.kwargs["probe_current_custom_provider"] is True
-
-
-def test_cli_model_picker_forwards_force_refresh_to_probe_flags():
-    """CLI /model picker must pass force_refresh to probe flags (#65652, #65650).
-
-    Normal open (/model bare) skips non-current probes; /model --refresh probes
-    all custom providers to freshen their model lists.
-    """
-    ctx = _empty_ctx()
-
-    # Normal open — skip non-current probes
-    force_refresh = False
-    with patch(
-        "hermes_cli.model_switch.list_authenticated_providers",
-        return_value=[],
-    ) as mock_list:
-        build_models_payload(
-            ctx,
-            probe_custom_providers=force_refresh,
-            probe_current_custom_provider=not force_refresh,
-        )
-    assert mock_list.call_args.kwargs["probe_custom_providers"] is False
-    assert mock_list.call_args.kwargs["probe_current_custom_provider"] is True
-
-    # Refresh open — probe everything
-    force_refresh = True
-    with patch(
-        "hermes_cli.model_switch.list_authenticated_providers",
-        return_value=[],
-    ) as mock_list:
-        build_models_payload(
-            ctx,
-            probe_custom_providers=force_refresh,
-            probe_current_custom_provider=not force_refresh,
-        )
-    assert mock_list.call_args.kwargs["probe_custom_providers"] is True
-    assert mock_list.call_args.kwargs["probe_current_custom_provider"] is False
-
-
-def test_list_authenticated_providers_force_fresh_is_keyword_only():
-    """``force_fresh_nous_tier`` must be keyword-only on the public listing API.
-
-    It was inserted between ``custom_providers`` and ``max_models``; making it
-    keyword-only ensures no positional caller passing ``max_models`` as the 5th
-    arg silently mis-binds it to the tier-refresh flag. Pin the contract so a
-    future signature edit that drops the ``*`` separator is caught.
-    """
-    import inspect
-
-    from hermes_cli.model_switch import list_authenticated_providers
-
-    sig = inspect.signature(list_authenticated_providers)
-    param = sig.parameters["force_fresh_nous_tier"]
-    assert param.kind is inspect.Parameter.KEYWORD_ONLY
-    assert param.default is False
 
 
 def test_list_authenticated_providers_warns_when_catalog_falls_back(monkeypatch):
@@ -414,7 +231,8 @@ def test_pricing_can_force_fresh_nous_tier():
 def test_include_unconfigured_appends_canonical_skeletons():
     """include_unconfigured=True adds CANONICAL_PROVIDERS rows that
     list_authenticated_providers didn't emit. Skeleton rows have empty
-    models and source='canonical'."""
+    models and source='canonical'. MoA is a virtual routing mode, not a
+    canonical provider, so it is excluded — see issue #63353."""
     rows = [
         {"slug": "openrouter", "name": "OpenRouter", "models": ["m1"],
          "total_models": 1, "is_current": True, "is_user_defined": False,
@@ -424,12 +242,16 @@ def test_include_unconfigured_appends_canonical_skeletons():
     with _list_auth_returning(rows):
         payload = build_models_payload(ctx, include_unconfigured=True)
     # All canonical providers other than openrouter should appear as
-    # skeleton rows.
-    from hermes_cli.models import CANONICAL_PROVIDERS
+    # skeleton rows. MoA is virtual/opt-in and excluded from unconfigured;
+    # so is a pre-release provider the user has not signed into.
+    from hermes_cli.models_catalog_static import listed_canonical_providers
 
     seen_slugs = {r["slug"] for r in payload["providers"]}
-    for entry in CANONICAL_PROVIDERS:
+    for entry in listed_canonical_providers():
+        if entry.slug == "moa":
+            continue  # virtual; only shown when explicitly configured
         assert entry.slug in seen_slugs, f"missing {entry.slug}"
+    assert "solstice" not in seen_slugs
     # Skeletons have empty models and source='canonical'.
     skeletons = [r for r in payload["providers"]
                  if r.get("source") == "canonical"]
@@ -620,7 +442,6 @@ def test_picker_hints_api_key_warning_format():
         r for r in payload["providers"] if r["slug"] == "anthropic"
     )
     assert "ANTHROPIC_API_KEY" in anthropic["warning"]
-    assert anthropic["warning"].startswith("paste ")
 
 
 # ─── canonical_order ───────────────────────────────────────────────────
@@ -661,6 +482,39 @@ def test_canonical_order_uses_slug_not_is_user_defined_flag():
     )
 
 
+def test_canonical_order_with_unconfigured_preserves_full_universe():
+    """Combined picker call: include_unconfigured + picker_hints +
+    canonical_order is the production TUI shape. Verify the result
+    has CANONICAL_PROVIDERS in declaration order, hints applied,
+    custom rows trailing. MoA is excluded from unconfigured skeletons
+    (virtual, opt-in only — issue #63353).
+    """
+    from hermes_cli.models import CANONICAL_PROVIDERS
+
+    rows = [
+        {"slug": "custom:Ollama", "name": "Ollama", "models": [],
+         "total_models": 0, "is_current": False, "is_user_defined": True,
+         "source": "user-config"},
+    ]
+    ctx = _empty_ctx()
+    with _list_auth_returning(rows):
+        payload = build_models_payload(
+            ctx,
+            include_unconfigured=True,
+            picker_hints=True,
+            canonical_order=True,
+        )
+    slugs = [r["slug"] for r in payload["providers"]]
+    # First row: first canonical provider in declaration order.
+    assert slugs[0] == CANONICAL_PROVIDERS[0].slug
+    # Custom row trails all visible canonical rows. MoA is virtual/opt-in
+    # so it is excluded from the unconfigured skeleton set, and so is an
+    # unlisted pre-release provider.
+    from hermes_cli.models_catalog_static import listed_canonical_providers
+    visible_canonical_count = sum(
+        1 for e in listed_canonical_providers() if e.slug != "moa"
+    )
+    assert slugs.index("custom:Ollama") >= visible_canonical_count
 
 
 # ─── Integration: end-to-end through real load_picker_context ──────────
@@ -872,26 +726,6 @@ def test_build_models_payload_no_max_models_returns_full_list():
 # ─── refresh flag (cache-bust) ─────────────────────────────────────────
 
 
-def test_build_models_payload_forwards_refresh_flag():
-    """build_models_payload must forward refresh= to list_authenticated_providers.
-
-    The desktop picker's "Refresh Models" control passes refresh=True; the
-    flag has to reach list_authenticated_providers so the per-provider
-    model-id cache gets busted. Default opens pass refresh=False.
-    """
-    captured: dict = {}
-
-    def _capture(*args, **kwargs):
-        captured["refresh"] = kwargs.get("refresh")
-        return []
-
-    with patch("hermes_cli.model_switch.list_authenticated_providers", side_effect=_capture):
-        build_models_payload(_empty_ctx())
-    assert captured["refresh"] is False
-
-    with patch("hermes_cli.model_switch.list_authenticated_providers", side_effect=_capture):
-        build_models_payload(_empty_ctx(), refresh=True)
-    assert captured["refresh"] is True
 
 
 def test_list_authenticated_providers_refresh_busts_cache():
@@ -906,23 +740,125 @@ def test_list_authenticated_providers_refresh_busts_cache():
         assert clear.call_count == 1
 
 
-# ─── _apply_featured (one-flagship-per-lab shortlist) ──────────────────
+def test_picker_metadata_uses_one_config_read_for_real_models_dev_lookups(tmp_path, monkeypatch):
+    """Custom-provider metadata stays constant-read as its model count grows (#119048).
 
+    ``get_model_capabilities`` and ``get_model_info`` deliberately stay real:
+    each lookup resolves ``providers.lab.catalog_provider`` before consulting
+    the seeded models.dev catalog.  Removing snapshot threading from that
+    path makes the larger payload re-open config.yaml once per lookup.
+    """
+    from agent import models_dev
+    from hermes_cli import config as config_module
 
-class _FakeInfo:
-    def __init__(self, release_date: str) -> None:
-        self.release_date = release_date
+    home = tmp_path / "hermes"
+    home.mkdir()
+    (home / "config.yaml").write_text(
+        "providers:\n"
+        "  lab:\n"
+        "    catalog_provider: openrouter\n"
+        "model_overrides: {}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HERMES_HOME", str(home))
+    config_module._LOAD_CONFIG_CACHE.clear()
+    config_module._RAW_CONFIG_CACHE.clear()
 
+    models = [
+        "openai/model-a", "anthropic/model-b", "openai/model-c",
+        "anthropic/model-d", "openai/model-e", "anthropic/model-f",
+        "openai/model-g", "anthropic/model-h",
+    ]
+    registry = {
+        "openrouter": {
+            "models": {
+                model: {
+                    "id": model,
+                    "tool_call": True,
+                    "reasoning": model.startswith("openai/"),
+                    "release_date": f"2026-01-{index:02d}",
+                    "limit": {"context": 200000, "output": 8192},
+                }
+                for index, model in enumerate(models, start=1)
+            },
+        },
+    }
+    monkeypatch.setattr(models_dev, "_models_dev_cache", registry)
+    monkeypatch.setattr(models_dev, "_models_dev_cache_time", float("inf"))
 
-def _apply_featured_with_dates(rows, dates: dict[str, str]):
-    """Run _apply_featured with a deterministic models.dev stub."""
-    from hermes_cli import inventory
+    snapshot = config_module.load_config_readonly()
+    baseline = [
+        (
+            models_dev.get_model_capabilities("custom:lab", model),
+            models_dev.get_model_info("custom:lab", model),
+        )
+        for model in models
+    ]
+    snapshot_result = [
+        (
+            models_dev.get_model_capabilities("custom:lab", model, config=snapshot),
+            models_dev.get_model_info("custom:lab", model, config=snapshot),
+        )
+        for model in models
+    ]
+    assert snapshot_result == baseline
 
-    def _fake_get_model_info(provider, model):
-        return _FakeInfo(dates[model]) if model in dates else None
+    def _rows(model_ids):
+        return [{
+            "slug": "custom:lab",
+            "name": "Lab",
+            "models": model_ids,
+            "total_models": len(model_ids),
+            "is_current": False,
+            "is_user_defined": True,
+            "source": "user-config",
+        }]
 
-    with patch("agent.models_dev.get_model_info", side_effect=_fake_get_model_info):
-        inventory._apply_featured(rows)
+    def _build_and_count(model_ids):
+        cfg_get_calls = 0
+        real_cfg_get = models_dev._cfg_get
 
+        def counted_cfg_get(*keys, **kwargs):
+            nonlocal cfg_get_calls
+            cfg_get_calls += 1
+            return real_cfg_get(*keys, **kwargs)
 
+        with (
+            _list_auth_returning(_rows(model_ids)),
+            patch("hermes_cli.inventory._local_runtime_row", return_value=None),
+            patch("hermes_cli.inventory._moa_provider_row", return_value=None),
+            patch("hermes_cli.models.model_supports_fast_mode", return_value=False),
+            patch("hermes_cli.inventory._reasoning_catalog_reader", return_value=None),
+            patch.object(models_dev, "_cfg_get", side_effect=counted_cfg_get),
+            patch.object(
+                config_module, "load_config_readonly",
+                wraps=config_module.load_config_readonly,
+            ) as readonly_load,
+            patch.object(
+                config_module, "_load_config_impl", wraps=config_module._load_config_impl,
+            ) as config_impl,
+        ):
+            payload = build_models_payload(
+                _empty_ctx(), capabilities=True, featured=True,
+            )
+        return payload, cfg_get_calls, readonly_load.call_count, config_impl.call_count
 
+    small_payload, small_cfg_get, small_reads, small_impls = _build_and_count(models[:3])
+    large_payload, large_cfg_get, large_reads, large_impls = _build_and_count(models)
+
+    # Snapshot threading leaves _cfg_get's cheap dict traversals proportional
+    # to model count, while eliminating config/signature reads from the hot path.
+    assert small_cfg_get < large_cfg_get
+    assert (small_reads, large_reads) == (1, 1)
+    assert (small_impls, large_impls) == (1, 1)
+
+    small_row = small_payload["providers"][0]
+    large_row = large_payload["providers"][0]
+    assert small_row["capabilities"] == {
+        model: {"fast": False, "reasoning": model.startswith("openai/")}
+        for model in models[:3]
+    }
+    # #120217: ``providers.lab`` is a user-defined row, so its models: list is an explicit
+    # allow-list and is never shortlisted — the constant-read invariant above is now carried
+    # by the capabilities lookups alone.
+    assert large_row["featured_models"] == []

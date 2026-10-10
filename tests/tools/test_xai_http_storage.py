@@ -1,8 +1,7 @@
 """Tests for xAI Imagine storage helper behavior."""
 from __future__ import annotations
 
-
-import yaml
+import hermes_yaml as yaml
 
 
 def _invalidate_config_cache():
@@ -47,7 +46,7 @@ def test_invalid_storage_retention_falls_back_to_bounded_ttl(tmp_path, monkeypat
     }))
     _invalidate_config_cache()
 
-    from tools.xai_http import build_xai_storage_options
+    from tools.xai_http import SAFE_XAI_STORAGE_EXPIRES_AFTER_SECONDS, build_xai_storage_options
 
     storage = build_xai_storage_options(
         "video_gen",
@@ -56,4 +55,4 @@ def test_invalid_storage_retention_falls_back_to_bounded_ttl(tmp_path, monkeypat
     )
 
     assert storage is not None
-    assert storage["expires_after"] == 172800
+    assert storage["expires_after"] == SAFE_XAI_STORAGE_EXPIRES_AFTER_SECONDS

@@ -35,9 +35,11 @@ def worker_env(monkeypatch, tmp_path):
     try:
         tid = kb.create_task(conn, title="worker-test", assignee="test-worker")
         kb.claim_task(conn, tid)
+        run_id = kb._current_run_id(conn, tid)
     finally:
         conn.close()
     monkeypatch.setenv("HERMES_KANBAN_TASK", tid)
+    monkeypatch.setenv("HERMES_KANBAN_RUN_ID", str(run_id))
     return tid
 
 
@@ -131,6 +133,7 @@ def test_kanban_block_reason_scrubbed_jwt(worker_env):
         conn.close()
     # block_task stores reason as run.summary
     assert run is not None
+    assert run.outcome == "blocked"
     stored = run.summary or ""
     assert jwt not in stored
 
@@ -193,5 +196,6 @@ def test_kanban_complete_result_field_scrubbed(worker_env):
     finally:
         conn.close()
     assert run is not None
-    stored = run.summary or run.result if hasattr(run, "result") else run.summary or ""
-    assert secret not in (stored or "")
+    assert run.outcome == "completed"
+    stored = run.summary or ""
+    assert secret not in stored

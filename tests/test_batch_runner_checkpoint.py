@@ -2,7 +2,6 @@
 
 import orjson
 from pathlib import Path
-from threading import Lock
 
 import pytest
 
@@ -11,7 +10,6 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from batch_runner import BatchRunner, _process_batch_worker
-
 
 @pytest.fixture
 def runner(tmp_path):
@@ -26,7 +24,6 @@ def runner(tmp_path):
     r.output_file = output_file
     r.prompts_file = prompts_file
     return r
-
 
 class TestSaveCheckpoint:
     """Verify _save_checkpoint writes valid, atomic JSON."""
@@ -79,10 +76,8 @@ class TestSaveCheckpoint:
                      if ".tmp" in f.name]
         assert len(tmp_files) == 0
 
-
 class TestLoadCheckpoint:
     """Verify _load_checkpoint reads existing data or returns defaults."""
-
 
     def test_loads_existing_checkpoint(self, runner):
         data = {"run_name": "test_run", "completed_prompts": [5, 10, 15],

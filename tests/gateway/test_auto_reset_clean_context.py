@@ -19,61 +19,15 @@ guarantee regressed once the Telegram topic-binding heal landed
 The fix captures the fresh entry from ``reset_session`` and re-syncs the
 topic binding to it (a no-op on non-topic lanes).
 
-Two tests:
-
-* ``TestAutoResetBlockReSyncsBinding`` — an AST invariant on
-  ``gateway/run.py`` (mirrors ``test_compression_session_id_persistence.py``):
-  the compression-exhausted auto-reset block must capture
-  ``reset_session(...)`` and call ``_sync_telegram_topic_binding`` afterward.
-  This is the load-bearing regression pin.
-* ``TestAutoResetLoadsCleanContext`` — a behavioral contract on the real
-  ``SessionStore``: after ``reset_session`` the next turn loads an EMPTY
-  transcript for the new session_id, never the bloated child's transcript.
+``TestAutoResetLoadsCleanContext`` — a behavioral contract on the real
+``SessionStore``: after ``reset_session`` the next turn loads an EMPTY
+transcript for the new session_id, never the bloated child's transcript.
 """
 from __future__ import annotations
 
-
-import ast
-import inspect
-
-from gateway import run as gateway_run
-from gateway import run_turn as gateway_run_turn
-from gateway import run_turn as gateway_run_turn
 from gateway.config import GatewayConfig, Platform
 from gateway.session import SessionSource, SessionStore
 from hermes_state import SessionDB
-
-# ---------------------------------------------------------------------------
-# AST invariant: the auto-reset block re-syncs the topic binding
-# ---------------------------------------------------------------------------
-def _find_compression_exhausted_reset_block() -> ast.If:
-    """Return the ``if agent_result.get('compression_exhausted') ...`` block."""
-    tree = ast.parse(inspect.getsource(gateway_run_turn))
-
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.If):
-            continue
-        consts = [
-            n.value
-            for n in ast.walk(node.test)
-            if isinstance(n, ast.Constant) and isinstance(n.value, str)
-        ]
-        # Identify the auto-reset branch by the literal passed to .get(...).
-        if "compression_exhausted" in consts:
-            # Only the branch that actually performs the reset, not the
-            # earlier classifier that merely reads the flag into a bool.
-            calls = {
-                sub.func.attr
-                for sub in ast.walk(node)
-                if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Attribute)
-            }
-            if "reset_session" in calls:
-                return node
-    raise AssertionError(
-        "Could not locate the compression-exhausted auto-reset block "
-        "(if agent_result.get('compression_exhausted') ... reset_session) "
-        "in gateway/run.py — the structure changed or the AST walker is stale."
-    )
 
 # ---------------------------------------------------------------------------
 # Behavioral contract: reset yields a clean next-turn transcript

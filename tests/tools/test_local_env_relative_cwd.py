@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from tools.environments.local import LocalEnvironment, _resolve_local_initial_cwd
+import pytest
 
 
 _win32 = pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: Windows shell behavior with relative paths")

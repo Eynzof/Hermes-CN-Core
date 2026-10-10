@@ -64,6 +64,7 @@ def _fake_psutil(monkeypatch, *, wait_gone=None, wait_alive=None):
     return fake
 
 
+@pytest.mark.platforms("linux")
 class TestReapGatewayChildren:
     def test_reaps_orphaned_children_sigterm_then_wait(self, monkeypatch):
         monkeypatch.setattr(status, "_IS_WINDOWS", False)
@@ -89,6 +90,7 @@ class TestReapGatewayChildren:
         assert reaped == 1
 
 
+@pytest.mark.platforms("linux")
 class TestSnapshotGatewayChildren:
     def test_snapshot_walks_descendants_recursively(self, monkeypatch):
         monkeypatch.setattr(status, "_IS_WINDOWS", False)

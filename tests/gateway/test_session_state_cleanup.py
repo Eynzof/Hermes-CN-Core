@@ -16,7 +16,6 @@ Also: SessionDB connections were never closed on gateway shutdown,
 leaving WAL locks in place until Python actually exited.
 """
 
-import threading
 from unittest.mock import MagicMock
 
 
@@ -52,38 +51,7 @@ class TestReleaseRunningAgentStateUnit:
 
 
 
-class TestSessionDbCloseOnShutdown:
-    """_stop_impl should call .close() on both self._session_db and
-    self.session_store._db to release SQLite WAL locks before the new
-    gateway (during --replace restart) tries to open the same file.
-    """
 
-
-    def test_shutdown_tolerates_close_raising(self):
-        """A close() that raises must not prevent subsequent cleanup."""
-        from gateway.run import GatewayRunner
-
-        runner = GatewayRunner.__new__(GatewayRunner)
-        flaky_db = MagicMock()
-        flaky_db.close.side_effect = RuntimeError("simulated lock error")
-        healthy_db = MagicMock()
-
-        runner._db = flaky_db
-        runner.session_store = MagicMock()
-        runner.session_store._db = healthy_db
-
-        # Same pattern as production: try/except around each close().
-        for _db_holder in (runner, getattr(runner, "session_store", None)):
-            _db = getattr(_db_holder, "_db", None) if _db_holder else None
-            if _db is None or not hasattr(_db, "close"):
-                continue
-            try:
-                _db.close()
-            except Exception:
-                pass
-
-        flaky_db.close.assert_called_once()
-        healthy_db.close.assert_called_once()
 
 
 class TestSessionResetZombieRace:

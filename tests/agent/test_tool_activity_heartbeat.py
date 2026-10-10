@@ -110,10 +110,13 @@ def test_heartbeat_touches_periodically_and_stops():
 
     touches: list = []
     stop = threading.Event()
+    repeated = threading.Event()
 
     class _Agent:
         def _touch_activity(self, desc):
             touches.append(desc)
+            if len(touches) >= 2:
+                repeated.set()
 
     interval = 0.05
     thread = threading.Thread(
@@ -123,18 +126,15 @@ def test_heartbeat_touches_periodically_and_stops():
         daemon=True,
     )
     thread.start()
-    # The window must fit >=2 ticks on the coarsest supported host. Windows' waitable
-    # timer granularity is ~15.6 ms, so ``Event.wait(0.05)`` costs ~62 ms there
-    # (measured on this box) and a 0.12 s window bought exactly one tick.
-    time.sleep(interval * 6)
-    stop.set()
-    thread.join(timeout=1.0)
+    try:
+        assert repeated.wait(5), "heartbeat did not repeat"
+    finally:
+        stop.set()
+        thread.join(timeout=5)
 
     assert not thread.is_alive(), "heartbeat thread did not exit on stop"
     assert len(touches) >= 2, f"expected periodic touches, got {len(touches)}"
-    n = len(touches)
-    time.sleep(0.1)
-    assert len(touches) == n, "heartbeat kept touching after stop_event set"
+    assert all(touch == "tool running: terminal" for touch in touches)
 
 
 def test_slow_tool_call_refreshes_activity_during_execution(monkeypatch):

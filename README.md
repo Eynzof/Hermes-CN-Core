@@ -83,9 +83,13 @@ pip install "git+https://github.com/Eynzof/Hermes-CN-Core.git"
 iex (irm https://raw.githubusercontent.com/Eynzof/Hermes-CN-Core/main/scripts/install.ps1)
 ```
 
-安装器会处理 uv、Python 3.14、Node.js、ripgrep、ffmpeg，以及仓库克隆、虚拟环境和 `hermes` 命令的配置。在 Windows 上，默认 shell 优先使用 **Git Bash**（如果已安装 Git for Windows），回退到 PowerShell 7（pwsh 7.x），最后是 Windows PowerShell 5.1。你可以在 config.yaml 中设置 `terminal.shell: pwsh` / `terminal.shell: powershell` 强制使用 PowerShell，或 `terminal.shell: bash` 显式指定 Git Bash。安装器还会安装 Microsoft Coreutils（提供 `cat`、`cp`、`mv`、`ls` 等 POSIX 命令行工具），确保跨平台脚本和技能能够正常工作。Git 仍用于仓库操作：如果系统里已经安装 Git，安装器会直接使用现有 Git；否则会把隔离的 PortableGit 下载到 `%LOCALAPPDATA%\hermes\git`，不需要管理员权限，也不会污染系统 Git。
+The source installer delegates Python 3.14, Node.js, npm, ripgrep, FFmpeg,
+and Python dependencies to PM. If Git is absent, it stages the verified Git
+for Windows archive in Hermes' tool store. It does not replace your system Git.
+See [installation methods](https://hermes-agent.nousresearch.com/docs/getting-started/installation)
+for the separate MSIX/App Installer package and its update ownership.
 
-> **Android / Termux：** 已验证的手动安装路径见 [Termux guide](https://hermes-agent.nousresearch.com/docs/getting-started/termux)。在 Termux 上，Hermes 会安装裁剪后的 `.[termux]` extra，因为完整的 `.[all]` extra 目前会拉取 Android 不兼容的语音依赖。
+> **Android / Termux:** A signed APT repository is available for aarch64 devices, with a `stable` channel (tagged releases) and a prerelease `canary` channel. The package includes Python, Node.js, and the TUI. Use the [Termux guide](https://hermes-agent.nousresearch.com/docs/getting-started/termux), not the desktop/server installer script.
 >
 > **Windows：** 原生 Windows 可以直接使用上面的 PowerShell 一行命令。如果你更偏好 WSL2，也可以在 WSL2 中使用 Linux 流程。原生 Windows 安装目录是 `%LOCALAPPDATA%\hermes`，WSL2 与 Linux 一样使用 `~/.hermes`。
 安装完成后启动：
@@ -118,7 +122,10 @@ Hermes 始终允许你使用任意服务商。如果你不想为模型、网页�
 - **300+ 模型**：用 `/model <name>` 随时切换。
 - **Tool Gateway**：网页搜索通过 Firecrawl，图像生成通过 FAL，文本转语音通过 OpenAI，云浏览器通过 Browser Use。
 
-全新安装时一条命令即可：
+- **300+ models** — pick any of them with `/model <name>`
+- **Tool Gateway** — web search, image generation (FAL), text-to-speech (OpenAI), cloud browser (Browser Use), all routed through your sub. No extra accounts.
+
+One command from a fresh install:
 
 ```bash
 hermes setup --portal
@@ -159,18 +166,28 @@ source .venv/bin/activate
 pip install -e ".[all,dev]"
 ```
 
-如果你使用 `uv`，也可以这样安装：
+What gets imported:
 
-```bash
-uv venv --python 3.14source .venv/bin/activate
-uv pip install -e ".[all,dev]"
-```
+- **SOUL.md** — persona file
+- **Memories** — MEMORY.md and USER.md entries
+- **Skills** — user-created skills → `~/.hermes/skills/openclaw-imports/`
+- **Command allowlist** — approval patterns
+- **Messaging settings** — platform configs, allowed users, working directory
+- **API keys** — allowlisted secrets (Telegram, OpenRouter, OpenAI, Anthropic, ElevenLabs)
+- **TTS assets** — workspace audio files
+- **Workspace instructions** — AGENTS.md (with `--workspace-target`)
 
-运行主要测试：
+See `hermes claw migrate --help` for all options, or use the `openclaw-migration` skill for an interactive agent-guided migration with dry-run previews.
 
-```bash
-python -m pytest tests/ -q --ignore=tests/integration --ignore=tests/e2e --tb=short -n auto
-```
+---
+
+## Contributing
+
+We welcome contributions! See the [Contributing Guide](https://hermes-agent.nousresearch.com/docs/developer-guide/contributing) for development setup, code style, and PR process.
+
+Start with the [PM developer workflow](website/docs/reference/package-management.md#developer-workflow)
+for activation, daily use, dependency changes, and leaving the environment.
+[Development Setup](CONTRIBUTING.md#development-setup) covers the separate test environment and verification commands.
 
 运行 fork 维护者常用的 Dashboard 冒烟检查：
 

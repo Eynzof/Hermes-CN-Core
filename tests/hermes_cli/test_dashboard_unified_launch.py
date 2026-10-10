@@ -10,35 +10,12 @@ import types
 import pytest
 from hermes_cli import main_dashboard
 
+
 @pytest.fixture
 def main_mod():
     import hermes_cli.main as main_mod
     return main_mod
 
-def _patch_reexec(main_mod, monkeypatch, execs):
-    """Mock the machine-dashboard re-exec on every platform.
-
-    POSIX uses ``os.execvpe``; Windows uses ``subprocess.Popen`` +
-    ``proc.wait()`` (see the comment in ``cmd_dashboard`` — execvpe does not
-    truly replace the process on Windows).  Mocking only execvpe lets a
-    Windows test run spawn a REAL dashboard subprocess and wait on it
-    forever, hanging the whole pytest session.
-    """
-    def fake_exec(exe, argv, env):
-        execs.append((exe, argv, env))
-        raise SystemExit(0)  # execvpe never returns
-
-    monkeypatch.setattr(main_mod.os, "execvpe", fake_exec)
-
-    class _FakeProc:
-        def wait(self):
-            return 0
-
-    def fake_popen(argv, env=None, **_kw):
-        execs.append((argv[0], argv, env or {}))
-        return _FakeProc()
-
-    monkeypatch.setattr(main_mod.subprocess, "Popen", fake_popen)
 
 def _args(**kw):
     defaults = dict(
@@ -49,7 +26,10 @@ def _args(**kw):
     defaults.update(kw)
     return types.SimpleNamespace(**defaults)
 
+
 class TestUnifiedDashboardRouting:
+
+
     def test_profile_launch_reexecs_machine_dashboard(self, main_mod, monkeypatch):
         monkeypatch.delenv("HERMES_HOME", raising=False)
         monkeypatch.setattr(
@@ -57,14 +37,42 @@ class TestUnifiedDashboardRouting:
         )
         monkeypatch.setattr(main_dashboard, "_dashboard_listening", lambda host, port: False)
         execs = []
-        _patch_reexec(main_mod, monkeypatch, execs)
 
-        with pytest.raises(SystemExit):
-            main_mod.cmd_dashboard(_args())
+        if sys.platform == "win32":
+            # Windows cannot truly replace the process, so cmd_dashboard
+            # re-execs via subprocess.Popen + sys.exit(code) instead of
+            # os.execvpe (which doesn't exist on Windows).
+            spawns = []
 
-        assert len(execs) == 1
-        exe, argv, env = execs[0]
-        assert exe == sys.executable
+            class _Done:
+                def wait(self):
+                    return 0
+
+            monkeypatch.setattr(
+                main_mod.subprocess,
+                "Popen",
+                lambda argv, env=None, **kw: spawns.append((argv, env)) or _Done(),
+            )
+            with pytest.raises(SystemExit):
+                main_mod.cmd_dashboard(_args())
+            assert len(spawns) == 1
+            argv, env = spawns[0]
+        else:
+            execs = []
+
+            def fake_exec(exe, argv, env):
+                execs.append((exe, argv, env))
+                raise SystemExit(0)  # execvpe never returns
+
+            monkeypatch.setattr(main_mod.os, "execvpe", fake_exec)
+
+            with pytest.raises(SystemExit):
+                main_mod.cmd_dashboard(_args())
+
+            assert len(execs) == 1
+            exe, argv, env = execs[0]
+            assert exe == sys.executable
+
         # Pinned to the default profile + launching profile preselected.
         assert "-p" in argv and argv[argv.index("-p") + 1] == "default"
         assert "--open-profile" in argv
@@ -76,12 +84,14 @@ class TestUnifiedDashboardRouting:
         from hermes_constants import get_default_hermes_root
         assert env.get("HERMES_HOME") == str(get_default_hermes_root())
 
+
     def test_desktop_profile_backend_skips_machine_dashboard_reroute(self, main_mod, monkeypatch):
         """A desktop-spawned named-profile backend (HERMES_DESKTOP=1) must NOT
         reroute into the machine dashboard. The reroute re-execs as the default
         profile and exits, so the desktop never sees a ready backend → boot
         loop. The guard keeps desktop pool backends per-profile."""
         monkeypatch.setenv("HERMES_DESKTOP", "1")
+        monkeypatch.setenv("HERMES_DASHBOARD_SESSION_TOKEN", "desktop-spawn-token")
         monkeypatch.setattr(
             "hermes_cli.profiles.get_active_profile_name", lambda: "worker_x"
         )
@@ -122,7 +132,5 @@ class TestInteractiveDashboardAuthSetup:
         assert exc.value.code == 1
         output = capsys.readouterr().out
         assert "configured external dashboard.public_url" in output
-
-
 
 

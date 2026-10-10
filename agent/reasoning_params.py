@@ -43,6 +43,45 @@ def _cached_probe(agent, cache_attr: str, probe, unknown, definitive):
     return value
 
 
+def unset_reasoning_default(agent) -> dict | None:
+    """Reasoning config for a main-loop request whose ``agent.reasoning_effort`` is unset.
+
+    Asks the active provider profile (``ProviderProfile.default_reasoning_config``; the custom /
+    OpenAI-compatible profile answers medium) so a route's own default never silently applies —
+    kimi-k3 behind a relay defaults to ``max``, 3x the reasoning tokens of medium. Resolved at
+    request time, so ``/model`` and fallback activation re-evaluate it. None keeps the field off
+    the wire: a non chat-completions transport, a profile without a default (those decide inside
+    ``build_api_kwargs_extras``), a model the catalog / ``model_overrides`` mark
+    ``supports_reasoning: false``, or a local Ollama model whose ``/api/show`` lacks ``thinking``.
+    """
+    if getattr(agent, "api_mode", None) != "chat_completions":
+        return None
+    provider = str(getattr(agent, "provider", "") or "")
+    model = str(getattr(agent, "model", "") or "")
+    try:
+        from providers import get_provider_profile
+
+        profile = get_provider_profile(provider)
+        default = profile.default_reasoning_config(model) if profile is not None else None
+    except Exception:
+        return None
+    if not default:
+        return None
+    try:
+        from agent.models_dev import get_model_capabilities
+
+        caps = get_model_capabilities(provider, model, allow_network=False)
+    except Exception:
+        caps = None
+    if caps is not None and caps.supports_reasoning is False:
+        return None
+    # ``_ollama_num_ctx`` is only ever set for a server detected as Ollama (agent_init); Ollama
+    # 400s ``reasoning_effort`` on a model pulled without the thinking capability.
+    if getattr(agent, "_ollama_num_ctx", None) and not agent._ollama_supports_thinking_cached():
+        return None
+    return dict(default)
+
+
 class ReasoningParamsMixin:
     """Reasoning-parameter gating and echo policy (see module docstring)."""
 
@@ -100,7 +139,7 @@ class ReasoningParamsMixin:
     def _github_models_reasoning_extra_body(self) -> dict | None:
         """Format reasoning payload for GitHub Models/OpenAI-compatible routes."""
         try:
-            from hermes_cli.models import github_model_reasoning_efforts
+            from hermes_cli.models import clamp_github_reasoning_effort, github_model_reasoning_efforts
         except Exception:
             return None
 
@@ -111,19 +150,13 @@ class ReasoningParamsMixin:
         cfg = self.reasoning_config if isinstance(self.reasoning_config, dict) else {}
         if cfg.get("enabled") is False:
             return None
-        effort = str(cfg.get("effort", "medium")).strip().lower()
-
-        if effort not in supported:
-            # Nearest-neighbour fallbacks: xhigh→high, minimal→low, else medium, else the first published level.
-            nearest = {"xhigh": "high", "minimal": "low"}.get(effort)
-            effort = nearest if nearest in supported else "medium" if "medium" in supported else supported[0]
-        return {"effort": effort}
+        return {"effort": clamp_github_reasoning_effort(cfg.get("effort"), supported)}
 
     _build_assistant_message = _forward("agent.chat_completion_helpers", "build_assistant_message")
 
     def _needs_thinking_reasoning_pad(self) -> bool:
         """True when the provider enforces ``reasoning_content`` echo-back on tool-call replays (DeepSeek, Kimi,
-        MiMo thinking all 400 without it). Cached per (provider, model, base_url), invalidated by
+        MiMo thinking all 400 without it; Ollama Cloud feeds it to the template). Cached per (provider, model, base_url), invalidated by
         ``switch_model()`` / ``_try_activate_fallback()`` — called ~16× per turn.
 
         DeepSeek v4 thinking and Kimi / Moonshot thinking both reject replays of assistant tool-call
@@ -135,7 +168,8 @@ class ReasoningParamsMixin:
         if cached is not None and cached[0] == key:
             return cached[1]
         result = (self._needs_deepseek_tool_reasoning() or self._needs_kimi_tool_reasoning()
-                  or self._needs_mimo_tool_reasoning() or self._reasoning_echo_opt_in())
+                  or self._needs_mimo_tool_reasoning() or self._needs_ollama_tool_reasoning()
+                  or self._reasoning_echo_opt_in())
         self._thinking_pad_cache = (key, result)
         return result
 
@@ -172,12 +206,16 @@ class ReasoningParamsMixin:
         """True when the current provider is Xiaomi MiMo thinking mode."""
         return matches_reasoning_echo_family("mimo", (self.provider or "").lower(), self.model, self.base_url)
 
+    def _needs_ollama_tool_reasoning(self) -> bool:
+        """True for Ollama Cloud (provider, host, or a local ``:cloud``/``-cloud`` tag)."""
+        return matches_reasoning_echo_family("ollama", (self.provider or "").lower(), self.model, self.base_url)
+
     _copy_reasoning_content_for_api = _forward("agent.agent_runtime_helpers", "copy_reasoning_content_for_api")
 
     _reapply_reasoning_echo_for_provider = _forward("agent.agent_runtime_helpers", "reapply_reasoning_echo_for_provider")
 
     @staticmethod
-    def _sanitize_tool_calls_for_strict_api(api_msg: dict, model: "str | None" = None) -> dict:
+    def _sanitize_tool_calls_for_strict_api(api_msg: dict, model: str | None = None) -> dict:
         """Strip Codex Responses fields from tool_calls for strict Chat Completions APIs (Mistral, Fireworks
         400/422 on unknown fields). ``extra_content`` (Gemini thought_signature) is kept only for Gemini-family
         models. Builds new dicts so the internal history keeps the Codex fields for a later fallback."""

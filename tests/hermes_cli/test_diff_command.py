@@ -82,14 +82,6 @@ def repo(tmp_path, monkeypatch):
     d = tmp_path / "repo"
     d.mkdir()
     _git(d, "init", "-q")
-    # Deterministic EOLs on every host: the product runs its own git commands with the
-    # user's config isolated (``hermes_cli._subprocess_compat.noninteractive_git_env``
-    # blanks GIT_CONFIG_SYSTEM/GLOBAL, so ``core.autocrlf`` is unset), while this
-    # fixture's git inherits the host's — on Windows that is git-for-windows'
-    # system-wide ``core.autocrlf=true``. Committing CRLF-normalized content and then
-    # Diffing it with autocrlf off reports the just-committed file as modified. Pin the
-    # same isolation the product uses, and write bytes so text mode can't re-encode \n
-    # as CRLF (same pattern as tests/agent/test_coding_context.py).
     _git(d, "config", "core.autocrlf", "false")
     (d / "main.py").write_bytes(b"print('hello')\n")
     _git(d, "add", "-A")

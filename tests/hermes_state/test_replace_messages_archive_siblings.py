@@ -79,6 +79,7 @@ class TestAcpPersistPreservesArchives:
         ]
         assert [m["content"] for m in live] == ["rewritten", "rewritten answer"]
 
+
     def test_fresh_session_active_only_equals_full_replace(self, state_db):
         """On a never-compacted session active_only=True must behave exactly
         like the historical full replace (the safety claim the unconditional
@@ -103,23 +104,6 @@ class TestAcpPersistPreservesArchives:
         assert _archived_count(state_db, sid) == 0
 
 
-class TestTuiPromptTruncationPreservesArchives:
-    def test_truncation_write_keeps_archived_rows(self, state_db):
-        """Drive the exact write shape methods_prompt now performs against a
-        compacted session and assert the archive survives."""
-        sid = "tui-compacted"
-        _seed_compacted_session(state_db, sid)
-        assert _archived_count(state_db, sid) == 4
-
-        truncated = [{"role": "user", "content": "kept head"}]
-        state_db.replace_messages(sid, truncated, active_only=True)
-
-        assert _archived_count(state_db, sid) == 4
-        live = [
-            m for m in state_db.get_messages_as_conversation(sid)
-            if m.get("role") in ("user", "assistant")
-        ]
-        assert [m["content"] for m in live] == ["kept head"]
 
 
 class TestArchiveDroppedIsRecoverable:

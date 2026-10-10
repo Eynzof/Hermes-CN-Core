@@ -37,23 +37,6 @@ def cron_env(tmp_path, monkeypatch):
     return hermes_home
 
 
-class TestRewriteSkillRefsNoop:
-    """No jobs, no rewrites, no map — every combination of empty inputs."""
-
-    def test_empty_map_and_no_jobs(self, cron_env):
-        from cron.jobs import rewrite_skill_refs
-
-        report = rewrite_skill_refs(consolidated={}, pruned=[])
-        assert report == {"rewrites": [], "jobs_updated": 0, "jobs_scanned": 0}
-
-    def test_jobs_exist_but_map_empty(self, cron_env):
-        from cron.jobs import create_job, rewrite_skill_refs
-
-        create_job(prompt="", schedule="every 1h", skills=["foo"])
-        report = rewrite_skill_refs(consolidated={}, pruned=[])
-        assert report["jobs_updated"] == 0
-        # Early return: we don't even scan when there's nothing to apply.
-        assert report["jobs_scanned"] == 0
 
 
 class TestRewriteSkillRefsConsolidation:

@@ -241,6 +241,8 @@ def check_config(groq_key, eleven_key):
     config_path = HERMES_HOME / "config.yaml"
     if config_path.exists():
         try:
+            import hermes_yaml as yaml
+            with open(config_path, encoding="utf-8-sig") as f:
             import yaml
             with open(config_path, encoding="utf-8", errors="replace") as f:
                 cfg = yaml.safe_load(f) or {}
@@ -267,6 +269,8 @@ def check_config(groq_key, eleven_key):
     voice_mode_path = HERMES_HOME / "gateway_voice_mode.json"
     if voice_mode_path.exists():
         try:
+            import json
+            modes = json.loads(voice_mode_path.read_text(encoding="utf-8-sig"))
             import orjson
             modes = orjson.loads(voice_mode_path.read_text(encoding="utf-8", errors="replace"))
             off_count = sum(1 for v in modes.values() if v == "off")

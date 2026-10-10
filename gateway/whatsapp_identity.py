@@ -66,14 +66,14 @@ def normalize_whatsapp_mention_jid(value: str) -> str:
     )
 
 
-def expand_whatsapp_aliases(identifier: str) -> Set[str]:
+def expand_whatsapp_aliases(identifier: str) -> set[str]:
     """All identifiers transitively reachable via the bridge's ``lid-mapping-*.json`` files;
     always includes the normalized input itself (empty set if it normalizes to empty)."""
     normalized = normalize_whatsapp_identifier(identifier)
     if not normalized:
         return set()
     session_dir = get_hermes_dir("platforms/whatsapp/session", "whatsapp/session")
-    resolved: Set[str] = set()
+    resolved: set[str] = set()
     queue = [normalized]
     while queue:
         current = queue.pop(0)
@@ -87,7 +87,7 @@ def expand_whatsapp_aliases(identifier: str) -> Set[str]:
             if not mapping_path.exists():
                 continue
             try:
-                raw = orjson.loads(mapping_path.read_text(encoding="utf-8", errors="replace"))
+                raw = orjson.loads(mapping_path.read_text(encoding="utf-8-sig", errors="replace"))
                 mapped = normalize_whatsapp_identifier(raw)
             except (OSError, orjson.JSONDecodeError) as exc:
                 logger.debug("whatsapp_identity: failed to read %s: %s", mapping_path, exc)

@@ -10,6 +10,9 @@ import sys
 import pytest
 from unittest.mock import patch
 
+import os as _os
+_SYS_ENV = {k: _os.environ[k] for k in ("SYSTEMROOT", "USERPROFILE", "HOMEDRIVE", "HOMEPATH", "HOME") if k in _os.environ}
+
 
 def _home_preserving_env():
     """Env vars to keep when clearing os.environ in tests.
@@ -235,12 +238,12 @@ class TestSetupFeishuAdapterIntegration:
         )
         return env
 
-    @patch.dict(os.environ, _home_preserving_env(), clear=True)
+    @patch.dict(os.environ, _SYS_ENV, clear=True)
     def test_qr_env_produces_valid_adapter_settings(self):
         """QR setup → adapter initializes with websocket mode."""
         env = self._make_env_from_setup()
 
-        with patch.dict(os.environ, {**_home_preserving_env(), **env}, clear=True):
+        with patch.dict(os.environ, {**_SYS_ENV, **env}, clear=True):
             from gateway.config import PlatformConfig
             from plugins.platforms.feishu.adapter import FeishuAdapter
             adapter = FeishuAdapter(PlatformConfig())

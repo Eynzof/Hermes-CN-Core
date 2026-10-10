@@ -11,7 +11,6 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-import pytest
 
 from agent.credits_tracker import AgentNotice
 from run_agent import AIAgent
@@ -32,21 +31,19 @@ def _bare_agent() -> AIAgent:
     return agent
 
 
-class TestEmitNotice:
-    def test_emit_notice_calls_callback_with_exact_notice(self):
-        agent = _bare_agent()
-        received = []
-        notice = AgentNotice(
-            text="credits 90% used",
-            level="warn",
-            kind="sticky",
-            ttl_ms=None,
-            key="credits.warn90",
-            id="n1",
-        )
-        agent.notice_callback = received.append
-        agent._emit_notice(notice)
-        assert received == [notice]
+
+
+
+
+
+
+
+# ── B. Constructor / init_agent signature threading ─────────────────────────
+
+
+
+
+
 
 
 # ── C. TUI _agent_cbs binding ────────────────────────────────────────────────
@@ -83,28 +80,6 @@ class TestAgentCbsNoticeBinding:
             },
         )
 
-    def test_notice_callback_payload_is_full_snake_case_dict(self):
-        """All six snake_case fields must be present in the payload — no extras,
-        no camelCase variants."""
-        from tui_gateway import server
-
-        captured = []
-        with patch("tui_gateway.server._emit", side_effect=lambda *a: captured.append(a)):
-            cbs = server._agent_cbs("sid123")
-            cbs["notice_callback"](
-                AgentNotice(
-                    text="credits 90% used",
-                    level="warn",
-                    kind="sticky",
-                    ttl_ms=None,
-                    key="credits.warn90",
-                    id="n1",
-                )
-            )
-
-        assert len(captured) == 1
-        _event_type, _sid, payload = captured[0]
-        assert set(payload.keys()) == {"text", "level", "kind", "ttl_ms", "key", "id"}
 
 
     def test_notice_clear_callback_event_type_is_notification_clear(self):

@@ -57,12 +57,7 @@ def test_execute_parent_interrupt_still_kills_wait_on_deadline_worker(monkeypatc
 
     seen = {"parent": False}
 
-    def _wait(_proc, timeout=120, *, bounded_capture=False, watch_interrupt_tid=None,
-              output_callback=None, wait_for_pattern=None, promote_callback=None,
-              yield_handler=None):
-        # output_callback/wait_for_pattern/promote_callback/yield_handler are the
-        # live-output + handoff hooks upstream's execute() forwards; this stub only
-        # needs the interrupt plumbing it exercises below.
+    def _wait(_proc, timeout=120, *, bounded_capture=False, watch_interrupt_tid=None, output=None):
         deadline = time.monotonic() + 2.0
         while time.monotonic() < deadline:
             from tools.interrupt import is_thread_interrupted
@@ -85,9 +80,13 @@ def test_execute_parent_interrupt_still_kills_wait_on_deadline_worker(monkeypatc
 
     import threading
 
-    threading.Thread(target=_interrupt_soon, daemon=True).start()
-    result = env.execute("sleep 30", timeout=5)
-    set_interrupt(False, thread_id=parent_tid)
+    interrupter = threading.Thread(target=_interrupt_soon, daemon=True)
+    interrupter.start()
+    try:
+        result = env.execute("sleep 30", timeout=5)
+    finally:
+        interrupter.join(timeout=5)
+        set_interrupt(False, thread_id=parent_tid)
 
     assert seen["parent"] is True
     assert result["returncode"] == 130

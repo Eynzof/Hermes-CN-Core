@@ -68,7 +68,7 @@ class TeamsPipelineConfig:
     teams_delivery: dict[str, Any] | None = None
 
     @classmethod
-    def from_dict(cls, payload: Optional[dict[str, Any]]) -> "TeamsPipelineConfig":
+    def from_dict(cls, payload: Optional[dict[str, Any]]) -> TeamsPipelineConfig:
         data = dict(payload or {})
         tmp_dir = data.get("tmp_dir") or data.get("tmpDir")
         flags = {"transcript_preferred": True, "transcript_required": False, "transcription_fallback": True, "ffmpeg_extract_audio": True}
@@ -343,6 +343,7 @@ class TeamsMeetingPipeline:
             _subprocess_kwargs["creationflags"] = windows_hide_flags()
         proc = await asyncio.create_subprocess_exec(
             ffmpeg, "-y", "-i", str(recording_path), str(audio_path),
+            stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
             **_subprocess_kwargs)
         _stdout, stderr = await proc.communicate()
@@ -502,11 +503,3 @@ def _render_summary_markdown(payload: TeamsMeetingSummaryPayload) -> str:
         lines += ["", f"## {heading}", body or ("No summary available." if heading == "Summary" else "- None")]
     lines += ["", f"Confidence: {payload.confidence or 'unknown'}", payload.confidence_notes or ""]
     return "\n".join(lines).strip()
-
-
-# ---- BEGIN PLUGIN-COMPAT (revert-scheduled; see COMPAT_MANIFEST.md) ----
-# Names external plugins imported from this module before the Sep 2026 decomposition.
-# Internal code MUST NOT use these (scripts/check_compat_pointers.py fails CI if it does).
-# The whole block is removed by reverting the commit that added it.
-import os  # noqa: F401,E402
-# ---- END PLUGIN-COMPAT ----

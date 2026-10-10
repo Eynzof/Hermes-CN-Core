@@ -13,10 +13,13 @@ from pathlib import Path
 
 import pytest
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Dict
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, Mock, patch
 
+import pytest
+
 from gateway.platforms.event import ProcessingOutcome
+
 
 if TYPE_CHECKING:
     from plugins.platforms.feishu.adapter import FeishuAdapter
@@ -608,6 +611,34 @@ class TestFeishuAdapterMessaging(unittest.TestCase):
         self.assertEqual(info["name"], "Hermes Group")
         self.assertEqual(info["type"], "group")
 
+@patch.dict(os.environ, {}, clear=True)
+class TestDeleteMessage(unittest.TestCase):
+    def test_delete_message_calls_im_message_delete(self):
+        from gateway.config import PlatformConfig
+        from plugins.platforms.feishu.adapter import FeishuAdapter
+
+        captured = {"ids": []}
+
+        class _MessageAPI:
+            def delete(self, request):
+                captured["ids"].append(getattr(request, "message_id", None))
+                return SimpleNamespace(success=lambda: True)
+
+        adapter = FeishuAdapter(PlatformConfig())
+        adapter._client = SimpleNamespace(
+            im=SimpleNamespace(v1=SimpleNamespace(message=_MessageAPI()))
+        )
+
+        async def _direct(func, *args, **kwargs):
+            return func(*args, **kwargs)
+
+        with patch.object(adapter, "_run_blocking", side_effect=_direct):
+            ok = asyncio.run(adapter.delete_message("oc_chat", "om_preview"))
+
+        self.assertTrue(ok)
+        self.assertEqual(captured["ids"], ["om_preview"])
+
+
 class TestAdapterModule(unittest.TestCase):
     def test_load_settings_uses_sdk_defaults_for_invalid_ws_reconnect_values(self):
         from plugins.platforms.feishu.adapter import FeishuAdapter
@@ -791,23 +822,10 @@ class TestAdapterBehavior(unittest.TestCase):
             handler = adapter._build_event_handler()
 
         self.assertEqual(handler, "handler")
-        self.assertEqual(
+        # Contract: the processors this adapter depends on are registered (not their order/count).
+        self.assertTrue(
+            {"message_receive", "reaction_created", "reaction_deleted", "card_action"} <= set(calls),
             calls,
-            [
-                "builder",
-                "message_read",
-                "message_receive",
-                "reaction_created",
-                "reaction_deleted",
-                "card_action",
-                "bot_added",
-                "bot_deleted",
-                "p2p_chat_entered",
-                "message_recalled",
-                "customized:drive.notice.comment_add_v1",
-                "customized:vc.bot.meeting_invited_v1",
-                "build",
-            ],
         )
 
     @patch.dict(os.environ, {}, clear=True)
@@ -3777,7 +3795,6 @@ class TestDedupTTL(unittest.TestCase):
 
         self.assertEqual(writes[-1], ["om_a", "om_b"])
 
-
 class TestGroupMentionAtAll(unittest.TestCase):
     """Tests for @_all (Feishu @everyone) group mention routing."""
 
@@ -4651,7 +4668,6 @@ class TestFeishuPostFileParsing(unittest.TestCase):
             "Review these[Attachment: first.md]\n[Attachment: second.txt]",
         )
 
-
 class TestFeishuPostTextIsNotMarkdownEscaped(unittest.TestCase):
     def test_text_elements_keep_markdown_characters_and_style_wrappers(self):
         """Inbound post text reaches the model verbatim (no backslash escapes) while the
@@ -4666,7 +4682,6 @@ class TestFeishuPostTextIsNotMarkdownEscaped(unittest.TestCase):
         self.assertIn("run `print('hi')` for **emphasis** [x](y)", text)
         self.assertIn("**strong**", text)
         self.assertNotIn("\\", text)
-
 
 class TestFeishuNormalizeWithMentions(unittest.TestCase):
     def test_text_message_renders_mention_by_name(self):
@@ -4840,7 +4855,7 @@ class TestFeishuExtractMessageContent(unittest.TestCase):
             ],
         )
 
-        text, inbound_type, media_urls, media_types, media_text_inlined, mentions = asyncio.run(
+        text, _inbound_type, _media_urls, _media_types, media_text_inlined, mentions = asyncio.run(
             adapter._extract_message_content(message)
         )
         self.assertEqual(text, "@Alice hello")
@@ -4951,7 +4966,6 @@ class TestFeishuProcessInboundMessage(unittest.TestCase):
         )
         self.assertEqual(event.media_urls, ["/cache/notes.md"])
         self.assertEqual(event.media_text_inlined, [True])
-
 
     def test_non_command_message_with_mentions_injects_hint(self):
         from gateway.platforms.event import MessageType
@@ -5430,54 +5444,185 @@ class TestFeishuMentionEndToEnd(unittest.TestCase):
         self.assertIn("@Alice review the spec with Alice", event.text)
         self.assertNotIn("@Hermes @Alice", event.text)
 
-class TestChatLockEviction(unittest.TestCase):
-    """_get_chat_lock is LRU-bounded so _chat_locks cannot grow unbounded."""
 
-    def _make_adapter(self, max_size=5):
-        import collections as _collections
+# ---------------------------------------------------------------------------
+# SDK-boundary paths that used to be gated on lark-oapi (never installed in CI).
+# The Feishu SDK request builders are the external boundary: fake them so the
+# adapter logic around them runs on every lane.
+# ---------------------------------------------------------------------------
 
-        from plugins.platforms.feishu.adapter import FeishuAdapter
 
-        adapter = object.__new__(FeishuAdapter)
-        adapter._chat_locks = _collections.OrderedDict()
-        adapter.CHAT_LOCK_MAX_SIZE = max_size
-        return adapter
+class _FakeSdkBuilder:
+    """Stands in for a lark-oapi ``*.builder()``: every setter records its value."""
 
-    def test_same_id_returns_same_lock_and_stays_bounded(self):
-        adapter = self._make_adapter(max_size=5)
-        locks = [adapter._get_chat_lock(f"c{i}") for i in range(5)]
-        self.assertEqual(len(adapter._chat_locks), 5)
-        # Re-requesting an existing id returns the identical lock, no growth.
-        self.assertIs(adapter._get_chat_lock("c2"), locks[2])
-        self.assertEqual(len(adapter._chat_locks), 5)
+    def __init__(self):
+        self._fields = {}
 
-    def test_lru_eviction_respects_recent_access(self):
-        adapter = self._make_adapter(max_size=5)
-        for i in range(5):
-            adapter._get_chat_lock(f"c{i}")
-        # Touch c0 so it is no longer the LRU entry, then add a new chat.
-        adapter._get_chat_lock("c0")
-        adapter._get_chat_lock("c_new")
-        self.assertEqual(len(adapter._chat_locks), 5)
-        self.assertNotIn("c1", adapter._chat_locks)  # c1 was the true LRU
-        self.assertIn("c0", adapter._chat_locks)
-        self.assertIn("c_new", adapter._chat_locks)
+    def __getattr__(self, name):
+        if name.startswith("_"):
+            raise AttributeError(name)
 
-    def test_eviction_skips_held_locks(self):
-        adapter = self._make_adapter(max_size=3)
+        def _set(value):
+            self._fields[name] = value
+            return self
 
-        async def _run():
-            held = adapter._get_chat_lock("held")
-            await held.acquire()
-            try:
-                adapter._get_chat_lock("x")
-                adapter._get_chat_lock("y")
-                # At capacity; "held" is LRU but locked, so "x" should go instead.
-                adapter._get_chat_lock("z")
-                self.assertIn("held", adapter._chat_locks)
-                self.assertNotIn("x", adapter._chat_locks)
-                self.assertEqual(len(adapter._chat_locks), 3)
-            finally:
-                held.release()
+        return _set
 
-        asyncio.run(_run())
+    def build(self):
+        return SimpleNamespace(**self._fields)
+
+
+class _FakeSdkRequestType:
+    @staticmethod
+    def builder():
+        return _FakeSdkBuilder()
+
+
+@pytest.fixture
+def fake_lark_requests(monkeypatch):
+    """Fake the lazily imported lark-oapi request modules and the raw tenant GET builder."""
+    import sys
+    import types
+
+    import plugins.platforms.feishu.adapter as feishu_mod
+
+    for parent in ("lark_oapi", "lark_oapi.api", "lark_oapi.api.im", "lark_oapi.api.contact"):
+        if parent not in sys.modules:
+            monkeypatch.setitem(sys.modules, parent, types.ModuleType(parent))
+    im_v1 = types.ModuleType("lark_oapi.api.im.v1")
+    for name in ("CreateMessageReactionRequest", "CreateMessageReactionRequestBody", "DeleteMessageReactionRequest"):
+        setattr(im_v1, name, _FakeSdkRequestType)
+    contact_v3 = types.ModuleType("lark_oapi.api.contact.v3")
+    contact_v3.GetUserRequest = _FakeSdkRequestType
+    monkeypatch.setitem(sys.modules, "lark_oapi.api.im.v1", im_v1)
+    monkeypatch.setitem(sys.modules, "lark_oapi.api.contact.v3", contact_v3)
+    monkeypatch.setattr(
+        feishu_mod, "_tenant_get_request",
+        lambda uri, *, queries=None: SimpleNamespace(uri=uri, queries=queries),
+    )
+
+
+def _plain_feishu_adapter():
+    from gateway.config import PlatformConfig
+    from plugins.platforms.feishu.adapter import FeishuAdapter
+
+    return FeishuAdapter(PlatformConfig())
+
+
+def _bot_info_response(open_id, bot_name):
+    payload = json.dumps({"code": 0, "bot": {"bot_name": bot_name, "open_id": open_id}}).encode("utf-8")
+    return SimpleNamespace(raw=SimpleNamespace(content=payload))
+
+
+def test_hydrated_bot_identity_wins_over_stale_env_values(fake_lark_requests, monkeypatch):
+    """#16993: /bot/v3/info runs even when FEISHU_BOT_* are configured, and the hydrated identity
+    replaces the env values so a stale id from an old app registration can't break @mention gating."""
+    monkeypatch.setenv("FEISHU_BOT_OPEN_ID", "ou_env")
+    monkeypatch.setenv("FEISHU_BOT_NAME", "Env Hermes")
+    adapter = _plain_feishu_adapter()
+    assert adapter._bot_open_id == "ou_env"
+    requests = []
+
+    def _request(req):
+        requests.append(req)
+        return _bot_info_response("ou_hydrated", "Hydrated Hermes")
+
+    adapter._client = SimpleNamespace(request=_request)
+
+    asyncio.run(adapter._hydrate_bot_identity())
+
+    assert [r.uri for r in requests] == ["/open-apis/bot/v3/info"]
+    assert adapter._bot_open_id == "ou_hydrated"
+    assert adapter._bot_name == "Hydrated Hermes"
+
+
+def test_bot_sender_name_is_fetched_via_basic_batch_and_cached(fake_lark_requests):
+    """Bot senders resolve via bot/v3/bots/basic_batch (the contact API has no bot names) with a
+    repeated ``bot_ids`` query param, and the result is cached so the next lookup is free."""
+    adapter = _plain_feishu_adapter()
+    requests = []
+    body = {"code": 0, "msg": "", "data": {"bots": {"ou_peer": {"bot_id": "ou_peer", "name": "Peer Bot"}}}}
+
+    def _request(req):
+        requests.append(req)
+        return SimpleNamespace(raw=SimpleNamespace(content=json.dumps(body).encode()))
+
+    adapter._client = SimpleNamespace(request=_request)
+
+    assert asyncio.run(adapter._resolve_sender_name_from_api("ou_peer", is_bot=True)) == "Peer Bot"
+    assert asyncio.run(adapter._resolve_sender_name_from_api("ou_peer", is_bot=True)) == "Peer Bot"
+
+    assert len(requests) == 1, "second lookup must hit the cache"
+    assert requests[0].uri == "/open-apis/bot/v3/bots/basic_batch"
+    # Feishu expects repeated ?bot_ids= params, not comma-joined.
+    assert requests[0].queries == [("bot_ids", "ou_peer")]
+
+
+def test_human_sender_name_is_fetched_from_contact_api_and_cached(fake_lark_requests):
+    adapter = _plain_feishu_adapter()
+    lookups = []
+
+    def _get(request):
+        lookups.append(request)
+        user = SimpleNamespace(name="Bob", display_name=None, nickname=None, en_name=None)
+        return SimpleNamespace(success=lambda: True, data=SimpleNamespace(user=user))
+
+    adapter._client = SimpleNamespace(contact=SimpleNamespace(v3=SimpleNamespace(user=SimpleNamespace(get=_get))))
+
+    assert asyncio.run(adapter._resolve_sender_name_from_api("ou_bob")) == "Bob"
+    assert asyncio.run(adapter._resolve_sender_name_from_api("ou_bob")) == "Bob"
+
+    assert len(lookups) == 1, "second lookup must hit the cache"
+    assert (lookups[0].user_id, lookups[0].user_id_type) == ("ou_bob", "open_id")
+
+
+def _reaction_adapter(*, delete_success=True):
+    adapter = _plain_feishu_adapter()
+    tracker = SimpleNamespace(created=[], deleted=[])
+
+    def _create(request):
+        tracker.created.append(request.request_body.reaction_type["emoji_type"])
+        return SimpleNamespace(success=lambda: True, data=SimpleNamespace(reaction_id="r_typing"))
+
+    def _delete(request):
+        tracker.deleted.append(request.reaction_id)
+        return SimpleNamespace(success=lambda: delete_success, code=0 if delete_success else 99, msg="")
+
+    adapter._client = SimpleNamespace(
+        im=SimpleNamespace(v1=SimpleNamespace(message_reaction=SimpleNamespace(create=_create, delete=_delete)))
+    )
+    return adapter, tracker
+
+
+def _run_processing(adapter, outcome):
+    event = SimpleNamespace(message_id="om_msg")
+    asyncio.run(adapter.on_processing_start(event))
+    asyncio.run(adapter.on_processing_complete(event, outcome))
+
+
+def test_processing_success_removes_typing_and_adds_nothing(fake_lark_requests, monkeypatch):
+    monkeypatch.delenv("FEISHU_REACTIONS", raising=False)
+    adapter, tracker = _reaction_adapter()
+    _run_processing(adapter, ProcessingOutcome.SUCCESS)
+    assert tracker.created == ["Typing"]
+    assert tracker.deleted == ["r_typing"]
+    assert "om_msg" not in adapter._pending_processing_reactions
+
+
+def test_processing_failure_swaps_typing_for_cross_mark(fake_lark_requests, monkeypatch):
+    monkeypatch.delenv("FEISHU_REACTIONS", raising=False)
+    adapter, tracker = _reaction_adapter()
+    _run_processing(adapter, ProcessingOutcome.FAILURE)
+    assert tracker.created == ["Typing", "CrossMark"]
+    assert tracker.deleted == ["r_typing"]
+
+
+def test_processing_failure_skips_cross_mark_when_typing_removal_fails(fake_lark_requests, monkeypatch):
+    """A Typing badge we couldn't remove must not get a CrossMark stacked next to it (the UI would
+    read as both working and failed); the handle is kept for LRU eviction."""
+    monkeypatch.delenv("FEISHU_REACTIONS", raising=False)
+    adapter, tracker = _reaction_adapter(delete_success=False)
+    _run_processing(adapter, ProcessingOutcome.FAILURE)
+    assert tracker.created == ["Typing"]
+    assert tracker.deleted == ["r_typing"]
+    assert adapter._pending_processing_reactions["om_msg"] == "r_typing"

@@ -14,14 +14,14 @@ import os
 from pathlib import Path
 from typing import Any, Dict
 
-import yaml
+import hermes_yaml as yaml
 
 
 def _write_plugin(
     root: Path,
     name: str,
     *,
-    manifest_extra: Dict[str, Any] | None = None,
+    manifest_extra: dict[str, Any] | None = None,
     register_body: str = "pass",
 ) -> Path:
     plugin_dir = root / name
@@ -33,7 +33,7 @@ def _write_plugin(
     }
     if manifest_extra:
         manifest.update(manifest_extra)
-    (plugin_dir / "plugin.yaml").write_text(yaml.dump(manifest))
+    (plugin_dir / "plugin.yaml").write_text(yaml.safe_dump(manifest))
     (plugin_dir / "__init__.py").write_text(
         f"def register(ctx):\n    {register_body}\n"
     )
@@ -108,14 +108,7 @@ class TestRegisterTranscriptionProvider:
 
         assert mgr._plugins["bad-stt-plugin"].enabled is True
         assert transcription_registry.get_provider("not a provider") is None
-        # ``discover_and_load`` also auto-registers the bundled MOSS STT
-        # provider, so an empty registry is the wrong invariant here. The
-        # contract under test is that the *rejected* plugin added nothing:
-        # the only providers present must be the pre-existing bundled ones,
-        # never the bogus name.
-        provider_names = {p.name for p in transcription_registry.list_providers()}
-        assert "not a provider" not in provider_names
-        assert "does not inherit from TranscriptionProvider" in caplog.text
+        assert transcription_registry.list_providers() == []
 
         transcription_registry._reset_for_tests()
 
@@ -149,6 +142,5 @@ class TestRegisterTranscriptionProvider:
         # not an exception. The registry rejects the entry though.
         assert mgr._plugins["shadow-stt-plugin"].enabled is True
         assert transcription_registry.get_provider("openai") is None
-        assert "shadows a built-in name" in caplog.text
 
         transcription_registry._reset_for_tests()

@@ -17,7 +17,6 @@ The fix is owned at chokepoints, not leaf sites:
   request-body leaf are json-encodable before any provider sees them.
 """
 
-from types import SimpleNamespace
 
 import json
 
@@ -167,6 +166,8 @@ def test_api_kwargs_walk_makes_tool_descriptions_json_safe():
     assert "\ufffd" in desc
     # Second walk is a no-op on the now-clean payload.
     assert _sanitize_structure_surrogates(api_kwargs) is False
+
+
 
 
 # ---------------------------------------------------------------------------

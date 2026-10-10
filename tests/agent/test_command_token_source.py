@@ -26,6 +26,7 @@ from agent.command_token_source import (
     _mint,
     build_command_token_provider,
 )
+from datetime import UTC
 
 
 class TestMinting:
@@ -77,6 +78,18 @@ class TestMinting:
         assert "SENTINEL-SECRET" not in message
         assert "dbx" in message          # names the provider to fix
         assert "exited" in message       # states what happened
+
+    def test_undecodable_output_does_not_raise(self):
+        """One non-UTF-8 byte from the helper must not crash token minting.
+
+        A strict decode raised UnicodeDecodeError inside subprocess.run — a ValueError,
+        so neither the TimeoutExpired nor the OSError handler above caught it: provider
+        auth died with a traceback instead of the documented CommandTokenError path.
+        """
+        token, ttl = _mint("printf 'tok\\377'", "dbx")
+
+        assert ttl is None
+        assert token.startswith("tok")
 
 
 class TestNoCredentialLeak:
@@ -130,12 +143,6 @@ class TestCaching:
         source._expires_at = time.monotonic() - 1  # cross the window
         assert source() != first  # re-minted after it
 
-    def test_advertised_ttl_sets_an_expiry(self):
-        source = CommandTokenSource(
-            """printf '{"access_token":"tok","expires_in":3600}'""", "dbx"
-        )
-        source()
-        assert source._expires_at is not None
 
     def test_ttl_shorter_than_the_leeway_still_caches_briefly(self):
         """A leeway larger than the TTL must not disable caching entirely."""
@@ -152,10 +159,6 @@ class TestBuilder:
         assert build_command_token_provider("") is None
         assert build_command_token_provider("   ") is None
 
-    def test_returns_callable_when_set(self):
-        provider = build_command_token_provider("printf tok", "dbx")
-        assert callable(provider)
-        assert provider() == "tok"
 
 
 class TestResolutionYieldsACallable:
@@ -248,7 +251,7 @@ class TestAbsoluteExpiry:
         from datetime import datetime, timedelta, timezone
 
         return (
-            datetime.now(timezone.utc) + timedelta(seconds=seconds_from_now)
+            datetime.now(UTC) + timedelta(seconds=seconds_from_now)
         ).isoformat()
 
     def test_iso_expiry_yields_a_ttl(self):

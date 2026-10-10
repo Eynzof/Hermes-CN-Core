@@ -151,7 +151,7 @@ class RealtimeSpeaker:
         if not self.queue_path.exists():
             return []
         out: list[dict] = []
-        for line in self.queue_path.read_text(encoding="utf-8").splitlines():
+        for line in self.queue_path.read_text(encoding="utf-8-sig").splitlines():
             with contextlib.suppress(ValueError):
                 entry = orjson.loads(line) if line.strip() else None
                 if isinstance(entry, dict):

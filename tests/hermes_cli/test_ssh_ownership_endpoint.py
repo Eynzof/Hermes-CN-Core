@@ -1,5 +1,4 @@
 import os
-import sys
 import types
 
 import pytest
@@ -113,11 +112,7 @@ def test_ssh_runtime_marker_survives_in_place_installs(tmp_path, monkeypatch):
         web_server._apply_ssh_owner_nonce(None)
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="POSIX-only: relies on chmod 0o555 making the directory unwritable, "
-    "which Windows does not enforce (a write to a 0555 dir still succeeds)",
-)
+@pytest.mark.platforms("linux")
 def test_ssh_runtime_readonly_purelib_falls_back_to_stat(tmp_path, monkeypatch):
     """When site-packages is unwritable the marker can't be placed; the
     stat-snapshot fallback still arms (weaker, never a false stale)."""

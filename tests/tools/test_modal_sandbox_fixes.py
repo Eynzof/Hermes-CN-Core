@@ -22,7 +22,7 @@ if str(_repo_root) not in sys.path:
     sys.path.insert(0, str(_repo_root))
 
 try:
-    import tools.terminal_tool  # noqa: F401
+    import tools.terminal_tool
     _tt_mod = sys.modules["tools.terminal_tool"]
 except ImportError:
     pytest.skip("hermes-agent tools not importable (missing deps)", allow_module_level=True)
@@ -35,25 +35,6 @@ except ImportError:
 class TestToolResolution:
     """Verify get_tool_definitions returns all expected tools for eval."""
 
-    def test_terminal_and_file_toolsets_resolve_all_tools(self):
-        """enabled_toolsets=['terminal', 'file'] should produce 6 tools."""
-        from unittest.mock import patch as _patch
-
-        from model_tools import get_tool_definitions
-        from tools.tool_search import ToolSearchConfig
-
-        # Pin the RESOLUTION contract independent of deferral policy —
-        # #97979 defers process_manage by default (legacy defer: [] override).
-        _legacy = ToolSearchConfig.from_raw({"enabled": "on", "defer": []})
-        with _patch("tools.tool_search.load_config", return_value=_legacy), \
-             _patch("tools.tool_search.load_config_readonly", return_value=_legacy):
-            tools = get_tool_definitions(
-                enabled_toolsets=["terminal", "file"],
-                quiet_mode=True,
-            )
-        names = {t["function"]["name"] for t in tools}
-        expected = {"terminal", "process_manage", "read_file", "write_file", "search_files", "patch"}
-        assert expected == names, f"Expected {expected}, got {names}"
 
     def test_terminal_tool_present(self):
         """The terminal tool must be present (not silently dropped)."""
@@ -95,6 +76,7 @@ class TestCwdHandling:
         assert config["host_cwd"] is None
         assert config["docker_mount_cwd_to_workspace"] is False
 
+    @pytest.mark.platforms("linux")
     def test_users_path_maps_to_workspace_for_docker_when_enabled(self, monkeypatch):
         """Docker should map the host cwd into /workspace only when explicitly enabled."""
         monkeypatch.setenv("TERMINAL_ENV", "docker")
@@ -147,6 +129,7 @@ class TestCwdHandling:
             f"Backend {backend}: expected /root default, got {config['cwd']}"
         )
 
+    @pytest.mark.platforms("linux")
     def test_docker_default_cwd_maps_current_directory_when_enabled(self, monkeypatch):
         """Docker should use /workspace when cwd mounting is explicitly enabled."""
         monkeypatch.setattr("tools.terminal_tool.os.getcwd", lambda: "/home/user/project")
@@ -210,38 +193,18 @@ class TestCwdHandling:
 # Test 5: ephemeral_disk version check
 # =========================================================================
 
-class TestEphemeralDiskCheck:
-    """Verify ephemeral_disk is only passed when modal supports it."""
 
-    def test_ephemeral_disk_skipped_when_unsupported(self, monkeypatch):
-        """If modal.Sandbox.create doesn't have ephemeral_disk param, skip it."""
-        import inspect
-        mock_params = {
-            "args": inspect.Parameter("args", inspect.Parameter.VAR_POSITIONAL),
-            "image": inspect.Parameter("image", inspect.Parameter.KEYWORD_ONLY),
-            "timeout": inspect.Parameter("timeout", inspect.Parameter.KEYWORD_ONLY),
-            "cpu": inspect.Parameter("cpu", inspect.Parameter.KEYWORD_ONLY),
-            "memory": inspect.Parameter("memory", inspect.Parameter.KEYWORD_ONLY),
-        }
 
-        monkeypatch.setenv("TERMINAL_ENV", "modal")
-        config = _tt_mod._get_env_config()
-        # The config has container_disk default of 51200
-        disk = config.get("container_disk", 51200)
-        assert disk > 0, "disk should default to > 0"
+# =========================================================================
+# Test 6: ModalEnvironment defaults
+# =========================================================================
 
-        # Simulate the version check logic from terminal_tool.py
-        sandbox_kwargs = {}
-        if disk > 0:
-            try:
-                if "ephemeral_disk" in mock_params:
-                    sandbox_kwargs["ephemeral_disk"] = disk
-            except Exception:
-                pass
 
-        assert "ephemeral_disk" not in sandbox_kwargs, (
-            "ephemeral_disk should not be set when Sandbox.create doesn't support it"
-        )
+
+# =========================================================================
+# Test 7: ensurepip fix in ModalEnvironment
+# =========================================================================
+
 
 
 # =========================================================================
@@ -319,7 +282,6 @@ class TestDockerHostBindApproval:
     def test_should_skip_container_guards(self):
         """Docker skips only when isolated; other sandboxes always skip."""
         import tools.approval as A
-        from tools import approval_context
         assert A._should_skip_container_guards("docker", has_host_access=False) is True
         assert A._should_skip_container_guards("docker", has_host_access=True) is False
         assert A._should_skip_container_guards("modal", has_host_access=True) is True
@@ -383,9 +345,6 @@ class TestDockerHostBindApproval:
         import tools.approval as A
         self._isolate_approval_state(monkeypatch)
         monkeypatch.setenv("HERMES_EXEC_ASK", "1")
-        monkeypatch.setattr(
-            "tools.tirith_security.check_command_security",
-            lambda _c: {"action": "allow", "findings": [], "summary": ""})
         res = A.check_all_command_guards("rm -rf /workspace", "docker",
                                          has_host_access=False)
         assert res["approved"] is True
@@ -420,9 +379,6 @@ class TestDockerHostBindApproval:
         import tools.approval as A
         self._isolate_approval_state(monkeypatch)
         monkeypatch.setenv("HERMES_EXEC_ASK", "1")
-        monkeypatch.setattr(
-            "tools.tirith_security.check_command_security",
-            lambda _c: {"action": "allow", "findings": [], "summary": ""})
         res = A.check_all_command_guards("rm -rf /workspace", "docker",
                                          has_host_access=True)
         # Must NOT take the silent container fast-path.

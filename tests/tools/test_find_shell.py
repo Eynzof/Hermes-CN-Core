@@ -6,7 +6,6 @@ when ``~/.bash_profile`` contained ``exec /bin/zsh -l``.
 """
 
 import os
-import platform
 import shutil
 import subprocess
 import sys
@@ -37,6 +36,7 @@ def _pid_alive(pid: int) -> bool:
 class TestFindShellPrefersUserShell:
     """_find_shell should prefer $SHELL over bash on POSIX."""
 
+    @pytest.mark.platforms("linux")
     def test_returns_shell_env_when_set_and_exists(self, tmp_path):
         """When $SHELL points to an existing allowlisted executable, _find_shell returns it."""
         fake_zsh = tmp_path / "zsh"
@@ -72,6 +72,7 @@ class TestFindShellPrefersUserShell:
         with patch.dict(os.environ, {"SHELL": str(fake)}):
             assert _find_shell() == _find_bash_posix()
 
+    @pytest.mark.platforms("linux")
     def test_honours_allowlisted_bash_and_dash(self, tmp_path):
         """Every allowlisted POSIX-sh-family shell is honoured."""
         for name in ("bash", "dash", "sh", "ksh"):
@@ -102,7 +103,7 @@ class TestFindShellPrefersUserShell:
 class TestFindShellWindowsBehavior:
     """On Windows, _find_shell always delegates to _find_bash_posix."""
 
-    @pytest.mark.windows_only
+    @pytest.mark.platforms("windows")
     def test_windows_ignores_shell_env(self):
         """On Windows, $SHELL is ignored — _find_shell resolves a Git Bash.
 
@@ -128,9 +129,20 @@ class TestFindShellWindowsBehavior:
             assert os.path.isfile(result) and os.path.isfile(bash)
 
 
-class TestFindShellReturnsString:
-    """_find_shell must return a string, never None."""
+class TestFindBashCollapsedToPmShell:
+    """_find_bash is now a thin wrapper over pm.shell(); the Windows
+    candidate ladder (HERMES_GIT_BASH_PATH → %LOCALAPPDATA%\\hermes\\git →
+    Program Files) and the ASLR diagnostic were deleted — the store is the
+    authority on bundled bash."""
 
+    @pytest.mark.platforms("windows")
+    def test_delegates_to_pm_shell(self, monkeypatch):
+        """_find_bash returns whatever pm.shell() resolves (store bash or
+        provisioned PATH)."""
+        monkeypatch.setattr(
+            "pm.shell.bash", lambda: r"C:\store\tools\git-x\usr\bin\bash.exe"
+        )
+        assert _find_bash() == r"C:\store\tools\git-x\usr\bin\bash.exe"
     def test_returns_string(self):
         """_find_shell always returns a non-empty string on any platform."""
         result = _find_shell()
@@ -269,16 +281,18 @@ class TestGitBashExternalProgramProbe:
 
         monkeypatch.setattr(local_mod, "_bash_starts", failed_probe)
 
+    def test_raises_when_pm_shell_finds_nothing(self, monkeypatch):
+        """A store with no bash (and no PATH bash) surfaces a clear error
+        pointing at `hermes pm install` instead of hunting locations."""
+        monkeypatch.setattr("pm.shell.bash", lambda: None)
         with pytest.raises(RuntimeError) as exc_info:
-            local_mod._find_bash()
-        message = str(exc_info.value)
-        assert "Mandatory ASLR" in message
-        assert "Reinstalling Git will not change" in message
-        assert "Set-ProcessMitigation" in message
-        assert str(tmp_path / "hermes" / "git") in message
+            _find_bash()
+        assert "No shell found" in str(exc_info.value)
+        assert "hermes pm install" in str(exc_info.value)
 
 
-@pytest.mark.macos_only
+
+@pytest.mark.platforms("macos")
 @pytest.mark.skipif(
     not os.path.isfile("/bin/bash"),
     reason="reproduces the macOS system-bash-3.2 login-shell swallow",
@@ -304,48 +318,6 @@ class TestMacosLoginShellSwallowRegression:
             env=env,
         )
 
-    def test_system_bash_swallows_but_zsh_does_not(self, tmp_path):
-        # A .bash_profile that exec's zsh — the reported macOS shape.
-        home = tmp_path / "home"
-        home.mkdir()
-        (home / ".bash_profile").write_text("exec /bin/zsh -l\n", encoding="utf-8")
-
-        # Use /bin/zsh explicitly rather than $SHELL. The reported bug is
-        # specifically "system bash 3.2 swallows, zsh does not", and $SHELL is
-        # not zsh everywhere this runs: GitHub's macOS runner exports
-        # SHELL=/bin/bash, which silently turned the control arm into a SECOND
-        # bash arm. It then swallowed (correctly, per the bug!) and the
-        # assertion read as "the fix path is broken" when nothing was broken.
-        # /bin/zsh is the macOS default login shell since Catalina and is
-        # present on every supported version.
-        zsh = "/bin/zsh"
-        if not os.path.isfile(zsh):
-            pytest.skip("no zsh available")
-
-        marker_bash = tmp_path / "bash_ran"
-        marker_zsh = tmp_path / "zsh_ran"
-
-        # /bin/bash login shell: command is swallowed (file NOT created).
-        self._spawn_like_registry("/bin/bash", f"echo x > {marker_bash}", home, tmp_path)
-        # zsh (what _find_shell prefers when $SHELL is zsh): command runs.
-        self._spawn_like_registry(zsh, f"echo x > {marker_zsh}", home, tmp_path)
-
-        # The FIX path (zsh) must run the command.
-        assert marker_zsh.exists(), "zsh path must run the command"
-
-        # Differential: when /bin/bash is the swallow-prone 3.x (macOS system
-        # bash), the login-shell invocation must demonstrably FAIL to run the
-        # command — that's the bug this PR routes around. Only assert the
-        # negative when we've confirmed a 3.x bash, so the test stays valid on
-        # boxes/CI with a newer /bin/bash that doesn't swallow.
-        ver = subprocess.run(
-            ["/bin/bash", "--version"], capture_output=True, text=True
-        ).stdout
-        if "version 3." in ver:
-            assert not marker_bash.exists(), (
-                "system bash 3.x login shell should swallow the command "
-                "(the #42203 bug); _find_shell routes around it by preferring zsh"
-            )
 
     def test_find_shell_selects_working_shell_on_this_box(self, tmp_path):
         """_find_shell's choice must actually execute a background-style

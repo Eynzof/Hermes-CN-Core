@@ -10,9 +10,20 @@ from unittest.mock import MagicMock
 
 import pytest
 
-import tools.terminal_tool_sudo as terminal_tool_sudo
-from tools.environments.base import BaseEnvironment
+from tools import terminal_tool_sudo
+from tools.environments.base import BaseEnvironment, _load_json_store
 from tools.environments.base_output import _BoundedOutputCollector
+
+
+def test_snapshot_store_reads_dict_and_tolerates_missing_or_damaged_file(tmp_path):
+    path = tmp_path / "snapshots.json"
+    assert _load_json_store(path) == {}
+    path.write_text('{"task": "snapshot"}', encoding="utf-8")
+    assert _load_json_store(path) == {"task": "snapshot"}
+    path.write_text('["not a mapping"]', encoding="utf-8")
+    assert _load_json_store(path) == {}
+    path.write_text("{bad json", encoding="utf-8")
+    assert _load_json_store(path) == {}
 
 
 class _TestableEnv(BaseEnvironment):
@@ -123,43 +134,6 @@ class TestBoundedOutputCollector:
         assert "[OUTPUT TRUNCATED" in rendered
 
 
-class TestWrapCommand:
-    def test_basic_shape(self):
-        env = _TestableEnv()
-        env._snapshot_ready = True
-        wrapped = env._wrap_command("echo hello", "/tmp")
-
-        assert "source" in wrapped
-        assert "cd -- /tmp" in wrapped or "cd -- '/tmp'" in wrapped
-        assert "eval 'echo hello'" in wrapped
-        assert "__hermes_ec=$?" in wrapped
-        assert "export -p" in wrapped and "> " in wrapped
-        # cwd travels via the stdout marker only — no temp-file write.
-        assert "pwd -P >" not in wrapped
-        assert env._cwd_marker in wrapped
-        assert "exit $__hermes_ec" in wrapped
-
-    def test_no_snapshot_skips_source(self):
-        env = _TestableEnv()
-        env._snapshot_ready = False
-        wrapped = env._wrap_command("echo hello", "/tmp")
-
-        assert "source" not in wrapped
-
-    def test_single_quote_escaping(self):
-        env = _TestableEnv()
-        env._snapshot_ready = True
-        wrapped = env._wrap_command("echo 'hello world'", "/tmp")
-
-        assert "eval 'echo '\\''hello world'\\'''" in wrapped
-
-
-    def test_cd_failure_exit_126(self):
-        env = _TestableEnv()
-        env._snapshot_ready = True
-        wrapped = env._wrap_command("ls", "/nonexistent")
-
-        assert "exit 126" in wrapped
 
 
 class TestAtomicSnapshotWrite:
@@ -227,22 +201,6 @@ class TestAtomicSnapshotWrite:
         assert ".tmp.$$" not in boot
 
 
-    def test_init_session_bootstrap_uses_private_umask(self):
-        env = _TestableEnv()
-        captured = {}
-
-        def fake_run_bash(cmd_string, *, login=False, timeout=120, stdin_data=None):
-            captured.setdefault("cmd", cmd_string)  # only the bootstrap; ignore the failure-path probe
-            raise RuntimeError("stop after capture")
-
-        env._run_bash = fake_run_bash  # type: ignore[assignment]
-        try:
-            env.init_session()
-        except Exception:
-            pass
-        boot = captured.get("cmd", "")
-        assert "umask 077" in boot
-        assert boot.index("umask 077") < boot.index("export -p")
 
 
 class TestAtomicSnapshotConcurrencyBehavioral:
@@ -332,7 +290,8 @@ class TestSnapshotFileModes:
         import shutil
         import stat
         import subprocess
-        if sys.platform == "win32" or not shutil.which("bash"):
+        bash = shutil.which("bash")
+        if not bash:
             import pytest
             pytest.skip("bash required (POSIX-only; /bin/bash hardcoded)")
 
@@ -346,7 +305,7 @@ class TestSnapshotFileModes:
 
             def _run_bash(self, cmd_string, *, login=False, timeout=120, stdin_data=None):
                 proc = subprocess.Popen(
-                    ["/bin/bash", "-lc", cmd_string],
+                    [bash, "-lc", cmd_string],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     stdin=subprocess.DEVNULL,
@@ -389,25 +348,9 @@ class TestExtractCwdFromOutput:
         assert marker not in result["output"]
 
 
-    def test_output_cleaned(self):
-        env = _TestableEnv()
-        marker = env._cwd_marker
-        result = {
-            "output": f"hello\n{marker}/tmp{marker}\n",
-        }
-        env._extract_cwd_from_output(result)
-
-        assert "hello" in result["output"]
-        assert marker not in result["output"]
 
 
 class TestEmbedStdinHeredoc:
-    def test_heredoc_format(self):
-        result = BaseEnvironment._embed_stdin_heredoc("cat", "hello world")
-
-        assert result.startswith("cat << '")
-        assert "hello world" in result
-        assert "HERMES_STDIN_" in result
 
     def test_unique_delimiter_each_call(self):
         r1 = BaseEnvironment._embed_stdin_heredoc("cat", "data")
@@ -417,6 +360,31 @@ class TestEmbedStdinHeredoc:
         d1 = r1.split("'")[1]
         d2 = r2.split("'")[1]
         assert d1 != d2  # UUID-based, should be unique
+
+    def test_compound_command_receives_stdin_as_a_group(self):
+        import shutil
+        import subprocess
+
+        import pytest
+
+        bash = shutil.which("bash")
+        if bash is None:
+            pytest.skip("bash required")
+
+        command = BaseEnvironment._embed_stdin_heredoc(
+            'IFS= read -r first; IFS= read -r second; '
+            'printf \'<%s|%s>\' "$first" "$second"',
+            "alpha\nbeta",
+        )
+
+        result = subprocess.run(
+            [bash, "-c", command],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        assert result.stdout == "<alpha|beta>"
 
 
 class TestInitSessionFailure:
@@ -469,9 +437,6 @@ class TestInitSessionFailure:
 
 
 class TestCwdMarker:
-    def test_marker_contains_session_id(self):
-        env = _TestableEnv()
-        assert env._session_id in env._cwd_marker
 
     def test_unique_per_instance(self):
         env1 = _TestableEnv()

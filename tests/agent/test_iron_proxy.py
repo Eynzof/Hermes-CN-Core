@@ -1,11 +1,11 @@
 """Hermetic tests for the iron-proxy egress integration.
 
 Covers the pure-function surface (token mint, mapping discovery, config build,
-config + mappings I/O), the binary install path (HTTP downloads + tar
-extraction + checksum verification fully mocked), the subprocess lifecycle
+config + mappings I/O), the subprocess lifecycle
 (spawn / PID / pid_alive / stop, with subprocess.Popen mocked), and the
 docker backend's egress arg builder.
 
+PM acquisition has real loopback/worker coverage in test_security_consumers.
 Live network and the real ``iron-proxy`` binary are NEVER touched.  See
 ``tests/agent/test_iron_proxy_e2e.py`` (gated behind a marker) for the real-binary
 smoke test.
@@ -16,7 +16,6 @@ from __future__ import annotations
 import io
 import os
 import sys
-import tarfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -55,13 +54,25 @@ def test_mint_proxy_token_has_prefix_and_length():
     assert len(t) >= len("alpha-") + 32
 
 
+def test_management_token_path_is_single_authority(hermes_home):
+    """One token path: <hermes_home>/proxy/management.token, shared by mint, reuse and readers."""
+    assert ip._management_token_path() == ip._proxy_state_dir_ro() / "management.token"
+    assert not (hermes_home / "proxy").exists()
 
-
+    token = ip.ensure_management_token()
+    assert token.startswith("hermes-mgmt-")
+    p = ip._management_token_path()
+    assert p.is_file()
+    assert p.read_text(encoding="utf-8-sig").strip() == token
+    # 0600-style private write: reuse without minting a second token.
+    assert ip.ensure_management_token() == token
+    # Forced rotation mints a new token at the same single path.
+    rotated = ip.ensure_management_token(force=True)
+    assert rotated != token
+    assert ip._management_token_path().read_text(encoding="utf-8-sig").strip() == rotated
 
 
     # Unknown providers (no entry in _BEARER_PROVIDERS) are skipped, not warned.
-
-
 
 
 # ---------------------------------------------------------------------------
@@ -75,8 +86,6 @@ def _sample_mapping(env_name: str = "OPENROUTER_API_KEY") -> ip.TokenMapping:
         real_env_name=env_name,
         upstream_hosts=("openrouter.ai", "*.openrouter.ai"),
     )
-
-
 
 
 def test_build_proxy_config_custom_allowed_hosts(tmp_path):
@@ -98,25 +107,9 @@ def test_build_proxy_config_custom_allowed_hosts(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-
-
-
-
-
-
 # ---------------------------------------------------------------------------
 # Bind policy (regression: must not bind 0.0.0.0)
 # ---------------------------------------------------------------------------
-
-
-
-
-
-
-
-
-
-
 
 
 # ---------------------------------------------------------------------------
@@ -147,18 +140,10 @@ def test_audit_log_kwarg_does_not_inject_audit_path_v039(tmp_path):
     )
 
 
-
-
-
-
-
-
 def test_load_mappings_handles_corrupt_json(hermes_home):
     state = ip._proxy_state_dir()
     (state / "mappings.json").write_text("{not json", encoding="utf-8")
     assert ip.load_mappings() == []
-
-
 
 
 # ---------------------------------------------------------------------------
@@ -166,50 +151,14 @@ def test_load_mappings_handles_corrupt_json(hermes_home):
 # ---------------------------------------------------------------------------
 
 
-
-
-
-
-
-
 # ---------------------------------------------------------------------------
 # Uncovered provider detection (regression: signature-auth providers bypass)
 # ---------------------------------------------------------------------------
 
 
-
-
-
-
-
-
-
-
 # ---------------------------------------------------------------------------
 # Binary discovery + lazy install
 # ---------------------------------------------------------------------------
-
-
-
-
-
-
-def _make_fake_tar(binary_name: str, payload: bytes = b"#!/bin/sh\necho ok\n") -> bytes:
-    """Build a tar.gz with one file at the root, named ``binary_name``."""
-
-    buf = io.BytesIO()
-    with tarfile.open(fileobj=buf, mode="w:gz") as tf:
-        info = tarfile.TarInfo(name=binary_name)
-        info.size = len(payload)
-        info.mode = 0o755
-        tf.addfile(info, io.BytesIO(payload))
-    return buf.getvalue()
-
-
-
-
-
-
 
 
 # ── GPG release-signature verification (maxpetrusenko P1) ────────────────────
@@ -222,48 +171,9 @@ def test_verify_checksums_signature_skips_without_gpg(hermes_home, monkeypatch, 
     assert ip._verify_checksums_signature(tmp_path, cks) is False
 
 
-
-
-
-
-
-
-
-
-def test_pick_tar_member_rejects_path_traversal():
-    """A malicious tar that escapes via '..' must be refused."""
-
-    buf = io.BytesIO()
-    with tarfile.open(fileobj=buf, mode="w:gz") as tf:
-        info = tarfile.TarInfo(name="../iron-proxy")
-        info.size = 1
-        info.mode = 0o755
-        tf.addfile(info, io.BytesIO(b"x"))
-    buf.seek(0)
-    with tarfile.open(fileobj=buf, mode="r:gz") as tf:
-        with pytest.raises(RuntimeError, match="Could not find iron-proxy"):
-            ip._pick_tar_member(tf, "iron-proxy")
-
-
 # ---------------------------------------------------------------------------
 # Subprocess lifecycle
 # ---------------------------------------------------------------------------
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 def test_start_proxy_idempotent_when_already_running(hermes_home, monkeypatch):
@@ -288,23 +198,9 @@ def test_start_proxy_idempotent_when_already_running(hermes_home, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-
-
-
-
-
-
-
-
-
-
 # ---------------------------------------------------------------------------
 # Platform asset name resolution
 # ---------------------------------------------------------------------------
-
-
-
-
 
 
 # ---------------------------------------------------------------------------
@@ -332,16 +228,12 @@ def test_subprocess_env_strips_unrelated_secrets(hermes_home, monkeypatch):
     assert env.get("OPENROUTER_API_KEY") == "sk-or-real"
 
 
-
-
-
-
 # ---------------------------------------------------------------------------
 # CA generation TOCTOU (regression: 0o600 only set AFTER copy)
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits (0o600) do not apply on Windows")
+@pytest.mark.platforms("linux")
 def test_ca_key_created_with_0o600(hermes_home, monkeypatch):
     """The CA private key must NEVER exist on disk with default umask
     permissions, even transiently.  Fix: open with explicit mode=0o600
@@ -366,7 +258,7 @@ def test_ca_key_created_with_0o600(hermes_home, monkeypatch):
     monkeypatch.setattr(ip.shutil, "which", lambda name: "/usr/bin/openssl" if name == "openssl" else None)
     monkeypatch.setattr(ip.subprocess, "run", fake_run)
 
-    ca_crt, ca_key = ip.ensure_ca_cert()
+    _ca_crt, ca_key = ip.ensure_ca_cert()
     assert ca_key.exists()
     mode = ca_key.stat().st_mode & 0o777
     assert mode == 0o600, f"CA key has perms {oct(mode)}, expected 0o600"
@@ -377,7 +269,7 @@ def test_ca_key_created_with_0o600(hermes_home, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits (0o600) do not apply on Windows")
+@pytest.mark.platforms("linux")
 def test_ensure_audit_log_creates_with_0o600(hermes_home, tmp_path):
     audit = tmp_path / "audit.log"
     ip.ensure_audit_log(audit)
@@ -386,7 +278,7 @@ def test_ensure_audit_log_creates_with_0o600(hermes_home, tmp_path):
     assert mode == 0o600
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits (0o600) do not apply on Windows")
+@pytest.mark.platforms("linux")
 def test_ensure_audit_log_tightens_existing_perms(hermes_home, tmp_path):
     audit = tmp_path / "audit.log"
     audit.write_text("preexisting content\n")
@@ -401,13 +293,11 @@ def test_ensure_audit_log_tightens_existing_perms(hermes_home, tmp_path):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits (0o700) do not apply on Windows")
+@pytest.mark.platforms("linux")
 def test_proxy_state_dir_is_0o700(hermes_home):
     state = ip._proxy_state_dir()
     mode = state.stat().st_mode & 0o777
     assert mode == 0o700
-
-
 
 
 # ---------------------------------------------------------------------------
@@ -415,13 +305,9 @@ def test_proxy_state_dir_is_0o700(hermes_home):
 # ---------------------------------------------------------------------------
 
 
-
-
 # ---------------------------------------------------------------------------
 # CA missing → enforce_on_docker semantics (regression: silent fail-open)
 # ---------------------------------------------------------------------------
-
-
 
 
 # ---------------------------------------------------------------------------
@@ -429,17 +315,9 @@ def test_proxy_state_dir_is_0o700(hermes_home):
 # ---------------------------------------------------------------------------
 
 
-
-
 # ---------------------------------------------------------------------------
 # v3 round: bridge-IP parser hardening (P1 #1)
 # ---------------------------------------------------------------------------
-
-
-
-
-
-
 
 
 # ---------------------------------------------------------------------------
@@ -447,19 +325,9 @@ def test_proxy_state_dir_is_0o700(hermes_home):
 # ---------------------------------------------------------------------------
 
 
-
-
 # ---------------------------------------------------------------------------
 # Header-auth providers (x-api-key family) — match_headers + aliases
 # ---------------------------------------------------------------------------
-
-
-
-
-
-
-
-
 
 
 def test_mappings_roundtrip_preserves_headers_and_aliases(hermes_home):
@@ -476,17 +344,15 @@ def test_mappings_roundtrip_preserves_headers_and_aliases(hermes_home):
     assert loaded[0].alias_env_names == ("GOOGLE_API_KEY",)
 
 
-
-
-
-
-
-
 # ---------------------------------------------------------------------------
 # Management API (hot reload)
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.platforms("linux")
+def test_management_token_is_private(hermes_home):
+    ip.ensure_management_token()
+    assert (ip._management_token_path().stat().st_mode & 0o777) == 0o600
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits (0o600) do not apply on Windows")
@@ -506,8 +372,6 @@ def test_reload_proxy_refuses_when_not_running(hermes_home, monkeypatch):
     monkeypatch.setattr(ip, "_read_pid", lambda: None)
     with pytest.raises(RuntimeError, match="not running"):
         ip.reload_proxy()
-
-
 
 
 def test_reload_proxy_posts_bearer_to_management_endpoint(hermes_home, monkeypatch):
@@ -544,6 +408,7 @@ def test_reload_proxy_posts_bearer_to_management_endpoint(hermes_home, monkeypat
     assert captured["auth"] == f"Bearer {token}"
 
 
+@pytest.mark.platforms("linux")
 def test_start_proxy_injects_management_key_env(hermes_home, monkeypatch):
     """When the generated config has a management listener, start_proxy
     must inject the bearer key env var — v0.39 refuses to start when
@@ -588,15 +453,9 @@ def test_start_proxy_injects_management_key_env(hermes_home, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-
-
-
-
 # ---------------------------------------------------------------------------
 # v3: stop_proxy SIGKILL suppression on pid recycle (P3 #5 coverage gap)
 # ---------------------------------------------------------------------------
-
-
 
 
 # ---------------------------------------------------------------------------
@@ -604,22 +463,11 @@ def test_start_proxy_injects_management_key_env(hermes_home, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_reset_for_tests_clears_version_cache_and_nonce():
-    """_reset_for_tests must clear _VERSION_CACHE and _proxy_nonce so
-    in-process callers don't see leakage between tests."""
-
-    ip._VERSION_CACHE["dummy"] = "v0.0.0-fake"
-    ip._proxy_nonce = "fake-nonce-12345"
-    ip._reset_for_tests()
-    assert ip._VERSION_CACHE == {}
-    assert ip._proxy_nonce is None
 
 
 # ---------------------------------------------------------------------------
 # v3: version cache doesn't poison on empty stdout (P2 _VERSION_CACHE bug B)
 # ---------------------------------------------------------------------------
-
-
 
 
 # ---------------------------------------------------------------------------
@@ -671,8 +519,6 @@ def test_docker_egress_node_options_uses_sentinel(hermes_home, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-
-
 # ---------------------------------------------------------------------------
 # v3: persisted nonce roundtrip (stephenschoettler #3 cross-CLI defense)
 # ---------------------------------------------------------------------------
@@ -689,16 +535,10 @@ def test_persisted_nonce_roundtrip(hermes_home, monkeypatch):
     assert ip._read_persisted_nonce() == "test-nonce-abc123"
 
 
-
-
 # ---------------------------------------------------------------------------
 # v4 round (GodsBoy follow-up): bind-host-aware liveness probes +
 # allow_env_fallback on the partial-secret path
 # ---------------------------------------------------------------------------
-
-
-
-
 
 
 def test_get_status_probes_configured_bind_host(hermes_home, monkeypatch):

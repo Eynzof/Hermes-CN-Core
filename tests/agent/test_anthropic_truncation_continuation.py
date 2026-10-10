@@ -17,18 +17,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-import pytest
-
 def _make_anthropic_text_block(text: str) -> SimpleNamespace:
     return SimpleNamespace(type="text", text=text)
-
-def _make_anthropic_tool_use_block(name: str = "my_tool") -> SimpleNamespace:
-    return SimpleNamespace(
-        type="tool_use",
-        id="toolu_01",
-        name=name,
-        input={"foo": "bar"},
-    )
 
 def _make_anthropic_response(blocks, stop_reason: str = "max_tokens"):
     return SimpleNamespace(
@@ -65,7 +55,6 @@ class TestTruncatedAnthropicResponseNormalization:
         )
         assert nr.finish_reason == "length", "max_tokens stop_reason must map to OpenAI-style 'length'"
 
-
     def test_empty_content_does_not_crash(self):
         """Empty response.content — defensive: treat as a truncation with no text."""
         from agent.transports import get_transport
@@ -76,4 +65,3 @@ class TestTruncatedAnthropicResponseNormalization:
         # acceptable; what matters is no exception.
         assert nr is not None
         assert not nr.tool_calls
-

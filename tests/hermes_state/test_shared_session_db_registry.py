@@ -23,15 +23,9 @@ import threading
 import time
 from pathlib import Path
 
-import sys
 import pytest
 
 import hermes_state_registry as registry
-
-
-not_windows = pytest.mark.skipif(
-    sys.platform == "win32", reason="a live state.db cannot be unlinked/replaced on Windows"
-)
 
 
 @pytest.fixture(autouse=True)
@@ -63,7 +57,7 @@ def _replace_file_preserving_schema(src: Path, dst: Path) -> None:
     os.rename(tmp, dst)
 
 
-@not_windows
+@pytest.mark.platforms("posix")
 class TestInodeReplacement:
     def test_live_holders_keep_working_handle_across_replacement(self, tmp_path):
         """Two active refs → inode replacement → third caller gets NEW
@@ -549,7 +543,7 @@ class TestMultiGenerationTeardownBarrier:
         assert current is not old
         return db_path, old, current
 
-    @not_windows
+    @pytest.mark.platforms("posix")
     def test_retired_drain_does_not_lift_a_pending_current_teardown(self, tmp_path, monkeypatch):
         """close_all() must not report a finished sweep over a pending close."""
         db_path, old, current = self._two_generations(tmp_path, monkeypatch)
@@ -592,7 +586,7 @@ class TestMultiGenerationTeardownBarrier:
         assert current._conn is None
         assert registry._tearing_down.get(resolved) is None
 
-    @not_windows
+    @pytest.mark.platforms("posix")
     def test_replacement_is_not_published_before_the_last_close_settles(self, tmp_path, monkeypatch):
         """acquire() must not open a writer on top of an unfinished close."""
         db_path, old, current = self._two_generations(tmp_path, monkeypatch)

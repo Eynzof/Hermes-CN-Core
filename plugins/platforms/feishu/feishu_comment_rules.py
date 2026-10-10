@@ -49,7 +49,7 @@ class CommentsConfig:
     enabled: bool = True
     policy: str = "pairing"
     allow_from: frozenset = field(default_factory=frozenset)
-    documents: Dict[str, CommentDocumentRule] = field(default_factory=dict)
+    documents: dict[str, CommentDocumentRule] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -68,7 +68,7 @@ class _MtimeCache:
 
     def __init__(self, path: Path | Callable[[], Path]):
         self._resolve = path if callable(path) else (lambda: path)
-        self._entries: Dict[Path, tuple[float, dict]] = {}
+        self._entries: dict[Path, tuple[float, dict]] = {}
 
     def invalidate(self) -> None:
         self._entries.pop(self._resolve(), None)
@@ -84,6 +84,9 @@ class _MtimeCache:
         if cached is not None and cached[0] == mtime:
             return cached[1]
         try:
+            with open(path, "r", encoding="utf-8-sig") as f:
+                data = json.load(f)
+        except (json.JSONDecodeError, OSError):
             with open(path, "r", encoding="utf-8", errors="replace") as f:
                 data = orjson.loads(f.read())
         except (orjson.JSONDecodeError, OSError):
@@ -159,6 +162,8 @@ def _load_pairing_approved() -> set:
 def _save_pairing(data: dict) -> None:
     pairing_file = _pairing_file()
     pairing_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(pairing_file.with_suffix(".tmp"), "w", encoding="utf-8") as f:  # windows-footgun: ok (write/append mode, not a read)
+        json.dump(data, f, indent=2, ensure_ascii=False)
     with open(pairing_file.with_suffix(".tmp"), "w", encoding="utf-8", errors="replace") as f:
         f.write(orjson.dumps(data, option=orjson.OPT_INDENT_2).decode('utf-8'))
     pairing_file.with_suffix(".tmp").replace(pairing_file)
@@ -190,7 +195,7 @@ def pairing_remove(user_open_id: str) -> bool:
     return _mutate_pairing(user_open_id, add=False)
 
 
-def pairing_list() -> Dict[str, Any]:
+def pairing_list() -> dict[str, Any]:
     """Return the approved dict  {user_open_id: {approved_at: ...}}."""
     approved = _pairing_cache.load().get("approved", {})
     return dict(approved) if isinstance(approved, dict) else {}

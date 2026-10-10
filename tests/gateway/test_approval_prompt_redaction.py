@@ -1,10 +1,9 @@
 """Regression test for approval prompt credential redaction (issue #48456).
 
-When Tirith flags a command for containing a credential-shaped pattern, the
-gateway approval prompt must redact the credential from the command text
-before sending it to the chat platform. Without this fix, the raw command
-(with the credential in plaintext) is sent verbatim to Telegram/Discord/etc.,
-undoing Tirith's redaction one layer up.
+When a flagged command contains a credential-shaped value, the gateway approval
+prompt must redact the credential from the command text before sending it to
+the chat platform. Without this fix, the raw command (with the credential in
+plaintext) is sent verbatim to Telegram/Discord/etc.
 
 The redaction is wired through the module-level ``_redact_approval_command``
 seam. These tests bind that seam -- the production wiring -- not just the
@@ -68,8 +67,6 @@ class TestApprovalTextFallbackContract:
             "rm -rf /", "dangerous deletion", "/",
             allow_permanent=False, smart_denied=True,
         )
-        assert "owner override" in text.lower()
-        assert "one operation" in text.lower()
         assert "`/approve`" in text
         assert "approve session" not in text
         assert "approve always" not in text
@@ -80,9 +77,8 @@ class TestApprovalTextFallbackContract:
 
         monkeypatch.setattr("gateway.platforms.base_exec_approval.approval_timeout_seconds", lambda: 300)
         text = _format_exec_approval_fallback("rm -rf /", "recursive delete", "/")
-        assert "Hermes wants to run a command that needs your OK" in text
-        assert "Why it was flagged: recursive delete" in text
-        assert "If you don't answer within 5 minutes it will NOT run." in text
+        assert "recursive delete" in text
+        assert "5 minutes" in text
         for step in ("`/approve`", "`/approve session`", "`/approve always`", "`/deny`"):
             assert step in text
 

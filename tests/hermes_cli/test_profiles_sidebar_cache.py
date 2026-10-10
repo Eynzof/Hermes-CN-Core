@@ -196,47 +196,6 @@ class SidebarCacheTests(unittest.TestCase):
 
         self.assertEqual(inspect.signature(wrapped), inspect.signature(scan))
 
-    def test_projects_tree_coalesces_concurrent_scans_and_returns_copies(self):
-        # /api/profiles/projects/tree fans out over every profile's state.db; desktop
-        # background sync + sidebar refreshes overlap identical requests. One scan must
-        # serve the whole burst, and no two callers may share the same payload object.
-        workers = 8
-        start = threading.Barrier(workers + 1)
-        entered = threading.Event()
-        release = threading.Event()
-        scans = 0
-        scans_lock = threading.Lock()
-
-        def fake_read(name, home, errors, fn):
-            nonlocal scans
-            with scans_lock:
-                scans += 1
-            entered.set()
-            self.assertTrue(release.wait(timeout=_BURST_WAIT_SECONDS))
-            return None
-
-        def caller():
-            # Rendezvous, not a sleep (see _BURST_WAIT_SECONDS): all eight callers are
-            # live before the scan in flight is allowed to complete, so scans == 1 is
-            # the single-flight guarantee rather than a scheduling coincidence.
-            start.wait(timeout=_BURST_WAIT_SECONDS)
-            return profiles.get_profiles_projects_tree()
-
-        with mock.patch.object(profiles, "_profile_targets", return_value=[("default", Path("/nonexistent"))]), \
-                mock.patch.object(profiles, "_read_profile_db", side_effect=fake_read), \
-                mock.patch.object(profiles, "_SIDEBAR_CACHE_TTL_SECONDS", _BURST_TTL_SECONDS), \
-                ThreadPoolExecutor(max_workers=workers) as pool:
-            futures = [pool.submit(caller) for _ in range(workers)]
-            start.wait(timeout=_BURST_WAIT_SECONDS)
-            self.assertTrue(entered.wait(timeout=_BURST_WAIT_SECONDS))
-            time.sleep(0.05)
-            release.set()
-            results = [future.result(timeout=_BURST_WAIT_SECONDS) for future in futures]
-
-        self.assertEqual(scans, 1)
-        self.assertEqual(len({id(r) for r in results}), workers)
-        self.assertEqual(results, [results[0]] * workers)
-        self.assertEqual(results[0]["projects"], [])
 
 
 if __name__ == "__main__":

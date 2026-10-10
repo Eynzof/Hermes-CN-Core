@@ -57,7 +57,7 @@ class GraphCredentials:
         return f"{self.authority_url.rstrip('/')}/{self.tenant_id.strip().strip('/')}/oauth2/v2.0/token"
 
     @classmethod
-    def from_env(cls, environ: dict[str, str] | None = None, *, required: bool = True) -> "GraphCredentials | None":
+    def from_env(cls, environ: dict[str, str] | None = None, *, required: bool = True) -> GraphCredentials | None:
         env = environ if environ is not None else os.environ
         values = [(env.get(name) or "").strip() for name in _REQUIRED_ENV]
         missing = [name for name, value in zip(_REQUIRED_ENV, values) if not value]
@@ -97,7 +97,7 @@ class MicrosoftGraphTokenProvider:
         self._lock = asyncio.Lock()
 
     @classmethod
-    def from_env(cls, environ: dict[str, str] | None = None, **kwargs: Any) -> "MicrosoftGraphTokenProvider":
+    def from_env(cls, environ: dict[str, str] | None = None, **kwargs: Any) -> MicrosoftGraphTokenProvider:
         return cls(GraphCredentials.from_env(environ), **kwargs)
 
     def clear_cache(self) -> None:

@@ -21,9 +21,6 @@ class TestDiscordThreadPersistence:
         with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
             return DiscordAdapter(config=config)
 
-    def test_starts_empty_when_no_state_file(self, tmp_path):
-        adapter = self._make_adapter(tmp_path)
-        assert "$nonexistent" not in adapter._threads
 
     def test_track_thread_persists_to_disk(self, tmp_path):
         adapter = self._make_adapter(tmp_path)

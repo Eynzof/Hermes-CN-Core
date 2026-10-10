@@ -42,7 +42,7 @@ def _assert_diverted(tmp_path, sid, needle):
     assert needle in jsonl.read_text(encoding="utf-8")
 
 
-@not_windows
+@pytest.mark.platforms("posix")
 def test_replaced_state_db_diverts_pending_without_fts_rebuild(tmp_path, monkeypatch):
     import hermes_state
 

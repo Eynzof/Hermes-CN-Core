@@ -80,28 +80,7 @@ class TestGatewayTurnRoutePool:
 # 3 & 4. Eager fallback deferred/fires based on credential pool
 # ---------------------------------------------------------------------------
 
-class TestEagerFallbackWithPool:
-    """Test the eager fallback guard in run_agent.py's error handling loop."""
 
-    def _make_agent(self, has_pool=True, pool_has_creds=True, has_fallback=True):
-        """Create a minimal AIAgent mock with the fields needed."""
-        from run_agent import AIAgent
-
-        with patch.object(AIAgent, "__init__", lambda self, **kw: None):
-            agent = AIAgent()
-
-        agent._credential_pool = None
-        if has_pool:
-            pool = MagicMock()
-            pool.has_available.return_value = pool_has_creds
-            agent._credential_pool = pool
-
-        agent._fallback_chain = [{"model": "fallback/model"}] if has_fallback else []
-        agent._fallback_index = 0
-        agent._try_activate_fallback = MagicMock(return_value=True)
-        agent._emit_status = MagicMock()
-
-        return agent
 
 # ---------------------------------------------------------------------------
 # 5. Full 429 rotation cycle via _recover_with_credential_pool
@@ -171,7 +150,7 @@ class TestPoolRotationCycle:
 
     def test_pool_exhaustion_returns_false(self):
         """When all credentials exhausted, recovery should return False."""
-        agent, pool, _ = self._make_agent_with_pool(1)
+        agent, _pool, _ = self._make_agent_with_pool(1)
         # First 429 sets flag
         _, has_retried = agent._recover_with_credential_pool(
             status_code=429, has_retried_429=False
@@ -186,7 +165,7 @@ class TestPoolRotationCycle:
 
     def test_402_immediate_rotation(self):
         """402 (billing) should immediately rotate, no retry-first."""
-        agent, pool, entries = self._make_agent_with_pool(3)
+        agent, pool, _entries = self._make_agent_with_pool(3)
         recovered, has_retried = agent._recover_with_credential_pool(
             status_code=402, has_retried_429=False
         )
@@ -224,7 +203,7 @@ class TestPoolRotationCycle:
         agent.log_prefix = ""
         # No agent.api_key set — should fall back to pool.current().runtime_api_key
 
-        recovered, has_retried = agent._recover_with_credential_pool(
+        recovered, _has_retried = agent._recover_with_credential_pool(
             status_code=402, has_retried_429=False
         )
         assert recovered is True

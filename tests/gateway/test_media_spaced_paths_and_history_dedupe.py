@@ -15,19 +15,13 @@ Covers the follow-up wave after PR #72170:
 
 import os
 
-import pytest
 
 from gateway.platforms.base import (
     BasePlatformAdapter,
-    MEDIA_DELIVERY_EXTS,
 )
 from gateway.run import _collect_history_media_paths
 
 
-class TestGisExtensions:
-    def test_gis_extensions_in_delivery_set(self):
-        for ext in (".kmz", ".kml", ".geojson", ".gpx"):
-            assert ext in MEDIA_DELIVERY_EXTS
 
 
 class TestSpacedPaths:
@@ -87,7 +81,7 @@ class TestHistoryMediaDedupe:
         monkeypatch,
     ):
         monkeypatch.setenv("HOME", str(tmp_path))
-        # Windows: os.path.expanduser reads USERPROFILE, not HOME (P-048).
+        # On Windows os.path.expanduser("~") reads USERPROFILE, not HOME.
         monkeypatch.setenv("USERPROFILE", str(tmp_path))
         history = [
             {

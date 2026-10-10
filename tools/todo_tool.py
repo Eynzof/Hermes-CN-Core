@@ -49,62 +49,28 @@ class TodoStore:
     ``{id, content, status, parent?}`` — ``parent`` nests a subtask."""
 
     def __init__(self):
-        self._items: List[Dict[str, str]] = []
+        self._items: list[dict[str, str]] = []
         self._revision = 0
         self._archived: List[Dict[str, str]] = []
         self._warnings: List[str] = []
         self._conflict_error: Optional[str] = None
 
-    def _fresh_items(self, todos: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+    def _fresh_items(self, todos: list[dict[str, Any]]) -> list[dict[str, str]]:
         """Validate, dedupe and order a whole new list (replace / restore)."""
         return self._normalize_order([self._validate(t) for t in self._dedupe_by_id(todos)])
 
-    def write(
-        self,
-        todos: List[Dict[str, Any]],
-        merge: bool = False,
-        auto_fix: bool = True,
-    ) -> List[Dict[str, str]]:
+    def write(self, todos: list[dict[str, Any]], merge: bool = False) -> list[dict[str, str]]:
         """Replace the list (default) or merge by id; returns the full list after writing.
-
-        ``auto_fix=True`` (default) keeps the first ``in_progress`` item and marks the
-        extras completed; ``False`` leaves the conflict in place and records it
-        (retrievable via ``pop_conflict_error()``).  Warnings accumulate on
-        ``self._warnings`` (``pop_warnings()`` retrieves them).
-        """
-        self._warnings = []
-        self._conflict_error = None
-        before = [item.copy() for item in self._items]
-        incoming = self._dedupe_by_id(todos)
-        old_items = list(self._items)
-        old_statuses = {item["id"]: item["status"] for item in old_items}
-
-        # Non-blocking content guards (warnings only).
-        self._warnings.extend(self._detect_fuzzy_warnings(incoming, old_items))
-        self._warnings.extend(self._detect_duplicate_contents(incoming))
-
-        if merge:
-            self._merge(incoming)
-        else:
-            self._items = self._fresh_items(incoming)
-            # Archive terminal items dropped by the replacement: finished
-            # work is preserved (bounded), abandoned pending/in_progress
-            # items are not.
-            if old_items:
-                kept_ids = {item["id"] for item in self._items}
-                dropped_terminal = [
-                    item
-                    for item in old_items
-                    if item["id"] not in kept_ids
-                    and item["status"] in {"completed", "cancelled"}
-                ]
-                if dropped_terminal:
-                    self._archived.extend(dropped_terminal)
-            # Enforce the archive bound (oldest dropped first) on every
-            # replace-mode write.
-            if len(self._archived) > MAX_ARCHIVED_TODOS:
-                self._archived = self._archived[-MAX_ARCHIVED_TODOS:]
-
+        Raises ValueError (leaving the list untouched) if any item is invalid."""
+        before = self.read()
+        try:
+            if merge:
+                self._merge(todos)
+            else:
+                self._items = self._fresh_items(todos)
+        except ValueError:
+            self._items = before  # rejected write must not leave a partial list behind
+            raise
         del self._items[MAX_TODO_ITEMS:]  # keep the priority head; replays can't grow unbounded
         self._sanitize_parents(self._items)
 
@@ -164,7 +130,7 @@ class TodoStore:
             self._revision += 1
         return [item.copy() for item in self._items]
 
-    def _merge(self, todos: List[Dict[str, Any]]) -> None:
+    def _merge(self, todos: list[dict[str, Any]]) -> None:
         """Update existing items only in the fields provided; append new ones (validated)."""
         existing = {item["id"]: item for item in self._items}
         for t in self._dedupe_by_id(todos):
@@ -218,11 +184,11 @@ class TodoStore:
     def has_items(self) -> bool:
         return bool(self._items)
 
-    def snapshot(self) -> Dict[str, Any]:
+    def snapshot(self) -> dict[str, Any]:
         """Full state clients can reconcile atomically."""
         return {"todos": self.read(), "revision": self._revision}
 
-    def restore(self, todos: List[Dict[str, Any]], *, revision: Any = 0) -> List[Dict[str, str]]:
+    def restore(self, todos: list[dict[str, Any]], *, revision: Any = 0) -> list[dict[str, str]]:
         """Restore a trusted snapshot without manufacturing a new revision."""
         self._items = self._fresh_items(todos)[:MAX_TODO_ITEMS]
         try:
@@ -238,13 +204,13 @@ class TodoStore:
         active so subtasks keep context."""
         if not self._items:
             return None
-        children: Dict[str, List[Dict[str, str]]] = {}
+        children: dict[str, list[dict[str, str]]] = {}
         for item in self._items:
             if item.get("parent"):
                 children.setdefault(item["parent"], []).append(item)
 
-        def render(item: Dict[str, str], depth: int, out: List[str]) -> bool:
-            kid_lines: List[str] = []
+        def render(item: dict[str, str], depth: int, out: list[str]) -> bool:
+            kid_lines: list[str] = []
             has_active_kid = False
             for kid in children.get(item["id"], []):
                 has_active_kid |= render(kid, depth + 1, kid_lines)
@@ -270,24 +236,20 @@ class TodoStore:
         return content
 
     @staticmethod
-    def _cap_field(value: str, limit: int) -> str:
-        """Truncate an oversized optional field (notes/code) to `limit` chars."""
-        if len(value) > limit:
-            keep = limit - len(_TRUNCATION_MARKER)
-            return value[:keep] + _TRUNCATION_MARKER
-        return value
-
-    @staticmethod
-    def _validate(item: Dict[str, Any]) -> Dict[str, str]:
-        """Normalize one item to ``{id, content, status, parent?}`` plus optional
-        ``notes``/``code`` (placeholders when missing)."""
+    def _validate(item: dict[str, Any]) -> dict[str, str]:
+        """Normalize one item to ``{id, content, status, parent?}`` (placeholders when missing)."""
         if not isinstance(item, dict):
             return {"id": "?", "content": "(invalid item)", "status": "pending"}
         item_id = str(item.get("id", "")).strip() or "?"
         content = str(item.get("content", "")).strip()
+        if not content:
+            raise ValueError(
+                f"Todo item '{item_id}' has empty or missing content. "
+                "Each item must have a non-empty description."
+            )
         status = str(item.get("status", "pending")).strip().lower()
         result = {"id": item_id,
-                  "content": TodoStore._cap_content(content) if content else "(no description)",
+                  "content": TodoStore._cap_content(content),
                   "status": status if status in VALID_STATUSES else "pending"}
         parent = str(item.get("parent") or "").strip()
         if parent and parent != item_id:
@@ -305,7 +267,7 @@ class TodoStore:
         return result
 
     @staticmethod
-    def _sanitize_parents(items: List[Dict[str, str]]) -> None:
+    def _sanitize_parents(items: list[dict[str, str]]) -> None:
         """Drop dangling parent refs and break cycles in place (such items become roots)."""
         by_id = {item["id"]: item for item in items}
         for item in items:
@@ -321,9 +283,9 @@ class TodoStore:
                 node = by_id[node["parent"]]
 
     @staticmethod
-    def _dedupe_by_id(todos: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _dedupe_by_id(todos: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Collapse duplicate ids, keeping the last occurrence in its position."""
-        last_index: Dict[str, int] = {}
+        last_index: dict[str, int] = {}
         for i, item in enumerate(todos):  # non-dicts get a synthetic key; _validate handles them
             key = str(item.get("id", "")).strip() if isinstance(item, dict) else f"__invalid_{i}"
             last_index[key or "?"] = i
@@ -432,6 +394,9 @@ class TodoStore:
         return normalized
 
 
+def todo_tool(todos: Optional[list[dict[str, Any]]] = None, merge: bool = False,
+              store: Optional[TodoStore] = None) -> str:
+    """Write ``todos`` (replace, or ``merge`` by id) or read when None -> list + summary JSON."""
 def _verification_argv(code: str) -> List[str]:
     """Resolve a non-shell code string to a subprocess argv.
 
@@ -582,11 +547,10 @@ def todo_tool(todos: Optional[List[Dict[str, Any]]] = None, merge: bool = False,
                 return tool_error("todos must be a list of objects, got unparseable string")
         if not isinstance(todos, list):
             return tool_error(f"todos must be a list, got {type(todos).__name__}")
-        items = store.write(todos, merge, auto_fix=auto_fix)
-        conflict_error = store.pop_conflict_error()
-        if conflict_error is not None:
-            return tool_error(conflict_error)
-        warnings = store.pop_warnings()
+        try:
+            items = store.write(todos, merge)
+        except ValueError as e:
+            return tool_error(str(e))
     summary = {"total": len(items)}
     for status in ("pending", "in_progress", "completed", "cancelled"):
         summary[status] = sum(1 for i in items if i["status"] == status)
@@ -688,6 +652,50 @@ TODO_SCHEMA = {
         "required": []
     }
 }
+
+# Pre-rename names that replay as the Todo tool. model_tools._LEGACY_TOOL_ALIASES derives its todo
+# entries from this, so the alias map and the transcript/TUI predicates below cannot drift.
+TODO_LEGACY_ALIASES = ("todo",)
+TODO_TOOL_NAMES = frozenset((TODO_SCHEMA["name"], *TODO_LEGACY_ALIASES))
+
+
+def is_todo_tool_name(name: Any) -> bool:
+    """True for the Todo tool's current name or a legacy alias (an already-unwrapped dispatch name)."""
+    return isinstance(name, str) and name in TODO_TOOL_NAMES
+
+
+def is_todo_tool_call(tool_call: Any) -> bool:
+    """True when a transcript tool_call entry (dict or object) invoked the Todo tool.
+
+    Covers the current name, legacy aliases, and the ``tool_call`` bridge (``todo_list`` is deferred by
+    default, and the transcript keeps the bridge name). The bridge is peeled from the recorded arguments
+    only, never live tool-search config, and must wrap exactly one call. Keep this module free of model_tools / agent.tool_executor
+    imports: TUI resume and run_agent call this without loading either.
+    """
+    from agent.message_sanitization import _tc_field
+
+    fn = _tc_field(tool_call, "function")
+    name, raw_args = _tc_field(fn, "name") or "", _tc_field(fn, "arguments")
+    if is_todo_tool_name(name):
+        return True
+    # Cheap heuristic before the bridge modules load: skip args without a literal "todo". Only a
+    # unicode-escaped name slips past, which json.dumps never writes for ASCII.
+    if isinstance(raw_args, str) and "todo" not in raw_args:
+        return False
+    from tools.tool_search_catalog import TOOL_CALL_NAME
+
+    if name != TOOL_CALL_NAME:
+        return False
+    try:
+        args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
+    except json.JSONDecodeError:
+        return False
+    if not isinstance(args, dict):
+        return False
+    from tools.tool_search_validation import normalize_tool_call_entries
+
+    entries, error = normalize_tool_call_entries(args)
+    return not error and len(entries) == 1 and is_todo_tool_name(entries[0]["name"])
 
 
 from tools.registry import registry, tool_error

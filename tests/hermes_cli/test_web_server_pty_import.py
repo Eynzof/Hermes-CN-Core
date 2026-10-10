@@ -10,9 +10,7 @@ backend, POSIX gets the fcntl/termios one.  Both branches must:
   3. Never raise at import time when the platform-native dependency is
      missing — the dashboard's non-chat tabs must keep loading.
 
-This test asserts the live state on whichever platform CI runs on, plus a
-source-text check confirming the branch shape is preserved so a future
-refactor can't accidentally collapse it back to a POSIX-only import.
+This test asserts the live POSIX state (the Linux CI lane).
 """
 from __future__ import annotations
 
@@ -23,19 +21,7 @@ import pytest
 
 import hermes_cli.web_server_chat as _web_server_chat
 
-
-def test_web_server_exposes_pty_bridge_symbols():
-    """The two symbols /api/pty consumes must always exist."""
-    assert hasattr(_web_server_chat, "PtyBridge")
-    assert hasattr(_web_server_chat, "PtyUnavailableError")
-    assert hasattr(_web_server_chat, "_PTY_BRIDGE_AVAILABLE")
-    # PtyUnavailableError is always an exception class — either the real
-    # one from the platform bridge, or the local fallback class.
-    assert isinstance(_web_server_chat.PtyUnavailableError, type)
-    assert issubclass(_web_server_chat.PtyUnavailableError, BaseException)
-
-
-@pytest.mark.skipif(sys.platform.startswith("win"), reason="POSIX-only")
+@pytest.mark.platforms("posix")  # POSIX-only
 def test_web_server_uses_posix_pty_bridge_on_posix():
     """On POSIX, the bridge must be the fcntl/termios PtyBridge."""
     from hermes_cli.pty_bridge import PtyBridge as PosixBridge

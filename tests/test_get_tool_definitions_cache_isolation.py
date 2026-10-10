@@ -95,6 +95,7 @@ class TestQuietModeCacheIsolation:
             "Eviction should keep the cache at the cap, not clear it or grow"
         )
 
+
     def test_concurrent_capacity_misses_evict_atomically(self, monkeypatch):
         """Two profile/toolset misses at capacity cannot race on eviction."""
         barrier = Barrier(2)

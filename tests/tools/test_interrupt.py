@@ -78,7 +78,7 @@ class TestInterruptModule:
     def test_run_if_not_interrupted_orders_callback_before_concurrent_interrupt(
         self, callback_should_fail, monkeypatch
     ):
-        import tools.interrupt as interrupt
+        from tools import interrupt
 
         class CallbackFailure(Exception):
             pass
@@ -226,6 +226,8 @@ class TestPreToolCheck:
 # Unit tests: message combining
 # ---------------------------------------------------------------------------
 
+
+
 # ---------------------------------------------------------------------------
 # Integration tests (require local terminal)
 # ---------------------------------------------------------------------------
@@ -238,13 +240,14 @@ class TestSIGKILLEscalation:
         not __import__("shutil").which("bash"),
         reason="Requires bash"
     )
-    def test_sigterm_trap_killed_within_2s(self):
+    @pytest.mark.platforms("posix")
+    def test_sigterm_trap_killed_within_2s(self, tmp_path):
         """A process that traps SIGTERM should be SIGKILL'd after 1s grace."""
         from tools.interrupt import set_interrupt
         from tools.environments.local import LocalEnvironment
 
         set_interrupt(False)
-        env = LocalEnvironment(cwd="/tmp", timeout=30)
+        env = LocalEnvironment(cwd=str(tmp_path), timeout=30)
 
         # Start execution in a thread, interrupt after 0.5s
         result_holder = {"value": None}
@@ -283,9 +286,9 @@ class TestRunToolCleanupOnBaseException:
     """
 
     def test_cleanup_on_base_exception(self):
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
         import types
-        from tools.interrupt import set_interrupt, is_interrupted, _interrupted_threads, _lock
+        from tools.interrupt import set_interrupt, _interrupted_threads, _lock
 
         # Clear global state
         with _lock:

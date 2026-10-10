@@ -157,8 +157,6 @@ class TestFallbackCredentialIsolation:
         assert resolve.call_count == 1 and resolve.call_args.args[0] == "openrouter"
         assert agent.provider == "openrouter" and agent._credential_pool is throttled
 
-
 # ── Test: _recover_with_credential_pool rejects mismatched pool ──────
 
 # ── Test: base_url not overwritten after fallback ────────────────────
-

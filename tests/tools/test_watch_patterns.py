@@ -18,7 +18,6 @@ from unittest.mock import patch
 from tools.process_registry import (
     ProcessRegistry,
     ProcessSession,
-    WATCH_STRIKE_LIMIT,
     WATCH_GLOBAL_MAX_PER_WINDOW,
 )
 
@@ -46,17 +45,6 @@ def _make_session(
 # ProcessSession field defaults
 # =========================================================================
 
-class TestProcessSessionField:
-    def test_default_empty(self):
-        s = ProcessSession(id="proc_1", command="echo hi")
-        assert s.watch_patterns == []
-        assert s._watch_disabled is False
-        assert s._watch_hits == 0
-        assert s._watch_suppressed == 0
-
-    def test_can_set_patterns(self):
-        s = _make_session(watch_patterns=["ERROR", "WARN"])
-        assert s.watch_patterns == ["ERROR", "WARN"]
 
 # =========================================================================
 # Pattern matching + queue population

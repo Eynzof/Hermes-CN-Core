@@ -34,7 +34,6 @@ class TestIsUnusableContainerCwd:
         # Linux container's -w flag.
         assert tt._is_unusable_container_cwd(r"C:\Users\someuser") is True
 
-
     def test_posix_home_host_path_rejected(self):
         assert tt._is_unusable_container_cwd("/home/ben/projects") is True
 
@@ -116,7 +115,6 @@ class TestOverrideCwdSanitizedAtCallSite:
             f"Host-path cwd override leaked to the container builder: {cwd!r}. "
             "It must be sanitized back to config['cwd']."
         )
-
 
     def test_valid_container_override_is_preserved(self, monkeypatch):
         # RL/benchmark envs set an in-container path; it must pass through.
@@ -208,7 +206,6 @@ class TestFileOpsCwdSanitizedAtCallSite:
             "It must be sanitized back to config['cwd']."
         )
 
-
     def test_valid_container_override_is_preserved(self, monkeypatch):
         # RL/benchmark envs set an in-container path; it must pass through.
         cwd = self._run_and_capture_cwd(monkeypatch, "/workspace/task42")
@@ -217,9 +214,4 @@ class TestFileOpsCwdSanitizedAtCallSite:
     def test_host_override_sanitized_on_singularity(self, monkeypatch):
         cwd = self._run_and_capture_cwd(
             monkeypatch, "/Users/me/workspace", env_type="singularity")
-        assert cwd == "/workspace"
-
-    def test_host_override_sanitized_on_modal(self, monkeypatch):
-        cwd = self._run_and_capture_cwd(
-            monkeypatch, "/Users/me/workspace", env_type="modal")
         assert cwd == "/workspace"

@@ -29,8 +29,23 @@ from pathlib import Path
 import tempfile
 
 from setuptools import setup
-from setuptools.command.build import build as _build
-from setuptools.command.egg_info import egg_info as _egg_info
+from setuptools.command.sdist import sdist
+
+_ROOT = os.path.dirname(os.path.abspath(__file__))
+
+_IN_NIX_BUILD = os.environ.get("HERMES_NIX_BUILD") == "1"
+
+_BLOCK_MESSAGE = (
+    "Building wheels or sdists for hermes-agent is not supported.\n"
+    "Hermes is distributed via the shell installer, Docker image, or Nix.\n"
+    "See: https://hermes-agent.nousresearch.com/docs/getting-started/installation\n"
+    "\n"
+    "If you are developing, use an editable install instead:\n"
+    "  source ./activate  # PowerShell: . .\\activate.ps1\n"
+    "\n"
+    "If you are building with Nix (uv2nix), this error should not fire —\n"
+    "the Hermes Nix derivation sets HERMES_NIX_BUILD=1. If it does, file a bug."
+)
 
 
 REPO_ROOT = Path(__file__).parent.resolve()

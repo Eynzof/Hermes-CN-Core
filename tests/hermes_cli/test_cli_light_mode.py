@@ -160,10 +160,6 @@ class TestSkinConfigHook:
             set_active_skin(previous)
 
 
-    def test_hook_installed(self, cli_mod):
-        from hermes_cli.skin_engine import SkinConfig
-
-        assert getattr(SkinConfig, "_hermes_light_mode_hook_installed", False) is True
 
     def test_hook_is_idempotent(self, cli_mod):
         # Calling the installer twice must not double-wrap (the marker
@@ -197,7 +193,7 @@ class TestSkinConfigHook:
         assert skin.get_color("banner_text") == "#FFF8DC"
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: termios/tty OSC 11 drain guard is POSIX-only")
+@pytest.mark.platforms("linux")
 class TestOsc11DrainGuard:
     """Regression: a late-arriving OSC 11 reply must not leak into
     prompt_toolkit's input buffer (#40250).
@@ -404,7 +400,7 @@ def repo_root():
     return pathlib.Path(__file__).resolve().parents[2]
 
 
-@pytest.mark.skipif(_sys.platform == "win32", reason="POSIX PTY test")
+@pytest.mark.platforms("posix")  # POSIX PTY test
 class TestOsc11Da1Fence:
     def test_herdr_style_da1_only_returns_none_without_leak(self, repo_root):
         """Terminal answers DA1 instantly but swallows OSC 11 (herdr)."""

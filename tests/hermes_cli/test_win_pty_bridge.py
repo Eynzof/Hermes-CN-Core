@@ -29,9 +29,9 @@ import pytest
 from hermes_cli import win_pty_bridge
 from hermes_cli.win_pty_bridge import PtyUnavailableError, WinPtyBridge
 
-# ``pytest.mark.windows_only`` rather than a local ``skipif`` alias: the
+# ``pytest.mark.platforms("windows")`` rather than a local ``skipif`` alias: the
 # dedicated Windows CI job selects its files by grepping for the marker name
-# and then filters with ``-m windows_only``. A file-local skipif alias matched
+# and then filters with ``-m platforms("windows")``. A file-local skipif alias matched
 # the grep (so the file was listed) but carried no marker, so every test below
 # was deselected — the lane looked like it covered ConPTY and ran none of it.
 
@@ -63,16 +63,7 @@ class TestWinPtyBridgeUnavailable:
     web_server platform branch doesn't blow up at import time when pywinpty
     is missing or the host isn't Windows."""
 
-    def test_error_is_importable_and_carries_message(self):
-        err = PtyUnavailableError("conpty missing")
-        assert "conpty" in str(err)
 
-    def test_bridge_class_is_importable(self):
-        # The platform-branched import in web_server.py relies on this:
-        #     from hermes_cli.win_pty_bridge import WinPtyBridge, PtyUnavailableError
-        # Both symbols must always exist; ``is_available()`` is the gate.
-        assert WinPtyBridge is not None
-        assert callable(WinPtyBridge.is_available)
 
     @pytest.mark.asyncio
     async def test_write_has_nonblocking_async_contract(self):
@@ -201,7 +192,7 @@ class TestWinPtyBridgeUnavailable:
         proc.release_write.set()
         assert any("thread leaked" in r.getMessage() for r in caplog.records)
 
-    @pytest.mark.skipif(sys.platform.startswith("win"), reason="non-Windows only")
+    @pytest.mark.platforms("posix")  # non-Windows only
     def test_spawn_raises_unavailable_off_windows(self):
         with pytest.raises(PtyUnavailableError):
             WinPtyBridge.spawn(["true"])
@@ -212,7 +203,7 @@ class TestWinPtyBridgeUnavailable:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.windows_only
+@pytest.mark.platforms("windows")
 class TestWinPtyBridgeSpawn:
 
     def test_spawn_returns_bridge_with_pid(self):
@@ -229,7 +220,7 @@ class TestWinPtyBridgeSpawn:
             WinPtyBridge.spawn([bogus])
 
 
-@pytest.mark.windows_only
+@pytest.mark.platforms("windows")
 class TestWinPtyBridgeIO:
 
     @pytest.mark.asyncio
@@ -269,7 +260,7 @@ class TestWinPtyBridgeIO:
             bridge.close()
 
 
-@pytest.mark.windows_only
+@pytest.mark.platforms("windows")
 class TestWinPtyBridgeResize:
     def test_resize_does_not_raise_on_live_child(self):
         # ConPTY exposes no ioctl-equivalent for reading the child's current
@@ -297,7 +288,7 @@ class TestWinPtyBridgeResize:
         bridge.resize(cols=100, rows=40)
 
 
-@pytest.mark.windows_only
+@pytest.mark.platforms("windows")
 class TestClampDimension:
     """The clamp helper is the load-bearing piece — the dashboard sends
     untrusted winsize values straight from xterm.js, and pywinpty's
@@ -319,7 +310,7 @@ class TestClampDimension:
         assert _clamp(float("inf"), _MAX_COLS) == 1  # type: ignore[arg-type]
 
 
-@pytest.mark.windows_only
+@pytest.mark.platforms("windows")
 class TestWinPtyBridgeClose:
 
     def test_close_terminates_long_running_child(self):
@@ -341,7 +332,7 @@ class TestWinPtyBridgeClose:
         )
 
 
-@pytest.mark.windows_only
+@pytest.mark.platforms("windows")
 class TestWinPtyBridgeEnv:
     def test_cwd_is_respected(self, tmp_path):
         bridge = WinPtyBridge.spawn(

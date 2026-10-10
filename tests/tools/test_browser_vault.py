@@ -631,6 +631,7 @@ class TestVaultHardening:
         assert "vault.key" in _SECRET_FILE_NAMES
         assert "vault.json.enc" in _SECRET_FILE_NAMES
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="POSIX mode bits: Windows chmod only toggles the read-only bit, so an owner-only vault DIRECTORY cannot be asserted there")
     def test_vault_dir_is_owner_only(self, store, tmp_path):
         old_umask = os.umask(0o022)
         try:

@@ -51,12 +51,20 @@ hermes_bootstrap_python() {
 # hermes_compose_env REPO DIALECT: print the environment of the installed state
 # as a script for a shell of DIALECT (`sh` or `fish`).
 hermes_compose_env() {
-    local repo="$1" dialect="$2" python script
+    local repo="$1" dialect="$2" python script pythonpath
     python="$(hermes_bootstrap_python "$repo")" || {
         echo "no bootstrap Python found; run setup-hermes.sh" >&2
         return 1
     }
-    script="$(PYTHONHOME= PYTHONPATH="$repo" "$python" -m pm.environments --format "$dialect")" &&
+    # A native Windows interpreter reads PYTHONPATH itself, and MSYS's POSIX
+    # spelling of the repo (`/c/...`) names no directory there, so pm would not
+    # import. hermes_apply_env converts the composed output back the other
+    # way; this is the same crossing, in the other direction.
+    pythonpath="$repo"
+    if command -v cygpath >/dev/null 2>&1; then
+        pythonpath="$(cygpath -am "$repo")" || return 1
+    fi
+    script="$(PYTHONHOME= PYTHONPATH="$pythonpath" "$python" -m pm.environments --format "$dialect")" &&
         [ -n "$script" ] || {
         echo "could not read pm env (run ./setup-hermes.sh first)" >&2
         return 1

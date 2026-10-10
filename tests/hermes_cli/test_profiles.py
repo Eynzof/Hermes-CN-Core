@@ -553,10 +553,10 @@ class TestBackfillProfileEnvs:
 class TestDeleteProfile:
     """Tests for delete_profile()."""
 
+    @pytest.mark.platforms("windows")
     def test_removes_windows_bat_and_stale_extensionless_wrapper(
-        self, profile_env, monkeypatch
+        self, profile_env
     ):
-        monkeypatch.setattr("sys.platform", "win32")
         profile_dir = create_profile("coder", no_alias=True)
         wrapper_dir = profile_env / ".local" / "bin"
         wrapper_dir.mkdir(parents=True, exist_ok=True)

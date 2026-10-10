@@ -10,7 +10,13 @@ import argparse
 import json
 import os
 import re
-from agent.re_compat import re
+try:  # fork: the accelerated engine when the checkout is importable (P-045).
+    from agent.re_compat import re
+except ModuleNotFoundError:
+    # The release entrypoint must run from a bare checkout too (the commit-build
+    # fixture copies only scripts/releases + hermes_cli): stdlib ``re`` above is
+    # then the engine.
+    pass
 import shutil
 import subprocess
 import sys

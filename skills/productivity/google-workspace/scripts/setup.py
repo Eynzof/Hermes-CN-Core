@@ -24,7 +24,30 @@ Agent workflow:
 from __future__ import annotations  # allow PEP 604 `X | None` on Python 3.9+
 
 import argparse
-import orjson
+try:  # fork: orjson is the fast path when the Hermes environment provides it
+    import orjson
+except ModuleNotFoundError:
+    # A copied skill runs under an unrelated interpreter (no site-packages, so
+    # no orjson). The import must not be fatal: every command still has to reach
+    # the "run this in the Hermes environment" message instead of a traceback.
+    import json as _json
+
+    class _OrjsonFallback:
+        """The subset of the orjson API this script uses, on stdlib json."""
+
+        OPT_INDENT_2 = 2
+        JSONDecodeError = _json.JSONDecodeError
+
+        @staticmethod
+        def loads(value, *args, **kwargs):
+            return _json.loads(value, *args, **kwargs)
+
+        @staticmethod
+        def dumps(value, option=None, **kwargs):
+            indent = 2 if option and option & _OrjsonFallback.OPT_INDENT_2 else None
+            return _json.dumps(value, indent=indent, **kwargs).encode("utf-8")
+
+    orjson = _OrjsonFallback()
 import os
 import sys
 from pathlib import Path

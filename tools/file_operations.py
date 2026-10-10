@@ -223,6 +223,28 @@ def _decode_file_bytes(
             continue
     return data.decode("utf-8", errors="replace")
 
+
+def _decode_edit_bytes(data: bytes) -> str:
+    """Decode a byte-exact read for the EDIT paths (match text + write-back).
+
+    [CN-fork] P-037: a GBK/cp936 file — the common case on Chinese Windows — has to be
+    MATCHED on its decoded text, or the model's UTF-8 ``old_string``/V4A hunk can never
+    hit and the edit fails (the pre-merge in-process read decoded through the fallback
+    codecs). Upstream's ``surrogateescape`` view remains the last resort (upstream
+    #79178): it is the exact inverse of ``write_file``'s encode, so bytes that no codec
+    explains round-trip unchanged instead of turning into U+FFFD.
+    """
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        pass
+    for enc in _INPROC_FALLBACK_ENCODINGS:
+        try:
+            return data.decode(enc)
+        except (UnicodeDecodeError, LookupError):
+            continue
+    return data.decode("utf-8", "surrogateescape")
+
 # --- Binary-content identification -------------------------------------------
 
 _MAGIC_SIGNATURES: tuple = (
@@ -557,8 +579,9 @@ class ShellFileOperations(LintMixin, SearchMixin, FileOperations):
                     return fh.read(length)
             except OSError:
                 return None
-        result = self._exec(f"head -c {length} {self._escape_shell_arg(path)} 2>/dev/null | base64")
-        if result.exit_code != 0:
+        segments, read_rc, _ = self._fenced_read(
+            f"head -c {length} {self._escape_shell_arg(path)} 2>/dev/null | base64")
+        if segments is None or read_rc != 0:
             return None
         return self._decode_base64_sample(segments[0])
 
@@ -2180,10 +2203,12 @@ class ShellFileOperations(LintMixin, SearchMixin, FileOperations):
         if data is None:
             return PatchResult(error=failed.cwd_error or f"Failed to read file: {path}")
         # Every line the replacement does not touch is written back, so read the exact bytes;
-        # surrogateescape lets write_file restore any byte UTF-8 cannot decode (#79178).
+        # a legacy-encoded file (P-037: GBK/cp936 on Chinese Windows) is decoded through the
+        # fallback codecs so the model's UTF-8 old_string can match it, and anything no codec
+        # explains keeps upstream's surrogateescape view (#79178) for the write-back.
         # Match and diff on BOM-stripped content (a phantom U+FEFF defeats an exact
         # first-line match); the raw read becomes write_file's pre_content.
-        raw_content = data.decode("utf-8", "surrogateescape")
+        raw_content = _decode_edit_bytes(data)
         content, _ = _strip_bom(raw_content)
 
         from tools.fuzzy_match import fuzzy_find_and_replace

@@ -21,6 +21,7 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
+from platform_utils import is_windows
 from hermes_constants import get_hermes_home
 from tools.environments.base import BaseEnvironment, EnvironmentConnectionError, _SHELL_ENV_NAME_RE
 from tools.terminal_tool_config import (
@@ -142,11 +143,15 @@ def _is_volatile_mount_spec(spec: str) -> bool:
         return False  # the flag element itself, or a non-bind arg (tmpfs modes etc.)
     parsed = _split_volume_spec(spec)
     source = parsed[0] if parsed is not None else spec.split(":", 1)[0]
-    if _is_windows_drive_path(source):
+    if _is_windows_drive_path(source) and not is_windows():
         return False  # drive-letter hosts can never be the POSIX process tempdir
     try:
-        temp_root = os.path.realpath(tempfile.gettempdir())
-        source_abs = os.path.realpath(os.path.abspath(os.path.expanduser(source)))
+        # On Windows the process tempdir IS a drive-letter path (and may be spelled
+        # with an 8.3 short name), so the shortcut above cannot apply there: realpath
+        # both sides and compare case-insensitively, or the symlink-safe skills copy
+        # under %TEMP% never reads as volatile and reuse churns per process.
+        temp_root = os.path.normcase(os.path.realpath(tempfile.gettempdir()))
+        source_abs = os.path.normcase(os.path.realpath(os.path.abspath(os.path.expanduser(source))))
         return source_abs == temp_root or source_abs.startswith(temp_root + os.sep)
     except OSError:  # unreadable source — treat as stable, fail the safe way
         return False
@@ -164,14 +169,28 @@ def _reuse_environment_fingerprint(*, image: str, mount_args: list[str], hermes_
     hash, so moving where that mount lands still forces a fresh container.
     """
     normalized_home = os.path.normcase(os.path.abspath(os.path.expanduser(hermes_home)))
-    canonical_mounts = [
-        (f"<volatile-tempdir-mount>:{spec.split(':', 1)[1]}"
-         if _is_volatile_mount_spec(spec) else spec)
-        for spec in mount_args]
+    canonical_mounts = [_canonical_mount_spec(spec) for spec in mount_args]
     payload = json.dumps(
         {"image": image, "mount_args": canonical_mounts, "hermes_home": normalized_home},
         sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:24]
+
+
+def _canonical_mount_spec(spec: str) -> str:
+    """*spec* with a volatile tempdir host source replaced by a stable placeholder.
+
+    Everything after the source — the container path and any ``:ro`` mode — keeps its
+    place in the reuse hash while the random host path is dropped. Split on the PARSED
+    source, never on the first colon: a Windows source is ``C:\\Users\\...``, so the
+    first colon belongs to the drive letter and slicing there would leave the random
+    ``hermes-skills-safe-<hex>`` segment inside the canonical form.
+    """
+    if not _is_volatile_mount_spec(spec):
+        return spec
+    parsed = _split_volume_spec(spec)
+    if parsed is None:  # unparseable spec: leave it alone rather than guess
+        return spec
+    return f"<volatile-tempdir-mount>{spec[len(parsed[0]):]}"
 
 
 def reap_orphan_containers(

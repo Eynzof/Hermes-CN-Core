@@ -103,8 +103,16 @@ def test_all_uv_commands_keep_the_pm_interpreter(installed_uv, monkeypatch):
     assert dict(os.environ) == before
 
 
+@pytest.mark.platforms("posix")
 def test_project_environment_replaces_generation_when_pinned_python_moves(installed_uv, tmp_path, monkeypatch):
-    """An unchanged dependency pin cannot reuse a venv made by another tools store."""
+    """An unchanged dependency pin cannot reuse a venv made by another tools store.
+
+    POSIX-only: the fixture stages an interpreter by copying the host binary and its
+    stdlib tree (``bin/python`` + ``lib/python3.x``), which is the layout the store
+    entry has to match. A copied ``python.exe`` on Windows resolves ``sys.base_prefix``
+    through the registry to the real installation, so the staged entry can never be
+    the interpreter the built venv reports.
+    """
     from pm import operations
     from pm import registry
     from tests.pm._fixtures import _run, _wheel, stage_host_python
@@ -253,6 +261,7 @@ def test_bundled_uv_uses_a_verified_writable_python_without_changing_runtime(ins
 @pytest.mark.parametrize("damage", [None, "source", "copy", "publication"])
 def test_copy_failure_preserves_previous_python(installed_uv, monkeypatch, damage):
     from pm import registry
+    from pm.filesystem import native
     from pm.store import Store, tree_digest
 
     root, _, facts, target, digest = installed_uv
@@ -286,7 +295,9 @@ def test_copy_failure_preserves_previous_python(installed_uv, monkeypatch, damag
     elif damage == "copy":
         def damaged_copy(src, dest, *args, **kwargs):
             result = copytree(src, dest, *args, **kwargs)
-            if Path(src) == source:
+            # The store spells its own root in verbatim form on Windows, so the
+            # copytree call the install makes is matched on the native spelling.
+            if Path(native(src)) == source:
                 (dest / binary_rel).write_bytes(b"damaged copy")
             return result
         monkeypatch.setattr(shutil, "copytree", damaged_copy)

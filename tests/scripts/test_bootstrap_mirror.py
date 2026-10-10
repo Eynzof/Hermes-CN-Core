@@ -139,7 +139,10 @@ def test_generated_windows_pins_match_the_shared_authority(tmp_path):
         "@{uv=$script:UvPinFiles; git=$script:GitPinFiles} | ConvertTo-Json -Depth 5 -Compress\n",
         encoding="utf-8",
     )
-    result = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-File", str(script)], capture_output=True, text=True, timeout=30)
+    # -ExecutionPolicy Bypass like every other powershell driver in this file: a
+    # host whose policy is Restricted refuses to load a script file at all, and
+    # the pin fixture would be reported as a missing authority instead.
+    result = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", str(script)], capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stderr
     emitted = json.loads(result.stdout)
     lock = json.loads((ROOT / "pm/lock.json").read_text(encoding="utf-8"))["packages"]

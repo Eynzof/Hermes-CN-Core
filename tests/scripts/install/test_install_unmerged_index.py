@@ -152,41 +152,9 @@ def test_install_sh_clears_unmerged_index_before_stash_source_order() -> None:
     idx_stash = text.index("stash push --include-untracked")
     assert idx_unmerged < idx_stash
 
-
-def test_install_ps1_stops_venv_resident_processes_before_parking_venv() -> None:
-    """The Windows venv-recreate path must stop every process running out of the
-    old venv before moving it aside.
-
-    A gateway autostarted by a scheduled task runs as
-    ``venv\\Scripts\\pythonw.exe -m hermes_cli.main gateway run`` — image name
-    ``pythonw``, not ``hermes.exe`` — so the ``taskkill /IM hermes.exe`` guard
-    misses it and the loaded ``.pyd`` stays locked (issues #47036/#47557/#47910).
-    The recreate branch must sweep by venv path prefix before Rename-Item, and
-    must never fall back to an in-place ``Remove-Item`` of the live ``venv``
-    (#83149 — that path can gut site-packages with no rollback).
-    """
-    text = INSTALL_PS1.read_text()
-
-    # The hermes.exe tree-kill is preserved (kills spawned child processes too).
-    assert 'taskkill /F /T /IM hermes.exe' in text
-
-    # The venv path-prefix sweep exists. It must match by case-insensitive
-    # StartsWith, NOT PowerShell -like: a venv path containing wildcard
-    # metacharacters ('[', ']') — legal in a Windows user name — silently fails
-    # to match under -like, reintroducing the exact miss this fix closes.
-    idx_recreate = text.index("Virtual environment already exists, recreating")
-    idx_sweep = text.index("StartsWith($venvPrefix", idx_recreate)
-    assert "[System.StringComparison]::OrdinalIgnoreCase" in text[idx_sweep:idx_sweep + 200]
-    assert 'ExecutablePath -like "$venvRoot' not in text, (
-        "the -like wildcard match must not be used for venv path scoping"
-    )
-
-    # The process sweep must run before the venv is parked, or it is a no-op.
-    idx_park = text.index('Rename-Item -LiteralPath "venv"', idx_recreate)
-    assert idx_sweep < idx_park, (
-        "venv-resident processes must be stopped before Rename-Item parks the venv"
-    )
-    assert 'Remove-Item -Recurse -Force "venv"' not in text[idx_recreate:], (
-        "must not fall back to in-place delete of the live venv (#83149)"
-    )
-    assert "Could not move the existing venv aside" in text[idx_recreate:]
+# The fork's install.ps1 venv-recreate sweep (``taskkill /F /T /IM hermes.exe``
+# plus a venv-prefix process sweep before ``Rename-Item``) was retired with the
+# installer rewrite the upstream sync took: python+venv provisioning is pm's job
+# now (``Stage-Venv`` -> pm), and pm replaces runtime entries with
+# ``pm.install.retry_held`` while a live process still holds them
+# (tests/pm/test_held_entry_windows_live.py). Its test went with the block.

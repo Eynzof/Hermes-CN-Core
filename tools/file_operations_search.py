@@ -753,7 +753,12 @@ class SearchMixin:
         if not paths:
             return paths
 
-        escaped_root = self._escape_shell_arg(root)
+        # ``git`` is a NATIVE binary: Hermes disables MSYS argument conversion for its
+        # bash subprocesses, so the Git-Bash ``/c/...`` form ``_escape_shell_arg``
+        # produces reaches it verbatim and ``-C`` dies with "cannot change to" —
+        # every path then looks un-ignored. Feed it the same native form
+        # ``_escape_native_tool_arg`` gives rg/the linter, with matching stdin paths.
+        escaped_root = self._escape_native_tool_arg(root)
         probe = self._exec(
             f"git -C {escaped_root} rev-parse --is-inside-work-tree >/dev/null 2>&1",
             timeout=10,
@@ -761,13 +766,19 @@ class SearchMixin:
         if probe.exit_code != 0:
             return paths
 
+        from tools.environments.local import _IS_WINDOWS, _msys_to_windows_path
+        if _IS_WINDOWS:
+            native_of = {_msys_to_windows_path(p).replace("\\", "/"): p for p in paths}
+        else:
+            native_of = {p: p for p in paths}
         result = self._exec(
             f"git -C {escaped_root} check-ignore --stdin",
             timeout=10,
-            stdin_data="\n".join(paths),
+            stdin_data="\n".join(native_of),
         )
         ignored = set(result.stdout.splitlines())
-        return [item_path for item_path in paths if item_path not in ignored]
+        return [item_path for native_path, item_path in native_of.items()
+                if native_path not in ignored]
 
     def _sort_paths_by_mtime(self, paths: list[str]) -> list[str]:
         """Sort paths newest-first using metadata from the active backend."""
@@ -1093,6 +1104,14 @@ class SearchMixin:
                 # the merged view keeps the newest-first contract globally.
                 all_files = merged_entries
                 limit_reason = limit_reason or directory_limit_reason
+        from tools.environments.local import LocalEnvironment, _IS_WINDOWS, _msys_to_windows_path
+        if all_files and _IS_WINDOWS and isinstance(self.env, LocalEnvironment):
+            # The directory supplement above traverses through the shell, which speaks
+            # the Git-Bash MSYS form (/c/Users/...) on a Windows-local backend; the
+            # caller expects native paths, the same translation the find lane applies
+            # in ``_search_files``. Applied after the mtime sort so ``stat`` keeps
+            # seeing the form it resolved the paths with.
+            all_files = [_msys_to_windows_path(file_path) for file_path in all_files]
         return SearchResult(
             files=all_files[offset:offset + limit], total_count=len(all_files),
             truncated=len(all_files) > offset + limit or bool(limit_reason), limit_reason=limit_reason)

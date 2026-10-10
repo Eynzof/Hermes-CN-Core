@@ -75,7 +75,7 @@ class TestEnsureLingerEnabled:
 
     @pytest.mark.skipif(sys.platform == "win32",
                         reason="systemd linger is Linux-only (os.geteuid/pwd)")
-    def test_loginctl_failure_shows_manual_guidance(self, monkeypatch, capsys):
+    def test_loginctl_failure_shows_manual_guidance(self, monkeypatch, capsys, tmp_path):
         monkeypatch.setattr(gateway, "is_linux", lambda: True)
         monkeypatch.setattr("getpass.getuser", lambda: "testuser")
         _stub_linger_file(monkeypatch, tmp_path, exists=False)
@@ -116,7 +116,7 @@ class TestEnsureLingerEnabled:
 
     @pytest.mark.skipif(sys.platform == "win32",
                         reason="systemd linger is Linux-only (os.geteuid/pwd)")
-    def test_system_scope_warning_uses_system_restart(self, monkeypatch, capsys):
+    def test_system_scope_warning_uses_system_restart(self, monkeypatch, capsys, tmp_path):
         monkeypatch.setattr(gateway, "is_linux", lambda: True)
         monkeypatch.setattr(gateway, "is_termux", lambda: False)
         _stub_linger_file(monkeypatch, tmp_path, exists=False)

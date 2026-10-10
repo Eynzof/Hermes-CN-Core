@@ -41,7 +41,7 @@ _CHILD = textwrap.dedent('''
     subprocess.run(["git", "init", "-q", str(source)], check=True)
     subprocess.run(["git", "-C", str(source), "add", "."], check=True)
     subprocess.run([*git, "-C", str(source), "commit", "-qm", "fixture"], check=True)
-    if mode.startswith("sqlite"):
+    if os.environ.get("PROBE_SHIM"):
         # The selected interpreter is the shim: its SQLite probe is the runtime-safety fact.
         sys.executable = os.environ["PROBE_SHIM"]
     import hermes_yaml as yaml
@@ -199,7 +199,9 @@ def test_unsafe_sqlite_runtime_keeps_exit_zero_but_vetoes_topology_migration(tmp
 @pytest.mark.platforms("posix")
 @pytest.mark.skipif(hasattr(os, "geteuid") and os.geteuid() == 0, reason="root ignores directory modes")
 def test_config_format_write_failure_is_owed_not_reported_complete(tmp_path):
-    summary = _run_completion(tmp_path, "config-ro")
+    # The interpreter's SQLite verdict is pinned: an unsafe runtime of the host would add its own
+    # ``sqlite_runtime`` debt and the receipt would no longer name only the config debt.
+    summary = _run_completion(tmp_path, "config-ro", sqlite="3.53.1")
     assert summary["code"] == 0, summary["output"]
     assert summary["config_version"] == summary["latest_config_version"] - 1
     # The receipt names the debt, the tail stays pending and nothing stamps the tree as done.
@@ -213,7 +215,8 @@ def test_config_format_write_failure_is_owed_not_reported_complete(tmp_path):
 @pytest.mark.platforms("posix")
 @pytest.mark.skipif(hasattr(os, "geteuid") and os.geteuid() == 0, reason="root ignores directory modes")
 def test_profile_sync_followup_keeps_the_tail_owed(tmp_path):
-    summary = _run_completion(tmp_path, "profile-sync")
+    # Same pin as above: the tail's own debt is what this receipt must name.
+    summary = _run_completion(tmp_path, "profile-sync", sqlite="3.53.1")
     assert summary["code"] == 0, summary["output"]
     assert summary["outcome"] == "success"
     assert summary["followups"] == ["profile_sync"]

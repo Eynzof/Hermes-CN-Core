@@ -809,6 +809,70 @@ function Disable-TreelessGraphWrites([string]$Dir) {
     }
 }
 
+# Pure npm lockfile churn is not a local edit: a local build rewrites a tracked
+# package-lock.json without touching its manifest, and treating that as user work
+# forces an autostash (and restores the churn on top of the updated tree). Revert
+# only the lockfiles whose manifest did not change together with them. Best
+# effort: a cleanup failure never blocks the update path.
+function Discard-LockfileChurn {
+    param([string]$Repo = $InstallDir)
+
+    if (-not $Repo -or -not (Test-Path (Join-Path $Repo ".git"))) { return }
+
+    try {
+        $diff = Invoke-Native { git -C $Repo diff --name-only 2>$null }
+        if ($LASTEXITCODE -ne 0 -or -not $diff) { return }
+
+        $dirtyPackageDirs = [System.Collections.Generic.HashSet[string]]::new(
+            [System.StringComparer]::OrdinalIgnoreCase
+        )
+        foreach ($path in $diff) {
+            if ($path -like "*package.json") {
+                $null = $dirtyPackageDirs.Add(((Split-Path $path -Parent) -replace '\\', '/'))
+            }
+        }
+
+        # The single root lockfile records every workspace's specs (root package.json
+        # "workspaces" globs), so a dirty workspace manifest such as
+        # apps/desktop/package.json protects it; reverting it there desyncs spec and
+        # lock and every later npm ci fails (#112378). A manifest outside the graph
+        # (website/) has its own lockfile and does not protect the root one.
+        $rootLockProtected = $dirtyPackageDirs.Contains("")
+        if (-not $rootLockProtected -and $dirtyPackageDirs.Count -gt 0) {
+            $workspaceGlobs = @()
+            try {
+                $rootPkg = Get-Content (Join-Path $Repo "package.json") -Raw | ConvertFrom-Json
+                $ws = $rootPkg.workspaces
+                if ($ws -and $ws.PSObject.Properties["packages"]) { $ws = $ws.packages }
+                $workspaceGlobs = @($ws | Where-Object { $_ })
+            } catch { }
+            foreach ($dir in $dirtyPackageDirs) {
+                foreach ($glob in $workspaceGlobs) {
+                    if ($dir -like ([string]$glob)) { $rootLockProtected = $true }
+                }
+            }
+        }
+
+        $dirtyLocks = [System.Collections.Generic.List[string]]::new()
+        foreach ($path in $diff) {
+            if ($path -notlike "*package-lock.json") { continue }
+            $lockDir = (Split-Path $path -Parent) -replace '\\', '/'
+            if ($lockDir -eq "") {
+                if ($rootLockProtected) { continue }
+            } elseif ($dirtyPackageDirs.Contains($lockDir)) { continue }
+            $dirtyLocks.Add($path)
+        }
+
+        if ($dirtyLocks.Count -eq 0) { return }
+        Invoke-Native { git -C $Repo checkout -- @($dirtyLocks) 2>$null }
+        if ($LASTEXITCODE -eq 0) {
+            Log "Discarded npm lockfile churn ($($dirtyLocks.Count) file(s))"
+        }
+    } catch {
+        # Best-effort only; never let cleanup block the installer update path.
+    }
+}
+
 function Stage-Repository {
     $pinned = $false
     # Refuse an occupied non-checkout before provisioning Git. This check
@@ -874,10 +938,15 @@ function Stage-Repository {
         Invoke-Logged "Fetching origin/$Branch" { git -C $InstallDir fetch origin "+refs/heads/${Branch}:refs/remotes/origin/${Branch}" }
         if ($LASTEXITCODE) { Fail "git fetch failed" git_fetch_failed }
         $stamp = (Get-Date -Format 'yyyyMMdd-HHmmss')
+        $autostashRef = ""
+        # Generated lockfile churn is not user work: discard it before the probe, or
+        # the park below pushes it back onto the updated tree at the end of the run.
+        Discard-LockfileChurn $InstallDir
+        $statusOut = Invoke-Native { git -C $InstallDir status --porcelain }
         # Park local work BEFORE switching branches: checkout refuses a dirty
         # tree that conflicts, and the reset below would discard it. Work that
         # cannot be parked stops the install -- never overwrite it.
-        if (Invoke-Native { git -C $InstallDir status --porcelain }) {
+        if ($statusOut) {
             # An interrupted update can leave unmerged index entries, where
             # stash aborts ("could not write index"). Dropping only the
             # index-level conflict state keeps the working-tree changes for
@@ -889,6 +958,7 @@ function Stage-Repository {
             }
             Invoke-Logged "Stashing local changes" { git -C $InstallDir stash push --include-untracked -m "hermes-install-autostash-$stamp" }
             if ($LASTEXITCODE) { Fail "could not stash local changes in $InstallDir; commit or move them aside, then rerun" local_changes_blocked }
+            $autostashRef = "stash@{0}"
             Write-Warn "local changes stashed as hermes-install-autostash-$stamp"
         }
         # checkout's branch guess only sees remote refs the refspec maps, so a narrow checkout
@@ -931,6 +1001,36 @@ function Stage-Repository {
             Invoke-Logged "Resetting to origin/$Branch" { git -C $InstallDir reset --hard "origin/$Branch" }
             if ($LASTEXITCODE) { Fail "git reset failed" git_reset_failed }
             Write-Warn "not fast-forwardable; reset to origin/$Branch"
+        }
+        # Put the parked work back: an install that ends with the user's edits sitting
+        # in a stash they never asked for is the #38542 data-loss class. A restore that
+        # conflicts keeps the stash (nothing is lost), cleans the tree -- conflict
+        # markers in tracked source would crash the backend on import -- and still
+        # completes the repository stage.
+        if ($autostashRef) {
+            Log "Restoring local changes"
+            Invoke-Native { git -C $InstallDir stash apply $autostashRef 2>&1 } | Out-Host
+            $restoreExit = $LASTEXITCODE
+            $conflicted = @(Invoke-Native { git -C $InstallDir diff --name-only --diff-filter=U 2>$null } | Where-Object { $_ -and "$_".Trim() })
+            if ($restoreExit -eq 0 -and $conflicted.Count -eq 0) {
+                Invoke-Native { git -C $InstallDir stash drop $autostashRef 2>$null }
+                Write-Warn "Local changes were restored on top of the updated codebase."
+                Write-Warn "Review git diff / git status if Hermes behaves unexpectedly."
+            } else {
+                Write-Err "Update pulled new code, but restoring local changes hit conflicts."
+                if ($conflicted.Count -gt 0) {
+                    Write-Host ""
+                    Write-Host "Conflicted files:"
+                    foreach ($conflictedFile in $conflicted) { Write-Host "  - $conflictedFile" }
+                }
+                Write-Host ""
+                Log "Your stashed changes are preserved -- nothing is lost."
+                Log "  Stash ref: $autostashRef"
+                Invoke-Native { git -C $InstallDir reset --hard HEAD 2>$null } | Out-Null
+                Log "Working tree reset to clean state."
+                Log "Restore your changes later with: git stash apply $autostashRef"
+            }
+            $autostashRef = ""
         }
     } else {
         # Moving a clone onto an existing directory would nest it. The

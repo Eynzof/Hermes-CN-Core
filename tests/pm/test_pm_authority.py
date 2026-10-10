@@ -125,6 +125,7 @@ def test_install_repairs_corrupt_entry_from_verified_archive(pm_env, matching_fa
 @pytest.mark.parametrize("initial", [False, True], ids=["replacement", "first-install"])
 def test_failed_replacement_preserves_entry_and_facts(pm_env, monkeypatch, route, initial, failure):
     from functools import partial
+    from pm.filesystem import native
     from pm.install import ensure, stage_only
     from pm.package import InstallError
 
@@ -176,7 +177,10 @@ def test_failed_replacement_preserves_entry_and_facts(pm_env, monkeypatch, route
         elif failure == "verify":
             original_verify = package.verify
             def verify(path, target):
-                if path != entry:
+                # The store spells its own root in verbatim (\\?\) form on Windows, so the
+                # entry it verifies is matched on the native spelling, not the object: the
+                # injected failure must land on the staged tree, never on the store entry.
+                if Path(native(path)) != entry:
                     fail()
                 return original_verify(path, target)
             fault.setattr(package, "verify", verify)
@@ -275,6 +279,7 @@ def test_killed_replacement_recovers_on_next_install(pm_env, route, interruption
 
 
 def test_failed_restore_preserves_both_interrupted_versions(pm_env, monkeypatch):
+    from pm.filesystem import native
     from pm.install import ensure
     from pm.package import InstallError
 
@@ -287,7 +292,9 @@ def test_failed_restore_preserves_both_interrupted_versions(pm_env, monkeypatch)
     (entry / "bin" / "faketool").write_text("uncommitted replacement")
     real_rename = Path.rename
     def fail_restore(self, target):
-        if self == previous:
+        # The store spells its own root in verbatim (\\?\) form on Windows, so the
+        # rename is matched on the native spelling of the path, not the object.
+        if Path(native(self)) == previous:
             raise PermissionError("restore refused")
         return real_rename(self, target)
     monkeypatch.setattr(Path, "rename", fail_restore)

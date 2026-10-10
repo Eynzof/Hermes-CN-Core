@@ -235,9 +235,24 @@ def _prune_unlocked_leases(leases: Path) -> bool:
         try:
             if not _lock(fd, wait=False):
                 held = True
+            elif os.name == "nt":
+                # Windows will not delete a name this process still holds open (``os.open`` asks
+                # for no FILE_SHARE_DELETE), so the close comes before the delete. A peer that
+                # locked the path inside that window is caught by ``lease_directory``'s
+                # ``exists()`` re-check after its own lock, and a delete that fails because a peer
+                # has the file open is a lease we cannot prove abandoned: held, never dropped.
+                os.close(fd)
+                fd = None
+                try:
+                    lease.unlink()
+                except FileNotFoundError:
+                    pass
+                except OSError:
+                    held = True
             else:
                 with suppress(OSError):
                     lease.unlink()
         finally:
-            os.close(fd)
+            if fd is not None:
+                os.close(fd)
     return held

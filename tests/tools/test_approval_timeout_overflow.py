@@ -14,6 +14,7 @@ import threading
 from unittest.mock import patch
 
 from agent.deadline import MAX_SAFE_TIMEOUT_S
+from tools import approval_context
 from tools.approval_context import _get_approval_timeout
 import tools.approval as approval_mod
 

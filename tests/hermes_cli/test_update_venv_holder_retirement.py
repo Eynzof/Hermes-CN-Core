@@ -75,7 +75,7 @@ def test_gateway_ancestor_refusal_never_kills_unknown_ancestry(monkeypatch, gate
 
 
 def test_command_reaches_checkout_preparation_without_holder_gates(monkeypatch, tmp_path):
-    from hermes_cli import update_inventory, update_owning_install
+    from hermes_cli import update_inventory, update_owning_install, update_receipt
 
     class ReachedCheckout(BaseException):
         pass
@@ -107,6 +107,11 @@ def test_command_reaches_checkout_preparation_without_holder_gates(monkeypatch, 
     monkeypatch.setattr(update_cmd_windows, "_detect_venv_python_processes", forbidden)
     monkeypatch.setattr(update_cmd, "_refuse_gateway_ancestor_tree_kill", forbidden)
     monkeypatch.setattr(main, "_is_windows", forbidden)
+    # The failure path finalizes the run's receipt, and that identity probe shells out to git
+    # (hermes_cli.version_info: ``git status`` on a 3 s budget). On a mounted checkout the status
+    # is killed on timeout, and the reaper's ``os.kill`` would read as a retired holder-gate kill.
+    # The receipt's identity is a machine fact; pin it so this test measures only its tripwires.
+    monkeypatch.setattr(update_receipt, "_code_identity", lambda refresh=False: {})
     monkeypatch.setattr(os, "kill", forbidden)
 
     def prepare_checkout(**_):

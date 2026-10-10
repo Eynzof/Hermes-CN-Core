@@ -62,7 +62,10 @@ def _make_wal_db(path: Path) -> None:
     # connection exists, and the ro holder cannot checkpoint at all.
     # The committed row therefore lives only in the -wal file.
     holder = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
-    holder.execute("SELECT 1").fetchone()
+    # Read a page: a statement that touches no database page (``SELECT 1``) leaves
+    # older SQLite builds free to checkpoint and delete the -wal on the writer's
+    # close, so the sidecar this test needs was gone before the assertion below.
+    holder.execute("SELECT * FROM t").fetchall()
     conn.execute("INSERT INTO t VALUES (42)")
     conn.commit()
     conn.close()

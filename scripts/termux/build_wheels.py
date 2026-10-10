@@ -65,7 +65,11 @@ def normalize_reqs(export: Path, lock: Path, resolved: Path) -> None:
                 raise ValueError(f"Source requirement does not match one locked package: {name}")
             spec = f"=={matches[0]['version']}"
         rows.append((name, spec, str(req.marker) if req.marker else "", source))
-    resolved.write_text("".join("\t".join(row) + "\n" for row in rows), encoding="utf-8")
+    # Byte-exact rows: the resolved set is consumed by offline installers, so the
+    # file must be identical whichever host produced it (write_text would turn
+    # every "\n" into the platform's line ending on Windows).
+    resolved.write_text("".join("\t".join(row) + "\n" for row in rows), encoding="utf-8",
+                        newline="\n")
 
 
 def load_entries(resolved: Path) -> dict[str, str]:
@@ -94,7 +98,7 @@ def write_reqs_file(resolved: Path, reqs: Path) -> None:
             line += " ; " + marker
         out.append(line)
     body = chr(10).join(out) + chr(10)
-    reqs.write_text(body, encoding="utf-8")
+    reqs.write_text(body, encoding="utf-8", newline="\n")
 
 
 def safe_extract(archive: Path, dest: Path) -> Path:

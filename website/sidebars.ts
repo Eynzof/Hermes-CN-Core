@@ -189,15 +189,6 @@ const sidebars: SidebarsConfig = {
                 },
                 {
                   type: 'category',
-                  label: 'computer-use',
-                  key: 'skills-bundled-computer-use',
-                  collapsed: true,
-                  items: [
-                    'user-guide/skills/bundled/computer-use/computer-use-computer-use',
-                  ],
-                },
-                {
-                  type: 'category',
                   label: 'creative',
                   key: 'skills-bundled-creative',
                   collapsed: true,
@@ -231,6 +222,15 @@ const sidebars: SidebarsConfig = {
                   items: [
                     'user-guide/skills/bundled/email/email-email-inbox-triage',
                     'user-guide/skills/bundled/email/email-himalaya',
+                  ],
+                },
+                {
+                  type: 'category',
+                  label: 'gh',
+                  key: 'skills-bundled-gh',
+                  collapsed: true,
+                  items: [
+                    'user-guide/skills/bundled/gh/gh-gh',
                   ],
                 },
                 {

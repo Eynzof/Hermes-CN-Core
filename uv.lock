@@ -2616,18 +2616,6 @@ daytona = [
 ddgs = [
     { name = "ddgs" },
 ]
-dev = [
-    { name = "debugpy" },
-    { name = "httpx2" },
-    { name = "mcp" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-benchmark" },
-    { name = "ruff" },
-    { name = "setuptools" },
-    { name = "starlette" },
-    { name = "ty" },
-]
 dingtalk = [
     { name = "alibabacloud-dingtalk" },
     { name = "dingtalk-stream" },
@@ -2822,6 +2810,7 @@ dev = [
     { name = "mcp" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
+ { name = "pytest-benchmark" },
     { name = "ruff" },
     { name = "setuptools" },
     { name = "starlette" },
@@ -2863,8 +2852,7 @@ requires-dist = [
     { name = "cryptography", marker = "extra == 'cn-desktop'", specifier = "==50.0.0" },
     { name = "daytona", marker = "extra == 'daytona'", specifier = "==0.155.0" },
     { name = "ddgs", marker = "extra == 'ddgs'", specifier = "==9.14.4" },
-    { name = "debugpy", marker = "extra == 'dev'", specifier = "==1.8.20" },
-    { name = "defusedxml", marker = "extra == 'wecom'", specifier = "==0.7.1" },
+       { name = "defusedxml", marker = "extra == 'wecom'", specifier = "==0.7.1" },
     { name = "dingtalk-stream", marker = "extra == 'dingtalk'", specifier = "==0.24.3" },
     { name = "discord-py", extras = ["voice"], marker = "extra == 'discord'", specifier = "==2.7.1" },
     { name = "discord-py", extras = ["voice"], marker = "extra == 'messaging'", specifier = "==2.7.1" },
@@ -3005,9 +2993,7 @@ requires-dist = [
     { name = "rich", specifier = "==14.3.3" },
     { name = "ripgrepy", specifier = "==2.2.0" },
     { name = "ruamel-yaml", specifier = "==0.18.17" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = "==0.15.10" },
-    { name = "setuptools", marker = "extra == 'dev'", specifier = "==83.0.0" },
-    { name = "slack-bolt", marker = "extra == 'messaging'", specifier = "==1.30.0" },
+          { name = "slack-bolt", marker = "extra == 'messaging'", specifier = "==1.30.0" },
     { name = "slack-bolt", marker = "extra == 'slack'", specifier = "==1.30.0" },
     { name = "slack-sdk", marker = "extra == 'messaging'", specifier = "==3.44.1" },
     { name = "slack-sdk", marker = "extra == 'slack'", specifier = "==3.44.1" },
@@ -3029,8 +3015,7 @@ requires-dist = [
     { name = "uvloop", marker = "platform_python_implementation != 'PyPy' and sys_platform != 'android' and sys_platform != 'cygwin' and sys_platform != 'win32' and extra == 'uvloop'", specifier = ">=0.15.1,<0.24" },
     { name = "supermemory", marker = "extra == 'supermemory'", specifier = "==3.50.0" },
     { name = "tenacity", specifier = "==9.1.4" },
-    { name = "ty", marker = "extra == 'dev'", specifier = "==0.0.21" },
-    { name = "typer", marker = "extra == 'cn-desktop'", specifier = "==0.24.1" },
+       { name = "typer", marker = "extra == 'cn-desktop'", specifier = "==0.24.1" },
     { name = "tzdata", marker = "sys_platform == 'win32'", specifier = "==2025.3" },
     { name = "urllib3", specifier = ">=2.7.0,<3" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.31.0,<1" },
@@ -3056,6 +3041,7 @@ dev = [
     { name = "mcp", specifier = "==2.0.0" },
     { name = "pytest", specifier = "==9.1.1" },
     { name = "pytest-asyncio", specifier = "==1.3.0" },
+ { name = "pytest-benchmark", specifier = ">=5.2.3,<6" },
     { name = "ruff", specifier = "==0.15.10" },
     { name = "setuptools", specifier = "==83.0.0" },
     { name = "starlette", specifier = "==1.3.1" },
@@ -3653,6 +3639,10 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/52/22/2e896cfba4e86b805eb8a3259cbdc1601971dc8fda5b1db2044ec2a3e6f0/lxml-6.1.2-pp311-pypy311_pp73-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:f93bc5e25992f5545709000d840c6cafdbd022781a7a0ed79d58a5633733a4e8", size = 4257333, upload-time = "2026-08-19T05:03:29.355Z" },
     { url = "https://files.pythonhosted.org/packages/b0/1d/9dbdbfa284ea96aee7c368e0ac73994f7e1375281070c355bcd85d4f7a77/lxml-6.1.2-pp311-pypy311_pp73-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:662432a6103e671d971e06e75ed146d9ff67f39d2c98c2f26613b6057f54eafc", size = 4410828, upload-time = "2026-08-19T05:03:31.948Z" },
     { url = "https://files.pythonhosted.org/packages/f9/f2/fea24b044219458c252e0a0a08074a27dc9e28edb85f83533e36e3ddb57d/lxml-6.1.2-pp311-pypy311_pp73-win_amd64.whl", hash = "sha256:ba0dfead73be5be9ad0b7fbf9f31ff29c1b1eae858816dfc8d85099d6e4af0d6", size = 3511278, upload-time = "2026-08-19T05:03:34.597Z" },
+]
+
+[[package]]
+name = "lxml"
 version = "6.1.3"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/23/ad/28ecd7cb894d172f3c9c80a075eeeb2017ac62e3632cee05a5f9493547eb/lxml-6.1.3.tar.gz", hash = "sha256:45222d94ddd511536f3b2f7d9deae3b2339b4ce0f075f1ca25703b07cad9dd21", size = 4211198, upload-time = "2026-09-02T14:48:02.287Z" }
@@ -6155,6 +6145,9 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/98/f5/18bb77b7af9526add0c727a3b2048959847dc5fb030913e2918bf384fec3/rdflib-7.6.0.tar.gz", hash = "sha256:6c831288d5e4a5a7ece85d0ccde9877d512a3d0f02d7c06455d00d6d0ea379df", size = 4943826, upload-time = "2026-02-13T07:15:55.938Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/10/c2/6604a71269e0c1bd75656d5a001432d16f2cc5b8c057140ec797155c295e/rdflib-7.6.0-py3-none-any.whl", hash = "sha256:30c0a3ebf4c0e09215f066be7246794b6492e054e782d7ac2a34c9f70a15e0dd", size = 615416, upload-time = "2026-02-13T07:15:46.487Z" },
+]
+
+[[package]]
 name = "rapidfuzz"
 version = "3.14.6"
 source = { registry = "https://pypi.org/simple" }
@@ -6313,6 +6306,10 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/c5/63/b19305c4b8d3d7867699f7d83c43550273d91a2f31793452d87edb1d259f/regex-2026.9.10-cp314-cp314t-win32.whl", hash = "sha256:fbc4e2f3cb7ce8436154e6483079e7d35eeb321a952fa936e180300630d8b873", size = 274607, upload-time = "2026-09-09T20:59:00.942Z" },
     { url = "https://files.pythonhosted.org/packages/32/b8/1695072a512a49060294024e23b945eeb87675b02c06e53a92a1b42b0bfd/regex-2026.9.10-cp314-cp314t-win_amd64.whl", hash = "sha256:c37fa93bf18bf4f90b01c0fa9f11ea567ee4b7dd8bf96e63663e5edc37aa38cf", size = 283944, upload-time = "2026-09-09T20:59:02.876Z" },
     { url = "https://files.pythonhosted.org/packages/a9/9f/65bac17f39991a67e22f8b3c849fdc02a56147c97029b5351494341959b4/regex-2026.9.10-cp314-cp314t-win_arm64.whl", hash = "sha256:ffc2da104e43db716ce30cef9f28049a1faa6aca385dd8771b033268d0730b07", size = 283780, upload-time = "2026-09-09T20:59:05.009Z" },
+]
+
+[[package]]
+name = "regex"
 version = "2026.9.3"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/19/c1/6b30b775c7bcc6cf6506a4d4741c2123e8d99cd50f3fe8cbd731f5fef526/regex-2026.9.3.tar.gz", hash = "sha256:aabd43208e335f4c3f0b56de3464b066dd425983a58f6eeb5738bcd7465403db", size = 416720, upload-time = "2026-09-01T00:53:43.821Z" }

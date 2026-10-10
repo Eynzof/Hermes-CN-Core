@@ -103,9 +103,14 @@ def test_prune_keeps_unopenable_sibling_lease(tmp_path):
         foreign.chmod(0o600)
 
 
+@pytest.mark.platforms("posix")
 def test_lease_taken_while_a_peer_pruned_it_is_retaken(tmp_path, monkeypatch):
     """A peer's prune can lock-and-unlink our lease between create and flock; the writer must
-    end up holding a lease the collectors can see, never an unlinked inode."""
+    end up holding a lease the collectors can see, never an unlinked inode.
+
+    POSIX-only: Windows refuses to delete a file another process holds open, so the peer's
+    prune cannot win that race there and the interleaving is unrepresentable.
+    """
     from hermes_cli import runtime_state
     from hermes_cli.runtime_state import lease_directory, leases_held
 

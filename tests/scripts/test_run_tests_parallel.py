@@ -611,9 +611,12 @@ def test_scratch_root_is_per_user(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(runner.os.path, "isdir",
                         lambda path: False if str(path) == "/var/tmp" else real_isdir(path))
 
-    monkeypatch.setattr(runner.os, "getuid", lambda: 1000)
+    # ``os.getuid`` does not exist on Windows; the runner reads it through
+    # ``hasattr``, so the per-user arm is exercised there too (raising=False
+    # creates the attribute for the duration of the test and removes it after).
+    monkeypatch.setattr(runner.os, "getuid", lambda: 1000, raising=False)
     mine = Path(runner._runner_scratch_root())
-    monkeypatch.setattr(runner.os, "getuid", lambda: 0)
+    monkeypatch.setattr(runner.os, "getuid", lambda: 0, raising=False)
     theirs = Path(runner._runner_scratch_root())
 
     assert mine != theirs

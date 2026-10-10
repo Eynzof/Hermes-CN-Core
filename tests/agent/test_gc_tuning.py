@@ -180,7 +180,6 @@ def test_freeze_permanent_objects_respects_opt_out(monkeypatch):
 # Integration: real AIAgent construction (.plans/14 success criterion)
 # ---------------------------------------------------------------------------
 
-@pytest.mark.xfail(sys.platform == "win32", reason="flaky on Windows: GC timing race", strict=False)
 def test_gc_disabled_during_init(monkeypatch):
     """``AIAgent()`` construction runs its init with automatic GC suppressed
     and restored afterwards, with one batched post-init collection.
@@ -188,6 +187,9 @@ def test_gc_disabled_during_init(monkeypatch):
     ``init_agent`` is replaced by a probe: ``AIAgent.__init__`` does nothing
     after the forwarded call, so a no-op init is enough to observe that the
     ``gc_init_freeze()`` wrapper is in effect for the construction window.
+    Production carries that wrapper as ``@gc_frozen_init`` *on*
+    ``agent.agent_init.init_agent``, so the probe takes the same decorator —
+    otherwise swapping the seam out removes the very window under test.
     """
     import agent.agent_init as agent_init
     from run_agent import AIAgent
@@ -198,12 +200,12 @@ def test_gc_disabled_during_init(monkeypatch):
         observed["enabled_during_init"] = gc.isenabled()
         observed["frozen_during_init"] = gct.is_init_gc_frozen()
 
-    monkeypatch.setattr(agent_init, "init_agent", spy)
+    monkeypatch.setattr(agent_init, "init_agent", gct.gc_frozen_init(spy))
 
     before = gct.post_init_collect_count()
     assert gc.isenabled()
 
-    with patch("run_agent.OpenAI") as mock_cls:
+    with patch("agent.process_bootstrap.OpenAI") as mock_cls:
         mock_cls.return_value = MagicMock()
         AIAgent(
             base_url="http://localhost:9/v1",

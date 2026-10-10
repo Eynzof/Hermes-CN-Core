@@ -4,6 +4,8 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import shutil
+import stat
 import subprocess
 import sys
 
@@ -46,6 +48,50 @@ def describe(source, cache, tmp_path, *extra):
     )
     assert result.returncode == 0, result.stdout + result.stderr
     return json.loads(result.stdout), dict(line.split("=", 1) for line in output.read_text(encoding="utf-8-sig").splitlines())
+
+
+def _is_junction(path: Path) -> bool:
+    """A junction is a reparse point, not a symlink: ``is_symlink()`` is False and
+    ``shutil.copytree(symlinks=True)`` descends into it (hermes_cli.profiles)."""
+    try:
+        return os.lstat(path).st_reparse_tag == stat.IO_REPARSE_TAG_MOUNT_POINT
+    except (AttributeError, OSError):
+        return False
+
+
+def _replay_tree(source: Path, destination: Path, *, source_root: Path, dest_root: Path) -> None:
+    """Replay one selected directory the way the tar transport does: links stay links.
+
+    A Node workspace link is a junction on Windows — a reparse point that
+    copytree would follow into the workspace itself, carrying files that live
+    outside the selected paths (job secrets included) into the restored
+    snapshot. The transport preserves the link *relationship*, so a link whose
+    target lives in the moved tree is re-pointed at the restored tree; a
+    junction always stores an absolute target, and the old one must not be
+    reachable from the snapshot.
+    """
+    junctions: dict[Path, str] = {}
+
+    def ignore(directory: str, names: list[str]) -> set[str]:
+        ignored: set[str] = set()
+        for name in names:
+            path = Path(directory) / name
+            if _is_junction(path):
+                # readlink hands back the substitute name; CreateJunction rejects ``\\?\``.
+                target = Path(os.readlink(path).removeprefix("\\\\?\\"))
+                try:
+                    target = dest_root / target.relative_to(source_root)
+                except ValueError:
+                    pass
+                junctions[path] = str(target)
+                ignored.add(name)
+        return ignored
+
+    shutil.copytree(source, destination, symlinks=True, ignore=ignore)
+    if junctions:
+        import _winapi  # Windows-only stdlib module; reachable once a junction was seen
+    for link, target in junctions.items():
+        _winapi.CreateJunction(target, str(destination / link.relative_to(source)))
 
 
 def test_stdlib_description_has_stable_allowlisted_paths_before_bootstrap(tmp_path, monkeypatch):
@@ -288,7 +334,7 @@ def test_direct_snapshot_preserves_node_receipt_and_excludes_job_secrets(tmp_pat
             continue
         destination = ((restored_cache / path.relative_to(cache)) if path.is_relative_to(cache)
                        else (restored_source / path.relative_to(source)))
-        shutil.copytree(path, destination, symlinks=True)
+        _replay_tree(path, destination, source_root=source, dest_root=restored_source)
     assert not any(b"planted-secret" in path.read_bytes() for path in (tmp_path / "new").rglob("*") if path.is_file())
     assert (restored_cache / wheel.relative_to(cache)).read_bytes() == wheel.read_bytes()
     assert (restored_source / "node_modules/editor").resolve() == restored_source / "editor"

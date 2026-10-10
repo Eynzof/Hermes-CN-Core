@@ -382,7 +382,7 @@ def _call(tool_name, args):
             "args": args,
             "seq": seq,
             "token": os.environ.get("HERMES_RPC_TOKEN", ""),
-        }))
+        }, f)
     os.rename(tmp, req_file)
 
     # Wait for response with adaptive polling

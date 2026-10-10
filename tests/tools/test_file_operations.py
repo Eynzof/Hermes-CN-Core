@@ -300,8 +300,12 @@ class TestShellFileOpsHelpers:
         assert "head -c 1000 '/c/Users/alice/notes.txt' 2>$null | base64" in probe
         assert "sed -n '1,2000p' '/c/Users/alice/notes.txt' 2>$null | cut -b1-8001" in probe
         assert "wc -l < '/c/Users/alice/notes.txt'" in probe
+        # The existence branch now also tests ``-L``: upstream widened it so a
+        # DANGLING symlink reports "not a regular file" instead of "missing"
+        # (``[ -e ]`` is false for a broken link). The MSYS path form is still
+        # the point of this assertion.
         assert (
-            "elif [ -e '/c/Users/alice/notes.txt' ]; "
+            "elif [ -e '/c/Users/alice/notes.txt' ] || [ -L '/c/Users/alice/notes.txt' ]; "
             "then echo __hermes_not_regular__; "
         ) in probe
 

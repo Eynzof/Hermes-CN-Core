@@ -83,6 +83,9 @@ class TestNoOverlayFlag:
         """Wayland desktop keeps the overlay: the compositor owns the
         overlay surface lifecycle, so it cannot get stuck above every
         workspace the way an X11 window can."""
+        # A WSL2 host is headless by the auto-detect rule and would answer True regardless of
+        # the Wayland env below, so this desktop-Linux scenario pins the host probe off.
+        monkeypatch.setattr(cua_backend, "is_wsl", lambda: False)
         monkeypatch.setenv("DISPLAY", ":0")
         monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")
         monkeypatch.setenv("XDG_SESSION_TYPE", "wayland")

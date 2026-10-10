@@ -198,21 +198,24 @@ def main():
                 if script == "malformed_frame":
                     sys.stdout.buffer.write(b"Content-Length: invalid\r\n\r\n")
                     sys.stdout.buffer.flush()
-                # Release the stdout pipe so the parent's reader loop sees a clean EOF:
-                # flush and close the buffered stream (which owns the real handle) before
-                # the raw descriptor. POSIX-only in effect — Windows keeps the pipe's write
-                # end reachable for a live process, so the caller skips this scenario there.
+                # Release the stdout pipe so the parent's reader loop sees a clean EOF.
+                # Order matters: close the RAW descriptor first. ``sys.stdout.buffer.close()``
+                # leaves the fd open (CPython keeps the standard streams' descriptor alive), and
+                # once the buffer is closed ``sys.stdout.fileno()`` raises — so the old
+                # buffer-then-fd order never released the pipe and the reader loop waited for a
+                # start-of-frame that never came. POSIX-only in effect — Windows keeps the pipe's
+                # write end reachable for a live process, so the caller skips this scenario there.
                 try:
                     sys.stdout.flush()
                 except OSError:
                     pass
                 try:
-                    sys.stdout.buffer.close()
-                except OSError:
-                    pass
-                try:
                     os.close(sys.stdout.fileno())
                 except (OSError, ValueError):
+                    pass
+                try:
+                    sys.stdout.buffer.close()
+                except OSError:
                     pass
                 while read_message() is not None:
                     pass

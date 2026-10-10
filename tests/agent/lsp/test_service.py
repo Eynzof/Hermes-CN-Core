@@ -312,3 +312,77 @@ def test_reaper_survives_sweep_error(mock_pyright):
         assert not svc._idle_reaper_task.done()
     finally:
         svc.shutdown()
+
+
+# --- restored after the 2026-10-09 upstream sync dropped these two fork tests from the file
+# (fork-only coverage: the wait_timeout scaling into the baseline wait, and the line_shift
+# passthrough through the delta path; both production APIs are unchanged by the sync).
+
+def test_snapshot_baseline_honors_wait_timeout_above_default(mock_pyright_silent):
+    """A ``wait_timeout`` above the 5s client default must also reach the
+    baseline wait (it was silently truncated to 5s), and the outer join
+    budget must scale with it so the slow-but-alive server is not marked broken.
+    """
+    repo = mock_pyright_silent
+    f = repo / "x.py"
+    f.write_text("print('hi')\n")
+
+    svc = LSPService(
+        enabled=True,
+        wait_mode="document",
+        wait_timeout=7.0,
+        install_strategy="manual",
+    )
+    try:
+        start = time.monotonic()
+        svc.snapshot_baseline(str(f))
+        elapsed = time.monotonic() - start
+
+        assert elapsed >= 6.5, f"baseline truncated to the 5s client default: {elapsed:.2f}s"
+        assert elapsed < 9.5, f"baseline overran the scaled join budget: {elapsed:.2f}s"
+        # A slow-but-alive server must not be marked broken.
+        assert svc.get_status()["broken"] == []
+    finally:
+        svc.shutdown()
+
+
+
+
+
+
+
+
+def test_service_e2e_delta_filter_with_line_shift(mock_pyright):
+    """End-to-end: an edit that shifts the diagnostic's line still
+    filters correctly when ``line_shift`` is supplied.
+
+    The mock LSP server emits a fixed error at line 0; for this test
+    we don't need to actually shift the server's output — we just
+    need to prove that supplying a line_shift through the API works
+    and doesn't break the existing delta path.  The unit tests in
+    test_delta_key.py cover the shift semantics in detail.
+    """
+    repo = mock_pyright
+    f = repo / "x.py"
+    f.write_text("print('hi')\n")
+
+    svc = LSPService(
+        enabled=True,
+        wait_mode="document",
+        wait_timeout=3.0,
+        install_strategy="manual",
+    )
+    try:
+        svc.snapshot_baseline(str(f))
+        # Identity shift — should behave exactly like no shift.
+        new_diags = svc.get_diagnostics_sync(str(f), line_shift=lambda L: L)
+        assert new_diags == []
+    finally:
+        svc.shutdown()
+
+
+
+
+
+
+

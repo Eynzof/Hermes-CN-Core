@@ -506,7 +506,11 @@ class TestFileDedup(unittest.TestCase):
         a normal file that contains the message as one line out of many must
         still write successfully.
         """
-        fake = MagicMock()
+        # ``env=None`` marks the fake as a HOST backend: the dedup/baseline bookkeeping
+        # is host-path only (upstream skips the host stat for sandbox namespaces), so a
+        # fake with an attribute-shaped ``env`` records no read baseline at all and the
+        # read-before-write guard then refuses the write as a partial view.
+        fake = MagicMock(env=None)
         fake.read_file = lambda path, offset=1, limit=500: _FakeReadResult(
             content="line one\nline two\n", file_size=20,
         )
@@ -987,7 +991,7 @@ class TestWriteInvalidatesDedup(unittest.TestCase):
         with open(other, "w") as f:
             f.write("other content\n")
 
-        fake = MagicMock()
+        fake = MagicMock(env=None)  # host backend: dedup bookkeeping stats host paths
         fake.read_file = lambda path, offset=1, limit=500: _FakeReadResult(
             content="other content\n", total_lines=1, file_size=15,
         )
@@ -999,8 +1003,14 @@ class TestWriteInvalidatesDedup(unittest.TestCase):
         # Read file B.
         read_file_tool(other, task_id="iso")
 
+        # Read file A too: the merged-in read-before-write guard refuses to replace a
+        # file this task has never read, so without this the write below would be
+        # blocked and the invalidation this test is about would never run.
+        read_file_tool(self._tmpfile, task_id="iso")
+
         # Write file A.
-        write_file_tool(self._tmpfile, "changed A\n", task_id="iso")
+        write = orjson.loads(write_file_tool(self._tmpfile, "changed A\n", task_id="iso"))
+        self.assertNotIn("error", write)
 
         # File B should still dedup (untouched).
         r2 = orjson.loads(read_file_tool(other, task_id="iso"))

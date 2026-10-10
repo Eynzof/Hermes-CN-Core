@@ -20,7 +20,12 @@ def test_termux_host_is_refused_before_any_stage_with_apt_hint(tmp_path, marker)
     assert not (tmp_path / "install").exists()
 
 
+@pytest.mark.platforms("posix")
 def test_plain_linux_host_passes_platform_check(tmp_path):
+    # install.sh is the POSIX installer: on Windows/MSYS `uname` reports
+    # MINGW64_NT* and the script (correctly) tells the caller to use
+    # install.ps1, so the "a plain host passes" half of the contract belongs to
+    # the POSIX lanes — the Termux refusal above runs everywhere.
     env = {k: v for k, v in os.environ.items() if k not in ("TERMUX_VERSION", "PREFIX")}
     env.update(HOME=tmp_path.as_posix(), HERMES_HOME=(tmp_path / "home").as_posix(),
                HERMES_INSTALL_DIR=(tmp_path / "install").as_posix())

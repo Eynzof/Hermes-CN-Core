@@ -59,8 +59,11 @@ runs:
         esac
         # Description must not create CACHE_WORK: only preparation may claim it.
         # Paths go straight to Actions; no job-local manifest is transported.
-        if [ "$RUNNER_OS" = Windows ]; then bootstrap=python; else bootstrap=python3; fi
-        "$bootstrap" -S "$CACHE_ACTION/../../../scripts/ci/desktop_build_cache.py" describe \
+          if [ "$RUNNER_OS" = Windows ]; then bootstrap=python; else bootstrap=python3; fi
+          # Some hosts alias python3 to an App Execution Alias stub that exits
+          # without running anything; fall back to a python that answers.
+          if ! "$bootstrap" -c "import sys" >/dev/null 2>&1; then bootstrap=python; fi
+          "$bootstrap" -S "$CACHE_ACTION/../../../scripts/ci/desktop_build_cache.py" describe \
           --source "$CACHE_SOURCE" --cache "$CACHE_ROOT" --work "$CACHE_WORK" --producer "$CACHE_PRODUCER"
 
     - name: Restore dependency candidates

@@ -28,12 +28,16 @@ sys.modules.setdefault("fire", types.SimpleNamespace(Fire=lambda *a, **k: None))
 sys.modules.setdefault("firecrawl", types.SimpleNamespace(Firecrawl=object))
 sys.modules.setdefault("fal_client", types.SimpleNamespace())
 
+import model_tools
 import run_agent
 
 
 def _patch_bootstrap(monkeypatch):
+    # Patch where production reads: agent/agent_init.py and agent/tool_executor.py call these
+    # through ``model_tools``. The old ``run_agent.*`` names were the plugin-compat shim's lazy
+    # aliases, retired on schedule upstream (#126164).
     monkeypatch.setattr(
-        run_agent,
+        model_tools,
         "get_tool_definitions",
         lambda **kwargs: [
             {
@@ -46,9 +50,9 @@ def _patch_bootstrap(monkeypatch):
             }
         ],
     )
-    monkeypatch.setattr(run_agent, "check_toolset_requirements", lambda: {})
+    monkeypatch.setattr(model_tools, "check_toolset_requirements", lambda: {})
     monkeypatch.setattr(
-        run_agent, "handle_function_call", lambda *a, **k: '{"ok": true}'
+        model_tools, "handle_function_call", lambda *a, **k: '{"ok": true}'
     )
 
 

@@ -49,7 +49,7 @@ def _extract_install_sh_function(name: str) -> str:
 def _extract_install_sh_autostash_block() -> str:
     text = INSTALL_SH.read_text()
     match = re.search(
-        r'local autostash_ref="".*?\n            fi\n',
+        r'local autostash_ref="".*?\n        fi\n',
         text,
         re.DOTALL,
     )
@@ -74,7 +74,8 @@ def test_install_sh_discards_runtime_lockfile_churn_before_stash(
 
     script = (
         "set -e\n"
-        'log_info() { echo "INFO: $*"; }\n'
+        'log() { echo "INFO: $*"; }\n'
+        'log_warn() { echo "WARN: $*"; }\n'
         'INSTALL_DIR="$PWD"\n'
         f"{_extract_install_sh_function('discard_update_lockfile_churn')}\n"
         "run() {\n"
@@ -109,7 +110,8 @@ def test_install_sh_keeps_root_lockfile_for_dirty_workspace_manifest(
     _git(repo, "add", ".")
     _git(repo, "commit", "-m", "init")
     script = (
-        'log_info() { echo "INFO: $*"; }\n'
+        'log() { echo "INFO: $*"; }\n'
+        'log_warn() { echo "WARN: $*"; }\n'
         'INSTALL_DIR="$PWD"\n'
         f"{_extract_install_sh_function('discard_update_lockfile_churn')}\n"
         'discard_update_lockfile_churn "$PWD"\n'
@@ -130,8 +132,8 @@ def test_install_sh_keeps_root_lockfile_for_dirty_workspace_manifest(
 def test_install_sh_discards_lockfile_churn_before_status_probe() -> None:
     text = INSTALL_SH.read_text()
     idx_cleanup = text.index('discard_update_lockfile_churn "$INSTALL_DIR"')
-    idx_status = text.index('if [ -n "$(git status --porcelain)" ]')
-    idx_stash = text.index("git stash push --include-untracked")
+    idx_status = text.index('if [ -n "$(git -C "$INSTALL_DIR" status --porcelain)" ]')
+    idx_stash = text.index('git -C "$INSTALL_DIR" stash push --include-untracked')
     assert idx_cleanup < idx_status < idx_stash
 
 
@@ -140,7 +142,7 @@ def test_install_ps1_discards_lockfile_churn_before_status_probe() -> None:
     assert "function Discard-LockfileChurn" in text
     idx_cleanup = text.index("Discard-LockfileChurn $InstallDir")
     idx_status = text.index(
-        "$statusOut = git -c windows.appendAtomically=false status --porcelain"
+        "$statusOut = Invoke-Native { git -C $InstallDir status --porcelain }"
     )
     idx_stash = text.index("stash push --include-untracked")
     assert idx_cleanup < idx_status < idx_stash

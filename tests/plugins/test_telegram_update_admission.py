@@ -416,6 +416,11 @@ async def _check_error_cancel_before_entry(monkeypatch, adapter, app, delivered)
         assert "111:10" in adapter._inflight_update_ids
         await app.process_update(update(app.bot))
         await app.stop()
+        # PTB's stop() gathers the tasks it tracks, but on 3.14 asyncio.gather finishes
+        # eagerly when its child is already done, so awaiting it no longer yields the
+        # loop: give the loop one tick to run the cancelled task's done-callbacks (the
+        # claim release and the coroutine close) before asserting the settled state.
+        await asyncio.sleep(0)
     assert len(scheduled) == 1 and not effects
     assert not adapter._inflight_update_ids and not adapter._seen_update_ids
     # The cancelled PTB task never awaited the callback coroutine: it must be closed too.

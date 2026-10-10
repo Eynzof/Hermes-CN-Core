@@ -379,9 +379,14 @@ def test_prune_releases_git_worktree_registration_of_idle_entry(tmp_path):
     tree.parent.mkdir()
     git("worktree", "add", "-q", "--detach", str(tree), cwd=repo)
     ancient = time.time() - 30 * 3600
+    # ``follow_symlinks=False`` ages a link itself instead of what it points at, so a
+    # stray symlink inside the entry cannot keep it "fresh"; Windows rejects the
+    # flag outright (NotImplementedError) and never needs it for a checkout's own
+    # files, so pass it only where the platform supports it.
+    utime_kwargs = {} if os.name == "nt" else {"follow_symlinks": False}
     for dirpath, dirnames, filenames in os.walk(tree.parent):
         for name in dirnames + filenames:
-            os.utime(os.path.join(dirpath, name), (ancient, ancient), follow_symlinks=False)
+            os.utime(os.path.join(dirpath, name), (ancient, ancient), **utime_kwargs)
     os.utime(tree.parent, (ancient, ancient))
     assert prune_scratch_dir(scratch) == 1
     listing = subprocess.run(["git", "worktree", "list", "--porcelain"], cwd=repo, capture_output=True,

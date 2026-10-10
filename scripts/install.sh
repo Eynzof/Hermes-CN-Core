@@ -25,6 +25,11 @@ BRANCH="main"
 INSTALL_COMMIT=""
 INSTALL_DIR="${HERMES_INSTALL_DIR:-}"
 HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
+# Self-contained install: code+venv at INSTALL_DIR, data/config/logs/caches at
+# $INSTALL_DIR/data (--isolated-dir), so the home survives a shared/moving $HOME.
+ISOLATED_LAYOUT=false
+# True once --hermes-home pinned the data dir: --isolated-dir must not overrule it.
+HERMES_HOME_ARG_EXPLICIT=false
 STAGE=""
 WANT_MANIFEST=false
 JSON=false
@@ -42,7 +47,7 @@ INSTALL_IN_STAGE=false
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --branch|-Branch|--commit|-Commit|--dir|--hermes-home|-HermesHome|--stage|-Stage)
+        --branch|-Branch|--commit|-Commit|--dir|--isolated-dir|--hermes-home|-HermesHome|--stage|-Stage)
             option="$1"
             if [ $# -lt 2 ] || [ -z "$2" ] || [[ "$2" == -* ]]; then
                 printf '%s needs a value\n' "$option" >&2
@@ -52,7 +57,14 @@ while [ $# -gt 0 ]; do
                 --branch|-Branch) BRANCH="$2" ;;
                 --commit|-Commit) INSTALL_COMMIT="$2" ;;
                 --dir) INSTALL_DIR="$2" ;;
-                --hermes-home|-HermesHome) HERMES_HOME="$2" ;;
+                --isolated-dir)
+                    INSTALL_DIR="$2"
+                    ISOLATED_LAYOUT=true
+                    if [ "$HERMES_HOME_ARG_EXPLICIT" = false ]; then
+                        HERMES_HOME="$INSTALL_DIR/data"
+                    fi
+                    ;;
+                --hermes-home|-HermesHome) HERMES_HOME="$2"; HERMES_HOME_ARG_EXPLICIT=true ;;
                 --stage|-Stage) STAGE="$2" ;;
             esac
             shift 2 ;;
@@ -66,7 +78,10 @@ while [ $# -gt 0 ]; do
         --verbose|-Verbose) VERBOSE=true; shift ;;
         -h|--help)
             echo "Usage: install.sh [--branch NAME] [--commit SHA] [--dir PATH]"
-            echo "                  [--hermes-home PATH]"
+            echo "                  [--isolated-dir PATH] [--hermes-home PATH]"
+            echo "  --isolated-dir PATH"
+            echo "                  Self-contained install: code/venv live at PATH and Hermes"
+            echo "                  data/config/logs/caches live at PATH/data."
             echo "                  [--manifest] [--stage NAME] [--json]"
             echo "                  [--non-interactive] [--include-desktop] [--verbose]"
             echo "                  [--skip-browser] [--skip-computer-use]"
@@ -83,7 +98,38 @@ while [ $# -gt 0 ]; do
 done
 
 INSTALL_DIR="${INSTALL_DIR:-$HERMES_HOME/hermes-agent}"
+if [ "$ISOLATED_LAYOUT" = true ]; then
+    # The install stages cd into INSTALL_DIR; keep the self-contained data paths
+    # absolute so `--isolated-dir hermes-agent` means <original-cwd>/hermes-agent/data.
+    case "$INSTALL_DIR" in
+        /*) ;;
+        *) INSTALL_DIR="$PWD/$INSTALL_DIR" ;;
+    esac
+    if [ "$HERMES_HOME_ARG_EXPLICIT" = false ]; then
+        HERMES_HOME="$INSTALL_DIR/data"
+    else
+        case "$HERMES_HOME" in
+            /*) ;;
+            *) HERMES_HOME="$PWD/$HERMES_HOME" ;;
+        esac
+    fi
+fi
 export HERMES_HOME
+# Playwright's browser binaries follow the Hermes home by default, so local browser
+# tooling shares the same profile isolation as the rest of the data; an operator's
+# own PLAYWRIGHT_BROWSERS_PATH still wins.
+if [ -z "${PLAYWRIGHT_BROWSERS_PATH:-}" ]; then
+    export PLAYWRIGHT_BROWSERS_PATH="$HERMES_HOME/cache/ms-playwright"
+else
+    export PLAYWRIGHT_BROWSERS_PATH
+fi
+# A self-contained install keeps the package-manager caches in the same data dir;
+# normal installs keep the historical per-user cache defaults.
+if [ "$ISOLATED_LAYOUT" = true ]; then
+    export UV_CACHE_DIR="${UV_CACHE_DIR:-$HERMES_HOME/cache/uv}"
+    export PIP_CACHE_DIR="${PIP_CACHE_DIR:-$HERMES_HOME/cache/pip}"
+    export npm_config_cache="${npm_config_cache:-$HERMES_HOME/cache/npm}"
+fi
 
 INSTALL_LOG="$HERMES_HOME/logs/install.log"
 
@@ -523,6 +569,89 @@ stage_prerequisites() {
     log_success "prerequisites ok (git, curl)"
 }
 
+
+# Pure npm lockfile churn is not a local edit: a local build rewrites a tracked
+# package-lock.json without touching its manifest, and treating that as user work
+# forces an autostash (and restores the churn on top of the updated tree). Revert
+# only the lockfiles whose manifest did not change together with them.
+discard_update_lockfile_churn() {
+    local repo="${1:-$INSTALL_DIR}"
+    [ -n "$repo" ] && [ -d "$repo/.git" ] || return 0
+    command -v git >/dev/null 2>&1 || return 0
+
+    local dirty_diff
+    dirty_diff=$(git -C "$repo" diff --name-only 2>/dev/null) || return 0
+    [ -n "$dirty_diff" ] || return 0
+
+    local dirty_package_dirs=""
+    local root_lock_protected=0
+    while IFS= read -r path; do
+        case "$path" in
+            *package.json)
+                local pkg_dir
+                pkg_dir=$(dirname "$path")
+                dirty_package_dirs="${dirty_package_dirs}${pkg_dir}"$'\n'
+                # The single root lockfile records every workspace's specs (root
+                # package.json "workspaces" globs), so a dirty workspace manifest
+                # such as apps/desktop/package.json protects it; reverting it there
+                # desyncs spec and lock and every later npm ci fails (#112378). A
+                # manifest outside the graph (website/) has its own lockfile.
+                if [ "$pkg_dir" = "." ]; then
+                    root_lock_protected=1
+                else
+                    # Read the globs line by line: an unquoted $(...) would pathname-expand
+                    # them against the caller's CWD before `case` ever sees the pattern.
+                    # `case` globs match across "/", so a manifest nested under a workspace
+                    # also protects the root lock (fail-safe; Python matches one level).
+                    local ws_glob
+                    while IFS= read -r ws_glob; do
+                        [ -n "$ws_glob" ] || continue
+                        case "$pkg_dir" in
+                            $ws_glob) root_lock_protected=1 ;;
+                        esac
+                    done <<WS_EOF
+$(sed -n '/"workspaces"[[:space:]]*:/,/\]/p' "$repo/package.json" 2>/dev/null \
+        | grep -o '"[^"]*"' | tr -d '"' | grep -v -e '^workspaces$' -e '^packages$')
+WS_EOF
+                fi
+                ;;
+        esac
+    done <<EOF
+$dirty_diff
+EOF
+
+    local dirty_locks=""
+    local dirty_count=0
+    while IFS= read -r path; do
+        case "$path" in
+            *package-lock.json)
+                local lock_dir
+                lock_dir=$(dirname "$path")
+                if [ "$lock_dir" = "." ]; then
+                    [ "$root_lock_protected" -eq 0 ] || continue
+                else
+                    case $'\n'"$dirty_package_dirs" in
+                        *$'\n'"$lock_dir"$'\n'*) continue ;;
+                    esac
+                fi
+                dirty_locks="${dirty_locks}${path}"$'\n'
+                dirty_count=$((dirty_count + 1))
+                ;;
+        esac
+    done <<EOF
+$dirty_diff
+EOF
+
+    [ "$dirty_count" -gt 0 ] || return 0
+    while IFS= read -r path; do
+        [ -n "$path" ] || continue
+        git -C "$repo" checkout -- "$path" 2>/dev/null || true
+    done <<EOF
+$dirty_locks
+EOF
+    log_warn "Discarded npm lockfile churn (${dirty_count} file(s))"
+}
+
 stage_repository() {
     local pinned=false
     # An interrupted clone from an older installer can leave a .git with no
@@ -580,6 +709,10 @@ stage_repository() {
             || fail "git fetch failed" git_fetch_failed
         local stamp
         stamp="$(date -u +%Y%m%d-%H%M%S)"
+        local autostash_ref=""
+        # Generated lockfile churn is discarded before the probe: it is not user
+        # work, and parking it would push it back onto the updated tree below.
+        discard_update_lockfile_churn "$INSTALL_DIR"
         # Park local work BEFORE switching branches: checkout refuses a dirty
         # tree that conflicts, and the reset below would discard it. Work
         # that cannot be parked stops the install -- never overwrite it.
@@ -595,6 +728,7 @@ stage_repository() {
             run_logged "Stashing local changes" \
                 git -C "$INSTALL_DIR" stash push --include-untracked -m "hermes-install-autostash-$stamp" \
                 || fail "could not stash local changes in $INSTALL_DIR; commit or move them aside, then rerun" local_changes_blocked
+            autostash_ref="stash@{0}"
             log_warn "local changes stashed as hermes-install-autostash-$stamp"
         fi
         # checkout's branch guess only sees remote refs the refspec maps, so a
@@ -633,6 +767,39 @@ stage_repository() {
             run_logged "Resetting to origin/$BRANCH" git -C "$INSTALL_DIR" reset --hard "origin/$BRANCH" \
                 || fail "git reset failed" git_reset_failed
             log_warn "not fast-forwardable; reset to origin/$BRANCH"
+        fi
+        # Put the parked work back: an install that ends with the user's edits
+        # sitting in a stash they never asked for is the #38542 data-loss class.
+        # A restore that conflicts keeps the stash (nothing is lost), cleans the
+        # tree -- conflict markers in tracked source would crash the backend on
+        # import -- and still completes the repository stage.
+        if [ -n "$autostash_ref" ]; then
+            local restore_output="" restore_ok=no conflicted_files=""
+            log "Restoring local changes..."
+            restore_output="$(git -C "$INSTALL_DIR" stash apply "$autostash_ref" 2>&1)" && restore_ok=yes
+            conflicted_files="$(git -C "$INSTALL_DIR" diff --name-only --diff-filter=U 2>/dev/null || true)"
+            if [ "$restore_ok" = yes ] && [ -z "$conflicted_files" ]; then
+                git -C "$INSTALL_DIR" stash drop "$autostash_ref" >/dev/null
+                log_warn "Local changes were restored on top of the updated codebase."
+                log_warn "Review git diff / git status if Hermes behaves unexpectedly."
+            else
+                log_warn "Update pulled new code, but restoring local changes hit conflicts."
+                [ -z "$restore_output" ] || printf '%s\n' "$restore_output"
+                if [ -n "$conflicted_files" ]; then
+                    printf '\nConflicted files:\n'
+                    while IFS= read -r conflicted_file; do
+                        [ -n "$conflicted_file" ] && printf '  - %s\n' "$conflicted_file"
+                    done <<EOF
+$conflicted_files
+EOF
+                fi
+                printf '\n'
+                log "Your stashed changes are preserved -- nothing is lost."
+                log "  Stash ref: $autostash_ref"
+                git -C "$INSTALL_DIR" reset --hard HEAD >/dev/null 2>&1 || true
+                log "Working tree reset to clean state."
+                log "Restore your changes later with: git stash apply $autostash_ref"
+            fi
         fi
     else
         # `mv <clone> <existing dir>` nests the checkout INSIDE it as
@@ -886,6 +1053,9 @@ stage_config() {
     mkdir -p "$HERMES_HOME"/cron "$HERMES_HOME"/sessions "$HERMES_HOME"/logs \
         "$HERMES_HOME"/pairing "$HERMES_HOME"/hooks "$HERMES_HOME"/image_cache \
         "$HERMES_HOME"/audio_cache "$HERMES_HOME"/memories "$HERMES_HOME"/skills
+    if [ "$ISOLATED_LAYOUT" = true ]; then
+        mkdir -p "$HERMES_HOME/home"
+    fi
     if [ ! -f "$HERMES_HOME/.env" ]; then
         cp "$INSTALL_DIR/.env.example" "$HERMES_HOME/.env" 2>/dev/null || touch "$HERMES_HOME/.env"
     fi

@@ -1427,6 +1427,10 @@ class TestSystemUnitHermesHome:
         )
         monkeypatch.setattr(gateway_cli, "get_hermes_home", lambda: root_hermes)
         monkeypatch.setattr(gateway_cli, "_build_service_path_dirs", list)
+        # WSL interop entries are host-fixed, not caller-specific, but the blanket which() stub
+        # above would leak the stubbed node dir into them. This test targets the caller-PATH
+        # contract, which is what a non-WSL host (CI) exercises.
+        monkeypatch.setattr(gateway_cli, "is_wsl", lambda: False)
 
         monkeypatch.setattr(gateway_cli.shutil, "which", lambda name: "/root/bin/node")
         root_unit = gateway_cli.generate_systemd_unit(system=True, run_as_user="alice")

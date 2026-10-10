@@ -57,6 +57,29 @@ def _agent_browser_candidate_present(path: str | None) -> bool:
     return os.path.isfile(path) and (os.name == "nt" or os.access(path, os.X_OK))
 
 
+def _host_spelling(path: str) -> str:
+    """*path* spelled the way the filesystem spells it when the host is case-insensitive.
+
+    Windows ``shutil.which`` resolves a bare name through ``PATHEXT`` and returns the
+    candidate it CONSTRUCTED — ``agent-browser.EXE`` for a file named
+    ``agent-browser.exe``. That spelling is carried into help text, PM facts and every
+    later spawn, so hand back the directory's own entry instead. No-op off Windows (and
+    when nothing matches, e.g. a filesystem that is case-sensitive after all).
+    """
+    if os.name != "nt" or not path:
+        return path
+    directory, name = os.path.split(path)
+    try:
+        entries = os.listdir(directory or ".")
+    except OSError:
+        return path
+    wanted = name.lower()
+    for entry in entries:
+        if entry.lower() == wanted:
+            return os.path.join(directory, entry) if directory else entry
+    return path
+
+
 def _find_agent_browser(*, validate: bool = True) -> str:
     """Select PM's exact binary, then an external PATH/Homebrew installation.
 
@@ -78,7 +101,7 @@ def _find_agent_browser(*, validate: bool = True) -> str:
             continue
         candidate = shutil.which("agent-browser", path=search_path)
         if candidate and usable(candidate):
-            return candidate
+            return _host_spelling(candidate)
     hint = f"agent-browser CLI not found. Install it with: {_browser_install_hint()}"
     if validate and not termux:
         try:

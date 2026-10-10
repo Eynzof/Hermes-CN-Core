@@ -133,6 +133,12 @@ def test_a_vanished_dependency_environment_is_reported_not_resilently_resynced(a
     rebuilds the environment instead — the sibling test above pins that arm.
     """
     monkeypatch.setattr("pm.client.is_runtime", lambda: True)
+    # ``pm``'s PEP 562 facade caches every export it resolves in its own globals, so the sibling
+    # test above leaves ``pm.sync_venv`` frozen on ITS in-process closure (bound to its core).
+    # Drop the cached export: the facade re-resolves it from this test's patched ``pm.client``.
+    import pm
+
+    monkeypatch.delattr(pm, "sync_venv", raising=False)
     root, _home = admission_env
     core = root / 'core'
     assert venv_sync.sync(core) == {'state': 'synced', 'ok': True}

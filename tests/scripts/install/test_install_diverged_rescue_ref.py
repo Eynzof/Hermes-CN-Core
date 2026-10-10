@@ -65,6 +65,10 @@ def _assert_local_commit_parked(repo: Path, local_sha: str, output: str) -> None
     assert _git(repo, "log", "--format=%H", f"origin/main..{ref}").split() == [local_sha]
 
 
+# install.sh is the POSIX installer: it refuses MINGW64 outright ("On Windows use
+# install.ps1"), so the shell stage is exercised on posix hosts only -- the sibling
+# test below covers the same reset path through install.ps1 on Windows.
+@pytest.mark.platforms("posix")
 @pytest.mark.live_system_guard_bypass
 @pytest.mark.skipif(
     shutil.which("git") is None or shutil.which("bash") is None,

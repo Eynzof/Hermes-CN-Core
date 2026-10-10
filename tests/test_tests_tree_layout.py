@@ -39,6 +39,10 @@ _NON_MIRROR_DIRS = {
     # by construction, and upstream's own equivalent (tests/perf_guards/) is here
     # for the same reason; upstream has no tests/performance/ of its own.
     "performance",
+    # Fork-maintained memory providers live at plugins/memory/<name>, so their
+    # suites are named for the plugin (tests/honcho_plugin) rather than for the
+    # plugins/memory package every provider already shares.
+    "honcho_plugin",
 }
 
 # Root-level modules whose tests sit directly in tests/ (no package to mirror).

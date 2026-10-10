@@ -10,8 +10,6 @@ stripping, seeding, and the empty-buffer cancel path.
 import sys
 from pathlib import Path
 
-import sys
-
 import pytest
 
 from hermes_cli.cli_commands_mixin import CLICommandsMixin
@@ -41,51 +39,41 @@ def _no_visual(monkeypatch):
     monkeypatch.delenv("EDITOR", raising=False)
 
 
-@pytest.mark.platforms("linux")
-def test_compose_reads_and_strips_header(tmp_path, monkeypatch):
-    monkeypatch.setenv("EDITOR", _fake_editor(tmp_path, "Refactor the auth module.\nUse pytest."))
 def test_command_registered():
     cd = resolve_command("prompt")
     assert cd and cd.name == "prompt"
     assert resolve_command("compose").name == "prompt"
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="fake editor is a bash script; POSIX-only")
-
-
-def test_compose_reads_and_strips_header(monkeypatch):
-    monkeypatch.setenv("EDITOR", _fake_editor("Refactor the auth module.\nUse pytest."))
+@pytest.mark.platforms("linux")
+def test_compose_reads_and_strips_header(tmp_path, monkeypatch):
+    monkeypatch.setenv("EDITOR", _fake_editor(tmp_path, "Refactor the auth module.\nUse pytest."))
     out = _Stub()._compose_in_editor("")
     assert "Refactor the auth module." in out
     assert "Use pytest." in out
     assert "#!" not in out  # the instructional header is stripped
 
 
-@pytest.mark.platforms("linux")
-def test_empty_buffer_does_not_seed(tmp_path, monkeypatch):
-    monkeypatch.setenv("EDITOR", _fake_editor(tmp_path, "", mode="clear"))
-@pytest.mark.skipif(sys.platform == "win32", reason="fake editor is a bash script; POSIX-only")
-
-
-def test_prompt_sets_pending_seed(monkeypatch):
-    monkeypatch.setenv("EDITOR", _fake_editor("Write a haiku about caching."))
+@pytest.mark.platforms("posix")
+def test_prompt_sets_pending_seed(tmp_path, monkeypatch):
+    monkeypatch.setenv("EDITOR", _fake_editor(tmp_path, "Write a haiku about caching."))
     s = _Stub()
     s._handle_prompt_compose_command("/prompt")
     assert s._pending_agent_seed
     assert "haiku about caching" in s._pending_agent_seed
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="fake editor is a bash script; POSIX-only")
-def test_initial_text_is_seeded(monkeypatch):
+@pytest.mark.platforms("posix")
+def test_initial_text_is_seeded(tmp_path, monkeypatch):
     # The fake editor appends, so the initial text leads the buffer.
-    monkeypatch.setenv("EDITOR", _fake_editor("rest of prompt"))
+    monkeypatch.setenv("EDITOR", _fake_editor(tmp_path, "rest of prompt"))
     out = _Stub()._compose_in_editor("DRAFT: ")
     assert out.startswith("DRAFT:")
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="fake editor is a bash script; POSIX-only")
-def test_empty_buffer_does_not_seed(monkeypatch):
-    monkeypatch.setenv("EDITOR", _fake_editor("", mode="clear"))
+@pytest.mark.platforms("linux")
+def test_empty_buffer_does_not_seed(tmp_path, monkeypatch):
+    monkeypatch.setenv("EDITOR", _fake_editor(tmp_path, "", mode="clear"))
     s = _Stub()
     s._handle_prompt_compose_command("/prompt")
     assert s._pending_agent_seed is None

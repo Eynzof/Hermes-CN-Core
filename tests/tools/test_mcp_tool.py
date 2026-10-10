@@ -435,7 +435,7 @@ class TestLifecycleConfig:
             "max_lifetime_seconds",
         ) == 42.0
 
-    def test_get_lifecycle_seconds_ignores_invalid_values(self):
+    def test_get_lifecycle_seconds_ignores_invalid_values(self, caplog):
         from tools.mcp_tool_common import _get_lifecycle_seconds
 
         assert (
@@ -3760,27 +3760,27 @@ class TestSanitizeMcpNameComponent:
 
 
     def test_dots_replaced(self):
-        from tools.mcp_tool import sanitize_mcp_name_component
+        from tools.mcp_tool_schema import sanitize_mcp_name_component
         assert sanitize_mcp_name_component("ai.exa") == "ai_exa"
 
     def test_slashes_replaced(self):
-        from tools.mcp_tool import sanitize_mcp_name_component
+        from tools.mcp_tool_schema import sanitize_mcp_name_component
         assert sanitize_mcp_name_component("ai.exa/exa") == "ai_exa_exa"
 
     def test_mixed_special_characters(self):
-        from tools.mcp_tool import sanitize_mcp_name_component
+        from tools.mcp_tool_schema import sanitize_mcp_name_component
         assert sanitize_mcp_name_component("@scope/my-pkg.v2") == "_scope_my_pkg_v2"
 
     def test_alphanumeric_and_underscores_preserved(self):
-        from tools.mcp_tool import sanitize_mcp_name_component
+        from tools.mcp_tool_schema import sanitize_mcp_name_component
         assert sanitize_mcp_name_component("my_server_123") == "my_server_123"
 
     def test_empty_string(self):
-        from tools.mcp_tool import sanitize_mcp_name_component
+        from tools.mcp_tool_schema import sanitize_mcp_name_component
         assert sanitize_mcp_name_component("") == ""
 
     def test_none_returns_empty(self):
-        from tools.mcp_tool import sanitize_mcp_name_component
+        from tools.mcp_tool_schema import sanitize_mcp_name_component
         assert sanitize_mcp_name_component(None) == ""
 
     def test_slash_in_convert_mcp_schema(self):

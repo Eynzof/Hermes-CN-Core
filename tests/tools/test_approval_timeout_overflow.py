@@ -44,7 +44,7 @@ class TestApprovalTimeoutOverflowClamp:
         with _with_configured_timeout("soon"):
             assert _get_approval_timeout() == 300
 
-    def test_oversized_float_value_clamped(self):
+    def test_oversized_float_value_clamped(self, caplog):
         # YAML `1e18` arrives as a float, not an int — different int() path
         # than the string/int forms; the clamp must cover it too.
         from tools.approval_context import _get_approval_timeout

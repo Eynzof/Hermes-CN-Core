@@ -51,7 +51,11 @@ _MANAGED_COMMANDS = frozenset({"uv", "node", "npm", "npx"})
 
 # Directories that are not Hermes-owned subprocess code: plugins ship their own
 # resolution policy, tests assert against PATH deliberately, and skills/scripts/
-# evals run as standalone user-invoked programs.
+# evals run as standalone user-invoked programs. Gitignored workspace trees count
+# too: `.hermes-runtime` is the PM-managed interpreter/venv this checkout installs
+# for itself (a whole CPython Lib + site-packages), and `.kimix_cache` is local
+# agent scratch — neither ships, and scanning them only reports the interpreter's
+# and the scratch scripts' own resolution sites.
 _EXEMPT_DIRS = (
     "tests",
     "plugins",
@@ -63,6 +67,8 @@ _EXEMPT_DIRS = (
     "node_modules",
     ".cache",
     ".git",
+    ".hermes-runtime",
+    ".kimix_cache",
     ".venv",
     "venv",
     ".worktrees",
@@ -101,6 +107,11 @@ _ALLOWED: dict[tuple[str, str], str] = {
     ("apps/desktop/electron/fixtures/source-backend.py", "uv"): (
         "Test fixture drives the real uv deliberately placed on the test "
         "runner's PATH; it is not Hermes-owned subprocess resolution."
+    ),
+    ("tools/lazy_deps.py", "uv"): (
+        "tools/lazy_deps.py::_uv_binary asks hermes_cli.managed_uv.resolve_uv() first "
+        "($HERMES_HOME/bin is never on PATH) and only then falls back to a system uv; "
+        "ensure_uv() would download mid-turn, which the caller did not ask for."
     ),
 }
 

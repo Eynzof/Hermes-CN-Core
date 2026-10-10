@@ -35,6 +35,12 @@
     "kind": "bare_which"
   },
   {
+    "path": "agent/prompt_builder.py",
+    "symbol": "_local_host_hints",
+    "kind": "bare_which",
+    "reason": "Host hints for a LOCAL terminal backend: the block tells the model which bash/git this very host exposes, which is a question about PATH by construction"
+  },
+  {
     "path": "agent/proxy_sources/iron_proxy.py",
     "symbol": "_verify_checksums_signature",
     "kind": "bare_which"
@@ -163,6 +169,36 @@
     "kind": "bare_which"
   },
   {
+    "path": "hermes_cli/dep_ensure.py",
+    "symbol": "<module>",
+    "kind": "bare_which",
+    "reason": "Dependency checks for system tools (ffmpeg, cat, a system browser, powershell): PATH is the question ('does this machine have it'), and a managed copy is probed first where one exists"
+  },
+  {
+    "path": "hermes_cli/dep_ensure.py",
+    "symbol": "_check_coreutils",
+    "kind": "bare_which",
+    "reason": "Managed coreutils (get_managed_tools_dir, then HERMES_HOME/bin) is probed first; the PATH lookup keeps a system cat.exe/gcat working"
+  },
+  {
+    "path": "hermes_cli/dep_ensure.py",
+    "symbol": "_find_rg",
+    "kind": "bare_which",
+    "reason": "Managed rg (get_managed_tools_dir) and the HERMES_HOME/bin legacy path are probed and version-checked first; PATH is the documented last resort"
+  },
+  {
+    "path": "hermes_cli/dep_ensure.py",
+    "symbol": "_has_system_browser",
+    "kind": "bare_which",
+    "reason": "Asks whether a SYSTEM Chrome/Chromium exists for the local browser mode; a system copy is exactly what is wanted here"
+  },
+  {
+    "path": "hermes_cli/dep_ensure.py",
+    "symbol": "ensure_dependency",
+    "kind": "bare_which",
+    "reason": "The installer path needs the user's powershell/pwsh to run install.ps1; PATH is the question"
+  },
+  {
     "path": "hermes_cli/doctor_platform.py",
     "symbol": "_check_command_installation",
     "kind": "bare_which"
@@ -261,6 +297,12 @@
     "path": "hermes_cli/macos_signing.py",
     "symbol": "sign_managed_python",
     "kind": "bare_which"
+  },
+  {
+    "path": "hermes_cli/main.py",
+    "symbol": "_exec_in_container",
+    "kind": "bare_which",
+    "reason": "Resolves the runtime the user has (docker/podman) in order to replace this process with it: a bare lookup is the intended semantic, and the backend belongs to the user, not to Hermes"
   },
   {
     "path": "hermes_cli/main_container.py",
@@ -539,6 +581,24 @@
     "kind": "bare_which"
   },
   {
+    "path": "tools/environments/local.py",
+    "symbol": "_safe_which",
+    "kind": "bare_which",
+    "reason": "AttributeError-safe wrapper around shutil.which for the model-facing terminal: the caller wants the subshell's PATH answer"
+  },
+  {
+    "path": "tools/environments/local.py",
+    "symbol": "_windows_bash_candidates",
+    "kind": "bare_which",
+    "reason": "HERMES_GIT_BASH_PATH and the portable/MinGit dirs are ranked first; PATH is appended last on purpose (WSL bash fails silently on Windows paths)"
+  },
+  {
+    "path": "tools/environments/local_gitbash_probe.py",
+    "symbol": "_mandatory_aslr_enabled",
+    "kind": "bare_which",
+    "reason": "Probes the system PowerShell for the machine's Mandatory-ASLR state; the system shell is the only source for that fact"
+  },
+  {
     "path": "tools/environments/singularity.py",
     "symbol": "_find_singularity_executable",
     "kind": "bare_which"
@@ -547,6 +607,12 @@
     "path": "tools/environments/ssh.py",
     "symbol": "_ensure_ssh_available",
     "kind": "bare_which"
+  },
+  {
+    "path": "tools/lazy_deps.py",
+    "symbol": "_uv_binary",
+    "kind": "bare_which",
+    "reason": "hermes_cli.managed_uv.resolve_uv() first ($HERMES_HOME/bin is never on PATH); the PATH lookup is the documented fallback for a system uv"
   },
   {
     "path": "tools/mcp_tool_config.py",
@@ -579,14 +645,62 @@
     "kind": "bare_which"
   },
   {
+    "path": "tools/rtk_provision.py",
+    "symbol": "_find_rtk",
+    "kind": "bare_which",
+    "reason": "Managed rtk (get_managed_tools_dir) is probed and version-checked first; PATH is step 3 of its documented order"
+  },
+  {
     "path": "tools/skillevaluator_scan.py",
     "symbol": "run_tier1_scan",
     "kind": "bare_which"
   },
   {
+    "path": "tools/terminal_command_rewrite.py",
+    "symbol": "_cmd_is_executable",
+    "kind": "bare_which",
+    "reason": "Asks whether the command the model typed exists on the PATH its shell will use"
+  },
+  {
     "path": "tools/terminal_tool_backends.py",
     "symbol": "<module>",
     "kind": "bare_which"
+  },
+  {
+    "path": "tools/tirith_security.py",
+    "symbol": "_find_local_tirith",
+    "kind": "bare_which",
+    "reason": "Documented order: $HERMES_HOME/tools, then PATH, then $HERMES_HOME/bin"
+  },
+  {
+    "path": "tools/tirith_security.py",
+    "symbol": "_is_install_failed_on_disk",
+    "kind": "bare_which",
+    "reason": "Clears a recorded 'cosign_missing' marker once cosign appears on PATH"
+  },
+  {
+    "path": "tools/tirith_security.py",
+    "symbol": "_resolve_locally",
+    "kind": "bare_which",
+    "reason": "Configured path first, then PATH; the cosign re-check mirrors the marker clear above"
+  },
+  {
+    "path": "tools/tirith_security.py",
+    "symbol": "_verify_cosign",
+    "kind": "bare_which",
+    "reason": "Sigstore verification shells out to the user's cosign, which lives on PATH"
+  },
+  {
+    "path": "tools/tirith_security.py",
+    "symbol": "_verify_release_provenance",
+    "kind": "bare_which",
+    "reason": "Same cosign lookup as _verify_cosign, degrading to SHA-256 when it is absent"
+  },
+  {
+    "path": "tools/todo_tool.py",
+    "symbol": "_verification_argv",
+    "kind": "bare_which",
+    "reason": "Picks the shell to run the user's verification command; PATH decides whether bash exists"
   },
   {
     "path": "tools/transcription_audio.py",

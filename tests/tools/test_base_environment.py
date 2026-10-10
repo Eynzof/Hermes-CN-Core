@@ -284,6 +284,10 @@ class TestAtomicSnapshotConcurrencyBehavioral:
 class TestSnapshotFileModes:
     """Snapshot metadata files are private without changing user command umask."""
 
+    # The contract is POSIX mode bits (0600/0644) on files bash creates, and neither
+    # exists on Windows: mode bits there are not enforced (so the assertion could not
+    # fail for the right reason), and a Windows path handed to bash is not a path.
+    @pytest.mark.platforms("posix")
     def test_snapshot_and_cwd_files_are_0600(self, tmp_path):
         import os
         from pathlib import Path

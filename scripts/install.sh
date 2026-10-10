@@ -79,13 +79,13 @@ while [ $# -gt 0 ]; do
         -h|--help)
             echo "Usage: install.sh [--branch NAME] [--commit SHA] [--dir PATH]"
             echo "                  [--isolated-dir PATH] [--hermes-home PATH]"
-            echo "  --isolated-dir PATH"
-            echo "                  Self-contained install: code/venv live at PATH and Hermes"
-            echo "                  data/config/logs/caches live at PATH/data."
             echo "                  [--manifest] [--stage NAME] [--json]"
             echo "                  [--non-interactive] [--include-desktop] [--verbose]"
             echo "                  [--skip-browser] [--skip-computer-use]"
             echo
+            echo "  --isolated-dir PATH"
+            echo "                  Self-contained install: code/venv live at PATH and Hermes"
+            echo "                  data/config/logs/caches live at PATH/data."
             echo "  --skip-browser  Do not install the browser tools (agent-browser + Chromium)."
             echo "                  Alias: --no-playwright. Remembered by later"
             echo "                  installs and 'hermes update'; undo with 'hermes pm install agent-browser'."

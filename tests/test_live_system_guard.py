@@ -91,15 +91,26 @@ def test_custom_home_tmpdir_is_relocated_before_pytest_uses_it(tmp_path):
 
 
 def test_default_home_unmarked_tmpdir_is_relocated_before_pytest_uses_it(tmp_path):
-    # Model the operator's default root with a disposable HOME, not ~/.hermes.
-    operator_home = tmp_path / "operator"
-    scratch = operator_home / ".hermes" / "cache" / "scratch"
+    # Model the operator's default root with a disposable HOME, not ~/.hermes. The
+    # conftest guards the platform's real state root (hermes_state_guard), which is
+    # %LOCALAPPDATA%\hermes on Windows and $HOME/.hermes elsewhere, so the model has
+    # to follow the same split for the relocation to be exercised at all.
+    env = dict(os.environ)
+    if sys.platform == "win32":
+        local_appdata = tmp_path / "LocalAppData"
+        default_root = local_appdata / "hermes"
+        env["LOCALAPPDATA"] = str(local_appdata)
+    else:
+        operator_home = tmp_path / "operator"
+        default_root = operator_home / ".hermes"
+        env["HOME"] = str(operator_home)
+    scratch = default_root / "cache" / "scratch"
     scratch.mkdir(parents=True)
-    env = dict(os.environ, HOME=str(operator_home), TMPDIR=str(scratch))
+    env["TMPDIR"] = str(scratch)
     env.pop("HERMES_HOME", None)
     env.pop("HERMES_SCRATCH_DIR", None)
     result = subprocess.run(
         [sys.executable, "-c", "import tempfile, tests.conftest; print(tempfile.gettempdir())"],
         env=env, capture_output=True, text=True, check=True,
     )
-    assert not result.stdout.strip().startswith(str(operator_home / ".hermes"))
+    assert not result.stdout.strip().startswith(str(default_root))

@@ -301,7 +301,10 @@ class AIAgent(
         pass_session_id: bool = False, requested_provider: str | None = None,
         capabilities: dict[str, bool] | None = None, cwd: str | None = None,
         side_agent: bool = False, memory_manager=None,
-        tool_result_metadata_callback: Optional[Callable[..., dict]] = None,
+          # [CN-fork] P-041: forwarded verbatim to ``init_agent`` — dropping the parameter here
+          # makes every gateway/Desktop agent build raise TypeError (``**_agent_cbs``).
+          tool_calls_committed_callback: Optional[Callable[..., None]] = None,
+          tool_result_metadata_callback: Optional[Callable[..., dict]] = None,
     ):
         """Forwarder — see ``agent.agent_init.init_agent`` (same keyword parameters, minus ``tool_delay``)."""
         init_kwargs = {k: v for k, v in locals().items() if k not in ("self", "tool_delay")}

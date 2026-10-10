@@ -307,7 +307,7 @@ class MossProvider(TTSProvider):
         if pause_raw is not None:
             try:
                 pause = float(pause_raw)
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 logger.warning(
                     "tts.moss.pause is not a number: %r; ignoring", pause_raw
                 )

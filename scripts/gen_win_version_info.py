@@ -94,7 +94,7 @@ def main(argv: list[str]) -> int:
     args = parser.parse_args(argv)
 
     if args.check:
-        with open(args.check, encoding="utf-8", errors="replace") as fh:
+        with open(args.check, encoding="utf-8-sig", errors="replace") as fh:
             source = fh.read()
         compile(source, args.check, "exec")  # raises SyntaxError if malformed
         print(f"{args.check}: OK")

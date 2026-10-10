@@ -21,7 +21,7 @@ def _find_files_with_aliased_orjson():
         parts = fp.relative_to(REPO_ROOT).parts
         if any(p.startswith('.') or p in ('__pycache__', '.venv', 'venv', 'env', '.git', 'node_modules', 'build', 'dist') for p in parts):
             continue
-        content = fp.read_text(encoding='utf-8')
+        content = fp.read_text(encoding='utf-8-sig')
         if re.search(r'\borjson\s+as\s+(\w+)', content):
             results.append((fp, content))
     return results

@@ -2064,7 +2064,7 @@ def _stop_gateway_process(profile_dir: Path) -> None:
     try:
         raw = pid_file.read_text(encoding="utf-8-sig").strip()
         data = json.loads(raw) if raw.startswith("{") else {"pid": int(raw)}
-        raw = pid_file.read_text(encoding="utf-8", errors="replace").strip()
+        raw = pid_file.read_text(encoding="utf-8-sig", errors="replace").strip()
         data = orjson.loads(raw) if raw.startswith("{") else {"pid": int(raw)}
         pid = int(data["pid"])
         # Cross-profile kill refusal: the record's hermes_home stamp names the gateway's TRUE
@@ -2435,7 +2435,7 @@ def _migrate_honcho_profile_host(old_name: str, new_name: str, new_dir: Path) ->
         try:
             raw = json.loads(path.read_text(encoding="utf-8-sig"))
         except (OSError, json.JSONDecodeError):
-            raw = orjson.loads(path.read_text(encoding="utf-8", errors="replace"))
+            raw = orjson.loads(path.read_text(encoding="utf-8-sig", errors="replace"))
         except (OSError, orjson.JSONDecodeError):
             continue
         hosts = raw.get("hosts")

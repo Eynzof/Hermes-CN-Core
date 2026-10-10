@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Awaitable, Callable
 
-from agent.file_safety import HOME_CREDENTIAL_DIRS
+from agent.file_safety import HOME_CREDENTIAL_DIRS, guard_homes
 from agent.model_metadata import CHARS_PER_TOKEN, estimate_tokens_rough
 from hermes_cli._subprocess_compat import IS_WINDOWS, harden_git_argv, noninteractive_git_env, windows_hide_flags
 from hermes_cli.sqlite_safe_read import LiveConnectionError, offline_file_access
@@ -523,9 +523,15 @@ def _resolve_path(cwd: Path, target: str, *, allowed_root: Path | None = None) -
 def _ensure_reference_path_allowed(path: Path) -> None:
     """Refuse credential/internal paths. Fails CLOSED: the gateway feeds untrusted remote text here."""
     from hermes_constants import get_hermes_home
-    home, hermes_home = Path(os.path.expanduser("~")).resolve(), get_hermes_home().resolve()
-    blocked_exact = {home / rel for rel in _SENSITIVE_HOME_FILES} | {hermes_home / ".env"}
-    blocked_dirs = [home / rel for rel in HOME_CREDENTIAL_DIRS] + [hermes_home / rel for rel in _SENSITIVE_HERMES_DIRS]
+    # Build the home lists over EVERY guard home (agent.file_safety.guard_homes), not the
+    # process ``~`` alone: ``expanduser("~")`` reads USERPROFILE on Windows and a parent
+    # that pins HOME (TERMINAL_HOME_MODE=profile, containers, spawned workers) points it at
+    # ``{HERMES_HOME}/home``. Either way the operator's ``~/.config/gcloud`` ADC, ``~/.ssh``
+    # and friends would have stayed unguarded here while the write guards covered them.
+    homes = {Path(home) for home in guard_homes()}
+    hermes_home = get_hermes_home().resolve()
+    blocked_exact = {home / rel for home in homes for rel in _SENSITIVE_HOME_FILES} | {hermes_home / ".env"}
+    blocked_dirs = [home / rel for home in homes for rel in HOME_CREDENTIAL_DIRS] + [hermes_home / rel for rel in _SENSITIVE_HERMES_DIRS]
     if path in blocked_exact:
         raise ValueError("path is a sensitive credential file and cannot be attached")
     if any(_is_under(path, blocked_dir) for blocked_dir in blocked_dirs):

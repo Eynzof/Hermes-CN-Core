@@ -2453,7 +2453,7 @@ class OpenVikingMemoryProvider(MemoryProvider):
         sessions: List[tuple[str, str]] = []
         for path in sorted(directory.glob("*.json")):
             try:
-                raw = json.loads(path.read_text(encoding="utf-8"))
+                raw = json.loads(path.read_text(encoding="utf-8-sig"))
             except Exception:
                 raw = None
             raw = raw if isinstance(raw, dict) else {}

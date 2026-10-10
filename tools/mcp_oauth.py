@@ -391,7 +391,7 @@ def _read_json(path: Path) -> dict | None:
     try:
         return json.loads(path.read_text(encoding="utf-8-sig"))
     except (json.JSONDecodeError, OSError) as exc:
-        return orjson.loads(path.read_text(encoding="utf-8", errors="replace"))
+        return orjson.loads(path.read_text(encoding="utf-8-sig", errors="replace"))
     except (orjson.JSONDecodeError, OSError) as exc:
         logger.warning("Failed to read %s: %s", path, exc)
         return None

@@ -1349,7 +1349,7 @@ def _load_skills_snapshot(skills_dir: Path, manifest: Optional[dict] = None) -> 
     """The disk snapshot if it exists, is current-version, and its manifest still matches."""
     try:
         snapshot = orjson.loads(
-            _skills_prompt_snapshot_path().read_text(encoding="utf-8", errors="replace")
+            _skills_prompt_snapshot_path().read_text(encoding="utf-8-sig", errors="replace")
         )
     except Exception:  # missing, unreadable or corrupt -> rebuild
         return None

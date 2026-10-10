@@ -95,6 +95,17 @@ def _guard_homes(path: str = "") -> set[str]:
     return {os.path.realpath(h) for h in homes}
 
 
+def guard_homes(path: str = "") -> set[str]:
+    """Public accessor for :func:`_guard_homes` — every home a deny list must be built over.
+
+    Guards outside this module (``agent.context_references`` refuses ``@file:`` targets)
+    must cover the same homes the write guards do, otherwise they silently narrow to the
+    process ``~`` alone — which on Windows is ``USERPROFILE`` (``HOME`` is ignored by
+    ``expanduser``) and which a pinning parent moves away from the real home entirely.
+    """
+    return _guard_homes(path)
+
+
 def _homes_and_resolved(path: str) -> tuple[set[str], str]:
     """``(guard homes, realpath(expanduser(path)))`` — the write-guard coordinate pair."""
     return _guard_homes(path), os.path.realpath(os.path.expanduser(str(path)))

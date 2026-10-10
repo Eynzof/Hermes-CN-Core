@@ -1348,7 +1348,7 @@ def _lock_holder_alive(lock_file) -> bool:
     from a live process (which would double-execute one-shot jobs).
     """
     try:
-        content = lock_file.read_text(encoding="utf-8", errors="replace").strip()
+        content = lock_file.read_text(encoding="utf-8-sig", errors="replace").strip()
     except OSError:
         return True
     if not content:
@@ -1742,7 +1742,7 @@ def _load_prefill_messages(cfg: dict, job_id: str) -> Optional[list]:
     try:
         with open(pfpath, "r", encoding="utf-8-sig") as _pf:
             prefill_messages = json.load(_pf)
-        with open(pfpath, "r", encoding="utf-8", errors="replace") as _pf:
+        with open(pfpath, "r", encoding="utf-8-sig", errors="replace") as _pf:
             prefill_messages = orjson.loads(_pf.read())
         return prefill_messages if isinstance(prefill_messages, list) else None
     except Exception as e:

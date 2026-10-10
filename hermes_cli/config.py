@@ -1167,7 +1167,7 @@ def check_config_version(*, raise_on_parse_error: bool = False) -> Tuple[int, in
         return latest, latest
 
     try:
-        with open(config_path, encoding="utf-8", errors="replace") as f:
+        with open(config_path, encoding="utf-8-sig", errors="replace") as f:
             config = fast_safe_load(f)
     except Exception as e:
         _warn_config_parse_failure(config_path, e)

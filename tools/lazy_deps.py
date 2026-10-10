@@ -269,7 +269,7 @@ def _ensure_target_ready(target: Path) -> Optional[str]:
         if target.exists():
             have = ""
             with contextlib.suppress(OSError):
-                have = stamp.read_text(encoding="utf-8", errors="replace").strip()
+                have = stamp.read_text(encoding="utf-8-sig", errors="replace").strip()
             if have and have != want:
                 logger.info("Lazy install target %s was built for ABI %r but running ABI is %r; wiping stale packages.", target, have, want)
                 for child in target.iterdir():

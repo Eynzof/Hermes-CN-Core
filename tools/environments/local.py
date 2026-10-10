@@ -1365,6 +1365,7 @@ def _where_git_executables() -> list[str]:
             errors="replace",
             check=False,
             creationflags=windows_hide_flags() if _IS_WINDOWS else 0,
+            stdin=subprocess.DEVNULL,
         )
     except OSError:
         return []
@@ -1393,6 +1394,7 @@ def _git_exec_path(git_path: str) -> str | None:
             check=False,
             timeout=5,
             creationflags=windows_hide_flags() if _IS_WINDOWS else 0,
+            stdin=subprocess.DEVNULL,
         )
     except (OSError, subprocess.TimeoutExpired):
         return None
@@ -1562,6 +1564,7 @@ def _is_wsl_bash_launcher(bash_path: str) -> bool:
                 errors="replace",
                 timeout=10,
                 creationflags=windows_hide_flags() if _IS_WINDOWS else 0,
+                stdin=subprocess.DEVNULL,
             )
             kernel = (probe.stdout or "").strip().lower()
             result = kernel.startswith("linux") and "microsoft" in kernel
@@ -2387,6 +2390,7 @@ class LocalEnvironment(BaseEnvironment):
                 capture_output=True,
                 timeout=effective_timeout,
                 **popen_kwargs,
+                stdin=subprocess.DEVNULL,
             )
         except subprocess.TimeoutExpired as exc:
             partial = _decode_cmd_output(exc.output or b"") + _decode_cmd_output(
@@ -2758,7 +2762,7 @@ class LocalEnvironment(BaseEnvironment):
         before validating with ``os.path.isdir``.
         """
         try:
-            with open(self._cwd_file, encoding="utf-8", errors="replace") as f:
+            with open(self._cwd_file, encoding="utf-8-sig", errors="replace") as f:
                 cwd_path = f.read().strip()
             if _IS_WINDOWS and self._shell_type not in ("powershell", "pwsh"):
                 cwd_path = _msys_to_windows_path(cwd_path)

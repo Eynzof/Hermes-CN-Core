@@ -2105,7 +2105,7 @@ def _load_contributor_dir(directory: "Path | None" = None) -> dict:
         if not path.is_file() or path.name.startswith("."):
             continue
         try:
-            for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            for line in path.read_text(encoding="utf-8-sig", errors="replace").splitlines():
                 line = line.strip()
                 if line and not line.startswith("#"):
                     mapping[path.name] = line.lstrip("@")

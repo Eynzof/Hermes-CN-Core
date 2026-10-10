@@ -48,7 +48,7 @@ def load_state() -> dict[str, Any]:
     }
     path = _state_file()
     try:
-        data = orjson.loads(path.read_text(encoding="utf-8", errors="replace")) if path.exists() else {}
+        data = orjson.loads(path.read_text(encoding="utf-8-sig", errors="replace")) if path.exists() else {}
     except (OSError, orjson.JSONDecodeError) as e:
         logger.debug("Failed to read curator state: %s", e)
         return base

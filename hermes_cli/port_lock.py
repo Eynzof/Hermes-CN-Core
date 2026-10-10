@@ -75,7 +75,7 @@ def _read_lock_owner(path: Path) -> Optional[int]:
     backward compatibility.
     """
     try:
-        text = path.read_text(encoding="utf-8", errors="replace").strip()
+        text = path.read_text(encoding="utf-8-sig", errors="replace").strip()
         if not text:
             return None
         first = text.splitlines()[0].strip()
@@ -93,7 +93,7 @@ def _read_lock_owner_with_start_time(path: Path) -> Optional[tuple[int, int]]:
     Old-format files (no ``:`` separator) return ``(pid, 0)``.
     """
     try:
-        text = path.read_text(encoding="utf-8", errors="replace").strip()
+        text = path.read_text(encoding="utf-8-sig", errors="replace").strip()
         if not text:
             return None
         first = text.splitlines()[0].strip()

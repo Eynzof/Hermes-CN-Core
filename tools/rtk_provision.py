@@ -95,6 +95,7 @@ def _find_rtk() -> str | None:
                 capture_output=True,
                 check=True,
                 timeout=5,
+                stdin=subprocess.DEVNULL,
             )
             return str(managed)
         except Exception:
@@ -108,6 +109,7 @@ def _find_rtk() -> str | None:
                 capture_output=True,
                 check=True,
                 timeout=5,
+                stdin=subprocess.DEVNULL,
             )
             return str(legacy)
         except Exception:
@@ -121,6 +123,7 @@ def _find_rtk() -> str | None:
                 capture_output=True,
                 check=True,
                 timeout=5,
+                stdin=subprocess.DEVNULL,
             )
             return path_rtk
         except Exception:

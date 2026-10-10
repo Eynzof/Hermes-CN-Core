@@ -57,6 +57,7 @@ def _mint(command: str, label: str) -> tuple[str, Optional[float]]:
             # before we can report the exit status.
             errors="replace",
             env=served_profile_child_env(inherit_credentials=True),
+            stdin=subprocess.DEVNULL,
         )
     except subprocess.TimeoutExpired as exc:
         raise CommandTokenError(

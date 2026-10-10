@@ -1484,7 +1484,7 @@ def do_snapshot_import(input_path: str, force: bool = False,
     try:
         snapshot = json.loads(inp.read_text(encoding="utf-8-sig"))
     except json.JSONDecodeError:
-        snapshot = orjson.loads(inp.read_text(encoding="utf-8", errors="replace"))
+        snapshot = orjson.loads(inp.read_text(encoding="utf-8-sig", errors="replace"))
     except orjson.JSONDecodeError:
         _print_error(c, f"Invalid JSON in {inp}")
         return False

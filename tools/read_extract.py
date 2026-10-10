@@ -417,7 +417,7 @@ def _extract_notebook(path: str, *, display_path: Optional[str] = None) -> str:
         with open(path, encoding="utf-8-sig", errors="replace") as fh:
             nb = json.load(fh)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
-        with open(path, encoding="utf-8", errors="replace") as fh:
+        with open(path, encoding="utf-8-sig", errors="replace") as fh:
             nb = orjson.loads(fh.read())
     except (OSError, ValueError, orjson.JSONDecodeError) as exc:
         raise ExtractionError(f"Not a valid notebook: {exc}") from exc

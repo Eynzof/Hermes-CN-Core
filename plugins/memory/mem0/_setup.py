@@ -20,6 +20,7 @@ from typing import Any
 from hermes_constants import get_hermes_home  # noqa: F401 — patched by tests
 
 from ._oss_providers import EMBEDDER_PROVIDERS, KNOWN_DIMS, LLM_PROVIDERS, SECTION_REGISTRIES, VECTOR_PROVIDERS, validate_oss_config, vector_default_config
+from hermes_cli._subprocess_compat import windows_hide_flags
 
 _OLLAMA_URL = "http://localhost:11434"
 _PGVECTOR_CONTAINER, _PGVECTOR_IMAGE, _PGVECTOR_PASSWORD = "hermes-pgvector", "pgvector/pgvector:pg17", "hermes"
@@ -270,7 +271,8 @@ def _setup_oss(hermes_home: str, config: dict, flags: dict[str, str]) -> None:
 
 
 def _docker(*args: str, timeout: int, **kwargs) -> subprocess.CompletedProcess:
-    return subprocess.run(["docker", *args], capture_output=True, timeout=timeout, stdin=subprocess.DEVNULL, **kwargs)
+    return subprocess.run(["docker", *args], capture_output=True, timeout=timeout, stdin=subprocess.DEVNULL,  # windows-footgun: ok (creationflags on the continuation line)
+                          creationflags=windows_hide_flags(), **kwargs)
 
 
 def _pg_ready(host: str, port: int, wait: int) -> bool:

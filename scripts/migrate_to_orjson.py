@@ -511,7 +511,7 @@ def migrate_file(filepath: Path, dry_run: bool = False) -> tuple[bool, str]:
     Returns (changed, new_content).
     """
     try:
-        source = filepath.read_text(encoding='utf-8')
+        source = filepath.read_text(encoding='utf-8-sig')
     except Exception as e:
         print(f"  ERROR reading {filepath}: {e}")
         return False, ""

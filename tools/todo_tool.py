@@ -453,6 +453,7 @@ def run_verification_code(code: str, timeout: int = 30) -> tuple[bool, str]:
                 text=True,
                 errors="replace",
                 timeout=timeout,
+                stdin=subprocess.DEVNULL,
             )
         else:
             lowered = stripped.lower()
@@ -505,6 +506,7 @@ def run_verification_code(code: str, timeout: int = 30) -> tuple[bool, str]:
                 text=True,
                 errors="replace",
                 timeout=timeout,
+                stdin=subprocess.DEVNULL,
             )
     except subprocess.TimeoutExpired as exc:
         try:

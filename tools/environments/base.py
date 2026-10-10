@@ -198,7 +198,7 @@ def _load_json_store(path: Path) -> dict:
     try:
         data = json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, ValueError):
-        return orjson.loads(path.read_text(encoding="utf-8", errors="replace"))
+        return orjson.loads(path.read_text(encoding="utf-8-sig", errors="replace"))
     except Exception:
         return {}
     return data if isinstance(data, dict) else {}

@@ -97,7 +97,7 @@ def list_pending(subsystem: str) -> list[dict[str, Any]]:
     for p in _pending_files(subsystem):
         try:
             record = json.loads(p.read_text(encoding="utf-8-sig"))
-            record = orjson.loads(p.read_text(encoding="utf-8", errors="replace"))
+            record = orjson.loads(p.read_text(encoding="utf-8-sig", errors="replace"))
             if not isinstance(record, dict):
                 raise ValueError(f"expected a JSON object, got {type(record).__name__}")
             records.append(record)
@@ -334,7 +334,7 @@ def skill_pending_diff(
             target_label = payload.get("file_path") or "SKILL.md"
         with suppress(Exception):
             p = skill_dir / target_label
-            current = p.read_text(encoding="utf-8", errors="replace") if p.exists() else ""
+            current = p.read_text(encoding="utf-8-sig", errors="replace") if p.exists() else ""
 
     if action == "patch":
         old_s, new_s = payload.get("old_string") or "", payload.get("new_string") or ""

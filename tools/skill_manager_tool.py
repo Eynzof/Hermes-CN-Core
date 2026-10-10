@@ -531,7 +531,7 @@ def _patch_skill(name: str, old_string: str, new_string: str, file_path: str | N
     content = target.read_text(encoding="utf-8-sig")
 
     # Use the same fuzzy matching engine as the file patch tool.
-    content = target.read_text(encoding="utf-8", errors="replace")
+    content = target.read_text(encoding="utf-8-sig", errors="replace")
     # Same fuzzy engine as the file patch tool (whitespace/indent/escape normalization,
     # block anchors) so minor formatting mismatches don't fail.
     from tools.fuzzy_match import fuzzy_find_and_replace

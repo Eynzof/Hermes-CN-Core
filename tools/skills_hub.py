@@ -242,7 +242,7 @@ def _read_json_if_fresh(path: Path, ttl: float) -> Optional[Any]:
             return None
         return json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, json.JSONDecodeError):
-        return orjson.loads(path.read_text(encoding="utf-8"))
+        return orjson.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, orjson.JSONDecodeError):
         return None
 
@@ -289,7 +289,7 @@ class _JsonStateFile:
             return json.loads(self.path.read_text(encoding="utf-8-sig"))
         except (json.JSONDecodeError, OSError):
             return json.loads(json.dumps(self.EMPTY))
-            return orjson.loads(self.path.read_text(encoding="utf-8"))
+            return orjson.loads(self.path.read_text(encoding="utf-8-sig"))
         except (orjson.JSONDecodeError, OSError):
             return orjson.loads(orjson.dumps(self.EMPTY))
 

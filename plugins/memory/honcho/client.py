@@ -37,6 +37,7 @@ from plugins.memory.honcho.client_cache import (
     _DEFAULT_HTTP_TIMEOUT, _client_cache_key, _client_slots, _client_slots_lock,
     _honcho_json_timeout_memo, _refresh_oauth, _slot_for,
 )
+from hermes_cli._subprocess_compat import windows_hide_flags
 
 if TYPE_CHECKING:
     from honcho import Honcho
@@ -477,8 +478,9 @@ class HonchoClientConfig:
         import subprocess
 
         try:
-            root = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, encoding='utf-8',
-                                  errors='replace', cwd=cwd, timeout=5, stdin=subprocess.DEVNULL)
+                root = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, encoding='utf-8',  # windows-footgun: ok (creationflags on the continuation line)
+                                      errors='replace', cwd=cwd, timeout=5, stdin=subprocess.DEVNULL,
+                                      creationflags=windows_hide_flags())
         except (OSError, subprocess.TimeoutExpired):
             return None
         return Path(root.stdout.strip()).name if root.returncode == 0 else None

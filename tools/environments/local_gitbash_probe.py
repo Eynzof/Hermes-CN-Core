@@ -45,7 +45,8 @@ def _mandatory_aslr_enabled() -> "bool | None":
     cmd = [shutil.which("powershell.exe") or "powershell.exe", "-NoProfile", "-NonInteractive",
            "-Command", "(Get-ProcessMitigation -System).Aslr.ForceRelocateImages.ToString()"]
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",  # windows-footgun: ok
+                          # (creationflags set below)
                                 errors="replace", timeout=10, creationflags=windows_hide_flags(), stdin=subprocess.DEVNULL)
     except Exception as exc:
         logger.debug("Could not query Windows Mandatory ASLR state: %s", exc)

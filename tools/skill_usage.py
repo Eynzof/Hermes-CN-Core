@@ -373,7 +373,7 @@ def load_usage() -> dict[str, dict[str, Any]]:
     try:
         data = json.loads(path.read_text(encoding="utf-8-sig")) if path.exists() else {}
     except (OSError, json.JSONDecodeError) as e:
-        data = orjson.loads(path.read_text(encoding="utf-8", errors="replace")) if path.exists() else {}
+        data = orjson.loads(path.read_text(encoding="utf-8-sig", errors="replace")) if path.exists() else {}
     except (OSError, orjson.JSONDecodeError) as e:
         logger.debug("Failed to read %s: %s", path, e)
         return {}

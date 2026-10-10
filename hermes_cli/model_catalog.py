@@ -182,7 +182,7 @@ def _read_disk_cache() -> tuple[dict[str, Any] | None, float]:
         with open(path, encoding="utf-8-sig") as fh:
             data = json.load(fh)
     except (OSError, json.JSONDecodeError):
-        with open(path, encoding="utf-8", errors="replace") as fh:
+        with open(path, encoding="utf-8-sig", errors="replace") as fh:
             data = orjson.loads(fh.read())
     except (OSError, orjson.JSONDecodeError):
         return (None, 0.0)
@@ -242,7 +242,7 @@ def _seed_cache_from_bundled() -> bool:
     """
     for src in _bundled_catalog_candidates():
         try:
-            with open(src, encoding="utf-8", errors="replace") as fh:
+            with open(src, encoding="utf-8-sig", errors="replace") as fh:
                 data = orjson.loads(fh.read())
         except (OSError, orjson.JSONDecodeError):
             continue
@@ -434,7 +434,7 @@ def seed_cache_from_checkout(project_root: Path | str) -> bool:
         with open(src, encoding="utf-8-sig") as fh:
             data = json.load(fh)
     except (OSError, json.JSONDecodeError) as exc:
-        with open(src, encoding="utf-8", errors="replace") as fh:
+        with open(src, encoding="utf-8-sig", errors="replace") as fh:
             data = orjson.loads(fh.read())
     except (OSError, orjson.JSONDecodeError) as exc:
         logger.debug("model catalog seed from checkout skipped (%s): %s", src, exc)

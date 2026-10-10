@@ -321,7 +321,7 @@ def _project_meta_path(store: Path, dir_hash: str) -> Path:
 def _read_json_dict(path: Path) -> Optional[Dict]:
     """Parse ``path`` as a JSON object; None when missing, unreadable or not a dict."""
     try:
-        data = orjson.loads(path.read_text(encoding="utf-8", errors="replace"))
+        data = orjson.loads(path.read_text(encoding="utf-8-sig", errors="replace"))
     except (OSError, ValueError):
         return None
     return data if isinstance(data, dict) else None
@@ -1837,7 +1837,7 @@ def maybe_auto_prune_checkpoints(retention_days: int = 7, min_interval_hours: in
         marker = base / _PRUNE_MARKER_NAME
         now = time.time()
         try:
-            if marker.exists() and now - float(marker.read_text(encoding="utf-8", errors="replace").strip()) < min_interval_hours * 3600:
+            if marker.exists() and now - float(marker.read_text(encoding="utf-8-sig", errors="replace").strip()) < min_interval_hours * 3600:
                 out["skipped"] = True
                 return out
         except (OSError, ValueError):

@@ -134,17 +134,6 @@ _SCHEMA_OVERRIDES: dict[str, dict[str, Any]] = {
     "stt.mistral.model": _select("Mistral Voxtral transcription model", *STT_MODEL_CATALOG["mistral"]),
     "stt.xai.model": _select("xAI transcription model", *STT_MODEL_CATALOG["xai"]),
     "stt.elevenlabs.model_id": _select("ElevenLabs Scribe model", *STT_MODEL_CATALOG["elevenlabs"]),
-    # "mistral" temporarily removed — mistralai PyPI package quarantined
-    # (malicious 2.4.6 release on 2026-05-12). Restore once available.
-    "stt.provider": _select("Speech-to-text provider", "local", "groq", "openai", "xai", "elevenlabs"),
-    "stt.local.model": _select("Local faster-whisper model size", "tiny", "base", "small", "medium", "large-v3"),
-    "stt.groq.model": _select(
-        "Groq Whisper model", "whisper-large-v3-turbo", "whisper-large-v3", "distil-whisper-large-v3-en"
-    ),
-    "stt.openai.model": _select(
-        "OpenAI transcription model", "whisper-1", "gpt-4o-mini-transcribe", "gpt-4o-transcribe", "gpt-transcribe"
-    ),
-    "stt.elevenlabs.model_id": _select("ElevenLabs Scribe model", "scribe_v2", "scribe_v1"),
     # --- Voice provider fields (enriched from DEFAULT_CONFIG; options are
     # UI guidance for the desktop/dashboard — the runtime accepts any value) ---
     "stt.local.language": {

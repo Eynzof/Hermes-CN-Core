@@ -247,9 +247,11 @@ def _update_read_timestamp(filepath: str, task_id: str) -> None:
 
 
 def _file_metadata(resolved: str) -> tuple | None:
+    """Identity/change tuple for *resolved*; keeps the field set of ``_file_version``
+    (minus the digest) so ``version[:-1] == _file_metadata(...)`` stays comparable."""
     try:
         st = os.stat(resolved)
-        return st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns
+        return st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns
     except OSError:
         return None
 
@@ -266,13 +268,12 @@ def _file_version(resolved: str) -> tuple | None:
                 return None
             digest = hashlib.file_digest(stream, "sha256").digest()
             after = os.stat(resolved)
-        fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")
+        # No st_ctime_ns: on Windows a path stat lags the handle by ~1ms after a write
+        # (reproducible), which made this comparison — and the ``stable`` check that
+        # compares these tuples against ``_file_metadata`` — fail on every freshly written
+        # file, stamping an honest full read as partial and refusing the next write_file.
+        fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns")
         version = tuple(getattr(before, name) for name in fields)
-        if version != tuple(getattr(after, name) for name in fields):
-            try:
-                open("C:/dev/Hermes-CN-Core/.kimix_cache/g01/dbg_ver.txt", "a", encoding="utf-8").write("MISMATCH path=%r before=%r after=%r" % (resolved, version, tuple(getattr(after, name) for name in fields)) + chr(10))
-            except Exception:
-                pass
         if version == tuple(getattr(after, name) for name in fields):
             return (*version, digest)
         return None

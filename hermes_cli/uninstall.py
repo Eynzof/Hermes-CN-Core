@@ -67,6 +67,24 @@ def get_project_root() -> Path:
     return Path(__file__).parent.parent.resolve()
 
 
+def code_removal_refusal() -> str | None:
+    """Why the uninstaller must not remove this tree's code, or ``None``.
+
+    A git checkout (the install.sh / install.ps1 / `hermes desktop` layout)
+    is ours to remove. A sealed tree (no ``.git``) belongs to a steward —
+    the Nix store, the bundled desktop app, a Docker image — and only the
+    steward removes it. Returns the user-facing refusal text for sealed
+    trees; the text always points at ``hermes uninstall --data`` for the
+    user-data cleanup that IS allowed everywhere.
+    """
+    from hermes_cli.steward import sealed_steward, steward_uninstall_message
+
+    steward = sealed_steward(get_project_root())
+    if steward is None:
+        return None
+    return steward_uninstall_message(steward)
+
+
 def _path_contains(parent: Path, child: Path) -> bool:
     """Return True when ``child`` is inside ``parent`` after resolution."""
     try:
@@ -322,7 +340,9 @@ def _remove_launchd_gateway() -> bool:
     job whose plist is gone.
     """
     plists = _launchd_gateway_plists()
-    uid = os.getuid()  # windows-footgun: ok — darwin-only (called from the macOS branch)
+    # launchd is macOS-only and os.getuid() is absent on Windows; without a uid the domain
+    # string is inert there (launchctl does not exist), so 0 keeps the sweep cross-platform.
+    uid = os.getuid() if hasattr(os, "getuid") else 0
     for plist_path in plists:
         label = plist_path.stem
         for domain in (f"gui/{uid}", f"user/{uid}"):

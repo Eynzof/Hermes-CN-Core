@@ -303,8 +303,9 @@ def test_qwen_oauth_auto_fallthrough_on_auth_failure(monkeypatch):
         lambda **kw: (_ for _ in ()).throw(AuthError("stale", provider="qwen-oauth", code="qwen_auth_missing")),
     )
     monkeypatch.setattr(rp, "_get_model_config", dict)
+    monkeypatch.setattr(rp, "load_pool", lambda _provider: SimpleNamespace(has_credentials=lambda: False))
+    monkeypatch.setattr(rp, "_get_model_config", dict)
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-or-key")
-
     # Should NOT raise — falls through to OpenRouter
     resolved = rp.resolve_runtime_provider(requested="auto")
     # The fallthrough means it won't be qwen-oauth

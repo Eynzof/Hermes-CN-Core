@@ -196,10 +196,9 @@ def get_sandbox_dir() -> Path:
 def _load_json_store(path: Path) -> dict:
     """Treat a missing or damaged snapshot store as empty."""
     try:
-        data = json.loads(path.read_text(encoding="utf-8-sig"))
+        # Lossy decode: one damaged byte must not discard the whole store (P-051).
+        data = orjson.loads(path.read_text(encoding="utf-8-sig", errors="replace"))
     except (OSError, ValueError):
-        return orjson.loads(path.read_text(encoding="utf-8-sig", errors="replace"))
-    except Exception:
         return {}
     return data if isinstance(data, dict) else {}
 

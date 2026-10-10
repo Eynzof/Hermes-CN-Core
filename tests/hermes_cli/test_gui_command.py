@@ -147,10 +147,11 @@ def _packaged_exe_rel() -> Path:
 
 def _npm_argv(cmd) -> list:
     """The npm command line inside a build call. A direct ``hermes desktop`` build holds the
-    checkout lock (review C5), so on POSIX it runs under the custody launcher
-    (``python -I -S -c <reaper> <fds> npm ...``)."""
+    checkout lock, so npm arrives under the custody launcher (``python -I -S -c <reaper>
+    <launcher args> npm ...``). The launcher's own args differ per host (fds on POSIX, job
+    handle + report path on Windows), so locate the npm token instead of counting them."""
     cmd = list(cmd)
-    return cmd[6:] if cmd[1:4] == ["-I", "-S", "-c"] else cmd
+    return cmd[cmd.index("/usr/bin/npm"):] if "/usr/bin/npm" in cmd else cmd
 
 
 def _pack_into_staging(root: Path, content: str = "", returncode: int = 0):
@@ -159,10 +160,8 @@ def _pack_into_staging(root: Path, content: str = "", returncode: int = 0):
     (never in release/), then returns *returncode*. Non-pack commands (the
     launch) return success."""
     def _run(cmd, **kwargs):
-        print("DBGCMD", cmd)
         if _npm_argv(cmd)[1:3] == ["run", "builder"]:
             exe = _staging_dir_from(cmd) / _packaged_exe_rel()
-            print("DBGEXE", exe)
             exe.parent.mkdir(parents=True, exist_ok=True)
             exe.write_text(content, encoding="utf-8")
             if sys.platform not in ("darwin", "win32"):

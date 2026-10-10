@@ -54,12 +54,20 @@ def test_portable_validation_fails_orphan_and_reports_availability(tmp_path: Pat
     assert not report.ok
     assert any("no matching mcp.json server" in failure for failure in report.failures)
 
-    app = tmp_path / "example-app"
+    # The app location is per-OS and must be rooted for the family it is declared under, so
+    # declare one this host is not: the check then reports the availability verdict
+    # ("unsupported_os") on every host, as upstream's darwin declaration did on Linux CI.
+    from hermes_platform.host import facts
+
+    foreign_os, foreign_app = (
+        ("win32", r"C:\Program Files\example-app")
+        if facts.os_family() != "win32" else ("darwin", "/Applications/example-app")
+    )
     declared = _portable_plugin(
         tmp_path / "declared",
         {"worker": {"type": "stdio", "command": "python"}},
         {"worker": {
-            "app": {"darwin": {"presence": "executable", "location": str(app)}},
+            "app": {foreign_os: {"presence": "executable", "location": foreign_app}},
             "requires": {"app": True},
         }},
     )

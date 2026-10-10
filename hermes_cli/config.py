@@ -336,35 +336,6 @@ def is_nix_install_method(method: str) -> bool:
     return method == "nix" or method in _NIX_MANAGED_SYSTEMS
 
 
-def is_uv_tool_install() -> bool:
-    """Return True when the *running* Hermes lives in a ``uv tool`` layout.
-
-    ``uv tool install hermes-agent`` places the install at
-    ``.../uv/tools/hermes-agent/...`` (default ``~/.local/share/uv/tools``,
-    or ``$UV_TOOL_DIR/...``). Such installs live outside any virtualenv, so
-    ``uv pip install`` fails with ``No virtual environment found`` and the
-    update path must use ``uv tool upgrade`` instead.
-
-    Detection is intentionally restricted to properties of the running
-    interpreter (``sys.prefix`` / ``sys.executable``). We deliberately do
-    NOT consult ``uv tool list``: it would also return True when
-    ``hermes-agent`` happens to be uv-tool-installed on the machine while
-    the *active* Hermes is a regular pip/venv install, causing
-    ``hermes update`` to upgrade the wrong copy. It would also block on a
-    subprocess call (~seconds) just to compute a recommendation string.
-    """
-
-    def _has_uv_tool_marker(path: str) -> bool:
-        norm = os.path.normpath(path).replace(os.sep, "/").lower()
-        return "/uv/tools/hermes-agent/" in norm + "/"
-
-    if _has_uv_tool_marker(sys.prefix):
-        return True
-    if _has_uv_tool_marker(sys.executable or ""):
-        return True
-    return False
-
-
 _UPDATE_COMMAND_BY_METHOD = {
     "docker": "docker pull nousresearch/hermes-agent:latest",
     "apt": "pkg upgrade hermes-agent",  # "apt" == Termux APT by contract; uses Termux's `pkg`.
@@ -375,67 +346,14 @@ def recommended_update_command_for_method(method: str) -> str:
     """Return the update command or guidance for a given install method."""
     if is_nix_install_method(method):
         return _NIX_UPDATE_MSG
-    if method == "pip":
-        if is_uv_tool_install():
-            return "uv tool upgrade hermes-agent"
-        from hermes_cli.managed_uv import resolve_uv
-
-        if resolve_uv():
-            return "uv pip install --upgrade hermes-agent"
-        return "pip install --upgrade hermes-agent"
     return _UPDATE_COMMAND_BY_METHOD.get(method, "hermes update")
-
-
-# =============================================================================
-# Unsupported install methods (pip, Homebrew) — deprecation notice
-# =============================================================================
-#
-# pip/PyPI and Homebrew are NOT an officially supported distribution method
-# (see website/docs/getting-started/platform-support.md, "Unsupported"
-# section). pip exists on PyPI for internal/CI reasons, not end-user installs;
-# Homebrew is a legacy packaging path. Unlike NixOS/Homebrew "managed mode"
-# (which hard-blocks config writes), this is a warn-don't-block deprecation
-# notice surfaced everywhere the user might see install-method state: the CLI
-# banner, the TUI/desktop session info panel, and ``hermes update``. NixOS
-# stays fully supported (Tier 2) and must never hit this path.
-
-PLATFORM_SUPPORT_DOCS_URL = (
-    "https://hermes-agent.nousresearch.com/docs/getting-started/platform-support"
-)
-
-_UNSUPPORTED_INSTALL_METHODS = frozenset({"pip", "homebrew"})
-
-
-def is_unsupported_install_method(method: str) -> bool:
-    """Whether ``method`` (from ``detect_install_method()``) is deprecated."""
-    return method in _UNSUPPORTED_INSTALL_METHODS
-
-
-def unsupported_install_method_label(method: str) -> str:
-    """Human-readable name for an unsupported install method."""
-    return "pip" if method == "pip" else "Homebrew"
-
-
-def format_unsupported_install_warning(method: str) -> str:
-    """Plain-text (no markup) deprecation notice for pip/Homebrew installs.
-
-    Shared verbatim across the CLI banner, TUI/desktop ``session.info``, and
-    ``hermes update`` / ``hermes update --check`` so the wording — and the
-    docs link — stays consistent across every surface instead of drifting
-    into three slightly different warnings.
-    """
-    label = unsupported_install_method_label(method)
-    return (
-        f"{label} installs are no longer an officially supported platform and "
-        f"will not receive further updates. See {PLATFORM_SUPPORT_DOCS_URL} "
-        "for supported install methods."
-    )
 
 
 def recommended_update_command() -> str:
     """Return the best update command for the current installation.
     Managed state wins over the code-scoped stamp: a managed install can carry a stale stamp
     naming an update path the managed guard refuses."""
+
     return get_managed_update_command() or recommended_update_command_for_method(
         detect_install_method(get_project_root()))
 

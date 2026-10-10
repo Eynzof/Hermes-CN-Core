@@ -164,7 +164,10 @@ def test_failed_shallow_maintenance_restores_original_bytes(tmp_path, caplog, op
     git(clone, "commit", "--allow-empty", "-qm", "local1")
     git(clone, "commit", "--allow-empty", "-qm", "local2")
     victim = git(clone, "rev-parse", "HEAD~1").stdout.strip()
-    (clone / ".git/objects" / victim[:2] / victim[2:]).unlink()
+    loose = clone / ".git" / "objects" / victim[:2] / victim[2:]
+    # Git writes loose objects read-only; Windows refuses to unlink those, so clear the bit first.
+    loose.chmod(0o644)
+    loose.unlink()
     shallow = clone / ".git/shallow"
     # A failed self-check must restore even noncanonical line endings verbatim.
     original = shallow.read_bytes().replace(b"\n", b"\r\n")

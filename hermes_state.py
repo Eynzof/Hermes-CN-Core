@@ -1666,7 +1666,7 @@ class SessionDB(
                 "UPDATE sessions SET source = 'kanban' "
                 "WHERE source = 'cli' AND (cwd = ? OR cwd LIKE ? ESCAPE '\\' "
                 "OR cwd LIKE ? ESCAPE '\\')",
-                (prefix, f"{esc}/%", f"{esc}\\\\%"),
+                (prefix, f"{escaped}/%", f"{escaped}\\\\%"),
             )
             # rowcount BEFORE set_meta reuses this cursor for its INSERT.
             retagged = cursor.rowcount or 0

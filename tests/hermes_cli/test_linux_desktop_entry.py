@@ -63,10 +63,7 @@ def _parse(entry_text: str) -> dict:
     return values
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Windows baseline: desktop Exec lines quote/escape backslash paths",
-)
+@pytest.mark.platforms("posix")
 def test_install_writes_entry_with_absolute_exec_and_icon(
     tmp_path, xdg_home, monkeypatch
 ):
@@ -98,10 +95,7 @@ def test_install_writes_entry_with_absolute_exec_and_icon(
     assert icon_path == lde.icon_path(root)
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Windows baseline: POSIX XDG installer layout and Exec-line quoting",
-)
+@pytest.mark.platforms("posix")
 def test_install_prefers_themed_icon_from_hicolor(tmp_path, xdg_home, monkeypatch):
     """When the icon installs into hicolor, the entry uses the themed name.
 
@@ -131,10 +125,7 @@ def test_install_prefers_themed_icon_from_hicolor(tmp_path, xdg_home, monkeypatc
     assert dest.read_bytes() == lde.icon_path(root).read_bytes()
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Windows baseline: POSIX XDG installer layout and Exec-line quoting",
-)
+@pytest.mark.platforms("posix")
 def test_install_icon_copy_failure_falls_back_to_absolute(
     tmp_path, xdg_home, monkeypatch
 ):
@@ -164,10 +155,7 @@ def test_install_icon_copy_failure_falls_back_to_absolute(
     assert values["Terminal"] == "false"
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Windows baseline: st_mode has no S_IXUSR bits (POSIX file mode)",
-)
+@pytest.mark.platforms("posix")
 def test_installed_entry_is_executable(tmp_path, xdg_home, monkeypatch):
     root = _make_project(tmp_path)
     monkeypatch.setattr(
@@ -180,10 +168,7 @@ def test_installed_entry_is_executable(tmp_path, xdg_home, monkeypatch):
     assert entry.stat().st_mode & stat.S_IXUSR
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Windows baseline: interpreter path is quoted/escaped in Exec",
-)
+@pytest.mark.platforms("posix")
 def test_exec_falls_back_to_interpreter_module(tmp_path, xdg_home, monkeypatch):
     root = _make_project(tmp_path)
     monkeypatch.setattr("hermes_cli.relaunch.resolve_hermes_bin", lambda: None)
@@ -201,10 +186,7 @@ def test_exec_falls_back_to_interpreter_module(tmp_path, xdg_home, monkeypatch):
 # interpreter when the DE spawns the .desktop entry → ModuleNotFoundError,
 # silent (Terminal=false). The Exec line must prefix sys.executable for any
 # resolved bin that is a python script escaping the running venv.
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Windows baseline: POSIX XDG installer layout and Exec-line quoting",
-)
+@pytest.mark.platforms("posix")
 def test_exec_prefixes_interpreter_for_env_shebang_python_script(
     tmp_path, xdg_home, monkeypatch
 ):
@@ -231,10 +213,7 @@ def test_exec_prefixes_interpreter_for_env_shebang_python_script(
     assert exec_line.endswith("desktop")
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Windows baseline: POSIX XDG installer layout and Exec-line quoting",
-)
+@pytest.mark.platforms("posix")
 def test_exec_leaves_shell_wrapper_launchers_alone(tmp_path, xdg_home, monkeypatch):
     root = _make_project(tmp_path)
     hermes_bin = tmp_path / "bin" / "hermes"
@@ -255,10 +234,7 @@ def test_exec_leaves_shell_wrapper_launchers_alone(tmp_path, xdg_home, monkeypat
     assert exec_line == f"{hermes_bin} desktop"
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Windows baseline: POSIX XDG installer layout and Exec-line quoting",
-)
+@pytest.mark.platforms("posix")
 def test_exec_leaves_venv_shebang_scripts_alone(tmp_path, xdg_home, monkeypatch):
     import sys
 
@@ -292,10 +268,7 @@ def _argv0_context(monkeypatch, argv0: str) -> None:
     monkeypatch.setattr(sys, "argv", [argv0, "desktop"])
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Windows baseline: POSIX XDG installer layout and Exec-line quoting",
-)
+@pytest.mark.platforms("posix")
 def test_exec_converges_from_repo_script_argv0_to_installed_wrapper(
     tmp_path, xdg_home, monkeypatch
 ):
@@ -333,10 +306,7 @@ def test_exec_converges_from_repo_script_argv0_to_installed_wrapper(
     assert exec_line == f"{wrapper} desktop"
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Windows baseline: POSIX XDG installer layout and Exec-line quoting",
-)
+@pytest.mark.platforms("posix")
 def test_exec_never_persists_a_bare_interpreter_command(
     tmp_path, xdg_home, monkeypatch
 ):
@@ -373,10 +343,7 @@ def test_exec_never_persists_a_bare_interpreter_command(
     assert exec_line == f"{wrapper} desktop"
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Windows baseline: POSIX XDG installer layout and Exec-line quoting",
-)
+@pytest.mark.platforms("posix")
 def test_exec_keeps_resolver_fallback_when_no_wrapper_on_path(
     tmp_path, xdg_home, monkeypatch
 ):
@@ -417,10 +384,7 @@ def test_exec_keeps_resolver_fallback_when_no_wrapper_on_path(
     assert str(repo_script) not in exec_line
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Windows baseline: POSIX XDG installer layout and Exec-line quoting",
-)
+@pytest.mark.platforms("posix")
 def test_exec_uses_known_wrapper_when_path_lookup_misses(
     tmp_path, xdg_home, monkeypatch
 ):
@@ -469,10 +433,7 @@ def test_exec_uses_known_wrapper_when_path_lookup_misses(
     assert exec_line == f"{known_wrapper} desktop"
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Windows baseline: POSIX XDG installer layout and Exec-line quoting",
-)
+@pytest.mark.platforms("posix")
 def test_exec_never_persists_a_checkout_internal_path_hit(tmp_path, xdg_home, monkeypatch):
     """A PATH hit inside THIS checkout is a launch-context artifact, like argv[0].
 
@@ -528,6 +489,7 @@ def test_exec_never_persists_a_checkout_internal_path_hit(tmp_path, xdg_home, mo
     assert entry2.read_text(encoding="utf-8") == entry.read_text(encoding="utf-8")
 
 
+@pytest.mark.platforms("posix")
 def test_exec_skips_managed_environment_cli_without_desktop(
     tmp_path, xdg_home, monkeypatch
 ):
@@ -574,10 +536,7 @@ def test_exec_skips_managed_environment_cli_without_desktop(
     assert str(managed) not in exec_line
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Windows baseline: POSIX XDG installer layout and Exec-line quoting",
-)
+@pytest.mark.platforms("posix")
 def test_exec_finds_known_wrapper_when_resolver_has_no_candidate(
     tmp_path, xdg_home, monkeypatch
 ):
@@ -626,10 +585,7 @@ def test_exec_finds_known_wrapper_when_resolver_has_no_candidate(
     assert entry2.read_text(encoding="utf-8") == entry.read_text(encoding="utf-8")
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Windows baseline: POSIX XDG installer layout and Exec-line quoting",
-)
+@pytest.mark.platforms("posix")
 def test_exec_rejects_known_wrapper_from_another_checkout(
     tmp_path, xdg_home, monkeypatch
 ):
@@ -709,10 +665,7 @@ def test_exec_rejects_known_wrapper_from_another_checkout(
         ),
     ],
 )
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Windows baseline: POSIX XDG installer layout and Exec-line quoting",
-)
+@pytest.mark.platforms("posix")
 def test_known_wrapper_candidates_cover_installer_layouts(
     layout, env_overrides, expected, monkeypatch
 ):
@@ -749,6 +702,7 @@ def test_known_wrapper_candidates_cover_installer_layouts(
         assert "/usr/local/bin/hermes" not in candidates
 
 
+@pytest.mark.platforms("posix")
 def test_installed_entry_carries_the_window_app_id(tmp_path, xdg_home, monkeypatch):
     """The window's app_id is what GNOME matches the entry against — not the old "Hermes"."""
     _stub_install(tmp_path, monkeypatch)
@@ -763,6 +717,7 @@ def test_installed_entry_carries_the_window_app_id(tmp_path, xdg_home, monkeypat
     assert values["Name"] == "Hermes"  # the menu label is not part of the identity
 
 
+@pytest.mark.platforms("posix")
 def test_install_keeps_the_legacy_entry_as_a_hidden_alias(tmp_path, xdg_home, monkeypatch):
     """A pin resolves by the entry file name it was pinned against (#124492).
 
@@ -794,6 +749,7 @@ def test_install_keeps_the_legacy_entry_as_a_hidden_alias(tmp_path, xdg_home, mo
     assert alias["Icon"] == entry_values["Icon"]
 
 
+@pytest.mark.platforms("posix")
 def test_unchanged_entry_still_aliases_a_legacy_entry(tmp_path, xdg_home, monkeypatch):
     """An up-to-date app-id entry must not skip converting a legacy file found beside it."""
     _stub_install(tmp_path, monkeypatch)
@@ -807,6 +763,7 @@ def test_unchanged_entry_still_aliases_a_legacy_entry(tmp_path, xdg_home, monkey
     assert _parse(legacy.read_text(encoding="utf-8"))["NoDisplay"] == "true"
 
 
+@pytest.mark.platforms("posix")
 def test_install_keeps_foreign_files_at_the_legacy_path(tmp_path, xdg_home, monkeypatch):
     """Only our own entry is converted to an alias; another app's file is not ours to rewrite."""
     _stub_install(tmp_path, monkeypatch)
@@ -824,6 +781,7 @@ def test_install_keeps_foreign_files_at_the_legacy_path(tmp_path, xdg_home, monk
     assert "Name=Someone else" in foreign.read_text(encoding="utf-8")
 
 
+@pytest.mark.platforms("posix")
 def test_install_opt_out_preserves_the_legacy_entry(tmp_path, xdg_home, monkeypatch):
     """The opt-out protects user edits, so it also stops the legacy alias conversion.
 
@@ -871,10 +829,7 @@ def test_app_id_matches_the_desktop_build_identity():
     assert result.stdout.strip() == lde.APP_ID
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Windows baseline: POSIX XDG installer layout and Exec-line quoting",
-)
+@pytest.mark.platforms("posix")
 def test_install_is_idempotent_and_skips_cache_refresh(tmp_path, xdg_home, monkeypatch):
     root = _make_project(tmp_path)
     monkeypatch.setattr(
@@ -893,10 +848,7 @@ def test_install_is_idempotent_and_skips_cache_refresh(tmp_path, xdg_home, monke
     assert len(calls) == 1
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Windows baseline: POSIX XDG installer layout and Exec-line quoting",
-)
+@pytest.mark.platforms("posix")
 def test_install_without_source_icon_uses_themed_name(tmp_path, xdg_home, monkeypatch):
     root = tmp_path / "hermes-agent"
     root.mkdir()
@@ -980,10 +932,7 @@ def test_run_quiet_swallows_missing_binary(tmp_path):
     assert lde._run_quiet([str(tmp_path / "definitely-not-a-binary")]) is False
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Windows baseline: desktop Exec quoting escapes backslash paths",
-)
+@pytest.mark.platforms("posix")
 def test_exec_arg_quoting_handles_spaces(tmp_path, xdg_home, monkeypatch):
     root = _make_project(tmp_path)
     spaced = tmp_path / "my apps" / "hermes"
@@ -998,9 +947,7 @@ def test_exec_arg_quoting_handles_spaces(tmp_path, xdg_home, monkeypatch):
     assert exec_line == f'"{spaced}" desktop'
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="Symlinks require elevated privileges on Windows"
-)
+@pytest.mark.platforms("posix")
 def test_running_interpreter_keeps_venv_semantic_path(tmp_path, monkeypatch):
     """Lexical preserved only when pyvenv.cfg marks the path as a venv."""
     # venv layout: bin/python symlink -> base, pyvenv.cfg at venv root
@@ -1035,10 +982,7 @@ def test_running_interpreter_resolves_plain_interpreter(monkeypatch):
 
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Windows baseline: POSIX XDG installer layout and Exec-line quoting",
-)
+@pytest.mark.platforms("posix")
 def test_exec_falls_back_to_running_interpreter_when_probe_fails(
     tmp_path, xdg_home, monkeypatch
 ):
@@ -1102,9 +1046,7 @@ def test_wrapper_ownership_rejects_sibling_extensions(suffix, tmp_path):
     assert lde._wrapper_targets_checkout(evil, checkout) is False
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="Symlinks require elevated privileges on Windows"
-)
+@pytest.mark.platforms("posix")
 def test_wrapper_ownership_accepts_shim_via_symlinked_home(tmp_path, monkeypatch):
     """Installer writes $INSTALL_DIR lexically; the root stays lexical too.
 
@@ -1266,10 +1208,7 @@ def test_probe_skips_wrapper_with_escaping_python_shebang(
     assert exec_line.endswith("-m hermes_cli.main desktop")
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Windows baseline: POSIX XDG installer layout and Exec-line quoting",
-)
+@pytest.mark.platforms("posix")
 def test_probe_accepts_shell_launcher_wrapper(tmp_path, xdg_home, monkeypatch):
     """A bash launcher is safe by construction and still wins the probe."""
     root = _make_project(tmp_path)
@@ -1488,6 +1427,7 @@ def test_capability_unknown_shapes_pass(tmp_path):
     assert lde._can_serve_desktop(str(native)) is None
 
 
+@pytest.mark.platforms("posix")
 def test_capability_follows_wrapper_to_its_target(tmp_path):
     env_tree = _env_shaped_tree(tmp_path)
     full_tree = _full_tree(tmp_path)
@@ -1503,6 +1443,7 @@ def test_capability_follows_wrapper_to_its_target(tmp_path):
     assert lde._can_serve_desktop(str(good_wrapper)) is True
 
 
+@pytest.mark.platforms("posix")
 def test_resolver_skips_incapable_primary_for_wrapper(tmp_path, xdg_home):
     """A PATH-first launcher from an env-shaped tree must not win over the durable wrapper."""
     env_tree = _env_shaped_tree(tmp_path)
@@ -1518,6 +1459,7 @@ def test_resolver_skips_incapable_primary_for_wrapper(tmp_path, xdg_home):
     assert resolution == str(wrapper)
 
 
+@pytest.mark.platforms("posix")
 def test_install_skips_write_when_exec_provably_cannot_serve_desktop(tmp_path, xdg_home, monkeypatch):
     """The fallback must not create a dead entry: no entry on disk stays that way."""
     root = _make_project(tmp_path)
@@ -1534,6 +1476,7 @@ def test_install_skips_write_when_exec_provably_cannot_serve_desktop(tmp_path, x
     assert not lde.desktop_entry_path().exists()
 
 
+@pytest.mark.platforms("posix")
 def test_install_leaves_existing_entry_untouched_when_exec_incapable(tmp_path, xdg_home, monkeypatch):
     """A provably dead Exec skips instead of churning an entry that is already on disk."""
     root = _make_project(tmp_path)
@@ -1561,6 +1504,7 @@ def test_module_form_passes_the_gate(tmp_path):
     assert lde._persisted_exec_serves_desktop(module_form) is None
 
 
+@pytest.mark.platforms("posix")
 def test_install_through_wrapper_when_primary_is_incapable(tmp_path, xdg_home, monkeypatch):
     """End to end: the PATH-first env launcher is skipped and the wrapper's Exec is persisted."""
     root = _full_tree(tmp_path, "checkout")

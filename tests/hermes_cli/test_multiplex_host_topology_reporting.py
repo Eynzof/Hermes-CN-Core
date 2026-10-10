@@ -112,8 +112,12 @@ def test_doctor_raises_an_issue_when_nothing_owns_the_gateway_role(served_host, 
     assert any("gateway start" in i for i in issues), "the outage state produced no remediation"
 
 
+@pytest.mark.platforms("linux")
 @pytest.mark.parametrize("xdg", [False, True])
 def test_doctor_checks_host_unit_linger_under_a_served_profile(served_host, tmp_path, capsys, monkeypatch, xdg):
+    """systemd linger is a Linux-only check: ``_check_gateway_service_linger`` returns early without
+    ``is_linux()``, and the unit-dir probe behind it (``_bare_unit_pinned_home``) calls the POSIX-only
+    ``os.geteuid``. Run it on the host it describes instead of faking ``is_linux`` off-Linux."""
     from hermes_cli import doctor_platform
 
     fake_home = tmp_path / "fakehome"

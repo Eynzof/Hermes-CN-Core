@@ -240,8 +240,6 @@ def _read_json_if_fresh(path: Path, ttl: float) -> Optional[Any]:
     try:
         if time.time() - path.stat().st_mtime > ttl:
             return None
-        return json.loads(path.read_text(encoding="utf-8-sig"))
-    except (OSError, json.JSONDecodeError):
         return orjson.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, orjson.JSONDecodeError):
         return None

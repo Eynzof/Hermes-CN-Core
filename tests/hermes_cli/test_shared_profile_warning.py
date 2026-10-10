@@ -23,17 +23,33 @@ def homes(tmp_path, monkeypatch):
     return root
 
 
+class _LiveChild:
+    """A spawned child whose ``.pid`` is the interpreter's OWN pid.
+
+    On Windows a venv ``python.exe`` is a launcher whose child is the real
+    interpreter, so ``Popen.pid`` is not the process that registers in the ledger
+    (pattern: tests/gateway/test_status_strict_identity_live.py).
+    """
+
+    def __init__(self, proc, pid: int):
+        self._proc = proc
+        self.pid = pid
+
+    def __getattr__(self, name):
+        return getattr(self._proc, name)
+
+
 @contextmanager
 def running_install(home: Path, install: Path):
     env = dict(os.environ, HERMES_HOME=str(home))
     for key in ("HERMES_SPAWN", "HERMES_PARENT_PID", "HERMES_PARENT_START_MARKER"):
         env.pop(key, None)
     script = """
-import sys
+import os, sys
 from pathlib import Path
 from hermes_cli.process_identity import register_self
 assert register_self('serve', project_root=Path(sys.argv[1]))
-print('ready', flush=True)
+print('ready', os.getpid(), flush=True)
 sys.stdin.readline()
 """
     child = subprocess.Popen(
@@ -42,8 +58,9 @@ sys.stdin.readline()
         text=True,
     )
     try:
-        assert child.stdout.readline().strip() == "ready"
-        yield child
+        ready = child.stdout.readline().split()
+        assert ready[:1] == ["ready"], ready
+        yield _LiveChild(child, int(ready[1]))
     finally:
         child.communicate("exit\n", timeout=15)
         assert child.returncode == 0
@@ -79,7 +96,7 @@ def running_cli(home: Path, install: Path):
     for key in ("HERMES_SPAWN", "HERMES_PARENT_PID", "HERMES_PARENT_START_MARKER"):
         env.pop(key, None)
     script = """
-import sys
+import os, sys
 from pathlib import Path
 import hermes_constants
 # Model two installed runtime roots without copying the source tree.
@@ -87,7 +104,7 @@ hermes_constants.PROJECT_ROOT = Path(sys.argv[1])
 import cli
 
 def terminal_boundary(self):
-    print('cli-ready', flush=True)
+    print('cli-ready', os.getpid(), flush=True)
     sys.stdin.readline()
 
 cli.HermesCLI.run = terminal_boundary
@@ -103,11 +120,12 @@ cli.main(model='test-model', provider='openai', api_key='test-only',
     try:
         assert child.stdout is not None and child.stderr is not None
         for line in child.stdout:
-            if line.strip() == "cli-ready":
+            parts = line.split()
+            if parts[:1] == ["cli-ready"]:
                 break
         else:
             raise AssertionError(child.stderr.read())
-        yield child, output
+        yield _LiveChild(child, int(parts[1])), output
     finally:
         _, output["stderr"] = child.communicate("exit\n", timeout=15)
         assert child.returncode == 0, output["stderr"]

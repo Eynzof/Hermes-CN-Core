@@ -427,8 +427,10 @@ def _live_or_curated_ids(slug: str, curated: dict, *fallback_keys: str, merge_mo
     model_ids = cached_provider_model_ids(slug, non_blocking=non_blocking)
     if not model_ids:
         model_ids = _first_curated(curated, fallback_keys or (slug,))
-        if merge_models_dev and slug in _MODELS_DEV_PREFERRED:
-            model_ids = _merge_with_models_dev(slug, model_ids)
+    if merge_models_dev and slug in _MODELS_DEV_PREFERRED:
+        model_ids = _merge_with_models_dev(slug, model_ids)
+    if model_ids and fallback_flag is not None:
+        fallback_flag.append(True)
     return without_generation_models(model_ids)
 
 

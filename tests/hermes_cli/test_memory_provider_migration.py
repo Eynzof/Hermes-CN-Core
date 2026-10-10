@@ -145,6 +145,9 @@ def test_startup_recovery_never_asks_a_dependency_question(tmp_path, monkeypatch
     monkeypatch.setattr("sys.stdout", _Tty())
     monkeypatch.setattr(mig, "_attempted", set())
     monkeypatch.setattr(mig, "catalog_source", lambda n: n)
+    # This tree ships hindsight (and the other former core providers) bundled in plugins/memory,
+    # so the arm under test — a configured provider that resolves NOWHERE — needs the lookup stubbed.
+    monkeypatch.setattr(mig, "provider_present", lambda name, home: False)
     monkeypatch.setattr(pm_install, "lazy_installs_allowed", lambda: True)
     monkeypatch.setattr("builtins.input", lambda *_a: pytest.fail("agent init asked a question"))
     seen: list[dict] = []
@@ -261,25 +264,29 @@ def test_startup_hint_installs_into_the_profile_that_printed_it(tmp_path, monkey
 
 def test_missing_catalog_provider_recovery_names_the_profile_install_command(tmp_path, monkeypatch, capsys):
     """Offline, lazy installs off, or a failed migration: every surface a user turns to (doctor,
-    ``memory status``, ``memory setup honcho``, ``hermes honcho``) names the one command that installs
-    the catalog plugin into THIS profile. Real in-tree catalog, nothing installed."""
+    ``memory status``, ``memory setup <name>``, ``hermes <name>``) names the one command that installs
+    the catalog plugin into THIS profile. Real in-tree catalog, nothing installed.
+
+    The provider is one the catalog ships but this tree does NOT bundle: honcho (with hindsight,
+    mem0, openviking, supermemory and retaindb) lives in ``plugins/memory/`` here, so it resolves
+    locally and never reaches the not-installed surfaces this test is about."""
     from types import SimpleNamespace
     from hermes_cli import doctor_state, memory_setup
     from hermes_cli._parser import build_top_level_parser
 
     home = tmp_path / "profiles" / "work"
     home.mkdir(parents=True)
-    (home / "config.yaml").write_text("memory:\n  provider: honcho\n", encoding="utf-8")
+    (home / "config.yaml").write_text("memory:\n  provider: cognee\n", encoding="utf-8")
     monkeypatch.setenv("HERMES_HOME", str(home))
-    want = "hermes -p work plugins install honcho"
+    want = "hermes -p work plugins install cognee"
 
-    doctor_state._memory_provider_generic("honcho")
+    doctor_state._memory_provider_generic("cognee")
     memory_setup.cmd_status(SimpleNamespace())
-    memory_setup.cmd_setup_provider("honcho")
+    memory_setup.cmd_setup_provider("cognee")
     assert capsys.readouterr().out.count(want) == 3
     parser, _subparsers, _chat = build_top_level_parser()
     with pytest.raises(SystemExit):
-        parser.parse_args(["honcho", "status"])
+        parser.parse_args(["cognee", "status"])
     assert want in capsys.readouterr().err
 
 
@@ -302,6 +309,9 @@ def test_startup_recovery_backs_off_after_a_failed_install(tmp_path, monkeypatch
     (tmp_path / "config.yaml").write_text("memory:\n  provider: hindsight\n", encoding="utf-8")
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
     monkeypatch.setattr(mig, "catalog_source", lambda n: n)
+    # This tree bundles hindsight in plugins/memory, so "the configured provider resolves nowhere"
+    # (the failure stamp's premise) needs the presence lookup stubbed.
+    monkeypatch.setattr(mig, "provider_present", lambda name, home: False)
     monkeypatch.setattr(pm_install, "lazy_installs_allowed", lambda: True)
     attempts: list[str] = []
     monkeypatch.setattr(mig, "_install_into", lambda home, **_kw: (lambda n: attempts.append(n) or {"ok": False, "error": "uv lock exited 1"}))

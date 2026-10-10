@@ -99,6 +99,7 @@ def test_reap_only_kills_ppid1_local_serves():
     assert 333 not in terms
 
 
+@pytest.mark.platforms("posix")  # POSIX-only: ppid-1 orphan reap and ps-based descendant scan
 def test_reap_passes_child_pid_exclude_to_scan():
     with (
         patch(
@@ -414,6 +415,7 @@ def test_reap_spare_lock_owned_backend_even_without_exclude_match(tmp_path):
     assert result["matched"] == []
 
 
+@pytest.mark.platforms("posix")  # POSIX-only: ppid-1 orphan reap and ps-based descendant scan
 def test_reap_kills_descendants_of_killed_roots_but_spares_a_failed_roots_subtree():
     """#112631: a SIGKILLed backend never ran PTY_REGISTRY.close_all(), so the reaper sweeps its
     surviving hosted-TUI children — but only for roots it actually killed. A root whose own kill

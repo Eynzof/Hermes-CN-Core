@@ -192,7 +192,7 @@ def test_pricing_uses_cached_nous_tier_by_default():
     with (
         _list_auth_returning(rows),
         patch(
-            "hermes_cli.models.get_pricing_for_provider",
+            "hermes_cli.models_pricing.get_pricing_for_provider",
             return_value={
                 "openai/gpt-5.5": {
                     "prompt": "0.000001",
@@ -213,7 +213,7 @@ def test_pricing_can_force_fresh_nous_tier():
     with (
         _list_auth_returning(rows),
         patch(
-            "hermes_cli.models.get_pricing_for_provider",
+            "hermes_cli.models_pricing.get_pricing_for_provider",
             return_value={
                 "openai/gpt-5.5": {
                     "prompt": "0.000001",
@@ -854,10 +854,21 @@ def test_picker_metadata_uses_one_config_read_for_real_models_dev_lookups(tmp_pa
 
     small_row = small_payload["providers"][0]
     large_row = large_payload["providers"][0]
-    assert small_row["capabilities"] == {
-        model: {"fast": False, "reasoning": model.startswith("openai/")}
-        for model in models[:3]
-    }
+
+    def _expected_caps(model: str) -> dict:
+        # The seeded models.dev entry supplies tool_call + limit, so a capability entry carries
+        # the picker's models.dev metadata next to the reasoning/fast dials.
+        reasoning = model.startswith("openai/")
+        return {
+            "fast": False, "reasoning": reasoning,
+            "supports_tools": True, "supports_vision": False, "supports_pdf": False,
+            "supports_audio": False, "supports_video": False,
+            "supports_reasoning": reasoning, "supports_reasoning_control": False,
+            "open_weights": False,
+            "context_window": 200000, "max_output_tokens": 8192, "model_family": "",
+        }
+
+    assert small_row["capabilities"] == {model: _expected_caps(model) for model in models[:3]}
     # #120217: ``providers.lab`` is a user-defined row, so its models: list is an explicit
     # allow-list and is never shortlisted — the constant-read invariant above is now carried
     # by the capabilities lookups alone.

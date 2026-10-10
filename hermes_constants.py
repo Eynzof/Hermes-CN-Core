@@ -13,7 +13,6 @@ import tempfile
 from collections.abc import MutableMapping
 from contextvars import ContextVar, Token
 from pathlib import Path
-from agent.re_compat import re
 
 _profile_fallback_warned: bool = False
 _UNSET = object()

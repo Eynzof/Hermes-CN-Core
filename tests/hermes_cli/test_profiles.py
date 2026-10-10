@@ -25,7 +25,6 @@ import pytest
 skip_on_win32 = pytest.mark.skipif(
     sys.platform == "win32", reason="POSIX 0o600 .env mode not representable on Windows",
 )
-import yaml
 
 from hermes_cli import profiles
 from hermes_cli.profiles import (

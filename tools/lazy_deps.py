@@ -1,4 +1,10 @@
-"""Shims to suppress old updater work until relaunch. New code must not use these."""
+"""Shims to suppress old updater work until relaunch. New code must not use these.
+
+:func:`ensure` and :func:`install_specs` are retired: a process that has already swapped the
+checkout must hand off to the fresh takeover instead of installing into a half-updated tree. The
+fork's bundled backends still install through :func:`_ensure_optional_deps`, which
+:func:`ensure_and_bind` drives for the Feishu adapter.
+"""
 
 from typing import NoReturn
 
@@ -17,11 +23,6 @@ import sysconfig
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Optional
-
-def ensure(feature: str, *, prompt: bool = True) -> NoReturn:
-    # Shim to suppress old updater work until relaunch. Do not claim readiness.
-    # Preserve the dependency-unavailable failure without claiming a completed install.
-    raise ImportError("Dependencies are unknown to this old updater. Please relaunch Hermes.")
 from hermes_cli._subprocess_compat import windows_hide_flags
 
 logger = logging.getLogger(__name__)
@@ -670,7 +671,18 @@ def _prompt_toolkit_active() -> bool:
         return False
 
 
-def ensure(feature: str, *, prompt: bool = True) -> None:
+def ensure(feature: str, *, prompt: bool = True) -> NoReturn:
+    """Retired entry point: an old updater that imports the freshly swapped module must hand off.
+
+    Installing here would write into a half-updated tree from a process still running the previous
+    release, so the caller is told to relaunch rather than told the dependency is ready.
+    """
+    # Shim to suppress old updater work until relaunch. Do not claim readiness.
+    # Preserve the dependency-unavailable failure without claiming a completed install.
+    raise ImportError("Dependencies are unknown to this old updater. Please relaunch Hermes.")
+
+
+def _ensure_optional_deps(feature: str, *, prompt: bool = True) -> None:
     """Make every package for ``feature`` importable, installing if needed; raises
     :class:`FeatureUnavailable` when installs are disabled or fail. ``prompt``: confirm on a TTY first
     (non-interactive callers pass False and rely on the config gate)."""
@@ -724,11 +736,12 @@ def is_available(feature: str) -> bool:
 
 
 def ensure_and_bind(feature: str, importer: Callable[[], dict[str, Any]], target_globals: dict, *, prompt: bool = False) -> bool:
-    """:func:`ensure` the feature, then ``target_globals.update(importer())`` so module-level names are
-    rebound after a lazy install (``importer`` returns ``{name: obj}`` and runs only after ensure
-    succeeds). Returns False (and logs) if deps could not be installed or imported."""
+    """:func:`_ensure_optional_deps` the feature, then ``target_globals.update(importer())`` so
+    module-level names are rebound after a lazy install (``importer`` returns ``{name: obj}`` and runs
+    only after the install succeeds). Returns False (and logs) if deps could not be installed or
+    imported."""
     try:
-        ensure(feature, prompt=prompt)
+        _ensure_optional_deps(feature, prompt=prompt)
     except FeatureUnavailable as exc:
         logger.warning("%s", exc)
         return False

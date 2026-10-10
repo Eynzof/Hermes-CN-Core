@@ -1693,6 +1693,8 @@ def _run_foreground(
             "status": "yielded_to_background", "session_id": result["yielded_session_id"],
             "pid": result.get("pid"), "notify_on_complete": True, "note": _YIELDED_NOTE,
         }, ensure_ascii=False)
+    if metered:
+        record_terminal_outcome(command, env_type, result)
     # [CN-fork] P-049: token-filter pipeline (dedup / max_lines / original export) —
     # upstream's finalizer then applies the byte cap + redaction on top.
     post_result = None
@@ -1948,16 +1950,19 @@ def terminal_tool(
                 result = _with_promoted_note(result, plan.promoted_from_foreground_timeout)
             # [CN-fork] P-058: report the background session's working directory
             # (the shell's resolved cwd) so later calls don't have to re-prefix `cd`.
-            return _merge_result_metadata(result, cwd=_resolve_command_cwd(
-                workdir=workdir, default_cwd=cwd, session_key=session_key, env_type=env_type,
+            return _metered(None if _host_local else plan, _merge_result_metadata(
+                result, cwd=_resolve_command_cwd(
+                    workdir=workdir, default_cwd=cwd, session_key=session_key, env_type=env_type,
+                ),
             ))
-        return _run_foreground(
+        return _metered(None if _host_local else plan, _run_foreground(
             command, env, plan,
             task_id=task_id, session_id=session_id, session_key=session_key,
             workdir=workdir, approval_note=verdict.note, clear_interrupt=verdict.approved_run,
+            metered=not _host_local,
             promote_on_timeout=promote_on_timeout, wait_for_pattern=wait_for_pattern,
             token_kill=token_kill, max_lines=max_lines, tool_call_id=tool_call_id,
-        )
+        ))
     except _Rejected as r:
         return r.result_json
     except EnvironmentConnectionError as e:

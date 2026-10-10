@@ -13,6 +13,7 @@ startup offer and the Screen pane call:
 
 import os
 import stat
+import sys
 from pathlib import Path
 import pytest
 import hermes_yaml as yaml
@@ -104,12 +105,25 @@ def test_terminal_scope_pins_an_image_written_in_the_profile_env_even_when_it_sp
     assert build_profile_terminal_scope(home)["TERMINAL_DOCKER_IMAGE_PINNED"] == "0"
 
 def _fake_docker(tmp_path, monkeypatch, ps_output: str) -> Path:
+    """A fake ``docker`` on PATH that answers ``ps`` with *ps_output*.
+
+    The POSIX arm is a ``sh`` script; an extension-less sh shim is invisible to
+    ``shutil.which()`` on Windows, so ship the ``.cmd`` sibling too (tests/AGENTS.md) —
+    the probe under test must run the same fake on both hosts.
+    """
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
     exe = bin_dir / "docker"
     exe.write_text("#!/bin/sh\n"
                    "case \"$1\" in ps) printf '%s' \"$PS_OUTPUT\";; *) exit 0;; esac\n", encoding="utf-8")
     exe.chmod(exe.stat().st_mode | stat.S_IXUSR)
+    if os.name == "nt":
+        (bin_dir / "docker_fake.py").write_text(
+            "import os, sys\n"
+            "sys.stdout.write(os.environ.get('PS_OUTPUT', '') if sys.argv[1:2] == ['ps'] else '')\n",
+            encoding="utf-8")
+        (bin_dir / "docker.cmd").write_text(
+            f'@echo off\r\n"{sys.executable}" "%~dp0docker_fake.py" %*\r\n', encoding="utf-8")
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}")
     monkeypatch.setenv("PS_OUTPUT", ps_output)
     from tools.environments import docker as docker_env

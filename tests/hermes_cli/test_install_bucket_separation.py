@@ -46,7 +46,9 @@ class TestProfileCopyExclusions:
         for rel, content in kept.items():
             path = home / rel
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(content, encoding="utf-8")
+            # newline="\n": Windows' default text translation would leave CRLF in the file,
+            # and export_profile archives the on-disk bytes verbatim.
+            path.write_text(content, encoding="utf-8", newline="\n")
         for name in excluded:
             path = home / name / "must-not-copy"
             path.parent.mkdir(parents=True, exist_ok=True)

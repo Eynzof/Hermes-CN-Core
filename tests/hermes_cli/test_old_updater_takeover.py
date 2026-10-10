@@ -56,10 +56,13 @@ def test_historical_payload_maps_to_takeover_request_schema(tmp_path, desktop, r
     # write_handoff resolves the home through hermes_constants; the child tree is the whole
     # sys.path (CI has no editable finder), so give it the names the hand-off reads (the
     # payload lands beside the receipts in the ROOT home, which is HERMES_HOME here).
+    # Windows also re-execs the project venv's python, which reads project_venv_dir — no
+    # venv exists in this child tree, so it stays on sys.executable.
     (root / "hermes_constants.py").write_text(
         "import os\nfrom pathlib import Path\n"
         "def get_hermes_home():\n    return Path(os.environ['HERMES_HOME'])\n"
-        "get_default_hermes_root = get_hermes_home\n", encoding="utf-8",
+        "get_default_hermes_root = get_hermes_home\n"
+        "def project_venv_dir(project_root):\n    return None\n", encoding="utf-8",
     )
     program = root / "historical.py"
     program.write_text(
@@ -603,6 +606,7 @@ def test_the_takeover_breadcrumb_is_written_temp_fsync_rename(tmp_path, monkeypa
     assert f"expected_sha={'a' * 40}" in crumb.read_text(encoding="utf-8")
 
 
+@pytest.mark.platforms("posix")  # POSIX mode bits not enforced on Windows
 @pytest.mark.skipif(getattr(os, "geteuid", lambda: 1)() == 0, reason="root ignores directory permissions")
 def test_a_takeover_debt_another_profile_cannot_see_is_never_silent(tmp_path, monkeypatch, capsys):
     """The takeover arms after the historical updater already moved the tree, through the same

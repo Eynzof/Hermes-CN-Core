@@ -9,8 +9,11 @@ PowerShell, update probes) whose children legitimately need GH_TOKEN / HF_TOKEN.
 """
 
 import os
+import os
 import subprocess
 from types import SimpleNamespace
+
+import pytest
 
 from hermes_cli.local_runtime import supervisor
 from hermes_cli.local_runtime.processes import server_child_env, spawn_server
@@ -43,12 +46,43 @@ def test_supervisor_spawns_llama_server_without_credentials_but_keeps_runtime_en
     assert child_env["PATH"] == os.environ["PATH"]
 
 
+@pytest.mark.platforms("posix")
 def test_spawn_server_keeps_the_callers_environment(monkeypatch):
     """The generic spawner (bounded_probe_run's git/PowerShell probes) must pass an explicit
     ``env=`` through untouched: a gh-backed credential helper needs GITHUB_TOKEN."""
     monkeypatch.setattr(subprocess, "Popen", lambda cmd, **kwargs: SimpleNamespace(kwargs=kwargs))
     proc, _job = spawn_server(["git", "fetch"], env={"GITHUB_TOKEN": "g", "PATH": "/bin"})
     assert proc.kwargs["env"] == {"GITHUB_TOKEN": "g", "PATH": "/bin"}
+
+
+@pytest.mark.platforms("windows")
+def test_spawn_server_windows_keeps_the_callers_environment(monkeypatch):
+    """Windows starts the child suspended inside a job object; the explicit ``env=`` is still
+    handed to Popen untouched, and the containment handle is returned with it."""
+    from hermes_cli.local_runtime import processes
+
+    class _FakeJob:
+        def __init__(self):
+            self.assigned: list = []
+            self.closed = False
+
+        def assign(self, proc):
+            self.assigned.append(proc)
+
+        def close(self):
+            self.closed = True
+
+    job = _FakeJob()
+    monkeypatch.setattr(processes, "_WindowsJob", lambda: job)
+    monkeypatch.setattr(processes.psutil, "Process", lambda pid: SimpleNamespace(resume=lambda: None))
+    monkeypatch.setattr(
+        subprocess, "Popen", lambda cmd, **kwargs: SimpleNamespace(kwargs=kwargs, pid=4242)
+    )
+    proc, returned_job = spawn_server(["git", "fetch"], env={"GITHUB_TOKEN": "g", "PATH": "/bin"})
+    assert proc.kwargs["env"] == {"GITHUB_TOKEN": "g", "PATH": "/bin"}
+    assert returned_job is job
+    assert job.assigned == [proc]
+    assert job.closed is False
 
 
 def test_server_child_env_is_case_insensitive_and_pure():

@@ -2665,7 +2665,6 @@ def _coalesce_session_name_args(argv: list) -> list:
 
 
 from hermes_cli.profile_cmd import cmd_profile
-from hermes_cli.dashboard_procs import BACKEND_LOCK_NAME
 
 
 def _dashboard_lifecycle_flags(args, token_file) -> None:
@@ -2950,6 +2949,7 @@ def cmd_dashboard(args):
                 "Failed to start desktop cron scheduler in cmd_dashboard"
             )
 
+    from hermes_cli.dashboard_procs import BACKEND_LOCK_NAME
     from hermes_cli.web_server import start_server
 
     # Interactive auth setup: if this bind will engage the auth gate but no

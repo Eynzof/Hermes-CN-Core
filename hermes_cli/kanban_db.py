@@ -3118,18 +3118,18 @@ def edit_task(
             """,
             (task_id,),
         ).fetchone()
-        if run is None:
-            run_id = _synthesize_ended_run(
-                conn, task_id, outcome="completed", summary=handoff_summary, metadata=metadata,
-            )
-        else:
-            run_id = int(run["id"])
-            conn.execute("UPDATE task_runs SET summary = ? WHERE id = ?", (handoff_summary, run_id))
-            if metadata is not None:
-                conn.execute(
-                    "UPDATE task_runs SET metadata = ? WHERE id = ?",
-                    (orjson.dumps(metadata).decode('utf-8'), run_id),
+            if run is None:
+                run_id = _synthesize_ended_run(
+                    conn, task_id, outcome="completed", summary=handoff_summary, metadata=metadata,
                 )
+            else:
+                run_id = int(run["id"])
+                conn.execute("UPDATE task_runs SET summary = ? WHERE id = ?", (handoff_summary, run_id))
+                if metadata is not None:
+                    conn.execute(
+                        "UPDATE task_runs SET metadata = ? WHERE id = ?",
+                        (orjson.dumps(metadata).decode('utf-8'), run_id),
+                    )
             _append_event(
                 conn, task_id, "edited",
                 {

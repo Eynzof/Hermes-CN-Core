@@ -1,9 +1,12 @@
 """Tests for MIME type registration and serving on Windows.
 
-Hermes registers ``application/javascript`` for ``.js`` and ``.mjs`` files
-explicitly at import time (see ``hermes_cli/web_server.py`` imports) so that
-on Windows — where the system registry may not map these extensions — module
-scripts are served with the correct ``Content-Type``.
+Hermes pins a JavaScript ``Content-Type`` for ``.js``/``.mjs`` files so that on
+Windows — where the system registry may map them to ``text/plain`` — module
+scripts are still served with a JavaScript type (``hermes_cli/web_server.py``
+registers the pair at import; ``hermes_cli/web_asset_mime_types`` pins the
+serving layer afterwards). RFC 9239 blesses ``text/javascript`` as the IANA
+type while ``application/javascript`` stays the legacy spelling, so both
+essences are accepted here — the bug these tests pin is ``text/plain``.
 
 Without this fix, ``<script type="module">`` blocks fail with:
   Failed to load module script: Expected a JavaScript or WebAssembly module script
@@ -14,32 +17,41 @@ import mimetypes
 
 import hermes_cli.web_server  # noqa: F401  — performs the add_type registration at import
 
+# RFC 9239 (text/javascript) and the legacy application/javascript spelling.
+JAVASCRIPT_MIME_ESSENCES = ("text/javascript", "application/javascript")
+
+
+def _essence(content_type: str | None) -> str:
+    return (content_type or "").split(";", 1)[0].strip().lower()
+
+
+def _assert_javascript_mime(content_type: str | None) -> None:
+    assert _essence(content_type) in JAVASCRIPT_MIME_ESSENCES, (
+        f"Expected a JavaScript MIME type, got {content_type!r}"
+    )
+
 
 def test_js_mime_type_registered():
-    """Verify that ``.js`` files map to ``application/javascript``."""
+    """Verify that ``.js`` files map to a JavaScript MIME type."""
     guessed, encoding = mimetypes.guess_type("test.js")
-    assert guessed == "application/javascript", (
-        f"Expected application/javascript, got {guessed}"
-    )
+    _assert_javascript_mime(guessed)
     assert encoding is None
 
 
 def test_mjs_mime_type_registered():
-    """Verify that ``.mjs`` files map to ``application/javascript``."""
+    """Verify that ``.mjs`` files map to a JavaScript MIME type."""
     guessed, encoding = mimetypes.guess_type("test.mjs")
-    assert guessed == "application/javascript", (
-        f"Expected application/javascript, got {guessed}"
-    )
+    _assert_javascript_mime(guessed)
     assert encoding is None
 
 
 def test_fs_mime_type_returns_js_correctly():
-    """``_fs_mime_type`` returns ``application/javascript`` for .js/.mjs."""
+    """``_fs_mime_type`` returns a JavaScript type for .js/.mjs."""
     from hermes_cli.web_server import _fs_mime_type
     from pathlib import Path
 
-    assert _fs_mime_type(Path("bundle.js")) == "application/javascript"
-    assert _fs_mime_type(Path("chunk.mjs")) == "application/javascript"
+    _assert_javascript_mime(_fs_mime_type(Path("bundle.js")))
+    _assert_javascript_mime(_fs_mime_type(Path("chunk.mjs")))
 
 
 def test_fs_mime_type_other_types_still_work():
@@ -54,27 +66,25 @@ def test_fs_mime_type_other_types_still_work():
 
 def test_js_mime_type_on_windows_without_registry(monkeypatch):
     """Simulate a broken Windows registry by clearing the ``mimetypes``
-    in-memory suffix map, then verify that our ``add_type`` calls restore
-    the correct mapping.
+    in-memory suffix map, then verify that the ``add_type`` calls restore
+    a JavaScript mapping.
 
-    On Windows, ``mimetypes`` reads the system registry. If the registry
-    has no ``.js`` → ``application/javascript`` mapping, the fallback
-    ``guess_type`` returns ``None`` (or ``text/plain`` from a stale
-    registry entry). The ``mimetypes.add_type()`` calls at the top of
-    ``web_server.py`` override this at import time.
+    On Windows, ``mimetypes`` reads the system registry. If the registry has
+    no ``.js`` → JavaScript mapping, the fallback ``guess_type`` returns
+    ``None`` (or ``text/plain`` from a stale registry entry). The
+    ``mimetypes.add_type()`` calls at the top of ``web_server.py`` override
+    this at import time.
     """
     # First verify the registered mapping works
-    assert mimetypes.guess_type("test.js") == ("application/javascript", None)
-    assert mimetypes.guess_type("test.mjs") == ("application/javascript", None)
+    guessed, _ = mimetypes.guess_type("test.js")
+    _assert_javascript_mime(guessed)
+    _assert_javascript_mime(mimetypes.guess_type("test.mjs")[0])
 
     # Now simulate a broken registry by clearing the in-memory suffix map
     # and verify that the add_type calls still take effect (they run at
     # import time before any test has a chance to clear the map).
     mimetypes._default_mime_types()  # Re-init with defaults (may lose .js)
-    guessed, _ = mimetypes.guess_type("test.js")
-    # The registry may or may not have .js mapped; what matters is that
-    # _fs_mime_type still returns application/javascript because the
-    # web_server module-level add_type calls already ran.
+
     from hermes_cli.web_server import _fs_mime_type
     from pathlib import Path
 
@@ -86,16 +96,15 @@ def test_js_mime_type_on_windows_without_registry(monkeypatch):
     mimetypes.add_type("application/javascript", ".js")
     mimetypes.add_type("application/javascript", ".mjs")
 
-    assert _fs_mime_type(Path("bundle.js")) == "application/javascript"
-    assert _fs_mime_type(Path("chunk.mjs")) == "application/javascript"
+    _assert_javascript_mime(_fs_mime_type(Path("bundle.js")))
+    _assert_javascript_mime(_fs_mime_type(Path("chunk.mjs")))
     # Non-JS files return their correct types
     assert _fs_mime_type(Path("style.css")) == "text/css"
 
 
 def test_static_files_serves_js_with_correct_mime(tmp_path):
-    """Verify that Starlette's StaticFiles serves ``.js`` files with
-    ``Content-Type: application/javascript`` when mounted with the
-    registered MIME types."""
+    """Starlette's StaticFiles serves ``.js`` files with a JavaScript
+    ``Content-Type`` when mounted with the registered MIME types."""
     from starlette.staticfiles import StaticFiles
     from starlette.testclient import TestClient
     from starlette.applications import Starlette
@@ -114,12 +123,8 @@ def test_static_files_serves_js_with_correct_mime(tmp_path):
 
     r = client.get("/assets/test.js")
     assert r.status_code == 200
-    assert r.headers.get("content-type") == "application/javascript", (
-        f"Expected application/javascript, got {r.headers.get('content-type')}"
-    )
+    _assert_javascript_mime(r.headers.get("content-type"))
 
     r = client.get("/assets/test.mjs")
     assert r.status_code == 200
-    assert r.headers.get("content-type") == "application/javascript", (
-        f"Expected application/javascript, got {r.headers.get('content-type')}"
-    )
+    _assert_javascript_mime(r.headers.get("content-type"))

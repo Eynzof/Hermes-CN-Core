@@ -47,6 +47,7 @@ from gateway.platforms.base import (
 from gateway.platforms.helpers import MessageDeduplicator, cancel_task
 from gateway.platforms.event import MessageEvent, MessageType
 from gateway.config import Platform
+import json
 
 logger = logging.getLogger(__name__)
 

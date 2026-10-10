@@ -36,6 +36,7 @@ from tools.delegate_tool import (
 from tools.delegate_tool_progress import _LEGACY_EVENT_MAP
 from tools.delegate_tool_results import _extract_output_tail
 from hermes_state import SessionDB
+from tools.delegate_tool import ( DELEGATE_BLOCKED_TOOLS, DELEGATE_TASK_SCHEMA, DelegateEvent, _build_child_agent, _build_child_progress_callback, _build_child_system_prompt, _get_max_concurrent_children, _load_config, _resolve_child_credential_pool, _resolve_delegation_credentials, _strip_blocked_tools, delegate_task, )
 
 def _make_mock_parent(depth=0):
     """Create a mock parent agent with the fields delegate_task expects."""

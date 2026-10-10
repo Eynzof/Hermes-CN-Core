@@ -14,6 +14,7 @@ import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
+import pytest
 
 
 pytestmark = pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: tempfile/path operations fail")

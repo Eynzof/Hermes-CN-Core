@@ -48,6 +48,7 @@ from hermes_constants import (
 # Re-export from hermes_constants — canonical definition lives there.
 from hermes_constants import get_hermes_home, get_process_hermes_home
 from utils import atomic_replace, fast_safe_load, file_signature, mkstemp_beside
+from platform_utils import is_windows
 from hermes_cli.config_read_errors import (
     _CONFIG_PARSE_FAILURES, _FIX_PERMS, _FIX_YAML, FailedConfigRead, _backups_dir_display,
     _refuse_failed_read, _refuse_overwrite, _warn_config_parse_failure, _yaml_error_details,
@@ -4606,3 +4607,39 @@ def _inject_platform_plugin_env_vars() -> frozenset[str] | None:
 # OPENAI_API_KEY from turning a provider key into an adapter secret.
 CORE_DECLARED_ENV_NAMES: frozenset[str] = frozenset(OPTIONAL_ENV_VARS)
 BUNDLED_PLATFORM_SECRET_ENVS: frozenset[str] | None = _inject_platform_plugin_env_vars()
+
+
+def ensure_starter_config_file() -> Optional[Path]:
+    """Create a minimal first-run config.yaml if the user has none.
+
+    load_config() intentionally returns in-memory defaults when config.yaml is
+    absent. GUI/dashboard entrypoints still need a real file on first launch so
+    new desktop users have an obvious configuration surface and later writes do
+    not look like they appeared from nowhere. Keep this starter file small; do
+    not materialize DEFAULT_CONFIG here.
+    """
+    if is_managed():
+        return None
+
+    config_path = get_config_path()
+    if config_path.exists() or os.path.lexists(config_path):
+        return None
+    ensure_hermes_home()
+    if config_path.exists() or os.path.lexists(config_path):
+        return None
+
+    starter = {
+        "_config_version": DEFAULT_CONFIG.get("_config_version", 1),
+        "model": {
+            "provider": "",
+            "default": "",
+        },
+        "providers": {},
+    }
+    atomic_config_write(
+        config_path,
+        starter,
+        extra_content=_SECURITY_COMMENT + _FALLBACK_COMMENT,
+    )
+    _secure_file(config_path)
+    return config_path if config_path.exists() else None

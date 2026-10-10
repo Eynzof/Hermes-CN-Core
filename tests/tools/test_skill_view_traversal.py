@@ -9,6 +9,7 @@ import pytest
 from unittest.mock import patch
 
 from tools.skills_tool import skill_view
+import json
 
 
 @pytest.fixture()

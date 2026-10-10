@@ -88,9 +88,6 @@ fi
 # resolves Path.home() from USERPROFILE (or HOMEDRIVE+HOMEPATH), stdlib
 # platform paths come from LOCALAPPDATA/APPDATA, ssl/sockets need SYSTEMROOT,
 # and tempfile needs TEMP/TMP. Dropping them breaks collection on native
-# Windows (issues #67385, #70813). PATHEXT is also required: without .EXE,
-# PowerShell opens a native child as a document without waiting for its exit.
-# These are location variables, not
 # Windows (issues #67385, #70813). USERNAME is the same class: ntpath.expanduser
 # will only expand a `~name` path when the *current* account name is known AND
 # the profile directory is named after it (it compares USERNAME against

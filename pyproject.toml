@@ -54,7 +54,7 @@ dependencies = [
   "tomli-w==1.2.0; python_version >= '3.14'",  # Preserve relative dependency paths in staged plugin metadata.
   # 0.18.17 requires ruamel.yaml.clib on 3.14, which has no Windows ARM64 wheel.
   "ruamel.yaml==0.18.16; python_version >= '3.14'",
-  "requests==2.33.0; python_version >= '3.14'",  # CVE-2026-25645
+  "requests[socks]==2.33.0; python_version >= '3.14'",  # CVE-2026-25645
   "jinja2==3.1.6; python_version >= '3.14'",
   # Document-to-Markdown extraction for read_file (PDF, legacy Office,
   # OpenDocument, RTF, EPUB) + typed NeedsOcrError for scanned pages.
@@ -81,19 +81,6 @@ dependencies = [
   # Requirement and version checks must work in lean installs without
   # relying on another package to bring packaging in transitively.
   "packaging==26.0; python_version >= '3.14'",
-  "snowballstemmer==3.1.1",
-  # ``packaging`` is imported directly on three production paths but was never
-  # declared, so it only reached users transitively (pip/uv pull it for other
-  # tools). The slim official Docker image ships without it, where the
-  # try/except-ImportError fallbacks silently degrade: Hindsight's
-  # ``_meets_minimum_version`` disables update_mode='append' (#40503),
-  # tools/lazy_deps.py treats every version constraint as satisfied, and
-  # hermes_cli/main.py drops to naive requirement parsing. Pure-Python
-  # py3-none-any wheel, no compiled extensions — safe to ship everywhere.
-  # Pinned to the version already resolved in uv.lock (no resolution churn).
-  "packaging==26.0",
-  # JSON serializer replacement (faster than stdlib json)
-  "orjson>=3.11.9",
   # Markdown -> HTML conversion for rich message delivery (Matrix
   # `formatted_body`, and the `send_message` tool's HTML path). Now on the
   # DEFAULT delivery path, not matrix-specific: without it both
@@ -137,9 +124,6 @@ dependencies = [
   # disk_partitions(). The fix is not in a published psutil release yet.
   # Keep this commit until a release includes it, then remove the source pin.
   "psutil @ git+https://github.com/giampaolo/psutil.git@380bd2b59c67b0e1b04bbf3a90b11744f4f96644 ; sys_platform == 'android' and python_version >= '3.14'",
-  "psutil==7.2.2",
-  # Python wrapper around the ripgrep binary (used by `tools/file_operations.py`, `agent/context_references.py`, `hermes_cli/commands.py`).
-  "ripgrepy==2.2.0",
   # Browser CDP supervisor + browser_dialog import this directly. Keep core
   # so browser tool discovery doesn't fail on lean installs.
   "websockets==15.0.1; python_version >= '3.14'",
@@ -168,15 +152,12 @@ dependencies = [
   # Python 3.14 requires pywinpty 3.x. Version 3.0.5 includes the native
   # binaries missing from 3.0.4 wheels on both Windows architectures.
   "pywinpty>=3.0.5,<4; sys_platform == 'win32' and python_version >= '3.14'",
-  "python-multipart>=0.0.9,<1",
-  "ptyprocess>=0.7.0,<1; sys_platform != 'win32'",
-  # P-048: fork requires Python >=3.14, so pywinpty's upper bound is <4
-  # (v3.0.5 ships cp314 wheels). Upstream caps <3; we keep <4.
-  "pywinpty>=3.0.5,<4; sys_platform == 'win32'",
   # Desktop SSH's Windows remote runtime (hermes_cli/windows_ssh_runtime.py)
   # imports win32security/win32file/etc. directly — declare pywin32 rather than
   # relying on the concurrent-log-handler → portalocker transitive chain.
-  "pywin32>=306,<312; sys_platform == 'win32' and python_version >= '3.14'",
+  # [CN-fork] P-048: pywin32 312 is the first cp314-wheel release; upstream caps <312,
+    # the fork's Python 3.14 policy needs the cap dropped.
+    "pywin32>=306; sys_platform == 'win32' and python_version >= '3.14'",
   # App Installer checks use Package from ApplicationModel. Foundation
   # supplies the URI and async result types projected when the checker runs.
   "winrt-windows-applicationmodel>=3.2.1,<4; sys_platform == 'win32' and python_version >= '3.14'",
@@ -184,9 +165,6 @@ dependencies = [
   # Store update queries and request results project collection interfaces.
   "winrt-windows-foundation-collections>=3.2.1,<4; sys_platform == 'win32' and python_version >= '3.14'",
   "winrt-windows-services-store>=3.2.1,<4; sys_platform == 'win32' and python_version >= '3.14'",
-  # P-048: upstream caps <312, but pywin32 312 is the first cp314-wheel release
-  # on Windows — the fork's Python >=3.14 policy needs the cap dropped.
-  "pywin32>=306; sys_platform == 'win32'",
   # Image resize recovery for the vision tools. Pillow shrinks oversized images
   # (>5 MB or >8000px) at embed time; without it the byte AND pixel-dimension
   # shrink paths no-op, so an oversized image bakes into immutable history and
@@ -224,22 +202,6 @@ dependencies = [
   # / pywin32 tree) ships only where it's actually used.
   "concurrent-log-handler==0.9.29; sys_platform == 'win32' and python_version >= '3.14'",
   # First-party lifecycle and shared-metrics runtime. Relay 0.10 is the supported
-  "concurrent-log-handler==0.9.29; sys_platform == 'win32'",
-  # ── High-performance library replacements ──────────────────────────
-  # Phase 1 — Drop-in replacements (all already installed and in use)
-  "regex>=2026.3.32,<2027", # 1.5-10× faster re replacement
-  "rapidfuzz>=3.14.5,<4", # 10-100× faster difflib replacement
-  "xxhash>=3.8.0,<4", # 5-10× faster non-crypto hashing
-  "pybase64>=1.4.3,<2", # 2-4× faster base64 via SIMD
-  "ciso8601>=2.3.3,<3", # 10-50× faster ISO8601 parsing
-  # Phase 2 — Verified replacements
-  "zstandard>=0.25.0,<1", # Better compression ratio + speed
-  "lz4>=4.4.5,<5", # Fastest decompression
-  # Phase 3 — Infrastructure
-  "uvloop>=0.21.0; sys_platform != 'win32'",  # 2-4× async throughput (Unix)
-  # Phase 4 — Nice-to-have (already used in some places)
-  "yarl>=1.23.0,<2", # C-accelerated URL type
-  # First-party lifecycle and shared-metrics runtime. Relay 0.8 is the supported
   # native runtime and provider-codec baseline. Managed calls pass request and
   # response data through this native module in-process; shared metrics installs
   # no network exporter and consumes only its bounded projection. This marker
@@ -253,6 +215,20 @@ dependencies = [
   # 738 CPython reports sys_platform == 'android' and never matched.) Pre-GKI
   # devices can still slip through; they get the same resolution failure as
   # before, worked around by installing with `--no-deps` or an older release.
+    # [CN-fork] High-performance library replacements (P-045/P-051/P-037 keep these in use)
+    "regex>=2026.3.32,<2027",  # 1.5-10x faster re replacement (agent.re_compat)
+    "rapidfuzz>=3.14.5,<4",  # 10-100x faster difflib replacement
+    "xxhash>=3.8.0,<4",  # 5-10x faster non-crypto hashing
+    "pybase64>=1.4.3,<2",  # 2-4x faster base64 via SIMD
+    "ciso8601>=2.3.3,<3",  # 10-50x faster ISO8601 parsing
+    "zstandard>=0.25.0,<1",  # Better compression ratio + speed
+    "lz4>=4.4.5,<5",  # Fastest decompression
+    "uvloop>=0.21.0; sys_platform != 'win32'",  # 2-4x async throughput (Unix)
+    "yarl>=1.23.0,<2",  # C-accelerated URL type
+    # JSON serializer replacement (faster than stdlib json)
+    "orjson>=3.11.9",
+    # Python wrapper around the ripgrep binary (tools/file_operations.py, agent/context_references.py)
+    "ripgrepy==2.2.0",
   "nemo-relay>=0.10,<0.11; ((sys_platform == 'darwin' and platform_machine == 'arm64') or (sys_platform == 'linux' and platform_machine == 'x86_64' and 'android' not in platform_release) or (sys_platform == 'linux' and platform_machine == 'aarch64' and 'android' not in platform_release) or (sys_platform == 'win32' and platform_machine == 'AMD64') or (sys_platform == 'win32' and platform_machine == 'ARM64')) and python_version >= '3.14'",]
 
 [project.optional-dependencies]
@@ -406,20 +382,6 @@ doc-extract = ["firecrawl-anydoc==0.2.4"]
 trace-upload = ["huggingface-hub==1.24.0"]
 # Cloud memory providers are opt-in PM extras. They stay outside [all]
 # so a quarantined release cannot break fresh installs.
-# [wake] extra (upstream "Hey Hermes" wake-word) REMOVED on merge: its free
-# default engine openwakeword==0.6.0 requires tflite-runtime>=2.8.0, which ships
-# no cp314 wheels on any platform, and ai-edge-litert (macOS) likewise has no
-# cp314 build. The fork's requires-python is >=3.14 (P-048), so this extra is
-# unresolvable; drop it rather than block `uv lock`/`uv sync`. Restore if
-# upstream engines gain cp314 wheels. See records/MERGE-RECORD.md.
-honcho = ["honcho-ai==2.2.0"]
-# Cloud memory providers — opt-in, lazy-installed via tools/lazy_deps.py
-# (memory.supermemory / memory.mem0) at first use. Exact pins MUST match the
-# LAZY_DEPS pins (enforced by tests/test_project_metadata.py). Deliberately
-# excluded from [all] like honcho/hindsight so a quarantined upstream release
-# can't break fresh installs.
-supermemory = ["supermemory==3.50.0"]
-mem0 = ["mem0ai==2.0.10"]
 # Image resize recovery for the vision tools. Pillow is now a CORE dependency
 # (see the main `dependencies` list above) since the byte/pixel shrink paths are on
 # the default vision-embed path and the mid-session lazy install deadlocked the
@@ -579,26 +541,37 @@ all = [
   "hermes-agent[youtube]",
 ]
 
-[dependency-groups]
-# Build and test tooling never ships in runtime payloads.
-dev = [
-  "debugpy==1.8.20",
-  "pytest==9.1.1",
-  "pytest-asyncio==1.3.0",
-  "mcp==2.0.0",
-  "httpx2==2.7.0",
-  "starlette==1.3.1",
-  "ty==0.0.82",
-  "ruff==0.15.10",
-  "setuptools==83.0.0",
-] # starlette: CVE-2026-48710; setuptools: 83 (torch >=2.13 requires setuptools 83)
-# Native launcher and provider-catalog E2E dependencies belong in the test
-# environment, not the core runtime. Keep the Anthropic SDK at the same
-# reviewed version as the optional runtime extra above.
-test = [
-  "distlib==0.4.3; sys_platform == 'win32'",
-  "anthropic==0.87.0",
-]
+
+hindsight = ["hindsight-client==0.6.1"]
+
+dev = ["debugpy==1.8.20", "pytest==9.1.1", "pytest-asyncio==1.3.0", "pytest-benchmark>=5.2.3,<6", "mcp==2.0.0", "httpx2==2.7.0", "starlette==1.3.1", "ty==0.0.21", "ruff==0.15.10", "setuptools==83.0.0"]  # starlette: CVE-2026-48710; setuptools: 83 (torch >=2.13 requires setuptools 83); pytest-benchmark kept for tests/performance
+
+# [wake] extra (upstream "Hey Hermes" wake-word) REMOVED on merge: its free
+# default engine openwakeword==0.6.0 requires tflite-runtime>=2.8.0, which ships
+# no cp314 wheels on any platform, and ai-edge-litert (macOS) likewise has no
+# cp314 build. The fork's requires-python is >=3.14 (P-048), so this extra is
+# unresolvable; drop it rather than block `uv lock`/`uv sync`. Restore if
+# upstream engines gain cp314 wheels. See records/MERGE-RECORD.md.
+honcho = ["honcho-ai==2.2.0"]
+# Cloud memory providers — opt-in, lazy-installed via tools/lazy_deps.py
+# (memory.supermemory / memory.mem0) at first use. Exact pins MUST match the
+# LAZY_DEPS pins (enforced by tests/test_project_metadata.py). Deliberately
+# excluded from [all] like honcho/hindsight so a quarantined upstream release
+# can't break fresh installs.
+
+# Cloud memory providers — opt-in, lazy-installed via tools/lazy_deps.py
+# (memory.supermemory / memory.mem0) at first use. Exact pins MUST match the
+# LAZY_DEPS pins (enforced by tests/test_project_metadata.py). Deliberately
+# excluded from [all] like honcho/hindsight so a quarantined upstream release
+# can't break fresh installs.
+supermemory = ["supermemory==3.50.0"]
+
+mem0 = ["mem0ai==2.0.10"]
+# Image resize recovery for the vision tools. Pillow is now a CORE dependency
+# (see the main `dependencies` list above) since the byte/pixel shrink paths are on
+# the default vision-embed path and the mid-session lazy install deadlocked the
+# CLI under prompt_toolkit (#40490). This extra is kept as a no-op back-compat
+# alias so existing requests for the `vision` extra resolve.
 
 # Aggregate extra for the frozen CN Desktop runtime (the PyInstaller artifacts
 # built by release-runtime.yml). The frozen build CANNOT lazy-install — the
@@ -638,6 +611,27 @@ cn-desktop = [
   "hermes-agent[supermemory]", # long-term memory: supermemory SDK (frozen runtime cannot lazy-install)
   "hermes-agent[mem0]", # long-term memory: mem0ai SDK (frozen runtime cannot lazy-install)
 ]
+[dependency-groups]
+# Build and test tooling never ships in runtime payloads.
+dev = [
+  "debugpy==1.8.20",
+  "pytest==9.1.1",
+  "pytest-asyncio==1.3.0",
+  "mcp==2.0.0",
+  "httpx2==2.7.0",
+  "starlette==1.3.1",
+  "ty==0.0.82",
+  "ruff==0.15.10",
+  "setuptools==83.0.0",
+] # starlette: CVE-2026-48710; setuptools: 83 (torch >=2.13 requires setuptools 83)
+# Native launcher and provider-catalog E2E dependencies belong in the test
+# environment, not the core runtime. Keep the Anthropic SDK at the same
+# reviewed version as the optional runtime extra above.
+test = [
+  "distlib==0.4.3; sys_platform == 'win32'",
+  "anthropic==0.87.0",
+]
+
 [build-system]
 # setuptools.build_meta + our setup.py bdist_wheel guard import wheel during
 # PEP 517 isolated builds. Without wheel in
@@ -769,12 +763,6 @@ exclude-newer = "14 days"
 # The pin bump WAS the review; exclude-newer only filters it because the
 # 14-day window is younger than the reviewed release.
 
-# ddgs, ripgrepy, typer: exact pins carried by the CN fork's pyproject (the
-# no-key web extra plus the frozen-runtime / desktop pins added for the CN
-# build) that have no counterpart in upstream's list. Same release-day brick
-# shape as every other exact pin below — without the exemption a reviewed
-# pin bump stays invisible to the resolver for 14 days and `hermes update`
-# (or a frozen-runtime build) fails with "no version of ddgs==9.14.4".
 [tool.uv.exclude-newer-package]
 agent-client-protocol = false
 aiohttp = false
@@ -851,7 +839,6 @@ python-olm = false
 python-telegram-bot = false
 pyyaml = false
 qrcode = false
-ripgrepy = false
 requests = false
 rich = false
 ruamel-yaml = false
@@ -871,7 +858,6 @@ soundfile = "2026-06-06T08:58:48Z"
 starlette = false
 tenacity = false
 ty = false
-typer = false
 tzdata = false
 unpaddedbase64 = false
 uvicorn = false
@@ -879,47 +865,6 @@ vercel = false
 websockets = false
 youtube-transcript-api = false
 
-[tool.setuptools]
-# Root single-file modules are derived by setup.py at build time from the
-# source tree (see the ``_root_py_modules`` helper there). A static
-# ``py-modules`` list here drifted from the tree each time the layout changed,
-# and the drift broke installed wheels. Do not add the list back.
-
-[tool.setuptools.packages.find]
-include = [
-  "agent",
-  "agent.*",
-  "tools",
-  "tools.*",
-  "hermes_cli",
-  "hermes_cli.*",
-  "gateway",
-  "gateway.*",
-  "tui_gateway",
-  "tui_gateway.*",
-  "cron",
-  "cron.*",
-  "acp_adapter",
-  "plugins",
-  "plugins.*",
-  "providers",
-  "providers.*",
-  "hermes_platform",
-  "hermes_platform.*",
-  "pm",
-  "pm.*",
-  "tools",
-  "tools.*",
-
-# Ahead-of-time bytecode warm-up (scripts/precompile.py).  ``pip install`` already
-# byte-compiles installed packages; this table drives the run-from-source path
-# (the CN fork's Windows default), where nothing has compiled the tree yet, so
-# the first agent start would otherwise pay ``builtins.compile`` (~10.82% of cold
-# agent-init in the flame graph) + ``_io.open_code`` per module.  Build/update/CI
-# flows warm it with ``python scripts/precompile.py --if-needed --quiet``.
-# ``precompile.py`` reads these targets via ``_pyproject_targets()``; when the
-# table is absent it falls back to its own hardcoded defaults, so this is an
-# override, not a hard dependency.  Keep in lockstep with the source layout.
 [tool.hermes.precompile]
 targets = [
   "agent",
@@ -953,6 +898,39 @@ targets = [
   "hermes_state_search.py",
 ]
 
+[tool.setuptools]
+# Root single-file modules are derived by setup.py at build time from the
+# source tree (see the ``_root_py_modules`` helper there). A static
+# ``py-modules`` list here drifted from the tree each time the layout changed,
+# and the drift broke installed wheels. Do not add the list back.
+
+[tool.setuptools.packages.find]
+include = [
+  "agent",
+  "agent.*",
+  "tools",
+  "tools.*",
+  "hermes_cli",
+  "hermes_cli.*",
+  "gateway",
+  "gateway.*",
+  "tui_gateway",
+  "tui_gateway.*",
+  "cron",
+  "cron.*",
+  "acp_adapter",
+  "plugins",
+  "plugins.*",
+  "providers",
+  "providers.*",
+  "hermes_platform",
+  "hermes_platform.*",
+  "pm",
+  "pm.*",
+  "tools",
+  "tools.*",
+]
+
 [tool.setuptools.package-data]
 hermes_cli = [
   "observability/schemas/*.json",
@@ -976,30 +954,6 @@ pm = ["lock.json", "artifact-mirror.json", "pyproject.toml", "uv.lock"]
 # Bot Desktop starts Xvnc + Xfce through a shell launcher and seeds the wallpaper; both are read
 # via Path(__file__).parent in tools/bot_desktop/runtime.py and vanish from sealed wheels otherwise.
 tools = ["bot_desktop/launcher.sh", "bot_desktop/wallpaper.png"]
-# Offline-first models.dev snapshot (P-028) — bundled so the cost guard,
-# capability lookup, and context-length resolution have data even when
-# models.dev is unreachable (e.g. from mainland China). Refresh via
-# scripts/refresh_models_dev_snapshot.py.
-agent = ["models_dev_snapshot.json"]
-plugins = [
-  "**/*",
-  "*/dashboard/manifest.json",
-  "*/dashboard/dist/*",
-  "*/dashboard/dist/**/*",
-  # Plugin discovery (hermes_cli/plugins.py) reads a plugin.yaml/plugin.yml
-  # manifest from each bundled plugin directory to register it. Wheels only
-  # carry files declared here, so without this glob the wheel ships every
-  # plugin's Python code but none of its manifests — the scan finds zero
-  # plugins and all gateway platforms fail with "No adapter available for
-  # <platform>" (#34034), web-search providers go missing (#28149), etc.
-  "**/plugin.yaml",
-  "**/plugin.yml",
-  "**/README.md",
-]
-
-[tool.setuptools.packages.find]
-include = ["agent", "agent.*", "tools", "tools.*", "hermes_cli", "hermes_cli.*", "gateway", "gateway.*", "tui_gateway", "tui_gateway.*", "cron", "cron.*", "acp_adapter", "plugins", "plugins.*", "providers", "providers.*", "hermes_embedded", "hermes_embedded.*"]
-
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

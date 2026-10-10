@@ -39,6 +39,7 @@ from agent.auxiliary_client import (
     _pool_runtime_base_url,
     _unwrap_data_envelope,
 )
+from agent.auxiliary_client import ( _NOUS_MODEL, CodexAuxiliaryClient, get_text_auxiliary_client, get_available_vision_backends, resolve_vision_provider_client, resolve_provider_client, auxiliary_max_tokens_param, call_llm, async_call_llm, _build_call_kwargs, _read_codex_access_token, _get_provider_chain, _is_payment_error, _is_rate_limit_error, _is_model_not_found_error, _is_model_incompatible_error, _refresh_nous_recommended_model, _normalize_aux_provider, _try_payment_fallback, _try_openrouter, _OPENROUTER_MODEL, OPENROUTER_BASE_URL, _resolve_auto_route, _resolve_task_provider_model, _resolve_xai_oauth_for_aux, _CodexCompletionsAdapter, _pool_runtime_base_url, )
 
 
 def _jwt_with_claims(claims: dict) -> str:

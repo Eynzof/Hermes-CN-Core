@@ -4,8 +4,6 @@ hot-reload); pairing store ~/.hermes/feishu_comment_pairing.json."""
 
 from __future__ import annotations
 
-
-import orjson
 import logging
 import sys
 import time
@@ -14,6 +12,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
 from hermes_constants import get_hermes_home
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -84,12 +83,9 @@ class _MtimeCache:
         if cached is not None and cached[0] == mtime:
             return cached[1]
         try:
-            with open(path, "r", encoding="utf-8-sig") as f:
+            with open(path, "r", encoding="utf-8-sig", errors="replace") as f:
                 data = json.load(f)
         except (json.JSONDecodeError, OSError):
-            with open(path, "r", encoding="utf-8", errors="replace") as f:
-                data = orjson.loads(f.read())
-        except (orjson.JSONDecodeError, OSError):
             logger.warning("[Feishu-Rules] Failed to read %s, using empty config", path)
             data = {}
         data = data if isinstance(data, dict) else {}
@@ -164,8 +160,6 @@ def _save_pairing(data: dict) -> None:
     pairing_file.parent.mkdir(parents=True, exist_ok=True)
     with open(pairing_file.with_suffix(".tmp"), "w", encoding="utf-8") as f:  # windows-footgun: ok (write/append mode, not a read)
         json.dump(data, f, indent=2, ensure_ascii=False)
-    with open(pairing_file.with_suffix(".tmp"), "w", encoding="utf-8", errors="replace") as f:
-        f.write(orjson.dumps(data, option=orjson.OPT_INDENT_2).decode('utf-8'))
     pairing_file.with_suffix(".tmp").replace(pairing_file)
     _pairing_cache.invalidate()  # same-second rewrite can keep the mtime; force the next load to re-read
 

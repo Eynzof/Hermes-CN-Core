@@ -2659,6 +2659,7 @@ def _coalesce_session_name_args(argv: list) -> list:
 
 
 from hermes_cli.profile_cmd import cmd_profile
+from hermes_cli.dashboard_procs import BACKEND_LOCK_NAME
 
 
 def _dashboard_lifecycle_flags(args, token_file) -> None:

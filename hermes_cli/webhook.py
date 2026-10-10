@@ -15,6 +15,7 @@ from typing import Any, Callable, Dict
 from hermes_constants import display_hermes_home
 from utils import atomic_json_write
 from hermes_cli.config import cfg_get
+import json
 
 
 _SUBSCRIPTIONS_FILENAME = "webhook_subscriptions.json"

@@ -166,6 +166,9 @@ from gateway.platforms._shared import (
     apply_yaml_bridge as _apply_yaml_bridge, extra_or_secret as _shared_extra_or_secret,
     get_scoped_secret as _get_scoped_secret, send_error
 )
+from lark_oapi.api.im.v1 import ( CreateFileRequest, CreateFileRequestBody, CreateImageRequest, CreateImageRequestBody, CreateMessageRequest, CreateMessageRequestBody, GetChatRequest, GetMessageRequest, GetMessageResourceRequest, P2ImMessageMessageReadV1, ReplyMessageRequest, ReplyMessageRequestBody, UpdateMessageRequest, UpdateMessageRequestBody, )
+from lark_oapi.event.callback.model.p2_card_action_trigger import ( CallBackCard, P2CardActionTriggerResponse, )
+import json
 
 
 logger = logging.getLogger(__name__)
@@ -4186,8 +4189,6 @@ class FeishuAdapter(BasePlatformAdapter):
         return _sdk_build(CreateFileRequest, request_body=request_body)
 
     def _build_media_post_payload(self, *, caption: str, media_tag: dict[str, str]) -> str:
-        payload = json.loads(_build_markdown_post_payload(caption))
-    def _build_media_post_payload(self, *, caption: str, media_tag: Dict[str, str]) -> str:
         payload = orjson.loads(_build_markdown_post_payload(caption))
         content = payload.setdefault("zh_cn", {}).setdefault("content", [])
         content.append([media_tag])

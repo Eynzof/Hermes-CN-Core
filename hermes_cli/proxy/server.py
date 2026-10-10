@@ -26,6 +26,7 @@ except ImportError:
 from hermes_cli.proxy.adapters.base import UpstreamAdapter, UpstreamCredential
 from hermes_cli.port_lock import try_claim_port
 from hermes_cli.proxy.sse_done import DONE_SSE_FRAME, SseDoneTracker, content_type_is_sse
+from hermes_cli.port_lock import try_claim_port
 
 logger = logging.getLogger(__name__)
 

@@ -49,6 +49,7 @@ from tools.mcp_dashboard_oauth import contextvar_set as _contextvar_set, get_das
 if TYPE_CHECKING:  # annotations only; the SDK is imported lazily at runtime
     from mcp.client.auth import OAuthClientProvider
     from mcp.shared.auth import OAuthClientInformationFull, OAuthClientMetadata, OAuthMetadata, OAuthToken
+import json
 
 logger = logging.getLogger(__name__)
 

@@ -14,6 +14,7 @@ from tests.tools._child_env_fixtures import child_env, observe_child, observe_te
 from tools.environments import local
 from tools.environments import local_pythonpath as pp
 from tools.environments.local_env_policy import _HERMES_PROVIDER_ENV_BLOCKLIST
+from unittest.mock import MagicMock
 
 
 def _running_venv_site_packages() -> Path:

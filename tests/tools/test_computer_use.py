@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import itertools
+import sys
 
 
 # ---------------------------------------------------------------------------

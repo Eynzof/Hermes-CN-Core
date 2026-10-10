@@ -21,6 +21,7 @@ from agent.memory_provider import MemoryProvider, PRE_COMPRESS_CHECKPOINT_API_VE
 from agent.skill_commands import extract_user_instruction_from_skill_message
 from tools.hook_output_spill import get_spill_config, spill_if_oversized
 from tools.registry import tool_error
+import json
 
 logger = logging.getLogger(__name__)
 

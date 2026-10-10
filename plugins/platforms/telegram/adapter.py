@@ -405,6 +405,7 @@ from gateway.platforms.helpers import (
     TABLE_SEPARATOR_RE as _TABLE_SEPARATOR_RE, compile_mention_patterns, convert_table_to_bullets as _wrap_markdown_tables)
 from gateway.platforms.helpers import cancel_task
 from gateway.platforms.helpers import file_url_to_local_path
+import json
 
 # Rich-message regions whose internal newlines must stay bare (Telegram renders them natively):
 # fenced code blocks OR GFM pipe-table blocks (header row, delimiter row, data rows).
@@ -4939,7 +4940,7 @@ class TelegramAdapter(TelegramHeldInboundMixin, BasePlatformAdapter):
                 _subprocess_kwargs["creationflags"] = windows_hide_flags()
             proc = await asyncio.create_subprocess_exec(
                 str(script_path), arg, *extra_args, stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-                env=build_subprocess_env(strip_launch_profile=True))
+                env=build_subprocess_env(strip_launch_profile=True), **_subprocess_kwargs)
             _stdout_bytes, stderr_bytes = await asyncio.wait_for(proc.communicate(), timeout=60)
             if proc.returncode == 0:
                 label = t(f"platform.telegram.gmail_triage.{success_key}")

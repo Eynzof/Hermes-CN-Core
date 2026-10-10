@@ -69,6 +69,7 @@ from hermes_cli.gitlock import clear_stale_tmp_packs
 from typing import Dict, List, Optional, Set, Tuple
 
 from utils import env_int, rmtree_readonly
+from pathlib import PurePosixPath
 
 logger = logging.getLogger(__name__)
 

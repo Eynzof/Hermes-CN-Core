@@ -27,6 +27,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from agent.secret_sources import bitwarden as bw
+import zipfile
 
 
 @pytest.fixture(autouse=True)

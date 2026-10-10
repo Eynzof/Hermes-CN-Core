@@ -5860,6 +5860,8 @@ class TestDashboardPluginManifestExtensions:
 # ---------------------------------------------------------------------------
 
 from hermes_cli import main_tui_launch
+from hermes_cli.config import ( reload_env, redact_key, OPTIONAL_ENV_VARS, DEFAULT_CONFIG, )
+from types import SimpleNamespace
 
 
 skip_on_windows = pytest.mark.skipif(

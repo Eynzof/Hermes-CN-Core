@@ -62,11 +62,9 @@ def _load_auth() -> dict[str, Any]:
     if not path.exists():
         return {}
     try:
-        with path.open("r", encoding="utf-8-sig") as fh:
+        with path.open("r", encoding="utf-8-sig", errors="replace") as fh:
             return json.load(fh) or {}
     except (OSError, json.JSONDecodeError) as e:
-        return orjson.loads(path.read_text(encoding="utf-8", errors="replace")) or {}
-    except (OSError, orjson.JSONDecodeError) as e:
         logger.warning("photon: could not read %s: %s", path, e)
         return {}
 

@@ -19,6 +19,7 @@ from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Set,
 from hermes_constants import get_hermes_home
 from agent.skill_utils import is_excluded_skill_path, is_external_skill_path
 from utils import atomic_write_text
+import json
 
 logger = logging.getLogger(__name__)
 

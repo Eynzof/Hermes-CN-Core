@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from hermes_cli.dashboard_auth.audit import audit_log, AuditEvent
+import orjson
 
 
 @pytest.fixture

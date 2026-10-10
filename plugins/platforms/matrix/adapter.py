@@ -417,6 +417,7 @@ def _resolve_max_message_length(config) -> int:
 # identity in one crypto.db.
 # Store directory for E2EE keys and sync state. Mirrors the pairing-store fix (a6397c379). See #89168.
 from hermes_constants import get_hermes_dir as _get_hermes_dir
+from gateway.platforms.helpers import file_url_to_local_path
 
 _STARTUP_GRACE_SECONDS = 5  # ignore messages older than this many seconds before startup
 

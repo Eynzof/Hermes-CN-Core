@@ -19,6 +19,7 @@ sys.modules.setdefault("firecrawl", types.SimpleNamespace(Firecrawl=object))
 sys.modules.setdefault("fal_client", types.SimpleNamespace())
 
 from run_agent import AIAgent
+from agent.auxiliary_client import _NOUS_MODEL, get_text_auxiliary_client
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────

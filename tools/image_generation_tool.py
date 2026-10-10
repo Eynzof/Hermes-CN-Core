@@ -553,6 +553,7 @@ def check_image_generation_requirements() -> bool:
 
 # --- Registry ---
 from tools.registry import registry, tool_error
+import json
 
 IMAGE_GENERATE_SCHEMA = {
     "name": "image_generate",

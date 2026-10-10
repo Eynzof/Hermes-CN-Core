@@ -14,6 +14,7 @@ from agent.transports.codex_event_projector import (
     _deterministic_call_id,
     _format_tool_args,
 )
+import json
 
 
 # --- Fixture: real `commandExecution` notification captured from codex 0.130.0

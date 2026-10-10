@@ -5,6 +5,7 @@ import json
 import pytest
 
 from tools import desktop_ui, open_preview_tool as op
+from tools.registry import registry
 
 
 @pytest.fixture(autouse=True)

@@ -22,6 +22,7 @@ from hermes_cli.plugins_cmd import (
     _sanitize_plugin_name,
 )
 from hermes_cli.plugins_cmd_install import _refuse_unavailable_portable_plugin
+import sys
 
 
 def _write_portable_app_plugin(root: Path, app: Path) -> None:

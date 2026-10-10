@@ -27,6 +27,7 @@ from unittest.mock import patch
 from xml.sax.saxutils import escape
 
 import pytest
+import sys
 
 
 def _runtime_manifest(version="0.20.0", *, omit=()):

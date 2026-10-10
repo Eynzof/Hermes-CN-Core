@@ -11,6 +11,7 @@ import sys
 import threading
 
 import pytest
+import signal
 
 
 

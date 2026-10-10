@@ -12,6 +12,7 @@ import os
 from typing import Callable, Optional
 
 from tools.registry import registry
+import json
 
 # Set by the GUI gateway: ``(task_id, primary_path, project_name)`` re-anchors that session's
 # workspace. ``None`` in CLI/messaging — the DB write still happens, nothing to move.

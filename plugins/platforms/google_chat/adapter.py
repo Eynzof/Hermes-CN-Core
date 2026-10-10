@@ -133,6 +133,7 @@ from gateway.platforms.base import (
     cache_video_from_bytes_async,
 )
 from gateway.platforms.event import MessageEvent, MessageType, ProcessingOutcome
+import json
 
 # Pinned to the legacy module path so operator log filters keep matching.
 logger = logging.getLogger("gateway.platforms.google_chat")
@@ -268,12 +269,9 @@ def _load_sa_credentials_from(sa_value: Optional[str]) -> Any:
             raise _SACredentialError("not_found")
         else:
             try:
-                with open(sa_value, "r", encoding="utf-8-sig") as fh:
+                with open(sa_value, "r", encoding="utf-8-sig", errors="replace") as fh:
                     info = json.load(fh)
             except json.JSONDecodeError as exc:
-                with open(sa_value, "r", encoding="utf-8", errors="replace") as fh:
-                    info = orjson.loads(fh.read())
-            except orjson.JSONDecodeError as exc:
                 raise _SACredentialError("file_invalid", exc) from exc
         return service_account.Credentials.from_service_account_info(info, scopes=_CHAT_SCOPES)
     # No explicit SA — ADC (Cloud Run / GCE workload identity, or gcloud ADC login).
@@ -307,12 +305,9 @@ class _ThreadCountStore:
         if not self._path.exists():
             return
         try:
-            raw = self._path.read_text(encoding="utf-8-sig")
+            raw = self._path.read_text(encoding="utf-8-sig", errors="replace")
             data = json.loads(raw) if raw.strip() else {}
         except (json.JSONDecodeError, OSError) as exc:
-            raw = self._path.read_text(encoding="utf-8")
-            data = orjson.loads(raw) if raw.strip() else {}
-        except (orjson.JSONDecodeError, OSError) as exc:
             fmt = ("[GoogleChat] thread-count store at %s is corrupt; starting fresh: %s" if isinstance(exc, ValueError)
                    else "[GoogleChat] could not read thread-count store at %s: %s")
             logger.warning(fmt, self._path, exc)
@@ -540,10 +535,8 @@ class GoogleChatAdapter(BasePlatformAdapter):
 
     def _load_cached_bot_id(self) -> Optional[str]:
         try:
-            return json.loads(self._bot_id_cache_path().read_text(encoding="utf-8-sig")).get("bot_user_id") or None
+            return json.loads(self._bot_id_cache_path().read_text(encoding="utf-8-sig", errors="replace")).get("bot_user_id") or None
         except (OSError, json.JSONDecodeError):
-            return orjson.loads(self._bot_id_cache_path().read_text(encoding="utf-8")).get("bot_user_id") or None
-        except (OSError, orjson.JSONDecodeError):
             return None
 
     def _save_cached_bot_id(self, bot_user_id: str) -> None:

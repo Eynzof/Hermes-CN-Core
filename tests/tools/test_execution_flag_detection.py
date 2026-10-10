@@ -10,6 +10,8 @@ import pytest
 _win32 = pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: real binary behavior differs on Windows")
 
 from tools.approval import detect_dangerous_command, detect_hardline_command
+import os
+import shlex
 
 
 @pytest.mark.parametrize(

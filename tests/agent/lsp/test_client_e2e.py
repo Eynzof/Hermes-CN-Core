@@ -89,8 +89,13 @@ async def test_aborted_start_reports_exit_status_and_stderr_tail(tmp_path: Path)
     assert client.state == "error"
     assert client._proc is None
     message = str(excinfo.value)
-    # negative returncode rendered as a signal, not a bare code
-    assert "signal" in message
+    # POSIX renders the abort as a negative returncode ("exited on signal N"); Windows has no
+    # signals and reports the raw NTSTATUS abort code (0xC0000409) instead. Either way the exit
+    # status must reach the failure report rather than an opaque protocol error.
+    if sys.platform == "win32":
+        assert "server exited with code" in message
+    else:
+        assert "signal" in message
     # stderr tail reached the failure report
     assert "JavaScript heap out of memory" in message
     await client.shutdown()
@@ -190,7 +195,6 @@ async def test_cancelled_start_hard_kills_sigterm_ignoring_descendant(tmp_path: 
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("script", ["clean_eof", "malformed_frame"])
 @pytest.mark.parametrize(
     "script",
     [

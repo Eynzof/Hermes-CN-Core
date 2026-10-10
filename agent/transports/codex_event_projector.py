@@ -13,6 +13,7 @@ import hashlib
 import orjson
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
+import json
 
 
 def _deterministic_call_id(item_type: str, item_id: str) -> str:

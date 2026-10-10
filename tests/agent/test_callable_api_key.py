@@ -29,6 +29,7 @@ import orjson
 import json
 from typing import cast
 from unittest.mock import MagicMock
+import pytest
 
 # ---------------------------------------------------------------------------
 # OpenAI SDK construction preserves the callable

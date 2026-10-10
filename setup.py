@@ -30,6 +30,8 @@ import tempfile
 
 from setuptools import setup
 from setuptools.command.sdist import sdist
+from setuptools.command.build import build as _build
+from setuptools.command.egg_info import egg_info as _egg_info
 
 _ROOT = os.path.dirname(os.path.abspath(__file__))
 

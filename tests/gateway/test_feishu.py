@@ -23,6 +23,7 @@ from gateway.platforms.event import ProcessingOutcome
 
 if TYPE_CHECKING:
     from plugins.platforms.feishu.adapter import FeishuAdapter
+from typing import Dict
 
 pytestmark = pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: Path.home() fails in subprocess isolation")
 

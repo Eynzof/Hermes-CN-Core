@@ -8,6 +8,12 @@ import pytest
 from hermes_cli import update_cmd
 
 import sys
+from hermes_cli import main_install_repair
+from hermes_cli import main_web_build
+from hermes_cli.main import cmd_update, PROJECT_ROOT
+from types import SimpleNamespace
+from unittest.mock import ANY
+import hashlib
 
 # These tests resolve npm on the real PATH on Windows (find_node_executable_on_path
 # scans PATH directly, bypassing the shutil.which mock), which triggers the real

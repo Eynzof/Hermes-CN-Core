@@ -35,6 +35,7 @@ from tools.environments.local_pythonpath import (
 from tools.environments.process_pwsh import pwsh_transform
 from tools.environments.pwsh_fix import fix_pwsh_command
 from tools.environments.windows_env import refresh_env_from_registry
+from tools.environments.local_gitbash_probe import ( _bash_probe_details_cache, _bash_starts, _git_bash_aslr_help, _looks_like_msys_spawn_failure, _mandatory_aslr_enabled)
 
 # is_windows(), never platform.system(): the platform-based idiom drives
 # platform.uname() into its WMI-backed path on Python 3.12+, costing two WMI

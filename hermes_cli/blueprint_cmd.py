@@ -8,6 +8,7 @@ import logging
 import shlex
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
+import difflib
 
 logger = logging.getLogger(__name__)
 

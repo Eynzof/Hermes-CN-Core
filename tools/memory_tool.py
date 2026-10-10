@@ -459,6 +459,7 @@ def _build_memory_schema_overrides() -> dict[str, Any]:
 
 
 from tools.registry import registry, tool_error
+import json
 
 registry.register(
     name="memory",

@@ -30,6 +30,7 @@ from tools.file_tools import (
     read_file_tool,
     write_file_tool,
 )
+from tools.file_tools import ( clear_file_ops_cache, read_file_tool, write_file_tool, patch_tool, )
 
 
 def _tmp_file(content: str = "initial\n") -> str:

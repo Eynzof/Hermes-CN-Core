@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 import pytest
+from tests.install_ps1_fake_uv import compile_fake_uv
 
 pytestmark = pytest.mark.platforms("windows")
 INSTALLER = Path(__file__).resolve().parents[3] / "scripts" / "install.ps1"

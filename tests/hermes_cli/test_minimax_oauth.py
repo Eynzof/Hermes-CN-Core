@@ -35,6 +35,7 @@ from hermes_cli.auth import (
     get_minimax_oauth_auth_status,
     get_auth_status,
 )
+import orjson
 
 # ---------------------------------------------------------------------------
 # Helpers

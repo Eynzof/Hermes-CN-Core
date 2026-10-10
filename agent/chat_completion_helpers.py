@@ -16,7 +16,6 @@ import orjson
 import logging
 import math
 import os
-import re
 import sys
 from agent.re_compat import re
 import threading
@@ -3892,7 +3891,7 @@ class _StreamingCall(StreamingWaitMonitor):
             self._cancel_current_stream_attempt("stale_stream_kill")
             self.clients.close_once("stale_stream_kill")
         self._shutdown_stale_attempt_socket(_killed_response)
-        _bump_stale_streak(self.agent)  # circuit breaker, see ``_stale_streak()``
+        self._count_stale_attempt()  # circuit breaker, see ``_stale_streak()``
         # [CN-fork] P-022: deliberately do NOT reset the timestamp here. The monitor's
         # grace gate (HERMES_STREAM_STALE_KILL_GRACE) spaces the aborts, and the true
         # last-chunk timestamp is what lets the bounded escalation detect a reader that
@@ -3904,9 +3903,11 @@ class _StreamingCall(StreamingWaitMonitor):
     def _abort_for_interrupt(self, stale_elapsed: float) -> None:
         """/stop seen by the monitor: mark cancelled, abort the request-local
         socket, wait for the worker, flag the interrupt."""
-        # The stale branch already counted this iteration if its deadline won the race.
-        if stale_elapsed <= self._stream_stale_timeout:
-            _record_interrupted_provider_wait(self.agent, stale_elapsed, response_started=self.deltas_were_sent["yes"])
+        # Once per attempt: a stale kill that already counted this attempt wins.
+        attempt = self._uncounted_stale_attempt()
+        if attempt and stale_elapsed <= self._stream_stale_timeout and _record_interrupted_provider_wait(
+                self.agent, stale_elapsed, response_started=self.deltas_were_sent["yes"]):
+            self._stale_counted_attempts.add(attempt)
         # Mark cancelled BEFORE force-closing so the worker treats the forced
         # transport error as a cancel, not a network error (#6600).
         self._request_cancelled["value"] = True

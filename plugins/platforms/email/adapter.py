@@ -33,6 +33,8 @@ from gateway.platforms.event import MessageEvent, MessageType
 from gateway.config import Platform, PlatformConfig
 from utils import is_truthy_value
 from gateway.platforms._shared import get_scoped_secret as _get_secret, coerce_port, decode_json_list_literal, send_error
+from urllib.parse import unquote as _unquote
+import smtplib  # lazy: the desktop runtime may not ship smtplib (see _check_dependencies)
 
 logger = logging.getLogger(__name__)
 

@@ -16,6 +16,7 @@ import sys
 import pytest
 
 from agent import shell_hooks
+import orjson
 
 
 # ── helpers ───────────────────────────────────────────────────────────────

@@ -27,6 +27,7 @@ from packaging.requirements import Requirement
 
 from hermes_constants import display_hermes_home, get_hermes_home
 from utils import atomic_write_text
+import json
 
 # Pinned legacy logger name so operator log filters keep matching (see adapter.py).
 logger = logging.getLogger("gateway.platforms.google_chat_user_oauth")
@@ -272,10 +273,8 @@ def store_client_secret(path: str) -> None:
     if not src.exists():
         _fail(f"ERROR: File not found: {src}")
     try:
-        data = json.loads(src.read_text(encoding="utf-8-sig"))
+        data = json.loads(src.read_text(encoding="utf-8-sig", errors="replace"))
     except json.JSONDecodeError:
-        data = orjson.loads(src.read_text(encoding="utf-8"))
-    except orjson.JSONDecodeError:
         _fail("ERROR: File is not valid JSON.")
     if "installed" not in data and "web" not in data:
         _fail(

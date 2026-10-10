@@ -36,6 +36,8 @@ from gateway.platforms.webhook import (
     _INSECURE_NO_AUTH,
     _is_usable_secret,
 )
+from collections import deque
+from gateway.platforms.webhook import ( WebhookAdapter, _INSECURE_NO_AUTH, check_webhook_requirements, )
 
 
 # ---------------------------------------------------------------------------

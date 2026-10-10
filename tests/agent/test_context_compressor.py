@@ -23,6 +23,7 @@ from agent.compression_marker import _COMPRESSION_MARKER_PREFIX
 from hermes_state import SessionDB
 from agent.auxiliary_client import CODEX_STREAM_STALL_MARKER
 import itertools
+from agent.context_compressor import ( ContextCompressor, HISTORICAL_TASK_HEADING, SUMMARY_PREFIX, COMPRESSED_SUMMARY_METADATA_KEY, _COMPRESSION_MARKER_PREFIX, _COMPRESSION_MARKER_TEMPLATE, _PRUNE_MIN_CHARS, _summarize_tool_result, _is_summary_access_or_quota_error, _truncate_tool_call_args_json, )
 
 _REQ = httpx.Request("POST", "http://x")
 

@@ -699,6 +699,7 @@ def is_todo_tool_call(tool_call: Any) -> bool:
 
 
 from tools.registry import registry, tool_error
+import json
 
 registry.register(
     name="todo_list", toolset="todo", schema=TODO_SCHEMA, check_fn=check_todo_requirements,

@@ -28,6 +28,7 @@ from tools.url_safety import is_safe_url
 from tools.url_safety import create_ssrf_safe_client
 from tools.website_policy import check_website_access
 from tools.skills_hub_models import _normalize_lock_install_path, _validate_skill_name
+import json
 
 logger = logging.getLogger(__name__)
 

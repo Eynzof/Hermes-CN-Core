@@ -23,6 +23,7 @@ from datetime import datetime, timedelta, timezone, UTC
 from pathlib import Path
 
 import pytest
+import orjson
 
 
 @pytest.fixture(autouse=True)

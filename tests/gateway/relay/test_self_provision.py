@@ -17,6 +17,7 @@ import os
 import pytest
 
 from gateway import relay
+import json
 
 
 @pytest.fixture(autouse=True)

@@ -468,5 +468,3 @@ def test_group_topic_skill_binding_second_topic():
 
 
 # ── _build_message_event: from_user=None fallback in DMs ──
-
-

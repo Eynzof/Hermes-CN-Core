@@ -350,6 +350,16 @@ class TestAggregateChatStream:
             server.shutdown()
             client.close()
 
+    # [F12] POSIX-only wakeup: the fail-fast bound below is met by the watchdog's FD-safe
+    # socket shutdown (agent/agent_runtime_helpers._shutdown_socket -> shutdown(SHUT_RDWR),
+    # never close(), #30858) releasing the reader parked in recv(). POSIX honours that for a
+    # blocked recv(); Windows does not — a local shutdown() leaves the pending recv() parked
+    # until the request read timeout (measured: with and without the preceding settimeout(0);
+    # the same limitation POSIX-gates tests/agent/test_stream_stale_kill_unwedge.py, which
+    # pins the main-loop twin of this kill). Only this end-to-end timing bound needs the
+    # POSIX wakeup: the no-progress window itself is asserted platform-neutrally by
+    # TestCreateWithProgress above.
+    @pytest.mark.platforms("linux")
     @pytest.mark.parametrize("via_relay_seam", [False, True], ids=["primary", "recovery_rung"])
     def test_silent_stream_fails_fast_through_the_real_transport(self, sse, via_relay_seam):
         """#100501: an endpoint that sends one chunk then goes silent fails at the task's no-progress

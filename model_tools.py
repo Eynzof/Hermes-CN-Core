@@ -230,6 +230,18 @@ TOOL_SPECIFIC_ALIASES: Dict[str, Dict[str, str]] = {
         "wait": "block",
     },
 }
+
+# Per-tool keys the HANDLER accepts but the advertised schema deliberately
+# omits. They are valid parameters, not drift, so the repair must never rename
+# them away: without this list the fuzzy fallback eats the `patch` tool's V4A
+# payload (`patch` is one edit from `path`, ratio 0.89 >= the 0.80 cutoff) and
+# a legitimate multi-file patch — which the handler accepts from EVERY model —
+# arrives as `path=<patch text>` and fails. See tools/file_tools.py PATCH_SCHEMA
+# (the V4A layer is advertised to OpenAI-family mains only) and its
+# ``cross_profile`` note.
+TOOL_ACCEPTED_EXTRA_KEYS: Dict[str, frozenset[str]] = {
+    "patch": frozenset({"mode", "patch", "cross_profile"}),
+}
 logger = logging.getLogger(__name__)
 # Optional callback for notifying external systems (TUI, ACP) about argument repairs.
 # Signature: (tool_name: str, original_keys: list, repaired_keys: list) -> None
@@ -1191,16 +1203,20 @@ def repair_tool_arg_keys(
 
     if _recursive:
         properties = _properties
+        extra_keys: frozenset[str] = frozenset()
     else:
         schema = registry.get_schema(tool_name)
         if not schema:
             return args
         properties = (schema.get("parameters") or {}).get("properties")
+        # Handler-accepted keys the schema does not advertise are "already ok"
+        # too; treating them as drift renames them onto a lookalike field.
+        extra_keys = TOOL_ACCEPTED_EXTRA_KEYS.get(tool_name, frozenset())
 
     if not properties:
         return args
 
-    expected = set(properties.keys())
+    expected = set(properties.keys()) | extra_keys
     if not expected:
         return args
 

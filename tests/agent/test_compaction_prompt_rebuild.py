@@ -260,7 +260,10 @@ class TestWorkspaceSnapshotPinnedAcrossCompaction(unittest.TestCase):
         from pathlib import Path
         from agent.system_prompt import build_system_prompt
 
-        tmp = Path(tempfile.mkdtemp(prefix="test-pinned-resume-"))
+        # Canonical (long-form) temp dir: production probes the workspace with Path.resolve(),
+        # which expands a Windows 8.3 TEMP (C:\Users\MAXWEL~1\...) — the raw mkdtemp string
+        # never matches the "- Root:" line the block emits.
+        tmp = Path(tempfile.mkdtemp(prefix="test-pinned-resume-")).resolve()
         try:
             repo, other = _init_repo(tmp / "proj", "init commit"), _init_repo(tmp / "other", "init other")
 
@@ -290,7 +293,10 @@ class TestWorkspaceSnapshotPinnedAcrossCompaction(unittest.TestCase):
         from pathlib import Path
         from agent.system_prompt import build_system_prompt
 
-        tmp = Path(tempfile.mkdtemp(prefix="test-pinned-empty-"))
+        # Canonical (long-form) temp dir: production probes the workspace with Path.resolve(),
+        # which expands a Windows 8.3 TEMP (C:\Users\MAXWEL~1\...) — the raw mkdtemp string
+        # never matches the "- Root:" line the block emits.
+        tmp = Path(tempfile.mkdtemp(prefix="test-pinned-empty-")).resolve()
         try:
             repo = _init_repo(tmp / "proj", "init commit")
             stored = f"Host: x\nUser home directory: /h\nCurrent working directory: {repo}\n\nBODY"

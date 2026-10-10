@@ -16,11 +16,16 @@ sys.modules.setdefault("fal_client", types.SimpleNamespace())
 import run_agent
 
 def _patch_bootstrap(monkeypatch):
-    monkeypatch.setattr(run_agent, "get_tool_definitions", lambda **kwargs: [{
+    """Stub the tool registry where production reads it: ``agent/agent_init.py`` resolves these
+    through ``model_tools.*``. The fork's ``run_agent`` lazy re-export shim is gone (upstream
+    reverted the plugin-compat block), so patching ``run_agent`` no longer lands anywhere."""
+    import model_tools
+
+    monkeypatch.setattr(model_tools, "get_tool_definitions", lambda **kwargs: [{
         "type": "function",
         "function": {"name": "t", "description": "t", "parameters": {"type": "object", "properties": {}}},
     }])
-    monkeypatch.setattr(run_agent, "check_toolset_requirements", lambda: {})
+    monkeypatch.setattr(model_tools, "check_toolset_requirements", lambda: {})
 
 class _FakeOpenAIClient:
     api_key = "fake-key"
@@ -202,7 +207,7 @@ class TestCompactionNotification:
             agent, messages=[{"role": "user", "content": "hi"}], system_message="sys",
             user_message="hi", active_system_prompt="sys", conversation_history=[],
             compression_attempts=0, max_compression_attempts=3, effective_task_id="t",
-            final_response=None, turn_exit_reason="unknown",
+            final_response=None, turn_exit_reason="unknown", current_turn_user_idx=0,
         )
         assert verdict.messages is compacted, "compaction result was not adopted"
         assert notified == [agent], "on_context_compacted was not fired after the compaction"

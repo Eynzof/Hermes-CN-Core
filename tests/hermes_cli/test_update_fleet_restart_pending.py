@@ -99,6 +99,10 @@ def _patch_update_deps(monkeypatch, tmp_path, run_side_effect):
     monkeypatch.setattr(update_custody, "run",
                         lambda argv, *, inherit_lock=False, **kw: run_side_effect(list(argv), **kw))
     monkeypatch.setattr(hermes_main, "PROJECT_ROOT", tmp_path)
+    # cmd_update runs the ownership redirect (update_owning_install, upstream) before its
+    # preflight; with an in-checkout .venv it would re-spawn the real updater, so stub it here.
+    from hermes_cli import update_owning_install
+    monkeypatch.setattr(update_owning_install, "retarget_to_owning_install", lambda project_root: None)
     monkeypatch.setattr(update_cmd, "_prepare_updated_checkout", lambda *a, **k: None)
     (tmp_path / ".git").mkdir()
     monkeypatch.setattr(hermes_main, "_resolve_update_branch", lambda args: "main")

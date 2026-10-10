@@ -347,6 +347,10 @@ def _patch_update_flow(monkeypatch, repo, run_real_git=True):
     repo (the whole point of these regressions).
     """
     monkeypatch.setattr(hermes_main, "PROJECT_ROOT", repo)
+    # cmd_update runs the ownership redirect (update_owning_install, upstream) before its
+    # preflight; with an in-checkout .venv it would re-spawn the real updater, so stub it here.
+    from hermes_cli import update_owning_install
+    monkeypatch.setattr(update_owning_install, "retarget_to_owning_install", lambda project_root: None)
     monkeypatch.setattr(hermes_main, "_resolve_update_branch", lambda args: "main")
     monkeypatch.setattr(hermes_main, "_is_windows", lambda: False)
     monkeypatch.setattr(main_install_repair, "_is_windows", lambda: False)

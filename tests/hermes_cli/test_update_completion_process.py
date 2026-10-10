@@ -110,6 +110,11 @@ def transition(tmp_path):
                  package / "source_completion.py")
     shutil.copy2(Path(update_completion.__file__).with_name("update_lock.py"),
                  package / "update_lock.py")
+    # Windows only: joining the bootstrap child's checkout lock goes through
+    # update_lock._pid_alive → hermes_cli._early_recovery._pid_is_running (the stdlib liveness
+    # probe; POSIX children inherit the locked fd instead and never reach it).
+    shutil.copy2(Path(update_completion.__file__).with_name("_early_recovery.py"),
+                 package / "_early_recovery.py")
     shutil.copy2(Path(update_completion.__file__).with_name("_subprocess_compat.py"),
                  package / "_subprocess_compat.py")
     (package / "gitlock.py").write_text(
@@ -192,7 +197,7 @@ def transition(tmp_path):
         "sibling_snapshots": {"work": "work-before"},
         "plan": {"runtimes": [{"kind": "gateway", "profile": "work"}]},
         "receipt": {"update_id": "b" * 32, "outcome": "running", "steps": []},
-        "windows_resume": {"resume_needed": True, "profiles": {"work": [123]}},
+        "windows_resume": {"resume_needed": True, "profiles": {"work": 123}},
     }
     return root, git, old, new, request
 
@@ -254,12 +259,19 @@ def test_old_process_new_git_tree_completes_in_fresh_python(transition, tmp_path
 def _run_cmd_update(monkeypatch, request, capsys):
     """``hermes update --gateway`` whose impl hands this request to the real post-commit completion."""
     from types import SimpleNamespace
-    from hermes_cli import main, update_cmd, update_receipt
+    from hermes_cli import gateway as hermes_gateway, main, update_cmd, update_cmd_windows, update_receipt
 
     monkeypatch.setenv("HERMES_HOME", request["home"])
     monkeypatch.setattr(main, "_update_preflight_handled", lambda args: False)
     monkeypatch.setattr(main, "_install_hangup_protection", lambda **kw: None)
     monkeypatch.setattr(main, "_finalize_update_output", lambda state: None)
+    # The lost child never resumed the paused fleet, so the parent does it here. On Windows that
+    # resume is a real one (a detached watcher process plus a liveness poll): fake the two gateway
+    # seams so the test never spawns a gateway, and keep the success the assertions describe.
+    monkeypatch.setattr(hermes_gateway, "launch_detached_profile_gateway_restart",
+                        lambda profile, old_pid: True)
+    monkeypatch.setattr(update_cmd_windows, "_verify_relaunched_gateways_alive",
+                        lambda token, launched, launched_unmapped: None)
 
     def complete(args, gateway_mode):
         update_receipt.begin_update_receipt()

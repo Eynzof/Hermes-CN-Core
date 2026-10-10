@@ -59,6 +59,9 @@ def checkout(tmp_path, monkeypatch):
     _git(origin, "init", "-q", "-b", "main")
     _git(origin, "config", "user.email", "t@example.invalid")
     _git(origin, "config", "user.name", "t")
+    # Git for Windows' system config ships core.autocrlf=true: a CRLF checkout makes every
+    # LF-written fixture file read as modified, and the update's own merge then refuses to run.
+    _git(origin, "config", "core.autocrlf", "false")
     files = {"utils.py": "OLD = 1\n", "other.py": "a = 1\n", "gone.py": "x = 1\n", "cut.py": "c = 1\n",
              "blank.py": "b = 1\n", "half.py": "h = 1\n", "tool.sh": "echo\n", "multi.py": _MULTI}
     for name, body in files.items():
@@ -77,7 +80,8 @@ def checkout(tmp_path, monkeypatch):
     _git(origin, "update-index", "--chmod=+x", "tool.sh")
     _git(origin, "commit", "-qm", "B")
     root = tmp_path / "install"
-    _git(tmp_path, "clone", "-q", str(origin), str(root))
+    _git(tmp_path, "-c", "core.autocrlf=false", "clone", "-q", str(origin), str(root))
+    _git(root, "config", "core.autocrlf", "false")
     _git(root, "reset", "-q", "--hard", "HEAD~1")
     monkeypatch.setattr("hermes_cli.main.PROJECT_ROOT", root)
     return root, _git(root, "rev-parse", "HEAD"), _git(root, "rev-parse", "origin/main")
@@ -172,8 +176,21 @@ def test_restore_runs_the_installers_store_git_when_path_has_none(checkout, monk
     staged = store / f"git-{version}-win32-x64" / "cmd" / "git.exe"
     staged.parent.mkdir(parents=True)
     calls = tmp_path / "staged-git-calls"
-    staged.write_text(f'#!/bin/sh\necho "$@" >> "{calls}"\nexec "{real_git}" "$@"\n', encoding="utf-8")
+    # A real git staged under the store path: a ``#!/bin/sh`` shim cannot execute on Windows, where
+    # this store layout is exactly the resolution being pinned, and the copy runs on either host.
+    shutil.copy2(real_git, staged)
     staged.chmod(0o755)
+    from hermes_cli import update_custody
+
+    real_custody_run = update_custody.run
+
+    def log_store_git(argv, **kwargs):
+        if argv and str(argv[0]) == str(staged):
+            with open(calls, "a", encoding="utf-8") as handle:
+                handle.write(" ".join(str(part) for part in argv[1:]) + "\n")
+        return real_custody_run(argv, **kwargs)
+
+    monkeypatch.setattr(update_custody, "run", log_store_git)
     with monkeypatch.context() as windows:
         windows.setattr(pm.paths, "store_root", lambda: store)
         windows.setattr(pm, "current_target", lambda: "win32-x64")
@@ -599,6 +616,19 @@ def test_an_empty_head_answer_keeps_the_marker(tmp_path, monkeypatch, capsys):
         return real_run(argv, *args, **kwargs)
 
     monkeypatch.setattr(subprocess, "run", silent)
+
+    # The repair's own git goes through update_custody.run, which on Windows inside an update is a
+    # job-bound Popen, not subprocess.run: patch that seam too, where production reads the git call.
+    from hermes_cli import update_custody
+
+    real_custody_run = update_custody.run
+
+    def silent_custody(argv, **kwargs):
+        if argv and str(argv[0]) == str(stub):
+            return subprocess.CompletedProcess(list(argv), 0, "", "")
+        return real_custody_run(argv, **kwargs)
+
+    monkeypatch.setattr(update_custody, "run", silent_custody)
     assert er.restore_interrupted_pull(root) is False
     assert marker.exists(), "an empty `rev-parse HEAD` deleted the marker over a torn tree"
     assert "Could not read HEAD" in capsys.readouterr().err

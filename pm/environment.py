@@ -289,6 +289,9 @@ class PythonEnvironment:
         # or the venv it writes would record the extended-length one in pyvenv.cfg.
         env.update(UV_PYTHON=native(self.python), UV_PROJECT_ENVIRONMENT=native(self.destination),
                    UV_CACHE_DIR=native(self.cache), UV_PYTHON_DOWNLOADS="never")
+        if os.environ.get("H01_UV_DEBUG"):
+            print("H01UV cwd=%s cmd=%s env=%s" % (cwd, args, {k: v for k, v in env.items() if k.startswith("UV_")}),
+                  file=sys.stderr, flush=True)
         with tempfile.TemporaryDirectory(prefix="pm-uv-config-") as config:
             env.update(XDG_CONFIG_HOME=config, XDG_CONFIG_DIRS=config)
             command = [native(self.uv), *map(native, args)]

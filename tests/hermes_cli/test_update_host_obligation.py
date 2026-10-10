@@ -176,6 +176,7 @@ def test_recovery_keeps_separate_processes_separate(tmp_path, monkeypatch):
 
 
 
+@pytest.mark.platforms("posix")  # chmod cannot make a directory unwritable on Windows
 @pytest.mark.skipif(getattr(os, "geteuid", lambda: 1)() == 0, reason="root ignores directory permissions")
 def test_unwritable_host_state_dir_still_arms_the_obligation(two_profiles, no_live_fleet, monkeypatch, tmp_path):
     """An unwritable host state dir must never silently disarm the update→restart obligation.
@@ -299,6 +300,7 @@ def test_every_host_record_write_makes_its_rename_durable(tmp_path, monkeypatch)
     assert events == ["file", "rename", "dir"] * 2
 
 
+@pytest.mark.platforms("posix")  # chmod cannot make a directory unreadable on Windows
 @pytest.mark.skipif(getattr(os, "geteuid", lambda: 1)() == 0, reason="root ignores directory permissions")
 @pytest.mark.parametrize("unreadable", ["roster", "profile"])
 def test_an_unreadable_profile_roster_never_admits_a_private_restart_marker(
@@ -371,4 +373,6 @@ def test_recovery_host_state_dir_matches_the_gateway_resolver(monkeypatch, env):
     for name, value in env.items():
         monkeypatch.setenv(name, value)
 
-    assert recovery._host_state_dir() == str(_get_lock_dir())
+    # A POSIX-spelled override is one directory on Windows too; compare normalized, not the
+    # separator spelling each resolver happens to emit there.
+    assert os.path.normpath(recovery._host_state_dir()) == os.path.normpath(str(_get_lock_dir()))

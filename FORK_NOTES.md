@@ -411,6 +411,24 @@ reviewed in batches. Fork-owned files kept their `P-NNN` intent verbatim.
 
 ### Follow-ups / known issues
 
+
+Remaining red after this sync (the triage queue, by root cause):
+
+- `scripts/install.ps1` lost the fork's **autostash conflict recovery** (the block around
+  `restoring local changes hit conflicts` in the pre-sync file, lines ~2663-2698 of
+  `backup/dev-fix-20261009-pre-upstream-merge:scripts/install.ps1`): upstream's rewritten installer
+  still stashes before pulling but only fast-forwards afterwards. Three tests assert the recovery
+  (`tests/scripts/install/test_install_autostash_conflict_recovery.py`, `…_lockfile_churn.py`,
+  `…_unmerged_index.py`) — port the block into the merged installer or retire those tests deliberately.
+- `tests/pm/*` (7 files): upstream's new `pm` package manager needs `setuptools` metadata for
+  `export-root`; the local environment cannot resolve it, so `test_build_operations` and friends fail
+  for environment reasons before the merged code is exercised.
+- `tests/tools/*` (52 files): a mix of (a) genuinely restored-vs-superseded behaviour
+  (`test_file_operations.py`'s Windows shell probe shape, `test_mcp_tool.py`'s graceful-fallback and
+  metrics classes) and (b) load-induced flakes — quiet re-runs pass; every agent report in
+  `.kimix_cache/fixgroups*/` records the timings.
+- Pre-existing failures reproduce on the untouched fork baseline too (the 2026-09-20 record documents
+  ~206 such batch-composition failures), so the final number has to be read against that baseline.
 - `apps/desktop` TypeScript is not compiled in this environment (no `node_modules`); TS/TSX changes were
   reviewed by parse + eye — run `tsc`/`vitest` in CI.
 - The bundled memory providers are fork-maintained now that upstream ships them from the catalog; their

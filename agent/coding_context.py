@@ -103,11 +103,10 @@ CODING_AGENT_GUIDANCE = (
     "`.env`/credential files alone. Workspace snapshot is from session start — re-run `git status`/"
     "`git branch` before relying on it. Be concise."
 )
-_TODO_SENTENCE = (
-    "- Track multi-step work with `todo_list`. Reference code as "
-    "`path:line` instead of pasting whole files."
-)
-_NO_TODO_SENTENCE = "- Reference code as `path:line` instead of pasting whole files."
+# The sentence this gate targets must be the one CODING_AGENT_GUIDANCE actually ships:
+# upstream's bullet wording was never in the fork's brief, so the replace was a no-op.
+_TODO_SENTENCE = "Track multi-step work with `todo_list`; reference code as `path:line`."
+_NO_TODO_SENTENCE = "Reference code as `path:line`."
 # Clearly non-coding skill categories (deny-list; coding-adjacent and custom ones keep full entries).
 _NON_CODING_SKILL_CATEGORIES = (
     "apple", "communication", "cooking", "creative", "email", "finance", "gaming", "gifs", "health", "media",

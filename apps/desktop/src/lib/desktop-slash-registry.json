@@ -109,6 +109,8 @@
   "/subscription": null,
   "/suggest": null,
   "/suggestions": null,
+  "/sw": null,
+  "/swarm": null,
   "/tasks": null,
   "/timestamps": null,
   "/title": null,

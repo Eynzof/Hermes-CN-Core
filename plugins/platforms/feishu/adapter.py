@@ -1294,18 +1294,7 @@ def _load_lark_oapi() -> bool:
     with _lark_import_lock:
         if lark is not None:
             return True
-        import importlib
-        try:
-            bound: dict[str, Any] = {"lark": importlib.import_module("lark_oapi")}
-            for module_name, names in _LARK_SDK_IMPORTS:
-                module = importlib.import_module(module_name)
-                bound.update({name: getattr(module, name) for name in names})
-            bound["FeishuWSClient"] = importlib.import_module("lark_oapi.ws").Client
-        except (ImportError, AttributeError):
-            return False
-        bound["FEISHU_AVAILABLE"] = True
-        globals().update(bound)
-        return True
+        return ensure_and_bind("platform.feishu", _lark_bindings, globals(), prompt=False)
 
 
 def feishu_deps_present() -> bool:

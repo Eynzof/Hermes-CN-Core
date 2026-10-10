@@ -247,6 +247,7 @@ jobs:
 
   contributor-check:
     name: Check contributors
+    needs: detect
     if: needs.detect.outputs.python == 'true'
     uses: ./.github/workflows/contributor-check.yml
     with:

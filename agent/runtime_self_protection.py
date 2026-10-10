@@ -184,7 +184,11 @@ def is_protected_path(path: str, *, follow: bool = True) -> Optional[str]:
 
 def _split_words(segment: str) -> list[str]:
     try:
-        return shlex.split(segment)
+        # posix=False on Windows keeps backslashes literal (a POSIX split eats them
+        # as escapes, so an unquoted ``rm -rf C:\...\venv`` never matched);
+        # quotes then stay on the token and ``_normalize_path`` strips them.
+        # Same Windows fix as agent/subdirectory_hints.py (FORK_NOTES 282cfeeca).
+        return shlex.split(segment, posix=os.name == "posix")
     except ValueError:
         return segment.split()
 

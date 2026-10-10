@@ -107,7 +107,7 @@ def test_remote_read_budget_charged_before_remote_read(monkeypatch):
         )
         is True
     )
-    assert [Path(p) for p in reads] == [Path("/remote/a.sh").resolve()]
+    assert [Path(p).as_posix() for p in reads] == [Path("/remote/a.sh").as_posix()]
 
 
 def test_cumulative_text_budget_bounds_recursive_scan(monkeypatch, tmp_path):

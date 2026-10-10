@@ -18,6 +18,8 @@ import hermes_cli.browser_connect as bc
 import tools.computer_use.tool as cu
 import tools.vision_tools as vt
 
+pytestmark = pytest.mark.platforms("posix")  # POSIX mode bits are not enforced on Windows
+
 
 def _mode(path) -> int:
     return stat.S_IMODE(os.stat(path).st_mode)

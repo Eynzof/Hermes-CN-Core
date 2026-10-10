@@ -807,8 +807,6 @@ class TestSendTimeEmptyAssistantPad:
              and not m.get("tool_calls")),
             None,
         )
-        from agent.agent_runtime_helpers_placeholders import _INTERRUPTED_PLACEHOLDER
-        assert stub is not None and stub["content"] == _INTERRUPTED_PLACEHOLDER
         assert stub is None, f"empty stub should be dropped, got {stub!r}"
         # CN fork contract (P-024): the empty partial-stream stub is DROPPED
         # at the send boundary (sanitize_api_messages drops empty-content

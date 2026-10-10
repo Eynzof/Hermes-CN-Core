@@ -383,7 +383,11 @@ _SLACK_RESERVED_COMMANDS = frozenset({
 # parity test reads this set. Aliases are never pinned ahead of canonicals.
 _SLACK_VIA_HERMES_ONLY = frozenset({
     "topup", "moa", "debug", "egress", "init", "version", "diff", "update", "heartbeat",
-    "refine", "review", "pause", "whoami", "platform", "insights", "login", "initiate-setup"})
+    "refine", "review", "pause", "whoami", "platform", "insights", "login", "initiate-setup",
+    # The registry reached Slack's 50-slash cap, so /usage (a one-off lookup, same class as
+    # version/whoami/diff) rides /hermes usage on Slack instead of silently displacing another
+    # command. See the parity test in tests/hermes_cli/test_commands.py.
+    "usage"})
 
 
 def _sanitize_slack_name(raw: str) -> str:

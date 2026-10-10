@@ -56,6 +56,11 @@ ALLOWED_RAW_SPAWN_ENV_FILES = {
     "hermes_cli/gateway.py",
     "hermes_cli/stderr_timestamp.py",
     "hermes_cli/profiles.py",
+    # The ``__gateway-restart-watch`` hidden subcommand (main.py): the child it respawns IS the
+    # gateway — Hermes itself — so it must keep the launcher's whole environment (profile home,
+    # bot/relay tokens, the updater's overlayed vars), exactly like the gateway respawn watcher
+    # above. Scrubbing would strip the tokens the restarted gateway is serving with.
+    "hermes_cli/main.py",
     # The compute host runs agent turns for the dashboard: Home Assistant tools, Modal/Daytona
     # backends and platform sends read keys that exist only in the process env (#65895).
     "tui_gateway/host_supervisor.py",

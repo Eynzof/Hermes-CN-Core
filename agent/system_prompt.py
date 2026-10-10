@@ -706,7 +706,6 @@ def _post_workspace_parts(agent: Any) -> list[str]:
             pass  # Probe failure must never block prompt build.
     if getattr(agent, "_bot_mode_protocol", True):
         parts.extend(_bot_mode_parts(agent))
-    parts += [_active_profile_line(agent)]
     if os.environ.get("HERMES_DESKTOP_MANAGED") == "1":
         parts.append(
             f"Managed Desktop scope: {get_hermes_home()} is the authoritative HERMES_HOME "

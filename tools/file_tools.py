@@ -551,6 +551,13 @@ def _record_successful_read(task_data: dict, task_id: str, path: str, resolved_s
     skill_view so a follow-up skill_manage(patch) is accepted).
     """
     version = (snapshot or _file_version(resolved_str)) if version_before is not None else None
+    try:
+        import os as _os_dbg
+        _fh = open("C:/dev/Hermes-CN-Core/.kimix_cache/g01/dbg_read.txt", "a", encoding="utf-8")
+        _fh.write("READ task=%r res=%r partial=%r ver_before=%r snapshot=%r ver=%r meta_now=%r" % (task_id, resolved_str, partial, version_before, repr(snapshot)[:60], repr((snapshot or _file_version(resolved_str)) if version_before is not None else None)[:200], repr(_file_metadata(resolved_str))) + chr(10))
+        _fh.close()
+    except Exception:
+        pass
     stable = version is not None and version[:-1] == version_before == _file_metadata(resolved_str)
     complete = False
     with _read_tracker_lock:

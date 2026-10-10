@@ -23,6 +23,11 @@ from __future__ import annotations
 import pytest
 
 
+# Test modules in this directory that assert on hermes_logging's own behaviour; the
+# _no_real_file_logging stub below must not apply to them.
+_REAL_LOGGING_MODULES = frozenset({"test_setup_logging_profile_scope.py"})
+
+
 @pytest.fixture(autouse=True)
 def _fresh_structured_output_memo(monkeypatch):
     """The aux client remembers routes that rejected ``response_format`` for the whole process;
@@ -45,8 +50,8 @@ def _fast_retry_backoff(request, monkeypatch):
     # server-error retries don't burn real wall-clock seconds.
     from agent import retry_utils as _retry_utils
     monkeypatch.setattr(_retry_utils, "jittered_backoff", lambda *a, **k: 0.0)
-@pytest.fixture(autouse=True, scope="session")
-def _no_real_file_logging():
+@pytest.fixture(autouse=True)
+def _no_real_file_logging(request):
     """Keep tests in this directory off the real on-disk log pipeline.
 
     Every ``AIAgent()`` construction calls ``hermes_logging.setup_logging()``,
@@ -61,16 +66,26 @@ def _no_real_file_logging():
     INTERNALERROR after the last test (observed repeatedly as
     "1480 passed, 26 skipped" followed by INTERNALERROR).
 
-    No test in this directory asserts on hermes_logging behavior, so stub
-    the two setup entry points to no-ops for the whole session.  Tests for
-    hermes_logging itself live outside tests/run_agent and are unaffected.
-    Also stop any listener that was already started before this fixture ran
-    (e.g. by an import-time agent construction).
+    Stub the two setup entry points to no-ops per test, and stop any listener
+    already running (e.g. started by an import-time agent construction).
+    Modules that assert on ``hermes_logging``'s own behaviour (see
+    ``_REAL_LOGGING_MODULES``) are exempt: they drive the real pipeline and
+    only ever point it at ``tmp_path`` homes.
     """
     try:
         import hermes_logging as hl
     except ImportError:
         yield
+        return
+
+    if request.node.path.name in _REAL_LOGGING_MODULES:
+        try:
+            yield
+        finally:
+            try:
+                hl._stop_queue_listener()
+            except Exception:
+                pass
         return
 
     real_setup = hl.setup_logging

@@ -275,11 +275,16 @@ def test_ripgrep_description_mentions_ripgrepy():
 
 
 @pytest.mark.platforms("windows")
-def test_ensure_dependency_uses_powershell_on_windows(tmp_path):
+def test_ensure_dependency_uses_powershell_on_windows(tmp_path, monkeypatch):
     """``windows_only``: the assertion is that we shell out to a real
     PowerShell. Faking ``_IS_WINDOWS`` on Linux also required faking
     ``shutil.which`` into inventing a powershell.exe that isn't there."""
     from hermes_cli.dep_ensure import ensure_dependency
+    # The real refresh replaces os.environ["PATH"] with the Windows registry's: a global
+    # side effect this test neither asserts nor needs, and one that leaks into every
+    # later test in the same process (a PM worker then resolves a different uv and its
+    # lock's relative find-links paths stop resolving).
+    monkeypatch.setattr("hermes_cli.dep_ensure.refresh_env_from_registry", lambda *a, **k: None)
     scripts_dir = tmp_path / "scripts"
     scripts_dir.mkdir(parents=True)
     (scripts_dir / "install.ps1").write_text("# fake")

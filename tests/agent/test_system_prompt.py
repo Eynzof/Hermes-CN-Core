@@ -248,11 +248,14 @@ class TestProfileScopeHint:
         monkeypatch.setenv("HERMES_HOME", str(active_home))
         monkeypatch.delenv("HERMES_DESKTOP_MANAGED", raising=False)
 
-        stable = _stable_prompt(_make_agent())
+        # The profile line names this home's path, so it rides the VOLATILE tier (the stable
+        # prefix must stay byte-identical across every home/profile on the host); assert on the
+        # rendered prompt, not the stable tier alone.
+        prompt = "\n\n".join(_prompt_parts(_make_agent()).values())
 
-        assert f"This session reads and writes {active_home}/" in stable
-        assert f"{active_home}/profiles/coder" not in stable
-        assert f"The default profile's data lives at {root}/skills/" in stable
+        assert f"This session reads and writes {active_home}/" in prompt
+        assert f"{active_home}/profiles/coder" not in prompt
+        assert f"The default profile's data lives at {root}/skills/" in prompt
 
     def test_managed_desktop_pins_authoritative_home(self, monkeypatch, tmp_path):
         active_home = tmp_path / "managed-runtime" / "hermes-home"
@@ -901,7 +904,10 @@ class TestSessionStartLike:
             session_start=datetime(2026, 1, 1, 7, 30),
         )
         start = _session_start_like(agent, now)
-        assert start.strftime("%Y-%m-%d") == "2026-01-01"
+        # The stamp-less session id must fall through to agent.session_start, rendered in
+        # now's zone. Assert the instant, not just the date: a naive 07:30 stamp sits on the
+        # previous UTC day for any host east of UTC+7:30.
+        assert start == datetime(2026, 1, 1, 7, 30).astimezone(now.tzinfo)
 
     @pytest.mark.skipif(not hasattr(time, "tzset"), reason="needs a POSIX process timezone switch")
     def test_stamp_from_other_dst_half_keeps_its_own_offset(self):

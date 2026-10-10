@@ -492,8 +492,13 @@ class TestScanSkillCommands:
             scan_skill_commands()
 
         # Every mid-scan observation shows the complete previous map, never a
-        # partial one growing from 0.
-        assert observed_sizes == [skill_count] * skill_count
+        # partial one growing from 0. The sample COUNT is filesystem-dependent:
+        # `_skills_scan_signature` embeds raw directory mtimes and NTFS bumps a
+        # parent's mtime lazily, so on Windows the catalog cache can miss and
+        # re-parse every skill — which only adds observations, each of them still
+        # the previous, complete map.
+        assert observed_sizes, "the scan must parse the skills it publishes"
+        assert observed_sizes == [skill_count] * len(observed_sizes)
 
     def test_non_ascii_name_registers_command(self, tmp_path):
         """A CJK skill name slugs to itself (punctuation still stripped) instead of "" and being

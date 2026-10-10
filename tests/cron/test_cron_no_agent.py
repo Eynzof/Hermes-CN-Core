@@ -292,14 +292,32 @@ def test_run_job_no_agent_uses_configured_interpreter(hermes_env):
     # A wrapper that re-execs the real interpreter with an env marker.
     wrapper = hermes_env / "venv" / "bin" / "python3"
     wrapper.parent.mkdir(parents=True)
-    wrapper.write_text(
-        f"#!{sys.executable}\n"
-        "import os, sys\n"
-        "env = os.environ.copy()\n"
-        'env["CRON_WRAPPER_USED"] = "1"\n'
-        "os.execve(sys.executable, [sys.executable, *sys.argv[1:]], env)\n"
-    )
-    wrapper.chmod(wrapper.stat().st_mode | _stat.S_IXUSR)
+    if sys.platform == "win32":
+        # Windows cannot exec a shebang script on PATH-less argv (WinError 193), and the
+        # interpreter field must name a real ``python*.exe`` (cron/lifecycle_guard's image
+        # check): the shim is a copy of the interpreter plus a pyvenv.cfg that makes it a
+        # venv of its own, so the marker rides its site-packages/sitecustomize.py. The
+        # configured interpreter still IS the process that runs the script.
+        import shutil
+        from pathlib import Path
+
+        wrapper = hermes_env / "venv" / "Scripts" / "python3.exe"
+        wrapper.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(sys.executable, wrapper)
+        shutil.copy2(Path(sys.executable).parent.parent / "pyvenv.cfg", hermes_env / "venv" / "pyvenv.cfg")
+        site_packages = hermes_env / "venv" / "Lib" / "site-packages"
+        site_packages.mkdir(parents=True, exist_ok=True)
+        (site_packages / "sitecustomize.py").write_text(
+            'import os\nos.environ["CRON_WRAPPER_USED"] = "1"\n', encoding="utf-8")
+    else:
+        wrapper.write_text(
+            f"#!{sys.executable}\n"
+            "import os, sys\n"
+            "env = os.environ.copy()\n"
+            'env["CRON_WRAPPER_USED"] = "1"\n'
+            "os.execve(sys.executable, [sys.executable, *sys.argv[1:]], env)\n"
+        )
+        wrapper.chmod(wrapper.stat().st_mode | _stat.S_IXUSR)
 
     script_path = hermes_env / "scripts" / "marker.py"
     script_path.write_text(

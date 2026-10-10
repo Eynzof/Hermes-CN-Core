@@ -143,7 +143,7 @@ class TestSubdirectoryHintTracker:
             result = tracker.check_tool_call("read_file", {"path": str(sub / "file.py")})
         assert result is not None
         assert "HEAD-MARKER" in result and "TAIL-MARKER" in result
-        assert "truncated AGENTS.md" in result and str(Path("bigdir") / "AGENTS.md") in result
+        assert "truncated AGENTS.md" in result and "bigdir/AGENTS.md" in result
         assert len(result) < len(body)
         assert any("TRUNCATED" in r.message and "AGENTS.md" in r.message for r in caplog.records)
         # A preview capped by a constant is not a context_file_max_chars problem: no chat status warning is
@@ -431,7 +431,13 @@ class TestHomeWorkingDirGuard:
     @pytest.fixture
     def home_tree(self, tmp_path, monkeypatch):
         """A fake $HOME holding unrelated hint files across its subtree."""
-        monkeypatch.setenv("HOME", str(tmp_path))  # Path.home() reads os.environ on macOS fallback
+        # Path.home() keys off USERPROFILE on native Windows and HOME elsewhere, so point
+        # both at the fake home and drop the HOMEDRIVE/HOMEPATH fallback (see
+        # tests/agent/test_image_routing.py::test_finds_home_relative_path).
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+        monkeypatch.delenv("HOMEDRIVE", raising=False)
+        monkeypatch.delenv("HOMEPATH", raising=False)
         for rel in ("notes/AGENTS.md", ".hermes/AGENTS.md", ".hermes/skills/s1/AGENTS.md",
                     "projects/whatever/CLAUDE.md"):
             p = tmp_path / rel

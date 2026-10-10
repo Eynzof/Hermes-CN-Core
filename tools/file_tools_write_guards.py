@@ -581,6 +581,7 @@ def _stale_overwrite_blocker(filepath: str, resolved: str | None, task_id: str) 
     if file_state.guard_disabled():
         return None
     stale = file_state.check_stale(task_id, resolved) if resolved else None
+    open("C:/dev/Hermes-CN-Core/.kimix_cache/g01/dbg_guard.txt","a",encoding="utf-8").write(repr(resolved) + " -> " + repr(stale) + chr(10))
     if stale:
         return stale
     if _read_mtime_drifted(filepath, task_id):

@@ -14,6 +14,7 @@ Regression tests for two bugs in WhatsAppAdapter.connect():
 
 import asyncio
 import signal
+import subprocess
 import sys
 import types
 from pathlib import Path
@@ -470,6 +471,7 @@ class TestHttpSessionLifecycle:
         assert mock_run.call_args.args[0] == ["taskkill", "/PID", "12345", "/T"]
         mock_run.assert_called_once_with(
             ["taskkill", "/PID", "12345", "/T"],
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             # No explicit encoding: taskkill prints in the OEM/ANSI codepage
             # (GBK on zh-CN Windows) — locale decode + replace, never strict.

@@ -58,7 +58,15 @@ _allowlist_write_lock = threading.Lock()
 
 
 def _home_key() -> str:
-    return str(get_hermes_home().expanduser().resolve())
+    """Canonical home key for this scope — same spelling every other registry uses.
+
+    ``str(path.resolve())`` keeps the on-disk letter case, while ``hermes_home_key()``
+    normcases it; on Windows the two spellings of ONE home then differ, so a caller that
+    looks the registration up by ``hermes_home_key(profile)`` (the cron external worker
+    does) never finds it.
+    """
+    from hermes_constants import hermes_home_key
+    return hermes_home_key(get_hermes_home())
 
 
 def _forget_home_registrations(registry: set[tuple], lock: threading.Lock) -> None:

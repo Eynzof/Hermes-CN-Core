@@ -1782,11 +1782,24 @@ class ProcessRegistry(ProcessTerminationMixin, ProcessCheckpointMixin):
         parent's pipe FDs, which is exactly the retained-resource leak.
         """
         proc = session.process
+        reader = session._reader_thread
+        # A live reader parked in a blocking read holds its buffered stream's lock, and
+        # closing that stream from another thread waits for the lock — forever when the
+        # pipe's write end is still open. On Windows a git-bash wrapper is spawned
+        # windowless (CREATE_NO_WINDOW), so Cygwin forks the command through a helper
+        # process that exits immediately: the command's recorded parent is that dead
+        # helper, ``taskkill /T`` and a psutil descendant walk both miss it, and the
+        # kill leaves the orphan holding our pipe. Closing here then deadlocks the kill
+        # (observed: /stop reaping a background ``sleep``). Same rule as the PTY below —
+        # the reader owns the close, via ``_finish_reader`` once its read ends.
+        reader_busy = (reader is not None and reader.is_alive()
+                       and reader is not threading.current_thread())
         if proc is not None:
             for stream in (proc.stdout, proc.stderr, proc.stdin):
-                if stream is not None:
-                    with suppress(OSError, ValueError):  # a stdin flush can hit EPIPE
-                        stream.close()
+                if stream is None or (reader_busy and stream is proc.stdout):
+                    continue
+                with suppress(OSError, ValueError):  # a stdin flush can hit EPIPE
+                    stream.close()
         if session._pty is not None:
             # A live ptyprocess reader sits in a blocking read holding the PTY file
             # object's buffer lock, and that read only ends once every holder of
@@ -2547,7 +2560,7 @@ class ProcessRegistry(ProcessTerminationMixin, ProcessCheckpointMixin):
             self._write_checkpoint()
             return {
                 "status": "killed", "session_id": session.id, "completion_reason": session.completion_reason,
-                "termination_source": session.termination_source, "output": output,
+                "termination_source": session.termination_source, **output,
                 # [CN-fork] P-061: unified process metadata (process age, matching poll()).
                 "elapsed_seconds": round(time.time() - session.started_at, 2) if session.started_at else None}
         except Exception as e:

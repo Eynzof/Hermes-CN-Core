@@ -164,6 +164,11 @@ class TestStreamStaleCircuitBreaker:
         monkeypatch.setenv("HERMES_STREAM_STALE_TIMEOUT", "0.1")
         monkeypatch.setenv("HERMES_STREAM_STALE_GIVEUP", "50")
         monkeypatch.setenv("HERMES_STREAM_RETRIES", "0")
+        # [CN-fork] P-022 paces stale aborts (HERMES_STREAM_STALE_KILL_GRACE, floored at 1s), so the
+        # timer cannot re-fire twice inside this scenario's ~1.2s window through the env var alone;
+        # patch the knob where the monitor loop reads it so the repeated-fire case is still exercised.
+        from agent import chat_completion_stream_monitor as csm
+        monkeypatch.setattr(csm, "_stale_kill_grace_seconds", lambda: 0.05)
         agent = _make_anthropic_agent()
         agent._consecutive_stale_streams = 0
         unblock = threading.Event()

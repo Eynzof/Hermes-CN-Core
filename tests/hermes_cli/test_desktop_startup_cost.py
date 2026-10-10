@@ -38,9 +38,13 @@ def test_current_packaged_launch_does_not_require_npm(tmp_path, monkeypatch):
          patch.object(desktop, "_packaged_desktop_launch_command", return_value=[str(executable)]), \
          patch("hermes_cli.main_install_repair._resolve_node_runtime_npm", return_value=None) as npm, \
          patch.object(desktop.subprocess, "run", return_value=subprocess.CompletedProcess([], 0)) as run, \
+         patch.object(desktop.subprocess, "Popen", return_value=subprocess.CompletedProcess([], 0)) as popen, \
          pytest.raises(SystemExit) as exited:
         desktop.cmd_gui(args)
     assert exited.value.code == 0
     npm.assert_not_called()
-    run.assert_called_once()
+    # POSIX/macOS keep the packaged launch in the foreground (subprocess.run);
+    # Windows detaches it with a Popen so it survives the launching shell.
+    # Either way it is launched exactly once, with no npm round trip.
+    assert run.call_count + popen.call_count == 1
 

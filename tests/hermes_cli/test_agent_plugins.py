@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -67,11 +68,11 @@ def test_loads_manifest_skill_and_stdio_server(tmp_path: Path) -> None:
     assert package.skills[0].root == skill_dir.resolve()
     server = package.mcp_servers["worker"]
     assert server["command"] == "python"
-    assert server["args"] == [str(root.resolve()) + "/server.py", "${UNKNOWN}"]
+    assert server["args"] == [str(root.resolve() / "server.py"), "${UNKNOWN}"]
     assert server["cwd"] == str(root.resolve())
     assert server["env"]["PLUGIN_ROOT"] == str(root.resolve())
     assert server["env"]["PLUGIN_DATA"] == str((tmp_path / "data").resolve())
-    assert server["env"]["CACHE"] == str((tmp_path / "data").resolve()) + "/cache"
+    assert server["env"]["CACHE"] == str((tmp_path / "data").resolve() / "cache")
     assert (tmp_path / "data").is_dir()
 
 
@@ -97,11 +98,14 @@ def test_rejects_invalid_manifests(tmp_path: Path, manifest: object) -> None:
 def test_server_declaration_joins_mcp_and_preserves_liveness(tmp_path: Path) -> None:
     app = tmp_path / "example-app"
     app.write_text("", encoding="utf-8")
+    # The declaration is validated per declared OS family, so the fixture must name the host's own
+    # one: a `darwin` location has to be a POSIX absolute path, a `win32` one a drive path.
+    host_os = {"win32": "win32", "darwin": "darwin"}.get(sys.platform, "linux")
     _write_json(
         tmp_path / "plugin.json",
         _manifest(extensions={
             "com.nousresearch.hermes": {"servers": {"worker": {
-                "app": {"darwin": {"presence": "executable", "location": str(app)}},
+                "app": {host_os: {"presence": "executable", "location": str(app)}},
                 "requires": {"app": True},
                 "liveness": {"kind": "static"},
             }}}

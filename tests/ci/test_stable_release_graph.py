@@ -1,6 +1,8 @@
 """The release workflow's dependency graph enforces publication ordering."""
 import os
+import shlex
 import subprocess
+import sys
 from pathlib import Path
 
 from ruamel.yaml import YAML
@@ -318,9 +320,13 @@ def test_docker_recovery_refuses_to_replace_a_divergent_version_tag(tmp_path):
     marker = tmp_path / "create-called"
     bindir = tmp_path / "bin"
     bindir.mkdir()
-    docker = bindir / "docker"
-    docker.write_text(
-        "#!/usr/bin/env python3\n"
+    # The step runs under bash and calls both `docker` and `python3`. On Windows the
+    # host's `python3` is normally the WindowsApps Store stub, and an extension-less
+    # shebang file is not executable through CreateProcess — so both names are shims
+    # behind a ``/bin/sh`` trampoline pointing at THIS interpreter (the same shape
+    # tests/ci/workflow_steps.py uses for a replayed step).
+    docker_driver = bindir / "docker-driver.py"
+    docker_driver.write_text(
         "import json, os, pathlib, sys\n"
         "if 'create' in sys.argv:\n"
         "    pathlib.Path(os.environ['CREATE_MARKER']).write_text('called')\n"
@@ -328,11 +334,23 @@ def test_docker_recovery_refuses_to_replace_a_divergent_version_tag(tmp_path):
         "print(json.dumps({'manifests': [{'digest': 'sha256:' + 'c' * 64}]}))\n",
         encoding="utf-8",
     )
-    docker.chmod(0o755)
+    for name, extra in (("docker", (str(docker_driver),)), ("python3", ())):
+        shim = bindir / name
+        shim.write_text(
+            f"#!/bin/sh\nexec {shlex.quote(sys.executable)} "
+            + "".join(f"{shlex.quote(item)} " for item in extra) + '"$@"\n',
+            encoding="utf-8",
+        )
+        shim.chmod(0o755)
+    # The shim dir and this interpreter go in front of the host PATH. Entries are POSIX
+    # paths, but the list keeps the host separator: bash on Windows converts a
+    # ";"-joined Win32 PATH itself (a ":"-joined one loses its own /usr/bin).
+    env_path = os.pathsep.join((bindir.as_posix(), Path(sys.executable).parent.as_posix(),
+                                os.environ.get("PATH", "")))
     result = subprocess.run(
         ["bash", "-e", "-o", "pipefail", "-c",
-         step["run"].replace("/tmp/digests", str(digest_dir))], cwd=tmp_path,
-        env={**os.environ, "PATH": f"{bindir}:{os.environ['PATH']}",
+         step["run"].replace("/tmp/digests", digest_dir.as_posix())], cwd=tmp_path,
+        env={**os.environ, "PATH": env_path,
              "IMAGE_NAME": "owner/repo", "RELEASE_TAG": "0.21.5",
              "CREATE_MARKER": str(marker)},
         capture_output=True, text=True, encoding="utf-8",

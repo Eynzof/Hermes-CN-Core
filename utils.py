@@ -1,7 +1,6 @@
 """Shared utility functions for hermes-agent."""
 
 import errno
-import orjson
 import json
 import logging
 import os
@@ -594,6 +593,11 @@ def atomic_roundtrip_yaml_save(path: str | Path, new_state: dict, *,
 
 def safe_json_loads(text: str, default: Any = None) -> Any:
     """Parse JSON, returning *default* on any parse error."""
+    # Imported here, not at module level: PM workers (pm/plugins_state.py) and the
+    # ``python -S -m hermes_cli.main pm repair`` bootstrap import this module on an
+    # interpreter that has only PM's own dependencies (no site-packages/app deps).
+    import orjson
+
     try:
         return orjson.loads(text)
     except (orjson.JSONDecodeError, TypeError, ValueError):

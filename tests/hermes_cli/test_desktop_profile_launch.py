@@ -82,8 +82,15 @@ def _launch_command(tmp_path, monkeypatch, argv: list[str], *, active_profile: s
     (project / "apps" / "desktop").mkdir(parents=True)
     (project / "apps" / "desktop" / "package.json").write_text("{}", encoding="utf-8")
     exe = _packaged_exe(project)
-
+    exe = _packaged_exe(project)
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    # The platform default home — and so the profile store production resolves —
+    # is ~/.hermes on POSIX but %LOCALAPPDATA%\hermes on Windows. Pin it to the
+    # fixture so the profiles this test creates are the ones lookup finds.
+    import hermes_constants
+
+    monkeypatch.setattr(
+        hermes_constants, "_get_platform_default_hermes_home", lambda: tmp_path / ".hermes")
     monkeypatch.delenv("HERMES_HOME", raising=False)
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg"))
     monkeypatch.setenv("GNOME_KEYRING_CONTROL", "/run/user/1000/keyring")
@@ -110,7 +117,11 @@ def _launch_command(tmp_path, monkeypatch, argv: list[str], *, active_profile: s
         calls.append(list(cmd))
         return subprocess.CompletedProcess(cmd, 0)
 
+    # The packaged launch goes through subprocess.run on POSIX/macOS and through a
+    # detached subprocess.Popen on Windows (no console inheritance) — patch both
+    # spawn seams so the argv is captured on either host.
     monkeypatch.setattr(subprocess, "run", _run)
+    monkeypatch.setattr(subprocess, "Popen", _run)
     with pytest.raises(SystemExit) as exc:
         cli_main.cmd_gui(_ns())
     assert exc.value.code == 0

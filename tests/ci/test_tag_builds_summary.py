@@ -15,8 +15,16 @@ from tests.ci.test_desktop_release_tag_admission import _workflow
 from tests.scripts.test_release_r2 import r2_server
 
 
+@pytest.mark.platforms("posix")
 @pytest.mark.parametrize("gh_available", [False, True])
 def test_admitted_failure_publishes_tag_info_without_promoting_channel(tmp_path, r2_server, gh_available):
+    """POSIX-only: the step's ``gh`` comes from an extension-less ``/bin/sh`` shim on PATH,
+    and ``scripts/render-builds-table.py`` spawns it with ``subprocess.run(["gh", ...])``.
+    Windows cannot execute such a shim through CreateProcess (it appends ``.exe`` and finds
+    the host's real GitHub CLI instead), so the exit-code contract this test asserts — the
+    step fails exactly when ``gh`` does — is unobservable there. Same seam, same marker as
+    the sibling shim-driven lanes (tests/ci/test_channel_build_publication.py,
+    test_protected_canary_publication.py)."""
     jobs = _workflow()["jobs"]
     table = tag_summary(jobs)
     job = jobs[table]

@@ -4096,6 +4096,26 @@ def _wait_for_gateway_exit(timeout: float = 10.0, force_after: float | None = 5.
     return True
 
 
+def _windows_tcp_listener_present(port: int) -> bool | None:
+    """``True``/``False`` when the socket table can answer for ``port``; ``None`` when not.
+
+    Windows silently DROPS the SYN for a closed (or firewall-filtered) port, so a connect probe
+    times out exactly like a live listener with a saturated accept queue — ``_wait_for_tcp_port_free``
+    would then never report the port free. The listener table answers directly.
+    """
+    try:
+        import psutil
+    except Exception:  # pragma: no cover - psutil is a core dependency
+        return None
+    try:
+        for conn in psutil.net_connections(kind="tcp"):
+            if conn.status == psutil.CONN_LISTEN and conn.laddr and conn.laddr.port == port:
+                return True
+        return False
+    except Exception:  # pragma: no cover - platform/psutil refusal means 'undeterminable'
+        return None
+
+
 def _wait_for_tcp_port_free(host: str, port: int, *, timeout: float = 10.0) -> bool:
     """Wait until nothing accepts TCP connections on host:port.
 
@@ -4105,6 +4125,8 @@ def _wait_for_tcp_port_free(host: str, port: int, *, timeout: float = 10.0) -> b
     """
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
+        if sys.platform == "win32" and _windows_tcp_listener_present(port) is False:
+            return True  # nothing is LISTENing: the port is free (a connect probe would time out)
         try:
             with socket.create_connection((host, port), timeout=0.2):
                 pass

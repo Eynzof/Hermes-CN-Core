@@ -66,6 +66,11 @@ def test_no_workflow_runs_from_a_tag_push():
         # This nightly canary also gates releases with dedicated spend-capped keys.
         if filename == "live-providers.yml" and push == {"tags": ["v*"]}:
             continue
+        # [CN-fork] P-028/P-035b: publishing the CN desktop runtime IS pushing a
+        # ``runtime-v*-cn.*`` tag — the fork's frozen-runtime artifact has no upstream
+        # equivalent, and no branch push can substitute for it.
+        if filename == "release-runtime.yml" and push == {"tags": ["runtime-v*-cn.*"]}:
+            continue
         if not isinstance(push, dict) or not ({"branches", "branches-ignore"} & set(push)) or {"tags", "tags-ignore"} & set(push):
             violations.append(filename)
     assert not violations, "tag-triggered workflows: " + ", ".join(violations)

@@ -269,6 +269,12 @@ def backend_and_session(tmp_path, monkeypatch):
     return backend, session, bind
 
 
+def _gate_ran_in(path, output: str) -> bool:
+    """The gate's ``sh`` prints its cwd: Git-Bash renders ``C:\\Users\\...`` as ``/c/Users/...``,
+    POSIX hosts print the native path. Normalise separators and the drive prefix before comparing."""
+    return str(path).replace("\\", "/").split(":/", 1)[-1] in output.replace("\\", "/")
+
+
 def _evaluate_with_done_judge(mgr):
     with patch("hermes_cli.goals.judge_goal", return_value=("done", "all good", False, None, False)) as judge:
         return mgr.evaluate_after_turn("ready"), judge
@@ -286,7 +292,7 @@ def test_gate_runs_in_the_session_workspace_not_the_backend_directory(backend_an
     judge.assert_not_called()
     assert decision["verdict"] == "gate_failed"
     assert mgr.state.gates[0].last_exit_code == 1
-    assert str(session.resolve()) in mgr.state.gates[0].last_output_tail
+    assert _gate_ran_in(session.resolve(), mgr.state.gates[0].last_output_tail)
 
 
 def test_missing_session_workspace_pauses_instead_of_running_elsewhere(backend_and_session, tmp_path):
@@ -321,4 +327,4 @@ def test_gate_without_a_session_workspace_keeps_the_launch_directory(backend_and
     decision, judge = _evaluate_with_done_judge(mgr)
     judge.assert_called_once()
     assert decision["verdict"] == "done"
-    assert str(backend.resolve()) in mgr.state.gates[0].last_output_tail
+    assert _gate_ran_in(backend.resolve(), mgr.state.gates[0].last_output_tail)

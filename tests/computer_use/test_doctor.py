@@ -20,6 +20,7 @@ shape.
 from __future__ import annotations
 
 import json
+import os
 from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -258,6 +259,15 @@ class TestJsonOutput:
 class TestDriverCmdResolution:
     @staticmethod
     def _executable(path: Path) -> Path:
+        """A stand-in driver binary on disk.
+
+        Windows resolves an explicit override path through PATHEXT (``shutil.which``
+        simulates cmd.exe), so an extension-less shim is not a runnable executable
+        there: the fixture carries the host's suffix. The body is never spawned —
+        ``_drive_health_report`` is mocked.
+        """
+        if os.name == "nt" and not path.suffix:
+            path = path.with_suffix(".exe")
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("#!/bin/sh\nexit 0\n")
         path.chmod(0o755)

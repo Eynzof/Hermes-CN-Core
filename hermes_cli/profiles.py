@@ -3,7 +3,6 @@
 import contextlib
 import json
 import logging
-import orjson
 import os
 from agent.re_compat import re
 import shlex
@@ -1568,13 +1567,15 @@ def seed_profile_skills(profile_dir: Path, quiet: bool = False) -> Optional[dict
 
         result = subprocess.run(
             [sys.executable, "-c",
-             "import json; from tools.skills_sync import sync_skills; "
+             "import orjson; from tools.skills_sync import sync_skills; "
              "r = sync_skills(quiet=True); print(orjson.dumps(r).decode('utf-8'))"],
             env={**os.environ, "HERMES_HOME": str(profile_dir)},
             cwd=str(project_root),
             capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60,
         )
         if result.returncode == 0 and result.stdout.strip():
+            import orjson  # lazy: this module is on the dependency-free bootstrap path
+
             return orjson.loads(result.stdout.strip())
         if not quiet:
             print(f"⚠ Skill seeding returned exit code {result.returncode}")
@@ -2061,9 +2062,12 @@ def _stop_gateway_process(profile_dir: Path) -> None:
     pid_file = profile_dir / "gateway.pid"
     if not pid_file.exists():
         return
+    # Imported here, not at module level: ``hermes_cli.profiles`` resolves the
+    # profile before any dependency activation, and the ``python -S -m
+    # hermes_cli.main -p <profile> pm repair`` bootstrap has no site-packages.
+    import orjson
+
     try:
-        raw = pid_file.read_text(encoding="utf-8-sig").strip()
-        data = json.loads(raw) if raw.startswith("{") else {"pid": int(raw)}
         raw = pid_file.read_text(encoding="utf-8-sig", errors="replace").strip()
         data = orjson.loads(raw) if raw.startswith("{") else {"pid": int(raw)}
         pid = int(data["pid"])
@@ -2432,9 +2436,10 @@ def _migrate_honcho_profile_host(old_name: str, new_name: str, new_dir: Path) ->
         if resolved in seen or not path.is_file():
             continue
         seen.add(resolved)
+        # Lazy import: this module resolves profiles before dependencies activate (see above).
+        import orjson
+
         try:
-            raw = json.loads(path.read_text(encoding="utf-8-sig"))
-        except (OSError, json.JSONDecodeError):
             raw = orjson.loads(path.read_text(encoding="utf-8-sig", errors="replace"))
         except (OSError, orjson.JSONDecodeError):
             continue

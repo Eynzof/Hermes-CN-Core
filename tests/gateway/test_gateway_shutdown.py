@@ -318,14 +318,20 @@ async def test_signal_initiated_shutdown_persists_running_not_stopped(tmp_path, 
 
 # ── #42126: zombie PID must be treated as dead in _pid_exists ────────────────
 # Under systemd Restart=always, the old gateway becomes a zombie (still in the
+# ── #42126: zombie PID must be treated as dead in _pid_exists ────────────────
+# Under systemd Restart=always, the old gateway becomes a zombie (still in the
 # process table, not yet reaped) when the replacement starts. _pid_exists must
 # report it dead so --replace proceeds instead of waiting on it and aborting
 # with exit 1 (a silent crash loop).
-
-
+@pytest.mark.platforms("posix")
 def test_pid_exists_zombie_via_psutil_returns_false(monkeypatch):
     """The live path is psutil. psutil.pid_exists() returns True for a zombie,
-    so _pid_exists must additionally check Process.status() == STATUS_ZOMBIE."""
+    so _pid_exists must additionally check Process.status() == STATUS_ZOMBIE.
+
+    POSIX-only: Windows has no POSIX zombies, and production deliberately skips
+    the ~7 ms status probe there (#115578), letting ``pid_exists()``/OpenProcess
+    decide. The scenario under test is systemd's Restart=always.
+    """
     import sys
     import types
 

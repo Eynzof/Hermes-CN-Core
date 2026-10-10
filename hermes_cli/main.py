@@ -341,7 +341,6 @@ import argparse
 import contextlib
 import json
 
-import orjson
 import shutil
 import subprocess
 from pathlib import Path
@@ -2381,9 +2380,13 @@ def cmd_uninstall(args):
     """
     # Machine-readable snapshot for the desktop uninstall UI; before any TTY gate.
     if getattr(args, "gui_summary", False):
-        from hermes_cli.gui_uninstall import gui_install_summary
+        # Imported here, not at module level: ``python -S -m hermes_cli.main pm repair``
+        # (the repair bootstrap with no site-packages) must stay stdlib-only.
+        import orjson
 
+        from hermes_cli.gui_uninstall import gui_install_summary
         print(orjson.dumps(gui_install_summary()).decode('utf-8'))
+        return
         return
 
     if getattr(args, "data", False):
@@ -2540,9 +2543,16 @@ def cmd_update(args):
     # _old_updater.in_historical_update(); historical on-disk updaters do not
     # declare this local, so only they hand off through retired shims.
     _hermes_current_updater_frame = True
-    from hermes_cli.update_owning_install import retarget_to_owning_install
+    # A sealed build (commit-build artifact, steward/image-managed tree) never updates in place, and
+    # the admission gate below is its answer. Re-running this command on the venv-owning checkout
+    # would import THAT tree's code first and pull it — exactly what the refusal forbids — so the
+    # ownership redirect is for mutable installs only.
+    from hermes_cli.update_contract import evaluate_update_admission
 
-    retarget_to_owning_install(PROJECT_ROOT)
+    if evaluate_update_admission(PROJECT_ROOT) is None:
+        from hermes_cli.update_owning_install import retarget_to_owning_install
+
+        retarget_to_owning_install(PROJECT_ROOT)
     if _update_preflight_handled(args):
         return
     gateway_mode = getattr(args, "gateway", False)
@@ -3663,6 +3673,9 @@ def _register_internal_worker_subcommands(subparsers) -> None:
         _respawn_env_overlay = {}
         _env_raw = os.environ.get("HERMES_RESTART_WATCH_ENV", "") or ""
         if _env_raw:
+            # Lazy, like the other orjson uses: the ``-S`` repair bootstrap stays stdlib-only.
+            import orjson
+
             try:
                 _respawn_env_overlay = orjson.loads(_env_raw)
             except Exception:

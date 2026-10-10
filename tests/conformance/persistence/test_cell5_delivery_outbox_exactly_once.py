@@ -325,7 +325,11 @@ class Cell:
             assert child.poll() is None, f"{what}: exited early rc={child.returncode}"
         finally:
             kill9_and_reap(child)
-        assert child.returncode == -9, f"{what}: not SIGKILLed (rc={child.returncode})"
+        # ``Popen.kill`` is SIGKILL on POSIX (-9) and TerminateProcess(1) on Windows —
+        # the exit status the host can produce, not a natural exit of the script.
+        assert child.returncode == (1 if os.name == "nt" else -9), (
+            f"{what}: not killed (rc={child.returncode})"
+        )
 
     def journal_entries(self) -> list[dict]:
         if not self.journal.exists():

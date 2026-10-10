@@ -723,6 +723,26 @@ def is_available(feature: str) -> bool:
     return feature in LAZY_DEPS and not feature_missing(feature)
 
 
+def ensure_and_bind(feature: str, importer: Callable[[], dict[str, Any]], target_globals: dict, *, prompt: bool = False) -> bool:
+    """:func:`ensure` the feature, then ``target_globals.update(importer())`` so module-level names are
+    rebound after a lazy install (``importer`` returns ``{name: obj}`` and runs only after ensure
+    succeeds). Returns False (and logs) if deps could not be installed or imported."""
+    try:
+        ensure(feature, prompt=prompt)
+    except FeatureUnavailable as exc:
+        logger.warning("%s", exc)
+        return False
+    except Exception as exc:
+        logger.warning("Failed to ensure feature %r: %s", feature, exc)
+        return False
+    try:
+        target_globals.update(importer())
+    except ImportError as exc:
+        logger.warning("Failed to import feature %r after install: %s", feature, exc)
+        return False
+    return True
+
+
 def feature_install_command(feature: str, *, venv_pip: bool = False) -> Optional[str]:
     """Manual install command for a feature, or None. ``venv_pip=True`` uses ``{sys.executable} -m pip``
     — immune to PEP 668 failures a bare ``pip install`` invites."""

@@ -158,8 +158,11 @@ def _inject_context_from(job: dict, prompt: str) -> tuple[str, bool]:
             for output_file in output_files:
                 # [CN-fork] P-051 — lossy read: a non-UTF-8 byte in a job's output file
                 # must not abort the whole context_from injection (UnicodeDecodeError).
-                candidate = output_file.read_text(
-                    encoding="utf-8-sig", errors="replace").strip()
+                # Deliberately NOT stripped: ``_archive_answer`` validates the run's
+                # length frames, which count the response body's own whitespace, so a
+                # strip here rejects every framed archive whose answer has trailing
+                # blanks ("## Response Characters: N" no longer matches the tail).
+                candidate = output_file.read_text(encoding="utf-8-sig", errors="replace")
                 # Only the run header describes suppression; script/agent payloads can
                 # quote these markers. Keep error documents useful for recovery context.
                 header = candidate.split("\n---\n", 1)[0].split("\n## Prompt", 1)[0]

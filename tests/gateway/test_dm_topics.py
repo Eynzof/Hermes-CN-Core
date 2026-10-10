@@ -427,7 +427,7 @@ def test_group_topic_skill_binding():
 
     msg = _make_mock_message(
         chat_id=-1001234567890,
-        chat_type=_CHAT_TYPE_SUPERGROUP,
+        chat_type=_ChatType.SUPERGROUP,
         thread_id=5,
         text="hello",
         is_topic_message=True,
@@ -455,7 +455,7 @@ def test_group_topic_skill_binding_second_topic():
 
     msg = _make_mock_message(
         chat_id=-1001234567890,
-        chat_type=_CHAT_TYPE_SUPERGROUP,
+        chat_type=_ChatType.SUPERGROUP,
         thread_id=12,
         text="deal update",
         is_topic_message=True,

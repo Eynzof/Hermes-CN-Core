@@ -341,65 +341,6 @@ _project_env = Path(__file__).parent / '.env'
 load_hermes_dotenv(hermes_home=_hermes_home, project_env=_project_env)
 
 
-_REASONING_TAGS = ("REASONING_SCRATCHPAD", "think", "thinking", "reasoning", "thought")
-_TOOL_CALL_TAGS = ("tool_call", "tool_calls", "tool_result", "function_call", "function_calls")
-
-
-def _strip_reasoning_tags(text: str) -> str:
-    """Strip reasoning blocks (closed, unterminated, orphan-close) and leaked tool-call XML from display text.
-
-    Keep in sync with ``agent.agent_runtime_helpers.strip_think_blocks`` and the stream consumer's think-tag sets.
-
-    Also strips tool-call XML blocks some open models leak into visible content (``<tool_call>``,
-    ``<function_calls>``, Gemma-style ``<function name="…">…</function>``). Ported from
-    openclaw/openclaw#67318.
-    """
-    cleaned = text
-    for tag in _REASONING_TAGS:
-        cleaned = re.sub(rf"<{tag}>.*?</{tag}>\s*", "", cleaned, flags=re.DOTALL | re.IGNORECASE)
-        cleaned = re.sub(rf"<{tag}>.*$", "", cleaned, flags=re.DOTALL | re.IGNORECASE)
-        cleaned = re.sub(rf"</{tag}>\s*", "", cleaned, flags=re.IGNORECASE)
-    for tc_tag in _TOOL_CALL_TAGS:
-        cleaned = re.sub(
-            rf"<(?:[\w.-]+:)?{tc_tag}\b[^>]*>.*?</(?:[\w.-]+:)?{tc_tag}>\s*",
-            "", cleaned, flags=re.DOTALL | re.IGNORECASE,
-        )
-    # <function name="..."> — boundary + attribute gated to avoid prose false positives.
-    cleaned = re.sub(
-        r'(?:(?<=^)|(?<=[\n\r.!?:]))[ \t]*<function\b[^>]*\bname\s*=[^>]*>(?:(?:(?!</function>).)*)</function>\s*',
-        '', cleaned, flags=re.DOTALL | re.IGNORECASE,
-    )
-    cleaned = re.sub(
-        r'</(?:(?:[\w.-]+:)?(?:tool_call|tool_calls|tool_result|function_call|function_calls|function))>\s*', '', cleaned,
-        flags=re.IGNORECASE,
-    )
-    # Unterminated opener / stray <arg_key>/<arg_value> markup = stream cut
-    # mid tool-call serialization (#101899); strip to end of text.
-    cleaned = re.sub(
-        r'(?:^|\n)[ \t]*<(?:[\w.-]+:)?(?:tool_call|tool_calls|tool_result|function_call|function_calls)\b[^>]*>.*$'
-        r'|(?:^|\n)[^\n<]*</?arg_(?:key|value)\b.*$',
-        '',
-        cleaned,
-        flags=re.DOTALL | re.IGNORECASE,
-    )
-    return cleaned.strip()
-
-
-def _assistant_content_as_text(content: Any) -> str:
-    if content is None:
-        return ""
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts = [str(part.get("text", "")) for part in content if isinstance(part, dict) and part.get("type") == "text"]
-        return "\n".join(p for p in parts if p)
-    return str(content)
-
-
-def _assistant_copy_text(content: Any) -> str:
-    return _strip_reasoning_tags(_assistant_content_as_text(content))
-
-
 def _load_prefill_messages(file_path: str) -> List[Dict[str, Any]]:
     """Load prefill messages (JSON array) from *file_path*; relative to ~/.hermes/; missing/empty -> []."""
     if not file_path:

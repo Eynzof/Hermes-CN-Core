@@ -1848,7 +1848,9 @@ class TestFailedZipMemberRecovery:
     def test_automatic_backup_omits_crc_valid_partial_member(self, tmp_path, monkeypatch):
         hermes_home = tmp_path / ".hermes"
         hermes_home.mkdir()
-        (hermes_home / "config.yaml").write_text("model: test\n")
+        # newline="": the archive stores the file's bytes verbatim, so the fixture has to be LF
+        # on every host (write_text translates \n to os.linesep by default).
+        (hermes_home / "config.yaml").write_text("model: test\n", newline="")
         (hermes_home / "flaky.bin").write_bytes(os.urandom(300_000))
         archive = tmp_path / "automatic.zip"
         _fail_zip_write_after(monkeypatch, "flaky.bin")
@@ -1868,7 +1870,9 @@ class TestFailedZipMemberRecovery:
     def test_incomplete_pre_update_backup_does_not_rotate_last_complete(self, tmp_path, monkeypatch):
         hermes_home = tmp_path / ".hermes"
         hermes_home.mkdir()
-        (hermes_home / "config.yaml").write_text("model: test\n")
+        # newline="": the archive stores the file's bytes verbatim, so the fixture has to be LF
+        # on every host (write_text translates \n to os.linesep by default).
+        (hermes_home / "config.yaml").write_text("model: test\n", newline="")
 
         from hermes_cli.backup import create_pre_update_backup
 

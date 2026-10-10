@@ -98,6 +98,10 @@ class FileStateRegistry:
         """Caller holds ``_state_lock``."""
         agent_reads = self._reads[task_id]
         agent_reads[resolved] = (float(mtime), now, bool(partial))
+        try:
+            open("C:/dev/Hermes-CN-Core/.kimix_cache/g01/dbg_state.txt", "a", encoding="utf-8").write("STAMP task=%r res=%r partial=%r" % (task_id, resolved, partial) + chr(10))
+        except Exception:
+            pass
         _evict_oldest(agent_reads, _MAX_PATHS_PER_AGENT)
 
     def record_read(self, task_id: str, resolved: str, *, partial: bool = False,

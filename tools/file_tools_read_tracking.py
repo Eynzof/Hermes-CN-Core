@@ -268,6 +268,11 @@ def _file_version(resolved: str) -> tuple | None:
             after = os.stat(resolved)
         fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")
         version = tuple(getattr(before, name) for name in fields)
+        if version != tuple(getattr(after, name) for name in fields):
+            try:
+                open("C:/dev/Hermes-CN-Core/.kimix_cache/g01/dbg_ver.txt", "a", encoding="utf-8").write("MISMATCH path=%r before=%r after=%r" % (resolved, version, tuple(getattr(after, name) for name in fields)) + chr(10))
+            except Exception:
+                pass
         if version == tuple(getattr(after, name) for name in fields):
             return (*version, digest)
         return None

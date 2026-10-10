@@ -104,16 +104,19 @@ def temp_home_in_service_definition(definition: str) -> str | None:
     import tempfile
     candidates = re.findall(r'HERMES_HOME=([^"\n]+)', definition)
     candidates += re.findall(r"<key>HERMES_HOME</key>\s*<string>(.*?)</string>", definition, flags=re.DOTALL)
-    temp_roots = {
-        Path(tempfile.gettempdir()).resolve(),
-        Path("/tmp"), Path("/var/tmp"), Path("/private/tmp"), Path("/private/var/tmp"),  # no-tmp: ok — detects a temp HERMES_HOME in service definitions
-    }
+    temp_roots = {Path(tempfile.gettempdir()).resolve()}
+    # A unit/plist is POSIX text: "/tmp/x" is a temp home even when the guard runs on Windows, where
+    # Path("/tmp").resolve() would be "C:\tmp" and the E2E unit would slip through.
+    posix_temp_roots = ("/tmp", "/var/tmp", "/private/tmp", "/private/var/tmp")  # no-tmp: ok — detects a temp HERMES_HOME in service definitions
     for raw in candidates:
+        candidate = raw.strip().strip('"')
         try:
-            resolved = Path(raw.strip().strip('"')).resolve()
+            resolved = Path(candidate).resolve()
         except (OSError, ValueError):
-            continue
-        if any(resolved == root or root in resolved.parents for root in temp_roots):
+            resolved = None
+        if resolved is not None and any(resolved == root or root in resolved.parents for root in temp_roots):
+            return raw.strip()
+        if any(candidate == root or candidate.startswith(f"{root}/") for root in posix_temp_roots):
             return raw.strip()
     return None
 

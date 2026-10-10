@@ -249,6 +249,9 @@ async def test_start_gateway_starts_and_stops_cron_on_relaunch(
             self.config = config
             self.adapters = {}
             self._running = True
+            # The real GatewayRunner names its launch profile in __init__; upstream's cron
+            # start now reads it whenever any profile home is ticked (single-profile too).
+            self._primary_profile_name = "default"
             self._draining = False
             self._external_drain_active = False
             self._restart_requested = False

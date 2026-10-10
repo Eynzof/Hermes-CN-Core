@@ -11,6 +11,7 @@ Modeled on tests/tui_gateway/test_slash_worker_sys_path.py's subprocess pattern.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -32,13 +33,29 @@ sys.meta_path.insert(0, _BlockPatchStdout())
 """
 
 
+def _isolated_env() -> dict[str, str]:
+    """A deliberately bare env (no PATH, no inherited config) that still resolves ``Path.home()``.
+
+    On Windows ``pathlib.Path.home()`` reads USERPROFILE (else HOMEDRIVE+HOMEPATH), not HOME, and
+    ``ssl`` needs SYSTEMROOT; dropping them makes the child die in bootstrap with "Could not
+    determine home directory" instead of exercising the import chain. Same carve-out as
+    tests/gateway/test_setup_feishu.py.
+    """
+    env = {"PYTHONPATH": str(PROJECT_ROOT), "PATH": "", "HOME": str(Path.home())}
+    if sys.platform == "win32":
+        for name in ("USERPROFILE", "HOMEDRIVE", "HOMEPATH", "SYSTEMROOT"):
+            if os.environ.get(name):
+                env[name] = os.environ[name]
+    return env
+
+
 def _import_cli_without_patch_stdout():
     code = _BLOCKER + "import cli\n"
     return subprocess.run(
         [sys.executable, "-c", code],
         capture_output=True,
         text=True,
-        env={"PYTHONPATH": str(PROJECT_ROOT), "PATH": "", "HOME": str(Path.home())},
+        env=_isolated_env(),
         cwd=str(PROJECT_ROOT),
     )
 
@@ -58,7 +75,7 @@ def test_cli_patch_stdout_falls_back_to_nullcontext():
         [sys.executable, "-c", code],
         capture_output=True,
         text=True,
-        env={"PYTHONPATH": str(PROJECT_ROOT), "PATH": "", "HOME": str(Path.home())},
+        env=_isolated_env(),
         cwd=str(PROJECT_ROOT),
     )
     assert proc.returncode == 0, proc.stderr

@@ -363,6 +363,11 @@ class TestCmdUpdateGatewayMode:
         (root / "notes.txt").write_text("user edit\n", encoding="utf-8")
         monkeypatch.setattr(main, "PROJECT_ROOT", root)
         # Isolate host/service phases; options, Git, stash and prompt dispatch stay real.
+        # The venv-ownership redirect (upstream: `hermes update` hands off to the checkout whose
+        # .venv is running it) is one of those host phases — patched at its defining module,
+        # where cmd_update's local import reads it.
+        monkeypatch.setattr(
+            "hermes_cli.update_owning_install.retarget_to_owning_install", lambda project_root: None)
         monkeypatch.setattr(main, "_update_preflight_handled", lambda args: False)
         monkeypatch.setattr(main, "_install_hangup_protection", lambda **kw: None)
         monkeypatch.setattr(main, "_finalize_update_output", lambda state: None)

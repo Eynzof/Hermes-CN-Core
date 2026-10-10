@@ -12,7 +12,6 @@ drop_stale_root_modules()
 import copy
 import difflib
 import json
-import orjson
 import logging
 import os
 import platform
@@ -2398,7 +2397,14 @@ TERMINAL_CONFIG_ENV_MAP = {
 
 
 def _terminal_env_value(value: Any) -> str:
-    return orjson.dumps(value).decode("utf-8") if isinstance(value, (list, dict)) else str(value)
+    if isinstance(value, (list, dict)):
+        # Imported here, not at module level: this module is on the ``python -S -m
+        # hermes_cli.main pm repair`` bootstrap path, which must stay stdlib-only
+        # (no site-packages) so a repair still runs on a damaged dependency tree.
+        import orjson
+
+        return orjson.dumps(value).decode("utf-8")
+    return str(value)
 
 
 def _terminal_config_value_is_bridgeable(key: str, value: Any) -> bool:

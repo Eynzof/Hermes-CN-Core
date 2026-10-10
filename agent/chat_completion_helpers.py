@@ -3986,6 +3986,7 @@ class _StreamingCall(StreamingWaitMonitor):
             return _build_partial_stream_stub(
                 "assistant", None, None, getattr(self.agent, "model", "unknown"), None,
                 dropped_tool_names=_partial_names, overflow_terminal=True,
+                api_mode=getattr(self.agent, "api_mode", None),
             )
         if not _partial_names:
             logger.warning(
@@ -3993,7 +3994,8 @@ class _StreamingCall(StreamingWaitMonitor):
                 "recovered content so the loop can continue from where the stream died: %s",
                 len(_partial_text or ""), error)
         _stub = _build_partial_stream_stub("assistant", _partial_text, None,
-            getattr(self.agent, "model", "unknown"), None, dropped_tool_names=_partial_names)
+            getattr(self.agent, "model", "unknown"), None, dropped_tool_names=_partial_names,
+            api_mode=getattr(self.agent, "api_mode", None))
         if _cls is not None and _cls.reason == FailoverReason.content_policy_blocked:
             _stub._content_filter_terminated = True
         return _stub

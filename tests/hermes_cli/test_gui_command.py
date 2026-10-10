@@ -159,8 +159,10 @@ def _pack_into_staging(root: Path, content: str = "", returncode: int = 0):
     (never in release/), then returns *returncode*. Non-pack commands (the
     launch) return success."""
     def _run(cmd, **kwargs):
+        print("DBGCMD", cmd)
         if _npm_argv(cmd)[1:3] == ["run", "builder"]:
             exe = _staging_dir_from(cmd) / _packaged_exe_rel()
+            print("DBGEXE", exe)
             exe.parent.mkdir(parents=True, exist_ok=True)
             exe.write_text(content, encoding="utf-8")
             if sys.platform not in ("darwin", "win32"):
@@ -331,17 +333,24 @@ def test_gui_close_preview_flag_forwards_to_packaged_exe(tmp_path, monkeypatch):
     # tests do; this test is only about the flag reaching the packaged exe.
     monkeypatch.setattr(main_desktop, "_register_linux_desktop_entry", lambda **kw: None)
     packaged_exe = _make_packaged_executable(root, monkeypatch)
-
     launched: list[list[str]] = []
 
     def fake_run(cmd, **kw):
         launched.append(list(cmd))
         return subprocess.CompletedProcess(cmd, 0)
 
+    def fake_popen(cmd, **kw):
+        # Windows launches the packaged app detached (Popen, #58275) instead of the
+        # attached run below; the flag must ride either seam.
+        launched.append(list(cmd))
+        return types.SimpleNamespace(pid=4321)
+
     with patch("hermes_cli.main_desktop._desktop_build_needed", return_value=False), \
          patch("hermes_cli.main_desktop._desktop_linux_sandbox_fixup", return_value=True), \
+         patch("hermes_cli.main_desktop.subprocess.Popen", side_effect=fake_popen), \
          patch("hermes_cli.main_desktop.subprocess.run", side_effect=fake_run), \
          pytest.raises(SystemExit) as exc:
+        cli_main.cmd_gui(_ns(close_preview=True))
         cli_main.cmd_gui(_ns(close_preview=True))
 
     assert exc.value.code == 0
@@ -1560,6 +1569,10 @@ def test_gui_foreground_launch_ctrl_c_exits_cleanly(tmp_path, monkeypatch, capsy
 def _gui_build_patches(root: Path, run_side_effect):
     return [
         patch("hermes_cli.main.shutil.which", return_value="/usr/bin/npm"),
+        # Windows product builds re-resolve Git through PM before packing; these tests
+        # exercise stage-and-swap, not git provisioning, and the dev box's PM store
+        # has no pinned Git (the chmod/PE details live in test_desktop_exe_integrity).
+        patch("pm.ensure", side_effect=lambda name, **kw: types.SimpleNamespace(env=kw.get("base_env") or {})),
         # Staging doubles are text; the PE-validation suite owns real binaries.
         patch("hermes_cli.main_desktop._desktop_exe_integrity_error", return_value=None),
         patch("hermes_cli.source_build.prepare_source_dependencies",
@@ -1654,15 +1667,18 @@ def test_swap_staged_desktop_app_stops_live_renderer_before_rename(tmp_path):
     stop.assert_called_once_with(desktop_dir, also_posix=True)
 
 
-def test_stop_desktop_processes_locking_build_posix_swap_bypasses_early_return(tmp_path, monkeypatch):
-    """#109643: also_posix=True must run the scan on POSIX (the default pack-time
-    call stays Windows-only — the staging pack never touches the live tree)."""
+def _release_tree_with_live_exe(tmp_path):
+    """A desktop tree whose release exe is the one the psutil double reports as running."""
     root = _make_desktop_tree(tmp_path)
     desktop_dir = root / "apps" / "desktop"
     live_exe = desktop_dir / "release" / _packaged_exe_rel()
     live_exe.parent.mkdir(parents=True)
     live_exe.write_text("old", encoding="utf-8")
+    return desktop_dir, live_exe
 
+
+def _fake_psutil_with_one_desktop(monkeypatch, live_exe):
+    """psutil double: pid 100 runs our release exe, pid 200 is unrelated."""
     class _FakeProc:
         def __init__(self, pid, exe):
             self.info = {"pid": pid, "exe": exe}
@@ -1685,7 +1701,26 @@ def test_stop_desktop_processes_locking_build_posix_swap_bypasses_early_return(t
 
     monkeypatch.setitem(sys.modules, "psutil", _FakePsutil)
 
+
+@pytest.mark.platforms("posix")
+def test_stop_desktop_processes_locking_build_posix_swap_bypasses_early_return(tmp_path, monkeypatch):
+    """#109643: also_posix=True must run the scan on POSIX (the default pack-time
+    call stays Windows-only — the staging pack never touches the live tree)."""
+    desktop_dir, live_exe = _release_tree_with_live_exe(tmp_path)
+    _fake_psutil_with_one_desktop(monkeypatch, live_exe)
+
     assert main_desktop._stop_desktop_processes_locking_build(desktop_dir) == []
+    assert main_desktop._stop_desktop_processes_locking_build(desktop_dir, also_posix=True) == [100]
+
+
+@pytest.mark.platforms("windows")
+def test_stop_desktop_processes_locking_build_windows_scans_by_default(tmp_path, monkeypatch):
+    """Windows needs the stop at every pack point: the exe lock makes the pack die with
+    ``Access is denied``, so the default call scans and the swap override adds nothing."""
+    desktop_dir, live_exe = _release_tree_with_live_exe(tmp_path)
+    _fake_psutil_with_one_desktop(monkeypatch, live_exe)
+
+    assert main_desktop._stop_desktop_processes_locking_build(desktop_dir) == [100]
     assert main_desktop._stop_desktop_processes_locking_build(desktop_dir, also_posix=True) == [100]
 
 

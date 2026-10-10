@@ -42,9 +42,14 @@ runpy.run_path(sys.argv[0], run_name='__main__')
             )
             assert result.returncode == 0, result.stderr
             backup = Path(json.loads(result.stdout)["path"])
-            with sqlite3.connect(backup) as snapshot:
+            snapshot = sqlite3.connect(backup)
+            try:
                 assert snapshot.execute("SELECT * FROM messages").fetchall() == [("committed only in WAL",)]
                 assert snapshot.execute("PRAGMA integrity_check").fetchone() == ("ok",)
+            finally:
+                # Close explicitly: the retention prune in the next run deletes the oldest
+                # snapshot, and on Windows an open handle makes that unlink fail with WinError 32.
+                snapshot.close()
         assert len(list(home.glob("state.db.pre-update-emergency-*.bak"))) == 2
     writer.close()
     previous = sorted(home.glob("state.db.pre-update-emergency-*.bak"))

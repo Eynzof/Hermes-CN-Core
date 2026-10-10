@@ -285,6 +285,7 @@ def test_stop_and_status_follow_the_recorded_owner_not_the_current_setting(monke
     assert runtime.stop() is True and len(stopped) == 1
 
 
+@pytest.mark.platforms("linux")
 def test_forward_port_carries_bytes_both_ways_through_the_exec_stream(monkeypatch):
     """The sandbox's loopback (Chromium's CDP port) is reached from the host through a local listener whose
     connections ride an exec stream running the in-sandbox relay. An empty exec prefix runs that relay

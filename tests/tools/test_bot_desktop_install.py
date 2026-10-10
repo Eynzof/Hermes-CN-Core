@@ -22,6 +22,7 @@ def _isolated_host(tmp_path, monkeypatch):
     install._running.clear()
 
 
+@pytest.mark.platforms("linux")
 def test_empty_password_cancels_without_spawning(monkeypatch):
     monkeypatch.setattr(install.subprocess, "Popen", lambda *a, **k: pytest.fail("package manager spawned"))
     lines: list[str] = []
@@ -30,6 +31,7 @@ def test_empty_password_cancels_without_spawning(monkeypatch):
     assert any("cancelled" in line for line in lines)
 
 
+@pytest.mark.platforms("linux")
 def test_second_install_for_same_profile_is_refused(monkeypatch):
     gate = threading.Event()
     entered = threading.Event()
@@ -50,6 +52,7 @@ def test_second_install_for_same_profile_is_refused(monkeypatch):
     install.assert_not_running()  # slot released once the run finishes
 
 
+@pytest.mark.platforms("linux")
 def test_claim_is_atomic_and_refuses_a_second_claim():
     """The gateway claims BEFORE spawning its worker; a second Install click must fail at claim time, not
     pass a read-only check and race the worker for the slot."""
@@ -102,6 +105,7 @@ def test_timeout_kills_the_package_managers_whole_process_group(monkeypatch):
         pytest.fail("grandchild survived the install timeout")
 
 
+@pytest.mark.platforms("linux")
 def test_passwordless_sudo_runs_the_install_without_asking_for_a_password(monkeypatch):
     """A host with NOPASSWD sudo must not pop the masked password card — the card blocks the install
     for up to five minutes on an answer nobody needs to give — and the package command still runs
@@ -173,6 +177,7 @@ def test_timeout_returns_and_frees_the_slot_even_when_a_descendant_survives(monk
     install.release(install.claim())  # slot is free again
 
 
+@pytest.mark.platforms("linux")
 def test_root_installs_without_sudo_and_without_asking(monkeypatch):
     """The official Docker image runs Hermes as uid 0 with no sudo binary: the package manager must be
     run directly, and the password card must never be raised for a user who already is root."""
@@ -196,6 +201,7 @@ def test_root_installs_without_sudo_and_without_asking(monkeypatch):
     assert spawned and spawned[0][0] == "apt-get", spawned
 
 
+@pytest.mark.platforms("linux")
 def test_no_sudo_binary_returns_the_host_command_instead_of_a_password_card(monkeypatch):
     """Unprivileged with no sudo on the host (minimal containers): a password card would be a dead end,
     the user needs the exact command to run on the host instead."""
@@ -209,6 +215,7 @@ def test_no_sudo_binary_returns_the_host_command_instead_of_a_password_card(monk
     assert any("apt-get install" in line for line in lines), lines
 
 
+@pytest.mark.platforms("linux")
 def test_timeout_finishes_the_group_when_only_the_leader_dies_on_term(monkeypatch):
     """TERM ends the leader shell at once, but a descendant in the same group that ignores TERM used to be
     left alive holding the dpkg lock: the kill helper returned as soon as the leader was reaped. Cleanup is
@@ -244,6 +251,7 @@ def _alive(pid: int) -> bool:
     return psutil.pid_exists(pid)
 
 
+@pytest.mark.platforms("linux")
 def test_install_slot_is_held_across_processes(tmp_path):
     """The gateway (Install card) and the CLI (`screen install`) are separate processes on one host: the
     single-flight must be a file lock in the profile's state dir, not only the in-process set."""

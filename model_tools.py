@@ -22,7 +22,6 @@ from tools.registry import CHECK_FN_CACHE_BYPASS, check_fn_cache_scope, discover
 from tools.registry import _MAX_TOOL_ERROR_CHARS as _TOOL_ERROR_MAX_LEN
 from toolsets import resolve_toolset, validate_toolset
 from tools.arg_coercion import coerce_tool_args
-from tools.todo_tool import TODO_LEGACY_ALIASES, TODO_SCHEMA
 from utils import file_signature
 
 _TOOL_FIELD_ALIASES_GENERAL = {
@@ -396,23 +395,6 @@ registry.enable_lazy_builtins()
 # MCP discovery is deliberately NOT run here: it blocks up to 120 s and the
 # gateway lazy-imports this module inside its event loop; each entry point
 # (gateway/run.py, cli.py, tui_gateway, acp_adapter) runs it at startup.
-try:  # plugin tool discovery (user/project/pip plugins)
-    # MCP tool discovery (external MCP servers from config) used to run here as a module-level side effect.
-    # It was removed because discover_mcp_tools() internally uses a blocking future.result(timeout=120)
-    # wait, and the gateway lazy-imports this module from inside the asyncio event loop on the first user
-    # message — freezing Discord/Telegram heartbeats for up to 120s whenever any configured MCP server was
-    # slow or unreachable (#16856). - gateway/run.py            -> start_gateway() uses run_in_executor -
-    # acp_adapter/server.py     -> asyncio.to_thread on session init
-    from hermes_cli.plugins import discover_plugins
-    discover_plugins()
-except Exception as e:
-    logger.debug("Plugin discovery failed: %s", e)
-
-
-# Backward-compat constants (built once after discovery)
-TOOL_TO_TOOLSET_MAP: dict[str, str] = registry.get_tool_to_toolset_map()
-
-TOOLSET_REQUIREMENTS: dict[str, dict] = registry.get_toolset_requirements()
 #
 # Plugin tool discovery (user/project/pip plugins) used to be an unconditional
 # import side effect here; it is deferred too (see ``_ensure_discovered``), and
@@ -472,6 +454,8 @@ def __getattr__(name: str):
     if name == "TOOLSET_REQUIREMENTS":
         _ensure_discovered()
         return registry.get_toolset_requirements()
+    if name == "_LEGACY_TOOL_ALIASES":
+        return _legacy_tool_aliases()
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 # Tool names from the last get_tool_definitions() call (execute_code sandbox fallback).
@@ -1143,10 +1127,30 @@ _AGENT_LOOP_TOOLS = {"todo_list", "memory", "session_search", "delegate_task", "
 
 # Legacy tool-name aliases accepted at every dispatch seam (old sessions/saved
 # prompts keep working); schemas advertise only new names.
-_LEGACY_TOOL_ALIASES = {
-    **dict.fromkeys(TODO_LEGACY_ALIASES, TODO_SCHEMA["name"]), "cronjob": "cronjob_manage", "process": "process_manage",
-    "tour": "gui_tour", "tip": "show_tip",
-}
+#
+# [CN-fork] P-043/P-045: the todo aliases come from ``tools.todo_tool``, a
+# self-registering tool module. Importing it here would pull one tool module into
+# every process that imports this dispatcher — exactly what the lazy tool index
+# avoids — so the mapping is built on first use and exposed through the module
+# ``__getattr__`` below (PEP 562), which keeps
+# ``from model_tools import _LEGACY_TOOL_ALIASES`` working.
+_LEGACY_TOOL_ALIASES_BUILT: dict[str, str] | None = None
+
+
+def _legacy_tool_aliases() -> dict[str, str]:
+    """Legacy tool name -> current name, derived from the tools that own them."""
+    global _LEGACY_TOOL_ALIASES_BUILT
+    if _LEGACY_TOOL_ALIASES_BUILT is None:
+        from tools.todo_tool import TODO_LEGACY_ALIASES, TODO_SCHEMA
+
+        _LEGACY_TOOL_ALIASES_BUILT = {
+            **dict.fromkeys(TODO_LEGACY_ALIASES, TODO_SCHEMA["name"]),
+            "cronjob": "cronjob_manage", "process": "process_manage",
+            "tour": "gui_tour", "tip": "show_tip",
+        }
+    return _LEGACY_TOOL_ALIASES_BUILT
+
+
 _READ_SEARCH_TOOLS = {"read_file", "search_files"}
 
 
@@ -1617,7 +1621,7 @@ def handle_function_call(
     if not isinstance(function_args, dict):
         function_args = {}
     trace = list(tool_request_middleware_trace or [])
-    function_name = _LEGACY_TOOL_ALIASES.get(function_name, function_name)
+    function_name = _legacy_tool_aliases().get(function_name, function_name)
     ids = _CallIds(task_id, session_id, tool_call_id, turn_id, api_request_id)
     start = time.monotonic()
 

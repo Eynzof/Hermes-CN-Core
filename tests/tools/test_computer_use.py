@@ -1517,6 +1517,12 @@ class TestCuaEnvironmentScrubbing:
                 "PATH": "/usr/bin:/bin",               # safe
                 "HOME": "/home/user",                  # safe
                 "SAFE_VAR": "allowed",                 # safe
+                # Windows resolves Path.home() through USERPROFILE and the Hermes homes
+                # through LOCALAPPDATA: a cleared-environ dict without them makes the
+                # lazily imported modules below raise ('Could not determine home
+                # directory') before any env is scrubbed.
+                "USERPROFILE": "C:\\Users\\user",  # safe
+                "LOCALAPPDATA": "C:\\Users\\user\\AppData\\Local",  # safe
             }
 
             def capture_env(**kwargs):

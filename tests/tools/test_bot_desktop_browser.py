@@ -45,6 +45,9 @@ def test_pinned_profile_honours_tilde_and_resolves_relative_paths_against_hermes
     monkeypatch.setattr(runtime, "get_hermes_home", lambda: home)
     monkeypatch.setattr(Path, "home", lambda: tmp_path / "user")
     monkeypatch.setenv("HOME", str(tmp_path / "user"))
+    # ``os.path.expanduser`` reads HOME on POSIX and USERPROFILE on native
+    # Windows, so the tilde case needs it pinned for both lanes.
+    monkeypatch.setenv("USERPROFILE", str(tmp_path / "user"))
 
     monkeypatch.setenv("AGENT_BROWSER_PROFILE", "~/pin")
     assert browser.profile_dir() == tmp_path / "user" / "pin"
@@ -145,6 +148,7 @@ def _install_browsers(tmp_path, monkeypatch, *, playwright: bool, system: bool):
     return str(pw_exe), str(sys_exe)
 
 
+@pytest.mark.platforms("linux")
 def test_unprivileged_user_under_apparmor_userns_restriction_gets_the_system_browser(tmp_path, monkeypatch):
     """Playwright's bundled Chromium has no setuid chrome_sandbox; with
     kernel.apparmor_restrict_unprivileged_userns=1 it dies 'FATAL: No usable sandbox!' for a non-root user,
@@ -172,6 +176,7 @@ def test_unprivileged_user_under_apparmor_userns_restriction_gets_the_system_bro
     assert ("--no-sandbox" in browser.dock_argv(exe, "/p/dir")) == ("--no-sandbox" in agent_flags)
 
 
+@pytest.mark.platforms("linux")
 def test_root_dock_browser_starts_with_the_same_sandbox_args_as_the_agents_browser(monkeypatch):
     """Chromium refuses to start as root without --no-sandbox; agent-browser gets that flag from one
     policy, and the dock icon (same binary, same profile) must get the very same flags or the human's

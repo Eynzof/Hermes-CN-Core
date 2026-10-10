@@ -291,6 +291,7 @@ class TestSetupLogging:
         assert "gw-a" in a_log and "gw-b" not in a_log
         assert "gw-b" in (profile_home / "logs" / "gateway.log").read_text()
 
+    @pytest.mark.platforms("posix")
     def test_profile_routing_falls_back_when_profile_home_deleted(
         self, hermes_home, tmp_path, capsys
     ):
@@ -348,7 +349,17 @@ class TestSetupLogging:
         # No "--- Logging error ---" FileNotFoundError loop on stderr.
         assert "FileNotFoundError" not in capsys.readouterr().err
 
-    @pytest.mark.parametrize("removal", ["tombstone", "rmtree", "logs-only"])
+    # ``tombstone`` is the only removal a Windows host can express in-process: the other two
+    # delete a directory THIS process still holds open, and Windows refuses (WinError 32)
+    # because concurrent-log-handler keeps ``logs/.__agent.lock`` locked for the handler's
+    # lifetime by design (``_actual_keep_lock_file_open``). A CLI delete on Windows goes
+    # through ``release_profile_log_handlers`` first — covered by
+    # test_release_profile_log_handlers_closes_only_deleted_profile.
+    @pytest.mark.parametrize("removal", [
+        "tombstone",
+        pytest.param("rmtree", marks=pytest.mark.platforms("posix")),
+        pytest.param("logs-only", marks=pytest.mark.platforms("posix")),
+    ])
     def test_out_of_band_profile_delete_releases_routed_handler(
         self, hermes_home, capsys, liveness_clock, removal
     ):
@@ -517,6 +528,11 @@ class TestAddRotatingHandler:
         assert len(rotating_handlers) == 1
         # Clean up
 
+    def test_no_session_filter_on_handler(self, tmp_path):
+        """Handlers rely on record factory, not per-handler _SessionFilter."""
+        log_path = tmp_path / "no_session_filter.log"
+        logger = logging.getLogger("_test_no_session_filter")
+        formatter = logging.Formatter("%(session_tag)s%(message)s")
 
         hermes_logging._add_rotating_handler(
             log_path,
@@ -985,7 +1001,12 @@ class TestSafeStderr:
         handler = logging.StreamHandler(result)
         handler.handle(logging.LogRecord("unicode", logging.INFO, "", 0, "Session — 日本", (), None))
         handler.flush()
-        assert fake.buffer.getvalue() == "Session — 日本\n".encode()
+        # ``_safe_stderr`` wraps the raw buffer with the default newline=None, which translates
+        # the terminator to os.linesep on the way in (Windows gets "\r\n"). What this test is
+        # about is the record's UTF-8 bytes reaching a stream that could not encode them, so
+        # compare against the host's line ending instead of the POSIX one.
+        expected = "Session — 日本\n".encode().replace(b"\n", os.linesep.encode())
+        assert fake.buffer.getvalue() == expected
 
 
 

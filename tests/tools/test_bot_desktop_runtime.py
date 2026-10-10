@@ -64,6 +64,7 @@ def test_recycled_pid_is_not_our_launcher(tmp_path, monkeypatch):
     assert runtime._launcher_pid() == os.getpid()
 
 
+@pytest.mark.platforms("linux")
 def test_recorded_display_held_by_a_live_server_is_not_reused(tmp_path, monkeypatch):
     """After profile A stops, B may take A's number; A restarting must pick another rather than
     unlink B's socket and lock."""
@@ -410,6 +411,7 @@ def _startable_host(monkeypatch, tmp_path, *, running=False):
     return spawned
 
 
+@pytest.mark.platforms("linux")
 def test_a_running_desktop_is_never_refused_for_the_memory_it_is_using(tmp_path, monkeypatch):
     """The gate guards the allocation, not the session: a running desktop is itself what consumes the
     memory, so checking before the running-check made Start fail on a healthy screen."""
@@ -453,6 +455,7 @@ def test_a_host_that_can_install_gets_the_command(tmp_path, monkeypatch):
         runtime.start()
 
 
+@pytest.mark.platforms("linux")
 def test_a_tight_but_sufficient_start_is_logged(tmp_path, monkeypatch, caplog):
     """Above the floor but below the derived threshold the start proceeds and says so. It is the only
     signal an operator gets that a screen came up with no room for the browser that is the point of it,
@@ -470,6 +473,7 @@ def test_a_tight_but_sufficient_start_is_logged(tmp_path, monkeypatch, caplog):
     assert any("1800 MB available" in m for m in logged), f"no tight-headroom warning in {logged}"
 
 
+@pytest.mark.platforms("linux")
 def test_a_comfortable_start_is_not_logged(tmp_path, monkeypatch, caplog):
     """And it stays quiet with real headroom, or it would fire on every start and mean nothing."""
     from tools.bot_desktop import resources

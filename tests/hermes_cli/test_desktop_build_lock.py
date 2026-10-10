@@ -172,6 +172,7 @@ def test_gui_releases_lock_before_packaged_electron_handoff(tmp_path, monkeypatc
     with patch("hermes_cli.main_desktop._desktop_launch_env", return_value=({}, [])), \
          patch("hermes_cli.main_desktop._register_linux_desktop_entry", return_value=None), \
          patch("hermes_cli.main_desktop.subprocess.run", side_effect=launch_after_lock_release), \
+         patch("hermes_cli.main_desktop.subprocess.Popen", side_effect=launch_after_lock_release), \
          patch("hermes_cli.main_desktop._desktop_build_needed", return_value=False), \
          pytest.raises(SystemExit) as exc:
         cli_desktop.cmd_gui(_args())
@@ -254,9 +255,17 @@ _UPDATE_HOLDER = (
 )
 
 
+@pytest.mark.platforms("posix")  # Windows joins an ancestor's lock by pid (update_lock R5b)
 def test_a_held_desktop_build_lock_keeps_an_updater_off_the_checkout(tmp_path):
     """C5: a direct ``hermes desktop`` build holds DesktopBuildLock while npm writes the
-    checkout; an updater (UpdateLock over the same checkout) must be refused meanwhile."""
+    checkout; an updater (UpdateLock over the same checkout) must be refused meanwhile.
+
+    POSIX-only: the probe process is a *child* of the lock holder here, and on POSIX a
+    child only joins the checkout lock by inheriting its fd (``pass_fds``), which this
+    ``subprocess.run`` does not do. Windows has no fd inheritance, so update_lock admits a
+    live ancestor's holder as the same update tree (its documented R5b join rule) — custody
+    for the tree's descendants, by design, not a leak this test can observe.
+    """
     root = _checkout(tmp_path)
     build = DesktopBuildLock(root)
     assert build.acquire() is True

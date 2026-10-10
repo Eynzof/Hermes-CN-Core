@@ -269,10 +269,6 @@ def _config_default_interface_early() -> str:
 
             with open(cfg_path, encoding="utf-8-sig") as _f:
                 raw = _yaml_iface.safe_load(_f) or {}
-            with open(cfg_path, encoding="utf-8-sig", errors="replace") as _f:
-                raw = _yaml_iface.load(
-                    _f, Loader=getattr(_yaml_iface, "CSafeLoader", None) or _yaml_iface.SafeLoader
-                ) or {}
             disp = raw.get("display", {})
             if isinstance(disp, dict):
                 iface = disp.get("interface")

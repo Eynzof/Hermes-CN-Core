@@ -47,6 +47,7 @@ def test_psutil_answers_without_forking_ps(no_proc, monkeypatch):
     assert cmdline and sys.executable.split("/")[-1] in cmdline
 
 
+@pytest.mark.platforms("posix")  # the `ps` fallback itself is POSIX-only (status._read_process_cmdline skips it on Windows)
 def test_ps_still_answers_when_psutil_cannot(no_proc, monkeypatch):
     """macOS raises AccessDenied across users; ps still reports those, so it stays the fallback."""
     import psutil

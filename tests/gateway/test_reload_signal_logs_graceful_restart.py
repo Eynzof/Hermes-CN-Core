@@ -38,6 +38,7 @@ class _AbortedStartupRunner:
         return True
 
 
+@pytest.mark.platforms("posix")  # SIGUSR1 does not exist on Windows (run.py guards it with hasattr)
 @pytest.mark.asyncio
 async def test_sigusr1_handler_installed_by_start_gateway_logs_graceful_restart(tmp_path, monkeypatch, caplog):
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))

@@ -470,6 +470,7 @@ class BaseEnvironment(ABC):
     def _wait_for_process(
         self, proc: ProcessHandle, timeout: int = 120, *,
         bounded_capture: bool = False, watch_interrupt_tid: int | None = None,
+        output: Any = None,
         yield_handler: Callable[[ProcessHandle, str], dict] | None = None,
         output_callback: Callable[[str], None] | None = None,
         wait_for_pattern: str | None = None,
@@ -510,7 +511,6 @@ class BaseEnvironment(ABC):
         """
         if output is None:
             output = _new_output_collector(proc, bounded_capture)
-        output = _new_output_collector(proc, bounded_capture)
         _t0 = time.monotonic()
         # P-061 hooks: the drain itself lives in ``base_output``, so the per-chunk
         # hooks (live ``output_callback`` + ``wait_for_pattern`` scan) ride a tee on

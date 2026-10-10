@@ -108,8 +108,15 @@ def test_ctrl_j_is_not_submit_when_multiline_shortcuts_enabled():
     assert ("c-j",) not in kb.bound
 
 
+@pytest.mark.platforms("posix")  # non-win32 only: _bind_prompt_submit_keys never binds c-j on Windows
 def test_ctrl_j_legacy_submit_when_multiline_shortcuts_disabled():
-    """Users can opt out to preserve Enter-as-LF submit fallback on odd PTYs."""
+    """Users can opt out to preserve Enter-as-LF submit fallback on odd PTYs.
+
+    The opt-out only re-binds c-j where Ctrl+Enter does NOT arrive as c-j —
+    i.e. off Windows (``_bind_prompt_submit_keys`` skips ``c-j`` when
+    ``sys.platform == "win32"``). The assertion is host-specific, so it runs on
+    the host it describes instead of faking ``sys.platform``.
+    """
     import cli as cli_mod
 
     kb = _bind_submit_keys_for_local_linux(

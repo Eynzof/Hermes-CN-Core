@@ -2983,6 +2983,7 @@ class SlackAdapter(BasePlatformAdapter):
             return SendResult(success=False, error="no images to send")
         chat_id = await self._dm_target(chat_id, metadata)
         try:
+            from urllib.parse import unquote as _unquote
             from tools.url_safety import create_ssrf_safe_async_client, is_safe_url as _is_safe_url
         except Exception:
             return await super().send_multiple_images(chat_id, images, metadata, human_delay)
@@ -2995,7 +2996,7 @@ class SlackAdapter(BasePlatformAdapter):
                 await asyncio.sleep(human_delay)
             try:
                 file_uploads, initial_comment_parts = await self._collect_image_uploads(
-                    chunk, _is_safe_url, create_ssrf_safe_async_client)
+                    chunk, _unquote, _is_safe_url, create_ssrf_safe_async_client)
                 if not file_uploads:
                     continue
                 initial_comment = "\n".join(initial_comment_parts) if initial_comment_parts else ""
@@ -3032,12 +3033,12 @@ class SlackAdapter(BasePlatformAdapter):
                     initial_comment_parts.append(alt_text)
                 if image_url.startswith("file://"):
                     local_path = file_url_to_local_path(image_url)
-                if not os.path.exists(local_path):
-                    logger.warning("[Slack] Skipping missing image: %s", local_path)
+                    if not os.path.exists(local_path):
+                        logger.warning("[Slack] Skipping missing image: %s", local_path)
+                        continue
+                    file_uploads.append(
+                        {"file": local_path, "filename": os.path.basename(local_path)})
                     continue
-                file_uploads.append(
-                    {"file": local_path, "filename": os.path.basename(local_path)})
-                continue
                 if not is_safe_url_fn(image_url):
                     logger.warning("[Slack] Blocked unsafe image URL in batch")
                     continue

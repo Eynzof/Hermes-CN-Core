@@ -377,16 +377,28 @@ reviewed in batches. Fork-owned files kept their `P-NNN` intent verbatim.
 ### Verification
 
 - `python -m compileall` over `agent tools hermes_cli gateway plugins cron tui_gateway acp_adapter tests pm`:
-  clean.
+  clean (0 syntax errors).
 - `ruff check --select F821,F811` compared against both baselines (fork `efbc700345`, upstream `7318e666c2`):
-  the merge-introduced undefined names were driven to zero in production code; the remaining findings are the
-  fork's façade/sibling late-bound globals (`tui_gateway/*`, published via `bind_module`) that both baselines
-  report as well.
-- Full suite, Windows (Python 3.14.3) via `scripts/run_tests.sh -j 7 --slice N/4` (4 slices, 5,640 files,
-  ~53,000 tests): see the follow-up commit message / CI.
-- WSL (Ubuntu 26.04, Python 3.14.4) — offline: the environment is installed from a manylinux cp314 wheelhouse
-  built on the Windows host (`pip download --platform manylinux_2_28_x86_64`), then run from
-  `/mnt/c/dev/Hermes-CN-Core` with `HERMES_PYTHON=<venv>`.
+  the merge-introduced undefined names were driven to zero in production code; the remaining findings are
+  the fork's façade/sibling late-bound globals (`tui_gateway/*`, published through `bind_module`) that both
+  baselines report as well. `ruff check .` (repo selection) is clean.
+- Repo gates: `scripts/check-windows-footguns.py --all` ✓ (57 BOM-intolerant reads rewritten to `utf-8-sig`,
+  baseline refreshed to the upstream-inherited 42 entries), `scripts/check_subprocess_stdin.py` ✓ (11 sites got
+  back the `stdin=subprocess.DEVNULL` the sync dropped), `scripts/check_no_tmp_literals.py` ✓,
+  `scripts/check-case-collisions.py` ✓.
+- Full suite on **Windows** (Python 3.14.3, 24-core host) via
+  `scripts/run_tests.sh -j 7 --slice N/4` (4 slices, 5,640 files, ~53k tests):
+  58,022 passed / 1,667 failed on the first pass; the 504 files that failed were re-run after the repair
+  waves → 7,229 passed / 961 failed, and the remaining clusters were triaged file-by-file in follow-up
+  commits. Most first-pass failures were the two systemic P-041 drops (`tool_calls_committed_callback` in
+  `agent/agent_init.py` and its `run_agent.AIAgent` forwarder), which broke every agent construction.
+- Full suite on **WSL** (Ubuntu 26.04, Python 3.14.4) — the lane is offline: the environment is built from a
+  manylinux cp314 wheelhouse downloaded on the Windows host
+  (`pip download --platform manylinux_2_28_x86_64 …`, 206 wheels), installed with
+  `pip --python ~/.venvs/hermes314/bin/python install --no-index --no-deps -r freeze-linux.txt`, and the
+  suite runs from a mirror of the tree on the WSL filesystem (`~/hermes-cn`) because `/mnt/c` (9p) makes
+  git-bound tests take minutes per file — `git log` alone timed out there. `PYTEST_ADDOPTS="-p no:pytest_benchmark"`
+  is required: `pytest-benchmark`'s `pytest_addoption` shells out to git during startup and hangs on 9p.
 
 ### Follow-ups / known issues
 

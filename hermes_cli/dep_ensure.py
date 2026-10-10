@@ -46,18 +46,22 @@ def _has_system_browser() -> bool:
 
 
 def _has_npx_agent_browser() -> bool:
-    """agent-browser resolves lazily via npx on the default install, invisible to the PATH/managed-dir
-    probes above. Mirror tools.browser_tool_install.check_browser_requirements's Termux carve-out so this
-    check can't diverge from what browser tools actually find.
+    """agent-browser can live outside the PATH/managed-dir probes above: PM installs it into its
+    private prefix and may acquire it lazily at execution time, invisible to ``shutil.which``.
+    Mirror tools.browser_tool_install.check_browser_requirements by asking the SAME readiness probe
+    (``_find_agent_browser(validate=False)``) so this check can't diverge from what browser tools
+    actually find. That probe never executes or installs anything and never treats a bare ``npx``
+    as a browser install, and on Termux it deliberately ignores PM (upstream dropped the npx
+    fallback; Termux still installs agent-browser explicitly).
 
     See #43564.
     """
     try:
-        from tools.browser_tool_install import _find_agent_browser, _is_npx_agent_browser_sentinel, _requires_real_termux_browser_install
-        browser_cmd = _find_agent_browser(validate=False)
+        from tools.browser_tool_install import _find_agent_browser
+        _find_agent_browser(validate=False)
     except Exception:
         return False
-    return _is_npx_agent_browser_sentinel(browser_cmd) and not _requires_real_termux_browser_install(browser_cmd)
+    return True
 
 
 def _has_ripgrepy() -> bool:

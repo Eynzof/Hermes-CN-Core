@@ -38,6 +38,26 @@ import smtplib  # lazy: the desktop runtime may not ship smtplib (see _check_dep
 
 logger = logging.getLogger(__name__)
 
+
+def _check_dependencies() -> None:
+    """Verify that the Python stdlib modules required by this plugin are available.
+
+    The packaged desktop runtime may not include imaplib/smtplib.  Failing early
+    with a clear message lets the plugin loader mark the plugin as unavailable
+    instead of surfacing a raw ``No module named 'imaplib'``.
+    """
+    missing = []
+    for mod in ("imaplib", "smtplib"):
+        try:
+            __import__(mod)
+        except ImportError:
+            missing.append(mod)
+    if missing:
+        raise RuntimeError(
+            "The email-platform plugin requires the Python standard library modules "
+            f"{', '.join(missing)}, which are not available in this runtime."
+        )
+
 _SECURITY_ALIASES = {"tls": "tls", "ssl": "tls", "implicit": "tls", "starttls": "starttls", "plain": "plain", "none": "plain"}
 # Automated senders (address substrings / bulk-mail headers) are silently ignored.
 _NOREPLY_PATTERNS = ("noreply", "no-reply", "no_reply", "donotreply", "do-not-reply", "mailer-daemon", "postmaster",

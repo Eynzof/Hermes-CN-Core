@@ -56,6 +56,9 @@ ALLOWLIST = {
 EXCLUDED_DIR_PARTS = {
     "tests", ".venv", ".git", ".worktrees", "node_modules", "website",
     "docs", "scripts", "examples", "apps",
+    # Local triage scratch (git-ignored, .gitignore): holds throwaway copies of
+    # source files (BASE.py/THEIRS.py sides of a merge), not repo source.
+    ".kimix_cache",
     # Compiled bytecode is not source. Sibling test processes also create
     # and delete these directories while this scan walks the tree.
     "__pycache__",

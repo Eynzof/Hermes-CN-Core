@@ -134,7 +134,7 @@ def patch_startup_side_effects(monkeypatch, tmp_path):
     monkeypatch.setattr("cron.scheduler.mark_running_jobs_interrupted", lambda *_a, **_kw: [])
     monkeypatch.setattr("tools.async_delegation.interrupt_all", lambda **_kw: 0)
     monkeypatch.setattr("tools.terminal_tool.cleanup_all_environments", lambda: None)
-    monkeypatch.setattr("tools.browser_tool.cleanup_all_browsers", lambda: None)
+    monkeypatch.setattr("tools.browser_tool_lifecycle.cleanup_all_browsers", lambda: None)
     monkeypatch.setattr("agent.auxiliary_client.shutdown_cached_clients", lambda: None)
 
 
@@ -279,8 +279,8 @@ async def test_start_gateway_starts_and_stops_cron_on_relaunch(
     monkeypatch.setattr("gateway.status.release_gateway_runtime_lock", lambda: None)
     monkeypatch.setattr("tools.skills_sync.sync_skills", lambda **kwargs: None)
     monkeypatch.setattr("hermes_logging.setup_logging", lambda **kwargs: None)
-    monkeypatch.setattr("tools.mcp_tool.discover_mcp_tools", lambda: None)
-    monkeypatch.setattr("tools.mcp_tool.shutdown_mcp_servers", lambda: None)
+    monkeypatch.setattr("tools.mcp_tool_discovery.discover_mcp_tools", lambda: None)
+    monkeypatch.setattr("tools.mcp_tool_lifecycle.shutdown_mcp_servers", lambda: None)
     monkeypatch.setattr("hermes_cli.nous_auth_keepalive.start_nous_auth_keepalive", lambda: None)
     monkeypatch.setattr("hermes_cli.nous_auth_keepalive.stop_nous_auth_keepalive", lambda: None)
     monkeypatch.setattr(gateway_run, "GatewayRunner", RunningGateway)

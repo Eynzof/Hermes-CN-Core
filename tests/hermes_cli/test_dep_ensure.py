@@ -1,6 +1,7 @@
 import subprocess
 from pathlib import Path
 from subprocess import CompletedProcess
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -32,23 +33,35 @@ def test_find_install_script_from_checkout(tmp_path):
 
 
 
-def test_has_npx_agent_browser_true_when_npx_resolves():
-    """agent-browser resolves lazily via npx on the default install (#43564)
-    — _has_npx_agent_browser mirrors the runtime cascade so the "browser" dep
-    check doesn't wrongly report it missing."""
+def test_has_npx_agent_browser_true_when_pm_resolves_it(monkeypatch):
+    """agent-browser is acquired lazily by PM into its private prefix (#43564) — invisible to
+    the PATH/managed-dir probes — so _has_npx_agent_browser mirrors the readiness probe
+    ("browser" dep check) that browser tools themselves use."""
     from hermes_cli.dep_ensure import _has_npx_agent_browser
 
-    with patch.object(bt_install, "_find_agent_browser", return_value="npx agent-browser"), \
-         patch.object(bt_install, "_requires_real_termux_browser_install", return_value=False):
-        assert _has_npx_agent_browser() is True
+    pm_binary = Path("/pm/store/agent-browser/bin/agent-browser")
+    monkeypatch.setattr(
+        "pm.installed_package",
+        lambda name, **_kw: SimpleNamespace(binary=pm_binary) if name == "agent-browser" else None)
+    monkeypatch.setattr(bt_install, "_is_termux_environment", lambda: False)
+    monkeypatch.setattr(bt_install.shutil, "which", lambda *a, **k: None)
+
+    assert _has_npx_agent_browser() is True
 
 
-def test_has_npx_agent_browser_false_on_termux_local_bare_npx():
+def test_has_npx_agent_browser_false_on_termux_where_pm_is_ignored(monkeypatch):
+    """Termux owns its browser install: the readiness probe deliberately ignores PM's
+    private-prefix copy there, and a bare ``npx`` is not a browser install — so the
+    "browser" dep check must not report it present."""
     from hermes_cli.dep_ensure import _has_npx_agent_browser
 
-    with patch.object(bt_install, "_find_agent_browser", return_value="npx agent-browser"), \
-         patch.object(bt_install, "_requires_real_termux_browser_install", return_value=True):
-        assert _has_npx_agent_browser() is False
+    monkeypatch.setattr(
+        "pm.installed_package",
+        lambda name, **_kw: SimpleNamespace(binary=Path("/pm/store/agent-browser/bin/agent-browser")))
+    monkeypatch.setattr(bt_install, "_is_termux_environment", lambda: True)
+    monkeypatch.setattr(bt_install.shutil, "which", lambda *a, **k: None)
+
+    assert _has_npx_agent_browser() is False
 
 
 def test_has_npx_agent_browser_false_when_nothing_resolves():
@@ -62,43 +75,40 @@ def test_has_npx_agent_browser_false_when_nothing_resolves():
 
 
 def test_find_agent_browser_lazy_install_cycle_terminates(monkeypatch):
-    """tools.browser_tool_install._find_agent_browser's "nothing found" branch calls
-    ensure_dependency("browser"), whose "browser" check now includes
-    _has_npx_agent_browser() -> _find_agent_browser(validate=False) again.
-    That nested call must NOT be able to trigger another ensure_dependency
-    call (only validate=True does that) — verifying the cycle is bounded to
-    one extra rescan, not unbounded recursion, using the real functions on
-    both sides rather than mocking the cycle away."""
-    import shutil
-    import tools.browser_tool as bt
+    """dep_ensure's "browser" check reaches _find_agent_browser(validate=False) through
+    _has_npx_agent_browser(). The readiness probe must NEVER acquire the CLI (only
+    validate=True may), so ensure_dependency("browser") -> _has_npx_agent_browser() ->
+    _find_agent_browser(validate=False) is bounded to one rescan: it cannot recurse, and
+    it cannot trigger the lazy install that the outer call is allowed to attempt."""
     from hermes_cli import dep_ensure
 
-    monkeypatch.setattr(bt, "_cached_agent_browser", None)
-    monkeypatch.setattr(bt, "_agent_browser_resolved", False)
-    monkeypatch.setattr(shutil, "which", lambda *a, **k: None)
-    monkeypatch.setattr("tools.browser_tool_install._resolve_npx_bin", lambda: None)
+    ensure_calls: list[str] = []
+    monkeypatch.setattr("pm.ensure", lambda name, *a, **k: ensure_calls.append(name))
+    monkeypatch.setattr("pm.installed_package", lambda name, **_kw: None)
+    monkeypatch.setattr(bt_install, "_is_termux_environment", lambda: False)
+    monkeypatch.setattr(bt_install.shutil, "which", lambda *a, **k: None)
     monkeypatch.setattr(dep_ensure, "_has_system_browser", lambda: False)
     monkeypatch.setattr(dep_ensure, "_has_hermes_agent_browser", lambda: False)
-    monkeypatch.setattr(dep_ensure, "_find_install_script", lambda *a, **k: (None, None))
 
+    readiness: list[bool] = []
     real_find_agent_browser = bt_install._find_agent_browser
-    validate_calls = []
 
     def counting_find_agent_browser(*, validate=True):
-        validate_calls.append(validate)
+        readiness.append(validate)
         return real_find_agent_browser(validate=validate)
 
     monkeypatch.setattr(bt_install, "_find_agent_browser", counting_find_agent_browser)
 
+    # The readiness probe once, from the "browser" dep check — no recursion, no install.
+    assert dep_ensure._DEP_CHECKS["browser"]() is False
+    assert readiness == [False]
+    assert ensure_calls == []
+
+    # Only the validating lookup may hand off to PM's lazy install.
     with pytest.raises(FileNotFoundError):
         bt_install._find_agent_browser(validate=True)
-
-    # One outer validate=True call, plus exactly one bounded nested
-    # validate=False rescan from _has_npx_agent_browser inside
-    # ensure_dependency's "browser" check — not unbounded recursion, and not
-    # a second ensure_dependency("browser") call (which would show up as a
-    # second `True` in this list).
-    assert validate_calls == [True, False]
+    assert readiness == [False, True]
+    assert ensure_calls == ["agent-browser"]
 
 
 # ── _has_ripgrepy ────────────────────────────────────────────────────

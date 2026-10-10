@@ -987,6 +987,15 @@ def _named_custom_rung(requested_provider, explicit_api_key, explicit_base_url, 
     return runtime
 
 
+def _inline_model_custom_rung(requested_provider, explicit_api_key, explicit_base_url, target_model):
+    """Rung 3b: a legacy Desktop config that stored a named custom endpoint INLINE under ``model``
+    (``provider`` + ``base_url`` + ``api_key``) instead of under ``providers.<name>``. Runs before
+    ``resolve_provider`` so the inline endpoint/key win and an unknown provider name is not rejected."""
+    return _tag(_try_resolve_inline_model_custom_runtime(
+        requested_provider=requested_provider, explicit_api_key=explicit_api_key,
+        explicit_base_url=explicit_base_url), requested_provider)
+
+
 def _openrouter_fallback(requested_provider, explicit_api_key, explicit_base_url) -> dict[str, Any]:
     return _tag(_resolve_openrouter_runtime(requested_provider=requested_provider, explicit_api_key=explicit_api_key,
                                             explicit_base_url=explicit_base_url), requested_provider)

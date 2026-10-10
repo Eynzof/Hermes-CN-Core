@@ -221,6 +221,7 @@ class CompressionFacadeMixin:
     def _compress_context(
         self, messages: list, system_message: str, *, approx_tokens: int | None = None, task_id: str = "default",
         focus_topic: str | None = None, force: bool = False, bypass_cooldown: bool = False,
+        mode: str | None = None,
         defer_context_engine_notification: bool = False, commit_fence=None, verbatim_tail: list | None = None,
         trigger: str | None = None, snapshot_is_current=None,
     ) -> tuple:

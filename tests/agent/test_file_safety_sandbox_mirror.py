@@ -45,7 +45,10 @@ class TestClassifySandboxMirrorTarget:
         assert result["mirror_root"].endswith(
             os.path.join("sandboxes", "docker", "default", "home", ".hermes")
         )
-        assert result["inner_path"] == os.path.join("profiles", "group1", "SOUL.md")
+        # inner_path is POSIX-normalized by production (``Path(...).as_posix()``), the same
+        # contract classify_container_mirror_target uses; it is a display string in the
+        # warning, never a filesystem path.
+        assert result["inner_path"] == "profiles/group1/SOUL.md"
 
     @pytest.mark.parametrize(
         "backend,inner",
@@ -69,7 +72,7 @@ class TestClassifySandboxMirrorTarget:
 
         result = classify_sandbox_mirror_target(str(target))
         assert result is not None
-        assert result["inner_path"] == str(Path(inner))
+        assert result["inner_path"] == inner
         assert backend in result["mirror_root"]
 
 

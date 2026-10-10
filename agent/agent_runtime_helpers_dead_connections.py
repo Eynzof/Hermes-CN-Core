@@ -13,9 +13,13 @@ logger = logging.getLogger("run_agent")  # origin module's logger name: log reco
 def _socket_is_dead(sock) -> bool:
     """Probe socket health with a non-blocking recv peek."""
     import socket as _socket
+    # MSG_DONTWAIT is POSIX-only (absent on Windows, where it raises AttributeError before the
+    # probe runs and the caller silently skips the sweep); the socket is already non-blocking, so
+    # a 0 fallback keeps the peek non-blocking on every platform.
+    flags = _socket.MSG_PEEK | getattr(_socket, "MSG_DONTWAIT", 0)
     try:
         sock.setblocking(False)
-        return sock.recv(1, _socket.MSG_PEEK | _socket.MSG_DONTWAIT) == b""
+        return sock.recv(1, flags) == b""
     except BlockingIOError:
         return False  # no data available: socket is healthy
     except OSError:

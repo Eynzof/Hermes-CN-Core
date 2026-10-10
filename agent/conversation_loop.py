@@ -1660,6 +1660,16 @@ def _run_conversation_turn(
     _prelude_action, _prelude_result = play_prelude(agent, s, prelude)
     if _prelude_action == "return":
         return _prelude_result
+    # ── Reminder registry ──────────────────────────────────────────
+    # System reminders (e.g. compact reminder) and out-of-band user steers
+    # share a unified injection path into the current turn's user message
+    # copy. Fan out turn-start hooks; collection happens per API call in the
+    # request-assembly phase.
+    _reminder_registry = getattr(agent, "_reminder_registry", None)
+    if _reminder_registry is not None:
+        _reminder_registry.on_turn_start(agent)
+    # Initialize dedup tracker previous calls for the first iteration
+    agent._prev_dedup_calls = []
     while _prelude_action != "break" and (
         (s.api_call_count < agent.max_iterations and agent.iteration_budget.remaining > 0) or agent._budget_grace_call
     ):

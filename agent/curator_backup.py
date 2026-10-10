@@ -353,7 +353,7 @@ def _restore_excluded_subtrees(staged: Path, skills: Path) -> list[str]:
                 try:
                     shutil.move(str(src), str(dest))
                 except OSError as e:
-                    failed.append(str(src.relative_to(staged)))
+                    failed.append(src.relative_to(staged).as_posix())
                     logger.debug("Could not restore excluded entry %s: %s", src, e)
         dirnames[:] = [d for d in dirnames if d not in _EXCLUDE_TOP_LEVEL and d not in TRANSIENT_DIRS]
     return failed

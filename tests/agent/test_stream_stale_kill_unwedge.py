@@ -165,7 +165,7 @@ def silent_wire():
 # P-022 — exercised platform-independently by tests/agent/test_streaming_stale_timeout.py).
 # The unit half of this file stays platform-neutral; only the end-to-end timing bound
 # below needs the POSIX wakeup.
-@pytest.mark.linux_only
+@pytest.mark.platforms("linux")
 def test_wedged_stream_unwinds_within_its_stale_budget_and_reconnects(silent_wire, monkeypatch):
     """Pre-fix the worker stayed parked in the body read: no second request was
     ever issued and the call only ended at the byte-read timeout (>= 20s here,

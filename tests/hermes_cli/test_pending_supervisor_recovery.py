@@ -8,7 +8,7 @@ from hermes_cli import gateway, main, update_cmd_fleet as fleet, update_receipt
 
 
 @pytest.mark.parametrize("failure", ["listing", "restart", "inactive", "unloaded", None])
-@pytest.mark.macos_only
+@pytest.mark.platforms("macos")
 def test_pending_launchd_requires_complete_supervision(monkeypatch, tmp_path, failure):
     # Host-independent subprocess-boundary fixture, not native launchd validation.
     current, sibling = "ai.hermes.gateway", "ai.hermes.gateway-two"

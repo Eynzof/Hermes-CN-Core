@@ -189,7 +189,7 @@ def _terminate_bridge_process(proc, *, force: bool = False) -> None:
         try:
             result = subprocess.run(
                 ["taskkill", "/PID", str(proc.pid), "/T"] + (["/F"] if force else []),
-                stdin=subprocess.DEVNULL, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=10,
+                stdin=subprocess.DEVNULL, capture_output=True, text=True, errors="replace", timeout=10,  # taskkill prints in the OEM/ANSI codepage, never UTF-8
             )
         except FileNotFoundError:
             return getattr(proc, action)()
@@ -497,6 +497,10 @@ class WhatsAppAdapter(WhatsAppBehaviorMixin, BasePlatformAdapter):
         # that copy carries the DEFAULT profile's WHATSAPP_* values, so every bridge-consumed key is
         # re-resolved from this profile (dropped on a scoped miss), never inherited from the launch env.
         bridge_env = with_hermes_node_path()
+        bridge_env["HERMES_HOME"] = str(get_hermes_home())
+        profile_home = get_subprocess_home(bridge_env)
+        if profile_home:
+            bridge_env["HOME"] = profile_home
         reply_prefix = _wenv("WHATSAPP_REPLY_PREFIX")
         if reply_prefix:
             bridge_env["WHATSAPP_REPLY_PREFIX"] = reply_prefix

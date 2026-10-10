@@ -10,7 +10,6 @@ import argparse
 import json
 import os
 import re
-import orjson
 from agent.re_compat import re
 import shutil
 import subprocess
@@ -2229,20 +2228,6 @@ def resolve_push_remote(requested: str | None) -> str:
         "receives the release push"
     )
 
-    # Keep the desktop Electron app's package.json version in lockstep with the
-    # Python package version. The desktop About panel reads the live Hermes
-    # version at runtime, but app.getVersion()/packaging metadata still come
-    # from this field, so it must track pyproject to avoid drift.
-    desktop_pkg = REPO_ROOT / "apps" / "desktop" / "package.json"
-    if desktop_pkg.exists():
-        pkg_text = desktop_pkg.read_text(encoding="utf-8", errors="replace")
-        pkg_text = re.sub(
-            r'("version"\s*:\s*)"[^"]+"',
-            rf'\g<1>"{semver}"',
-            pkg_text,
-            count=1,
-        )
-        desktop_pkg.write_text(pkg_text, encoding="utf-8")
 
 def remote_github_repo(remote: str) -> str | None:
     """Read the GitHub repository that receives the remote's pushes."""

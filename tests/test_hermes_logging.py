@@ -882,7 +882,7 @@ class TestExternalRotationRecovery:
         assert "AFTER rotation" not in rotated.read_text(encoding="utf-8-sig")
 
 
-@pytest.mark.linux_only
+@pytest.mark.platforms("linux")
 # stdlib RotatingFileHandler semantics: it holds an eagerly-opened ``stream`` and
 # writes through it, which is what this test replaces with a sick stream. On
 # Windows the module swaps in ``concurrent-log-handler``, whose ``_open()``
@@ -922,7 +922,7 @@ def test_eio_from_file_handler_names_the_path_once_then_recovers(tmp_path, capsy
         handler.close()
 
 
-@pytest.mark.linux_only
+@pytest.mark.platforms("linux")
 # Same reason as test_eio_from_file_handler_names_the_path_once_then_recovers:
 # only stdlib's RotatingFileHandler keeps a ``stream`` to replace.
 def test_eio_after_successful_reopen_still_names_the_path_once(tmp_path, capsys):

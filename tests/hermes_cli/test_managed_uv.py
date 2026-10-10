@@ -355,7 +355,7 @@ class TestEnsureUvWindowsSafe:
         with pytest.raises(TypeError):
             subprocess.list2cmdline([_UvResult("C:\\hermes\\uv.exe"), "pip"])
 
-    @pytest.mark.windows_only
+    @pytest.mark.platforms("windows")
     def test_windows_returns_plain_str_safe_for_subprocess(self, tmp_path):
         """``windows_only``: the subject is the real Windows opt-out branch and
         ``subprocess.list2cmdline`` — the faked ``platform.system`` only ever

@@ -166,7 +166,7 @@ class TestFindBashUnchanged:
 class TestFindBashSkipsBrokenCustomPath:
     """Stale HERMES_GIT_BASH_PATH must not brick Windows terminal startup."""
 
-    @pytest.mark.windows_only
+    @pytest.mark.platforms("windows")
     def test_falls_through_to_portable_when_custom_fails_probe(self, tmp_path, monkeypatch):
         """Windows-only: the candidate ladder (HERMES_GIT_BASH_PATH →
         %LOCALAPPDATA%\\hermes\\git → Program Files) only exists in
@@ -250,7 +250,7 @@ class TestGitBashExternalProgramProbe:
             time.sleep(0.05)
         assert not _pid_alive(grandchild), "grandchild survived the probe's tree-kill"
 
-    @pytest.mark.windows_only
+    @pytest.mark.platforms("windows")
     def test_aslr_failure_surfaces_targeted_windows_command(
         self, tmp_path, monkeypatch
     ):

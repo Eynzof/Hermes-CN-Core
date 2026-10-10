@@ -23537,7 +23537,7 @@ def test_workspace_move_rehomes_running_session(monkeypatch, tmp_path):
     assert live.get("explicit_cwd") is True
 
 
-@pytest.mark.linux_only
+@pytest.mark.platforms("linux")
 # utils.file_signature pins (mtime, size, ino, ctime). An in-place rewrite that restores mtime and
 # size leaves only the inode (atomic replace) / ctime (never backdatable) to change — and on Windows
 # st_ino may be 0 while st_ctime is the creation time, so the key deliberately degrades to mtime+size

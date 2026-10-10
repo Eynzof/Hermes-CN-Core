@@ -2529,6 +2529,9 @@ def init_agent(
     checkpoint_max_file_size_mb: int = 10, pass_session_id: bool = False,
     requested_provider: str | None = None, capabilities: Optional[dict[str, bool]] = None, cwd: Optional[str] = None,
     side_agent: bool = False, memory_manager=None,
+    # [CN-fork] P-041: fired once the assistant tool_calls row is committed, so the
+    # TUI/Desktop gateway can paint the tool call before the tools execute.
+    tool_calls_committed_callback: Optional[Callable[..., None]] = None,
     tool_result_metadata_callback: Optional[Callable[..., dict]] = None,
 ):
     _install_safe_stdio()

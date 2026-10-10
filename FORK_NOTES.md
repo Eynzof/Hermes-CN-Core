@@ -333,6 +333,71 @@ Also fixed a pre-existing bug in `hermes_time.py` where `def now():` was missing
 ---
 ---
 
+## Sync record (2026-10-09, `7318e666c2` → `dev-fix`)
+
+Upstream sync merged NousResearch/hermes-agent main (`7318e666c2`, 2026-10-09) into `dev-fix`: **12,335 upstream
+commits on top of `639823919c`**, 822 conflicts (686 content, 136 modify/delete) across the tree. The fork's
+454 local commits since the last sync are untouched; the merge commit is `03b1e269ef`, with a follow-up
+merge-repair commit (symbol/import restorations, `pyproject.toml` rebuild) after it.
+
+Resolution doctrine: upstream behaviour first, then the fork's documented intent (same as 2026-09-20). Work was
+done per conflict *block* (never whole-file), so every non-conflicting change from both sides survives:
+`.kimix_cache/cf2.py fix <path> <spec>` previews the blocks and writes `o`/`t`/`both` per block; a rule pass
+handled the mechanically decidable blocks (subset/similarity/duplicate detection) and the ambiguous ones were
+reviewed in batches. Fork-owned files kept their `P-NNN` intent verbatim.
+
+### How the conflicts were resolved (per area)
+
+| Area | Files | Approach |
+|---|---|---|
+| tests/** | 517 | Upstream's structure, purges and renames taken (upstream deleted ~122 test files outright: `test: purge low-value tests, lane pyNN`, memory-provider and updater tests); fork Windows/CN adjustments re-expressed in upstream's form (`@pytest.mark.platforms(...)` replaces the retired `linux_only`/`windows_only`/`macos_only` trio, which upstream's `tests/_fixtures/platform_gating.py` now rejects at collection). Fork tests for kept features (memory providers, honcho plugin, installers, Windows shell) restored. |
+| hermes_cli/ | 73 | Upstream's `web_routers/*`, `pm`-based dependency management and startup refactors taken; P-002/003/004/005/008/025/027/040/055/056 web routes and helpers re-homed into the routers; CN env vars (P-006/P-010), `ensure_starter_config_file` (P-027) and the CN provider resolver restored. |
+| tools/ | 51 | Upstream's `_ExecPlan`/terminal rework kept, the fork's P-030 in-process search predicate, P-033 Windows in-process I/O, P-037/P-051 decoding pins, P-042/P-043 acceleration, P-049 rtk pipeline, P-061 terminal/process ergonomics re-applied inside it; `local_gitbash_probe` kept (upstream called it dead, the fork's shell resolution still uses it). |
+| agent/ | 39 | Upstream's turn/stream refactors taken; P-013 arg repair, P-017 dedup, P-022 stale-stream escalation (incl. `_kill_stale_stream(elapsed, *, kill_count, max_kills)`), P-024 sanitizer, P-028 models.dev offline path, P-041 watchdog/`tool_calls_committed`, P-051 read pins re-applied. |
+| gateway/ cron/ tui_gateway/ | 35 | Upstream's relay/dispatch/observability refactor taken; P-021 cron reliability, P-023 pending steer, P-041 turn watchdog cancel, P-047/P-054 delegation events, feishu/wecom/yuanbao CN fixes and the frozen-runtime CLI argv (`hermes_cli_argv`) restored. |
+| plugins/ | 44 | Upstream's new plugin categories taken; bundled memory providers (hindsight/honcho/mem0/openviking/supermemory) **kept** with their sibling files (P-055/P-057 — the CN desktop runtime pre-bakes them), moss TTS (P-062/P-063) and CN platform adapters kept. |
+| website/ scripts/ apps/ .github/ | 41 | Upstream docs taken (fork-only pages re-homed); fork CI (release-runtime, upstream-watch), Python 3.14 + ripgrep pins and the Windows-footgun scan kept. |
+| root (pyproject.toml, setup.py, cli.py, …) | 17 | `pyproject.toml` rebuilt on upstream's structure (`requires-python >=3.11,<3.15` + per-dependency `python_version >= '3.14'` markers, `[dependency-groups]`) with the fork's performance block (regex/rapidfuzz/xxhash/pybase64/ciso8601/zstandard/lz4/yarl/orjson/ripgrepy), CN/memory extras, `[tool.hermes.precompile]` table, `pywin32>=306` (cap dropped, P-048) and the fork's package-data additions re-applied. |
+
+### Fork patches dropped or superseded in this sync
+
+- `agent/ssl_guard.py` (P-044) — upstream replaced TLS trust with `agent/ssl_verify.py` + `truststore`; deleted
+  together with `tests/agent/test_ssl_ca_guard.py`.
+- `tools/tirith_security.py` — the bundled scanner retired upstream (config migration 49→50 removes its keys);
+  kept out of the merged tree.
+- `plugins/platforms/homeassistant/`, `plugins/spotify/`, `tools/homeassistant_tool.py` — upstream moved both
+  products out of core into catalog plugins; the fork takes that direction (third-party SaaS belongs at the
+  edge, per AGENTS.md).
+- `hermes_cli/subcommands/sync.py` + Skill Sync tests — upstream removed the feature.
+- Legacy `linux_only` / `macos_only` / `windows_only` markers — replaced by upstream's `platforms(...)`.
+- `[wake]`/nektony-style extras, retired updater shims and the legacy dependency/launch managers — upstream
+  superseded them with the new `pm` package; the fork follows (its `dep_ensure.py` helpers stay because the
+  fork's search fallback still calls `_find_rg`).
+
+### Verification
+
+- `python -m compileall` over `agent tools hermes_cli gateway plugins cron tui_gateway acp_adapter tests pm`:
+  clean.
+- `ruff check --select F821,F811` compared against both baselines (fork `efbc700345`, upstream `7318e666c2`):
+  the merge-introduced undefined names were driven to zero in production code; the remaining findings are the
+  fork's façade/sibling late-bound globals (`tui_gateway/*`, published via `bind_module`) that both baselines
+  report as well.
+- Full suite, Windows (Python 3.14.3) via `scripts/run_tests.sh -j 7 --slice N/4` (4 slices, 5,640 files,
+  ~53,000 tests): see the follow-up commit message / CI.
+- WSL (Ubuntu 26.04, Python 3.14.4) — offline: the environment is installed from a manylinux cp314 wheelhouse
+  built on the Windows host (`pip download --platform manylinux_2_28_x86_64`), then run from
+  `/mnt/c/dev/Hermes-CN-Core` with `HERMES_PYTHON=<venv>`.
+
+### Follow-ups / known issues
+
+- `apps/desktop` TypeScript is not compiled in this environment (no `node_modules`); TS/TSX changes were
+  reviewed by parse + eye — run `tsc`/`vitest` in CI.
+- The bundled memory providers are fork-maintained now that upstream ships them from the catalog; their
+  dependency pins must stay in lockstep with `plugins/memory/*/plugin.yaml`.
+- `uv.lock` needs `uv lock` against the rebuilt `pyproject.toml` before the next release build.
+- Lifecycle/updater tests upstream purged were not resurrected; the fork's installer coverage lives in
+  `tests/scripts/install/`.
+
 ## Sync record (2026-09-20, `639823919c` → `dev-fix`)
 
 Upstream advanced **16,888 commits / 10,771 files** since the previous sync point

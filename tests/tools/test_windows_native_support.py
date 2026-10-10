@@ -479,7 +479,7 @@ class TestMsysPathNormalization:
         from hermes_cli.worktree_ops import _normalize_git_bash_path
         assert _normalize_git_bash_path("") == ""
 
-    @pytest.mark.windows_only
+    @pytest.mark.platforms("windows")
     def test_windows_translation(self, monkeypatch):
         """On native Windows, /c/Users/... becomes C:\\Users\\...
 

@@ -1,6 +1,14 @@
 ---
 name: gh
-description: GitHub CLI (gh) installation and usage guide covering Windows, Linux, and macOS. Use when the user asks how to install, update, authenticate, or use the GitHub CLI (gh) — including package managers (winget, Homebrew, apt, dnf, pacman), gh auth login, and common commands for repos, PRs, issues, Actions, and releases.
+description: Install, authenticate and use the GitHub CLI (gh).
+version: 1.0.0
+author: Hermes Agent
+license: MIT
+platforms: [windows, linux, macos]
+metadata:
+  hermes:
+    tags: [github, cli, git, devops, releases]
+    category: devops
 ---
 
 # GitHub CLI (gh)

@@ -8,13 +8,11 @@ When HERMES_HOME is already a profile directory (.../profiles/<name>),
 _apply_profile_override must trust it and return without re-reading
 active_profile (child-process inheritance contract).
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import os
 import sys
-
-import pytest
 from pathlib import Path
 from types import SimpleNamespace
 import pytest
@@ -24,16 +22,6 @@ import pytest
 def _platform_home(tmp_path, monkeypatch):
     monkeypatch.setattr("hermes_constants._get_platform_default_hermes_home", lambda: tmp_path / ".hermes")
 
-def _hermes_root_for_test(tmp_path: Path) -> Path:
-    r"""Platform-aware default Hermes root for these tests.
-
-    On POSIX this is ``tmp_path/.hermes``; on native Windows it is
-    ``tmp_path/hermes`` because ``_get_platform_default_hermes_home`` uses
-    ``%LOCALAPPDATA%\hermes``.
-    """
-    if sys.platform == "win32":
-        return tmp_path / "hermes"
-    return tmp_path / ".hermes"
 
 def _run_apply_profile_override(
     tmp_path, monkeypatch, *, hermes_home: str | None, active_profile: str | None,
@@ -45,9 +33,7 @@ def _run_apply_profile_override(
     Returns the value of os.environ["HERMES_HOME"] after the call,
     or None if unset.
     """
-    if sys.platform == "win32":
-        monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
-    hermes_root = _hermes_root_for_test(tmp_path)
+    hermes_root = tmp_path / ".hermes"
     hermes_root.mkdir(parents=True, exist_ok=True)
 
     if active_profile is not None:
@@ -153,7 +139,7 @@ class TestApplyProfileOverrideHermesHomeGuard:
         and the user switches to a profile via `hermes profile use`.
         Before the fix, the guard returned early and active_profile was ignored.
         """
-        hermes_root = _hermes_root_for_test(tmp_path)
+        hermes_root = tmp_path / ".hermes"
         hermes_root.mkdir(parents=True, exist_ok=True)
 
         result = _run_apply_profile_override(
@@ -171,70 +157,8 @@ class TestApplyProfileOverrideHermesHomeGuard:
             f"Expected HERMES_HOME to end with 'coder', got: {result!r}"
         )
 
-    def test_desktop_managed_root_home_does_not_follow_sticky_profile(
-        self, tmp_path, monkeypatch
-    ):
-        """A managed Desktop restart pins the target profile via HERMES_HOME.
 
-        Switching from a named profile back to default starts the replacement
-        dashboard with HERMES_HOME at the Hermes root before Desktop clears the
-        old active_profile file. The replacement must stay on the explicit root
-        instead of being redirected back to that stale named profile.
-        """
-        hermes_root = _hermes_root_for_test(tmp_path)
-        monkeypatch.setenv("HERMES_DESKTOP_MANAGED", "1")
-        result = _run_apply_profile_override(
-            tmp_path,
-            monkeypatch,
-            hermes_home=str(hermes_root),
-            active_profile="coder",
-            argv=["hermes", "dashboard", "--no-open"],
-        )
-
-        assert result == str(hermes_root)
-
-    def test_hermes_home_already_profile_dir_is_trusted(self, tmp_path, monkeypatch):
-        """HERMES_HOME=.../profiles/coder must not be overridden even when
-        active_profile says something different.
-
-        Preserves the child-process inheritance contract: a subprocess spawned
-        with HERMES_HOME already set to a specific profile must stay in that
-        profile.
-        """
-        hermes_root = _hermes_root_for_test(tmp_path)
-        profile_dir = hermes_root / "profiles" / "coder"
-        profile_dir.mkdir(parents=True, exist_ok=True)
-
-        (hermes_root / "active_profile").write_text("other")
-
-        monkeypatch.setattr(Path, "home", lambda: tmp_path)
-        if sys.platform == "win32":
-            monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
-        monkeypatch.setenv("HERMES_HOME", str(profile_dir))
-        monkeypatch.setattr(sys, "argv", ["hermes", "gateway", "start"])
-
-        from hermes_cli.main import _apply_profile_override
-        _apply_profile_override()
-
-        assert os.environ.get("HERMES_HOME") == str(profile_dir), (
-            "HERMES_HOME must remain unchanged when already pointing to a profile dir"
-        )
-
-    def test_hermes_home_unset_reads_active_profile(self, tmp_path, monkeypatch):
-        """Classic case: HERMES_HOME unset + active_profile=coder must set
-        HERMES_HOME to the profile directory (existing behaviour must not regress).
-        """
-        result = _run_apply_profile_override(
-            tmp_path,
-            monkeypatch,
-            hermes_home=None,
-            active_profile="coder",
-        )
-
-        assert result is not None
-        assert "coder" in result
-
-    @pytest.mark.skipif(sys.platform == "win32", reason="POSIX sudo/pwd only")
+    @pytest.mark.platforms("posix")
     def test_sudo_explicit_profile_resolves_invoking_users_profile(self, tmp_path, monkeypatch):
         """sudo elias ... should resolve `-p elias` under SUDO_USER, not root."""
         root_home = tmp_path / "root"
@@ -263,8 +187,66 @@ class TestApplyProfileOverrideHermesHomeGuard:
         # Same identity gate as ``-p`` without sudo: a marker-less shell is not a profile.
         (user_home / ".hermes" / "profiles" / "ghost" / "cron").mkdir(parents=True)
         assert _resolve_sudo_user_profile_env("ghost") is None
+    def test_desktop_managed_root_home_does_not_follow_sticky_profile(
+        self, tmp_path, monkeypatch
+    ):
+        """A managed Desktop restart pins the target profile via HERMES_HOME.
 
+        Switching from a named profile back to default starts the replacement
+        dashboard with HERMES_HOME at the Hermes root before Desktop clears the
+        old active_profile file. The replacement must stay on the explicit root
+        instead of being redirected back to that stale named profile.
+        """
+        hermes_root = tmp_path / ".hermes"
+        monkeypatch.setenv("HERMES_DESKTOP_MANAGED", "1")
+        result = _run_apply_profile_override(
+            tmp_path,
+            monkeypatch,
+            hermes_home=str(hermes_root),
+            active_profile="coder",
+            argv=["hermes", "dashboard", "--no-open"],
+        )
 
+        assert result == str(hermes_root)
+
+    def test_hermes_home_already_profile_dir_is_trusted(self, tmp_path, monkeypatch):
+        """HERMES_HOME=.../profiles/coder must not be overridden even when
+        active_profile says something different.
+
+        Preserves the child-process inheritance contract: a subprocess spawned
+        with HERMES_HOME already set to a specific profile must stay in that
+        profile.
+        """
+        hermes_root = tmp_path / ".hermes"
+        profile_dir = hermes_root / "profiles" / "coder"
+        profile_dir.mkdir(parents=True, exist_ok=True)
+
+        (hermes_root / "active_profile").write_text("other")
+
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        monkeypatch.setenv("HERMES_HOME", str(profile_dir))
+        monkeypatch.setattr(sys, "argv", ["hermes", "gateway", "start"])
+
+        from hermes_cli.main import _apply_profile_override
+        _apply_profile_override()
+
+        assert os.environ.get("HERMES_HOME") == str(profile_dir), (
+            "HERMES_HOME must remain unchanged when already pointing to a profile dir"
+        )
+
+    def test_hermes_home_unset_reads_active_profile(self, tmp_path, monkeypatch):
+        """Classic case: HERMES_HOME unset + active_profile=coder must set
+        HERMES_HOME to the profile directory (existing behaviour must not regress).
+        """
+        result = _run_apply_profile_override(
+            tmp_path,
+            monkeypatch,
+            hermes_home=None,
+            active_profile="coder",
+        )
+
+        assert result is not None
+        assert "coder" in result
 
 
 class TestSupervisedChildIgnoresStickyProfile:
@@ -300,7 +282,7 @@ class TestSupervisedChildIgnoresStickyProfile:
         """A supervised named-profile slot passes ``-p <name>`` explicitly;
         that must still resolve (the sentinel guard only skips the sticky
         active_profile fallback, never an explicit flag)."""
-        hermes_root = _hermes_root_for_test(tmp_path)
+        hermes_root = tmp_path / ".hermes"
         hermes_root.mkdir(parents=True, exist_ok=True)
         (hermes_root / "active_profile").write_text("briefer", encoding="utf-8")
         for name in ("briefer", "coder"):
@@ -309,8 +291,6 @@ class TestSupervisedChildIgnoresStickyProfile:
                 "{}\n", encoding="utf-8")  # identity marker
 
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
-        if sys.platform == "win32":
-            monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
         monkeypatch.delenv("HERMES_HOME", raising=False)
         monkeypatch.setenv("HERMES_S6_SUPERVISED_CHILD", "1")
         monkeypatch.setattr(sys, "argv", ["hermes", "-p", "coder", "gateway", "run"])
@@ -338,12 +318,7 @@ class TestGeneralizedSupervisorMarkers:
     """
 
     def _root_home(self, tmp_path):
-        # Platform-aware: on native Windows the default root is
-        # ``%LOCALAPPDATA%\hermes``, not ``~/.hermes`` (see
-        # ``_hermes_root_for_test``). A hard-coded ``.hermes`` here left the
-        # product's ``get_default_hermes_root()/active_profile`` unread, so the
-        # marker tests silently passed without exercising the suppression.
-        hermes_root = _hermes_root_for_test(tmp_path)
+        hermes_root = tmp_path / ".hermes"
         hermes_root.mkdir(parents=True, exist_ok=True)
         return hermes_root
 

@@ -64,6 +64,7 @@ class TestMain:
         assert cgroup_cleanup.main() == 1
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="cgroups are Linux-only")
 class TestLiveGatewayGuard:
     @pytest.mark.parametrize("verb", ["run", "restart"])
     def test_reap_refuses_when_live_gateway_in_cgroup(self, monkeypatch, verb):

@@ -33,13 +33,14 @@ from agent.auxiliary_client import (
     _try_openrouter,
     _OPENROUTER_MODEL,
     OPENROUTER_BASE_URL,
+    _resolve_auto_route,
+    _get_provider_chain,
     _resolve_task_provider_model,
     _resolve_xai_oauth_for_aux,
     _CodexCompletionsAdapter,
     _pool_runtime_base_url,
     _unwrap_data_envelope,
 )
-from agent.auxiliary_client import ( _NOUS_MODEL, CodexAuxiliaryClient, get_text_auxiliary_client, get_available_vision_backends, resolve_vision_provider_client, resolve_provider_client, auxiliary_max_tokens_param, call_llm, async_call_llm, _build_call_kwargs, _read_codex_access_token, _get_provider_chain, _is_payment_error, _is_rate_limit_error, _is_model_not_found_error, _is_model_incompatible_error, _refresh_nous_recommended_model, _normalize_aux_provider, _try_payment_fallback, _try_openrouter, _OPENROUTER_MODEL, OPENROUTER_BASE_URL, _resolve_auto_route, _resolve_task_provider_model, _resolve_xai_oauth_for_aux, _CodexCompletionsAdapter, _pool_runtime_base_url, )
 
 
 def _jwt_with_claims(claims: dict) -> str:
@@ -86,25 +87,6 @@ def _clean_env(monkeypatch):
     yield
     _aux_mod._aux_unhealthy_until.clear()
     _aux_mod._aux_unhealthy_logged_at.clear()
-
-
-@pytest.fixture
-def codex_auth_dir(tmp_path, monkeypatch):
-    """Provide a writable ~/.codex/ directory with a valid auth.json."""
-    codex_dir = tmp_path / ".codex"
-    codex_dir.mkdir()
-    auth_file = codex_dir / "auth.json"
-    auth_file.write_text(orjson.dumps({
-        "tokens": {
-            "access_token": "codex-test-token-abc123",
-            "refresh_token": "codex-refresh-xyz",
-        }
-    }).decode('utf-8'))
-    monkeypatch.setattr(
-        "agent.auxiliary_client._read_codex_access_token",
-        lambda: "codex-test-token-abc123",
-    )
-    return codex_dir
 
 
 class TestAuxiliaryMaxTokensParam:
@@ -543,7 +525,7 @@ class TestResolveCodexCredentialToken:
         (hermes_home / "auth.json").write_text(orjson.dumps({"version": 1, "providers": {}}).decode('utf-8'))
         monkeypatch.setenv("HERMES_HOME", str(hermes_home))
         with patch("agent.auxiliary_client._select_pool_entry", return_value=(False, None)):
-            result = _read_codex_access_token()
+            result = _resolve_codex_credential_and_base()[0]
         assert result is None
 
     def test_empty_token_returns_none(self, tmp_path, monkeypatch):
@@ -558,25 +540,9 @@ class TestResolveCodexCredentialToken:
             },
         }).decode('utf-8'))
         monkeypatch.setenv("HERMES_HOME", str(hermes_home))
-        result = _read_codex_access_token()
+        with patch("agent.auxiliary_client._select_pool_entry", return_value=(False, None)):
+            result = _resolve_codex_credential_and_base()[0]
         assert result is None
-
-    def test_malformed_json_returns_none(self, tmp_path):
-        codex_dir = tmp_path / ".codex"
-        codex_dir.mkdir()
-        (codex_dir / "auth.json").write_text("{bad json")
-        with patch("agent.auxiliary_client.Path.home", return_value=tmp_path):
-            result = _read_codex_access_token()
-        assert result is None
-
-    def test_missing_tokens_key_returns_none(self, tmp_path):
-        codex_dir = tmp_path / ".codex"
-        codex_dir.mkdir()
-        (codex_dir / "auth.json").write_text(orjson.dumps({"other": "data"}).decode('utf-8'))
-        with patch("agent.auxiliary_client.Path.home", return_value=tmp_path):
-            result = _read_codex_access_token()
-        assert result is None
-
 
     def test_expired_jwt_returns_none(self, tmp_path, monkeypatch):
         """Expired JWT tokens should be skipped so auto chain continues."""
@@ -642,7 +608,8 @@ class TestResolveCodexCredentialToken:
             },
         }).decode('utf-8'))
         monkeypatch.setenv("HERMES_HOME", str(hermes_home))
-        result = _read_codex_access_token()
+        with patch("agent.auxiliary_client._select_pool_entry", return_value=(False, None)):
+            result = _resolve_codex_credential_and_base()[0]
         assert result == "plain-token-no-jwt"
 
 class TestResolveXaiOAuthForAux:
@@ -1074,10 +1041,12 @@ class TestExpiredCodexFallback:
             # wait to every compression / title-gen / vision call), so a bare OPENROUTER_API_KEY
             # must not make auto resolve an OpenRouter client here.
             from agent.auxiliary_client import _resolve_auto_route
-            client, _model, _provider = _resolve_auto_route()
-            assert client is not None
-            # OpenRouter is 1st in chain, should win
-            mock_openai.assert_called()
+            client, model, _provider = _resolve_auto_route()
+            assert client is None
+            assert model is None
+            mock_openai.assert_not_called()
+            or_try.assert_not_called()
+            nous_try.assert_not_called()
 
 
 
@@ -1100,7 +1069,8 @@ class TestExpiredCodexFallback:
             },
         }).decode('utf-8'))
         monkeypatch.setenv("HERMES_HOME", str(hermes_home))
-        result = _read_codex_access_token()
+        with patch("agent.auxiliary_client._select_pool_entry", return_value=(False, None)):
+            result = _resolve_codex_credential_and_base()[0]
         assert result == no_exp_jwt, "JWT without exp should pass through"
 
     def test_jwt_invalid_json_payload_passes_through(self, tmp_path, monkeypatch):
@@ -1121,7 +1091,8 @@ class TestExpiredCodexFallback:
             },
         }).decode('utf-8'))
         monkeypatch.setenv("HERMES_HOME", str(hermes_home))
-        result = _read_codex_access_token()
+        with patch("agent.auxiliary_client._select_pool_entry", return_value=(False, None)):
+            result = _resolve_codex_credential_and_base()[0]
         assert result == bad_jwt, "JWT with invalid JSON payload should pass through"
 
     def test_claude_code_oauth_env_sets_flag(self, monkeypatch):
@@ -1388,7 +1359,9 @@ class TestGetTextAuxiliaryClient:
         monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-        with patch("agent.auxiliary_client._read_nous_auth", return_value=None), \
+        with patch("agent.auxiliary_client._try_openrouter") as or_try, \
+             patch("agent.auxiliary_client._try_nous") as nous_try, \
+             patch("agent.auxiliary_client._read_nous_auth", return_value=None), \
              patch("agent.auxiliary_client._resolve_codex_credential_and_base",
                    return_value=(None, "https://chatgpt.com/backend-api/codex")), \
              patch("agent.auxiliary_client._resolve_api_key_provider", return_value=(None, None)):
@@ -4982,11 +4955,11 @@ class TestAuxUnhealthyCache:
              patch("agent.auxiliary_client._try_openrouter") as or_try, \
              patch("agent.auxiliary_client._try_nous") as nous_try, \
              patch("agent.auxiliary_client._try_custom_endpoint") as custom_try, \
-             patch("agent.auxiliary_client._resolve_api_key_provider", return_value=(None, None)):
-            client, _model, label = _try_payment_fallback("openrouter", task="compression")
-        assert client is nous_client
-        assert label == "nous"
-        # OR is skipped via skip_chain_labels (failed provider), custom via unhealthy cache.
+             patch("agent.auxiliary_client._resolve_api_key_provider", return_value=(api_client, "api-model")):
+            client, model, label = _try_payment_fallback("openrouter", task="compression")
+        assert client is api_client
+        assert label == "api-key"
+        # OR/Nous are no longer implicit rungs; custom is skipped via unhealthy cache.
         or_try.assert_not_called()
         nous_try.assert_not_called()
         custom_try.assert_not_called()

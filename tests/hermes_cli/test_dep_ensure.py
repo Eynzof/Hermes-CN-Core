@@ -9,7 +9,7 @@ from tools import browser_tool_install as bt_install
 
 
 
-@pytest.mark.linux_only
+@pytest.mark.platforms("linux")
 def test_find_install_script_from_checkout(tmp_path):
     """_find_install_script finds scripts/install.sh in a git checkout.
 
@@ -264,7 +264,7 @@ def test_ripgrep_description_mentions_ripgrepy():
 # ── Original test_ensure_dependency_uses_powershell_on_windows ──────────
 
 
-@pytest.mark.windows_only
+@pytest.mark.platforms("windows")
 def test_ensure_dependency_uses_powershell_on_windows(tmp_path):
     """``windows_only``: the assertion is that we shell out to a real
     PowerShell. Faking ``_IS_WINDOWS`` on Linux also required faking

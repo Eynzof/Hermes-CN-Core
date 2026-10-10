@@ -260,7 +260,7 @@ class TestShellFileOpsHelpers:
             "C:/Users/alice/notes.txt"
         ) == "'/c/Users/alice/notes.txt'"
 
-    @pytest.mark.windows_only
+    @pytest.mark.platforms("windows")
     def test_read_file_uses_bash_safe_windows_paths(self, mock_env):
         """Windows-only: proves read_file's shell commands carry the MSYS path
         form Git Bash needs — a translation that is a no-op off Windows."""

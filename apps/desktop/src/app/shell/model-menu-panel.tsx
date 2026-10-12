@@ -30,6 +30,9 @@ export { ModelMenuCloseContext } from './model-catalog-menu'
 export interface ModelSelection {
   model: string
   provider: string
+  /** Omitted/`session` preserves the existing live-session override path.
+   *  `global` writes the profile default via config.set --global. */
+  scope?: 'global' | 'session'
   /** Runtime id of the surface that opened the menu. When set, the switch
    *  targets that session (a tile) instead of the primary `$activeSessionId`. */
   sessionId?: null | string
@@ -190,11 +193,17 @@ export function ModelMenuPanel({ gateway, onSelectModel, profile = 'default', re
 
     presetFor: (provider, model) => modelPresets[modelPresetKey(provider, model)] ?? {},
 
-    // The composer picker never persists the profile default. With a session it
-    // scopes the switch to that session; with none it's UI state shipped on the
-    // next session.create. Always stamp sessionId from this surface so a tile
-    // switch never hits the primary (busy) session by accident.
-    select: (model, provider) => onSelectModel({ model, provider, sessionId: activeSessionId || null }),
+    // The composer picker writes through to the target session by default. A
+    // scope:'global' pick routes through the backend's profile-default branch;
+    // either way, stamp sessionId from this surface so a tile switch never
+    // hits the primary (busy) session by accident.
+    select: (model, provider, options) =>
+      onSelectModel({
+        model,
+        provider,
+        ...(options?.scope ? { scope: options.scope } : {}),
+        sessionId: activeSessionId || null
+      }),
 
     setOptions: (patch, row) => {
       // Editing always records the model's global preset (keyed by

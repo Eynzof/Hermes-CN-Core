@@ -2047,6 +2047,7 @@ export interface Translations {
       options: string
       thinking: string
       fast: string
+      setGlobalDefault?: string
       effort: string
       minimal: string
       low: string

@@ -20,7 +20,7 @@ import uuid
 from abc import ABC, abstractmethod
 from collections import deque
 from pathlib import Path
-from typing import IO, Callable, Iterable, Protocol
+from typing import Any, IO, Callable, Iterable, Protocol
 
 from hermes_constants import get_hermes_home
 from tools.interrupt import is_interrupted

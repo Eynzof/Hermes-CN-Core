@@ -4869,6 +4869,7 @@ def _apply_pending_model_switch(sid: str, session: dict) -> None:
             session,
             pending["raw"],
             confirm_expensive_model=bool(pending.get("confirm_expensive_model")),
+            pin_session_override=bool(pending.get("pin_session_override", True)),
         )
         # A queued pick is a deliberate user action; honour the expensive-model
         # confirm by NOT applying it silently — surface the warning and drop the
@@ -11203,11 +11204,17 @@ def _(rid, params: dict) -> dict:
                         pending_model = parsed.model_input
                     except Exception:
                         pending_model = str(value)
+                    pending_is_global = bool(getattr(parsed, "is_global", False))
                     session["pending_model_switch"] = {
                         "raw": value,
                         "confirm_expensive_model": bool(
                             params.get("confirm_expensive_model", False)
                         ),
+                        # Global model picks are profile-level defaults.  They
+                        # should still switch this chat on the next turn, but
+                        # must not pin a session override that would block later
+                        # config changes from being adopted.
+                        "pin_session_override": not pending_is_global,
                         # The resolved model/provider the next turn will run on.
                         # _session_info reports these while the switch is pending
                         # so the end-of-turn settle keeps showing the user's pick
@@ -11225,7 +11232,7 @@ def _(rid, params: dict) -> dict:
                             "warning": "",
                             "confirm_required": False,
                             "confirm_message": "",
-                            "scope": "session",
+                            "scope": "global" if pending_is_global else "session",
                             "deferred": True,
                         },
                     )
@@ -11253,6 +11260,7 @@ def _(rid, params: dict) -> dict:
                         params.get("confirm_expensive_model", False)
                     ),
                     parsed_flags=parsed_flags,
+                    pin_session_override=not bool(getattr(parsed_flags, "is_global", False)),
                 )
             else:
                 result = _call_apply_model_switch(

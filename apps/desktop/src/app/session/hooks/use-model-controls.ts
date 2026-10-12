@@ -169,6 +169,7 @@ export function useModelControls({ queryClient, requestGateway }: ModelControlsO
       const primaryRuntimeId = $activeSessionId.get()
       const liveSessionId = 'sessionId' in selection ? (selection.sessionId ?? null) : primaryRuntimeId
       const touchesPrimary = !liveSessionId || liveSessionId === primaryRuntimeId
+      const isGlobalSelection = selection.scope === 'global' && Boolean(liveSessionId)
 
       const prevModel = touchesPrimary ? $currentModel.get() : ($sessionStates.get()[liveSessionId!]?.model ?? '')
 
@@ -182,7 +183,11 @@ export function useModelControls({ queryClient, requestGateway }: ModelControlsO
       if (touchesPrimary) {
         setCurrentModel(selection.model)
         setCurrentProvider(selection.provider)
-        markComposerSelectionManual()
+        if (isGlobalSelection) {
+          setCurrentModelSource('default')
+        } else {
+          markComposerSelectionManual()
+        }
       } else if (liveSessionId) {
         // Optimistic tile paint — session.info will confirm; rollback on error.
         sessionTileDelegate()?.updateSession(liveSessionId, state => ({
@@ -196,7 +201,7 @@ export function useModelControls({ queryClient, requestGateway }: ModelControlsO
         liveSessionId,
         selection.provider,
         selection.model,
-        touchesPrimary && !liveSessionId,
+        isGlobalSelection || (touchesPrimary && !liveSessionId),
         liveGatewayProfile
       )
 
@@ -207,10 +212,14 @@ export function useModelControls({ queryClient, requestGateway }: ModelControlsO
       }
 
       try {
+        const modelValue = `${selection.model} --provider ${selection.provider} ${
+          isGlobalSelection ? '--global' : '--session'
+        }`
+
         const result = await requestGateway<{ deferred?: boolean }>('config.set', {
           session_id: liveSessionId,
           key: 'model',
-          value: `${selection.model} --provider ${selection.provider} --session`
+          value: modelValue
         })
 
         // A pick made DURING a turn is queued by the gateway and applied at the
@@ -249,7 +258,7 @@ export function useModelControls({ queryClient, requestGateway }: ModelControlsO
           liveSessionId,
           prevProvider,
           prevModel,
-          touchesPrimary && !liveSessionId,
+          isGlobalSelection || (touchesPrimary && !liveSessionId),
           liveGatewayProfile
         )
         notifyError(err, copy.modelSwitchFailed)

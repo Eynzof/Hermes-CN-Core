@@ -7584,15 +7584,25 @@ def _start_turn_watchdog(sid: str, session: dict) -> Callable[[], None]:
             except Exception:
                 pass
             try:
-                with history_lock:
-                    _clear_inflight_turn(session)
-                    session["running"] = False
-            except Exception:
-                pass
-            try:
                 agent = session.get("agent")
                 if agent is not None and callable(getattr(agent, "interrupt", None)):
                     agent.interrupt("Turn watchdog: no activity")
+            except Exception:
+                pass
+            finally:
+                # interrupt() sets the agent's cancellation flag, but a
+                # clarify/sudo/secret tool is parked on a separate Event.
+                # Wake only this session's waiters even if interruption or
+                # error delivery failed, so the runner can release its lease.
+                _clear_pending(sid)
+            try:
+                run_thread = session.get("_run_thread")
+                if run_thread is None or not run_thread.is_alive():
+                    with history_lock:
+                        _clear_inflight_turn(session)
+                        session["running"] = False
+                # A live runner owns finalization. Keep it busy until it
+                # exits; otherwise a new turn races it or waits on its lease.
             except Exception:
                 pass
             return

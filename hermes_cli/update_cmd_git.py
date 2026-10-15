@@ -585,9 +585,17 @@ def _locate_real_git() -> Optional[Path]:
     re-exec git-core, while the real binary at ``mingw64\\libexec\\git-core\\git.exe`` (≈4.4MB) works when
     invoked directly (#87876).
     """
+    from pm import installed_package
+
+    managed = installed_package("git", allow_outdated=True)
+    # PM's selected entry can live outside Program Files and the legacy home/git.
+    # Probe its git-core directly even when its cmd/git.exe trampoline is broken.
+    roots = ([managed.path] if managed is not None else []) + [
+        Path(base) / "Git" for base in (r"C:\Program Files", r"C:\Program Files (x86)")
+    ]
     candidates = [
-        Path(base) / "Git" / arch / "libexec" / "git-core" / "git.exe"
-        for base in (r"C:\Program Files", r"C:\Program Files (x86)")
+        root / arch / "libexec" / "git-core" / "git.exe"
+        for root in roots
         for arch in ("clangarm64", "mingw64", "mingw32")
     ] + _portable_git_candidates()
     return next((c for c in candidates if c.exists() and _probe_fork_bomb([str(c)]) is False), None)

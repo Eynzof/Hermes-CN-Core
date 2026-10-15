@@ -9,6 +9,7 @@ import sys
 import time
 
 import pytest
+import psutil
 
 
 ROOT = Path(__file__).resolve().parent.parent.parent.parent
@@ -46,14 +47,43 @@ def _ps(command: str, timeout: int = 60) -> str:
 
 
 def _creation_time(pid: int) -> str:
-    out = _ps(f"$c = (Get-CimInstance Win32_Process -Filter 'ProcessId={pid}').CreationDate; "
-              "[DateTimeOffset]::new($c.ToUniversalTime()).ToUnixTimeMilliseconds().ToString()")
-    return f'{int(out) / 1000:.3f}'
+    """Independent native identity, without another PowerShell/CIM startup.
+
+    Keep FILETIME as integers: the production CIM reader truncates to milliseconds.
+    Rounding a float to three decimals can differ by 1 ms in exact marker assertions.
+    """
+    import ctypes
+    from ctypes import wintypes
+
+    kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+    kernel.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    kernel.OpenProcess.restype = wintypes.HANDLE
+    kernel.GetProcessTimes.argtypes = (wintypes.HANDLE, *(ctypes.POINTER(ctypes.c_ulonglong),) * 4)
+    kernel.GetProcessTimes.restype = wintypes.BOOL
+    kernel.CloseHandle.argtypes = (wintypes.HANDLE,)
+    handle = kernel.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not handle:
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        times = [ctypes.c_ulonglong() for _ in range(4)]
+        if not kernel.GetProcessTimes(handle, *(ctypes.byref(value) for value in times)):
+            raise ctypes.WinError(ctypes.get_last_error())
+        milliseconds = (times[0].value - 116444736000000000) // 10000
+        return f'{milliseconds // 1000}.{milliseconds % 1000:03d}'
+    finally:
+        kernel.CloseHandle(handle)
 
 
 def _alive(pid: int) -> bool:
-    return str(pid) in subprocess.run(['tasklist', '/FI', f'PID eq {pid}', '/NH'],
-                                      capture_output=True, text=True).stdout
+    return psutil.pid_exists(pid)
+
+
+@pytest.fixture
+def sleeper():
+    proc = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(600)'])
+    yield proc
+    proc.kill()
+    proc.wait()
 
 
 def _dead_pid() -> int:

@@ -222,11 +222,13 @@ def _prepare_native(*, out: Path, ref: str, source: Path, cache: Path,
         shutil.rmtree(venv_dir)
     env = dict(build_env)
     from pm import build_environment
+    from scripts.bundles.native_cache import native_wheel_cache
 
     # Cold native wheels need a larger budget than interactive installs.
-    build_environment(source=repo_dir, python=python_bin, out=venv_dir,
-                      env=env, cache=cache, all_extras=True, sealed=True, explicit=True,
-                      timeout=2 * 60 * 60)
+    with native_wheel_cache(cache) as wheel_cache:
+        build_environment(source=repo_dir, python=python_bin, out=venv_dir,
+                          env=env, cache=wheel_cache, all_extras=True, sealed=True, explicit=True,
+                          timeout=2 * 60 * 60)
     print("✓ venv (all extras, on the staged interpreter)")
 
     # Inventory the staged interpreter before publishing the bundle contract.

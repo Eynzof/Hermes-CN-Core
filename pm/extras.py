@@ -61,6 +61,9 @@ ANCHORS: dict[str, str | tuple[str, ...]] = {
     "doc-extract": "anydoc",
     "computer-use": "mcp",
     "trace-upload": "huggingface_hub",
+    "hindsight": "hindsight_client",
+    "mem0-ollama": ("mem0", "ollama"),
+    "mem0-pgvector": ("mem0", "psycopg2"),
     # Pillow resize recovery for vision tools (the `vision` extra is a no-op
     # back-compat alias — Pillow is core — but ensure_import("vision") must
     # still resolve an anchor so availability checks work).

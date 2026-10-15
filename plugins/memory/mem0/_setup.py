@@ -245,11 +245,12 @@ def _finish_oss(hermes_home: str, config: dict, oss_config: dict, env_writes: di
         _write_env(Path(hermes_home) / ".env", env_writes)
     config_path = Path(hermes_home) / "mem0.json"  # merge-write, plain text (platform path uses save_config's 0600 atomic write)
     config_path.write_text(json.dumps({**read_json_or_empty(config_path), "mode": "oss", "user_id": user_id, "agent_id": agent_id, "oss": oss_config}, indent=2) + "\n", encoding="utf-8")
-    _install_provider_deps(oss_config["llm"]["provider"], oss_config["embedder"]["provider"], oss_config["vector_store"]["provider"])
-    if pgvector_config:
+    dependencies_ready = _install_provider_deps(oss_config["llm"]["provider"], oss_config["embedder"]["provider"], oss_config["vector_store"]["provider"])
+    if pgvector_config and dependencies_ready:
         _ensure_pgvector_extension(pgvector_config)
     _activate_provider(config)
-    _run_connectivity_checks(oss_config)
+    if dependencies_ready:
+        _run_connectivity_checks(oss_config)
     _print_oss_summary(oss_config, env_writes)
 
 
@@ -431,31 +432,28 @@ def _setup_oss_interactive(hermes_home: str, config: dict) -> None:
     _finish_oss(hermes_home, config, oss_config, env_writes, user_id, agent_id, pgvector_config)
 
 
-def _install_provider_deps(llm_id: str, embedder_id: str, vector_id: str) -> None:
+def _install_provider_deps(llm_id: str, embedder_id: str, vector_id: str) -> bool:
     deps = {registry[pid]["pip_dep"] for (_, registry), pid in zip(SECTION_REGISTRIES, (llm_id, embedder_id, vector_id)) if registry.get(pid, {}).get("pip_dep")}
-    for dep in sorted(deps):
-        # PyInstaller-frozen CN portable runtime: sys.executable IS the Hermes
-        # CLI binary — no standalone python for uv to target, and provider deps
-        # are pre-baked into the bundle (P-015).  Skip the install.
-        from tools.runtime_compat import is_frozen_runtime
+    from pm import InstallError, available, sync_venv
+    from pm.environments_adopt import adopt_selected
+    from pm.paths import repo_root
+    from tools.runtime_compat import is_frozen_runtime
 
-        if is_frozen_runtime():
-            print(
-                f"  ℹ {dep} is pre-baked in the portable runtime; nothing to install."
-            )
-            continue
-        print(f"  Installing {dep}...")
-        try:
-            # Environment-aware install: sealed hosted venvs redirect to the durable data-volume target instead of /opt/hermes.
-            from tools.lazy_deps import install_specs
-            outcome = install_specs([dep], timeout=60)
-        except Exception:
-            outcome = None
-        print(f"  ✓ Installed {dep}" if outcome is not None and outcome.ok else f"  Warning: cannot install {dep}: {outcome.reason}" if outcome is not None and outcome.blocked
-              else f"  Warning: Could not install {dep}. Install manually: uv pip install {dep}")
-    if deps:
-        import importlib
-        importlib.invalidate_caches()
+    extras_by_dependency = {"ollama": "mem0-ollama", "psycopg2-binary": "mem0-pgvector", "qdrant-client": "mem0"}
+    extras = sorted({"mem0", *(extras_by_dependency[dep] for dep in deps)})
+    if is_frozen_runtime():
+        ready = all(available(extra) for extra in extras)
+        if not ready:
+            print("  Warning: the portable runtime does not include the selected Mem0 backend dependencies.")
+        return ready
+    try:
+        sync_venv(extras, explicit=True)
+        ready = adopt_selected(repo_root()) and all(available(extra) for extra in extras)
+    except (InstallError, OSError, ValueError) as exc:
+        print(f"  Warning: could not prepare Mem0 dependencies: {exc}")
+        return False
+    print("  ✓ Mem0 dependencies ready" if ready else "  Mem0 dependencies installed. Restart Hermes to activate them.")
+    return ready
 
 
 def _probe(fn, ok: str, fail: str, exc=Exception) -> tuple[bool, str]:

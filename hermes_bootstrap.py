@@ -487,13 +487,20 @@ def activate_durable_lazy_target() -> None:
     Immutable Docker images seal the venv and redirect lazy installs to the data volume;
     packages installed there on a previous run must be importable before any backend
     imports its SDK. Appends to the END of ``sys.path`` so the core venv always wins name
-    collisions (see ``tools.lazy_deps``). Never raises; unset target is a no-op.
+    collisions. Never raises; unset target is a no-op.
     """
-    if not os.environ.get("HERMES_LAZY_INSTALL_TARGET", "").strip():
+    target = os.environ.get("HERMES_LAZY_INSTALL_TARGET", "").strip()
+    if not target or not os.path.isdir(target):
         return
     try:
-        from tools import lazy_deps
-        lazy_deps.activate_durable_lazy_target()
+        import site
+
+        before = list(sys.path)
+        if target not in before:
+            site.addsitedir(target)
+        added = [path for path in sys.path if path not in before]
+        sys.path[:] = [path for path in sys.path if path not in added] + added
+        importlib.invalidate_caches()
     except Exception:
         pass  # a failed activation just leaves the backend reporting itself unavailable
 

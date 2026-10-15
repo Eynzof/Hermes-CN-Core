@@ -12,9 +12,9 @@ from agent.secret_scope import get_secret
 from hermes_cli.secret_prompt import masked_secret_prompt
 
 from . import templates as _hs_templates
-from .embedded import _embedded_profile_env_path, _load_simple_env, _materialize_embedded_profile_env
+from .embedded import _check_local_runtime, _embedded_profile_env_path, _load_simple_env, _materialize_embedded_profile_env
 from .settings import (
-    _DEFAULT_API_URL, _DEFAULT_IDLE_TIMEOUT, _DEFAULT_LOCAL_URL, _DEFAULT_TIMEOUT, _MIN_CLIENT_VERSION,
+    _DEFAULT_API_URL, _DEFAULT_IDLE_TIMEOUT, _DEFAULT_LOCAL_URL, _DEFAULT_TIMEOUT,
     _PROVIDER_DEFAULT_MODELS,
 )
 
@@ -105,18 +105,22 @@ def run_setup(provider, hermes_home: str, config: dict) -> None:
         provider_config["llm_provider"] = llm_provider
 
     print("\n  Checking dependencies...")
-    # Environment-aware install: sealed hosted venvs redirect to the durable data volume.
-    from tools.lazy_deps import install_specs
-
-    deps = ["hindsight-all"] if mode == "local_embedded" else [f"hindsight-client>={_MIN_CLIENT_VERSION}"]
-    outcome = install_specs(deps, timeout=120)
-    if outcome.ok:
-        print("  ✓ Dependencies up to date")
-    elif outcome.blocked:
-        print(f"  ⚠ Cannot install dependencies: {outcome.reason}")
+    if mode == "local_embedded":
+        ready, reason = _check_local_runtime()
+        if not ready:
+            print(f"  ⚠ Embedded Hindsight runtime is unavailable: {reason}")
+            print("  Its dependency requirements conflict with this Core runtime. "
+                  "Choose Local External to connect to an independent Hindsight service.")
+            return
     else:
-        print(f"  ⚠ Install failed:\n{(outcome.stderr or '').strip()}")
-        print(f"  Run manually: uv pip install --python {sys.executable} {' '.join(deps)}")
+        from pm import InstallError, install_hint, sync_venv
+
+        try:
+            sync_venv(["hindsight"], explicit=True)
+        except (InstallError, OSError, ValueError) as exc:
+            print(f"  ⚠ Cannot prepare dependencies: {exc}\n  Run: {install_hint('hindsight')}")
+            return
+    print("  ✓ Dependencies prepared; restart Hermes to use the selected environment")
 
     if mode == "cloud":
         print("\n  Get your API key at https://ui.hindsight.vectorize.io\n")

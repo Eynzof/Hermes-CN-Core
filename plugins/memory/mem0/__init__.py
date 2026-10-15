@@ -10,7 +10,6 @@ from __future__ import annotations
 
 
 import atexit
-import importlib.util
 import orjson
 import logging
 import threading
@@ -153,17 +152,12 @@ class Mem0MemoryProvider(MemoryProvider):
         if not has_config:
             return False
 
-        # In a normal Python env with lazy_deps available, config-only check is
-        # correct because ensure() can install the SDK on demand later.
-        # But in the PyInstaller frozen runtime (CN Desktop), lazy_deps is not
-        # available and the SDK must be pre-baked — fall back to checking
-        # actual SDK importability to avoid a false green light.
-        try:
-            from tools.lazy_deps import ensure as _lazy_ensure
-            return True
-        except ImportError:
-            # Frozen runtime: tools.lazy_deps is not bundled.
-            return importlib.util.find_spec("mem0") is not None
+        # PM can install the SDK on first use in a mutable runtime. A frozen
+        # Desktop runtime must already carry it before reporting availability.
+        from pm import available
+        from tools.runtime_compat import is_frozen_runtime
+
+        return not is_frozen_runtime() or available("mem0")
 
     def save_config(self, values, hermes_home):
         """Merge-write config to $HERMES_HOME/mem0.json."""
@@ -192,8 +186,8 @@ class Mem0MemoryProvider(MemoryProvider):
         # Lazy-install the mem0 SDK before the backend imports it (honors security.allow_lazy_installs);
         # on failure the backend import raises the canonical error, captured below.
         with suppress(Exception):
-            from tools.lazy_deps import ensure as _lazy_ensure
-            _lazy_ensure("memory.mem0", prompt=False)
+            from pm import ensure_import
+            ensure_import("mem0")
         try:
             from . import _backend
             if self._mode == "oss":

@@ -580,18 +580,23 @@ def _ensure_sdk_installed() -> bool:
     except ImportError:
         pass
     print("  honcho-ai is not installed.")
+    from pm import InstallError, available, install_hint, sync_venv
+    from pm.environments_adopt import adopt_selected
+    from pm.paths import repo_root
+
     if not _yes(_prompt("Install it now? (honcho-ai==2.2.0)", default="y")):
-        print("  Skipping install. Run: pip install 'honcho-ai==2.2.0'\n")
+        print(f"  Skipping install. Run: {install_hint('honcho')}\n")
         return False
-    print("  Installing honcho-ai...", flush=True)
-    from tools.lazy_deps import install_specs  # env-aware: sealed hosted venvs redirect to the data volume
-    result = install_specs(["honcho-ai==2.2.0"])
-    if result.ok:
-        print("  Installed.\n")
-        return True
-    print(f"  Cannot install: {result.reason}\n" if result.blocked else
-          f"  Install failed:\n{(result.stderr or '').strip()}\n  Run manually: uv pip install 'honcho-ai==2.2.0'\n")
-    return False
+    try:
+        sync_venv(["honcho"], explicit=True)
+        if not adopt_selected(repo_root()) or not available("honcho"):
+            print("  Installed. Restart Hermes and run 'hermes honcho setup' to continue.\n")
+            return False
+    except (InstallError, OSError, ValueError) as exc:
+        print(f"  Cannot install: {exc}\n  Run: {install_hint('honcho')}\n")
+        return False
+    print("  Installed.\n")
+    return True
 
 
 def _device_login_available() -> bool:

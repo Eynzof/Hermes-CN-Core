@@ -567,6 +567,9 @@ honcho = ["honcho-ai==2.2.0"]
 supermemory = ["supermemory==3.50.0"]
 
 mem0 = ["mem0ai==2.0.10"]
+# Optional OSS backends selected by the Mem0 setup wizard.
+mem0-ollama = ["hermes-agent[mem0]", "ollama==0.6.3"]
+mem0-pgvector = ["hermes-agent[mem0]", "psycopg2-binary==2.9.13"]
 # Image resize recovery for the vision tools. Pillow is now a CORE dependency
 # (see the main `dependencies` list above) since the byte/pixel shrink paths are on
 # the default vision-embed path and the mid-session lazy install deadlocked the
@@ -606,7 +609,7 @@ cn-desktop = [
   # lockstep with the messaging extra when syncing upstream.
   "aiohttp==3.14.3",
   "qrcode==7.4.2",
-  "cryptography==50.0.0",
+  "cryptography==50.0.1",
   "hermes-agent[hindsight]",  # long-term memory: hindsight-client (frozen runtime cannot lazy-install)
   "hermes-agent[supermemory]", # long-term memory: supermemory SDK (frozen runtime cannot lazy-install)
   "hermes-agent[mem0]", # long-term memory: mem0ai SDK (frozen runtime cannot lazy-install)
@@ -651,7 +654,7 @@ hermes-acp = "acp_adapter.entry:main"
 # build with --all-extras and pass --no-extra for each of these, so their
 # closures never ship. KittenTTS pulls torch, transformers and spaCy through
 # misaki[en]: installed when the user picks it, not preinstalled.
-opt-in-extras = ["kittentts"]
+opt-in-extras = ["kittentts", "mem0-ollama", "mem0-pgvector"]
 
 # Per-extra platform gates (settled 2026-09-02): an extra listed here is
 # only installable on platforms matching the marker. pm consults this
@@ -913,6 +916,8 @@ include = [
   "tools.*",
   "hermes_cli",
   "hermes_cli.*",
+  "hermes_embedded",
+  "hermes_embedded.*",
   "gateway",
   "gateway.*",
   "tui_gateway",

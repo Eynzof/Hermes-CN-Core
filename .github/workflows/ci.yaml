@@ -67,7 +67,7 @@ jobs:
   detect:
     name: Detect affected areas
     runs-on: ubuntu-latest
-    timeout-minutes: 1
+    timeout-minutes: 5
     outputs:
       python: ${{ steps.gate-lanes.outputs.python }}
       python_prod: ${{ steps.gate-lanes.outputs.python_prod }}
@@ -334,12 +334,14 @@ jobs:
   # set gains a job every open PR must pass, bump the version here and in the
   # protect-main ruleset in the same rollout: older greens then no longer
   # count, and each PR needs one fresh CI run before it can merge.
+  # This fork keeps its existing "All required checks pass" protection context;
+  # the complete v2 job set below still runs under that required check name.
   #
   # Outputs ``needs-json`` — a compact ``{job_name: result}`` dict — so
   # the live comment poller can list failed jobs in the PR comment.
   # ─────────────────────────────────────────────────────────────────────
   all-checks-pass:
-    name: All required checks pass (v2)
+    name: All required checks pass
     needs:
       - detect
       - tests

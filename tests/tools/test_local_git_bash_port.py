@@ -398,18 +398,18 @@ class TestMacosBashCandidates:
 
 
 class TestFindBashPosixMacosPreference:
+    @pytest.mark.platforms("macos")
     def test_prefers_homebrew_bash_on_darwin(self, tmp_path, monkeypatch):
         homebrew = tmp_path / "homebrew" / "bin" / "bash"
         homebrew.parent.mkdir(parents=True)
         homebrew.write_text("", encoding="utf-8")
         homebrew.chmod(0o755)
-        monkeypatch.setattr(local_mod.sys, "platform", "darwin")
         monkeypatch.setattr(local_mod, "_bash_candidates_macos", lambda: [homebrew])
         monkeypatch.setattr(local_mod.shutil, "which", lambda name: None)
         assert _find_bash_posix() == str(homebrew.resolve())
 
+    @pytest.mark.platforms("macos")
     def test_falls_back_to_git_bash_for_macos(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(local_mod.sys, "platform", "darwin")
         monkeypatch.setattr(
             local_mod,
             "_bash_candidates_macos",
@@ -420,13 +420,13 @@ class TestFindBashPosixMacosPreference:
         )
         assert _find_bash_posix() == "/usr/local/git/bin/bash"
 
-    def test_linux_order_unchanged(self, monkeypatch):
-        monkeypatch.setattr(local_mod.sys, "platform", "linux")
+    @pytest.mark.platforms("linux")
+    def test_linux_order_unchanged(self):
         with patch("shutil.which", return_value="/usr/bin/bash"):
             assert _find_bash_posix() == "/usr/bin/bash"
 
+    @pytest.mark.platforms("macos")
     def test_darwin_misses_everything_falls_to_common(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(local_mod.sys, "platform", "darwin")
         monkeypatch.setattr(
             local_mod,
             "_bash_candidates_macos",

@@ -33,8 +33,8 @@ def test_preinstalled_feishu_sdk_is_still_bound_on_first_use():
     feishu_adapter = _feishu_adapter_module()
     fake_lark = object()
 
-    def _ensure_and_bind(_feature, importer, target_globals, *, prompt):
-        assert prompt is False
+    def _ensure_and_bind(feature, importer, target_globals):
+        assert feature == "feishu"
         target_globals.update(importer())
         return True
 
@@ -46,7 +46,7 @@ def test_preinstalled_feishu_sdk_is_still_bound_on_first_use():
             "_lark_bindings",
             return_value={"lark": fake_lark, "FEISHU_AVAILABLE": True},
         ),
-        patch("tools.lazy_deps.ensure_and_bind", side_effect=_ensure_and_bind) as ensure_and_bind,
+        patch("pm.extras.ensure_and_bind", side_effect=_ensure_and_bind) as ensure_and_bind,
     ):
         assert feishu_adapter._load_lark_oapi() is True
         assert feishu_adapter.lark is fake_lark

@@ -77,9 +77,9 @@ jobs:
           - label: darwin-x64
             runner: macos-15-intel
           - label: win32-x64
-            runner: windows-latest-32-core
+            runner: windows-latest
           - label: win32-arm64
-            runner: windows-latest-32-arm-core
+            runner: windows-11-arm
     steps:
       - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # v7.0.1
         with:
@@ -88,10 +88,8 @@ jobs:
           ref: ${{ inputs.ref || github.sha }}
           fetch-tags: true
 
-      # The bootstrap scripts need Python >= 3.11 (tomllib). Larger runners
-      # (ubuntu-latest-32-*) are provisioned with ubuntu-22.04 images whose
-      # system python3 is 3.10, so pin the bootstrap interpreter instead of
-      # trusting the image.
+      # The bootstrap scripts need Python >= 3.11 (tomllib); pin the bootstrap
+      # interpreter so native targets use the same version.
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.13"

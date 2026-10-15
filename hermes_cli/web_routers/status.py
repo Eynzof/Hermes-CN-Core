@@ -113,6 +113,14 @@ async def get_ssh_ownership(request: Request):
             "runtimeIntact": _ssh_runtime_intact()}
 
 
+@router.get("/api/version")
+async def api_version() -> dict[str, str]:
+    """CN Desktop probes this public contract before acquiring session credentials."""
+    from hermes_cli import __version__
+
+    return {"version": __version__, "name": "hermes-agent"}
+
+
 @router.get("/api/health")
 async def get_health():
     """Lightweight process liveness for desktop/backend readiness probes.

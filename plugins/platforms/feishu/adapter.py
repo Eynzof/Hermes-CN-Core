@@ -1285,16 +1285,13 @@ def _load_lark_oapi() -> bool:
     """Import and bind the Feishu SDK after an explicit connection request."""
     if lark is not None:
         return True
-    # Fork intent (kept from HEAD): only raise the SDK when the connection actually
-    # requests it, via the shared lazy-deps installer/binder so the names land in this
-    # module's globals. The merge had left the fork's guards around upstream's raw
-    # importlib body, which orphaned _lark_bindings() and bound a second copy of the
-    # SDK without the installer/plugin accounting (lazy_deps.ensure_and_bind).
-    from tools.lazy_deps import ensure_and_bind
+    # Keep SDK imports deferred until connection, while PM owns installation
+    # and the binder publishes the SDK names into this module's globals.
+    from pm.extras import ensure_and_bind
     with _lark_import_lock:
         if lark is not None:
             return True
-        return ensure_and_bind("platform.feishu", _lark_bindings, globals(), prompt=False)
+        return ensure_and_bind("feishu", _lark_bindings, globals())
 
 
 def feishu_deps_present() -> bool:
@@ -1319,7 +1316,7 @@ def feishu_deps_present() -> bool:
 def check_feishu_requirements() -> bool:
     """Ensure Feishu dependencies are installed without importing the SDK.
 
-    A pure availability check: installs lark-oapi via ``tools.lazy_deps.ensure``
+    Installs lark-oapi through the declared ``feishu`` PM extra
     when missing, but never binds/imports the SDK here — actual imports happen
     lazily on first real use via ``_load_lark_oapi``, so a gateway config
     validation cannot pay the ~2.5s SDK import.

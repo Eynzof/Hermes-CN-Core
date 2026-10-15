@@ -120,6 +120,7 @@ overrides = [
     { name = "pynacl", specifier = ">=1.6,<1.7" },
     { name = "spacy-curated-transformers", marker = "sys_platform == 'never'" },
 ]
+build-constraints = [{ name = "setuptools", marker = "platform_machine == 'ARM64' and sys_platform == 'win32'", specifier = "==83.0.0" }]
 
 [[package]]
 name = "addict"
@@ -2847,7 +2848,7 @@ requires-dist = [
     { name = "openai", marker = "python_full_version >= '3.14'", specifier = "==2.24.0" },
     { name = "opentelemetry-exporter-otlp-proto-http", marker = "extra == 'otlp'", specifier = "==1.39.1" },
     { name = "opentelemetry-sdk", marker = "extra == 'otlp'", specifier = "==1.39.1" },
-    { name = "orjson", specifier = ">=3.11.9" },
+    { name = "orjson", specifier = "==3.12.0" },
     { name = "packaging", marker = "python_full_version >= '3.14'", specifier = "==26.0" },
     { name = "parallel-web", marker = "extra == 'parallel-web'", specifier = "==0.4.2" },
     { name = "pathspec", marker = "python_full_version >= '3.14'", specifier = "==1.1.1" },
@@ -2918,7 +2919,7 @@ requires-dist = [
     { name = "uvicorn", marker = "python_full_version >= '3.14'", specifier = ">=0.31.0,<1" },
     { name = "uvicorn", marker = "extra == 'web'", specifier = "==0.41.0" },
     { name = "uvloop", marker = "platform_python_implementation != 'PyPy' and sys_platform != 'android' and sys_platform != 'cygwin' and sys_platform != 'win32' and extra == 'uvloop'", specifier = ">=0.15.1,<0.24" },
-    { name = "uvloop", marker = "sys_platform != 'win32'", specifier = ">=0.21.0" },
+    { name = "uvloop", marker = "sys_platform != 'win32'", specifier = "==0.23.0" },
     { name = "vercel", marker = "extra == 'vercel'", specifier = "==0.7.2" },
     { name = "watchfiles", marker = "python_full_version >= '3.14'", specifier = ">=0.20,<2" },
     { name = "websockets", marker = "python_full_version >= '3.14'", specifier = "==15.0.1" },

@@ -666,7 +666,6 @@ class TestStdinHelpers:
         command = f'{shlex.quote(sys.executable)} -c "import sys; print(sys.stdin.read().strip())"'
         session = registry.spawn_local(
             command,
-            "cat",
             cwd=str(tmp_path),
             use_pty=True,
         )
@@ -1173,17 +1172,8 @@ class TestPopenLeakOnSetupFailure:
         def boom(*args, **kwargs):
             raise RuntimeError("Thread creation failed")
 
-        # proc.pid is a MagicMock-backed fake; os.getpgid(fake_pid) would query
-        # the real OS for an arbitrary PID. On a busy host that PID may exist,
-        # in which case spawn_local's primary cleanup path
-        # (os.killpg(os.getpgid(pid), SIGKILL)) succeeds against an UNRELATED
-        # real process group and proc.kill() is never reached — flaky failure,
-        # and a real risk of SIGKILLing an innocent process group. Force the
-        # ProcessLookupError fallback so the test deterministically exercises
-        # proc.kill() and never issues a real killpg.
-        #
-        # On Windows os.getpgid does not exist; the code already skips the
-        # killpg branch, so we only mock it when available.
+        # Keep the fake PID away from real process teardown; verify the
+        # authoritative cleanup receives the orphaned process identity.
         ctx = [
             # spawn_local resolves the shell first (P-058 follows the resolved
             # shell on Windows); pin it so the leak path is exercised directly
@@ -1196,12 +1186,10 @@ class TestPopenLeakOnSetupFailure:
             patch("threading.Thread", side_effect=boom),
             patch.object(registry, "_write_checkpoint"),
         ]
-        if hasattr(os, "getpgid"):
-            ctx.append(patch("os.getpgid", side_effect=ProcessLookupError))
-
         with ExitStack() as stack:
             for cm in ctx:
                 stack.enter_context(cm)
+            terminate = stack.enter_context(patch.object(ProcessRegistry, "_terminate_host_pid"))
             with pytest.raises(RuntimeError, match="Thread creation failed"):
                 registry.spawn_local("echo hello", cwd="/tmp")
 

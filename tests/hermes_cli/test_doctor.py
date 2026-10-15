@@ -418,12 +418,14 @@ class TestDoctorMemoryProviderSection:
         assert "Mem0" not in out
 
 
-    def test_catalog_provider_not_installed_names_install_command(self, monkeypatch, tmp_path):
-        # mem0 left core for the plugin catalog: a home still configured for it gets the exact command.
+    def test_bundled_mem0_unavailable_names_status_command(self, monkeypatch, tmp_path):
+        # CN bundles mem0; missing SDK/configuration needs provider diagnostics.
+        from plugins.memory.mem0 import Mem0MemoryProvider
+        monkeypatch.setattr(Mem0MemoryProvider, "is_available", lambda self: False)
         out = self._run_doctor_and_capture(monkeypatch, tmp_path, provider="mem0")
         section = out.split("Memory Provider", 1)[1][:600]
         assert "Built-in memory active" not in out
-        assert "mem0 plugin not found" in section and "plugins install mem0" in section
+        assert "mem0 configured but not available" in section and "hermes memory status" in section
 
     @pytest.mark.parametrize("memory_enabled", [False, True])
     def test_stale_builtin_files_reported_only_when_store_enabled(

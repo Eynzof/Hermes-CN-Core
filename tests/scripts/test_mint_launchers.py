@@ -139,7 +139,10 @@ def test_minted_launcher_runs_relocated_and_forwards_exit_code(payload_tree, tmp
     shutil.move(str(payload_tree["root"]), str(moved))
     exe = moved / "bin" / "hermes.exe"
 
-    env = {k: v for k, v in os.environ.items() if k not in ("PYTHONPATH", "PYTHONHOME", "PYTHONPYCACHEPREFIX")}
+    # The test runner disables bytecode writes for its workers. This child
+    # specifically verifies where a normal launcher writes its bytecode.
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("PYTHONPATH", "PYTHONHOME", "PYTHONPYCACHEPREFIX", "PYTHONDONTWRITEBYTECODE")}
     env["LOCALAPPDATA"] = str(payload_tree["tmp"] / "lad")
     proc = subprocess.run([str(exe), "--version"], capture_output=True, text=True, cwd=tmp_path, env=env)
     assert proc.returncode == 7, proc.stderr[-800:]

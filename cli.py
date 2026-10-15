@@ -395,22 +395,6 @@ def _parse_service_tier_config(raw: str) -> str | None:
     return None
 
 
-# terminal.<key> -> TERMINAL_<KEY> env var. Container-resource keys apply to docker,
-# singularity, modal, daytona and vercel_sandbox only (ignored for local/ssh).
-_TERMINAL_ENV_MAPPINGS = {
-    key: f"TERMINAL_{key.upper()}"
-    for key in (
-        "degraded_mode", "cwd", "timeout", "home_mode", "lifetime_seconds", "docker_image",
-        "docker_forward_env", "singularity_image", "modal_image", "daytona_image", "vercel_runtime",
-        "ssh_host", "ssh_user", "ssh_port", "ssh_key", "container_cpu", "container_memory",
-        "container_disk", "container_persistent", "docker_volumes", "docker_env", "docker_extra_args",
-        "docker_shm_size", "docker_mount_cwd_to_workspace", "docker_network", "docker_run_as_host_user",
-        "docker_snap_compat",
-        "docker_persist_across_processes", "docker_shared_container_key", "docker_orphan_reaper",
-        "sandbox_dir", "persistent_shell",
-    )
-}
-_TERMINAL_ENV_MAPPINGS = {"env_type": "TERMINAL_ENV", **_TERMINAL_ENV_MAPPINGS, "sudo_password": "SUDO_PASSWORD"}
 # Per-task auxiliary endpoint tuples (config key -> env var).
 _AUXILIARY_TASK_ENV = {
     "vision": {

@@ -51,7 +51,7 @@ def _disable_remote_nous_catalog(monkeypatch):
     # Upstream added ``cache_only=`` to this function (GUI read path); the stub only has to
     # swallow the keyword so the offline gate keeps working for every caller shape.
     monkeypatch.setattr("hermes_cli.models.fetch_ollama_cloud_models", lambda *_args, **_kwargs: [])
-    monkeypatch.setattr("hermes_cli.models.fetch_lmstudio_models", lambda *args, **kwargs: [])
+    monkeypatch.setattr("hermes_cli.models_local.fetch_lmstudio_models", lambda *args, **kwargs: [])
 def _disable_live_custom_provider_model_probe(monkeypatch):
     """Keep custom-provider picker fixtures independent of local model servers."""
     monkeypatch.setattr("hermes_cli.models.fetch_api_models", lambda *_a, **_kw: None)
@@ -1872,7 +1872,7 @@ def test_shared_url_different_display_names_are_separate_rows(monkeypatch):
 def test_excluded_providers_hides_builtin_row(monkeypatch):
     """``excluded_providers`` must hide a built-in provider row that would
     otherwise surface when its credentials are present."""
-    monkeypatch.setattr("agent.models_dev.fetch_models_dev", dict)
+    monkeypatch.setattr("agent.models_dev.fetch_models_dev", lambda: {"openrouter": {"env": ["OPENROUTER_API_KEY"]}})
     monkeypatch.setattr(providers_mod, "HERMES_OVERLAYS", {})
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
 

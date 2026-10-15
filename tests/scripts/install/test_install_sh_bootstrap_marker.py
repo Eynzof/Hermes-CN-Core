@@ -6,45 +6,28 @@ app (apps/desktop/electron/main.ts) and the macOS launcher fast path
 install.sh never wrote it, so a CLI-installed Mac/Linux box re-ran first-run
 bootstrap on every desktop launch (#60721).
 
-These exercise the real shell function against a temp checkout rather than
-asserting on the text of install.sh.
+These run the completion stage against a real temporary checkout through the
+installer protocol, without extracting shell source.
 """
 
 import json
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 INSTALL_SH = REPO_ROOT / "scripts" / "install.sh"
-pytestmark = pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="install.sh is the POSIX installer; the CN fork installs via install.ps1 on Windows (FORK_NOTES P-019)",
-)
+pytestmark = pytest.mark.platforms("posix")
 
 
 def run_write_marker(install_dir, *, commit="", branch="main"):
-    """Source install.sh and invoke write_bootstrap_marker in isolation.
-
-    install.sh guards its own entrypoint behind MANIFEST_MODE/STAGE_NAME/main,
-    so sourcing it with --help-less argv defines the functions without running
-    an install.
-    """
-    script = f"""
-set -e
-INSTALL_DIR={install_dir!s}
-INSTALL_COMMIT={commit!r}
-BRANCH={branch!r}
-# Pull in the function definitions without triggering an install.
-eval "$(sed -n '/^write_bootstrap_marker()/,/^}}/p' {INSTALL_SH!s})"
-log_warn() {{ echo "WARN: $*" >&2; }}
-write_bootstrap_marker
-"""
-    return subprocess.run(
-        ["bash", "-c", script], capture_output=True, text=True, timeout=30
-    )
+    """Run the installer completion stage through its supported public protocol."""
+    command = ["bash", str(INSTALL_SH), "--stage", "complete", "--non-interactive",
+               "--dir", str(install_dir), "--branch", branch]
+    if commit:
+        command.extend(["--commit", commit])
+    return subprocess.run(command, capture_output=True, text=True, timeout=30)
 
 
 def make_checkout(tmp_path):

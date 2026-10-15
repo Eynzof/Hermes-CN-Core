@@ -24,6 +24,10 @@ def main():
     if '--version' in sys.argv:
         print('Install directory: ' + str(Path(__file__).resolve().parents[1])); return 0
     if '--help' in sys.argv:
+        if ready := os.environ.get('HANDOFF_HELP_READY'):
+            Path(ready).touch()
+            while not Path(os.environ['HANDOFF_HELP_RELEASE']).exists():
+                time.sleep(0.05)
         print('--keep-stash'); return 0
     if sys.argv[1:2] == ['update']:   # the update's first act: say so, then wait to be released
         hold = Path(os.environ['HANDOFF_HOLD'])

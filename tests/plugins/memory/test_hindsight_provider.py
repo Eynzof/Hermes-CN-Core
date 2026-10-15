@@ -570,12 +570,13 @@ class TestPostSetup:
         assert not (user_home / ".hindsight" / "profiles" / "hermes.env").exists()
 
 
-    def test_local_embedded_setup_materializes_profile_env(self, tmp_path, monkeypatch):
+    def test_preinstalled_local_embedded_setup_materializes_profile_env(self, tmp_path, monkeypatch):
         hermes_home = tmp_path / "hermes-home"
         user_home = tmp_path / "user-home"
         user_home.mkdir()
         monkeypatch.setenv("HOME", str(user_home))
 
+        monkeypatch.setattr("plugins.memory.hindsight.setup._check_local_runtime", lambda: (True, ""))
         selections = iter([1, 0])  # local_embedded, openai
         monkeypatch.setattr("hermes_cli.memory_setup._curses_select", lambda *args, **kwargs: next(selections))
         monkeypatch.setattr("shutil.which", lambda name: None)

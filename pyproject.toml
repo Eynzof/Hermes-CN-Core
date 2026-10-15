@@ -223,10 +223,10 @@ dependencies = [
     "ciso8601>=2.3.3,<3",  # 10-50x faster ISO8601 parsing
     "zstandard>=0.25.0,<1",  # Better compression ratio + speed
     "lz4>=4.4.5,<5",  # Fastest decompression
-    "uvloop>=0.21.0; sys_platform != 'win32'",  # 2-4x async throughput (Unix)
+    "uvloop==0.23.0; sys_platform != 'win32'",  # 2-4x async throughput (Unix)
     "yarl>=1.23.0,<2",  # C-accelerated URL type
     # JSON serializer replacement (faster than stdlib json)
-    "orjson>=3.11.9",
+    "orjson==3.12.0",
     # Python wrapper around the ripgrep binary (tools/file_operations.py, agent/context_references.py)
     "ripgrepy==2.2.0",
   "nemo-relay>=0.10,<0.11; ((sys_platform == 'darwin' and platform_machine == 'arm64') or (sys_platform == 'linux' and platform_machine == 'x86_64' and 'android' not in platform_release) or (sys_platform == 'linux' and platform_machine == 'aarch64' and 'android' not in platform_release) or (sys_platform == 'win32' and platform_machine == 'AMD64') or (sys_platform == 'win32' and platform_machine == 'ARM64')) and python_version >= '3.14'",]
@@ -687,6 +687,12 @@ piper = "(platform_machine != 'ARM64' or sys_platform != 'win32') and (platform_
 [tool.uv]
 # uv otherwise enables the dev group by default, including in payload builds.
 default-groups = []
+# grpcio's Windows source build filters C/C++ flags through Compiler.spawn;
+# setuptools 84 bypasses that hook via Compiler.call. Keep the existing backend
+# pin for the ARM64 target that builds grpcio from source.
+build-constraint-dependencies = [
+  "setuptools==83.0.0; sys_platform == 'win32' and platform_machine == 'ARM64'",
+]
 # 3.11 is an install bridge for pre-PM updaters, never a runtime, so the lock
 # covers 3.14 only. Without this the lock must resolve every supported version,
 # where extras that only ever coexist on 3.14 (kittentts vs neutts) conflict.

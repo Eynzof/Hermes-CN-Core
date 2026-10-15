@@ -48,17 +48,8 @@ _CONTROL_REPLY_TYPES = frozenset({
     "reload_mcp.ack", "shutdown.ack"})
 
 
-_APPEND_LOCK = threading.Lock()
-
-
 def append_log_record(path: str | Path, record: str) -> None:
-    """Append one log record using O_APPEND and exactly one os.write call.
-
-    On POSIX, O_APPEND makes the seek-to-end + write atomic. On Windows the
-    CRT emulates O_APPEND as a separate seek, so concurrent writers can
-    overwrite each other — serialize appends within this process to keep one
-    record == one contiguous line everywhere.
-    """
+    """Append one log record with the host atomic append primitive."""
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     text = record if record.endswith("\n") else f"{record}\n"
     if os.name == "nt":
@@ -82,13 +73,6 @@ def append_log_record(path: str | Path, record: str) -> None:
         os.write(fd, text.encode("utf-8", errors="replace"))
     finally:
         os.close(fd)
-    data = text.encode("utf-8", errors="replace")
-    with _APPEND_LOCK:
-        fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
-        try:
-            os.write(fd, data)
-        finally:
-            os.close(fd)
 
 
 def _repo_root() -> Path:

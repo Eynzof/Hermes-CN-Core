@@ -22,7 +22,10 @@ CALLS = {
                      "limit": 4, "offset": 2, "output_mode": "count", "context": 3, "order": "modified"},
     "patch": {"path": "output", "old_string": "old", "new_string": "new", "replace_all": True,
               "mode": "replace", "patch": None, "cross_profile": False},
-    "terminal": {"command": "echo fixture", "timeout": 3, "workdir": "/tmp"},
+    "terminal": {"command": "echo fixture", "timeout": 3, "workdir": "/tmp",
+                 "token_kill": False, "max_lines": 17, "interactive": True, "mode": "interactive",
+                 "process_id": "fixture-session", "wait_for_pattern": "ready",
+                 "inactivity_timeout": 2, "promote_on_timeout": True},
 }
 
 
@@ -50,6 +53,7 @@ def test_generated_file_rpc_kwargs_correlation_and_authority(tmp_path, monkeypat
     seen, log, counter = [], [], [0]
 
     def dispatch(name, args, **kwargs):
+        assert kwargs["task_id"] == "owner"
         seen.append((name, args.copy()))
         return json.dumps({"name": name, "args": args})
 

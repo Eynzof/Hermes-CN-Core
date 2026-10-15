@@ -64,54 +64,17 @@ jobs:
       - name: Scan diff for critical patterns
         id: scan
         env:
-          GH_TOKEN: ${{ github.token }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          FINDINGS_FILE: ${{ runner.temp }}/supply-chain-findings.md
         run: |
           set -euo pipefail
-
-          BASE="${{ github.event.pull_request.base.sha }}"
-          HEAD="${{ github.event.pull_request.head.sha }}"
-
-          # Added lines only, excluding lockfiles.
-          # Three-point diff (base...head) diffs from the merge base to HEAD,
-          # so only changes introduced by this PR are included — not changes
-          # that landed on main after the PR branched off.
-          DIFF=$(git diff "$BASE"..."$HEAD" -- . ':!uv.lock' ':!*.lock' ':!package-lock.json' ':!yarn.lock' || true)
-
-          FINDINGS=""
-
-          # --- base64 decode + exec/eval on the same line (the litellm attack pattern) ---
-          B64_EXEC_HITS=$(echo "$DIFF" | grep -n '^+' | grep -iE 'base64\.(b64decode|decodebytes|urlsafe_b64decode)' | grep -iE 'exec\(|eval\(' | head -10 || true)
-          if [ -n "$B64_EXEC_HITS" ]; then
-            FINDINGS="${FINDINGS}
-          ### 🚨 CRITICAL: base64 decode + exec/eval combo
-          Base64-decoded strings passed directly to exec/eval — the signature of hidden credential-stealing payloads.
-
-          **Matches:**
-          \`\`\`
-          ${B64_EXEC_HITS}
-          \`\`\`
-          "
-          fi
-
-          # --- subprocess with encoded/obfuscated command argument ---
-          PROC_HITS=$(echo "$DIFF" | grep -n '^+' | grep -E 'subprocess\.(Popen|call|run)\s*\(' | grep -iE 'base64|\\x[0-9a-f]{2}|chr\(' | head -10 || true)
-          if [ -n "$PROC_HITS" ]; then
-            FINDINGS="${FINDINGS}
-          ### 🚨 CRITICAL: subprocess with encoded/obfuscated command
-          Subprocess calls whose command strings are base64- or hex-encoded are a strong indicator of payload execution.
-
-          **Matches:**
-          \`\`\`
-          ${PROC_HITS}
-          \`\`\`
-          "
-          fi
-
-          if [ -n "$FINDINGS" ]; then
-            echo "found=true" >> "$GITHUB_OUTPUT"
-            echo "$FINDINGS" > /tmp/findings.md
-          else
+          if python3 scripts/ci/scan_supply_chain.py --base "$PR_BASE_SHA" --head "$PR_HEAD_SHA" --output "$FINDINGS_FILE"; then
             echo "found=false" >> "$GITHUB_OUTPUT"
+          else
+            result=$?
+            if [ "$result" -ne 1 ]; then exit "$result"; fi
+            echo "found=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Emit review_status
@@ -119,6 +82,7 @@ jobs:
         if: always()
         env:
           FOUND: ${{ steps.scan.outputs.found }}
+          FINDINGS_FILE: ${{ runner.temp }}/supply-chain-findings.md
         run: |
           python3 - <<'PYEOF'
           import json, os
@@ -126,7 +90,7 @@ jobs:
           found = os.environ.get("FOUND", "") == "true"
 
           if found:
-              with open("/tmp/findings.md", encoding="utf-8") as f:
+              with open(os.environ["FINDINGS_FILE"], encoding="utf-8") as f:
                   detail = f.read()
               status = [{
                   "source": "supply chain",
@@ -135,7 +99,7 @@ jobs:
                       "title": "Critical supply chain risk",
                       "summary": "Critical supply chain risk patterns detected in this PR.",
                       "detail": detail,
-                      "how_to_fix": "Review the flagged code carefully. If it is a false positive, narrow the pattern in .github/workflows/supply-chain-audit.yml."
+                      "how_to_fix": "Review the flagged code carefully. For a false positive, review its exact source context and record it in scripts/ci/supply_chain_reviewed.json; never exempt a file or test directory."
                   }]
               }]
           else:

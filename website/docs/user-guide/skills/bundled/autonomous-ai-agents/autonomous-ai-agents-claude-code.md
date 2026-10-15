@@ -16,7 +16,7 @@ Delegate coding to Claude Code CLI (features, PRs).
 |---|---|
 | Source | Bundled (installed by default) |
 | Path | `skills/autonomous-ai-agents/claude-code` |
-| Version | `2.2.1` |
+| Version | `2.3.0` |
 | Author | Hermes Agent + Teknium |
 | License | MIT |
 | Platforms | linux, macos, windows |
@@ -53,7 +53,7 @@ Hermes interacts with Claude Code in two fundamentally different ways. Choose ba
 Print mode runs a one-shot task, returns the result, and exits. No PTY needed. No interactive prompts. This is the cleanest integration path.
 
 ```
-terminal(command="claude -p 'Add error handling to all API calls in src/' --allowedTools 'Read,Edit' --max-turns 10", workdir="/path/to/project", timeout=120)
+terminal(command="claude -p 'Add error handling to all API calls in src/' --output-format stream-json --verbose --include-partial-messages --allowedTools 'Read,Edit' --max-turns 10", workdir="/path/to/project", timeout=120)
 ```
 
 **When to use print mode:**
@@ -64,6 +64,26 @@ terminal(command="claude -p 'Add error handling to all API calls in src/' --allo
 - Any task where you don't need multi-turn conversation
 
 **Print mode skips ALL interactive dialogs** — no workspace trust prompt, no permission confirmations. This makes it ideal for automation.
+
+### Hermes background + streaming (preferred for non-trivial print tasks)
+
+For anything beyond a trivial one-liner (expected to run >30s), run print mode in the
+Hermes background with streaming JSON. Hermes — and its desktop UI — can then watch
+progress live and parse the structured result instead of blocking on a silent
+foreground call:
+
+```
+terminal(command="claude -p '<task>' --output-format stream-json --verbose --include-partial-messages --max-turns 10", workdir="/path/to/project", background=true, notify_on_complete=true)
+# Returns a session_id. Monitor with:
+process(action="poll", session_id="<id>")   # running / exited
+process(action="log", session_id="<id>")    # stream-json lines so far
+# The final line is the {"type":"result"} object — session_id, num_turns,
+# total_cost_usd, subtype. Keep session_id for --resume follow-ups.
+```
+
+Short tasks (&lt;30s) can stay foreground. Keep the streaming JSON flags
+(`--output-format stream-json --verbose --include-partial-messages`) so Hermes
+can render their progress and Token usage before the terminal call completes.
 
 ### Mode 2: Interactive PTY via tmux — Multi-Turn Sessions
 
@@ -373,11 +393,18 @@ mcp__<server>__{tool}   # Specific MCP tool
 {
   "permissions": {
     "allow": ["Bash(npm run lint:*)", "WebSearch", "Read"],
-    "ask": ["Write(*.ts)", "Bash(git push*)"],
+    "ask": ["Write(*.ts)", "Bash(git push*)", "Bash(git commit*)", "Bash(git worktree*)", "Bash(git checkout*)", "Bash(gh pr create*)", "Bash(gh pr merge*)"],
     "deny": ["Read(.env)", "Bash(rm -rf *)"]
   }
 }
 ```
+
+> **⚠️ Dangerous git operations — the user decides; never auto-execute.**
+> `git worktree add` / `git worktree remove`, branch creation/switching, `git commit`,
+> `git push`, and PR creation/merge are **high-risk operations** (irreversible, and/or
+> they change shared remote state). Keep them under `ask` (never `allow`): the agent
+> must explain the intent and get the user's **explicit approval** before each one, and
+> must not batch/loop them (auto-commit, auto-push, auto-PR) without per-action consent.
 
 ### Memory Files (CLAUDE.md) Hierarchy
 1. **Global:** `~/.claude/CLAUDE.md` — applies to all projects
@@ -770,3 +797,5 @@ Use `/context` in interactive mode to see a colored grid of context usage. Key t
 8. **Report results to user** — after completion, summarize what Claude did and what changed
 9. **Don't kill slow sessions** — Claude may be doing multi-step work; check progress instead
 10. **Use `--allowedTools`** — restrict capabilities to what the task actually needs
+11. **Prefer streaming output** — use `--output-format stream-json --verbose --include-partial-messages` for foreground and background runs; for longer ones also set `background=true, notify_on_complete=true`. Hermes parses the stream and its desktop UI renders the live delegation timeline and Token usage
+12. **Keep the returned `session_id`** — it is the handle for `--resume` follow-ups; report it alongside your summary

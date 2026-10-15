@@ -19,7 +19,7 @@ from types import SimpleNamespace
 
 import pytest
 
-pytestmark = pytest.mark.platforms("linux")
+pytestmark = pytest.mark.platforms("posix")
 
 from tools.environments.local import LocalEnvironment
 
@@ -50,7 +50,6 @@ def _wait_for_pid_exit(pid: int, timeout: float = 10.0) -> bool:
 
 
 @pytest.mark.live_system_guard_bypass
-@pytest.mark.skipif(sys.platform == "win32", reason="POSIX process-group kill: os.fork/os.setsid/getpgid and SIGTERM-to-group do not exist on Windows")
 def test_timeout_kill_reaps_setsid_grandchild(tmp_path):
     """A grandchild that setsid's out of the group must not survive the
     timeout kill path."""
@@ -115,7 +114,6 @@ def _sh_quote(s: str) -> str:
     return shlex.quote(s)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="POSIX process-group kill: os.fork/os.setsid/getpgid and SIGTERM-to-group do not exist on Windows")
 def test_kill_process_survives_psutil_snapshot_failure(monkeypatch):
     """A broken psutil snapshot must never break the kill path — the
     group-kill escalation still runs to completion."""
@@ -180,7 +178,6 @@ def test_kill_process_never_killpgs_the_callers_own_group(monkeypatch):
     assert killed == [12345]
 
 
-@pytest.mark.skipif(os.name != "posix", reason="POSIX process-group semantics")
 class TestReapUntrackedGroupGuard:
     """ProcessRegistry._reap_untracked terminates through _terminate_host_pid,
     which revalidates the kernel start time captured at spawn before signalling.

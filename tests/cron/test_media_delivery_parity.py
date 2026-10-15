@@ -29,7 +29,7 @@ import os
 from pathlib import Path
 
 import pytest
-import yaml
+import hermes_yaml as yaml
 
 from cron.scheduler import _deliver_result
 from cron.scheduler_delivery import _send_media_via_adapter

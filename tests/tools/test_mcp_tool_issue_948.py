@@ -36,15 +36,6 @@ def test_resolve_stdio_command_keeps_the_child_path_order(tmp_path):
     tool.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
     tool.chmod(0o755)
     path = os.pathsep.join([str(first), str(middle), str(later)])
-def test_resolve_stdio_command_falls_back_to_hermes_node_bin(tmp_path):
-    # Managed Node lives in <home>/node/bin on POSIX and directly in <home>/node on
-    # Windows (with .cmd/.exe launchers) — see iter_hermes_node_dirs / _npx_bin_candidates.
-    node_bin = tmp_path / "node" / ("bin" if sys.platform != "win32" else ".")
-    node_bin.mkdir(parents=True)
-    npx_path = node_bin / ("npx.cmd" if sys.platform == "win32" else "npx")
-    npx_path.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-    npx_path.chmod(0o755)
-
     command, env = _resolve_stdio_command("mytool", {"PATH": path})
 
     assert command == str(tool)

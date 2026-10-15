@@ -208,7 +208,6 @@ def restore_agent_tool_prefix(agent, saved) -> bool:
     from tools.registry import registry
     fresh_defs = _agent_tool_defs(agent)
     fresh = {_def_name(t): t for t in fresh_defs}
-    registered_names = {entry.name for entry in registry.get_all_entries()}
     same_code = version is not None and version == tool_pin_version()
 
     def _pinned_def(item):
@@ -221,7 +220,8 @@ def restore_agent_tool_prefix(agent, saved) -> bool:
         return None if entry is None else {"type": "function", "function": {**entry.schema, "name": entry.name}}
 
     pinned_defs = [d for d in map(_pinned_def, pinned) if d]
-    carried = {_def_name(d) for d in pinned_defs if _def_name(d) not in fresh and _def_name(d) in registered_names}
+    # A carried built-in may not have been imported on this surface yet (lazy tool discovery).
+    carried = {_def_name(d) for d in pinned_defs if _def_name(d) not in fresh and registry.get_entry(_def_name(d)) is not None}
     carried &= _config_permitted_names(agent) if carried else set()
     merged = [d for d in pinned_defs if _def_name(d) in fresh or _def_name(d) in carried]
     pinned_names = {_def_name(d) for d in merged}

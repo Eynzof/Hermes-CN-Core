@@ -301,9 +301,10 @@ class TestGitExecPath:
 # B.4 wiring — _find_bash uses the git.exe discovery chain
 # ---------------------------------------------------------------------------
 
+@pytest.mark.platforms("windows")
 class TestFindBashUsesGitExeChain:
     def _clear_win_env(self, monkeypatch, tmp_path):
-        monkeypatch.setattr(local_mod, "_IS_WINDOWS", True)
+        monkeypatch.setattr("pm.shell.bash", lambda: None)
         monkeypatch.setenv("HERMES_GIT_BASH_PATH", "")
         monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "no-local-appdata"))
         monkeypatch.setenv("ProgramFiles", str(tmp_path / "no-program-files"))

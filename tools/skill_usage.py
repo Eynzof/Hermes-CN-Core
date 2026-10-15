@@ -179,7 +179,7 @@ def _read_hub_installed_names() -> set[str]:
             if (resolved / "SKILL.md").exists():
                 names.add(_read_skill_name(resolved / "SKILL.md", fallback=resolved.name))
         return names
-    except (OSError, orjson.JSONDecodeError) as e:
+    except (OSError, json.JSONDecodeError) as e:
         logger.debug("Failed to read hub lock file: %s", e)
     return set()
 
@@ -373,8 +373,6 @@ def load_usage() -> dict[str, dict[str, Any]]:
     try:
         data = json.loads(path.read_text(encoding="utf-8-sig")) if path.exists() else {}
     except (OSError, json.JSONDecodeError) as e:
-        data = orjson.loads(path.read_text(encoding="utf-8-sig", errors="replace")) if path.exists() else {}
-    except (OSError, orjson.JSONDecodeError) as e:
         logger.debug("Failed to read %s: %s", path, e)
         return {}
     return {str(k): v for k, v in data.items() if isinstance(v, dict)} if isinstance(data, dict) else {}

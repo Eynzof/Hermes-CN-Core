@@ -4,17 +4,18 @@ delegate before it runs a single instruction.
 """
 from __future__ import annotations
 
+from contextlib import suppress
 from pathlib import Path
 import subprocess
 import sys
 import time
 
 import pytest
+import psutil
 
 from tests.installation_launcher_fixture import publish_fixture_launcher
 from tests.scripts.desktop_update.windows_handoff_support import (
     MARKER,
-    POWERSHELL,
     HOLD_CLI,
     _creation_time,
     _alive,
@@ -24,6 +25,7 @@ from tests.scripts.desktop_update.windows_handoff_support import (
     _op,
     _HeldLock,
     _custodian,
+    _log,
 )
 
 
@@ -97,19 +99,6 @@ def test_a7_concurrent_claimants_over_a_dead_marker_yield_one_owner(tmp_path: Pa
 
 # -- the update child is the delegate before it runs anything ------------------
 
-FIND_UPDATE_CHILD = r"""
-param([int]$Parent, [int]$Seconds)
-$deadline = (Get-Date).AddSeconds($Seconds)
-while ((Get-Date) -lt $deadline) {
-    $row = Get-CimInstance Win32_Process -Filter "ParentProcessId=$Parent" |
-        Where-Object { $_.CommandLine -match '--yes' } | Select-Object -First 1
-    if ($row) { [Console]::Out.Write($row.ProcessId); exit 0 }
-    Start-Sleep -Milliseconds 100
-}
-exit 1
-"""
-
-
 @pytest.mark.platforms('windows')
 def test_script_killed_before_publishing_the_delegate_runs_no_update(tmp_path: Path) -> None:
     """Kill cell at the pre-publication boundary: windows.ps1 has created its `hermes update`
@@ -122,22 +111,35 @@ def test_script_killed_before_publishing_the_delegate_runs_no_update(tmp_path: P
     hold = tmp_path / 'release-update'
     ran = Path(str(hold) + '.pid')
     marker = home / MARKER
-    finder = tmp_path / 'find_child.ps1'
-    finder.write_text(FIND_UPDATE_CHILD, encoding='utf-8')
-    script = _script(home, install=install, HANDOFF_HOLD=str(hold))
+    help_ready = tmp_path / 'help-ready'
+    help_release = tmp_path / 'help-release'
+    script = _script(home, install=install, HANDOFF_HOLD=str(hold),
+                     HANDOFF_HELP_READY=str(help_ready), HANDOFF_HELP_RELEASE=str(help_release))
     lock = None
     try:
         deadline = time.monotonic() + 60
-        while not (marker.exists() and _custodian(home, script.pid)
-                   and marker.read_bytes().split(b'\n')[0] == _custodian(home, script.pid).encode()):
-            assert time.monotonic() < deadline and script.poll() is None, 'script never claimed'
+        # Hold the real CLI's final probe until the marker lock is ours. Merely
+        # seeing the claim races the script's subsequent delegate publication.
+        while not help_ready.exists():
+            assert time.monotonic() < deadline and script.poll() is None, _log(home)
             time.sleep(0.02)
+        assert marker.read_bytes().split(b'\n')[0] == _custodian(home, script.pid).encode()
         lock = _HeldLock(home)   # after the claim, before the delegate publication
-        child = subprocess.run([POWERSHELL, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(finder),
-                                '-Parent', str(script.pid), '-Seconds', '60'],
-                               capture_output=True, text=True, timeout=90)
-        assert child.returncode == 0, 'the update child never appeared'
-        child_pid = int(child.stdout)
+        help_release.touch()
+        parent = psutil.Process(script.pid)
+        child_pid = None
+        deadline = time.monotonic() + 60
+        while child_pid is None:
+            # Native process enumeration avoids an unbounded WMI call on each
+            # poll. The help probe may disappear between enumeration and read.
+            for child in parent.children():
+                with suppress(psutil.NoSuchProcess):
+                    if '--yes' in child.cmdline():
+                        child_pid = child.pid
+                        break
+            assert time.monotonic() < deadline and script.poll() is None, _log(home)
+            if child_pid is None:
+                time.sleep(0.05)
         subprocess.run(['taskkill', '/F', '/PID', str(script.pid)], capture_output=True, check=True)
         script.wait(timeout=30)
         time.sleep(3)
@@ -147,6 +149,7 @@ def test_script_killed_before_publishing_the_delegate_runs_no_update(tmp_path: P
         assert lines[0] == _custodian(home, script.pid), lines
         assert not any(line.startswith('delegate:') for line in lines), lines
     finally:
+        help_release.touch()
         if lock:
             lock.release()
         hold.touch()

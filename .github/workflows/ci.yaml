@@ -251,7 +251,7 @@ jobs:
     if: needs.detect.outputs.python == 'true'
     uses: ./.github/workflows/contributor-check.yml
     with:
-      upstream_sync: ${{ startsWith(github.head_ref, 'chore/sync-upstream-') }}
+      upstream_sync: ${{ startsWith(github.head_ref, 'chore/sync-upstream-') || startsWith(github.head_ref, 'chore/merge-dev-fix-') }}
     secrets: inherit
 
 

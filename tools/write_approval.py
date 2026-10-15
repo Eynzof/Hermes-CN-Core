@@ -327,14 +327,6 @@ def skill_pending_diff(
     # patch/write_file target a file inside the skill; edit always targets SKILL.md.
     target_label = "SKILL.md" if action == "edit" else (payload.get("file_path") or "SKILL.md")
     current = _staged_base(name, target_label, staged)
-    target_label, current = "SKILL.md", ""
-    skill_dir = _find_skill_path(name)
-    if skill_dir:
-        if action != "edit":
-            target_label = payload.get("file_path") or "SKILL.md"
-        with suppress(Exception):
-            p = skill_dir / target_label
-            current = p.read_text(encoding="utf-8-sig", errors="replace") if p.exists() else ""
 
     if action == "patch":
         old_s, new_s = payload.get("old_string") or "", payload.get("new_string") or ""

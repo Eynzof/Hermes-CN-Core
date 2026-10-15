@@ -522,39 +522,27 @@ def restore_managed_env(env: dict) -> dict:
 
 
 # --- Shell discovery ---
-def _find_bash() -> str:
-    """Resolve the shell Hermes runs commands with. Owned by pm (the store
-    is the authority on bundled bash); this is a thin wrapper over
-    pm.shell() for callers that need a bash binary."""
-    import pm.shell
-
-    bash = pm.shell.bash()
-    if bash:
-        return bash
-    raise RuntimeError(
-        "No shell found. Hermes needs bash (Git for Windows on Windows). "
-        "Run `hermes pm install` or reinstall the bundle."
-    )
-def _windows_bash_candidates(custom: "str | None") -> list[str]:
-    """Ordered bash.exe candidates on Windows: HERMES_GIT_BASH_PATH, our portable Git
-    under %LOCALAPPDATA%\\hermes\\git (PortableGit ``bin`` and MinGit ``usr\\bin``),
-    known Git-for-Windows dirs, then PATH last — ``shutil.which`` may return WSL's
-    bash, which fails silently on Windows paths."""
+def _windows_bash_candidates(preferred: str | None, custom: str | None) -> list[str]:
+    """PM first, then the CN portable/git.exe/system/PATH discovery ladder."""
     getenv = os.environ.get
     lad = getenv("LOCALAPPDATA", "")
+    portable = [ntpath.join(lad, "hermes", "git", sub, "bash.exe")
+                for sub in ("bin", r"usr\bin")] if lad else []
+    raw = [preferred, custom, *portable]
+    # git.exe derivation reaches per-user / chocolatey / scoop installs before
+    # the well-known roots, retaining the CN discovery order after the PM choice.
+    for git_path in _where_git_executables():
+        raw.append(str(_git_bash_candidate_from_git_path(git_path)))
+        if exec_path := _git_exec_path(git_path):
+            raw.extend(str(c) for c in _git_bash_candidates_from_exec_path(exec_path))
     roots = [
-        lad and os.path.join(lad, "hermes", "git", "bin"),
-        lad and os.path.join(lad, "hermes", "git", "usr", "bin"),
-        os.path.join(getenv("ProgramFiles", r"C:\Program Files"), "Git", "bin"),
-        os.path.join(getenv("ProgramFiles(x86)", r"C:\Program Files (x86)"), "Git", "bin"),
-        lad and os.path.join(lad, "Programs", "Git", "bin"),
+        ntpath.join(getenv("ProgramFiles", r"C:\Program Files"), "Git"),
+        ntpath.join(getenv("ProgramFiles(x86)", r"C:\Program Files (x86)"), "Git"),
+        lad and ntpath.join(lad, "Programs", "Git"),
     ]
-    raw = [custom or "", *(os.path.join(r, "bash.exe") for r in roots if r)]
-    candidates = list(dict.fromkeys(c for c in raw if c and os.path.isfile(c)))
-    found = shutil.which("bash")
-    if found and found not in candidates:
-        candidates.append(found)
-    return candidates
+    raw.extend(ntpath.join(root, "bin", "bash.exe") for root in roots if root)
+    raw.append(_safe_which("bash"))
+    return list(dict.fromkeys(c for c in raw if c and os.path.isfile(c)))
 
 
 def _find_bash(raise_if_missing: bool = True) -> str | None:
@@ -563,7 +551,9 @@ def _find_bash(raise_if_missing: bool = True) -> str | None:
     Candidates are probed with ``_bash_starts()`` (external-program smoke
     test) so broken/WSL/WindowsApps-stub bash is never returned as usable.
 
-    Windows candidate order mirrors kimix ``bash_tool._find_git_bash_windows``:
+    PM owns the first choice. On Windows its builtin-only startup probe is
+    followed by the CN external-program check before the candidate is usable.
+    Remaining candidates mirror kimix ``bash_tool._find_git_bash_windows``:
     explicit override → managed portable Git (Hermes-specific) → ``where.exe
     git``/``git --exec-path`` derivation → well-known Program Files locations →
     plain ``bash`` on PATH (last resort, filtered for WSL launchers and
@@ -576,86 +566,19 @@ def _find_bash(raise_if_missing: bool = True) -> str | None:
     a ``None`` return as "no working bash" so the resolver can fall back to
     PowerShell.
     """
+    import pm.shell
+
+    preferred = pm.shell.bash()
     if not _IS_WINDOWS:
-        return _find_bash_posix()
+        if preferred or not raise_if_missing:
+            return preferred
+        raise RuntimeError(
+            "No shell found. Hermes needs bash. "
+            "Run `hermes pm install` or reinstall the bundle."
+        )
 
-    candidates: list[str] = []
     custom = os.environ.get("HERMES_GIT_BASH_PATH")
-    if custom and os.path.isfile(custom):
-        candidates.append(custom)
-
-    # Prefer the Hermes-managed portable Git before system installations. A
-    # stale custom path or partially removed system Git must not brick the
-    # explicitly selected bash path while the managed copy is healthy.
-    local_appdata = os.environ.get("LOCALAPPDATA", "")
-    portable_git = (
-        ntpath.join(local_appdata, "hermes", "git") if local_appdata else ""
-    )
-    if portable_git:
-        for candidate in (
-            ntpath.join(portable_git, "bin", "bash.exe"),
-            ntpath.join(portable_git, "usr", "bin", "bash.exe"),
-        ):
-            if os.path.isfile(candidate) and candidate not in candidates:
-                candidates.append(candidate)
-
-    # git.exe-based discovery (ported from kimix ``bash_tool._find_git_bash_windows``):
-    # ``where.exe git`` -> <gitDir>/../bin/bash.exe, then ``git --exec-path``
-    # -> Git for Windows install root -> bin/bash.exe.  Catches per-user /
-    # chocolatey / scoop / side-by-side Git installs that live outside the
-    # well-known Program Files locations.  Mirrors kimix ordering: this runs
-    # BEFORE the well-known locations and the PATH fallback, so a real Git
-    # Bash install always wins over ambiguous PATH entries.
-    for git_path in _where_git_executables():
-        candidate = _git_bash_candidate_from_git_path(git_path)
-        if os.path.isfile(str(candidate)) and str(candidate) not in candidates:
-            candidates.append(str(candidate))
-        git_exec_path = _git_exec_path(git_path)
-        if git_exec_path:
-            for candidate in _git_bash_candidates_from_exec_path(git_exec_path):
-                if os.path.isfile(str(candidate)) and str(candidate) not in candidates:
-                    candidates.append(str(candidate))
-
-    # Well-known Git-for-Windows install locations.
-    for candidate in (
-        ntpath.join(
-            os.environ.get("ProgramFiles", r"C:\Program Files"),
-            "Git",
-            "bin",
-            "bash.exe",
-        ),
-        ntpath.join(
-            os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"),
-            "Git",
-            "bin",
-            "bash.exe",
-        ),
-        (
-            ntpath.join(local_appdata, "Programs", "Git", "bin", "bash.exe")
-            if local_appdata
-            else ""
-        ),
-    ):
-        if candidate and os.path.isfile(candidate) and candidate not in candidates:
-            candidates.append(candidate)
-
-    # PATH ``bash`` is the LAST resort (mirrors kimix ``bash_tool``): on
-    # Windows a plain ``bash`` on PATH is the least trustworthy source — it may
-    # be the WSL launcher (C:\Windows\System32\bash.exe) which boots a Linux
-    # distro (drives at /mnt/c) and cannot consume native /c/... paths, or a
-    # WindowsApps App Execution Alias stub that only offers to install WSL.
-    # Reject both so discovery never selects them; when no real Git Bash
-    # exists the resolver degrades to PowerShell.
-    found = _safe_which("bash")
-    if found and found not in candidates:
-        if _is_wsl_bash_launcher(found) or _is_windows_apps_stub(found):
-            logger.warning(
-                "Ignoring non-Git-Bash bash at %s (WSL launcher / WindowsApps "
-                "stub); preferring Git Bash",
-                found,
-            )
-        else:
-            candidates.append(found)
+    candidates = _windows_bash_candidates(preferred, custom)
 
     for candidate in candidates:
         # Defense in depth: never probe/select WSL launchers or WindowsApps
@@ -665,7 +588,7 @@ def _find_bash(raise_if_missing: bool = True) -> str | None:
             logger.debug("Skipping non-Git-Bash candidate %s", candidate)
             continue
         if _bash_starts(candidate):
-            if candidate != custom and custom and os.path.isfile(custom):
+            if candidate not in (preferred, custom) and custom and os.path.isfile(custom):
                 logger.warning(
                     "HERMES_GIT_BASH_PATH=%s fails to start; using %s instead",
                     custom,
@@ -2671,83 +2594,12 @@ class LocalEnvironment(BaseEnvironment):
         return super()._wrap_command(command, cwd)
 
     def _kill_process(self, proc):
-        """Kill the entire process group (all children)."""
-
-        def _group_alive(pgid: int) -> bool:
-            try:
-                # POSIX-only: _IS_WINDOWS is handled before this helper is used.
-                os.killpg(pgid, 0)  # windows-footgun: ok — POSIX process-group alive probe
-                return True
-            except ProcessLookupError:
-                return False
-            except PermissionError:
-                # The group exists, even if this process cannot signal it.
-                return True
-
-        def _wait_for_group_exit(pgid: int, timeout: float) -> bool:
-            deadline = time.monotonic() + timeout
-            while time.monotonic() < deadline:
-                # Reap the wrapper promptly. A dead but unreaped group leader
-                # still makes killpg(pgid, 0) report the group as alive.
-                try:
-                    proc.poll()
-                except Exception:
-                    pass
-                if not _group_alive(pgid):
-                    return True
-                time.sleep(0.05)
-            try:
-                proc.poll()
-            except Exception:
-                pass
-            return not _group_alive(pgid)
-
+        """Kill the entire process group and its escaped descendants."""
         try:
-            if _IS_WINDOWS:
-                try:
-                    from gateway.status import terminate_pid
-
-                    terminate_pid(proc.pid, force=True)
-                except Exception:
-                    proc.kill()
-                try:
-                    proc.wait(timeout=2.0)
-                except (subprocess.TimeoutExpired, OSError):
-                    pass
-            else:
-                try:
-                    pgid = os.getpgid(proc.pid)
-                except ProcessLookupError:
-                    pgid = getattr(proc, "_hermes_pgid", None)
-                    if pgid is None:
-                        raise
-
-                try:
-                    os.killpg(pgid, signal.SIGTERM)  # windows-footgun: ok — POSIX process-group SIGTERM (guarded by _IS_WINDOWS above)
-                except ProcessLookupError:
-                    return
-
-                # Wait on the process group, not just the shell wrapper. Under
-                # load the wrapper can exit before grandchildren do; returning
-                # at that point leaves orphaned process-group members behind.
-                if _wait_for_group_exit(pgid, 1.0):
-                    return
-
-                try:
-                    # POSIX-only: _IS_WINDOWS is handled by the outer branch.
-                    os.killpg(pgid, signal.SIGKILL)  # windows-footgun: ok — POSIX process-group SIGKILL
-                except ProcessLookupError:
-                    return
-                _wait_for_group_exit(pgid, 2.0)
-                try:
-                    proc.wait(timeout=0.2)
-                except (subprocess.TimeoutExpired, OSError):
-                    pass
-        except (ProcessLookupError, PermissionError, OSError):
-            try:
+            (_kill_process_windows if _IS_WINDOWS else _kill_process_group_posix)(proc)
+        except OSError:
+            with contextlib.suppress(Exception):
                 proc.kill()
-            except Exception:
-                pass
 
     def _update_cwd(self, result: dict):
         """Update cwd from the stdout marker emitted by the wrapped command.

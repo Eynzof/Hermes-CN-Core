@@ -152,6 +152,7 @@ def _wire(provider: str, model: str, base_url: str) -> dict[str, Any]:
          patch("model_tools.check_toolset_requirements", return_value={}), \
          patch("agent.process_bootstrap.OpenAI"):
         agent = AIAgent(provider=provider, model=model, base_url=base_url, api_key="sk-test-0000000000",
+                        enabled_toolsets=["terminal"],  # keep post-build context-engine tools outside this wire fixture
                         quiet_mode=True, skip_context_files=True, skip_memory=True, session_id="wire-snapshot")
     for name, value in _PER_TURN_RESET_STATE:
         setattr(agent, name, value)

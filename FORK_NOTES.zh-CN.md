@@ -16,6 +16,12 @@ CI 保留完整检查集合，改用当前 fork 可用的标准托管 runner，�
 
 Hindsight 的 cloud 和 local_external 模式使用已声明的 client 依赖。local_embedded 所需 `hindsight-all==0.6.1` 与 Core 当前遥测依赖冲突，本次不扩大 Core 依赖升级范围：已有可用安装仍可使用，缺失时明确报告限制，可通过 local_external 连接独立服务。
 
+本轮 CI 还暴露了同步时遗留的重复实现：恢复 P-061 的进程输出翻页、完整日志导出和 pattern 命中后转后台；复用现有进程清理实现以保留 setsid 后代回收；修复会话项目切换、技能批量审批预览、JSON 损坏文件读取以及日志重复写入。Desktop 的冻结 CLI 入口保留 provider 与父进程参数，MCP 冷恢复按名称触发工具懒注册，飞书 SDK 继续按需加载。工具集首次查询包含尚未导入的成员，显式空选择不会被新插件重新启用；Shell 解析优先使用 PM，Windows 仍保留 CN 的外部程序探测和故障诊断。
+
+更新器、浏览器和 SSL 的旧测试按已同步的上游退役记录迁移到当前 PM、launcher 与证书接口；仍存在的 CN 行为继续保留回归。独立迁移脚本使用标准库正则，避免依赖仓库导入路径。Windows ARM 的 isolated sdist 构建单独固定 setuptools 83，以保持 grpcio 的 MSVC 编译参数修正生效，不改变运行时包版本。
+
+供应链扫描仍阻断原有两类模式；五处经过审查的透明包装采用固定路径、内容和函数上下文哈希的精确登记，内容、位置或副本数量变化仍会阻断。贡献者检查沿用上游同步分支的 first-parent 归属规则，仅补齐已核实的本仓作者。代码健康门禁保持启用；上游导入存量的基线策略需独立决定。
+
 | ID | 目标文件 | 做了什么 | 为什么需要 | 上游状态 |
 |---|---|---|---|---|
 | P-063 | plugins/tts/moss/transcription.py（新增）、plugins/tts/moss/api.py（新增）、plugins/tts/moss/client.py、plugins/tts/moss/tools.py、plugins/tts/moss/__init__.py、plugins/tts/moss/plugin.yaml、hermes_cli/config_defaults.py、hermes_cli/tools_config.py、docs/moss-tts.md、website/docs（tts.md）、tests/plugins/test_moss_transcription.py（新增）+ test_moss_vision.py（新增）+ test_moss_provider.py + test_moss_tools.py + test_moss_provider_e2e.py | 在既有 Moss 插件（P-062）基础上补齐场景文档剩余两个缺口：(A) **语音转写** — 新增 `MossTranscriptionProvider`（实现 TranscriptionProvider ABC），以 `moss` 名字注册，使 `stt.provider: moss` 将网关语音消息路由到现有插件 STT 分发路径（不改 `BUILTIN_STT_PROVIDERS`）；同时新增受密钥门控的 `moss_transcribe` 工具（multipart 本地文件 / `file_id:` / 公网 URL；`diarize=true` 强制 `moss-transcribe-diarize-pro` 并返回归一化 `segments`；`keyterms` ≤20×≤30 字符；`async_mode` → `task_id` 并支持轮询；512 MB 上限）。(B) **MOSS-VL** — 新增受密钥门控的 `moss_vision` 工具，调用 `POST /v1/responses`（`moss-vl-1.0`）支持 1–5 张图片或 1 个视频（禁止混用；图片 30 MB / 视频 200 MB 上限；拒绝 localhost/内网 URL），本地媒体经 `POST /v1/files` 上传；对 `status=incomplete`/`max_output_tokens` 截断给出告警。两者都由自包含的 `requests` HTTP 层（`plugins/tts/moss/api.py`）承载，复用既有 `tts.moss` 的 key/base_url/timeout 解析，不依赖私有 `moss_tts` SDK 是否发布新客户端方法。新增 `stt.moss` 配置默认值，并在 `hermes tools` 的 Speech-to-Text 选择器注入插件 STT 提供方。已用真实 Moss key（D:/moss.txt）跑通实时 E2E：转写往返、双说话人 diarize、图片 OCR、file_id 视觉流程。 | 抓取的六份 Moss 场景文档覆盖转写/多说话人与图片视频理解，但 fork 之前只实现了 TTS（P-062）——网关语音消息与 Agent 图片/视频理解缺少 Moss 通道。STT 与视觉均停留在 footprint-ladder 第 3/4 级：插件提供方 + 门控工具，刻意不接入核心视觉路由（第三方 SaaS 后端应放在边缘）。 | 按 plan.md 属于树内第三方 SaaS 插件——如需上游化可整体搬迁到 `~/.hermes/plugins/tts/moss/`；自包含 HTTP 层保证其不随 `moss_tts` SDK 发版节奏而失效。 |

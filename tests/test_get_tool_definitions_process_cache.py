@@ -235,7 +235,7 @@ def offline_agent_factory():
     from run_agent import AIAgent
 
     model_tools._clear_tool_defs_cache()
-    with patch("run_agent.OpenAI") as mock_cls:
+    with patch("agent.process_bootstrap.OpenAI") as mock_cls:
         mock_cls.return_value = MagicMock()
         yield AIAgent
 

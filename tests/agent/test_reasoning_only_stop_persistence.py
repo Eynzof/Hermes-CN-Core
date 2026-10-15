@@ -30,6 +30,7 @@ def loop_agent():
             base_url="http://127.0.0.1:8000/v1",
             model="nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4",
             provider="vllm",
+            enabled_toolsets=[],
             quiet_mode=True,
             skip_context_files=True,
             skip_memory=True,

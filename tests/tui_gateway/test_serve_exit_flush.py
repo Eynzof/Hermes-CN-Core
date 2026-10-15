@@ -92,10 +92,11 @@ def test_sigterm_flushes_populated_session_into_state_db(
     def _prev_handler(signum, frame):
         chained["called"] = True
 
-    prev = {signal.SIGTERM: signal.signal(signal.SIGTERM, _prev_handler)}
+    prev = {signal.SIGTERM: signal.signal(signal.SIGTERM, _prev_handler),
+            signal.SIGINT: signal.getsignal(signal.SIGINT)}
     try:
         assert server.install_exit_flush_signal_handlers() is True
-        _raise_sigterm()
+        os.kill(os.getpid(), signal.SIGTERM)
         # The handler runs synchronously on the main thread at the next
         # bytecode boundary; poll briefly for robustness.
         deadline = time.monotonic() + 5.0

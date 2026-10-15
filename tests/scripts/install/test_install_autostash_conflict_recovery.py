@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import os
 import shutil
-import sys
 import subprocess
 from pathlib import Path
 
@@ -80,10 +79,7 @@ def _assert_conflict_was_recovered(repo: Path, output: str) -> None:
 
 
 @pytest.mark.live_system_guard_bypass
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="install.sh is the POSIX installer; on Windows 'bash' is WSL and cannot consume D:\\ paths (install.ps1 is covered by the sibling tests)",
-)
+@pytest.mark.platforms("posix")
 @pytest.mark.skipif(
     shutil.which("git") is None or shutil.which("bash") is None,
     reason="needs git and bash",
@@ -110,6 +106,7 @@ def test_install_sh_repository_stage_recovers_from_autostash_conflict(
 
 
 @pytest.mark.live_system_guard_bypass
+@pytest.mark.platforms("windows")
 @pytest.mark.skipif(
     shutil.which("git") is None or POWERSHELL is None,
     reason="needs git and PowerShell",
@@ -142,10 +139,7 @@ def test_install_ps1_repository_stage_recovers_from_autostash_conflict(
 
 
 @pytest.mark.live_system_guard_bypass
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="install.sh is the POSIX installer; on Windows 'bash' is WSL and cannot consume D:\\ paths (install.ps1 is covered by the sibling tests)",
-)
+@pytest.mark.platforms("posix")
 @pytest.mark.skipif(
     shutil.which("git") is None or shutil.which("bash") is None,
     reason="needs git and bash",

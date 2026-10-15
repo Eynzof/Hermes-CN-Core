@@ -13,7 +13,7 @@ import errno
 import hashlib
 import orjson
 import os
-from agent.re_compat import re
+import re
 import shutil
 import tempfile
 from dataclasses import asdict, dataclass, field

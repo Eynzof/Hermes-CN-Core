@@ -964,7 +964,10 @@ class ToolRegistry:
         return self._snapshot_entries()
 
     def get_tool_names_for_toolset(self, toolset: str) -> list[str]:
-        return sorted(e.name for e in self._grouped(self._snapshot_entries()).get(toolset, []))
+        # Enumerate cold built-ins without importing them; live/profile overrides win.
+        membership = dict(self._ensure_index()["tool_to_toolset"]) if self._lazy_enabled else {}
+        membership.update({entry.name: entry.toolset for entry in self._snapshot_entries()})
+        return sorted(name for name, group in membership.items() if group == toolset)
 
     def register_toolset_alias(self, alias: str, toolset: str) -> None:
         """Register an explicit alias for a canonical toolset name."""

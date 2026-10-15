@@ -325,15 +325,13 @@ class _SlashWorker:
         # ``--provider`` pins the child to the parent agent's virtual provider: without it the
         # worker re-resolves provider from config, so a MoA session (provider=moa, model=<preset>)
         # dispatched its preset NAME to the configured real provider and 402/503'd (#57283).
-        argv = [sys.executable, "-m", "tui_gateway.slash_worker", "--session-key", session_key,
-                "--parent-pid", str(os.getpid())] \
-            + (["--model", model] if model else []) \
-            + (["--provider", provider] if provider else [])
         # Spawn through the hidden ``__slash-worker`` CLI subcommand (P-063): the frozen CN
         # portable runtime has no standalone python, so ``[sys.executable, "-m", ...]`` would
         # run ``hermes -m tui_gateway.slash_worker`` and argparse rejects it as an invalid
         # subcommand. hermes_cli_argv() keeps the source-checkout shape (-m hermes_cli.main).
-        argv = hermes_cli_argv("__slash-worker", "--session-key", session_key) + (["--model", model] if model else [])
+        argv = hermes_cli_argv(
+            "__slash-worker", "--session-key", session_key, "--parent-pid", str(os.getpid()),
+        ) + (["--model", model] if model else []) + (["--provider", provider] if provider else [])
         self._closed = False
         from hermes_cli._subprocess_compat import windows_hide_flags
         # slash_worker runs the Hermes agent → needs provider credentials. Tier-1 secrets

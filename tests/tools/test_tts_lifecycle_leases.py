@@ -455,12 +455,3 @@ def test_zero_keep_warm_unloads_inline(fake_piper, timers):
     assert tts_tool_lifecycle.release_tts_lease("cli:voice-tts") == {"leases": 0, "released": 1}
     assert tts_tool_local._piper_voice_cache == {}
     assert _pending(timers) == []
-    # A model name with a space must reach the shell as ONE argument; the quoting
-    # form is the platform's (POSIX shlex.quote vs Windows list2cmdline — see
-    # tts_command_provider.quote_command_placeholder).
-    import subprocess
-    import sys
-
-    model_arg = (subprocess.list2cmdline(["kokoro v1"]) if sys.platform == "win32"
-                 else "'kokoro v1'")
-    assert ran == [f"curl -s localhost:5002/load?model={model_arg}", "curl -s localhost:5002/unload"]

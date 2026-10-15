@@ -788,7 +788,9 @@ def _describe_interpreter_crash(rc: int, output: str) -> Optional[str]:
         except ValueError:
             name = f"signal {-rc}"
         return f"{fatal} ({name})" if fatal else f"killed by {name}"
-    return fatal
+    # A normal pytest failure may quote a deliberately crashed child. Its
+    # final counts prove this interpreter survived to report the failure.
+    return None if _parse_pytest_summary(output) else fatal
 
 
 def _format_file(file: Path, repo_root: Path) -> str:
@@ -1521,27 +1523,6 @@ def main() -> int:
     # complete"), which has been misread as a successful verification, so say
     # it plainly AND fail the exit code.
     no_tests_ran_at_all = bool(files) and tests_collected == 0 and not files_crashed
-    if no_tests_ran_at_all:
-        print()
-        print(
-            "=== ✗ NO TESTS RAN — 0 collected across "
-            f"{len(files)} file{'s' if len(files) != 1 else ''}. "
-            "This is NOT a pass. ==="
-        )
-        print(
-            "  Common causes: the selected venv has no pytest; a -k/-m filter "
-            "matched nothing; or collection errored in every file."
-        )
-        print("  Check the per-file output above for the real error.")
-
-    # Zero tests collected across the WHOLE run is NOT a pass. Per-file rc=5
-    # is deliberately tolerated above (platform-gated files), but if NOTHING
-    # ran anywhere the invocation itself was broken — a venv without pytest, a
-    # -k/-m filter that matched nothing, or collection erroring everywhere.
-    # The summary line above reads green at a glance ("0 failed ... 100%
-    # complete"), which has been misread as a successful verification, so say
-    # it plainly AND fail the exit code.
-    no_tests_ran_at_all = bool(files) and tests_collected == 0
     if no_tests_ran_at_all:
         print()
         print(

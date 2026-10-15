@@ -1245,7 +1245,7 @@ def test_write_json_unserializable_payload_becomes_error_frame(monkeypatch, capl
                                   "result": {"created": {1, 2}}}) is True
     frame = json.loads("".join(out.parts))
     assert frame["id"] == "profiles" and frame["error"]["code"] == -32603
-    assert "datetime" in frame["error"]["message"]
+    assert "set" in frame["error"]["message"]
     assert any(rec.levelno >= logging.ERROR for rec in caplog.records)
 
 

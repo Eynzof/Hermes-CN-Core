@@ -393,21 +393,29 @@ def test_resume_on_another_surface_restores_the_pinned_tool_bytes(monkeypatch, t
     assert upgraded_pin == {"version": "sha-after-hermes-update", "tools": updated.tools}
 
 
-def test_a_pin_never_re_adds_a_tool_this_sessions_config_excludes(monkeypatch):
+def test_a_pin_never_re_adds_a_tool_this_sessions_config_excludes():
     """A pin from a surface where ``terminal`` was allowed must not hand it back where config
     disables it, nor ``browser_exec`` (host Python) once ``terminal`` is gone. A client-surface
     tool (``focus_pane``) is still carried: no config choice removed it here."""
-    import model_tools
+    import subprocess
+    import sys
 
-    monkeypatch.setattr(_mcp_agent, "persist_agent_tool_names", lambda agent: None)
-    pin = {"version": _mcp_agent.tool_pin_version(),
-           "tools": [_tool(n) for n in ("read_file", "terminal", "browser_exec", "focus_pane")]}
-    agent = _agent(["read_file"], enabled=["hermes-cli"], disabled=["terminal"])
-
-    _mcp_agent.restore_agent_tool_prefix(agent, pin)
-
-    assert [t["function"]["name"] for t in agent.tools] == ["read_file", "focus_pane"]
-    assert agent.valid_tool_names == {"read_file", "focus_pane"}
+    # A new surface may not have imported the pinned tools yet. A separate process
+    # proves the cold lazy-registry path independently of earlier tests' discovery.
+    child = subprocess.run([sys.executable, "-c", """
+import model_tools
+from tests.tools.test_refresh_agent_mcp_tools import _agent, _tool
+from tools import mcp_tool_agent
+from tools.registry import registry
+assert "focus_pane" not in {entry.name for entry in registry.get_all_entries()}
+pin = {"version": mcp_tool_agent.tool_pin_version(),
+       "tools": [_tool(n) for n in ("read_file", "terminal", "browser_exec", "focus_pane")]}
+agent = _agent(["read_file"], enabled=["hermes-cli"], disabled=["terminal"])
+mcp_tool_agent.restore_agent_tool_prefix(agent, pin)
+assert [t["function"]["name"] for t in agent.tools] == ["read_file", "focus_pane"]
+assert agent.valid_tool_names == {"read_file", "focus_pane"}
+"""], capture_output=True, text=True, timeout=30)
+    assert child.returncode == 0, child.stdout + child.stderr
 
 
 def test_reprobe_tool_availability_drops_cached_check_fn_verdicts(monkeypatch):

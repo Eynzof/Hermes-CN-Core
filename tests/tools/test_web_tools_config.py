@@ -699,17 +699,17 @@ class TestCheckWebApiKey:
         monkeypatch.setenv("XAI_API_KEY", "xai-test-key")
         for k in ("PERPLEXITY_API_KEY", "SEARXNG_URL", "BRAVE_SEARCH_API_KEY"):
             monkeypatch.delenv(k, raising=False)
-        from tools.registry import invalidate_check_fn_cache
+        from tools.mcp_tool_agent import reprobe_tool_availability
         import model_tools
 
         with patch("tools.web_tools._load_web_config", return_value={}):
-            invalidate_check_fn_cache()
+            reprobe_tool_availability()
             names = {d["function"]["name"]
                      for d in model_tools.get_tool_definitions(enabled_toolsets=["web"])}
             assert names == set()
 
             monkeypatch.setenv("TAVILY_API_KEY", "tavily-test-key")
-            invalidate_check_fn_cache()
+            reprobe_tool_availability()
             names = {d["function"]["name"]
                      for d in model_tools.get_tool_definitions(enabled_toolsets=["web"])}
             assert names == {"web_search", "web_extract"}

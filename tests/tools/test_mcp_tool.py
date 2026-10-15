@@ -1456,7 +1456,7 @@ class TestGracefulFallback:
                  "tools.mcp_tool_config._load_mcp_config",
                  return_value={"vision": {"command": "python", "args": ["s.py"]}},
              ):
-            from tools.mcp_tool import discover_mcp_tools
+            from tools.mcp_tool_discovery import discover_mcp_tools
             with caplog.at_level(logging.WARNING, logger="tools.mcp_tool"):
                 result = discover_mcp_tools()
             assert result == []
@@ -1472,7 +1472,7 @@ class TestGracefulFallback:
         with patch("tools.mcp_tool._MCP_AVAILABLE", False), \
              patch("tools.mcp_tool._warned_mcp_sdk_unavailable", False), \
              patch("tools.mcp_tool_config._load_mcp_config", return_value={}):
-            from tools.mcp_tool import discover_mcp_tools
+            from tools.mcp_tool_discovery import discover_mcp_tools
             with caplog.at_level(logging.WARNING, logger="tools.mcp_tool"):
                 result = discover_mcp_tools()
             assert result == []
@@ -1488,7 +1488,7 @@ class TestGracefulFallback:
                  "tools.mcp_tool_config._load_mcp_config",
                  return_value={"vision": {"command": "python", "args": ["s.py"]}},
              ):
-            from tools.mcp_tool import discover_mcp_tools
+            from tools.mcp_tool_discovery import discover_mcp_tools
             with caplog.at_level(logging.WARNING, logger="tools.mcp_tool"):
                 discover_mcp_tools()
                 discover_mcp_tools()
@@ -1504,7 +1504,7 @@ class TestGracefulFallback:
         with patch("tools.mcp_tool._MCP_AVAILABLE", True), \
              patch("tools.mcp_tool._servers", {}), \
              patch("tools.mcp_tool_config._load_mcp_config", return_value={}):
-            from tools.mcp_tool import discover_mcp_tools
+            from tools.mcp_tool_discovery import discover_mcp_tools
             result = discover_mcp_tools()
             assert result == []
 
@@ -3432,7 +3432,7 @@ class TestMetricsTracking:
             assert "tools" not in payload
 
     def test_sampling_capabilities_type(self):
-        handler = SamplingHandler("sk2", {})
+        handler = SamplingHandler("sk2", {"expose_client_tools": True})
         kwargs = handler.session_kwargs()
         cap = kwargs["sampling_capabilities"]
         assert isinstance(cap, SamplingCapability)

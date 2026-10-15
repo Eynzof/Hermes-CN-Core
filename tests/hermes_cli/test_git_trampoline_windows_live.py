@@ -15,7 +15,6 @@ locator targets — so the swap path is exercised end to end.
 from __future__ import annotations
 
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -53,7 +52,6 @@ class TestGitTrampolineLive:
         bat = _make_broken_trampoline(tmp_path)
         assert update_cmd._git_is_trampoline([str(bat)]) is True
 
-    @_runner_git_layout
     def test_locate_real_git_finds_runner_git_core(self):
         from hermes_cli import update_cmd
 
@@ -69,7 +67,6 @@ class TestGitTrampolineLive:
         assert probe.returncode == 0
         assert "git version" in probe.stdout.lower()
 
-    @_runner_git_layout
     def test_ensure_non_trampoline_git_swaps_live(self, tmp_path, capsys):
         from hermes_cli import update_cmd
 

@@ -28,7 +28,7 @@ from tools.environments.base_session_env import (
     _SHELL_ENV_NAME_RE, _SNAP_TMP_SUFFIX, _cwd_marker, _snapshot_bootstrap_script, _split_cwd_marker,
     _wrap_command_script,
 )
-from tools.environments.base_wait import _WaitTrace
+from tools.environments.base_wait import _WaitTrace, compile_wait_pattern
 from utils import env_var_enabled
 
 logger = logging.getLogger(__name__)
@@ -514,21 +514,9 @@ class BaseEnvironment(ABC):
         # P-061 hooks: the drain itself lives in ``base_output``, so the per-chunk
         # hooks (live ``output_callback`` + ``wait_for_pattern`` scan) ride a tee on
         # the way to the collector.
-        _pattern_re = None
+        _pattern_re = compile_wait_pattern(wait_for_pattern)
         _pattern_tail = ""
         _pattern_hit: dict = {"matched": False, "text": ""}
-        if wait_for_pattern:
-            # Local import: the module-level ``re`` name is re-declared by the
-            # plugin-compat block at the bottom of this file.
-            import re
-
-            try:
-                _pattern_re = re.compile(wait_for_pattern)
-            except re.error:
-                logger.warning(
-                    "Invalid wait_for_pattern %r ignored (bad regex)", wait_for_pattern
-                )
-                _pattern_re = None
 
         def _on_chunk(text: str) -> None:
             nonlocal _pattern_tail
@@ -575,6 +563,14 @@ class BaseEnvironment(ABC):
                     _kill_and_join()
                     return {**self._finalize_wait_result(output, output.render(suffix="\n[Command interrupted]"), 130),
                             "hermes_interrupted": True}
+                if _pattern_hit["matched"] and promote_callback is not None:
+                    if _sid := promote_callback(proc):
+                        return {
+                            **self._finalize_wait_result(output, output.render(), None),
+                            "elapsed_seconds": round(time.monotonic() - _t0, 2),
+                            "promoted": True, "session_id": _sid, "timed_out": False,
+                            "pattern_matched": True, "matched_pattern": _pattern_hit["text"],
+                        }
                 if yield_handler is not None and consume_yield(watch_interrupt_tid):
                     drain_stop.set()
                     drain_thread.join(timeout=1)

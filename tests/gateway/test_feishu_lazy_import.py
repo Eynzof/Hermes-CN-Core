@@ -5,6 +5,8 @@ import os
 import tempfile
 from unittest.mock import AsyncMock, patch
 
+import pytest
+
 
 def _feishu_adapter_module():
     """Import the adapter with the Windows app-data root available in CI."""
@@ -74,6 +76,19 @@ def test_request_builders_fall_back_when_sdk_is_not_bound():
     assert body.uuid == "uuid-1"
     assert request.receive_id_type == "chat_id"
     assert request.request_body is body
+
+
+def test_real_sdk_binding_builds_delete_request(monkeypatch):
+    sdk = pytest.importorskip("lark_oapi.api.im.v1")
+    feishu_adapter = _feishu_adapter_module()
+    bindings = feishu_adapter._lark_bindings()
+    monkeypatch.setattr(feishu_adapter, "DeleteMessageRequest", bindings["DeleteMessageRequest"])
+
+    request = feishu_adapter.FeishuAdapter._build_delete_message_request("om_cleanup")
+
+    assert isinstance(request, sdk.DeleteMessageRequest)
+    assert request.http_method is bindings["HttpMethod"].DELETE
+    assert request.paths == {"message_id": "om_cleanup"}
 
 
 def test_feishu_connect_loads_sdk_on_worker_thread():

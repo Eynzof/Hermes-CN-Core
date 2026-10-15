@@ -15,7 +15,6 @@ import contextvars
 import errno
 import html
 import importlib.util as _importlib_util
-import orjson
 import logging
 import os
 from agent.re_compat import re
@@ -391,8 +390,6 @@ def _read_json(path: Path) -> dict | None:
     try:
         return json.loads(path.read_text(encoding="utf-8-sig"))
     except (json.JSONDecodeError, OSError) as exc:
-        return orjson.loads(path.read_text(encoding="utf-8-sig", errors="replace"))
-    except (orjson.JSONDecodeError, OSError) as exc:
         logger.warning("Failed to read %s: %s", path, exc)
         return None
 

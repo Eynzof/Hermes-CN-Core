@@ -6,12 +6,8 @@ the task is skipped (existing behavior preserved).
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 import orjson
-import os
-import sys
-import tempfile
 
 import pytest
 
@@ -24,18 +20,7 @@ def isolated_kanban_home(tmp_path, monkeypatch):
     monkeypatch.setenv("HERMES_HOME", str(test_home))
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     from hermes_cli import kanban_db
-    try:
-        yield kanban_db, test_home
-    finally:
-        # Restore original module registry to avoid splitting module identity
-        # for later tests that imported hermes_cli modules at collection time.
-        for mod in list(sys.modules.keys()):
-            if mod.startswith("hermes_cli") or mod.startswith("hermes_state") or mod == "hermes_constants":
-                del sys.modules[mod]
-        sys.modules.update(saved)
-    # Cleanup is best-effort; tempfile dir survives but pytest isolation
-    # gives each test its own monkeypatched HERMES_HOME so no cross-test
-    # contamination.
+    return kanban_db, test_home
 
 
 def _fake_spawn(*args, **kwargs):

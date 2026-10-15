@@ -40,10 +40,21 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Dict, List, Literal, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Sequence
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
+
+if TYPE_CHECKING:
+    from lark_oapi.api.im.v1 import (
+        CreateFileRequest, CreateFileRequestBody, CreateImageRequest, CreateImageRequestBody,
+        CreateMessageRequest, CreateMessageRequestBody, DeleteMessageRequest, GetChatRequest, GetMessageRequest,
+        GetMessageResourceRequest, P2ImMessageMessageReadV1, ReplyMessageRequest,
+        ReplyMessageRequestBody, UpdateMessageRequest, UpdateMessageRequestBody,
+    )
+    from lark_oapi.event.callback.model.p2_card_action_trigger import (
+        CallBackCard, P2CardActionTriggerResponse,
+    )
 
 # aiohttp/websockets are independent optional deps — import outside lark_oapi
 # so they remain available for tests and webhook mode even if lark_oapi is missing.
@@ -82,70 +93,7 @@ FEISHU_AVAILABLE = False
 _lark_import_lock = threading.Lock()
 
 
-def _lark_bindings() -> dict:
-    """Import lark_oapi + the model classes the adapter needs.
-
-    Returns a ``{name: value}`` dict suitable for ``ensure_and_bind``. Costs
-    ~2.5s the first time it runs (the SDK eagerly imports its whole ``api``
-    package); afterwards all names are cached in ``sys.modules`` and this
-    returns in microseconds.
-    """
-    import lark_oapi as lark
-    from lark_oapi.api.application.v6 import GetApplicationRequest
-    from lark_oapi.api.im.v1 import (
-        CreateFileRequest,
-        CreateFileRequestBody,
-        CreateImageRequest,
-        CreateImageRequestBody,
-        CreateMessageRequest,
-        CreateMessageRequestBody,
-        GetChatRequest,
-        GetMessageRequest,
-        GetMessageResourceRequest,
-        P2ImMessageMessageReadV1,
-        ReplyMessageRequest,
-        ReplyMessageRequestBody,
-        UpdateMessageRequest,
-        UpdateMessageRequestBody,
-    )
-    from lark_oapi.core import AccessTokenType, HttpMethod
-    from lark_oapi.core.const import FEISHU_DOMAIN, LARK_DOMAIN
-    from lark_oapi.core.model import BaseRequest
-    from lark_oapi.event.callback.model.p2_card_action_trigger import (
-        CallBackCard,
-        P2CardActionTriggerResponse,
-    )
-    from lark_oapi.event.dispatcher_handler import EventDispatcherHandler
-    from lark_oapi.ws import Client as FeishuWSClient
-
-    return {
-        "lark": lark,
-        "GetApplicationRequest": GetApplicationRequest,
-        "CreateFileRequest": CreateFileRequest,
-        "CreateFileRequestBody": CreateFileRequestBody,
-        "CreateImageRequest": CreateImageRequest,
-        "CreateImageRequestBody": CreateImageRequestBody,
-        "CreateMessageRequest": CreateMessageRequest,
-        "CreateMessageRequestBody": CreateMessageRequestBody,
-        "GetChatRequest": GetChatRequest,
-        "GetMessageRequest": GetMessageRequest,
-        "GetMessageResourceRequest": GetMessageResourceRequest,
-        "P2ImMessageMessageReadV1": P2ImMessageMessageReadV1,
-        "ReplyMessageRequest": ReplyMessageRequest,
-        "ReplyMessageRequestBody": ReplyMessageRequestBody,
-        "UpdateMessageRequest": UpdateMessageRequest,
-        "UpdateMessageRequestBody": UpdateMessageRequestBody,
-        "AccessTokenType": AccessTokenType,
-        "HttpMethod": HttpMethod,
-        "FEISHU_DOMAIN": FEISHU_DOMAIN,
-        "LARK_DOMAIN": LARK_DOMAIN,
-        "BaseRequest": BaseRequest,
-        "CallBackCard": CallBackCard,
-        "P2CardActionTriggerResponse": P2CardActionTriggerResponse,
-        "EventDispatcherHandler": EventDispatcherHandler,
-        "FeishuWSClient": FeishuWSClient,
-        "FEISHU_AVAILABLE": True,
-    }
+from .adapter_sdk import _lark_bindings
 
 FEISHU_WEBSOCKET_AVAILABLE = websockets is not None
 FEISHU_WEBHOOK_AVAILABLE = aiohttp is not None
@@ -166,8 +114,6 @@ from gateway.platforms._shared import (
     apply_yaml_bridge as _apply_yaml_bridge, extra_or_secret as _shared_extra_or_secret,
     get_scoped_secret as _get_scoped_secret, send_error
 )
-from lark_oapi.api.im.v1 import ( CreateFileRequest, CreateFileRequestBody, CreateImageRequest, CreateImageRequestBody, CreateMessageRequest, CreateMessageRequestBody, GetChatRequest, GetMessageRequest, GetMessageResourceRequest, P2ImMessageMessageReadV1, ReplyMessageRequest, ReplyMessageRequestBody, UpdateMessageRequest, UpdateMessageRequestBody, )
-from lark_oapi.event.callback.model.p2_card_action_trigger import ( CallBackCard, P2CardActionTriggerResponse, )
 import json
 
 

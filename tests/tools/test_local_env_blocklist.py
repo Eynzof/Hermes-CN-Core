@@ -1634,6 +1634,14 @@ class TestHermesBinDirOnPath:
         assert "/usr/bin" in entries
 
 
+def _observe_internal_secret_env(monkeypatch, values):
+    for name, value in values.items():
+        monkeypatch.setenv(name, value)
+    observed = observe_child(local.hermes_subprocess_env(), values)
+    return {name: value for name, value in observed.items() if value is not None}
+
+
+@pytest.mark.usefixtures("child_env")
 class TestHermesInternalDynamicSecrets:
     """Dynamically-named Hermes secrets injected at gateway/CLI startup must
     not leak into terminal subprocesses.
@@ -1685,10 +1693,10 @@ class TestHermesInternalDynamicSecrets:
         assert not _is_hermes_internal_secret("PATH")
         assert not _is_hermes_internal_secret("MY_APP_KEY")
 
-    def test_auxiliary_secrets_stripped_from_subprocess(self):
+    def test_auxiliary_secrets_stripped_from_subprocess(self, monkeypatch):
         """AUXILIARY_*_API_KEY / _BASE_URL injected into os.environ must not
         reach the terminal subprocess, while _PROVIDER / _MODEL survive."""
-        result_env = _run_with_env(extra_os_env={
+        result_env = _observe_internal_secret_env(monkeypatch, {
             "AUXILIARY_VISION_API_KEY": "sk-vision-secret",
             "AUXILIARY_VISION_BASE_URL": "http://internal:1234/v1",
             "AUXILIARY_WEB_EXTRACT_API_KEY": "sk-webx-secret",
@@ -1702,8 +1710,8 @@ class TestHermesInternalDynamicSecrets:
         assert result_env.get("AUXILIARY_VISION_PROVIDER") == "openai"
         assert result_env.get("AUXILIARY_VISION_MODEL") == "gpt-4o"
 
-    def test_gateway_relay_secret_stripped_from_subprocess(self):
-        result_env = _run_with_env(extra_os_env={
+    def test_gateway_relay_secret_stripped_from_subprocess(self, monkeypatch):
+        result_env = _observe_internal_secret_env(monkeypatch, {
             "GATEWAY_RELAY_SECRET": "relay-signing-secret",
             "GATEWAY_RELAY_DELIVERY_KEY": "relay-delivery-key",
             "GATEWAY_RELAY_URL": "https://relay.example.com",
@@ -1713,14 +1721,14 @@ class TestHermesInternalDynamicSecrets:
         # Non-secret routing hint stays visible.
         assert result_env.get("GATEWAY_RELAY_URL") == "https://relay.example.com"
 
-    def test_auxiliary_secret_stripped_even_when_passthrough_registered(self):
+    def test_auxiliary_secret_stripped_even_when_passthrough_registered(self, monkeypatch):
         """A skill registering AUXILIARY_*_API_KEY as env_passthrough must NOT
         be able to tunnel it into a subprocess — the strip is unconditional."""
         with patch(
             "tools.env_passthrough.is_env_passthrough",
             side_effect=lambda name: name == "AUXILIARY_VISION_API_KEY",
         ):
-            result_env = _run_with_env(extra_os_env={
+            result_env = _observe_internal_secret_env(monkeypatch, {
                 "AUXILIARY_VISION_API_KEY": "sk-vision-secret",
             })
         assert "AUXILIARY_VISION_API_KEY" not in result_env

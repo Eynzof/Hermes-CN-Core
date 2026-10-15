@@ -15,6 +15,7 @@ installation must not mask a missing PM lookup.
 from __future__ import annotations
 
 import subprocess
+import shutil
 from pathlib import Path
 
 import pytest
@@ -26,6 +27,28 @@ _FORK_BOMB_BAT = (
     "echo BUG (fork bomb): tried to spawn itself, check your PATH 1>&2\r\n"
     "exit /b 1\r\n"
 )
+
+
+@pytest.fixture(scope="module")
+def _pm_git_store(tmp_path_factory):
+    from pm.build_operations import stage_tools
+    from pm.store import current_target
+
+    # The hermetic runner keeps PATH but strips HERMES_RUNTIME_DIR. Copy the
+    # runner's verified PM Git once; tests must not use or mutate its store.
+    binary = shutil.which("git")
+    assert binary is not None, "the Windows lane must stage Git on PATH"
+    source = next((root for root in Path(binary).parents if (root / "facts.json").is_file()), None)
+    assert source is not None, f"expected PM facts above PATH Git: {binary}"
+    return stage_tools(
+        ["git"], source_store=source,
+        out=tmp_path_factory.mktemp("trampoline-pm") / "tools", target=current_target(),
+    )
+
+
+@pytest.fixture(autouse=True)
+def _isolated_pm_git(_hermetic_environment, _pm_git_store, monkeypatch):
+    monkeypatch.setenv("HERMES_RUNTIME_DIR", str(_pm_git_store))
 
 
 def _make_broken_trampoline(tmp_path: Path) -> Path:

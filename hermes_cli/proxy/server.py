@@ -26,7 +26,6 @@ except ImportError:
 from hermes_cli.proxy.adapters.base import UpstreamAdapter, UpstreamCredential
 from hermes_cli.port_lock import try_claim_port
 from hermes_cli.proxy.sse_done import DONE_SSE_FRAME, SseDoneTracker, content_type_is_sse
-from hermes_cli.port_lock import try_claim_port
 
 logger = logging.getLogger(__name__)
 
@@ -281,41 +280,31 @@ async def run_server(
 ) -> None:
     """Run the proxy in the current event loop until shutdown_event is set."""
     _require_aiohttp()
-    app = create_app(adapter, bound_host=host)
-    runner = web.AppRunner(app, access_log=None)
-    await runner.setup()
-    site = web.TCPSite(runner, host=host, port=port)
-    await site.start()
-    logger.info("proxy: listening on http://%s:%d/v1 -> %s", host, port, adapter.display_name)
-    stop_event = shutdown_event or asyncio.Event()
-    if shutdown_event is None:  # we own the loop's lifetime → wire signal handlers
-        loop = asyncio.get_running_loop()
-        for sig in (signal.SIGINT, signal.SIGTERM):
-            try:
-                loop.add_signal_handler(sig, stop_event.set)  # windows-footgun: ok
-            except NotImplementedError:
-                pass  # Windows / restricted envs — Ctrl+C still raises KeyboardInterrupt
-    try:
-        app = create_app(adapter)
-        runner = web.AppRunner(app, access_log=None)
-        await runner.setup()
-        site = web.TCPSite(runner, host=host, port=port)
-        await site.start()
-        logger.info("proxy: listening on http://%s:%d/v1 -> %s", host, port, adapter.display_name)
-        stop_event = shutdown_event or asyncio.Event()
-        if shutdown_event is None:  # we own the loop's lifetime → wire signal handlers
-            loop = asyncio.get_running_loop()
-            for sig in (signal.SIGINT, signal.SIGTERM):
-                try:
-                    loop.add_signal_handler(sig, stop_event.set)  # windows-footgun: ok
-                except NotImplementedError:
-                    pass  # Windows / restricted envs — Ctrl+C still raises KeyboardInterrupt
-        await stop_event.wait()
-    finally:
-        logger.info("proxy: shutting down")
-        if runner is not None:
+    port_lock = try_claim_port(port)
+    if port_lock is None:
+        raise RuntimeError(
+            f"proxy: port {port} is already claimed by another Hermes instance. "
+            "Choose a different port with `hermes proxy start --port <port>`."
+        )
+    with port_lock:
+        runner = web.AppRunner(create_app(adapter, bound_host=host), access_log=None)
+        try:
+            await runner.setup()
+            site = web.TCPSite(runner, host=host, port=port)
+            await site.start()
+            logger.info("proxy: listening on http://%s:%d/v1 -> %s", host, port, adapter.display_name)
+            stop_event = shutdown_event or asyncio.Event()
+            if shutdown_event is None:  # we own the loop's lifetime → wire signal handlers
+                loop = asyncio.get_running_loop()
+                for sig in (signal.SIGINT, signal.SIGTERM):
+                    try:
+                        loop.add_signal_handler(sig, stop_event.set)  # windows-footgun: ok
+                    except NotImplementedError:
+                        pass  # Windows / restricted envs — Ctrl+C still raises KeyboardInterrupt
+            await stop_event.wait()
+        finally:
+            logger.info("proxy: shutting down")
             await runner.cleanup()
-        port_lock.release()
 
 
 __all__ = ["AIOHTTP_AVAILABLE", "DEFAULT_HOST", "DEFAULT_PORT", "create_app", "run_server"]

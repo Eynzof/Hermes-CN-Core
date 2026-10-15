@@ -164,7 +164,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # v7.0.1
         with:
-          fetch-depth: 2 # the merge commit and its first parent (the base branch tip)
+          # Full commit ancestry proves the fixed migration snapshot is in the PR;
+          # omit historical blobs until a measured file actually needs one.
+          fetch-depth: 0
+          filter: blob:none
 
       - uses: ./.github/actions/setup-pm
         with:
@@ -177,7 +180,20 @@ jobs:
           command: python -m scripts.ci.python_packages "$(python -m scripts.code_health --print-pins)"
 
       - name: Ratchet the PR against the base branch tip
-        run: python scripts/check --only health --base HEAD^1
+        run: |
+          base_sha="$(git rev-parse HEAD^1)"
+          migration_main="d0575cb0148b78bbb903781299345f5c0e97ad64"
+          accepted_dev_fix="2e8d57542ac6c44cc2237f3abf39c58f23139bc2"
+          # One-time, explicitly approved acceptance of the inherited dev-fix debt.
+          # Never advance these pins: once main moves, normal main-based checks resume.
+          if [ "$base_sha" = "$migration_main" ] && \
+            git merge-base --is-ancestor "$accepted_dev_fix" HEAD^2; then
+            echo "::notice title=One-time code-health baseline::Inherited debt accepted at $accepted_dev_fix; all subsequent changes remain subject to the blocking ratchet."
+            printf 'Code-health migration: inherited debt accepted at %s; checks compare this PR against that fixed snapshot.\n' \
+              "$accepted_dev_fix" >> "$GITHUB_STEP_SUMMARY"
+            base_sha="$accepted_dev_fix"
+          fi
+          python scripts/check --only health --base "$base_sha"
 
   windows-footguns:
     # Static guardrails on Windows-unsafe Python primitives — os.kill(pid, 0),

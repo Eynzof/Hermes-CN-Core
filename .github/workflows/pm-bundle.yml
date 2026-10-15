@@ -101,7 +101,8 @@ jobs:
           phase: restore
           source: ${{ github.workspace }}
           work: ${{ runner.temp }}/payload-job
-          cache: ${{ runner.temp }}/payload-inputs
+          # grpcio's nested MSVC object path exceeds MAX_PATH with payload-inputs.
+          cache: ${{ runner.temp }}/${{ runner.os == 'Windows' && 'p' || 'payload-inputs' }}
           producer: payload-test
 
       - name: Prepare native payload dependencies
@@ -109,7 +110,7 @@ jobs:
         shell: bash
         env:
           PAYLOAD_WORK: ${{ runner.temp }}/payload-job
-          PAYLOAD_CACHE: ${{ runner.temp }}/payload-inputs
+          PAYLOAD_CACHE: ${{ runner.temp }}/${{ runner.os == 'Windows' && 'p' || 'payload-inputs' }}
           PYTHONUTF8: '1'
         run: |
           if [ "$RUNNER_OS" = Windows ]; then bootstrap=python; else bootstrap=python3; fi
@@ -125,7 +126,7 @@ jobs:
           phase: save
           source: ${{ github.workspace }}
           work: ${{ runner.temp }}/payload-job
-          cache: ${{ runner.temp }}/payload-inputs
+          cache: ${{ runner.temp }}/${{ runner.os == 'Windows' && 'p' || 'payload-inputs' }}
           producer: payload-test
           key: ${{ steps.native-cache.outputs.cache-key }}
 

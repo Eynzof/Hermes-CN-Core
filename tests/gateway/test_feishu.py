@@ -201,11 +201,6 @@ class TestFeishuAdapterMessaging(unittest.TestCase):
         adapter = FeishuAdapter(PlatformConfig())
         runner = AsyncMock()
         site = AsyncMock()
-        web_module = SimpleNamespace(
-            Application=lambda **_kwargs: SimpleNamespace(router=SimpleNamespace(add_post=lambda *_args, **_kwargs: None)),
-            AppRunner=lambda _app: runner,
-            TCPSite=lambda _runner, host, port: SimpleNamespace(start=site.start, host=host, port=port),
-        )
 
         with (
             patch("plugins.platforms.feishu.adapter._load_lark_oapi", return_value=True),
@@ -215,7 +210,8 @@ class TestFeishuAdapterMessaging(unittest.TestCase):
             patch("plugins.platforms.feishu.adapter.release_scoped_lock"),
             patch.object(adapter, "_hydrate_bot_identity", new=AsyncMock()),
             patch.object(adapter, "_build_lark_client", return_value=SimpleNamespace()),
-            patch("plugins.platforms.feishu.adapter.web", web_module),
+            patch("aiohttp.web.AppRunner", return_value=runner),
+            patch("aiohttp.web.TCPSite", return_value=site) as site_class,
         ):
             _mock_event_dispatcher_builder(mock_handler_class)
             connected = asyncio.run(adapter.connect())
@@ -223,6 +219,7 @@ class TestFeishuAdapterMessaging(unittest.TestCase):
         self.assertTrue(connected)
         runner.setup.assert_awaited_once()
         site.start.assert_awaited_once()
+        site_class.assert_called_once_with(runner, "127.0.0.1", 9001, reuse_address=None)
 
     @patch.dict(os.environ, {
         "FEISHU_APP_ID": "cli_app",
@@ -398,9 +395,7 @@ class TestFeishuAdapterMessaging(unittest.TestCase):
         ):
             _mock_event_dispatcher_builder(mock_handler_class)
 
-            loop = asyncio.new_event_loop()
-            future = loop.create_future()
-            future.set_result(None)
+            real_get_running_loop = asyncio.get_running_loop
 
             class _Loop:
                 def __init__(self):
@@ -410,17 +405,15 @@ class TestFeishuAdapterMessaging(unittest.TestCase):
                     self.calls += 1
                     if self.calls == 1:
                         raise OSError("temporary websocket failure")
-                    return future
+                    # Successful startup leaves the long-lived WS worker alive.
+                    return real_get_running_loop().create_future()
 
                 def is_closed(self):
                     return False
 
             fake_loop = _Loop()
-            try:
-                with patch("plugins.platforms.feishu.adapter.asyncio.get_running_loop", return_value=fake_loop):
-                    connected = asyncio.run(adapter.connect())
-            finally:
-                loop.close()
+            with patch("plugins.platforms.feishu.adapter.asyncio.get_running_loop", return_value=fake_loop):
+                connected = asyncio.run(adapter.connect())
 
         self.assertTrue(connected)
         self.assertEqual(sleeps, [1])
@@ -1300,7 +1293,7 @@ class TestAdapterBehavior(unittest.TestCase):
             message_id="om_post",
         )
 
-        text, msg_type, media_urls, media_types, _mentions = asyncio.run(adapter._extract_message_content(message))
+        text, msg_type, media_urls, media_types, _media_text_inlined, _mentions = asyncio.run(adapter._extract_message_content(message))
 
         self.assertEqual(text, "Title\nhello\n[doc](https://example.com)")
         self.assertEqual(msg_type.value, "text")
@@ -1319,7 +1312,7 @@ class TestAdapterBehavior(unittest.TestCase):
             message_id="om_post_fr",
         )
 
-        text, msg_type, media_urls, media_types, _mentions = asyncio.run(adapter._extract_message_content(message))
+        text, msg_type, media_urls, media_types, _media_text_inlined, _mentions = asyncio.run(adapter._extract_message_content(message))
 
         self.assertEqual(text, "Subject\nbonjour")
         self.assertEqual(msg_type.value, "text")
@@ -1345,7 +1338,7 @@ class TestAdapterBehavior(unittest.TestCase):
             message_id="om_post_rich",
         )
 
-        text, msg_type, media_urls, media_types, _mentions = asyncio.run(adapter._extract_message_content(message))
+        text, msg_type, media_urls, media_types, _media_text_inlined, _mentions = asyncio.run(adapter._extract_message_content(message))
 
         self.assertEqual(text, "Rich message\n[Image: diagram]\n@Alice please check the attachment\n[Attachment: spec.pdf]\n:smile:")
         self.assertEqual(msg_type.value, "text")
@@ -1409,7 +1402,7 @@ class TestAdapterBehavior(unittest.TestCase):
             message_id="om_merge_forward",
         )
 
-        text, msg_type, media_urls, media_types, _mentions = asyncio.run(adapter._extract_message_content(message))
+        text, msg_type, media_urls, media_types, _media_text_inlined, _mentions = asyncio.run(adapter._extract_message_content(message))
 
         self.assertEqual(
             text,
@@ -1431,7 +1424,7 @@ class TestAdapterBehavior(unittest.TestCase):
             message_id="om_share_chat",
         )
 
-        text, msg_type, media_urls, media_types, _mentions = asyncio.run(adapter._extract_message_content(message))
+        text, msg_type, media_urls, media_types, _media_text_inlined, _mentions = asyncio.run(adapter._extract_message_content(message))
 
         self.assertEqual(text, "Shared chat: Platform Ops\nChat ID: oc_shared")
         self.assertEqual(msg_type.value, "text")
@@ -1463,7 +1456,7 @@ class TestAdapterBehavior(unittest.TestCase):
             message_id="om_interactive",
         )
 
-        text, msg_type, media_urls, media_types, _mentions = asyncio.run(adapter._extract_message_content(message))
+        text, msg_type, media_urls, media_types, _media_text_inlined, _mentions = asyncio.run(adapter._extract_message_content(message))
 
         self.assertEqual(text, "Approval Request\nRequester: Alice\nApprove\nActions: Approve")
         self.assertEqual(msg_type.value, "text")
@@ -1483,7 +1476,7 @@ class TestAdapterBehavior(unittest.TestCase):
             message_id="om_image",
         )
 
-        text, msg_type, media_urls, media_types, _mentions = asyncio.run(adapter._extract_message_content(message))
+        text, msg_type, media_urls, media_types, _media_text_inlined, _mentions = asyncio.run(adapter._extract_message_content(message))
 
         self.assertEqual(text, "")
         self.assertEqual(msg_type.value, "photo")
@@ -1536,7 +1529,7 @@ class TestAdapterBehavior(unittest.TestCase):
             message_id="om_file",
         )
 
-        text, msg_type, media_urls, media_types, _mentions = asyncio.run(adapter._extract_message_content(message))
+        text, msg_type, media_urls, media_types, _media_text_inlined, _mentions = asyncio.run(adapter._extract_message_content(message))
 
         self.assertEqual(text, "")
         self.assertEqual(msg_type.value, "document")
@@ -1558,7 +1551,7 @@ class TestAdapterBehavior(unittest.TestCase):
             message_id="om_media",
         )
 
-        text, msg_type, media_urls, media_types, _mentions = asyncio.run(adapter._extract_message_content(message))
+        text, msg_type, media_urls, media_types, _media_text_inlined, _mentions = asyncio.run(adapter._extract_message_content(message))
 
         self.assertEqual(text, "")
         self.assertEqual(msg_type.value, "photo")
@@ -1580,7 +1573,7 @@ class TestAdapterBehavior(unittest.TestCase):
             message_id="om_video",
         )
 
-        text, msg_type, media_urls, media_types, _mentions = asyncio.run(adapter._extract_message_content(message))
+        text, msg_type, media_urls, media_types, _media_text_inlined, _mentions = asyncio.run(adapter._extract_message_content(message))
 
         self.assertEqual(text, "")
         self.assertEqual(msg_type.value, "video")
@@ -2737,23 +2730,19 @@ class TestAdapterBehavior(unittest.TestCase):
 
     @patch.dict(os.environ, {}, clear=True)
     def test_build_post_payload_extracts_title_and_links(self):
-        from gateway.config import PlatformConfig
-        from plugins.platforms.feishu.adapter import FeishuAdapter
+        from plugins.platforms.feishu.adapter import _build_markdown_post_payload
 
-        adapter = FeishuAdapter(PlatformConfig())
-        payload = orjson.loads(adapter._build_post_payload("# 标题\n访问 [文档](https://example.com)"))
+        payload = orjson.loads(_build_markdown_post_payload("# 标题\n访问 [文档](https://example.com)"))
 
         elements = payload["zh_cn"]["content"][0]
         self.assertEqual(elements, [{"tag": "md", "text": "# 标题\n访问 [文档](https://example.com)"}])
 
     @patch.dict(os.environ, {}, clear=True)
     def test_build_post_payload_wraps_markdown_in_md_tag(self):
-        from gateway.config import PlatformConfig
-        from plugins.platforms.feishu.adapter import FeishuAdapter
+        from plugins.platforms.feishu.adapter import _build_markdown_post_payload
 
-        adapter = FeishuAdapter(PlatformConfig())
         payload = orjson.loads(
-            adapter._build_post_payload("支持 **粗体**、*斜体* 和 `代码`")
+            _build_markdown_post_payload("支持 **粗体**、*斜体* 和 `代码`")
         )
 
         elements = payload["zh_cn"]["content"][0]
@@ -2766,12 +2755,10 @@ class TestAdapterBehavior(unittest.TestCase):
 
     @patch.dict(os.environ, {}, clear=True)
     def test_build_post_payload_keeps_full_markdown_text(self):
-        from gateway.config import PlatformConfig
-        from plugins.platforms.feishu.adapter import FeishuAdapter
+        from plugins.platforms.feishu.adapter import _build_markdown_post_payload
 
-        adapter = FeishuAdapter(PlatformConfig())
         payload = orjson.loads(
-            adapter._build_post_payload(
+            _build_markdown_post_payload(
                 "---\n1. 第一项\n  2. 子项\n- 外层\n  - 内层\n<u>下划线</u> 和 ~~删除线~~"
             )
         )
@@ -3009,12 +2996,10 @@ class TestAdapterBehavior(unittest.TestCase):
 
     @patch.dict(os.environ, {}, clear=True)
     def test_build_post_payload_keeps_fence_like_code_lines_inside_code_block(self):
-        from gateway.config import PlatformConfig
-        from plugins.platforms.feishu.adapter import FeishuAdapter
+        from plugins.platforms.feishu.adapter import _build_markdown_post_payload
 
-        adapter = FeishuAdapter(PlatformConfig())
         payload = orjson.loads(
-            adapter._build_post_payload(
+            _build_markdown_post_payload(
                 "before\n```python\n```oops\n```\nafter"
             )
         )
@@ -3030,12 +3015,10 @@ class TestAdapterBehavior(unittest.TestCase):
 
     @patch.dict(os.environ, {}, clear=True)
     def test_build_post_payload_preserves_trailing_spaces_in_code_block(self):
-        from gateway.config import PlatformConfig
-        from plugins.platforms.feishu.adapter import FeishuAdapter
+        from plugins.platforms.feishu.adapter import _build_markdown_post_payload
 
-        adapter = FeishuAdapter(PlatformConfig())
         payload = orjson.loads(
-            adapter._build_post_payload(
+            _build_markdown_post_payload(
                 "before\n```python\nline with two spaces  \n```\nafter"
             )
         )
@@ -3051,12 +3034,10 @@ class TestAdapterBehavior(unittest.TestCase):
 
     @patch.dict(os.environ, {}, clear=True)
     def test_build_post_payload_splits_multiple_fenced_code_blocks(self):
-        from gateway.config import PlatformConfig
-        from plugins.platforms.feishu.adapter import FeishuAdapter
+        from plugins.platforms.feishu.adapter import _build_markdown_post_payload
 
-        adapter = FeishuAdapter(PlatformConfig())
         payload = orjson.loads(
-            adapter._build_post_payload(
+            _build_markdown_post_payload(
                 "before\n```python\nprint(1)\n```\nmiddle\n```json\n{}\n```\nafter"
             )
         )
@@ -3675,7 +3656,7 @@ class TestDedupTTL(unittest.TestCase):
         adapter._seen_message_ids = {"om_old": stale_ts}
         adapter._seen_message_order = ["om_old"]
         with patch.object(adapter, "_persist_seen_message_ids"):
-            self.assertFalse(adapter._is_duplicate("om_old"))
+            self.assertFalse(asyncio.run(adapter._is_duplicate("om_old")))
 
     @patch.dict(os.environ, {}, clear=True)
     def test_load_tolerates_malformed_timestamp_values(self):
@@ -4873,7 +4854,7 @@ class TestFeishuExtractMessageContent(unittest.TestCase):
             mentions=None,
         )
 
-        text, _, _, _, mentions = asyncio.run(adapter._extract_message_content(message))
+        text, _, _, _, _media_text_inlined, mentions = asyncio.run(adapter._extract_message_content(message))
         self.assertEqual(text, "plain hello")
         self.assertEqual(mentions, [])
 

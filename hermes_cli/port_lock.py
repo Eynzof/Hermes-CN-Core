@@ -35,13 +35,18 @@ class PortLock:
 
     def release(self) -> None:
         """Explicitly release the lock. Safe to call multiple times."""
-        if self._closed:
-            return
-        self._closed = True
-        try:
-            _release_lock(self._handle)
-        except Exception:
-            pass
+        with _local_lock:
+            if self._closed:
+                return
+            self._closed = True
+            handle, self._handle = self._handle, None
+            if handle is None:  # A reentrant/no-op handle does not own the local claim.
+                return
+            try:
+                _release_lock(handle)
+            finally:
+                handle.close()
+                _local_claims.discard(self.port)
 
     def __enter__(self) -> "PortLock":
         return self

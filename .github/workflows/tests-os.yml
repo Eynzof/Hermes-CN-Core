@@ -186,9 +186,10 @@ jobs:
             -m "platforms and not integration" \
             -v --tb=short
         env:
-          # These files spawn nested PowerShell trees. CPU-count parallelism
-          # starves cold child startup before the fixture's idle deadline.
-          HERMES_TEST_WORKERS: ${{ matrix.marker == 'windows' && '4' || '' }}
+          # These files spawn nested PowerShell/CIM and C# compiler processes.
+          # Four concurrent files exhausted the 300s budget for unchanged
+          # hand-off suites; leave capacity for their child process trees.
+          HERMES_TEST_WORKERS: ${{ matrix.marker == 'windows' && '2' || '' }}
           HERMES_TEST_SLICE: ${{ matrix.slice || '' }}
           # Belt-and-suspenders with tests/conftest.py's env blanking: no
           # test may reach a real provider API.

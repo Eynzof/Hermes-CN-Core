@@ -74,7 +74,7 @@ class MossStreamer(StreamingTTSProvider):
         if pause_raw is not None:
             try:
                 pause = float(pause_raw)
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 logger.warning(
                     "tts.moss.pause is not a number: %r; ignoring", pause_raw
                 )
@@ -100,7 +100,7 @@ class MossStreamer(StreamingTTSProvider):
                                 live,
                                 self.sample_rate,
                             )
-                    except TypeError, ValueError:
+                    except (TypeError, ValueError):
                         logger.warning(
                             "Moss streaming sample_rate is not an int: %r", live
                         )

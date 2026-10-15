@@ -207,7 +207,7 @@ def test_content_python_invalid_regex_returns_error(ops, tmp_path):
 def local_ops_no_rg(monkeypatch, tmp_path):
     ops = ShellFileOperations(None)
     monkeypatch.setattr(ops, "_is_local_env", lambda: True)
-    monkeypatch.setattr(fo.shutil, "which", lambda name: None)
+    monkeypatch.setattr(ops, "_local_rg_executable", lambda: None)
     # _has_command must never be consulted on the local path; make it explode.
     def _boom(_cmd):
         raise AssertionError("_has_command must not run on the local backend")
@@ -215,6 +215,7 @@ def local_ops_no_rg(monkeypatch, tmp_path):
     return ops
 
 
+@pytest.mark.platforms("windows")
 def test_search_files_routes_to_python_without_rg(local_ops_no_rg, tmp_path):
     _touch(tmp_path / "found.py")
     res = local_ops_no_rg.search("*.py", path=str(tmp_path), target="files")
@@ -222,6 +223,7 @@ def test_search_files_routes_to_python_without_rg(local_ops_no_rg, tmp_path):
     assert [os.path.basename(f) for f in res.files] == ["found.py"]
 
 
+@pytest.mark.platforms("windows")
 def test_search_content_routes_to_python_without_rg(local_ops_no_rg, tmp_path):
     _touch(tmp_path / "x.py", "needle\n")
     res = local_ops_no_rg.search("needle", path=str(tmp_path), target="content")

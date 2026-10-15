@@ -10,6 +10,7 @@ degradation.
 
 import contextlib
 import io
+import os
 import shutil
 import subprocess
 
@@ -36,6 +37,9 @@ class _Mgr:
         self._result = result
         self.calls = []
 
+    def unsupported_backend_reason(self, task_id="default"):
+        return None
+
     def session_diff(self, cwd):
         self.calls.append(cwd)
         return self._result
@@ -60,11 +64,17 @@ def _run(stub, command):
 
 
 def _git(repo, *args):
-    subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True,
-                   env={"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
-                        "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t",
-                        "HOME": str(repo),
-                        "PATH": __import__("os").environ["PATH"]})
+    env = {
+        "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
+        "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t",
+        "HOME": str(repo),
+        # Same config isolation the product's git calls use, so the committed blob and
+        # the product's later ``git diff`` agree on line endings on any host.
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "PATH": os.environ["PATH"],
+    }
+    subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True, env=env)
 
 
 @pytest.fixture()
@@ -72,7 +82,8 @@ def repo(tmp_path, monkeypatch):
     d = tmp_path / "repo"
     d.mkdir()
     _git(d, "init", "-q")
-    (d / "main.py").write_text("print('hello')\n")
+    _git(d, "config", "core.autocrlf", "false")
+    (d / "main.py").write_bytes(b"print('hello')\n")
     _git(d, "add", "-A")
     _git(d, "commit", "-q", "-m", "init")
     monkeypatch.setenv("TERMINAL_CWD", str(d))

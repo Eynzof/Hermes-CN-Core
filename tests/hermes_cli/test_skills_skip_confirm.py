@@ -49,6 +49,10 @@ class TestHandleSkillsSlashUninstallFlags:
             assert kwargs.get("invalidate_cache") is False
 
 
+            # We don't get to the input() call because resolve returns None,
+            # but the parameter wiring is correct
+
+
 class TestDoUninstallSkipConfirm:
     """Test that do_uninstall respects skip_confirm parameter."""
 
@@ -56,7 +60,7 @@ class TestDoUninstallSkipConfirm:
         """With skip_confirm=True, input() should not be called."""
         from hermes_cli.skills_hub import do_uninstall
         with patch("hermes_cli.skills_hub._console") as mock_console, \
-             patch("tools.skills_hub.uninstall_skill", return_value=(True, "Removed")) as mock_uninstall, \
+             patch("tools.skills_hub_install.uninstall_skill", return_value=(True, "Removed")) as mock_uninstall, \
              patch("builtins.input") as mock_input:
             do_uninstall("test-skill", skip_confirm=True)
             mock_input.assert_not_called()

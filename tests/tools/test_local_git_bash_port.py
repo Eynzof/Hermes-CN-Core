@@ -301,9 +301,10 @@ class TestGitExecPath:
 # B.4 wiring — _find_bash uses the git.exe discovery chain
 # ---------------------------------------------------------------------------
 
+@pytest.mark.platforms("windows")
 class TestFindBashUsesGitExeChain:
     def _clear_win_env(self, monkeypatch, tmp_path):
-        monkeypatch.setattr(local_mod, "_IS_WINDOWS", True)
+        monkeypatch.setattr("pm.shell.bash", lambda: None)
         monkeypatch.setenv("HERMES_GIT_BASH_PATH", "")
         monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "no-local-appdata"))
         monkeypatch.setenv("ProgramFiles", str(tmp_path / "no-program-files"))
@@ -398,18 +399,18 @@ class TestMacosBashCandidates:
 
 
 class TestFindBashPosixMacosPreference:
+    @pytest.mark.platforms("macos")
     def test_prefers_homebrew_bash_on_darwin(self, tmp_path, monkeypatch):
         homebrew = tmp_path / "homebrew" / "bin" / "bash"
         homebrew.parent.mkdir(parents=True)
         homebrew.write_text("", encoding="utf-8")
         homebrew.chmod(0o755)
-        monkeypatch.setattr(local_mod.sys, "platform", "darwin")
         monkeypatch.setattr(local_mod, "_bash_candidates_macos", lambda: [homebrew])
         monkeypatch.setattr(local_mod.shutil, "which", lambda name: None)
         assert _find_bash_posix() == str(homebrew.resolve())
 
+    @pytest.mark.platforms("macos")
     def test_falls_back_to_git_bash_for_macos(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(local_mod.sys, "platform", "darwin")
         monkeypatch.setattr(
             local_mod,
             "_bash_candidates_macos",
@@ -420,13 +421,13 @@ class TestFindBashPosixMacosPreference:
         )
         assert _find_bash_posix() == "/usr/local/git/bin/bash"
 
-    def test_linux_order_unchanged(self, monkeypatch):
-        monkeypatch.setattr(local_mod.sys, "platform", "linux")
+    @pytest.mark.platforms("linux")
+    def test_linux_order_unchanged(self):
         with patch("shutil.which", return_value="/usr/bin/bash"):
             assert _find_bash_posix() == "/usr/bin/bash"
 
+    @pytest.mark.platforms("macos")
     def test_darwin_misses_everything_falls_to_common(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(local_mod.sys, "platform", "darwin")
         monkeypatch.setattr(
             local_mod,
             "_bash_candidates_macos",
@@ -444,9 +445,7 @@ class TestFindBashPosixMacosPreference:
 # ---------------------------------------------------------------------------
 
 class TestWrapCommandMsystemNeutralized:
-    def _make_env(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(local_mod, "_IS_WINDOWS", True)
-        monkeypatch.setattr(local_mod.sys, "platform", "win32")
+    def _make_env(self, tmp_path):
         with patch.object(
             LocalEnvironment, "init_session", autospec=True, return_value=None
         ):
@@ -455,8 +454,9 @@ class TestWrapCommandMsystemNeutralized:
         env._shell_path = r"C:\Git\bin\bash.exe"
         return env
 
+    @pytest.mark.platforms("windows")
     def test_win32_git_bash_embeds_msystem_prefix(self, tmp_path, monkeypatch):
-        env = self._make_env(tmp_path, monkeypatch)
+        env = self._make_env(tmp_path)
         seen = {}
 
         def fake_neutralize(cmd, bash_path):
@@ -472,9 +472,9 @@ class TestWrapCommandMsystemNeutralized:
         assert seen["bash"] == r"C:\Git\bin\bash.exe"
         assert seen["cmd"] == "echo hi"
 
+    @pytest.mark.platforms("posix")
     def test_non_win32_skips_msystem(self, tmp_path, monkeypatch):
-        env = self._make_env(tmp_path, monkeypatch)
-        monkeypatch.setattr(local_mod.sys, "platform", "linux")
+        env = self._make_env(tmp_path)
         called = []
         monkeypatch.setattr(
             local_mod,
@@ -484,8 +484,9 @@ class TestWrapCommandMsystemNeutralized:
         env._wrap_command("echo hi", str(tmp_path))
         assert called == []
 
+    @pytest.mark.platforms("windows")
     def test_powershell_shell_skips_msystem(self, tmp_path, monkeypatch):
-        env = self._make_env(tmp_path, monkeypatch)
+        env = self._make_env(tmp_path)
         env._shell_type = "powershell"
         called = []
         monkeypatch.setattr(
@@ -502,7 +503,8 @@ class TestWrapCommandMsystemNeutralized:
         assert wrapped == "<pwsh wrapper>"
         assert called == []
 
-    def test_real_neutralize_guards_per_command(self, tmp_path, monkeypatch):
+    @pytest.mark.platforms("windows")
+    def test_real_neutralize_guards_per_command(self, tmp_path):
         """Integration: with a real Git Bash marker on disk the REAL
         _with_msystem_neutralized produces the prefix; without the marker it
         is a no-op."""
@@ -511,12 +513,12 @@ class TestWrapCommandMsystemNeutralized:
         (install / "cmd" / "git.exe").write_text("", encoding="utf-8")
         (install / "bin").mkdir()
 
-        env = self._make_env(tmp_path, monkeypatch)
+        env = self._make_env(tmp_path)
         env._shell_path = str(install / "bin" / "bash.exe")
         wrapped = env._wrap_command("echo hi", str(tmp_path))
         assert "export MSYSTEM=; echo hi" in wrapped
 
-        env2 = self._make_env(tmp_path, monkeypatch)
+        env2 = self._make_env(tmp_path)
         env2._shell_path = str(tmp_path / "plain" / "bin" / "bash.exe")
         wrapped2 = env2._wrap_command("echo hi", str(tmp_path))
         assert "export MSYSTEM=; " not in wrapped2

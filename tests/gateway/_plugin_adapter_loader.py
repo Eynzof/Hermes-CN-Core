@@ -9,7 +9,7 @@ Every platform plugin under ``plugins/platforms/<name>/`` ships its own
     sys.path.insert(0, "plugins/platforms/teams")
     from adapter import TeamsAdapter
 
-…then whichever collects first in an xdist worker wins
+…then whichever collects first in a shared process wins
 ``sys.modules["adapter"]``, and the other raises ``ImportError`` at
 collection time. The fallout cascades across unrelated tests sharing that
 worker because ``sys.path`` is still polluted.
@@ -56,7 +56,11 @@ def load_plugin_adapter(plugin_name: str) -> ModuleType:
             f"Known plugins: {sorted(p.name for p in _PLUGINS_DIR.iterdir() if p.is_dir())}"
         )
 
-    spec = importlib.util.spec_from_file_location(module_name, adapter_path)
+    # Keep the plugin directory as package context, matching production's
+    # support for relative imports of sibling helpers.
+    spec = importlib.util.spec_from_file_location(
+        module_name, adapter_path, submodule_search_locations=[str(adapter_path.parent)],
+    )
     if spec is None or spec.loader is None:
         raise ImportError(f"Could not build import spec for {adapter_path}")
 

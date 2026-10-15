@@ -35,13 +35,18 @@ class PortLock:
 
     def release(self) -> None:
         """Explicitly release the lock. Safe to call multiple times."""
-        if self._closed:
-            return
-        self._closed = True
-        try:
-            _release_lock(self._handle)
-        except Exception:
-            pass
+        with _local_lock:
+            if self._closed:
+                return
+            self._closed = True
+            handle, self._handle = self._handle, None
+            if handle is None:  # A reentrant/no-op handle does not own the local claim.
+                return
+            try:
+                _release_lock(handle)
+            finally:
+                handle.close()
+                _local_claims.discard(self.port)
 
     def __enter__(self) -> "PortLock":
         return self
@@ -75,7 +80,7 @@ def _read_lock_owner(path: Path) -> Optional[int]:
     backward compatibility.
     """
     try:
-        text = path.read_text(encoding="utf-8", errors="replace").strip()
+        text = path.read_text(encoding="utf-8-sig", errors="replace").strip()
         if not text:
             return None
         first = text.splitlines()[0].strip()
@@ -93,7 +98,7 @@ def _read_lock_owner_with_start_time(path: Path) -> Optional[tuple[int, int]]:
     Old-format files (no ``:`` separator) return ``(pid, 0)``.
     """
     try:
-        text = path.read_text(encoding="utf-8", errors="replace").strip()
+        text = path.read_text(encoding="utf-8-sig", errors="replace").strip()
         if not text:
             return None
         first = text.splitlines()[0].strip()

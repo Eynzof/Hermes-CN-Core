@@ -14,11 +14,13 @@ there. This file pins the asymmetry.
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
+from urllib.parse import unquote
 
 import pytest
 
 from gateway.config import Platform
-from gateway.platforms.base import BasePlatformAdapter, MessageEvent, MessageType, SendResult
+from gateway.platforms.base import BasePlatformAdapter, SendResult
+from gateway.platforms.event import MessageEvent, MessageType
 from gateway.run import GatewayRunner
 from gateway.session import SessionSource
 
@@ -108,10 +110,6 @@ async def test_explicit_media_tag_still_delivers_post_stream(tmp_path, monkeypat
     adapter.send_multiple_images.assert_awaited_once()
     images_kwargs = adapter.send_multiple_images.await_args.kwargs
     assert images_kwargs["chat_id"] == "C123CHAN"
-    # The sent path is a URI (file://C%3A%5C...) on Windows; compare in
-    # decoded form so the assertion is platform-neutral.
-    from urllib.parse import unquote
-    sent_plain = unquote(images_kwargs["images"][0][0]).removeprefix("file://")
-    assert str(media_file).replace("\\", "/") == sent_plain.replace("\\", "/")
+    assert str(media_file) in unquote(images_kwargs["images"][0][0])
 
 

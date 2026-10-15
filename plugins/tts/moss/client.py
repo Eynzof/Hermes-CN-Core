@@ -128,7 +128,7 @@ def _load_api_key() -> str:
     if not key_file:
         return ""
     try:
-        text = Path(key_file).expanduser().read_text(encoding="utf-8").strip()
+        text = Path(key_file).expanduser().read_text(encoding="utf-8-sig").strip()
     except OSError:
         return ""
     try:
@@ -178,7 +178,7 @@ def _resolve_endpoint(cfg: Dict[str, Any]) -> tuple[str, float]:
     base_url = str(section.get("base_url") or DEFAULT_BASE_URL).strip()
     try:
         timeout = float(section.get("timeout") or 60)
-    except TypeError, ValueError:
+    except (TypeError, ValueError):
         timeout = 60.0
     return base_url.rstrip("/"), timeout
 

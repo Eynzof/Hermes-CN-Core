@@ -8,22 +8,36 @@ cheap, fast, catches regressions in a codebase that runs on three OSes.
 Usage:
     # Scan staged changes (default when run from a git checkout)
     python scripts/check-windows-footguns.py
-
-    # Scan the full tree (full-repo audit)
+    # Scan the full tree (full-repo audit; subtracts the inherited baseline below)
     python scripts/check-windows-footguns.py --all
-
     # Scan a specific file or directory
     python scripts/check-windows-footguns.py path/to/file.py path/to/dir/
-
     # Scan only modified files vs. main
     python scripts/check-windows-footguns.py --diff main
-
+    # Regenerate the inherited-findings baseline after an upstream sync
+    python scripts/check-windows-footguns.py --all --print-baseline
 Exit status:
-    0 — no Windows footguns found (or all matches suppressed)
+    0 — no Windows footguns found (or all matches suppressed/baselined)
     1 — at least one unsuppressed match
+
+Encoding policy: READS pass encoding='utf-8-sig' (Windows tooling —
+PowerShell Set-Content/Out-File, some editors — BOM-prefixes files it
+touches; utf-8-sig reads BOM'd and BOM-less files alike). WRITES pass
+encoding='utf-8' (never emit a BOM ourselves).
 
 Suppress an intentional use (e.g. tests or platform-gated code) with:
     os.kill(pid, 0)  # windows-footgun: ok — only called on POSIX
+Inherited findings (``--all`` only)
+------------------------------------
+The CN fork adds two Windows console-window rules that upstream's tree does not
+satisfy (see the [CN-fork] block in FOOTGUNS). A merge therefore lands upstream
+call sites this repo has not hardened yet; rewriting them is its own sweep. The
+*blocking* full-repo gate still has to catch NEW drift, so ``--all`` subtracts
+``scripts/ci/windows_footguns_upstream_baseline.txt`` and fails on anything the
+baseline does not cover. Stale/overstated entries are reported (and can be made
+fatal with ``--strict-baseline``).
+The default (staged) and ``--diff`` modes never consult the baseline — those
+check the branch's own work, which is expected to be clean.
 """
 
 from __future__ import annotations
@@ -38,7 +52,7 @@ import sys
 import tokenize
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Callable, Iterable
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -135,7 +149,7 @@ class Footgun:
     # if the match is a REAL footgun (not a false positive). Use this when
     # the regex can't fully distinguish (e.g. open() where mode may contain
     # "b" for binary, or the line may have `encoding=` elsewhere).
-    post_filter: "callable | None" = None
+    post_filter: Callable[..., Any] | None = None
 
 
 def _call_uses_literal_binary_mode(line: str, call_name: str) -> bool:
@@ -234,12 +248,13 @@ FOOTGUNS: list[Footgun] = [
         message=(
             "open() without an explicit encoding= uses the platform default "
             "(UTF-8 on POSIX, cp1252/mbcs on Windows) — files round-tripped "
-            "between hosts get mojibake. Always pass encoding='utf-8' for "
-            "text files, or use open(path, 'rb')/'wb' for binary."
+            "between hosts get mojibake. Always pass encoding= explicitly: "
+            "'utf-8-sig' for reads (tolerates a BOM), 'utf-8' for writes "
+            "(never emit one), or open(path, 'rb')/'wb' for binary."
         ),
         fix=(
-            "open(path, 'r', encoding='utf-8')  # or 'utf-8-sig' if the "
-            "file may have a BOM"
+            "reads: open(path, 'r', encoding='utf-8-sig')  writes: "
+            "open(path, 'w', encoding='utf-8')"
         ),
         # Filter: only flag if mode is missing-or-text AND the line doesn't
         # already pass encoding=. Skip binary mode (contains "b").
@@ -274,7 +289,8 @@ FOOTGUNS: list[Footgun] = [
             "fdopen, so this checker is the only gate."
         ),
         fix=(
-            "os.fdopen(fd, 'w', encoding='utf-8')  # or mode 'wb' for binary"
+            "reads: os.fdopen(fd, 'r', encoding='utf-8-sig')  writes: "
+            "os.fdopen(fd, 'w', encoding='utf-8')  binary: mode 'rb'/'wb'"
         ),
         post_filter=lambda m, line: (
             "b" not in (m.group("mode") or "")
@@ -560,7 +576,7 @@ FOOTGUNS: list[Footgun] = [
             "crashes with UnicodeDecodeError or writes mojibake. "
             "See issue #37423 and the #71014 / read_text campaign."
         ),
-        fix='path.read_text(encoding="utf-8") / path.write_text(data, encoding="utf-8")',
+        fix='path.read_text(encoding="utf-8-sig") / path.write_text(data, encoding="utf-8")',
         post_filter=lambda m, line: (
             "encoding=" not in line
             and "encoding =" not in line
@@ -573,6 +589,78 @@ FOOTGUNS: list[Footgun] = [
             # still caught. AST-level enforcement for multi-line calls
             # lives in the gateway guard test.
             and _call_closes_on_line(line, m.end())
+        ),
+    ),
+    Footgun(
+        name="read with encoding='utf-8' (BOM-intolerant — use 'utf-8-sig')",
+        # Fires when a READ-shaped call passes plain utf-8. Windows tooling
+        # (PowerShell Set-Content/Out-File, some editors) BOM-prefixes files
+        # it touches; a plain-utf-8 read then hands '\ufeff{...' to
+        # json.load, which dies with "Expecting value". utf-8-sig reads
+        # BOM'd and BOM-less files identically, so it is strictly safer on
+        # the read side. Live case: PR #3 — Set-Content BOM'd
+        # install-stamp.json and read_build_info demoted the tree to
+        # `unknown`. The quote pattern stops at the closing quote, so
+        # 'utf-8-sig' itself never matches.
+        pattern=re.compile(
+            r"""encoding\s*=\s*['"]utf[-_]?8['"]""", re.IGNORECASE
+        ),
+        message=(
+            "Reading with encoding='utf-8' breaks on BOM-prefixed files — "
+            "Windows tooling (PowerShell Set-Content/Out-File, some "
+            "editors) BOMs files it touches, and json.load on the result "
+            "fails with 'Expecting value'. encoding='utf-8-sig' reads "
+            "BOM'd and BOM-less files alike. Policy: reads utf-8-sig, "
+            "writes utf-8."
+        ),
+        fix=(
+            "path.read_text(encoding='utf-8-sig') / "
+            "open(path, 'r', encoding='utf-8-sig')"
+        ),
+        # Literal /proc/ and /sys/ paths are kernel pseudo-files: Linux
+        # generates them, no Windows tool can BOM them, and they do not
+        # exist on Windows at all, so plain utf-8 is the honest encoding.
+        post_filter=lambda m, line: _is_read_shaped(line) and not _KERNEL_PSEUDO_FILE.search(line),
+    ),
+    Footgun(
+        name="write with encoding='utf-8-sig' (emits a BOM)",
+        # The inverse direction: utf-8-sig on a WRITE emits the BOM — the
+        # exact bytes the read-side rule exists to tolerate. Never produce
+        # them ourselves.
+        pattern=re.compile(
+            r"""encoding\s*=\s*['"]utf[-_]?8[-_]sig['"]""", re.IGNORECASE
+        ),
+        message=(
+            "Writing with encoding='utf-8-sig' EMITS a UTF-8 BOM — the "
+            "exact bytes that break plain-utf-8 readers and non-Python "
+            "tooling. Policy: reads utf-8-sig, writes utf-8 (never emit "
+            "a BOM)."
+        ),
+        fix=(
+            "path.write_text(data, encoding='utf-8') / "
+            "open(path, 'w', encoding='utf-8')"
+        ),
+        post_filter=lambda m, line: _is_write_shaped(line),
+    ),
+    Footgun(
+        name="module-level import of a POSIX-only stdlib module",
+        # Only unindented imports: a top-level `import fcntl` fails at import time on Windows and takes
+        # every importer down with it (tools.bot_desktop.lease took computer_use down on native
+        # Windows). Indented imports inside a function or a try/except ImportError are the fix shape.
+        pattern=re.compile(
+            r"^(?:import\s+(?:fcntl|pwd|grp|termios|resource|pty|tty)\b"
+            r"|from\s+(?:fcntl|pwd|grp|termios|resource|pty|tty)\s+import\b)"
+        ),
+        message=(
+            "fcntl/pwd/grp/termios/resource/pty/tty do not exist on Windows; a module-level import "
+            "raises ModuleNotFoundError and breaks every module that imports this one."
+        ),
+        fix=(
+            "Import lazily inside the function that needs it, or\n"
+            "try:\n"
+            "    import fcntl\n"
+            "except ImportError:\n"
+            "    fcntl = None  # and take the Windows path when None"
         ),
     ),
 ]
@@ -711,7 +799,7 @@ def _call_closes_on_line(line: str, open_paren_end: int) -> bool:
     return False
 
 
-def _looks_like_string_literal(line: str, match: "re.Match") -> bool:
+def _looks_like_string_literal(line: str, match: re.Match) -> bool:
     """Heuristic: is the ``text=True`` match inside a string literal?
 
     Catches the common case of docstrings/comments that mention ``text=True``
@@ -733,6 +821,84 @@ def _looks_like_string_literal(line: str, match: "re.Match") -> bool:
             in_d = not in_d
         i += 1
     return in_s or in_d
+
+
+# Mode-extraction for file-opening calls, so the encoding-direction rules
+# can tell a read from a write. Three shapes, first match wins:
+#   builtin open(path, "r") / os.fdopen(fd, "w")  — mode is the SECOND arg
+#   path.open("a")                                — Path.open: mode is FIRST
+#   open(..., mode="w")                           — keyword anywhere
+# The capture is constrained to Python file-mode characters so a
+# nested-call first argument (``open(os.path.join(root, "x.json"), ...)``)
+# can't donate its string literal as a phantom mode — that exact line in
+# _startup_fast.py false-positived the write rule during the first live
+# sweep. The Path.open row exists because its first-arg mode made
+# ``path.open("a", encoding=...)`` unclassifiable and the read-side
+# fallback rewrote an APPEND to utf-8-sig (BOM'd gateway-exit-diag.log,
+# caught by test_lifecycle_ledger).
+_OPEN_MODE_RES = (
+    re.compile(r"""\bmode\s*=\s*['"]([rwaxbtU+]{1,3})['"]"""),
+    re.compile(r"""(?<![.\w])(?:open|fdopen)\s*\([^)]*?,\s*['"]([rwaxbtU+]{1,3})['"]"""),
+    re.compile(r"""\bfdopen\s*\([^)]*?,\s*['"]([rwaxbtU+]{1,3})['"]"""),
+    re.compile(r"""\.open\s*\(\s*['"]([rwaxbtU+]{1,3})['"]"""),
+)
+
+
+def _extract_mode(line: str) -> str | None:
+    for rx in _OPEN_MODE_RES:
+        m = rx.search(line)
+        if m:
+            return m.group(1)
+    return None
+
+
+# A string literal (plain or f-string) that starts with /proc/ or /sys/.
+_KERNEL_PSEUDO_FILE = re.compile(r"""['"]/(?:proc|sys)/""")
+
+
+def _is_read_shaped(line: str) -> bool:
+    """Heuristic: does this line READ a file (so utf-8-sig applies)?
+
+    read_text() is a read by name; write_text() a write. For open()/
+    fdopen()/Path.open() the mode string decides: anything containing
+    w/a/x/+ can write, plain 'r' is a read. A bare builtin open()/fdopen()
+    with the mode omitted defaults to 'r' — but an omitted-mode `.open(`
+    METHOD call is NOT classified (we can't know the receiver; Path.open
+    defaults to read, but the sweep must never rewrite on a guess).
+    Lines with no file-opening call at all (subprocess encoding=,
+    TextIOWrapper, ...) are NOT classified as reads — the rule stays
+    quiet rather than guess.
+    """
+    if ".read_text(" in line:
+        return True
+    if ".write_text(" in line:
+        return False
+    mode = _extract_mode(line)
+    if mode is not None:
+        return not any(c in mode for c in "wax+")
+    # open()/fdopen() with the mode omitted defaults to 'r'. Builtin-call
+    # boundary only: `.open(`-method calls without a recognizable mode
+    # stay unclassified (the Path.open("a") lesson above).
+    return bool(re.search(r"(?<![.\w])(?:open|fdopen)\s*\(", line)) or bool(
+        re.search(r"\bfdopen\s*\(", line)
+    )
+
+
+def _is_write_shaped(line: str) -> bool:
+    """Heuristic: does this line WRITE a file (so a BOM would be emitted)?
+
+    The mirror of _is_read_shaped, with the same conservative default:
+    unclassifiable lines return False so the write rule never fires on
+    non-file-call sites.
+    """
+    if ".write_text(" in line:
+        return True
+    if ".read_text(" in line:
+        return False
+    mode = _extract_mode(line)
+    if mode is not None:
+        return any(c in mode for c in "wax+")
+    return False
 
 
 def scan_file(path: Path, footguns: list[Footgun]) -> list[tuple[int, str, Footgun]]:
@@ -840,6 +1006,97 @@ def get_diff_files(ref: str) -> list[Path]:
     return [REPO_ROOT / f for f in out.splitlines() if f.strip()]
 
 
+# ---------------------------------------------------------------------------
+# Inherited-findings baseline (``--all`` only)
+# ---------------------------------------------------------------------------
+# The CN fork's two console-window rules are stricter than upstream's tree: a
+# merge imports upstream call sites this repo has not hardened yet, and
+# rewriting them is a sweep of its own. The blocking full-repo gate must still
+# catch NEW drift, so ``--all`` subtracts this baseline. ``--diff`` and the
+# default staged-changes scan never load it: those check the branch's own work.
+#
+# Format — one finding per line::
+#
+#     <repo-relative path> | <rule name> | <allowed count>
+#
+# Counts, not line numbers: an upstream reformat that moves a baselined line
+# must not turn CI red, while a new instance of the same rule in the same file
+# (count grows) and any finding in an unlisted file still fail. ``#`` comments
+# and blank lines are ignored. Regenerate with::
+#
+#     python scripts/check-windows-footguns.py --all --print-baseline
+BASELINE_PATH = REPO_ROOT / "scripts" / "ci" / "windows_footguns_upstream_baseline.txt"
+BASELINE_HEADER = """\
+# Windows-footgun findings inherited from upstream at the 2026-09-20 sync
+# (upstream/main @ 639823919c). They are NOT suppressed: each one is a real
+# console-window footgun in upstream-authored code, listed here so the blocking
+# full-repo gate (lint.yml -> `check-windows-footguns.py --all`, and
+# tests/scripts/test_windows_footguns_full_repo_scan.py) keeps failing only on
+# NEW drift. Anything not listed here still fails the scan.
+#
+# This file is read by `--all` only; `--diff` and the default staged-changes
+# scan check the branch's own work and never subtract it.
+#
+# Format: <repo-relative path> | <rule name> | <allowed count>
+#
+# Burn the list down by hardening a listed call site (usually
+# `creationflags=windows_hide_flags()` from hermes_cli._subprocess_compat) and
+# re-running with --print-baseline. Each upstream sync adds new entries the same
+# way. Refresh:
+#     python scripts/check-windows-footguns.py --all --print-baseline
+"""
+
+
+def load_baseline(path: Path) -> dict[tuple[str, str], int]:
+    """(repo-relative posix path, rule name) -> allowed match count.
+
+    A missing or unreadable file yields an empty baseline: the scan then reports
+    every finding, which is the fail-closed direction.
+    """
+    allowed: dict[tuple[str, str], int] = {}
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return allowed
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        rel, sep, rest = line.partition("|")
+        rule, sep2, count = rest.rpartition("|")
+        if not (sep and sep2 and count.strip().isdigit()):
+            print(
+                f"warning: ignoring malformed baseline line in {path.name}: {line!r}",
+                file=sys.stderr,
+            )
+            continue
+        allowed[(rel.strip(), rule.strip())] = int(count.strip())
+    return allowed
+
+
+def format_baseline(counts: dict[tuple[str, str], int]) -> str:
+    """Render a baseline file body for the given per-(path, rule) counts."""
+    body = "".join(
+        f"{rel} | {rule} | {n}\n" for (rel, rule), n in sorted(counts.items())
+    )
+    return BASELINE_HEADER + body
+
+
+def _full_repo_roots() -> list[Path]:
+    """Main packages + scripts scanned by ``--all`` (and by --print-baseline)."""
+    roots = [
+        REPO_ROOT / "hermes_cli",
+        REPO_ROOT / "gateway",
+        REPO_ROOT / "tools",
+        REPO_ROOT / "cron",
+        REPO_ROOT / "agent",
+        REPO_ROOT / "plugins",
+        REPO_ROOT / "scripts",
+        REPO_ROOT / "acp_adapter",
+    ]
+    return [r for r in roots if r.exists()]
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description="Flag Windows cross-platform footguns in Python code."
@@ -864,6 +1121,25 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--list",
         action="store_true",
         help="List all known footgun rules and exit.",
+    )
+    p.add_argument(
+        "--baseline",
+        metavar="PATH",
+        type=Path,
+        help=(
+            "Baseline of inherited findings to subtract in --all mode "
+            f"(default: scripts/ci/{BASELINE_PATH.name})."
+        ),
+    )
+    p.add_argument(
+        "--print-baseline",
+        action="store_true",
+        help="Print a baseline for the current --all scan and exit (refresh the file).",
+    )
+    p.add_argument(
+        "--strict-baseline",
+        action="store_true",
+        help="Treat stale/overstated baseline entries as failures too.",
     )
     return p.parse_args(argv)
 
@@ -892,19 +1168,27 @@ def main(argv: list[str]) -> int:
         print_rules()
         return 0
 
+    # The baseline is an --all-only mechanism. --diff and the default
+    # staged-changes scan check the branch's own work, which is expected to be
+    # clean, so they must behave exactly as they did before it existed.
+    # Validated BEFORE the scan scope is resolved: an invalid flag combination
+    # is a usage error (exit 2) whatever the caller's git index happens to
+    # contain. Resolving the scope first let the "no staged files" early return
+    # below swallow this check and exit 0, so `--print-baseline` was exit 2
+    # only while the index had staged files (a merge in progress) and exit 0 on
+    # a clean checkout — see tests/scripts/test_windows_footguns_full_repo_scan.py
+    # ::test_branch_scan_never_subtracts_the_baseline.
+    if (args.baseline is not None or args.print_baseline or args.strict_baseline) and not args.all:
+        print(
+            "--baseline/--print-baseline/--strict-baseline only apply to --all "
+            "(the inherited baseline records the full-repo audit; --diff and the "
+            "default staged scan are checked against the branch's own changes).",
+            file=sys.stderr,
+        )
+        return 2
+
     if args.all:
-        # Scan main Python packages + scripts
-        roots = [
-            REPO_ROOT / "hermes_cli",
-            REPO_ROOT / "gateway",
-            REPO_ROOT / "tools",
-            REPO_ROOT / "cron",
-            REPO_ROOT / "agent",
-            REPO_ROOT / "plugins",
-            REPO_ROOT / "scripts",
-            REPO_ROOT / "acp_adapter",
-        ]
-        roots = [r for r in roots if r.exists()]
+        roots = _full_repo_roots()
     elif args.diff:
         roots = get_diff_files(args.diff)
     elif args.paths:
@@ -920,24 +1204,65 @@ def main(argv: list[str]) -> int:
             )
             return 0
 
-    total_matches = 0
+    findings: list[tuple[str, int, str, Footgun]] = []
     files_scanned = 0
     for path in iter_files(roots):
         files_scanned += 1
-        matches = scan_file(path, FOOTGUNS)
-        for lineno, line, fg in matches:
-            rel = path.relative_to(REPO_ROOT).as_posix()
-            print(f"{rel}:{lineno}: [{fg.name}]")
-            print(f"    {line.strip()}")
-            print(f"    — {fg.message}")
-            print(f"    Fix: {fg.fix.splitlines()[0]}")
-            print()
-            total_matches += 1
+        rel = path.relative_to(REPO_ROOT).as_posix()
+        for lineno, line, fg in scan_file(path, FOOTGUNS):
+            findings.append((rel, lineno, line, fg))
 
+    if args.print_baseline:
+        counts: dict[tuple[str, str], int] = {}
+        for rel, _lineno, _line, fg in findings:
+            key = (rel, fg.name)
+            counts[key] = counts.get(key, 0) + 1
+        print(format_baseline(counts), end="")
+        return 0
+
+    allowed = load_baseline(args.baseline or BASELINE_PATH) if args.all else {}
+    seen: dict[tuple[str, str], int] = {}
+    total_matches = 0
+    inherited = 0
+    for rel, lineno, line, fg in findings:
+        key = (rel, fg.name)
+        seen[key] = seen.get(key, 0) + 1
+        if seen[key] <= allowed.get(key, 0):
+            inherited += 1
+            continue
+        print(f"{rel}:{lineno}: [{fg.name}]")
+        print(f"    {line.strip()}")
+        print(f"    — {fg.message}")
+        print(f"    Fix: {fg.fix.splitlines()[0]}")
+        print()
+        total_matches += 1
+
+    advisories: list[str] = []
+    for (rel, rule), allowed_count in sorted(allowed.items()):
+        found = seen.get((rel, rule), 0)
+        if found < allowed_count:
+            advisories.append(
+                f"{rel} | {rule}: baseline says {allowed_count}, found {found}"
+            )
+    if advisories:
+        print(
+            "advisory — the inherited baseline is stale/overstated; regenerate it "
+            "with `--all --print-baseline` once the listed sites are hardened:",
+            file=sys.stderr,
+        )
+        for entry in advisories:
+            print(f"  {entry}", file=sys.stderr)
+
+    baseline_note = (
+        f" ({inherited} inherited finding(s) baselined in "
+        f"{Path(args.baseline or BASELINE_PATH).name})"
+        if args.all
+        else ""
+    )
     if total_matches:
         print(
             f"\n✗ {total_matches} Windows footgun(s) found across "
-            f"{files_scanned} file(s) scanned.",
+            f"{files_scanned} file(s) scanned{baseline_note}.",
             file=sys.stderr,
         )
         print(
@@ -946,10 +1271,20 @@ def main(argv: list[str]) -> int:
             "the same line.\n  Run with --list to see all rules.",
             file=sys.stderr,
         )
+        if args.strict_baseline and advisories:
+            print("  (--strict-baseline: the stale entries above also count)", file=sys.stderr)
+        return 1
+
+    if args.strict_baseline and advisories:
+        print(
+            "\n✗ stale inherited baseline (see the advisory above).",
+            file=sys.stderr,
+        )
         return 1
 
     print(
-        f"✓ No Windows footguns found ({files_scanned} file(s) scanned)."
+        f"✓ No new Windows footguns found ({files_scanned} file(s) scanned"
+        f"{baseline_note})."
     )
     return 0
 

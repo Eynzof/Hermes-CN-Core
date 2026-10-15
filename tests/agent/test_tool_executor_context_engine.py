@@ -52,7 +52,14 @@ def agent():
     )
 
     # Keep the pipeline transparent
-    a._append_guardrail_observation = lambda name, args, result, failed: result
+    # Keep the pipeline transparent (upstream passes tool_call_id= since #... — accept it).
+    a._append_guardrail_observation = lambda name, args, result, failed, **kw: result
+    # The result-commit path runs the iteration-budget warning: give it a real budget
+    # shape (a MagicMock attribute would fail the `budget.max_total <= 1` comparison).
+    a.budget_warning_ratio = None
+    a.iteration_budget = SimpleNamespace(
+        max_total=100, used=0, remaining=100, consume=lambda: True, refund=lambda: None,
+    )
     a._tool_result_content_for_active_model = lambda name, result: result
 
     # Default compress: return shorter list to simulate compression

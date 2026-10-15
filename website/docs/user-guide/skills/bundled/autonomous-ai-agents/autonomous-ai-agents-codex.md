@@ -16,12 +16,12 @@ Delegate coding to OpenAI Codex CLI (features, PRs).
 |---|---|
 | Source | Bundled (installed by default) |
 | Path | `skills/autonomous-ai-agents/codex` |
-| Version | `1.0.1` |
+| Version | `1.1.0` |
 | Author | Hermes Agent |
 | License | MIT |
 | Platforms | linux, macos, windows |
 | Tags | `Coding-Agent`, `Codex`, `OpenAI`, `Code-Review`, `Refactoring` |
-| Related skills | [`claude-code`](/docs/user-guide/skills/bundled/autonomous-ai-agents/autonomous-ai-agents-claude-code), [`hermes-agent`](/docs/user-guide/skills/bundled/autonomous-ai-agents/autonomous-ai-agents-hermes-agent) |
+| Related skills | [`claude-code`](../../bundled/autonomous-ai-agents/autonomous-ai-agents-claude-code.md), [`hermes-agent`](../../bundled/autonomous-ai-agents/autonomous-ai-agents-hermes-agent.md) |
 
 ## Reference: full SKILL.md
 
@@ -59,19 +59,22 @@ that Codex auth is missing.
 ## One-Shot Tasks
 
 ```
-terminal(command="codex exec 'Add dark mode toggle to settings'", workdir="~/project", pty=true)
+terminal(command="codex exec --json 'Add dark mode toggle to settings'", workdir="~/project", pty=true)
 ```
 
 For scratch work (Codex needs a git repo):
 ```
-terminal(command="cd $(mktemp -d) && git init && codex exec 'Build a snake game in Python'", pty=true)
+terminal(command="cd $(mktemp -d) && git init && codex exec --json 'Build a snake game in Python'", pty=true)
 ```
 
 ## Background Mode (Long Tasks)
 
 ```
-# Start in background with PTY
-terminal(command="codex exec --sandbox workspace-write 'Refactor the auth module'", workdir="~/project", background=true, pty=true)
+# Start in background with PTY. --json emits machine-readable JSONL events
+# (recent Codex CLI versions) that Hermes' desktop UI renders as a live
+# delegation timeline; if your codex rejects the flag (check
+# `codex exec --help`), drop it — behaviour is otherwise identical.
+terminal(command="codex exec --json --sandbox workspace-write 'Refactor the auth module'", workdir="~/project", background=true, pty=true, notify_on_complete=true)
 # Returns session_id
 
 # Monitor progress
@@ -124,24 +127,32 @@ terminal(command="REVIEW=$(mktemp -d) && git clone https://github.com/user/repo.
 
 ## Parallel Issue Fixing with Worktrees
 
+> **⚠️ Dangerous git operations — the user decides; never auto-execute.**
+> `git worktree add` / `git worktree remove`, branch creation, `git commit`, `git push`,
+> and `gh pr create` are **high-risk operations** (irreversible, and/or they change
+> shared remote state). Get the user's **explicit approval** before each one — never
+> auto-run them, and never script them in a loop (auto-commit "Commit when done",
+> auto-push, auto-PR) without per-action consent. The snippets below are examples the
+> user may approve, not instructions to execute on your own.
+
 ```
 # Create worktrees
-terminal(command="git worktree add -b fix/issue-78 /tmp/issue-78 main", workdir="~/project")
-terminal(command="git worktree add -b fix/issue-99 /tmp/issue-99 main", workdir="~/project")
+terminal(command="git worktree add -b fix/issue-78 ~/.hermes/cache/scratch/issue-78 main", workdir="~/project")
+terminal(command="git worktree add -b fix/issue-99 ~/.hermes/cache/scratch/issue-99 main", workdir="~/project")
 
 # Launch Codex in each
-terminal(command="codex --sandbox workspace-write exec 'Fix issue #78: <description>. Commit when done.'", workdir="/tmp/issue-78", background=true, pty=true)
-terminal(command="codex --sandbox workspace-write exec 'Fix issue #99: <description>. Commit when done.'", workdir="/tmp/issue-99", background=true, pty=true)
+terminal(command="codex --sandbox workspace-write exec 'Fix issue #78: <description>. Commit when done.'", workdir="~/.hermes/cache/scratch/issue-78", background=true, pty=true)
+terminal(command="codex --sandbox workspace-write exec 'Fix issue #99: <description>. Commit when done.'", workdir="~/.hermes/cache/scratch/issue-99", background=true, pty=true)
 
 # Monitor
 process(action="list")
 
 # After completion, push and create PRs
-terminal(command="cd /tmp/issue-78 && git push -u origin fix/issue-78")
+terminal(command="cd ~/.hermes/cache/scratch/issue-78 && git push -u origin fix/issue-78")
 terminal(command="gh pr create --repo user/repo --head fix/issue-78 --title 'fix: ...' --body '...'")
 
 # Cleanup
-terminal(command="git worktree remove /tmp/issue-78", workdir="~/project")
+terminal(command="git worktree remove ~/.hermes/cache/scratch/issue-78", workdir="~/project")
 ```
 
 ## Batch PR Reviews
@@ -164,6 +175,6 @@ terminal(command="gh pr comment 86 --body '<review>'", workdir="~/project")
 2. **Git repo required** — Codex won't run outside a git directory. Use `mktemp -d && git init` for scratch
 3. **Use `exec` for one-shots** — `codex exec "prompt"` runs and exits cleanly
 4. **`--sandbox workspace-write` for building** — auto-approves changes within the sandbox (`--full-auto` is deprecated for this)
-5. **Background for long tasks** — use `background=true` and monitor with `process` tool
+5. **Use machine-readable progress** — add `--json` when supported for both foreground and background runs so Hermes can stream steps and Token usage; for long tasks also use `background=true, notify_on_complete=true` and monitor with the `process` tool
 6. **Don't interfere** — monitor with `poll`/`log`, be patient with long-running tasks
 7. **Parallel is fine** — run multiple Codex processes at once for batch work

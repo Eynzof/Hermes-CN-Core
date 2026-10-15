@@ -81,6 +81,7 @@ class TestBackgroundChildDoesNotHang:
             _pkill("time.sleep(60)")
 
 
+    @pytest.mark.platforms("linux")
     def test_default_capture_is_full_fidelity_for_internal_consumers(
         self, local_env
     ):
@@ -107,6 +108,7 @@ class TestBackgroundChildDoesNotHang:
         assert len(result["output"]) > 200000
 
 
+    @pytest.mark.platforms("linux")
     def test_utf8_multibyte_across_read_boundary(self, local_env):
         """Multibyte UTF-8 characters straddling a 4096-byte ``os.read()`` boundary
         must be decoded correctly via the incremental decoder — not lost to a
@@ -132,6 +134,7 @@ class TestBackgroundChildDoesNotHang:
         # And the "[binary output detected ...]" fallback must NOT fire
         assert "binary output detected" not in result["output"]
 
+    @pytest.mark.platforms("linux")
     def test_invalid_utf8_uses_replacement_not_fallback(self, local_env):
         """Truly invalid byte sequences must be substituted with U+FFFD (matching
         the pre-fix ``errors='replace'`` behaviour of the old ``TextIOWrapper``

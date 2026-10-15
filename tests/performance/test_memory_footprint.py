@@ -37,7 +37,9 @@ def test_idle_memory_footprint(timing_context):
     gc.collect()
     before_mb = get_process_memory()
 
-    with patch("run_agent.OpenAI") as mock_cls:
+    # The lazy OpenAI proxy lives in agent.process_bootstrap; agent_runtime_helpers resolves it there
+    # at call time (run_agent's PLUGIN-COMPAT forwarder was retired upstream, #126164).
+    with patch("agent.process_bootstrap.OpenAI") as mock_cls:
         mock_cls.return_value = MagicMock()
         agent = AIAgent(
             base_url="http://localhost:9999/v1", api_key="sk-test-mock-key",
@@ -110,7 +112,7 @@ def test_memory_baseline(timing_context):
     gc.collect()
     baseline_mb = get_process_memory()
 
-    with patch("run_agent.OpenAI") as mock_cls:
+    with patch("agent.process_bootstrap.OpenAI") as mock_cls:
         mock_cls.return_value = MagicMock()
         agent = AIAgent(
             base_url="http://localhost:9999/v1", api_key="sk-test-mock-key",

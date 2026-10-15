@@ -4,8 +4,19 @@ Simplified Chinese: [`FORK_NOTES.zh-CN.md`](./FORK_NOTES.zh-CN.md)
 
 This document explains the fork-specific changes on `main` that diverge from upstream `NousResearch/hermes-agent`. New behavioral patches should use `[CN-fork] P-NNN` in the commit message and be listed below.
 
+P-067 integration follow-up: remove merge leftovers that shadowed current implementations. Restore P-061 output cursors, complete-log export and pattern-triggered background promotion; retain setsid descendant cleanup, session-local project selection and staged skill approval diffs. Preserve the frozen Desktop CLI entry point with provider and parent-PID arguments, lazy MCP rehydration and optional Feishu SDK loading. Cold toolset enumeration includes unimported members and explicit empty selections stay empty when plugins are discovered. Shell resolution prefers PM while preserving the CN external-program probe and Windows diagnostics. Corrupt JSON handling and append-only logs no longer run duplicated code.
+
+Windows CI runs two test files concurrently to leave capacity for nested PowerShell/CIM and C# child processes; existing timeouts and assertions remain unchanged. PM bundle preparation uses a shorter Windows cache root so grpcio object paths stay below the compiler's MAX_PATH limit.
+
+A focused undefined-name audit also removes the stale frozen-memory fallback after the shared plugin loader, restores Router's 24-hour catalog cache TTL and fixes the standalone proxy's duplicate bind and missing port-lock lifetime. Real HTTP shutdown/rebind and stale-cache refresh regressions cover these conditional defects. PortLock release also clears its local ownership record while holding the existing mutex; no-op and repeated releases preserve the current owner. Fresh-process contention checks cover release/reclaim and repeated proxy startup.
+
+Retired updater, browser and SSL tests follow their upstream removal records and current PM, launcher and certificate contracts; surviving CN behavior remains covered. Standalone migration scripts use stdlib regex imports. A Windows ARM-only setuptools 83 extra build dependency is scoped to grpcio, preserving its MSVC argument patch without constraining other packages' build dependencies or changing runtime package versions.
+
+The supply-chain scanner keeps both blocking patterns. Five reviewed transparent wrappers are matched by exact path, content, surrounding function hash and occurrence count; changed or copied matches still fail. Contributor checks retain the upstream-sync first-parent attribution policy with verified local-author mappings. The code-health gate stays enabled. For this approved migration, imported debt is accepted at the fixed dev-fix snapshot `2e8d57542ac6c44cc2237f3abf39c58f23139bc2`, only while the PR base is exactly the old main `d0575cb0148b78bbb903781299345f5c0e97ad64` and the PR contains that snapshot. These pins must never advance. All later integration changes remain subject to the existing ratchet rules; after main advances, new PRs automatically compare against main again. This accepts existing debt rather than fixing it; the remaining test, build and security gates are unchanged.
+
 | ID | Target file | What it does | Why we need it | Upstream status |
 |---|---|---|---|---|
+| **P-067** | `hermes_cli/web_routers/status.py`, `hermes_cli/web_server.py`, memory/platform plugins, `pm/extras.py`, `pyproject.toml`, `uv.lock`, `.github/actions/detect-changes/`, CI workflows | Restores the public Desktop version probe using the runtime install stamp, includes `hermes_embedded` in wheels, uses the shared YAML module, aligns the Desktop cryptography pin with core, and regenerates the damaged dependency lock. Migrates legacy dependency calls to PM, including opt-in Mem0 backend extras. Runs the complete CI job set on standard hosted runners under the fork's existing required-check name; compares pinned Git trees for large upstream syncs. | The September/October `dev-fix` upstream sync dropped CN Desktop contracts and inherited runner labels unavailable to this fork. The old lock contains wheel records belonging to different packages. Hindsight local_embedded's dependency tree conflicts with core telemetry pins: existing installations remain usable; missing installations get an explicit error directing users to local_external rather than an unsupported automatic install. | Desktop compatibility and fork CI integration; preserves upstream runtime version semantics and does not upgrade the core dependency tree for an optional embedded server. |
 | P-063 | plugins/tts/moss/transcription.py (new), plugins/tts/moss/api.py (new), plugins/tts/moss/client.py, plugins/tts/moss/tools.py, plugins/tts/moss/__init__.py, plugins/tts/moss/plugin.yaml, hermes_cli/config_defaults.py, hermes_cli/tools_config.py, docs/moss-tts.md, website/docs (tts.md), tests/plugins/test_moss_transcription.py (new) + test_moss_vision.py (new) + test_moss_provider.py + test_moss_tools.py + test_moss_provider_e2e.py | Extends the bundled Moss plugin (P-062) with the two remaining scenario-doc gaps: (A) **Speech-to-text** — `MossTranscriptionProvider` (TranscriptionProvider ABC) registered under `moss` so `stt.provider: moss` routes gateway voice messages through the existing plugin STT dispatcher (no `BUILTIN_STT_PROVIDERS` change), plus a gated `moss_transcribe` tool (multipart local file / `file_id:` / public URL; `diarize=true` forces `moss-transcribe-diarize-pro` and returns normalized `segments`; `keyterms` ≤20×≤30 chars; `async_mode` → `task_id` + poll; 512 MB cap). (B) **MOSS-VL** — a gated `moss_vision` tool calling `POST /v1/responses` (`moss-vl-1.0`) for 1–5 images OR 1 video (never mixed; 30 MB image / 200 MB video caps; localhost/private-URL ban), uploading local media via `POST /v1/files`; surfaces `status=incomplete`/`max_output_tokens` truncation warnings. Both are backed by a self-contained `requests`-based HTTP layer (`plugins/tts/moss/api.py`) that reuses the existing `tts.moss` key/base_url/timeout resolution — no dependency on the private `moss_tts` SDK shipping new client methods. Adds `stt.moss` config defaults and injects plugin STT providers into the `hermes tools` Speech-to-Text picker. Live E2E validated with a real Moss key (D:/moss.txt): transcribe round-trip, two-speaker diarize, image OCR, and file_id vision flow. | The six fetched Moss scenario docs cover transcribe/diarize and image-video understanding, but the fork only shipped TTS (P-062) — gateway voice messages and agent image/video understanding had no Moss path. STT + vision stay at rung 3/4 of the footprint ladder: plugin provider + gated tools, deliberately NOT wired into the core vision router (a third-party SaaS backend belongs at the edge). | In-tree third-party SaaS plugin per plan.md — relocation-safe to `~/.hermes/plugins/tts/moss/`; the self-contained HTTP layer keeps it working independent of the `moss_tts` SDK's release cadence. |
 | **P-066** | `gateway/config.py`, `hermes_cli/web_server.py`, release/install workflows and focused regression tests | Resolve newly saved dashboard credentials through a request-local secret scope; preserve explicit disablement for CN IM channels. Stage auth/image backend Python sources and verify registration inside the frozen executable. Sample CN Runtime tags from the CN repository for install/update checks; allow manual candidate manifests to sign a fixed artifact tag. | Dashboard state could lag onboarding, credential loading could re-enable disabled channels, and metadata-only packaging checks missed directory-loaded plugin code. | IM fixes are generic; frozen packaging and CN release selection are fork-specific. |
 | **P-060** | `scripts/sign_macos_runtime_payload.sh`, `scripts/macos-runtime.entitlements.plist`, runtime-release regression test | Signs only the macOS PyInstaller main executable with the narrow `com.apple.security.cs.allow-unsigned-executable-memory` hardened-runtime exception and verifies the embedded entitlement after signing; bundled dylibs/frameworks are signed without executable-memory entitlements. | Python 3.14's `_ctypes`/system libffi closure allocation loops indefinitely on macOS 13 when the hardened main executable lacks permission for executable trampoline memory. The affected `runtime-v0.19.0-cn.7` binary therefore times out during Desktop's 60-second `dashboard --help` install smoke check even though the same artifact passes on newer macOS runners. | CN runtime-release packaging only; upstream does not publish these signed PyInstaller artifacts. |
@@ -93,7 +104,7 @@ This document explains the fork-specific changes on `main` that diverge from ups
 
 **What P-052 did** (kimi `bash_tool` win32 parity port, all in `tools/environments/local.py`):
 
-1. **win32-only gating at the call site** — `_wrap_command` checks `sys.platform == "win32"` before `fix_bash_command` (POSIX hosts: byte-for-byte no-op); `_bash_fix_warnings` recorded only when the fixer actually changed the command.
+1. **win32-only gating at the call site** — `_wrap_command` checks `sys.platform == "win32"` before `fix_bash_command` (POSIX hosts: byte-for-byte no-op); `_bash_fix_warnings` recorded when the fixer changed the command or flagged one with no Git Bash equivalent.
 2. **git.exe discovery chain** — `_where_git_executables` (`where.exe git`), `_git_bash_candidate_from_git_path` (`<gitDir>/../bin/bash.exe`), `_git_exec_path` (timeout-guarded `git --exec-path`), `_git_install_root_from_exec_path` (walk up from `mingw*/libexec/git-core`), `_git_bash_candidates_from_exec_path`; wired into `_find_bash` as the **last** candidate source (after env override → managed portable Git → known locations → PATH); the `where.exe`/`git` subprocesses use `windows_hide_flags()`.
 3. **MSYSTEM neutralization** — `_is_git_bash_install` (drive-anchored `<root>/cmd/git.exe` marker; `bin/bash.exe` and `usr/bin/bash.exe` layouts; real MSYS2 installs never match) + `_MSYSTEM_NEUTRALIZE_PREFIX = "export MSYSTEM=; "` + `_with_msystem_neutralized`, applied in `_wrap_command`'s win32 branch after bash-fix so children see an empty `MSYSTEM` even when the snapshot exports `MINGW64`.
 4. **`_encode_startup_script`** — base64+gzip self-decoding one-liner (stdlib `base64`/`gzip`; identical to kimi's `pybase64`). No production caller yet — it is one third of the interactive `bash -i` bootstrap set, ready for a future interactive Git Bash mode.
@@ -113,6 +124,12 @@ This document explains the fork-specific changes on `main` that diverge from ups
 
 **Should we upstream?** Yes — graceful degradation when an explicitly-opted-in shell is missing is generic; PowerShell ships with every Windows system so the fallback is always safe. The MSYSTEM neutralization, git.exe discovery chain, marker check and macOS candidates are kimi's design and generic; the win32 gate and `_run_bash` shell-path consistency are correctness fixes. No behavior change on POSIX or when Git Bash is healthy. Not ported by design: `_bash_runs` (superseded by Hermes' stronger `_bash_starts`) and the Windows shell default (deliberate fork divergence).
 
+
+**bash_fix scanner sync (2026-09-20).** `tools/environments/bash_fix.py` was re-synced against the newer kimi implementation (`bin/kimix_native/_shell_compat.py`, the canonical copy of `src/kimix/tools/file/bash/bash_fix.py`). The port keeps this module's public API, its `__hermes_` shell-variable prefix and the win32 gate; the scanner body is byte-identical to the reference otherwise.
+
+New since the first port: `free`/`uptime`/`top`/`htop`/`ss`/`ip`/`man`/`systemctl`/`sudo` fallbacks built on native Windows tooling (plus `htop`→`top`); `journalctl` recorded as having no faithful equivalent (`BashFix.unsupported` — the command text is left byte-for-byte and `_wrap_command` now records `_bash_fix_warnings` for it, so the reason and the `Get-WinEvent` alternative reach the model instead of a bare "command not found"); unquoted `nul`/`NUL` output redirection rewritten to `/dev/null`; Git Bash virtual absolute paths rewritten to native spellings (`/tmp/x` → the real Windows temp directory, `/c/x` → `C:/x`); redundant `bash`/`sh` invocations unwrapped (`bash cd /c/dev/x && …`, `bash -c '…'`, `bash -lc`), with the inline script scanned as its own command context and `bash -ec`-style clusters / script paths / trailing argv / assignment prefixes deliberately left alone; `timeout`/`stdbuf`/`nice`/`xargs` treated as command wrappers so their operand gets the fallback (GNU `timeout`'s DURATION operand is consumed first); `gtimeout`/`watch`/`sudo` as fallback wrappers with operand semantics; fallbacks exported (`export -f`) so nested shells — runner scripts and `bash -c` operands — inherit them. <!-- no-tmp: ok — names the Git Bash POSIX path the rewriter translates to the Windows temp dir (behaviour description, not scratch-space guidance) -->
+
+Verification: field-by-field differential run against the reference scanner (186-case corpus + 20 000 fuzzed inputs, 0 mismatches; also 0 mismatches for the non-Windows no-op contract with `sys.platform` patched), `ruff check` clean, and `tests/tools/test_bash_fix.py` extended with new fallback / wrapper / `nul` / virtual-path / unsupported / result-API cases plus a `bash -n` parse check of the generated code. `tests/tools/test_local_git_bash_port.py` unaffected (MSYSTEM/git.exe discovery unchanged).
 
 ### P-062: Test-suite hygiene sweep — remove ad-hoc / magic-mock / anti-LLM-hallucination tests
 
@@ -327,9 +344,202 @@ Also fixed a pre-existing bug in `hermes_time.py` where `def now():` was missing
 ---
 ---
 
+## Sync record (2026-10-09, `7318e666c2` → `dev-fix`)
+
+Upstream sync merged NousResearch/hermes-agent main (`7318e666c2`, 2026-10-09) into `dev-fix`: **12,335 upstream
+commits on top of `639823919c`**, 822 conflicts (686 content, 136 modify/delete) across the tree. The fork's
+454 local commits since the last sync are untouched; the merge commit is `03b1e269ef`, with a follow-up
+merge-repair commit (symbol/import restorations, `pyproject.toml` rebuild) after it.
+
+Resolution doctrine: upstream behaviour first, then the fork's documented intent (same as 2026-09-20). Work was
+done per conflict *block* (never whole-file), so every non-conflicting change from both sides survives:
+`.kimix_cache/cf2.py fix <path> <spec>` previews the blocks and writes `o`/`t`/`both` per block; a rule pass
+handled the mechanically decidable blocks (subset/similarity/duplicate detection) and the ambiguous ones were
+reviewed in batches. Fork-owned files kept their `P-NNN` intent verbatim.
+
+### How the conflicts were resolved (per area)
+
+| Area | Files | Approach |
+|---|---|---|
+| tests/** | 517 | Upstream's structure, purges and renames taken (upstream deleted ~122 test files outright: `test: purge low-value tests, lane pyNN`, memory-provider and updater tests); fork Windows/CN adjustments re-expressed in upstream's form (`@pytest.mark.platforms(...)` replaces the retired `linux_only`/`windows_only`/`macos_only` trio, which upstream's `tests/_fixtures/platform_gating.py` now rejects at collection). Fork tests for kept features (memory providers, honcho plugin, installers, Windows shell) restored. |
+| hermes_cli/ | 73 | Upstream's `web_routers/*`, `pm`-based dependency management and startup refactors taken; P-002/003/004/005/008/025/027/040/055/056 web routes and helpers re-homed into the routers; CN env vars (P-006/P-010), `ensure_starter_config_file` (P-027) and the CN provider resolver restored. |
+| tools/ | 51 | Upstream's `_ExecPlan`/terminal rework kept, the fork's P-030 in-process search predicate, P-033 Windows in-process I/O, P-037/P-051 decoding pins, P-042/P-043 acceleration, P-049 rtk pipeline, P-061 terminal/process ergonomics re-applied inside it; `local_gitbash_probe` kept (upstream called it dead, the fork's shell resolution still uses it). |
+| agent/ | 39 | Upstream's turn/stream refactors taken; P-013 arg repair, P-017 dedup, P-022 stale-stream escalation (incl. `_kill_stale_stream(elapsed, *, kill_count, max_kills)`), P-024 sanitizer, P-028 models.dev offline path, P-041 watchdog/`tool_calls_committed`, P-051 read pins re-applied. |
+| gateway/ cron/ tui_gateway/ | 35 | Upstream's relay/dispatch/observability refactor taken; P-021 cron reliability, P-023 pending steer, P-041 turn watchdog cancel, P-047/P-054 delegation events, feishu/wecom/yuanbao CN fixes and the frozen-runtime CLI argv (`hermes_cli_argv`) restored. |
+| plugins/ | 44 | Upstream's new plugin categories taken; bundled memory providers (hindsight/honcho/mem0/openviking/supermemory) **kept** with their sibling files (P-055/P-057 — the CN desktop runtime pre-bakes them), moss TTS (P-062/P-063) and CN platform adapters kept. |
+| website/ scripts/ apps/ .github/ | 41 | Upstream docs taken (fork-only pages re-homed); fork CI (release-runtime, upstream-watch), Python 3.14 + ripgrep pins and the Windows-footgun scan kept. |
+| root (pyproject.toml, setup.py, cli.py, …) | 17 | `pyproject.toml` rebuilt on upstream's structure (`requires-python >=3.11,<3.15` + per-dependency `python_version >= '3.14'` markers, `[dependency-groups]`) with the fork's performance block (regex/rapidfuzz/xxhash/pybase64/ciso8601/zstandard/lz4/yarl/orjson/ripgrepy), CN/memory extras, `[tool.hermes.precompile]` table, `pywin32>=306` (cap dropped, P-048) and the fork's package-data additions re-applied. |
+
+### Fork patches dropped or superseded in this sync
+
+- `agent/ssl_guard.py` (P-044) — upstream replaced TLS trust with `agent/ssl_verify.py` + `truststore`; deleted
+  together with `tests/agent/test_ssl_ca_guard.py`.
+- `tools/tirith_security.py` — the bundled scanner retired upstream (config migration 49→50 removes its keys);
+  kept out of the merged tree.
+- `plugins/platforms/homeassistant/`, `plugins/spotify/`, `tools/homeassistant_tool.py` — upstream moved both
+  products out of core into catalog plugins; the fork takes that direction (third-party SaaS belongs at the
+  edge, per AGENTS.md).
+- `hermes_cli/subcommands/sync.py` + Skill Sync tests — upstream removed the feature.
+- Legacy `linux_only` / `macos_only` / `windows_only` markers — replaced by upstream's `platforms(...)`.
+- `[wake]`/nektony-style extras, retired updater shims and the legacy dependency/launch managers — upstream
+  superseded them with the new `pm` package; the fork follows (its `dep_ensure.py` helpers stay because the
+  fork's search fallback still calls `_find_rg`).
+
+### Verification
+
+- `python -m compileall` over `agent tools hermes_cli gateway plugins cron tui_gateway acp_adapter tests pm`:
+  clean (0 syntax errors).
+- `ruff check --select F821,F811` compared against both baselines (fork `efbc700345`, upstream `7318e666c2`):
+  the merge-introduced undefined names were driven to zero in production code; the remaining findings are
+  the fork's façade/sibling late-bound globals (`tui_gateway/*`, published through `bind_module`) that both
+  baselines report as well. `ruff check .` (repo selection) is clean.
+- Repo gates: `scripts/check-windows-footguns.py --all` ✓ (57 BOM-intolerant reads rewritten to `utf-8-sig`,
+  baseline refreshed to the upstream-inherited 42 entries), `scripts/check_subprocess_stdin.py` ✓ (11 sites got
+  back the `stdin=subprocess.DEVNULL` the sync dropped), `scripts/check_no_tmp_literals.py` ✓,
+  `scripts/check-case-collisions.py` ✓.
+- Full suite on **Windows** (Python 3.14.3, 24-core host) via
+  `scripts/run_tests.sh -j 7 --slice N/4` (4 slices, 5,640 files, ~53k tests):
+  58,022 passed / 1,667 failed on the first pass; the 504 files that failed were re-run after the repair
+  waves → 7,229 passed / 961 failed, and the remaining clusters were triaged file-by-file in follow-up
+  commits. Most first-pass failures were the two systemic P-041 drops (`tool_calls_committed_callback` in
+  `agent/agent_init.py` and its `run_agent.AIAgent` forwarder), which broke every agent construction.
+- Full suite on **WSL** (Ubuntu 26.04, Python 3.14.4) — the lane is offline: the environment is built from a
+  manylinux cp314 wheelhouse downloaded on the Windows host
+  (`pip download --platform manylinux_2_28_x86_64 …`, 206 wheels), installed with
+  `pip --python ~/.venvs/hermes314/bin/python install --no-index --no-deps -r freeze-linux.txt`, and the
+  suite runs from a mirror of the tree on the WSL filesystem (`~/hermes-cn`): `/mnt/c` (9p) makes git-bound
+  tests take minutes per file — `git log` alone timed out there — and `PYTEST_ADDOPTS="-p no:pytest_benchmark"`
+  is required because `pytest-benchmark`'s startup shells out to git. First full pass on the wave‑4 tree:
+  53,342 passed / 2,325 failed (4 slices, ~55.7k tests). Most of those failures were **environment**, not
+  merge damage: the wheelhouse's unpinned fallback had installed placeholder builds
+  (`pydantic_core 0.0.1`, `ty/watchfiles 0.0.0a1`, `annotated-doc`/`python-multipart` stubs), and every
+  pydantic-backed test died with `ImportError: cannot import name '__version__' from 'pydantic_core'`.
+  Re-installing the correct `pydantic_core==2.46.4`, `ty==0.0.21`, `watchfiles==1.1.1`,
+  `annotated-doc==0.0.4`, `python-multipart==0.0.32` wheels and re-running the 652 previously failing files
+  against the repaired tree gives **8,313 passed / 353 failed (145 files)** — the same failure classes as the
+  Windows lane (`tools/delegate*`, terminal/process-registry, connectors/catalog), which is the follow-up
+  work listed below.
+
+### Follow-ups / known issues
+
+
+Remaining red after this sync (the triage queue, by root cause):
+
+- `scripts/install.ps1` lost the fork's **autostash conflict recovery** (the block around
+  `restoring local changes hit conflicts` in the pre-sync file, lines ~2663-2698 of
+  `backup/dev-fix-20261009-pre-upstream-merge:scripts/install.ps1`): upstream's rewritten installer
+  still stashes before pulling but only fast-forwards afterwards. Three tests assert the recovery
+  (`tests/scripts/install/test_install_autostash_conflict_recovery.py`, `…_lockfile_churn.py`,
+  `…_unmerged_index.py`) — port the block into the merged installer or retire those tests deliberately.
+- `tests/pm/*` (7 files): upstream's new `pm` package manager needs `setuptools` metadata for
+  `export-root`; the local environment cannot resolve it, so `test_build_operations` and friends fail
+  for environment reasons before the merged code is exercised.
+- `tests/tools/*` (52 files): a mix of (a) genuinely restored-vs-superseded behaviour
+  (`test_file_operations.py`'s Windows shell probe shape, `test_mcp_tool.py`'s graceful-fallback and
+  metrics classes) and (b) load-induced flakes — quiet re-runs pass; every agent report in
+  `.kimix_cache/fixgroups*/` records the timings.
+- Pre-existing failures reproduce on the untouched fork baseline too (the 2026-09-20 record documents
+  ~206 such batch-composition failures), so the final number has to be read against that baseline.
+- `apps/desktop` TypeScript is not compiled in this environment (no `node_modules`); TS/TSX changes were
+  reviewed by parse + eye — run `tsc`/`vitest` in CI.
+- The bundled memory providers are fork-maintained now that upstream ships them from the catalog; their
+  dependency pins must stay in lockstep with `plugins/memory/*/plugin.yaml`.
+- `uv.lock` needs `uv lock` against the rebuilt `pyproject.toml` before the next release build.
+- Lifecycle/updater tests upstream purged were not resurrected; the fork's installer coverage lives in
+  `tests/scripts/install/`.
+
+## Sync record (2026-09-20, `639823919c` → `dev-fix`)
+
+Upstream advanced **16,888 commits / 10,771 files** since the previous sync point
+`08606fc23` (2026-08-13, post-v0.19.0). The merge landed on `dev-fix` with **828 conflicted
+files / 2,780 conflict hunks** (1,503 files were touched on both sides).
+
+### How the conflicts were resolved (per group)
+
+| Group | Conflicted files | Approach |
+|---|---|---|
+| `agent/` + tests | 78 | upstream's turn/compression split (`turn_iteration_prep`, `turn_tool_round`, `turn_request_assembly`, `compression_facade`, `context_compressor_summary`) taken as the base; P-017 dedup, P-022 stale-stream escalation, P-024 empty-content drop, P-041 `tool_calls_committed`, P-059 steer/compact wiring, P-028 models.dev offline path re-expressed on it; upstream-equivalent fork code dropped (socket kill, sanitizer passes) |
+| `tools/` + tests | 99 | P-030/P-049 search fallback (in-process + managed `rg`), P-033 Windows in-process I/O, P-037/P-051 decoding pins, P-038 `$null` rewrite gated on a PowerShell shell, P-042 probe hardening, P-045 lazy tool index, P-055 memory clamp, P-061 terminal/process ergonomics ported onto `_ExecPlan`/`_run_foreground`/`_ingest_output`, P-062 moss cap; upstream symlink/O_EXCL hardening kept |
+| `hermes_cli/` + tests | 183 | upstream's `web_routers/*` + `main_*` split taken; P-002 upload, P-005 mcp-servers, P-025 OAuth cache, P-055 memory status, P-056 boundary hardening, P-059 media routes re-homed into the routers; P-006/P-010 CN env vars, P-008 profile shims, P-027 config write, P-034 desktop-managed gateway helpers, P-063 hidden worker subcommands, P-043 prewarm, inline-`model` provider resolver restored |
+| `gateway/` `cron/` `tui_gateway/` + tests | 72 | upstream's relay/dispatch/observability refactor taken; P-021 cron gating, P-023 pending steer, P-041 turn watchdog + `tool_calls_committed` wiring, P-047/P-054 delegation events, P-011/P-036 provider RPCs, feishu/wecom/yuanbao CN fixes re-applied; `file:///C:/…` host-path conversion fixed at 10 sites |
+| `plugins/` `skills/` | 110 | upstream's new plugin categories taken; P-057 frozen-layout discovery in `plugins/plugin_loader.py`, `plugins/tts/moss/**` kept, memory-provider pins (hindsight/openviking/honcho/byterover/mem0) re-applied, feishu lazy bindings restored |
+| `tests/**` (bulk) | 237 | upstream's test structure taken; fork Windows/CN adjustments re-applied; upstream's test-directory consolidation (`run_agent`→`agent`, `cli`→`hermes_cli`, `state`→`hermes_state`, `stress/` removed) honoured with the fork deltas re-homed; P-062 hygiene deletions preserved only for `inspect.getsource`-style pins |
+| `apps/` `web/` `acp_adapter/` `scripts/` `.github/` `ui-tui/` | 23 | upstream bodies + fork runtime-release/upstream-watch CI, Python 3.14 + ripgrep pins, desktop preflight shell checks, `file://` media conversion, DriveFs path joins |
+| root/docs (`pyproject.toml`, `uv.lock`, `setup.py`, `AGENTS.md`, `FORK_NOTES*`, `website/**`) | 20 | upstream docs relocation to `website/docs/**` accepted (six fork-only pages re-homed to `website/docs/developer-guide/`); fork dependency pins kept, `uv.lock` regenerated, static `py-modules` replaced by `setup.py::_root_py_modules()`, `[tool.setuptools.data-files]` moved into `setup.py` so wheels ship `skills/`, `optional-skills/`, `optional-mcps/`, `locales/` |
+
+Resolution doctrine: **upstream behaviour first, then the fork's documented intent** (MAINTAINING.md).
+A fork implementation was dropped whenever upstream shipped its own equivalent, and recorded below.
+Work was split across 26 disjoint delegated workstreams plus a mechanical pass for the unambiguously
+decidable hunks (44 files).
+
+### Fork patches dropped or superseded in this sync
+
+- **P-022 socket kill** — upstream now ships `_shutdown_socket`/`_kill_stale_stream` +
+  `_check_stale_giveup`; the fork bodies were dropped (the CN "provider_wait" heartbeat was restored in
+  `agent/chat_completion_nonstream.py`).
+- **P-024 fused single-pass sanitizer** — upstream's 8-pass pipeline kept, but the fork's *drop* of an
+  empty `content: ""` assistant row was restored (upstream heals unmarked rows); the contract is pinned
+  by `tests/agent/test_sanitiser_escalation.py`.
+- **P-057 system-prompt HERMES_HOME pin** — upstream's `_agent_home_path`/`get_default_hermes_root`
+  covers it; the fork's line was dropped.
+- **P-028 models.dev network gating** — upstream threads `allow_network` itself; only the fork's
+  snapshot/offline fallback was kept.
+- **P-003/P-004 dashboard gates** — upstream's `/api/ws` default and `/api/fs/list` converged.
+- **P-007 dispatch-exception handling** — upstream's `-32603` JSON-RPC handling.
+- **`IncrementalTokenEstimator`** — upstream's memoized estimator is equivalent; tests were updated to
+  the merged API instead of resurrecting the class.
+- **`_endpoint_reachable` gates** — the function no longer exists upstream.
+- **Upstream module/plugin removals accepted**: `tools/mcp_stdio_watchdog.py` (superseded by
+  `mcp_death_supervisor.py`), `tools/flux3_video_tool.py`, `tools/computer_use/browser_route.py`,
+  `plugins/observability/nemo_relay/**` (moved to its own repo per AGENTS.md policy),
+  `hermes_cli/subcommands/version.py`, `tests/stress/**`, the whole top-level `docs/` tree.
+- **CN `mem0_list` tool / moss text cap / lazy tool index / P-043 tool-definition memo** were *restored*
+  (they had been dropped by the first pass): the memo now lives behind upstream's
+  `_compute_tool_definitions` signature with status-line replay intact.
+
+### Verification
+
+* Pre-merge baseline (worktree at the merge's first parent, `efbc700345`): **16 failing tests**, all in
+  `tests/tools/test_mcp_oauth*.py` (mcp-version related).
+* `scripts/run_tests.sh` (canonical per-file isolation runner) on Windows / Python 3.14.3 with the
+  merged tree: **4,753 files, 53,333 tests … 1,067 failing** on the first pass, driven to
+  **34 failing tests / 54,542 passing / 1,935 skipped** after the delegated fix waves (`scripts/run_tests.sh -j 16`, Windows + Python 3.14.3), and **5 failing / 54,941 passing / 1,968 skipped across 4,753 files** on the final verification run. Those last 34 failures plus 6 files that could not be collected were then closed in `0c8784c1e9` (targeted re-run of all 24 affected files: 830 passed / 0 failed / 53 skipped) — including the P-041 `tool_calls_committed_callback` forwarder whose loss broke every TUI/Desktop gateway agent build. The pre-merge baseline's 16 failures were all mcp-version related and are fixed too.
+* Focused suites re-run per workstream, e.g. `tests/tools/test_bash_fix.py` 313 passed,
+  `tests/tools/test_terminal_process_llm_ergonomics.py` 23 passed,
+  `tests/hermes_cli/test_gateway_restart_loop.py` 332 passed,
+  `tests/test_get_tool_definitions_*` 106 passed, `tests/test_packaging_py_modules.py` green.
+* Smoke: `python -m hermes_cli.main --version/--help` OK, plugin discovery OK
+  (`discover_plugins()` with an isolated `HERMES_HOME`).
+
+### Dependency / packaging decisions
+
+- `uv.lock` regenerated with `uv lock` against the merged `pyproject.toml`.
+- New upstream pin **`snowballstemmer==3.1.1`** (tool search) and **`mcp==2.0.0`** (dev/mcp/computer-use
+  extras) installed locally; the fork's `pywinpty>=3.0.5,<4` / `pywin32>=306` / Python ≥3.14 pins and the
+  high-performance extras block are unchanged.
+- `tests/agent/test_steer*.py` now pin upstream's standalone `steer_user_row` design (the fork's
+  row-smearing variant was a prompt-cache hazard and was dropped).
+- Upstream-inherited Windows-footgun findings are baselined in
+  `scripts/ci/windows_footguns_upstream_baseline.txt` (54 findings in 43 upstream-authored files);
+  new findings still fail `scripts/check-windows-footguns.py --all`.
+
+### Follow-ups / known issues
+
+- The 54 baselined Windows-footgun call sites live in upstream-authored code and should be hardened
+  (or the baseline refreshed) on the next upstream bump.
+- `website/static/api/model-catalog.json` CN-only ids (`moonshotai/kimi-k2.6`, `kimi-k2.7-code`) are not
+  reproducible from `scripts/build_model_catalog.py`; regenerating it drops them.
+- `apps/desktop` TypeScript was not compiled in this environment (`node_modules` absent); TS/TSX and
+  shell/PowerShell changes were reviewed by parse + eye only — run `tsc`/`vitest` in CI.
+- A handful of upstream-new tests are POSIX-only and now carry OS markers (`skipif(win32)` /
+  `linux_only`) with in-file reasons: file-signature/POSIX-mode assertions, AF_UNIX/setsid sweeps,
+  launchd/TCC paths, `os.ttyname`/`getuid` helpers.
+
 ## Sync record (2026-08-13, `08606fc23` post-v0.19.0 → `dev-fix`)
 
 Upstream sync merged `NousResearch/hermes-agent` main (08606fc2317f591f4e73292670be65a9bf35da72, 2026-08-13) into `dev-fix` with **5396 upstream commits** and **1135 conflicts** resolved across 10 groups. The fork's `dev-fix` was reset to `origin/dev-fix` first (giving up local-only commits per repo policy — `backup/dev-fix-local-4227-before-task` preserves the pre-sync local state), then the upstream merge was performed on top.
+
+**Windows footgun baseline (2026-09-20 sync).** The fork's two console-window rules in `scripts/check-windows-footguns.py` (`subprocess` with `shell=True` or `capture_output=True` and no `creationflags=windows_hide_flags()`) fail on 54 upstream call sites this merge imported. They are recorded in `scripts/ci/windows_footguns_upstream_baseline.txt`, which the blocking full-repo scan (`--all`, `.github/workflows/lint.yml` and `tests/scripts/test_windows_footguns_full_repo_scan.py`) subtracts so the gate still fails on anything new; `--diff` and the default staged-changes scan never subtract it, so the fork's own work is never baselined. Burn-down list: harden a listed site, then refresh with `python scripts/check-windows-footguns.py --all --print-baseline`.
 
 ### How conflicts were resolved (per group)
 

@@ -146,7 +146,7 @@ class TestAllowlistOps:
 
 
 
-    @pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: Path.home() fails in subprocess isolation")
+    @pytest.mark.platforms("linux")
     def test_tilde_path_approval_records_resolvable_mtime(self, tmp_path, monkeypatch):
         """If the command uses ~ the approval must still find the file."""
         monkeypatch.setenv("HOME", str(tmp_path))

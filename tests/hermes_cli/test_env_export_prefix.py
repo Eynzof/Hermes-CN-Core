@@ -61,6 +61,7 @@ def test_skills_tool_load_env_strips_export_prefix(tmp_path, monkeypatch):
     # modules imported at collection time.
     import sys
 
+    from tools import skills_tool
     saved = sys.modules.pop("tools.skills_tool", None)
     try:
         import tools.skills_tool as skills_tool

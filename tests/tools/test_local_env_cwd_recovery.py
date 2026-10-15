@@ -7,11 +7,11 @@ subsequent terminal/file-tool call until the gateway restarts.
 
 Regression coverage for https://github.com/NousResearch/hermes-agent/issues/17558.
 """
+import pytest
 
 import os
 import shutil
 import tempfile
-import threading
 from unittest.mock import MagicMock, patch
 
 from tools.environments.local import (
@@ -28,17 +28,21 @@ class TestResolveSafeCwd:
         assert _resolve_safe_cwd(path) == path
 
 
+    @pytest.mark.platforms("linux")
     def test_returns_root_when_only_root_exists(self, monkeypatch):
         """If every ancestor except the filesystem root is gone, the root
         itself is still a valid recovery target — don't skip it just because
         ``os.path.dirname('/') == '/'`` is the loop's exit condition."""
-        sep = os.path.sep
-        monkeypatch.setattr(os.path, "isdir", lambda p: p == sep)
-        assert _resolve_safe_cwd("/no/such/deep/dir") == sep
-
-
-def _fake_interrupt():
-    return threading.Event()
+        # The root's textual form is host-specific ('/' on POSIX, 'C:\\' on Windows) and
+        # the walk-up chain only ever reaches THAT node, so derive both the root and the
+        # missing path from it instead of hard-coding '/'.
+        root = os.path.abspath(os.path.sep)
+        missing = os.path.join(root, "no", "such", "deep", "dir")
+        monkeypatch.setattr(os.path, "isdir", lambda p: p == root)
+        # _cwd_usable also probes X_OK; on Windows access() is existence-based, so in a
+        # world where only the root exists it must agree with the patched isdir.
+        monkeypatch.setattr(os, "access", lambda p, mode: p == root)
+        assert _resolve_safe_cwd(missing) == root
 
 
 def _make_fake_popen(captured: dict, fds: list):
@@ -99,7 +103,6 @@ class TestRunBashCwdRecovery:
         try:
             with patch("tools.environments.local._find_bash_posix", return_value="/bin/bash"), \
                  patch("subprocess.Popen", side_effect=_make_fake_popen(captured, fds)), \
-                 patch("tools.terminal_tool._interrupt_event", _fake_interrupt()), \
                  caplog.at_level("WARNING", logger="tools.environments.local"):
                 env.execute("echo hello")
         finally:
@@ -124,7 +127,6 @@ class TestRunBashCwdRecovery:
         try:
             with patch("tools.environments.local._find_bash_posix", return_value="/bin/bash"), \
                  patch("subprocess.Popen", side_effect=_make_fake_popen(captured, fds)), \
-                 patch("tools.terminal_tool._interrupt_event", _fake_interrupt()), \
                  caplog.at_level("WARNING", logger="tools.environments.local"):
                 env.execute("echo hello")
         finally:

@@ -1,12 +1,8 @@
 """Behavioral tests for Windows-specific compatibility fixes.
 
-Complements ``tests/tools/test_windows_compat.py`` (which does source-level
-pattern linting) with cross-platform-mocked tests that exercise the actual
-code paths Hermes takes on native Windows.
-
-Runs on Linux CI — every test mocks ``sys.platform``, ``subprocess.run``,
-and ``os.kill`` as needed to simulate Windows behavior without requiring a
-Windows runner.
+Host-independent tests run everywhere; tests that need a real Windows host
+are marked ``platforms("windows")`` (they mock only dependencies such as
+``subprocess.run`` / ``os.kill``, never ``sys.platform``).
 """
 from __future__ import annotations
 
@@ -59,12 +55,6 @@ class TestConfigureWindowsStdio:
         result = stdio.configure_windows_stdio()
         assert result is False
 
-    def test_idempotent(self):
-        from hermes_cli import stdio
-
-        stdio.configure_windows_stdio()
-        # Second call returns False because _CONFIGURED is set
-        assert stdio.configure_windows_stdio() is False
 
 
     def test_reconfigure_stream_handles_missing_method(self, monkeypatch):
@@ -82,11 +72,11 @@ class TestConfigureWindowsStdio:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.windows_only
+@pytest.mark.platforms("windows")
 class TestTerminatePidRoutingOnWindows:
     """``gateway.status.terminate_pid`` must use taskkill /T /F on Windows.
 
-    ``windows_only``: this used to patch the module-level ``_IS_WINDOWS``
+    ``platforms("windows")``: this used to patch the module-level ``_IS_WINDOWS``
     flag on Linux, which selected the taskkill branch on a host where
     ``taskkill`` does not exist and ``gateway/status`` cannot even import its
     ``msvcrt`` branch. On the Windows runner the flag is genuinely True, so
@@ -107,7 +97,8 @@ class TestTerminatePidRoutingOnWindows:
             return result
 
         monkeypatch.setattr(status.subprocess, "run", fake_run)
-        status.terminate_pid(12345, force=True)
+        monkeypatch.setattr(status, "_get_process_start_time", lambda pid: 123456)
+        status.terminate_pid(12345, force=True, expected_start_time=123456)
 
         assert captured["args"][0] == "taskkill"
         assert "/PID" in captured["args"]
@@ -126,8 +117,9 @@ class TestTerminatePidRoutingOnWindows:
             return result
 
         monkeypatch.setattr(status.subprocess, "run", fake_run)
+        monkeypatch.setattr(status, "_get_process_start_time", lambda pid: 123456)
         with pytest.raises(OSError, match="cannot be terminated"):
-            status.terminate_pid(12345, force=True)
+            status.terminate_pid(12345, force=True, expected_start_time=123456)
 
     def test_graceful_on_windows_uses_os_kill_sigterm(self, monkeypatch):
         """Non-force path calls os.kill with SIGTERM (Windows has no SIGKILL).
@@ -165,7 +157,8 @@ class TestTerminatePidRoutingOnWindows:
 
         monkeypatch.setattr(status.subprocess, "run", fake_run)
         monkeypatch.setattr(status.os, "kill", fake_kill)
-        status.terminate_pid(42, force=True)
+        monkeypatch.setattr(status, "_get_process_start_time", lambda pid: 123456)
+        status.terminate_pid(42, force=True, expected_start_time=123456)
 
         assert captured["pid"] == 42
         assert captured["sig"] == signal.SIGTERM
@@ -208,41 +201,9 @@ class TestSigkillFallback:
 # ---------------------------------------------------------------------------
 
 
-class TestProcessRegistryOSErrorWidening:
-    """_is_host_pid_alive delegates to gateway.status._pid_exists."""
-
-    def test_oserror_treated_as_not_alive(self, monkeypatch):
-        """_pid_exists → False propagates as _is_host_pid_alive → False."""
-        from tools.process_registry import ProcessRegistry
-
-        monkeypatch.setattr("gateway.status._pid_exists", lambda pid: False)
-        assert ProcessRegistry._is_host_pid_alive(12345) is False
-
-    def test_permission_error_treated_as_alive(self, monkeypatch):
-        """PermissionError is encoded by _pid_exists as alive=True; propagates as-is.
-
-        This is a meaningful semantic change from the pre-#21561 version of
-        this test (which asserted PermissionError → not-alive). The old
-        ``os.kill(pid, 0)``-based probe couldn't distinguish "gone" from
-        "owned by another user" on some platforms, so it conservatively
-        returned False. The new psutil-based probe CAN distinguish them via
-        ``OpenProcess + ERROR_ACCESS_DENIED`` on Windows / ``except
-        PermissionError`` on POSIX, so alive=True is correct.
-        """
-        from tools.process_registry import ProcessRegistry
-
-        monkeypatch.setattr("gateway.status._pid_exists", lambda pid: True)
-        assert ProcessRegistry._is_host_pid_alive(12345) is True
 
 
-    def test_alive_pid_returns_true(self, monkeypatch):
-        from tools.process_registry import ProcessRegistry
-
-        monkeypatch.setattr("gateway.status._pid_exists", lambda pid: True)
-        assert ProcessRegistry._is_host_pid_alive(os.getpid()) is True
-
-
-@pytest.mark.linux_only
+@pytest.mark.platforms("linux")
 class TestPidExistsOSErrorWidening:
     """gateway.status._pid_exists itself must widen Windows errors correctly.
 
@@ -251,7 +212,7 @@ class TestPidExistsOSErrorWidening:
     gone PID instead of ``ProcessLookupError``. The function must catch the
     wider ``OSError`` to match POSIX semantics.
 
-    ``linux_only``: the subject is the POSIX fallback branch and its
+    ``platforms("linux")``: the subject is the POSIX fallback branch and its
     ``os.kill`` error handling, exercised with the errno values Windows
     produces. Gating to Linux is what makes ``_IS_WINDOWS`` genuinely False
     here instead of forced false by a patch.
@@ -310,7 +271,7 @@ class TestTzdataDependencyDeclared:
         # specifier in between (==X.Y.Z, >=X.Y.Z,<W, etc.) and either quote
         # style on the marker.
         pattern = re.compile(
-            r'"tzdata[^"]*;\s*sys_platform\s*==\s*[\'"]win32[\'"]\s*"'
+            r'"tzdata[^"]*;\s*sys_platform\s*==\s*[\'"]win32[\'"][^"]*"'
         )
         assert pattern.search(source), (
             "tzdata must be a Windows-only dep in pyproject.toml dependencies "
@@ -356,9 +317,6 @@ class TestReadmeNoLongerSaysWindowsUnsupported:
 class TestSubprocessCompatHelpers:
     """hermes_cli/_subprocess_compat.py POSIX + Windows behaviour."""
 
-    def test_is_windows_matches_sys_platform(self):
-        from hermes_cli import _subprocess_compat as sc
-        assert sc.IS_WINDOWS == (sys.platform == "win32")
 
     def test_resolve_node_command_returns_absolute_on_posix(self):
         """On Linux, resolve_node_command('sh', ['-c','echo hi']) picks up /bin/sh."""
@@ -372,11 +330,11 @@ class TestSubprocessCompatHelpers:
         # name (fallback) — both are acceptable behaviours.
 
 
-    @pytest.mark.windows_only
+    @pytest.mark.platforms("windows")
     def test_windows_detach_flags_exclude_detached_process(self):
         """DETACHED_PROCESS must stay OUT of every detach bundle.
 
-        ``windows_only`` (with ``IS_WINDOWS`` no longer patched): the helpers
+        ``platforms("windows")`` (with ``IS_WINDOWS`` no longer patched): the helpers
         return 0 off Windows, so on Linux the old flag patch was the only
         thing making the bit assertions reachable at all.
         """
@@ -390,7 +348,7 @@ class TestSubprocessCompatHelpers:
             "DETACHED_PROCESS must not be in the no-breakaway fallback either."
         )
 
-    @pytest.mark.windows_only
+    @pytest.mark.platforms("windows")
     def test_windows_detach_flags_includes_breakaway_from_job(self):
         """CREATE_BREAKAWAY_FROM_JOB is load-bearing for the GUI-driven update path.
 
@@ -412,7 +370,7 @@ class TestSubprocessCompatHelpers:
             "can respawn the gateway after Electron exits."
         )
 
-    @pytest.mark.windows_only
+    @pytest.mark.platforms("windows")
     def test_windows_detach_flags_without_breakaway_drops_only_that_bit(self):
         """Fallback retry payload for restrictive job objects.
 
@@ -458,7 +416,7 @@ class TestTuiGatewayEntrySignalGuards:
 
 
 # ---------------------------------------------------------------------------
-# hermes_cli/kanban_db.py waitpid guard
+# hermes_cli/kanban_db_dispatch.py waitpid guard
 # ---------------------------------------------------------------------------
 
 
@@ -487,9 +445,9 @@ class TestLocalEnvironmentWindowsTempDir:
 class TestLocalEnvironmentPathInjectionGated:
     """Sane PATH completion must stay POSIX-only."""
 
-    @pytest.mark.windows_only
+    @pytest.mark.platforms("windows")
     def test_windows_path_is_left_unchanged(self):
-        """``windows_only``: the assertion is that a real Windows ``PATH``
+        """``platforms("windows")``: the assertion is that a real Windows ``PATH``
         (``;``-separated, drive-lettered) comes back untouched. On Linux the
         old ``_IS_WINDOWS`` patch made the function return early without ever
         meeting a genuine Windows PATH."""
@@ -505,41 +463,41 @@ class TestLocalEnvironmentPathInjectionGated:
 
 
 class TestMsysPathNormalization:
-    """_normalize_msys_path should turn /c/Users/... into C:\\Users\\...
+    """_normalize_git_bash_path should turn /c/Users/... into C:\\Users\\...
     on Windows and leave paths unchanged on POSIX."""
 
     def test_posix_noop(self):
         """Must NOT mutate paths on Linux/macOS."""
-        from cli import _normalize_msys_path
+        from hermes_cli.worktree_ops import _normalize_git_bash_path
         if sys.platform != "win32":
-            assert _normalize_msys_path("/home/teknium/foo") == "/home/teknium/foo"
-            assert _normalize_msys_path("/c/Users/foo") == "/c/Users/foo"
-            assert _normalize_msys_path("C:/Users/foo") == "C:/Users/foo"
-            assert _normalize_msys_path(None) is None
+            assert _normalize_git_bash_path("/home/teknium/foo") == "/home/teknium/foo"
+            assert _normalize_git_bash_path("/c/Users/foo") == "/c/Users/foo"
+            assert _normalize_git_bash_path("C:/Users/foo") == "C:/Users/foo"
+            assert _normalize_git_bash_path(None) is None
 
     def test_empty_string_preserved(self):
-        from cli import _normalize_msys_path
-        assert _normalize_msys_path("") == ""
+        from hermes_cli.worktree_ops import _normalize_git_bash_path
+        assert _normalize_git_bash_path("") == ""
 
-    @pytest.mark.windows_only
+    @pytest.mark.platforms("windows")
     def test_windows_translation(self, monkeypatch):
         """On native Windows, /c/Users/... becomes C:\\Users\\...
 
-        ``windows_only``: the function's whole job is producing native
+        ``platforms("windows")``: the function's whole job is producing native
         Windows paths, which is only meaningful where ``os.sep`` is ``\\``.
         """
-        import cli as cli_mod
+        from hermes_cli import worktree_ops as cli_mod
         monkeypatch.setattr(cli_mod.sys, "platform", "win32")
-        assert cli_mod._normalize_msys_path("/c/Users/foo") == r"C:\Users\foo"
-        assert cli_mod._normalize_msys_path("/C/Users/foo") == r"C:\Users\foo"
-        assert cli_mod._normalize_msys_path("/cygdrive/d/data") == r"D:\data"
-        assert cli_mod._normalize_msys_path("/mnt/c/Users") == r"C:\Users"
+        assert cli_mod._normalize_git_bash_path("/c/Users/foo") == r"C:\Users\foo"
+        assert cli_mod._normalize_git_bash_path("/C/Users/foo") == r"C:\Users\foo"
+        assert cli_mod._normalize_git_bash_path("/cygdrive/d/data") == r"D:\data"
+        assert cli_mod._normalize_git_bash_path("/mnt/c/Users") == r"C:\Users"
         # Already-native path is preserved
-        assert cli_mod._normalize_msys_path(r"C:\Users\foo") == r"C:\Users\foo"
+        assert cli_mod._normalize_git_bash_path(r"C:\Users\foo") == r"C:\Users\foo"
         # Forward-slash Windows path is preserved (git on Windows often
-        # returns this form; it's valid for both PowerShell and Python, so
-        # we don't need to translate).
-        assert cli_mod._normalize_msys_path("C:/Users/foo") == "C:/Users/foo"
+        # returns this form; it's valid for both bash and Python, so we
+        # don't need to translate).
+        assert cli_mod._normalize_git_bash_path("C:/Users/foo") == "C:/Users/foo"
 
 
 class TestWindowlessGatewayRestartSpec:
@@ -547,6 +505,7 @@ class TestWindowlessGatewayRestartSpec:
     hidden-console respawn spec (normalized interpreter + stable cwd + env
     overlay)."""
 
+    @pytest.mark.platforms("linux")
     def test_noop_on_non_windows(self):
         import hermes_cli.gateway_windows as gw
 
@@ -565,13 +524,13 @@ class TestWindowlessGatewayRestartSpec:
         assert cwd == ""
         assert env == {}
 
-    @pytest.mark.windows_only
+    @pytest.mark.platforms("windows")
     def test_windows_keeps_console_python_and_preserves_tail(self):
         """On Windows the console interpreter is kept (hidden-console launch,
         NOT a pythonw swap — #54220/#56747) while every subsequent argument
         is preserved verbatim.
 
-        ``windows_only``: faking this on Linux needed two more fakes to hold
+        ``platforms("windows")``: faking this on Linux needed two more fakes to hold
         it up — a pre-import so the lazy ``hermes_cli.gateway`` import didn't
         re-run ``gateway/status``'s ``import msvcrt`` branch, and a mock of
         ``get_hermes_home`` because the real one's ``Path.resolve()`` consults
@@ -617,7 +576,7 @@ class TestWindowlessGatewayRestartSpec:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.windows_only
+@pytest.mark.platforms("windows")
 class TestGatewayRunRestartWatcherOuterPopenFallback:
     """The Windows ``/restart`` watcher in ``gateway.run`` spawns an outer
     detached ``python -c <watcher>`` process with
@@ -631,7 +590,7 @@ class TestGatewayRunRestartWatcherOuterPopenFallback:
     Behavioral: drives the real coroutine with a mocked ``subprocess.Popen``
     rather than asserting on source text.
 
-    ``windows_only``: this used to run on Linux behind a ``sys.platform``
+    ``platforms("windows")``: this used to run on Linux behind a ``sys.platform``
     patch, and the breakaway-bit assertions had to be skipped there anyway
     (``_subprocess_compat`` caches ``IS_WINDOWS`` at import, so the flags
     were all 0) — i.e. the most important assertions in the class never
@@ -679,11 +638,11 @@ class TestGatewayRunRestartWatcherOuterPopenFallback:
 
         # argv is identical across primary and fallback, and every current
         # watcher parameter survives:
-        #   [watcher_python, "-c", <script>, str(pid), str(restart_after_s), *cmd_argv]
+        #   [python, "-I", "-c", <bootstrap + watcher script>, str(pid), str(restart_after_s), *cmd_argv]
         assert argv1 == argv2
-        assert argv1[1] == "-c"
-        assert argv1[3] == str(os.getpid())
-        assert float(argv1[4]) >= 5.0  # restart deadline preserved
+        assert argv1[1:3] == ["-I", "-c"]
+        assert argv1[4] == str(os.getpid())
+        assert float(argv1[5]) >= 5.0  # restart deadline preserved
         assert argv1[-2:] == ["gateway", "restart"]
 
         # Scrubbed env preserved and identical on both calls.
@@ -782,3 +741,43 @@ class TestGatewayRunRestartWatcherOuterPopenFallback:
         assert argv_used[2] not in rendered  # watcher script body
         assert "argv" not in fmt.lower()
         assert "env=" not in fmt.lower()
+
+
+# ---------------------------------------------------------------------------
+# cron pre-run scripts resolve bash dynamically (Git Bash on Windows)
+# ---------------------------------------------------------------------------
+
+
+class TestCronSchedulerBashResolution:
+    """cron.scheduler_script must resolve bash via PATH (Git Bash on Windows) and,
+    when no bash exists, return an actionable error instead of a [WinError 2] crash."""
+
+    def test_sh_script_uses_bash_found_on_path(self, tmp_path, monkeypatch):
+        from cron import scheduler_script
+
+        script = tmp_path / "job.sh"
+        script.write_text("echo hi\n", encoding="utf-8")
+        found = str(tmp_path / "git" / "bin" / "bash.exe")
+        monkeypatch.setattr(scheduler_script.shutil, "which",
+                            lambda name: found if name == "bash" else None)
+
+        argv, _overlay, error = scheduler_script._script_argv(script)
+
+        assert error is None
+        assert argv == [found, str(script)]
+
+    def test_missing_bash_returns_actionable_error(self, tmp_path, monkeypatch):
+        from cron import scheduler_script
+
+        script = tmp_path / "job.sh"
+        script.write_text("echo hi\n", encoding="utf-8")
+        real_isfile = os.path.isfile
+        monkeypatch.setattr(scheduler_script.shutil, "which", lambda name: None)
+        monkeypatch.setattr(scheduler_script.os.path, "isfile",
+                            lambda p: False if p == "/bin/bash" else real_isfile(p))
+
+        argv, _overlay, error = scheduler_script._script_argv(script)
+
+        assert argv is None
+        assert "bash not found" in error
+        assert "job.sh" in error

@@ -8,6 +8,9 @@ no-op; the Windows-specific behavior is tested by patching ``sys.platform``.
 """
 from __future__ import annotations
 
+import shutil
+import subprocess
+import tempfile
 
 from unittest.mock import MagicMock, patch
 
@@ -43,8 +46,29 @@ class TestBashFixResult:
         assert result.command == "echo ok"
         assert result.replacements == ()
         assert result.path_changes == ()
+        assert result.shell_wrappers == ()
+        assert result.nul_fixes == ()
+        assert result.unsupported == ()
         assert result.warning == ""
         assert not result.changed
+
+    def test_unsupported_is_recorded_without_rewriting(self) -> None:
+        # A name with no faithful Git Bash equivalent is reported, never
+        # rewritten: ``changed`` stays False because the command text is
+        # byte-for-byte what the caller passed in.
+        result = _fix_for_windows("journalctl -u sshd")
+        assert result.command == "journalctl -u sshd"
+        assert result.unsupported == ("journalctl",)
+        assert not result.changed
+        assert "no Windows Git Bash equivalent" in result.warning
+        assert "journalctl" in result.warning
+
+    def test_warning_covers_every_change_category(self) -> None:
+        wrapper = _fix_for_windows("bash -c 'rev'")
+        assert "Removed redundant shell wrapper" in wrapper.warning
+        nul = _fix_for_windows("echo hi > nul")
+        assert "null-device" in nul.warning
+        assert "/dev/null" in nul.warning
 
     def test_changed_result_reports_every_command(self) -> None:
         result = _fix_for_windows("gtimeout 1 true; printf x | rev")
@@ -151,6 +175,18 @@ class TestBashFixFallbacks:
 
             ("column -t file", "column"),
             ("netcat -z example.com 80", "netcat"),
+
+            # POSIX utilities absent from a bare Git Bash userland that map
+            # onto native Windows tools.
+            ("free -h", "free"),
+            ("uptime", "uptime"),
+            ("top -b -n 1", "top"),
+            ("htop", "htop"),
+            ("ss -ltn", "ss"),
+            ("ip addr", "ip"),
+            ("man rev", "man"),
+            ("systemctl status service", "systemctl"),
+            ("sudo true", "sudo"),
         ],
     )
     def test_known_fallback_command_replaced(self, source: str, replacement: str) -> None:
@@ -207,16 +243,36 @@ class TestBashFixFallbacks:
             "flock lockfile app",
             "script transcript.txt",
             "getent passwd",
-            "ip address",
-            "ss -ltn",
             "lsof file",
-            "free -h",
-            "systemctl status service",
             "service app status",
             "apt update",
             "apt-get update",
         ):
             assert _fix_for_windows(command) == BashFix(command), command
+
+    def test_new_windows_fallbacks_are_behavioral(self) -> None:
+        """The added fallbacks query Windows through native tooling, so the
+        generated text names the mechanism each one actually uses."""
+        assert "Win32_OperatingSystem" in _fix_for_windows("free -h").command
+        assert "LastBootUpTime" in _fix_for_windows("uptime").command
+        assert "Get-Process" in _fix_for_windows("top -b -n 1").command
+        assert "netstat" in _fix_for_windows("ss -ltn").command
+        assert "ipconfig" in _fix_for_windows("ip addr").command
+        assert "Get-NetAdapter" in _fix_for_windows("ip link").command
+        assert "route print" in _fix_for_windows("ip route").command
+        assert "Get-Service" in _fix_for_windows("systemctl status svc").command
+        assert "Start-Process -Verb RunAs" in _fix_for_windows("sudo true").command
+
+    def test_fallbacks_are_exported_for_nested_shells(self) -> None:
+        # ``bash -c '...'`` operands and the standalone runner scripts run in a
+        # child shell that only inherits exported functions.
+        result = _fix_for_windows("rev")
+        assert "if declare -F rev >/dev/null; then export -f rev; fi" in result.command
+
+    def test_repeated_names_are_defined_once(self) -> None:
+        result = _fix_for_windows("rev; rev")
+        assert result.replacements == ("rev", "rev")
+        assert result.command.count("rev() {") == 1
 
     def test_netcat_aliases_nc_fallback(self) -> None:
         result = _fix_for_windows("netcat -z example.com 80")
@@ -416,6 +472,258 @@ class TestBashFixWindowsPaths:
 
 
 # ============================================================================
+# Git Bash virtual absolute paths (/tmp, /c, /d)
+# ============================================================================
+
+class TestBashFixGitBashVirtualPaths:
+    def test_tmp_mount_rewritten_to_windows_temp(self) -> None:
+        # ``/tmp`` is a Git Bash mount; a native Windows executable would read
+        # it as ``<current-drive>:\tmp``, so it is rewritten to the real temp
+        # directory (what ``cygpath -w /tmp`` reports).
+        expected = tempfile.gettempdir().replace("\\", "/")
+        result = _fix_for_windows("echo /tmp/x")
+        assert result.path_changes == ("/tmp/x",)
+        assert result.command == f"echo {expected}/x"
+        assert _fix_for_windows("echo /tmp").command == f"echo {expected}"
+
+    def test_drive_mounts_rewritten_to_native_spelling(self) -> None:
+        assert _fix_for_windows("echo /c/dev/x").command == "echo C:/dev/x"
+        assert _fix_for_windows("echo /d/x").command == "echo D:/x"
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            "cd /c",  # bare mount: cmd.exe's ``cd /d`` flag must win
+            "echo /tmpfoo",  # not the /tmp mount
+            "echo /usr/bin",  # single-letter drive names only
+            "echo '/tmp/x'",  # quoted: data
+            'echo "/c/x"',
+        ],
+    )
+    def test_non_mounts_and_quoted_text_are_left_alone(self, source: str) -> None:
+        assert _fix_for_windows(source) == BashFix(source)
+
+    def test_mixed_backslash_and_mount_paths(self) -> None:
+        expected = tempfile.gettempdir().replace("\\", "/")
+        result = _fix_for_windows(r"cp C:\a\b.txt /tmp/x.txt")
+        assert result.path_changes == (r"C:\a\b.txt", "/tmp/x.txt")
+        assert result.command == f"cp C:/a/b.txt {expected}/x.txt"
+
+
+# ============================================================================
+# ``nul`` output redirection -> /dev/null
+# ============================================================================
+
+class TestBashFixNulRedirection:
+    @pytest.mark.parametrize(
+        "source,expected,target",
+        [
+            ("echo hi > nul", "echo hi > /dev/null", "nul"),
+            ("echo hi > NUL", "echo hi > /dev/null", "NUL"),
+            ("echo hi 2> nul", "echo hi 2> /dev/null", "nul"),
+            ("echo hi &> nul", "echo hi &> /dev/null", "nul"),
+            ("echo hi >> nul", "echo hi >> /dev/null", "nul"),
+            ("echo hi >nul", "echo hi >/dev/null", "nul"),
+        ],
+    )
+    def test_unquoted_output_target_rewritten(
+        self, source: str, expected: str, target: str
+    ) -> None:
+        # Git Bash treats ``nul`` as an ordinary file name, so ``> nul`` would
+        # silently create an empty file named ``nul``.
+        result = _fix_for_windows(source)
+        assert result.command == expected
+        assert result.nul_fixes == (target,)
+        assert result.changed
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            "echo hi > 'nul'",  # quoted: a deliberate file name
+            'echo hi > "nul"',
+            "cat < nul",  # input redirection never creates a file
+            "echo hi > nul.txt",
+            "echo nulhi",
+        ],
+    )
+    def test_other_nul_spellings_are_left_alone(self, source: str) -> None:
+        assert _fix_for_windows(source) == BashFix(source)
+
+
+# ============================================================================
+# Redundant ``bash``/``sh`` invocations are unwrapped
+# ============================================================================
+
+class TestBashFixShellWrappers:
+    def test_bare_prefix_form_dropped(self) -> None:
+        # The Bash tool already runs the whole string via bash, so ``bash cd
+        # /c/dev/x`` would try to open ``cd`` as a script file.
+        result = _fix_for_windows("bash cd /c/dev/x && rev")
+        assert result.shell_wrappers == ("bash",)
+        assert result.path_changes == ("/c/dev/x",)
+        assert result.replacements == ("rev",)
+        assert result.command.endswith("\ncd C:/dev/x && rev")
+
+    def test_inline_script_unwrapped_and_scanned(self) -> None:
+        result = _fix_for_windows(r"bash -c 'cd C:\x && rev'")
+        assert result.shell_wrappers == ("bash -c",)
+        assert result.path_changes == (r"C:\x",)
+        assert result.replacements == ("rev",)
+        assert result.command.endswith("\ncd C:/x && rev")
+
+    @pytest.mark.parametrize(
+        "source,wrapper",
+        [
+            ("bash -lc 'rev'", "bash -c"),
+            ("bash -cl 'rev'", "bash -c"),
+            ("sh -c 'rev'", "sh -c"),
+        ],
+    )
+    def test_c_forms_unwrapped(self, source: str, wrapper: str) -> None:
+        result = _fix_for_windows(source)
+        assert result.shell_wrappers == (wrapper,)
+        assert result.replacements == ("rev",)
+        assert result.command.endswith("\nrev")
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            "bash -ec 'rev'",  # errexit changes the script's meaning
+            "bash scripts/deploy.sh",  # legitimate script invocation
+            "bash ./tool",
+            "bash app.sh",
+            "bash -c 'rev' extra",  # trailing argv: ``$0``/``$1`` semantics
+            "bash",  # a bare nested shell is not a compatibility problem
+            "bash && echo ok",
+            "bash -c",  # no script word at all
+            "VAR=x bash -c 'echo $VAR'",  # assignment is scoped to the shell
+            "zsh -c 'rev'",  # only bash-family shells are unwrapped
+        ],
+    )
+    def test_wrappers_that_must_stay(self, source: str) -> None:
+        assert _fix_for_windows(source) == BashFix(source)
+
+    def test_inline_script_kept_under_a_command_wrapper(self) -> None:
+        # ``timeout 5 bash -c 'a && b'`` unwrapped to ``timeout 5 a && b``
+        # would let ``&&`` split the wrapper's argv, so the ``bash -c`` shape
+        # is kept and only the inline script is fixed in place.
+        source = "env bash -c 'rev <<< abc'"
+        result = _fix_for_windows(source)
+        assert result.shell_wrappers == ()
+        assert result.replacements == ("rev",)
+        assert result.command.endswith("\n" + source)
+
+    def test_prefix_form_under_a_wrapper_keeps_the_wrapper(self) -> None:
+        result = _fix_for_windows("timeout 5 bash rev")
+        assert result.shell_wrappers == ("bash",)
+        assert result.replacements == ("rev",)
+        # ``timeout`` execs argv, so the wrapped command must stay executable:
+        # the shell word becomes the standalone runner and the wrapper stays.
+        assert "/usr/bin/bash -c" in result.command
+        assert not result.command.endswith("\n" + "timeout 5 bash rev")
+        assert result.command.split("\n")[-1].startswith("timeout 5 /usr/bin/bash -c")
+
+
+# ============================================================================
+# Bundled wrappers that exec their operand get the operand fixed too
+# ============================================================================
+
+class TestBashFixCommandWrapperOperands:
+    @pytest.mark.parametrize(
+        "source",
+        [
+            "timeout 5 rev -0",  # DURATION operand consumed first
+            "timeout -s KILL 5s rev",
+            "stdbuf -oL rev",
+            "nice -n 5 rev",
+            "xargs -I{} rev {}",
+        ],
+    )
+    def test_bundled_wrappers_scan_their_operand(self, source: str) -> None:
+        result = _fix_for_windows(source)
+        assert result.replacements == ("rev",)
+        # ``timeout``/``stdbuf``/``nice``/``xargs`` exec argv, so a shell
+        # function cannot be reached through them.
+        assert "/usr/bin/bash -c" in result.command
+
+    def test_gtimeout_records_itself_and_scans_its_operand(self) -> None:
+        result = _fix_for_windows("gtimeout 5 rev")
+        assert result.replacements == ("gtimeout", "rev")
+
+    def test_xargs_cannot_reach_a_function(self) -> None:
+        result = _fix_for_windows("xargs gtimeout 5 rev")
+        assert result.replacements == ("gtimeout", "rev")
+        assert "/usr/bin/bash -c" in result.command
+
+    @pytest.mark.parametrize("source", ["watch -n1 'rev <<< abc'", "watch 'rev <<< abc'"])
+    def test_watch_quoted_operand_is_an_inline_script(self, source: str) -> None:
+        # procps ``watch`` runs its command through ``sh -c``; the fallback
+        # mirrors that with ``eval "$*"`` in the current shell, so the quoted
+        # operand is scanned as its own command context.
+        result = _fix_for_windows(source)
+        assert result.replacements == ("watch", "rev")
+        assert result.command.endswith("\n" + source)
+
+
+# ============================================================================
+# The generated shell code is valid Bash
+# ============================================================================
+
+class TestGeneratedCodeParses:
+    """Every fallback body is hand-written shell text embedded into the
+    caller's command, so a syntax error there would turn a working command
+    into ``bash: syntax error`` for the user.  The generated text is checked
+    with Bash's own no-execute parser (Git Bash's ``bash`` on Windows, system
+    ``bash`` elsewhere); the check is skipped when bash is unavailable."""
+
+    BASH = shutil.which("bash")
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            "free -h",
+            "uptime -s",
+            "top -b -n 1",
+            "htop",
+            "ss -ltn",
+            "ip addr",
+            "ip link",
+            "ip route",
+            "ip neigh",
+            "ip help",
+            "man rev",
+            "systemctl status svc",
+            "systemctl enable svc",
+            "systemctl is-active svc",
+            "sudo true",
+            "rev",
+            "zip -r out.zip dir",
+            "nc -z example.com 80",
+            "gtimeout 5 rev",
+            "watch -n1 rev",
+            "column -t file",
+            "wget http://x/y",
+            "echo hi > nul",
+            "bash -c 'rev'",
+            "timeout 5 bash rev",
+            "xargs gtimeout 5 rev",
+            "cat <<EOF\nhi\nEOF\n&& rev\n",
+        ],
+    )
+    def test_generated_command_parses(self, source: str) -> None:
+        if self.BASH is None:
+            pytest.skip("bash is not available to parse the generated code")
+        generated = _fix_for_windows(source).command
+        proc = subprocess.run(
+            [self.BASH, "--noprofile", "--norc", "-n"],
+            input=generated,
+            capture_output=True,
+            text=True,
+        )
+        assert proc.returncode == 0, proc.stderr
+
+
+# ============================================================================
 # bash_compatibility_prelude
 # ============================================================================
 
@@ -427,6 +735,11 @@ class TestBashCompatibilityPrelude:
             prelude = bash_compatibility_prelude()
         assert "open()" in prelude
         assert "export -f" in prelude
+        # Every fallback the scanner can emit is defined for the persistent
+        # interactive shell, including the Windows-tool mappings.
+        for name in ("rev", "free", "uptime", "top", "htop", "ss", "ip", "man"):
+            assert f"{name}() {{" in prelude, name
+        assert "journalctl" not in prelude  # unsupported: never defined
 
     def test_non_windows_returns_empty(self) -> None:
         import tools.environments.bash_fix as bf
@@ -490,6 +803,15 @@ class TestWrapCommandBashFix:
         assert "D:/repo/src" in wrapped
         assert env._bash_fix_warnings
         assert "D:\\repo\\src" in env._bash_fix_warnings
+
+    def test_unsupported_command_still_warns(self) -> None:
+        # ``journalctl`` has no faithful Git Bash equivalent: the text stays
+        # untouched (bash decides what happens) but the reason is surfaced.
+        env, wrapped = self._wrap("journalctl -u sshd")
+        assert "journalctl -u sshd" in wrapped
+        assert env._bash_fix_warnings
+        assert "journalctl" in env._bash_fix_warnings
+        assert "no Windows Git Bash equivalent" in env._bash_fix_warnings
 
     def test_unchanged_command_no_warning(self) -> None:
         env, wrapped = self._wrap("echo ok")
@@ -568,12 +890,14 @@ class TestTerminalToolSurfacesBashFixWarnings:
 
         import tools.terminal_tool as tt
 
+        import tools.terminal_tool_backends as ttb
+
         fake_env = MagicMock()
         fake_env.cwd = str(tmp_path)
         fake_env.env = {}
         fake_env.execute.return_value = exec_result
 
-        with patch.object(tt, "_create_environment", return_value=fake_env), \
+        with patch.object(ttb, "_create_environment", return_value=fake_env), \
              patch.dict(tt._active_environments, {}, clear=True):
             raw = tt.terminal_tool("echo hi", task_id=task_id)
         return orjson.loads(raw)

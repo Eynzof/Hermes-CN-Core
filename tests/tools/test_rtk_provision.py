@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import platform
 from pathlib import Path
+import subprocess
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -63,6 +64,7 @@ class TestFindRtk:
                 capture_output=True,
                 check=True,
                 timeout=5,
+                stdin=subprocess.DEVNULL,
             )
 
     def test_managed_path_fails_falls_to_legacy(self):

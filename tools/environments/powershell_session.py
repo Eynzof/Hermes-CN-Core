@@ -253,6 +253,7 @@ class PowerShellSession:
                         capture_output=True,
                         timeout=5,
                         creationflags=_hide_flags(),
+                        stdin=subprocess.DEVNULL,
                     )
                 except Exception:
                     try:

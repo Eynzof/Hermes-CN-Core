@@ -6,6 +6,26 @@
 
 ## 补丁总览
 
+### P-067：恢复上游同步后的 Desktop 兼容与 CI
+
+恢复公开的 `/api/version`，沿用运行时安装标记中的版本身份；将 `hermes_embedded` 纳入 wheel，并把 `cn-desktop` 的 cryptography 版本与 Core 统一。原 `uv.lock` 存在跨包错配的 wheel 记录，需要由包管理器重新生成。
+
+CI 保留完整检查集合，改用当前 fork 可用的标准托管 runner，并沿用主分支已有的 `All required checks pass` 必需检查名称。大型上游同步的变更检测直接比较事件中固定的 Git 树，避免 compare API 的文件数量上限及提交分页开销。此补丁不改变上游安装标记的版本机制。
+
+同步后的依赖兼容修复还包括：Dashboard 改用现有 `hermes_yaml`；旧 `tools.lazy_deps` 调用迁移到 PM；平台测试在真实目标系统运行；双仓开发说明原文移入 `CN_DEVELOPMENT.md`，根 `AGENTS.md` 保留必读入口以符合长度限制。
+
+Hindsight 的 cloud 和 local_external 模式使用已声明的 client 依赖。local_embedded 所需 `hindsight-all==0.6.1` 与 Core 当前遥测依赖冲突，本次不扩大 Core 依赖升级范围：已有可用安装仍可使用，缺失时明确报告限制，可通过 local_external 连接独立服务。
+
+本轮 CI 还暴露了同步时遗留的重复实现：恢复 P-061 的进程输出翻页、完整日志导出和 pattern 命中后转后台；复用现有进程清理实现以保留 setsid 后代回收；修复会话项目切换、技能批量审批预览、JSON 损坏文件读取以及日志重复写入。Desktop 的冻结 CLI 入口保留 provider 与父进程参数，MCP 冷恢复按名称触发工具懒注册，飞书 SDK 继续按需加载。工具集首次查询包含尚未导入的成员，显式空选择不会被新插件重新启用；Shell 解析优先使用 PM，Windows 仍保留 CN 的外部程序探测和故障诊断。
+
+Windows CI 同时运行两个测试文件，为嵌套 PowerShell/CIM 和 C# 子进程保留资源；既有超时与断言不变。PM 打包在 Windows 使用更短的缓存根目录，避免 grpcio 编译输出超过编译器的 MAX_PATH 限制。
+
+未定义名称的定向审查还修复了三处条件性缺陷：删除共享插件 loader 之后的重复冻结记忆插件回退，恢复 Router 的 24 小时目录缓存 TTL，修复独立代理重复监听及缺失的端口锁生命周期。回归覆盖真实 HTTP 访问、关闭后端口重新绑定及过期缓存刷新。PortLock 释放真实句柄时，在现有互斥锁内清理本地占用记录；空句柄与重复释放不会影响当前持有者。真实子进程竞争验证释放后重新领取与代理连续启动时的互斥。
+
+更新器、浏览器和 SSL 的旧测试按已同步的上游退役记录迁移到当前 PM、launcher 与证书接口；仍存在的 CN 行为继续保留回归。独立迁移脚本使用标准库正则，避免依赖仓库导入路径。Windows ARM 仅对 grpcio 的 isolated sdist 构建固定 setuptools 83，以保持其 MSVC 编译参数修正生效；不限制 httptools 等其他包的构建依赖，也不改变运行时包版本。
+
+供应链扫描仍阻断原有两类模式；五处经过审查的透明包装采用固定路径、内容和函数上下文哈希的精确登记，内容、位置或副本数量变化仍会阻断。贡献者检查沿用上游同步分支的 first-parent 归属规则，仅补齐已核实的本仓作者。代码健康门禁保持启用。本次迁移经维护者授权，固定接受 dev-fix 快照 `2e8d57542ac6c44cc2237f3abf39c58f23139bc2` 中的存量问题；仅当 PR 基分支恰为旧 main `d0575cb0148b78bbb903781299345f5c0e97ad64`，且 PR 包含该快照时生效。这两个固定值不得前移。快照之后的集成改动继续接受现有 ratchet 规则检查；main 前进后，新 PR 自动恢复与 main 比较。这表示接受存量技术债，并不表示问题已修复；其余测试、构建和安全门禁保持不变。
+
 | ID | 目标文件 | 做了什么 | 为什么需要 | 上游状态 |
 |---|---|---|---|---|
 | P-063 | plugins/tts/moss/transcription.py（新增）、plugins/tts/moss/api.py（新增）、plugins/tts/moss/client.py、plugins/tts/moss/tools.py、plugins/tts/moss/__init__.py、plugins/tts/moss/plugin.yaml、hermes_cli/config_defaults.py、hermes_cli/tools_config.py、docs/moss-tts.md、website/docs（tts.md）、tests/plugins/test_moss_transcription.py（新增）+ test_moss_vision.py（新增）+ test_moss_provider.py + test_moss_tools.py + test_moss_provider_e2e.py | 在既有 Moss 插件（P-062）基础上补齐场景文档剩余两个缺口：(A) **语音转写** — 新增 `MossTranscriptionProvider`（实现 TranscriptionProvider ABC），以 `moss` 名字注册，使 `stt.provider: moss` 将网关语音消息路由到现有插件 STT 分发路径（不改 `BUILTIN_STT_PROVIDERS`）；同时新增受密钥门控的 `moss_transcribe` 工具（multipart 本地文件 / `file_id:` / 公网 URL；`diarize=true` 强制 `moss-transcribe-diarize-pro` 并返回归一化 `segments`；`keyterms` ≤20×≤30 字符；`async_mode` → `task_id` 并支持轮询；512 MB 上限）。(B) **MOSS-VL** — 新增受密钥门控的 `moss_vision` 工具，调用 `POST /v1/responses`（`moss-vl-1.0`）支持 1–5 张图片或 1 个视频（禁止混用；图片 30 MB / 视频 200 MB 上限；拒绝 localhost/内网 URL），本地媒体经 `POST /v1/files` 上传；对 `status=incomplete`/`max_output_tokens` 截断给出告警。两者都由自包含的 `requests` HTTP 层（`plugins/tts/moss/api.py`）承载，复用既有 `tts.moss` 的 key/base_url/timeout 解析，不依赖私有 `moss_tts` SDK 是否发布新客户端方法。新增 `stt.moss` 配置默认值，并在 `hermes tools` 的 Speech-to-Text 选择器注入插件 STT 提供方。已用真实 Moss key（D:/moss.txt）跑通实时 E2E：转写往返、双说话人 diarize、图片 OCR、file_id 视觉流程。 | 抓取的六份 Moss 场景文档覆盖转写/多说话人与图片视频理解，但 fork 之前只实现了 TTS（P-062）——网关语音消息与 Agent 图片/视频理解缺少 Moss 通道。STT 与视觉均停留在 footprint-ladder 第 3/4 级：插件提供方 + 门控工具，刻意不接入核心视觉路由（第三方 SaaS 后端应放在边缘）。 | 按 plan.md 属于树内第三方 SaaS 插件——如需上游化可整体搬迁到 `~/.hermes/plugins/tts/moss/`；自包含 HTTP 层保证其不随 `moss_tts` SDK 发版节奏而失效。 |
@@ -94,7 +114,7 @@
 
 **P-052 做了什么**（kimi `bash_tool` win32 对等移植，全部在 `tools/environments/local.py`）：
 
-1. **调用处 win32 门控** — `_wrap_command` 在 `fix_bash_command` 前检查 `sys.platform == "win32"`（POSIX 主机逐字节空操作）；仅当修复器真正改动命令时才记录 `_bash_fix_warnings`。
+1. **调用处 win32 门控** — `_wrap_command` 在 `fix_bash_command` 前检查 `sys.platform == "win32"`（POSIX 主机逐字节空操作）；当修复器真正改动命令、或标记出无 Git Bash 等价实现的命令时记录 `_bash_fix_warnings`。
 2. **git.exe 发现链** — `_where_git_executables`（`where.exe git`）、`_git_bash_candidate_from_git_path`（`<gitDir>/../bin/bash.exe`）、`_git_exec_path`（带超时 `git --exec-path`）、`_git_install_root_from_exec_path`（从 `mingw*/libexec/git-core` 上溯）、`_git_bash_candidates_from_exec_path`；接入 `_find_bash` 作为**最后**候选源（env 覆盖 → 托管便携 Git → 已知位置 → PATH 之后）；`where.exe`/`git` 子进程用 `windows_hide_flags()`。
 3. **MSYSTEM 中和** — `_is_git_bash_install`（盘符锚定 `<root>/cmd/git.exe` 标记；`bin/bash.exe` 与 `usr/bin/bash.exe` 两种布局；真实 MSYS2 安装永不匹配）+ `_MSYSTEM_NEUTRALIZE_PREFIX = "export MSYSTEM=; "` + `_with_msystem_neutralized`，在 `_wrap_command` 的 win32 分支、bash-fix 之后逐命令应用，让子进程即使快照导出 `MINGW64` 也看到空 `MSYSTEM`。
 4. **`_encode_startup_script`** — base64+gzip 自解码单行封装（stdlib `base64`/`gzip`；与 kimi 的 `pybase64` 输出一致）。暂无生产调用者——它是交互式 `bash -i` 引导集的三分之一，为将来的交互式 Git Bash 模式备好。
@@ -114,6 +134,12 @@
 
 **是否上游？** 建议——显式选中的 shell 缺失时优雅降级是通用能力；PowerShell 随每个 Windows 系统自带，回退始终安全。MSYSTEM 中和、git.exe 发现链、标记检查与 macOS 候选是 kimi 的设计且通用；win32 门控与 `_run_bash` shell 路径一致性是正确性修复。POSIX 或 Git Bash 健康时无行为变化。有意不移植：`_bash_runs`（已被 Hermes 更强的 `_bash_starts` 取代）与 Windows shell 默认策略（刻意分叉）。
 
+
+**bash_fix 扫描器同步（2026-09-20）。** `tools/environments/bash_fix.py` 已与更新的 kimi 实现对齐（`bin/kimix_native/_shell_compat.py`，即 `src/kimix/tools/file/bash/bash_fix.py` 的权威副本）。移植保留本模块的公开 API、`__hermes_` shell 变量前缀与 win32 门控；除这些之外扫描器主体与参考实现逐字节一致。
+
+相比首次移植新增：`free`/`uptime`/`top`/`htop`/`ss`/`ip`/`man`/`systemctl`/`sudo` 回退（基于 Windows 原生工具；`htop` 复用 `top`）；`journalctl` 记录为无忠实等价实现（`BashFix.unsupported`——命令文本逐字节保留，`_wrap_command` 现在会为它记录 `_bash_fix_warnings`，让模型看到原因与 `Get-WinEvent` 替代方案，而不是裸的 "command not found"）；未加引号的 `nul`/`NUL` 输出重定向改写为 `/dev/null`；Git Bash 虚拟绝对路径改写为原生拼写（`/tmp/x` → 真实 Windows 临时目录，`/c/x` → `C:/x`）；冗余的 `bash`/`sh` 调用被解包（`bash cd /c/dev/x && …`、`bash -c '…'`、`bash -lc`），内联脚本按独立命令上下文扫描，而 `bash -ec` 这类选项簇、脚本路径、尾部 argv 与赋值前缀一律保持原样；`timeout`/`stdbuf`/`nice`/`xargs` 视为命令包装器，操作数同样获得回退（GNU `timeout` 的 DURATION 操作数先被消费）；`gtimeout`/`watch`/`sudo` 作为带回退定义的包装器；回退函数通过 `export -f` 导出，使嵌套 shell（runner 脚本与 `bash -c` 操作数）继承它们。 <!-- no-tmp: ok — 说明 Git Bash 的 POSIX 路径会被改写成 Windows 临时目录，属行为说明，不是让模型去写 /tmp -->
+
+验证：与参考扫描器逐字段差分（186 条语料 + 20000 条随机输入，0 处不一致；`sys.platform` 打补丁后的非 Windows 空操作契约同样 0 处不一致）、`ruff check` 通过，并扩展了 `tests/tools/test_bash_fix.py`（新增回退/包装器/`nul`/虚拟路径/unsupported/结果 API 用例，外加对生成代码的 `bash -n` 语法检查）。`tests/tools/test_local_git_bash_port.py` 不受影响（MSYSTEM 与 git.exe 发现链未改动）。
 
 ### P-062：测试套件卫生清理——移除 ad-hoc / magic-mock / 防 LLM 幻觉测试
 
@@ -174,6 +200,39 @@
 **测试。** `tests/tools/test_terminal_post_process.py`（新增，约 295 行）覆盖：ANSI 剥离、CR/LF 归一化、单行和块去重（低于阈值、高于阈值、空、单行）、行截断（低于限制、无操作、折叠标记、空、小 max_lines）、完整管线集成（直通、去重开关、rtk_rewritten 跳过、行截断、原始保存、返回类型）、超长导出（低于/超过/恰好等于限制）、原始保存到临时文件、元数据块组装（完整+最小）。现有 terminal/file/search/tirith 测试已更新以覆盖 managed-tools-dir 解析。Ruff 检查通过。
 
 **是否可上游？** 可以——去重/截断/导出管线是纯 Python 无外部依赖；managed-tools-dir 模式（`get_managed_tools_dir()`）是一个通用的维护改进，整合了 Hermes 发现自身下载的二进制文件的方式。rtk 集成（命令重写 + 二进制检测）依赖第三方 CLI（`rtk-ai/rtk`），可作为可选增强提交上游。
+
+## 同步记录（2026-09-20，`639823919c` → `dev-fix`）
+
+上游自上次同步点 `08606fc23`（2026-08-13，post-v0.19.0）以来推进了 **16,888 个提交 / 10,771 个文件**。本次合并
+在 `dev-fix` 上落地，产生 **828 个冲突文件 / 2,780 个冲突区块**（双方都改动过的文件共 1,503 个）。
+
+- **解决原则**（MAINTAINING.md）：先保留上游行为与结构，再按其文档化意图重新落地本仓补丁（FORK_NOTES 的
+  P-002…P-062）；若上游已自行实现同一修复，则删除本仓实现并在上表登记。冲突由 26 个互不重叠的子任务并行处理，
+  另有 44 个可机械判定的文件由脚本直接解决。
+- **上游重构**：`hermes_cli/web_routers/*`、`hermes_cli/main_*` + `subcommands/*`、`agent/turn_*`、
+  `tools/terminal_tool_*` + `process_registry` 拆分、`tools/file_operations_*`/`file_tools_*`、`tools/mcp_tool_*`、
+  `cron/scheduler_*`、`tui_gateway` 分模块 mixin、`plugins/**` 新分类、测试目录合并（`run_agent`→`agent`、
+  `cli`→`hermes_cli`、`state`→`hermes_state`、删除 `stress/`）、`docs/` → `website/docs/`。
+- **重新落地（graft）**：P-061 终端/进程 LLM 人体工学（模式等待、inactivity、since_chars、output 导出、前台提升/
+  收养、交互式会话、统一 metadata）移植到上游 `_ExecPlan`/`_run_foreground`/`_ingest_output`；P-002/P-005/P-025/
+  P-055/P-056/P-059 仪表盘路由；P-063 隐藏 CLI 子命令与 P-034 桌面托管网关助手；P-017/P-022/P-024/P-041/P-059
+  代理钩子；P-030/P-049 进程内搜索回退与托管 `rg`；P-033 Windows 进程内 I/O；P-045 懒加载工具索引；P-055 记忆
+  长度钳制；P-062 Moss 文本上限；P-051 解码固定；P-042 探测加固；P-057 冻结运行时插件发现；P-058 Windows shell
+  优先级；P-043 工具定义缓存（在保留上游函数签名的前提下恢复）；`file:///C:/…` 宿主路径转换（10 处）。
+- **本次被上游取代/删除**：P-022 socket kill、P-024 单遍清洗（保留本仓的丢弃语义并另加测试固定）、P-057 系统
+  提示 HERMES_HOME 固定、P-028 网络门控、P-003/P-004 仪表盘门控、P-007 派发异常处理、`IncrementalTokenEstimator`、
+  `tools/mcp_stdio_watchdog.py`、`tools/flux3_video_tool.py`、`tools/computer_use/browser_route.py`、
+  `plugins/observability/nemo_relay/**`、`hermes_cli/subcommands/version.py`、`tests/stress/**`、顶层 `docs/`。
+- **验证**：合并前基线（`efbc700345`）仅 16 个失败（均与 mcp 版本相关）；合并后首轮全量 1,067 失败，经多轮委派
+  修复后为 **通过 54,542 / 失败 34 / 跳过 1,935**（`scripts/run_tests.sh -j 16`，Windows + Python 3.14.3）。
+  CLI 与插件发现冒烟通过。
+- **依赖/打包**：`uv lock` 重新生成；新增上游固定 `snowballstemmer==3.1.1`、`mcp==2.0.0`；静态 `py-modules` 改为
+  `setup.py::_root_py_modules()` 动态派生；`[tool.setuptools.data-files]` 移入 `setup.py`，使 wheel 真正打包
+  `skills/`、`optional-skills/`、`optional-mcps/`、`locales/`；继承自上游的 Windows footgun 发现写入
+  `scripts/ci/windows_footguns_upstream_baseline.txt`（54 处 / 43 个上游文件，新发现仍会失败）。
+- **遗留**：上游代码中的 54 处 footgun 待加固；`website/static/api/model-catalog.json` 的 CN 模型 id 不可由
+  `scripts/build_model_catalog.py` 复现；`apps/desktop` 未跑 tsc/vitest；少量上游新测试为 POSIX 专属，已加
+  OS 标记并写明原因。
 
 ## 发布和维护支撑
 

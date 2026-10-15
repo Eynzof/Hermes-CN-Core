@@ -5,6 +5,8 @@ import os
 import tempfile
 from unittest.mock import AsyncMock, patch
 
+import pytest
+
 
 def _feishu_adapter_module():
     """Import the adapter with the Windows app-data root available in CI."""
@@ -20,12 +22,12 @@ def test_configured_feishu_dependency_check_does_not_load_sdk():
 
     with (
         patch.object(feishu_adapter, "FEISHU_AVAILABLE", False),
-        patch("tools.lazy_deps.ensure", autospec=True) as ensure,
+        patch("pm.ensure_import", autospec=True) as ensure,
     ):
         assert feishu_adapter.check_feishu_requirements() is True
         assert feishu_adapter.FEISHU_AVAILABLE is False
 
-    ensure.assert_called_once_with("platform.feishu", prompt=False)
+    ensure.assert_called_once_with("feishu")
 
 
 def test_preinstalled_feishu_sdk_is_still_bound_on_first_use():
@@ -33,8 +35,8 @@ def test_preinstalled_feishu_sdk_is_still_bound_on_first_use():
     feishu_adapter = _feishu_adapter_module()
     fake_lark = object()
 
-    def _ensure_and_bind(_feature, importer, target_globals, *, prompt):
-        assert prompt is False
+    def _ensure_and_bind(feature, importer, target_globals):
+        assert feature == "feishu"
         target_globals.update(importer())
         return True
 
@@ -46,7 +48,7 @@ def test_preinstalled_feishu_sdk_is_still_bound_on_first_use():
             "_lark_bindings",
             return_value={"lark": fake_lark, "FEISHU_AVAILABLE": True},
         ),
-        patch("tools.lazy_deps.ensure_and_bind", side_effect=_ensure_and_bind) as ensure_and_bind,
+        patch("pm.extras.ensure_and_bind", side_effect=_ensure_and_bind) as ensure_and_bind,
     ):
         assert feishu_adapter._load_lark_oapi() is True
         assert feishu_adapter.lark is fake_lark
@@ -74,6 +76,19 @@ def test_request_builders_fall_back_when_sdk_is_not_bound():
     assert body.uuid == "uuid-1"
     assert request.receive_id_type == "chat_id"
     assert request.request_body is body
+
+
+def test_real_sdk_binding_builds_delete_request(monkeypatch):
+    sdk = pytest.importorskip("lark_oapi.api.im.v1")
+    feishu_adapter = _feishu_adapter_module()
+    bindings = feishu_adapter._lark_bindings()
+    monkeypatch.setattr(feishu_adapter, "DeleteMessageRequest", bindings["DeleteMessageRequest"])
+
+    request = feishu_adapter.FeishuAdapter._build_delete_message_request("om_cleanup")
+
+    assert isinstance(request, sdk.DeleteMessageRequest)
+    assert request.http_method is bindings["HttpMethod"].DELETE
+    assert request.paths == {"message_id": "om_cleanup"}
 
 
 def test_feishu_connect_loads_sdk_on_worker_thread():

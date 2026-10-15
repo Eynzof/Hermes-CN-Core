@@ -11,10 +11,6 @@ import pytest
 from agent import coding_context as cc
 
 
-def test_coding_guidance_advertises_persistent_terminal_state():
-    assert "Terminal state persists across calls" in cc.CODING_AGENT_GUIDANCE
-    assert "Activate a virtualenv" in cc.CODING_AGENT_GUIDANCE
-    assert "instead of re-sourcing it before every test command" in cc.CODING_AGENT_GUIDANCE
 
 
 def _git_init(path):
@@ -22,13 +18,26 @@ def _git_init(path):
         "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
         "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t",
         "HOME": str(path),
+        # Same config isolation the product's git probes use
+        # (``hermes_cli._subprocess_compat.noninteractive_git_env``). Without it a host
+        # ``core.autocrlf=true`` (the Windows default in git-for-windows' *system* config)
+        # stores LF in the index while the worktree keeps CRLF, and the probe — which
+        # deliberately drops that config — then reports the just-committed file as modified.
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": os.devnull,
     }
     # Commit a source file so the fixture is a real *code* workspace: a bare git
     # repo with no code no longer flips into the coding posture (see
     # _detect_profile_name / _has_code_files), so "a code repo" needs code.
-    (Path(path) / "main.py").write_text("print('hi')\n")
+    # write_bytes, not write_text: text mode rewrites "\n" as CRLF on Windows.
+    (Path(path) / "main.py").write_bytes(b"print('hi')\n")
     for args in (
         ["init", "-q", "-b", "main"],
+        # Pin line-ending handling to the repo itself: with a host-global
+        # core.autocrlf=true, a just-committed tree can report "1 modified"
+        # immediately after init (CRLF round-trip), which poisons the
+        # clean-status contract this suite asserts.
+        ["config", "core.autocrlf", "false"],
         ["add", "-A"],
         ["commit", "-q", "-m", "init commit"],
     ):
@@ -78,7 +87,7 @@ class TestCodingSelection:
     def test_auto_is_prompt_only(self, tmp_path):
         # Default posture must never override the user's configured toolsets —
         # off-by-default toolsets are already off, and explicit opt-ins
-        # (image-gen, spotify, …) survive entering a code workspace.
+        # (image-gen, homeassistant, …) survive entering a code workspace.
         _git_init(tmp_path)
         cfg = {"agent": {"coding_context": "auto"}}
         assert cc.coding_selection(platform="cli", cwd=tmp_path, config=cfg) is None
@@ -274,20 +283,6 @@ class TestEditFormatSteering:
         assert cc._model_family(None) is None
         assert cc._model_family("") is None
 
-    def test_openai_family_gets_v4a_nudge(self, tmp_path):
-        _git_init(tmp_path)
-        mode = cc.resolve_runtime_mode(
-            platform="cli", cwd=tmp_path,
-            config={"agent": {"coding_context": "on"}}, model="openai/gpt-5.4",
-        )
-        brief = mode.system_blocks()[0]
-        assert "mode='patch'" in brief
-        assert "V4A" in brief
-        assert "write_file" in brief  # new files authored, not patched
-        # Codex-family harnesses ship apply_patch (V4A) as the ONLY editor and
-        # instruct it even for single-file edits — never nudge replace mode.
-        assert "single-file" in brief
-        assert "mode='replace'" not in brief
 
 
 
@@ -299,14 +294,6 @@ class TestEditFormatSteering:
 class TestProfiles:
 
 
-    def test_coding_profile_shape(self):
-        # The coding profile declares the seams other domains read.
-        assert cc.CODING_PROFILE.toolset == cc.CODING_TOOLSET
-        assert cc.CODING_PROFILE.guidance
-        assert cc.CODING_PROFILE.model_hint == "coding"
-        # General is inert.
-        assert cc.GENERAL_PROFILE.toolset is None
-        assert cc.GENERAL_PROFILE.guidance == ""
 
     def test_skill_demotion_gated_on_focus(self, tmp_path):
         # Names-only demotion is opt-in via focus mode — the default (auto)

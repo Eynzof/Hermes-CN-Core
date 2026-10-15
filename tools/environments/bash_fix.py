@@ -11,7 +11,32 @@ Windows-style backslash paths (``D:\\repo\\src``, ``\\\\server\\share``,
 or as the command word itself (``C:\\tools\\rg.exe``) — are rewritten to the
 forward-slash spellings Git Bash understands, and the cmd.exe-only
 ``cd /d <path>`` form loses its flag
-(``cd`` accepts a single argument in Bash).  Rewrites are conservative: the
+(``cd`` accepts a single argument in Bash).  Git Bash virtual POSIX absolute
+paths are rewritten to the native spellings native Windows executables can
+resolve: ``/tmp/x`` becomes the real Windows temp directory (``/tmp`` in Git
+Bash is a virtual mount, so a native tool would otherwise read it as
+``<current-drive>:\\tmp\\x``) and ``/c/x``/``/d/x`` become ``C:/x``/``D:/x``.
+This makes a POSIX-style command behave the same under Git Bash and native
+POSIX bash.  A redundant leading shell
+invocation — ``bash cd /c/dev/x && ...`` or ``bash -c 'cd C:\\x && rev'`` —
+is unwrapped (and the ``-c`` inline script is scanned for fallbacks and
+paths) because the Bash tool already runs the whole string via bash, so
+``bash cd ...`` would otherwise try to open ``cd`` as a script file and fail.
+Under an active command wrapper (``env``/``nohup``/``timeout``/...) the shell
+word is an operand of that wrapper, so ``bash -c '<script>'`` keeps its shape
+and only the inline script is fixed in place.
+
+Command wrappers whose operand is itself a command are scanned as command
+contexts so missing POSIX commands behind them get their Git Bash fallback:
+``timeout`` (its one DURATION operand is consumed first), ``stdbuf``, ``nice``,
+and ``xargs`` (bundled Git Bash executables that exec their operand), plus the
+fallback wrappers ``gtimeout`` and ``watch`` (which also record their own
+fallback definition; ``watch`` re-runs its command through ``eval "$*"`` in
+the same shell, matching procps ``watch``'s ``sh -c`` behavior).  Fallback
+definitions are exported (``export -f``) so nested shells — the standalone
+runner scripts and ``bash -c`` operands — inherit them.
+
+Rewrites are conservative: the
 unquoted word must look unambiguously like a Windows path, so quoted data,
 tool-level escape sequences, short ambiguous words such as ``a\\nb``, and
 single-segment relative paths such as ``foo\\bar`` are preserved byte-for-byte.
@@ -23,11 +48,23 @@ The scanner is shell-aware: quoted text, comments, heredoc and here-string
 bodies, assignments, case patterns, and ordinary arguments are data, not
 commands.  Nested command substitutions and process substitutions are scanned
 as their own command contexts.
+
+Unquoted ``nul``/``NUL`` output redirection targets are rewritten to
+``/dev/null`` (Git Bash would otherwise quietly create a real file named
+``nul``), and command names with no faithful Windows Git Bash equivalent
+are recorded in ``BashFix.unsupported`` together with the reason — for
+those the command text is left byte-for-byte unchanged so the caller can
+explain the failure instead of running a guaranteed ``command not found``.
+
+This module is Windows-only by design: :func:`fix_bash_command` returns
+non-Windows input byte-for-byte unchanged, mirroring the call-site guard
+in ``tools/environments/local.py``.
 """
 
 from __future__ import annotations
 
 import sys
+import tempfile
 from dataclasses import dataclass
 
 from agent.re_compat import re
@@ -442,7 +479,7 @@ _FALLBACK_BODIES = {
         "-*) printf '%s\\n' \"watch: unsupported option: $1\" >&2; return 1;; "
         "*) break;; esac; done; "
         "if [[ $# -eq 0 ]]; then printf '%s\\n' 'watch: missing command' >&2; return 1; fi; "
-        "while true; do clear; \"$@\"; sleep \"$__hermes_interval\"; done"
+        "while true; do clear; eval \"$*\"; sleep \"$__hermes_interval\"; done"
     ),
     "killall": (
         "if [[ $# -eq 0 ]]; then printf '%s\\n' 'killall: missing process name' >&2; return 1; fi; "
@@ -458,10 +495,199 @@ _FALLBACK_BODIES = {
         "-t) shift;; "
         "-s) __hermes_sep=$2; shift 2;; "
         "-s?*) __hermes_sep=${1#-s}; shift;; "
-        "-*) printf '%s\\n' \"column: unsupported option for perl fallback: $1\" >&2; return 1;; "
+        "-*) printf '%s\n' \"column: unsupported option for perl fallback: $1\" >&2; return 1;; "
         "*) break;; esac; done; "
         + _COLUMN_PERL
         + " \"$__hermes_sep\" \"$@\""
+    ),
+    # POSIX utilities from the common command cheat-sheet that are absent
+    # from a bare Git Bash userland and map onto native Windows tools.
+    "free": (
+        "local __hermes_unit=K; "
+        "while (( $# )); do case $1 in "
+        "-b|--bytes) __hermes_unit=B; shift;; "
+        "-k|--kibi|--kilo) __hermes_unit=K; shift;; "
+        "-m|--mebi|--mega) __hermes_unit=M; shift;; "
+        "-g|--gibi|--giga) __hermes_unit=G; shift;; "
+        "-h|--human) __hermes_unit=H; shift;; "
+        "--help) printf '%s\n' 'free: report memory usage (Windows: Win32_OperatingSystem; no swap row)'; return 0;; "
+        "-*) printf '%s\n' \"free: unsupported option: $1\" >&2; return 1;; "
+        "*) shift;; esac; done; "
+        "local -a __hermes_m=(); "
+        "mapfile -t __hermes_m < <(powershell.exe -NoProfile -NonInteractive -Command "
+        "'$o=Get-CimInstance Win32_OperatingSystem; "
+        "Write-Output $o.TotalVisibleMemorySize; Write-Output $o.FreePhysicalMemory' "
+        "2>/dev/null | tr -d '\\r'); "
+        "if [[ ${#__hermes_m[@]} -lt 2 ]]; then "
+        "printf '%s\n' 'free: failed to query memory information' >&2; return 1; fi; "
+        "local __hermes_total=${__hermes_m[0]} __hermes_free=${__hermes_m[1]}; "
+        "local __hermes_used=$(( __hermes_total - __hermes_free )); "
+        "printf '%s\n' '               total        used        free'; "
+        "case $__hermes_unit in "
+        "B) printf 'Mem: %12d %11d %11d\n' $(( __hermes_total * 1024 )) $(( __hermes_used * 1024 )) $(( __hermes_free * 1024 ));; "
+        "M) printf 'Mem: %12d %11d %11d\n' $(( __hermes_total / 1024 )) $(( __hermes_used / 1024 )) $(( __hermes_free / 1024 ));; "
+        "G) printf 'Mem: %12d %11d %11d\n' $(( __hermes_total / 1024 / 1024 )) $(( __hermes_used / 1024 / 1024 )) $(( __hermes_free / 1024 / 1024 ));; "
+        "H) awk -v t=\"$__hermes_total\" -v f=\"$__hermes_free\" '"
+        "function h(x,  i){i=1; while(x>=10240&&i<4){x=x/1024;i++} "
+        "return sprintf(\"%.1f%s\", x, substr(\"KMGT\", i, 1))} "
+        "BEGIN{printf \"Mem: %11s %10s %10s\\n\", h(t), h(t-f), h(f)}';; "
+        "*) printf 'Mem: %12d %11d %11d\n' \"$__hermes_total\" \"$__hermes_used\" \"$__hermes_free\";; esac"
+    ),
+    "uptime": (
+        "local __hermes_since=0; "
+        "while (( $# )); do case $1 in "
+        "-s|--since) __hermes_since=1; shift;; "
+        "--help) printf '%s\n' 'uptime: tell how long the system has been running (Windows approximation; no user count)'; return 0;; "
+        "-*) printf '%s\n' \"uptime: unsupported option: $1\" >&2; return 1;; "
+        "*) printf '%s\n' \"uptime: unsupported argument: $1\" >&2; return 1;; esac; done; "
+        "local -a __hermes_u=(); "
+        "mapfile -t __hermes_u < <(powershell.exe -NoProfile -NonInteractive -Command "
+        "'$b=(Get-CimInstance Win32_OperatingSystem).LastBootUpTime; "
+        "Write-Output $b.ToString(\"yyyy-MM-dd HH:mm:ss\"); "
+        "$up=New-TimeSpan -Start $b -End (Get-Date); "
+        "Write-Output $up.Days; Write-Output $up.Hours; Write-Output $up.Minutes' "
+        "2>/dev/null | tr -d '\\r'); "
+        "if [[ ${#__hermes_u[@]} -lt 4 ]]; then "
+        "printf '%s\n' 'uptime: failed to query boot time' >&2; return 1; fi; "
+        "if (( __hermes_since )); then printf '%s\n' \"${__hermes_u[0]}\"; return 0; fi; "
+        "local __hermes_days=${__hermes_u[1]} __hermes_hours=${__hermes_u[2]} __hermes_mins=${__hermes_u[3]}; "
+        "printf -v __hermes_mins '%02d' \"$__hermes_mins\"; "
+        "local __hermes_up; "
+        "if (( __hermes_days > 0 )); then "
+        "printf -v __hermes_up '%d day(s), %d:%s' \"$__hermes_days\" \"$__hermes_hours\" \"$__hermes_mins\"; "
+        "else printf -v __hermes_up '%d:%s' \"$__hermes_hours\" \"$__hermes_mins\"; fi; "
+        "printf '%s up %s, load average: n/a (not reported on Windows)\n' \"$(date '+%H:%M:%S')\" \"$__hermes_up\""
+    ),
+    "top": (
+        "local __hermes_delay=3 __hermes_iters=0 __hermes_batch=0 __hermes_count=0; "
+        "while (( $# )); do case $1 in "
+        "-b) __hermes_batch=1; shift;; "
+        "-d) __hermes_delay=$2; shift 2;; "
+        "-d?*) __hermes_delay=${1#-d}; shift;; "
+        "-n) __hermes_iters=$2; shift 2;; "
+        "-n?*) __hermes_iters=${1#-n}; shift;; "
+        "-h|--help) printf '%s\n' 'top: display processes (Windows approximation via Get-Process; Ctrl+C quits)'; return 0;; "
+        "-*) printf '%s\n' \"${FUNCNAME[0]}: unsupported option: $1\" >&2; return 1;; "
+        "*) shift;; esac; done; "
+        "__hermes_snapshot() { powershell.exe -NoProfile -NonInteractive -Command "
+        "'Get-Process | Sort-Object -Property CPU -Descending | "
+        "Select-Object -First 25 Id,ProcessName,CPU,WorkingSet | Format-Table -AutoSize'; }; "
+        "if (( __hermes_batch )); then "
+        "local __hermes_n=$__hermes_iters; (( __hermes_n > 0 )) || __hermes_n=1; "
+        "while (( __hermes_count < __hermes_n )); do "
+        "__hermes_snapshot; __hermes_count=$(( __hermes_count + 1 )); done; return 0; fi; "
+        "while (( __hermes_iters == 0 || __hermes_count < __hermes_iters )); do "
+        "clear; __hermes_snapshot; __hermes_count=$(( __hermes_count + 1 )); "
+        "(( __hermes_iters > 0 && __hermes_count >= __hermes_iters )) && break; "
+        "sleep \"$__hermes_delay\"; done"
+    ),
+    "ss": (
+        "local __hermes_stats=0; "
+        "local -a __hermes_split=(); "
+        "local __hermes_combo='' __hermes_i=0; "
+        "while (( $# )); do "
+        "if [[ $1 == -[!-]* && ${#1} -gt 2 ]]; then "
+        "__hermes_combo=${1#-}; __hermes_split=(); shift; "
+        "for (( __hermes_i=0; __hermes_i<${#__hermes_combo}; __hermes_i++ )); do "
+        "__hermes_split+=(-${__hermes_combo:__hermes_i:1}); done; "
+        "set -- \"${__hermes_split[@]}\" \"$@\"; continue; fi; "
+        "case $1 in "
+        "-s|--summary) __hermes_stats=1; shift;; "
+        "-t|-u|-l|-n|-a|-p|-e|-m|-r|-i|-x|-4|-6|-T|--tcp|--udp|--listening|--numeric|--all|--process|--extended|--memory|--resolve|--inet|--inet4|--inet6) shift;; "
+        "--*) shift;; "
+        "-*) printf '%s\n' \"ss: unsupported option: $1\" >&2; return 1;; "
+        "*) shift;; esac; done; "
+        "if (( __hermes_stats )); then netstat -s; else netstat -ano; fi"
+    ),
+    "ip": (
+        "local __hermes_sub=''; "
+        "while (( $# )); do case $1 in "
+        "-4|-6|-br|--brief|-details|-s|-human|-iec|-o|-oneline|-c|--color|-color) shift;; "
+        "-h|--help) __hermes_sub=help; shift;; "
+        "-*) printf '%s\n' \"ip: unsupported option: $1\" >&2; return 1;; "
+        "*) if [[ -z $__hermes_sub ]]; then __hermes_sub=$1; fi; shift;; esac; done; "
+        "case $__hermes_sub in "
+        "help) printf '%s\n' 'Usage: ip [addr|link|route|neigh] (Windows equivalents: ipconfig / Get-NetAdapter / route print / arp -a)'; return 0;; "
+        "'') printf '%s\n' 'Usage: ip [addr|link|route|neigh] (Windows equivalents: ipconfig / Get-NetAdapter / route print / arp -a)' >&2; return 1;; "
+        "addr|address|a) ipconfig;; "
+        "link|l) powershell.exe -NoProfile -NonInteractive -Command "
+        "'Get-NetAdapter | ForEach-Object { \"$($_.Name) $($_.Status) $($_.LinkSpeed) $($_.MacAddress)\" }';; "
+        "route|r) route print;; "
+        "neigh|n) arp -a;; "
+        "*) printf '%s\n' \"ip: unsupported object: $__hermes_sub (supported: addr link route neigh)\" >&2; return 1;; esac"
+    ),
+    "man": (
+        "local __hermes_rc=0 __hermes_seen=0; "
+        "while (( $# )); do case $1 in "
+        "--help) printf '%s\n' 'man: show command help (fallback prints <command> --help)'; return 0;; "
+        "--) shift; break;; "
+        "-*) printf '%s\n' \"man: unsupported option for --help fallback: $1\" >&2; return 1;; "
+        "*) break;; esac; done; "
+        "while (( $# )); do "
+        "if [[ $1 =~ ^[0-9]+$ ]]; then shift; continue; fi; "
+        "__hermes_seen=1; \"$1\" --help || __hermes_rc=1; shift; done; "
+        "if (( ! __hermes_seen )); then printf '%s\n' 'man: missing command name' >&2; return 1; fi; "
+        "return $__hermes_rc"
+    ),
+    "systemctl": (
+        "local __hermes_cmd=''; "
+        "local -a __hermes_names=(); "
+        "while (( $# )); do case $1 in "
+        "-q|--quiet|--no-pager|--plain|--full|-l|--no-legend|--no-ask-password|--user|--system|--global) shift;; "
+        "--type=*) shift;; "
+        "--) shift; break;; "
+        "-*) printf '%s\n' \"systemctl: unsupported option: $1\" >&2; return 1;; "
+        "*) if [[ -z $__hermes_cmd ]]; then __hermes_cmd=$1; else __hermes_names+=(\"$1\"); fi; shift;; esac; done; "
+        "if [[ -z $__hermes_cmd ]]; then "
+        "printf '%s\n' 'systemctl: missing subcommand (Windows service equivalents; supported: status start stop restart reload enable disable is-active is-enabled list-units list-unit-files)' >&2; return 1; fi; "
+        "case $__hermes_cmd in "
+        "status) (( ${#__hermes_names[@]} )) || { printf '%s\n' 'systemctl: missing unit name' >&2; return 1; }; "
+        "local __hermes_csv=$(IFS=,; echo \"${__hermes_names[*]}\"); "
+        "powershell.exe -NoProfile -NonInteractive -Command "
+        "\"Get-Service -Name '$__hermes_csv' | Format-List Name,DisplayName,Status,StartType\";; "
+        "start|stop|restart|reload) (( ${#__hermes_names[@]} )) || { printf '%s\n' 'systemctl: missing unit name' >&2; return 1; }; "
+        "local __hermes_ps='' __hermes_n; "
+        "for __hermes_n in \"${__hermes_names[@]}\"; do "
+        "if [[ $__hermes_cmd == stop || $__hermes_cmd == restart || $__hermes_cmd == reload ]]; then "
+        "__hermes_ps+=\"Stop-Service -Name '$__hermes_n' -ErrorAction Stop; \"; fi; "
+        "if [[ $__hermes_cmd == start || $__hermes_cmd == restart || $__hermes_cmd == reload ]]; then "
+        "__hermes_ps+=\"Start-Service -Name '$__hermes_n' -ErrorAction Stop; \"; fi; done; "
+        "powershell.exe -NoProfile -NonInteractive -Command \"$__hermes_ps\";; "
+        "enable|disable) (( ${#__hermes_names[@]} )) || { printf '%s\n' 'systemctl: missing unit name' >&2; return 1; }; "
+        "local __hermes_start=demand; [[ $__hermes_cmd == enable ]] && __hermes_start=auto; "
+        "local __hermes_rc=0 __hermes_n; "
+        "for __hermes_n in \"${__hermes_names[@]}\"; do "
+        "sc.exe config \"$__hermes_n\" start= \"$__hermes_start\" >/dev/null || __hermes_rc=1; done; "
+        "return $__hermes_rc;; "
+        "is-active) (( ${#__hermes_names[@]} )) || { printf '%s\n' 'systemctl: missing unit name' >&2; return 1; }; "
+        "local __hermes_rc=0 __hermes_n; "
+        "for __hermes_n in \"${__hermes_names[@]}\"; do "
+        "if sc.exe query \"$__hermes_n\" 2>/dev/null | grep -q 'RUNNING'; then "
+        "printf '%s\n' active; else printf '%s\n' inactive; __hermes_rc=3; fi; done; "
+        "return $__hermes_rc;; "
+        "is-enabled) (( ${#__hermes_names[@]} )) || { printf '%s\n' 'systemctl: missing unit name' >&2; return 1; }; "
+        "local __hermes_rc=0 __hermes_n; "
+        "for __hermes_n in \"${__hermes_names[@]}\"; do "
+        "if sc.exe qc \"$__hermes_n\" 2>/dev/null | grep -q 'DISABLED'; then "
+        "printf '%s\n' disabled; __hermes_rc=1; else printf '%s\n' enabled; fi; done; "
+        "return $__hermes_rc;; "
+        "list-units|list-unit-files) "
+        "powershell.exe -NoProfile -NonInteractive -Command "
+        "'Get-Service | ForEach-Object { \"$($_.Status) $($_.Name) $($_.DisplayName)\" }';; "
+        "*) printf '%s\n' \"systemctl: unsupported subcommand: $__hermes_cmd (supported: status start stop restart reload enable disable is-active is-enabled list-units list-unit-files)\" >&2; return 1;; esac"
+    ),
+    # Windows 11 ships sudo.exe in system32; older Windows releases have no
+    # sudo at all, so the guard below only defines this on those hosts.  The
+    # body elevates through a UAC prompt: output is NOT captured (it shows in
+    # the elevated window), which is an honest, documented deviation.
+    "sudo": (
+        "if (( $# == 0 )); then printf '%s\n' 'sudo: missing command' >&2; return 1; fi; "
+        "local __hermes_bash; __hermes_bash=$(type -P bash) || { printf '%s\n' 'sudo: bash not found' >&2; return 1; }; "
+        "local __hermes_wbash; __hermes_wbash=$(cygpath -w -- \"$__hermes_bash\") || return 1; "
+        "printf '%s\n' 'sudo: elevating via UAC in a separate window; output is not captured here' >&2; "
+        "__HERMES_SUDO_CMD=\"$*\" powershell.exe -NoProfile -NonInteractive -Command "
+        "\"Start-Process -Verb RunAs -Wait -FilePath '$__hermes_wbash' -ArgumentList '-c', \\$env:__HERMES_SUDO_CMD\"; "
+        "local __hermes_rc=$?; return $__hermes_rc"
     ),
 }
 
@@ -477,8 +703,6 @@ for _gnu_command in (
     "xargs",
 ):
     _FALLBACK_BODIES.setdefault("g" + _gnu_command, f'{_gnu_command} "$@"')
-
-
 
 
 def _fallback_definition(name: str) -> str:
@@ -518,7 +742,24 @@ def _wrapper_runner(name: str) -> str:
 # same ``/dev/tcp`` zero-I/O fallback.
 _FALLBACK_BODIES.setdefault("netcat", _FALLBACK_BODIES["nc"])
 
+# ``htop`` is the fancy TUI spelling of the same live-process view; the
+# Windows approximation is identical to ``top``'s.
+_FALLBACK_BODIES.setdefault("htop", _FALLBACK_BODIES["top"])
+
 _FALLBACKS = {name: _fallback_definition(name) for name in _FALLBACK_BODIES}
+
+# Commands with no faithful Windows Git Bash equivalent at all.  The scanner
+# records these in ``BashFix.unsupported`` (command text is left untouched)
+# so the app layer can refuse to run the command and return the reason in its
+# error message instead of letting Bash fail with a bare "command not found".
+_UNSUPPORTED_BODIES = {
+    "journalctl": (
+        "systemd's journal does not exist on Windows and Git Bash has no "
+        "journal daemon, so there is no faithful equivalent. Read the "
+        "application's own log file(s), or query the Windows Event Log "
+        "instead: powershell.exe Get-WinEvent -LogName Application -MaxEvents 50"
+    ),
+}
 
 _ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\+)?=")
 _NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -530,8 +771,51 @@ _COMMAND_END_KEYWORDS = frozenset({"fi", "done", "esac"})
 _LIST_KEYWORDS = frozenset({"for", "select", "case"})
 
 _COMMAND_WRAPPERS = frozenset(
-    {"command", "coproc", "env", "exec", "nohup", "sudo", "time"}
+    {"command", "coproc", "env", "exec", "nohup", "sudo", "time",
+     "timeout", "stdbuf", "nice", "xargs"}
 )
+
+# Fallback names that behave like command wrappers too: the word itself needs
+# its fallback definition recorded AND its first non-option operand is a
+# command the wrapper executes.  ``gtimeout`` runs ``timeout "$@"`` (an
+# executable that execs argv, so its command operand needs the standalone
+# runner), while ``watch`` runs its command inside the same shell (its body
+# uses ``eval "$*"``, so a same-shell function call suffices).  ``sudo`` maps
+# to its own wrapper semantics (option table and executable operand); the
+# fallback definition only engages on hosts without ``sudo.exe`` (pre-Windows
+# 11), where it elevates through a UAC prompt.
+_FALLBACK_COMMAND_WRAPPERS = {
+    "gtimeout": "timeout",
+    "watch": "watch",
+    "sudo": "sudo",
+}
+
+# Wrappers that require a fixed number of plain operands (options excluded)
+# before the command word.  GNU ``timeout`` takes exactly one DURATION operand
+# (``timeout 5 rev``, ``timeout -s KILL 5s rev``) before COMMAND, so the
+# duration is consumed without being mistaken for the wrapped command.
+_WRAPPER_OPERAND_COUNTS = {"timeout": 1}
+
+# Wrapper kinds whose command operand runs inside the current shell rather
+# than being exec'd as a new process: the fallback function defined by the
+# prefix is directly callable, so the source word is kept (no standalone
+# runner rewrite is needed or possible).
+_SAME_SHELL_WRAPPERS = frozenset({"coproc", "time", "watch"})
+
+# Shell executables that agents frequently put in front of a command the Bash
+# tool is already going to run (``bash cd /c/dev/x && ...``).  Git Bash can
+# stand in for these POSIX-family shells, so a redundant leading invocation is
+# unwrapped instead of letting bash try to open ``cd`` as a script file.  Only
+# shells whose syntax is a subset of bash are listed; ``zsh``/``ksh``/``csh``
+# scripts may use incompatible syntax and are deliberately left untouched.
+_SHELL_WRAPPERS = frozenset({"bash", "sh", "dash", "ash"})
+
+# Short-option clusters of the shell wrappers that take the next argument as
+# an inline command string.  ``bash -c '...'`` is the canonical form;
+# ``-lc``/``-cl`` add the (harmless here) login flag.  Clusters such as
+# ``-ec``/``-ce``/``-xc`` that change errexit/xtrace semantics are left for
+# bash to handle so unwrapping cannot alter the script's meaning.
+_SHELL_C_OPTIONS = re.compile(r"^-c$|^-lc$|^-cl$")
 _WRAPPER_OPTIONS_WITH_VALUE = {
     "env": frozenset(
         {
@@ -569,6 +853,47 @@ _WRAPPER_OPTIONS_WITH_VALUE = {
         }
     ),
     "time": frozenset({"-f", "--format", "-o", "--output"}),
+    "timeout": frozenset(
+        {
+            "-k",
+            "--kill-after",
+            "-s",
+            "--signal",
+        }
+    ),
+    "stdbuf": frozenset(
+        {
+            "-o",
+            "-e",
+            "-i",
+            "--output",
+            "--error",
+            "--input",
+        }
+    ),
+    "nice": frozenset({"-n", "--adjustment"}),
+    "xargs": frozenset(
+        {
+            "-I",
+            "-n",
+            "-L",
+            "-P",
+            "-s",
+            "-S",
+            "-a",
+            "-d",
+            "-E",
+            "--arg-file",
+            "--max-args",
+            "--max-chars",
+            "--max-procs",
+            "--max-lines",
+            "--replace",
+            "--eof",
+            "--delimiter",
+        }
+    ),
+    "watch": frozenset({"-n", "--interval"}),
 }
 
 # Wrapper options whose value is a filesystem path rather than a name or
@@ -579,8 +904,9 @@ _WRAPPER_PATH_OPTIONS = {
     "env": frozenset({"-C", "--chdir"}),
     "sudo": frozenset({"-D", "--chdir"}),
     "time": frozenset({"-o", "--output"}),
+    "xargs": frozenset({"-a", "--arg-file"}),
 }
-_WRAPPER_PATH_OPTION_LONG = frozenset({"--chdir", "--output"})
+_WRAPPER_PATH_OPTION_LONG = frozenset({"--chdir", "--output", "--arg-file"})
 
 _OPERATOR_CHARS = frozenset(";&|()<>\n")
 _REDIRECTION_START = frozenset("<>")
@@ -624,29 +950,71 @@ normalizing it to ``/ `` would invent a directory level that does not exist.
 The backslash is dropped and the character kept inside its segment.
 """
 
+
+def _windows_temp_dir() -> str:
+    """Return the real Windows temp directory as a forward-slash path.
+
+    Git Bash's ``/tmp`` maps to this directory (``cygpath -w /tmp`` reports
+    the same value), but Git Bash's ``TMP``/``TEMP`` environment variables are
+    MSYS-style ``/tmp`` inside the shell, so they cannot be used to translate
+    ``/tmp`` paths for native Windows executables.  The parent (Hermes)
+    process environment holds the Windows-style spelling, which is what
+    ``tempfile.gettempdir()`` returns.  On POSIX hosts this returns ``/tmp``
+    (the identity for the rewrite), which keeps the scanner's platform gate
+    the single source of truth for when the rewrite applies.
+    """
+    return tempfile.gettempdir().replace("\\", "/")
+
+
 @dataclass(frozen=True)
 class BashFix:
     """Result of :func:`fix_bash_command`.
 
     ``replacements`` records each original command name in source order and
     ``path_changes`` each original argument or command word whose
-    Windows-style backslashes (or cmd.exe ``/d`` flag) were rewritten for Git
-    Bash.  Empty tuples mean the command was returned byte-for-byte unchanged.
+    Windows-style backslashes, Git Bash virtual absolute path (``/tmp/x``,
+    ``/c/x``), or cmd.exe ``/d`` flag were rewritten for Git Bash.
+    ``shell_wrappers`` records each redundant ``bash``/``sh``
+    invocation that was unwrapped (``bash <cmd> ...`` or ``bash -c <script>``)
+    so the command runs directly in the Bash tool.  ``nul_fixes`` records each
+    unquoted redirection target ``nul``/``NUL`` that was rewritten to
+    ``/dev/null`` (Git Bash treats ``nul`` as an ordinary filename, silently
+    creating an empty ``nul`` file instead of discarding output).
+    ``unsupported`` records each command name that has no faithful Windows
+    Git Bash equivalent (see ``_UNSUPPORTED_BODIES`` for the reasons); the
+    command text is left byte-for-byte unchanged for those.  Empty tuples
+    mean the command was returned byte-for-byte unchanged.
     """
 
     command: str
     replacements: tuple[str, ...] = ()
     path_changes: tuple[str, ...] = ()
+    shell_wrappers: tuple[str, ...] = ()
+    nul_fixes: tuple[str, ...] = ()
+    unsupported: tuple[str, ...] = ()
 
     @property
     def changed(self) -> bool:
         """Return whether any compatibility replacement was made."""
-        return bool(self.replacements) or bool(self.path_changes)
+        return (
+            bool(self.replacements)
+            or bool(self.path_changes)
+            or bool(self.shell_wrappers)
+            or bool(self.nul_fixes)
+        )
 
     @property
     def warning(self) -> str:
         """Return a concise description of compatibility changes."""
         parts: list[str] = []
+        if self.unsupported:
+            details = "; ".join(
+                f"`{name}` — {_UNSUPPORTED_BODIES[name]}" for name in self.unsupported
+            )
+            parts.append(
+                "Command(s) with no Windows Git Bash equivalent: "
+                f"{details}."
+            )
         if self.replacements:
             names = ", ".join(f"`{name}`" for name in self.replacements)
             parts.append(
@@ -656,7 +1024,19 @@ class BashFix:
             words = ", ".join(f"`{word}`" for word in self.path_changes)
             parts.append(
                 "Rewrote Windows path(s) for Git Bash (backslashes to forward "
-                f"slashes): {words}."
+                f"slashes; Git Bash virtual paths to native spellings): {words}."
+            )
+        if self.shell_wrappers:
+            names = ", ".join(f"`{name}`" for name in self.shell_wrappers)
+            parts.append(
+                f"Removed redundant shell wrapper(s): {names}."
+            )
+        if self.nul_fixes:
+            words = ", ".join(f"`{word}`" for word in self.nul_fixes)
+            parts.append(
+                "Rewrote null-device redirection target(s) for Git Bash: "
+                f"{words} -> `/dev/null` (an unquoted `nul` would otherwise "
+                "create an empty file named `nul`)."
             )
         return " ".join(parts)
 
@@ -667,6 +1047,7 @@ class _Wrapper:
     skip_next: bool = False
     opaque: bool = False
     path_value: bool = False
+    operands: int = 0
 
 
 @dataclass
@@ -679,7 +1060,7 @@ class _HereDoc:
 class _Scanner:
     """Conservative scanner for Bash executable command positions."""
 
-    __slots__ = ("s", "n", "edits", "names", "path_notes", "heredoc_events", "nest_depth")
+    __slots__ = ("s", "n", "edits", "names", "path_notes", "shell_notes", "heredoc_events", "nest_depth", "nul_fixes", "unsupported")
 
     def __init__(self, command: str) -> None:
         self.s = command
@@ -687,8 +1068,11 @@ class _Scanner:
         self.edits: list[tuple[int, int, str]] = []
         self.names: list[str] = []
         self.path_notes: list[str] = []
+        self.shell_notes: list[str] = []
         self.heredoc_events: list[tuple[int, int]] = []
         self.nest_depth = 0
+        self.nul_fixes: list[str] = []
+        self.unsupported: list[str] = []
 
     def fix(self) -> BashFix:
         try:
@@ -697,33 +1081,62 @@ class _Scanner:
             # Malformed or adversarial nesting must never make the Bash tool
             # fail before Bash itself can report the syntax error.
             return BashFix(self.s)
-        if not self.names and not self.edits:
+        if (
+            not self.names
+            and not self.edits
+            and not self.shell_notes
+            and not self.nul_fixes
+            and not self.unsupported
+        ):
             return BashFix(self.s)
-        definitions = "\n".join(
-            _FALLBACKS[name] for name in dict.fromkeys(self.names)
+        unique_names = list(dict.fromkeys(self.names))
+        definitions = "\n".join(_FALLBACKS[name] for name in unique_names)
+        # Exported fallbacks are inherited by every nested bash (a ``bash -c``
+        # operand of a command wrapper, the standalone runner scripts), where
+        # the definitions above are not otherwise visible: ``env bash -c
+        # 'rev <<< abc'`` keeps ``bash -c`` but the child shell still needs
+        # ``rev`` to resolve to the function.  The export is conditional on
+        # the function actually being defined: a fallback whose ``command -v``
+        # guard found a real executable on PATH (coreutils ``uptime``, Windows
+        # 11 ``sudo.exe``) installs nothing, and an unconditional ``export -f``
+        # would then pollute stderr with "not a function" noise (the
+        # interactive prelude guards its exports the same way).
+        exports = "\n".join(
+            f"if declare -F {name} >/dev/null; then export -f {name}; fi"
+            for name in unique_names
         )
-        if self.edits:
-            pieces: list[str] = []
-            previous = 0
-            for start, end, replacement in sorted(self.edits):
-                pieces.extend((self.s[previous:start], replacement))
-                previous = end
-            pieces.append(self.s[previous:])
-            source = "".join(pieces)
-        else:
-            source = self.s
+        source = self._build_source()
         source = _fix_heredoc_trailing_operators(source)
-        prefix = definitions + "\n" if definitions else ""
-        return BashFix(prefix + source, tuple(self.names), tuple(self.path_notes))
+        prefix = definitions + "\n" + exports + "\n" if definitions else ""
+        return BashFix(
+            prefix + source,
+            tuple(self.names),
+            tuple(self.path_notes),
+            tuple(self.shell_notes),
+            tuple(self.nul_fixes),
+            tuple(self.unsupported),
+        )
+
+    def _build_source(self) -> str:
+        """Return the source with all recorded edits applied."""
+        if not self.edits:
+            return self.s
+        pieces: list[str] = []
+        previous = 0
+        for start, end, replacement in sorted(self.edits):
+            pieces.extend((self.s[previous:start], replacement))
+            previous = end
+        pieces.append(self.s[previous:])
+        return "".join(pieces)
 
     @staticmethod
-    def _literal_command_name(raw: str) -> str | None:
-        """Return the command name produced solely by Bash quote removal.
+    def _literal_word_value(raw: str) -> str | None:
+        """Return the word value produced solely by Bash quote removal.
 
-        Bash permits literal command words such as ``'rev'``, ``\rev`` and
-        ``r\"\"ev``.  Only words whose value can be determined without any
-        expansion are accepted; parameter/command/arithmetic expansions,
-        globbing, and malformed quotes remain untouched for Bash to handle.
+        Bash permits literal words such as ``'rev'``, ``\rev`` and ``r""ev``.
+        Only words whose value can be determined without any expansion are
+        accepted; parameter/command/arithmetic expansions, globbing, and
+        malformed quotes return ``None`` so the caller leaves them untouched.
         """
         value: list[str] = []
         i = 0
@@ -768,8 +1181,219 @@ class _Scanner:
                 return None
             value.append(ch)
             i += 1
-        name = "".join(value)
-        return name if name in _FALLBACKS else None
+        return "".join(value)
+
+    @staticmethod
+    def _literal_command_name(raw: str) -> str | None:
+        """Return the fallback command name produced by Bash quote removal."""
+        name = _Scanner._literal_word_value(raw)
+        return name if name is not None and name in _FALLBACKS else None
+
+    @staticmethod
+    def _literal_unsupported_name(raw: str) -> str | None:
+        """Return the unsupported command name produced by Bash quote removal."""
+        name = _Scanner._literal_word_value(raw)
+        return name if name is not None and name in _UNSUPPORTED_BODIES else None
+
+    @staticmethod
+    def _shell_wrapper_name(raw: str) -> str | None:
+        """Return the shell name when *raw* is a literal ``bash``/``sh`` word."""
+        name = _Scanner._literal_word_value(raw)
+        return name if name is not None and name in _SHELL_WRAPPERS else None
+
+    @staticmethod
+    def _plausible_script_file(raw: str) -> bool:
+        """Return True when *raw* looks like a script path, not a command word.
+
+        ``bash cd /c/dev/x`` and ``bash grep ...`` are redundant-wrapper
+        mistakes (bash would try to open ``cd``/``grep`` as a script file);
+        ``bash scripts/deploy.sh``, ``bash ./tool`` and ``bash app.sh`` are
+        legitimate script invocations that must keep the wrapper.  A word with
+        a directory separator, a leading ``.`` path segment, or a shell-script
+        extension is treated as a script path; a bare command word is not.
+        """
+        if raw.startswith("./") or raw.startswith("../"):
+            return True
+        if raw.startswith(".\\") or raw.startswith("..\\"):
+            return True
+        if "/" in raw or "\\" in raw:
+            return True
+        lower = raw.lower()
+        return any(
+            lower.endswith(ext)
+            for ext in (".sh", ".bash", ".zsh", ".ksh", ".dash", ".ash", ".bats")
+        )
+
+    def _handle_shell_wrapper(
+        self,
+        shell_name: str,
+        word_start: int,
+        i: int,
+        end: int,
+        *,
+        assignment_prefix: bool = False,
+        wrapped: bool = False,
+    ) -> tuple[int, bool] | None:
+        """Repair a redundant ``bash``/``sh`` invocation at command position.
+
+        Returns ``(scan index, keep_wrapper)`` when the wrapper was rewritten,
+        or ``None`` when the wrapper is left untouched (legitimate
+        ``bash script.sh``, semantic options such as ``-e``/``-x``, stdin
+        forms, scripts with trailing argv that ``$0``/``$1`` depend on, or an
+        assignment prefix such as ``VAR=x bash ...`` whose scoping the rewrite
+        could not preserve).  ``keep_wrapper`` asks the caller to leave any
+        active command wrapper in place so the wrapped command keeps its
+        executable context.
+
+        Two shapes are repaired:
+        * ``bash <command> ...`` — the shell word is redundant because the Bash
+          tool already runs the whole string via bash, so it is removed
+          (``bash cd /c/dev/x && grep ...`` becomes
+          ``cd /c/dev/x && grep ...``).
+        * ``bash [-l] -c <script>`` — the inline script replaces the wrapper
+          (``bash -c 'cd C:\\x && rev'`` becomes ``cd C:/x && rev``) and is
+          scanned as its own command context so fallback commands and Windows
+          paths inside it are fixed too.  Only the ``-c``/``-lc``/``-cl`` forms
+          with the script as the final word of the segment are unwrapped;
+          trailing argv, ``-ec``-style clusters and expansions are preserved
+          for bash to handle.
+
+        Under an active command wrapper (``env``/``nohup``/``timeout``/``sudo``
+        ...) the shell word is an *operand* of that wrapper, so the repair
+        must not move text out of its argv (``timeout 5 bash -c 'a && b'``
+        unwrapped to ``timeout 5 a && b`` would let ``&&`` split the list):
+        the ``-c`` form keeps ``bash -c`` and only fixes the inline script in
+        place — the wrapper runs bash natively and the nested bash inherits
+        the exported fallback functions — while the prefix form only drops
+        the shell word and leaves the wrapper active so the command that
+        follows keeps its executable (standalone-runner) context.
+        """
+        if assignment_prefix:
+            # ``VAR=x bash -c 'echo $VAR'``: the assignment is scoped to the
+            # shell *process*, so unwrapping would make the outer shell expand
+            # ``$VAR`` before the assignment takes effect.  Keep the wrapper.
+            return None
+        s = self.s
+        j = i
+        while j < end and s[j] in " \t\r":
+            j += 1
+        if j >= end or s[j] in _OPERATOR_CHARS or s[j] == "#":
+            # Bare ``bash`` (or ``bash && ...`` / ``bash`` at EOF): bash would
+            # start a nested shell; that is not a compatibility problem.
+            return None
+        next_end = self._read_word(j, end, scan_substitutions=False)
+        if next_end <= j:
+            return None
+        next_raw = s[j:next_end]
+
+        if next_raw.startswith("-"):
+            # Optional leading login flag, then the ``-c`` family.  Any other
+            # option (``-e``, ``-x``, ``-i``, ``--norc``, ...) changes shell
+            # behaviour and is left for bash to handle.
+            opt_end = next_end
+            opt = next_raw
+            if opt in ("-l", "-L", "--login"):
+                cursor = opt_end
+                while cursor < end and s[cursor] in " \t\r":
+                    cursor += 1
+                if cursor >= end or s[cursor] in _OPERATOR_CHARS or s[cursor] == "#":
+                    return None
+                opt_end = self._read_word(cursor, end, scan_substitutions=False)
+                if opt_end <= cursor:
+                    return None
+                opt = s[cursor:opt_end]
+            if not _SHELL_C_OPTIONS.match(opt):
+                return None
+            # The word after ``-c`` is the inline script.
+            k = opt_end
+            while k < end and s[k] in " \t\r":
+                k += 1
+            if k >= end or s[k] in _OPERATOR_CHARS or s[k] == "#":
+                return None  # ``bash -c`` with no script
+            script_end = self._read_word(k, end, scan_substitutions=False)
+            if script_end <= k:
+                return None
+            m = script_end
+            while m < end and s[m] in " \t\r":
+                m += 1
+            if m < end and s[m] not in _OPERATOR_CHARS and s[m] != "#":
+                return None  # trailing script argv: ``$0``/``$1`` semantics
+            script_raw = s[k:script_end]
+            script = self._literal_word_value(script_raw)
+            if script is None:
+                return None  # expansions inside the script: leave for bash
+            try:
+                inner = _Scanner(script)
+                inner._scan_range(0, len(script))
+            except RecursionError:
+                return None
+            fixed = _fix_heredoc_trailing_operators(inner._build_source())
+            self.names.extend(n for n in inner.names if n not in self.names)
+            self.path_notes.extend(inner.path_notes)
+            self.shell_notes.extend(
+                n for n in inner.shell_notes if n not in self.shell_notes
+            )
+            self.unsupported.extend(
+                n for n in inner.unsupported if n not in self.unsupported
+            )
+            if wrapped:
+                # Keep ``<wrapper> bash -c '<script>'`` and fix the script in
+                # place: the wrapper runs bash natively and the nested bash
+                # inherits the exported fallback functions.
+                if inner.edits:
+                    self.edits.append((k, script_end, _single_quote(fixed)))
+                return script_end, True
+            self.edits.append((word_start, script_end, fixed))
+            self.shell_notes.append(f"{shell_name} -c")
+            return script_end, False
+
+        if self._plausible_script_file(next_raw):
+            return None
+        # ``bash <command> ...``: drop the redundant shell word itself.  The
+        # edit covers the shell word plus the whitespace that separated it from
+        # the real command (``bash cd ...`` -> ``cd ...``).
+        self.edits.append((word_start, j, ""))
+        self.shell_notes.append(shell_name)
+        # Under a command wrapper the wrapped command must keep its executable
+        # context (``env bash rev`` -> ``env <runner>``), so the caller leaves
+        # the active wrapper in place.
+        return j, wrapped
+
+    def _watch_command_operand(
+        self, word_start: int, word_end: int, raw: str
+    ) -> None:
+        """Fix the inline script of a quoted ``watch`` command operand.
+
+        procps ``watch`` executes its command line through ``sh -c``, and the
+        Git Bash fallback mirrors that with ``eval "$*"`` in the current
+        shell.  A quoted operand (``watch -n1 'rev <<< abc'``) is therefore an
+        inline script: its literal value is scanned as its own command context
+        and re-emitted with the inner fixes applied, so fallback names and
+        Windows paths inside it work.  Unquoted operands need no special
+        handling here — they flow through the normal command-word rules.
+        """
+        if not (raw.startswith("'") or raw.startswith('"')):
+            return
+        script = self._literal_word_value(raw)
+        if script is None:
+            return  # expansions inside the script: leave for bash
+        try:
+            inner = _Scanner(script)
+            inner._scan_range(0, len(script))
+        except RecursionError:
+            return
+        fixed = _fix_heredoc_trailing_operators(inner._build_source())
+        self.names.extend(n for n in inner.names if n not in self.names)
+        self.path_notes.extend(inner.path_notes)
+        self.shell_notes.extend(
+            n for n in inner.shell_notes if n not in self.shell_notes
+        )
+        self.unsupported.extend(
+            n for n in inner.unsupported if n not in self.unsupported
+        )
+        if inner.edits:
+            self.edits.append((word_start, word_end, _single_quote(fixed)))
+
 
     def _scan_range(self, start: int, end: int) -> None:
         """Scan *start..end* as a command context, bounding recursion depth.
@@ -792,6 +1416,7 @@ class _Scanner:
         command_expected = True
         redirect_expected = False
         redirect_resume = True
+        redirect_op: str | None = None
         wrapper: _Wrapper | None = None
         heredoc_operator: str | None = None
         herestring_flag = False
@@ -799,6 +1424,10 @@ class _Scanner:
         case_stack: list[str] = []
         function_name_expected = False
         function_body_expected = False
+        # Set when an assignment prefix (``VAR=x``) precedes the command word on
+        # this line; a following ``bash`` wrapper must keep its shell-process
+        # scoping, so it is not unwrapped (``VAR=x bash -c 'echo $VAR'``).
+        assignment_prefix = False
 
         while i < end:
             ch = s[i]
@@ -816,9 +1445,11 @@ class _Scanner:
                     pending_heredocs.clear()
                 command_expected = True
                 redirect_expected = False
+                redirect_op = None
                 heredoc_operator = None
                 herestring_flag = False
                 wrapper = None
+                assignment_prefix = False
                 continue
             if ch == "#" and self._comment_starts(i, start):
                 newline = s.find("\n", i + 1, end)
@@ -841,6 +1472,7 @@ class _Scanner:
                 if op:
                     redirect_resume = command_expected
                     redirect_expected = True
+                    redirect_op = op
                     herestring_flag = op == "<<<"
                     if op in {"<<", "<<-"}:
                         # The delimiter is captured when the following word is
@@ -875,13 +1507,29 @@ class _Scanner:
                         )
                 elif not herestring_flag:
                     raw_word = s[i:word_end]
-                    replacement = self._windows_path_replacement(raw_word)
-                    if replacement is not None:
-                        self.edits.append((i, word_end, replacement))
-                        self.path_notes.append(raw_word)
+                    # ``> nul`` / ``2> NUL`` / ``&> nul`` / ``>> nul`` would
+                    # silently create a file literally named ``nul`` in Git
+                    # Bash (Windows-style null-device redirection).  Only an
+                    # *unquoted* literal ``nul`` target is rewritten; quoted
+                    # ``'nul'``/``"nul"`` is an intentional filename, and input
+                    # redirections (``< nul``) never create a file.
+                    if (
+                        redirect_op is not None
+                        and not redirect_op.startswith("<")
+                        and raw_word.casefold() == "nul"
+                        and not any(q in raw_word for q in "'\"\\`$")
+                    ):
+                        self.edits.append((i, word_end, "/dev/null"))
+                        self.nul_fixes.append(raw_word)
+                    else:
+                        replacement = self._path_replacement(raw_word)
+                        if replacement is not None:
+                            self.edits.append((i, word_end, replacement))
+                            self.path_notes.append(raw_word)
                 i = word_end
                 command_expected = redirect_resume
                 redirect_expected = False
+                redirect_op = None
                 heredoc_operator = None
                 continue
 
@@ -951,6 +1599,7 @@ class _Scanner:
                 redirect_expected = False
                 heredoc_operator = None
                 wrapper = None
+                assignment_prefix = False
                 continue
 
             word_start = i
@@ -997,7 +1646,7 @@ class _Scanner:
                 elif raw == "esac" and case_stack:
                     case_stack.pop()
                 else:
-                    replacement = self._windows_path_replacement(raw)
+                    replacement = self._path_replacement(raw)
                     if replacement is not None:
                         self.edits.append((word_start, word_end, replacement))
                         self.path_notes.append(raw)
@@ -1045,13 +1694,14 @@ class _Scanner:
                     self._scan_array_words(i + 1, close if close < end else end)
                     i = close + 1 if close < end else end
                 command_expected = True
+                assignment_prefix = True
                 continue
 
             if raw == "cd":
                 self._drop_cmd_cd_flag(i, end)
 
             executable_wrapper = (
-                wrapper is not None and wrapper.kind not in {"coproc", "time"}
+                wrapper is not None and wrapper.kind not in _SAME_SHELL_WRAPPERS
             )
             if wrapper is not None and wrapper.kind == "coproc":
                 if self._coproc_name_before_compound(raw, i, end):
@@ -1063,7 +1713,7 @@ class _Scanner:
                 for option in _WRAPPER_PATH_OPTION_LONG:
                     if raw.startswith(option + "="):
                         value = raw[len(option) + 1 :]
-                        replacement = self._windows_path_replacement(value)
+                        replacement = self._path_replacement(value)
                         if replacement is not None:
                             self.edits.append(
                                 (word_start, word_end, option + "=" + replacement)
@@ -1084,7 +1734,7 @@ class _Scanner:
                 action = self._consume_wrapper_word(wrapper, raw)
                 if action == "skip":
                     if path_option_value:
-                        replacement = self._windows_path_replacement(raw)
+                        replacement = self._path_replacement(raw)
                         if replacement is not None:
                             self.edits.append((word_start, word_end, replacement))
                             self.path_notes.append(raw)
@@ -1094,11 +1744,75 @@ class _Scanner:
                     command_expected = False
                     wrapper = None
                     continue
+                if wrapper is not None and wrapper.kind == "watch":
+                    # ``watch`` re-executes its command in the current shell
+                    # (``eval "$*"``, matching procps ``watch``'s ``sh -c``),
+                    # so a quoted operand is an inline script: scan its
+                    # literal value as its own command context so fallback
+                    # names and Windows paths inside it are fixed too.  An
+                    # unquoted operand falls through to the plain command-word
+                    # rules below (``watch`` is a same-shell wrapper, so the
+                    # source word resolves against the prefix functions).
+                    self._watch_command_operand(word_start, word_end, raw)
+                    wrapper = None
 
-            if raw in _COMMAND_WRAPPERS:
-                wrapper = _Wrapper(raw)
+            # Fallback wrappers are checked first: ``sudo`` is both a plain
+            # command wrapper (operand semantics, option tables) and a
+            # fallback name whose definition must be recorded for hosts
+            # without ``sudo.exe``.
+            fallback_wrapper = _FALLBACK_COMMAND_WRAPPERS.get(raw)
+            if fallback_wrapper is not None:
+                # ``gtimeout 5 rev``/``watch -n1 rev``/``sudo rev``: the
+                # wrapper word is itself a fallback (its definition is
+                # recorded) and the command that follows its
+                # options/operands is scanned like a wrapped command word.
+                self.names.append(raw)
+                if executable_wrapper:
+                    # The wrapping executable (``xargs gtimeout ...``) cannot
+                    # invoke shell functions: swap the word for the standalone
+                    # runner.  The operand scan continues through the wrapper
+                    # state so the names the wrapped command uses are still
+                    # recorded; the prefix exports them, which the runner's
+                    # nested bash inherits.
+                    self.edits.append(
+                        (word_start, word_end, _wrapper_runner(raw))
+                    )
+                wrapper = _Wrapper(
+                    fallback_wrapper,
+                    operands=_WRAPPER_OPERAND_COUNTS.get(fallback_wrapper, 0),
+                )
                 command_expected = True
                 continue
+            if raw in _COMMAND_WRAPPERS:
+                wrapper = _Wrapper(
+                    raw, operands=_WRAPPER_OPERAND_COUNTS.get(raw, 0)
+                )
+                command_expected = True
+                continue
+
+            # Redundant shell invocation (``bash cd ...``, ``bash -c '...'``):
+            # only at a plain command position — after ``command``/``env``/
+            # ``sudo`` the shell word is the wrapped command itself and is
+            # consumed by the wrapper logic above, so it is left untouched.
+            shell_name = self._shell_wrapper_name(raw)
+            if shell_name is not None:
+                handled = self._handle_shell_wrapper(
+                    shell_name,
+                    word_start,
+                    i,
+                    end,
+                    assignment_prefix=assignment_prefix,
+                    wrapped=wrapper is not None,
+                )
+                if handled is not None:
+                    i, keep_wrapper = handled
+                    command_expected = True
+                    redirect_expected = False
+                    heredoc_operator = None
+                    if not keep_wrapper:
+                        wrapper = None
+                    assignment_prefix = False
+                    continue
 
             fallback_name = self._literal_command_name(raw)
             if fallback_name is not None:
@@ -1107,17 +1821,35 @@ class _Scanner:
                     self.edits.append(
                         (word_start, word_end, _wrapper_runner(fallback_name))
                     )
+            elif self._record_unsupported(raw):
+                pass
             else:
                 # A command word can itself be a Windows executable path
-                # (``C:\tools\rg.exe``); Bash quote removal would eat the
+                # (``C:\tools\rg.exe``) or a Git Bash virtual absolute path
+                # (``/c/tools/rg.exe``); Bash quote removal would eat the
                 # backslashes and lose the command, so rewrite it like an
                 # argument path.
-                replacement = self._windows_path_replacement(raw)
+                replacement = self._path_replacement(raw)
                 if replacement is not None:
                     self.edits.append((word_start, word_end, replacement))
                     self.path_notes.append(raw)
             command_expected = False
             wrapper = None
+
+    def _record_unsupported(self, raw: str) -> bool:
+        """Record a command word with no Windows Git Bash equivalent.
+
+        Returns True when *raw* literal-resolved to an unsupported command
+        name; the command text is left untouched so the app layer can surface
+        ``_UNSUPPORTED_BODIES``' reason instead of executing a guaranteed
+        "command not found".
+        """
+        name = self._literal_unsupported_name(raw)
+        if name is None:
+            return False
+        if name not in self.unsupported:
+            self.unsupported.append(name)
+        return True
 
     def _read_word(
         self, start: int, end: int, *, scan_substitutions: bool = True
@@ -1235,7 +1967,7 @@ class _Scanner:
                 i += 1
                 continue
             raw = s[i:word_end]
-            replacement = self._windows_path_replacement(raw)
+            replacement = self._path_replacement(raw)
             if replacement is not None:
                 self.edits.append((i, word_end, replacement))
                 self.path_notes.append(raw)
@@ -1604,6 +2336,12 @@ class _Scanner:
             return "skip"
         if wrapper.opaque:
             return "inspect"
+        if wrapper.operands > 0 and not raw.startswith("-"):
+            # A plain operand before the command word (GNU ``timeout`` takes
+            # exactly one DURATION operand) is wrapper data, not the wrapped
+            # command; consume it without ending the wrapper.
+            wrapper.operands -= 1
+            return "skip"
         if wrapper.kind == "command" and raw in {"-v", "-V"}:
             return "inspect"
         if wrapper.kind == "command" and (
@@ -1890,6 +2628,46 @@ class _Scanner:
             return None
         return self._quote_path_word(self._normalize_windows_path(raw))
 
+    def _git_bash_abs_path_replacement(self, raw: str) -> str | None:
+        """Return the native Windows spelling of a Git Bash virtual absolute path.
+
+        Git Bash accepts POSIX-style absolute paths that native Windows
+        executables cannot resolve.  ``/tmp/x`` maps to the user's Windows temp
+        directory (``cygpath -w /tmp``), while a native tool would read it as
+        ``<current-drive>:\\tmp\\x``; ``/c/x`` means ``C:/x``, but a native
+        tool would read it as ``<current-drive>:\\c\\x``.  Rewriting these
+        words to their real Windows spellings makes the same command behave
+        identically under Git Bash and native POSIX bash: ``/tmp`` is the
+        system temp directory in both, and ``/c/...``/``/d/...`` resolve to
+        the same files whether the consumer is an MSYS tool or a native
+        executable.  Only unquoted words are considered; quoted text is
+        literal data.  A bare single-letter mount (``/c``, ``/d``) is left
+        untouched so cmd.exe's ``cd /d <path>`` flag is never mistaken for a
+        drive path.
+        """
+        if not raw:
+            return None
+        if raw.startswith("/tmp"):  # no-tmp: ok — recognizes Git Bash's virtual /tmp to rewrite it
+            if raw != "/tmp" and not raw.startswith("/tmp/"):  # no-tmp: ok — exact-root guard for that rewrite
+                return None
+            return self._quote_path_word(_windows_temp_dir() + raw[4:])
+        if len(raw) >= 3 and raw[0] == "/" and raw[1].isalpha() and raw[2] == "/":
+            return self._quote_path_word(raw[1].upper() + ":" + raw[2:])
+        return None
+
+    def _path_replacement(self, raw: str) -> str | None:
+        """Return the Git Bash spelling for a Windows path word.
+
+        Covers both spellings agents use on Windows: native backslash paths
+        (``D:\\repo\\src``) and Git Bash virtual POSIX absolute paths
+        (``/tmp/x``, ``/c/x``).  Returns ``None`` when *raw* is not an
+        unambiguous path word.
+        """
+        replacement = self._windows_path_replacement(raw)
+        if replacement is not None:
+            return replacement
+        return self._git_bash_abs_path_replacement(raw)
+
     @staticmethod
     def _plausible_path_segments(raw: str) -> bool:
         """Require at least one segment that looks like a real directory name.
@@ -2134,7 +2912,9 @@ def fix_bash_command(command: str) -> BashFix:
 
     Non-Windows input is always returned byte-for-byte unchanged.  On Windows,
     only literal command words with verified equivalents are changed; unknown
-    or semantically ambiguous commands are left for Bash to handle normally.
+    or semantically ambiguous commands are left for Bash to handle normally,
+    and names with no faithful equivalent are reported through
+    :attr:`BashFix.unsupported` without touching the command text.
     """
     if sys.platform != "win32" or not command:
         return BashFix(command)
@@ -2142,6 +2922,17 @@ def fix_bash_command(command: str) -> BashFix:
     # containing it contiguously (for example ``r""ev`` or ``\rev``), so a
     # substring fast path would miss legal executable words.  The scanner is
     # linear and exits without allocating generated shell code when unchanged.
+    # (``_Scanner.fix`` already repairs misplaced heredoc control operators
+    # on the generated source; the final text is re-checked here exactly as
+    # the reference does, which also covers offsets shifted by that first
+    # pass when a command holds several heredocs.)
     result = _Scanner(command).fix()
     fixed = _fix_heredoc_trailing_operators(result.command)
-    return BashFix(fixed, result.replacements, result.path_changes)
+    return BashFix(
+        fixed,
+        result.replacements,
+        result.path_changes,
+        result.shell_wrappers,
+        result.nul_fixes,
+        result.unsupported,
+    )

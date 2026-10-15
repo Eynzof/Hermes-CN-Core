@@ -9,7 +9,6 @@ from __future__ import annotations
 
 
 import inspect
-from typing import get_args
 
 from agent.transports.hermes_tools_mcp_server import (
     _signature_from_schema,
@@ -33,7 +32,6 @@ class TestSignatureFromSchema:
         assert param.kind == inspect.Parameter.KEYWORD_ONLY
         assert annots["query"] == str
         assert param.default is inspect.Parameter.empty
-
 
 
     def test_skip_private_params(self):
@@ -66,7 +64,7 @@ class TestSignatureFromSchema:
             },
             "required": ["s", "i", "n", "b", "a", "o"],
         }
-        sig, annots = _signature_from_schema(schema)
+        _sig, annots = _signature_from_schema(schema)
 
         assert annots["s"] == str
         assert annots["i"] == int
@@ -74,7 +72,6 @@ class TestSignatureFromSchema:
         assert annots["b"] == bool
         assert annots["a"] == list
         assert annots["o"] == dict
-
 
 
 class TestModuleSurface:
@@ -94,9 +91,6 @@ class TestModuleSurface:
             f"these tools must NOT be exposed via the codex callback "
             f"because codex has built-in equivalents: {leaked}"
         )
-
-
-
 
 
 class TestMain:

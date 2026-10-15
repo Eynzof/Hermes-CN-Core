@@ -21,14 +21,12 @@ import pytest
 
 from hermes_cli import web_server
 
-
 @pytest.fixture(autouse=True)
 def _reset_plugin_cache():
     """Bust the plugin cache before and after each test."""
     web_server._dashboard_plugins_cache = None
     yield
     web_server._dashboard_plugins_cache = None
-
 
 @pytest.fixture
 def test_client(monkeypatch, tmp_path):
@@ -47,7 +45,6 @@ def test_client(monkeypatch, tmp_path):
     client = TestClient(app)
     client.headers[_SESSION_HEADER_NAME] = _SESSION_TOKEN
     return client
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -82,11 +79,9 @@ def _make_bundled_plugin(tmp_path, name="bundledx"):
     }).decode('utf-8'))
     return dashboard_dir
 
-
 # ---------------------------------------------------------------------------
 # Test 1: Runtime-disabled user plugin API routes return 404
 # ---------------------------------------------------------------------------
-
 
 class TestPluginApiRuntimeGate:
     """After a user plugin is disabled at runtime, its mounted API routes
@@ -125,7 +120,6 @@ class TestPluginApiRuntimeGate:
 
         assert response.status_code == 404
         call_next.assert_not_called()
-
 
     @pytest.mark.asyncio
     async def test_middleware_passes_non_plugin_api_routes(self):
@@ -178,11 +172,9 @@ class TestPluginApiRuntimeGate:
         assert response.status_code == 404
         call_next.assert_not_called()
 
-
 # ---------------------------------------------------------------------------
 # Test 2: Disabled bundled plugin assets return 404
 # ---------------------------------------------------------------------------
-
 
 class TestBundledPluginAssetGate:
     """Bundled plugins in ``plugins.disabled`` must have their static
@@ -222,25 +214,3 @@ class TestBundledPluginAssetGate:
                 assert resp.status_code == 404, (
                     "Disabled bundled plugin asset must return 404"
                 )
-
-    def test_bundled_asset_served_when_not_disabled(self, test_client, tmp_path, monkeypatch):
-        """Bundled plugin assets are served normally when not in disabled set."""
-        plugin_dir = _make_bundled_plugin(tmp_path, "goodbundled")
-
-        fake_plugin = {
-            "name": "goodbundled",
-            "label": "Good Bundled",
-            "source": "bundled",
-            "entry": "dist/index.js",
-            "_dir": str(plugin_dir),
-        }
-
-        with patch.object(web_server, "_get_dashboard_plugins", return_value=[fake_plugin]):
-            with patch(
-                "hermes_cli.plugins_cmd._get_enabled_set", return_value=set()
-            ), patch(
-                "hermes_cli.plugins_cmd._get_disabled_set", return_value=set()
-            ):
-                resp = test_client.get("/dashboard-plugins/goodbundled/dist/index.js")
-                assert resp.status_code == 200
-

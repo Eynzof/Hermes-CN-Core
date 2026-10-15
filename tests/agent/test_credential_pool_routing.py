@@ -80,28 +80,7 @@ class TestGatewayTurnRoutePool:
 # 3 & 4. Eager fallback deferred/fires based on credential pool
 # ---------------------------------------------------------------------------
 
-class TestEagerFallbackWithPool:
-    """Test the eager fallback guard in run_agent.py's error handling loop."""
 
-    def _make_agent(self, has_pool=True, pool_has_creds=True, has_fallback=True):
-        """Create a minimal AIAgent mock with the fields needed."""
-        from run_agent import AIAgent
-
-        with patch.object(AIAgent, "__init__", lambda self, **kw: None):
-            agent = AIAgent()
-
-        agent._credential_pool = None
-        if has_pool:
-            pool = MagicMock()
-            pool.has_available.return_value = pool_has_creds
-            agent._credential_pool = pool
-
-        agent._fallback_chain = [{"model": "fallback/model"}] if has_fallback else []
-        agent._fallback_index = 0
-        agent._try_activate_fallback = MagicMock(return_value=True)
-        agent._emit_status = MagicMock()
-
-        return agent
 
 # ---------------------------------------------------------------------------
 # 5. Full 429 rotation cycle via _recover_with_credential_pool
@@ -171,7 +150,7 @@ class TestPoolRotationCycle:
 
     def test_pool_exhaustion_returns_false(self):
         """When all credentials exhausted, recovery should return False."""
-        agent, pool, _ = self._make_agent_with_pool(1)
+        agent, _pool, _ = self._make_agent_with_pool(1)
         # First 429 sets flag
         _, has_retried = agent._recover_with_credential_pool(
             status_code=429, has_retried_429=False
@@ -186,7 +165,7 @@ class TestPoolRotationCycle:
 
     def test_402_immediate_rotation(self):
         """402 (billing) should immediately rotate, no retry-first."""
-        agent, pool, entries = self._make_agent_with_pool(3)
+        agent, pool, _entries = self._make_agent_with_pool(3)
         recovered, has_retried = agent._recover_with_credential_pool(
             status_code=402, has_retried_429=False
         )
@@ -224,7 +203,7 @@ class TestPoolRotationCycle:
         agent.log_prefix = ""
         # No agent.api_key set — should fall back to pool.current().runtime_api_key
 
-        recovered, has_retried = agent._recover_with_credential_pool(
+        recovered, _has_retried = agent._recover_with_credential_pool(
             status_code=402, has_retried_429=False
         )
         assert recovered is True
@@ -327,15 +306,35 @@ class TestFailureAttribution:
     """
 
     def _make_pool(self, tmp_path, monkeypatch, entries):
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes"))
         hermes_home = tmp_path / "hermes"
         hermes_home.mkdir(parents=True, exist_ok=True)
+        monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+        # Keep host Anthropic/Claude credentials out of this fixture. load_pool()
+        # auto-seeds ~/.claude/.credentials.json and env keys when anthropic is
+        # explicitly configured on the machine, which turns a deliberate
+        # single-entry pool into a multi-entry pool and invalidates isolation
+        # assertions (see test_unmatched_key_does_not_retry_only_pool_entry).
+        for env_var in (
+            "ANTHROPIC_API_KEY",
+            "ANTHROPIC_TOKEN",
+            "CLAUDE_CODE_OAUTH_TOKEN",
+        ):
+            monkeypatch.delenv(env_var, raising=False)
+        monkeypatch.setattr(
+            "hermes_cli.auth.is_provider_explicitly_configured",
+            lambda provider: False,
+        )
         (hermes_home / "auth.json").write_text(
-            json.dumps({"version": 1, "credential_pool": {"anthropic": entries}})
+            json.dumps({"version": 1, "credential_pool": {"anthropic": entries}}),
+            encoding="utf-8",
         )
         from agent.credential_pool import load_pool
 
-        return load_pool("anthropic")
+        pool = load_pool("anthropic")
+        assert [entry.id for entry in pool.entries()] == [
+            entry["id"] for entry in entries
+        ], "pool fixture leaked host credentials into the test pool"
+        return pool
 
     def _entry(self, idx, key, **overrides):
         entry = {

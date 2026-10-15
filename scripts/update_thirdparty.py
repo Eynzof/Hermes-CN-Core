@@ -294,7 +294,7 @@ def _read_current_version(tool: ThirdPartyTool) -> str | None:
         print(f"  ❌ File not found: {tool.primary_file}")
         return None
 
-    content = filepath.read_text(encoding="utf-8")
+    content = filepath.read_text(encoding="utf-8-sig")
     for line in content.splitlines():
         m = re.match(tool.primary_pattern, line)
         if m:
@@ -319,7 +319,7 @@ def _update_version_in_file(
 
     Returns ``True`` if the pattern matched at least once.
     """
-    content = filepath.read_text(encoding="utf-8")
+    content = filepath.read_text(encoding="utf-8-sig")
 
     def _replace(m: re.Match) -> str:
         full = m.group(0)

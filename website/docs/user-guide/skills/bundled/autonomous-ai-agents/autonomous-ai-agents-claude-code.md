@@ -16,12 +16,12 @@ Delegate coding to Claude Code CLI (features, PRs).
 |---|---|
 | Source | Bundled (installed by default) |
 | Path | `skills/autonomous-ai-agents/claude-code` |
-| Version | `2.2.1` |
+| Version | `2.3.0` |
 | Author | Hermes Agent + Teknium |
 | License | MIT |
 | Platforms | linux, macos, windows |
 | Tags | `Coding-Agent`, `Claude`, `Anthropic`, `Code-Review`, `Refactoring`, `PTY`, `Automation` |
-| Related skills | [`codex`](/docs/user-guide/skills/bundled/autonomous-ai-agents/autonomous-ai-agents-codex), [`hermes-agent`](/docs/user-guide/skills/bundled/autonomous-ai-agents/autonomous-ai-agents-hermes-agent), [`opencode`](/docs/user-guide/skills/bundled/autonomous-ai-agents/autonomous-ai-agents-opencode) |
+| Related skills | [`codex`](../../bundled/autonomous-ai-agents/autonomous-ai-agents-codex.md), [`hermes-agent`](../../bundled/autonomous-ai-agents/autonomous-ai-agents-hermes-agent.md), [`opencode`](../../bundled/autonomous-ai-agents/autonomous-ai-agents-opencode.md) |
 
 ## Reference: full SKILL.md
 
@@ -53,7 +53,7 @@ Hermes interacts with Claude Code in two fundamentally different ways. Choose ba
 Print mode runs a one-shot task, returns the result, and exits. No PTY needed. No interactive prompts. This is the cleanest integration path.
 
 ```
-terminal(command="claude -p 'Add error handling to all API calls in src/' --allowedTools 'Read,Edit' --max-turns 10", workdir="/path/to/project", timeout=120)
+terminal(command="claude -p 'Add error handling to all API calls in src/' --output-format stream-json --verbose --include-partial-messages --allowedTools 'Read,Edit' --max-turns 10", workdir="/path/to/project", timeout=120)
 ```
 
 **When to use print mode:**
@@ -64,6 +64,26 @@ terminal(command="claude -p 'Add error handling to all API calls in src/' --allo
 - Any task where you don't need multi-turn conversation
 
 **Print mode skips ALL interactive dialogs** — no workspace trust prompt, no permission confirmations. This makes it ideal for automation.
+
+### Hermes background + streaming (preferred for non-trivial print tasks)
+
+For anything beyond a trivial one-liner (expected to run >30s), run print mode in the
+Hermes background with streaming JSON. Hermes — and its desktop UI — can then watch
+progress live and parse the structured result instead of blocking on a silent
+foreground call:
+
+```
+terminal(command="claude -p '<task>' --output-format stream-json --verbose --include-partial-messages --max-turns 10", workdir="/path/to/project", background=true, notify_on_complete=true)
+# Returns a session_id. Monitor with:
+process(action="poll", session_id="<id>")   # running / exited
+process(action="log", session_id="<id>")    # stream-json lines so far
+# The final line is the {"type":"result"} object — session_id, num_turns,
+# total_cost_usd, subtype. Keep session_id for --resume follow-ups.
+```
+
+Short tasks (&lt;30s) can stay foreground. Keep the streaming JSON flags
+(`--output-format stream-json --verbose --include-partial-messages`) so Hermes
+can render their progress and Token usage before the terminal call completes.
 
 ### Mode 2: Interactive PTY via tmux — Multi-Turn Sessions
 
@@ -107,32 +127,41 @@ Claude Code presents up to two confirmation dialogs on first launch. You MUST ha
 ```
 **Handling:** `tmux send-keys -t <session> Enter` — default selection is correct.
 
-### Dialog 2: Bypass Permissions Warning (only with --dangerously-skip-permissions)
+### Dialog 2: Individual Permission Prompts (normal flow)
+
+Each tool use that needs approval (file write, shell command, network) shows a prompt. Answer that one prompt — this is different from disabling prompts for the whole run:
 ```
-❯ 1. No, exit                    ← DEFAULT (WRONG choice!)
-  2. Yes, I accept
+# Read the prompt before answering it
+terminal(command="tmux capture-pane -t <session> -p -S -30")
+# Allow this one action (Enter = default "Yes"); Esc declines it
+terminal(command="tmux send-keys -t <session> Enter")
 ```
-**Handling:** Must navigate DOWN first, then Enter:
-```
-tmux send-keys -t <session> Down && sleep 0.3 && tmux send-keys -t <session> Enter
-```
+Never send a blind `Enter` on a timer to approve prompts you have not read — that is the bypass flag with extra steps.
+
+A narrower opt-in than the full bypass is `--permission-mode acceptEdits`: file edits in the working directory are accepted, shell and other tool calls still prompt. Use it only in a dedicated worktree after reviewing the task.
 
 ### Robust Dialog Handling Pattern
 ```
-# Launch with permissions bypass
-terminal(command="tmux send-keys -t claude-work 'claude --dangerously-skip-permissions \"your task\"' Enter")
+# Default launch — keep permission prompts enabled
+terminal(command="tmux send-keys -t claude-work 'claude \"your task\"' Enter")
 
 # Handle trust dialog (Enter for default "Yes")
 terminal(command="sleep 4 && tmux send-keys -t claude-work Enter")
-
-# Handle permissions dialog (Down then Enter for "Yes, I accept")
-terminal(command="sleep 3 && tmux send-keys -t claude-work Down && sleep 0.3 && tmux send-keys -t claude-work Enter")
 
 # Now wait for Claude to work
 terminal(command="sleep 15 && tmux capture-pane -t claude-work -p -S -60")
 ```
 
-**Note:** After the first trust acceptance for a directory, the trust dialog won't appear again. Only the permissions dialog recurs each time you use `--dangerously-skip-permissions`.
+**Note:** After the first trust acceptance for a directory, the trust dialog won't appear again.
+
+### Opt-in: --dangerously-skip-permissions (isolated environments only)
+
+This disables permission prompts for the whole run — grants filesystem, shell, and network access with no prompts. Acceptable only in a throwaway worktree or isolated container.
+```
+❯ 1. No, exit                    ← DEFAULT (safe choice)
+  2. Yes, I accept
+```
+To accept: `tmux send-keys -t <session> Down && sleep 0.3 && tmux send-keys -t <session> Enter`
 
 ## CLI Subcommands
 
@@ -227,10 +256,10 @@ Parse `structured_output` from the JSON result. Claude validates output against 
 ### Session Continuation
 ```
 # Start a task
-terminal(command="claude -p 'Start refactoring the database layer' --output-format json --max-turns 10 > /tmp/session.json", workdir="/project", timeout=180)
+terminal(command="claude -p 'Start refactoring the database layer' --output-format json --max-turns 10 > ~/.hermes/cache/scratch/session.json", workdir="/project", timeout=180)
 
 # Resume with session ID
-terminal(command="claude -p 'Continue and add connection pooling' --resume $(cat /tmp/session.json | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"session_id\"])') --max-turns 5", workdir="/project", timeout=120)
+terminal(command="claude -p 'Continue and add connection pooling' --resume $(cat ~/.hermes/cache/scratch/session.json | python -c 'import json,sys; print(json.load(sys.stdin)[\"session_id\"])') --max-turns 5", workdir="/project", timeout=120)
 
 # Or resume the most recent session in the same directory
 terminal(command="claude -p 'What did you do last time?' --continue --max-turns 1", workdir="/project", timeout=30)
@@ -292,7 +321,7 @@ Automatically falls back to the specified model when the default is overloaded (
 ### Permission & Safety
 | Flag | Effect |
 |------|--------|
-| `--dangerously-skip-permissions` | Auto-approve ALL tool use (file writes, bash, network, etc.) |
+| `--dangerously-skip-permissions` | Opt-in only: disables ALL permission prompts (file writes, bash, network). Throwaway worktree / isolated container only — see "Opt-in" above |
 | `--allow-dangerously-skip-permissions` | Enable bypass as an *option* without enabling it by default |
 | `--permission-mode <mode>` | `default`, `acceptEdits`, `plan`, `auto`, `dontAsk`, `bypassPermissions` |
 | `--allowedTools <tools...>` | Whitelist specific tools (comma or space-separated) |
@@ -348,7 +377,7 @@ Bash(git commit *)      # Only git commit commands
 Bash(npm run lint:*)    # Pattern matching with wildcards
 WebSearch               # Web search capability
 WebFetch                # Web page fetching
-mcp__<server>__<tool>   # Specific MCP tool
+mcp__<server>__{tool}   # Specific MCP tool
 ```
 
 ## Settings & Configuration
@@ -364,11 +393,18 @@ mcp__<server>__<tool>   # Specific MCP tool
 {
   "permissions": {
     "allow": ["Bash(npm run lint:*)", "WebSearch", "Read"],
-    "ask": ["Write(*.ts)", "Bash(git push*)"],
+    "ask": ["Write(*.ts)", "Bash(git push*)", "Bash(git commit*)", "Bash(git worktree*)", "Bash(git checkout*)", "Bash(gh pr create*)", "Bash(gh pr merge*)"],
     "deny": ["Read(.env)", "Bash(rm -rf *)"]
   }
 }
 ```
+
+> **⚠️ Dangerous git operations — the user decides; never auto-execute.**
+> `git worktree add` / `git worktree remove`, branch creation/switching, `git commit`,
+> `git push`, and PR creation/merge are **high-risk operations** (irreversible, and/or
+> they change shared remote state). Keep them under `ask` (never `allow`): the agent
+> must explain the intent and get the user's **explicit approval** before each one, and
+> must not batch/loop them (auto-commit, auto-push, auto-PR) without per-action consent.
 
 ### Memory Files (CLAUDE.md) Hierarchy
 1. **Global:** `~/.claude/CLAUDE.md` — applies to all projects
@@ -617,7 +653,7 @@ Configure in `.claude/settings.json` (project) or `~/.claude/settings.json` (glo
       "hooks": [{"type": "command", "command": "if echo \"$CLAUDE_TOOL_INPUT\" | grep -q 'rm -rf'; then echo 'Blocked!' && exit 2; fi"}]
     }],
     "Stop": [{
-      "hooks": [{"type": "command", "command": "echo 'Claude finished a response' >> /tmp/claude-activity.log"}]
+      "hooks": [{"type": "command", "command": "echo 'Claude finished a response' >> ~/.hermes/cache/scratch/claude-activity.log"}]
     }]
   }
 }
@@ -737,10 +773,10 @@ Use `/context` in interactive mode to see a colored grid of context usage. Key t
 ## Pitfalls & Gotchas
 
 1. **Interactive mode REQUIRES tmux** — Claude Code is a full TUI app. Using `pty=true` alone in Hermes terminal works but tmux gives you `capture-pane` for monitoring and `send-keys` for input, which is essential for orchestration.
-2. **`--dangerously-skip-permissions` dialog defaults to "No, exit"** — you must send Down then Enter to accept. Print mode (`-p`) skips this entirely.
+2. **The `--dangerously-skip-permissions` warning dialog defaults to "No, exit"** — that default is the safe answer; only send Down then Enter when you deliberately opted into the bypass in an isolated environment. Print mode (`-p`) skips the dialog entirely.
 3. **`--max-budget-usd` minimum is ~$0.05** — system prompt cache creation alone costs this much. Setting lower will error immediately.
 4. **`--max-turns` is print-mode only** — ignored in interactive sessions.
-5. **Claude may use `python` instead of `python3`** — on systems without a `python` symlink, Claude's bash commands will fail on first try but it self-corrects.
+5. **Claude may use `python` instead of `python`** — on systems without a `python` symlink, Claude's bash commands will fail on first try but it self-corrects.
 6. **Session resumption requires same directory** — `--continue` finds the most recent session for the current working directory.
 7. **`--json-schema` needs enough `--max-turns`** — Claude must read files before producing structured output, which takes multiple turns.
 8. **Trust dialog only appears once per directory** — first-time only, then cached.
@@ -761,3 +797,5 @@ Use `/context` in interactive mode to see a colored grid of context usage. Key t
 8. **Report results to user** — after completion, summarize what Claude did and what changed
 9. **Don't kill slow sessions** — Claude may be doing multi-step work; check progress instead
 10. **Use `--allowedTools`** — restrict capabilities to what the task actually needs
+11. **Prefer streaming output** — use `--output-format stream-json --verbose --include-partial-messages` for foreground and background runs; for longer ones also set `background=true, notify_on_complete=true`. Hermes parses the stream and its desktop UI renders the live delegation timeline and Token usage
+12. **Keep the returned `session_id`** — it is the handle for `--resume` follow-ups; report it alongside your summary

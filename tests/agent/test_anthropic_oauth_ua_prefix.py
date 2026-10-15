@@ -14,11 +14,7 @@ Two DIFFERENT Anthropic endpoints impose OPPOSITE User-Agent requirements:
 """
 from __future__ import annotations
 
-from agent.re_compat import re
 from unittest.mock import MagicMock, patch
-
-import pytest
-
 
 class TestOAuthUserAgentPrefix:
     """Inference uses ``claude-code/``; the OAuth token endpoint must NOT."""

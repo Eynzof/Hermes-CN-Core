@@ -11,7 +11,6 @@ helper) but missed this child, so the crash still reproduced. slash_worker.py
 must run the guard before its first non-stdlib import.
 """
 
-import ast
 import os
 import subprocess
 import sys
@@ -46,4 +45,3 @@ def test_slash_worker_imports_from_cwd_with_colliding_utils(tmp_path):
         "utils/ package — sys.path guard regressed (issue #51286).\n"
         f"stderr:\n{result.stderr}"
     )
-

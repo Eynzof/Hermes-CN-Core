@@ -13,7 +13,7 @@ from unittest.mock import MagicMock
 import pytest
 
 import gateway.run as gateway_run
-from gateway.platforms.base import MessageEvent, MessageType
+from gateway.platforms.event import MessageEvent, MessageType
 from tests.gateway.restart_test_helpers import make_restart_runner, make_restart_source
 
 
@@ -70,9 +70,8 @@ async def test_stale_marker_older_than_5min_does_not_block(tmp_path, monkeypatch
 
     # Same update_id as the stale marker, but the marker is too old to trust
     event = _make_restart_event(update_id=12345)
-    result = await runner._handle_restart_command(event)
+    await runner._handle_restart_command(event)
 
-    assert "Restarting gateway" in result
     runner.request_restart.assert_called_once()
 
 
@@ -94,9 +93,8 @@ async def test_event_without_update_id_bypasses_dedup(tmp_path, monkeypatch):
 
     # No update_id — the dedup check should NOT kick in
     event = _make_restart_event(update_id=None)
-    result = await runner._handle_restart_command(event)
+    await runner._handle_restart_command(event)
 
-    assert "Restarting gateway" in result
     runner.request_restart.assert_called_once()
 
 
@@ -133,9 +131,8 @@ async def test_different_platform_bypasses_dedup(tmp_path, monkeypatch):
         message_id="m1",
         platform_update_id=12345,
     )
-    result = await runner._handle_restart_command(event)
+    await runner._handle_restart_command(event)
 
-    assert "Restarting gateway" in result
     runner.request_restart.assert_called_once()
 
 

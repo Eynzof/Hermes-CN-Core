@@ -21,9 +21,7 @@ import orjson
 
 from tools.memory_tool import MEMORY_SCHEMA
 
-
 _FORBIDDEN_TOP_LEVEL_KEYS = ("allOf", "anyOf", "oneOf", "enum", "not")
-
 
 def test_memory_schema_has_no_forbidden_top_level_combinators():
     """OpenAI's Codex backend rejects these at the top level of parameters."""

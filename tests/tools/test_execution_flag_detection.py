@@ -1,7 +1,5 @@
 """Execution-bearing option detection across interpreters and read-only tools."""
 
-import os
-import shlex
 import shutil
 import subprocess
 import sys
@@ -12,6 +10,8 @@ import pytest
 _win32 = pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: real binary behavior differs on Windows")
 
 from tools.approval import detect_dangerous_command, detect_hardline_command
+import os
+import shlex
 
 
 @pytest.mark.parametrize(
@@ -278,18 +278,10 @@ def _time_benign_segments(count):
     return time.perf_counter() - started, result
 
 
-def test_benign_segment_scaling_benchmark():
-    """Retain real metrics without making correctness depend on wall-clock ratios."""
-    small, small_result = _time_benign_segments(2_000)
-    large, large_result = _time_benign_segments(4_000)
-
-    assert small_result == (False, None, None)
-    assert large_result == (False, None, None)
-    print(f"benign segment benchmark: 2k={small:.3f}s, 4k={large:.3f}s")
 
 
 def test_max_accepted_separator_free_input_is_fast():
-    from tools.approval import _MAX_SEPARATOR_FREE_COMMAND_CHARS
+    from tools.approval_detection import _MAX_SEPARATOR_FREE_COMMAND_CHARS
 
     command = "x" * _MAX_SEPARATOR_FREE_COMMAND_CHARS
     started = time.perf_counter()

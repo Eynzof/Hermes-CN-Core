@@ -108,6 +108,7 @@ class TestRefreshProviderCredentialsXaiOAuth:
     def _import(self):
         self.refresh = _import_refresh_provider_credentials()
 
+
     def test_unknown_provider_returns_false(self):
         """Unknown providers fall through to return False."""
         result = self.refresh("unknown-provider-xyz")

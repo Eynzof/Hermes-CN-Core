@@ -27,6 +27,20 @@ class TestInterruptModule:
         set_interrupt(False)
         assert not is_interrupted()
 
+    def test_is_thread_interrupted_checks_target_tid_not_caller(self):
+        from tools.interrupt import (
+            set_interrupt, is_interrupted, is_thread_interrupted, _interrupted_threads, _lock,
+        )
+        with _lock:
+            _interrupted_threads.clear()
+        other_tid = threading.get_ident() + 1
+        set_interrupt(True, thread_id=other_tid)
+        assert not is_interrupted()
+        assert is_thread_interrupted(other_tid)
+        assert is_thread_interrupted(None) is False
+        set_interrupt(False, thread_id=other_tid)
+        assert not is_thread_interrupted(other_tid)
+
 
     def test_clear_current_thread_interrupt_leaves_other_threads(self):
         """clear_current_thread_interrupt only touches the calling thread."""
@@ -47,6 +61,106 @@ class TestInterruptModule:
         with _lock:
             assert other_tid in _interrupted_threads  # other thread untouched
             _interrupted_threads.discard(other_tid)
+
+    def test_run_if_not_interrupted_skips_callback_when_already_interrupted(self):
+        from tools.interrupt import run_if_not_interrupted, set_interrupt
+
+        callbacks = []
+        set_interrupt(True)
+        try:
+            assert run_if_not_interrupted(lambda: callbacks.append("claimed")) is False
+        finally:
+            set_interrupt(False)
+
+        assert callbacks == []
+
+    @pytest.mark.parametrize("callback_should_fail", [False, True])
+    def test_run_if_not_interrupted_orders_callback_before_concurrent_interrupt(
+        self, callback_should_fail, monkeypatch
+    ):
+        from tools import interrupt
+
+        class CallbackFailure(Exception):
+            pass
+
+        original_lock = interrupt._lock
+        attempting_interrupt_lock = threading.Event()
+        interrupt_published = threading.Event()
+        publisher_lock_contention = []
+        callback_observations = []
+        setters = []
+        setter_tids = []
+
+        class ObservedLock:
+            def __enter__(self):
+                if (
+                    threading.current_thread() in setters
+                    and not attempting_interrupt_lock.is_set()
+                ):
+                    acquired = original_lock.acquire(blocking=False)
+                    publisher_lock_contention.append(not acquired)
+                    attempting_interrupt_lock.set()
+                    if acquired:
+                        return self
+                original_lock.acquire()
+                return self
+
+            def __exit__(self, exc_type, exc_value, traceback):
+                original_lock.release()
+
+        interrupt.set_interrupt(False)
+        with original_lock:
+            baseline = (
+                set(interrupt._interrupted_threads),
+                dict(interrupt._interrupt_reasons),
+            )
+        monkeypatch.setattr(interrupt, "_lock", ObservedLock())
+
+        def publish_interrupt():
+            setter_tids.append(threading.get_ident())
+            try:
+                interrupt.set_interrupt(True)
+                interrupt_published.set()
+            finally:
+                interrupt.set_interrupt(False)
+
+        def callback():
+            setter = threading.Thread(target=publish_interrupt)
+            setters.append(setter)
+            setter.start()
+            assert attempting_interrupt_lock.wait(5)
+            assert publisher_lock_contention == [True]
+            callback_observations.append(interrupt_published.is_set())
+            if callback_should_fail:
+                raise CallbackFailure
+
+        try:
+            if callback_should_fail:
+                with pytest.raises(CallbackFailure):
+                    interrupt.run_if_not_interrupted(callback)
+            else:
+                assert interrupt.run_if_not_interrupted(callback) is True
+            assert interrupt_published.wait(5)
+        finally:
+            for setter in setters:
+                if setter.ident is not None:
+                    setter.join(timeout=5)
+            interrupt.set_interrupt(False)
+
+        assert setters
+        assert all(not setter.is_alive() for setter in setters)
+        assert setter_tids
+        assert callback_observations == [False]
+        assert interrupt_published.is_set()
+        with original_lock:
+            final_state = (
+                set(interrupt._interrupted_threads),
+                dict(interrupt._interrupt_reasons),
+            )
+        assert final_state == baseline
+        assert all(setter_tid not in final_state[0] for setter_tid in setter_tids)
+        assert all(setter_tid not in final_state[1] for setter_tid in setter_tids)
+
 
 # ---------------------------------------------------------------------------
 # Unit tests: pre-tool interrupt check
@@ -112,6 +226,8 @@ class TestPreToolCheck:
 # Unit tests: message combining
 # ---------------------------------------------------------------------------
 
+
+
 # ---------------------------------------------------------------------------
 # Integration tests (require local terminal)
 # ---------------------------------------------------------------------------
@@ -124,13 +240,14 @@ class TestSIGKILLEscalation:
         not __import__("shutil").which("bash"),
         reason="Requires bash"
     )
-    def test_sigterm_trap_killed_within_2s(self):
+    @pytest.mark.platforms("posix")
+    def test_sigterm_trap_killed_within_2s(self, tmp_path):
         """A process that traps SIGTERM should be SIGKILL'd after 1s grace."""
         from tools.interrupt import set_interrupt
         from tools.environments.local import LocalEnvironment
 
         set_interrupt(False)
-        env = LocalEnvironment(cwd="/tmp", timeout=30)
+        env = LocalEnvironment(cwd=str(tmp_path), timeout=30)
 
         # Start execution in a thread, interrupt after 0.5s
         result_holder = {"value": None}
@@ -169,9 +286,9 @@ class TestRunToolCleanupOnBaseException:
     """
 
     def test_cleanup_on_base_exception(self):
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
         import types
-        from tools.interrupt import set_interrupt, is_interrupted, _interrupted_threads, _lock
+        from tools.interrupt import set_interrupt, _interrupted_threads, _lock
 
         # Clear global state
         with _lock:

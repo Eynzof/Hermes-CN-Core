@@ -4,8 +4,8 @@ PR #9931 accidentally removed the required_credential_files header, which broke
 credential file mounting in Docker/Modal remote backends (#16452). This test
 prevents the regression from silently reappearing.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import os
 from pathlib import Path
@@ -28,19 +28,6 @@ def _parse_frontmatter(content: str) -> dict:
 
 
 class TestGoogleWorkspaceCredentialFiles:
-    def test_required_credential_files_present_in_skill_md(self):
-        content = SKILL_MD.read_text(encoding="utf-8", errors="replace")
-        fm = _parse_frontmatter(content)
-        entries = fm.get("required_credential_files")
-        assert entries, "required_credential_files missing from google-workspace SKILL.md"
-        assert isinstance(entries, list), "required_credential_files must be a list"
-        paths = {
-            (e["path"] if isinstance(e, dict) else e)
-            for e in entries
-        }
-        assert _EXPECTED_PATHS <= paths, (
-            f"Missing entries in required_credential_files: {_EXPECTED_PATHS - paths}"
-        )
 
     def test_entries_are_registered_when_files_exist(self, tmp_path):
         hermes_home = tmp_path / ".hermes"

@@ -7,9 +7,7 @@ from pathlib import Path
 
 import pytest
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-
 
 def _build_artifact(kind: str, tmp_path, *, nix_build: bool) -> subprocess.CompletedProcess[str]:
     """Invoke the real PEP 517 hook (build_sdist / build_wheel) as a subprocess.
@@ -41,9 +39,7 @@ def _build_artifact(kind: str, tmp_path, *, nix_build: bool) -> subprocess.Compl
         [
             sys.executable,
             "-c",
-            "from setuptools.build_meta import build_{kind}; build_{kind}(r'{out}')".format(
-                kind=kind, out=tmp_path
-            ),
+            f"from setuptools.build_meta import build_{kind}; build_{kind}(r'{tmp_path}')",
         ],
         cwd=PROJECT_ROOT,
         env=env,
@@ -51,7 +47,6 @@ def _build_artifact(kind: str, tmp_path, *, nix_build: bool) -> subprocess.Compl
         capture_output=True,
         check=False,
     )
-
 
 @pytest.mark.parametrize("kind", ["sdist", "wheel"])
 @pytest.mark.skip(reason="Fork packaging: Hermes-CN's setup.py intentionally allows wheel/sdist builds outside the Nix dev shell (pip install from git must work) — upstream's HERMES_NIX_BUILD guard was deliberately removed")
@@ -62,12 +57,29 @@ def test_artifact_build_rejects_nix_development_shell_environment(kind, tmp_path
     assert "Building wheels or sdists for hermes-agent is not supported" in result.stderr
 
 
-@pytest.mark.parametrize(
-    ("kind", "artifact_glob"),
-    [("sdist", "hermes_agent-*.tar.gz"), ("wheel", "hermes_agent-*.whl")],
-)
-def test_artifact_build_allows_explicit_nix_package_build_marker(kind, artifact_glob, tmp_path):
-    result = _build_artifact(kind, tmp_path, nix_build=True)
+def test_wheel_ships_importable_embedded_runtime(tmp_path):
+    result = _build_artifact("wheel", tmp_path, nix_build=False)
+    assert result.returncode == 0, result.stdout + result.stderr
 
-    assert result.returncode == 0, result.stderr
-    assert list(tmp_path.glob(artifact_glob))
+    wheel = next(tmp_path.glob("*.whl"))
+    # Import only from the built artifact: neither an editable install nor the
+    # checkout may hide an omitted package in the Desktop runtime's wheel.
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-S",
+            "-c",
+            "import sys; sys.path.insert(0, sys.argv[1]); "
+            "import hermes_embedded; "
+            "assert hermes_embedded.ffi_surface_version == "
+            "hermes_embedded.FFI_SURFACE_VERSION; "
+            "assert callable(hermes_embedded.handle_rpc)",
+            str(wheel),
+        ],
+        cwd=tmp_path,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr

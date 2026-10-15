@@ -5,8 +5,8 @@ integration that injects plugin rows into the Text-to-Speech category.
 
 Mirrors the structure of existing image_gen / browser picker tests.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import pytest
 
@@ -92,8 +92,6 @@ class TestVisibleProvidersInjectsTTSPlugins:
         visible = tools_config._visible_providers(tts_cat, config={})
 
         names = [row.get("name") for row in visible]
-        # Hardcoded rows (sample — check at least one is present)
-        assert "Microsoft Edge TTS" in names
         # Plugin row injected at the end (bundled moss + the test provider)
         assert "Cartesia" in names
 

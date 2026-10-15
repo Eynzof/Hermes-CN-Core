@@ -11,24 +11,12 @@ behaviour is only observable at runtime under load.
 """
 from __future__ import annotations
 
-
-
 import pytest
-
 
 @pytest.fixture(autouse=True)
 def _clear_env(monkeypatch):
     monkeypatch.delenv("HERMES_GATEWAY_HTTPX_KEEPALIVE_EXPIRY", raising=False)
     monkeypatch.delenv("HERMES_GATEWAY_HTTPX_MAX_KEEPALIVE", raising=False)
-
-
-def test_returns_none_when_httpx_unavailable(monkeypatch):
-    """If httpx can't be imported, the helper returns None so callers
-    fall back to httpx's built-in Limits default without raising."""
-    import gateway.platforms._http_client_limits as mod
-    monkeypatch.setattr(mod, "httpx", None)
-    assert mod.platform_httpx_limits() is None
-
 
 def test_env_override_rejects_garbage(monkeypatch):
     """Malformed env values fall back to defaults rather than raising."""

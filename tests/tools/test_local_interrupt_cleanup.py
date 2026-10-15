@@ -22,7 +22,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from tools.environments import local as local_mod
 from tools.environments.local import LocalEnvironment
 
 
@@ -100,15 +99,16 @@ def test_kill_process_uses_cached_pgid_if_wrapper_already_exited(monkeypatch):
     assert killpg_calls == [(67890, signal.SIGTERM), (67890, 0)]
 
 
+@pytest.mark.platforms("windows")
 def test_kill_process_uses_windows_tree_kill(monkeypatch):
-    """Windows must kill the whole Bash process tree, not just the wrapper."""
+    """Windows tree termination carries the process identity and reaps its wrapper."""
     env = object.__new__(LocalEnvironment)
     terminate_calls = []
     waits = []
     killed = []
 
-    def fake_terminate(pid, *, force=False):
-        terminate_calls.append((pid, force))
+    def fake_terminate(pid, *, force=False, expected_start_time=None):
+        terminate_calls.append((pid, force, expected_start_time))
 
     proc = SimpleNamespace(
         pid=12345,
@@ -116,12 +116,12 @@ def test_kill_process_uses_windows_tree_kill(monkeypatch):
         wait=lambda timeout=None: waits.append(timeout),
     )
 
-    monkeypatch.setattr(local_mod, "_IS_WINDOWS", True)
+    monkeypatch.setattr("gateway.status.get_process_start_time", lambda pid: {12345: 987654}[pid])
     monkeypatch.setattr("gateway.status.terminate_pid", fake_terminate)
 
     env._kill_process(proc)
 
-    assert terminate_calls == [(12345, True)]
+    assert terminate_calls == [(12345, True, 987654)]
     assert waits == [2.0]
     assert killed == []
 

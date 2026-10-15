@@ -45,7 +45,8 @@ def test_compute_host_line_json_hello_and_shutdown():
     assert proc.stdin is not None
     out = _stdout_queue(proc)
     try:
-        hello = _read_json_line(out)
+        # Match HostSupervisor's startup budget: hello follows the cold server import.
+        hello = _read_json_line(out, timeout=10.0)
         assert hello["type"] == "hello"
         if sys.platform == "win32":
             # uv-venv python.exe is a shim that spawns the real interpreter

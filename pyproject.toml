@@ -688,11 +688,11 @@ piper = "(platform_machine != 'ARM64' or sys_platform != 'win32') and (platform_
 # uv otherwise enables the dev group by default, including in payload builds.
 default-groups = []
 # grpcio's Windows source build filters C/C++ flags through Compiler.spawn;
-# setuptools 84 bypasses that hook via Compiler.call. Keep the existing backend
-# pin for the ARM64 target that builds grpcio from source.
-build-constraint-dependencies = [
+# setuptools 84 bypasses that hook via Compiler.call. Pin only grpcio's ARM64
+# build environment: httptools needs setuptools<=82.0.1 in its separate build.
+extra-build-dependencies = { grpcio = [
   "setuptools==83.0.0; sys_platform == 'win32' and platform_machine == 'ARM64'",
-]
+] }
 # 3.11 is an install bridge for pre-PM updaters, never a runtime, so the lock
 # covers 3.14 only. Without this the lock must resolve every supported version,
 # where extras that only ever coexist on 3.14 (kittentts vs neutts) conflict.

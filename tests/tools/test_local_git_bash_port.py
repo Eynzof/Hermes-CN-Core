@@ -445,9 +445,7 @@ class TestFindBashPosixMacosPreference:
 # ---------------------------------------------------------------------------
 
 class TestWrapCommandMsystemNeutralized:
-    def _make_env(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(local_mod, "_IS_WINDOWS", True)
-        monkeypatch.setattr(local_mod.sys, "platform", "win32")
+    def _make_env(self, tmp_path):
         with patch.object(
             LocalEnvironment, "init_session", autospec=True, return_value=None
         ):
@@ -456,8 +454,9 @@ class TestWrapCommandMsystemNeutralized:
         env._shell_path = r"C:\Git\bin\bash.exe"
         return env
 
+    @pytest.mark.platforms("windows")
     def test_win32_git_bash_embeds_msystem_prefix(self, tmp_path, monkeypatch):
-        env = self._make_env(tmp_path, monkeypatch)
+        env = self._make_env(tmp_path)
         seen = {}
 
         def fake_neutralize(cmd, bash_path):
@@ -473,9 +472,9 @@ class TestWrapCommandMsystemNeutralized:
         assert seen["bash"] == r"C:\Git\bin\bash.exe"
         assert seen["cmd"] == "echo hi"
 
+    @pytest.mark.platforms("posix")
     def test_non_win32_skips_msystem(self, tmp_path, monkeypatch):
-        env = self._make_env(tmp_path, monkeypatch)
-        monkeypatch.setattr(local_mod.sys, "platform", "linux")
+        env = self._make_env(tmp_path)
         called = []
         monkeypatch.setattr(
             local_mod,
@@ -485,8 +484,9 @@ class TestWrapCommandMsystemNeutralized:
         env._wrap_command("echo hi", str(tmp_path))
         assert called == []
 
+    @pytest.mark.platforms("windows")
     def test_powershell_shell_skips_msystem(self, tmp_path, monkeypatch):
-        env = self._make_env(tmp_path, monkeypatch)
+        env = self._make_env(tmp_path)
         env._shell_type = "powershell"
         called = []
         monkeypatch.setattr(
@@ -503,7 +503,8 @@ class TestWrapCommandMsystemNeutralized:
         assert wrapped == "<pwsh wrapper>"
         assert called == []
 
-    def test_real_neutralize_guards_per_command(self, tmp_path, monkeypatch):
+    @pytest.mark.platforms("windows")
+    def test_real_neutralize_guards_per_command(self, tmp_path):
         """Integration: with a real Git Bash marker on disk the REAL
         _with_msystem_neutralized produces the prefix; without the marker it
         is a no-op."""
@@ -512,12 +513,12 @@ class TestWrapCommandMsystemNeutralized:
         (install / "cmd" / "git.exe").write_text("", encoding="utf-8")
         (install / "bin").mkdir()
 
-        env = self._make_env(tmp_path, monkeypatch)
+        env = self._make_env(tmp_path)
         env._shell_path = str(install / "bin" / "bash.exe")
         wrapped = env._wrap_command("echo hi", str(tmp_path))
         assert "export MSYSTEM=; echo hi" in wrapped
 
-        env2 = self._make_env(tmp_path, monkeypatch)
+        env2 = self._make_env(tmp_path)
         env2._shell_path = str(tmp_path / "plain" / "bin" / "bash.exe")
         wrapped2 = env2._wrap_command("echo hi", str(tmp_path))
         assert "export MSYSTEM=; " not in wrapped2

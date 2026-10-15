@@ -29,19 +29,8 @@ import pytest
 
 @pytest.fixture()
 def server():
-    from unittest.mock import patch
-    import importlib
-
-    with patch.dict(
-        "sys.modules",
-        {
-            "hermes_constants": MagicMock(get_hermes_home=MagicMock(return_value="/tmp/hermes_test")),
-            "hermes_cli.env_loader": MagicMock(),
-            "hermes_cli.banner": MagicMock(),
-            "hermes_state": MagicMock(),
-        },
-    ):
-        mod = importlib.import_module("tui_gateway.server")
+    # Keep the real Path-valued home API; the runner isolates HERMES_HOME.
+    from tui_gateway import server as mod
     yield mod
 
 

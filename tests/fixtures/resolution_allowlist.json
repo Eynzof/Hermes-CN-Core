@@ -587,12 +587,6 @@
     "reason": "AttributeError-safe wrapper around shutil.which for the model-facing terminal: the caller wants the subshell's PATH answer"
   },
   {
-    "path": "tools/environments/local.py",
-    "symbol": "_windows_bash_candidates",
-    "kind": "bare_which",
-    "reason": "HERMES_GIT_BASH_PATH and the portable/MinGit dirs are ranked first; PATH is appended last on purpose (WSL bash fails silently on Windows paths)"
-  },
-  {
     "path": "tools/environments/local_gitbash_probe.py",
     "symbol": "_mandatory_aslr_enabled",
     "kind": "bare_which",

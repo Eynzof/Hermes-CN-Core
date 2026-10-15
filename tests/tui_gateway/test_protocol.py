@@ -8,7 +8,7 @@ import sys
 import threading
 import time
 import types
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 from pathlib import Path
 
 import pytest
@@ -24,29 +24,9 @@ def _restore_stdout():
 
 @pytest.fixture()
 def server():
-    # The sys.modules mocks only need to cover the *initial* import — once
-    # tui_gateway.server is cached, they are inert. Keeping them active for
-    # the whole test poisons any module first imported inside a test body:
-    # e.g. hermes_cli.active_sessions would bind the mocked get_hermes_home
-    # (a fixed shared path) forever, leaking active-session registry entries
-    # across every later test in the process. Scope the patch to the import.
-    #
-    # Import server_requests (pure stdlib) and transport BEFORE the window: the patch drops every module first
-    # imported inside it, so otherwise the module server.py binds its sinks on (write/emit/answerable) would vanish
-    # from sys.modules and a test's own ``from tui_gateway import server_requests`` would get a fresh,
-    # unbound copy whose default sinks drop frames and treat every client as answerable. Likewise a test's
-    # ``from tui_gateway.transport import bind_transport`` would bind a fresh module's ContextVar that the
-    # server's ``current_transport()`` never reads (first-in-process test sees ``_stdio_transport`` as caller).
-    import tui_gateway.server_requests
-    import tui_gateway.transport
-    with patch.dict("sys.modules", {
-        "hermes_constants": MagicMock(get_hermes_home=MagicMock(return_value="/tmp/hermes_test")),
-        "hermes_cli.env_loader": MagicMock(),
-        "hermes_cli.banner": MagicMock(),
-        "hermes_state": MagicMock(),
-    }):
-        import importlib
-        mod = importlib.import_module("tui_gateway.server")
+    # The runner isolates HERMES_HOME; keep the real Path-valued home and
+    # shared request/transport registries throughout import and dispatch.
+    from tui_gateway import server as mod
 
     # Snapshot the RPC registry: several tests below stub handlers
     # ("slash.exec", "fast.ping", ...) directly in the module-level dict,

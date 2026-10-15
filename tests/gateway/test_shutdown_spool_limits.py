@@ -13,14 +13,21 @@ def test_recovery_payload_memory_does_not_scale_with_backlog(
 ) -> None:
     monkeypatch.setattr(shutdown_flush, "_get_flush_dir", lambda: tmp_path)
     content = "x" * (256 * 1024)
-    for seq in range(24):
-        shutdown_flush.spool_dropped_transcript_message(
-            "sess", {"role": "user", "content": content, "timestamp": seq},
-        )
 
     class Sink:
         def append_message(self, **kwargs: object) -> None:
             assert kwargs["content"] == content
+
+    # The first replay imports the transcript/agent modules. Measure backlog
+    # retention after that one-time startup allocation, using a real replay.
+    shutdown_flush.spool_dropped_transcript_message(
+        "warmup", {"role": "user", "content": content, "timestamp": 0},
+    )
+    assert shutdown_flush.recover_pending_to_db(Sink()) == 1
+    for seq in range(24):
+        shutdown_flush.spool_dropped_transcript_message(
+            "sess", {"role": "user", "content": content, "timestamp": seq},
+        )
 
     tracemalloc.start()
     try:

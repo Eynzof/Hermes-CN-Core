@@ -6,7 +6,6 @@ of the dispatcher's ownership env, invisible to the Kanban board.
 """
 
 import sys
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -21,18 +20,9 @@ def _restore_stdout():
 
 @pytest.fixture()
 def server():
-    # Same import-window pattern as tests/tui_gateway/test_protocol.py: the mocks only need
-    # to cover the initial import of tui_gateway.server.
-    import tui_gateway.server_requests
-    import tui_gateway.transport
-    with patch.dict("sys.modules", {
-        "hermes_constants": MagicMock(get_hermes_home=MagicMock(return_value="/tmp/hermes_test")),
-        "hermes_cli.env_loader": MagicMock(),
-        "hermes_cli.banner": MagicMock(),
-        "hermes_state": MagicMock(),
-    }):
-        import importlib
-        mod = importlib.import_module("tui_gateway.server")
+    # The runner isolates HERMES_HOME; keep the real Path-valued home and
+    # shared request/transport registries throughout import and dispatch.
+    from tui_gateway import server as mod
 
     methods = dict(mod._methods)
     real_stdout = mod._real_stdout

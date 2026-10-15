@@ -120,7 +120,6 @@ overrides = [
     { name = "pynacl", specifier = ">=1.6,<1.7" },
     { name = "spacy-curated-transformers", marker = "sys_platform == 'never'" },
 ]
-build-constraints = [{ name = "setuptools", marker = "platform_machine == 'ARM64' and sys_platform == 'win32'", specifier = "==83.0.0" }]
 
 [[package]]
 name = "addict"

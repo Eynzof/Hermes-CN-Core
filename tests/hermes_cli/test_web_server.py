@@ -968,13 +968,13 @@ CONFIG_SCHEMA = ProviderConfigSchema(
 
     def test_put_memory_provider_config_can_save_without_activation(self):
         from hermes_cli.config import load_config, save_config
-
+        self._install_flatprov()
         config = load_config()
         config.setdefault("memory", {})["provider"] = ""
         save_config(config)
 
         resp = self.client.put(
-            "/api/memory/providers/hindsight/config",
+            "/api/memory/providers/flatprov/config",
             json={
                 "values": {
                     "mode": "local_external",
@@ -986,12 +986,12 @@ CONFIG_SCHEMA = ProviderConfigSchema(
             },
         )
 
-        assert resp.status_code == 200
+        assert resp.status_code == 200, resp.text
         assert resp.json() == {"ok": True, "active": ""}
         assert load_config()["memory"]["provider"] == ""
 
         resp = self.client.put(
-            "/api/memory/providers/hindsight/config",
+            "/api/memory/providers/flatprov/config",
             json={
                 "values": {
                     "mode": "local_external",
@@ -1002,9 +1002,9 @@ CONFIG_SCHEMA = ProviderConfigSchema(
             },
         )
 
-        assert resp.status_code == 200
-        assert resp.json() == {"ok": True, "active": "hindsight"}
-        assert load_config()["memory"]["provider"] == "hindsight"
+        assert resp.status_code == 200, resp.text
+        assert resp.json() == {"ok": True, "active": "flatprov"}
+        assert load_config()["memory"]["provider"] == "flatprov"
 
     def test_saved_openviking_endpoint_becomes_ready_without_activation(self, monkeypatch):
         monkeypatch.delenv("OPENVIKING_ENDPOINT", raising=False)

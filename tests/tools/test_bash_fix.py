@@ -64,7 +64,7 @@ class TestBashFixResult:
         assert "journalctl" in result.warning
 
     def test_warning_covers_every_change_category(self) -> None:
-        wrapper = _fix_for_windows("bash -c 'rev'")
+        wrapper = _fix_for_windows("bash rev")
         assert "Removed redundant shell wrapper" in wrapper.warning
         nul = _fix_for_windows("echo hi > nul")
         assert "null-device" in nul.warning
@@ -564,35 +564,40 @@ class TestBashFixShellWrappers:
         assert result.replacements == ("rev",)
         assert result.command.endswith("\ncd C:/dev/x && rev")
 
-    def test_inline_script_unwrapped_and_scanned(self) -> None:
+    def test_inline_script_fixed_in_place(self) -> None:
+        # ``bash -c 'script'`` runs the script in a CHILD shell: ``exit``,
+        # assignments, ``cd`` and traps must not leak into the surrounding
+        # script, so the wrapper stays and only the inline script is scanned
+        # and fixed in place (the exported fallbacks are inherited by the child).
         result = _fix_for_windows(r"bash -c 'cd C:\x && rev'")
-        assert result.shell_wrappers == ("bash -c",)
+        assert result.shell_wrappers == ()
         assert result.path_changes == (r"C:\x",)
         assert result.replacements == ("rev",)
-        assert result.command.endswith("\ncd C:/x && rev")
-
-    @pytest.mark.parametrize(
-        "source,wrapper",
-        [
-            ("bash -lc 'rev'", "bash -c"),
-            ("bash -cl 'rev'", "bash -c"),
-            ("sh -c 'rev'", "sh -c"),
-        ],
-    )
-    def test_c_forms_unwrapped(self, source: str, wrapper: str) -> None:
-        result = _fix_for_windows(source)
-        assert result.shell_wrappers == (wrapper,)
-        assert result.replacements == ("rev",)
-        assert result.command.endswith("\nrev")
+        assert result.command.split("\n")[-1] == r"bash -c 'cd C:/x && rev'"
 
     @pytest.mark.parametrize(
         "source",
         [
-            "bash -ec 'rev'",  # errexit changes the script's meaning
+            "bash -lc 'rev'",
+            "bash -cl 'rev'",
+            "sh -c 'rev'",
+        ],
+    )
+    def test_c_forms_keep_wrapper_and_scan_in_place(self, source: str) -> None:
+        # The child-shell isolation of ``-c`` is preserved: the wrapper stays
+        # and only the inline script is scanned, so the fallback is registered
+        # (in the exported prefix) while the command tail is unchanged.
+        result = _fix_for_windows(source)
+        assert result.shell_wrappers == ()
+        assert result.replacements == ("rev",)
+        assert result.command.split("\n")[-1] == source
+
+    @pytest.mark.parametrize(
+        "source",
+        [
             "bash scripts/deploy.sh",  # legitimate script invocation
             "bash ./tool",
             "bash app.sh",
-            "bash -c 'rev' extra",  # trailing argv: ``$0``/``$1`` semantics
             "bash",  # a bare nested shell is not a compatibility problem
             "bash && echo ok",
             "bash -c",  # no script word at all
@@ -602,6 +607,24 @@ class TestBashFixShellWrappers:
     )
     def test_wrappers_that_must_stay(self, source: str) -> None:
         assert _fix_for_windows(source) == BashFix(source)
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            "bash -ec 'rev'",  # errexit-form wrapper keeps isolation, scans in place
+            "bash -c 'rev' extra",  # trailing argv: ``$0``/``$1`` semantics preserved
+        ],
+    )
+    def test_option_led_c_script_keeps_wrapper_and_registers_fallbacks(
+        self, source: str
+    ) -> None:
+        # Option-led ``-c`` wrappers are kept (child-shell isolation) but the
+        # nested script is still scanned, so the fallback registers in the
+        # exported prefix while the command tail is unchanged.
+        result = _fix_for_windows(source)
+        assert result.shell_wrappers == ()
+        assert result.replacements == ("rev",)
+        assert result.command.split("\n")[-1] == source
 
     def test_inline_script_kept_under_a_command_wrapper(self) -> None:
         # ``timeout 5 bash -c 'a && b'`` unwrapped to ``timeout 5 a && b``

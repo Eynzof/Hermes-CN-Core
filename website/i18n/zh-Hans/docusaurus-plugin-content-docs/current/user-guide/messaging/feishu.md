@@ -206,6 +206,8 @@ FEISHU_GROUP_POLICY=allowlist   # 默认
 
 在所有模式下，消息处理前机器人必须被明确 @提及（或 @all）。私信始终绕过此限制。
 
+适配器在启动时读取一次 `FEISHU_GROUP_POLICY`（连同 `FEISHU_ALLOWED_USERS`），并在整个进程生命周期内沿用该值：写这个变量——改 `.env`、`hermes gateway setup`、或面板表单——只改写文件本身。要让新策略生效需重启 gateway；修改这个值永远不需要重走飞书 OAuth / token 流程。
+
 设置 `FEISHU_REQUIRE_MENTION=false` 可让 Hermes 读取所有群消息而无需 @提及：
 
 ```bash

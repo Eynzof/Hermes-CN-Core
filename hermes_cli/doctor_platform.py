@@ -440,11 +440,26 @@ def _check_python_environment(should_fix: bool, f: Finding) -> None:
     # python-build-standalone can keep a vulnerable SQLite across upgrades).
     with warn_on_error("SQLite version probe failed: {e}", ""):
         import sqlite3
+
+        from hermes_sqlite import REQUIRED_COMPILE_OPTIONS, missing_compile_options
         from hermes_state_wal import is_sqlite_wal_reset_vulnerable, sqlite_source_id
         src = sqlite_source_id()
         # Warn-only: Hermes already refuses WAL on fresh DBs and runtime repair is best-effort.
         check_bool(not is_sqlite_wal_reset_vulnerable(), f"SQLite {sqlite3.sqlite_version}",
                    (f"SQLite {sqlite3.sqlite_version} (WAL-reset bug)", _sqlite_upgrade_hint()))
+        # A version that is safe can still be compiled without the modules the state
+        # DB relies on (FTS5 for messages_fts, and the FTS3/FTS4/RTREE/math functions
+        # older indexes were created with). Warn-only: nothing in-process can fix it,
+        # but "no such module: fts5" should say why. The runtime release asserts the
+        # same options on the interpreter it freezes (#181).
+        missing = missing_compile_options()
+        check_bool(
+            not missing,
+            "SQLite extensions " + "/".join(
+                option.removeprefix("ENABLE_") for option in REQUIRED_COMPILE_OPTIONS),
+            (f"SQLite {sqlite3.sqlite_version} lacks {', '.join(missing)}",
+             "(install a Python whose SQLite enables FTS5/FTS3/FTS4/RTREE/MATH_FUNCTIONS)"),
+        )
         if src:
             check_info(f"SQLite source id: {(src[:48] + '…') if len(src) > 48 else src}")
         _report_database_journal_modes()

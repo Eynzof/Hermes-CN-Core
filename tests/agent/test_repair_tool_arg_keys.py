@@ -380,6 +380,13 @@ class TestToolSpecificAliases:
             result = repair_tool_arg_keys("cronjob", args)
             assert result == {"no_agent": True}
 
+    @pytest.mark.parametrize("tool_name", ["process", "process_manage"])
+    def test_process_wait_maps_to_block(self, tool_name):
+        """Kimi's boolean wait must not become the global numeric timeout."""
+        schema = _mock_schema({"block": {"type": "boolean"}})
+        with patch("model_tools.registry.get_schema", return_value=schema):
+            assert repair_tool_arg_keys(tool_name, {"wait": True}) == {"block": True}
+
     def test_tool_specific_takes_precedence_over_global(self):
         """When global and tool-specific disagree, tool-specific wins."""
         schema = _mock_schema(

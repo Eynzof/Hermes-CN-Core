@@ -1,7 +1,8 @@
 """The catalog admission gate must validate the pinned clone's own files only.
 
-These tests execute the real ``run:`` blocks of plugin-catalog-ci.yml against
-fixture git repos: the changed-entries step against a PR merge commit, and the
+These tests execute the real ``run:`` lines of plugin-catalog-ci.yml (each calls a
+``scripts/ci/catalog_*.py`` script under ``$GITHUB_WORKSPACE``) against fixture git
+repos: the changed-entries step against a PR merge commit, and the
 pinned-source step against an origin repo served under an https URL through a
 git ``url.insteadOf`` rewrite. One case per closed bypass, plus the legitimate
 flows that must keep passing.
@@ -54,7 +55,7 @@ def _run(script_text: str, tmp_path: Path, cwd: Path, env: dict) -> subprocess.C
     script.write_text(script_text, encoding="utf-8")
     return subprocess.run(
         ["bash", str(script)], env=env, cwd=cwd,
-        stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=120)
+        stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=120, check=False)
 
 
 # ── pinned-source step ────────────────────────────────────────────────────────
@@ -102,6 +103,7 @@ def _gate(tmp_path: Path, origin: Path, entries: list[Path],
         # CI runs the step from the hermes-agent checkout; `-I` must ignore this.
         "PYTHONPATH": str(ROOT),
         "GIT_TERMINAL_PROMPT": "0",
+        "GITHUB_WORKSPACE": str(ROOT),
         "GIT_CONFIG_COUNT": "1",
         "GIT_CONFIG_KEY_0": f"url.{origin.as_uri()}.insteadOf",
         "GIT_CONFIG_VALUE_0": REPO_URL,
@@ -156,6 +158,18 @@ def _self_updater_in_spaced_dir(tp, origin, sha):
     return _entry(tp, "evil.yaml", _commit(origin)), "self-updating code"
 
 
+def _bundled_native_binary(tp, origin, sha):
+    # A PE binary committed in the plugin tree (README rule 17). Header, not ext.
+    (origin / "plugin" / "runtime").mkdir()
+    (origin / "plugin" / "runtime" / "host.exe").write_bytes(b"MZ\x90\x00" + b"\x00" * 64)
+    return _entry(tp, "evil.yaml", _commit(origin)), "unscannable executable payload"
+
+
+def _committed_bytecode(tp, origin, sha):
+    (origin / "plugin" / "mod.pyc").write_bytes(b"\x00" * 16)
+    return _entry(tp, "evil.yaml", _commit(origin)), "unscannable executable payload"
+
+
 def _log_forging_filename(tp, origin, sha):
     (origin / "plugin" / "evil\n::error::forged.js").write_text(
         "releases/latest writeFile(", encoding="utf-8")
@@ -176,6 +190,7 @@ def _shadowed_parser_import(tp, origin, sha):
 @pytest.mark.parametrize("case", [
     _traversal_subdir, _symlinked_subdir, _symlink_behind_in_clone_link, _tag_object_sha,
     _newline_sha, _log_forging_repo, _symlinked_entry_file, _self_updater_in_spaced_dir,
+    _bundled_native_binary, _committed_bytecode,
     _log_forging_filename, _shadowed_parser_import,
 ], ids=lambda f: f.__name__.lstrip("_"))
 def test_bypass_fails_the_gate(tmp_path, origin, case):
@@ -188,6 +203,75 @@ def test_bypass_fails_the_gate(tmp_path, origin, case):
     assert "PASS" not in res.stdout
     # PR-controlled values must never smuggle a workflow command into the log.
     assert not any(line.startswith("::error::forged") for line in res.stdout.splitlines())
+
+
+def _attested_binary(origin: Path) -> str:
+    """Commit a PE binary at plugin/runtime/host.exe and return its catalog path."""
+    (origin / "plugin" / "runtime").mkdir()
+    (origin / "plugin" / "runtime" / "host.exe").write_bytes(b"MZ\x90\x00" + b"\x00" * 64)
+    _commit(origin)
+    return "runtime/host.exe"
+
+
+def _gh_stub(tmp_path: Path, rc: int) -> Path:
+    """A `gh` that records its argv and answers `attestation verify` with ``rc``."""
+    log = tmp_path / "gh.calls"
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    stub = bin_dir / "gh"
+    stub.write_text(f'#!/bin/sh\nprintf "%s\\n" "$*" >> "{log}"\nexit {rc}\n', encoding="utf-8")
+    stub.chmod(0o755)
+    return log
+
+
+def test_an_attested_binary_is_verified_against_the_pin_and_then_allowed(tmp_path, origin):
+    path = _attested_binary(origin)
+    sha = _git(origin, "rev-parse", "HEAD")
+    log = _gh_stub(tmp_path, 0)
+    entry = _entry(tmp_path, "ok.yaml", sha, attested_binaries=[path])
+    res = _gate(tmp_path, origin, [entry])
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert f"PASS: {entry}" in res.stdout
+    [call] = log.read_text(encoding="utf-8").splitlines()
+    # The gate strips only a github.com prefix from the repo, so the fixture URL passes whole.
+    assert call.startswith("attestation verify ")
+    assert call.endswith(f"/plugin/{path} --repo {REPO_URL} --source-digest {sha} "
+                         "--predicate-type https://slsa.dev/provenance/v1")
+
+
+def test_an_attested_binary_without_provenance_fails_the_gate(tmp_path, origin):
+    path = _attested_binary(origin)
+    _gh_stub(tmp_path, 1)
+    entry = _entry(tmp_path, "evil.yaml", _git(origin, "rev-parse", "HEAD"), attested_binaries=[path])
+    res = _gate(tmp_path, origin, [entry])
+    assert res.returncode != 0
+    assert "no build-provenance attestation for runtime/host.exe" in res.stdout
+    assert "PASS" not in res.stdout
+
+
+def test_an_attested_self_updater_still_fails_the_self_updater_gate(tmp_path, origin):
+    # Provenance proves origin, not behaviour: listing an updater script as attested must not
+    # remove it from the tree the self-updater gate reads.
+    (origin / "plugin" / "update.js").write_text(
+        "fetch('releases/latest'); fs.writeFileSync(target, body)\n", encoding="utf-8")
+    _commit(origin)
+    _gh_stub(tmp_path, 0)
+    entry = _entry(tmp_path, "evil.yaml", _git(origin, "rev-parse", "HEAD"),
+                   attested_binaries=["update.js"])
+    res = _gate(tmp_path, origin, [entry])
+    assert res.returncode != 0
+    assert "self-updating code" in res.stdout
+    assert "PASS" not in res.stdout
+
+
+def test_an_attested_binaries_path_that_climbs_out_fails_the_gate(tmp_path, origin):
+    log = _gh_stub(tmp_path, 0)
+    entry = _entry(tmp_path, "evil.yaml", _git(origin, "rev-parse", "HEAD"),
+                   attested_binaries=["../../etc/passwd"])
+    res = _gate(tmp_path, origin, [entry])
+    assert res.returncode != 0
+    assert "is not a plain relative path" in res.stdout
+    assert not log.exists()
 
 
 def test_one_entry_cannot_skip_or_impersonate_the_others(tmp_path, origin):
@@ -243,7 +327,7 @@ def test_structural_and_pinned_gates_agree(tmp_path, origin, mut):
     entry.write_text(yaml.safe_dump(data), encoding="utf-8")
     structural = subprocess.run(
         [sys.executable, str(ROOT / "scripts/validate_plugin_catalog.py"), str(entry)],
-        capture_output=True, text=True)
+        capture_output=True, text=True, check=False)
     gate = _gate(tmp_path, origin, [entry])
     assert (structural.returncode == 0) == (gate.returncode == 0), (
         f"{structural.stdout}{structural.stderr}\n{gate.stdout}{gate.stderr}")
@@ -302,8 +386,9 @@ def test_changed_entries_step(tmp_path, change, rc, listed, text):
     _git(repo, "update-ref", "refs/remotes/origin/main", base)
     out = tmp_path / "gh-output.txt"
     out.touch()
-    res = _run(_step("Find changed catalog"), tmp_path, repo,
-               {**os.environ, "GITHUB_OUTPUT": str(out)})
+    res = _run(_step("Find changed catalog"), tmp_path, repo, {
+        **os.environ, "GITHUB_OUTPUT": str(out), "GITHUB_WORKSPACE": str(ROOT),
+        "PATH": f"{Path(sys.executable).parent}:{os.environ['PATH']}"})
     assert res.returncode == rc, res.stdout + res.stderr
     lines = out.read_text(encoding="utf-8").splitlines()
     assert [f for f in lines if f and "__EOF__" not in f and f != "files<<__EOF__"] == listed

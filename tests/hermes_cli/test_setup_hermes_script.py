@@ -6,5 +6,5 @@ SETUP_SCRIPT = REPO_ROOT / "setup-hermes.sh"
 
 
 def test_setup_hermes_script_is_valid_shell(real_bash):
-    result = subprocess.run([real_bash, "-n", str(SETUP_SCRIPT)], capture_output=True, text=True)
+    result = subprocess.run([real_bash, "-n", str(SETUP_SCRIPT)], capture_output=True, text=True, check=False)
     assert result.returncode == 0, result.stderr

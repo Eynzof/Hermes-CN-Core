@@ -123,7 +123,7 @@ class _WrapperEnv:
         import subprocess
         script = f"builtin cd -- {shlex.quote(cwd)} || exit 126\n{command}"
         proc = subprocess.run(["bash", "-c", script], capture_output=True, text=True, encoding="utf-8",
-                              input=kwargs.get("stdin_data"))
+                              input=kwargs.get("stdin_data"), check=False)
         return {"output": proc.stdout + proc.stderr, "returncode": proc.returncode}
 
 

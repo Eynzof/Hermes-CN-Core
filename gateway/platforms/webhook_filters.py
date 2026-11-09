@@ -199,18 +199,17 @@ class WebhookRouteProcessor:
                 is_frozen_runtime,
                 run_python_script_in_process,
             )
-
             if is_frozen_runtime():
                 exit_code, stdout, stderr = run_python_script_in_process(
                     str(path),
                     self.script_timeout_seconds,
                     stdin_text=json.dumps(payload),
                 )
-                result = None
             else:
                 result = subprocess.run(
                     [interpreter, str(path)], input=json.dumps(payload), capture_output=True, text=True, encoding="utf-8", errors="replace",
                     timeout=self.script_timeout_seconds, cwd=str(path.parent), env=build_subprocess_env(), **popen_kwargs,
+                    check=False,
                 )
                 exit_code = result.returncode
                 stdout = (result.stdout or "").strip()

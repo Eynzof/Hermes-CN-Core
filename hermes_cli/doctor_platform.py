@@ -184,15 +184,16 @@ def _check_s6_supervision(issues: list[str]) -> None:
     """Under our s6 /init, report static services and the ONE host gateway slot; no-op elsewhere.
     Counterpart to :func:`_check_gateway_service_linger` (systemd-on-host)."""
     try:
-        from hermes_cli.service_manager import S6ServiceManager, detect_service_manager
+        from hermes_cli.service_manager import (
+            S6_STATIC_SCANDIR, S6ServiceManager, detect_service_manager, s6_service_up)
     except Exception:
         return
     if detect_service_manager() != "s6":
         return
     _section("s6 Supervision")
     mgr = S6ServiceManager()
-    for static in ("main-hermes", "dashboard"):  # s6-rc symlinks under /run/service/, same s6-svstat probe
-        up = mgr.is_running(static)
+    for static in ("main-hermes", "dashboard"):  # s6-rc symlinks in the root scandir, not the gateway one
+        up = s6_service_up(S6_STATIC_SCANDIR / static)
         (check_ok if up else check_info)(f"{static}: up" if up else f"{static}: down (expected if not enabled via env)")
     _report_host_gateway_slot(mgr, issues)
 
@@ -330,7 +331,7 @@ def _macos_desktop_dr(app: Path) -> str | None:
     """Return the bundle's designated requirement string, or None on failure (a hanging codesign must never abort doctor)."""
     codesign = shutil.which("codesign")
     try:
-        proc = subprocess.run([codesign, "-d", "--requirements", "-", str(app)], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15) if codesign else None
+        proc = subprocess.run([codesign, "-d", "--requirements", "-", str(app)], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15, check=False) if codesign else None
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return None
     return None if proc is None or proc.returncode != 0 else (proc.stdout or "") + (proc.stderr or "")
@@ -549,6 +550,7 @@ def _check_web_dashboard_import(should_fix: bool, f: Finding) -> None:
             timeout=120,
             cwd=str(PROJECT_ROOT),
             env=env,
+            check=False,
         )
     except subprocess.TimeoutExpired:
         _fail_and_issue(

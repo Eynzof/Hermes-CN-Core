@@ -31,7 +31,6 @@ host ``_IS_WINDOWS`` is already False, so no patching is needed at all.
 
 import os
 import shutil
-import sys
 import pytest
 from unittest.mock import patch
 
@@ -45,7 +44,6 @@ from tools.environments.local import (
     _git_bash_bin_dirs,
     _make_run_env,
     _msys_to_windows_path,
-    _prepend_git_bash_dirs,
     _quote_bash_path,
     _resolve_safe_cwd,
     _sanitize_subprocess_env,
@@ -302,7 +300,6 @@ class TestWindowsMsysPathconvDefaults:
 # write_file error / terminal exit 127 when login bash is broken)
 # ---------------------------------------------------------------------------
 
-@pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: path separator `/` vs `\` mismatch on Windows")
 class TestGitBashCoreutilsOnPath:
     def _fake_isdir(self, existing):
         existing = {e.replace("\\", "/") for e in existing}
@@ -345,6 +342,7 @@ class TestGitBashCoreutilsOnPath:
         assert _git_bash_bin_dirs() == []
 
 
+    @pytest.mark.platforms("posix")
     def test_make_run_env_noop_on_posix(self, monkeypatch):
         monkeypatch.setattr(local_mod, "_git_bash_bin_dirs_cache", None)
         run_env = _make_run_env({"PATH": "/usr/bin:/bin"})
@@ -445,3 +443,15 @@ class TestWrapCommandWindowsNativeCwd:
         # BASH wrapper, not PowerShell's.
         assert "builtin cd -- " in wrapped and "/c/Users/liush" in wrapped
         assert "Set-Location" not in wrapped
+
+
+def test_git_bash_dirs_stay_first_when_hermes_tools_move_behind_the_users(monkeypatch):
+    """Git Bash's coreutils are store dirs too, but bash must find them before System32's."""
+    import pm.install
+    from tools.environments import local as local_mod
+
+    bash_dir, node_dir, system32 = "/store/git/usr/bin", "/store/node", "/windows/system32"
+    monkeypatch.setattr(pm.install, "_store_path_dirs", lambda: [bash_dir, node_dir])
+    monkeypatch.setattr(local_mod, "_git_bash_bin_dirs", lambda: [bash_dir])
+    path = os.pathsep.join([bash_dir, node_dir, system32])
+    assert local_mod._user_tools_first(path).split(os.pathsep) == [bash_dir, system32, node_dir]

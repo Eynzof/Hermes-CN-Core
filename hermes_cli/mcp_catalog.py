@@ -435,7 +435,7 @@ def _run_bootstrap(cwd: Path, commands: list[str]) -> None:
         if sys.platform == "win32":
             from hermes_cli._subprocess_compat import windows_hide_flags
             _subprocess_kwargs["creationflags"] = windows_hide_flags()
-        rc = subprocess.run(cmd, cwd=str(cwd), shell=True, **_subprocess_kwargs).returncode
+        rc = subprocess.run(cmd, cwd=str(cwd), shell=True, check=False, **_subprocess_kwargs).returncode
         if rc != 0:
             raise CatalogError(f"bootstrap step failed (exit {rc}): {cmd}", failure_class="bootstrap_failed")
 

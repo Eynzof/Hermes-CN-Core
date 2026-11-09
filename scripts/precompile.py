@@ -66,7 +66,6 @@ DEFAULT_TOP_LEVEL_MODULES: tuple[str, ...] = (
     "utils.py",
     "platform_utils.py",
     "import_accelerator.py",
-    "mcp_serve.py",
     "agent.py",
 )
 

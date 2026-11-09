@@ -53,6 +53,54 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 _has_pytest() { [ -n "$1" ] && [ -x "$1" ] && "$1" -c 'import pytest' 2>/dev/null; }
 # shellcheck source=scripts/_activation.sh
 . "$SCRIPT_DIR/_activation.sh"
+
+# A test run under a faked HOME (worktree lanes, probe homes) provisions its
+# test environment from the OS account's tool store instead of downloading
+# ~1 GB of tools into every temporary home, but only while that store already
+# records this checkout's pins (_store_has_pins). The check runs unlocked
+# before `pm install` takes the store's install lock, so it keeps runs that
+# START on different pins apart; it does not cover the window in between, where
+# the account's own `hermes update` (or a run on other pins) can re-point
+# facts.json and this run's `pm install` then re-stages its pins over them.
+# Only this runner's own provisioning gets HERMES_RUNTIME_DIR: the pytest
+# children below start from `env -i` without it, so tests that exercise setup,
+# install or update resolve their own stores. Their PATH still holds the
+# account store's tool dirs, so a test writing through a PATH tool
+# (`pip install`, `npm -g`) would write into the account store. An explicit
+# HERMES_RUNTIME_DIR, a custom HERMES_HOME, a home that already holds a store,
+# or an account without a usable store keep today's per-home layout.
+# Prints the account home, then the pinned Python minor.
+_account_tool_store() {
+  local account py_minor
+  [ -z "${HERMES_RUNTIME_DIR:-}" ] || return 1
+  case "${HERMES_HOME:-}" in "" | "$HOME/.hermes" | "$HOME/.hermes/"*) ;; *) return 1 ;; esac
+  [ ! -f "$HOME/.hermes/tools/facts.json" ] || return 1
+  account="$(getent passwd "$(id -u)" 2>/dev/null | cut -d: -f6)"
+  [ -n "$account" ] || account="$(dscl . -read "/Users/$(id -un)" NFSHomeDirectory 2>/dev/null | sed -n 's/^NFSHomeDirectory: *//p')"
+  [ -n "$account" ] && [ -d "$account" ] && [ ! "$account" -ef "$HOME" ] || return 1
+  [ -f "$account/.hermes/tools/facts.json" ] && [ -w "$account/.hermes/tools" ] || return 1
+  py_minor="$(_store_has_pins "$account/.hermes/tools")" || return 1
+  printf '%s\n%s\n' "$account" "$py_minor"
+}
+# Read-only check that the store already records this checkout's pins
+# (scripts/tool_store_pins.py says why and what counts); prints the Python minor.
+_store_has_pins() {
+  local python
+  python="$(HERMES_RUNTIME_DIR="$1" hermes_bootstrap_python "$REPO_ROOT")" || return 1
+  PYTHONHOME= "$python" -I -B "$REPO_ROOT/scripts/tool_store_pins.py" "$REPO_ROOT" "$1" 2>/dev/null
+}
+if _shared="$(_account_tool_store)"; then
+  _account="${_shared%%$'\n'*}"
+  export HERMES_RUNTIME_DIR="$_account/.hermes/tools"
+  # setup-hermes.sh's uv-managed bootstrap interpreter is the same kind of
+  # cache, but only reused: a missing pinned minor would download into it.
+  if [ -z "${UV_PYTHON_INSTALL_DIR:-}" ] && [ -w "$_account/.local/share/uv/python" ] \
+      && compgen -G "$_account/.local/share/uv/python/cpython-${_shared#*$'\n'}[.-]*" >/dev/null; then
+    export UV_PYTHON_INSTALL_DIR="$_account/.local/share/uv/python"
+  fi
+  echo "▶ faked HOME: using the account's tool store $HERMES_RUNTIME_DIR"
+fi
+unset _account _shared
 if [ -z "${__HERMES_ACTIVATED:-}" ] && _has_pytest "${HERMES_PYTHON:-}"; then
   PYTHON="$HERMES_PYTHON"
   echo "▶ not activated — using HERMES_PYTHON: $PYTHON"
@@ -88,30 +136,24 @@ fi
 # resolves Path.home() from USERPROFILE (or HOMEDRIVE+HOMEPATH), stdlib
 # platform paths come from LOCALAPPDATA/APPDATA, ssl/sockets need SYSTEMROOT,
 # and tempfile needs TEMP/TMP. Dropping them breaks collection on native
-# Windows (issues #67385, #70813). USERNAME is the same class: ntpath.expanduser
-# will only expand a `~name` path when the *current* account name is known AND
-# the profile directory is named after it (it compares USERNAME against
-# basename(USERPROFILE) before guessing `<parent-of-home>\<name>`); with USERNAME
-# stripped, `~root/.ssh/authorized_keys` came back unexpanded, so
-# agent/file_safety.py::_guard_homes never learned that account's home and the
-# credential write-guard silently stopped covering `~name` inputs — tests/agent/
-# test_file_safety_write_credentials.py::TestProfileHomeProcessHome passed under
-# a plain `pytest` and failed under this runner for exactly that reason.
-# GitHub's windows-latest image sets USERNAME, so forwarding it is CI parity,
-# not a loosening. PATHEXT is the same class of Windows-run
-# variable: PowerShell and cmd resolve a BARE command name by appending the
-# extensions it lists, so without it `cmd`, `git` or `pwsh`-invoked tooling
-# inside a test is reported as "The term 'x' is not recognized" even though the
-# directory holding x.exe is on PATH (this runner forwards PATH; Windows'
-# process-wide PATHEXT default is what it could not see). That silently broke
-# the fork's Windows PowerShell suite (P-042/P-058) and install.ps1 -Stage
-# repository under `scripts/run_tests.sh` while both passed under a plain
-# `pytest` invocation. These are location/execution variables, not
+# Windows (issues #67385, #70813). PATHEXT is also required: without .EXE,
+# PowerShell opens a native child as a document without waiting for its exit.
+# PSModuleAnalysisCachePath: the hosted Windows images point PowerShell at a
+# shared module analysis cache, which CI warms before the tests (tests-os.yml).
+# Without it a test's powershell.exe child falls back to a cold per-user cache
+# and re-analyses every installed module (~22s per launch on arm64 runners).
+# USERNAME is the same class (CN fork, P-042/P-058): ntpath.expanduser only
+# expands a `~name` path when the *current* account name is known AND the
+# profile directory is named after it, so with USERNAME stripped
+# `~root/.ssh/authorized_keys` came back unexpanded and agent/file_safety.py's
+# credential write-guard silently stopped covering `~name` inputs. GitHub's
+# windows-latest image sets it, so forwarding it is CI parity, not a loosening.
+# These are location variables, not
 # credentials, so forwarding them keeps the isolation intent intact. Each is
 # only forwarded when actually set, so POSIX runs are byte-for-byte unchanged.
 WIN_ENV=()
 for _win_var in USERPROFILE USERNAME HOMEDRIVE HOMEPATH LOCALAPPDATA APPDATA SYSTEMROOT TEMP TMP \
-    ComSpec PATHEXT PROGRAMFILES ProgramFiles PROGRAMDATA ProgramData; do
+    ComSpec PATHEXT PROGRAMFILES ProgramFiles PROGRAMDATA ProgramData PSModuleAnalysisCachePath; do
   if [ -n "${!_win_var:-}" ]; then
     WIN_ENV+=("$_win_var=${!_win_var}")
   fi
@@ -160,6 +202,17 @@ _pf86="$(env | sed -n 's/^ProgramFiles(x86)=//p' | head -n1)"
 #     their user profiles and the transcripts CI uploads.
 #   * HERMES_E2E_STRICT_ACCEPTANCE makes tests/e2e/core/_pending_fixes.py's
 #     known gaps hard failures in an acceptance run (workflow dispatch input).
+#   * HERMES_E2E_UPGRADE_BASE (older name HERMES_E2E_N1_REF) picks the release
+#     tests/e2e/core/upgrade starts from: a tag, a commit, or an updater
+#     generation (by-path, handoff, pre-handoff); unset, the newest release.
+#     HERMES_E2E_INSTALL_REF installs a patched commit in its place (proving a
+#     leg red), HERMES_E2E_GIT_OBJECTS names an extra object store for its
+#     smart-HTTP origin, HERMES_E2E_KEEP_ROOT keeps its sandbox roots.
+#   * HERMES_TEST_SSH_HOST / _USER / _PORT / _KEY and HERMES_TEST_DOCKER_IMAGE
+#     arm the real-backend tests (tests/tools/test_ssh_environment.py,
+#     tests/tools/test_docker_backend_real.py); remote-backends.yml points them at
+#     a throwaway sshd container and a small public image. The key is a
+#     per-run throwaway, never a credential.
 #
 # These are test-infrastructure knobs, not credentials — same class as the
 # HERMES_RUN_SLOW_PET_TESTS / HERMES_E2E_BROWSER / HERMES_RUN_E2E opt-ins
@@ -171,10 +224,13 @@ _pf86="$(env | sed -n 's/^ProgramFiles(x86)=//p' | head -n1)"
 # credential can leak" property stays auditable at a glance.
 TEST_ENV=()
 for _test_var in HERMES_TEST_IMAGE HERMES_TEST_WORKERS HERMES_TEST_PATHS \
-  HERMES_TEST_FILE_TIMEOUT HERMES_TEST_FILE_RETRIES HERMES_TEST_SLICE \
+  HERMES_TEST_FILE_TIMEOUT HERMES_TEST_FILE_RETRIES HERMES_TEST_SLICE HERMES_TEST_FORKSERVER \
   SSL_CERT_FILE SSL_CERT_DIR HERMES_GATEWAY_LOCK_DIR HERMES_E2E_REQUIRE_TUI CI GITHUB_ACTIONS \
   HERMES_E2E_WINDOWS_INSTALL HERMES_E2E_MACHINE_ROOT HERMES_E2E_PROFILES_ROOT HERMES_E2E_ARTIFACTS \
-  HERMES_E2E_STRICT_ACCEPTANCE; do
+  HERMES_E2E_STRICT_ACCEPTANCE HERMES_E2E_UPGRADE_BASE HERMES_E2E_N1_REF \
+  HERMES_E2E_INSTALL_REF HERMES_E2E_GIT_OBJECTS HERMES_E2E_KEEP_ROOT \
+  HERMES_TEST_SSH_HOST HERMES_TEST_SSH_USER HERMES_TEST_SSH_PORT \
+  HERMES_TEST_SSH_KEY HERMES_TEST_DOCKER_IMAGE; do
   if [ -n "${!_test_var:-}" ]; then
     TEST_ENV+=("$_test_var=${!_test_var}")
   fi
@@ -183,6 +239,8 @@ done
 # ── Run in hermetic env ──────────────────────────────────────────────────────
 # env -i: start with empty environment, opt-in only what we need.
 # No credential var can leak — you'd have to explicitly add it here.
+# Never forward HERMES_RUNTIME_DIR or UV_PYTHON_INSTALL_DIR: under a faked HOME
+# they point at the account's shared stores (see _account_tool_store).
 echo "▶ running per-file parallel test suite via run_tests_parallel.py"
 echo "  (TZ=UTC LANG=C.UTF-8 PYTHONHASHSEED=0; clean env)"
 

@@ -558,8 +558,10 @@ def _detect_newline_literal_drift(content: str, matches: list[Span],
     multiply the file-side count under replace_all. new_string must carry a literal
     ``\\n`` too: that is what gets written in place of a line break, since
     _maybe_unescape_new_string deliberately never rewrites ``\\n``. ``\\r`` needs no
-    guard here -- that helper converts it whenever the region has a real CR. Drift in
-    new_string alone is indistinguishable from an edit that adds a ``\\n`` literal.
+    guard here -- that helper converts it only where every region has a real CR and no
+    literal ``\\r`` of its own, so a backslash-r inside a Windows path is never rewritten
+    into a line break. Drift in new_string alone is indistinguishable from an edit that
+    adds a ``\\n`` literal.
     """
     if "\\n" not in new_string:
         return None
@@ -635,16 +637,45 @@ def _detect_backslash_doubling(matched_regions: str, old_string: str,
         "as they appear in the file.")
 
 
+_CR_ESCAPE_BEFORE_NEWLINE = re.compile(r"\\r(?=\n)")
+# A literal tab escape is only unambiguous when it occupies indentation. In
+# particular, do not rewrite the ``\t`` in a newly added Windows ``\test``
+# path merely because the replaced region uses tab-indented lines. Runs are
+# handled together so ``\\t\\t`` at a line start becomes two real tabs.
+_TAB_ESCAPE_INDENT = re.compile(r"(?m)(?:(?<=\\n)|^)((?:\\t)+)")
+
+
 def _maybe_unescape_new_string(new_string: str, content: str, matches: list[Span]) -> str:
-    """Convert literal ``\\t``/``\\r`` in new_string to control chars, per sequence, only
-    when the matched region already contains the real control char (so ``sep = "\\t"`` files
-    are left alone). ``\\n`` is excluded: rewriting it would mangle source escape literals."""
+    """Convert literal ``\\t``/``\\r`` in new_string to control chars, per sequence, only where
+    the file vouches for it: EVERY replaced region contains the real control char and NONE of
+    them holds the literal two-character escape. ``\\n`` is excluded: rewriting it would mangle
+    source escape literals.
+
+    The literal-absence half is what keeps content intact. A CRLF file puts a real CR in every
+    multiline region, so "the region has a CR" cannot mean "new_string's ``\\r`` meant a CR":
+    the file itself holds the backslash of ``tdx_local\\run_mainwave.bat``, and rewriting it
+    split the line while the tool reported success (issue #183). The same evidence test keeps
+    ``dir\\test\\file.txt`` off a region whose real tabs are indentation. A sequence the file
+    holds literally is left as sent: a literal escape in the diff is visible, a rewritten one
+    corrupts silently. ``\\t`` converts only in indentation (including after a literal ``\\n``
+    that this helper deliberately preserves); ``\\r`` converts only directly before a real line
+    break. Those positions distinguish control characters from the ``\\t``/``\\r`` of a path the
+    edit *adds* (not in that region yet). A trailing ``\\r`` stays as sent rather than doubling
+    the CR the file already has.
+    """
     if "\\t" not in new_string and "\\r" not in new_string:
         return new_string
-    matched_regions = _matched_regions(content, matches)
+    regions = [content[start:end] for start, end in matches]
     for literal, control in (("\\t", "\t"), ("\\r", "\r")):
-        if literal in new_string and control in matched_regions:
-            new_string = new_string.replace(literal, control)
+        if literal not in new_string or any(literal in region for region in regions):
+            continue
+        if not all(control in region for region in regions):
+            continue
+        if literal == "\\t":
+            new_string = _TAB_ESCAPE_INDENT.sub(
+                lambda match: control * (len(match.group(1)) // 2), new_string)
+        else:
+            new_string = _CR_ESCAPE_BEFORE_NEWLINE.sub(control, new_string)
     return new_string
 
 

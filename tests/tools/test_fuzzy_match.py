@@ -538,6 +538,11 @@ class TestEscapeNormalizedNewString:
     the matched file region actually contains those control characters,
     regardless of which match strategy fired. ``\\n`` is excluded because
     newlines serialize correctly through JSON.
+
+    That evidence has to be unambiguous: a region that holds the two-character
+    escape itself, or a ``\\r`` that does not sit directly before a line break,
+    is content and is left as sent -- otherwise the bytes are rewritten
+    silently (issue #183, TestLiteralBackslashContent below).
     """
 
     def test_tab_in_new_string_unescaped_under_escape_normalized(self):
@@ -640,6 +645,146 @@ class TestEscapeNormalizedNewString:
         assert err is None
         assert count == 1
         assert "return 2" in new
+
+
+class TestLiteralBackslashContent:
+    """Issue #183: a CRLF file puts a real CR in every multiline match region, so the
+    old evidence test ("the region contains a CR") rewrote the ``\\r`` of a Windows
+    path into a line break and returned success with damaged bytes —
+    ``tdx_local\\run_mainwave.bat`` reached the file as ``tdx_local<CR>un_mainwave.bat``.
+    A file that holds the two-character escape itself is proof the escape is content,
+    so the replacement must carry those bytes verbatim.
+    """
+
+    # A CRLF Markdown table whose cells hold literal backslash paths.
+    ROWS = (
+        "| task | script | status | marker |\r\n"
+        "|---|---|---|---|\r\n"
+        "| close | closing_pipeline\\run_closing_summary.bat | tools\\status_closing.txt | hidcl |\r\n"
+        "| main | tdx_local\\run_mainwave.bat | status_mainwave.txt | hidmw |\r\n"
+        "| s2 | closing_pipeline\\run_s2_pick.bat | status_s2.txt | hids2 |\r\n"
+    )
+
+    def test_crlf_multiline_replacement_keeps_path_backslash_r(self):
+        """The reporter's repro: old_string spans two CRLF lines (LF only), new_string
+        keeps the row. The path's backslash-r must survive byte for byte."""
+        old_string = (
+            "| main | tdx_local\\run_mainwave.bat | status_mainwave.txt | hidmw |\n"
+            "| s2 | closing_pipeline\\run_s2_pick.bat | status_s2.txt | hids2 |"
+        )
+        new_string = "| main | tdx_local\\run_mainwave.bat | status_mainwave.txt | hidmw |"
+        new, count, strategy, err = fuzzy_find_and_replace(
+            self.ROWS, old_string, new_string)
+        assert err is None, f"Unexpected error: {err}"
+        assert count == 1
+        assert strategy == "line_trimmed"
+        # The row is byte-identical to what was requested...
+        assert "| main | tdx_local\\run_mainwave.bat | status_mainwave.txt | hidmw |" in new
+        # ...so no fragment of the path was pushed onto the next line, and no real CR
+        # appeared anywhere but at a line ending.
+        assert "tdx_local\r" + "un_mainwave.bat" not in new
+        assert "\r" not in new.replace("\r\n", "")
+        assert "| s2 | closing_pipeline" not in new  # the removed row is gone
+
+    def test_added_crlf_row_keeps_new_path_backslash_r(self):
+        """A path the edit *adds* is not in the matched region yet, so the region holds
+        no literal ``\\r``; the line-break position of the escape is the proof that it
+        is content there."""
+        content = (
+            "| task | script |\r\n"
+            "| init | run_init.bat |\r\n"
+            "| done | run_done.bat |\r\n"
+        )
+        old_string = "| init | run_init.bat |\n| done | run_done.bat |"
+        new_string = (
+            "| init | run_init.bat |\n"
+            "| main | tdx_local\\run_mainwave.bat |\n"
+            "| done | run_done.bat |"
+        )
+        new, count, _strategy, err = fuzzy_find_and_replace(content, old_string, new_string)
+        assert err is None, f"Unexpected error: {err}"
+        assert count == 1
+        assert "| main | tdx_local\\run_mainwave.bat |" in new
+        assert "\r" not in new.replace("\r\n", "")
+
+    def test_crlf_multiline_replacement_keeps_path_backslash_t(self):
+        """Same evidence rule for ``\\t``: real tab indentation in the region does not
+        justify rewriting the ``\\t`` of ``tdx_local\\test\\run_mainwave.bat``."""
+        content = (
+            "[paths]\r\n"
+            "\tscript = tdx_local\\test\\run_mainwave.bat\r\n"
+            "\tout = status_mainwave.txt\r\n"
+        )
+        old_string = (
+            "[paths]\n"
+            "\tscript = tdx_local\\test\\run_mainwave.bat\n"
+            "\tout = status_mainwave.txt\n"
+        )
+        new_string = "[paths]\n\tscript = tdx_local\\test\\run_mainwave.bat\n"
+        new, count, _strategy, err = fuzzy_find_and_replace(content, old_string, new_string)
+        assert err is None, f"Unexpected error: {err}"
+        assert count == 1
+        assert "script = tdx_local\\test\\run_mainwave.bat" in new
+        assert "tdx_local" + "\t" + "est\\run_mainwave.bat" not in new
+        assert "\tscript = " in new  # the real tab indent is preserved
+
+    def test_added_tab_indented_row_keeps_new_path_backslash_t(self):
+        """A newly added path was not in the old region, so its ``\\t`` must not
+        be rewritten merely because the surrounding rows use real tab indentation."""
+        content = (
+            "[paths]\r\n"
+            "\tinit = run_init.bat\r\n"
+            "\tdone = run_done.bat\r\n"
+        )
+        old_string = "[paths]\n\tinit = run_init.bat\n\tdone = run_done.bat"
+        new_string = (
+            "[paths]\n\tinit = run_init.bat\n"
+            "\tscript = tdx_local\\test\\run_mainwave.bat\n"
+            "\tdone = run_done.bat"
+        )
+
+        new, count, _strategy, err = fuzzy_find_and_replace(content, old_string, new_string)
+
+        assert err is None, f"Unexpected error: {err}"
+        assert count == 1
+        assert "\tscript = tdx_local\\test\\run_mainwave.bat" in new
+        assert "tdx_local" + "\t" + "est\\run_mainwave.bat" not in new
+
+    def test_crlf_single_line_replacement_keeps_path_backslash_r(self):
+        """Uneventful before the fix (a single-line region holds no real CR) and must
+        stay byte-exact: the delivered result equals the requested text."""
+        content = "| main | tdx_local\\run_mainwave.bat | hidmw |\r\n"
+        old_string = "| main | tdx_local\\run_mainwave.bat | hidmw |"
+        new_string = "| main2 | tdx_local\\run_mainwave.bat | hidmw2 |"
+        new, count, strategy, err = fuzzy_find_and_replace(content, old_string, new_string)
+        assert err is None, f"Unexpected error: {err}"
+        assert count == 1
+        assert strategy == "exact"
+        assert new == "| main2 | tdx_local\\run_mainwave.bat | hidmw2 |\r\n"
+
+    def test_tab_indented_line_keeps_literal_backslash_t_in_string(self):
+        """A region with a real tab AND a literal ``\\t`` (source code holding the
+        escape) is ambiguous evidence: new_string is written as sent."""
+        content = "\tsep = \"\\t\"\n"
+        old_string = "\tsep = \"\\t\"\n"
+        new_string = "\tsep = \"\\tab\"\n"
+        new, count, strategy, err = fuzzy_find_and_replace(content, old_string, new_string)
+        assert err is None, f"Unexpected error: {err}"
+        assert count == 1
+        assert strategy == "exact"
+        assert new == "\tsep = \"\\tab\"\n"
+
+    def test_crlf_drifted_line_breaks_still_unescaped(self):
+        """The legitimate case #33733 fixed: the file has real CRs and holds no literal
+        ``\\r``, and new_string sends ``\\r`` directly before each real line break."""
+        content = "alpha\r\nbeta\r\n"
+        old_string = "alpha\\r\nbeta"    # literal \r, real line break: drifted CRLF
+        new_string = "gamma\\r\ndelta"   # same drift in the replacement
+        new, count, strategy, err = fuzzy_find_and_replace(content, old_string, new_string)
+        assert err is None, f"Unexpected error: {err}"
+        assert count == 1
+        assert strategy == "escape_normalized"
+        assert new == "gamma\r\ndelta\r\n"
 
 
 class TestContextAwareCorrectness:

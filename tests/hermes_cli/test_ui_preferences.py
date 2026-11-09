@@ -60,9 +60,9 @@ def test_the_seed_import_only_adds_keys_and_never_creates_an_empty_store(tmp_pat
 
 @pytest.mark.platforms("linux", "macos")
 def test_an_unreadable_or_corrupt_store_is_never_merged_over(tmp_path):
-    """Only a missing file is no store. An unreadable one refuses the write (the client retries)
-    and stays intact; a corrupt one is kept aside and replaced by a NEW generation, which every
-    open window follows whatever revision it had seen."""
+    """A file that cannot be read at all refuses the write (the client retries) and stays intact;
+    a torn one is no store — kept aside and replaced by a NEW generation, which every open window
+    follows whatever revision it had seen."""
     path = tmp_path / "ui-preferences.json"
     kept = ui_preferences.write_preferences({"hermes-desktop-theme-v2": "nous", "hermes.desktop.keybinds": "{}"},
                                             path=path)
@@ -86,6 +86,98 @@ def test_an_unreadable_or_corrupt_store_is_never_merged_over(tmp_path):
     assert [backup.read_bytes() for backup in backups] == [torn]
     assert after["values"] == {"hermes-desktop-mode-v1": "dark"}
     assert after["generation"] != kept["generation"]
+
+
+def test_a_missing_store_reads_as_an_empty_one(tmp_path):
+    assert ui_preferences.read_preferences(tmp_path / "ui-preferences.json") == {
+        "exists": False, "revision": 0, "values": {}}
+
+
+def test_a_valid_store_reads_back_intact(tmp_path):
+    """Keys the reader does not know (``version``, an unconditional writer's extras) stay harmless:
+    the snapshot is the document's own revision, generation and string values."""
+    path = tmp_path / "ui-preferences.json"
+    path.write_text(json.dumps({
+        "version": 1, "generation": "gen-1", "revision": 7, "unknown": {"ignored": True},
+        "values": {"hermes-desktop-mode-v1": "dark", "hermes.desktop.keybinds": "{}"},
+    }), encoding="utf-8")
+
+    assert ui_preferences.read_preferences(path) == {
+        "exists": True, "revision": 7, "generation": "gen-1",
+        "values": {"hermes-desktop-mode-v1": "dark", "hermes.desktop.keybinds": "{}"},
+    }
+
+
+#: Each one is a store a reader can meet on disk and none of them is a JSON object: a writer that
+#: died before its first byte, a torn tail, a zeroed file, and bytes that are not UTF-8 at all.
+DAMAGED_DOCUMENTS = [
+    b"",
+    b'{"version": 1, "revision": 2, "values": {"hermes-desktop-mode-v1": "da',
+    b"\x00" * 32,
+    b'{"version": 1, "values": {"hermes-desktop-mode-v1": "\xff\xfe"}}',
+]
+
+
+@pytest.mark.parametrize("damaged", DAMAGED_DOCUMENTS)
+def test_a_damaged_store_reads_as_no_store_and_is_kept_aside(tmp_path, damaged):
+    """A corrupt document is not a read failure and must never surface as one: the Webapp's read
+    answers with a fresh store, and the next write keeps the bytes aside before replacing them."""
+    path = tmp_path / "ui-preferences.json"
+    path.write_bytes(damaged)
+
+    assert ui_preferences.read_preferences(path) == {"exists": False, "revision": 0, "values": {}}
+    assert path.read_bytes() == damaged
+
+    after = ui_preferences.write_preferences({"hermes.desktop.sessionListDensity": "compact"}, path=path)
+    assert after["values"] == {"hermes.desktop.sessionListDensity": "compact"}
+    assert [backup.read_bytes() for backup in tmp_path.glob("ui-preferences.json.corrupt-*")] == [damaged]
+
+
+@pytest.mark.parametrize("document", [[], "dark", 3, None, True, [{"hermes-desktop-mode-v1": "dark"}]])
+def test_a_store_whose_top_level_is_not_an_object_reads_as_no_store(tmp_path, document):
+    path = tmp_path / "ui-preferences.json"
+    path.write_text(json.dumps(document), encoding="utf-8")
+
+    assert ui_preferences.read_preferences(path)["exists"] is False
+    assert ui_preferences.write_preferences({"hermes-desktop-mode-v1": "dark"}, path=path)["values"] == {
+        "hermes-desktop-mode-v1": "dark"}
+    assert len(list(tmp_path.glob("ui-preferences.json.corrupt-*"))) == 1
+
+
+def test_invalid_values_and_missing_metadata_do_not_cost_the_valid_preferences(tmp_path):
+    """A document whose ``values`` holds dead entries (non-string values, or none) keeps the live
+    ones, and a missing/mistyped ``revision`` reads as 0 instead of making the store corrupt."""
+    path = tmp_path / "ui-preferences.json"
+    path.write_text(json.dumps({"version": 1, "revision": "3", "values": {
+        "hermes-desktop-mode-v1": "dark",
+        "hermes.desktop.keybinds": "{}",
+        "hermes.desktop.number": 3,
+        "hermes.desktop.nothing": None,
+        "hermes.desktop.list": ["x"],
+        "hermes.desktop.object": {"hermes.desktop.nested": "x"},
+    }}), encoding="utf-8")
+
+    live = {"hermes-desktop-mode-v1": "dark", "hermes.desktop.keybinds": "{}"}
+    assert ui_preferences.read_preferences(path) == {
+        "exists": True, "revision": 0, "values": live, "generation": ""}
+
+    after = ui_preferences.write_preferences({"hermes.desktop.panesFlipped": "true"}, path=path)
+    assert after["values"] == {**live, "hermes.desktop.panesFlipped": "true"}
+    # The dropped entries are not corruption: nothing to keep aside, and the store keeps its life.
+    assert not list(tmp_path.glob("ui-preferences.json.corrupt-*"))
+    assert after["revision"] == 1
+
+
+def test_a_non_object_values_map_costs_only_the_values(tmp_path):
+    """The document is a JSON object, so its identity (revision) survives even when ``values`` is
+    not a map: the unreadable map is dropped, not the store."""
+    path = tmp_path / "ui-preferences.json"
+    path.write_text(json.dumps({"version": 1, "revision": 4, "values": ["hermes-desktop-mode-v1"]}),
+                    encoding="utf-8")
+
+    assert ui_preferences.read_preferences(path) == {
+        "exists": True, "revision": 4, "values": {}, "generation": ""}
+    assert not list(tmp_path.glob("ui-preferences.json.corrupt-*"))
 
 
 def test_writes_merge_per_key_and_concurrent_writers_keep_each_others_keys(tmp_path):
@@ -152,6 +244,24 @@ def test_the_webapp_reads_and_writes_the_machine_store_behind_the_session_gate(w
     assert written.status_code == 200
     assert json.loads(store.read_text())["values"] == {"hermes-desktop-mode-v1": "dark"}
     assert tab.patch("/api/ui-preferences", json={"values": {"hermes.other": "x"}}).status_code == 400
+
+
+def test_a_corrupt_machine_store_answers_instead_of_crashing_the_route(webapp_state):
+    """The Webapp's first paint must not 500 because the machine's store is damaged: the read is a
+    fresh store and the next save starts a new generation, keeping the damaged bytes aside."""
+    from hermes_constants import get_default_hermes_root
+
+    store = get_default_hermes_root() / "ui-preferences.json"
+    store.parent.mkdir(parents=True, exist_ok=True)
+    damaged = b'{"version": 1, "values": {"hermes-desktop-mode-v1": "\xff"'
+    store.write_bytes(damaged)
+    tab = _client(token=True)
+
+    assert tab.get("/api/ui-preferences").json() == {"exists": False, "revision": 0, "values": {}}
+    written = tab.patch("/api/ui-preferences", json={"values": {"hermes-desktop-mode-v1": "dark"}})
+    assert written.status_code == 200
+    assert json.loads(store.read_text())["values"] == {"hermes-desktop-mode-v1": "dark"}
+    assert [backup.read_bytes() for backup in store.parent.glob("ui-preferences.json.corrupt-*")] == [damaged]
 
 
 @pytest.mark.parametrize("surface", [None, "serve", "dashboard"])

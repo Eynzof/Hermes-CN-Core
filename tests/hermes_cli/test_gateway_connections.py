@@ -122,6 +122,19 @@ def test_a_corrupt_store_is_kept_aside_and_an_unreadable_one_refuses(home, tmp_p
             store.set_launch_mode("primary")
 
 
+def test_an_undecodable_store_reads_as_empty_and_is_kept_aside(home):
+    """Bytes that are not UTF-8 text cannot hold a registry, so reading them is "no store" (never a
+    crash on the Webapp's first paint) and the next save keeps them aside instead of overwriting
+    the evidence."""
+    damaged = b'\xff\xfe{"version": 2, "connections": []}'
+    store.store_path().write_bytes(damaged)
+
+    assert store.read_registry()["connections"] == [{"id": "local", "kind": "local", "label": "This device"}]
+    store.set_launch_mode("last-used")
+    assert [backup.read_bytes() for backup in home.glob("gateway-connections.json.corrupt-*")] == [damaged]
+    assert json.loads(store.store_path().read_text())["launchMode"] == "last-used"
+
+
 def _save_one(root: str, index: int) -> None:
     os.environ["HERMES_HOME"] = root
     store.save_connection({"kind": "remote", "label": f"Box {index}", "url": f"http://box{index}:1", "token": "t"})

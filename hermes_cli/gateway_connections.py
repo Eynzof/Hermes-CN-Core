@@ -6,9 +6,10 @@ root rule as :func:`hermes_cli.ui_preferences.store_path`: a profile home names 
 0600. Its document is Electron's v2 connection registry (``apps/desktop/electron/connection-registry.ts``)
 plus a ``revision`` counter and ``importedFrom`` (the Desktop userData directories already merged in,
 so a connection removed here is never re-imported). Writers share the ``<store>.lock`` directory lock,
-replace the file whole by temp + rename, keep an unparseable file aside as ``.corrupt-<ms>``, and
-treat only a missing file as "no store". The Electron twin is ``electron/gateway-connections-store.ts``.
-
+replace the file whole by temp + rename, keep a file that is not a JSON object aside as
+``.corrupt-<ms>``, and treat only a missing or unreadable-as-text file as "no store"; a read that
+fails without saying anything about the content refuses the write instead. The Electron twin is
+``electron/gateway-connections-store.ts``.
 Secrets are ``{"encoding": "plain", "value": ...}`` envelopes. The one exception is a secret Desktop
 could not decrypt when it imported its old store: it stays the original ``safeStorage`` envelope (and
 is named in ``importNotices``) rather than being dropped, reads here as unset, and Desktop converts it
@@ -95,14 +96,18 @@ def tokens_path(root: Optional[Path] = None) -> Path:
 
 
 def _read_doc(path: Path) -> tuple[Optional[dict], bool]:
-    """``(document, corrupt)``; ``(None, False)`` for a missing file. Any other read failure says
-    nothing about the content, so it refuses rather than reading as empty."""
+    """``(document, corrupt)``; ``(None, False)`` for a missing file and ``(None, True)`` for one
+    that is not a JSON object (torn, or not UTF-8 text at all), which the next write keeps aside.
+    Any other read failure says nothing about the content, so it refuses rather than reading as
+    empty."""
     try:
         raw = path.read_text(encoding="utf-8-sig")
     except FileNotFoundError:
         return None, False
     except OSError as exc:
         raise ConnectionStoreBusy(f"gateway connections store is unreadable: {exc}") from exc
+    except UnicodeDecodeError:
+        return None, True
     try:
         doc = json.loads(raw)
     except ValueError:

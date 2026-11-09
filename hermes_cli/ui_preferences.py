@@ -16,8 +16,10 @@ Both writers share the on-disk contract, so keep the two in lockstep:
   (re-imports its own values, then follows it) whatever its revision high-water mark was;
 * a ``seed`` write (a client's first contact with a generation) only ADDS the keys the store lacks,
   so the client that has data fills a store an empty client created, and nothing is overwritten;
-* only a missing file reads as "no store": any other read failure refuses the write
-  (:class:`PreferencesBusy`) instead of merging over nothing.
+* a missing file reads as "no store", and so does one that is not a JSON text document at all
+  (undecodable bytes, or no object at the top level): it is kept aside by the next write rather
+  than crashing the reader. A read failure that says nothing about the content (``EACCES``,
+  ``EBUSY``…) refuses the write (:class:`PreferencesBusy`) instead of merging over nothing.
 
 Values are opaque strings the renderer already kept in localStorage. Only keys under the Desktop
 prefixes are accepted; the renderer's allowlist decides which of those are preferences and keeps
@@ -85,15 +87,21 @@ _MISSING = {"exists": False, "revision": 0, "values": {}}
 
 def _read(path: Path) -> tuple[dict, bool]:
     """``(snapshot, corrupt)``. A missing file is no store; an unparseable one is no store too
-    (``corrupt``), so clients re-import into a fresh generation. Any other read failure (EACCES,
-    EBUSY, EMFILE…) raises :class:`PreferencesBusy`: it says nothing about the content, and
-    merging over it would drop every key."""
+    (``corrupt``), so clients re-import into a fresh generation. ``corrupt`` also covers bytes that
+    are not UTF-8 text at all — torn by a dying writer, or written by another encoder — since they
+    cannot hold a document either; the next write keeps the file aside before replacing it. Any
+    other read failure (EACCES, EBUSY, EMFILE…) raises :class:`PreferencesBusy`: it says nothing
+    about the content, and merging over it would drop every key."""
     try:
         raw = path.read_text(encoding="utf-8-sig")
     except FileNotFoundError:
         return dict(_MISSING, values={}), False
     except OSError as exc:
         raise PreferencesBusy(f"preferences store is unreadable: {exc}") from exc
+    except UnicodeDecodeError:
+        # Undecodable bytes are content, not an I/O failure: no keys can be recovered from them, so
+        # read as no store and let the next write keep the file aside as ``.corrupt-<ms>``.
+        return dict(_MISSING, values={}), True
     try:
         doc = json.loads(raw)
     except ValueError:

@@ -74,7 +74,10 @@ zai = ZaiProfile(
     name="zai", aliases=("glm", "z-ai", "z.ai", "zhipu"),
     env_vars=("GLM_API_KEY", "ZAI_API_KEY", "Z_AI_API_KEY"), display_name="Z.AI (GLM)",
     description="Z.AI / GLM — Zhipu AI models", signup_url="https://z.ai/",
-    fallback_models=("glm-5.2", "glm-5", "glm-4-9b"), base_url="https://api.z.ai/api/paas/v4",
+    # Offline floor for the picker when both the live /models probe and the curated row fail:
+    # the current GLM generation first, never a retired slug (``glm-4-9b`` was #193's stale entry).
+    fallback_models=("glm-5.3", "glm-5.3-flash", "glm-5.3-flashx", "glm-5.2", "glm-5", "glm-4.7"),
+    base_url="https://api.z.ai/api/paas/v4",
     default_aux_model="glm-4.5-flash",
 )
 

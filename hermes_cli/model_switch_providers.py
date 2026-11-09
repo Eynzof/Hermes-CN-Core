@@ -566,6 +566,27 @@ def _extend_unique(target: list, items) -> None:
             target.append(item)
 
 
+def _merge_declared_with_discovered(declared, discovered):
+    """The endpoint row's model list: discovered ids first, then any declared id it omitted.
+
+    Callers pass *declared* only for an explicit ``models:`` allowlist (``has_explicit_models``);
+    metadata-shaped settings and singular ``model``/``default_model`` selectors are not a catalog.
+    ``discover_models`` then decides whether a probe happens — never whether the entry's own
+    presets disappear. An endpoint mid-rollout, or one that hides "highspeed"/"flashx" SKUs from
+    ``/models``, otherwise made every preset-only model vanish from the picker the moment the probe
+    succeeded (#193: a GLM Coding Plan preset capped at glm-5.2 while the endpoint served glm-5.3).
+    Live order still leads, so the endpoint's own catalog stays authoritative for ranking; the
+    presets are an appended floor, exactly like the built-in/overlay rows' ``configured ∪ live``
+    rule. Keeps the ``_NativePickerModelList`` marker when the live fetch was a native catalog.
+    """
+    if not declared or discovered is None:
+        return discovered
+    extras = [m for m in declared if m not in discovered]
+    if not extras:
+        return discovered
+    return type(discovered)([*discovered, *extras]) if isinstance(discovered, list) else [*discovered, *extras]
+
+
 def _norm_url(url: Any) -> str:
     # Effective base URLs of every built-in row we emit (normalized lower+rstrip). Section 4 uses this to
     # hide ``custom_providers`` entries that point at the same endpoint as a built-in (e.g. a user-defined
@@ -821,10 +842,10 @@ class _PickerBuild:
         headers: dict | None, api_mode: str | None, discovery_allowed: bool, is_current: bool,
     ) -> tuple[list | None, bool, bool]:
         """Probe policy shared by sections 3 and 4 (returns ``(models, native_empty, probed)``):
-        with an api_key live /models is the source of truth (replaces the partial ``models:``
-        subset); without one, an allowlist-shaped ``models:`` narrows a public endpoint and skips
-        the probe. A dict-shaped ``models:`` is metadata, so still probe; pin with
-        ``discover_models: false``."""
+        with an api_key live /models leads (the row is live ∪ the declared ``models:`` allowlist, see
+        ``_merge_declared_with_discovered`` — a probe never hides a preset); without one, an
+        allowlist-shaped ``models:`` narrows a public endpoint and skips the probe. A dict-shaped
+        ``models:`` is metadata, so still probe; pin with ``discover_models: false``."""
         probe_live = (
             discovery_allowed and (bool(api_key) or not has_explicit_models)
             and self.can_probe_custom(row_is_current=is_current))
@@ -1059,7 +1080,8 @@ def _lap_user_provider_rows(b: _PickerBuild, user_providers: dict) -> None:
             grp["has_explicit_models"], headers=grp["headers"] or None, api_mode=grp["api_mode"],
             discovery_allowed=grp["discovery_allowed"], is_current=is_current)
         if discovered is not None:
-            models_list = discovered
+            models_list = (_merge_declared_with_discovered(grp["models"], discovered)
+                           if grp["has_explicit_models"] else discovered)
 
         b.add_endpoint_row(ep_name, display_name, api_url, models_list, is_current, native_catalog_empty)
         b.seen_slugs.update(ep_aliases)
@@ -1193,11 +1215,14 @@ def _lap_custom_provider_rows(b: _PickerBuild, custom_providers: list) -> None:
             api_mode=grp.get("api_mode"), discovery_allowed=bool(api_url) and grp.get("discover_models", True),
             is_current=is_current)
         if discovered is not None:
-            grp["models"] = discovered
-            if probe_live:  # a successful live probe persists the catalog for no-probe surfaces
+            grp["models"] = (_merge_declared_with_discovered(grp["models"], discovered)
+                             if grp["has_explicit_models"] else discovered)
+            if probe_live and discovered is not None:
+                # Persist the same union the picker shows. Saving only the live subset would
+                # hide preset-only models again on the next offline/no-probe launch (#193).
                 try:
                     _save_discovered_models_to_config(
-                        api_url, discovered, api_mode=grp.get("api_mode"), headers=grp.get("extra_headers") or None,
+                        api_url, grp["models"], api_mode=grp.get("api_mode"), headers=grp.get("extra_headers") or None,
                         credential_identity=grp["credential_identity"])
                 except Exception:
                     pass

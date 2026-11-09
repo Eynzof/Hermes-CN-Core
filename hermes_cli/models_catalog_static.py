@@ -239,8 +239,13 @@ _PROVIDER_MODELS: dict[str, list[str]] = _CuratedCatalog({
         "gemini-3.1-pro-preview", "gemini-3-pro-preview", "gemini-3.6-flash", "gemini-3.1-flash-lite-preview",
     ],
     "zai": [
-        "glm-5.3", "glm-5.3-flash", "glm-5.2", "glm-5.1", "glm-5", "glm-5v-turbo", "glm-5-turbo",
-        "glm-4.7", "glm-4.5", "glm-4.5-flash",
+        # [0] stays the silent default. Both the general paas/v4 catalog and the coding-plan catalog
+        # (api.z.ai/coding + open.bigmodel.cn/api/coding, whose /models answer is a superset) live
+        # here: this row is the offline floor, so a GLM the endpoint serves must never be missing
+        # from it (issue #193 — glm-5.3-flashx was absent while the endpoint listed it).
+        "glm-5.3", "glm-5.3-flash", "glm-5.3-flashx", "glm-5.2", "glm-5.1", "glm-5", "glm-5-turbo",
+        "glm-5v-turbo", "glm-4.7", "glm-4.7-flash", "glm-4.7-flashx",
+        "glm-4.6", "glm-4.6v", "glm-4.6v-flash", "glm-4.5", "glm-4.5-air", "glm-4.5-flash", "glm-4.5v",
     ],
     "xai": _xai_finalize_catalog(list(_XAI_STATIC_FALLBACK)),
     # Nemotron flagships, then third-party agentic models hosted on build.nvidia.com.

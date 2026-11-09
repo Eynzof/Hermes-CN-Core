@@ -953,3 +953,231 @@ class TestLegacyHiddenPlaceholderWireSubstitution:
         wire = agent.client.chat.completions.create.call_args.kwargs["messages"]
         wire_assistants = [m for m in wire if m.get("role") == "assistant"]
         assert wire_assistants[0]["content"] == "visible text"
+
+
+class TestActiveTurnRedirectInterruptPlaceholder:
+    """Regression for Hermes-CN-Core#184: a plain user message sent while a turn is
+    mid-flight (active-turn redirect) used to abort that turn with
+    ``UnboundLocalError: cannot access local variable '_INTERRUPTED_PLACEHOLDER'``
+    inside ``conversation_loop._apply_active_turn_redirect`` — the user saw silence
+    and lost the round's work.
+
+    Wherever the turn stands when the text lands, the redirect must append exactly
+    ONE assistant interrupt placeholder followed by the user's correction: never a
+    second assistant row (strict role alternation — ``assistant → assistant`` is the
+    shape the message contract forbids, and alternation repair then folds the two
+    copies into one assistant row that repeats the interrupted partial verbatim).
+    """
+
+    REDIRECT_TEXT = "hold on — deploy to the staging bucket instead"
+    PARTIAL = "I was checking the migrations."
+
+    def _loop_agent(self):
+        from unittest.mock import MagicMock, patch
+
+        from run_agent import AIAgent
+
+        tool_schema = {
+            "type": "function",
+            "function": {
+                "name": _STEER_SURVIVAL_TOOL,
+                "description": "probe tool for the active-turn redirect regression test",
+                "parameters": {"type": "object", "properties": {}, "required": []},
+            },
+        }
+        with (
+            patch("model_tools.get_tool_definitions", return_value=[tool_schema]),
+            patch("model_tools.check_toolset_requirements", return_value={}),
+            patch("agent.process_bootstrap.OpenAI"),
+        ):
+            agent = AIAgent(
+                api_key="test-key",
+                base_url="https://openrouter.ai/api/v1",
+                quiet_mode=True,
+                skip_context_files=True,
+                skip_memory=True,
+            )
+        agent.client = MagicMock()
+        agent._disable_streaming = True
+        agent._cached_system_prompt = "You are helpful."
+        agent._use_prompt_caching = False
+        agent.tool_delay = 0
+        agent.compression_enabled = False
+        agent.save_trajectories = False
+        return agent
+
+    @pytest.mark.parametrize("partial", ["", PARTIAL])
+    def test_iteration_redirect_appends_one_checkpoint_and_the_correction(self, partial):
+        """The production iteration entry drains the pending redirect into the live
+        transcript. Both placeholder shapes (nothing on screen / a partial reply on
+        screen) must add exactly one assistant row, then the user correction that
+        carries the interruption scaffold in its ``api_content`` sidecar — and leave
+        every already-sent row byte-identical (the prompt-cache prefix)."""
+        from unittest.mock import MagicMock
+
+        from agent.turn_iteration_prep import begin_iteration
+
+        agent = _bare_agent()
+        agent._checkpoint_mgr = MagicMock()
+        agent._persist_session = MagicMock()
+        agent._touch_activity = MagicMock()
+        agent._tool_dedup_tracker = MagicMock()
+        agent._prev_dedup_calls = []
+        agent._budget_grace_call = False
+        agent.iteration_budget = MagicMock()
+        agent.iteration_budget.consume.return_value = True
+        agent._current_streamed_assistant_text = partial
+        messages = [
+            {"role": "user", "content": "run the deploy"},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {"id": "c1", "function": {"name": "terminal", "arguments": "{}"}}
+                ],
+            },
+            {"role": "tool", "content": "deployed", "tool_call_id": "c1"},
+        ]
+        sent_prefix = [dict(m) for m in messages]
+
+        # The user's new message races an in-flight model request.
+        agent._model_request_active.set()
+        assert agent.redirect(self.REDIRECT_TEXT) is True
+        # The loop rebuilds the same logical turn after cancelling that request.
+        assert agent.clear_interrupt(preserve_redirect=True) is True
+        assert agent._pending_redirect is not None
+
+        start = begin_iteration(
+            agent,
+            messages=messages,
+            conversation_history=[],
+            original_user_message="run the deploy",
+            api_call_count=1,
+            interrupted=False,
+            _turn_exit_reason=None,
+        )
+
+        # Reaching here at all is the UnboundLocalError regression: the old code read
+        # the placeholder constant before any branch had bound it. No exception, and
+        # the turn continues with the correction applied.
+        assert start.action == "fallthrough"
+        assert agent._pending_redirect is None
+        # Exactly one assistant checkpoint: assistant -> assistant is never legal.
+        assert [m["role"] for m in messages] == [
+            "user",
+            "assistant",
+            "tool",
+            "assistant",
+            "user",
+        ]
+        # Prompt-cache invariant: the rows the loop already sent are byte-identical.
+        assert [dict(m) for m in messages[: len(sent_prefix)]] == sent_prefix
+
+        placeholder, correction = messages[-2], messages[-1]
+        assert correction["role"] == "user"
+        assert correction["content"] == self.REDIRECT_TEXT
+        replayed = correction["api_content"]
+        assert "[This response was interrupted by a user correction.]" in replayed
+        assert replayed.endswith(self.REDIRECT_TEXT)
+        if partial:
+            assert placeholder["content"] == partial
+        else:
+            assert placeholder["content"] == ""
+            assert placeholder["display_kind"] == "hidden"
+            assert placeholder["api_content"] == _INTERRUPTED_PLACEHOLDER
+        # Scaffold bytes stay out of every assistant row (#81841).
+        assert "[This response was interrupted" not in str(
+            placeholder.get("content") or ""
+        ) + str(placeholder.get("api_content") or "")
+        # The redirect clears the on-screen stream state for the corrected request.
+        assert agent._current_streamed_assistant_text == ""
+        assert agent._stream_needs_break is True
+
+    @pytest.mark.parametrize("partial", ["", PARTIAL])
+    def test_mid_turn_user_text_completes_the_turn_without_losing_the_round(self, partial):
+        """End-to-end repro of #184: the agent is mid-turn (a tool round already ran,
+        another request in flight) when the user sends ordinary text. The turn must
+        finish with the model's reply, carrying one interrupt placeholder and the
+        user's correction — not abort with an ``UnboundLocalError``, and not hand the
+        model a doubled assistant checkpoint."""
+        from types import SimpleNamespace
+        from unittest.mock import patch
+
+        from tests.agent.test_run_agent import _mock_response
+
+        agent = self._loop_agent()
+        payloads = []
+
+        def model_call(api_kwargs):
+            payloads.append([dict(m) for m in api_kwargs["messages"]])
+            if len(payloads) == 1:
+                tool_call = SimpleNamespace(
+                    id="call_1",
+                    type="function",
+                    function=SimpleNamespace(name=_STEER_SURVIVAL_TOOL, arguments="{}"),
+                )
+                return _mock_response(
+                    content=None, finish_reason="tool_calls", tool_calls=[tool_call]
+                )
+            if len(payloads) == 2:
+                # A partial reply already reached the screen when the user's new
+                # message races this in-flight request: it arms the reset and
+                # cancels the request.
+                agent._current_streamed_assistant_text = partial
+                assert agent.redirect(self.REDIRECT_TEXT) is True
+                raise InterruptedError("redirect cancelled the in-flight request")
+            return _mock_response(content="redeploying to staging", finish_reason="stop")
+
+        agent._interruptible_api_call = model_call
+        with (
+            patch.object(agent, "_flush_messages_to_session_db"),
+            patch.object(agent, "_persist_session"),
+            patch.object(agent, "_save_trajectory"),
+            patch.object(agent, "_cleanup_task_resources"),
+        ):
+            result = agent.run_conversation("run the deploy")
+
+        assert result["completed"] is True
+        assert result["final_response"] == "redeploying to staging"
+
+        messages = result["messages"]
+        corrections = [
+            m
+            for m in messages
+            if m.get("role") == "user" and m.get("content") == self.REDIRECT_TEXT
+        ]
+        assert len(corrections) == 1, "the injection point must be exactly one user row"
+        index = messages.index(corrections[0])
+        placeholder = messages[index - 1]
+        assert placeholder["role"] == "assistant", "evidence row must precede the correction"
+        assert messages[index - 2]["role"] == "tool"
+        assert "[This response was interrupted" in corrections[0]["api_content"]
+        if partial:
+            assert self.PARTIAL in (placeholder.get("content") or "")
+            assert placeholder.get("display_kind") != "hidden"
+        else:
+            # Nothing was on screen for the cancelled request -> one hidden
+            # checkpoint row with a neutral provider-replay payload.
+            assert placeholder["display_kind"] == "hidden"
+            assert placeholder["api_content"] == _INTERRUPTED_PLACEHOLDER
+            assert sum(1 for m in messages if m.get("display_kind") == "hidden") == 1
+
+        # The interrupted partial must reach the model once — a second, duplicate
+        # assistant row gets folded into one row that repeats it verbatim.
+        if partial:
+            for msg in messages:
+                if msg.get("role") == "assistant":
+                    assert (msg.get("content") or "").count(partial) <= 1, (
+                        "the interrupt checkpoint was appended twice: "
+                        f"{(msg.get('content') or '')!r}"
+                    )
+
+        # Prompt-cache invariant: every request after the first replays the first
+        # request's rows byte-identically as its prefix.
+        def _conversation(payload):
+            return [m for m in payload if m.get("role") != "system"]
+
+        first = _conversation(payloads[0])
+        assert first, "no payload captured"
+        for later in payloads[1:]:
+            assert _conversation(later)[: len(first)] == first

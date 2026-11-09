@@ -350,21 +350,12 @@ def _apply_active_turn_redirect(agent: Any, messages: list[dict[str, Any]], text
     if not (messages and messages[-1].get("role") == "assistant"):
         # Hidden row with a neutral api_content (#88955). Never _INTERRUPT_SCAFFOLD_MARKER:
         # as assistant text the model echoes it (#81841).
+        # ONE checkpoint row. ``hidden_interrupt_placeholder_row()`` is the durable-empty shape
+        # (empty content, neutral provider-replay ``api_content`` that the send-time projection
+        # substitutes back), which is also what stops P-024 dropping the row. A second assistant
+        # append here (Hermes-CN-Core#184) formed an ``assistant -> assistant`` seam that
+        # alternation repair folded into ONE row — replaying the interrupted partial twice.
         append_message(messages, {"role": "assistant", "content": visible} if visible else hidden_interrupt_placeholder_row())
-        from agent.agent_runtime_helpers import _INTERRUPTED_PLACEHOLDER
-        # Durable content stays empty when nothing was on screen: the neutral provider-replay
-        # payload rides on ``api_content`` instead, and the send-time projection substitutes it
-        # back into the wire copy's ``content``. Writing it into ``content`` here would persist
-        # invented assistant prose — and the fork's P-024 sanitizer DROPS empty-content assistant
-        # turns, which the api_content substitution already protects the row from.
-        placeholder: Dict[str, Any] = {"role": "assistant", "content": visible or ""}
-        if not visible:
-            placeholder["display_kind"] = "hidden"
-            # Hidden row, but a non-empty neutral api_content so the pre-call sanitizer
-            # does not drop/re-heal it every call (#88955). Never _INTERRUPT_SCAFFOLD_MARKER:
-            # as assistant text the model echoes it (#81841).
-            placeholder["api_content"] = _INTERRUPTED_PLACEHOLDER
-        append_message(messages, placeholder)
     # Transcript shows the user's own words; the provider replays the scaffolded form.
     append_message(messages, {"role": "user", "content": text, "api_content": correction})
 

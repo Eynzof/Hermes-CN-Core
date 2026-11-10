@@ -58,10 +58,11 @@ class ZaiProfile(ProviderProfile):
             enabled = reasoning_config.get("enabled") is not False
             if not enabled and _has_token(model, _GLM_5_3_TOKENS):
                 # GLM-5.3 rejects disabled thinking; low is its lightest supported mode.
-                extra_body["thinking"] = {"type": "enabled"}
+                enabled = True
                 top_level["reasoning_effort"] = "low"
-            else:
-                extra_body["thinking"] = {"type": "enabled" if enabled else "disabled"}
+            # Preserved Thinking: with thinking on, the standard endpoint drops replayed prior-turn
+            # reasoning_content unless clear_thinking is false (docs.z.ai/guides/capabilities/thinking-mode).
+            extra_body["thinking"] = {"type": "enabled", "clear_thinking": False} if enabled else {"type": "disabled"}
         if is_5_2:
             effort = _glm_5_2_reasoning_effort(reasoning_config, model=model)
             if effort is not None:
@@ -73,7 +74,10 @@ zai = ZaiProfile(
     name="zai", aliases=("glm", "z-ai", "z.ai", "zhipu"),
     env_vars=("GLM_API_KEY", "ZAI_API_KEY", "Z_AI_API_KEY"), display_name="Z.AI (GLM)",
     description="Z.AI / GLM — Zhipu AI models", signup_url="https://z.ai/",
-    fallback_models=("glm-5.2", "glm-5", "glm-4-9b"), base_url="https://api.z.ai/api/paas/v4",
+    # Offline floor for the picker when both the live /models probe and the curated row fail:
+    # the current GLM generation first, never a retired slug (``glm-4-9b`` was #193's stale entry).
+    fallback_models=("glm-5.3", "glm-5.3-flash", "glm-5.3-flashx", "glm-5.2", "glm-5", "glm-4.7"),
+    base_url="https://api.z.ai/api/paas/v4",
     default_aux_model="glm-4.5-flash",
 )
 

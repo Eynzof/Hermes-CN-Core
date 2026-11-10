@@ -59,7 +59,6 @@ def _effective_temperature_for_model(model: str, requested_temperature: Optional
 
     Returns ``None`` when the model manages temperature server-side (Kimi);
     callers must omit the ``temperature`` kwarg entirely in that case.
-    Shared with ``mini_swe_runner`` (which passes ``requested_temperature=None``).
     """
     try:
         from agent.auxiliary_client import _fixed_temperature_for_model, OMIT_TEMPERATURE
@@ -670,7 +669,7 @@ Write only the summary, starting with "[CONTEXT SUMMARY]:" prefix."""
         self._print_summary()
         if self.config.metrics_enabled:
             metrics_path = output_dir / self.config.metrics_output_file
-            with open(metrics_path, 'w', encoding="utf-8", errors="replace") as f:
+            with open(metrics_path, 'w', encoding="utf-8", errors="replace") as f:  # noqa: ASYNC230 -- small local write; a local open() is non-blocking in practice
                 f.write(orjson.dumps(self.aggregate_metrics.to_dict(), option=orjson.OPT_INDENT_2).decode('utf-8'))
             console.print(f"\n💾 Metrics saved to {metrics_path}")
 

@@ -329,6 +329,7 @@ class TestMacosLoginShellSwallowRegression:
             capture_output=True,
             text=True,
             env=env,
+            check=False,
         )
 
 
@@ -340,5 +341,6 @@ class TestMacosLoginShellSwallowRegression:
         subprocess.run(
             [shell, "-lic", f"set +m; echo ok > {marker}"],
             stdin=subprocess.DEVNULL, capture_output=True, text=True,
+            check=False,
         )
         assert marker.exists(), f"_find_shell()={shell} swallowed the command"

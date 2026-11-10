@@ -11,6 +11,7 @@ whole-file overwrite of content this task never saw or that changed since.
 """
 
 import fnmatch
+import logging
 import os
 from pathlib import Path
 
@@ -26,6 +27,8 @@ from tools.file_tools_paths import (
     _expand_tilde, _resolve_path_for_task, _ssh_path_escapes_home, _terminal_env_type_for_task)
 from tools.file_tools_read_tracking import _has_full_write_baseline, _is_own_blind_patch, _read_mtime_drifted
 import itertools
+
+logger = logging.getLogger("tools.file_tools")
 
 # Prefixes matched after realpath. macOS: /private/var mirrors /var — block the
 # sensitive subtrees only; a blanket "/private/var/" refuses every temp-file
@@ -186,6 +189,9 @@ def _check_sensitive_path(filepath: str, task_id: str = "default") -> str | None
             return (
                 f"Refusing to write to sensitive system path: {filepath}\n"
                 "Use the terminal tool with sudo if you need to modify system files.")
+    from tools.skill_lock import path_refusal
+    if reason := path_refusal(candidates):
+        return f"Refusing to write to {filepath}: {reason}"
     return None
 
 
@@ -271,6 +277,30 @@ def _protected_instruction_reason(filepath: str, task_id: str = "default",
 _APPROVAL_UNAVAILABLE = "requires approval but the approval subsystem is unavailable."
 _NO_HUMAN = "requires approval but no interactive user or gateway is present to approve it."
 
+# Choices that grant THIS one operation. Every one of them is one-operation only
+# here — nothing is persisted, so the next write prompts again regardless of the
+# scope word tapped (the prompt does not even offer session/always). ``"deny"``
+# below is the only answer reported as a human refusal.
+_PROTECTED_INSTRUCTION_GRANT_CHOICES = frozenset({"once", "session", "always"})
+# Surface vocabularies. The Desktop app answers ``approval.respond`` with
+# ``"approve"`` / ``"deny"`` (Desktop ``packages/protocol/src/hermes-api.ts``),
+# not the internal scope words; ``"approve"`` means "yes, this once" and must
+# grant exactly the operation the prompt was raised for (#190). Anything not
+# listed here grants nothing: it is reported as an approval-protocol error
+# instead of being folded into "the user denied", which is what buried #190 in
+# the audit log.
+_PROTECTED_INSTRUCTION_CHOICE_ALIASES = {"approve": "once"}
+
+
+def _protected_instruction_choice(choice) -> str:
+    """Canonicalize an approval answer: whitespace/case-insensitive, surface aliases
+    mapped to their grant word, unknown values returned lowercased so the caller can
+    name them in the error. Non-strings become ``""`` (no answer)."""
+    if not isinstance(choice, str):
+        return ""
+    word = choice.strip().lower()
+    return _PROTECTED_INSTRUCTION_CHOICE_ALIASES.get(word, word)
+
 
 def _request_protected_instruction_approval(reasons: list[str], task_id: str = "default") -> str | None:
     """Ask the human to approve a write to protected instruction file(s); ``None`` when approved.
@@ -352,10 +382,30 @@ def _request_protected_instruction_approval(reasons: list[str], task_id: str = "
             return blocked.format(why="approval prompt could not be delivered or was not answered "
                                       f"({getattr(choice, 'cause', 'no answer')}).")
         timed = choice == "timeout"
-    # Any tapped scope is a one-operation grant; nothing is persisted.
-    if not timed and choice in {"once", "session", "always"}:
+    # Classify fail-closed, with the surface vocabulary normalized first: grant ONLY a
+    # known grant word (each is one operation — nothing is persisted), report ONLY an
+    # explicit deny as a user denial, and treat every other resolved answer as a
+    # protocol error. An unrecognized choice used to fall into the deny branch, which is
+    # how the Desktop's "approve" turned a consenting user into a logged refusal (#190)
+    # and how any future vocabulary drift would silently disable the gate.
+    answer = _protected_instruction_choice(choice)
+    if timed:
+        return timed_out
+    if answer in _PROTECTED_INSTRUCTION_GRANT_CHOICES:
         return None
-    return timed_out if timed else denied
+    if answer == "deny":
+        return denied
+    logger.warning(
+        "Protected-instruction approval answered with an unrecognized choice %r "
+        "(session=%s); refusing the write — this is a protocol error, not a user "
+        "decision.", answer or "<no choice>", session_key)
+    return (
+        f"BLOCKED: write to protected agent-instruction file(s) ({targets}) "
+        f"received an unrecognized approval choice ({answer or '<no choice>'!r}). This is an "
+        "approval-protocol mismatch between this agent and the surface that "
+        "answered, NOT a decision by the user — so it does not count as consent: "
+        "the user has NOT consented to this write. Do NOT retry it or attempt the "
+        "same edit via another path (terminal, execute_code, etc.).")
 
 
 def _check_protected_instruction_write(paths: list[str], task_id: str = "default") -> str | None:
@@ -380,7 +430,9 @@ def _check_approval_required_write(paths: list[str], task_id: str = "default") -
     except Exception:
         return None
 
-    targets = [p for p in paths if is_write_approval_required(p)]
+    # Resolve against the task's cwd, not the process's: a gateway-hosted turn runs in a
+    # process whose cwd is not the session workspace, so a relative path would miss the gate.
+    targets = [p for p in paths if is_write_approval_required(_resolved_or_raw(p, task_id))]
     if not targets:
         return None
 
@@ -513,7 +565,7 @@ def _check_binary_document_write(filepath: str, task_id: str = "default") -> str
             f"Refusing to write plain text to binary document '{filepath}' ({ext}). "
             "A text write cannot produce a valid document container and would "
             "corrupt the file (read_file showed you EXTRACTED text, not the real "
-            "bytes). Use the docx/xlsx/powerpoint skills or a library like "
+            "bytes). Use the microsoft-office skill or a library like "
             "python-docx/openpyxl/python-pptx via the terminal to create or edit "
             "this document.")
     # A -wal/-shm/-journal path is never a legitimate text target, even when

@@ -83,7 +83,6 @@ _FIRST_PARTY_MODULES: Tuple[str, ...] = (
     "hermes_logging",
     "utils",
     "platform_utils",
-    "mcp_serve",
 )
 
 _FIRST_PARTY_PACKAGES: Tuple[str, ...] = (

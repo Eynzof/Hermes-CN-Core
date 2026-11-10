@@ -1,7 +1,6 @@
 """Tests for write_file post-write content verification (verified flag)."""
 
 import json
-import sys
 from unittest.mock import patch as mock_patch
 
 import pytest
@@ -41,13 +40,9 @@ class TestWriteVerification:
         assert r.get("verified") is True
         assert b"\r\n" in f.read_bytes()
 
-    @pytest.mark.skipif(
-        sys.platform == "win32",
-        reason="Mocking hashlib.sha256 can only force a mismatch when the on-disk "
-        "hash comes from the real sha256sum shell; on the Windows local backend "
-        "both sides hash in-process through the mocked module (P-033b/P-037)",
-    )
-    def test_hash_mismatch_is_hard_error(self, workdir):
+    @pytest.mark.platforms("posix")  # on Windows both hash sides are in-process through the mocked module (P-033b/P-037)
+    def test_hash_mismatch_is_hard_error(self, workdir, monkeypatch):
+        monkeypatch.setenv("HERMES_NATIVE_FILE_READ", "0")  # the shell sha256sum transport
         f = workdir / "bad.txt"
         import tools.file_operations as fo
         real_sha = fo.hashlib.sha256
@@ -62,14 +57,17 @@ class TestWriteVerification:
             r = json.loads(write_file_tool(str(f), "actual content\n", task_id="t-wv"))
         assert "error" in r
 
-    @pytest.mark.skipif(
-        sys.platform == "win32",
-        reason="Simulates sha256sum missing by mocking _exec; on the Windows local "
-        "backend verification hashing is in-process (P-033b/P-037) and never "
-        "shells out, so the scenario is unreachable — verification simply runs",
-    )
-    def test_verification_failure_never_breaks_write(self, workdir):
+    @pytest.mark.platforms("posix")  # the native write path is POSIX-only (_native_read_enabled)
+    def test_native_hash_mismatch_is_hard_error(self, workdir):
+        f = workdir / "bad_native.txt"
+        with mock_patch("tools.file_operations_native.sha256_of", return_value="0" * 64):
+            r = json.loads(write_file_tool(str(f), "actual content\n", task_id="t-wv3"))
+            assert "error" in r and "verification failed" in r["error"]
+
+    @pytest.mark.platforms("posix")  # mocks the sha256sum shell transport; Windows hashes in-process (P-033b/P-037)
+    def test_verification_failure_never_breaks_write(self, workdir, monkeypatch):
         # sha256sum unavailable/failing -> verified omitted, write still ok.
+        monkeypatch.setenv("HERMES_NATIVE_FILE_READ", "0")  # the shell sha256sum transport
         f = workdir / "ok.txt"
         import tools.file_operations as fo
 

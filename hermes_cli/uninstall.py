@@ -8,6 +8,7 @@ from pathlib import Path
 
 from hermes_constants import get_hermes_home
 
+from hermes_cli._startup_fast import project_root_str
 from hermes_cli.colors import Colors, color
 
 def _logger(mark: str, col: str):
@@ -64,7 +65,7 @@ def _remove_each(candidates, remove) -> list:
 
 def get_project_root() -> Path:
     """Get the project installation directory."""
-    return Path(__file__).parent.parent.resolve()
+    return Path(project_root_str())
 
 
 def code_removal_refusal() -> str | None:
@@ -636,10 +637,12 @@ def _uninstall_profile(profile) -> None:
 
     # 1. Gateway service, via `python -m hermes_cli.main` (the `hermes` wrapper may be half-gone).
     # Under the PyInstaller-frozen CN portable runtime sys.executable IS the CLI binary, so the
-    # ``-m`` prefix is dropped.
-    from tools.runtime_compat import hermes_cli_argv
-
-    hermes_invocation = hermes_cli_argv("--profile", name)
+    # ``-P -m`` form does not exist there; the helper drops it.
+    from tools.runtime_compat import hermes_cli_argv, is_frozen_runtime
+    if is_frozen_runtime():
+        hermes_invocation = hermes_cli_argv("--profile", name)
+    else:
+        hermes_invocation = [sys.executable, "-P", "-m", "hermes_cli.main", "--profile", name]
     for subcmd in ("stop", "uninstall"):
         try:
             subprocess.run(

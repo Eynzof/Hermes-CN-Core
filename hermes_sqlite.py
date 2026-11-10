@@ -55,6 +55,52 @@ def register_converter(typename: str, converter: callable) -> None:
     _sqlite3.register_converter(typename, converter)
 
 
+# ── Bundled-runtime SQLite contract (#181) ────────────────────────────────
+# Hermes does not choose the SQLite it runs on: the interpreter links it. That
+# matters for the frozen CN desktop runtime, which ships its own copy
+# (``_internal/sqlite3.dll`` on Windows) taken from the interpreter PyInstaller
+# analysed, and for every source install riding someone's Python build.
+#
+# Two independent requirements:
+#   * version — 3.7.0..3.51.2 carry the WAL-reset corruption bug (fixed 3.51.3+,
+#     backports 3.50.7 / 3.44.6; hermes_state_wal gates journal mode on it), and
+#   * compile options — existing state DBs hold FTS5 (+ trigram) indexes created
+#     under a library that also had FTS3/FTS4/RTREE/math functions. A runtime
+#     built against a library missing FTS5 cannot open those indexes at all
+#     ("no such module: fts5"), so the release build asserts them before freezing
+#     and again on the frozen binary.
+REQUIRED_COMPILE_OPTIONS = (
+    "ENABLE_FTS5",
+    "ENABLE_FTS3",
+    "ENABLE_FTS4",
+    "ENABLE_RTREE",
+    "ENABLE_MATH_FUNCTIONS",
+)
+
+
+def compile_options() -> tuple[str, ...]:
+    """SQLite compile options of the linked stdlib library (``PRAGMA compile_options``).
+
+    Read through ``sqlite3``, not APSW: the frozen runtime ships no APSW, and the
+    stdlib extension is the library PyInstaller collects.
+    """
+    conn = _sqlite3.connect(":memory:")
+    try:
+        return tuple(row[0] for row in conn.execute("PRAGMA compile_options"))
+    finally:
+        conn.close()
+
+
+def missing_compile_options(options: Sequence[str] | None = None) -> tuple[str, ...]:
+    """Required compile options absent from *options* (default: linked library's).
+
+    Empty means the library can open the databases Hermes creates. Callers pass an
+    explicit list to check a foreign build without importing it (release workflow).
+    """
+    present = set(compile_options() if options is None else options)
+    return tuple(option for option in REQUIRED_COMPILE_OPTIONS if option not in present)
+
+
 # ── APSW Compatibility Layer ───────────────────────────────────────────
 
 if _APSW_AVAILABLE:

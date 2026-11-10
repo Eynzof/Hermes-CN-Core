@@ -50,8 +50,6 @@ def server():
     mod._live_transports.clear()
 
 
-
-
 @pytest.fixture()
 def capture(server):
     """Redirect server's real stdout to a StringIO and return (server, buf)."""
@@ -211,8 +209,8 @@ def _frames(buf):
     return [json.loads(line) for line in buf.getvalue().splitlines()]
 
 
-def _wait_open(server_requests, buf=None, timeout=10.0):
-    """The open request once its frame has been written (registration precedes the write).
+def _wait_open(server_requests, buf=None, timeout=10.0, windows=()):
+    """The open request once registered and delivered to the supplied captures.
 
     Generous deadline: the first send() in a process lazily imports the ws/contracts/replay modules,
     which can take seconds on a loaded CI box when this is the first server request of the run."""
@@ -220,7 +218,9 @@ def _wait_open(server_requests, buf=None, timeout=10.0):
     while time.monotonic() < deadline:
         with server_requests._lock:
             req = next(iter(server_requests._open.values()), None)
-        if req is not None and (buf is None or req.id in buf.getvalue()):
+        if req is not None and (buf is None or req.id in buf.getvalue()) and all(
+            req.frame() in window.frames for window in windows
+        ):
             return req
         time.sleep(0.01)
     raise AssertionError("server request never registered")
@@ -390,14 +390,14 @@ def _two_window_session(server, sid):
     from tui_gateway import server_requests
     from tui_gateway.transport import FanoutTransport
 
-    # The fanout awaits a WS peer's write_async on its loop; a peer without one is pruned on first write.
+    # The fake implements the same guarded batch boundary as a real WS peer.
     loop = asyncio.new_event_loop()
     threading.Thread(target=loop.run_forever, daemon=True).start()
     windows = (_silent_ws(), _silent_ws())
     for window in windows:
-        async def _write_async(obj, window=window):
-            return window.write(obj)
-        window._loop, window.write_async = loop, _write_async
+        async def _write_many_if_current_async(frames, is_current, window=window):
+            return all(not is_current() or window.write(frame) for frame in frames)
+        window._loop, window.write_many_if_current_async = loop, _write_many_if_current_async
         server_requests.advertise(window, True)
     _ws_session(server, sid, FanoutTransport(*windows))
     return windows
@@ -418,12 +418,11 @@ def test_window_owned_request_refuses_at_once_when_no_window_shows_the_session(s
     thread = threading.Thread(target=lambda: box.setdefault("r", server._ask("preview.read", "s-none", {}, timeout=30)),
                               daemon=True)
     thread.start()
-    req = _wait_open(server_requests)
+    req = _wait_open(server_requests, windows=windows)
     t0 = time.monotonic()
     assert server.dispatch(_not_shown(req), windows[0]) is None
     # A replayed decline from the same window is still one window's vote.
     server.dispatch(_not_shown(req), windows[0])
-    time.sleep(0.05)
     assert thread.is_alive()
     server.dispatch(_not_shown(req), windows[1])
     thread.join(timeout=2)
@@ -442,11 +441,10 @@ def test_window_owned_request_decline_does_not_beat_the_owner_window(server):
     thread = threading.Thread(target=lambda: box.setdefault("r", server._ask("preview.read", "s-own", {}, timeout=5)),
                               daemon=True)
     thread.start()
-    req = _wait_open(server_requests)
+    req = _wait_open(server_requests, windows=(bystander, owner))
     server.dispatch(_not_shown(req), bystander)
     # An unattributed decline (proxied / relayed frame) is not a window's vote either.
     assert server_requests.resolve_response(_not_shown(req)) is True
-    time.sleep(0.05)
     assert thread.is_alive() and [r["id"] for r in server_requests.open_requests("s-own")] == [req.id]
     server.dispatch({"jsonrpc": "2.0", "id": req.id, "result": {"value": '{"text": "page"}'}}, owner)
     thread.join(timeout=2)
@@ -1155,6 +1153,7 @@ def test_idle_reaper_rearms_missing_ws_orphan_timer(server, monkeypatch, tmp_pat
         capture_output=True,
         text=True,
         timeout=30,
+        check=False,
     )
     assert successor.returncode == 0, successor.stderr
     assert [entry["session_id"] for entry in active_session_registry_snapshot(home)] == [sibling_sid]

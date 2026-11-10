@@ -88,5 +88,5 @@ def test_script_killed_right_after_spawning_the_update_leaves_a_live_marker(tmp_
     finally:
         hold.touch()
         if script.poll() is None:
-            subprocess.run(['taskkill', '/T', '/F', '/PID', str(script.pid)], capture_output=True)
+            subprocess.run(['taskkill', '/T', '/F', '/PID', str(script.pid)], capture_output=True, check=False)
             script.wait()

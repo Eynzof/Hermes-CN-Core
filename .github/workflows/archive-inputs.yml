@@ -24,7 +24,7 @@ jobs:
   archive-inputs:
     name: Preserve every pinned HTTP input
     if: github.event_name != 'pull_request' && github.event_name != 'pull_request_target'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     environment: release-signing
     timeout-minutes: 60
     env:

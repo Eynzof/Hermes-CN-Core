@@ -2,7 +2,7 @@
 
 The far end of the PTY plays the terminal: it answers the probe the way VS Code's xterm.js was
 measured to answer with ``terminal.integrated.enableImages`` on (sixel reply + DA1) and off
-(DA1 only), optionally late, then types ``hi``. After the probe the child reads its tty and feeds
+(DA1 only), in the probe, drain or prompt phase, then types ``hi``. After the probe the child reads its tty and feeds
 it to prompt_toolkit's parser with the CLI's input tables, as the prompt would: ``typed`` is what
 would land in the user's prompt.
 """
@@ -14,7 +14,6 @@ import select
 import subprocess
 import sys
 import textwrap
-import time
 from pathlib import Path
 
 import pytest
@@ -28,13 +27,33 @@ _CHILD = textwrap.dedent("""
     from hermes_cli.pt_input_extras import install_ignored_terminal_sequences
     from prompt_toolkit.input.vt100_parser import Vt100Parser
     from prompt_toolkit.keys import Keys
-    result = terminal_image.probe_vscode_images()
+    real_select = select.select
+    phase = sys.argv[1]
+    waits = 0
+    def probe_select(readers, writers, errors, timeout):
+        global waits
+        waits += 1
+        # Select's empty result is the timeout event. Advance to the intended
+        # phase explicitly, so runner scheduling cannot move an 80 ms reply
+        # beyond a 100 ms deadline and change the scenario being tested.
+        if phase == "prompt" or (phase == "drain" and waits == 1):
+            return [], [], []
+        print("REPLY_READY", flush=True)
+        return real_select(readers, writers, errors, 5)
+    select.select = probe_select
+    try:
+        result = terminal_image.probe_vscode_images()
+    finally:
+        select.select = real_select
     fd = sys.stdin.fileno()
     old = termios.tcgetattr(fd)
     tty.setcbreak(fd)
+    print("PROMPT_READY", flush=True)
     leaked = b""
-    while select.select([fd], [], [], 0.3)[0]:
+    while select.select([fd], [], [], 5)[0]:
         leaked += os.read(fd, 256)
+        if leaked.endswith(b"hi"):
+            break
     termios.tcsetattr(fd, termios.TCSADRAIN, old)
     install_ignored_terminal_sequences()
     presses = []
@@ -50,18 +69,19 @@ _ON = b"\x1b[?1;0;4096S\x1b[?62;4;9;22c"
 _OFF = b"\x1b[?1;2c"
 
 
-def _run(reply: bytes, delay: float) -> str:
+def _run(reply: bytes, phase: str) -> str:
     import pty
 
     master, slave = pty.openpty()
     env = {k: v for k, v in os.environ.items()
            if not k.startswith(("SSH_", "KITTY_", "ITERM_", "WEZTERM_", "KONSOLE_", "TMUX"))}
     env.update(TERM_PROGRAM="vscode", TERM="xterm-256color", PYTHONPATH=_REPO)
-    proc = subprocess.Popen([sys.executable, "-c", _CHILD], stdin=slave, stdout=slave,
+    proc = subprocess.Popen([sys.executable, "-c", _CHILD, phase], stdin=slave, stdout=slave,
                             stderr=subprocess.PIPE, env=env, cwd=_REPO)
     os.close(slave)
     out = b""
     answered = False
+    typed = False
     try:
         while select.select([master], [], [], 15)[0]:
             try:
@@ -71,12 +91,12 @@ def _run(reply: bytes, delay: float) -> str:
             if not data:
                 break
             out += data
-            if not answered and b"\x1b[c" in out:
-                time.sleep(delay)  # health: allow HX013 -- the late reply IS the scenario under test
+            if not answered and b"REPLY_READY" in out:
                 os.write(master, reply)
-                time.sleep(0.02)  # health: allow HX013 -- the user's keys arrive after the reply
-                os.write(master, b"hi")
                 answered = True
+            if not typed and b"PROMPT_READY" in out:
+                os.write(master, (reply if phase == "prompt" else b"") + b"hi")
+                typed = True
     finally:
         os.close(master)
         proc.wait(timeout=15)
@@ -86,15 +106,15 @@ def _run(reply: bytes, delay: float) -> str:
 
 
 @pytest.mark.parametrize(
-    ("reply", "delay", "expected"),
+    ("reply", "phase", "expected"),
     [
-        (_ON, 0, "RESULT True True iterm typed='hi'"),  # enableImages on
-        (_OFF, 0, "RESULT False False unicode typed='hi'"),  # enableImages off: DA1 only
-        (_ON, 0.08, "RESULT True True iterm typed='hi'"),  # past the 50 ms deadline, inside the drain
+        (_ON, "probe", "RESULT True True iterm typed='hi'"),  # enableImages on
+        (_OFF, "probe", "RESULT False False unicode typed='hi'"),  # enableImages off: DA1 only
+        (_ON, "drain", "RESULT True True iterm typed='hi'"),
         # Past every wait: the probe misses it, and the prompt's parser drops it.
-        (_ON, 0.3, "RESULT False False unicode typed='hi'"),
-        (_OFF, 0.3, "RESULT False False unicode typed='hi'"),
+        (_ON, "prompt", "RESULT False False unicode typed='hi'"),
+        (_OFF, "prompt", "RESULT False False unicode typed='hi'"),
     ],
 )
-def test_vscode_probe_reads_its_reply_and_leaves_nothing_for_the_prompt(reply, delay, expected):
-    assert _run(reply, delay) == expected
+def test_vscode_probe_reads_its_reply_and_leaves_nothing_for_the_prompt(reply, phase, expected):
+    assert _run(reply, phase) == expected

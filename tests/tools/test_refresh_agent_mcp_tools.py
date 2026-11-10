@@ -226,9 +226,8 @@ def _registered(monkeypatch, names):
     """Make the registry report exactly *names* as still registered."""
     from tools import registry as registry_mod
 
-    entries = [types.SimpleNamespace(name=n) for n in names]
     monkeypatch.setattr(
-        registry_mod.registry, "get_all_entries", lambda: entries, raising=False
+        registry_mod.registry, "get_all_tool_names", lambda: list(names)
     )
 
 

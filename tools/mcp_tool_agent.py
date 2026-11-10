@@ -342,7 +342,7 @@ def restore_agent_tool_prefix(agent, saved) -> bool:
     fresh = {_def_name(t): t for t in fresh_defs}
     carried = {_def_name(d) for d in pinned_defs if _def_name(d) not in fresh
                and registry.get_entry(_def_name(d)) is not None}
-    registered_names = {entry.name for entry in registry.get_all_entries()}
+    registered_names = set(registry.get_all_tool_names())
     carried &= _config_permitted_names(agent) if carried else set()
     pinned_here, held = _pin_restore_held(agent, registered_names)
     if pinned_here:  # same conversation: the synthesized bridge keeps its slot, as in _merge_preserving_prefix

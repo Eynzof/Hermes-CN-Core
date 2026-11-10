@@ -6,8 +6,6 @@ Canary, commit, and dynamic-channel operations retain their top-level flags.
 See ``website/docs/developer-guide/stable-releases.md`` for the operator flow.
 """
 
-from scripts.releases.changelog import categorize_commit
-
 import argparse
 import json
 import os
@@ -36,6 +34,7 @@ from hermes_cli.update_channel import (
     is_canary_tag,
 )
 from scripts.releases.authors import resolve_author
+from scripts.releases.changelog import categorize_commit
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 VERSION_FILE = REPO_ROOT / "hermes_cli" / "__init__.py"

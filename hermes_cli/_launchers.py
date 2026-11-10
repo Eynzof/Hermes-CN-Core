@@ -496,6 +496,8 @@ def _launcher_script(name: str, repo_root: Path, dependencies: Path | None) -> s
         "    sys.exit(0)\n"
         f"sys.{PIN_DEFAULT_HOME_FLAG} = True\n"
         "try:\n"
+        f"    if not os.path.isfile({str(repo_root.resolve() / 'hermes_bootstrap.py')!r}):\n"
+        "        raise ModuleNotFoundError('The installation bootstrap is missing')\n"
         "    import hermes_bootstrap\n"
         "except Exception:\n"
         "    _hermes_closure_repair()\n"

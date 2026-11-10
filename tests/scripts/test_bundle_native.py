@@ -693,7 +693,7 @@ def test_native_dispatch_child_environment(tmp_path, monkeypatch, cache_source, 
     before, run, homes = dict(os.environ), subprocess.run, []
     observed = tmp_path / "child.json"
 
-    def child(command, *, cwd, env, check):
+    def child(command, *, cwd, env, check, timeout):
         assert command[command.index("-m") + 1] == "scripts.bundles.native"
         return run([sys.executable, "-c",
                     "import os,json,sys; from pathlib import Path; "
@@ -701,7 +701,7 @@ def test_native_dispatch_child_environment(tmp_path, monkeypatch, cache_source, 
                     "assert all((Path(os.environ[k])/'fixture-state').read_text() == k for k in ('CARGO_HOME','RUSTUP_HOME')); "
                     "p=Path(os.environ['UV_CACHE_DIR']); p.mkdir(parents=True,exist_ok=True); "
                     "f=p/'reused'; f.write_text(f.read_text()+'x' if f.exists() else 'x'); sys.exit(int(sys.argv[2]))",
-                    str(observed), str(status)], cwd=cwd, env=env, check=check)
+                    str(observed), str(status)], cwd=cwd, env=env, check=check, timeout=timeout)
 
     monkeypatch.setattr(native.subprocess, "run", child)
     out = tmp_path / "payload"

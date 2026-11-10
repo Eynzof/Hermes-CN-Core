@@ -471,7 +471,7 @@ def harden_import_path(src_root: str | None = None) -> None:
     shipped entry point), never an inherited ``HERMES_PYTHON_SRC_ROOT``: a checkout's dev
     shell exports that, and an install started from it would import the checkout's code.
     """
-    root = src_root or os.path.dirname(os.path.abspath(__file__))
+    root = src_root or str(_root)
 
     sys.path[:] = [p for p in sys.path if p not in ("", ".")]
 
@@ -599,9 +599,9 @@ install_never_free_environ()
 # Every entry point imports this module before its dependency graph.
 from pathlib import Path
 
-from hermes_cli._startup_fast import project_root_str
-
-_root = Path(project_root_str())
+# Bootstrap must locate and repair this checkout before importing any package
+# from it; an interrupted update may have moved hermes_cli aside entirely.
+_root = Path(__file__).resolve().parent
 try:
     os.getcwd()
 except FileNotFoundError:

@@ -57,6 +57,11 @@ def test_actual_agent_tool_round_never_loads_plugins_in_safe_worker(tmp_path, mo
                 executions.append(args[0].co_filename)
         sys.addaudithook(audit)
         from run_agent import AIAgent
+        if mode == 'safe':
+            # Default/composite selections must not lazily import plugin-backed
+            # tools beyond the safe worker's reviewed discovery closure.
+            from model_tools import get_tool_definitions
+            get_tool_definitions(quiet_mode=True)
         requests = []
         class Peer(BaseHTTPRequestHandler):
             def log_message(self, *args): pass

@@ -17,6 +17,17 @@ from tests.waiting import async_wait_until
 class _MeasuredModel(CatalogModel):
     """Streams report provider usage, so the owner measures the session's context."""
 
+    def do_GET(self):
+        # Custom endpoints advertise their own windows; a models.dev seed does not override them.
+        payload = json.dumps({'data': [
+            {'id': name, 'context_length': 1000000} for name in ('original', 'switched')
+        ]}).encode()
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
         if body.get('messages'):
@@ -71,7 +82,7 @@ class _Client:
                 and e['params']['payload'].get('status') == 'confirmation_required']
 
 
-@pytest.mark.platforms("linux")
+@pytest.mark.platforms("posix")
 def test_a_guarded_deferred_pick_is_asked_again_after_an_owner_restart(tmp_path):
     root = Path(__file__).resolve().parents[2]
     home, user = tmp_path / 'state', tmp_path / 'user'

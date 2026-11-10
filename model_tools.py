@@ -396,7 +396,12 @@ def _run_async(coro):
 # module only when that tool is first requested; flipping the singleton into
 # lazy mode here is cheap (no AST scan, no imports) — the scan happens on first
 # real use and is itself disk-cached.
-registry.enable_lazy_builtins()
+from agent.safe_worker_policy import safe_worker_enabled
+
+if safe_worker_enabled():
+    discover_builtin_tools()
+else:
+    registry.enable_lazy_builtins()
 
 # MCP discovery is deliberately NOT run here: it blocks up to 120 s and the
 # gateway lazy-imports this module inside its event loop; each entry point

@@ -69,7 +69,7 @@ class CompactingModel(BaseHTTPRequestHandler):
             pass
 
 
-@pytest.mark.platforms('linux')
+@pytest.mark.platforms('posix')
 @pytest.mark.parametrize('restart', ['graceful', 'crash'])
 def test_followers_survive_compression_and_restart_in_order_exactly_once(tmp_path, restart):
     root = Path(__file__).resolve().parents[2]
@@ -88,7 +88,8 @@ def test_followers_survive_compression_and_restart_in_order_exactly_once(tmp_pat
         'auxiliary': {'title_generation': {'enabled': False},
                       'compression': {'provider': 'custom', 'model': 'summary', 'base_url': url}},
         'compression': {'protect_first_n': 1, 'protect_last_n': 2, 'threshold_tokens': 12000,
-                        'threshold': 0.5, 'in_place': False},
+                        # Keep a narrow tail so PRESSURE_1 is summarized before this restart.
+                        'threshold': 0.5, 'tail_mode': 'legacy', 'in_place': False},
         'platform_toolsets': {'cli': []}}))
     (home / 'models_dev_cache.json').write_text(json.dumps({'custom': {'id': 'custom', 'models': {
         name: {'id': name, 'name': name, 'limit': {'context': 64000 if name == 'original' else 1000000,

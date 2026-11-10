@@ -23,7 +23,7 @@ def test_cmd_dashboard_skips_claim_when_desktop_managed(monkeypatch):
 
     is_managed = os.environ.get("HERMES_DESKTOP_MANAGED") == "1"
     if is_managed:
-        _port_locks = []
+        port_locks = []
     else:
         port_locks = mock_claim_port_set(_compute_well_known_ports(9120))
 

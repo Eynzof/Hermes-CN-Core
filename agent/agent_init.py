@@ -1080,11 +1080,8 @@ def _load_tools(agent, enabled_toolsets, disabled_toolsets):
     except Exception:
         logger.warning("Plugin discovery failed during agent setup", exc_info=True)
 
-    # Capture the registry generation FIRST so a concurrent refresh can detect staleness, and the delegation
-    # backend this delegate_task is built from: the session routes on it (agent/delegation_backends.py).
     from agent.delegation_backends import saved_backend
     from tools.registry import registry as _snapshot_registry
-    agent._tool_snapshot_generation, agent._delegation_backend = _snapshot_registry._generation, saved_backend()
     import model_tools
     from agent.oneshot_footprint import agent_is_oneshot
     from toolsets import agent_tool_surface, session_disabled_toolsets, tool_selection_key
@@ -1092,6 +1089,12 @@ def _load_tools(agent, enabled_toolsets, disabled_toolsets):
         disabled_toolsets, getattr(agent, "platform", None), oneshot=agent_is_oneshot(agent))  # pin restore reads both
     agent.disabled_toolsets = disabled_toolsets  # so the tool_search bridge and delegate children drop them too
     agent._tool_snapshot_selection = tool_selection_key(enabled_toolsets, disabled_toolsets)  # tools[] freeze gate
+    # Finish the selected built-ins' lazy registration before pinning the generation.
+    # Availability probes run afterwards, so a concurrent registration still makes
+    # the snapshot stale while our own cold imports do not thaw a live prefix.
+    for name in model_tools._select_tool_names(enabled_toolsets, disabled_toolsets, quiet_mode=True):
+        _snapshot_registry.get_entry(name)
+    agent._tool_snapshot_generation, agent._delegation_backend = _snapshot_registry._generation, saved_backend()
     agent.tools = agent_tool_surface(agent, model_tools.get_tool_definitions(
         enabled_toolsets=enabled_toolsets, disabled_toolsets=disabled_toolsets, quiet_mode=agent.quiet_mode) or [])
     agent.valid_tool_names = {tool["function"]["name"] for tool in agent.tools} if agent.tools else set()

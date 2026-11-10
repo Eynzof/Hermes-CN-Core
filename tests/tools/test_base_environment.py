@@ -29,7 +29,7 @@ def test_snapshot_store_reads_dict_and_tolerates_missing_or_damaged_file(tmp_pat
 class _TestableEnv(BaseEnvironment):
     """Concrete subclass for testing base class methods."""
 
-    _sudo_nopasswd_probe_supported = True
+    _passwordless_sudo_probe_supported = True
 
     def __init__(self, cwd="/tmp", timeout=10):
         super().__init__(cwd=cwd, timeout=timeout)
@@ -63,7 +63,7 @@ def test_nopasswd_probe_runs_sudo_n_inside_backend_only_when_supported(
     monkeypatch, supported, returncode, expected, probed
 ):
     env = _TestableEnv()
-    env._sudo_nopasswd_probe_supported = supported
+    env._passwordless_sudo_probe_supported = supported
     run = MagicMock(return_value=object())
     monkeypatch.setattr(env, "_run_bash", run)
     monkeypatch.setattr(env, "_wait_for_process", MagicMock(return_value={"returncode": returncode}))
@@ -218,7 +218,7 @@ class TestAtomicSnapshotConcurrencyBehavioral:
 
     def _run(self, script):
         import subprocess
-        return subprocess.run(["/bin/bash", "-c", script], capture_output=True, text=True)
+        return subprocess.run(["/bin/bash", "-c", script], check=False, capture_output=True, text=True)
 
     def test_concurrent_writes_never_tear_the_snapshot(self, tmp_path):
         import shutil

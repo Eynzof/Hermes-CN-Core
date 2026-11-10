@@ -11,7 +11,7 @@ import pytest
 from tests.installation_launcher_fixture import publish_fixture_launcher
 from tests.scripts.desktop_update.windows_handoff_support import (
     SCRIPT, MARKER, _creation_time, _dead_pid,
-    sleeper as sleeper,
+    sleeper as sleeper,  # noqa: PLC0414 -- re-exported pytest fixture
 )
 
 from tests.scripts.desktop_update.windows_marker_support import (
@@ -61,7 +61,7 @@ def test_ui_profile_sweep_keeps_dirs_of_live_handoffs(tmp_path: Path, sleeper: s
     home = tmp_path / 'home'; home.mkdir()
     result = subprocess.run(
         ['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(SCRIPT), '-SelfTestUi', '-NoUi'],
-        cwd=tmp_path, env={**os.environ, 'HERMES_HOME': str(home), 'TEMP': str(tmp_path),
+        check=False, cwd=tmp_path, env={**os.environ, 'HERMES_HOME': str(home), 'TEMP': str(tmp_path),
                            'HERMES_SELFTEST_HOLD_SECONDS': '0'},
         capture_output=True, text=True, timeout=120,
     )

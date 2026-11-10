@@ -130,11 +130,11 @@ def patch_startup_side_effects(monkeypatch, tmp_path):
     # neutralize those unrelated integrations before wait_for() starts so this
     # race test's bounded deadline measures startup/teardown coordination,
     # not cold module discovery (which varies significantly by platform).
-    monkeypatch.setattr("tools.process_registry.process_registry.kill_all", lambda: [])
+    monkeypatch.setattr("tools.process_registry.process_registry.kill_all", list)
     monkeypatch.setattr("cron.scheduler.mark_running_jobs_interrupted", lambda *_a, **_kw: [])
     monkeypatch.setattr("tools.async_delegation.interrupt_all", lambda **_kw: 0)
     monkeypatch.setattr("tools.terminal_tool.cleanup_all_environments", lambda: None)
-    monkeypatch.setattr("tools.browser_tool_lifecycle.cleanup_all_browsers", lambda: None)
+    monkeypatch.setattr("tools.browser_session_lifecycle.cleanup_all_browsers", lambda: None)
     monkeypatch.setattr("agent.auxiliary_client.shutdown_cached_clients", lambda: None)
 
 
@@ -201,6 +201,13 @@ async def test_start_gateway_does_not_start_cron_after_aborted_startup(tmp_path,
 
     class AbortedStartupRunner:
         def __init__(self, config):
+            from gateway.session import SessionStore
+            from hermes_state import SessionDB
+            from hermes_constants import get_hermes_home
+            self.session_store = SessionStore(get_hermes_home() / 'sessions', config)
+            self._session_db = SessionDB(get_hermes_home() / 'state.db')
+            self.session_store._db = self._session_db
+            self._draining = False
             self.config = config
             self.adapters = {}
             self._running = False
@@ -215,6 +222,10 @@ async def test_start_gateway_does_not_start_cron_after_aborted_startup(tmp_path,
 
         async def wait_for_shutdown(self):
             return None
+
+        async def stop(self):
+            self.session_store.close_all_db_handles()
+            self._session_db.close()
 
     def fail_if_cron_starts(*args, **kwargs):
         nonlocal cron_started
@@ -264,6 +275,9 @@ async def test_start_gateway_starts_and_stops_cron_on_relaunch(
         async def start(self):
             return True
 
+        async def stop(self):
+            self._running = False
+
         async def wait_for_shutdown(self):
             if cron_allowed:
                 assert await asyncio.to_thread(started.wait, 5)
@@ -286,8 +300,17 @@ async def test_start_gateway_starts_and_stops_cron_on_relaunch(
     monkeypatch.setattr("tools.mcp_tool_lifecycle.shutdown_mcp_servers", lambda: None)
     monkeypatch.setattr("hermes_cli.nous_auth_keepalive.start_nous_auth_keepalive", lambda: None)
     monkeypatch.setattr("hermes_cli.nous_auth_keepalive.stop_nous_auth_keepalive", lambda: None)
+    # This test owns cron relaunch, while session API ownership is covered by
+    # the runtime integration tests. Its fake runner has no database or listener.
+    import gateway.run_runtime as runtime
+    for name in ("initialize_gateway_runtime", "start_gateway_runtime_api", "drain_gateway_runtime"):
+        monkeypatch.setattr(runtime, name, AsyncMock())
+    monkeypatch.setattr(runtime, "publish_gateway_runtime_ready", lambda runner: None)
+    monkeypatch.setattr(runtime, "wait_gateway_runtime", lambda runner: runner.wait_for_shutdown())
+    monkeypatch.setattr("gateway.run_bootstrap._start_gateway_start_control_socket", AsyncMock(
+        return_value=MagicMock(stop=AsyncMock())))
     monkeypatch.setattr(gateway_run, "GatewayRunner", RunningGateway)
-    monkeypatch.setattr(gateway_run, "_validate_cron_startup", lambda: cron_allowed)
+    monkeypatch.setattr("gateway.run_bootstrap._validate_cron_startup", lambda: cron_allowed)
     monkeypatch.setattr(
         gateway_run, "_start_gateway_housekeeping",
         lambda stop, **kwargs: stop.wait(5),
@@ -317,6 +340,13 @@ async def test_start_gateway_preserves_service_restart_fallback_after_aborted_st
 
     class AbortedStartupRunner:
         def __init__(self, config):
+            from gateway.session import SessionStore
+            from hermes_state import SessionDB
+            from hermes_constants import get_hermes_home
+            self.session_store = SessionStore(get_hermes_home() / 'sessions', config)
+            self._session_db = SessionDB(get_hermes_home() / 'state.db')
+            self.session_store._db = self._session_db
+            self._draining = False
             self.config = config
             self.adapters = {}
             self._running = False
@@ -332,6 +362,10 @@ async def test_start_gateway_preserves_service_restart_fallback_after_aborted_st
 
         async def wait_for_shutdown(self):
             return None
+
+        async def stop(self):
+            self.session_store.close_all_db_handles()
+            self._session_db.close()
 
     def fail_if_cron_starts(*args, **kwargs):
         nonlocal cron_started
@@ -366,6 +400,13 @@ async def test_start_gateway_classifies_startup_signal_exit(
 
     class AbortedStartupRunner:
         def __init__(self, config):
+            from gateway.session import SessionStore
+            from hermes_state import SessionDB
+            from hermes_constants import get_hermes_home
+            self.session_store = SessionStore(get_hermes_home() / 'sessions', config)
+            self._session_db = SessionDB(get_hermes_home() / 'state.db')
+            self.session_store._db = self._session_db
+            self._draining = False
             self.config = config
             self.adapters = {}
             self._running = False
@@ -384,6 +425,10 @@ async def test_start_gateway_classifies_startup_signal_exit(
         async def wait_for_shutdown(self):
             return None
 
+        async def stop(self):
+            self.session_store.close_all_db_handles()
+            self._session_db.close()
+
     def capture_signal_state(runner, state):
         nonlocal signal_state
         signal_state = state
@@ -395,7 +440,7 @@ async def test_start_gateway_classifies_startup_signal_exit(
 
     _patch_aborted_startup(monkeypatch, AbortedStartupRunner)
     monkeypatch.setattr(
-        "gateway.run._start_gateway_make_shutdown_signal_handler", capture_signal_state
+        "gateway.run_bootstrap._start_gateway_make_shutdown_signal_handler", capture_signal_state
     )
     monkeypatch.setattr("gateway.run._start_cron_ticker", fail_if_cron_starts)
     monkeypatch.setattr("tools.mcp_tool_lifecycle.shutdown_mcp_servers", lambda: None)
@@ -431,7 +476,8 @@ async def test_failure_exit_still_stops_cron_housekeeping_and_mcp(monkeypatch):
     monkeypatch.setattr("hermes_cli.nous_auth_keepalive.stop_nous_auth_keepalive", lambda: None)
     runner = MagicMock(should_exit_with_failure=True, exit_reason="boom", exit_code=None)
 
-    result = await gateway_run._start_gateway_shutdown_tail(
+    from gateway.run_bootstrap import _start_gateway_shutdown_tail
+    result = await _start_gateway_shutdown_tail(
         runner, None, cron_stop, object(), threads[0], threads[1], watcher_stop, watcher, [False])
 
     assert result is False

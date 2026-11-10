@@ -384,6 +384,10 @@ _SLACK_RESERVED_COMMANDS = frozenset({
 _SLACK_VIA_HERMES_ONLY = frozenset({
     "topup", "moa", "debug", "egress", "init", "version", "diff", "update", "heartbeat",
     "refine", "review", "pause", "whoami", "platform", "insights", "login", "initiate-setup",
+    # Recovery-only, after a restart lost a turn: `/hermes discard` reaches it.
+    "discard",
+    # One-time answer to the low-disk prompt; `/hermes autoprune on` reaches it.
+    "autoprune",
     # The registry reached Slack's 50-slash cap, so /usage (a one-off lookup, same class as
     # version/whoami/diff) rides /hermes usage on Slack instead of silently displacing another
     # command. See the parity test in tests/hermes_cli/test_commands.py.

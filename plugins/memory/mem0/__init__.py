@@ -334,7 +334,7 @@ class Mem0MemoryProvider(MemoryProvider):
             self._sync_thread = spawn_context_thread(_sync, name="mem0-sync")
             self._sync_thread.start()
 
-    def get_tool_schemas(self) -> List[Dict[str, Any]]:
+    def get_tool_schemas(self) -> list[dict[str, Any]]:
         return list(TOOL_SCHEMAS)
 
     # -- tool handlers: (required params, error label, body, client-error policy) ---

@@ -575,7 +575,7 @@ def _setup_identity_mapping(cfg: dict, hermes_host: dict, current_peer: str, new
 def _ensure_sdk_installed() -> bool:
     """Check honcho-ai is importable; offer to install if not. Returns True if ready."""
     try:
-        import honcho  # noqa: F401
+        import honcho
         return True
     except ImportError:
         pass
@@ -955,7 +955,7 @@ def cmd_status(args) -> None:
         _cmd_status_all()
         return
     try:
-        import honcho  # noqa: F401
+        import honcho
     except ImportError:
         print("  honcho-ai is not installed. Run: hermes honcho setup\n")
         return

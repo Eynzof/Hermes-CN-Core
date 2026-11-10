@@ -214,13 +214,13 @@ class ContextEngine(ABC):
         return orjson.dumps({"error": f"Unknown context engine tool: {name}"}).decode('utf-8')
 
 
-    def get_usage_status(self) -> Dict[str, Any]:
+    def get_usage_status(self) -> dict[str, Any]:
         """Return context usage status as a JSON-serializable dict.
 
         Used by the context_usage tool and can be called by status displays.
         Returns zeros gracefully when no context data is available yet.
         """
-        last_prompt = self.last_prompt_tokens if self.last_prompt_tokens > 0 else 0
+        last_prompt = max(0, self.last_prompt_tokens)
         return {
             "usage_percent": (
                 min(100.0, last_prompt / self.context_length * 100)

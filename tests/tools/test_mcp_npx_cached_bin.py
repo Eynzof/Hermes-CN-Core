@@ -39,7 +39,7 @@ def _cache(tmp_path, *, package, deps=None, bin_field, make_bin=True, entry="abc
     target = bindir / (os.path.basename(package) if isinstance(bin_field, str) else name)
     if os.name == "nt":
         target = target.with_suffix(".cmd")
-    name = bin_field if isinstance(bin_field, str) else list(bin_field)[0]
+    name = bin_field if isinstance(bin_field, str) else next(iter(bin_field))
     # Windows picks the cache launcher by extension (the extensionless sh script cannot
     # be spawned there), so the fixture lays down the platform's real name.
     suffix = ".cmd" if sys.platform == "win32" else ""

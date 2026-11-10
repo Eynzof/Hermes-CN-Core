@@ -89,7 +89,7 @@ class FalImageGenProvider(StaticImageGenProvider):
 
         try:
             response = orjson.loads(raw) if isinstance(raw, str) else raw
-        except Exception:  # noqa: BLE001
+        except Exception:
             response = {"success": False, "image": None, "error": "Invalid JSON from FAL pipeline"}
 
         if not isinstance(response, dict):

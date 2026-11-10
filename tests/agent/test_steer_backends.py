@@ -50,7 +50,7 @@ def _patch_bootstrap(monkeypatch):
             }
         ],
     )
-    monkeypatch.setattr(model_tools, "check_toolset_requirements", lambda: {})
+    monkeypatch.setattr(model_tools, "check_toolset_requirements", dict)
     monkeypatch.setattr(
         model_tools, "handle_function_call", lambda *a, **k: '{"ok": true}'
     )
@@ -143,7 +143,7 @@ def _make_agent(monkeypatch, provider: str, api_mode: str, model: str):
             super().__init__(*a, **kw)
             self._cleanup_task_resources = self._persist_session = lambda *a, **k: None
             self._save_trajectory = lambda *a, **k: None
-            self._captured_calls: List[Dict[str, Any]] = []
+            self._captured_calls: list[dict[str, Any]] = []
             self._response_sequence = [
                 _tool_call_response(api_mode=api_mode),
                 _final_response(api_mode=api_mode),
@@ -171,14 +171,14 @@ def _make_agent(monkeypatch, provider: str, api_mode: str, model: str):
     )
 
 
-def _find_message(messages: List[Dict[str, Any]], role: str) -> Dict[str, Any]:
+def _find_message(messages: list[dict[str, Any]], role: str) -> dict[str, Any]:
     for msg in messages:
         if isinstance(msg, dict) and msg.get("role") == role:
             return msg
     raise AssertionError(f"no {role!r} message found in {messages!r}")
 
 
-def _system_content(api_kwargs: Dict[str, Any]) -> str:
+def _system_content(api_kwargs: dict[str, Any]) -> str:
     """Return the system prompt content however the backend passes it."""
     system = api_kwargs.get("system")
     if system:
@@ -195,7 +195,7 @@ def _system_content(api_kwargs: Dict[str, Any]) -> str:
     return ""
 
 
-def _tool_result_texts(message: Dict[str, Any]) -> List[str]:
+def _tool_result_texts(message: dict[str, Any]) -> list[str]:
     """Text carried by a message's tool-result payloads, across backend shapes.
 
     OpenAI-compatible backends use ``role="tool"`` rows (their whole content is
@@ -214,7 +214,7 @@ def _tool_result_texts(message: Dict[str, Any]) -> List[str]:
     return []
 
 
-def _all_text(message: Dict[str, Any]) -> str:
+def _all_text(message: dict[str, Any]) -> str:
     """Every visible text of a wire message, string or block content."""
     content = message.get("content", "")
     if isinstance(content, str):
@@ -247,7 +247,7 @@ class TestSteerBackends:
 
         api_started = threading.Event()
         steer_submitted = threading.Event()
-        steer_results: List[bool] = []
+        steer_results: list[bool] = []
         original_api_call = agent._interruptible_api_call
 
         def coordinated_api_call(api_kwargs: dict):

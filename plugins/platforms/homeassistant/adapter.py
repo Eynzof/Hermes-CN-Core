@@ -42,7 +42,7 @@ def _domain_of(entity_id: str) -> str:
     return entity_id.split(".")[0] if "." in entity_id else ""
 
 
-def _auth_headers(token: str) -> Dict[str, str]:
+def _auth_headers(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
 
@@ -72,9 +72,9 @@ class HomeAssistantAdapter(BasePlatformAdapter):
 
     def __init__(self, config: PlatformConfig):
         super().__init__(config, Platform.HOMEASSISTANT)
-        self._session: Optional["aiohttp.ClientSession"] = None
-        self._ws: Optional["aiohttp.ClientWebSocketResponse"] = None
-        self._rest_session: Optional["aiohttp.ClientSession"] = None
+        self._session: Optional[aiohttp.ClientSession] = None
+        self._ws: Optional[aiohttp.ClientWebSocketResponse] = None
+        self._rest_session: Optional[aiohttp.ClientSession] = None
         self._listen_task: Optional[asyncio.Task] = None
         self._msg_id: int = 0
         extra = config.extra or {}
@@ -82,12 +82,12 @@ class HomeAssistantAdapter(BasePlatformAdapter):
         # DEFAULT profile's HA instance (os.environ under multiplex).
         self._hass_url: str = (extra.get("url") or _get_scoped_secret("HASS_URL", "http://homeassistant.local:8123")).rstrip("/")
         self._hass_token: str = config.token or _get_scoped_secret("HASS_TOKEN", "")
-        self._watch_domains: Set[str] = set(extra.get("watch_domains", []))
-        self._watch_entities: Set[str] = set(extra.get("watch_entities", []))
-        self._ignore_entities: Set[str] = set(extra.get("ignore_entities", []))
+        self._watch_domains: set[str] = set(extra.get("watch_domains", []))
+        self._watch_entities: set[str] = set(extra.get("watch_entities", []))
+        self._ignore_entities: set[str] = set(extra.get("ignore_entities", []))
         self._watch_all: bool = bool(extra.get("watch_all", False))
         self._cooldown_seconds: int = int(extra.get("cooldown_seconds", 30))
-        self._last_event_time: Dict[str, float] = {}  # entity_id -> last event ts
+        self._last_event_time: dict[str, float] = {}  # entity_id -> last event ts
 
     def _next_id(self) -> int:
         self._msg_id += 1
@@ -225,7 +225,7 @@ class HomeAssistantAdapter(BasePlatformAdapter):
             return _domain_of(entity_id) in self._watch_domains or entity_id in self._watch_entities
         return self._watch_all
 
-    async def _handle_ha_event(self, event: Dict[str, Any]) -> None:
+    async def _handle_ha_event(self, event: dict[str, Any]) -> None:
         """Process a state_changed event from Home Assistant."""
         event_data = event.get("data", {})
         entity_id: str = event_data.get("entity_id", "")
@@ -247,7 +247,7 @@ class HomeAssistantAdapter(BasePlatformAdapter):
             message_id=f"ha_{entity_id}_{int(now)}", timestamp=datetime.now()))
 
     @staticmethod
-    def _format_state_change(entity_id: str, old_state: Dict[str, Any], new_state: Dict[str, Any]) -> Optional[str]:
+    def _format_state_change(entity_id: str, old_state: dict[str, Any], new_state: dict[str, Any]) -> Optional[str]:
         """Convert a state_changed event into a human-readable description."""
         if not new_state:
             return None
@@ -266,7 +266,7 @@ class HomeAssistantAdapter(BasePlatformAdapter):
     # -- Outbound messaging -------------------------------------------------
 
     async def send(
-        self, chat_id: str, content: str, reply_to: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None,
+        self, chat_id: str, content: str, reply_to: Optional[str] = None, metadata: Optional[dict[str, Any]] = None,
     ) -> SendResult:
         """Send a notification via HA REST API (persistent_notification.create).
 
@@ -289,12 +289,12 @@ class HomeAssistantAdapter(BasePlatformAdapter):
                 return await _post(self._rest_session)
             async with aiohttp.ClientSession(trust_env=gateway_trust_env()) as session:
                 return await _post(session)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return SendResult(success=False, error="Timeout sending notification to HA")
         except Exception as e:
             return SendResult(success=False, error=str(e))
 
-    async def get_chat_info(self, chat_id: str) -> Dict[str, Any]:
+    async def get_chat_info(self, chat_id: str) -> dict[str, Any]:
         return {"name": "Home Assistant Events", "type": "channel", "url": self._hass_url}
 
 
@@ -311,7 +311,7 @@ class HomeAssistantAdapter(BasePlatformAdapter):
 async def _standalone_send(
     pconfig, chat_id: str, message: str, *,
     thread_id: Optional[str] = None, media_files: Optional[list] = None, force_document: bool = False,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Send via the HA ``notify.notify`` service without a live gateway adapter.
 
     Token: ``pconfig.token`` then ``HASS_TOKEN``; URL: ``pconfig.extra["url"]`` then ``HASS_URL``.
@@ -332,7 +332,7 @@ async def _standalone_send(
                 if resp.status not in {200, 201}:
                     return send_error(f"Home Assistant API error ({resp.status}): {await resp.text()}")
         return {"success": True, "platform": "homeassistant", "chat_id": chat_id}
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return send_error("Timeout sending notification to Home Assistant")
     except Exception as e:
         return send_error(f"Home Assistant send failed: {e}")

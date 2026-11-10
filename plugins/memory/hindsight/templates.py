@@ -38,7 +38,7 @@ def catalog_url() -> str:
 
 def _get_json(url: str) -> dict:
     req = urllib.request.Request(url, headers={"Accept": "application/json"})
-    with urllib.request.urlopen(req, timeout=_HTTP_TIMEOUT) as resp:  # noqa: S310 - fixed https catalog
+    with urllib.request.urlopen(req, timeout=_HTTP_TIMEOUT) as resp:
         # [CN-fork] P-051 — lossy decode + orjson: one non-UTF-8 byte in the catalog must not
         # abort the setup wizard's template step.
         return orjson.loads(resp.read().decode("utf-8", errors="replace"))
@@ -61,7 +61,7 @@ def _bank_request(api_url: str, bank_id: str, api_key: str | None, action: str, 
     if api_key:
         headers = {**headers, "Authorization": f"Bearer {api_key}"}
     endpoint = f"{api_url.rstrip('/')}/v1/default/banks/{bank_id}/{action}"
-    return urllib.request.Request(endpoint, headers=headers, **kwargs)  # noqa: S310
+    return urllib.request.Request(endpoint, headers=headers, **kwargs)
 
 
 def apply_template(api_url: str, bank_id: str, api_key: str | None, manifest: dict) -> None:

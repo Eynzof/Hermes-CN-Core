@@ -242,6 +242,8 @@ FEISHU_GROUP_POLICY=allowlist   # default
 
 In all modes, the bot must be explicitly @mentioned (or @all) in the group before the message is processed. Direct messages always bypass this gate.
 
+The adapter resolves `FEISHU_GROUP_POLICY` (together with `FEISHU_ALLOWED_USERS`) once at startup and keeps that value for the life of the process, so writing the variable — editing `.env`, `hermes gateway setup`, or a dashboard form — only updates the file. Restart the gateway for a new policy to take effect; the value never needs the Feishu OAuth/token flow to be re-run.
+
 With the default `allowlist` policy and an empty `FEISHU_ALLOWED_USERS`, every human group message is rejected while DMs keep working. The first such drop is logged once at `WARNING` with the keys to set; later drops are `DEBUG`. Under a [multiplexed gateway](../multi-profile-gateways.md), each profile reads only its **own** `.env` — a `FEISHU_GROUP_POLICY=open` in the default profile's `.env` does not apply to a secondary profile's bot. Put `FEISHU_GROUP_POLICY` / `FEISHU_ALLOWED_USERS` in `profiles/<name>/.env`, or use `group_rules` in that profile's `config.yaml`.
 
 Set `FEISHU_REQUIRE_MENTION=false` to let Hermes read all group traffic without requiring an @mention:
@@ -293,6 +295,10 @@ When users click buttons or interact with interactive cards sent by the bot, the
 Gateway-driven update prompts use a native Feishu `Yes` / `No` card instead of falling back to plain text replies. When `hermes update --gateway` needs confirmation, the adapter records the selected answer in Hermes's `.update_response` file and replaces the card inline with a resolved state.
 
 Card action events are dispatched with `MessageType.COMMAND`, so they flow through the normal command processing pipeline.
+
+**Clarify questions** use cards too: when the agent asks a multiple-choice question with the `clarify` tool, the card shows the options with one numbered button each plus "✏️ Other (type answer)". A tap answers at once and the card updates in place for everyone in the chat; "Other" switches to text capture, so your next message is the answer. Typing a number or the option text instead of tapping also works. Open-ended questions arrive as plain text. The same authorization as approval buttons applies: only an allowed user can answer.
+
+**Finite-choice slash commands** (`/reasoning`, `/fast`) send a card picker: one tap applies the setting, the card settles with the selection, and the command's confirmation follows in the chat.
 
 This is also how **command approval** works — when the agent needs to run a dangerous command, it sends an interactive card with Allow Once / Session / Always / Deny buttons. The user clicks a button, and the card action callback delivers the approval decision back to the agent.
 

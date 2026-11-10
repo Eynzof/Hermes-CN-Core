@@ -51,7 +51,7 @@ class TestReminderProvider:
 
     def test_valid_subclass_instantiates(self):
         class _Good(ReminderProvider):
-            def get_reminders(self, agent: Any, api_call_count: int) -> List[Reminder]:
+            def get_reminders(self, agent: Any, api_call_count: int) -> list[Reminder]:
                 return []
 
         instance = _Good()
@@ -59,7 +59,7 @@ class TestReminderProvider:
 
     def test_default_lifecycle_hooks_are_no_ops(self):
         class _NoOverride(ReminderProvider):
-            def get_reminders(self, agent: Any, api_call_count: int) -> List[Reminder]:
+            def get_reminders(self, agent: Any, api_call_count: int) -> list[Reminder]:
                 return []
 
         instance = _NoOverride()

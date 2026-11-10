@@ -230,7 +230,7 @@ class HonchoSessionManager(SessionAuthMixin, SessionPeersMixin, SessionContextMi
                 timestamps = [m.created_at for m in existing_messages if m.created_at]
                 if timestamps and timestamps != sorted(timestamps):
                     logger.warning("Honcho messages not chronologically ordered for session '%s', sorting", session_id)
-                    existing_messages = sorted(existing_messages, key=lambda m: m.created_at or datetime.min)
+                    existing_messages = sorted(existing_messages, key=lambda m: (m.created_at is not None, m.created_at))
             if existing_messages:
                 logger.info("Honcho session '%s' retrieved (%d existing messages)", session_id, len(existing_messages))
             else:
@@ -652,8 +652,8 @@ class HonchoSessionManager(SessionAuthMixin, SessionPeersMixin, SessionContextMi
 # Names external plugins imported from this module before the Sep 2026 decomposition.
 # Internal code MUST NOT use these (scripts/check_compat_pointers.py fails CI if it does).
 # The whole block is removed by reverting the commit that added it.
-from typing import Callable  # noqa: F401,E402
-from pathlib import Path  # noqa: F401,E402
-import hashlib  # noqa: F401,E402
-import re  # noqa: F401,E402
+from typing import Callable
+from pathlib import Path
+import hashlib
+import re
 # ---- END PLUGIN-COMPAT ----

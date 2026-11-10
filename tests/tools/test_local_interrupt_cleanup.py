@@ -133,9 +133,6 @@ def test_wait_for_process_kills_subprocess_on_keyboardinterrupt():
     env = LocalEnvironment(cwd="/tmp")
     try:
         result_holder = {}
-        proc_holder = {}
-        started = threading.Event()
-        raise_at = [None]  # set by the main thread to tell worker when
 
         # Drive execute() on a separate thread so we can SIGNAL-interrupt it
         # via a thread-targeted exception without killing our test process.
@@ -171,6 +168,7 @@ def test_wait_for_process_kills_subprocess_on_keyboardinterrupt():
                 # Fall back to ps
                 ps = subprocess.run(
                     ["ps", "-eo", "pid,ppid,pgid,cmd"], capture_output=True, text=True,
+                    check=False,
                 )
                 for line in ps.stdout.splitlines():
                     if "sleep 30" in line and "grep" not in line:
@@ -249,7 +247,6 @@ def test_exit_cleanup_kills_foreground_command_still_running(monkeypatch):
     the host exiting mid-command would otherwise orphan it to init."""
     from tools import terminal_tool_lifecycle
 
-    monkeypatch.setattr(terminal_tool_lifecycle, "_scratch_paths", list)
     env = LocalEnvironment(cwd="/tmp")
     result: dict = {}
     t = threading.Thread(target=lambda: result.update(env.execute("sleep 3517", timeout=600)), daemon=True)
@@ -316,7 +313,7 @@ def test_hard_exit_leaves_no_foreground_survivor_around_the_spawn(scenario, tmp_
     cmd = f"sleep {35000 + os.getpid() % 1000}.{len(scenario)}"
     repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     r = subprocess.run([sys.executable, "-c", _HARD_EXIT_RACE_CHILD, scenario, cmd], cwd=str(tmp_path),
-                       env={**os.environ, "PYTHONPATH": repo}, capture_output=True, text=True, timeout=120)
+                       env={**os.environ, "PYTHONPATH": repo}, capture_output=True, text=True, timeout=120, check=False)
     assert r.returncode == 0, r.stderr[-2000:]
     time.sleep(0.3)
     survivors = [p for p in psutil.process_iter(["cmdline"]) if cmd in " ".join(p.info["cmdline"] or [])]

@@ -205,7 +205,7 @@ def main() -> int:
     if args.min_app_version:
         manifest["minAppVersion"] = args.min_app_version
     manifest["createdAt"] = (
-        _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        _dt.datetime.now(_dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     )
 
     payload = "\n".join(str(manifest[f]) for f in _PAYLOAD_FIELDS).encode()

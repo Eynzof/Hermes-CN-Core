@@ -262,7 +262,9 @@ def apply_wal_with_fallback(conn: sqlite3.Connection, *, db_label: str = "state.
     macOS NFS / SMB / AgentFS — silently refuse and stay in DELETE; either way log ERROR once per process per
     ``db_label`` and fall back. ``require_wal=True`` raises :class:`WalUnsupportedError` instead. WAL-reset-bug
     builds (https://sqlite.org/wal.html#walresetbug) never enable WAL on non-WAL files; an already-WAL DB keeps WAL
-    with a warning. Gate deliberately RETAINED: re-measured on the bundled 3.50.4 there is no evidence WAL is safer.
+    with a warning. Gate deliberately RETAINED: the measurement below was taken on the 3.50.4 the CN runtime used to
+    bundle; that runtime now freezes PM's pinned interpreter (3.53.1, #181), but a source install can still link a
+    vulnerable library.
 
     Invariant on every path: never downgrade to DELETE if the on-disk header reports WAL or cannot be read — other
     gateway/cron/worker connections may hold the DB open, and a live downgrade destroys their uncheckpointed
@@ -271,12 +273,35 @@ def apply_wal_with_fallback(conn: sqlite3.Connection, *, db_label: str = "state.
     An earlier revision of the lock-cancellation fix (#71724) reverted it on the theory that DELETE was "the
     mode that corrupts", but that comparison was confounded: the clean WAL result came from SQLite 3.53.1,
     which carries BOTH the WAL-reset fix AND 3.51.0's defenses against close()-broken POSIX locks, so it
-    says nothing about 3.50.4. Re-measured on the actually-bundled 3.50.4 with the lock fix in place, WAL
-    and DELETE are both clean (0/3 each) — i.e. there is no evidence that WAL is safer here, and upstream
-    still documents the WAL-reset bug as real through 3.51.2 with serious consequences. Until a fixed
-    runtime is delivered, keep new databases out of WAL.
+    says nothing about 3.50.4. Re-measured on the then-bundled 3.50.4 with the lock fix in place, WAL
+    and DELETE are both clean (0/3 each) — i.e. there is no evidence that WAL is safer on a vulnerable
+    library, and upstream still documents the WAL-reset bug as real through 3.51.2 with serious
+    consequences. New databases therefore stay out of WAL whenever the linked library is vulnerable —
+    after the 3.53.1 runtime pin (#181) that is a source-install concern, not a CN-runtime one.
     """
-    configured = resolve_journal_mode()
+    config_module = sys.modules.get("hermes_cli.config")
+    if getattr(getattr(config_module, "__spec__", None), "_initializing", False):
+        config_module = None
+    config_lock = getattr(config_module, "_CONFIG_LOCK", None)
+    acquired = config_lock is not None and config_lock.acquire(blocking=False)
+    try:
+        if config_lock is not None and not acquired:
+            # A config writer cannot hold up work on an initialized database.
+            # Preserve its observed mode; defer configuration-driven transitions.
+            current_mode = _on_disk_journal_mode(conn)
+            if current_mode == "wal":
+                if is_sqlite_wal_reset_vulnerable():
+                    return _apply_delete_for_wal_reset_bug(conn, db_label=db_label)
+                _apply_wal_companions(conn)
+                return "wal"
+            if current_mode == "delete" and not require_wal and _database_has_content(conn):
+                if is_sqlite_wal_reset_vulnerable():
+                    _log_wal_reset_bug_once(db_label, kept_wal=False)
+                return "delete"
+        configured = resolve_journal_mode()
+    finally:
+        if acquired:
+            config_lock.release()
 
     # Vulnerable SQLite: never enable WAL on non-WAL files (configured mode resolved first so an explicit DELETE
     # request is still verified).

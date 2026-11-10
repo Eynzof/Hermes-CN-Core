@@ -24,7 +24,7 @@ class CompactMode(str, Enum):
     TECHNICAL = "technical"
 
 
-_MODE_GUIDANCE: Dict[CompactMode, str] = {
+_MODE_GUIDANCE: dict[CompactMode, str] = {
     CompactMode.BALANCED: (
         "**Compaction Style Guidance:** Be balanced. Preserve essential context "
         "while condensing redundant information. Keep current task state, errors "
@@ -56,13 +56,13 @@ def get_guidance(mode: str) -> str:
         return ""
 
 
-def get_context_usage_schema() -> Dict[str, Any]:
+def get_context_usage_schema() -> dict[str, Any]:
     """Return the JSON tool schema for the ``context_usage`` tool."""
     return {
         "name": "context_usage",
         "description": (
-            "Report current conversation context usage: percentage, used tokens, "
-            "and maximum context size. Use this to decide whether to call Compact."
+            "Report context usage as a percentage and token count. "
+            "Includes the maximum context size to help decide whether to call Compact."
         ),
         "parameters": {
             "type": "object",
@@ -72,7 +72,7 @@ def get_context_usage_schema() -> Dict[str, Any]:
     }
 
 
-def get_compact_schema() -> Dict[str, Any]:
+def get_compact_schema() -> dict[str, Any]:
     """Return the JSON tool schema for the ``compact`` tool."""
     return {
         "name": "compact",

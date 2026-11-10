@@ -15,16 +15,12 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
 from packaging.specifiers import SpecifierSet
 from packaging.version import Version
-
-if sys.version_info >= (3, 11):
-    import tomllib
-else:  # pragma: no cover - CI runs 3.11+
-    tomllib = None
 
 
 def _repo_root() -> Path:
@@ -37,8 +33,6 @@ def _workflow_text() -> str:
 
 
 def _cn_desktop_extra() -> list[str]:
-    if tomllib is None:  # pragma: no cover
-        pytest.skip("tomllib unavailable")
     data = tomllib.loads((_repo_root() / "pyproject.toml").read_text(encoding="utf-8", errors="replace"))
     return data["project"]["optional-dependencies"]["cn-desktop"]
 
@@ -81,25 +75,45 @@ def test_runtime_workflow_installs_cn_desktop_extra_from_lock():
 
 
 def test_runtime_workflow_python_satisfies_project_requirement():
-    """The release builder must run a Python accepted by pyproject.toml."""
+
+    """The release builder must run a Python accepted by pyproject.toml.
+
+
+
+    The runtime build no longer names a Python of its own: it provisions PM's
+
+    locked interpreter, whose patch also decides the bundled SQLite (#181), so
+
+    the pin that has to satisfy ``requires-python`` is ``pm/lock.json``'s.
+
+    """
+
     if tomllib is None:  # pragma: no cover
+
         pytest.skip("tomllib unavailable")
 
     project = tomllib.loads(
+
         (_repo_root() / "pyproject.toml").read_text(encoding="utf-8", errors="replace")
+
     )["project"]
-    match = re.search(
-        r"python-version:\s*[\"']([^\"']+)[\"']",
-        _workflow_text(),
+
+    assert "uses: ./.github/actions/setup-pm" in _workflow_text()
+
+    pinned = _pinned_runtime_python()
+
+    requires_python = SpecifierSet(project["requires-python"])
+
+    assert Version(".".join(map(str, pinned))) in requires_python, (
+
+        f"pm/lock.json pins Python {pinned}, which does not satisfy "
+
+        f"pyproject.toml requires-python {requires_python}"
+
     )
 
-    assert match, "release-runtime.yml must configure actions/setup-python"
-    workflow_python = Version(match.group(1))
-    requires_python = SpecifierSet(project["requires-python"])
-    assert workflow_python in requires_python, (
-        f"release-runtime.yml uses Python {workflow_python}, which does not "
-        f"satisfy pyproject.toml requires-python {requires_python}"
-    )
+
+
 
 
 def test_cn_desktop_extra_bundles_every_desktop_backend():
@@ -187,7 +201,7 @@ def test_runtime_workflow_freezes_web_search_providers():
         assert pkg in _frozen_verify_packages()
     for plugin in ("brave_free", "ddgs", "exa", "firecrawl", "parallel", "searxng", "tavily", "xai"):
         assert f"plugins.web.{plugin}" in workflow
-        assert f"plugins/web/$p/plugin.yaml" in workflow
+        assert "plugins/web/$p/plugin.yaml" in workflow
 
 
 def test_runtime_workflow_freezes_im_platform_backends():
@@ -209,8 +223,8 @@ def test_release_workflow_imports_migrated_platform_adapters_from_plugins():
     """飞书/钉钉/企微 adapters migrated from gateway/platforms/*.py to bundled
     plugins (plugins/platforms/<name>/) in the upstream sync — see P-035. The
     build-env gate must import them from the new location; the old
-    gateway.platforms.<name> modules are gone. weixin (微信个人号, CN-only) stayed
-    in gateway.platforms. Guards the exact drift that broke runtime-v0.17.0-cn.3
+    gateway.platforms.<name> modules are gone. weixin (微信个人号, CN-only) later
+    moved to the same plugin layout. Guards the exact drift that broke runtime-v0.17.0-cn.3
     (``ModuleNotFoundError: No module named 'gateway.platforms.feishu'``).
     """
     root = _repo_root()
@@ -222,8 +236,9 @@ def test_release_workflow_imports_migrated_platform_adapters_from_plugins():
     assert (root / "plugins" / "platforms" / "wecom" / "adapter.py").exists()
     assert (root / "plugins" / "platforms" / "wecom" / "callback_adapter.py").exists()
     assert not (root / "gateway" / "platforms" / "wecom_callback.py").exists()
-    # weixin is CN-fork-only and was NOT migrated.
-    assert (root / "gateway" / "platforms" / "weixin.py").exists()
+    # weixin is CN-fork-only and now uses the same plugin layout.
+    assert (root / "plugins" / "platforms" / "weixin" / "adapter.py").exists()
+    assert not (root / "gateway" / "platforms" / "weixin.py").exists()
 
     # The build-env gate must target the live locations, not the removed modules.
     workflow = _workflow_text()
@@ -231,12 +246,15 @@ def test_release_workflow_imports_migrated_platform_adapters_from_plugins():
         "gateway.platforms.feishu",
         "gateway.platforms.dingtalk",
         "gateway.platforms.wecom_callback",
+        "gateway.platforms.weixin",
     ):
         assert dead not in workflow, f"release-runtime.yml still imports removed module {dead}"
     for live in (
         "plugins.platforms.feishu.adapter",
         "plugins.platforms.dingtalk.adapter",
         "plugins.platforms.wecom.adapter",
+        "plugins.platforms.wecom.callback_adapter",
+        "plugins.platforms.weixin.adapter",
     ):
         assert live in workflow, f"release-runtime.yml does not import {live}"
 
@@ -249,7 +267,7 @@ def test_release_workflow_imports_migrated_platform_adapters_from_plugins():
     dt = importlib.import_module("plugins.platforms.dingtalk.adapter")
     wcm = importlib.import_module("plugins.platforms.wecom.adapter")
     wc = importlib.import_module("plugins.platforms.wecom.callback_adapter")
-    wx = importlib.import_module("gateway.platforms.weixin")
+    wx = importlib.import_module("plugins.platforms.weixin.adapter")
     assert hasattr(fs, "FEISHU_AVAILABLE")
     assert hasattr(dt, "DINGTALK_STREAM_AVAILABLE") and hasattr(dt, "CARD_SDK_AVAILABLE")
     assert hasattr(wcm, "AIOHTTP_AVAILABLE")
@@ -590,3 +608,141 @@ def test_macos_runtime_signing_script_applies_entitlement_to_main_only(tmp_path)
         for call in signing_calls
     )
     assert f"-d --entitlements - {main_binary}" in calls
+
+
+# ── #174: provider plugins' serializers must reach the frozen payload ──────
+# The 7 bundled provider plugins are staged as SOURCE files (_internal/plugins)
+# and imported on demand, so PyInstaller's static analysis never walks their
+# imports. runtime 0.20.0-cn.8 shipped without pybase64/orjson and every one of
+# them failed to load ("Failed to load plugin 'basic': No module named
+# 'pybase64'"), which the frozen binary cannot repair (no pip inside it).
+PROVIDER_PLUGINS = (
+    "dashboard_auth/basic",
+    "dashboard_auth/nous",
+    "dashboard_auth/self_hosted",
+    "image_gen/openai-codex",
+    "image_gen/openrouter",
+    "image_gen/xai",
+    "image_gen/fal",
+)
+
+
+def test_runtime_workflow_freezes_provider_plugin_serializers():
+    """The frozen build names the serializers its dynamically-loaded plugins need."""
+    workflow = _workflow_text()
+    pyproject = (_repo_root() / "pyproject.toml").read_text(encoding="utf-8")
+    # Core dependencies (so the build env has them), then an explicit freeze: a
+    # pyproject line alone does not put an extension module in the payload.
+    assert '"pybase64>=' in pyproject
+    assert '"orjson>=' in pyproject
+    for module in ("pybase64", "orjson"):
+        assert f"--hidden-import {module}" in workflow, (
+            f"PyInstaller invocation does not freeze {module} (#174)"
+        )
+        assert f"--copy-metadata {module}" in workflow, (
+            f"PyInstaller invocation does not copy {module} metadata (#174)"
+        )
+    assert {"pybase64", "orjson"} <= _frozen_verify_packages(), (
+        "the frozen-output gate does not assert pybase64/orjson dist-info (#174)"
+    )
+    for provider in PROVIDER_PLUGINS:
+        assert provider in workflow, (
+            f"the frozen provider smoke test no longer covers {provider} (#174)"
+        )
+
+
+def test_bundled_provider_plugins_load_through_the_runtime_registration_path():
+    """Behaviour, not workflow text: the 7 providers load where a serializer is absent.
+
+    ``doctor_plugin`` is the same registration path the release workflow runs
+    against the frozen binary, so a serializer missing from the environment fails
+    here (in CI, on every PR) instead of on a user's first launch.
+    """
+    from hermes_cli.plugin_dev import doctor_plugin
+
+    failures = {}
+    for provider in PROVIDER_PLUGINS:
+        report = doctor_plugin(_repo_root() / "plugins" / provider)
+        if not report.ok:
+            failures[provider] = report.format_text()
+    assert not failures, failures
+
+
+# ── #181: the bundled SQLite must be WAL-safe with the FTS/RTREE/math set ──
+def _pinned_runtime_python() -> tuple[int, ...]:
+    """Python patch pinned by pm/lock.json — the interpreter the runtime freezes."""
+    import json
+
+    lock = json.loads((_repo_root() / "pm" / "lock.json").read_text(encoding="utf-8"))
+    version = lock["packages"]["python"]["version"].partition("+")[0]
+    return tuple(int(part) for part in version.split("."))
+
+
+def _doctor_extensions_label() -> str:
+    """The exact OK line ``hermes doctor`` prints for the SQLite extension set."""
+    from hermes_sqlite import REQUIRED_COMPILE_OPTIONS
+
+    return "SQLite extensions " + "/".join(
+        option.removeprefix("ENABLE_") for option in REQUIRED_COMPILE_OPTIONS
+    )
+
+
+def test_runtime_workflow_freezes_the_pm_pinned_python_and_checks_sqlite():
+    """The runtime's SQLite is the build interpreter's, so the build must control it.
+
+    ``actions/setup-python`` followed a floating "3.14" and shipped the vulnerable
+    3.50.4 DLL (#181); PM's lock pins the interpreter, and both the build env and
+    the frozen binary are held to the same version/feature contract.
+    """
+    workflow = _workflow_text()
+    assert "uses: actions/setup-python" not in workflow, (
+        "the runtime build must not follow a floating Python patch (#181)"
+    )
+    assert "uses: ./.github/actions/setup-pm" in workflow
+    assert 'uv sync --locked --python "$HERMES_PYTHON"' in workflow, (
+        "the dependency environment must be built from the PM-pinned interpreter"
+    )
+    # Build-time gate on the interpreter that PyInstaller copies SQLite from...
+    assert "Verify runtime SQLite + provider serializer contract" in workflow
+    assert "missing_compile_options" in workflow
+    assert "is_sqlite_wal_reset_vulnerable" in workflow
+    # ...and a post-freeze gate on the binary itself, keyed to the doctor line.
+    assert "Verify frozen SQLite + provider serializers" in workflow
+    assert "WAL-reset bug" in workflow
+    assert _doctor_extensions_label() in workflow, (
+        "the frozen SQLite gate does not assert the extension set doctor reports"
+    )
+
+
+def test_selected_runtime_interpreter_satisfies_the_sqlite_contract():
+    """The pinned runtime Python must be WAL-safe and carry the FTS/RTREE/math set."""
+    pinned = _pinned_runtime_python()
+    if sys.version_info[:3] != pinned:
+        pytest.skip(
+            f"interpreter {sys.version_info[:3]} is not the pinned runtime "
+            f"Python {pinned}"
+        )
+    import sqlite3
+
+    from hermes_sqlite import missing_compile_options
+    from hermes_state_wal import is_sqlite_wal_reset_vulnerable
+
+    missing = missing_compile_options()
+    assert not is_sqlite_wal_reset_vulnerable(), (
+        f"SQLite {sqlite3.sqlite_version} has the WAL-reset corruption bug (#181)"
+    )
+    assert missing == (), f"SQLite {sqlite3.sqlite_version} lacks {', '.join(missing)}"
+
+
+def test_missing_compile_options_reports_only_absent_required_options():
+    from hermes_sqlite import REQUIRED_COMPILE_OPTIONS, missing_compile_options
+
+    assert missing_compile_options(REQUIRED_COMPILE_OPTIONS) == ()
+    # PRAGMA compile_options also carries value entries (MAX_COLUMN=2000); they
+    # are neither required nor an error.
+    assert missing_compile_options([*REQUIRED_COMPILE_OPTIONS, "MAX_COLUMN=2000"]) == ()
+    without_fts5 = [o for o in REQUIRED_COMPILE_OPTIONS if o != "ENABLE_FTS5"]
+    assert missing_compile_options(without_fts5) == ("ENABLE_FTS5",)
+    # The 3.50.4 build from the report has every option; only its version is bad.
+    reported = {"ENABLE_FTS3", "ENABLE_FTS4", "ENABLE_RTREE", "ENABLE_MATH_FUNCTIONS"}
+    assert missing_compile_options(reported) == ("ENABLE_FTS5",)

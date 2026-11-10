@@ -18,7 +18,7 @@ _OPTIONAL_FIELDS = ("reasoning_effort", "is_reasoning_model")
 class DirectOpenAILLM(OpenAILLM):
     """Use OpenAI credentials and requests regardless of router environment."""
 
-    def __init__(self, config: Optional[Union[BaseLlmConfig, OpenAIConfig, Dict]] = None):
+    def __init__(self, config: Optional[BaseLlmConfig | OpenAIConfig | dict] = None):
         if config is None:
             config = OpenAIConfig()
         elif isinstance(config, dict):
@@ -46,7 +46,7 @@ class DirectOpenAILLM(OpenAILLM):
         from openai import OpenAI
         self.client = OpenAI(api_key=api_key, base_url=self.config.openai_base_url or get_secret("OPENAI_BASE_URL", "") or "https://api.openai.com/v1")
 
-    def generate_response(self, messages: List[Dict[str, str]], response_format=None, tools: Optional[List[Dict]] = None, tool_choice: str = "auto", **kwargs):
+    def generate_response(self, messages: list[dict[str, str]], response_format=None, tools: Optional[list[dict]] = None, tool_choice: str = "auto", **kwargs):
         params = self._get_supported_params(messages=messages, **kwargs)
         params.update({"model": self.config.model, "messages": messages})
         # No OpenRouter-only fields; ``store`` is opt-in so OpenAI-compatible endpoints never receive unknown fields.

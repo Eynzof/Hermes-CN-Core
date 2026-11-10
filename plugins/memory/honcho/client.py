@@ -478,7 +478,7 @@ class HonchoClientConfig:
         import subprocess
 
         try:
-                root = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, encoding='utf-8',  # windows-footgun: ok (creationflags on the continuation line)
+                root = subprocess.run(["git", "rev-parse", "--show-toplevel"], check=False, capture_output=True, text=True, encoding='utf-8',  # windows-footgun: ok (creationflags on the continuation line)
                                       errors='replace', cwd=cwd, timeout=5, stdin=subprocess.DEVNULL,
                                       creationflags=windows_hide_flags())
         except (OSError, subprocess.TimeoutExpired):
@@ -557,13 +557,13 @@ class HonchoClientConfig:
 
 
 # Threads keyed by the provider or manager that owns them, so shutdown never waits on another agent's work.
-_plugin_threads: "weakref.WeakKeyDictionary[Any, weakref.WeakSet]" = weakref.WeakKeyDictionary()
+_plugin_threads: weakref.WeakKeyDictionary[Any, weakref.WeakSet] = weakref.WeakKeyDictionary()
 _plugin_threads_lock = _threading.Lock()
 
 
 def spawn_context_thread(
     target, *, name: str, daemon: bool = True, args: tuple = (), owner: Any = None,
-) -> "_threading.Thread":
+) -> _threading.Thread:
     """agent.memory_provider.spawn_context_thread plus an ``owner``: the thread is registered so
     join_plugin_threads can wait on exactly the threads this provider or manager spawned."""
     thread = _spawn_context_thread(target, name=name, daemon=daemon, args=args)
@@ -644,7 +644,7 @@ def get_honcho_client(config: HonchoClientConfig | None = None) -> Honcho:
     return slot.get(lambda: _build_client(config))
 
 
-def _build_client(config: HonchoClientConfig) -> "Honcho":
+def _build_client(config: HonchoClientConfig) -> Honcho:
     """Construct the SDK client (runs inside the slot factory so racing callers share one)."""
     with contextlib.suppress(Exception):  # lazy-dep failures fall through to the canonical import error below
         from pm import ensure_import

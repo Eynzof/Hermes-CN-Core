@@ -55,40 +55,11 @@ def test_camofox_is_not_in_root_dependencies() -> None:
     )
 
 
-def test_agent_browser_is_lazy_not_eager(monkeypatch) -> None:
-    """agent-browser deliberately left root ``dependencies`` (#43564).
-
-    It is still the default Chromium-driving backend, but it now resolves outside the
-    eager root dependency set — PM installs it into its private prefix and may acquire
-    it lazily, where ``shutil.which`` cannot see it. The dependency check in
-    ``hermes_cli/dep_ensure.py::_has_npx_agent_browser`` must therefore ask the same
-    readiness probe the browser tools use (``tools.browser_tool_install._find_agent_browser``)
-    instead of a private copy of the search order: a default install must not be told
-    the engine is missing.
-    """
+def test_browser_binaries_are_not_eager_npm_dependencies() -> None:
+    """browser_exec acquires Chromium through PM; neither retired engine belongs in npm."""
     deps = _root_package_json().get("dependencies", {})
-    assert "agent-browser" not in deps, (
-        "agent-browser is no longer an eager root dependency (upstream #43564). "
-        "It resolves lazily; re-adding it to root package.json "
-        "dependencies reinstates a binary install for every user on every "
-        "update. Update this test and hermes_cli/doctor_tools.py together if "
-        "that decision is ever reversed."
-    )
-
-    from hermes_cli import dep_ensure
-    from tools import browser_tool_install
-
-    def _raises(*_a, **_k):
-        raise FileNotFoundError("agent-browser CLI not found")
-
-    # Resolved: the check reports satisfied through the probe the tools share.
-    monkeypatch.setattr(
-        browser_tool_install, "_find_agent_browser", lambda *a, **k: "/opt/hermes/agent-browser"
-    )
-    assert dep_ensure._has_npx_agent_browser() is True
-    # Unresolved: a missing CLI must still read as unsatisfied.
-    monkeypatch.setattr(browser_tool_install, "_find_agent_browser", _raises)
-    assert dep_ensure._has_npx_agent_browser() is False
+    assert "agent-browser" not in deps
+    assert "@askjo/camofox-browser" not in deps
 
 
 def test_root_lockfile_has_no_camofox_entries() -> None:

@@ -15,6 +15,7 @@ from tests.scripts.desktop_update.windows_handoff_support import (
 )
 
 from tests.scripts.desktop_update.windows_commit_support import _handoff
+from tests.waiting import wait_until
 
 
 @pytest.mark.platforms('windows')
@@ -31,7 +32,7 @@ def test_result_finished_at_is_stamped_after_the_r6_release_wait(tmp_path: Path)
             before = json.loads((home / '.hermes-update-result.json').read_text(encoding='utf-8-sig'))
             # finished_at has whole-second precision: cross its boundary so
             # retaining the pre-wait timestamp cannot satisfy the assertion.
-            time.sleep(2)
+            wait_until(lambda: int(time.time()) > before['finished_at'], what="finished_at timestamp boundary")
             return before['finished_at'], int(time.time())
         finally:
             os.close(fd)
@@ -67,4 +68,4 @@ def test_marker_with_a_live_delegate_is_handed_to_it_at_finish(tmp_path: Path) -
         assert marker[2].startswith('ct:') and marker[3:] == [''], marker
     finally:
         if pid_file.exists():
-            subprocess.run(['taskkill', '/F', '/PID', pid_file.read_text(encoding='utf-8-sig')], capture_output=True)
+            subprocess.run(['taskkill', '/F', '/PID', pid_file.read_text(encoding='utf-8-sig')], capture_output=True, check=False)

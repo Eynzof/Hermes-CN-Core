@@ -125,7 +125,7 @@ def _truthy(value: Any) -> bool:
     return False
 
 
-def _string_list(value: Any) -> List[str]:
+def _string_list(value: Any) -> list[str]:
     """Normalize a param to a list of non-empty strings."""
     if value is None:
         return []
@@ -135,7 +135,7 @@ def _string_list(value: Any) -> List[str]:
         items = list(value)
     else:
         return []
-    out: List[str] = []
+    out: list[str] = []
     for item in items:
         text = str(item or "").strip()
         if text:
@@ -151,7 +151,7 @@ def _is_url(value: str) -> bool:
 
 def _transcription_envelope(data: dict, model: str) -> str:
     """Build the standard success envelope from a transcriptions response."""
-    envelope: Dict[str, Any] = {
+    envelope: dict[str, Any] = {
         "success": True,
         "transcript": str(data.get("text") or data.get("transcript") or "").strip(),
         "provider": "moss",
@@ -164,11 +164,11 @@ def _transcription_envelope(data: dict, model: str) -> str:
     return tool_result(envelope)
 
 
-def _validate_speakers(speakers: Any) -> List[Dict[str, str]]:
+def _validate_speakers(speakers: Any) -> list[dict[str, str]]:
     """Validate the dialogue ``speakers`` list; returns normalized entries."""
     if not isinstance(speakers, list) or not speakers:
         raise ValueError("speakers must be a non-empty list of {id, voice_id}")
-    normalized: List[Dict[str, str]] = []
+    normalized: list[dict[str, str]] = []
     seen: set[str] = set()
     for i, spk in enumerate(speakers):
         if not isinstance(spk, dict):
@@ -188,11 +188,11 @@ def _validate_speakers(speakers: Any) -> List[Dict[str, str]]:
 
 def _validate_segments(
     segments: Any, declared: set[str], max_text: int
-) -> List[Dict[str, str]]:
+) -> list[dict[str, str]]:
     """Validate dialogue ``segments``; every speaker must be declared."""
     if not isinstance(segments, list) or not segments:
         raise ValueError("segments must be a non-empty list of {speaker, text}")
-    normalized: List[Dict[str, str]] = []
+    normalized: list[dict[str, str]] = []
     for i, seg in enumerate(segments):
         if not isinstance(seg, dict):
             raise ValueError(f"segments[{i}] must be an object with speaker and text")
@@ -251,7 +251,7 @@ def _handle_moss_dialogue_tts(args: dict, **kw) -> str:
         if isinstance(result, dict):
             return tool_result({**result, "success": True})
         return _audio_result(result)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return _moss_error(exc)
 
 
@@ -293,7 +293,7 @@ def _handle_moss_voice_design(args: dict, **kw) -> str:
         if isinstance(result, dict):
             return tool_result({**result, "success": True})
         return _audio_result(result)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return _moss_error(exc)
 
 
@@ -325,7 +325,7 @@ def _handle_moss_voice_clone(args: dict, **kw) -> str:
             "voice": voice,
             "provider": "moss",
         })
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return _moss_error(exc)
 
 
@@ -339,7 +339,7 @@ def _handle_moss_voice_list(args: dict, **kw) -> str:
             "count": len(voices),
             "provider": "moss",
         })
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return _moss_error(exc)
 
 
@@ -406,7 +406,7 @@ def _handle_moss_transcribe(args: dict, **kw) -> str:
                 "model": model,
             })
         return _transcription_envelope(data, model)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return _moss_error(exc)
 
 
@@ -456,8 +456,8 @@ def _handle_moss_vision(args: dict, **kw) -> str:
 
         # Resolve image sources: local file → upload; URL → pass through;
         # `file_id:...` → pass through.
-        image_file_ids: List[str] = []
-        urls: List[str] = list(image_urls)
+        image_file_ids: list[str] = []
+        urls: list[str] = list(image_urls)
         for src in images:
             if src.startswith("file_id:"):
                 image_file_ids.append(src.split(":", 1)[1].strip())
@@ -514,7 +514,7 @@ def _handle_moss_vision(args: dict, **kw) -> str:
         )
         text = extract_vision_text(data)
         status = data.get("status")
-        result: Dict[str, Any] = {
+        result: dict[str, Any] = {
             "success": True,
             "text": text,
             "status": status,
@@ -532,7 +532,7 @@ def _handle_moss_vision(args: dict, **kw) -> str:
             else:
                 result["warning"] = f"Response incomplete (reason: {reason})"
         return tool_result(result)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return _moss_error(exc)
 
 

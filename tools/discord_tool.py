@@ -224,7 +224,7 @@ def _reset_capability_cache() -> None:
 # ── action implementations ───────────────────────────────────────────────────
 def _listing(key: str, items: list[dict[str, Any]]) -> str:
     return json.dumps({key: items, "count": len(items)})
-def _listing(key: str, items: List[Dict[str, Any]]) -> str:
+def _listing(key: str, items: list[dict[str, Any]]) -> str:
     return orjson.dumps({key: items, "count": len(items)}).decode('utf-8')
 
 

@@ -81,11 +81,6 @@
     "kind": "bare_which"
   },
   {
-    "path": "cron/scheduler_delivery.py",
-    "symbol": "_deliver_to_bot_chat",
-    "kind": "bare_which"
-  },
-  {
     "path": "cron/scheduler_script.py",
     "symbol": "_script_argv",
     "kind": "bare_which"
@@ -93,16 +88,6 @@
   {
     "path": "gateway/platforms/base.py",
     "symbol": "transcode_to_ogg_opus",
-    "kind": "bare_which"
-  },
-  {
-    "path": "gateway/platforms/signal.py",
-    "symbol": "_remux_aac_to_m4a",
-    "kind": "bare_which"
-  },
-  {
-    "path": "gateway/platforms/whatsapp_cloud.py",
-    "symbol": "<module>",
     "kind": "bare_which"
   },
   {
@@ -188,12 +173,6 @@
   },
   {
     "path": "hermes_cli/dep_ensure.py",
-    "symbol": "_has_system_browser",
-    "kind": "bare_which",
-    "reason": "Asks whether a SYSTEM Chrome/Chromium exists for the local browser mode; a system copy is exactly what is wanted here"
-  },
-  {
-    "path": "hermes_cli/dep_ensure.py",
     "symbol": "ensure_dependency",
     "kind": "bare_which",
     "reason": "The installer path needs the user's powershell/pwsh to run install.ps1; PATH is the question"
@@ -251,11 +230,6 @@
   {
     "path": "hermes_cli/gateway.py",
     "symbol": "supports_systemd_services",
-    "kind": "bare_which"
-  },
-  {
-    "path": "hermes_cli/gateway_setup_wizard.py",
-    "symbol": "_setup_signal",
     "kind": "bare_which"
   },
   {
@@ -351,11 +325,6 @@
   },
   {
     "path": "hermes_cli/main_tui_launch.py",
-    "symbol": "_apply_tui_python_env",
-    "kind": "bare_which"
-  },
-  {
-    "path": "hermes_cli/main_tui_launch.py",
     "symbol": "_make_tui_argv",
     "kind": "bare_which"
   },
@@ -395,11 +364,6 @@
     "kind": "bare_which"
   },
   {
-    "path": "hermes_cli/setup_terminal.py",
-    "symbol": "_setup_backend_singularity",
-    "kind": "bare_which"
-  },
-  {
     "path": "hermes_cli/setup_tts.py",
     "symbol": "_install_neutts_deps",
     "kind": "bare_which"
@@ -426,7 +390,7 @@
   },
   {
     "path": "hermes_cli/tools_config_post_setup.py",
-    "symbol": "_post_setup_agent_browser",
+    "symbol": "_post_setup_chromium",
     "kind": "bare_which"
   },
   {
@@ -471,13 +435,13 @@
     "kind": "bare_which"
   },
   {
-    "path": "hermes_cli/web_routers/tools.py",
-    "symbol": "_probe_singularity_backend",
+    "path": "hermes_constants.py",
+    "symbol": "find_node_executable",
     "kind": "bare_which"
   },
   {
-    "path": "hermes_constants.py",
-    "symbol": "find_node_executable",
+    "path": "pm/build_compilers.py",
+    "symbol": "_linux_defaults",
     "kind": "bare_which"
   },
   {
@@ -518,16 +482,6 @@
   {
     "path": "tools/browser_lightpanda.py",
     "symbol": "find_lightpanda_binary",
-    "kind": "bare_which"
-  },
-  {
-    "path": "tools/browser_tool_install.py",
-    "symbol": "_chromium_installed",
-    "kind": "bare_which"
-  },
-  {
-    "path": "tools/browser_tool_install.py",
-    "symbol": "_find_agent_browser",
     "kind": "bare_which"
   },
   {
@@ -593,11 +547,6 @@
     "reason": "Probes the system PowerShell for the machine's Mandatory-ASLR state; the system shell is the only source for that fact"
   },
   {
-    "path": "tools/environments/singularity.py",
-    "symbol": "_find_singularity_executable",
-    "kind": "bare_which"
-  },
-  {
     "path": "tools/environments/ssh.py",
     "symbol": "_ensure_ssh_available",
     "kind": "bare_which"
@@ -616,6 +565,16 @@
   {
     "path": "tools/mcp_tool_config.py",
     "symbol": "_managed_launcher",
+    "kind": "bare_which"
+  },
+  {
+    "path": "tools/mcp_tool_config.py",
+    "symbol": "_outside_package",
+    "kind": "bare_which"
+  },
+  {
+    "path": "tools/mcp_tool_config.py",
+    "symbol": "_packaged_npx_entry",
     "kind": "bare_which"
   },
   {
@@ -654,11 +613,6 @@
     "symbol": "_cmd_is_executable",
     "kind": "bare_which",
     "reason": "Asks whether the command the model typed exists on the PATH its shell will use"
-  },
-  {
-    "path": "tools/terminal_tool_backends.py",
-    "symbol": "<module>",
-    "kind": "bare_which"
   },
   {
     "path": "tools/tirith_security.py",
@@ -801,5 +755,11 @@
     "symbol": "_git_executable",
     "kind": "bare_which",
     "reason": "gate reads of the paused gateways' checkout run outside the updater, where install.ps1's PM-staged git is not on PATH; falls back to that staged git (moves to hermes_cli._early_recovery._git_executable when #132361 lands)"
+  },
+  {
+    "path": "hermes_cli/source_check.py",
+    "symbol": "_installed_git",
+    "kind": "bare_which",
+    "reason": "only asks whether the caller's bare git is on PATH; when it is not (Desktop on a Windows install whose only git is install.ps1's PM-staged copy) it defers to update_pause_record._git_executable, the updater's own resolution"
   }
 ]

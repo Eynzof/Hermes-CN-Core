@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import mimetypes
 
-import hermes_cli.web_server  # noqa: F401  — performs the add_type registration at import
+import hermes_cli.web_server
 
 # RFC 9239 (text/javascript) and the legacy application/javascript spelling.
 JAVASCRIPT_MIME_ESSENCES = ("text/javascript", "application/javascript")

@@ -468,11 +468,10 @@ def harden_import_path(src_root: str | None = None) -> None:
     absolute path (venv activation, PYTHONPATH), so both are handled: relative forms are
     dropped and the Hermes root is *relocated* to the front, not merely inserted when
     absent. ``src_root`` defaults to this module's directory (the repo root for every
-    shipped entry point), so no spawner env var is required.
+    shipped entry point), never an inherited ``HERMES_PYTHON_SRC_ROOT``: a checkout's dev
+    shell exports that, and an install started from it would import the checkout's code.
     """
-    root = src_root or os.environ.get("HERMES_PYTHON_SRC_ROOT") or os.path.dirname(
-        os.path.abspath(__file__)
-    )
+    root = src_root or str(_root)
 
     sys.path[:] = [p for p in sys.path if p not in ("", ".")]
 
@@ -600,6 +599,8 @@ install_never_free_environ()
 # Every entry point imports this module before its dependency graph.
 from pathlib import Path
 
+# Bootstrap must locate and repair this checkout before importing any package
+# from it; an interrupted update may have moved hermes_cli aside entirely.
 _root = Path(__file__).resolve().parent
 try:
     os.getcwd()

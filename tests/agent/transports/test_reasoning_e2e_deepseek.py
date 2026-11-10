@@ -71,7 +71,7 @@ class TestChatCompletionsReasoningE2E:
         from providers import get_provider_profile
 
         from agent.transports import get_transport
-        import agent.transports.chat_completions  # noqa: F401
+        import agent.transports.chat_completions
 
         profile = get_provider_profile("deepseek")
         transport = get_transport("chat_completions")
@@ -131,7 +131,7 @@ class TestChatCompletionsReasoningE2E:
         from providers import get_provider_profile
 
         from agent.transports import get_transport
-        import agent.transports.chat_completions  # noqa: F401
+        import agent.transports.chat_completions
 
         profile = get_provider_profile("deepseek")
         transport = get_transport("chat_completions")
@@ -193,7 +193,7 @@ class TestChatCompletionsReasoningE2E:
         from providers import get_provider_profile
 
         from agent.transports import get_transport
-        import agent.transports.chat_completions  # noqa: F401
+        import agent.transports.chat_completions
 
         profile = get_provider_profile("deepseek")
         transport = get_transport("chat_completions")
@@ -261,7 +261,7 @@ class TestResponsesReasoningE2E:
         ``reasoning`` output item (thinking block) and a ``message`` output
         item (text block)."""
         from agent.transports import get_transport
-        import agent.transports.codex  # noqa: F401
+        import agent.transports.codex
 
         transport = get_transport("codex_responses")
 
@@ -315,7 +315,7 @@ class TestResponsesReasoningE2E:
         contract.
         """
         from agent.transports import get_transport
-        import agent.transports.codex  # noqa: F401
+        import agent.transports.codex
 
         transport = get_transport("codex_responses")
         messages = [{"role": "user", "content": "Say hi."}]
@@ -359,7 +359,7 @@ class TestAnthropicThinkingKwargs:
         ``thinking={"type":"adaptive","display":"summarized"}`` +
         ``output_config.effort``."""
         from agent.transports import get_transport
-        import agent.transports.anthropic  # noqa: F401
+        import agent.transports.anthropic
 
         transport = get_transport("anthropic_messages")
         messages = [
@@ -380,7 +380,7 @@ class TestAnthropicThinkingKwargs:
         """Legacy (pre-4.6) Claude models get manual
         ``thinking={"type":"enabled","budget_tokens":N}`` + temperature=1."""
         from agent.transports import get_transport
-        import agent.transports.anthropic  # noqa: F401
+        import agent.transports.anthropic
 
         transport = get_transport("anthropic_messages")
         messages = [{"role": "user", "content": "Think and answer: 7*6?"}]
@@ -398,7 +398,7 @@ class TestAnthropicThinkingKwargs:
     def test_anthropic_omits_thinking_when_disabled(self):
         """reasoning_config={"enabled": False} must NOT add a thinking kwarg."""
         from agent.transports import get_transport
-        import agent.transports.anthropic  # noqa: F401
+        import agent.transports.anthropic
 
         transport = get_transport("anthropic_messages")
         messages = [{"role": "user", "content": "hi"}]
@@ -415,7 +415,7 @@ class TestAnthropicThinkingKwargs:
     def test_anthropic_omits_thinking_when_no_config(self):
         """reasoning_config=None must NOT add a thinking kwarg (no forced thinking)."""
         from agent.transports import get_transport
-        import agent.transports.anthropic  # noqa: F401
+        import agent.transports.anthropic
 
         transport = get_transport("anthropic_messages")
         messages = [{"role": "user", "content": "hi"}]

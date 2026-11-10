@@ -522,8 +522,8 @@ def _warm_installed_bytecode(specs: tuple[str, ...], target: Optional[Path]) -> 
 
 
 def _run_installer(cmd: list[str], **kw) -> subprocess.CompletedProcess:
-    # _SUBPROCESS_KW carries stdin=DEVNULL  # noqa: subprocess-stdin
-    return subprocess.run(cmd, **_SUBPROCESS_KW, creationflags=windows_hide_flags(), **kw)
+    # _SUBPROCESS_KW carries stdin=DEVNULL
+    return subprocess.run(cmd, check=False, **_SUBPROCESS_KW, creationflags=windows_hide_flags(), **kw)
 
 
 def _uv_binary() -> Optional[str]:

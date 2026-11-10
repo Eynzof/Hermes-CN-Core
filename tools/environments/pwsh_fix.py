@@ -148,7 +148,7 @@ def fix_pwsh_command(cmd: str) -> PwshFix | None:
 class _Scanner:
     """Single-pass tokenizer implementing PowerShell's quoting rules."""
 
-    __slots__ = ("s", "n")
+    __slots__ = ("n", "s")
 
     def __init__(self, s: str) -> None:
         self.s = s

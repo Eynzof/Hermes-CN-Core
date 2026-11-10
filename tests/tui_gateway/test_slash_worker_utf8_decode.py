@@ -43,7 +43,7 @@ def _make_worker(monkeypatch):
         # spawned through the hidden ``__slash-worker`` CLI subcommand (frozen
         # portable runtime has no standalone python), so match that token
         # instead of the old ``-m tui_gateway.slash_worker`` shape.
-        if "__slash-worker" not in argv:
+        if "__slash-worker" not in argv and "tui_gateway.slash_worker" not in argv:
             return real_popen(argv, **kwargs)
         captured.update(kwargs)
         # Swap the real slash_worker for a tiny child that emits hostile bytes.

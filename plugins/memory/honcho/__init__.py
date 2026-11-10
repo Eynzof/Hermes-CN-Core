@@ -113,7 +113,7 @@ _PREWARM_QUERY = "Summarize what you know about this user. Focus on preferences,
 class HonchoMemoryProvider(DialecticMixin, MemoryProvider):
     """Honcho AI-native memory with dialectic Q&A and persistent user modeling."""
 
-    def backup_paths(self) -> List[str]:
+    def backup_paths(self) -> list[str]:
         """Whole ~/.honcho dir (peer/session config when no profile-local honcho.json exists)."""
         try:
             from .client import resolve_global_config_path
@@ -229,8 +229,8 @@ class HonchoMemoryProvider(DialecticMixin, MemoryProvider):
                 self._cron_skipped = True
                 return
 
-            from plugins.memory.honcho.client import HonchoClientConfig, get_honcho_client  # noqa: F401 — ImportError probe
-            from plugins.memory.honcho.session import HonchoSessionManager  # noqa: F401
+            from plugins.memory.honcho.client import HonchoClientConfig, get_honcho_client
+            from plugins.memory.honcho.session import HonchoSessionManager
 
             cfg = HonchoClientConfig.from_global_config()
             if not _cfg_usable(cfg):
@@ -685,7 +685,7 @@ class HonchoMemoryProvider(DialecticMixin, MemoryProvider):
     # Shared with the core prefetch gate so the two classifiers can never drift apart.
     _is_trivial_prompt = staticmethod(is_trivial_prompt)
 
-    def identity_signature(self) -> Dict[str, Any]:
+    def identity_signature(self) -> dict[str, Any]:
         """Identity-mapping values from honcho.json that bust a cached gateway agent when they change.
 
         Memoized on the file CONTENT digest, not on stat(mtime,size): a stat-only key cannot detect
@@ -771,7 +771,7 @@ class HonchoMemoryProvider(DialecticMixin, MemoryProvider):
 
     def sync_turn(
         self, user_content: str, assistant_content: str, *, session_id: str = "",
-        turn_author: Optional[Dict[str, Any]] = None,
+        turn_author: Optional[dict[str, Any]] = None,
     ) -> None:
         """Record the conversation turn in Honcho (non-blocking), chunking messages that
         exceed the Honcho API limit. Honors saveMessages: false. ``turn_author`` names who wrote
@@ -831,7 +831,7 @@ class HonchoMemoryProvider(DialecticMixin, MemoryProvider):
             self._sync_thread.join(timeout=5.0)
         self._sync_thread = self._spawn_write(_sync, "honcho-sync", "Honcho sync_turn failed: %s")
 
-    def _a2a_session_key(self, author: Dict[str, Any]) -> str:
+    def _a2a_session_key(self, author: dict[str, Any]) -> str:
         """Honcho session for one sender bot's turns into this agent, named from core's ``a2a_key``.
 
         This agent's ``aiPeer`` is in the key because two profiles can share a workspace and a session
@@ -861,7 +861,7 @@ class HonchoMemoryProvider(DialecticMixin, MemoryProvider):
         return thread
 
     def on_memory_write(
-        self, action: str, target: str, content: str, metadata: Optional[Dict[str, Any]] = None,
+        self, action: str, target: str, content: str, metadata: Optional[dict[str, Any]] = None,
     ) -> None:
         """Mirror built-in user-profile writes as Honcho conclusions (``metadata`` accepted
         for interface compatibility, not yet threaded into the conclusion payload)."""
@@ -875,7 +875,7 @@ class HonchoMemoryProvider(DialecticMixin, MemoryProvider):
         self._memwrite_thread = self._spawn_write(lambda: self._manager.create_conclusion(self._session_key, content),
                                                   "honcho-memwrite", "Honcho memory mirror failed: %s")
 
-    def on_session_end(self, messages: List[Dict[str, Any]]) -> None:
+    def on_session_end(self, messages: list[dict[str, Any]]) -> None:
         """Flush all pending messages to Honcho on session end."""
         if not self._writes_enabled() or not self._manager:
             return
@@ -890,19 +890,19 @@ class HonchoMemoryProvider(DialecticMixin, MemoryProvider):
 
     # ----- Tools -----
 
-    def get_tool_schemas(self) -> List[Dict[str, Any]]:
+    def get_tool_schemas(self) -> list[dict[str, Any]]:
         """Tool schemas by recall_mode; context-only mode exposes no Honcho tools."""
         if self._cron_skipped or self._recall_mode == "context":
             return []
         return list(ALL_TOOL_SCHEMAS)
 
-    def _empty_profile_hint(self, peer: str) -> Dict[str, Any]:
+    def _empty_profile_hint(self, peer: str) -> dict[str, Any]:
         """Diagnostic hint for an empty honcho_profile card, so the model can explain WHY
         instead of surfacing a cryptic "no facts" to the user. Likely causes, in order:
         observation disabled for the peer; card not accumulated yet (fresh peer / few
         dialectic cycles); self-hosted Honcho < 3.x without peer-card support."""
         cfg = self._config
-        reasons: List[str] = []
+        reasons: list[str] = []
         kind = "user" if peer == "user" else "ai"
         if cfg is not None and not (getattr(cfg, f"{kind}_observe_me", True) or getattr(cfg, f"{kind}_observe_others", True)):
             reasons.append(f"observation is disabled for peer '{peer}' (user_observe_me/ai_observe_me in config)")

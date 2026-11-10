@@ -47,11 +47,11 @@ def test_utf8_preamble_overhead(timing_context, windows_only):
 
     with timing_context.measure("ps_without_utf8"):
         for _ in range(20):
-            result = subprocess.run(cmd_simple, capture_output=True, text=True, timeout=10)
+            _result = subprocess.run(cmd_simple, check=False, capture_output=True, text=True, timeout=10)
 
     with timing_context.measure("ps_with_utf8"):
         for _ in range(20):
-            result = subprocess.run(cmd_with_preamble, capture_output=True, text=True, timeout=10)
+            _result = subprocess.run(cmd_with_preamble, check=False, capture_output=True, text=True, timeout=10)
 
     summary = timing_context.summary()
     without_ms = summary.get("ps_without_utf8", {}).get("total_ms", 0)
@@ -141,7 +141,7 @@ def test_shell_startup_comparison(timing_context, windows_only):
     try:
         result = subprocess.run(
             ["pwsh.exe", "-NoProfile", "-Command", "echo 'test'"],
-            capture_output=True, text=True, timeout=5,
+            check=False, capture_output=True, text=True, timeout=5,
         )
         if result.returncode == 0:
             shells.append(("pwsh_7", ["pwsh.exe", "-NoProfile", "-Command", "echo 'test'"]))
@@ -154,7 +154,7 @@ def test_shell_startup_comparison(timing_context, windows_only):
     for name, cmd in shells:
         with timing_context.measure(f"shell_startup_{name}"):
             for _ in range(10):
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+                _result = subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=10)
 
     summary = timing_context.summary()
     for name, _ in shells:
@@ -184,7 +184,7 @@ def test_chinese_path_performance(timing_context, tmp_path, windows_only):
         write_file(path=str(chinese_file), content=chinese_content)
 
     with timing_context.measure("chinese_file_read"):
-        result = read_file(path=str(chinese_file))
+        _result = read_file(path=str(chinese_file))
 
     summary = timing_context.summary()
     write_ms = summary.get("chinese_file_write", {}).get("total_ms", 0)
@@ -210,23 +210,23 @@ def test_io_methods_comparison(timing_context, tmp_path, windows_only):
     # Python in-process
     with timing_context.measure("python_inproc_read"):
         for _ in range(20):
-            content = test_file.read_text(encoding="utf-8", errors="replace")
+            _content = test_file.read_text(encoding="utf-8", errors="replace")
 
     # PowerShell Get-Content
     with timing_context.measure("powershell_get_content"):
         for _ in range(20):
-            result = subprocess.run(
+            _result = subprocess.run(
                 ["powershell.exe", "-NoProfile", "-Command",
                  f"Get-Content -Path '{test_file}' -Encoding UTF8"],
-                capture_output=True, text=True, timeout=10,
+                check=False, capture_output=True, text=True, timeout=10,
             )
 
     # CMD type
     with timing_context.measure("cmd_type"):
         for _ in range(20):
-            result = subprocess.run(
+            _result = subprocess.run(
                 ["cmd.exe", "/c", f"type {test_file}"],
-                capture_output=True, text=True, timeout=10,
+                check=False, capture_output=True, text=True, timeout=10,
             )
 
     summary = timing_context.summary()

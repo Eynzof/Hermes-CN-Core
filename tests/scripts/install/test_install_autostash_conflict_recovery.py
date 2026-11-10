@@ -95,7 +95,7 @@ def test_install_sh_repository_stage_recovers_from_autostash_conflict(
 
     result = subprocess.run(
         ["bash", str(INSTALL_SH), "--stage", "repository", "--non-interactive"],
-        cwd=tmp_path,
+        check=False, cwd=tmp_path,
         env=env,
         capture_output=True,
         text=True,
@@ -129,7 +129,7 @@ def test_install_ps1_repository_stage_recovers_from_autostash_conflict(
             "-HermesHome",
             str(tmp_path / "hermes-home"),
         ],
-        cwd=tmp_path,
+        check=False, cwd=tmp_path,
         capture_output=True,
         text=True,
     )
@@ -183,7 +183,7 @@ def test_install_sh_repository_stage_clean_apply_drops_stash(
     }
     result = subprocess.run(
         ["bash", str(INSTALL_SH), "--stage", "repository", "--non-interactive"],
-        cwd=tmp_path,
+        check=False, cwd=tmp_path,
         env=env,
         capture_output=True,
         text=True,

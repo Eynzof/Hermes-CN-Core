@@ -145,7 +145,7 @@ def test_agent_init_path_triggers_no_wmi():
     )
     r = subprocess.run(
         [sys.executable, "-c", probe],
-        cwd=str(REPO_ROOT),
+        check=False, cwd=str(REPO_ROOT),
         capture_output=True,
         text=True,
         timeout=300,

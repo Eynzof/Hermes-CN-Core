@@ -11,11 +11,21 @@ Worst case: ``_load_auth_store``'s broad ``except`` then copied the file to
 provider credential. These tests pin the round-trip so a non-ASCII label
 survives a save→load cycle, and assert the readers pass an explicit UTF-8
 encoding (the fix) instead of relying on the locale default.
+
+Regression for issue #180: the reported host is a Simplified-Chinese Windows
+where the preferred encoding is GBK/CP936, and the store's ``credential_pool``
+keys themselves are Chinese (``custom:智谱-glm-·-api-按量付费``). GBK is the
+nastier locale of the two — it is permissive enough to decode a good share of
+UTF-8 bytes into *valid* mojibake, so locale-default decoding can corrupt
+credential names silently instead of raising. ``TestGbkLocaleAuthStore`` pins
+every store read/write/recovery path under a mocked GBK default.
 """
 
 from __future__ import annotations
 
+import builtins
 import json
+import locale
 from pathlib import Path
 
 import pytest
@@ -308,3 +318,207 @@ class TestAuthJsonSiblingReaders:
         assert nous.get("agent_key") == "k"
         # The non-ASCII label round-trips intact.
         assert nous.get("label") == "工作账号"
+
+
+# --- issue #180: GBK (Simplified-Chinese Windows) locale default -----------
+#
+# The report: on a zh-CN Windows host the preferred encoding is GBK/CP936, the
+# frozen runtime read the UTF-8 store with no ``encoding=``, the decode raised,
+# and ``_load_auth_store`` copied the file to ``auth.json.corrupt`` and returned
+# an EMPTY store — so the next save rebuilt auth.json from scratch and every
+# provider whose pool key held Chinese was gone. The key in the report is a
+# custom provider (``custom:智谱-glm-·-api-按量付费``), i.e. the mojibake risk sits
+# on the *key*, which is what identifies both the pool slice and the provider.
+
+# The exact provider id from the report: Chinese, a middle dot and a full
+# Chinese suffix — the mixed bytes are what a locale decode trips over.
+CHINESE_PROVIDER = "custom:智谱-glm-·-api-按量付费"
+
+
+@pytest.fixture
+def gbk_default_encoding(monkeypatch):
+    """Make every default-encoding entry point behave like a zh-CN Windows host.
+
+    The cp1252 fixture above only patches ``Path.read_text`` because that was the
+    one reader with the bug. This fixture simulates the whole default-open
+    surface the report names — ``Path.open``/``read_text``/``write_text`` and
+    ``builtins.open`` — plus ``locale.getpreferredencoding()``, while leaving any
+    call that passes an explicit ``encoding=`` untouched. A store operation that
+    relies on the locale then raises (or, for byte runs GBK happily decodes,
+    silently returns mojibake) exactly as it does on the reporter's machine.
+    """
+    real_open = builtins.open
+    real_path_open = Path.open
+    real_read_text = Path.read_text
+    real_write_text = Path.write_text
+
+    def _locale_encode(kwargs, args):
+        # Only fill in the default: an explicit encoding= (or a positional
+        # encoding) is what the fix does and must keep working unchanged.
+        if "encoding" not in kwargs and not args:
+            kwargs["encoding"] = "gbk"
+
+    def _gbk_open(file, mode="r", *args, **kwargs):
+        if "b" not in str(mode):
+            _locale_encode(kwargs, args)
+        return real_open(file, mode, *args, **kwargs)
+
+    def _gbk_path_open(self, mode="r", *args, **kwargs):
+        if "b" not in str(mode):
+            _locale_encode(kwargs, args)
+        return real_path_open(self, mode, *args, **kwargs)
+
+    def _gbk_read_text(self, *args, **kwargs):
+        _locale_encode(kwargs, args)
+        return real_read_text(self, *args, **kwargs)
+
+    def _gbk_write_text(self, data, *args, **kwargs):
+        _locale_encode(kwargs, args)
+        return real_write_text(self, data, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "open", _gbk_open)
+    monkeypatch.setattr(Path, "open", _gbk_path_open)
+    monkeypatch.setattr(Path, "read_text", _gbk_read_text)
+    monkeypatch.setattr(Path, "write_text", _gbk_write_text)
+    monkeypatch.setattr(locale, "getpreferredencoding", lambda do_setlocale=True: "gbk")
+    if hasattr(locale, "getencoding"):
+        monkeypatch.setattr(locale, "getencoding", lambda: "gbk")
+
+
+def _chinese_store() -> dict:
+    """A store shaped like the report's: Chinese provider keys in both sections."""
+    return {
+        "version": auth.AUTH_STORE_VERSION,
+        "active_provider": CHINESE_PROVIDER,
+        "providers": {
+            CHINESE_PROVIDER: {
+                "auth_mode": "api_key",
+                "api_key": "sk-中文密钥",
+                "label": "智谱 GLM 按量付费",
+            }
+        },
+        "credential_pool": {
+            CHINESE_PROVIDER: [
+                {
+                    "id": "cred-中文-1",
+                    "label": "按量付费凭据",
+                    "source": "manual:api_key",
+                    "auth_type": "api_key",
+                    "api_key": "sk-中文密钥",
+                }
+            ]
+        },
+    }
+
+
+class TestGbkLocaleAuthStore:
+    def test_load_keeps_chinese_credential_pool_keys(self, hermes_home, gbk_default_encoding):
+        """A GBK-default read must return the Chinese pool key verbatim.
+
+        Pre-fix this raised ``UnicodeDecodeError`` inside ``_load_auth_store``,
+        which quarantined the file as ``auth.json.corrupt`` and handed back an
+        empty store — the reported data loss. The store must load intact, the
+        file must never be quarantined, and a read must not rewrite it.
+        """
+        auth_path = hermes_home / "auth.json"
+        store = _chinese_store()
+        _write_utf8(auth_path, store)
+        before = auth_path.read_bytes()
+
+        # Guard: the mocked locale really does reject the store's raw UTF-8
+        # bytes, so the assertions below are only meaningful because the loader
+        # passes encoding= explicitly. (If the simulation stopped being GBK,
+        # this test would pass for the wrong reason.)
+        with pytest.raises(UnicodeDecodeError):
+            before.decode(locale.getpreferredencoding(False))
+
+        loaded = auth._load_auth_store(auth_path)
+
+        assert set(loaded["providers"]) == {CHINESE_PROVIDER}
+        assert set(loaded["credential_pool"]) == {CHINESE_PROVIDER}
+        assert loaded["providers"][CHINESE_PROVIDER]["label"] == "智谱 GLM 按量付费"
+        assert loaded["credential_pool"][CHINESE_PROVIDER][0]["label"] == "按量付费凭据"
+        assert loaded["active_provider"] == CHINESE_PROVIDER
+        # No locale-corrupt rename/copy, and the read left the bytes alone.
+        assert not (hermes_home / "auth.json.corrupt").exists()
+        assert auth_path.read_bytes() == before
+
+    def test_write_credential_pool_roundtrip_keeps_chinese_provider(
+        self, hermes_home, gbk_default_encoding
+    ):
+        """Saving a pool for a Chinese-key provider writes UTF-8 and reads back.
+
+        ``write_credential_pool`` is the read-modify-write path a session takes
+        on every credential change; if either half used the locale encoding the
+        key would be re-encoded as mojibake or lost on the next load.
+        """
+        # Fresh profile: nothing to read yet, so this exercises store creation.
+        auth.write_credential_pool(
+            CHINESE_PROVIDER,
+            [
+                {
+                    "id": "cred-中文-1",
+                    "label": "按量付费凭据",
+                    "source": "manual:api_key",
+                    "auth_type": "api_key",
+                    "api_key": "sk-中文密钥",
+                }
+            ],
+        )
+
+        rows = auth.read_credential_pool(CHINESE_PROVIDER)
+        assert [row["id"] for row in rows] == ["cred-中文-1"]
+        assert rows[0]["label"] == "按量付费凭据"
+
+        # On disk: the key is raw UTF-8 (the same bytes the schema has always
+        # written), never a GBK transcode, and the pool section keeps it.
+        auth_path = hermes_home / "auth.json"
+        assert CHINESE_PROVIDER.encode("utf-8") in auth_path.read_bytes()
+        persisted = json.loads(auth_path.read_bytes().decode("utf-8"))
+        assert set(persisted["credential_pool"]) == {CHINESE_PROVIDER}
+        assert not (hermes_home / "auth.json.corrupt").exists()
+
+    def test_corrupt_quarantine_copies_bytes_and_never_touches_the_store(
+        self, hermes_home, gbk_default_encoding
+    ):
+        """Genuine corruption is quarantined byte-for-byte, not transcoded.
+
+        Recovery (the issue's startup watchdog renames ``.corrupt`` back) is only
+        safe if the quarantine is a byte copy of what the user had: a locale
+        transcode there would destroy the Unicode credentials it is meant to
+        preserve. ``_load_auth_store`` must also leave ``auth.json`` itself in
+        place, so an unlucky read alone cannot erase the store.
+        """
+        auth_path = hermes_home / "auth.json"
+        # Invalid UTF-8 (a lone 0xFF) — unreadable under ANY strict codec, so the
+        # quarantine branch is what runs.
+        bad_bytes = b'{"version": 1, "providers": {"\\xff": {"label": "\xe6\x99"}}}'
+        auth_path.write_bytes(bad_bytes)
+
+        loaded = auth._load_auth_store(auth_path)
+
+        assert loaded == auth._empty_auth_store()
+        corrupt_path = hermes_home / "auth.json.corrupt"
+        assert corrupt_path.read_bytes() == bad_bytes
+        # The quarantine is a copy: the user's file is still there to restore,
+        # and the bytes were never decoded/re-encoded through the locale.
+        assert auth_path.read_bytes() == bad_bytes
+
+    def test_profile_store_write_through_is_utf8(self, hermes_home, gbk_default_encoding):
+        """A profile→global write-through (``target_path``) stays UTF-8.
+
+        Profiles are islands: the rotating-grant write-through saves to an
+        explicit target instead of ``HERMES_HOME/auth.json``. That second path
+        must encode identically or a profile's Chinese provider names would be
+        lost the moment they are mirrored to the root store.
+        """
+        target = hermes_home / "root" / "auth.json"
+        store = _chinese_store()
+
+        auth._save_auth_store(store, target_path=target)
+
+        # Parent dir is created/tightened by _save_private_json; the payload is
+        # raw UTF-8 and round-trips through the same loader.
+        assert CHINESE_PROVIDER.encode("utf-8") in target.read_bytes()
+        assert set(auth._load_auth_store(target)["credential_pool"]) == {CHINESE_PROVIDER}
+        assert not target.with_suffix(".json.corrupt").exists()

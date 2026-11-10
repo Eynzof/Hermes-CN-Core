@@ -37,7 +37,7 @@ class UserReminderProvider(ReminderProvider):
         self,
         agent: Any,
         api_call_count: int,
-    ) -> List[UserReminder]: ...
+    ) -> list[UserReminder]: ...
 
 
 class SteerUserReminderProvider(UserReminderProvider):
@@ -50,7 +50,7 @@ class SteerUserReminderProvider(UserReminderProvider):
 
     def __init__(self, max_length: Optional[int] = 4000) -> None:
         self._lock = Lock()
-        self._items: List[str] = []
+        self._items: list[str] = []
         self._max_length = max_length or 0
 
     def push(self, text: str, source: str = "cli") -> bool:
@@ -76,7 +76,7 @@ class SteerUserReminderProvider(UserReminderProvider):
         self,
         agent: Any,
         api_call_count: int,
-    ) -> List[UserReminder]:
+    ) -> list[UserReminder]:
         """Drain the queue and return a single :class:`UserReminder`."""
         with self._lock:
             if not self._items:

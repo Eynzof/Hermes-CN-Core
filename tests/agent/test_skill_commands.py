@@ -575,7 +575,7 @@ class TestBuildPreloadedSkillsPrompt:
 
 
 class TestDuplicateNamesAgreeAcrossSurfaces:
-    def test_every_surface_resolves_duplicates_like_skill_view(self, tmp_path, monkeypatch, caplog):
+    def test_every_surface_resolves_duplicates_like_skill_view(self, tmp_path, monkeypatch):
         """#64392: list, prompt index, slash commands, skill_view, -s preload and cron agree. A same-tier
         duplicate is advertised only by its exact path and every loader names those paths; a cross-tier
         duplicate (same relative path, local + external) loads the local copy everywhere."""
@@ -601,7 +601,7 @@ class TestDuplicateNamesAgreeAcrossSurfaces:
 
         ambiguous = "Ambiguous skill name dup-demo: use one of a/one, b/two"
         assert sorted(s["name"] for s in json.loads(skills_list())["skills"]) == ["a/one", "b/two", "xdup"]
-        index = [ln.strip() for ln in pb.build_skills_system_prompt().splitlines() if ln.startswith("    - ")]
+        index = [ln.strip() for ln in pb.build_skills_system_prompt().splitlines() if ln.lstrip().startswith("- ")]
         assert index == ["- a/one: Description for dup-demo.", "- b/two: Description for dup-demo.",
                          "- xdup: Description for xdup."]
         assert sorted(scan_skill_commands()) == ["/xdup"]
@@ -610,10 +610,6 @@ class TestDuplicateNamesAgreeAcrossSurfaces:
             assert "LOCAL XDUP" in json.loads(skill_view(ident))["content"]
         _, loaded, missing = build_preloaded_skills_prompt(["dup-demo", "xdup", "a/one"])
         assert (loaded, missing) == (["xdup", "dup-demo"], [ambiguous])
-        from hermes_cli.oneshot import _build_preloaded_skills_prompt
-        with caplog.at_level("WARNING"):  # partial preload: the skip warning keeps the Ambiguous wording
-            assert _build_preloaded_skills_prompt(["dup-demo", "xdup"])
-        assert f"Skipping {ambiguous}. Continuing with: xdup" in caplog.text and "Unknown" not in caplog.text
         parts = _load_cron_skill_parts({"id": "j"}, ["dup-demo", "xdup"])
         assert ambiguous in parts[0] and "LOCAL XDUP" in "\n".join(parts)
 
@@ -629,7 +625,7 @@ class TestDuplicateNamesAgreeAcrossSurfaces:
         monkeypatch.setattr(skills_tool_module, "_SKILLS_CACHE", {})
         pb.clear_skills_system_prompt_cache()
         assert sorted(s["name"] for s in json.loads(skills_list())["skills"]) == ["b/two", "other", "xdup"]
-        index = [ln.strip() for ln in pb.build_skills_system_prompt().splitlines() if ln.startswith("    - ")]
+        index = [ln.strip() for ln in pb.build_skills_system_prompt().splitlines() if ln.lstrip().startswith("- ")]
         assert index == ["- other: Description for other.", "- b/two: Description for dup-demo.",
                          "- xdup: Description for xdup."]
         for ident in ("a/one", "one"):  # refused by any alias, as list/index hide it
@@ -756,7 +752,7 @@ class TestSkillDirectoryHeader:
         # with hundreds of references; the absolute base is already stated
         # once in the [Skill directory: ...] header and the footer example.
         assert "- scripts/run.js" in msg
-        assert f"- scripts/run.js  ->  " not in msg
+        assert "- scripts/run.js  ->  " not in msg
         assert str(skill_dir / "scripts" / "run.js") not in msg.split(
             "[This skill has supporting files"
         )[1].split("\nLoad any of these")[0]

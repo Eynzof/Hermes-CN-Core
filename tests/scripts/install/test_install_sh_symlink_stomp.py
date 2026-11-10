@@ -27,7 +27,7 @@ def test_publication_replaces_legacy_symlink_without_touching_console_script(tmp
     assert legacy.read_text(encoding="utf-8") == original
     assert not launcher.is_symlink()
     assert os.access(launcher, os.X_OK)
-    result = subprocess.run([str(launcher), "forwarded argument"], cwd=tmp_path,
+    result = subprocess.run([str(launcher), "forwarded argument"], check=False, cwd=tmp_path,
                             capture_output=True, text=True, timeout=30)
     assert result.returncode == 7, result.stdout + result.stderr
     assert json.loads(result.stdout)["argv"] == ["forwarded argument"]

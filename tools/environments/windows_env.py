@@ -360,7 +360,7 @@ def mark_as_temporary(path) -> bool:
 # actionable suggestion for ``hermes doctor`` / setup.
 
 
-def suggest_defender_exclusion(home=None) -> "str | None":
+def suggest_defender_exclusion(home=None) -> str | None:
     """Return a one-line Defender-exclusion perf hint, or ``None``.
 
     ``None`` off Windows (or when the Hermes home can't be resolved) so callers

@@ -25,7 +25,7 @@ def test_gated_on_desktop(monkeypatch):
     assert op.check_open_preview_requirements() is True
 
 def test_lives_in_the_gui_surface_toolset(monkeypatch):
-    import tools.preview_tool  # noqa: F401 — registers desktop_preview
+    import tools.preview_tool
     """Consolidated (#95681): this module's tool became an action of the
     single `desktop_preview` tool in desktop_ui; the old registration is gone and
     `preview` reaches a desktop client on ANY backend (no env gate)."""

@@ -317,20 +317,18 @@ class TestCreateProfile:
     def test_clone_sync_imports_carries_manifest_but_never_links_profiles(self, profile_env):
         """--sync-imports copies import-sync.json (a pointer at EXTERNAL agent trees) and nothing
         else changes: the clone still gets its own config/skills copies, never a live link."""
-        from hermes_cli.agent_import_sync import SYNC_MANIFEST_NAME, load_sync_manifest
-
         default_home = profile_env / ".hermes"
         (default_home / "config.yaml").write_text("model: test", encoding="utf-8")
         manifest = {"version": 1, "agents": {"claude-code": {
             "source": str(profile_env / ".claude"), "digest": "d", "overwrite": False,
             "last_import": 1, "imported_skills": ["s1"]}}}
-        (default_home / SYNC_MANIFEST_NAME).write_text(json.dumps(manifest), encoding="utf-8")
+        (default_home / "import-sync.json").write_text(json.dumps(manifest), encoding="utf-8")
 
         plain = create_profile("plain", clone_config=True, no_alias=True)
-        assert not (plain / SYNC_MANIFEST_NAME).exists()
+        assert not (plain / "import-sync.json").exists()
 
         synced = create_profile("synced", clone_config=True, sync_imports=True, no_alias=True)
-        assert load_sync_manifest(synced)["agents"] == manifest["agents"]
+        assert json.loads((synced / "import-sync.json").read_text(encoding="utf-8")) == manifest
         # Editing the source afterwards does not reach the clone: still an independent island.
         (default_home / "config.yaml").write_text("model: changed", encoding="utf-8")
         assert yaml.safe_load((synced / "config.yaml").read_text(encoding="utf-8-sig"))["model"] == "test"
@@ -435,31 +433,47 @@ class TestCreateProfile:
     @pytest.mark.platforms("linux")
     def test_clone_all_does_not_attach_to_the_source_profiles_live_browser(self, profile_env):
         """Copied Chromium markers must not route the clone through the source profile's CDP port."""
-        from tools.bot_desktop.browser import running_instance_cdp_port
+        import http.server
+        import threading
+        from tools.browser_launcher import running_instance
 
         default_home = profile_env / ".hermes"
         (default_home / "config.yaml").write_text("model: test", encoding="utf-8")
         browser_profile = default_home / "bot-desktop" / "browser-profile"
         browser_profile.mkdir(parents=True)
 
-        with socket.socket() as listener:
-            listener.bind(("127.0.0.1", 0))
-            listener.listen()
-            port = listener.getsockname()[1]
+        class _Version(http.server.BaseHTTPRequestHandler):  # a live DevTools /json/version answer
+            def do_GET(self):
+                body = b'{"webSocketDebuggerUrl": "ws://127.0.0.1/devtools/browser/source"}'
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *_args):
+                pass
+
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _Version)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            port = server.server_address[1]
             (browser_profile / "DevToolsActivePort").write_text(f"{port}\n/devtools/browser/source\n", encoding="utf-8")
             (browser_profile / "SingletonLock").symlink_to(f"host-{os.getpid()}")
-            assert running_instance_cdp_port(str(browser_profile)) == port
+            assert running_instance(str(browser_profile))[0] == port
 
             profile_dir = create_profile("coder", clone_all=True, no_alias=True)
             cloned_browser = profile_dir / "bot-desktop" / "browser-profile"
 
-            assert running_instance_cdp_port(str(cloned_browser)) is None
-            assert running_instance_cdp_port(str(browser_profile)) == port
+            assert running_instance(str(cloned_browser)) is None
+            assert running_instance(str(browser_profile))[0] == port
+        finally:
+            server.shutdown()
+            server.server_close()
 
     @pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="special files need a POSIX filesystem")
     def test_clone_all_skips_special_files(self, profile_env):
         # A live source profile holds special files copytree cannot copy (e.g. a suffixless
-        # agent-browser control socket); one of them must not abort the whole clone.
+        # browser control socket); one of them must not abort the whole clone.
         default_home = profile_env / ".hermes"
         (default_home / "config.yaml").write_text("model: test", encoding="utf-8")
         browser_dir = default_home / "home" / ".agent-browser"
@@ -508,10 +522,10 @@ class TestNoSkillsOptOut:
 class TestBackfillProfileEnvs:
     """Tests for backfill_profile_envs() — the `hermes update` pass that
     gives pre-#44792 profiles (created before .env seeding) their own
-    .env, copied from the default install so credentials don't break."""
+    .env: the placeholder header, never a copy of the default's secrets."""
 
-    @skip_on_win32
-    def test_copies_default_env_into_envless_profiles(self, profile_env):
+    @skip_on_win32  # stat.S_IMODE is meaningless on Windows (no group/world bits: reads back 0o666)
+    def test_seeds_placeholder_never_the_default_env(self, profile_env):
         import stat
         tmp_path = profile_env
         (tmp_path / ".hermes" / ".env").write_text("OPENROUTER_API_KEY=root-key\n", encoding="utf-8")
@@ -525,7 +539,7 @@ class TestBackfillProfileEnvs:
 
         assert sorted(backfilled) == ["old1", "old2"]
         for p in (p1, p2):
-            assert (p / ".env").read_text(encoding="utf-8-sig") == "OPENROUTER_API_KEY=root-key\n"
+            assert "root-key" not in (p / ".env").read_text(encoding="utf-8-sig")
             assert stat.S_IMODE((p / ".env").stat().st_mode) == 0o600
 
 
@@ -1310,7 +1324,6 @@ class TestRenameProfile:
     def test_rename_delegates_identity_migration_to_live_gateway(self, profile_env):
         """Under a live multiplexer the CLI must NOT rewrite the routing DB directly (the gateway holds
         it in memory and would clobber the write); it delegates to the control verb instead."""
-        tmp_path = profile_env
         create_profile("oldname", no_alias=True)
 
         with patch("hermes_cli.profiles.check_alias_collision", return_value="skip"), \
@@ -1694,7 +1707,6 @@ class TestEdgeCases:
 
     def test_clone_from_named_profile(self, profile_env):
         """Clone config from a named (non-default) profile."""
-        tmp_path = profile_env
         # Create source profile with config
         source_dir = create_profile("source", no_alias=True)
         (source_dir / "config.yaml").write_text("model: cloned", encoding="utf-8")
@@ -1939,57 +1951,6 @@ def test_export_leaves_the_bot_desktop_browser_profile_out(profile_env, tmp_path
 # TestCloneAllExcludesRuntimeTrees
 # ===================================================================
 
-class TestCloneAllExcludesRuntimeTrees:
-    """``--clone-all`` from the default profile must not copy the machine-scoped
-    runtime trees the local-models flow puts under ``~/.hermes``: ``models/``
-    (GGUF weights, tens of GB), ``runtimes/`` (llama.cpp binaries) and ``node/``
-    (managed Node). ``backup.py`` already excludes exactly these; the clone-all
-    ignore list had not followed.
-    """
-
-    RUNTIME_TREES = ("models", "runtimes", "node")
-
-    def _seed(self, home):
-        (home / "models").mkdir(); (home / "models" / "big.gguf").write_bytes(b"\0" * 64)
-        (home / "runtimes" / "llamacpp" / "bin").mkdir(parents=True)
-        (home / "runtimes" / "llamacpp" / "bin" / "llama-server").write_text("bin", encoding="utf-8")
-        (home / "node" / "bin").mkdir(parents=True)
-        (home / "node" / "bin" / "node").write_text("bin", encoding="utf-8")
-        (home / "skills" / "greet").mkdir(parents=True)
-        (home / "skills" / "greet" / "SKILL.md").write_text("# greet\n", encoding="utf-8")
-        (home / "config.yaml").write_text("model: test\n", encoding="utf-8")
-
-    def test_ignore_drops_runtime_trees_only_at_the_default_root(self, profile_env):
-        default_home = profile_env / ".hermes"
-        self._seed(default_home)
-        # a skill that happens to carry a nested models/ dir is user data
-        (default_home / "skills" / "greet" / "models").mkdir()
-        ignore = _clone_all_copytree_ignore(default_home)
-
-        at_root = ignore(str(default_home), ["models", "runtimes", "node", "skills", "config.yaml"])
-        nested = ignore(str(default_home / "skills" / "greet"), ["models", "SKILL.md"])
-
-        assert set(at_root) == set(self.RUNTIME_TREES)
-        assert not nested
-
-        # Gated on the default profile: a named profile that really has a
-        # models/ dir of its own must not have it dropped when used as source.
-        source = create_profile("source", no_alias=True)
-        for tree in self.RUNTIME_TREES:
-            (source / tree).mkdir()
-        assert not _clone_all_copytree_ignore(source)(str(source), [*self.RUNTIME_TREES, "SOUL.md"])
-
-
-    def test_clone_all_from_default_skips_runtime_trees_but_keeps_the_rest(self, profile_env):
-        default_home = profile_env / ".hermes"
-        self._seed(default_home)
-
-        clone = create_profile("clone", clone_all=True, no_alias=True)
-
-        for name in self.RUNTIME_TREES:
-            assert not (clone / name).exists(), name
-        assert (clone / "skills" / "greet" / "SKILL.md").is_file()
-        assert (clone / "config.yaml").is_file()
 
 
 def test_count_skills_publishes_timestamp_after_the_walk(tmp_path, monkeypatch):

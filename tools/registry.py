@@ -18,12 +18,37 @@ import sys
 import threading
 import time
 from dataclasses import dataclass
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Set
 
 from hermes_constants import hermes_home_key, normalize_scope
 
 logger = logging.getLogger(__name__)
+
+_session_tool_scope = ContextVar("session_tool_scope", default=None)
+
+
+@contextmanager
+def session_tool_scope(scope):
+    """Execution-owned overlay, additive to the existing profile registry."""
+    token = _session_tool_scope.set(scope)
+    try:
+        yield
+    finally:
+        _session_tool_scope.reset(token)
+
+
+def current_session_tool_scope():
+    return _session_tool_scope.get()
+
+
+def _session_slot_key():
+    """The overlay slot key for the current session scope: writes go through ``normalize_scope``
+    (``register``/``deregister``), so reads must key the same way or the overlay is invisible."""
+    return normalize_scope(_session_tool_scope.get())
+
 
 # Cap on a tool error body; only trims runaway interpolated exceptions (static msgs are ~115 chars).
 _MAX_TOOL_ERROR_CHARS = 2048
@@ -106,6 +131,15 @@ def discover_builtin_tools(tools_dir: Optional[Path] = None) -> list[str]:
     per-file AST scan costs ~145 ms over ~100 files, so verdicts are memoized on disk keyed
     by ``(mtime_ns, size)``; a mismatch or corrupt cache re-scans that file. The write is
     best-effort and atomic, so concurrent processes race harmlessly."""
+    from agent.safe_worker_policy import safe_worker_enabled
+    if safe_worker_enabled():
+        # Toolset filtering happens AFTER import. Keep the troubleshooting worker's
+        # import graph closed over reviewed core tools, not plugin-backed wrappers
+        # or a profile-writable discovery cache. Core approval/redaction stay intact.
+        module_names = ["tools.file_tools", "tools.terminal_tool", "tools.process_registry"]
+        for module_name in module_names:
+            importlib.import_module(module_name)
+        return module_names
     tools_path = (Path(tools_dir) if tools_dir is not None else Path(__file__).resolve().parent).resolve()
     cache = _load_discovery_cache()
     fresh_cache: dict[str, list] = {}
@@ -185,7 +219,7 @@ def _empty_tool_index() -> dict:
     }
 
 
-def _iter_tool_files(tools_path: Path) -> List[Path]:
+def _iter_tool_files(tools_path: Path) -> list[Path]:
     """Candidate tool modules: the same set ``discover_builtin_tools`` scans
     (flat ``tools/*.py`` plus package entry points ``tools/<pkg>/tool.py``), so
     a tool registered from a package can never fall out of the lazy index."""
@@ -195,11 +229,11 @@ def _iter_tool_files(tools_path: Path) -> List[Path]:
         return []
 
 
-def _module_string_constants(tree: ast.Module) -> Dict[str, str]:
+def _module_string_constants(tree: ast.Module) -> dict[str, str]:
     """Collect top-level ``NAME = "literal"`` string constants so a
     ``toolset=_CONST`` reference can be resolved without importing the module.
     """
-    consts: Dict[str, str] = {}
+    consts: dict[str, str] = {}
     for stmt in tree.body:
         if (
             isinstance(stmt, ast.Assign)
@@ -212,13 +246,13 @@ def _module_string_constants(tree: ast.Module) -> Dict[str, str]:
     return consts
 
 
-def _module_literal_tables(tree: ast.Module) -> Dict[str, ast.AST]:
+def _module_literal_tables(tree: ast.Module) -> dict[str, ast.AST]:
     """Top-level ``NAME = (...)``/``NAME = [...]`` literal collections.
 
     Lets a module-level ``for _name, … in _TOOLS:`` registration table be walked
     without executing the module (see :func:`_iter_static_loop_bindings`).
     """
-    tables: Dict[str, ast.AST] = {}
+    tables: dict[str, ast.AST] = {}
     for stmt in tree.body:
         if isinstance(stmt, ast.Assign) and isinstance(stmt.value, (ast.Tuple, ast.List)):
             for tgt in stmt.targets:
@@ -227,7 +261,7 @@ def _module_literal_tables(tree: ast.Module) -> Dict[str, ast.AST]:
     return tables
 
 
-def _iter_static_loop_bindings(loop: ast.For, tables: Dict[str, ast.AST]) -> List[Dict[str, ast.AST]]:
+def _iter_static_loop_bindings(loop: ast.For, tables: dict[str, ast.AST]) -> list[dict[str, ast.AST]]:
     """One ``{loop variable: element node}`` binding per statically-known iteration of a
     module-level ``for`` whose iterable is a literal collection (inline or a top-level
     ``NAME = (...)`` constant).
@@ -250,7 +284,7 @@ def _iter_static_loop_bindings(loop: ast.For, tables: Dict[str, ast.AST]) -> Lis
     # ``*_rest`` in the target makes the row length variable: bind only the fixed
     # positions BEFORE the star (notably the tool ``name``) and leave the rest alone.
     star = next((i for i, t in enumerate(elts) if isinstance(t, ast.Starred)), len(elts))
-    bindings: List[Dict[str, ast.AST]] = []
+    bindings: list[dict[str, ast.AST]] = []
     for element in iterable.elts:
         if not isinstance(element, (ast.Tuple, ast.List)):
             continue
@@ -262,7 +296,7 @@ def _iter_static_loop_bindings(loop: ast.For, tables: Dict[str, ast.AST]) -> Lis
     return bindings
 
 
-def _module_register_calls(tree: ast.Module, tables: Dict[str, ast.AST]) -> List[tuple]:
+def _module_register_calls(tree: ast.Module, tables: dict[str, ast.AST]) -> list[tuple]:
     """Every module-level ``registry.register(...)`` call plus its static loop bindings.
 
     Returns ``(call_node, {loop variable: element node})`` pairs: direct calls get an empty
@@ -271,7 +305,7 @@ def _module_register_calls(tree: ast.Module, tables: Dict[str, ast.AST]) -> List
     returned — those are handled by ``_module_registers_tools``' discovery path, and a
     module-body scan must never pick up a helper's own registration.
     """
-    found: List[tuple] = []
+    found: list[tuple] = []
     for stmt in tree.body:
         if _is_registry_register_call(stmt):
             found.append((stmt.value, {}))
@@ -283,7 +317,7 @@ def _module_register_calls(tree: ast.Module, tables: Dict[str, ast.AST]) -> List
     return found
 
 
-def _resolve_register_arg(node: ast.AST, consts: Dict[str, str], bound: Optional[Dict[str, ast.AST]] = None):
+def _resolve_register_arg(node: ast.AST, consts: dict[str, str], bound: Optional[dict[str, ast.AST]] = None):
     """Return the string value of a ``register()`` argument node, resolving a module-level
     string constant or a statically-bound ``for`` loop variable, or None when it is not
     statically known."""
@@ -374,7 +408,7 @@ def _tool_index_fingerprint(tools_path: Path) -> Optional[str]:
     """Cheap content fingerprint of the tool tree (name + mtime + size per
     file). Any add/remove/edit of a tool file changes it, so a cached index
     can never go stale."""
-    parts: List[str] = []
+    parts: list[str] = []
     for path in _iter_tool_files(tools_path):
         if path.name in _SKIP_TOOL_FILES:
             continue
@@ -468,7 +502,7 @@ def load_or_build_tool_index(tools_dir: Optional[Path] = None) -> dict:
     return index
 
 
-def _load_discovery_cache() -> Dict[str, list]:
+def _load_discovery_cache() -> dict[str, list]:
     """Read the discovery cache; any error → empty dict (full scan)."""
     path = _discovery_cache_path()
     if path is None:
@@ -518,6 +552,8 @@ class ToolEntry:
     # Bound to this entry, so a re-register() (fresh entry + generation bump)
     # invalidates it for free.
     _schema_json: Optional[str] = None
+    execution_timeout: float | None = None
+    registration_generation: int = 0
 
 
 class _PluginOverridePolicy:
@@ -547,6 +583,11 @@ _CHECK_FN_TTL_SECONDS = 30.0
 # Grace window after a success in which a failure counts as a flake; kept short
 # so a genuinely-down backend is reflected within a couple of turns.
 _CHECK_FN_FAILURE_GRACE_SECONDS = 60.0
+# How long a list built on a grace-served True may be reused (``check_fn_verdict_window``). Inside the
+# grace window the tool is advertised whatever the re-probe returns, so reuse changes no result and only
+# bounds how often a failing probe re-runs: at most 12 per 60 s grace per memo key instead of one per
+# catalog read or tool_call, which a probe that fails by timing out would block for its full duration.
+_CHECK_FN_GRACE_REUSE_SECONDS = 5.0
 _CHECK_FN_CACHE_MAX = 512
 _check_fn_cache: dict[tuple[Callable, Optional[str]], tuple[float, bool]] = {}
 _check_fn_last_good: dict[tuple[Callable, Optional[str]], float] = {}
@@ -555,16 +596,42 @@ _check_fn_core_drop_warned: set[tuple[Callable, Optional[str]]] = set()  # once-
 _check_fn_cache_lock = threading.Lock()
 CHECK_FN_CACHE_BYPASS = ""
 _NO_CACHE_CHECK_FNS: set[Callable] = set()
-_BROWSER_IDENTITY_KEYS = (
-    "HERMES_SESSION_ID",
-    "HERMES_BROWSER_CONTROL_PRINCIPAL",
-    "HERMES_BROWSER_CONTROL_TRANSPORT_FAMILY")
+# Bumped by invalidate_check_fn_cache(): anything derived from the dropped verdicts is void.
+_check_fn_epoch = 0
+# Earliest expiry of the verdicts consulted inside check_fn_verdict_window() (None outside one).
+_verdict_expiry: ContextVar[Optional[list]] = ContextVar("check_fn_verdict_expiry", default=None)
 
 
 def no_cache_check_fn(fn: Callable) -> Callable:
     """Mark a local, config-backed availability check as uncached."""
     _NO_CACHE_CHECK_FNS.add(fn)
     return fn
+
+
+def check_fn_cache_epoch() -> int:
+    """Changes whenever ``invalidate_check_fn_cache()`` drops the cached verdicts."""
+    return _check_fn_epoch
+
+
+@contextmanager
+def check_fn_verdict_window():
+    """Yield a one-item list holding the earliest expiry (``time.monotonic``) of the cached
+    ``check_fn`` verdicts consulted inside the block, ``inf`` when none was. A result filtered on
+    those verdicts must not be reused past it: reusing it would replay a verdict this cache has
+    already expired. A grace-served True expires after ``_CHECK_FN_GRACE_REUSE_SECONDS``, never past
+    the end of its grace window. ``no_cache_check_fn`` probes are config-backed and set no expiry."""
+    sink = [float("inf")]
+    token = _verdict_expiry.set(sink)
+    try:
+        yield sink
+    finally:
+        _verdict_expiry.reset(token)
+
+
+def _note_verdict_expiry(deadline: float) -> None:
+    sink = _verdict_expiry.get()
+    if sink is not None and deadline < sink[0]:
+        sink[0] = deadline
 
 
 def _fn_label(fn: Callable) -> object:
@@ -584,23 +651,9 @@ def _prune_check_fn_caches(now: float) -> None:
 
 
 def check_fn_cache_scope() -> Optional[str]:
-    """Return the active profile key when availability is profile-scoped. Browser-controller
-    availability is request-bound (changes on every attach/detach), so a fully bound
-    browser-control request bypasses this cache AND model_tools' outer definition cache (same
-    sentinel) — one Browser session's live tools must not leak into another. Single-profile
+    """Return the active profile key when availability is profile-scoped. Single-profile
     processes keep the process-wide cache; a multiplex gateway installs a Hermes-home override
     per profile turn, so the canonical profile key is the boundary."""
-    try:
-        from gateway.session_context import get_session_env
-        if all(str(get_session_env(k, "") or "").strip() for k in _BROWSER_IDENTITY_KEYS):
-            # api_server binds a server-derived principal + transport family on EVERY request, so
-            # identity-present != controller-attached; only bypass when the extension-control
-            # feature is actually on (#79047).
-            from gateway.browser_control_broker import browser_control_enabled
-            if browser_control_enabled():
-                return CHECK_FN_CACHE_BYPASS
-    except Exception:
-        pass
     try:
         from agent.secret_scope import serves_routed_profile
         from hermes_constants import get_hermes_home_override
@@ -658,6 +711,7 @@ def _check_fn_cached(fn: Callable) -> bool:
         _prune_check_fn_caches(now)  # leaves only entries within TTL
         cached = _check_fn_cache.get(cache_key)
         if cached is not None:
+            _note_verdict_expiry(cached[0] + _CHECK_FN_TTL_SECONDS)
             return cached[1]
     exc_info = None
     try:
@@ -669,16 +723,21 @@ def _check_fn_cached(fn: Callable) -> bool:
         value, outcome, exc_info = False, "raised", exc
     # Resolved outside the cache lock: the registry snapshot takes its own lock.
     core_dropped = sorted(_core_tools_gated_by(fn)) if not value else []
+    # Stamped at completion: a probe that fails by timing out has spent its timeout, and a window
+    # measured from its start would already be over when it returns, so every read would re-probe.
+    now = time.monotonic()
     with _check_fn_cache_lock:
         _prune_check_fn_caches(now)
         if value:
             _check_fn_last_good[cache_key] = now
             _check_fn_ever_good.add(cache_key)
             _check_fn_cache[cache_key] = (now, True)
+            _note_verdict_expiry(now + _CHECK_FN_TTL_SECONDS)
             return True
         last_good = _check_fn_last_good.get(cache_key)
         if last_good is not None and now - last_good < _CHECK_FN_FAILURE_GRACE_SECONDS:
-            # Recent success → flake: serve last-good True, do NOT cache (next call re-probes).
+            # Recent success → flake: serve last-good True, do NOT cache (next direct check re-probes).
+            _note_verdict_expiry(min(now + _CHECK_FN_GRACE_REUSE_SECONDS, last_good + _CHECK_FN_FAILURE_GRACE_SECONDS))
             logger.warning(
                 "check_fn %s failed (%s) within %.0fs of last success; "
                 "treating as transient and keeping tool(s) available",
@@ -705,6 +764,7 @@ def _check_fn_cached(fn: Callable) -> bool:
                 "check_fn %s %s; dependent tools will be unavailable this turn", _fn_label(fn), outcome,
                 exc_info=exc_info)
         _check_fn_cache[cache_key] = (now, False)
+        _note_verdict_expiry(now + _CHECK_FN_TTL_SECONDS)
         return False
 
 
@@ -727,7 +787,9 @@ def _memo_check(fn: Callable, memo: dict[Callable, bool]) -> bool:
 
 def invalidate_check_fn_cache() -> None:
     """Drop all cached ``check_fn`` results (after config changes like ``hermes tools enable``)."""
+    global _check_fn_epoch
     with _check_fn_cache_lock:
+        _check_fn_epoch += 1
         _check_fn_cache.clear()
         _check_fn_last_good.clear()
         _check_fn_ever_good.clear()
@@ -776,7 +838,7 @@ class ToolRegistry:
         self._lazy_enabled: bool = False
         self._lazy_builtins_dir: Optional[Path] = None
         self._lazy_index: Optional[dict] = None
-        self._lazy_loaded_modules: Set[str] = set()
+        self._lazy_loaded_modules: set[str] = set()
         self._lazy_all_loaded: bool = False
         self._lazy_opaque_loaded: bool = False
         # Orchestrates lazy imports without holding self._lock across arbitrary
@@ -876,7 +938,7 @@ class ToolRegistry:
         self._load_opaque_modules()
         self._lazy_all_loaded = True
 
-    def _lazy_tool_names(self) -> Set[str]:
+    def _lazy_tool_names(self) -> set[str]:
         """All statically-known built-in tool names (no imports)."""
         if not self._lazy_enabled:
             return set()
@@ -909,7 +971,10 @@ class ToolRegistry:
 
     def _merged_tools(self, scope: Optional[str] = None) -> dict[str, ToolEntry]:
         """Return global tools overlaid with one profile's plugin tools."""
-        return {**self._tools, **self._scoped_tools.get(hermes_home_key(scope), {})}
+        entries = {**self._tools, **self._scoped_tools.get(hermes_home_key(scope), {})}
+        if scope is None:
+            entries.update(self._scoped_tools.get(_session_slot_key(), {}))
+        return entries
 
     def _toolset_entries(self, toolset: str, scope: Optional[str]) -> list[ToolEntry]:
         return self._grouped(self._merged_tools(scope).values()).get(toolset, [])
@@ -942,10 +1007,15 @@ class ToolRegistry:
         # and the cold-start budget depend on it).
         self._ensure_tool_loaded(name)
         with self._lock:
-            return self._lookup(name, scope or self.current_scope_key())
+            return self._lookup(name, scope or self.current_scope_key(), explicit_scope=scope is not None)
 
-    def _lookup(self, name: str, scope_key: Optional[str]) -> Optional[ToolEntry]:
-        """``_merged_tools(scope_key).get(name)`` without building the merged dict."""
+    def _lookup(self, name: str, scope_key: Optional[str], *, explicit_scope: bool = True) -> Optional[ToolEntry]:
+        """``_merged_tools(scope).get(name)`` without building the merged dict. An implicit scope
+        (the caller passed none) also sees the current session's tool overlay, as the merge does."""
+        if not explicit_scope:
+            session_scoped = self._scoped_tools.get(_session_slot_key())
+            if session_scoped is not None and name in session_scoped:
+                return session_scoped[name]
         scoped = self._scoped_tools.get(scope_key)
         if scoped is not None and name in scoped:
             return scoped[name]
@@ -1114,7 +1184,7 @@ class ToolRegistry:
         check_fn: Callable | None = None, requires_env: list | None = None, is_async: bool = False,
         description: str = "", emoji: str = "", max_result_size_chars: float | None = None,
         dynamic_schema_overrides: Callable | None = None, override: bool = False,
-        scope: Optional[str] = None):
+        scope: Optional[str] = None, execution_timeout: float | None = None):
         """Register a tool (called at import time by each tool file). ``override=True`` is an
         explicit opt-in for plugins replacing a built-in implementation (e.g. a headed-Chrome
         browser backend); without it, cross-toolset shadowing is rejected."""
@@ -1178,8 +1248,9 @@ class ToolRegistry:
                 name=name, toolset=toolset, schema=schema, handler=handler, check_fn=check_fn,
                 requires_env=requires_env or [], is_async=is_async,
                 description=description or schema.get("description", ""), emoji=emoji,
-                max_result_size_chars=max_result_size_chars,
-                dynamic_schema_overrides=dynamic_schema_overrides)
+                max_result_size_chars=max_result_size_chars, execution_timeout=execution_timeout,
+                dynamic_schema_overrides=dynamic_schema_overrides,
+                registration_generation=self._generation + 1)
             # Availability is derived per-tool (_toolset_has_exposable_tools), so this map no
             # longer gates a toolset; it still feeds get_toolset_requirements ->
             # TOOLSET_REQUIREMENTS["check_fn"], which banner.py reads (presence only,
@@ -1246,6 +1317,16 @@ class ToolRegistry:
             self._generation += 1
         logger.debug("Deregistered tool: %s", name)
 
+    def move_to_scope(self, names, scope: str) -> None:
+        """Move process-global registrations into *scope*'s overlay (a single-profile process that
+        starts multiplexing hands its launch profile's MCP tools to that profile's own scope)."""
+        scope = normalize_scope(scope)
+        with self._lock:
+            moved = {name: self._tools.pop(name) for name in names if name in self._tools}
+            if moved:
+                self._slot(scope, create=True).update(moved)
+                self._generation += 1
+
     def restore_registration(
         self, name: str, current: ToolEntry, previous: Optional[ToolEntry], *,
         scope: Optional[str] = None) -> bool:
@@ -1286,6 +1367,17 @@ class ToolRegistry:
 
     # ---- Schema retrieval --------------------------------------------
 
+    def get_selected_generation(self, tool_names: set[str]) -> tuple:
+        """Versions of selected registrations without importing unrelated lazy tools.
+
+        An unrelated tool's first import must not discard a warm conversation.
+        Replacement, removal and scoped overrides of a selected tool still change this key.
+        """
+        with self._lock:
+            merged = self._merged_tools()
+            return tuple((name, merged[name].registration_generation if name in merged else None)
+                         for name in sorted(tool_names))
+
     def get_definitions(self, tool_names: set[str], quiet: bool = False) -> list[dict]:
         """OpenAI-format schemas for the requested tools whose ``check_fn`` passes (or is
         absent). Probes use the ~30 s TTL cache so ``hermes tools enable`` lands quickly."""
@@ -1297,8 +1389,6 @@ class ToolRegistry:
                 self._ensure_tool_loaded(name)
         result = []
         check_results: dict[Callable, bool] = {}
-        entries_by_name = {entry.name: entry for entry in self._snapshot_entries()}
-        check_results: Dict[Callable, bool] = {}
         # Snapshot only the REQUESTED entries under a brief lock, instead of
         # materializing a {name: entry} map of the entire (~250-tool) registry
         # on every call. A toolset selection usually asks for a handful of
@@ -1313,7 +1403,8 @@ class ToolRegistry:
         # through the normal toolset path (validate_toolset/resolve_toolset
         # consult the same merged view).
         with self._lock:
-            entries_by_name = {entry.name: entry for entry in self._snapshot_entries()}
+            merged = self._merged_tools()
+            entries_by_name = {name: merged[name] for name in tool_names if name in merged}
         for name in sorted(tool_names):
             entry = entries_by_name.get(name)
             if not entry:
@@ -1404,7 +1495,7 @@ class ToolRegistry:
         return DEFAULT_RESULT_SIZE_CHARS
 
     def get_all_tool_names(self) -> list[str]:
-        return sorted(entry.name for entry in self._snapshot_entries())
+        return sorted({entry.name for entry in self._snapshot_entries()} | self._lazy_tool_names())
 
     def get_schema(self, name: str) -> Optional[dict]:
         """Raw schema dict, bypassing check_fn filtering (token estimates, introspection)."""

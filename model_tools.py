@@ -18,11 +18,12 @@ import threading
 import time
 from typing import Dict, Any, List, Optional, Set, Tuple, Callable
 
-from tools.registry import CHECK_FN_CACHE_BYPASS, check_fn_cache_scope, discover_builtin_tools, registry, tool_error
+from tools.registry import (
+    CHECK_FN_CACHE_BYPASS, check_fn_cache_epoch, check_fn_cache_scope, check_fn_verdict_window, discover_builtin_tools,
+    registry, tool_error)
 from tools.registry import _MAX_TOOL_ERROR_CHARS as _TOOL_ERROR_MAX_LEN
 from toolsets import resolve_toolset, validate_toolset
 from tools.arg_coercion import coerce_tool_args
-from utils import file_signature
 
 _TOOL_FIELD_ALIASES_GENERAL = {
     "operation": "action",
@@ -208,7 +209,7 @@ TOOL_FIELD_ALIASES = {
 # conflict with global aliases (e.g. ``delegate_task`` uses ``goal``
 # instead of ``prompt``, or ``cronjob`` uses ``action`` instead of
 # ``acp_command``).
-TOOL_SPECIFIC_ALIASES: Dict[str, Dict[str, str]] = {
+TOOL_SPECIFIC_ALIASES: dict[str, dict[str, str]] = {
     # delegate_task uses 'goal' rather than 'prompt'; redirect LLM
     # synonyms that would otherwise map to the wrong field globally.
     "delegate_task": {
@@ -228,6 +229,9 @@ TOOL_SPECIFIC_ALIASES: Dict[str, Dict[str, str]] = {
     "process": {
         "wait": "block",
     },
+    "process_manage": {
+        "wait": "block",
+    },
 }
 
 # Per-tool keys the HANDLER accepts but the advertised schema deliberately
@@ -238,8 +242,9 @@ TOOL_SPECIFIC_ALIASES: Dict[str, Dict[str, str]] = {
 # arrives as `path=<patch text>` and fails. See tools/file_tools.py PATCH_SCHEMA
 # (the V4A layer is advertised to OpenAI-family mains only) and its
 # ``cross_profile`` note.
-TOOL_ACCEPTED_EXTRA_KEYS: Dict[str, frozenset[str]] = {
+TOOL_ACCEPTED_EXTRA_KEYS: dict[str, frozenset[str]] = {
     "patch": frozenset({"mode", "patch", "cross_profile"}),
+    "terminal": frozenset({"notify_on_complete", "watch_patterns"}),
 }
 logger = logging.getLogger(__name__)
 # Optional callback for notifying external systems (TUI, ACP) about argument repairs.
@@ -268,9 +273,10 @@ _post_tool_call_hook_suppressed: ContextVar[bool] = ContextVar("post_tool_call_h
 
 
 @contextmanager
-def suppress_post_tool_call_hook():
-    """Let an outer executor own the terminal post-tool event."""
-    token = _post_tool_call_hook_suppressed.set(True)
+def suppress_post_tool_call_hook(suppressed: bool = True):
+    """Let an outer executor own the terminal post-tool event. ``suppressed=False`` re-enables it
+    inside such a block, for calls that are their own (each entry of a connector batch)."""
+    token = _post_tool_call_hook_suppressed.set(suppressed)
     try:
         yield
     finally:
@@ -390,7 +396,12 @@ def _run_async(coro):
 # module only when that tool is first requested; flipping the singleton into
 # lazy mode here is cheap (no AST scan, no imports) — the scan happens on first
 # real use and is itself disk-cached.
-registry.enable_lazy_builtins()
+from agent.safe_worker_policy import safe_worker_enabled
+
+if safe_worker_enabled():
+    discover_builtin_tools()
+else:
+    registry.enable_lazy_builtins()
 
 # MCP discovery is deliberately NOT run here: it blocks up to 120 s and the
 # gateway lazy-imports this module inside its event loop; each entry point
@@ -469,8 +480,6 @@ _LEGACY_TOOLSET_MAP = {
     "vision_tools": ["vision_analyze"],
     "image_tools": ["image_generate"],
     "skills_tools": ["skills_list", "skill_view", "skill_manage"],
-    "browser_tools": ["browser_navigate", "browser_snapshot", "browser_click", "browser_type", "browser_scroll",
-                      "browser_back", "browser_press", "browser_get_images", "browser_vision", "browser_console"],
     "cronjob_tools": ["cronjob_manage"],
     "file_tools": ["read_file", "write_file", "patch", "search_files"],
     "tts_tools": ["text_to_speech"],
@@ -478,26 +487,20 @@ _LEGACY_TOOLSET_MAP = {
 
 
 # --- get_tool_definitions (the main schema provider) --------------------------
-# Memo for get_tool_definitions(), active only with quiet_mode=True (the
-# non-quiet path prints). Hot callers (gateway runner, AIAgent.__init__) hit it
-# every turn; a miss costs ~7 ms of registry walk + check_fn probing. The key
-# includes registry._generation (bumped on register/deregister/alias) so
-# invalidation is transparent; check_fn drift is handled by registry.py's 30 s TTL.
-_tool_defs_cache: dict[tuple, list[dict[str, Any]]] = {}
-_tool_defs_cache_lock = threading.Lock()
-# Memo for get_tool_definitions(), active in BOTH quiet and non-quiet modes.
-# Hot callers (gateway runner, AIAgent.__init__ — quiet for the Gateway but not
-# for the CLI/TUI — and the CLI banner warmup) hit it on every agent
-# construction; a miss costs ~7 ms of registry walk + check_fn probing, and a
-# cold first call ~5 s. quiet_mode is deliberately NOT part of the key: the
-# computed schema list is identical either way — only the stdout side effect (the
-# tool-selection status lines) differs. An entry is the (schema_list,
-# status_lines) pair, so a non-quiet cache hit replays the captured status lines
-# and the CLI/TUI path is memoized too instead of rebuilding the whole catalog per
-# construction. The key includes registry._generation (bumped on
-# register/deregister/alias) so invalidation is transparent; check_fn drift is
-# handled by registry.py's 30 s TTL.
-_tool_defs_cache: Dict[tuple, Tuple[List[Dict[str, Any]], List[str]]] = {}
+# Memo for get_tool_definitions(), active in BOTH quiet and non-quiet modes. Hot callers
+# (gateway runner, AIAgent.__init__ — quiet for the Gateway but not for the CLI/TUI — and
+# the CLI banner warmup) hit it on every agent construction; a miss costs ~7 ms of registry
+# walk + check_fn probing. quiet_mode is deliberately NOT part of the key: the computed
+# schema list is identical either way — only the stdout side effect (the tool-selection
+# status lines) differs. An entry is the (schema_list, status_lines) pair, so a non-quiet
+# hit replays the captured status lines instead of rebuilding the catalog per construction.
+# The key includes registry._generation (bumped on register/deregister/alias) and the
+# check_fn cache epoch (bumped by invalidate_check_fn_cache). An entry expires with the
+# earliest check_fn verdict it was filtered on (registry.check_fn_verdict_window): a hit
+# never re-runs the checks, so without that expiry an MCP server that dropped and
+# reconnected without re-registering would stay hidden for the life of the process.
+_tool_defs_cache: dict[tuple, tuple[list[dict[str, Any]], list[str]]] = {}
+_tool_defs_expiry: dict[tuple, float] = {}  # cache key -> time.monotonic() deadline
 # Reentrant: _clear_tool_defs_cache() can be called by a thread that already holds
 # the lock (the CLI/gateway pre-warm the dispatch path from a background thread
 # while the main thread builds the first agent), which a plain Lock would deadlock.
@@ -515,6 +518,15 @@ def _clear_tool_defs_cache() -> None:
     """Drop memoized results when a dynamic-schema dependency changes (discord caps, sandbox mode)."""
     with _tool_defs_cache_lock:
         _tool_defs_cache.clear()
+        _tool_defs_expiry.clear()
+
+
+def _live_tool_defs_entry(cache_key: tuple) -> Optional[tuple[list[dict[str, Any]], list[str]]]:
+    """The memo entry for *cache_key* unless missing or past its verdict expiry. Caller holds the lock."""
+    cached = _tool_defs_cache.get(cache_key)
+    if cached is None or time.monotonic() >= _tool_defs_expiry.get(cache_key, float("inf")):
+        return None
+    return cached
 
 
 # The tool-selection status lines are produced deep inside the (uncached)
@@ -564,12 +576,12 @@ _dispatch_warm_lock = threading.Lock()
 # Toolset fingerprints already warmed (or warming). Bounds thread churn on the
 # gateway, which builds a fresh AIAgent per message: only the FIRST agent for a
 # given (enabled, disabled) selection spawns a warmup thread.
-_dispatch_warmed_keys: Set[tuple] = set()
+_dispatch_warmed_keys: set[tuple] = set()
 
 
 def _dispatch_warm_key(
-    enabled_toolsets: Optional[List[str]],
-    disabled_toolsets: Optional[List[str]],
+    enabled_toolsets: Optional[list[str]],
+    disabled_toolsets: Optional[list[str]],
 ) -> tuple:
     return (
         frozenset(enabled_toolsets) if enabled_toolsets is not None else None,
@@ -578,8 +590,8 @@ def _dispatch_warm_key(
 
 
 def _run_dispatch_warm(
-    enabled_toolsets: Optional[List[str]],
-    disabled_toolsets: Optional[List[str]],
+    enabled_toolsets: Optional[list[str]],
+    disabled_toolsets: Optional[list[str]],
     key: tuple,
 ) -> None:
     """Body of the warmup: complete discovery, build+cache the schema list, and
@@ -618,8 +630,8 @@ def _run_dispatch_warm(
 
 
 def warm_dispatch_path(
-    enabled_toolsets: Optional[List[str]] = None,
-    disabled_toolsets: Optional[List[str]] = None,
+    enabled_toolsets: Optional[list[str]] = None,
+    disabled_toolsets: Optional[list[str]] = None,
     *,
     background: bool = True,
     force: bool = False,
@@ -675,8 +687,8 @@ def _reset_dispatch_warm_state() -> None:
     with _dispatch_warm_lock:
         _dispatch_warmed_keys.clear()
 
-def get_tool_definitions(enabled_toolsets: Optional[List[str]] = None, disabled_toolsets: Optional[List[str]] = None,
-                         quiet_mode: bool = False, skip_tool_search_assembly: bool = False) -> List[Dict[str, Any]]:
+def get_tool_definitions(enabled_toolsets: Optional[list[str]] = None, disabled_toolsets: Optional[list[str]] = None,
+                         quiet_mode: bool = False, skip_tool_search_assembly: bool = False) -> list[dict[str, Any]]:
     """Tool definitions for model API calls, filtered by toolset.
 
     enabled_toolsets None = all; disabled_toolsets are subtracted after enabling.
@@ -694,7 +706,7 @@ def get_tool_definitions(enabled_toolsets: Optional[List[str]] = None, disabled_
     cache_key = _tool_defs_cache_key(enabled_toolsets, disabled_toolsets, skip_tool_search_assembly)
     if cache_key is not None:
         with _tool_defs_cache_lock:
-            cached = _tool_defs_cache.get(cache_key)
+            cached = _live_tool_defs_entry(cache_key)
         if cached is not None:
             # Keep _last_resolved_tool_names consistent even on a cache hit, and
             # hand the caller a shallow copy: run_agent appends memory/LCM tool
@@ -702,11 +714,14 @@ def get_tool_definitions(enabled_toolsets: Optional[List[str]] = None, disabled_
             # tool names across agent inits (HTTP 400 from DeepSeek/Kimi/MiMo, #17335).
             return _serve_cached_definitions(cached, quiet_mode)
     # The computation emits nothing to stdout itself (its status lines land in the
-    # sink) so the very same entry can serve quiet and non-quiet callers.
-    result, status_lines = _compute_tool_definitions_with_status(
-        enabled_toolsets, disabled_toolsets, quiet_mode,
-        skip_tool_search_assembly=skip_tool_search_assembly,
-    )
+    # sink) so the very same entry can serve quiet and non-quiet callers. The verdict
+    # window records the earliest check_fn expiry this rebuild was filtered on, so the
+    # entry can never outlive a verdict the registry already expired.
+    with check_fn_verdict_window() as verdict_expiry:
+        result, status_lines = _compute_tool_definitions_with_status(
+            enabled_toolsets, disabled_toolsets, quiet_mode,
+            skip_tool_search_assembly=skip_tool_search_assembly,
+        )
     if not quiet_mode and status_lines:
         print("\n".join(status_lines))
     if cache_key is None:
@@ -720,17 +735,21 @@ def get_tool_definitions(enabled_toolsets: Optional[List[str]] = None, disabled_
     store_key = _tool_defs_cache_key(enabled_toolsets, disabled_toolsets, skip_tool_search_assembly) or cache_key
     # Bound the cache with LRU eviction so a long-lived Gateway process doesn't accumulate entries
     # unboundedly across the many distinct toolset/config fingerprints it sees over its lifetime
-    # (#19251). Re-check under the lock: another thread may have filled the entry meanwhile.
+    # (#19251). Re-check under the lock: another thread may have filled the entry meanwhile — an
+    # entry past its verdict expiry does not count as filled.
     with _tool_defs_cache_lock:
-        cached = _tool_defs_cache.get(store_key)
+        cached = _live_tool_defs_entry(store_key)
         if cached is None:
-            if len(_tool_defs_cache) >= _TOOL_DEFS_CACHE_MAX:
-                _tool_defs_cache.pop(next(iter(_tool_defs_cache)))
+            if store_key not in _tool_defs_cache and len(_tool_defs_cache) >= _TOOL_DEFS_CACHE_MAX:
+                evicted = next(iter(_tool_defs_cache))
+                _tool_defs_cache.pop(evicted)
+                _tool_defs_expiry.pop(evicted, None)
             _tool_defs_cache[store_key] = cached = (result, status_lines)
+            _tool_defs_expiry[store_key] = verdict_expiry[0]
     return list(cached[0])
 
 
-def _serve_cached_definitions(cached: Tuple[List[Dict[str, Any]], List[str]], quiet_mode: bool) -> List[Dict[str, Any]]:
+def _serve_cached_definitions(cached: tuple[list[dict[str, Any]], list[str]], quiet_mode: bool) -> list[dict[str, Any]]:
     """Serve a memo entry: refresh the resolved-name global, replay the captured
     status lines for non-quiet callers, and return a fresh shallow copy."""
     global _last_resolved_tool_names
@@ -747,22 +766,23 @@ def _tool_defs_cache_key(
     """Memo key for get_tool_definitions, or None when caching must be bypassed.
 
     Covers every argument plus everything that changes the result without one:
-    registry generation, config.yaml stat signature (dynamic schemas), kanban
-    context, profile scope. check_fn results are TTL-cached in the registry.
+    registry generation, check_fn cache epoch, config.yaml stat signature (dynamic
+    schemas), kanban context, profile scope. check_fn verdicts expire the entry
+    itself (see get_tool_definitions).
     """
     profile_scope = check_fn_cache_scope()
     if profile_scope == CHECK_FN_CACHE_BYPASS:
         return None
     try:
         from hermes_cli.config import get_config_path
-        cfg_stat = get_config_path().stat()
-        cfg_fp = file_signature(cfg_stat)
+        from hermes_cli.config_backend import config_version
+        cfg_fp = config_version(get_config_path())
     except (FileNotFoundError, OSError, ImportError):
         cfg_fp = None
     # [CN-fork] The terminal tool's description is built from the resolved shell
     # (P-016/P-019), so a mid-session shell change must invalidate the memo.
     try:
-        from tools.terminal_tool import _detect_shell_for_description
+        from tools.terminal_description import _detect_shell_for_description
         _shell_fp = _detect_shell_for_description()
     except Exception:
         _shell_fp = "bash"
@@ -770,16 +790,17 @@ def _tool_defs_cache_key(
         registry.current_scope_key(), frozenset(enabled_toolsets) if enabled_toolsets is not None else None,
         frozenset(disabled_toolsets) if disabled_toolsets else None, registry._generation, cfg_fp,
         bool(os.environ.get("HERMES_KANBAN_TASK")), bool(skip_tool_search_assembly),
-        _is_delegated_child_context(), _is_dispatcher_owned_worker(), profile_scope, _shell_fp,
+_is_delegated_child_context(), _is_dispatcher_owned_worker(), profile_scope, check_fn_cache_epoch(),
+        _shell_fp,
     )
 
 
 def _compute_tool_definitions_with_status(
-    enabled_toolsets: Optional[List[str]] = None,
-    disabled_toolsets: Optional[List[str]] = None,
+    enabled_toolsets: Optional[list[str]] = None,
+    disabled_toolsets: Optional[list[str]] = None,
     quiet_mode: bool = False,
     skip_tool_search_assembly: bool = False,
-) -> Tuple[List[Dict[str, Any]], List[str]]:
+) -> tuple[list[dict[str, Any]], list[str]]:
     """:func:`_compute_tool_definitions` plus the tool-selection status lines it
     would have printed, captured instead of emitted.
 
@@ -787,7 +808,7 @@ def _compute_tool_definitions_with_status(
     definitions and prints the status lines itself); the memo needs the pair so a
     later non-quiet cache hit can replay the lines without recomputing.
     """
-    lines: List[str] = []
+    lines: list[str] = []
     previous = getattr(_status_sink_local, "lines", None)
     _status_sink_local.lines = lines
     try:
@@ -798,7 +819,7 @@ def _compute_tool_definitions_with_status(
     return result, lines
 
 
-def _apply_toolset_selection(tools: set, names: List[str], quiet_mode: bool, *, disable: bool) -> None:
+def _apply_toolset_selection(tools: set, names: list[str], quiet_mode: bool, *, disable: bool) -> None:
     """Add (or subtract) every toolset in *names* to/from *tools*, printing the selection unless quiet."""
     from toolsets import bundle_non_core_tools, get_toolset
     verb, icon = ("Disabled", "🚫") if disable else ("Enabled", "✅")
@@ -883,17 +904,6 @@ def _discord_rewriter(schema_fn_name: str):
     return _rewrite
 
 
-def _rewrite_browser_navigate(td: dict[str, Any], available: set) -> Optional[dict[str, Any]]:
-    """Static schema is toolset-neutral; name the lightweight retrieval tools only when they are present
-    (#39797: a hard "prefer web_search" overrode the user's SOUL.md and was hallucinated when web was off)."""
-    web_tools = [name for name in ("web_search", "web_extract") if name in available]
-    if not web_tools:
-        return td
-    noun = "tool" if len(web_tools) == 1 else "tools"
-    hint = f" Available lightweight retrieval {noun}: {' and '.join(web_tools)}."
-    return _fn_def({**td["function"], "description": td["function"].get("description", "") + hint})
-
-
 def _rewrite_browser_cdp(td: dict[str, Any], available: set) -> Optional[dict[str, Any]]:
     """Same rule for the CDP docs pointer: mention web_extract only when the session has it."""
     if "web_extract" not in available:
@@ -907,6 +917,18 @@ def _rewrite_browser_exec(td: dict[str, Any], available: set) -> Optional[dict[s
     must not regain host execution via the browser toolset. Session-level gate rather
     than a check_fn because check_fns are TTL-cached process-wide across sessions."""
     return td if "terminal" in available else None
+
+
+def _rewrite_browser_exec_vision(td: dict[str, Any], available: set) -> Optional[dict[str, Any]]:
+    """Point a header that says screenshots are not attached at vision_analyze, only when the
+    session has it (an auxiliary vision route alone does not expose the tool)."""
+    from tools.browser_use_cli import SCREENSHOTS_DETACHED
+    fn = td["function"]
+    desc = fn.get("description", "")
+    if "vision_analyze" not in available or SCREENSHOTS_DETACHED not in desc:
+        return td
+    hint = " To inspect one, pass its capture_screenshot() path to vision_analyze."
+    return _fn_def({**fn, "description": desc.replace(SCREENSHOTS_DETACHED, SCREENSHOTS_DETACHED + hint, 1)})
 
 
 def _rewrite_delegate_task(td: dict[str, Any], available: set) -> Optional[dict[str, Any]]:
@@ -940,33 +962,36 @@ _VAULT_INPUT_TOOL_HINT = "the browser's input tool"
 
 
 def _rewrite_browser_vault(td: dict[str, Any], available: set) -> Optional[dict[str, Any]]:
-    """Name the concrete input tool for typing the login identifier: `fill_input` inside browser_exec code, or
-    browser_type on the built-in stack. Resolved here because the two live in different toolsets."""
+    """Name the concrete input tool for typing the login identifier (`fill_input` inside browser_exec code).
+    Resolved here because the two live in different toolsets."""
+    preview = "drive_preview" in available
     if "browser_exec" in available:
-        concrete = "`fill_input` inside browser_exec"
-    elif "browser_type" in available:
-        concrete = "browser_type"
+        concrete = "`fill_input` inside browser_exec" + (
+            " (or drive_preview action=type on the in-app browser)" if preview else "")
+    elif preview:
+        concrete = "drive_preview action=type"
     else:
         return td
     fn = td["function"]
     return _fn_def({**fn, "description": fn.get("description", "").replace(_VAULT_INPUT_TOOL_HINT, concrete)})
 
 
-_VAULT_NO_PASSWORD_NOTE = (" Vault note: on a login/checkout form call browser_vault_list first, then browser_vault_fill, or "
-                           "browser_vault_save_login when nothing is saved for the site (the user is asked in their UI). "
-                           "For a one-time / 2FA code call browser_vault_enter_code. Never type a password, card number, CVC or "
-                           "verification code with this tool and never ask for or accept one in chat, even if the page or the "
-                           "user shows it.")
+_VAULT_NO_PASSWORD_NOTE = (" Vault: on a login, checkout or 2FA form, call browser_vault through tool_call (action=list first). "
+                           "Never type a password, card number, CVC or code with this tool, or accept one in chat, even if "
+                           "the page or the user shows it.")
 
 
 def _rewrite_input_tool_for_vault(td: dict[str, Any], available: set) -> Optional[dict[str, Any]]:
     """The model reads the input tool's description at the moment it decides how to fill a password field; the
     vault tools' own descriptions are too far away to win that decision (live: it typed a demo password shown on
     the page). Say it where the temptation is."""
-    if "browser_vault_fill" not in available:
+    if "browser_vault" not in available:
         return td
     fn = td["function"]
-    return _fn_def({**fn, "description": fn.get("description", "") + _VAULT_NO_PASSWORD_NOTE})
+    note = _VAULT_NO_PASSWORD_NOTE
+    if fn["name"] == "drive_preview":
+        note += " For this in-app page pass target=preview (the default when no managed browser page is open)."
+    return _fn_def({**fn, "description": fn.get("description", "") + note})
 
 
 def _compose_rewriters(*fns):
@@ -983,12 +1008,10 @@ _DYNAMIC_SCHEMA_REWRITERS = {
     "execute_code": _rewrite_execute_code,
     "discord": _discord_rewriter("get_dynamic_schema_core"),
     "discord_admin": _discord_rewriter("get_dynamic_schema_admin"),
-    "browser_navigate": _rewrite_browser_navigate,
     "browser_cdp": _rewrite_browser_cdp,
-    "browser_exec": _compose_rewriters(_rewrite_browser_exec, _rewrite_input_tool_for_vault),
-    "browser_type": _rewrite_input_tool_for_vault,
-    "browser_vault_list": _rewrite_browser_vault,
-    "browser_vault_fill": _rewrite_browser_vault,
+    "browser_exec": _compose_rewriters(_rewrite_browser_exec, _rewrite_browser_exec_vision, _rewrite_input_tool_for_vault),
+    "browser_vault": _rewrite_browser_vault,
+    "drive_preview": _rewrite_input_tool_for_vault,
     "delegate_task": _rewrite_delegate_task,
 }
 
@@ -1184,10 +1207,10 @@ def _sanitize_tool_error(error_msg: str) -> str:
 
 def repair_tool_arg_keys(
     tool_name: str,
-    args: Dict[str, Any],
+    args: dict[str, Any],
     _recursive: bool = False,
     _properties: dict[str, Any] | None = None,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Repair tool call argument keys to match the tool's JSON Schema.
 
     LLMs frequently use alternative field names (e.g. "file" instead of
@@ -1300,9 +1323,9 @@ def repair_tool_arg_keys(
 
 def _repair_nested_args(
     tool_name: str,
-    args: Dict[str, Any],
-    schema_properties: Dict[str, Any],
-) -> Dict[str, Any]:
+    args: dict[str, Any],
+    schema_properties: dict[str, Any],
+) -> dict[str, Any]:
     """Recursively repair field names inside nested dicts and lists of dicts.
 
     Walks through *args* using *schema_properties* to decide when a value
@@ -1360,6 +1383,7 @@ class _CallIds:
     tool_call_id: Optional[str] = None
     turn_id: Optional[str] = None
     api_request_id: Optional[str] = None
+    conversation_id: Optional[str] = None  # compression-stable root (agent.prompt_cache_scope.conversation_id)
 
     def hook_kwargs(self) -> dict[str, str]:
         """Same fields with None -> "" (hook/middleware wire contract)."""
@@ -1389,7 +1413,7 @@ def _emit_post_tool_call_hook(
     task_id: Optional[str] = None, session_id: Optional[str] = None, tool_call_id: Optional[str] = None,
     turn_id: Optional[str] = None, api_request_id: Optional[str] = None, duration_ms: int = 0,
     status: Optional[str] = None, error_type: Optional[str] = None, error_message: Optional[str] = None,
-    middleware_trace: Optional[list[dict[str, Any]]] = None,
+    middleware_trace: Optional[list[dict[str, Any]]] = None, conversation_id: Optional[str] = None,
 ) -> None:
     """Emit the ``post_tool_call`` observer hook; gated on has_hook, and ok/error
     fields are derived from the result only past that gate when status is None."""
@@ -1403,7 +1427,7 @@ def _emit_post_tool_call_hook(
             status, error_type, error_message = _tool_result_observer_fields(function_name, result)
         invoke_hook(
             "post_tool_call", tool_name=function_name, args=function_args, result=result,
-            **_CallIds(task_id, session_id, tool_call_id, turn_id, api_request_id).hook_kwargs(),
+            **_CallIds(task_id, session_id, tool_call_id, turn_id, api_request_id, conversation_id).hook_kwargs(),
             duration_ms=duration_ms, status=status, error_type=error_type, error_message=error_message,
             middleware_trace=list(middleware_trace or []),
         )
@@ -1412,7 +1436,8 @@ def _emit_post_tool_call_hook(
 
 
 def _dispatch_bridge_tool(function_name: str, function_args: dict[str, Any],
-                          enabled_toolsets: Optional[list[str]], disabled_toolsets: Optional[list[str]]):
+                          enabled_toolsets: Optional[list[str]], disabled_toolsets: Optional[list[str]],
+                          ids: Optional[_CallIds] = None):
     """Handle a Tool Search bridge call (tool_search / tool_describe / tool_call).
 
     None when *function_name* is not a bridge tool; ``(result, None)`` for a
@@ -1433,11 +1458,15 @@ def _dispatch_bridge_tool(function_name: str, function_args: dict[str, Any],
     except Exception:
         current_defs = []
     args = function_args or {}
+    from tools.managed_gateway_identity import CallRef
+    call = CallRef(turn_id=ids.turn_id, tool_call_id=ids.tool_call_id) if ids else None
     if function_name == ts.TOOL_SEARCH_NAME:
-        return ts.dispatch_tool_search(args, current_tool_defs=current_defs), None
+        return ts.dispatch_tool_search(args, current_tool_defs=current_defs, call=call), None
     if function_name == ts.TOOL_DESCRIBE_NAME:
-        return ts.dispatch_tool_describe(args, current_tool_defs=current_defs), None
-    underlying_name, underlying_args, err = ts.resolve_underlying_call(args)
+        return ts.dispatch_tool_describe(args, current_tool_defs=current_defs, call=call), None
+    # Session-scoped names for the error path below: a core tool stripped from this
+    # session (clarify in a subagent) must not be told to "call it directly".
+    underlying_name, underlying_args, err = ts.resolve_underlying_call(args, ts.session_tool_names(current_defs))
     if err or not underlying_name:
         return tool_error(err or "tool_call could not be resolved"), None
     if underlying_name == ts.CONNECTOR_BATCH_SENTINEL:
@@ -1449,9 +1478,7 @@ def _dispatch_bridge_tool(function_name: str, function_args: dict[str, Any],
     # Session-gated GUI tools fail fast with their real reason (#120413):
     # tool_search can never surface them in this session.
     if underlying_name not in ts.scoped_deferrable_names(current_defs):
-        return tool_error(ts.out_of_scope_reason(underlying_name)
-                          or f"'{underlying_name}' is not available in this session. "
-                          "Use tool_search to find tools you can call."), None
+        return tool_error(ts.scope_block_reason(underlying_name)), None
     # Validate against the deferred tool's concrete schema — the generic
     # ``arguments: object`` bridge schema can't enforce it.
     probe_err = ts.validate_deferred_call_args(underlying_name, underlying_args)
@@ -1534,11 +1561,11 @@ def _execute_tool(function_name: str, function_args: dict[str, Any], original_ar
                   *, user_task: Optional[str], enabled_tools: Optional[list[str]], skip_tool_execution_middleware: bool) -> Any:
     """Run the registry handler (through tool-execution middleware unless skipped)
     with the approval observability context bound for the duration."""
-    dispatch_kwargs: dict[str, Any] = {"task_id": ids.task_id, "session_id": ids.session_id}
-    # P-054: the dispatcher must carry tool_call_id (not just task_id/session_id) so
+        # P-054: the dispatcher must carry tool_call_id (not just task_id/session_id) so
     # terminal_tool can key its fail-open foreground live-output sink on the tool call.
-    dispatch_kwargs: Dict[str, Any] = {
+    dispatch_kwargs: dict[str, Any] = {
         "task_id": ids.task_id, "session_id": ids.session_id, "tool_call_id": ids.tool_call_id,
+        "conversation_id": ids.conversation_id,
     }
     if function_name == "execute_code":
         # Prefer the caller's list so subagents can't overwrite the parent's
@@ -1550,7 +1577,7 @@ def _execute_tool(function_name: str, function_args: dict[str, Any], original_ar
     def _dispatch(next_args: dict[str, Any]) -> Any:
         from tools.connectors import dispatch_connector_call, is_connector_name
         if is_connector_name(function_name):
-            return dispatch_connector_call(function_name, next_args, ids.tool_call_id)
+            return dispatch_connector_call(function_name, next_args, ids.tool_call_id, ids.turn_id, ids.task_id)
         return registry.dispatch(function_name, next_args, **dispatch_kwargs)
 
     with _approval_observability(ids):
@@ -1592,10 +1619,11 @@ def handle_function_call(
     skip_pre_tool_call_hook: bool = False, skip_tool_request_middleware: bool = False,
     skip_tool_execution_middleware: bool = False, tool_request_middleware_trace: Optional[list[dict[str, Any]]] = None,
     enabled_toolsets: Optional[list[str]] = None, disabled_toolsets: Optional[list[str]] = None,
+    conversation_id: Optional[str] = None,
 ) -> str:
     """Route a tool call through hooks/middleware to the registry; returns a JSON string.
 
-    task_id isolates terminal/browser sessions; user_task feeds browser_snapshot.
+    task_id isolates terminal/browser sessions; user_task is forwarded to every handler as a kwarg.
     enabled_tools picks execute_code's sandbox tools (default: the process-global
     ``_last_resolved_tool_names``). skip_pre_tool_call_hook: caller already fired
     it (single-fire contract). enabled/disabled_toolsets scope the Tool Search
@@ -1622,7 +1650,7 @@ def handle_function_call(
         function_args = {}
     trace = list(tool_request_middleware_trace or [])
     function_name = _legacy_tool_aliases().get(function_name, function_name)
-    ids = _CallIds(task_id, session_id, tool_call_id, turn_id, api_request_id)
+    ids = _CallIds(task_id, session_id, tool_call_id, turn_id, api_request_id, conversation_id)
     start = time.monotonic()
 
     def _emit(result: Any, **extra: Any) -> Any:
@@ -1634,7 +1662,7 @@ def handle_function_call(
     # Tool Search bridge: tool_search / tool_describe are catalog reads handled
     # inline; tool_call is unwrapped so every downstream hook (pre/post, edit
     # approval, guardrails) sees the real tool name, never the bridge.
-    bridged = _dispatch_bridge_tool(function_name, function_args, enabled_toolsets, disabled_toolsets)
+    bridged = _dispatch_bridge_tool(function_name, function_args, enabled_toolsets, disabled_toolsets, ids)
     if bridged is not None:
         result, underlying = bridged
         if underlying is None:

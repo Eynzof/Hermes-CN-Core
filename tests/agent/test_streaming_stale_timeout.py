@@ -43,7 +43,7 @@ def test_keepalive_socket_options_enables_keepalive():
 def test_anthropic_client_built_with_keepalive(monkeypatch):
     """build_anthropic_client must forward keepalive socket_options to the
     underlying httpx client so the kernel can detect a dead connection."""
-    import agent.httpx_clients as httpx_clients
+    from agent import httpx_clients
     from agent import anthropic_adapter
 
     captured = {}
@@ -154,7 +154,7 @@ def _make_streaming_agent():
     agent._touch_activity = lambda *a, **k: None
     agent._emit_status = lambda *a, **k: None
     agent._buffer_status = lambda *a, **k: None
-    agent._stream_diag_init = lambda: {}
+    agent._stream_diag_init = dict
     agent._stream_diag_capture_response = lambda *a, **k: None
     agent._fire_first_delta = lambda *a, **k: None
     agent._fire_stream_delta = lambda *a, **k: None

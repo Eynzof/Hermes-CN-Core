@@ -96,7 +96,7 @@ def test_absolute_terminal_cwd_used_verbatim(_isolated_cwd, monkeypatch):
 
 def test_absolute_input_path_ignores_base(_isolated_cwd, monkeypatch):
     """An absolute input path is never re-anchored."""
-    workspace, decoy = _isolated_cwd
+    workspace, _decoy = _isolated_cwd
     monkeypatch.setenv("TERMINAL_CWD", ".")
     abs_target = str(workspace / "target.py")
 
@@ -218,7 +218,7 @@ def test_warning_fires_from_terminal_cwd_when_registry_empty(_isolated_cwd, monk
 
 def test_write_file_reports_resolved_absolute_path(_isolated_cwd, monkeypatch):
     """write_file_tool must put the absolute on-disk path in files_modified."""
-    workspace, decoy = _isolated_cwd
+    workspace, _decoy = _isolated_cwd
     terminal_tool.record_session_cwd("t1", str(workspace))
 
     import orjson
@@ -406,3 +406,25 @@ def test_v4a_delete_and_move_act_on_a_symlink_not_its_target(
     assert str(link) in out["files_modified"]
     if dest:
         assert os.readlink(workspace / dest) == "safe/base.yaml"
+
+
+@pytest.mark.parametrize("live_cwd", [None, "/srv/project-a"], ids=["no-env", "shared-env-moved"])
+def test_container_relative_path_without_a_recorded_cwd_uses_the_backend_cwd(_isolated_cwd, monkeypatch, live_cwd):
+    """A container session with no recorded cwd resolves relative paths against the backend's configured cwd, the
+    same place its terminal commands start: never the process cwd (a host dir such as ``/opt/data`` the sandbox
+    lacks), and never a shared env's live cwd (wherever ANOTHER session last ``cd``'d)."""
+    _workspace, decoy = _isolated_cwd
+    monkeypatch.delenv("TERMINAL_CWD", raising=False)
+    monkeypatch.setattr(terminal_tool, "_get_env_config", lambda: {"env_type": "modal", "cwd": "/root"})
+    envs = {}
+    if live_cwd:
+        envs["default"] = type("ModalEnvironment", (), {"cwd": live_cwd})()
+    monkeypatch.setattr(terminal_tool, "_active_environments", envs)
+
+    resolved = ftp._resolve_path_for_task("notes/todo.md", task_id="b")
+    command_cwd = terminal_tool._resolve_command_cwd(
+        workdir=None, default_cwd="/root", session_key="b", env_type="modal")
+
+    assert resolved == PurePosixPath("/root") / "notes" / "todo.md"
+    assert resolved.parent.parent == PurePosixPath(command_cwd)
+    assert not str(resolved).startswith(str(decoy))

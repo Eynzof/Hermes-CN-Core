@@ -184,15 +184,16 @@ def _check_s6_supervision(issues: list[str]) -> None:
     """Under our s6 /init, report static services and the ONE host gateway slot; no-op elsewhere.
     Counterpart to :func:`_check_gateway_service_linger` (systemd-on-host)."""
     try:
-        from hermes_cli.service_manager import S6ServiceManager, detect_service_manager
+        from hermes_cli.service_manager import (
+            S6_STATIC_SCANDIR, S6ServiceManager, detect_service_manager, s6_service_up)
     except Exception:
         return
     if detect_service_manager() != "s6":
         return
     _section("s6 Supervision")
     mgr = S6ServiceManager()
-    for static in ("main-hermes", "dashboard"):  # s6-rc symlinks under /run/service/, same s6-svstat probe
-        up = mgr.is_running(static)
+    for static in ("main-hermes", "dashboard"):  # s6-rc symlinks in the root scandir, not the gateway one
+        up = s6_service_up(S6_STATIC_SCANDIR / static)
         (check_ok if up else check_info)(f"{static}: up" if up else f"{static}: down (expected if not enabled via env)")
     _report_host_gateway_slot(mgr, issues)
 
@@ -330,7 +331,7 @@ def _macos_desktop_dr(app: Path) -> str | None:
     """Return the bundle's designated requirement string, or None on failure (a hanging codesign must never abort doctor)."""
     codesign = shutil.which("codesign")
     try:
-        proc = subprocess.run([codesign, "-d", "--requirements", "-", str(app)], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15) if codesign else None
+        proc = subprocess.run([codesign, "-d", "--requirements", "-", str(app)], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15, check=False) if codesign else None
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return None
     return None if proc is None or proc.returncode != 0 else (proc.stdout or "") + (proc.stderr or "")
@@ -439,11 +440,26 @@ def _check_python_environment(should_fix: bool, f: Finding) -> None:
     # python-build-standalone can keep a vulnerable SQLite across upgrades).
     with warn_on_error("SQLite version probe failed: {e}", ""):
         import sqlite3
+
+        from hermes_sqlite import REQUIRED_COMPILE_OPTIONS, missing_compile_options
         from hermes_state_wal import is_sqlite_wal_reset_vulnerable, sqlite_source_id
         src = sqlite_source_id()
         # Warn-only: Hermes already refuses WAL on fresh DBs and runtime repair is best-effort.
         check_bool(not is_sqlite_wal_reset_vulnerable(), f"SQLite {sqlite3.sqlite_version}",
                    (f"SQLite {sqlite3.sqlite_version} (WAL-reset bug)", _sqlite_upgrade_hint()))
+        # A version that is safe can still be compiled without the modules the state
+        # DB relies on (FTS5 for messages_fts, and the FTS3/FTS4/RTREE/math functions
+        # older indexes were created with). Warn-only: nothing in-process can fix it,
+        # but "no such module: fts5" should say why. The runtime release asserts the
+        # same options on the interpreter it freezes (#181).
+        missing = missing_compile_options()
+        check_bool(
+            not missing,
+            "SQLite extensions " + "/".join(
+                option.removeprefix("ENABLE_") for option in REQUIRED_COMPILE_OPTIONS),
+            (f"SQLite {sqlite3.sqlite_version} lacks {', '.join(missing)}",
+             "(install a Python whose SQLite enables FTS5/FTS3/FTS4/RTREE/MATH_FUNCTIONS)"),
+        )
         if src:
             check_info(f"SQLite source id: {(src[:48] + '…') if len(src) > 48 else src}")
         _report_database_journal_modes()
@@ -549,6 +565,7 @@ def _check_web_dashboard_import(should_fix: bool, f: Finding) -> None:
             timeout=120,
             cwd=str(PROJECT_ROOT),
             env=env,
+            check=False,
         )
     except subprocess.TimeoutExpired:
         _fail_and_issue(

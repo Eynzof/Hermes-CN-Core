@@ -13,6 +13,7 @@ their values coerced as usual.
 """
 
 from unittest.mock import patch
+import pytest
 
 from model_tools import (
     repair_tool_arg_keys,
@@ -55,6 +56,13 @@ class TestPassthroughs:
             assert result == args
             # When no repair is needed the original dict is returned as-is.
             assert result is args
+
+    def test_terminal_legacy_notifications_keep_their_meaning(self):
+        from tools.terminal_tool import TERMINAL_SCHEMA
+        args = {"command": "echo ready", "background": True,
+                "notify_on_complete": False, "watch_patterns": ["ready"]}
+        with patch("model_tools.registry.get_schema", return_value=TERMINAL_SCHEMA):
+            assert repair_tool_arg_keys("terminal", args) == args
 
     def test_empty_args(self):
         assert repair_tool_arg_keys("test_tool", {}) == {}
@@ -379,6 +387,13 @@ class TestToolSpecificAliases:
             args = {"background": True}
             result = repair_tool_arg_keys("cronjob", args)
             assert result == {"no_agent": True}
+
+    @pytest.mark.parametrize("tool_name", ["process", "process_manage"])
+    def test_process_wait_maps_to_block(self, tool_name):
+        """Kimi's boolean wait must not become the global numeric timeout."""
+        schema = _mock_schema({"block": {"type": "boolean"}})
+        with patch("model_tools.registry.get_schema", return_value=schema):
+            assert repair_tool_arg_keys(tool_name, {"wait": True}) == {"block": True}
 
     def test_tool_specific_takes_precedence_over_global(self):
         """When global and tool-specific disagree, tool-specific wins."""

@@ -1735,7 +1735,7 @@ class TestLoadSimpleEnv:
         """A Notepad-edited .env carries a BOM; the first key must still parse
         instead of becoming '\ufeffHINDSIGHT_LLM_API_KEY'."""
         env_path = tmp_path / ".env"
-        env_path.write_bytes("﻿HINDSIGHT_LLM_API_KEY=sk-test\n".encode("utf-8"))
+        env_path.write_bytes("﻿HINDSIGHT_LLM_API_KEY=sk-test\n".encode())
         values = _load_simple_env(env_path)
         assert values.get("HINDSIGHT_LLM_API_KEY") == "sk-test"
 
@@ -1759,7 +1759,7 @@ class TestPostSetupEnvEncoding:
         """The setup writer reads the existing .env BOM-tolerantly, so a
         BOM'd first key is matched and rewritten, not duplicated."""
         env_path = tmp_path / ".env"
-        env_path.write_bytes("﻿HINDSIGHT_API_KEY=old\n".encode("utf-8"))
+        env_path.write_bytes("﻿HINDSIGHT_API_KEY=old\n".encode())
 
         self._run_cloud_post_setup(tmp_path, monkeypatch)
 
@@ -1868,7 +1868,7 @@ class TestMultiplexBackgroundScope:
         reset_hermes_home_override(home_tok)
 
     def test_writer_thread_resolves_profile_secret(self, scoped_embedded):
-        created, home = scoped_embedded
+        created, _home = scoped_embedded
         p = HindsightMemoryProvider()
         p._mode = "local_embedded"
         p._config = {"profile": "hermes", "llm_provider": "openai", "llm_model": "m"}

@@ -91,7 +91,7 @@ def main() -> int:
         # A route without an FFI entry must never be served silently.
         try:
             handle_rpc("handle_fs", json.dumps({"path": "/api/unknown", "method": "GET", "query": {}}), ctx)
-        except Exception:  # noqa: BLE001
+        except Exception:
             failures.append("handle_fs /api/unknown raised (expected the app's 404 JSON)")
 
         # ── Real gateway dispatcher ──────────────────────────────────────

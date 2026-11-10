@@ -394,6 +394,7 @@ def _op_whoami(binary: Path, account: str, *, token_value: str = "") -> Optional
             capture_output=True,
             text=True, encoding="utf-8", errors="replace",
             timeout=10,
+            check=False,
             **_win_kwargs,
         )
     except (OSError, subprocess.TimeoutExpired):

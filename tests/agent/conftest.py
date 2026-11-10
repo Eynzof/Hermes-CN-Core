@@ -25,7 +25,7 @@ import pytest
 
 # Test modules in this directory that assert on hermes_logging's own behaviour; the
 # _no_real_file_logging stub below must not apply to them.
-_REAL_LOGGING_MODULES = frozenset({"test_setup_logging_profile_scope.py"})
+_REAL_LOGGING_MODULES = frozenset({"test_setup_logging_profile_scope.py", "test_config_load_warning.py"})
 
 
 @pytest.fixture(autouse=True)

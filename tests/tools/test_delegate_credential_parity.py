@@ -206,7 +206,7 @@ class _ChatHandler(BaseHTTPRequestHandler):
     live_key = LIVE_KEY
     status_seen = []
 
-    def do_POST(self):  # noqa: N802 — http.server API
+    def do_POST(self):
         auth = self.headers.get("Authorization", "")
         if auth != f"Bearer {self.live_key}":
             self._reply(401, {"error": {

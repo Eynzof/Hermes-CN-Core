@@ -57,7 +57,7 @@ def _stub_runner(monkeypatch, tmp_path):
     # drain_notifications is consulted post-turn; keep it empty + deterministic.
     from tools.process_registry import process_registry
 
-    monkeypatch.setattr(process_registry, "drain_notifications", lambda: [])
+    monkeypatch.setattr(process_registry, "drain_notifications", list)
     return events
 
 

@@ -78,7 +78,7 @@ class MossProvider(TTSProvider):
     # ------------------------------------------------------------------ config
 
     @staticmethod
-    def _config() -> Dict[str, Any]:
+    def _config() -> dict[str, Any]:
         try:
             from tools.tts_tool import _load_tts_config
 
@@ -89,7 +89,7 @@ class MossProvider(TTSProvider):
             return {}
 
     @classmethod
-    def _section(cls, cfg: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def _section(cls, cfg: Optional[dict[str, Any]] = None) -> dict[str, Any]:
         cfg = cfg if cfg is not None else cls._config()
         section = cfg.get("moss") if isinstance(cfg, dict) else {}
         return section if isinstance(section, dict) else {}
@@ -103,7 +103,7 @@ class MossProvider(TTSProvider):
         ``ValueError`` MossClient raises when no key is found anywhere.
         """
         try:
-            import requests  # noqa: F401
+            import requests
 
             if resolve_moss_api_key(self._config()):
                 return True
@@ -113,7 +113,7 @@ class MossProvider(TTSProvider):
 
     # ------------------------------------------------------------------ voices
 
-    def list_voices(self) -> List[Dict[str, Any]]:
+    def list_voices(self) -> list[dict[str, Any]]:
         """Built-in 15 voices + cloned voices from ``GET /audio/voices``.
 
         Built-in entries are keyed ``voice_id`` in the docs; cloned
@@ -121,7 +121,7 @@ class MossProvider(TTSProvider):
         ABC's ``id`` field, and the original key is preserved as
         ``voice_id`` so text_to_speech and dialogue resolution both work.
         """
-        voices: List[Dict[str, Any]] = []
+        voices: list[dict[str, Any]] = []
         for v in DOC_VOICES:
             voices.append({
                 "id": v.get("voice_id", ""),
@@ -149,11 +149,11 @@ class MossProvider(TTSProvider):
                     "desc": str(raw.get("desc") or raw.get("description") or ""),
                     "cloned": True,
                 })
-        except Exception as exc:  # noqa: BLE001 — cloned voices are best-effort
+        except Exception as exc:
             logger.debug("Moss list_voices: could not fetch cloned voices: %s", exc)
         return voices
 
-    def list_models(self) -> List[Dict[str, Any]]:
+    def list_models(self) -> list[dict[str, Any]]:
         max_len = self._section().get("max_text_length") or 5000
         return [
             {"id": MODEL_TTS, "display": "Moss TTS", "max_text_length": max_len},
@@ -177,7 +177,7 @@ class MossProvider(TTSProvider):
             return configured
         return super().default_voice()
 
-    def get_setup_schema(self) -> Dict[str, Any]:
+    def get_setup_schema(self) -> dict[str, Any]:
         return {
             "name": "Moss",
             "badge": "paid",
@@ -194,7 +194,7 @@ class MossProvider(TTSProvider):
     # --------------------------------------------------------------- helpers
 
     def _resolve_voice_id(
-        self, voice: Optional[str], section: Dict[str, Any]
+        self, voice: Optional[str], section: dict[str, Any]
     ) -> Optional[str]:
         if isinstance(voice, str) and voice.strip():
             return voice.strip()
@@ -231,7 +231,7 @@ class MossProvider(TTSProvider):
         try:
             result = subprocess.run(
                 ["ffmpeg", "-y", "-i", str(src), "-c:a", codec, str(work)],
-                capture_output=True,
+                check=False, capture_output=True,
                 timeout=120,
                 stdin=subprocess.DEVNULL,
                 creationflags=(
@@ -249,7 +249,7 @@ class MossProvider(TTSProvider):
             )
         except subprocess.TimeoutExpired:
             logger.warning("Moss ffmpeg conversion to %s timed out", fmt)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning("Moss ffmpeg conversion to %s failed: %s", fmt, exc)
         finally:
             if in_place and work.exists():
@@ -463,7 +463,7 @@ class MossProvider(TTSProvider):
         name: Optional[str] = None,
         description: Optional[str] = None,
         **extra: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Clone a voice from a reference audio sample; returns voice info.
 
         The Moss API keys the new voice with ``id`` (observed) or
@@ -495,7 +495,7 @@ class MossProvider(TTSProvider):
         model: Optional[str] = None,
         format: str = "mp3",
         **extra: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Start an async single-voice task; returns ``{"task_id": str, ...}``."""
         cfg = self._config()
         section = self._section(cfg)
@@ -528,7 +528,7 @@ class MossProvider(TTSProvider):
         task_id: str,
         timeout: float = 180.0,
         **extra: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Poll an async task to completion; returns the terminal task dict."""
         client = build_client(self._config())
         return client.poll_task(task_id, timeout=timeout)

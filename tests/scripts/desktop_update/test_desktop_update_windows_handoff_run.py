@@ -8,7 +8,7 @@ import time
 import pytest
 
 from tests.scripts.desktop_update.windows_handoff_support import (
-    MARKER, _creation_time, _script, _finish, sleeper as sleeper,
+    MARKER, _creation_time, _script, _finish, sleeper as sleeper,  # noqa: PLC0414 -- re-exported pytest fixture
 )
 
 

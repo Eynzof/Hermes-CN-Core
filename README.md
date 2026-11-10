@@ -19,11 +19,11 @@
 <tr><td><b>面向桌面端的 Dashboard 后端</b></td><td>维护 CN 桌面端需要的附件、workspace、MCP 摘要、profile 以及 SSE/POST transport API。</td></tr>
 <tr><td><b>本地与原生 Windows 友好</b></td><td>包含 PowerShell 安装器和桌面分发链路需要的 runtime 打包逻辑。</td></tr>
 <tr><td><b>真正可用的终端界面</b></td><td>完整 TUI，支持多行编辑、斜杠命令补全、会话历史、中断重定向和流式工具输出。</td></tr>
-<tr><td><b>能出现在你常用的平台里</b></td><td>Telegram、Discord、Slack、WhatsApp、Signal、Email 和 CLI 都可以通过同一个 gateway process 接入。</td></tr>
+<tr><td><b>能出现在你常用的平台里</b></td><td>Telegram、Discord、Slack、WhatsApp、Signal、Email 和 CLI 都可以通过同一个 gateway process 接入；语音消息会转写成文本，跨平台对话保持连续。</td></tr>
 <tr><td><b>闭环学习</b></td><td>智能体维护记忆并定期回顾；复杂任务后自动创建新技能，技能在使用中自我改进。FTS5 会话搜索配合 LLM 摘要实现跨会话回忆，支持 <a href="https://github.com/plastic-labs/honcho">Honcho</a> 对话式用户建模，兼容 <a href="https://agentskills.io">agentskills.io</a> 开放标准。</td></tr>
 <tr><td><b>定时自动化</b></td><td>内置 cron 调度器，可投递到任意平台。日报、夜间备份、每周审计——全部用自然语言描述、无人值守运行。</td></tr>
-<tr><td><b>委派与并行</b></td><td>派生隔离的子代理并行处理工作流。编写 Python 脚本通过 RPC 调用工具，把多步流水线折叠为零上下文成本的调用。</td></tr>
-<tr><td><b>随处运行</b></td><td>七种终端后端——local、Docker、SSH、Singularity、Modal、Daytona 和 Vercel Sandbox。Daytona 和 Modal 提供无服务器持久化——你的智能体环境空闲时休眠、按需唤醒，几乎不产生空闲成本。可以跑在 $5 VPS 或 GPU 集群上。</td></tr>
+<tr><td><b>委派与并行</b></td><td>派生隔离的子代理并行处理工作流。桌面端可在 <b>设置 → 模型 → 子代理</b> 中选择它们的服务商、模型与限制，然后 Apply 完整路由。编写 Python 脚本通过 RPC 调用工具，把多步流水线折叠为零上下文成本的调用。</td></tr>
+<tr><td><b>随处运行</b></td><td>六种内置终端后端——local、Docker、SSH、Modal、Daytona 和 Vercel Sandbox，另有 Singularity/Apptainer 等插件后端。Daytona 和 Modal 提供无服务器持久化——你的智能体环境空闲时休眠、按需唤醒，几乎不产生空闲成本。可以跑在 $5 VPS 或 GPU 集群上。</td></tr>
 <tr><td><b>保留研究能力</b></td><td>继续保留 batch trajectory generation 和 trajectory compression，方便工具调用模型训练与研究。</td></tr>
 </table>
 
@@ -83,7 +83,7 @@ pip install "git+https://github.com/Eynzof/Hermes-CN-Core.git"
 iex (irm https://raw.githubusercontent.com/Eynzof/Hermes-CN-Core/main/scripts/install.ps1)
 ```
 
-The source installer delegates Python 3.14, Node.js, npm, ripgrep, FFmpeg,
+The source installer delegates Python 3.14, Node.js, npm, pnpm, ripgrep, FFmpeg,
 and Python dependencies to PM. If Git is absent, it stages the verified Git
 for Windows archive in Hermes' tool store. It does not replace your system Git.
 See [installation methods](https://hermes-agent.nousresearch.com/docs/getting-started/installation)
@@ -107,6 +107,7 @@ hermes              # 启动交互式 CLI
 hermes model        # 选择 LLM 服务商和模型
 hermes tools        # 配置启用的工具
 hermes config set   # 设置单个配置项
+hermes config get # 打印单个配置项
 hermes gateway      # 启动消息网关
 hermes setup        # 运行完整设置向导
 hermes update       # 更新 Hermes
@@ -166,18 +167,60 @@ source .venv/bin/activate
 pip install -e ".[all,dev]"
 ```
 
-What gets imported:
+---
+
+## Documentation
+
+All documentation lives at **[hermes-agent.nousresearch.com/docs](https://hermes-agent.nousresearch.com/docs/)**:
+
+| Section                                                                                             | What's Covered                                             |
+| --------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| [Quickstart](https://hermes-agent.nousresearch.com/docs/getting-started/quickstart)                 | Install → setup → first conversation in 2 minutes          |
+| [CLI Usage](https://hermes-agent.nousresearch.com/docs/user-guide/cli)                              | Commands, keybindings, personalities, sessions             |
+| [Configuration](https://hermes-agent.nousresearch.com/docs/user-guide/configuration)                | Config file, providers, models, all options                |
+| [Messaging Gateway](https://hermes-agent.nousresearch.com/docs/user-guide/messaging)                | Telegram, Discord, Slack, WhatsApp, Signal, Home Assistant |
+| [Security](https://hermes-agent.nousresearch.com/docs/user-guide/security)                          | Command approval, DM pairing, container isolation          |
+| [Tools & Toolsets](https://hermes-agent.nousresearch.com/docs/user-guide/features/tools)            | 40+ tools, toolset system, terminal backends               |
+| [Skills System](https://hermes-agent.nousresearch.com/docs/user-guide/features/skills)              | Procedural memory, Skills Hub, creating skills             |
+| [Memory](https://hermes-agent.nousresearch.com/docs/user-guide/features/memory)                     | Persistent memory, user profiles, best practices           |
+| [MCP Integration](https://hermes-agent.nousresearch.com/docs/user-guide/features/mcp)               | Connect any MCP server for extended capabilities           |
+| [Cron Scheduling](https://hermes-agent.nousresearch.com/docs/user-guide/features/cron)              | Scheduled tasks with platform delivery                     |
+| [Context Files](https://hermes-agent.nousresearch.com/docs/user-guide/features/context-files)       | Project context that shapes every conversation             |
+| [Architecture](https://hermes-agent.nousresearch.com/docs/developer-guide/architecture)             | Project structure, agent loop, key classes                 |
+| [Contributing](https://hermes-agent.nousresearch.com/docs/developer-guide/contributing)             | Development setup, PR process, code style                  |
+| [CLI Reference](https://hermes-agent.nousresearch.com/docs/reference/cli-commands)                  | All commands and flags                                     |
+| [Environment Variables](https://hermes-agent.nousresearch.com/docs/reference/environment-variables) | Complete env var reference                                 |
+
+---
+
+## Migrating from OpenClaw or another agent
+
+If you're coming from OpenClaw, Claude Code, Codex CLI or Cursor, Hermes can import your settings, memories and skills (and, for OpenClaw, API keys when you ask for them).
+
+**During setup:** `hermes setup` asks whether to import from another agent, pre-selects the ones it finds (`~/.openclaw`, `~/.claude`, `~/.codex`, `~/.cursor`), installs the official `agent-importers` plugin and runs the import with a preview first.
+
+**Anytime after install:**
+
+```bash
+hermes plugins install agent-importers          # once per profile
+hermes import-agent openclaw                    # interactive migration (full preset)
+hermes import-agent openclaw --dry-run          # preview what would be migrated
+hermes import-agent openclaw --migrate-secrets  # also bring allowlisted API keys
+hermes import-agent claude-code                 # or codex / cursor
+```
+
+What gets imported from OpenClaw:
 
 - **SOUL.md** — persona file
 - **Memories** — MEMORY.md and USER.md entries
 - **Skills** — user-created skills → `~/.hermes/skills/openclaw-imports/`
 - **Command allowlist** — approval patterns
 - **Messaging settings** — platform configs, allowed users, working directory
-- **API keys** — allowlisted secrets (Telegram, OpenRouter, OpenAI, Anthropic, ElevenLabs)
+- **API keys** — allowlisted secrets (Telegram, OpenRouter, OpenAI, Anthropic, ElevenLabs), only with `--migrate-secrets`
 - **TTS assets** — workspace audio files
 - **Workspace instructions** — AGENTS.md (with `--workspace-target`)
 
-See `hermes claw migrate --help` for all options, or use the `openclaw-migration` skill for an interactive agent-guided migration with dry-run previews.
+`hermes claw migrate` still works as the older spelling. See the [OpenClaw migration guide](https://hermes-agent.nousresearch.com/docs/guides/migrate-from-openclaw) and [Import from Other Agents](https://hermes-agent.nousresearch.com/docs/user-guide/import-from-other-agents).
 
 ---
 

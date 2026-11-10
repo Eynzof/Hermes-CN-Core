@@ -30,7 +30,7 @@ def test_message_sanitization_small(timing_context):
     ]
 
     with timing_context.measure("sanitize_messages_small"):
-        result = sanitize_api_messages(messages)
+        _result = sanitize_api_messages(messages)
 
     total_ms = timing_context.summary().get("sanitize_messages_small", {}).get("total_ms", 0)
     print(f"\n  Sanitize 5 messages: {total_ms:.1f}ms")
@@ -48,7 +48,7 @@ def test_message_sanitization_large(timing_context):
         messages.append({"role": "assistant", "content": f"Answer {i}."})
 
     with timing_context.measure("sanitize_messages_large"):
-        result = sanitize_api_messages(messages)
+        _result = sanitize_api_messages(messages)
 
     total_ms = timing_context.summary().get("sanitize_messages_large", {}).get("total_ms", 0)
     print(f"\n  Sanitize 50+ messages: {total_ms:.1f}ms")
@@ -197,7 +197,7 @@ def test_tool_dispatch_timing(timing_context):
 
     with timing_context.measure("tool_dispatch_two_calls"):
         for tool_name, args in tool_calls:
-            result = handle_function_call(tool_name, orjson.dumps(args).decode('utf-8'))
+            _result = handle_function_call(tool_name, orjson.dumps(args).decode('utf-8'))
 
     summary = timing_context.summary()
     total_ms = summary.get("tool_dispatch_two_calls", {}).get("total_ms", 0)
@@ -239,7 +239,7 @@ def test_conversation_loop_baseline(timing_context, mock_llm_response):
             )
 
         with timing_context.measure("conversation_turn"):
-            result = agent.chat("Test message")
+            _result = agent.chat("Test message")
 
         # Restore
         shutil_mod.which = original_which

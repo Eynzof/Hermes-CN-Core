@@ -52,8 +52,8 @@ class TodoStore:
     def __init__(self):
         self._items: list[dict[str, str]] = []
         self._revision = 0
-        self._archived: List[Dict[str, str]] = []
-        self._warnings: List[str] = []
+        self._archived: list[dict[str, str]] = []
+        self._warnings: list[str] = []
         self._conflict_error: Optional[str] = None
 
     def _fresh_items(self, todos: list[dict[str, Any]]) -> list[dict[str, str]]:
@@ -204,13 +204,13 @@ class TodoStore:
         rebuilt = {item["id"]: existing.get(item["id"], item) for item in self._items}
         self._items = self._normalize_order(list(rebuilt.values()))
 
-    def read(self) -> List[Dict[str, str]]:
+    def read(self) -> list[dict[str, str]]:
         """Return a copy of the current list (clears any pending write warnings)."""
         self._warnings = []
         self._conflict_error = None
         return [item.copy() for item in self._items]
 
-    def pop_warnings(self) -> List[str]:
+    def pop_warnings(self) -> list[str]:
         """Return and clear warnings accumulated by the last write."""
         warnings = list(self._warnings)
         self._warnings = []
@@ -343,8 +343,8 @@ class TodoStore:
 
     @staticmethod
     def _detect_fuzzy_warnings(
-        todos: List[Dict[str, Any]], old_items: List[Dict[str, str]]
-    ) -> List[str]:
+        todos: list[dict[str, Any]], old_items: list[dict[str, str]]
+    ) -> list[str]:
         """Non-blocking warnings for incoming content that near-matches existing.
 
         For each incoming item whose content differs from every existing
@@ -356,7 +356,7 @@ class TodoStore:
             return []
         old_contents = [item["content"] for item in old_items]
         old_content_set = set(old_contents)
-        warnings: List[str] = []
+        warnings: list[str] = []
         for t in todos:
             if not isinstance(t, dict):
                 continue
@@ -380,10 +380,10 @@ class TodoStore:
         return warnings
 
     @staticmethod
-    def _detect_duplicate_contents(todos: List[Dict[str, Any]]) -> List[str]:
+    def _detect_duplicate_contents(todos: list[dict[str, Any]]) -> list[str]:
         """Warn when incoming items share content but carry different ids."""
-        warnings: List[str] = []
-        first_id_by_content: Dict[str, str] = {}
+        warnings: list[str] = []
+        first_id_by_content: dict[str, str] = {}
         warned: set = set()
         for t in todos:
             if not isinstance(t, dict):
@@ -404,7 +404,7 @@ class TodoStore:
         return warnings
 
     def _verify_completed_transition(
-        self, item: Dict[str, str], warnings: List[str]
+        self, item: dict[str, str], warnings: list[str]
     ) -> None:
         """Run an item's verification code when it is marked completed.
 
@@ -430,7 +430,7 @@ class TodoStore:
 
 
     @staticmethod
-    def _normalize_order(items: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    def _normalize_order(items: list[dict[str, str]]) -> list[dict[str, str]]:
         """Lift the in_progress step ahead of any earlier pending placeholder. Nested lists
         keep authored order — reordering would tear a subtask from its siblings."""
         statuses = [item["status"] for item in items]
@@ -444,7 +444,7 @@ class TodoStore:
         return normalized
 
 
-def _verification_argv(code: str) -> List[str]:
+def _verification_argv(code: str) -> list[str]:
     """Resolve a non-shell code string to a subprocess argv.
 
     Existing .py files run under sys.executable; .sh under bash (fallback
@@ -495,7 +495,7 @@ def run_verification_code(code: str, timeout: int = 30) -> tuple[bool, str]:
                 return True, ""
             proc = subprocess.run(
                 command,
-                shell=True,
+                check=False, shell=True,
                 capture_output=True,
                 text=True,
                 errors="replace",
@@ -549,7 +549,7 @@ def run_verification_code(code: str, timeout: int = 30) -> tuple[bool, str]:
                 return False, f"Code failed (exit code {exit_code}):\n{output}"
             proc = subprocess.run(
                 _verification_argv(stripped),
-                capture_output=True,
+                check=False, capture_output=True,
                 text=True,
                 errors="replace",
                 timeout=timeout,
@@ -576,7 +576,7 @@ def run_verification_code(code: str, timeout: int = 30) -> tuple[bool, str]:
     return False, f"Code failed (exit code {proc.returncode}):\n{output}"
 
 
-def todo_tool(todos: Optional[List[Dict[str, Any]]] = None, merge: bool = False,
+def todo_tool(todos: Optional[list[dict[str, Any]]] = None, merge: bool = False,
               auto_fix: bool = True, store: Optional[TodoStore] = None) -> str:
     """Write ``todos`` (replace, or ``merge`` by id) or read when None -> list + summary JSON.
 

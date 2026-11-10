@@ -492,7 +492,7 @@ def check_web_api_key() -> bool:
     # Plugin path. Discovery must run first: check_fn fires at tool-registration time, before any dispatch.
     try:
         _ensure_web_plugins_loaded()
-        from agent.web_search_registry import get_active_search_provider, get_active_extract_provider
+        from agent.web_search_registry import get_active_search_provider, get_active_extract_provider, list_providers
         for provider in (get_active_search_provider(), get_active_extract_provider()):
             if provider is not None and getattr(provider, "name", None) in _WEB_CHECK_SKIP:
                 # The registry's single-eligible / legacy walk picked a built-in that _get_backend
@@ -503,35 +503,21 @@ def check_web_api_key() -> bool:
                 continue
             if _provider_is_ready(provider):
                 return True
-        return False
-    except Exception as exc:
-        from agent.web_search_registry import (
-            get_active_extract_provider,
-            get_active_search_provider,
-            list_providers,
-        )
-
-        # [CN-fork] The registry-selected provider first: it is the seam the
-        # provider plugins and ``hermes doctor`` patch, and the resolver that
-        # applies the keyless tier.
-        if any(_provider_is_ready(active) for active in (
-                get_active_search_provider(), get_active_extract_provider())):
-            return True
         # Then walk the registry directly. Legacy names are skipped: their keyed
         # availability was already probed above, and re-probing a bundled/free
         # provider (ddgs) through the registry's own ``is_available()`` bypasses
         # the test/setup-time availability shims. Their keyless tier (Exa/Parallel
         # free tier) is covered by the resolvers above.
         for provider in list_providers():
-            if provider.name in _LEGACY_WEB_BACKENDS:
+            if provider.name in _LEGACY_WEB_BACKENDS or provider.name in _WEB_CHECK_SKIP:
                 continue
             if not (provider.supports_search() or provider.supports_extract()):
                 continue
             if _provider_is_ready(provider):
                 return True
         return False
-    except Exception as exc:  # noqa: BLE001 — registry optional; never fatal
-        logger.debug("web provider registry availability check failed: %s", exc)
+    except Exception as exc:
+        logger.debug("web provider registry availability check failed: %s", exc, exc_info=True)
         return False
 
 
@@ -540,7 +526,7 @@ from tools.registry import registry, tool_error
 
 WEB_SEARCH_SCHEMA = {
     "name": "web_search",
-    "description": "Search the web — up to 5 results (title/URL/description). Operators (site:, filetype:pdf, intitle:, -term, \"exact phrase\") work if the backend supports them.",
+    "description": "Search the web: returns titles, URLs and snippets (5 by default). Read pages with web_extract. The query is passed through to the configured backend, so operators such as site:domain, filetype:pdf, intitle:word, -term, and \"exact phrase\" may work when the backend supports them.",
     "parameters": {
         "type": "object",
         "properties": {
@@ -562,7 +548,7 @@ WEB_SEARCH_SCHEMA = {
 
 WEB_EXTRACT_SCHEMA = {
     "name": "web_extract",
-    "description": "Extract page content from URLs as markdown/text (no LLM). PDF URLs work — pass the PDF link. Within char budget (default 15000) pages return whole; larger pages head+tail truncate, footer points to the full text's saved file path (page with read_file). On failure/timeout use the browser tool.",
+    "description": "Extract content from web page URLs. Returns clean page content in markdown/text (no LLM summarization — fast). Also works with PDF URLs (arxiv papers, documents) — pass the PDF link directly. Pages within the char budget (default 15000) return whole; larger pages return a head+tail window with a footer telling you the full text's saved file path and the read_file call to page through the omitted middle. Inline images appear as [IMAGE: alt] placeholders; real image URLs are kept as links. If a URL fails, times out, or needs JS, login or clicks, use a browser tool instead.",
     "parameters": {
         "type": "object",
         "properties": {

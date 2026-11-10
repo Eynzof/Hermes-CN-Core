@@ -64,7 +64,7 @@ class TestFindExcludesHiddenDirs:
         cmd = (
             f"find {searchable_tree} -not -path '*/.*' -type f -name '*.json'"
         )
-        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+        result = subprocess.run(cmd, check=False, shell=True, capture_output=True, text=True)
         assert "catalog.json" not in result.stdout
         assert ".hub" not in result.stdout
 
@@ -74,7 +74,7 @@ class TestFindExcludesHiddenDirs:
         cmd = (
             f"find {searchable_tree} -not -path '*/.*' -type f -name '*.md'"
         )
-        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+        result = subprocess.run(cmd, check=False, shell=True, capture_output=True, text=True)
         assert "SKILL.md" in result.stdout
 
 
@@ -207,7 +207,7 @@ class TestRipgrepAlreadyExcludesHidden:
         """rg should skip .hub/ by default (no --hidden flag)."""
         result = subprocess.run(
             ["rg", "--no-heading", "ignore", str(searchable_tree)],
-            capture_output=True, text=True,
+            check=False, capture_output=True, text=True,
         )
         assert ".hub" not in result.stdout
         assert "catalog.json" not in result.stdout
@@ -220,7 +220,7 @@ class TestRipgrepAlreadyExcludesHidden:
         """rg should find content in visible directories."""
         result = subprocess.run(
             ["rg", "--no-heading", "visible document", str(searchable_tree)],
-            capture_output=True, text=True,
+            check=False, capture_output=True, text=True,
         )
         assert "SKILL.md" in result.stdout
 

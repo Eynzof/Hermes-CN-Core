@@ -10,18 +10,23 @@ name: Bootstrap installer
 
 on:
   workflow_call:
+    inputs:
+      commit:
+        description: Commit to test and build. Empty keeps the triggering commit.
+        type: string
+        default: ''
 
 permissions:
   contents: read
 
 concurrency:
-  group: bootstrap-installer-${{ github.ref_type == 'tag' && github.run_id || github.ref }}
-  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+  group: bootstrap-installer-${{ (github.ref_type == 'tag' || inputs.commit != '') && github.run_id || github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' && inputs.commit == '' }}
 
 jobs:
   posix:
     name: install.sh protocol + small fresh-install E2E
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     # NOTE: `runner.temp` is only available in step-level env, not job-level
     # env — a job-env `${{ runner.temp }}` makes GitHub reject the workflow
@@ -29,6 +34,7 @@ jobs:
     steps:
       - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # v7.0.1
         with:
+          ref: ${{ inputs.commit }}
           # The mirror step pushes HEAD to a fresh bare repo — a shallow
           # checkout can't (git: "shallow update not allowed").
           fetch-depth: 0
@@ -118,7 +124,8 @@ jobs:
 
       - name: Prepare isolated acceptance-test dependencies
         shell: bash
-        run: python -m scripts.ci.python_packages pytest==9.1.1 pytest-asyncio==1.3.0 ruamel.yaml==0.18.17 packaging==26.0
+        # psutil: tests/conftest.py's session-end daemon reaper reads process environments with it.
+        run: python -m scripts.ci.python_packages pytest==9.1.1 pytest-asyncio==1.3.0 ruamel.yaml==0.18.17 packaging==26.0 psutil==7.2.2
 
       - name: Current installer to PM worker to published command
         shell: bash
@@ -132,7 +139,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # v7.0.1
-
+        with:
+          ref: ${{ inputs.commit }}
       # Windows PowerShell 5.1 is what ships with Windows and what `irm | iex`
       # lands in for most users — the protocol surface must parse there.
       - name: Protocol version + stage manifest (Windows PowerShell 5.1)

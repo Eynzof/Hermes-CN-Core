@@ -101,7 +101,6 @@ def _runner(session_store):
     runner._agent_cache_lock = threading.Lock()
     runner._running_agents = {}
     runner._running_agents_ts = {}
-    runner._session_run_generation = {}
     runner._session_model_overrides = {}
     runner._pending_model_notes = {}
     runner._pending_skills_reload_notes = {}
@@ -120,7 +119,7 @@ def _runner(session_store):
     runner._resolve_turn_agent_config = lambda message, model, runtime: {"model": model, "runtime": runtime}
     runner._load_service_tier = lambda: None
     runner._agent_config_signature = lambda *_args, **_kwargs: ("sig",)
-    runner._extract_cache_busting_config = lambda _config: ()
+    runner._extract_cache_busting_config = lambda _config: {}
     runner._thread_metadata_for_source = lambda *_args, **_kwargs: None
     runner._sync_telegram_topic_binding = MagicMock()
     runner._release_running_agent_state = MagicMock()

@@ -1,7 +1,7 @@
 """Tests for the runtime-adaptive terminal-tool description (powershell vs bash).
 
 Covers the two helpers for Windows PowerShell support in
-``tools/terminal_tool.py``:
+``tools/terminal_description.py``:
 
 * ``_detect_shell_for_description`` — picks ``"powershell"`` or ``"bash"`` based on
   platform + ``HERMES_SHELL_TYPE`` + PATH lookup for ``powershell``/``powershell.exe``.
@@ -20,13 +20,10 @@ from unittest import mock
 import pytest
 
 from tools.registry import registry
-from tools.terminal_tool import (
-    TERMINAL_TOOL_DESCRIPTION,
-    _build_dynamic_terminal_description,
-    _detect_shell_for_description,
-)
+from tools.terminal_tool import TERMINAL_TOOL_DESCRIPTION
+from tools.terminal_description import _build_dynamic_terminal_description, _detect_shell_for_description
 
-DETECT = "tools.terminal_tool._detect_shell_for_description"
+DETECT = "tools.terminal_description._detect_shell_for_description"
 SHUTIL_WHICH = "shutil.which"
 SYSTEM = "platform.system"
 

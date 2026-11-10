@@ -42,7 +42,7 @@ def _extract_no_commit_guard() -> str:
     """Pull the clone_repo() guard that drops a commit-less checkout."""
     text = INSTALL_SH.read_text()
     m = re.search(
-        r'if \[ -d "\$INSTALL_DIR/\.git" \] && ! git -C "\$INSTALL_DIR" '
+        r'if \[ -e "\$INSTALL_DIR/\.git" \] && ! git -C "\$INSTALL_DIR" '
         r"rev-parse --verify HEAD.*?\n    fi",
         text,
         re.DOTALL,
@@ -57,7 +57,7 @@ def _run_guard(install_dir: Path) -> None:
         f"INSTALL_DIR={shlex.quote(str(install_dir))}\n"
         f"{block}\n"
     )
-    res = subprocess.run(["bash", "-c", script], capture_output=True, text=True)
+    res = subprocess.run(["bash", "-c", script], check=False, capture_output=True, text=True)
     assert res.returncode == 0, res.stderr
 
 @pytest.mark.skipif(sys.platform == 'win32', reason="Windows baseline: git operations fail")
@@ -70,7 +70,7 @@ def test_install_sh_guard_moves_commitless_checkout_aside(tmp_path: Path) -> Non
     # Sanity: this is exactly the state that breaks `git stash`.
     head = subprocess.run(
         ["git", "-C", str(install_dir), "rev-parse", "--verify", "HEAD"],
-        capture_output=True,
+        check=False, capture_output=True,
     )
     assert head.returncode != 0
 

@@ -27,7 +27,7 @@ def run_write_marker(install_dir, *, commit="", branch="main"):
                "--dir", str(install_dir), "--branch", branch]
     if commit:
         command.extend(["--commit", commit])
-    return subprocess.run(command, capture_output=True, text=True, timeout=30)
+    return subprocess.run(command, check=False, capture_output=True, text=True, timeout=30)
 
 
 def make_checkout(tmp_path):

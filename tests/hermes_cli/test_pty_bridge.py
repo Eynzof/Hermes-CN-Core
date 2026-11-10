@@ -8,11 +8,11 @@ from __future__ import annotations
 import asyncio
 import errno
 import os
-import select
 import shutil
 import signal
 import subprocess
 import sys
+import threading
 import time
 
 import pytest
@@ -77,6 +77,7 @@ class TestPtyBridgeIO:
         bridge = PtyBridge.__new__(PtyBridge)
         bridge._fd = 123
         bridge._closed = False
+        bridge._fd_lock = threading.Lock()
         wait_started = asyncio.Event()
         release_write = asyncio.Event()
         write_calls = 0
@@ -120,6 +121,7 @@ class TestPtyBridgeIO:
         bridge = PtyBridge.__new__(PtyBridge)
         bridge._fd = 123
         bridge._closed = False
+        bridge._fd_lock = threading.Lock()
 
         def fake_write(_fd, _data):
             raise BlockingIOError(errno.EAGAIN, "buffer full")
@@ -137,7 +139,11 @@ class TestPtyBridgeIO:
         bridge._fd = 123
         bridge._closed = False
 
-        monkeypatch.setattr(select, "select", lambda *_args: ([123], [], []))
+        class _AlwaysReady:
+            def wait(self, _timeout):
+                return True
+
+        bridge._waiter = _AlwaysReady()
 
         def would_block(_fd, _size):
             raise BlockingIOError(errno.EAGAIN, "try again")
@@ -274,6 +280,7 @@ class TestPtyBridgeClose:
         # recorded at spawn; the child leads its own group (pgid == pid)
         bridge._pgid = 12345
         bridge._closed = False
+        bridge._fd_lock = threading.Lock()
 
         bridge.close()
 
@@ -312,6 +319,7 @@ class TestPtyBridgeClose:
         # recorded at spawn: the child was found in OUR group (pgid != pid)
         bridge._pgid = 67890
         bridge._closed = False
+        bridge._fd_lock = threading.Lock()
 
         bridge.close()
 
@@ -392,6 +400,7 @@ class TestPtyBridgeClose:
             # recorded at spawn: the child was found in OUR group (pgid != pid)
             bridge._pgid = os.getpgid(popen.pid)
             bridge._closed = False
+            bridge._fd_lock = threading.Lock()
 
             bridge.close()
         finally:
